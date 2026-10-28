@@ -9,9 +9,9 @@ d'annulation pour une action réversible.
 """
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
-from rest_framework.exceptions import ParseError, PermissionDenied
+from rest_framework.exceptions import NotFound, ParseError, PermissionDenied
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminRole, IsAnyRole
@@ -20,7 +20,8 @@ from apps.records.champs_stricts import RegexStricte
 from .models import AgentActionLog, AssistantEvent
 from .registry import for_user
 from .services import (
-    ActionNotUndoableError, annuler_action, log_confirmed_action,
+    ActionNotUndoableError, agent_hmac_secret, annuler_action,
+    anonymiser_texte, hacher_identifiant, log_confirmed_action,
     preuve_confirmation_valide,
 )
 from rest_framework.parsers import JSONParser
@@ -446,6 +447,99 @@ class AssistantEventView(APIView):
         )
         return Response(_serialiser_evenement(ev),
                         status=status.HTTP_201_CREATED)
+
+
+def _noms_des_leads(company, lead_ids) -> dict:
+    """{lead_id: [nom, prénom du lead et de son client]} — lus via
+    ``apps.crm.selectors`` (jamais le modèle crm), bornés à la société."""
+    from apps.crm.selectors import get_company_leads_by_ids
+
+    noms = {}
+    for pk, lead in get_company_leads_by_ids(company, set(lead_ids)).items():
+        client = getattr(lead, 'client', None)
+        noms[pk] = [v for v in (lead.nom, lead.prenom, getattr(client, 'nom', None),
+                                getattr(client, 'prenom', None)) if v]
+    return noms
+
+
+def _periode_export(request):
+    """(depuis, jusqu_a) ISO de la requête ; défaut : les 7 derniers jours."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+    from django.utils.dateparse import parse_datetime
+
+    bornes = []
+    for cle, defaut in (('depuis', timezone.now() - timedelta(days=7)),
+                        ('jusqu_a', timezone.now())):
+        brut = request.query_params.get(cle)
+        valeur = parse_datetime(brut) if brut else defaut
+        if valeur is None:
+            raise ParseError(f'{cle} : date ISO 8601 attendue.')
+        if timezone.is_naive(valeur):
+            valeur = timezone.make_aware(valeur)
+        bornes.append(valeur)
+    return bornes
+
+
+class AssistantEventExportView(APIView):
+    """AIC11 — ``GET /api/django/agent/evenements/export/`` : export ANONYMISÉ
+    (contrat ``assistant_export.json``) des événements de la société de
+    l'admin, pour le tri nocturne. Non-admin => 404 ; ``AGENT_HMAC_SECRET``
+    absent => refus (jamais d'identifiant brut). ``company`` n'apparaît pas."""
+
+    permission_classes = [IsAnyRole]
+
+    @extend_schema(parameters=[
+        OpenApiParameter('depuis', str, required=False),
+        OpenApiParameter('jusqu_a', str, required=False),
+    ], responses=inline_serializer('AssistantEvenementsExport', {
+        'periode': drf_serializers.DictField(),
+        'evenements': drf_serializers.ListField(child=drf_serializers.DictField()),
+        'totaux': drf_serializers.DictField()}))
+    def get(self, request):
+        if not request.user.is_admin_role or request.user.company_id is None:
+            raise NotFound()
+        secret = agent_hmac_secret()
+        if not secret:
+            raise PermissionDenied('AGENT_HMAC_SECRET absent : export refusé.')
+        depuis, jusqu_a = _periode_export(request)
+        evenements = list(_evenements_de_la_societe(request.user).filter(
+            created_at__gte=depuis, created_at__lt=jusqu_a).order_by('created_at'))
+        noms = _noms_des_leads(request.user.company,
+                               [ev.lead_id for ev in evenements if ev.lead_id])
+        lignes = []
+        for ev in evenements:
+            n = noms.get(ev.lead_id, ())
+            erreur = dict(ev.erreur) if isinstance(ev.erreur, dict) else None
+            if erreur is not None:
+                erreur['message'] = anonymiser_texte(erreur.get('message'), n)
+            lignes.append({
+                'id_hache': hacher_identifiant(ev.pk, secret),
+                'utilisateur_hache': hacher_identifiant(ev.user_id, secret)
+                if ev.user_id else None,
+                'intention': ev.intention,
+                'question_anonymisee': anonymiser_texte(ev.question, n),
+                'resume_reponse_anonymise': anonymiser_texte(ev.resume_reponse, n),
+                'ecran': ev.ecran,
+                'erreur': erreur,
+                'note': ev.note,
+                'commentaire_anonymise': anonymiser_texte(ev.commentaire, n),
+                'modele': ev.modele,
+                'repli': ev.repli,
+                'horodatage': ev.created_at,
+            })
+        par_intention = {i: 0 for i in AssistantEvent.Intention.values}
+        for ligne in lignes:
+            par_intention[ligne['intention']] += 1
+        return Response({
+            'periode': {'depuis': depuis, 'jusqu_a': jusqu_a},
+            'evenements': lignes,
+            'totaux': {
+                'par_intention': par_intention,
+                'non_supportes': par_intention['manque'] + par_intention['hors_champ'],
+            },
+        })
 
 
 class AssistantEventNoteView(APIView):

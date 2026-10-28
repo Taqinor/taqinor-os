@@ -1,7 +1,6 @@
 {
   "endpoint": "GET /api/django/agent/evenements/export/?depuis=<ISO>&jusqu_a=<ISO>",
-  "forme_serveur": "partielle",
-  "forme_serveur_provisoire": "La vue arrive avec AIC11 ; tant qu'elle n'existe pas, une déclaration `complete` fait échouer `check_api_shapes.py` (route introuvable = constat, QJR228). AIC11 bascule cette clé sur `complete` en livrant la vue.",
+  "forme_serveur": "complete",
   "pourquoi": "AIC2 — contrat d'abord (PACT10) de l'export ANONYMISÉ des événements de l'assistant (`assistant_evenement.json`, AIC1), lu par le tri nocturne (AIC51). Ce tri tourne sur l'abonnement de Reda (Consumer Terms) : il ne reçoit ni nom, ni téléphone, ni e-mail, ni identifiant brut. Export d'UNE société à la fois, celle de l'admin qui le demande : `company` n'apparaît JAMAIS dans la réponse. Les règles d'anonymisation sont écrites UNE fois, ici (clé `anonymisation`), et lues par le test d'AIC11. Appelants : AIC11 (vue), AIC51 (tri nocturne).",
   "anonymisation": {
     "telephones": "tout numéro de téléphone (formats marocains et internationaux, espaces, points ou tirets compris) → `[tel]`",

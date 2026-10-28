@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4868, operations: 7654, components: 3589}
+counts: {paths: 4870, operations: 7656, components: 3590}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -441,6 +441,7 @@ operations:
 - post /api/django/agent/actions/automation-draft/ -> django_agent_actions_automation_draft_create
 - get /api/django/agent/evenements/ -> django_agent_evenements_retrieve
 - post /api/django/agent/evenements/ -> django_agent_evenements_create
+- get /api/django/agent/evenements/export/ -> django_agent_evenements_export_retrieve
 - patch /api/django/agent/evenements/{id}/note/ -> django_agent_evenements_note_partial_update
 - get /api/django/agent/logs/ -> django_agent_logs_retrieve
 - post /api/django/agent/logs/confirmer/ -> django_agent_logs_confirmer_create
@@ -4308,6 +4309,7 @@ operations:
 - post /api/v1/agent/actions/automation-draft/ -> v1_agent_actions_automation_draft_create
 - get /api/v1/agent/evenements/ -> v1_agent_evenements_retrieve
 - post /api/v1/agent/evenements/ -> v1_agent_evenements_create
+- get /api/v1/agent/evenements/export/ -> v1_agent_evenements_export_retrieve
 - patch /api/v1/agent/evenements/{id}/note/ -> v1_agent_evenements_note_partial_update
 - get /api/v1/agent/logs/ -> v1_agent_logs_retrieve
 - post /api/v1/agent/logs/confirmer/ -> v1_agent_logs_confirmer_create
@@ -7763,6 +7765,7 @@ query_params:
   get /api/django/adsengine/veille/annonceurs/export-csv/: aveugle classe decouverte dropshipper jeu sans_etiquette
   get /api/django/adsengine/veille/annonceurs/{id}/: aveugle classe decouverte dropshipper jeu sans_etiquette
   get /api/django/adsengine/veille/decouvertes/: ordering page page_size search
+  get /api/django/agent/evenements/export/: depuis jusqu_a
   get /api/django/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/django/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/django/audit/objets/{content_type}/{object_id}/history/: limit
@@ -8552,6 +8555,7 @@ query_params:
   get /api/v1/adsengine/veille/annonceurs/export-csv/: aveugle classe decouverte dropshipper jeu sans_etiquette
   get /api/v1/adsengine/veille/annonceurs/{id}/: aveugle classe decouverte dropshipper jeu sans_etiquette
   get /api/v1/adsengine/veille/decouvertes/: ordering page page_size search
+  get /api/v1/agent/evenements/export/: depuis jusqu_a
   get /api/v1/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/v1/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/v1/audit/objets/{content_type}/{object_id}/history/: limit
@@ -9510,6 +9514,7 @@ components:
 - AssetTypeEnum
 - AssistantEvenement
 - AssistantEvenementNote
+- AssistantEvenementsExport
 - AssistantEvenementsPage
 - AssumptionNode
 - AssumptionNodeRequest

@@ -25,6 +25,8 @@ import hashlib
 import hmac
 import json
 import os
+import re
+import unicodedata
 from typing import Any, Callable, Dict, Optional
 
 from django.conf import settings
@@ -176,3 +178,48 @@ def annuler_action(log: AgentActionLog, *, user=None) -> AgentActionLog:
     log.undo_detail = detail
     log.save(update_fields=['undone_at', 'undo_detail'])
     return log
+
+
+# ── AIC11 — anonymisation de l'export des événements (contrat AIC2) ──────────
+# Règles écrites UNE fois dans ``contract_samples/assistant_export.json`` (clé
+# ``anonymisation``) ; ce nettoyeur PUR les applique dans l'ordre déclaré :
+# téléphones, puis e-mails, puis noms, puis suites de ≥ 6 chiffres.
+_TELEPHONE = re.compile(r'(?<![\w+])\+?\d(?:[ .\-]?\d){8,}(?!\w)')
+_EMAIL = re.compile(r'[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+')
+_SUITE_CHIFFRES = re.compile(r'\d{6,}')
+
+
+def _replier(caractere: str) -> str:
+    """Un caractère -> sa forme sans accent, minuscule (longueur 1 conservée)."""
+    base = ''.join(c for c in unicodedata.normalize('NFD', caractere)
+                   if not unicodedata.combining(c))
+    return (base[:1] or caractere).lower()
+
+
+def anonymiser_texte(texte, noms=()) -> str:
+    """Nettoie ``texte`` : téléphones -> [tel], e-mails -> [email], ``noms``
+    (nom/prénom du lead ou du client, insensible à la casse et aux accents)
+    -> [client], suites de ≥ 6 chiffres -> [num]. Fonction pure."""
+    if not texte:
+        return texte
+    texte = _TELEPHONE.sub('[tel]', str(texte))
+    texte = _EMAIL.sub('[email]', texte)
+    for nom in sorted({n.strip() for n in noms if n and len(n.strip()) >= 2},
+                      key=len, reverse=True):
+        replie = ''.join(_replier(c) for c in texte)
+        cible = ''.join(_replier(c) for c in nom)
+        morceaux, debut = [], 0
+        for m in re.finditer(r'(?<!\w)' + re.escape(cible) + r'(?!\w)', replie):
+            morceaux.append(texte[debut:m.start()] + '[client]')
+            debut = m.end()
+        texte = ''.join(morceaux) + texte[debut:]
+    # « Ahmed Benali » -> un seul [client], pas deux.
+    texte = re.sub(r'\[client\](?:\s+\[client\])+', '[client]', texte)
+    return _SUITE_CHIFFRES.sub('[num]', texte)
+
+
+def hacher_identifiant(valeur, secret: str) -> str:
+    """HMAC-SHA256 hex minuscule de ``str(valeur)`` (clé AGENT_HMAC_SECRET,
+    UTF-8) — même secret et même encodage que ``logs_confirmer.json``."""
+    return hmac.new(secret.encode('utf-8'), str(valeur).encode('utf-8'),
+                    hashlib.sha256).hexdigest()

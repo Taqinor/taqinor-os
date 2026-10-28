@@ -2,7 +2,8 @@ from django.urls import path
 
 from .views import (AgentActionConfirmerView, AgentActionLogView,
                     AgentActionsView, AgentActionUndoView,
-                    AssistantEventNoteView, AssistantEventView,
+                    AssistantEventExportView, AssistantEventNoteView,
+                    AssistantEventView,
                     AutomationDraftView)
 
 urlpatterns = [
@@ -22,4 +23,5 @@ urlpatterns = [
     path('evenements/', AssistantEventView.as_view(), name='agent-assistant-evenements'),
     path('evenements/<int:pk>/note/', AssistantEventNoteView.as_view(),
          name='agent-assistant-evenement-note'),
+    path('evenements/export/', AssistantEventExportView.as_view(), name='agent-assistant-export'),
 ]

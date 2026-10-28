@@ -198,3 +198,93 @@ class AssistantEvenementTests(TestCase):
         self.assertEqual([e['question'] for e in resp.data['results']], ['a'])
         resp = _auth(self.admin_autre).get(URL_EVENEMENTS)
         self.assertEqual([e['question'] for e in resp.data['results']], ['b'])
+
+
+# ── AIC11 — export anonymisé pour le tri nocturne (contrat AIC2) ─────────────
+import re  # noqa: E402
+
+CONTRAT_EXPORT = json.loads(
+    (Path(__file__).resolve().parents[1] / 'contract_samples'
+     / 'assistant_export.json').read_text(encoding='utf-8'))
+# Jeton de remplacement de chaque règle, LU du contrat (aucune seconde copie).
+JETONS = {
+    regle: re.search(r'`(\[\w+\])`', texte).group(1)
+    for regle, texte in CONTRAT_EXPORT['anonymisation'].items()
+    if regle in ('telephones', 'emails', 'noms', 'suites_de_chiffres')
+}
+
+
+class AnonymiserTexteTests(TestCase):
+    def test_regles_du_contrat_dans_lordre(self):
+        self.assertEqual(set(JETONS), {'telephones', 'emails', 'noms',
+                                       'suites_de_chiffres'})
+        cas = {
+            'telephones': ['0612345678', '06 12 34 56 78', '+212 6 12 34 56 78',
+                           '06.12.34.56.78', '06-12-34-56-78', '00212612345678'],
+            'emails': ['ahmed@x.ma', 'a.b+c@exemple.co.uk'],
+            'noms': ['Ahmed', 'BÉNALI', 'benali'],
+            'suites_de_chiffres': ['123456', '9876543'],
+        }
+        for regle, valeurs in cas.items():
+            for valeur in valeurs:
+                with self.subTest(regle=regle, valeur=valeur):
+                    sortie = agent_services.anonymiser_texte(
+                        f'avant {valeur} apres', ['Ahmed', 'Benali'])
+                    self.assertEqual(sortie, f'avant {JETONS[regle]} apres')
+        # Ni un mot qui CONTIENT le nom, ni un nombre court.
+        self.assertEqual(agent_services.anonymiser_texte(
+            'Ahmedou paie 12 345 DH', ['Ahmed']), 'Ahmedou paie 12 345 DH')
+
+
+@override_settings(AGENT_HMAC_SECRET=SECRET_AIC6)
+class AssistantExportTests(TestCase):
+    URL = URL_EVENEMENTS + 'export/'
+
+    def setUp(self):
+        from apps.crm.models import Lead
+
+        self.co = Company.objects.create(nom='AIC11 Co', slug='aic11-co')
+        self.autre = Company.objects.create(nom='AIC11 Autre', slug='aic11-autre')
+        self.admin = User.objects.create_user(
+            username='aic11_admin', password='x', role_legacy='admin', company=self.co)
+        self.vendeur = User.objects.create_user(
+            username='aic11_vendeur', password='x', role_legacy='normal', company=self.co)
+        lead = Lead.objects.create(company=self.co, nom='Benali', prenom='Ahmed')
+        self.manque = AssistantEvent.objects.create(
+            company=self.co, user=self.vendeur, intention='manque', lead_id=lead.pk,
+            question='Envoie le devis à Ahmed Benali 0612345678 ahmed@x.ma',
+            commentaire='Rappeler BENALI au 06 12 34 56 78')
+        AssistantEvent.objects.create(company=self.co, user=self.vendeur,
+                                      intention='donnee', question='Combien ?')
+        AssistantEvent.objects.create(company=self.co, user=self.vendeur,
+                                      intention='hors_champ', question='Météo ?')
+        AssistantEvent.objects.create(company=self.autre, intention='bug',
+                                      question='Autre société 0699999999')
+
+    def test_export_anonymise_sans_tel_ni_nom_ni_email(self):
+        resp = _auth(self.admin).get(self.URL)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(set(resp.data), set(CONTRAT_EXPORT['exemple']))
+        lignes = resp.data['evenements']
+        self.assertEqual(len(lignes), 3)  # société de l'admin seulement
+        self.assertEqual(set(lignes[0]), set(CONTRAT_EXPORT['exemple']['evenements'][0]))
+        manque = next(e for e in lignes if e['intention'] == 'manque')
+        self.assertEqual(manque['question_anonymisee'],
+                         'Envoie le devis à [client] [tel] [email]')
+        self.assertEqual(manque['commentaire_anonymise'], 'Rappeler [client] au [tel]')
+        self.assertEqual(manque['id_hache'], agent_services.hacher_identifiant(
+            self.manque.pk, SECRET_AIC6))
+        self.assertEqual(manque['utilisateur_hache'], agent_services.hacher_identifiant(
+            self.vendeur.pk, SECRET_AIC6))
+        brut = json.dumps(resp.data, default=str)
+        for interdit in ('0612345678', 'Benali', 'ahmed@x.ma', 'AIC11 Co', '0699999999'):
+            self.assertNotIn(interdit, brut)
+        for cle in CONTRAT_EXPORT['anonymisation']['jamais_exportes']:
+            self.assertNotIn(cle, lignes[0])
+        self.assertEqual(resp.data['totaux']['non_supportes'], 2)
+        self.assertEqual(resp.data['totaux']['par_intention']['donnee'], 1)
+
+    def test_export_admin_seul(self):
+        self.assertEqual(_auth(self.vendeur).get(self.URL).status_code, 404)
+        with override_settings(AGENT_HMAC_SECRET=''):
+            self.assertEqual(_auth(self.admin).get(self.URL).status_code, 403)
