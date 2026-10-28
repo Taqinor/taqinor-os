@@ -584,17 +584,11 @@ def _mode_pompe(etude, items):
     if mode in ("neuve", "existante"):
         return mode
     # Sans saisie explicite, une ligne pompe dans le devis veut dire « pompe
-    # neuve fournie » (D-AGR-7).
-    if _item_pompe(items) is not None:
-        return "neuve"
-    # AGC9 (rendu réel R1, devis auto « pompe existante » 15 CV) — le mode
-    # étudié est désormais persisté (``entrees_pompage.mode_pompe``, lu
-    # plus haut). Une étude persistée AVANT lui ne porte que la plaque
-    # résolue : sans ligne pompe et avec une plaque relevée, c'est la pompe
-    # existante conservée (D-AGR-7) ; sinon on ne devine rien.
-    if _dict(_resolue(etude, etude.get("plaque"), "plaque")):
-        return "existante"
-    return None
+    # neuve fournie » (D-AGR-7) ; sans ligne pompe, on ne devine rien.
+    # AGC9 — le mode étudié est persisté (``entrees_pompage.mode_pompe``, lu
+    # plus haut). Une plaque seule ne prouve rien (critique R4) : un lead qui
+    # a relevé sa pompe actuelle peut recevoir un devis de pompe NEUVE.
+    return "neuve" if _item_pompe(items) is not None else None
 
 
 def _bloc_economies(bloc):

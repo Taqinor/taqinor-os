@@ -273,15 +273,16 @@ class Agr304OmissionsTests(SimpleTestCase):
 
     def test_agc9_devis_auto_pompe_existante_lue_sur_l_entree_resolue(self):
         """AGC9 — rendu réel R1 (devis auto « pompe existante » 15 CV) : le
-        devis automatique ne persiste que ``entrees_pompage.plaque`` (aucun
-        ``mode_pompe``, aucune ligne pompe) ⇒ la synthèse dit « existante » et
-        sert la plaque (bloc « Votre pompe existante » page 2). Sans plaque
-        ni ligne pompe : rien deviné. Mutant : lire la seule saisie ⇒ rouge."""
+        mode ÉTUDIÉ persisté (``entrees_pompage.mode_pompe``) fait foi ⇒
+        « existante » + plaque servie (bloc « Votre pompe existante » page 2) ;
+        « neuve » ⇒ jamais ce bloc. Critique R4 : une étude persistée avant ce
+        mode, sans ligne pompe mais avec la plaque du lead, ne devine rien
+        (mutant « plaque ⇒ existante » ⇒ rouge)."""
         data = _data_complete()
         etude = data['etude']
         etude['mode_pompe'] = None
         etude['plaque'] = None
-        etude['entrees_pompage'] = {'plaque': {
+        etude['entrees_pompage'] = {'mode_pompe': 'existante', 'plaque': {
             'cv': 15, 'kw': 11, 'phases': 3, 'courant_a': None,
             'tension_v': 380}}
         for cle in ('all_items', 'sans_items'):
@@ -291,11 +292,10 @@ class Agr304OmissionsTests(SimpleTestCase):
         s = synthese_agricole(data)
         self.assertEqual(s['mode_pompe'], 'existante')
         self.assertEqual(s['pompe']['plaque']['kw'], 11)
-        # Validation R3 — le mode étudié persisté fait foi : devis de pompe
-        # NEUVE (ligne saisie à la main, sans rôle) sur un lead qui a relevé
-        # sa pompe actuelle ⇒ jamais « Votre pompe existante ».
         etude['entrees_pompage']['mode_pompe'] = 'neuve'
         self.assertEqual(synthese_agricole(data)['mode_pompe'], 'neuve')
+        del etude['entrees_pompage']['mode_pompe']
+        self.assertNotIn('mode_pompe', synthese_agricole(data))
         etude['entrees_pompage'] = {}
         self.assertNotIn('mode_pompe', synthese_agricole(data))
 
