@@ -1,0 +1,52 @@
+#1066 10-27T05:55 Chantier : revue fondateur de bout en bout — approvisionnement, suivi GPS licite, séries et pho
+#1072 10-27T02:07 Vague docker + constructibles : 27 acceptations en direct, 4 défauts corrigés, AMET98, APRF cha
+#1073 10-27T02:33 api-fuzz-full : constats du run 40412844555
+#1074 10-27T14:53 C&I : la courbe suit les horaires (talon par type de commerce), 23 activités, question « équipe
+#1077 10-27T02:33 docs : sessions L3 résidentiel + agricole, guide C&I v3, core/pompage → devis
+#1078 10-27T03:33 ventes : niveau de règles de calcul 3 (corrections du 27/10, devis envoyés gardent 2)
+#1079 10-27T04:53 SPL312/SPL313 : devis automatique résidentiel et agricole hors de creation_auto.py (déplacement
+#1080 10-27T16:42 CORC vague 1 : aperçu C&I (devis_auto, option_avec), devis révisé après visite, consigne contra
+#1081 10-27T12:10 CCAT vague 1 : catalogue et paramètres C&I — ce qui manque, visible par l'admin
+#1082 10-27T05:44 CEC — moteur C&I : économie et tarifs (O&M, tranches BT, option batterie au même flux, bi-horai
+#1083 10-27T12:25 C&I CMP vague 1 : chaînes raccordées, ≤ 10 hybrides, câble DC × 2, toit plat à 10°
+#1084 10-27T19:04 CLD — moteur C&I : charge, talons, horaires, taille (vagues 1+2, CLD1-18)
+#1085 10-27T05:35 api-fuzz-full : constats du run 40439284552
+#1086 10-27T15:48 AGM vague 1 — moteur pompage : variateur juste, repli borné, messages vrais, argent honnête
+#1087 10-27T14:05 RHOR vague 1 — moteur horaire résidentiel : ombrage du calepinage, VE possédée, courbe au derat
+#1088 10-27T06:10 api-fuzz-full : équipes — « une seule équipe » en 409
+#1089 10-27T09:14 api-fuzz-full : constats du run 40462160410 (shards 0–5)
+#1090 10-27T10:49 api-fuzz-full : constats du run 40462160410 (shards 6–11)
+#1091 10-27T12:36 RSIZ vague 1 : déplacement pur de composition_residentielle et balayer_tailles
+#1092 10-27T12:43 api-fuzz-full : constats du run 40462160410 (shards 12–15)
+#1093 10-27T17:18 api-fuzz-full : constats du run 40491532345 (shards 0–5)
+#1094 10-27T20:36 Groupe CMP — vagues 2-3 : option avec batterie, compteur, hybrides homogènes, toit plat 30°
+#1095 10-27T21:05 RHOR vagues 2-3 — productible société (AMOT64), économie « avec batterie » nette hors horaire, 
+#1096 10-27T17:45 CEC vagues 2-3 — devis envoyés protégés (niveau 3, tarif porteur des règles d'origine), saisies
+#1097 10-28T00:51 CQST vague 1 : questionnaire client — ce qui manque = règle du devis auto (3 segments), contrat
+#1101 10-27T16:37 AGM vague 2 — moteur pompage : champ sans courbe borné, vraie cause du variateur absent, borne 
+#1103 10-28T00:51 RGEN — vendeur résidentiel : écran = devis auto = PDF (taille demandée, économie avec batterie,
+#1104 10-27T16:42 CPRW1 — /proposition : blocs C&I et agricoles dans leurs composants (déplacement pur, débloque 
+#1105 10-27T21:43 RPDF : garanties réelles au Maroc (Deye 5 ans, Dyness 10 ans)
+#1106 10-27T19:33 Catalogue (D-BAT-2710) : fiches batteries relues sur les datasheets officielles - DL5.0C, Power
+#1107 10-27T18:02 api-fuzz-full : signer-client sans NUL + crochet (faux positif stateful de la tranche 13)
+#1108 10-27T20:58 Organigramme : départements, fonctions, équipes et hiérarchie calculée
+#1109 10-27T19:44 CI-UNE : une seule CI par PR — run pull_request allégé sur claude/*, le merge_group reste le se
+#1111 10-28T00:03 plan(AIC) : assistant IA des commerciaux sur les crédits API du plan Max — 25 tâches + mémoire 
+#1112 10-27T21:55 tests : test_ciq111 — budget de 5 s pour la combinaison à 1 MWc (test de chronométrage instable
+#1113 10-28T00:03 api-fuzz-full 19e passe — tous les constats du run 40556418249 (hors beacon réservé)
+#1114 10-28T02:32 RPDF rounds 1-3 : PDF résidentiel — une seule langue, retour à la française, pages qui tiennent
+#1115 10-28T00:09 CORC vague 2 : pose estimée = pose chiffrée, prestation sans article, brouillons en double, sér
+#1116 10-27T23:37 CPRW2-14 — devis web C&I : rien d'interne ni d'incertain côté client, bandeau « Devis prélimina
+#1117 10-28T03:50 Attribution des leads par le responsable d'équipe (écran Entrée / flèches / clic, règles, délai
+#1118 10-28T00:03 Propriété : docs/openapi-schema.yml déclaré surface append-only (instantané régénéré au fold) —
+#1119 10-28T00:51 CPRW15-24 — devis web C&I : garanties et échéancier servis, services, comparaison sans/avec bat
+#1120 10-28T03:09 AGV1-14 : vendeur agricole — facture pompage, visite point d'eau, générateur sans batterie
+#1121 10-28T04:03 CPRS — devis web côté serveur : parité page/PDF C&I, résidentiel, agricole (CPRS1-11)
+#1122 10-28T01:21 CPRW25-29 — devis web C&I : financement aussi en commercial, erreurs traduites, montants au cen
+#1123 10-28T04:20 CSV : script d'appel et visite C&I fournissent tout ce que le devis auto exige (C&I, résidentie
+#1124 10-28T06:39 RSIZ — taille et composition résidentielles (RSIZ2-11), devis envoyés gardés
+#1125 10-28T02:32 Acceptations en direct 28/10 : 6 tâches cochées sur le code fusionné, VNT 8/8, suite du délai d
+#1126 10-28T04:03 CEC v4 — CEC18 (prix non fini, aperçu hors contrat, motif domestique) + #1094 (O&M option avec 
+#1129 10-28T05:20 Groupe AGC — client agricole : PDF, une-page, /proposition (AGC1-AGC18)
+#1130 10-28T06:40 CPDF — PDF client commercial / industriel : option servie à ses chiffres, deux options, sans ja
+#1131 10-28T06:39 RWEB — /proposition résidentielle = PDF, garanties réelles sur le site, suites CPRW/AGC (RWEB1-
