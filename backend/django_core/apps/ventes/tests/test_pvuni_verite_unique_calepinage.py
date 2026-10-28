@@ -504,6 +504,18 @@ class TestQjr63SouverainetéDuKwc(BaseDevisLive):
                 produit=self.panneau, designation='Panneau Canadien Solar 710W',
                 quantite=Decimal(str(nb)), prix_unitaire=Decimal('1272.73'),
                 ordre=0, variante=variante)
+        # L'offre réseau porte son onduleur RÉSEAU (Huawei, comme la
+        # boulangerie) : sans lui l'option « sans » n'est pas servable
+        # (``familles_servables``) et le devis n'a pas deux options.
+        reseau = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 20kW Triphasé',
+            sku=f'DEV-CE2E1-{self.compteur}-ONDR',
+            prix_vente=Decimal('16666.67'), prix_achat=Decimal('11000'),
+            quantite_stock=50)
+        devis.lignes.create(
+            produit=reseau, designation='Onduleur réseau Huawei 20kW Triphasé',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16666.67'), ordre=1,
+            variante='sans')
         devis.lignes.create(
             produit=self.onduleur, designation='Onduleur hybride Deye 5kW Monophasé',
             quantite=Decimal('1'), prix_unitaire=Decimal('14166.67'), ordre=1,
