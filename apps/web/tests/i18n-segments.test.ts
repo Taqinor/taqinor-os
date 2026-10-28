@@ -8,8 +8,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+// CPRW20 — les pages .astro sont lues avec leurs blocs partagés (components/blocs) déroulés (ENF19).
+const read = (rel: string) => {
+  const chemin = fileURLToPath(new URL(rel, import.meta.url));
+  return rel.endsWith('.astro') ? lireAstroAvecBlocs(chemin) : readFileSync(chemin, 'utf-8');
+};
 
 // Chaque cas : fichier source + une phrase traduite distinctive à y trouver.
 const EN_PAGES = [
@@ -124,8 +129,9 @@ describe('CPRW20 — /professionnel : sources des 3 pages', () => {
       expect(src).toMatch(/n: '03', mode: 'commercial'/);
       expect(src).toMatch(/n: '04', mode: 'commercial'/);
       expect(src).toContain('data-segment-cta');
-      expect(src).toContain('<h3 class="display mt-2 text-xl text-white">{s.title}</h3>');
-      expect(src).not.toContain('<h2 class="display mt-2 text-xl text-white">{s.title}</h2>');
+      // Carte partagée FR/EN/AR (components/blocs/CarteSegmentPro.astro, déroulée dans la page) : titre en h3.
+      expect(src).toContain('<h3 class="display mt-2 text-xl text-white">{title}</h3>');
+      expect(src).not.toContain('<h2 class="display mt-2 text-xl text-white">{title}</h2>');
       const tete = src.slice(0, src.indexOf('---', 4));
       for (const vieux of ['17,04', '3,72', 'ref. 468', '3–5']) expect(tete).not.toContain(vieux);
     });
