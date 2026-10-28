@@ -62,6 +62,18 @@ def _sans_accents(texte):
                    if unicodedata.category(c) != "Mn")
 
 
+def _prenom_et_telephone(d, prenom, telephone):
+    """CE2E7 (niveau 3) — ``(prénom salué, téléphone imprimé)`` : « +212 6 … »
+    par LE formateur du PDF C&I ; prénom vide (« Bonjour, ») quand le nom
+    commence par un bien ou une société. Devis envoyé avant : inchangés."""
+    if d.get("regles_avant_2710") or d.get("regles_calcul_origine"):
+        return prenom, telephone
+    from ..ci.couverture import format_telephone
+    if _sans_accents(prenom).lower() in _MOTS_NON_PRENOM:
+        prenom = ""
+    return prenom, format_telephone(telephone)
+
+
 def nom_option(d, option, minuscule=False):
     """Nom de l'option ``"sans"`` / ``"avec"`` dans la langue du document :
     « Sans batterie » ou le libellé du builder (``libelle_avec``, BAT-DIFF)
@@ -127,14 +139,7 @@ def build(ctx):
     first_name = (client_full.split() or [client_full])[0]
     client_addr = d.get("client_addr", "")
     client_city = d.get("client_ville_libelle") or d.get("client_city", "")  # QJR591
-    client_phone = d.get("client_phone", "")
-    if not (d.get("regles_avant_2710") or d.get("regles_calcul_origine")):
-        # CE2E7 (niveau 3) — téléphone « +212 6 … » par LE formateur du PDF
-        # C&I ; « Bonjour, » quand le nom commence par un bien, pas un prénom.
-        from ..ci.couverture import format_telephone
-        client_phone = format_telephone(client_phone)
-        if _sans_accents(first_name).lower() in _MOTS_NON_PRENOM:
-            first_name = ""
+    first_name, client_phone = _prenom_et_telephone(d, first_name, d.get("client_phone", ""))
     inst_type = (libelle_cat(d, "res_tag_residentielle")
                  if d.get("inst_type") == "Résidentielle"
                  else d.get("inst_type", ""))
