@@ -1,7 +1,7 @@
 """CPDF — libellés des pages C&I (accord, bases du calcul, services),
-enregistrés dans le catalogue ``i18n_labels.LIBELLES`` à l'import (le
-catalogue dépasse 2 000 lignes : il ne grossit plus). Trois langues par clé."""
-from . import i18n_labels
+résolus par ``ci.blocs.libelle`` — JAMAIS ajoutés au catalogue
+``i18n_labels.LIBELLES`` (sa table publiée ``libelles_document`` ne bouge pas
+selon l'ordre des imports ; le catalogue dépasse 2 000 lignes). Trois langues par clé."""
 
 LIBELLES_CI_PAGES = {
     'ci_bases_calcul': {
@@ -31,6 +31,3 @@ LIBELLES_CI_PAGES = {
     'ci_cpdf_echeancier': {'fr': 'Échéancier de paiement',
                            'en': 'Payment schedule', 'ar': 'جدول الدفع'},
 }
-
-for _cle, _val in LIBELLES_CI_PAGES.items():
-    i18n_labels.LIBELLES.setdefault(_cle, _val)

@@ -157,9 +157,7 @@ def build(ctx):
 </style>
 """
 
-    vendeur_html = ci_blocs.joindre(
-        [f"<b>{brand}</b>", ident.get("email"), ident.get("phone")],
-        " &nbsp;·&nbsp; ")
+    vendeur_html = ci_blocs.ligne_vendeur(brand, ident)
     html = f"""{css}
 <div class="c3-root">
   <div class="c3-kicker">{L("ci_kicker_etapes", "Votre projet, étape par étape")}</div>

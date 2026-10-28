@@ -28,9 +28,10 @@ _REGLES_AVANT_2710 = contextvars.ContextVar('regles_avant_2710', default=False)
 
 def poser_regles_origine(valeur, avant_2710=False):
     """Pose les drapeaux « règles d'origine » et « avant le niveau 3 » du
-    rendu en cours."""
+    rendu en cours (un devis aux règles d'origine est aussi avant le niveau 3 :
+    le builder ne pose alors que ``regles_calcul_origine``)."""
     _REGLES_ORIGINE.set(bool(valeur))
-    _REGLES_AVANT_2710.set(bool(avant_2710))
+    _REGLES_AVANT_2710.set(bool(avant_2710 or valeur))
 
 
 def regles_origine():

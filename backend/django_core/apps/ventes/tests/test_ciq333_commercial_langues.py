@@ -130,7 +130,8 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         html = _html(_data("ar"))
         self.assertIn('<html lang="ar" dir="rtl">', html)
         # CPDF — « جدول الدفع » (échéancier de paiement), jamais « جدول الأداء ».
-        self.assertIn(L.libelle("ci_cpdf_echeancier", "ar"), html)
+        from apps.ventes.quote_engine.ci.blocs import libelle_cpdf
+        self.assertIn(libelle_cpdf("ci_cpdf_echeancier", "ar"), html)
         # AMOT88 — « للمنشآت التجارية » (établissements), jamais
         # « للمحلات التجارية » (boutiques).
         self.assertIn(L.libelle("ci_kicker_autoconso_commerciale", "ar"),

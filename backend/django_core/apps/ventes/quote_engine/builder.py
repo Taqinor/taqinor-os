@@ -2167,9 +2167,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         data["avertissements_internes"] = list(avertissements_internes)
     # Décision fondateur 08/10/2026 — drapeaux des GABARITS (devis envoyé avant les corrections : formats
     # d'origine, AMOT24/26/33/35/45, AMOT19 ; CPDF — devis C&I sous le niveau de règles 3 : les corrections de
-    # chiffre du PDF C&I ne s'appliquent qu'aux nouveaux rendus) ; un devis aux règles courantes ne porte aucune clé.
-    data.update({cle: True for cle, pose in (("regles_calcul_origine", not _corrige),
-                                             ("regles_avant_2710", _mode_ci and not _regles_2710(devis))) if pose})
+    # chiffre du PDF C&I ne s'appliquent qu'aux nouveaux rendus ; niveau 1 ⇒ déjà dit par la première clé) ; un
+    # devis aux règles courantes ne porte aucune clé.
+    data.update({cle: True for cle, pose in (
+        ("regles_calcul_origine", not _corrige),
+        ("regles_avant_2710", _mode_ci and _corrige and not _regles_2710(devis))) if pose})
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
     # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une

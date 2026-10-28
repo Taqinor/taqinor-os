@@ -156,9 +156,7 @@ def build(ctx):
     # UNE fois, sur la page équipements (``commercial/equip``, partagée par
     # l'industriel) ; plus de second bloc ici.
 
-    vendeur_html = ci_blocs.joindre(
-        [f"<b>{brand}</b>", ident.get("email"), ident.get("phone")],
-        " &nbsp;·&nbsp; ")
+    vendeur_html = ci_blocs.ligne_vendeur(brand, ident)
     html = f"""{css}
 <div class="i3-root">
   <div class="i3-kicker">{L("ci_ind_deploiement", "Déploiement &amp; conditions")}</div>

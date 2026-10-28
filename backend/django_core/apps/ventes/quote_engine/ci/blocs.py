@@ -12,7 +12,12 @@ from __future__ import annotations
 import re
 
 from ..montants import decimale
-from .. import i18n_labels_ci_pages  # noqa: F401 — libellés CPDF
+from ..i18n_labels_ci import LIBELLES_CI
+from ..i18n_labels_ci_pages import LIBELLES_CI_PAGES
+
+#: CPDF — les libellés propres aux pages C&I (résolus ici, jamais versés au
+#: catalogue ``i18n_labels.LIBELLES`` publié dans ``libelles_document``).
+_LIBELLES_CPDF = {**LIBELLES_CI, **LIBELLES_CI_PAGES}
 
 
 def _txt(valeur):
@@ -25,10 +30,27 @@ def libelle(d, cle, fr, **valeurs):
     """Le libellé ``cle`` du catalogue ``i18n_labels`` dans la langue du
     document (``theme.libelle_doc``) ; ``fr`` = le littéral historique du
     gabarit, rendu tel quel pour un document français (octet pour octet).
-    ``valeurs`` : des valeurs DÉJÀ formatées (aucun chiffre fabriqué ici)."""
+    ``valeurs`` : des valeurs DÉJÀ formatées (aucun chiffre fabriqué ici).
+    CPDF — les clés des tables ``i18n_labels_ci*`` se lisent dans ces tables
+    (jamais versées au catalogue publié)."""
+    from .. import i18n_labels
     from ..residential import theme
-    texte = theme.libelle_doc(d if isinstance(d, dict) else {}, cle, fr)
+    d = d if isinstance(d, dict) else {}
+    cpdf = _LIBELLES_CPDF.get(cle)
+    if cpdf is None:
+        texte = theme.libelle_doc(d, cle, fr)
+    else:
+        texte = libelle_cpdf(cle, langue(d)) if langue(d) != "fr" else fr
+        if langue(d) != "fr" and i18n_labels.est_rtl(langue(d)):
+            texte = f'<span class="i18n-rtl" dir="rtl">{texte}</span>'
     return texte.format(**valeurs) if valeurs else texte
+
+
+def libelle_cpdf(cle, langue_doc="fr"):
+    """CPDF — un libellé des tables ``i18n_labels_ci*`` dans ``langue_doc``
+    (repli français), sans balise de direction."""
+    table = _LIBELLES_CPDF[cle]
+    return table.get(langue_doc) or table["fr"]
 
 
 def langue(d):
@@ -41,6 +63,14 @@ def joindre(morceaux, separateur=" &middot; "):
     """CPDF6 — les morceaux NON vides joints : jamais de séparateur orphelin
     ni de puce vide."""
     return separateur.join(m for m in (_txt(x) for x in morceaux) if m)
+
+
+def ligne_vendeur(marque, ident):
+    """CPDF6 — « <b>Marque</b> · e-mail · téléphone » du bloc de signature,
+    champs vides omis (UNE composition pour les pages commerciale et
+    industrielle)."""
+    return joindre([f"<b>{marque}</b>", (ident or {}).get("email"),
+                    (ident or {}).get("phone")], " &nbsp;·&nbsp; ")
 
 
 def nettoyer_separateurs(html, separateur=" &middot; "):

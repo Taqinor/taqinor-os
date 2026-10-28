@@ -1,8 +1,8 @@
 """CPDF — libellés des couvertures C&I (cartes « sans / avec batterie »,
-lignes consommation / production sans réserve), enregistrés dans le
-catalogue ``i18n_labels.LIBELLES`` à l'import (le catalogue dépasse 2 000
-lignes : il ne grossit plus). Trois langues par clé."""
-from . import i18n_labels
+lignes consommation / production sans réserve), résolus par
+``ci.blocs.libelle`` — JAMAIS ajoutés au catalogue ``i18n_labels.LIBELLES``
+(sa table publiée ``libelles_document`` ne bouge pas selon l'ordre des
+imports ; le catalogue dépasse 2 000 lignes). Trois langues par clé."""
 
 LIBELLES_CI = {
     'ci_opt_sans_batterie': {
@@ -44,6 +44,3 @@ LIBELLES_CI = {
         'ar': 'إسقاط على مدى {n} سنة: التدفقات السنوية ومدة الاسترداد ومعدل '
               'العائد الداخلي مستخرجة من نفس السلسلة؛ أسس الحساب أدناه.'},
 }
-
-for _cle, _val in LIBELLES_CI.items():
-    i18n_labels.LIBELLES.setdefault(_cle, _val)
