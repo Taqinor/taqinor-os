@@ -1,5 +1,5 @@
 ---
-import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS, BATTERY_WARRANTY_YEARS } from '../lib/warranty';
+import { TABLEAU_GARANTIES_FR } from '../lib/warranty';
 /**
  * Page publique — élévation « élégance retenue » : typographie éditoriale,
  * révélations au défilement, chiffres count-up, parallaxe d'en-tête (desktop)
@@ -50,15 +50,7 @@ const categories = [
   { ref: 'MON', title: 'Monitoring — suivi de production en temps réel', body: "Sans mesure, une production annoncée n'est qu'une promesse invérifiable. Chaque toiture porte donc un dongle WiFi/Ethernet assurant une supervision en temps réel : production à la minute, historiques, alertes sur défaut. Vous gardez votre accès personnel depuis une application ; de notre côté, nous surveillons tout le parc et intervenons avant que la panne ne se voie chez vous.", points: ['Production mesurée en continu', 'Alertes automatiques — SAV proactif', 'Accès client via application mobile'] },
 ];
 
-const warranties = [
-  { item: 'Panneaux photovoltaïques (produit)', years: '12 ans' },
-  { item: 'Panneaux photovoltaïques (performance)', years: '30 ans', note: 'linéaire, ≥ 87,4 % de la puissance initiale à 30 ans' },
-  { item: 'Onduleurs hybrides Deye', years: `${DEYE_INVERTER_WARRANTY_YEARS} ans` },
-  { item: 'Onduleurs réseau Huawei', years: `${HUAWEI_INVERTER_WARRANTY_YEARS} ans` },
-  { item: 'Batteries Dyness LFP', years: `${BATTERY_WARRANTY_YEARS} ans`, note: '≥ 70 % de capacité' },
-  { item: 'Structure acier galvanisé', years: '20 ans' },
-  { item: 'Installation et main-d’œuvre Taqinor', years: '2 ans' },
-];
+const warranties = TABLEAU_GARANTIES_FR;
 import EquipementDiv801B from '../components/blocs/EquipementDiv801B.astro';
 ---
 

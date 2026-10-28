@@ -1,5 +1,5 @@
 ---
-import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS, BATTERY_WARRANTY_YEARS } from '../../lib/warranty';
+import { TABLEAU_GARANTIES_AR } from '../../lib/warranty';
 /**
  * AR — Our warranties (W67, RTL). Faithful Arabic translation of /garanties ;
  * EVERY figure (12/30/10/20/2 years, 87.4 %) kept EXACT in Latin digits. No
@@ -34,15 +34,7 @@ const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
 const waClaim = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في تفعيل ضمان تاكينور الخاص بي.');
 
-const warranties = [
-  { item: 'الألواح الكهروضوئية (المنتج)', years: '12 سنة' },
-  { item: 'الألواح الكهروضوئية (الأداء)', years: '30 سنة', note: 'خطي، ≥ 87.4 % من القدرة الأولية عند 30 سنة' },
-  { item: 'عاكسات Deye الهجينة', years: `${DEYE_INVERTER_WARRANTY_YEARS} سنوات` },
-  { item: 'عاكسات Huawei للشبكة', years: `${HUAWEI_INVERTER_WARRANTY_YEARS} سنوات` },
-  { item: 'بطاريات Dyness LFP', years: `${BATTERY_WARRANTY_YEARS} سنوات`, note: '≥ 70 % من السعة' },
-  { item: 'الهيكل من الفولاذ المجلفن', years: '20 سنة' },
-  { item: 'التركيب واليد العاملة لتاكينور', years: 'سنتان' },
-];
+const warranties = TABLEAU_GARANTIES_AR;
 
 const engagements = [
   {

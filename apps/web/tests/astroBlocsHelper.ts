@@ -53,22 +53,3 @@ export function lireLibProposition(): string {
     .map((rel) => readFileSync(resolve(process.cwd(), rel), 'utf-8'))
     .join('\n');
 }
-
-/**
- * RWEB (27/10/2026) — page du tunnel (`pages/**\/devis/mon-toit.astro`) avec ses blocs déroulés PUIS le
- * texte des modules `src/scripts/tunnel/*.ts` que son `<script>` importe, concaténé à la suite : les
- * utilitaires déplacés hors de la page (dom.ts…) restent trouvables par les tests de source.
- */
-export function lireAstroAvecModulesTunnel(chemin: string): string {
-  const base = lireAstroAvecBlocs(chemin);
-  const vus = new Set<string>();
-  let suite = '';
-  for (const [, rel] of readFileSync(chemin, 'utf-8').matchAll(/from '([^']*\/scripts\/tunnel\/[^']+)';/g)) {
-    const abs = resolve(dirname(chemin), `${rel}.ts`);
-    if (vus.has(abs)) continue;
-    vus.add(abs);
-    suite += `
-${readFileSync(abs, 'utf-8')}`;
-  }
-  return base + suite;
-}

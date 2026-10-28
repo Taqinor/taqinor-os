@@ -1963,7 +1963,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   import { billRangeFromExact, billRangeLabel, type BillRangeId } from '../../../lib/billRange';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
-  import { buildClientRef, buildIdempotencyKey } from '../../../lib/lead';
+  import { buildClientRef, buildIdempotencyKey, MAX_BILL_BY_MODE } from '../../../lib/lead';
   // QJW5 — LE seul constructeur de corps du tunnel, partagé par les trois
   // locales (`src/lib/tunnel/`). Cette page n'a plus de `buildBody()` à elle :
   // elle LIT son DOM dans un état simple et le donne à `construireCorps`, qui
@@ -1973,7 +1973,6 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   import { etatVide, type EtatTunnel } from '../../../lib/tunnel/champs';
   import { lireChampsDomTunnel } from '../../../lib/tunnel/lecture';
   import { ERREURS } from '../../../lib/tunnel/i18n';
-  import { $, val, num, pct, setText, maxBillFor, occShapePaths, setFieldError } from '../../../scripts/tunnel/dom';
   // LANE T-WEB — empreinte d'appareil anonyme (voir lib/visite.ts) : échoée
   // telle quelle sur le lead pour corréler avec les visites de balise. QJW5 —
   // elle manquait entièrement à cette page (web-tunnel-1) : le signal
@@ -2017,6 +2016,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   };
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = (id: string) => document.getElementById(id);
   renderJourType('ar'); // QJR664 — « يوم نموذجي »
   const fallback = $('mt-fallback');
   const cityEl = $('mt-city') as HTMLInputElement | null;
@@ -2483,6 +2483,15 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
     presence_jour: 'present', absence_jour: 'absent', presence_partielle: 'partiel',
   };
 
+  function occShapePaths(shape: readonly number[], w: number, h: number, pad: number): { line: string; area: string } {
+    const max = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
+    const x = (i: number) => pad + (i / (shape.length - 1)) * (w - 2 * pad);
+    const y = (v: number) => pad + (1 - (max > 0 ? v / max : 0)) * (h - 2 * pad);
+    const pts = shape.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+    const line = `M${pts.join(' L')}`;
+    const area = `${line} L${x(shape.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
+    return { line, area };
+  }
 
   function renderOccupancyChart() {
     const svg = $('mt-occ-chart');
@@ -2736,6 +2745,13 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   if (savedWizard?.step != null && savedWizard.step > 0) ensureMapBooted();
 
   // ——— helpers de saisie ———
+  const val = (id: string) => (($(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '');
+  const num = (id: string): number | null => {
+    const raw = val(id).trim();
+    if (raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
 
   // La case « L'été est différent de l'hiver ? » et la facture d'été qu'elle
   // révélait sont retirées du tunnel (coupe fondateur 18/08) — le commercial
@@ -2994,6 +3010,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
     'lt800': 600, '800-1000': 900, '1000-1500': 1250, '1500-3000': 2250,
     '3000-5000': 4000, '5000-10000': 7500, 'gt10000': 12000,
   };
+  function maxBillFor(m: string): number {
+    return MAX_BILL_BY_MODE[m as keyof typeof MAX_BILL_BY_MODE] ?? 200_000;
+  }
   function resolveMonthlyBill(): number | null {
     const exact = num('mt-facture-hiver');
     if (exact != null && exact > 0) return exact;
@@ -3089,6 +3108,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   // ——— QX : petits formateurs du document (fr-FR pour chiffres occidentaux) ———
   const fmtNum = (n: number): string => (Math.round(n * 10) / 10).toLocaleString('fr-FR');
   const fmtYears = (n: number): string => (Math.round(n * 10) / 10).toLocaleString('fr-FR');
+  const pct = (v: number): number => (v <= 1 ? Math.round(v * 100) : Math.round(v));
+  function setText(id: string, text: string) {
+    const el = $(id);
+    if (el) el.textContent = text;
+  }
   function setCard(cardId: string, valueId: string, text: string | null) {
     const cardEl = $(cardId);
     if (cardEl) cardEl.hidden = text == null;
@@ -3847,6 +3871,15 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   });
 
   // ——— WJ4 : validation INLINE alignée sur validateLead (avant le round-trip) ———
+  function setFieldError(inputId: string, errId: string, message: string | null) {
+    const input = $(inputId) as HTMLInputElement | null;
+    const err = $(errId);
+    if (input) input.setAttribute('aria-invalid', message ? 'true' : 'false');
+    if (err) {
+      err.textContent = message || '';
+      err.hidden = !message;
+    }
+  }
 
   // ——— QX : VALIDATION EN DIRECT (blur par champ + « Continuer » valide son étape). ———
   function scrollToInvalid(el: HTMLElement | null) {

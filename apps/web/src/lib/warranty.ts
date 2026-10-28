@@ -100,3 +100,25 @@ export const PANEL_PERFORMANCE_FLOOR_FR = `≥ ${pctFr(PANEL_PERFORMANCE_FLOOR_P
 
 /** Libellé EN de la performance panneau, ex. « ≥ 87.4 % ». */
 export const PANEL_PERFORMANCE_FLOOR_EN = `≥ ${pctEn(PANEL_PERFORMANCE_FLOOR_PCT)} %`;
+
+/** RWEB29 — LE tableau des garanties de /garanties ET /équipement (FR), une seule source. */
+export const TABLEAU_GARANTIES_FR = [
+  { item: 'Panneaux photovoltaïques (produit)', years: '12 ans' },
+  { item: 'Panneaux photovoltaïques (performance)', years: '30 ans', note: 'linéaire, ≥ 87,4 % de la puissance initiale à 30 ans' },
+  { item: 'Onduleurs hybrides Deye', years: `${DEYE_INVERTER_WARRANTY_YEARS} ans` },
+  { item: 'Onduleurs réseau Huawei', years: `${HUAWEI_INVERTER_WARRANTY_YEARS} ans` },
+  { item: 'Batteries Dyness LFP', years: `${BATTERY_WARRANTY_YEARS} ans`, note: '≥ 70 % de capacité' },
+  { item: 'Structure acier galvanisé', years: '20 ans' },
+  { item: 'Installation et main-d’œuvre Taqinor', years: '2 ans' },
+];
+
+/** RWEB29 — le même tableau en arabe (/ar/garanties ET /ar/équipement). */
+export const TABLEAU_GARANTIES_AR = [
+  { item: 'الألواح الكهروضوئية (المنتج)', years: '12 سنة' },
+  { item: 'الألواح الكهروضوئية (الأداء)', years: '30 سنة', note: 'خطي، ≥ 87.4 % من القدرة الأولية عند 30 سنة' },
+  { item: 'عاكسات Deye الهجينة', years: `${DEYE_INVERTER_WARRANTY_YEARS} سنوات` },
+  { item: 'عاكسات Huawei للشبكة', years: `${HUAWEI_INVERTER_WARRANTY_YEARS} سنوات` },
+  { item: 'بطاريات Dyness LFP', years: `${BATTERY_WARRANTY_YEARS} سنوات`, note: '≥ 70 % من السعة' },
+  { item: 'الهيكل من الفولاذ المجلفن', years: '20 سنة' },
+  { item: 'التركيب واليد العاملة لتاكينور', years: 'سنتان' },
+];

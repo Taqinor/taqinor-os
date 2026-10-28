@@ -2026,7 +2026,7 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   import { billRangeFromExact, type BillRangeId } from '../../../lib/billRange';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
-  import { buildClientRef, buildIdempotencyKey } from '../../../lib/lead';
+  import { buildClientRef, buildIdempotencyKey, MAX_BILL_BY_MODE } from '../../../lib/lead';
   // QJW5 — THE single lead-body builder, shared by the three locales
   // (`src/lib/tunnel/`). This page no longer has a `buildBody()` of its own:
   // it READS its DOM into a plain state and hands it to `construireCorps`,
@@ -2036,7 +2036,6 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   import { etatVide, type EtatTunnel } from '../../../lib/tunnel/champs';
   import { lireChampsDomTunnel } from '../../../lib/tunnel/lecture';
   import { ERREURS } from '../../../lib/tunnel/i18n';
-  import { $, val, num, pct, setText, maxBillFor, occShapePaths, setFieldError } from '../../../scripts/tunnel/dom';
   // LANE T-WEB — anonymous device fingerprint (see lib/visite.ts): echoed
   // as-is on the lead to correlate with beacon visits. QJW5 — it was missing
   // from this page entirely (web-tunnel-1), so the anti-fraud signal was never
@@ -2120,6 +2119,7 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   };
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = (id: string) => document.getElementById(id);
   renderJourType('en'); // QJR664 — « A typical day »
   const fallback = $('mt-fallback');
   const cityEl = $('mt-city') as HTMLInputElement | null;
@@ -2583,6 +2583,15 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
     presence_jour: 'present', absence_jour: 'absent', presence_partielle: 'partiel',
   };
 
+  function occShapePaths(shape: readonly number[], w: number, h: number, pad: number): { line: string; area: string } {
+    const max = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
+    const x = (i: number) => pad + (i / (shape.length - 1)) * (w - 2 * pad);
+    const y = (v: number) => pad + (1 - (max > 0 ? v / max : 0)) * (h - 2 * pad);
+    const pts = shape.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+    const line = `M${pts.join(' L')}`;
+    const area = `${line} L${x(shape.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
+    return { line, area };
+  }
 
   function renderOccupancyChart() {
     const svg = $('mt-occ-chart');
@@ -2883,6 +2892,13 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   if (savedWizard?.step != null && savedWizard.step > 0) ensureMapBooted();
 
   // ——— input helpers ———
+  const val = (id: string) => (($(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '');
+  const num = (id: string): number | null => {
+    const raw = val(id).trim();
+    if (raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
 
   // WJ105 — concrete callback SLA: visible ONLY when "An advisor may call
   // me" is the active preference. `sync` is re-called after rehydration
@@ -3152,6 +3168,13 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
     'lt800': 600, '800-1000': 900, '1000-1500': 1250, '1500-3000': 2250,
     '3000-5000': 4000, '5000-10000': 7500, 'gt10000': 12000,
   };
+  // WJ65/QX — sanity cap PER PROFILE (MAX_BILL_BY_MODE, lib/lead.ts): beyond
+  // it, a typo would produce a confidently stated figure — we ask to double
+  // check (residential) or route to a dedicated study (pro). Only applies to
+  // the EXACT amount entered, never to ranges.
+  function maxBillFor(m: string): number {
+    return MAX_BILL_BY_MODE[m as keyof typeof MAX_BILL_BY_MODE] ?? 200_000;
+  }
   function resolveMonthlyBill(): number | null {
     const exact = num('mt-facture-hiver');
     if (exact != null && exact > 0) return exact;
@@ -3256,6 +3279,12 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   // ——— QX : small document formatters (en-GB, deterministic) ———
   const fmtNum = (n: number): string => (Math.round(n * 10) / 10).toLocaleString('en-GB');
   const fmtYears = (n: number): string => (Math.round(n * 10) / 10).toLocaleString('en-GB');
+  /** Robust percentage: accepts 0–1 (ratio) as well as 0–100 (already a %). */
+  const pct = (v: number): number => (v <= 1 ? Math.round(v * 100) : Math.round(v));
+  function setText(id: string, text: string) {
+    const el = $(id);
+    if (el) el.textContent = text;
+  }
   /** Honest KPI card: an unknown value -> the card DISAPPEARS (never a dash). */
   function setCard(cardId: string, valueId: string, text: string | null) {
     const cardEl = $(cardId);
@@ -4098,6 +4127,15 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   });
 
   // ——— WJ4 : INLINE validation aligned with validateLead (before the round-trip) ———
+  function setFieldError(inputId: string, errId: string, message: string | null) {
+    const input = $(inputId) as HTMLInputElement | null;
+    const err = $(errId);
+    if (input) input.setAttribute('aria-invalid', message ? 'true' : 'false');
+    if (err) {
+      err.textContent = message || '';
+      err.hidden = !message;
+    }
+  }
 
   // ——— QX : LIVE VALIDATION — every field validates on blur, every
   // "Continue" validates ITS step (inline errors + focus + smooth scroll to
