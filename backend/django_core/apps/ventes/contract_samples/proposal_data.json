@@ -268,7 +268,10 @@
     "quote": {
       "ref": "DEV-2026-000412",
       "sans_items": [
-        {"designation": "Kit de fixation, câblage et protection complet", "quantite": 1, "prix_unitaire_ttc": "8400.00"}
+        {"designation": "Kit de fixation, câblage et protection complet", "quantite": 1, "prix_unitaire_ttc": "8400.00", "garantie_mois": null}
+      ],
+      "avec_items": [
+        {"designation": "Batterie Dyness 10 kWh", "marque": "Dyness", "quantite": 1, "garantie_mois": 120}
       ]
     },
     "mode_installation": "residentiel",
@@ -2400,6 +2403,10 @@
     "offre_expiree": "Booléen — vrai quand la date de validité est passée (jour de Casablanca) : la page n'affiche plus le bouton de signature. Absente quand le devis n'a aucune validité posée.",
     "date_expiration": "Texte ISO `AAAA-MM-JJ` — le dernier jour où l'offre peut être signée, calculé par le serveur (la page ne le dérive plus de `date`). Absente quand aucune validité n'est posée.",
     "pdf_disponible": "Booléen — vrai quand `/proposal` peut rendre le PDF de ce lien (sinon la page masque « Télécharger le PDF » au lieu d'un lien mort). `false` quand la case « PDF » du lien est décochée (ADEV49 : jamais un lien vers un 404)."
+  },
+  "notes_fixweb": {
+    "pourquoi": "FIX-WEB (audit Fable final du run L3 devis, 28/10/2026) — deux chiffres de la page /proposition divergeaient du PDF /proposal du même devis. Ce bloc documente les clés qui les ferment ; il ne change aucune clé existante.",
+    "garantie_mois": "Nombre entier de MOIS ou `null`, sur CHAQUE ligne de `quote.sans_items` / `quote.avec_items` — `Produit.garantie_mois` copié par `quote_engine/lignes_classement._line_to_item` (déjà servi, désormais déclaré). Le PDF (`residential/theme.py::warranties_for`) imprime la garantie batterie de la PREMIÈRE ligne « batterie » qui la porte (mois ÷ 12, arrondi vers le bas, rien sous 12 mois) ; la page (`apps/web/src/lib/proposition/garanties.ts::garantieBatterieAns`) lit la MÊME clé de la même façon et ne retombe sur sa table marque/désignation que si aucune ligne ne la porte. `null` sur la ligne agrégée « Kit de fixation, câblage et protection complet » (niveau standard)."
   },
   "exemple_adev2": {
     "economies_cumul_25_ans": {

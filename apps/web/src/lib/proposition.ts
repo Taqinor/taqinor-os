@@ -43,11 +43,10 @@ export interface ProposalItem {
    * historique sans fiche renvoie une chaîne vide, jamais inventée.
    */
   description?: string;
-  /**
-   * WJ32 — texte de garantie constructeur/performance du produit. Backend
-   * `_line_to_item` l'expose déjà (`garantie`) ; vide quand non renseigné.
-   */
+  /** WJ32 — texte de garantie constructeur/performance (`garantie`, `_line_to_item`) ; vide quand non renseigné. */
   garantie?: string;
+  /** FIX-WEB A — garantie constructeur en MOIS (`Produit.garantie_mois`, `_line_to_item`) : celle que le PDF imprime. */
+  garantie_mois?: number | null;
   taux_tva: number;
 }
 

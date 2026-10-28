@@ -127,6 +127,20 @@ describe('RWEB2 — garanties /proposition par marque posée', () => {
     expect(garantieBatterieAns([{ designation: 'Panneau 710 Wc' }])).toBeNull();
   });
 
+  it('FIX-WEB A — garantie_mois servi d’abord, comme le PDF (theme.py) : « Batterie Dyness 10 kWh » à 120 mois = 10 ans', async () => {
+    const { garantieBatterieAns } = await import('../src/lib/proposition/garanties');
+    // Désignation RÉELLE du catalogue (seed_catalogue.py, SKU BAT-DEY-10) : sans « powerbox », la table disait 7.
+    expect(garantieBatterieAns([{ designation: 'Batterie Dyness 10 kWh', garantie_mois: 120 }])).toBe(10);
+    expect(garantieBatterieAns([{ designation: 'Batterie Dyness PowerBrick SC 16 kWh', garantie_mois: 120 }])).toBe(10);
+    // Première ligne batterie qui la porte ; mois ÷ 12 arrondi vers le bas ; < 12 mois ou null ⇒ repli table.
+    expect(garantieBatterieAns([{ designation: 'Batterie A', garantie_mois: null }, { designation: 'Batterie Dyness DL5.0C', garantie_mois: 90 }])).toBe(7);
+    expect(garantieBatterieAns([{ designation: 'Batterie Dyness DL5.0C', garantie_mois: 6 }])).toBe(7);
+    expect(garantieBatterieAns([{ designation: 'Kit de fixation', garantie_mois: 240 }])).toBeNull();
+    // Le contrat partagé (proposal_data.json) sert la clé sur la ligne : la page lit 10 ans, comme le PDF.
+    const contrat = JSON.parse(readFileSync(fileURLToPath(new URL('../src/contract_samples/proposal_data.json', import.meta.url)), 'utf-8'));
+    expect(garantieBatterieAns(contrat.exemple_standard.quote.avec_items)).toBe(10);
+  });
+
   it('RWEB19 — panneaux 12/30 ans seulement pour le Canadian Solar par défaut (comme theme.py)', async () => {
     const { garantiesPanneauxAns, garantieOnduleurAns } = await import('../src/lib/proposition/garanties');
     expect(garantiesPanneauxAns([{ designation: 'Panneau Canadian Solar 710 Wc' }])).toEqual({ produit: 12, performance: 30 });

@@ -445,6 +445,7 @@ const NON_LU: Readonly<Record<string, string>> = {
   'quote.roi_s_jamais': 'CPRS (contrat d’abord PACT10) — vrai quand le cumul 25 ans de l’option sans batterie ne croise jamais zéro (« Non rentabilisé sur 25 ans » au PDF) ; servi par le serveur, null en C&I et agricole ; la page le lira (RWEB) et le rangera alors dans CLES_LUES.',
   'quote.roi_a_jamais': 'CPRS (contrat d’abord PACT10) — même drapeau « jamais rentabilisé sur 25 ans » pour l’option avec batterie ; servi par le serveur, lu par la page avec RWEB, pas encore par le lecteur typé.',
   'quote.sans_items[]': 'Lignes du devis en niveau `standard` (kit agrégé) : rendues par le frontmatter depuis le dict interne du moteur, jamais par le lecteur typé.',
+  'quote.avec_items[]': 'FIX-WEB A — lignes de l’option avec batterie, `garantie_mois` compris : lues par `optionItems` puis `garantieBatterieAns` (bloc « garanties » de la page), jamais par le lecteur typé.',
 
   // ── Multi-villa — un mode que le lecteur typé ne couvre pas ──────────────
   'nombre_proprietes': 'Nombre de propriétés du mode multi-villa : lu par le frontmatter quand ce mode est actif, pas par le lecteur typé.',
@@ -672,6 +673,7 @@ const FRAGMENTS_DOCUMENTATION: Readonly<Record<string, string>> = {
   'exemple_ci_deux_options.': 'Fragment d’exemple CPRS11 : la charge utile publique RÉELLE d’un devis C&I à deux options (`option_batterie`, totaux par option, `synthese_ci` assainie), posée avant que la page /proposition C&I (CPRW) la lise.',
   'notes_cprs_deux_options': 'Notes de contrat CPRS11 : d’où vient le fragment `exemple_ci_deux_options` (rendu réel anonymisé) et ce que veut dire `option_batterie` — documentation, jamais une valeur lue par la page.',
   'notes_cprs': 'Notes de contrat CPRS1-CPRS8 : chiffres C&I de l’option servie, clés internes qui ne partent plus (`libelles_document`, `etude_ci`, `tarif_mt_mention`) et textes traduits par les fonctions du PDF — documentation, jamais une valeur lue par la page.',
+  'notes_fixweb.': 'Notes de contrat FIX-WEB (28/10/2026) : sens de `garantie_mois` sur les lignes et du gain net 25 ans servi, et pourquoi la page lit la même clé que le PDF — documentation, jamais une valeur lue par la page.',
   'exemple_roof_layout_riche.':'Fragment d’exemple ACAL18 : le `roof_layout` riche (zones, modules, retraits, exclusions, surfaces de pose) que la page /proposition recevra quand `_safe_roof_layout` sera élargie (D08-T21/T22) — posé seul avant ses deux moitiés.',
 };
 const decideeParFragment = (c: string): boolean =>
