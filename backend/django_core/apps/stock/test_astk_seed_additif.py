@@ -260,3 +260,31 @@ class DescriptionHybridesDeyeTests(TestCase):
         mig.retablir(registre, None)
         self.assertEqual(_p('OND-H-DEY-10T'), variante_1206)
         self.assertEqual(_p('OND-H-DEY-20T'), mig.ANCIENNE)
+
+    def test_migration_0176_fiches_client_sans_extension_ni_modele(self):
+        from importlib import import_module
+
+        from django.apps import apps as registre
+        mig = import_module('apps.stock.migrations.0176_ccat_fiches_client')
+        _seed(self.company)
+
+        def _p(sku):
+            return Produit.objects.get(company=self.company, sku=sku)
+        # Le seeder porte déjà les nouveaux textes.
+        self.assertEqual(_p('OND-R-HUA-100T').garantie, 'Garantie constructeur 5 ans')
+        self.assertNotIn('SI22', _p('VEI-SI22-AFF').description)
+        (garantie, skus, ancienne_g, nouvelle_g), (_c, _s, ancienne_d, nouvelle_d) = mig.CHANGEMENTS
+        Produit.objects.filter(company=self.company, sku='OND-R-HUA-50T').update(garantie=ancienne_g)
+        Produit.objects.filter(company=self.company, sku='VEI-SI22-AFF').update(description=ancienne_d)
+        # Une saisie du fondateur n'est jamais réécrite.
+        Produit.objects.filter(company=self.company, sku='OND-R-HUA-150T').update(
+            garantie='Garantie 10 ans (extension achetée)')
+
+        mig.corriger(registre, None)
+        self.assertEqual(_p('OND-R-HUA-50T').garantie, nouvelle_g)
+        self.assertEqual(_p('VEI-SI22-AFF').description, nouvelle_d)
+        self.assertEqual(_p('OND-R-HUA-150T').garantie, 'Garantie 10 ans (extension achetée)')
+
+        mig.retablir(registre, None)
+        self.assertEqual(_p('OND-R-HUA-50T').garantie, ancienne_g)
+        self.assertEqual(_p('VEI-SI22-AFF').description, ancienne_d)

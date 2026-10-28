@@ -706,14 +706,14 @@ _PREMIERE_LIGNE_DEYE = {
 }
 
 FICHES = {
-    # Onduleurs réseau Huawei (résidentiel ≤ 25 kW : 10 ans ; C&I : 5 ans ext.)
+    # Onduleurs réseau Huawei (résidentiel ≤ 25 kW : 10 ans ; C&I : 5 ans de base, D-RES-2710-GAR, 0176)
     **{sku: {
         'marque': 'Huawei',
         'garantie': ('Garantie constructeur 10 ans'
                      if sku in ('OND-R-HUA-5M', 'OND-R-HUA-10M', 'OND-R-HUA-10T',
                                 'OND-R-HUA-12M', 'OND-R-HUA-15T', 'OND-R-HUA-20T',
                                 'OND-R-HUA-25T')
-                     else 'Garantie constructeur 5 ans (extensible jusqu\'à 20 ans)'),
+                     else 'Garantie constructeur 5 ans'),
         # Le rendement vit dans ``ond_rendement_euro_pct``, PAR RÉFÉRENCE
         # (97,8 à 98,4 % selon le palier) : la prose annonçait « 98,6 % » à
         # l'identique pour les dix, ce qui contredisait le champ de huit d'entre
@@ -982,7 +982,7 @@ FICHES = {
     # chiffre non sourcé.
     'VEI-SI22-AFF': {
         'marque': 'VEICHI',
-        'description': ('Afficheur déporté pour variateur VEICHI SI22\n'
+        'description': ('Afficheur déporté pour variateur VEICHI\n'  # aussi posé sous un SI23 (0176)
                         'Lecture des paramètres et défauts au pied du coffret'),
     },
     **{sku: {'marque': 'VEICHI',
