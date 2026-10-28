@@ -291,6 +291,11 @@ class Agr304OmissionsTests(SimpleTestCase):
         s = synthese_agricole(data)
         self.assertEqual(s['mode_pompe'], 'existante')
         self.assertEqual(s['pompe']['plaque']['kw'], 11)
+        # Validation R3 — le mode étudié persisté fait foi : devis de pompe
+        # NEUVE (ligne saisie à la main, sans rôle) sur un lead qui a relevé
+        # sa pompe actuelle ⇒ jamais « Votre pompe existante ».
+        etude['entrees_pompage']['mode_pompe'] = 'neuve'
+        self.assertEqual(synthese_agricole(data)['mode_pompe'], 'neuve')
         etude['entrees_pompage'] = {}
         self.assertNotIn('mode_pompe', synthese_agricole(data))
 

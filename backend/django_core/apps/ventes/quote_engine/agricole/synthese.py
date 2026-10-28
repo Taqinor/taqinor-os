@@ -587,10 +587,11 @@ def _mode_pompe(etude, items):
     # neuve fournie » (D-AGR-7).
     if _item_pompe(items) is not None:
         return "neuve"
-    # AGC9 (rendu réel R1, devis auto « pompe existante » 15 CV) — le devis
-    # automatique ne persiste que l'entrée RÉSOLUE ``entrees_pompage.plaque``
-    # (aucun ``mode_pompe``) : sans ligne pompe et avec une plaque relevée,
-    # c'est la pompe existante conservée (D-AGR-7) ; sinon on ne devine rien.
+    # AGC9 (rendu réel R1, devis auto « pompe existante » 15 CV) — le mode
+    # étudié est désormais persisté (``entrees_pompage.mode_pompe``, lu
+    # plus haut). Une étude persistée AVANT lui ne porte que la plaque
+    # résolue : sans ligne pompe et avec une plaque relevée, c'est la pompe
+    # existante conservée (D-AGR-7) ; sinon on ne devine rien.
     if _dict(_resolue(etude, etude.get("plaque"), "plaque")):
         return "existante"
     return None

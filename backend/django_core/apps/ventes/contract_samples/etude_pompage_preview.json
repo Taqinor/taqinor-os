@@ -1415,7 +1415,8 @@
         "volume_reservoir_m3": null,
         "distance_champ_m": 25,
         "plaque": null,
-        "volume_m3_jour": 135
+        "volume_m3_jour": 135,
+        "mode_pompe": "neuve"
       }
     },
     "derivees_v1_lues_par_le_rendu": [
