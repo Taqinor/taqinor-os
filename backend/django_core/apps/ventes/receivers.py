@@ -4,6 +4,8 @@ Abonne ``ventes`` aux événements du bus ``core.events`` exposés par d'autres
 apps/la fondation, pour réagir à un changement d'état sans import direct.
 Câblé au démarrage par ``VentesConfig.ready()``.
 """
+from celery.signals import task_prerun
+from django.core.signals import request_started
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
@@ -13,10 +15,16 @@ from core.events import (
 )
 
 from .domain.suivi import on_devis_refused, on_devis_revise, on_lead_enregistre
+from .quote_engine.montants import reinitialiser_regles
 
 # ADEV97 (L3 lien public) — fin de vie automatique du lien public : refus,
 # remplacement par une nouvelle version, lead perdu (``post_save`` de
 # ``crm.Lead`` par RÉFÉRENCE PARESSEUSE : aucun import du modèle CRM).
+# FIX-MOTEUR (audit Fable L3) — les drapeaux de règles du rendu (ContextVar de
+# ``quote_engine/montants``) repartent des règles courantes à chaque requête et
+# à chaque tâche Celery : jamais hérités du devis rendu juste avant.
+request_started.connect(reinitialiser_regles, dispatch_uid='ventes_regles_rendu_requete')
+task_prerun.connect(reinitialiser_regles, dispatch_uid='ventes_regles_rendu_tache')
 devis_refused.connect(
     on_devis_refused, dispatch_uid='ventes_revoquer_lien_on_devis_refused')
 devis_revise.connect(
