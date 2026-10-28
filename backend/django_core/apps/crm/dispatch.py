@@ -214,16 +214,23 @@ def equipes_reglables(user):
     (contrat ``dispatch_leads.json`` → ``equipes_reglables``), par nom."""
     if not getattr(user, 'company_id', None):
         return []
-    equipes = (EquipeCommerciale.objects
-               .filter(company_id=user.company_id, actif=True)
-               .select_related('departement').order_by('nom', 'id'))
+    from django.contrib.auth import get_user_model
+    from django.db.models import Prefetch
     # Membres ACTIFS fournis ici : un responsable au rôle Commercial n'a pas
     # accès à /crm/assignable-users/ (palier responsable) et l'éditeur de
-    # règles en a besoin pour choisir le membre proposé.
+    # règles en a besoin pour choisir le membre proposé. Une seule requête
+    # pour toutes les équipes (la file est rafraîchie toutes les 30 s).
+    actifs = get_user_model().objects.filter(
+        is_active=True, company_id=user.company_id,
+    ).order_by('first_name', 'username', 'id')
+    equipes = (EquipeCommerciale.objects
+               .filter(company_id=user.company_id, actif=True)
+               .select_related('departement')
+               .prefetch_related(Prefetch('membres', queryset=actifs,
+                                          to_attr='membres_actifs'))
+               .order_by('nom', 'id'))
     return [{**reglage_equipe(e), 'membres': [
-        {'id': m.pk, 'nom': nom_affiche(m)}
-        for m in e.membres.filter(is_active=True, company_id=user.company_id)
-        .order_by('first_name', 'username', 'id')]}
+        {'id': m.pk, 'nom': nom_affiche(m)} for m in e.membres_actifs]}
         for e in equipes if peut_regler(user, e)]
 
 

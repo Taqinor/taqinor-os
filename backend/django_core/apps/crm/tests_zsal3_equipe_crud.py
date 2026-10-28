@@ -537,11 +537,15 @@ class TestDispatchLeads(TestCase):
         self.assertEqual(reglables(self.autre_dir), [])
         self.assertEqual(reglables(self.m1), [])
         self.auth_as(self.chef)
-        self.assertEqual(self.api.get('/api/django/crm/dispatch/').json()
-                         ['equipes_reglables'][0],
-                         {'id': self.equipe.pk, 'nom': 'Casa',
-                          'confirmation_responsable': True,
-                          'delai_minutes': 5})
+        ligne = dict(self.api.get('/api/django/crm/dispatch/').json()
+                     ['equipes_reglables'][0])
+        membres = ligne.pop('membres')
+        self.assertEqual(ligne, {'id': self.equipe.pk, 'nom': 'Casa',
+                                 'confirmation_responsable': True,
+                                 'delai_minutes': 5})
+        # Membres ACTIFS servis pour l'éditeur de règles (un responsable au
+        # rôle Commercial n'a pas accès à /crm/assignable-users/).
+        self.assertEqual({m['id'] for m in membres}, {self.m1.pk, self.m2.pk})
 
     def test_file_vide_respecte_le_contrat(self):
         import json
