@@ -624,6 +624,7 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
   'notes.agricole_agc14': 'Note de contrat AGC14 (D-AGC-6) : `synthese_agricole.depense_declaree` = la dépense DÉCLARÉE servie sans `economies`, lue par AGC17 (`syntheseAgricoleArgent.depenseDeclareeMadAn`) ; documentation.',
   'notes.agricole_agq3': 'Note de contrat AGQ3 (D-AGQ-2) : `synthese_agricole.eau` gagne mois_conception / m3_jour_min / mois_m3_jour_min et `besoin_vs_livre.mois_sous_tolerance` — bloc à contrat dédié AGR308, lu par AGQ33 (légende des mois sous tolérance) ; documentation.',
   'notes.chaine_totaux_atot26': 'Note de contrat ATOT26 : les sept étages de `quote.totaux_sans/avec` et la règle « la page imprime la chaîne entière » (documentation).',
+  'notes.sous_lignes_r2': 'Note de contrat R2 (fondateur 28/10/2026) : les organes du « Tableau de protection AC/DC » d’un devis C&I sont regroupés au rendu en une ligne de `quote.sans_items` / `quote.avec_items` / `option_batterie.lignes`, avec la clé additive `sous_lignes` (sans prix) que `propositionPage.ts` affiche en petit sous la ligne (documentation).',
   'notes.cle_detail': 'Note de contrat : pourquoi `detail` figure dans l’exemple à `null` (documentation).',
   // PREVIEW-V3 (16/09/2026)
   'notes.preview_v3_conditions_avant_signature': 'Note de contrat : pourquoi la page connaît désormais l’acompte, l’échéance, les conditions et les moyens de règlement AVANT la signature (documentation).',

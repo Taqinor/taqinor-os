@@ -349,13 +349,20 @@ def _alerte_dominee(sans, avec, alertes, choix):
 
 
 def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, composer,
-                  borne_toit, **noyau):
+                  borne_toit, production_rasante=None, **noyau):
     from apps.ventes.etude_horaire import simuler_batterie_jour
     from apps.ventes.moteur_ci.batterie import (
         MAX_HYBRIDES_PARALLELE, dimensionner_option_avec,
     )
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
-    return dimensionner_option_avec(
+    from apps.ventes.moteur_ci.taille import inclinaison_pose
+    # R1 (P2, arbitrage coordinatrice 28/10/2026) — la règle (1)→(3) vaut
+    # pour CHAQUE option : le champ « avec » est évalué dans la pose qui le
+    # loge (30° tant qu'il tient, rasante au-delà), borné par la contenance
+    # maximale ; chaque option est une installation à part.
+    production_de, bornes_pub = _production_de_la_pose(borne_toit, production_rasante,
+                                                       noyau['production'])
+    resultat = dimensionner_option_avec(
         simuler=simuler_batterie_jour,
         kwc_depart=evaluation['kwc'], pmax_wc=(catalogue.get('module') or {}).get('pmax_wc'),
         combiner=lambda kwc: combiner_onduleurs(
@@ -363,7 +370,27 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
             ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True),
         composer=lambda kwc, onduleurs: composer(kwc, onduleurs, bat.get('elements')),
         batteries=batteries, hybrides=bat['hybrides'], kwc_max=(borne_toit or {}).get('kwc'),
-        ps_kva=ps_kva, **noyau)
+        ps_kva=ps_kva, production_de=production_de, **noyau)
+    if resultat.get('evaluation'):
+        resultat['evaluation']['inclinaison_retenue_deg'] = inclinaison_pose(
+            resultat['evaluation']['kwc'], bornes_pub)
+    return resultat
+
+
+def _production_de_la_pose(borne_toit, production_rasante, production_30):
+    """R1 — ``(production_de(kwc), bornes)`` : la production de la pose qui
+    loge ``kwc`` — 30° tant qu'il tient (``kwc_30``), rasante au-delà
+    (``production_rasante()``, série 10°) ; sans les deux contenances ou sans
+    série rasante, la production de l'option « sans »."""
+    from apps.ventes.moteur_ci.taille import contenances_toit, pose_rasante
+    bornes_pub = {'toit': borne_toit}
+    kwc_30, kwc_10 = contenances_toit(bornes_pub)
+
+    def production_de(kwc):
+        if production_rasante is not None and pose_rasante(kwc, kwc_30, kwc_10):
+            return production_rasante() or production_30
+        return production_30
+    return production_de, bornes_pub
 
 
 def _fusion_variantee(sans, avec):
@@ -499,15 +526,25 @@ def _option_imposee(imposee, contexte):
     est celui des lignes)."""
     from apps.ventes.etude_horaire import simuler_batterie_jour
     from apps.ventes.moteur_ci.batterie import evaluer_option_avec
+    from apps.ventes.moteur_ci.taille import inclinaison_pose
+    # R1 (B2) — l'option des LIGNES est évaluée dans la pose qui LA loge (série
+    # rasante figée au-delà de 30°), jamais avec la production de l'option « sans ».
+    production_de, bornes_pub = _production_de_la_pose(
+        contexte.get('borne_toit'), contexte.get('production_rasante'), contexte['production'])
     evaluation = evaluer_option_avec(
+        # CORC10 : la composition RECOMPOSÉE des lignes (coût) ; R1 (B2) : la
+        # production de la pose qui loge ce champ.
         imposee['kwc'], imposee['onduleurs'], imposee.get('composition'), imposee['banque'],
-        charge=contexte['charge'], production=contexte['production'],
+        charge=contexte['charge'], production=production_de(imposee['kwc']),
         tension=contexte['tension'], revente_choisie=contexte['revente_choisie'],
         valoriser=contexte['valoriser'], simuler=simuler_batterie_jour,
         hybrides=imposee['hybrides'], taux_tva_pct=contexte.get('taux_tva_pct'))
     bloc = _bloc(evaluation, contexte['valoriser'], _ctx_flux(contexte, imposee['banque']),
                  investissement=imposee.get('investissement'))
     bloc['nb_panneaux'] = imposee.get('nb_panneaux') or bloc['nb_panneaux']
+    angle = inclinaison_pose(imposee['kwc'], bornes_pub)
+    if angle is not None:
+        bloc['inclinaison_retenue_deg'] = angle      # clé ADDITIVE, comme à l'étude
     return bloc
 
 
@@ -516,8 +553,9 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     batterie » d'une étude C&I dont l'option « sans » est ``evaluation``.
     ``contexte`` : ``charge, production, tension, revente_choisie, valoriser,
     taux_tva_pct`` (noyau) + ``phase, ps_kva, composer, borne_toit`` +
-    ``regles_2710`` (``regles_au_moins(devis, REGLES_CORRIGEES_2710)`` ; absent
-    ⇒ règles courantes).
+    ``production_rasante`` (R1 : appelable paresseux de la production en pose
+    rasante, ou ``None``) + ``regles_2710`` (``regles_au_moins(devis,
+    REGLES_CORRIGEES_2710)`` ; absent ⇒ règles courantes).
     ``imposee`` (rafraîchisseur CIQ119) : l'option des LIGNES
     (:func:`option_imposee_des_lignes`), évaluée telle quelle.
     Choix « sans » ⇒ rien ; choix « avec » non composable ⇒ alerte BLOQUANTE
@@ -528,6 +566,8 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     flux = {cle: contexte.pop(cle, None) for cle in ('tva_recuperable', 'flux_options')}
     flux['taux_tva_pct'] = contexte.get('taux_tva_pct')
     flux['regles_2710'] = contexte.pop('regles_2710', True)
+    production_rasante = contexte.pop('production_rasante', None)
+    flux['production_rasante'] = production_rasante
     if flux['tva_recuperable'] is None:
         # D-CIQ-3 : la MÊME résolution que l'économie de l'option « sans »
         # (le lead d'abord ; rien de déclaré ⇒ « inconnu », les deux bases).
@@ -546,7 +586,8 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     bat = catalogue.get('batterie') or {}
     batteries = batteries_compatibles(bat.get('batteries'), bat.get('hybrides'))
     if bat.get('hybrides') and batteries:
-        resultat = _dimensionner(catalogue, bat, batteries, evaluation, **contexte)
+        resultat = _dimensionner(catalogue, bat, batteries, evaluation,
+                                 production_rasante=production_rasante, **contexte)
     else:
         resultat = {'evaluation': None, 'prix_a_renseigner': [], 'alertes': [], 'hypotheses': [],
                     'motif': 'aucun onduleur hybride basse tension ni batterie basse tension '
@@ -577,4 +618,8 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         return sortie
     fiche = next((b for b in bat['batteries'] if b['produit'] == evalue['batterie'].get('produit')), None)
     sortie['bloc'] = _bloc(evalue, contexte.get('valoriser'), _ctx_flux(flux, fiche))
+    if evalue.get('inclinaison_retenue_deg') is not None:
+        # R1 (P2) — clé ADDITIVE : l'inclinaison de la pose qui loge CE champ
+        # (30° / rasante 10°), seulement quand le toit plat sans pente la donne.
+        sortie['bloc']['inclinaison_retenue_deg'] = evalue['inclinaison_retenue_deg']
     return sortie

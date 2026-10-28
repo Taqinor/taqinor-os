@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4880, operations: 7666, components: 3592}
+counts: {paths: 4880, operations: 7666, components: 3593}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10664,6 +10664,7 @@ components:
 - GrantTypeEnum
 - GraviteInfoWarningCritiqueEnum
 - GraviteMineureMajeureCritiqueEnum
+- GroupeClientEnum
 - GuardrailConfig
 - GuardrailConfigRequest
 - HandoverPack
