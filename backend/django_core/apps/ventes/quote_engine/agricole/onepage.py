@@ -74,10 +74,12 @@ def cartes_pompage(g, synthese):
     cellules = []
     pcv, pkw = pompe.get("cv"), pompe.get("kw")
     if pcv is not None:
+        # AGC18 — l'unité suit la langue (« HP », « حصان »), comme le 3 pages.
+        cv = i18n_labels.libelle("unite_cv", _lg(g))
         cellules.append((
             g._L("puissance_pompe"),
-            f"{g._fdec_fr(pcv)} CV ({g._fdec_fr(pkw)} kW)" if pkw is not None
-            else f"{g._fdec_fr(pcv)} CV"))
+            f"{g._fdec_fr(pcv)} {cv} ({g._fdec_fr(pkw)} kW)" if pkw is not None
+            else f"{g._fdec_fr(pcv)} {cv}"))
     hmt = eau.get("hmt_m")
     if hmt is not None:
         cellules.append((i18n_labels_agricole.libelle("agr_op_hmt", _lg(g)),

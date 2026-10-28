@@ -106,6 +106,8 @@ class Agr302LibellesTraduitsTests(SimpleTestCase):
         from apps.ventes.quote_engine import i18n_labels as L
         self.assertIn(L.libelle('puissance_pompe', 'ar'), html)
         self.assertIn(L.libelle('estimation', 'ar'), html)
+        self.assertIn('5,5 حصان', html)  # AGC18 — unité CV traduite
+        self.assertNotIn(' CV', html)
 
     def test_en_anglais_les_libelles_sont_anglais(self):
         html = _html(langue='en')
@@ -113,6 +115,8 @@ class Agr302LibellesTraduitsTests(SimpleTestCase):
         self.assertIn('Flow at 62,5 m', html)
         self.assertIn('7 h/day', html)  # AGC12 — libellé court
         self.assertIn('Head', html)  # AGC13 — « HMT » traduit
+        self.assertIn('5,5 HP (3,7 kW)', html)  # AGC18 — « CV » traduit
+        self.assertNotIn(' CV', html)
         self.assertIn('PV array', html)
         for libelle in LIBELLES_FR_POMPAGE:
             with self.subTest(libelle=libelle):
