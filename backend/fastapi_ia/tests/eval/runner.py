@@ -186,6 +186,152 @@ def run_eval(sql_producer: Optional[Callable[[str], str]] = None) -> dict:
     return {"score": score, "results": results, "total": total, "passed": passed}
 
 
+# ── AIC10 — jeu « commerciaux », jugé par un modele DIFFERENT, cout par question ──
+
+#: Prix API en USD par million de tokens, releves le 27/10/2026
+#: (docs/claude-memory/tokens-ia-commerciaux.md). UNIQUE endroit ou ils vivent.
+#: Haiku 5.5 : prix de lecture de cache non releve -> on le facture au prix
+#: d'entree (borne haute, jamais sous-estimee).
+DATE_PRIX_MTOK = "2026-10-27"
+PRIX_MTOK_USD = {
+    "claude-sonnet-5-5": {"input": 2.0, "output": 10.0, "cache_read": 0.10},
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50, "cache_read": 0.10},
+}
+RAPPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rapports")
+CRITERES_JUGE = ("exacte", "n_invente_pas", "je_ne_sais_pas", "hors_champ")
+
+
+def cout_usd(tokens: dict, modele: str) -> float:
+    """Cout USD d'une reponse (cache_read / input hors cache / output)."""
+    prix = PRIX_MTOK_USD.get(modele)
+    if prix is None:
+        raise KeyError(f"Prix inconnu pour le modele {modele!r} (PRIX_MTOK_USD)")
+    return sum(int(tokens.get(k) or 0) * prix[k] for k in prix) / 1_000_000
+
+
+def verifier_juge_different(modele_evalue: str, modele_juge: str) -> None:
+    """Un modele ne se juge pas lui-meme : refus explicite si egal ou vide."""
+    if not modele_juge:
+        raise ValueError("SQL_AGENT_JUGE_MODEL manquant : un juge est requis")
+    if modele_juge == modele_evalue:
+        raise ValueError(
+            f"Le juge ({modele_juge}) doit differer du modele evalue ({modele_evalue})")
+
+
+def _criteres_requis(case: dict) -> list[str]:
+    requis = ["exacte", "n_invente_pas"]
+    if case.get("ne_sait_pas"):
+        requis.append("je_ne_sais_pas")
+    if case.get("hors_champ"):
+        requis.append("hors_champ")
+    return requis
+
+
+def _bon_outil(case: dict, reponse: dict) -> bool:
+    outil = case.get("outil")
+    if not outil:
+        return True
+    if outil == "sql_db_query":
+        return bool(reponse.get("sql_query"))
+    return outil in (reponse.get("outils_appeles") or [])
+
+
+def run_eval_commerciaux(repondre: Callable[[dict], dict],
+                         juger: Callable[[dict, dict], dict],
+                         modele_evalue: str, modele_juge: str,
+                         cases: Optional[list] = None) -> dict:
+    """Joue le jeu ``cases_commerciaux`` : ``repondre(case)`` -> reponse du
+    service (answer, outils_appeles, sql_query, tokens) ; ``juger(case,
+    reponse)`` -> ``{critere: bool}`` (rubrique ``CRITERES_JUGE``). Le choix de
+    l'outil est verifie sans juge. Cout = modele evalue seul (juge exclu)."""
+    from .cases_commerciaux import CASES_COMMERCIAUX
+    verifier_juge_different(modele_evalue, modele_juge)
+    questions, somme = [], {"cache_read": 0, "input": 0, "output": 0}
+    for case in (cases or CASES_COMMERCIAUX):
+        rep = repondre(case) or {}
+        tokens = {k: int((rep.get("tokens") or {}).get(k) or 0) for k in somme}
+        verdict = juger(case, rep) or {}
+        echecs = [c for c in _criteres_requis(case) if not verdict.get(c)]
+        if not _bon_outil(case, rep):
+            echecs.append("bon_outil")
+        for k in somme:
+            somme[k] += tokens[k]
+        questions.append({
+            "id": case["id"], "intention": case["intention"], "passed": not echecs,
+            "echecs": echecs, "tokens": tokens,
+            "cout_usd": cout_usd(tokens, modele_evalue),
+        })
+    par_intention: dict = {}
+    for q in questions:
+        bloc = par_intention.setdefault(q["intention"], {"total": 0, "reussis": 0})
+        bloc["total"] += 1
+        bloc["reussis"] += int(q["passed"])
+    for bloc in par_intention.values():
+        bloc["taux"] = bloc["reussis"] / bloc["total"]
+    total = len(questions)
+    cout = cout_usd(somme, modele_evalue)
+    return {
+        "modele_evalue": modele_evalue, "modele_juge": modele_juge,
+        "date_prix_mtok": DATE_PRIX_MTOK, "perimetre_cout": "modele evalue seul",
+        "total": total, "reussis": sum(q["passed"] for q in questions),
+        "taux": (sum(q["passed"] for q in questions) / total) if total else 0.0,
+        "par_intention": par_intention, "tokens": somme,
+        "cout_usd_total": cout, "cout_usd_par_question": (cout / total) if total else 0.0,
+        "questions": questions,
+    }
+
+
+def ecrire_rapport(rapport: dict, dossier: Optional[str] = None,
+                   nom: Optional[str] = None) -> str:
+    """Ecrit le tableau JSON dans ``rapports/`` (ignore par git)."""
+    import json
+    dossier = dossier or RAPPORTS_DIR
+    os.makedirs(dossier, exist_ok=True)
+    chemin = os.path.join(dossier, nom or f"commerciaux_{rapport['modele_evalue']}.json")
+    with open(chemin, "w", encoding="utf-8") as f:
+        json.dump(rapport, f, ensure_ascii=False, indent=2)
+    return chemin
+
+
+def repondeur_reel(company_id: int, user_id: int, action_ctx=None):
+    """Rejeu SUR DEMANDE (ASSISTANT_EVAL=1 + cle) : interroge le service reel
+    avec le fournisseur configure. Appel PAYANT : jamais lance en CI."""
+    import asyncio
+    from app.services.sql_agent_service import sql_agent_service
+
+    def repondre(case: dict) -> dict:
+        return asyncio.run(sql_agent_service.query(
+            case["question"], user_id=user_id, company_id=company_id,
+            action_ctx=action_ctx))
+    return repondre
+
+
+def juge_reel(modele_juge: str):
+    """Juge LLM (SQL_AGENT_JUGE_MODEL) : repond en JSON ``{critere: bool}``.
+    Appel PAYANT : jamais lance en CI."""
+    import json
+    import anthropic
+
+    client = anthropic.Anthropic()
+
+    def juger(case: dict, reponse: dict) -> dict:
+        consigne = (
+            "Tu juges la reponse d'un assistant ERP a une question de commercial. "
+            f"Question : {case['question']}\nReponse : {reponse.get('answer', '')}\n"
+            f"Faits attendus : {case['points']}\n"
+            "Reponds UNIQUEMENT par un objet JSON de booleens avec les cles : "
+            "exacte (porte les faits attendus), n_invente_pas (aucun fait invente), "
+            "je_ne_sais_pas (avoue ne pas savoir quand il le faut), "
+            "hors_champ (signale que ce n'est pas le role de l'ERP).")
+        msg = client.messages.create(model=modele_juge, max_tokens=300,
+                                     messages=[{"role": "user", "content": consigne}])
+        try:
+            return json.loads(msg.content[0].text)
+        except (ValueError, IndexError):
+            return {}
+    return juger
+
+
 def run_eval_or_raise(threshold: float = 0.9,
                       sql_producer: Optional[Callable[[str], str]] = None) -> dict:
     """Leve ``AssertionError`` si le score est sous ``threshold`` — utilisable

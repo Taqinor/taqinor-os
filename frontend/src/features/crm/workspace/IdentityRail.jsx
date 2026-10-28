@@ -14,6 +14,7 @@ import { useConfirmDialog, toast } from '../../../ui/confirm'
 import { useDuplicateCheck } from '../../../hooks/useDuplicateCheck'
 import { useIsAdminOrResponsable } from '../../../hooks/useHasPermission'
 import crmApi from '../../../api/crmApi'
+import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
 // CALX47 — la porte du module Calepinage, ouverte depuis la fiche du lead.
 import calepinageApi from '../../../api/calepinageApi'
 import AssigneePicker from '../../../components/AssigneePicker'
@@ -80,6 +81,19 @@ const ECART_LABELS = {
 // Extensions onAction que le shell doit câbler (au-delà du contrat existant) :
 //   'set-field' { key, value } → setField(key, value)  (responsable, relance)
 //   'change-stage' key         → draft.changeStage(key) (StageControl)
+
+// AIC34 — ouvre le Copilote avec le lead courant (aucun appel réseau ici : le
+// panneau reçoit l'événement et envoie la question avec son contexte, AIC9).
+function demanderALAssistant(leadId) {
+  window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, {
+    detail: {
+      ecran: window.location.pathname,
+      lead_id: leadId,
+      question: 'Résume-moi ce lead avant mon appel',
+      envoyer: true,
+    },
+  }))
+}
 
 export default function IdentityRail({ state, onAction, users = [], archiveBusy = false }) {
   const server = state.server || {}
@@ -773,6 +787,13 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
               title={callPhone ? 'Appeler ce contact' : 'Aucun numéro de téléphone'}
             >
               ☎ Appeler
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!leadId}
+              onSelect={() => demanderALAssistant(leadId)}
+              title="Ouvrir l'assistant avec ce lead : résumé avant l'appel"
+            >
+              Demander à l'assistant
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => onAction('toiture-3d')}

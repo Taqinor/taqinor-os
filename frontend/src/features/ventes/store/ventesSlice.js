@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import ventesApi from '../../../api/ventesApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
-import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
+import { createCancellableThunk, dedupeInFlight, isCancelledError } from '../../../lib/thunkHelpers'
 import { pending, settleLoading, rejected } from '../../../lib/reducersChargement'
 
 // VX164 — garde anti-course PAR RESSOURCE sur les `update*/patch*.fulfilled` :
@@ -32,12 +32,15 @@ const DEVIS_PAGE_CONCURRENCY = 5
 // VX163 — enrobé par `createCancellableThunk` (annulation → `meta.aborted ===
 // true`, propre plutôt qu'un `rejectWithValue`) + dé-duplication en vol (deux
 // montages simultanés de DevisList ne déclenchent qu'UNE seule pagination).
-export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (_, { signal }) =>
-  dedupeInFlight('ventes/fetchDevis', () =>
+export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (_, { signal }) => {
+  const charger = () => dedupeInFlight('ventes/fetchDevis', () =>
     fetchAllPages((page) => ventesApi.getDevis({ page }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
       .then((results) => ({ results })),
-  ),
-)
+  )
+  // CE2E8 — StrictMode : la promesse partagée appartient au 1er montage, annulée
+  // à son démontage ; ce 2e appel (signal vivant) la relance au lieu de la subir.
+  return charger().catch((err) => (isCancelledError(err) && !signal.aborted ? charger() : Promise.reject(err)))
+})
 
 // APRF8 — après une action UNITAIRE sur un devis (envoi, PDF, acceptation,
 // refus, relance, révision…), on ne relit PLUS toute la liste (40 requêtes à

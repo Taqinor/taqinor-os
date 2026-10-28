@@ -14,22 +14,16 @@
 // Non exécuté localement : il tourne dans le job e2e de la CI (capture jointe).
 // Nettoyage best-effort en afterAll (base partagée, workers: 1).
 import { test, expect } from '@playwright/test'
-import { choisirMarche, cliquerCreerDevis, retirerLignesPrixARenseigner } from './helpers'
+import { cliquerCreerDevis, ouvrirGenerateurDepuisLeadAgricole, retirerLignesPrixARenseigner } from './helpers'
 
 const API = '/api/django'
 const AUJOURDHUI = new Date().toISOString().slice(0, 10)
 const ids = []
+const leadIds = []
 
 async function lireJson(reponse, quoi) {
   expect(reponse.ok(), `${quoi} → HTTP ${reponse.status()}`).toBeTruthy()
   return reponse.json()
-}
-
-async function clientDeLaDemo(request) {
-  const corps = await lireJson(await request.get(`${API}/crm/clients/`), 'clients')
-  const liste = Array.isArray(corps) ? corps : (corps.results || [])
-  expect(liste.length, 'seed_demo doit fournir un client').toBeGreaterThan(0)
-  return liste[0]
 }
 
 async function devisParApi(request, id) {
@@ -51,16 +45,10 @@ async function declarerButane(page) {
   await page.locator('#gen-eco-date').fill(AUJOURDHUI)
 }
 
-async function creerDevisAgricole(page, client) {
-  await page.goto('/ventes/devis/nouveau')
-  await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
-    .toBeVisible({ timeout: 30_000 })
-  await expect(page.locator('table.lines-table tbody tr').first())
-    .toBeVisible({ timeout: 45_000 })
-  await page.locator('#gen-client').click()
-  await page.locator('[role="searchbox"]').last().fill(client.nom || client.name || '')
-  await page.locator('[role="option"]').first().click()
-  await choisirMarche(page, /Agricole/)
+async function creerDevisAgricole(page, request) {
+  // CAD177 — depuis SON lead agricole : le site du lead donne l'irradiation
+  // (sans site, Auto-remplir est refusé à raison : « kit incomplet »).
+  leadIds.push((await ouvrirGenerateurDepuisLeadAgricole(page, request, 'AGR222 ferme')).id)
   await page.getByRole('radio', { name: 'Pompe neuve' }).click()
   await page.getByRole('radio', { name: 'Volume déclaré' }).click()
   await page.locator('#gen-besoin-volume').fill('60')
@@ -76,11 +64,12 @@ test.describe.configure({ mode: 'serial' })
 
 test.afterAll(async ({ request }) => {
   await Promise.all(ids.map((id) => request.delete(`${API}/ventes/devis/${id}/`).catch(() => null)))
+  await Promise.all(leadIds.map((id) => request.delete(`${API}/crm/leads/${id}/`).catch(() => null)))
 })
 
 test('AGR222 — butane déclaré : carte, enregistrement, réouverture identique', async ({ page, request }) => {
   test.setTimeout(300_000)
-  await creerDevisAgricole(page, await clientDeLaDemo(request))
+  await creerDevisAgricole(page, request)
   await declarerButane(page)
 
   // AGR212 (DevisGenerator `moisCalendrier`) : seul un besoin AGRONOMIQUE
@@ -146,7 +135,7 @@ test('AGR222 — butane déclaré : carte, enregistrement, réouverture identiqu
 
 test('AGR222 — ligne à 0 % sans base légale, et date de solde relue', async ({ page, request }) => {
   test.setTimeout(300_000)
-  await creerDevisAgricole(page, await clientDeLaDemo(request))
+  await creerDevisAgricole(page, request)
   await declarerButane(page)
 
   // Une ligne à 0 % sans base légale : le message s'affiche SOUS le champ.

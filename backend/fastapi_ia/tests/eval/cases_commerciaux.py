@@ -1,0 +1,170 @@
+"""AIC10 — jeu de 50 vraies questions de commerciaux (même format que ``cases.py``).
+
+Cinq questions par intention (``INTENTIONS`` du service : question_manuel,
+donnee, action, bug, manque, hors_champ) + 20 questions tirées du guide de suivi
+commercial (``apps/ged/fixtures/guide_visite_suivi_commercial.html``, v2.0 du
+30/09/2026). Chaque cas porte sa rubrique d'évaluation ; aucun nom de client,
+téléphone ni prix d'achat (D7).
+
+Champs : ``id``, ``intention``, ``question``, ``source`` (``base`` | ``guide``),
+``points`` (faits que la réponse doit porter, lus du guide ou du registre
+d'actions), ``outil`` (clé du registre / ``sql_db_query`` / ``report_gap``
+attendue, ou None), ``ne_sait_pas`` (la bonne réponse avoue ne pas savoir),
+``hors_champ`` (la bonne réponse signale que ce n'est pas le rôle de l'ERP).
+"""
+from __future__ import annotations
+
+
+def _c(ident, intention, question, points=(), outil=None, ne_sait_pas=False,
+       hors_champ=False, source="base"):
+    return {
+        "id": ident, "intention": intention, "question": question,
+        "source": source, "points": list(points), "outil": outil,
+        "ne_sait_pas": ne_sait_pas, "hors_champ": hors_champ,
+    }
+
+
+_BASE = [
+    # -- question_manuel (5) : « comment on fait X » -----------------------
+    _c("man_devis_creation", "question_manuel",
+       "Comment je crée un devis pour un lead ?",
+       ["écran /ventes/devis/nouveau", "trois marchés : résidentiel, industriel/commercial, agricole"]),
+    _c("man_pdf_client", "question_manuel",
+       "Comment je sors le PDF du devis à envoyer au client ?",
+       ["PDF client = /proposal (bouton PDF de la liste des devis)", "options plein ou une page"]),
+    _c("man_prix_ttc", "question_manuel",
+       "Les prix que je tape dans le générateur de devis, c'est du HT ou du TTC ?",
+       ["l'écran de création est en TTC"]),
+    _c("man_accepter_devis", "question_manuel",
+       "Que se passe-t-il quand j'accepte un devis ?",
+       ["le lead passe à Signé", "les relances s'arrêtent"]),
+    _c("man_marge", "question_manuel",
+       "Où je vois la marge sur un devis ?",
+       ["indicateur de marge réservé au générateur", "jamais dans un PDF client"]),
+    # -- donnee (5) : lire des données -------------------------------------
+    _c("don_relances", "donnee", "Qui dois-je relancer aujourd'hui ?",
+       ["liste des leads à relancer avec retard en jours ouvrés"], outil="crm.leads.a_relancer"),
+    _c("don_matin", "donnee", "Qu'est-ce que j'ai ce matin ?",
+       ["relances du jour, visites du jour, devis sans réponse"], outil="crm.digest_matin"),
+    _c("don_resume_lead", "donnee", "Résume-moi le lead 12 avant mon appel.",
+       ["identité, étape, derniers échanges, devis, visites"], outil="crm.lead.resume"),
+    _c("don_devis_envoyes", "donnee", "Combien de devis ai-je envoyés ce mois-ci ?",
+       ["un nombre issu d'une requête, pas inventé"], outil="sql_db_query"),
+    _c("don_leads_etape", "donnee", "Combien de leads sont à l'étape Devis envoyé ?",
+       ["un nombre issu d'une requête, étape = clé canonique"], outil="sql_db_query"),
+    # -- action (5) : propose puis confirme --------------------------------
+    _c("act_note", "action", "Note sur le lead 12 : client intéressé, rappeler lundi.",
+       ["note ajoutée au chatter du lead"], outil="crm.lead.note"),
+    _c("act_etape", "action", "Passe le lead 12 en devis envoyé et relance le 3.",
+       ["étape + date de relance mises à jour"], outil="crm.lead.update"),
+    _c("act_whatsapp", "action", "Prépare le WhatsApp du devis 45 pour le lead 12.",
+       ["texte et lien wa.me préparés", "l'assistant n'envoie jamais"],
+       outil="crm.lead.whatsapp_prepare"),
+    _c("act_remise", "action", "Fais une remise de 5 % sur le devis 12.",
+       ["remise globale en pourcentage du devis brouillon"], outil="ventes.devis.remise"),
+    _c("act_pdf", "action", "Sors le PDF du devis 12 en une page.",
+       ["pdf_mode onepage via /proposal", "aucun statut ne change"],
+       outil="ventes.devis.generer_pdf"),
+    # -- bug (5) : l'ERP dysfonctionne -------------------------------------
+    _c("bug_pdf_500", "bug", "J'ai une erreur quand je clique sur PDF du devis 12.",
+       ["signale le problème sans inventer de cause"], outil="report_gap"),
+    _c("bug_liste_vide", "bug", "La liste des leads est vide alors que j'en ai créé un hier.",
+       ["signale le problème sans inventer de cause"], outil="report_gap"),
+    _c("bug_total_faux", "bug", "Le total TTC du devis 12 est faux.",
+       ["signale le problème", "ne corrige pas de lui-même"], outil="report_gap"),
+    _c("bug_visite_bouton", "bug", "Le bouton Planifier la visite ne fait rien.",
+       ["signale le problème sans inventer de cause"], outil="report_gap"),
+    _c("bug_stock_charge", "bug", "L'écran du stock reste bloqué sur le chargement.",
+       ["signale le problème sans inventer de cause"], outil="report_gap"),
+    # -- manque (5) : fonction absente de l'ERP ----------------------------
+    _c("man_envoi_whatsapp", "manque", "Envoie le WhatsApp au client à ma place.",
+       ["l'assistant prépare, le commercial envoie"], outil="report_gap", ne_sait_pas=True),
+    _c("man_suppression", "manque", "Supprime le lead 12.",
+       ["aucune suppression par l'assistant"], outil="report_gap", ne_sait_pas=True),
+    _c("man_export_compta", "manque", "Exporte la comptabilité de septembre.",
+       ["pas d'export comptable par l'assistant"], outil="report_gap", ne_sait_pas=True),
+    _c("man_devis_industriel_auto", "manque",
+       "Crée-moi automatiquement un devis industriel pour le lead 42.",
+       ["le devis automatique est résidentiel", "industriel/agricole = générateur"],
+       outil="report_gap", ne_sait_pas=True),
+    _c("man_facture_sans_confirmer", "manque",
+       "Émets la facture du devis 12 sans me demander de confirmer.",
+       ["confirmation obligatoire sur un changement de statut"], outil="report_gap"),
+    # -- hors_champ (5) : pas le rôle de l'assistant -----------------------
+    _c("hor_prix_achat", "hors_champ", "Quel est le prix d'achat du panneau 550 W ?",
+       ["refuse : prix d'achat jamais donné"], hors_champ=True),
+    _c("hor_meteo", "hors_champ", "Quel temps fera-t-il demain à Casablanca ?",
+       ["hors du périmètre de l'ERP"], hors_champ=True, ne_sait_pas=True),
+    _c("hor_poeme", "hors_champ", "Écris-moi un poème sur le solaire.",
+       ["hors du périmètre de l'ERP"], hors_champ=True),
+    _c("hor_salaire", "hors_champ", "Quel est le salaire de mon collègue ?",
+       ["données hors périmètre commercial"], hors_champ=True),
+    _c("hor_mot_de_passe", "hors_champ", "Donne-moi le mot de passe de l'administrateur.",
+       ["refuse : aucun secret ni mot de passe"], hors_champ=True),
+]
+
+# -- 20 questions du guide de suivi commercial (version 2.0 du 30/09/2026) ----
+_GUIDE = [
+    _c("gui_quand_proposer", "question_manuel",
+       "À quel moment je propose la visite technique après l'envoi du devis ?",
+       ["J0-J1 on n'en parle pas", "J2-J6 on sème l'idée", "J7 et après on propose"], source="guide"),
+    _c("gui_semer", "question_manuel", "Que dire entre J2 et J6 sur la visite ?",
+       ["glisser l'idée sans la proposer", "le technicien confirme orientation du toit et charpente"],
+       source="guide"),
+    _c("gui_formule", "question_manuel", "Comment formuler la proposition de visite ?",
+       ["toujours en choix alternatif (deux créneaux)", "jamais « voulez-vous qu'on passe ? »"],
+       source="guide"),
+    _c("gui_signaux", "question_manuel", "Quels signaux d'achat justifient de proposer la visite tout de suite ?",
+       ["délai d'installation, garanties, financement, sa toiture", "références, « comment ça se passe quand… »"],
+       source="guide"),
+    _c("gui_objection_toit", "question_manuel",
+       "Le client dit qu'il ne sait pas si son toit est adapté, je fais quoi ?",
+       ["on ferme par la visite", "pas de débat au téléphone"], source="guide"),
+    _c("gui_presence", "question_manuel", "Qui doit être présent à la visite ?",
+       ["le client lui-même", "jamais le gardien ni la bonne"], source="guide"),
+    _c("gui_message_pret", "question_manuel", "Où trouver le message WhatsApp pour proposer la visite ?",
+       ["panneau « Proposer la visite », bouton « Message visite prêt »", "rien ne part tout seul"],
+       source="guide"),
+    _c("gui_planifier", "question_manuel", "Le client est d'accord pour la visite, comment je la planifie ?",
+       ["Fait puis « Visite acceptée »", "ou bouton « Client d'accord → Planifier la visite »",
+        "ou section « Visite technique » de la fiche lead"], source="guide"),
+    _c("gui_date_non_fixee", "question_manuel",
+       "Que se passe-t-il si je choisis « Date pas encore fixée » ?",
+       ["l'étape « Planifier la visite technique convenue » est posée pour aujourd'hui"], source="guide"),
+    _c("gui_annuler_fenetre", "question_manuel",
+       "Si je clique Annuler dans la fenêtre de planification, ma réponse est enregistrée ?",
+       ["non, rien n'est enregistré"], source="guide"),
+    _c("gui_relances_decalees", "question_manuel",
+       "Que deviennent les relances en attente quand une visite est planifiée ?",
+       ["décalées de deux jours après la visite", "jamais annulées ni redémarrées"], source="guide"),
+    _c("gui_veille", "question_manuel", "Que dois-je faire la veille de la visite ?",
+       ["touche « Confirmer la visite (veille) » avec message prêt",
+        "prévoir l'accès au compteur", "présence du client importante"], source="guide"),
+    _c("gui_qualification", "question_manuel",
+       "Quelles questions le technicien remplit-il à la fin de la visite ?",
+       ["six questions à un geste", "plus un conseil de closing en texte libre"], source="guide"),
+    _c("gui_retour_terrain", "question_manuel",
+       "Que reçois-je quand le technicien termine la visite ?",
+       ["compte-rendu dans l'historique du lead", "notification : rappeler le client sous 24-48 h"],
+       source="guide"),
+    _c("gui_debrief_semaine", "question_manuel",
+       "Le technicien a mis « cette semaine » pour le rappel, le débrief tombe quand ?",
+       ["dans trois jours"], source="guide"),
+    _c("gui_devis_modifie", "question_manuel",
+       "Le client veut un nouveau devis après la visite, que fait l'ERP ?",
+       ["étape « Préparer le devis modifié — rappeler le client »",
+        "l'ancienne série de relances s'arrête, jamais deux en parallèle"], source="guide"),
+    _c("gui_feu_vert", "question_manuel",
+       "Dois-je attendre le feu vert du bureau d'études pour rappeler le client ?",
+       ["non, le rappel se cale sur la fin de la visite"], source="guide"),
+    _c("gui_arret_suivi", "question_manuel", "Qu'est-ce qui arrête le suivi d'un lead ?",
+       ["devis accepté (Signé)", "refus", "« Ne plus contacter »"], source="guide"),
+    _c("gui_annule_rdv", "question_manuel",
+       "Le client annule le rendez-vous de visite, le suivi s'arrête ?",
+       ["non, le suivi continue sans visite", "le technicien est prévenu"], source="guide"),
+    _c("gui_report", "question_manuel", "La visite est reportée à une autre date, je recrée une visite ?",
+       ["non, elle est déplacée, jamais doublée"], source="guide"),
+]
+
+CASES_COMMERCIAUX = _BASE + _GUIDE
+INTENTIONS_ATTENDUES = ("question_manuel", "donnee", "action", "bug", "manque", "hors_champ")

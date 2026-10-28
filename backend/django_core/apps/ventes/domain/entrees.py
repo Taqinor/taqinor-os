@@ -111,6 +111,10 @@ class EntreesMoteur:
     # pas de calepinage lisible (lead, règles d'avant le niveau 3) : le moteur
     # horaire ne reçoit rien et l'empreinte reste celle d'avant.
     perte_ombrage_pct: object = None
+    # CE2E6 (AMOT64 a) — productible SAISI par la société (kWh/kWc/an),
+    # ``horaire.productible_societe`` ; ``None`` = vide ou règles < 3 : le
+    # moteur horaire garde la série PVGIS et l'empreinte reste celle d'avant.
+    productible_kwh_kwc: object = None
 
     # ── accès mapping en LECTURE SEULE (pont de déplacement, voir docstring) ─
 
@@ -357,7 +361,14 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
         gamme_nom_devis=gamme_nom(devis) or None,
         hors_reseau=est_site_isole(raccordement),
         mppt_paires=_mppt_paires_du_devis(devis),
-        perte_ombrage_pct=_perte_ombrage_du_devis(devis))
+        perte_ombrage_pct=_perte_ombrage_du_devis(devis),
+        productible_kwh_kwc=_productible_du_devis(devis))
+
+
+def _productible_du_devis(devis):
+    """CE2E6 — le productible société retenu pour ce devis, ou ``None``."""
+    from apps.ventes.horaire.productible_societe import productible_du_devis
+    return productible_du_devis(devis)
 
 
 def _perte_ombrage_du_devis(devis):
@@ -398,9 +409,14 @@ def kwargs_moteur_ombre(entrees):
     from apps.ventes.etude_horaire import (
         balayer_stockage_horaire, calculer_etude_horaire,
         kwargs_moteur_horaire)
-    return dict(kwargs_moteur_horaire(entrees), **kwargs_ombrage(
+    kwargs = dict(kwargs_moteur_horaire(entrees), **kwargs_ombrage(
         entrees.get('perte_ombrage_pct'),
         calculer_etude_horaire, balayer_stockage_horaire))
+    # CE2E6 — le productible société (niveau 3) : l'étude ET le balayage du
+    # stockage l'acceptent, même base de production dans tout le tableau.
+    if entrees.get('productible_kwh_kwc') is not None:
+        kwargs['productible_kwh_kwc'] = entrees.get('productible_kwh_kwc')
+    return kwargs
 
 
 def _phase_du_lead(lead):
@@ -482,7 +498,14 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
         tranches=tranches, charges_fixes_mad=charges_fixes,
         # QJR606 — un lead n'a pas de gamme de devis : ``None``.
         phase=_phase_du_lead(lead),
-        hors_reseau=_hors_reseau_du_lead(lead))
+        hors_reseau=_hors_reseau_du_lead(lead),
+        productible_kwh_kwc=_productible_de_la_societe(company))
+
+
+def _productible_de_la_societe(company):
+    """CE2E6 — chemin LEAD (devis neuf, règles courantes)."""
+    from apps.ventes.horaire.productible_societe import productible_societe
+    return productible_societe(company)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -597,6 +620,11 @@ def empreinte_entrees(e):
         # RSIZ7 — seulement quand un calepinage sert une perte : un devis non
         # ombré garde l'empreinte d'avant ; une perte qui bouge périme le bloc.
         charge['perte_ombrage_pct'] = _arrondi(perte_ombrage, 2)
+    productible = getattr(e, 'productible_kwh_kwc', None)
+    if productible is not None:
+        # CE2E6 — seulement quand la société a saisi une valeur (niveau 3) :
+        # sinon empreinte d'avant ; une valeur qui bouge périme le bloc.
+        charge['productible_kwh_kwc'] = _arrondi(productible, 2)
     if getattr(e, 'hors_reseau', False):
         # ERR-QJR605 — seulement « vrai » : l'empreinte d'un site raccordé ne
         # change pas, un site isolé ne partage jamais le tableau d'un autre.
