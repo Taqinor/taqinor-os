@@ -1,0 +1,80 @@
+{
+  "endpoint": "GET /api/django/roles/organisation/",
+  "forme_serveur": "partielle",
+  "pourquoi": "Organigramme de la société (fondateur, 27/10/2026) : Direction en haut, puis les départements (Commercial, Technique, Marketing…), chacun avec son responsable et une ou plusieurs équipes (commerciales `crm.EquipeCommerciale`, terrain `installations.Equipe`, autres `roles.EquipeOrg`), puis les personnes. Chaque utilisateur a une FONCTION (`roles.Poste`, qui porte son département et son rôle par défaut) et un RÔLE. `a_completer` liste les utilisateurs actifs (hors portails) à qui il manque la fonction ou le rôle. LECTURE PURE, société de l'appelant, lisible par tout rôle ; l'écriture passe par les routes CRUD `departements/`, `postes/`, `equipes/` et par `/users/<id>/` (champ `fonction`).",
+  "exemple": {
+    "direction": {
+      "id": 1,
+      "nom": "Direction",
+      "responsable": {
+        "id": 1,
+        "nom": "Reda Kasri",
+        "fonction": "Directeur général",
+        "role": "Directeur"
+      },
+      "membres": []
+    },
+    "departements": [
+      {
+        "id": 2,
+        "nom": "Commercial",
+        "ordre": 1,
+        "responsable": {
+          "id": 2,
+          "nom": "Meryem",
+          "fonction": "Responsable commerciale",
+          "role": "Commercial responsable"
+        },
+        "equipes": [
+          {
+            "id": 7,
+            "type": "commerciale",
+            "nom": "Casa",
+            "chef": {
+              "id": 3,
+              "nom": "Amine",
+              "fonction": "Chef d'équipe commerciale",
+              "role": "Commercial responsable"
+            },
+            "recoit_leads": true,
+            "membres": [
+              {
+                "id": 4,
+                "nom": "Sara",
+                "fonction": "Chargée de clientèle",
+                "role": "Commercial"
+              }
+            ]
+          }
+        ],
+        "sans_equipe": []
+      }
+    ],
+    "equipes_sans_departement": [
+      {
+        "id": 8,
+        "type": "terrain",
+        "nom": "Nord",
+        "chef": null,
+        "recoit_leads": null,
+        "membres": []
+      }
+    ],
+    "a_completer": [
+      {
+        "id": 9,
+        "nom": "Yassine",
+        "fonction": null,
+        "role": "Technicien",
+        "manque": ["fonction"]
+      }
+    ]
+  },
+  "notes": {
+    "personne": "Une personne = `{id, nom, fonction, role}` : `nom` = nom complet sinon identifiant ; `fonction` = intitulé du `roles.Poste` ou null ; `role` = nom du `roles.Role` ou null.",
+    "direction": "Le département marqué `est_direction` (un seul par société) ; null s'il n'existe pas encore. Ses `membres` = les personnes dont la fonction est dans la Direction, hors responsable.",
+    "equipes.type": "`commerciale` | `terrain` | `autre`. `recoit_leads` n'a de sens que pour `commerciale` (null sinon).",
+    "sans_equipe": "Personnes dont la fonction est dans ce département mais qui ne sont ni membre ni chef d'une équipe active, ni responsable du département.",
+    "a_completer.manque": "Sous-ensemble ordonné de `[\"fonction\", \"role\"]`."
+  }
+}

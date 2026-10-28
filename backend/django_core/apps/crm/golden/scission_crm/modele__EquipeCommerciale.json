@@ -44,6 +44,18 @@
   {
    "args": [],
    "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "equipes_commerciales",
+    "to": "roles.departement"
+   },
+   "nom": "departement",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
     "default": true
    },
    "nom": "actif",

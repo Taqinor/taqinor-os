@@ -57,7 +57,7 @@ test('QJR39 — quoteLogic.productible alimente déjà productibleForCity (ROI +
     'productibleForCity(ville, quoteLogic.productible) doit rester appelé aux 2 sites (roi + roiAvec)')
 })
 
-test('QJR39 — rejoué avec le VRAI productibleForCity(solar.js) : société avec surcharge → productible de la société ; société sans surcharge (absente ou 1600 pile) → comportement inchangé (PVGIS ville)', () => {
+test('QJR39 — rejoué avec le VRAI productibleForCity(solar.js) : société avec surcharge → productible de la société ; société sans surcharge (absente/null) → PVGIS ville ; 1600 saisi respecté (AMOT64)', () => {
   // Reproduit la résolution verrouillée par le 2ᵉ test.
   const resoudreProductible = (dataProductibleKwhKwc) => {
     const prod = parseFloat(dataProductibleKwhKwc)
@@ -81,11 +81,10 @@ test('QJR39 — rejoué avec le VRAI productibleForCity(solar.js) : société av
     productibleForCity('casablanca', null),
     'sans surcharge, le résultat doit être identique au comportement historique (override=null)')
 
-  // Société dont le champ vaut littéralement 1600 (le défaut backend même
-  // quand rien n'a été personnalisé, selectors.py) : `productibleForCity`
-  // le traite comme « pas une vraie surcharge » (écart < 0,5) → PVGIS ville,
-  // byte-identique au cas sans réglage.
-  const defautBackend = resoudreProductible('1600.0')
-  assert.equal(productibleForCity('casablanca', defautBackend),
-    productibleForCity('casablanca', null))
+  // AMOT64 (D-AMOT-3 = a) — 1600 n'est plus une sentinelle : une société qui
+  // SAISIT 1600 voit 1600 ; « non renseigné » arrive désormais en null
+  // (champ nullable côté serveur) → PVGIS ville, ci-dessus.
+  const saisi1600 = resoudreProductible('1600.0')
+  assert.equal(productibleForCity('casablanca', saisi1600), 1600)
+  assert.equal(resoudreProductible(null), null)
 })

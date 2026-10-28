@@ -406,6 +406,8 @@
     detail:texte, groups:inconnu, query:inconnu
 - frontend/src/api/reportingApi.js :: winLossBySource -> /api/django/reporting/commercial/win-loss-by-source
     by_canal:inconnu, by_source_technique:inconnu, detail:texte, summary:objet, top_loss_reasons:inconnu
+- frontend/src/api/rolesApi.js :: getOrganisation -> /api/django/roles/organisation
+    a_completer:inconnu, departements:liste, direction:inconnu, equipes_sans_departement:liste
 - frontend/src/api/rolesApi.js :: getPermissionCatalog -> /api/django/roles/permission-catalog
     permissions:inconnu, routes:inconnu
 - frontend/src/api/rolesApi.js :: getPermissionsDisponibles -> /api/django/roles/permissions-disponibles
@@ -745,7 +747,7 @@
     champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
     statut ∈ {annule, confirme, effectue, no_show, planifie}
 - frontend/src/api/crmApi.js :: deleteEquipe -> /api/django/crm/equipes/<>  [EquipeCommercialeSerializer]
-    champs: actif, company, date_creation, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
+    champs: actif, company, date_creation, departement, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: deleteMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
 - frontend/src/api/crmApi.js :: deleteParrainage -> /api/django/crm/parrainages/<>  [ParrainageSerializer]
@@ -762,7 +764,7 @@
     champs: actif, cible_equipe, company, created_at, id, metrique, metrique_display, nom, periode_debut, periode_fin, recompense
     metrique ∈ {ca_signe, nb_contacts, nb_devis, nb_leads, nb_rdv}
 - frontend/src/api/crmApi.js :: getEquipes -> /api/django/crm/equipes  [EquipeCommercialeSerializer]
-    champs: actif, company, date_creation, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
+    champs: actif, company, date_creation, departement, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: getMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
 - frontend/src/api/crmApi.js :: getMessageTemplates -> /api/django/crm/message-templates  [MessageTemplateSerializer]
@@ -1037,7 +1039,7 @@
 - frontend/src/api/installationsApi.js :: deleteDemandeAchatLigne -> /api/django/installations/demandes-achat-lignes/<>  [DemandeAchatLigneSerializer]
     champs: demande, designation, id, prix_estime, produit, produit_nom, quantite, total_estime
 - frontend/src/api/installationsApi.js :: deleteEquipeTerrain -> /api/django/installations/equipes/<>  [EquipeSerializer]
-    champs: actif, chef, chef_nom, created_by, date_creation, date_modification, description, id, membres, membres_noms, nb_membres, nom
+    champs: actif, chef, chef_nom, created_by, date_creation, date_modification, departement, description, id, membres, membres_noms, nb_membres, nom
 - frontend/src/api/installationsApi.js :: deleteEtapeAssemblageKit -> /api/django/installations/etapes-assemblage/<>  [EtapeAssemblageSerializer]
     champs: duree_attendue_min, id, instructions, kit, libelle, ordre, piece_jointe
 - frontend/src/api/installationsApi.js :: deleteFicheChamp -> /api/django/installations/fiche-intervention-champs/<>  [FicheInterventionChampSerializer]
@@ -1124,7 +1126,7 @@
     incoterm ∈ {cfr, cif, dap, ddp, exw, fob}
     statut_douane ∈ {arrive_port, commande, dedouane, en_douane, expedie, livre}
 - frontend/src/api/installationsApi.js :: getEquipesTerrain -> /api/django/installations/equipes  [EquipeSerializer]
-    champs: actif, chef, chef_nom, created_by, date_creation, date_modification, description, id, membres, membres_noms, nb_membres, nom
+    champs: actif, chef, chef_nom, created_by, date_creation, date_modification, departement, description, id, membres, membres_noms, nb_membres, nom
 - frontend/src/api/installationsApi.js :: getEtapesAssemblageKit -> /api/django/installations/etapes-assemblage  [EtapeAssemblageSerializer]
     champs: duree_attendue_min, id, instructions, kit, libelle, ordre, piece_jointe
 - frontend/src/api/installationsApi.js :: getFicheTemplates -> /api/django/installations/fiche-intervention-templates  [FicheInterventionTemplateSerializer]
@@ -1491,8 +1493,14 @@
     target_kind ∈ {dashboard, query, sales, service, stock}
 - frontend/src/api/rolesApi.js :: createRole -> /api/django/roles  [RoleSerializer]
     champs: entites_visibles, est_systeme, id, nom, perimetre, permissions, users, users_count
+- frontend/src/api/rolesApi.js :: deleteDepartement -> /api/django/roles/departements/<>  [DepartementSerializer]
+    champs: actif, est_direction, id, nom, ordre, responsable, responsable_nom
 - frontend/src/api/rolesApi.js :: deleteRole -> /api/django/roles/<>  [RoleSerializer]
     champs: entites_visibles, est_systeme, id, nom, perimetre, permissions, users, users_count
+- frontend/src/api/rolesApi.js :: getDepartements -> /api/django/roles/departements  [DepartementSerializer]
+    champs: actif, est_direction, id, nom, ordre, responsable, responsable_nom
+- frontend/src/api/rolesApi.js :: getPostes -> /api/django/roles/postes  [PosteSerializer]
+    champs: actif, departement, departement_nom, id, intitule, nb_titulaires, role, role_nom
 - frontend/src/api/rolesApi.js :: getRole -> /api/django/roles/<>  [RoleSerializer]
     champs: entites_visibles, est_systeme, id, nom, perimetre, permissions, users, users_count
 - frontend/src/api/rolesApi.js :: getRoles -> /api/django/roles  [RoleSerializer]

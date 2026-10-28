@@ -14,14 +14,24 @@ interface Props {
   ciRentBaseTexte: any;
 }
 const { ciRent, ciRentBaseTexte } = Astro.props;
+
+// CPRW6 — libellés CLIENT des sensibilités servies ; une clé inconnue n'imprime aucune ligne.
+const LIBELLES_SENSIBILITE: Record<string, { fr: string; en: string; ar: string }> = {
+  indexation_tarif: { fr: 'Indexation du tarif', en: 'Tariff indexation', ar: 'فهرسة التعريفة' },
+  degradation: { fr: 'Dégradation', en: 'Degradation', ar: 'التدهور' },
+  tarif_kwh: { fr: 'Prix du kWh', en: 'kWh price', ar: 'ثمن الكيلوواط ساعة' },
+  production: { fr: 'Production', en: 'Production', ar: 'الإنتاج' },
+};
+const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIBILITE[sn.cle]);
 ---
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="direction" data-ci-lecteurs>
-          <nav class="flex flex-wrap gap-2 text-xs" aria-label="Lire selon votre rôle">
-            <a href="#direction" class="btn-pill px-3 py-1" data-i18n data-fr="Direction" data-en="Management" data-ar="الإدارة">Direction</a>
-            <a href="#exploitation" class="btn-pill px-3 py-1" data-i18n data-fr="Exploitation" data-en="Operations" data-ar="الاستغلال">Exploitation</a>
-            <a href="#achats" class="btn-pill px-3 py-1" data-i18n data-fr="Achats" data-en="Procurement" data-ar="المشتريات">Achats</a>
-          </nav>
           {ciRent && (
+            <>
+          <nav class="flex flex-wrap gap-2 text-xs" aria-label="Sections">
+            <a href="#direction" class="btn-pill px-3 py-1" data-i18n data-fr="Direction" data-en="Management" data-ar="الإدارة">Direction</a>
+            <a href="#achats" class="btn-pill px-3 py-1" data-i18n data-fr="Achats" data-en="Procurement" data-ar="المشتريات">Achats</a>
+            <a href="#exploitation" class="btn-pill px-3 py-1" data-i18n data-fr="Exploitation" data-en="Operations" data-ar="الاستغلال">Exploitation</a>
+          </nav>
             <div class="mt-5" id="rentabilite" data-ci-rentabilite>
               <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Rentabilité de votre projet" data-en="Your project's profitability" data-ar="مردودية مشروعكم">Rentabilité de votre projet</h2>
               <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -35,16 +45,17 @@ const { ciRent, ciRentBaseTexte } = Astro.props;
                   </div>
                 ) : null}
                 {ciRent.lcoeMadKwh !== null ? (
-                  <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Coût du kWh solaire (LCOE)" data-en="Cost of solar kWh (LCOE)" data-ar="كلفة الكيلوواط ساعة الشمسي (LCOE)">Coût du kWh solaire (LCOE)</p>
-                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="lcoe_mad_kwh">{formatNumber(ciRent.lcoeMadKwh, 4)}</p>
-                    <p class="mt-1 text-xs text-lune-faint" dir="ltr">MAD/kWh{ciRent.tarifKwhEvite !== null ? ` — ${formatNumber(ciRent.tarifKwhEvite, 4)} MAD/kWh` : ''}</p>
-                    {ciRent.tarifKwhEvite !== null ? (
-                      <p class="mt-1 text-xs text-lune-faint" data-i18n
-                        data-fr="face au prix moyen de votre kWh évité"
-                        data-en="versus the average price of the kWh you avoid"
-                        data-ar="مقابل متوسط ثمن الكيلوواط ساعة الذي تتفادونه">face au prix moyen de votre kWh évité</p>
-                    ) : null}
+                  <div class="cine-card rounded-xl p-5 sm:col-span-2">
+                    <p class="text-sm text-lune">
+                      <span data-i18n data-fr="Coût du kWh solaire" data-en="Cost of your solar kWh" data-ar="كلفة الكيلوواط ساعة الشمسي">Coût du kWh solaire</span>{' '}
+                      <span class="fig" dir="ltr" data-figure="lcoe_mad_kwh">{formatNumber(ciRent.lcoeMadKwh, 4)}</span> MAD
+                      {ciRent.tarifKwhEvite !== null ? (
+                        <>
+                          {' — '}<span data-i18n data-fr="votre kWh évité" data-en="your avoided kWh" data-ar="الكيلوواط ساعة الذي توفرونه">votre kWh évité</span>{' '}
+                          <span class="fig" dir="ltr">{formatNumber(ciRent.tarifKwhEvite, 2)}</span> MAD
+                        </>
+                      ) : null}
+                    </p>
                   </div>
                 ) : null}
                 {ciRent.vanMad !== null ? (
@@ -61,6 +72,7 @@ const { ciRent, ciRentBaseTexte } = Astro.props;
                 <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-ci-jalons>
                   <p class="tech-label text-lune-faint" data-i18n
                     data-fr={`Cumul net (${ciRentBaseTexte}) aux jalons`} data-en={`Net cumulative (${ciRentBaseTexte}) at milestones`} data-ar={`الصافي التراكمي (${ciRentBaseTexte}) عند المحطات`}>{`Cumul net (${ciRentBaseTexte}) aux jalons`}</p>
+                  <div class="overflow-x-auto">
                   <table class="mt-3 w-full text-sm" dir="ltr">
                     <tbody>
                       {ciRent.jalons.map((j) => (
@@ -74,14 +86,15 @@ const { ciRent, ciRentBaseTexte } = Astro.props;
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               ) : null}
-              {ciRent.sensibilites.length > 0 ? (
+              {sensibilites.length > 0 ? (
                 <div class="cine-card mt-5 rounded-xl p-5" data-ci-sensibilites>
-                  <p class="tech-label text-lune-faint" data-i18n data-fr="Sensibilités saisies par la société" data-en="Sensitivities entered by the company" data-ar="الحساسيات المدخلة من طرف الشركة">Sensibilités saisies par la société</p>
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Sensibilités" data-en="Sensitivities" data-ar="تحليل الحساسية">Sensibilités</p>
                   <ul class="mt-2 space-y-1 text-sm text-lune-soft">
-                    {ciRent.sensibilites.map((sn) => (
-                      <li dir="ltr">{sn.cle}{sn.variationPct !== null ? ` ${sn.variationPct > 0 ? '+' : ''}${formatNumber(sn.variationPct, 1)} %` : ''}{sn.retourAns !== null ? ` — ${formatNumber(sn.retourAns, 1)} ans` : ''}{sn.triPct !== null ? `, TRI ${formatNumber(sn.triPct, 1)} %` : ''}{sn.motif && sn.retourAns === null ? ` — ${sn.motif}` : ''}</li>
+                    {sensibilites.map((sn) => (
+                      <li><span data-i18n data-fr={LIBELLES_SENSIBILITE[sn.cle].fr} data-en={LIBELLES_SENSIBILITE[sn.cle].en} data-ar={LIBELLES_SENSIBILITE[sn.cle].ar}>{LIBELLES_SENSIBILITE[sn.cle].fr}</span><span dir="ltr">{sn.variationPct !== null ? ` ${sn.variationPct > 0 ? '+' : ''}${formatNumber(sn.variationPct, 1)} %` : ''}{sn.retourAns !== null ? ` — ${formatNumber(sn.retourAns, 1)} ` : ''}</span>{sn.retourAns !== null ? <span data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span> : null}{sn.triPct !== null ? <><span>, </span><span data-i18n data-fr="TRI" data-en="IRR" data-ar="معدل العائد">TRI</span><span dir="ltr">{` ${formatNumber(sn.triPct, 1)} %`}</span></> : null}</li>
                     ))}
                   </ul>
                 </div>
@@ -90,13 +103,29 @@ const { ciRent, ciRentBaseTexte } = Astro.props;
                 <div class="cine-card mt-5 rounded-xl p-5" data-ci-financement>
                   <p class="tech-label text-lune-faint" data-i18n data-fr="Financement (offre écrite)" data-en="Financing (written offer)" data-ar="التمويل (عرض مكتوب)">Financement (offre écrite)</p>
                   {ciRent.financement.libelleClient ? <p class="mt-2 text-sm text-lune-soft">{ciRent.financement.libelleClient}</p> : null}
-                  <ul class="mt-2 space-y-1 text-sm text-lune-soft" dir="ltr">
-                    {ciRent.financement.echeanceMad !== null ? <li>{formatMAD(ciRent.financement.echeanceMad)} / mois{ciRent.financement.dureeMois !== null ? ` — ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}</li> : null}
-                    {ciRent.financement.economieMensuelleMoyenneMad !== null ? <li>{formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} / mois d'économie moyenne</li> : null}
-                    {ciRent.financement.ecartMensuelMad !== null ? <li>{formatMAD(ciRent.financement.ecartMensuelMad)} / mois d'écart</li> : null}
+                  <ul class="mt-2 space-y-1 text-sm text-lune-soft">
+                    {ciRent.financement.echeanceMad !== null ? (
+                      <li data-i18n
+                        data-fr={`${formatMAD(ciRent.financement.echeanceMad)} par mois${ciRent.financement.dureeMois !== null ? `, pendant ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}`}
+                        data-en={`${formatMAD(ciRent.financement.echeanceMad)} per month${ciRent.financement.dureeMois !== null ? `, for ${formatNumber(ciRent.financement.dureeMois, 0)} months` : ''}`}
+                        data-ar={`${formatMAD(ciRent.financement.echeanceMad)} شهريًا${ciRent.financement.dureeMois !== null ? `، لمدة ${formatNumber(ciRent.financement.dureeMois, 0)} شهرًا` : ''}`}>{`${formatMAD(ciRent.financement.echeanceMad)} par mois${ciRent.financement.dureeMois !== null ? `, pendant ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}`}</li>
+                    ) : null}
+                    {ciRent.financement.economieMensuelleMoyenneMad !== null ? (
+                      <li data-i18n
+                        data-fr={`Économie moyenne : ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} par mois`}
+                        data-en={`Average savings: ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} per month`}
+                        data-ar={`متوسط التوفير: ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} شهريًا`}>{`Économie moyenne : ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} par mois`}</li>
+                    ) : null}
+                    {ciRent.financement.ecartMensuelMad !== null ? (
+                      <li data-i18n
+                        data-fr={`${formatMAD(ciRent.financement.ecartMensuelMad)} par mois : différence entre l'échéance et l'économie moyenne`}
+                        data-en={`${formatMAD(ciRent.financement.ecartMensuelMad)} per month: difference between the instalment and the average savings`}
+                        data-ar={`${formatMAD(ciRent.financement.ecartMensuelMad)} شهريًا: الفرق بين القسط ومتوسط التوفير`}>{`${formatMAD(ciRent.financement.ecartMensuelMad)} par mois : différence entre l'échéance et l'économie moyenne`}</li>
+                    ) : null}
                   </ul>
                 </div>
               ) : null}
             </div>
+            </>
           )}
         </section>

@@ -85,6 +85,8 @@ export interface SyntheseCi {
   /** `estimation_sous_reserve_visite` | `offre_ferme`. */
   statutEtude: string | null;
   aConfirmer: Array<{ cle: string; libelle: string }>;
+  /** CPRW13 — postes « à chiffrer après la visite » restés hors total (`synthese_ci.postes_hors_total`), jamais un prix. */
+  postesHorsTotal: Array<{ role: string | null; designation: string; catalogue: boolean }>;
   systeme: { kwc: number | null; nbPanneaux: number | null; productionKwhAn: number | null } | null;
   energie: {
     autoconsoPct: number | null;
@@ -96,16 +98,29 @@ export interface SyntheseCi {
   argent: SyntheseCiArgent | null;
   /** L'offre que le document TITRE (`option_servie` : `sans_batterie` | `avec_batterie`), ou `null`. */
   optionServie: string | null;
+  /** CPRW16 — échéancier de paiement SERVI (`synthese_ci.echeancier`), tel quel ; `[]` sans échéancier. */
+  echeancier: Array<{ libelle: string | null; pct: number; montantTtc: number | null; jalon: string | null }>;
   /** CIW303 — la batterie d'un C&I est une OPTION : valeur chiffrée par le moteur, ou son motif. */
   optionBatterie: SyntheseCiOptionBatterie | null;
   /** CIW304 — services servis : l'option O&M nommée du devis et le délai de suivi (heures), si servis. */
-  services: { omLibelle: string | null; suiviDelaiHeures: number | null } | null;
+  services: {
+    omLibelle: string | null;
+    suiviDelaiHeures: number | null;
+    /** CPRW15 — garanties des fabricants SERVIES (`services.garanties[]`), durée extraite du texte ; jamais complétées. */
+    garanties: Array<{ composant: string; annees: number | null }>;
+    /** CPRW17 — l'option O&M NOMMÉE (`services.om_option`) : statut servi et lignes (prix HT seulement s'il est servi). */
+    omOption: { statut: string | null; libelle: string; lignes: Array<{ designation: string | null; totalHt: number | null }> } | null;
+    /** CPRW17 — suivi de production nommé ; son délai (heures) seulement s'il est servi. */
+    suiviProduction: { delaiHeures: number | null } | null;
+    /** CPRW17 — régime 82-21 servi (`services.raccordement.regime`) : la société monte le dossier de raccordement. */
+    raccordementRegime: string | null;
+  } | null;
   /** CIW306 — le bloc catégorie d'un devis commercial, tel que servi (`synthese_ci.categorie`). */
   categorie: SyntheseCiCategorie | null;
   /** CIW307 — décarbonation SERVIE (CIQ344) : `cbam` = drapeau serveur, `textes` = la phrase du PDF. */
   decarbonation: { cbam: boolean; textes: TextesCi } | null;
   /** CIW305 — la raison sociale du client entreprise si le devis la porte (pré-remplit le formulaire). */
-  entrepriseClient: { raisonSociale: string | null } | null;
+  entrepriseClient: { raisonSociale: string | null; ice: string | null; interlocuteur: string | null; fonction: string | null } | null;
   hypotheses: SyntheseCiHypothese[];
   omissions: Array<{ bloc: string; motif: string }>;
 }
@@ -124,7 +139,35 @@ export interface SyntheseCiOptionBatterie {
   valeurChiffree: TextesCi | null;
   /** Motif servi (« valeur non chiffrée »…), ou `null`. */
   motif: string | null;
+  /** CPRW18 — totaux servis de l'option (`option_batterie.totaux`), tels quels. */
+  totaux: { htNet: number | null; tva: number | null; ttc: number | null } | null;
+  /** CPRW18 — chiffres servis par le moteur C&I (`valeur_chiffree`) ; `null` = non chiffrée. L'économie est la TOTALE (HT) de l'option. */
+  chiffres: {
+    economieAnnuelleMad: number | null;
+    retourSimpleAns: number | null;
+    capaciteUtileKwh: number | null;
+    restitueKwhAn: number | null;
+  } | null;
 }
+
+/**
+ * CPRW21 — définitions des deux taux dans les trois langues (`ci/synthese.py::DEFINITIONS`, garde de parité
+ * dans `propositionSyntheseCiCIW300.test.ts`) : le serveur n'en sert qu'une langue, la page affiche les trois.
+ */
+export const DEFINITIONS_CI: Record<'fr' | 'en' | 'ar', { autoconso: string; couverture: string }> = {
+  fr: {
+    autoconso: 'part de la production consommée sur place',
+    couverture: 'part de votre consommation couverte par le solaire',
+  },
+  en: {
+    autoconso: 'share of the solar production consumed on site',
+    couverture: 'share of your consumption covered by solar',
+  },
+  ar: {
+    autoconso: 'حصة الإنتاج المستهلكة في عين المكان',
+    couverture: 'حصة استهلاككم المغطاة بالطاقة الشمسية',
+  },
+};
 
 function lireTextesCi(v: unknown): TextesCi | null {
   if (!estRecord(v)) return null;
@@ -246,6 +289,31 @@ function lireTauxActualisationCi(argent: Record<string, unknown>): number | null
   return null;
 }
 
+function lireOmOptionCi(v: unknown): NonNullable<SyntheseCi['services']>['omOption'] {
+  if (!estRecord(v)) return null;
+  const libelle = texteServi(v.libelle);
+  if (!libelle) return null;
+  const lignes = Array.isArray(v.lignes)
+    ? v.lignes.flatMap((l) => (estRecord(l) ? [{ designation: texteServi(l.designation), totalHt: nombreServi(l.total_ht) }] : []))
+    : [];
+  return { statut: texteServi(v.statut), libelle, lignes };
+}
+
+/** CPRW15 — durée d'une garantie servie : « Onduleur : 10 ans » ou l'ancien « Garantie constructeur 10 ans » → 10. */
+export function anneesGarantieCi(texte: string | null): number | null {
+  const m = texte ? /(\d+)\s*ans\b/i.exec(texte) : null;
+  return m ? Number(m[1]) : null;
+}
+
+function lireGarantiesCi(v: unknown): Array<{ composant: string; annees: number | null }> {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((g) => {
+    if (!estRecord(g)) return [];
+    const composant = texteServi(g.composant);
+    return composant ? [{ composant, annees: anneesGarantieCi(texteServi(g.texte)) }] : [];
+  });
+}
+
 /**
  * CIW300 — extracteur PUR de `synthese_ci`. `null` hors commercial/industriel,
  * quand la clé est absente ou vide. Aucune valeur n'est calculée, convertie ni
@@ -269,6 +337,20 @@ export function syntheseCi(
       if (estRecord(a) && texteServi(a.cle) && texteServi(a.libelle)) {
         aConfirmer.push({ cle: a.cle as string, libelle: a.libelle as string });
       }
+    }
+  }
+  const postesHorsTotal: SyntheseCi['postesHorsTotal'] = [];
+  // CPRW23 — le payload public sert ces postes dans `a_confirmer[cle='a_chiffrer_visite'].postes` ; la clé
+  // `postes_hors_total` n'est lue qu'en repli, si elle est servie. Les autres entrées de `a_confirmer` ne sont jamais réaffichées.
+  const aChiffrer = Array.isArray(brut.a_confirmer)
+    ? brut.a_confirmer.find((a) => estRecord(a) && a.cle === 'a_chiffrer_visite' && Array.isArray(a.postes))
+    : undefined;
+  const sourcePostes: unknown = aChiffrer ? (aChiffrer as Record<string, unknown>).postes : brut.postes_hors_total;
+  if (Array.isArray(sourcePostes)) {
+    for (const p of sourcePostes) {
+      if (!estRecord(p)) continue;
+      const designation = texteServi(p.designation);
+      if (designation) postesHorsTotal.push({ role: texteServi(p.role), designation, catalogue: p.catalogue === true });
     }
   }
   const hypotheses: SyntheseCiHypothese[] = [];
@@ -295,6 +377,7 @@ export function syntheseCi(
     segment: texteServi(brut.segment),
     statutEtude: texteServi(brut.statut_etude),
     aConfirmer,
+    postesHorsTotal,
     systeme: sys
       ? {
           kwc: nombreServi(sys.kwc),
@@ -311,6 +394,13 @@ export function syntheseCi(
         }
       : null,
     argent: lireArgentCi(brut.argent),
+    echeancier: Array.isArray(brut.echeancier)
+      ? brut.echeancier.flatMap((e) => {
+          if (!estRecord(e)) return [];
+          const pct = nombreServi(e.pct);
+          return pct === null ? [] : [{ libelle: texteServi(e.libelle), pct, montantTtc: nombreServi(e.montant_ttc), jalon: texteServi(e.jalon) }];
+        })
+      : [],
     optionServie: texteServi(brut.option_servie),
     optionBatterie: estRecord(brut.option_batterie)
       ? {
@@ -318,6 +408,21 @@ export function syntheseCi(
             ? lireTextesCi(brut.option_batterie.valeur_chiffree.textes)
             : null,
           motif: texteServi(brut.option_batterie.motif),
+          totaux: estRecord(brut.option_batterie.totaux)
+            ? {
+                htNet: nombreServi(brut.option_batterie.totaux.ht_net),
+                tva: nombreServi(brut.option_batterie.totaux.tva),
+                ttc: nombreServi(brut.option_batterie.totaux.ttc),
+              }
+            : null,
+          chiffres: estRecord(brut.option_batterie.valeur_chiffree)
+            ? {
+                economieAnnuelleMad: nombreServi(brut.option_batterie.valeur_chiffree.economie_annuelle_mad),
+                retourSimpleAns: nombreServi(brut.option_batterie.valeur_chiffree.retour_simple_ans),
+                capaciteUtileKwh: nombreServi(brut.option_batterie.valeur_chiffree.capacite_utile_kwh),
+                restitueKwhAn: nombreServi(brut.option_batterie.valeur_chiffree.restitue_kwh_an),
+              }
+            : null,
         }
       : null,
     services: estRecord(brut.services)
@@ -326,6 +431,12 @@ export function syntheseCi(
           suiviDelaiHeures: estRecord(brut.services.suivi_production)
             ? nombreServi(brut.services.suivi_production.delai_intervention)
             : null,
+          garanties: lireGarantiesCi(brut.services.garanties),
+          omOption: lireOmOptionCi(brut.services.om_option),
+          suiviProduction: estRecord(brut.services.suivi_production)
+            ? { delaiHeures: nombreServi(brut.services.suivi_production.delai_intervention) }
+            : null,
+          raccordementRegime: estRecord(brut.services.raccordement) ? texteServi(brut.services.raccordement.regime) : null,
         }
       : null,
     categorie: lireCategorieCi(brut.categorie),
@@ -333,7 +444,12 @@ export function syntheseCi(
       ? { cbam: brut.decarbonation.cbam === true, textes: lireTextesCi(brut.decarbonation.textes)! }
       : null,
     entrepriseClient: estRecord(brut.entreprise_client)
-      ? { raisonSociale: texteServi(brut.entreprise_client.raison_sociale) }
+      ? {
+          raisonSociale: texteServi(brut.entreprise_client.raison_sociale),
+          ice: texteServi(brut.entreprise_client.ice),
+          interlocuteur: texteServi(brut.entreprise_client.interlocuteur),
+          fonction: texteServi(brut.entreprise_client.fonction),
+        }
       : null,
     hypotheses,
     omissions,
@@ -409,6 +525,64 @@ export function motifsManquantsCi(ci: SyntheseCi | null): string[] {
  */
 export function batterySimEligibleForMode(mode: string | null | undefined): boolean {
   return mode === 'residentiel';
+}
+
+/**
+ * CPRW3 — bandeau « devis préliminaire » (décision fondateur 26/10/2026 : imprimé sur TOUT document
+ * C&I, `quote_engine/ci/couverture.py::bandeau_reserve`). Le serveur ne sert l'hypothèse `visite`
+ * que pour une étude sous réserve ; la page reprend alors MOT POUR MOT `ci/mentions.py::TEXTES_VISITE`
+ * (garde de parité : `propositionSyntheseCiCIW300.test.ts`).
+ */
+export const CI_DEVIS_PRELIMINAIRE: TextesCi = {
+  fr: 'Devis préliminaire — les prix pourront être ajustés après la visite technique.',
+  en: 'Preliminary quote — prices may be adjusted after the technical site visit.',
+  ar: 'عرض أولي — يمكن تعديل الأسعار بعد الزيارة التقنية.',
+};
+
+/** CPRW3 — texte du bandeau préliminaire : celui servi (hypothèse `visite`), sinon celui du PDF ; `null` hors C&I. */
+export function bandeauPreliminaireCi(ci: SyntheseCi | null): TextesCi | null {
+  if (!ci) return null;
+  return ci.hypotheses.find((h) => h.cle === 'visite')?.textes ?? CI_DEVIS_PRELIMINAIRE;
+}
+
+// CPRW13 — mots du client pour le rôle d'un poste hors total : ceux du PDF (`i18n_labels.py` `ci_role_*`).
+const ROLES_POSTES_CI: Record<string, TextesCi> = {
+  cable_dc: { fr: 'câble DC', en: 'DC cable', ar: 'كابل التيار المستمر' },
+  cable_ac: { fr: 'câble AC', en: 'AC cable', ar: 'كابل التيار المتردد' },
+  structure_ci: { fr: 'structure de fixation', en: 'mounting structure', ar: 'هيكل التثبيت' },
+  coffret_dc: { fr: 'coffret DC', en: 'DC box', ar: 'علبة التيار المستمر' },
+  coffret_ac: { fr: 'coffret AC', en: 'AC box', ar: 'علبة التيار المتردد' },
+  protection_ac: { fr: 'protection AC', en: 'AC protection', ar: 'حماية التيار المتردد' },
+  onduleur_string_tri: { fr: 'onduleur', en: 'inverter', ar: 'العاكس' },
+  onduleur_string_mono: { fr: 'onduleur', en: 'inverter', ar: 'العاكس' },
+};
+
+// CPRW13 — `i18n_labels.py` `ci_a_chiffrer_hors_total` (le PDF).
+const A_CHIFFRER_HORS_TOTAL: TextesCi = {
+  fr: 'À chiffrer après la visite technique (hors total) : ',
+  en: 'To be priced after the site visit (not in the total): ',
+  ar: 'يُسعَّر بعد الزيارة التقنية (خارج المجموع): ',
+};
+
+/**
+ * CPRW13 — la ligne du PDF sous le bandeau préliminaire (`couverture.py::ligne_postes_hors_total`) :
+ * « À chiffrer après la visite technique (hors total) : câble DC — <article>, structure de fixation ».
+ * Rôle en mots simples, article du catalogue après « — » (non traduit, comme le PDF), un rôle inconnu
+ * garde la désignation, doublons retirés, JAMAIS un montant. `null` sans poste servi.
+ */
+export function lignePostesHorsTotalCi(ci: SyntheseCi | null): TextesCi | null {
+  const postes = ci?.postesHorsTotal ?? [];
+  if (postes.length === 0) return null;
+  const construire = (lg: keyof TextesCi): string => {
+    const vus: string[] = [];
+    for (const p of postes) {
+      const role = p.role ? ROLES_POSTES_CI[p.role]?.[lg] : undefined;
+      const texte = role === undefined ? p.designation : p.catalogue ? `${role} — ${p.designation}` : role;
+      if (texte && !vus.includes(texte)) vus.push(texte);
+    }
+    return vus.join(', ');
+  };
+  return { fr: A_CHIFFRER_HORS_TOTAL.fr + construire('fr'), en: A_CHIFFRER_HORS_TOTAL.en + construire('en'), ar: A_CHIFFRER_HORS_TOTAL.ar + construire('ar') };
 }
 
 const NON_CHIFFREE: TextesCi = {
