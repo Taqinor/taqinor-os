@@ -20,7 +20,9 @@ import itertools
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -33,6 +35,7 @@ from apps.installations.services import (
     chantiers_a_facturer,
 )
 from apps.notifications.models import Notification
+from apps.ventes.selectors import tranche_facturee, tranches_facturees
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -295,3 +298,70 @@ class TestChantiersAFacturerPortee(TestCase):
     def test_proprietaire_voit_sa_tranche(self):
         data = self._get(self.proprio)
         self.assertEqual([d['installation_id'] for d in data], [self.inst.id])
+
+
+class TestAFacturerEnLot(TestCase):
+    """APRF24 (C-APRF-024) — « Chantiers à facturer » lit les factures de TOUS
+    les devis des jalons atteints en lot (`ventes.selectors.tranches_facturees`) :
+    des jalons de plus ne coûtent aucune requête de plus, les tranches dues sont
+    les mêmes, et le verdict du lot égale `tranche_facturee` unitaire (annulées
+    et brouillons compris)."""
+
+    TRANCHES = ('acompte', 'intermediaire', 'solde')
+
+    def setUp(self):
+        self.company = make_company()
+        self.client_obj = make_client(self.company)
+
+    def _jalon(self, motif):
+        """Chantier + devis accepté + jalon atteint (tranche tournante) ;
+        `motif` : None | 'emise' | 'annulee' | 'brouillon'."""
+        n = next(_seq)
+        tranche = self.TRANCHES[n % 3]
+        devis = make_devis(self.company, self.client_obj)
+        inst = make_installation(self.company, self.client_obj, devis)
+        jalon = JalonProjet.objects.create(
+            company=self.company, installation=inst, phase=JalonProjet.Phase.POSE,
+            libelle=f'Pose {n}', tranche_echeancier=tranche, atteint=True)
+        if motif:
+            statut = {'emise': Facture.Statut.EMISE, 'annulee': Facture.Statut.ANNULEE,
+                      'brouillon': Facture.Statut.BROUILLON}[motif]
+            Facture.objects.create(
+                company=self.company, reference=f'FAC-APRF24-{n:04d}', devis=devis,
+                client=self.client_obj, type_facture=tranche, statut=statut)
+        return jalon
+
+    def _creer(self, nb):
+        motifs = (None, 'emise', 'annulee', 'brouillon')
+        return [self._jalon(motifs[i % 4]) for i in range(nb)]
+
+    def _appel(self):
+        with CaptureQueriesContext(connection) as ctx:
+            res = chantiers_a_facturer(self.company)
+        return len(ctx.captured_queries), res
+
+    def test_requetes_identiques_quand_les_jalons_triplent(self):
+        # Même mélange (aucune / émise / annulée / brouillon) aux deux tailles.
+        self._creer(4)
+        n4, _ = self._appel()
+        self._creer(8)
+        n12, res = self._appel()
+        self.assertEqual(n4, n12, (n4, n12))
+        self.assertTrue(res)
+
+    def test_tranches_dues_egales_au_verdict_unitaire(self):
+        jalons = self._creer(8)
+        attendu = sorted(j.id for j in jalons
+                         if not tranche_facturee(j.installation.devis, j.tranche_echeancier))
+        _, res = self._appel()
+        self.assertEqual(sorted(r['jalon_id'] for r in res), attendu)
+        dus = {r['jalon_id'] for r in res}
+        for i, j in enumerate(jalons):  # émise = facturée ; annulée et brouillon restent dus
+            self.assertEqual(j.id in dus, i % 4 != 1, (i, j.id))
+
+    def test_lot_egal_unitaire_par_devis_et_tranche(self):
+        devis = [j.installation.devis for j in self._creer(8)]
+        lot = tranches_facturees(devis)
+        for d in devis:
+            for tranche in self.TRANCHES:
+                self.assertEqual(tranche in lot[d.pk], tranche_facturee(d, tranche), (d.pk, tranche))

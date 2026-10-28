@@ -40,7 +40,8 @@ const config = {
     items: [
       { to: '/ia', label: 'Cockpit IA', icon: <Cpu size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['normal', 'responsable', 'admin'] },
       { to: '/ia/ocr', label: 'OCR', k: 'nav.ocr', icon: <Search size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-      { to: '/ia/agent', label: 'Agent IA', k: 'nav.agent_ia', icon: <Bot size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
+      // AIC8 — l'assistant sert les commerciaux : ouvert à tous les rôles.
+      { to: '/ia/agent', label: 'Agent IA', k: 'nav.agent_ia', icon: <Bot size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['normal', 'responsable', 'admin'] },
       // WIR23 — catalogue + historique/annuler des actions IA, route déjà
       // enregistrée (router/index.jsx), ouverte à tout rôle authentifié.
       { to: '/ia/actions', label: 'Actions IA', k: 'nav.agent_actions', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['normal', 'responsable', 'admin'] },

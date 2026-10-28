@@ -50,6 +50,21 @@ function Champs({ prefixe, champs, valeur, poser, erreur, erreurChamp }) {
   )
 }
 
+// CEC15 (affichage) — apport et frais servis (> 0) et retour de l'offre lu sur
+// `retour_offre_ans` ; omis quand la clé est absente — jamais recalculé ici.
+const positif = (v) => typeof v === 'number' && v > 0
+function LignesOffreCec15({ f }) {
+  const retour = typeof f.retour_offre_ans === 'number' ? f.retour_offre_ans : null
+  if (!positif(f.apport_mad) && !positif(f.frais_mad) && retour === null) return null
+  return (
+    <ul data-testid="eco-ci-financement-offre">
+      {positif(f.apport_mad) && <li>Apport à la signature : {mad(f.apport_mad)}</li>}
+      {positif(f.frais_mad) && <li>Frais de l'offre : {mad(f.frais_mad)}</li>}
+      {retour !== null && <li>Retour sur l'offre : {formatNumber(retour, { decimals: 1 })} ans</li>}
+    </ul>
+  )
+}
+
 export default function VoletInterneEconomieCi({ apercu, eco, setEcoChamp }) {
   const { donnees: d, erreur, erreurChamp } = apercu || {}
   const offre = eco?.offre_financement || null
@@ -90,6 +105,7 @@ export default function VoletInterneEconomieCi({ apercu, eco, setEcoChamp }) {
               {f.taux_annuel_pct != null ? ` Taux écrit : ${formatNumber(f.taux_annuel_pct)} %.` : ''}
             </p>
           )}
+          {f && <LignesOffreCec15 f={f} />}
         </fieldset>
         <fieldset className="grid gap-2">
           <legend className="font-semibold">Offre CSE concurrente</legend>

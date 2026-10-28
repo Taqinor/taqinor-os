@@ -1551,7 +1551,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _corrige=_corrige, _utility=_utility, etude=etude, _bareme_horaire=_regles_2710(devis),
         puissance_kwc=puissance_kwc, roi=roi, savings_model=savings_model,
         savings_model_avec=savings_model_avec,
-        savings_model_sans=savings_model_sans, scenario=scenario)
+        savings_model_sans=savings_model_sans, scenario=scenario, recommended=_regles_2710(devis) and recommended)
 
     # SPL164 — phase E1 : ``conditions_commerciales.delais_validite_et_kit``.
     (_batterie_kwh_total, _batterie_kwh_utile_vendue, _delais,
@@ -2170,7 +2170,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # seuls nouveaux rendus ; niveau 1 ⇒ dit par la 1re clé) ; un devis aux règles courantes ne porte aucune clé.
     data.update({cle: True for cle, pose in (
         ("regles_calcul_origine", not _corrige),
-        ("regles_avant_2710", _mode_ci and _corrige and not _regles_2710(devis))) if pose})
+        ("regles_avant_2710", _corrige and not _regles_2710(devis))) if pose})  # CE2E4 : tout mode
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
     # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une

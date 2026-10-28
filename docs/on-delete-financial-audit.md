@@ -23,7 +23,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/adsengine/models.py::GuardrailConfig.company` | backend/django_core/apps/adsengine/models.py:148 | authentication.Company | CASCADE |
 | `backend/django_core/apps/adsengine/models.py::CreativePolicy.company` | backend/django_core/apps/adsengine/models.py:1210 | authentication.Company | CASCADE |
 | `backend/django_core/apps/adsengine/models.py::BrandKit.company` | backend/django_core/apps/adsengine/models.py:2846 | authentication.Company | CASCADE |
-| `backend/django_core/apps/agent/models.py::AgentActionLog.company` | backend/django_core/apps/agent/models.py:28 | authentication.Company | CASCADE |
+| `backend/django_core/apps/agent/models.py::AgentActionLog.company` | backend/django_core/apps/agent/models.py:30 | authentication.Company | CASCADE |
 | `backend/django_core/apps/audit/models.py::AuditLog.company` | backend/django_core/apps/audit/models.py:64 | authentication.Company | SET_NULL |
 | `backend/django_core/apps/automation/models.py::ModeleMessage.company` | backend/django_core/apps/automation/models.py:191 | authentication.Company | CASCADE |
 | `backend/django_core/apps/automation/models.py::AutomationRule.company` | backend/django_core/apps/automation/models.py:254 | authentication.Company | CASCADE |

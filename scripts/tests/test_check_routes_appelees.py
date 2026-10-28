@@ -72,6 +72,22 @@ class RouteSansAppelantTests(unittest.TestCase):
         self.assertIn(M + ("leads", "<>", "historique"), appels)
         self.assertIn(M + ("objectifs",), appels)
 
+    def test_endpoint_d_action_d_agent_est_un_appelant(self):
+        # AIC30-35 : le relais FastAPI appelle le gabarit `endpoint=` du
+        # catalogue d'actions ; `{id}` devient un joker, hors crm ignore.
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "agent_actions.py"
+            f.write_text(
+                "A = AgentAction(endpoint='/api/django/crm/leads/{id}/resume/')\n"
+                "B = AgentAction(endpoint=\"/api/django/crm/assistant/a-relancer/\")\n"
+                "C = AgentAction(endpoint='/api/django/ventes/devis/')\n",
+                encoding="utf-8")
+            appels = cra.appels_agent([f])
+        self.assertEqual(appels, {M + ("leads", "<>", "resume"),
+                                  M + ("assistant", "a-relancer")})
+        routes = {M + ("leads", "<>", "resume"), M + ("assistant", "a-relancer")}
+        self.assertEqual(cra.routes_sans_appelant(routes, appels), [])
+
     def test_liste_blanche_motivee_une_ligne_par_route(self):
         for cle, raison in cra.A_CORRIGER.items():
             self.assertTrue(cle.startswith("crm/"), cle)

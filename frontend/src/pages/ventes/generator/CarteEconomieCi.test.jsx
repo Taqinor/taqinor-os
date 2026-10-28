@@ -108,6 +108,22 @@ describe('CIQ224 — VoletInterneEconomieCi', () => {
     expect(f).not.toHaveTextContent('999')
   })
 
+  it('CEC15 — apport, frais (> 0) et retour de l’offre servis ; omis sans la clé', () => {
+    const interne = exempleContrat('ventes', 'economie_ci', 'exemple_industriel_mt')
+    const fin = interne.financement
+    const { unmount } = render(<CarteEconomieCi apercu={{ donnees: interne }} eco={ECO_CI_VIDE} setEcoChamp={() => {}} />)
+    const o = screen.getByTestId('eco-ci-financement-offre')
+    expect(o).toHaveTextContent(/Apport à la signature : 180\s000 MAD/)
+    expect(o).not.toHaveTextContent(/Frais de l'offre/)
+    expect(o).toHaveTextContent(`Retour sur l'offre : ${String(fin.retour_offre_ans).replace('.', ',')} ans`)
+    expect(screen.getByTestId('eco-ci-financement')).toHaveTextContent(/écart 8\s529 MAD/)
+    unmount()
+    const sans = { ...fin, apport_mad: 0, frais_mad: 0 }
+    delete sans.retour_offre_ans
+    render(<CarteEconomieCi apercu={{ donnees: { ...interne, financement: sans } }} eco={ECO_CI_VIDE} setEcoChamp={() => {}} />)
+    expect(screen.queryByTestId('eco-ci-financement-offre')).toBeNull()
+  })
+
   it('hors du générateur (aucune saisie possible) : le volet n’est pas rendu', () => {
     render(<CarteEconomieCi apercu={apercu('exemple_industriel_mt')} />)
     expect(screen.queryByTestId('eco-ci-volet-interne')).toBeNull()

@@ -66,7 +66,7 @@ function payload(mode: string, over: Record<string, unknown> = {}): ProposalResp
     roof_image_url: null,
     option_totals: { sans_batterie: 297000, avec_batterie: 0, display_total: 297000, nb_options: 1 },
     accepted: false,
-    mode_kpis: { taux_autoconso: 72.8, taux_couverture: 46.6, economies_annuelles: 24000, payback: 5.2, injection_kwh_an: 1000, injection_dh_an: 900 },
+    mode_kpis: { taux_autoconso: 72.8, taux_couverture: 46.6, economies_annuelles: 24000, payback: 2.6, injection_kwh_an: 1000, injection_dh_an: 900 },
     ...over,
   } as unknown as ProposalResponse;
 }
@@ -95,7 +95,7 @@ describe('CIW300 — syntheseCi (extracteur pur, lecture défensive)', () => {
     expect(ci.energie?.couverturePct).toBe(46.6);
     expect(ci.energie?.definitions.couverture).toContain('couverte');
     expect(ci.argent?.economieAnnee1).toEqual({ ht: 98933.48, ttc: 118717.39 });
-    expect(ci.argent?.retourAns).toBe(3);
+    expect(ci.argent?.retourAns).toBe(2.6); // CE2E2 : le dixième du PDF (mode_kpis.payback), pas l'entier 3
     expect(ci.argent?.tarif?.source).toBe('grille ONEE BT patenté');
     expect(ci.aConfirmer).toHaveLength(1);
   });
@@ -133,7 +133,7 @@ describe('CIW300 — chiffresEconomiePhare lit synthese_ci en C&I', () => {
     expect(r.ecoAvec).not.toBeNull();
     expect(r.ecoSans).toBeNull();
     expect(r.ecoHero).toBe(r.ecoAvec);
-    expect(r.paybackHeroI18n).toEqual({ fr: '3 ans', en: '3 years', ar: '3 سنوات' });
+    expect(r.paybackHeroI18n).toEqual({ fr: '2,6 ans', en: '2.6 years', ar: '2,6 سنوات' });
   });
 
   it('RWEB3 — C&I à deux options : option phare = offre principale servie, pas `quote.recommended`', () => {
@@ -146,7 +146,7 @@ describe('CIW300 — chiffresEconomiePhare lit synthese_ci en C&I', () => {
     const r = chiffresEconomiePhare(payload('commercial', { synthese_ci: { ...SYNTHESE, argent: argent() } }), 'sans_batterie');
     expect(r.ecoHero).toBe(98933.48);
     expect(r.paybackHero).toBe(chiffresEconomiePhare(payload('commercial', { synthese_ci: { ...SYNTHESE, argent: argent() } })).paybackSans);
-    expect(r.paybackHero).toContain('3');
+    expect(r.paybackHero).toContain('2,6');
     const ttc = chiffresEconomiePhare(payload('commercial', { synthese_ci: { ...SYNTHESE, argent: argent({ base: 'ttc' }) } }));
     expect(ttc.ecoHero).toBe(118717.39);
     // jamais la valeur résidentielle 24000

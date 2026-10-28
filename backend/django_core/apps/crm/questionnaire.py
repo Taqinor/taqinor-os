@@ -87,7 +87,10 @@ CHAMPS_PAR_SECTION = {
                 'pompe_actuelle_tension_v', 'pompe_actuelle_phases',
                 # CQST6 (AGV, D-AGR-4) — le forage connu du client évite la
                 # visite du point d'eau avant devis.
-                'profondeur_forage_m', 'debit_forage_m3h'),
+                'profondeur_forage_m', 'debit_forage_m3h',
+                # CQST8 (AGV1) — dépense d'électricité de la pompe, facultative,
+                # écrite seulement pour une alimentation « électrique ».
+                'depense_electricite_pompe_mad_mois'),
     # Sections PHOTO : aucune colonne — la réponse est une pièce jointe.
     'photo_facture': (),
     'photo_compteur': (),
@@ -348,7 +351,7 @@ _POMPAGE_COLONNES_MODELE = ('pompe_hmt_m', 'pompe_actuelle_debit_m3h',
                             'pompage_heures_jour', 'mode_pompe',
                             'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
                             'pompe_actuelle_phases', 'profondeur_forage_m',
-                            'debit_forage_m3h')
+                            'debit_forage_m3h', 'depense_electricite_pompe_mad_mois')
 #: CQST3 — la plaque de la pompe actuelle n'est posée que si le client garde
 #: sa pompe (``mode_pompe`` = existante) : jamais à un client en pompe neuve.
 _POMPAGE_PLAQUE = ('pompe_actuelle_kw', 'pompe_actuelle_tension_v',
@@ -381,6 +384,16 @@ def _remise_a_zero_sans_pompe(lead, champs):
             champs[cle] = None
     if getattr(lead, 'mode_pompe', None) == 'existante':
         champs['mode_pompe'] = 'neuve'
+    return champs
+
+
+def _depense_electrique_seulement(lead, champs):
+    """CQST8 — la dépense d'électricité de la pompe n'est écrite que pour une
+    pompe actuelle « électrique » (alimentation retenue après la garde
+    d'écrasement, sinon celle du lead) ; facultative, jamais dans ``manquantes``."""
+    alim = champs.get('pompe_alim_actuelle') or getattr(lead, 'pompe_alim_actuelle', None)
+    if str(alim or '').strip().lower() != 'electrique':
+        champs.pop('depense_electricite_pompe_mad_mois', None)
     return champs
 
 
@@ -1041,7 +1054,7 @@ def appliquer_section(lien, section, reponses=None, photo=None,
             champs = _sans_ecrasement_equipe(
                 lead, section, champs, prefill_vu, ignorees)
         if section == 'pompage':
-            champs = _remise_a_zero_sans_pompe(lead, champs)
+            champs = _depense_electrique_seulement(lead, _remise_a_zero_sans_pompe(lead, champs))
         if champs:
             # Instantané AVANT écriture : le chatter compare l'ancien au
             # nouveau via le mécanisme existant (activity.log_changes).

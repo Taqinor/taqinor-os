@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import {
   Code2, ChevronDown, CheckCircle2, ShieldQuestion, Check, X, FileDown, MessageCircle,
+  ThumbsUp, ThumbsDown,
 } from 'lucide-react'
 import { Button, buttonVariants, Textarea } from '../../ui'
 import { cn } from '../../lib/cn'
-import { confirmAgentAction, dismissProposal } from './store/iaSlice'
+import { confirmAgentAction, dismissProposal, noterEvenement } from './store/iaSlice'
+import { COMMENTAIRE_MAX, NOTE_NEGATIVE, NOTE_POSITIVE } from './copilotMessages'
 
 /* ENF19 — briques de conversation partagées par le tiroir Copilote
    (features/ia/CopilotPanel.jsx) et l'écran Agent IA (pages/ia/AgentChat.jsx),
@@ -176,6 +179,55 @@ export function MessageActions({ msg, index, confirmingIndex, confirmError, vari
       )}
       {msg.sql_query && <SqlQueryDetails sqlQuery={msg.sql_query} />}
     </>
+  )
+}
+
+// AIC8 — note du commercial sous chaque réponse journalisée (`evenement_id`,
+// AIC6) : 👍 = 1, 👎 et « ça n'a pas répondu » = −1, commentaire facultatif
+// (≤ 200 car.). Une note par événement, modifiable ; après envoi : « Merci ».
+export function NoteReponse({ msg, index }) {
+  const dispatch = useDispatch()
+  const [choix, setChoix] = useState(null)
+  const [commentaire, setCommentaire] = useState('')
+  if (msg?.role !== 'agent' || msg.evenement_id == null) return null
+  const envoyer = (note, texte = null) => {
+    dispatch(noterEvenement({ index, evenementId: msg.evenement_id, note, commentaire: texte }))
+    setChoix(null)
+  }
+  if (choix != null) {
+    return (
+      <div className="mt-2 space-y-1.5" data-testid="note-commentaire">
+        <Textarea
+          rows={2}
+          maxLength={COMMENTAIRE_MAX}
+          value={commentaire}
+          onChange={(e) => setCommentaire(e.target.value)}
+          placeholder="Qu'est-ce qui manquait ? (facultatif)"
+          aria-label="Commentaire sur la réponse"
+        />
+        <Button size="sm" variant="outline" onClick={() => envoyer(NOTE_NEGATIVE, commentaire.trim() || null)}>
+          Envoyer le retour
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground" data-testid="note-reponse">
+      {msg.noteEnvoyee && <span>Merci pour votre retour.</span>}
+      <Button size="sm" variant={msg.note === NOTE_POSITIVE ? 'default' : 'ghost'}
+        aria-label="Réponse utile" aria-pressed={msg.note === NOTE_POSITIVE}
+        onClick={() => envoyer(NOTE_POSITIVE)}>
+        <ThumbsUp className="size-3.5" aria-hidden="true" />
+      </Button>
+      <Button size="sm" variant={msg.note === NOTE_NEGATIVE ? 'default' : 'ghost'}
+        aria-label="Réponse fausse" aria-pressed={msg.note === NOTE_NEGATIVE}
+        onClick={() => setChoix('pouce_bas')}>
+        <ThumbsDown className="size-3.5" aria-hidden="true" />
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setChoix('pas_repondu')}>
+        Ça n&apos;a pas répondu
+      </Button>
+    </div>
   )
 }
 

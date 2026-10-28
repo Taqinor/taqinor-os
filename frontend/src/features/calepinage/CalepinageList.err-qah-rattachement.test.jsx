@@ -16,25 +16,7 @@ import { MemoryRouter } from 'react-router-dom'
    le repli quand le calepinage n'a personne d'assigné en propre.
    ========================================================================== */
 
-const mocks = vi.hoisted(() => ({
-  list: vi.fn(),
-  getLeads: vi.fn(),
-  searchClients: vi.fn(),
-  navigate: vi.fn(),
-}))
-
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom')
-  return { ...actual, useNavigate: () => mocks.navigate }
-})
-
-vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { list: mocks.list } },
-}))
-
-vi.mock('../../api/crmApi', () => ({
-  default: { getLeads: mocks.getLeads, searchClients: mocks.searchClients },
-}))
+import { mocks } from '../../test/calepinageListMocks'
 
 import CalepinageList from './CalepinageList'
 import { exempleContrat } from '../../test/fixtures/contractSamples'

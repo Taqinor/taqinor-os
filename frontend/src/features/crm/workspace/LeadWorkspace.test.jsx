@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
+import { renderLeadWorkspace, echecReseauAutosaveVille } from '../../../test/leadWorkspaceHarness'
 import { LEAD_A, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import crmApi from '../../../api/crmApi'
@@ -105,14 +105,7 @@ describe('LW37 — adversité du moteur (blueprint D2)', () => {
   })
 
   it('échec réseau : le brouillon reste intact + affordance « Réessayer »', async () => {
-    crmApi.updateLead.mockRejectedValueOnce({ response: { status: 503 } })
-    renderEdit()
-    await settled()
-    fireEvent.change(document.querySelector('#lf-ville'), { target: { value: 'Rabat' } })
-    await waitFor(
-      () => expect(screen.getByRole('button', { name: /Réessayer/ })).toBeInTheDocument(),
-      { timeout: 3000 },
-    )
+    await echecReseauAutosaveVille(LEAD_A)
     // Le brouillon n'est jamais perdu : le champ garde la valeur tapée.
     expect(document.querySelector('#lf-ville').value).toBe('Rabat')
   })

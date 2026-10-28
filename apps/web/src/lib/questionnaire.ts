@@ -1040,6 +1040,11 @@ export function buildSectionReponses(
         const phases = cleanEnum(raw.pompe_actuelle_phases, PLAQUE_PHASES_VALUES);
         if (phases) out.pompe_actuelle_phases = phases;
       }
+      // CQSTW — dépense d'électricité de la pompe : seulement pour une alimentation « électrique ».
+      if (alim === 'electrique') {
+        const elec = cleanPositiveNumber(raw.depense_electricite_pompe_mad_mois, 10_000_000);
+        if (elec != null) out.depense_electricite_pompe_mad_mois = elec;
+      }
       break;
     }
     case 'occupation': {
@@ -1112,6 +1117,7 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
     'jours_irrigation_semaine', 'compteur_eau', 'pompe_hmt_m', 'pompe_actuelle_debit_m3h',
     'pompage_heures_jour', 'mode_pompe', 'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
     'pompe_actuelle_phases', 'profondeur_forage_m', 'debit_forage_m3h',
+    'depense_electricite_pompe_mad_mois',
   ],
   equipements: [
     'equip_piscine', 'equip_piscine_pompe_kw', 'equip_voiture_electrique', 'equip_ve_km_semaine',

@@ -426,6 +426,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   const [quantite, setQuantite] = useState('')
   const [note, setNote] = useState('')
   const [transferts, setTransferts] = useState([])
+  const [transfertsTotal, setTransfertsTotal] = useState(null)
   const [newEmp, setNewEmp] = useState('')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -437,8 +438,12 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   const loadEmplacements = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
     stockApi.getEmplacements({ page, page_size: pageSize }).then((r) => r.data))
     .then((rows) => setEmplacements((Array.isArray(rows) ? rows : (rows?.results ?? [])))).catch(() => {})
-  const loadTransferts = () => stockApi.getTransferts({ ordering: '-date' })
-    .then((r) => setTransferts((r.data?.results ?? r.data ?? []).slice(0, 8)))
+  // ENF15 — page 1 VOULUE (les 8 plus récents) : demandée au serveur, total affiché.
+  const loadTransferts = () => stockApi.getTransferts({ ordering: '-date', page: 1, page_size: 8 })
+    .then((r) => {
+      setTransferts((r.data?.results ?? r.data ?? []).slice(0, 8))
+      setTransfertsTotal(r.data?.count ?? null)
+    })
     .catch(() => {})
   const loadSuggestions = () => {
     if (!isAdmin) return
@@ -615,7 +620,10 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
 
         {transferts.length > 0 && (
           <div className="flex flex-col gap-1.5">
-            <h4 className="text-sm font-semibold">Derniers transferts</h4>
+            <h4 className="text-sm font-semibold">
+              Derniers transferts
+              {transfertsTotal > transferts.length && ` (${transferts.length} sur ${transfertsTotal})`}
+            </h4>
             <div className="max-h-44 overflow-auto">
               <MiniTable head={['Produit', 'De → Vers', 'Qté']}>
                 {transferts.map((t) => (

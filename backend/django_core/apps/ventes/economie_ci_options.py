@@ -274,3 +274,109 @@ def motif_tarif_omis(tarif, defaut):
         from apps.ventes.tarif_ci import MENTION_DOMESTIQUE
         return MENTION_DOMESTIQUE
     return defaut
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CEC19 — bande de vraisemblance d'un prix déclaré (décision fondateur
+# 28/10/2026 : k = 3).
+# ═════════════════════════════════════════════════════════════════════════════
+#: Un prix déclaré hors de [grille officielle ÷ k ; grille officielle × k] est
+#: signalé au vendeur (alerte INTERNE, jamais côté client) : faute de virgule
+#: ×10, prix en centimes. Le prix n'est PAS corrigé, seulement signalé.
+K_BANDE_PRIX = 3.0
+CODE_PRIX_HORS_BANDE = 'prix_declare_hors_bande'
+
+
+def _grille_ttc_du_poste(poste, contrat):
+    """Prix TTC publié de la grille officielle pour ce poste, ou None.
+
+    Aucun repère trouvé (contrat inconnu, tranche au-delà de la grille) ⇒
+    None : le poste n'est PAS contrôlé (aucun chiffre inventé, aucune alerte).
+    """
+    from apps.parametres import tarifs_officiels as officiels
+    try:
+        if contrat == 'mt_general':
+            ligne = officiels.MT_GENERAL.get(poste)
+            return _montant(ligne['valeur']) if ligne else None
+        if contrat in ('bt_patente', 'bt_force_motrice') and str(
+                poste).startswith('tranche_'):
+            lignes = officiels.grille_bt(contrat)
+            rang = int(str(poste).split('_', 1)[1]) - 1
+            return _montant(lignes[rang]['valeur']) if 0 <= rang < len(
+                lignes) else None
+    except (ValueError, KeyError, IndexError, TypeError):
+        return None
+    return None
+
+
+def alertes_prix_hors_bande(tarif, k=K_BANDE_PRIX):
+    """Alertes INTERNES (forme de ``economie_ci._alertes_internes``) pour
+    chaque prix DÉCLARÉ hors de [grille ÷ k ; grille × k], nommant le poste
+    et le prix. Seuls les prix déclarés sont contrôlés (origine facture)."""
+    if not isinstance(tarif, dict) or tarif.get('origine') != 'declare_facture':
+        return []
+    alertes = []
+    for entree in tarif.get('tarifs_par_poste') or []:
+        poste = entree.get('poste')
+        declare = _montant(entree.get('tarif_kwh_ttc'))
+        grille = _grille_ttc_du_poste(poste, tarif.get('contrat'))
+        if declare is None or not grille or grille <= 0:
+            continue  # pas de repère officiel : poste non contrôlé
+        if declare < grille / k or declare > grille * k:
+            alertes.append({
+                'code': CODE_PRIX_HORS_BANDE,
+                'message': (
+                    f"Prix déclaré du poste « {poste} » : {declare:g} MAD/kWh "
+                    f"TTC, hors de la bande de vraisemblance (grille "
+                    f"officielle {grille:g} ÷ {k:g} à × {k:g}) — faute de "
+                    f"virgule ou prix en centimes ? À vérifier sur la "
+                    f"facture."),
+                'interne': True})
+    return alertes
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CEC15 — l'apport, les frais et la valeur résiduelle SAISIS d'une offre de
+# financement entrent dans le flux de l'offre (décision fondateur 28/10/2026 :
+# inclure).
+# ═════════════════════════════════════════════════════════════════════════════
+def flux_offre(offre, echeance, duree_mois, economie_annee1):
+    """Flux annuel du client avec l'offre : année 0 = −(apport + frais) ;
+    années 1.. = économie − échéances de l'année (dernière année au prorata
+    des mois restants) ; la valeur résiduelle saisie est payée en fin de
+    durée (levée d'option / dernier loyer — lecture prudente). Champs absents
+    ⇒ 0. Retourne ``{flux: [{annee, flux_mad, cumul_mad}], retour_ans}``."""
+    def _v(cle):
+        v = _montant((offre or {}).get(cle))
+        return v if v and v > 0 else 0.0
+    apport, frais, residuelle = (
+        _v('apport_mad'), _v('frais_mad'), _v('valeur_residuelle_mad'))
+    cumul = -(apport + frais)
+    flux = [{'annee': 0, 'flux_mad': round(cumul, 2),
+             'cumul_mad': round(cumul, 2)}]
+    annees = -(-int(duree_mois) // 12)
+    for a in range(1, annees + 1):
+        mois = min(12, int(duree_mois) - 12 * (a - 1))
+        gain = (economie_annee1 or 0.0) * mois / 12 - echeance * mois
+        if a == annees:
+            gain -= residuelle
+        cumul += gain
+        flux.append({'annee': a, 'flux_mad': round(gain, 2),
+                     'cumul_mad': round(cumul, 2)})
+    return {'flux': flux, 'retour_ans': retour_au_dixieme({'flux': flux})}
+
+
+def cles_flux_offre(offre, echeance, duree_mois, economie_annee1):
+    """Clés ADDITIVES du bloc ``financement`` : ``apport_mad`` et
+    ``frais_mad`` tels que SAISIS sur l'offre (0 si absents — affichés
+    seulement > 0), puis ``flux_offre`` et ``retour_offre_ans`` — omis sans
+    économie an 1 (flux non calculable)."""
+    def _saisi(cle):
+        v = _montant((offre or {}).get(cle))
+        return round(v, 2) if v and v > 0 else 0.0
+    cles = {'apport_mad': _saisi('apport_mad'), 'frais_mad': _saisi('frais_mad')}
+    if economie_annee1 is None:
+        return cles
+    res = flux_offre(offre, echeance, duree_mois, economie_annee1)
+    return {**cles, 'flux_offre': res['flux'],
+            'retour_offre_ans': res['retour_ans']}

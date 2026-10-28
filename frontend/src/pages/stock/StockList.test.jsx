@@ -343,3 +343,20 @@ describe('StockList — annuler un désarchivage (ASTK83)', () => {
     window.confirm.mockRestore()
   })
 })
+
+describe('StockList — derniers transferts : page 1 demandée, total affiché (ENF15)', () => {
+  it('demande les 8 plus récents au serveur et dit combien il y en a en tout', async () => {
+    const recents = Array.from({ length: 8 }, (_, i) => ({
+      id: i + 1, produit_nom: `Produit ${i + 1}`, source_nom: 'Dépôt', destination_nom: 'Van', quantite: 1,
+    }))
+    http.get.mockImplementation(async (url) => (url === '/stock/transferts/'
+      ? { data: { count: 23, next: '/stock/transferts/?page=2', results: recents } }
+      : { data: [] }))
+    renderPage()
+    fireEvent.click(screen.getAllByRole('button', { name: /Transférer/ })[0])
+    expect(await screen.findByText(/Derniers transferts \(8 sur 23\)/)).toBeInTheDocument()
+    expect(http.get).toHaveBeenCalledWith('/stock/transferts/', {
+      params: { ordering: '-date', page: 1, page_size: 8 },
+    })
+  })
+})

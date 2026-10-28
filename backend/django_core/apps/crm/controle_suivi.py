@@ -326,6 +326,28 @@ def etape_en_retard(etape, maintenant=None, *, memo=None, aujourd_hui=None):
                           ouvres, absences) >= 1
 
 
+def jours_de_retard_par_etape(etapes, company, today):
+    """``{id d'étape: jours de retard COMPTÉS}`` pour les étapes échues de
+    ``etapes`` — LA règle ``_jours_comptes`` (jours ouvrés de la société, hors
+    absence déclarée du responsable), lue en lot. Servie à l'assistant (AIC30,
+    ``views_assistant``) : jamais une seconde définition du retard."""
+    from apps.notifications.calendar_utils import jours_ouvres_entre
+
+    from . import cadence_absence
+
+    en_retard = [e for e in etapes if e.due_date and e.due_date < today]
+    if not en_retard:
+        return {}
+    debut = min(e.due_date for e in en_retard) + datetime.timedelta(days=1)
+    ouvres = jours_ouvres_entre(company, debut, today)
+    absences = cadence_absence.couverture(company, debut, today)
+    return {
+        e.pk: _jours_comptes(e.due_date, today, e.lead.owner_id,
+                             ouvres, absences)
+        for e in en_retard
+    }
+
+
 def _compteurs():
     return {'du': 0, A_TEMPS: 0, EN_RETARD: 0, SAUTEES: 0, OUVERT: 0}
 

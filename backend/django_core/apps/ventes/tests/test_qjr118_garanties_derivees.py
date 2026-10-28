@@ -314,3 +314,30 @@ class TestVnt37GarantiesDeLaVente(SimpleTestCase):
         self.assertEqual([x["designation"] for x in g],
                          ["Installation", "Onduleur", "Panneaux",
                           "Performance"])
+
+
+class TestCe2e4GarantieOnduleurParOption(SimpleTestCase):
+    """CE2E4 — boulangerie : Huawei (« Garantie constructeur 10 ans » sur la
+    fiche, ``garantie_mois`` vide) sans batterie, Deye 60 mois avec : une
+    ligne par option, jamais « 5 ans Onduleur » pris sur la Deye."""
+
+    HUAWEI = {'designation': 'Onduleur réseau Huawei 20kW Triphasé',
+              'garantie': 'Garantie constructeur 10 ans', 'garantie_mois': None}
+    DEYE = {'designation': 'Onduleur hybride Deye SUN-20K-SG05LP3',
+            'garantie': '', 'garantie_mois': 60}
+
+    def _onduleurs(self, huawei=None, **extra):
+        d = dict({'deux_options': True, 'sans_items': [huawei or self.HUAWEI],
+                  'avec_items': [self.DEYE]}, **extra)
+        return {w[2]: w[0] for w in theme.warranties_for(d) if 'Onduleur' in w[2]}
+
+    def test_une_ligne_par_option_lue_sur_chaque_fiche(self):
+        self.assertEqual(self._onduleurs(), {'Onduleur (option 1)': '10',
+                                             'Onduleur (option 2)': '5'})
+
+    def test_option_sans_duree_omise_jamais_celle_de_l_autre(self):
+        self.assertEqual(self._onduleurs(huawei=dict(self.HUAWEI, garantie='')),
+                         {'Onduleur (option 2)': '5'})
+
+    def test_devis_envoye_avant_le_27_10_garde_sa_bande(self):
+        self.assertEqual(self._onduleurs(regles_avant_2710=True), {'Onduleur': '5'})

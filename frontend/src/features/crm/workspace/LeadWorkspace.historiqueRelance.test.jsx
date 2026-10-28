@@ -27,15 +27,10 @@ vi.mock('./IdentityRail', () => ({
   },
 }))
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
-    getTags: vi.fn(() => Promise.resolve({ data: [] })),
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-    // Sérialiseur d'ÉCRITURE : PAS de `chatter_recent` dans la réponse.
-    updateLead: vi.fn((id, corps) => Promise.resolve({ data: { id, nom: 'Ali', stage: 'NEW', ...corps } })),
-  },
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace({
+  getLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  // Sérialiseur d'ÉCRITURE : PAS de `chatter_recent` dans la réponse.
+  updateLead: vi.fn((id, corps) => Promise.resolve({ data: { id, nom: 'Ali', stage: 'NEW', ...corps } })),
 }))
 
 installerHooksLeadWorkspace()

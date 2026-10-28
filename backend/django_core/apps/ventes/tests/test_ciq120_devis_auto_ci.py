@@ -453,6 +453,33 @@ def _batterie(co, nom, utile, prix, charge_kw):
     return produit
 
 
+def _semer_batterie(cible):
+    """Hybrides Deye BT/HT, batteries Dyness et disjoncteurs de sortie
+    (attributs posés sur ``cible`` : classe de test ou instance)."""
+    # Prix SEEDÉS (seed_catalogue, TTC → HT 20 %) ; PowerBrick : prix de TEST.
+    co = cible.co
+    cible.h10 = _hybride(co, 'Onduleur hybride Deye SUN-10K-SG05LP3', '10', '23333.33',
+                         '40', '60', '10')
+    cible.h15 = _hybride(co, 'Onduleur hybride Deye SUN-15K-SG05LP3', '15', '30000',
+                         '40', '60', '14.34')
+    cible.h20 = _hybride(co, 'Onduleur hybride Deye SUN-20K-SG05LP3', '20', '40000',
+                         '40', '60', '17.92')
+    cible.hv = _hybride(co, 'Onduleur hybride Deye SUN-30K-SG02HP3', '30', '20000',
+                        '160', '700', '30')
+    cible.b5 = _batterie(co, 'Batterie Dyness 5 kWh', '4.60', '11666.67', '3.84')
+    cible.b10 = _batterie(co, 'Batterie Dyness 10 kWh', '9.22', '25000', '5.12')
+    cible.b16 = _batterie(co, 'Batterie Dyness PowerBrick SC 16 kWh', '15.27', '40000',
+                          '7.17')
+    # Disjoncteurs de sortie des hybrides (calibres 16 / 20 / 25 / 32 / 40 A 4P).
+    for calibre in (16, 20, 25, 32, 40):
+        disj = Produit.objects.create(
+            company=co, nom='Disjoncteur AC %d A 4P' % calibre, prix_vente=Decimal('400'),
+            prix_achat=Decimal('100'), role_ci='protection_ac')
+        FicheTechnique.objects.create(
+            company=co, produit=disj, type_fiche='protection', prot_type='disjoncteur',
+            prot_cote='ac', prot_calibre_a=calibre, prot_poles=4)
+
+
 class RefusConsigneVendeurCorc3Tests(_Base):
     """CORC3 (27/10/2026) — un lead sans contrat d'électricité : le refus
     nomme le champ du lead et donne une CONSIGNE au vendeur, jamais le
@@ -477,27 +504,7 @@ class OptionBatterieCITests(_Base):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        # Prix SEEDÉS (seed_catalogue, TTC → HT 20 %) ; PowerBrick : prix de TEST.
-        cls.h10 = _hybride(cls.co, 'Onduleur hybride Deye SUN-10K-SG05LP3', '10', '23333.33',
-                           '40', '60', '10')
-        cls.h15 = _hybride(cls.co, 'Onduleur hybride Deye SUN-15K-SG05LP3', '15', '30000',
-                           '40', '60', '14.34')
-        cls.h20 = _hybride(cls.co, 'Onduleur hybride Deye SUN-20K-SG05LP3', '20', '40000',
-                           '40', '60', '17.92')
-        cls.hv = _hybride(cls.co, 'Onduleur hybride Deye SUN-30K-SG02HP3', '30', '20000',
-                          '160', '700', '30')
-        cls.b5 = _batterie(cls.co, 'Batterie Dyness 5 kWh', '4.60', '11666.67', '3.84')
-        cls.b10 = _batterie(cls.co, 'Batterie Dyness 10 kWh', '9.22', '25000', '5.12')
-        cls.b16 = _batterie(cls.co, 'Batterie Dyness PowerBrick SC 16 kWh', '15.27', '40000',
-                            '7.17')
-        # Disjoncteurs de sortie des hybrides (calibres 16 / 20 / 25 / 32 / 40 A 4P).
-        for calibre in (16, 20, 25, 32, 40):
-            disj = Produit.objects.create(
-                company=cls.co, nom='Disjoncteur AC %d A 4P' % calibre, prix_vente=Decimal('400'),
-                prix_achat=Decimal('100'), role_ci='protection_ac')
-            FicheTechnique.objects.create(
-                company=cls.co, produit=disj, type_fiche='protection', prot_type='disjoncteur',
-                prot_cote='ac', prot_calibre_a=calibre, prot_poles=4)
+        _semer_batterie(cls)
 
     def _boulangerie(self, **kw):
         kw.setdefault('conso_mensuelle_kwh', Decimal('6000'))
@@ -651,8 +658,23 @@ class ReponseAutoALEA51Tests(_Base):
             bloc = economie_ci_pour_devis(devis, self.co)
         self.assertEqual(rep.data['economie_an_1_ht'],
                          (bloc.get('economie_annee1') or {}).get('total_mad'))
-        self.assertEqual(rep.data['retour_ans'],
-                         (bloc.get('indicateurs') or {}).get('retour_ans'))
+        # CE2E3 — le retour au dixième du PDF (CPDF7), plus l'entier servi.
+        from apps.ventes.quote_engine.ci.couverture import retour_dixieme
+        self.assertEqual(rep.data['retour_ans'], retour_dixieme(
+            bloc, (bloc.get('indicateurs') or {}).get('retour_ans')))
+
+    def test_retour_ans_egal_au_retour_imprime_du_pdf(self):
+        """CE2E3 — la bannière dit le retour au dixième que le PDF imprime
+        (``chiffres_cles.payback_ans``), jamais l'entier de l'indicateur."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.ci.synthese import chiffres_cles, synthese_ci
+        rep = self._post(self._lead(conso_mensuelle_kwh=Decimal('15000')))
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            imprime = chiffres_cles(synthese_ci(build_quote_data(devis)))['payback_ans']
+        self.assertIsNotNone(imprime)
+        self.assertEqual(rep.data['retour_ans'], imprime)
 
     def test_rejeu_200_porte_les_memes_champs(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
@@ -997,6 +1019,37 @@ class RevisionApresVisiteCorc2Tests(_Base):
         self._visite(lead)
         apres = puissances_etude_horaire(self._reviser(devis)['devis'])
         self.assertEqual(apres, avant)
+
+    def test_avec_seule_taille_gardee(self):
+        """CORC10 — un devis « avec batterie » SEULE est recomposé avec les
+        mesures à la taille de SES lignes (panneaux ajoutés pour la batterie
+        compris) et avec sa banque, jamais redimensionné en offre réseau."""
+        from apps.ventes.domain.etudes import puissances_etude_horaire
+        _semer_batterie(self)
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), batterie_souhaitee='avec',
+                          categorie_commerciale='boulangerie',
+                          jours_ouverture=list(range(1, 8)), heure_debut=7, heure_fin=21,
+                          surface_toiture_m2=Decimal('200'))
+        devis = self._auto(lead)
+        self.assertEqual(devis.etude_params.get('scenario'), 'Avec batterie')
+        batteries = {self.b5.id, self.b10.id, self.b16.id}
+        banque_avant = sorted(devis.lignes.filter(produit_id__in=batteries)
+                              .values_list('produit_id', 'quantite'))
+        avant = puissances_etude_horaire(devis)
+        ac_avant = self._quantite(devis, 'Câble AC')
+        self._visite(lead)
+        resultat = self._reviser(devis)
+        self.assertFalse(resultat['cree'])
+        self.assertEqual(puissances_etude_horaire(resultat['devis']), avant)
+        self.assertNotEqual(self._quantite(resultat['devis'], 'Câble AC'), ac_avant)
+        # Persistance : le devis relu porte les mêmes lignes et le même kWc.
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(puissances_etude_horaire(relu), avant)
+        self.assertEqual(relu.etude_params.get('scenario'), 'Avec batterie')
+        self.assertEqual(sorted(relu.lignes.filter(produit_id__in=batteries)
+                                .values_list('produit_id', 'quantite')), banque_avant)
+        self.assertNotIn(self.onduleur.id, set(relu.lignes.values_list('produit_id', flat=True)))
+        self.assertFalse(relu.lignes.exclude(variante='').exists())
 
     def test_refus_apres_revision_rien_ecrit(self):
         # Fable pré-merge : un refus (ici prestations non réglées) après la

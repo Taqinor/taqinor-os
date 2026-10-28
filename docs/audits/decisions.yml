@@ -2645,3 +2645,29 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — session L3 AGC"
     taches: [AGC4]
+
+  - id: D-CEC-19
+    question: "C&I : bande de vraisemblance d'un prix d'électricité déclaré avant alerte interne au vendeur (faute de virgule ×10, centimes) ?"
+    options:
+      - cle: a
+        texte: "×3 de part et d'autre de la grille officielle"
+      - cle: b
+        texte: "×2 de part et d'autre"
+      - cle: c
+        texte: "×5 de part et d'autre"
+    reponse: a
+    date: "2026-10-28"
+    source: "AskUserQuestion, session all-plans-w1 (Reda)"
+    taches: [CEC19]
+
+  - id: D-CEC-15
+    question: "C&I : l'apport, les frais et la valeur résiduelle saisis d'une offre de financement entrent-ils dans le flux imprimé ?"
+    options:
+      - cle: a
+        texte: "les porter dans le flux de l'offre (écart et retour vrais à l'offre)"
+      - cle: b
+        texte: "les ignorer et le dire par une omission nommée"
+    reponse: a
+    date: "2026-10-28"
+    source: "AskUserQuestion, session all-plans-w1 (Reda)"
+    taches: [CEC15]

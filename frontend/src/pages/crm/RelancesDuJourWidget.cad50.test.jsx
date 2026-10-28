@@ -21,6 +21,7 @@ vi.mock('../../api/crmApi', async () => (await import('../../test/cadenceFriseMo
 vi.mock('../../lib/toast', () => ({ toastError: vi.fn() }))
 
 import crmApi from '../../api/crmApi'
+import { arreterCadenceAvecMotif } from '../../test/arreterCadenceMotif'
 
 beforeEach(() => {
   crmApi.getRelanceEtapesDues.mockResolvedValue({ data: { count: 1, results: [PREMIERE] } })
@@ -33,18 +34,7 @@ describe('RelancesDuJourWidget — CAD50 (« Annuler »/« Arrêter » hors fich
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Arrêter la cadence' }))
-    const confirmer = screen.getByRole('button', { name: 'Confirmer' })
-    expect(confirmer).toBeDisabled()
-
-    fireEvent.change(screen.getByTestId('cad50-arreter-motif'), { target: { value: 'Client injoignable' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-
-    await waitFor(() => expect(crmApi.arreterCadence).toHaveBeenCalledWith(
-      PREMIERE.lead, { motif: 'Client injoignable' },
-    ))
-    // Referme sur succès.
-    await waitFor(() => expect(screen.queryByTestId('cad50-arreter-motif')).not.toBeInTheDocument())
+    await arreterCadenceAvecMotif(crmApi, PREMIERE.lead)
   })
 
   it('une touche marquée « Fait » quitte la liste et rejoint « Annuler », qui appelle crmApi.annulerRelanceEtape', async () => {
