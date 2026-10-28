@@ -461,7 +461,7 @@ describe('CPRW17 — services C&I', () => {
   });
   it('O&M souscrit avec prix servi : prix HT, pas de « non inclus »', () => {
     const l = servicesCi(svc({ om_option: { statut: 'souscrit', libelle: 'X', lignes: [{ designation: 'X', total_ht: 12000, total_ttc: 14400 }] } }))!;
-    expect(l.lignes[0]!.fr).toContain('12 000 MAD HT');
+    expect(l.lignes[0]!.fr).toContain('12 000,00 MAD HT');
     expect(l.lignes[0]!.fr).not.toContain('non inclus');
   });
   it('suivi : « inclus » sans délai (jamais 0 h), délai seulement s\'il est servi', () => {

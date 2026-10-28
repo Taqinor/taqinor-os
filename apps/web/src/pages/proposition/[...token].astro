@@ -29,9 +29,10 @@ import SectionAgricole from '../../components/proposition/agricole/SectionAgrico
 import GarantiesAgricoles from '../../components/proposition/agricole/GarantiesAgricoles.astro';
 import GarantiesCi from '../../components/proposition/ci/GarantiesCi.astro';
 import EcheancierCi from '../../components/proposition/ci/EcheancierCi.astro';
+import FinancementCi from '../../components/proposition/ci/FinancementCi.astro';
 import ServicesCi from '../../components/proposition/ci/ServicesCi.astro';
 import ComparaisonBatterieCi from '../../components/proposition/ci/ComparaisonBatterieCi.astro';
-import { nomSocieteEmettrice, servicesCi } from '../../components/proposition/ci/blocsCi';
+import { financementCi, nomSocieteEmettrice, servicesCi } from '../../components/proposition/ci/blocsCi';
 // (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
 // réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
 // et la décision fondateur du jour bannit tout avis/étoile de cette page.
@@ -6106,6 +6107,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
 
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
       {isAutoconso && ci && ci.echeancier.length > 0 && (<EcheancierCi {ci} />)}
+      {isAutoconso && ci && financementCi(ci) && (<FinancementCi {ci} />)}
       {installMode === 'industriel' && <span id="achats" aria-hidden="true"></span>}
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8" data-track-section="signature">
         <div class="cine-card rounded-2xl p-6 sm:p-8">

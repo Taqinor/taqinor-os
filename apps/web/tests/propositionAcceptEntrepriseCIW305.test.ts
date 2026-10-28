@@ -16,7 +16,7 @@ import {
   signatureEntrepriseRequise,
   type SignFormState,
 } from '../src/lib/proposition';
-import { entrepriseNettoyee, estIceDivergent, normaliserIce, validerEntreprise } from '../src/lib/propositionB2b';
+import { entrepriseNettoyee, estIceDivergent, messageEntreprise, normaliserIce, validerEntreprise } from '../src/lib/propositionB2b';
 import { lirePageProposition } from './astroBlocsHelper';
 
 const ENT3 = { raison_sociale: 'Hôtel Exemple SARL', signataire_qualite: 'Directeur général', ice: '000000000000000' };
@@ -317,5 +317,19 @@ describe('CPRW19 — valeursInitialesEntreprise / installerPrefillEntreprise', (
     expect(champs['#sign-ice']!.value).toBe('999');
     expect(champs['#sign-qualite']!.placeholder).toBe('');
     installerPrefillEntreprise({ querySelector: () => null } as unknown as ParentNode, valeursInitialesEntreprise(ent));
+  });
+});
+
+// CPRW26 (28/10/2026) — messageEntreprise : le message dans la langue courante.
+describe('CPRW26 — messageEntreprise', () => {
+  const v = { error: 'ICE invalide', errorEn: 'Invalid ICE', errorAr: 'ICE غير صالح' };
+  it('renvoie errorEn / errorAr / error selon la langue', () => {
+    expect(messageEntreprise(v, 'fr')).toBe('ICE invalide');
+    expect(messageEntreprise(v, 'en')).toBe('Invalid ICE');
+    expect(messageEntreprise(v, 'ar')).toBe('ICE غير صالح');
+  });
+  it('repli FR quand la traduction manque', () => {
+    expect(messageEntreprise({ error: 'ICE invalide', errorEn: '', errorAr: '' }, 'en')).toBe('ICE invalide');
+    expect(messageEntreprise({ error: 'ICE invalide' }, 'ar')).toBe('ICE invalide');
   });
 });
