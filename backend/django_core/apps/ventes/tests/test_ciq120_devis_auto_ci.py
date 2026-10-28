@@ -560,8 +560,23 @@ class ReponseAutoALEA51Tests(_Base):
             bloc = economie_ci_pour_devis(devis, self.co)
         self.assertEqual(rep.data['economie_an_1_ht'],
                          (bloc.get('economie_annee1') or {}).get('total_mad'))
-        self.assertEqual(rep.data['retour_ans'],
-                         (bloc.get('indicateurs') or {}).get('retour_ans'))
+        # CE2E3 — le retour au dixième du PDF (CPDF7), plus l'entier servi.
+        from apps.ventes.quote_engine.ci.couverture import retour_dixieme
+        self.assertEqual(rep.data['retour_ans'], retour_dixieme(
+            bloc, (bloc.get('indicateurs') or {}).get('retour_ans')))
+
+    def test_retour_ans_egal_au_retour_imprime_du_pdf(self):
+        """CE2E3 — la bannière dit le retour au dixième que le PDF imprime
+        (``chiffres_cles.payback_ans``), jamais l'entier de l'indicateur."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.ci.synthese import chiffres_cles, synthese_ci
+        rep = self._post(self._lead(conso_mensuelle_kwh=Decimal('15000')))
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            imprime = chiffres_cles(synthese_ci(build_quote_data(devis)))['payback_ans']
+        self.assertIsNotNone(imprime)
+        self.assertEqual(rep.data['retour_ans'], imprime)
 
     def test_rejeu_200_porte_les_memes_champs(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
