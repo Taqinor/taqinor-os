@@ -168,8 +168,11 @@ class AcceptationNPlus1Tests(TestCase):
         #    le comportement d'avant le correctif, mesuré dans la même course.
         _hash_reel = DevisSignature.compute_content_hash
 
-        def _hash_sans_lignes(devis, lignes=None):
-            return _hash_reel(devis)
+        def _hash_sans_lignes(devis, lignes=None, **autres):
+            # Seul ``lignes`` est neutralisé : ``figures`` (sceau C&I) passe tel
+            # quel — sinon la re-vérification du sceau par la tâche « PDF
+            # signé » échouerait ici et fausserait la mesure d'« avant ».
+            return _hash_reel(devis, **autres)
 
         _totaux_reel = options_utils.option_totaux
 
