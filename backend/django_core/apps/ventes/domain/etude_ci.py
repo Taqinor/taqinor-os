@@ -34,6 +34,7 @@ import math
 from decimal import Decimal
 
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, option_avec_de_l_etude
+from .regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
 
 logger = logging.getLogger(__name__)
 
@@ -1391,7 +1392,6 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         composition = _composition_prix_manquants(resultat)
     # Fondateur 26/10/2026 — l'option « avec batterie » (hybrides BT + banque).
     # CEC1 (O&M hors an 0) est une règle du 27/10 : un devis envoyé ≤ 2 recalculé la garde.
-    from .regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
     avec = option_avec_de_l_etude(
         catalogue, None if onduleurs_imposes else evaluation, choix=res.valeur('batterie_souhaitee'),
         lead=lead, charge=jours_types, production=production_pour_bilan(production), tension=tension,
