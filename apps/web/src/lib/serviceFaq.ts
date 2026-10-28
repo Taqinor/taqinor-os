@@ -316,16 +316,16 @@ const POMPAGE: Record<Locale, ServiceCopy> = {
       'Le prix suit le champ photovoltaïque et la pompe, dimensionnés sur quatre mesures relevées sur place : le débit visé, la HMT, la profondeur du forage et les besoins en eau de la culture. Sans ces quatre chiffres, nous ne pouvons avancer aucun ordre de grandeur — le calcul se fait toujours à l’étude, jamais sur une moyenne nationale.',
     inclusQ: 'Qu’est-ce qui est inclus dans un système de pompage solaire ?',
     inclusA:
-      'Le champ photovoltaïque et son variateur — dimensionnés sur le débit, la HMT et les besoins en eau —, le même matériel tier-1 que nos toitures, et le dossier technique. Le pompage solaire ne comprend ni onduleur ni batterie : la pompe tourne au fil du soleil, l’eau se stocke dans le bassin, pas dans une batterie.',
+      'Le champ photovoltaïque et son variateur — dimensionnés sur le débit, la HMT et les besoins en eau —, du matériel tier-1, et le dossier technique. Le pompage solaire ne comprend ni onduleur ni batterie : la pompe tourne au fil du soleil, l’eau se stocke dans le bassin, pas dans une batterie.',
     exclusQ: 'Qu’est-ce qui n’est pas couvert par la garantie ?',
     exclusA:
-      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure et l’usure normale au-delà des seuils garantis — la même règle générique que pour nos toitures résidentielles et professionnelles. Aucun onduleur ni aucune batterie n’est concerné ici, ce service n’en pose pas.',
+      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure et l’usure normale au-delà des seuils garantis — la même règle générique que pour nos installations résidentielles et professionnelles. Aucun onduleur ni aucune batterie n’est concerné ici, ce service n’en pose pas.',
     delaisQ: 'Quel est le délai entre le relevé du forage et la mise en service ?',
     delaisA:
       'Le relevé des quatre mesures (débit, HMT, profondeur du forage, besoins en eau) précède tout chiffrage : sans elles, nous ne dimensionnons rien. Une fois ces mesures en main, le système se calcule et le devis suit le même parcours que pour un site professionnel — diagnostic, échange direct, puis étude complète.',
     garantiesQ: 'Quelles garanties couvrent un système de pompage solaire ?',
     garantiesA:
-      'Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % de la puissance initiale à 30 ans) — le même matériel tier-1 que nos toitures. Installation et main-d’œuvre Taqinor : 2 ans. Aucune garantie onduleur ou batterie n’est listée ici : ce service ne comprend ni l’un ni l’autre.',
+      'Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % de la puissance initiale à 30 ans) — du matériel tier-1. Installation et main-d’œuvre Taqinor : 2 ans. Aucune garantie onduleur ou batterie n’est listée ici : ce service ne comprend ni l’un ni l’autre.',
   },
   en: {
     entretienQ: 'Does a solar pumping system need maintenance?',
@@ -336,16 +336,16 @@ const POMPAGE: Record<Locale, ServiceCopy> = {
       'The price follows the photovoltaic array and the pump, sized on four measurements taken on site: the target flow rate, the total dynamic head, the borehole depth and the crop’s water needs. Without those four figures we cannot give any order of magnitude — the calculation is always done at the assessment stage, never from a national average.',
     inclusQ: 'What is included in a solar pumping system?',
     inclusA:
-      'The photovoltaic array and its variable-speed drive — sized on flow rate, head and water needs —, the same tier-1 equipment as our roofs, and the technical file. Solar pumping includes neither an inverter nor a battery: the pump runs with the sun, and the water is stored in the reservoir, not in a battery.',
+      'The photovoltaic array and its variable-speed drive — sized on flow rate, head and water needs —, tier-1 equipment, and the technical file. Solar pumping includes neither an inverter nor a battery: the pump runs with the sun, and the water is stored in the reservoir, not in a battery.',
     exclusQ: 'What is not covered by the warranty?',
     exclusA:
-      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event and normal wear beyond the guaranteed thresholds — the same generic rule as for our residential and business roofs. No inverter or battery is concerned here, as this service does not fit either.',
+      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event and normal wear beyond the guaranteed thresholds — the same generic rule as for our residential and business installations. No inverter or battery is concerned here, as this service does not fit either.',
     delaisQ: 'What is the timeline from the borehole survey to commissioning?',
     delaisA:
       'Surveying the four measurements (flow rate, head, borehole depth, water needs) comes before any costing: without them, we size nothing. Once those measurements are in hand, the system is calculated and the quote follows the same path as a business site — assessment, direct exchange, then full study.',
     garantiesQ: 'What warranties cover a solar pumping system?',
     garantiesA:
-      'Panels: 12 years product and 30 years linear performance (≥ 87.4 % of initial power at 30 years) — the same tier-1 equipment as our roofs. Taqinor installation and labour: 2 years. No inverter or battery warranty is listed here: this service includes neither.',
+      'Panels: 12 years product and 30 years linear performance (≥ 87.4 % of initial power at 30 years) — tier-1 equipment. Taqinor installation and labour: 2 years. No inverter or battery warranty is listed here: this service includes neither.',
   },
   ar: {
     entretienQ: 'هل يحتاج نظام الضخ الشمسي إلى صيانة؟',
@@ -356,16 +356,16 @@ const POMPAGE: Record<Locale, ServiceCopy> = {
       'يتبع الثمن الحقل الكهروضوئي والمضخة، المُحدَّدين المقاس على أربع قياسات تُؤخذ في الموقع: التدفق المستهدف، الارتفاع المانومتري الكلي، عمق البئر واحتياجات المحصول من الماء. دون هذه الأرقام الأربعة، لا يمكننا تقديم أي أمر مقدار — الحساب يتم دائماً عند الدراسة، لا انطلاقاً من متوسط وطني.',
     inclusQ: 'ما الذي يُدرَج ضمن نظام ضخ شمسي؟',
     inclusA:
-      'الحقل الكهروضوئي ومُغيِّره — مُحدَّدَين المقاس على التدفق والارتفاع المانومتري واحتياجات الماء —، نفس عتاد الفئة الأولى كأسطحنا، والملف التقني. لا يشمل الضخ الشمسي لا عاكساً ولا بطارية: تعمل المضخة على إيقاع الشمس، ويُخزَّن الماء في الخزان، لا في بطارية.',
+      'الحقل الكهروضوئي ومُغيِّره — مُحدَّدَين المقاس على التدفق والارتفاع المانومتري واحتياجات الماء —، عتاد من الفئة الأولى، والملف التقني. لا يشمل الضخ الشمسي لا عاكساً ولا بطارية: تعمل المضخة على إيقاع الشمس، ويُخزَّن الماء في الخزان، لا في بطارية.',
     exclusQ: 'ما الذي لا يُغطّيه الضمان؟',
     exclusA:
-      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة والتآكل العادي بما يتجاوز العتبات المضمونة — نفس القاعدة العامة كأسطحنا السكنية والمهنية. لا يخصّ الأمر هنا أي عاكس أو بطارية، لأن هذه الخدمة لا تشملهما.',
+      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة والتآكل العادي بما يتجاوز العتبات المضمونة — نفس القاعدة العامة لتركيباتنا السكنية والمهنية. لا يخصّ الأمر هنا أي عاكس أو بطارية، لأن هذه الخدمة لا تشملهما.',
     delaisQ: 'ما الأجل بين معاينة البئر والتشغيل الفعلي؟',
     delaisA:
       'معاينة القياسات الأربعة (التدفق، الارتفاع المانومتري، عمق البئر، احتياجات الماء) تسبق أي تسعير: دونها، لا نُحدِّد مقاس أي شيء. بمجرد توفّر هذه القياسات، يُحسب النظام ويتّبع الثمن نفس مسار الموقع المهني — تشخيص، تواصل مباشر، ثم دراسة كاملة.',
     garantiesQ: 'ما الضمانات التي تُغطّي نظام ضخ شمسي؟',
     garantiesA:
-      'الألواح: 12 سنة على المنتج و30 سنة على الأداء الخطي (≥ 87.4 % من القدرة الأولية عند 30 سنة) — نفس عتاد الفئة الأولى كأسطحنا. التركيب واليد العاملة لتاكينور: سنتان. لا ضمان عاكس أو بطارية مُدرَج هنا: هذه الخدمة لا تشمل أياً منهما.',
+      'الألواح: 12 سنة على المنتج و30 سنة على الأداء الخطي (≥ 87.4 % من القدرة الأولية عند 30 سنة) — عتاد من الفئة الأولى. التركيب واليد العاملة لتاكينور: سنتان. لا ضمان عاكس أو بطارية مُدرَج هنا: هذه الخدمة لا تشمل أياً منهما.',
   },
 };
 

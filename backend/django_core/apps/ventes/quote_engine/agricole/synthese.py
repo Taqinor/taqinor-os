@@ -252,6 +252,11 @@ def _estimation(etude):
     ``production.mode`` / ``source_irradiation``) ; toute autre origine
     (débit déclaré, repli plat, aucune production) est une estimation."""
     production = _dict(etude.get("production"))
+    # AMOT65 (D-AMOT-6 = a) — quand le noyau sert ses ``etiquettes`` (AGM8),
+    # elles FONT foi : une courbe calculée par similitude (P ∝ n³) ou sans
+    # rendement publié est une estimation, même sur PVGIS.
+    if "etiquettes" in production:
+        return bool(production.get("etiquettes"))
     return not (production.get("mode") == "courbe"
                 and production.get("source_irradiation") == "pvgis")
 
@@ -343,8 +348,11 @@ CODES_NOTES_CLIENT = {
     "pvgis_indisponible": "agr_note_irradiation_repli",
     "plafond_forage": "agr_note_plafond_forage",
 }
-_NOTES_RENDEMENT = {"pompe.fiche": "agr_note_rendement_pompe",
-                    "variateur.fiche": "agr_note_rendement_variateur"}
+# AGC1 (rien d'incertain imprimé, ci-decisions-2610) — « rendement non publié
+# … borne haute / rendement prudent » reste une alerte VENDEUR : le client lit
+# seulement « estimation » sous le m³/jour (AMOT65, étiquettes du noyau). Les
+# clés i18n restent au catalogue (anciens rendus, liste figée des libellés).
+_NOTES_RENDEMENT = {}
 
 
 def _fr_nombre(v, dec=2):
@@ -572,11 +580,14 @@ def _non_inclus(etude, items):
 
 
 def _mode_pompe(etude, items):
-    mode = etude.get("mode_pompe")
+    mode = _resolue(etude, etude.get("mode_pompe"), "mode_pompe")
     if mode in ("neuve", "existante"):
         return mode
     # Sans saisie explicite, une ligne pompe dans le devis veut dire « pompe
     # neuve fournie » (D-AGR-7) ; sans ligne pompe, on ne devine rien.
+    # AGC9 — le mode étudié est persisté (``entrees_pompage.mode_pompe``, lu
+    # plus haut). Une plaque seule ne prouve rien (critique R4) : un lead qui
+    # a relevé sa pompe actuelle peut recevoir un devis de pompe NEUVE.
     return "neuve" if _item_pompe(items) is not None else None
 
 
@@ -594,6 +605,22 @@ def _bloc_economies(bloc):
                       else MOTIF_ECONOMIES_ABSENTES)
     return {cle: valeur for cle, valeur in bloc.items()
             if cle not in CLES_INTERNES_AGR3}, None
+
+
+def _depense_declaree(bloc):
+    """AGC15 (D-AGC-6, contrat AGC14) — ``{annuelle_mad}`` : la seule dépense
+    actuelle DÉCLARÉE (``depense_actuelle.annuelle_mad`` du bloc AGR3,
+    recopiée) quand le bloc argent n'est pas publiable mais calculé ; None
+    sans montant ou sur des mois d'irrigation du calendrier non confirmés
+    (AGQ18 : pas une déclaration). Jamais une économie."""
+    from apps.ventes.economie_pompage import MOTIF_MOIS_CALENDRIER
+    bloc = _dict(bloc)
+    annuelle = _num(_dict(bloc.get("depense_actuelle")).get("annuelle_mad"))
+    if (bloc.get("statut") != "calcule" or not annuelle
+            or MOTIF_MOIS_CALENDRIER in (bloc.get("motifs_non_publiable")
+                                         or [])):
+        return None
+    return {"annuelle_mad": annuelle}
 
 
 def _energie_actuelle(etude):
@@ -741,6 +768,9 @@ def synthese_agricole(data):
         synthese["economies"] = economies
     else:
         omissions.append({"bloc": "economies", "motif": motif})
+        depense = _depense_declaree(data.get("_economie_pompage"))
+        if depense is not None:
+            synthese["depense_declaree"] = depense
     energie = _energie_actuelle(etude)
     if energie is not None:
         synthese["energie_actuelle"] = energie
