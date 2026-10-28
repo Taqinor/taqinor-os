@@ -1282,7 +1282,8 @@
       "comptage": {
         "type_compteur": "électronique triphasé",
         "niveau_tension_constate": "bt",
-        "puissance_souscrite_kva_constatee": null
+        "puissance_souscrite_kva_constatee": null,
+        "phases": null
       },
       "cheminement": {
         "trajets": [
@@ -1476,7 +1477,8 @@
       "comptage": {
         "type_compteur": "comptage MT",
         "niveau_tension_constate": "mt",
-        "puissance_souscrite_kva_constatee": 250.0
+        "puissance_souscrite_kva_constatee": 250.0,
+        "phases": "triphase"
       },
       "cheminement": {
         "trajets": [
@@ -1726,7 +1728,8 @@
       "comptage": {
         "type_compteur": "électronique triphasé",
         "niveau_tension_constate": "bt",
-        "puissance_souscrite_kva_constatee": 36.0
+        "puissance_souscrite_kva_constatee": 36.0,
+        "phases": "triphase"
       }
     },
     "declare": {
