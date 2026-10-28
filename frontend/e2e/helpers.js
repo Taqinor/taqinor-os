@@ -501,6 +501,28 @@ export async function retirerLignesPrixARenseigner(page) {
   return cles.length
 }
 
+/** CAD177 — l'irradiation d'un devis agricole ne vient que du SITE du lead
+ *  (AGQ26 : ville/GPS du lead, jamais inventés) : choisi par un client seul, le
+ *  champ PV n'est pas dimensionné et Auto-remplir est REFUSÉ, à raison
+ *  (« kit incomplet … Irradiation du site inconnue », nocturne 40664182387).
+ *  Chaque passe crée donc SON lead agricole dans une ville de la table PVGIS de
+ *  référence (aucun appel réseau) et ouvre le générateur depuis lui, stock
+ *  chargé et lead appliqué (`#gen-tel` = téléphone du lead), marché Agricole. */
+export async function ouvrirGenerateurDepuisLeadAgricole(page, request, prefixe) {
+  const lead = await lireJson(await request.post(`${API_DJANGO}/crm/leads/`, {
+    data: { nom: uniq(prefixe), ville: 'Marrakech', type_installation: 'agricole',
+      telephone: telephoneMobileUnique() },
+  }), 'lead agricole de la passe')
+  await page.goto(`/ventes/devis/nouveau?lead=${lead.id}`)
+  await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
+    .toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('table.lines-table tbody tr').first())
+    .toBeVisible({ timeout: 45_000 })
+  await expect(page.locator('#gen-tel')).not.toHaveValue('', { timeout: 30_000 })
+  await choisirMarche(page, /Agricole/)
+  return lead
+}
+
 /** ADEV79 (D-ACI-6=a, 23/10/2026) — le moteur C&I REFUSE (devis automatique)
  *  ou laisse l'investissement NON chiffré (générateur, D-ACI-8 : aucun retour,
  *  TRI ni VAN imprimés) tant qu'un poste fixe n'a pas de prix ; le seed livre
