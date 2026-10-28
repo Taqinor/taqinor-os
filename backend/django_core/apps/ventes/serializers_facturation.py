@@ -27,7 +27,8 @@ from .domain.bornes import (
     MOTIF_MONTANT_POSITIF, montant_saisi, pourcentage_saisi,
     total_ligne_hors_capacite,
 )
-from .domain.conditions_ci import MOTIF_ACOMPTE, MOTIF_REMISE, _decimal_borne
+from .domain.conditions_ci import (
+    MOTIF_ACOMPTE, MOTIF_REMISE, _decimal_borne, _zero_negatif)
 
 
 def _retirer_unicite_tranche(serializer):
@@ -185,6 +186,13 @@ class BonCommandeSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         return str(totaux.ttc) if totaux is not None else None
 
 
+_MOTIF_LIGNE_POSITIF = (r'^(?:\d{1,8}(?:\.\d{0,2})?|\.\d{1,2}|'
+                        + _zero_negatif(8) + ')$')
+_MOTIFS_LIGNE_FACTURE = {'quantite': _MOTIF_LIGNE_POSITIF,
+                         'prix_unitaire': _MOTIF_LIGNE_POSITIF,
+                         'remise': MOTIF_REMISE}
+
+
 class LigneFactureSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC27 (C-ASEC-005) — `produit` et `source_devis` bornés à la société
@@ -200,6 +208,18 @@ class LigneFactureSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
         # ENF11 (nocturne 15/10) — DRF refuse le caractère nul dans tout texte :
         # le motif PUBLIÉ le dit (non blanc, sans nul), même prédicat appliqué.
         extra_kwargs = {'designation': {'validators': [RegexValidator(MOTIF_NON_BLANC_SANS_NUL)]}}
+
+    def get_fields(self):
+        # api-fuzz-full 28/10 — quantité / prix ≥ 0 et remise 0-100 publiés
+        # SUR LE CHAMP (un seul motif) : doublés en ``allOf`` du motif signé
+        # de drf-spectacular, le corps du PUT était ingénérable (« Failed
+        # Health Check », filter_too_much). ``-0`` vaut zéro, accepté.
+        fields = super().get_fields()
+        for nom, motif in _MOTIFS_LIGNE_FACTURE.items():
+            if nom in fields:
+                set_override(fields[nom], 'field', {
+                    'type': 'string', 'format': 'decimal', 'pattern': motif})
+        return fields
 
     def validate(self, attrs):
         """api-fuzz — quantité et prix valent chacun jusqu'à 8 chiffres
