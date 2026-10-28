@@ -325,6 +325,10 @@ GARDES = {
         ('Tests de la garde d acceptation (AMET88)',
          'python -m unittest scripts.tests.test_check_acceptation -v',
          '.'),
+        ('Garde d acceptation, mode parcours : tables PA* valides (declencheur, entree, checkpoint, '
+         'regle aval, symboles, portes) (AMET98)',
+         'python scripts/check_acceptation.py --parcours',
+         '.'),
         ('Test the orphan-service checker itself (CALX57)',
          'python -m unittest scripts.tests.test_check_services_appeles -v',
          '.'),
