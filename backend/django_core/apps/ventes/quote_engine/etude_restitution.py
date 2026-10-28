@@ -42,17 +42,20 @@ def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
 def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
                     _bareme_horaire=False,
                     etude, puissance_kwc, roi, savings_model,
-                    savings_model_avec, savings_model_sans, scenario):
+                    savings_model_avec, savings_model_sans, scenario, recommended=None):
     # ── QF3 — bloc « Comment nous calculons vos économies » ──────────────────
     # Méthode + exemple chiffré compact, calculés UNE fois ici : le PDF premium
     # et la proposition web (/proposal) rendent EXACTEMENT le même bloc.
     def _fr_int(n):
         return f"{int(round(n)):,}".replace(",", " ")
 
-    _sm_eco_ref = roi["eco_a_ann"] if scenario == "Avec batterie" else roi["eco_s_ann"]
+    # CE2E9 — « les deux » : l'exemple suit l'option que la page 1 met en avant
+    # (``recommended``, passé au niveau 3 seulement), plus l'option « sans ».
+    _avec = scenario == "Avec batterie" or (
+        scenario == "Les deux (Sans + Avec)" and recommended == "Avec batterie")
+    _sm_eco_ref = roi["eco_a_ann"] if _avec else roi["eco_s_ann"]
     if savings_model == "factures":
-        _sm_avec = (roi["facture_avec_a"] if scenario == "Avec batterie"
-                    else roi["facture_avec_s"])
+        _sm_avec = roi["facture_avec_a"] if _avec else roi["facture_avec_s"]
         savings_method = {
             "model": "factures",
             "facture_actuelle": roi["facture_sans"],
@@ -94,8 +97,7 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         # couverture du même PDF affichait « calculée ». Une phrase de méthode
         # fausse, plus une demande d'un document déjà reçu.
         _sm_sans_h = roi.get("facture_sans")
-        _sm_avec_h = (roi.get("facture_avec_a") if scenario == "Avec batterie"
-                      else roi.get("facture_avec_s"))
+        _sm_avec_h = roi.get("facture_avec_a") if _avec else roi.get("facture_avec_s")
         # L'exemple chiffré n'existe que si les DEUX factures sont lisibles :
         # sans elles on garde la phrase de méthode, jamais un montant fabriqué.
         _paire_h = bool(_sm_sans_h) and _sm_avec_h is not None

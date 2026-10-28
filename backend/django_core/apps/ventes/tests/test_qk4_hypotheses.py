@@ -281,6 +281,40 @@ class TarifHypotheseModeleHoraireTest(SimpleTestCase):
         self.assertEqual(hypothese_traduite('en', lignes[0]),
                          'Electricity tariff: national schedule by bracket')
 
+    def _exemple(self, recommended):
+        """CE2E9 — l'exemple « Comment nous calculons vos économies » d'un
+        devis « les deux » au modèle horaire."""
+        from apps.ventes import etude_horaire as EH
+        from apps.ventes.courbes_journalieres import OCCUPATION_PRESENCE
+        from apps.ventes.horaire import conso as HC
+        from apps.ventes.quote_engine.etude_restitution import restituer_etude
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1500)
+        bloc = EH.calculer_etude_horaire(
+            kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
+            occupation=OCCUPATION_PRESENCE, tranches=None, charges_fixes_mad=None)
+        roi = calculate_savings_roi(6.0, 60000.0, 60000.0, etude_horaire=bloc, utility='onee')
+        roi['facture_avec_a'] = roi['facture_avec_s'] - 1000  # l'option « avec » économise plus
+        sortie = restituer_etude(
+            _client_city='Casablanca', _co_productible=None, _corrige=True,
+            _utility='onee', _bareme_horaire=True, etude={}, puissance_kwc=6.0, roi=roi,
+            savings_model=roi['savings_model'], savings_model_avec=None,
+            savings_model_sans=None, scenario='Les deux (Sans + Avec)',
+            recommended=recommended)
+        methode = sortie[-1]
+        return methode['facture_avec_solaire'], roi
+
+    def test_exemple_de_l_option_recommandee_avec_batterie(self):
+        servie, roi = self._exemple('Avec batterie')
+        self.assertEqual(servie, roi['facture_avec_a'])
+
+    def test_exemple_sans_recommandation_option_sans_inchange(self):
+        """Niveau 2 (``recommended`` non passé par le builder) ou option
+        « sans » recommandée : l'exemple d'avant, l'option « sans »."""
+        for recommended in (None, False, 'Sans batterie'):
+            servie, roi = self._exemple(recommended)
+            self.assertEqual(servie, roi['facture_avec_s'])
+
     def test_sans_distributeur_niveau_2_inchange(self):
         lignes = self._lignes(False, utility=None)
         self.assertNotIn('Tarif électricité : barème national par tranche', lignes)
