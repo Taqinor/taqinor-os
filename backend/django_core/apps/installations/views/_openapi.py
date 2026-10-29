@@ -180,7 +180,6 @@ def texte_corps(request, nom, *autres):
     return (corps.get(nom) or '').strip()
 
 
-
 def confirmation_rdv(request):
     """api-fuzz-full 29/10 (ENF11) — corps de ``confirmer-rdv`` lu AVANT toute
     écriture : ``(confirme, date_prevue, motif)``. ``confirme`` est publié
@@ -192,6 +191,7 @@ def confirmation_rdv(request):
     if not isinstance(confirme, bool):
         raise ValidationError({'confirme': 'Booléen attendu.'})
     return confirme, corps.get('date_prevue'), motif
+
 
 #: Plus grand pourcentage qu'une colonne ``DecimalField(5, 2)`` sait garder.
 PCT_MAX = 999.99
