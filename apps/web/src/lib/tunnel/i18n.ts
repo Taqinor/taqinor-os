@@ -293,6 +293,7 @@ export const LIBELLES: Record<LocaleTunnel, LibellesTunnel> = { fr: FR, en: EN, 
  */
 export const ERREURS: Record<LocaleTunnel, MessagesErreurs> = {
   fr: {
+    locale: 'fr',
     nomComplet: 'Nom complet requis',
     ville: 'Ville / commune requise',
     typeToiture: 'Type de toiture requis',
@@ -300,6 +301,7 @@ export const ERREURS: Record<LocaleTunnel, MessagesErreurs> = {
     consentement: 'Le consentement est requis pour être recontacté',
   },
   en: {
+    locale: 'en',
     nomComplet: 'Full name required',
     ville: 'City / municipality required',
     typeToiture: 'Roof type required',
@@ -307,6 +309,7 @@ export const ERREURS: Record<LocaleTunnel, MessagesErreurs> = {
     consentement: 'Your consent is required so we can get back to you',
   },
   ar: {
+    locale: 'ar',
     nomComplet: 'الاسم الكامل مطلوب',
     ville: 'المدينة / الجماعة مطلوبة',
     typeToiture: 'نوع السطح مطلوب',
@@ -314,6 +317,25 @@ export const ERREURS: Record<LocaleTunnel, MessagesErreurs> = {
     consentement: 'الموافقة ضرورية حتى نتمكن من معاودة الاتصال بكم',
   },
 };
+
+/**
+ * WEBERR-TUNNEL-PAYBACK-FR — le libellé d'amortissement d'une bande
+ * (`billRange` : « 4 à 6 ans », en français) dans la locale de la page. Les
+ * NOMBRES viennent du libellé de la bande — une seule source ; seule la forme
+ * change, la même que les cartes « retour » des parcours pro de chaque page
+ * (« 4 – 6 years », « 4 – 6 سنة »). Un libellé qui n'a pas cette forme (déjà
+ * localisé, inconnu) passe tel quel : jamais un texte deviné.
+ */
+const RETOUR_BANDE_FR = /^(\d+) à (\d+) ans$/;
+const FORME_RETOUR: Record<LocaleTunnel, (bas: string, haut: string) => string> = {
+  fr: (bas, haut) => `${bas} à ${haut} ans`,
+  en: (bas, haut) => `${bas} – ${haut} years`,
+  ar: (bas, haut) => `${bas} – ${haut} سنة`,
+};
+export function libelleRetourLocale(libelle: string, locale: LocaleTunnel): string {
+  const m = RETOUR_BANDE_FR.exec(libelle);
+  return m ? FORME_RETOUR[locale](m[1], m[2]) : libelle;
+}
 
 /** Le libellé d'un champ dans une locale donnée. */
 export function libelle(locale: LocaleTunnel, cle: CleChamp): string {

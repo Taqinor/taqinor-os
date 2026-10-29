@@ -73,6 +73,16 @@ const CLES_PROPRES_A_LA_LOCALE: Record<string, Record<Locale, unknown>> = {
   langue_preferee: { fr: 'fr', en: undefined, ar: 'ar' },
 };
 
+/**
+ * WEBERR-TUNNEL-PAYBACK-FR — sous-clés de `estimateShown` dont le TEXTE suit la
+ * langue de la page (le conseiller CRM lit ce que le client a lu). Comparées à
+ * part (forme attendue par locale, quand la clé est présente), puis retirées de
+ * la comparaison croisée — tous les CHIFFRES restent identiques entre locales.
+ */
+const SOUS_CLES_ESTIMATION_PROPRES_A_LA_LOCALE: Record<string, Record<Locale, RegExp>> = {
+  paybackLabel: { fr: /^\d+ à \d+ ans$/, en: /^\d+ – \d+ years$/, ar: /^\d+ – \d+ سنة$/ },
+};
+
 /** Jetons à usage unique : forme vérifiée, puis valeur masquée. */
 const JETONS: Record<string, RegExp> = {
   idempotencyKey: /^[A-Za-z0-9_-]{8,64}$/,
@@ -327,8 +337,20 @@ describe('RWEB17 (filet) — le tunnel mon-toit EXÉCUTÉ, corps du lead par loc
       for (const [cle, attendu] of Object.entries(CLES_PROPRES_A_LA_LOCALE)) {
         for (const l of LOCALES) expect(parLocale![l]![cle], `${cle} en ${l}`).toEqual(attendu[l]);
       }
-      const sans = (c: Record<string, unknown>) =>
-        Object.fromEntries(Object.entries(c).filter(([k]) => !(k in CLES_PROPRES_A_LA_LOCALE)));
+      for (const [sousCle, forme] of Object.entries(SOUS_CLES_ESTIMATION_PROPRES_A_LA_LOCALE)) {
+        for (const l of LOCALES) {
+          const v = (parLocale![l]!.estimateShown as Record<string, unknown> | undefined)?.[sousCle];
+          if (v !== undefined) expect(v, `estimateShown.${sousCle} en ${l}`).toMatch(forme[l]);
+        }
+      }
+      const sans = (c: Record<string, unknown>) => {
+        const r = Object.fromEntries(Object.entries(c).filter(([k]) => !(k in CLES_PROPRES_A_LA_LOCALE)));
+        if (r.estimateShown && typeof r.estimateShown === 'object') {
+          r.estimateShown = Object.fromEntries(Object.entries(r.estimateShown as Record<string, unknown>)
+            .filter(([k]) => !(k in SOUS_CLES_ESTIMATION_PROPRES_A_LA_LOCALE)));
+        }
+        return r;
+      };
       expect(sans(parLocale!.en!), 'EN ≠ FR').toEqual(sans(parLocale!.fr!));
       expect(sans(parLocale!.ar!), 'AR ≠ FR').toEqual(sans(parLocale!.fr!));
     });

@@ -601,3 +601,41 @@ describe('CIW410 — tensionSource et activityProfile : déclaré seulement si t
     expect(c.valeurs).toEqual(['touchee', 'defaut_visible']);
   });
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// WEBERR-TUNNEL-PAYBACK-FR — le libellé d'amortissement envoyé au CRM suit la
+// langue de la page : les bandes (`billRange`) le portent en français, une page
+// EN/AR envoyait « 4 à 6 ans ». Une seule source : les nombres de la bande.
+// ———————————————————————————————————————————————————————————————————————————
+import { ERREURS, libelleRetourLocale } from '../src/lib/tunnel/i18n';
+import { BILL_RANGES, LOCAL_PAYBACK_BY_KWC, localEstimateBand } from '../src/lib/billRange';
+
+describe('WEBERR-TUNNEL-PAYBACK-FR — estimateShown.paybackLabel dans la langue de la page', () => {
+  const avec = (messages: MessagesErreurs) => construireCorps(
+    { ...etatResidentiel(), estimationAffichee: { kwc: 6, paybackLabel: '4 à 6 ans' } }, { messages },
+  ).body.estimateShown as Record<string, unknown>;
+
+  it('FR garde « 4 à 6 ans », EN envoie « 4 – 6 years », AR « 4 – 6 سنة » — chiffres inchangés', () => {
+    expect(avec(ERREURS.fr)).toEqual({ kwc: 6, paybackLabel: '4 à 6 ans' });
+    expect(avec(ERREURS.en)).toEqual({ kwc: 6, paybackLabel: '4 – 6 years' });
+    expect(avec(ERREURS.ar)).toEqual({ kwc: 6, paybackLabel: '4 – 6 سنة' });
+  });
+
+  it('chaque libellé de bande billRange se traduit (aucun reste en français)', () => {
+    const libelles = [
+      ...BILL_RANGES.map((r) => localEstimateBand(r.id).paybackLabel),
+      ...LOCAL_PAYBACK_BY_KWC.map((h) => h.paybackLabel),
+    ];
+    for (const l of libelles) {
+      expect(libelleRetourLocale(l, 'en')).toMatch(/^\d+ – \d+ years$/);
+      expect(libelleRetourLocale(l, 'ar')).toMatch(/^\d+ – \d+ سنة$/);
+      expect(libelleRetourLocale(l, 'fr')).toBe(l);
+    }
+  });
+
+  it('un libellé déjà localisé (parcours pro) ou inconnu passe tel quel — jamais réécrit', () => {
+    expect(libelleRetourLocale('3 – 5 years', 'en')).toBe('3 – 5 years');
+    expect(libelleRetourLocale('8 سنة', 'ar')).toBe('8 سنة');
+    expect(avec(MESSAGES).paybackLabel).toBe('4 à 6 ans');
+  });
+});
