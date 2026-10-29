@@ -62,7 +62,7 @@ PAR_PROPRIETAIRE = {
         'schema_unifilaire_svg', 'lignes_produits_calepinage',
         'peremption_layout_devis', 'devis_brouillon_pour_layout',
         'STATUT_RECALCULABLE', 'comparaison_calepinage_devis',
-        '_config_carte', 'SECTIONS_ATELIER_3D', '_reglages_atelier',
+        'config_carte', 'SECTIONS_ATELIER_3D', '_reglages_atelier',
         'devis_concevables', 'contexte_conception_devis',
     ],
     # SPL145 → selectors_cadence.py (9 + DECLENCHEUR_PEREMPTION_JOURS)
@@ -102,7 +102,7 @@ PAR_PROPRIETAIRE = {
 #: de ``apps.ventes.selectors``.
 PRIVES = {
     '_SCORE_BANDS', '_score_to_letter', '_retard_reel_jours',
-    '_config_carte', '_reglages_atelier', 'STATUT_RECALCULABLE',
+    '_reglages_atelier', 'STATUT_RECALCULABLE',
     'SECTIONS_ATELIER_3D',
     '_ligne_action_requise', '_brouillon_relance_engagement',
     '_date_declencheur_heritee',

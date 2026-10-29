@@ -29,14 +29,20 @@
      6. chaque motif se range dans son domaine, et le bouton du domaine mène à
         l'onglet RESPONSABLE, nommé par le registre `atelier/onglets.js`. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { evaluerElectrique: vi.fn() } },
+  default: { calepinages: {
+    evaluerElectrique: vi.fn(), resultat: vi.fn(), enregistrerEntreeElectrique: vi.fn(),
+  } },
 }))
+// ACAL284 — le droit `calepinage_approuver` (défaut gravé) commande « Passer outre ».
+vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: vi.fn(() => true) }))
 
 import calepinageApi from '../../../api/calepinageApi'
+import { useHasPermission } from '../../../hooks/useHasPermission'
 import { ongletParCle } from '../atelier/onglets'
 import VerdictElectrique, { CLE_ONGLET } from './VerdictElectrique'
 import { DOMAINE_AUTRE, DOMAINES, domaineDuMotif, grouperMotifs, libelleStatut, motifsRefusants, statutRefuse, tonStatut } from './VerdictElectrique.helpers'
@@ -285,5 +291,76 @@ describe('VerdictElectrique (CALX249)', () => {
   it('nomme un statut inconnu plutôt que de le taire', () => {
     expect(libelleStatut('bloquant')).toBe('Bloquant')
     expect(libelleStatut('lunaire')).toBe('statut « lunaire »')
+  })
+})
+
+/* ACAL284 — dérogations : réponse = exemple du contrat calepinage_resultat
+   (jamais retapée), augmentée d'une alerte non bloquante et de son fil. */
+describe('ACAL284 — dérogations posées et geste « Passer outre »', () => {
+  const ALERTE = {
+    code: 'ratio_dc_ac', libelle: 'Ratio DC/AC au-dessus du seuil société', conforme: false,
+    bloquant: false, source: 'fiche', detail: '', temperature_c: null, temperature_source: null,
+    temperature_mention: '',
+  }
+  const resultatAvec = ({ derogations = [], ecarts = [] } = {}) => {
+    const r = exempleContrat('calepinage', 'calepinage_resultat')
+    r.electrique = { ...r.electrique, verdicts: [...(r.electrique?.verdicts || []), ALERTE] }
+    r.derogations = derogations
+    r.ecarts_longueur = ecarts
+    return { data: r }
+  }
+  const DEROGATION = {
+    code: 'ratio_dc_ac', libelle: ALERTE.libelle, auteur: 'Utilisateur d’essai',
+    horodatage: '2026-10-12T09:30:00+01:00', motif: 'Surdimensionnement voulu (est-ouest).', texte: '',
+  }
+  const monter = () => {
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { publication: null, manquantes: [] } })
+    return render(<MemoryRouter><VerdictElectrique calepinageId={7} /></MemoryRouter>)
+  }
+
+  it('affiche la dérogation posée à côté de son alerte, et une orpheline dans « Dérogations enregistrées »', async () => {
+    const orpheline = { ...DEROGATION, code: 'code_disparu', libelle: 'Contrôle retiré' }
+    calepinageApi.calepinages.resultat.mockResolvedValue(resultatAvec({ derogations: [DEROGATION, orpheline] }))
+    monter()
+    expect(await screen.findByTestId('acal284-derogation-ratio_dc_ac'))
+      .toHaveTextContent('Passée outre par Utilisateur d’essai')
+    expect(screen.getByTestId('acal284-derogation-ratio_dc_ac')).toHaveTextContent('Surdimensionnement voulu')
+    expect(screen.getByTestId('acal284-derogations-enregistrees')).toHaveTextContent('Contrôle retiré')
+  })
+
+  it('le geste Passer outre envoie {code, motif} et refuse un motif vide', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue(resultatAvec())
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    monter()
+    fireEvent.click(await screen.findByTestId('acal284-passer-outre-ratio_dc_ac'))
+    const confirmer = screen.getByTestId('acal284-confirmer-ratio_dc_ac')
+    expect(confirmer).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(/Motif de la dérogation/), { target: { value: 'Voulu.' } })
+    expect(confirmer).not.toBeDisabled()
+    fireEvent.click(confirmer)
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+      .toHaveBeenCalledWith(7, { derogations: [{ code: 'ratio_dc_ac', motif: 'Voulu.' }] }))
+  })
+
+  it('un 400 / 403 serveur est affiché tel quel', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue(resultatAvec())
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({ response: { status: 400, data: {
+      'derogations.0.motif': ['Le motif d’une dérogation est obligatoire.'],
+      error: { code: 'validation_error', message: 'x', fields: {}, request_id: 'r' } } } })
+    monter()
+    fireEvent.click(await screen.findByTestId('acal284-passer-outre-ratio_dc_ac'))
+    fireEvent.change(screen.getByLabelText(/Motif de la dérogation/), { target: { value: ' ok ' } })
+    fireEvent.click(screen.getByTestId('acal284-confirmer-ratio_dc_ac'))
+    expect(await screen.findByTestId('acal284-refus-ratio_dc_ac'))
+      .toHaveTextContent('Le motif d’une dérogation est obligatoire.')
+  })
+
+  it('sans calepinage_approuver aucun bouton Passer outre', async () => {
+    useHasPermission.mockReturnValue(false)
+    calepinageApi.calepinages.resultat.mockResolvedValue(resultatAvec())
+    monter()
+    expect(await screen.findByText('Dérogation réservée aux approbateurs')).toBeInTheDocument()
+    expect(screen.queryByTestId('acal284-passer-outre-ratio_dc_ac')).toBeNull()
+    useHasPermission.mockReturnValue(true)
   })
 })

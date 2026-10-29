@@ -563,7 +563,7 @@ class Q7BaremeNationalUniqueTests(SimpleTestCase):
         racine = os.path.abspath(os.path.join(
             os.path.dirname(__file__), "..", "..", "..", "..", ".."))
         chemin = os.path.join(racine, "frontend", "src", "features", "ventes",
-                              "solar.js")
+                              "calc", "tarifs.js")
         with open(chemin, encoding="utf-8") as fh:
             src = fh.read()
         self.assertNotIn("LYDEC_TRANCHES", src)

@@ -1280,13 +1280,15 @@ def contexte_conception(calepinage, request=None):
     Dictionnaire LITTÉRAL (comme ``detail_calepinage``) pour que la garde de
     contrat lise la forme réellement renvoyée.
     """
+    from apps.ventes.selectors import config_carte  # ACAL282 — lecture unique
+
     from .. import selectors as cal_selectors
 
     company = getattr(calepinage, 'company', None)
     devis = _devis_lie_de(calepinage, company)
     contexte_devis = _contexte_devis_lie(calepinage, company, devis=devis)
     # Lu UNE seule fois et partagé : la géométrie ET l'adresse en sortent.
-    geo = cal_selectors.contexte_geographique(calepinage)
+    geo = cal_selectors.contexte_geographique(calepinage, avec_repere=True)
     geometrie = _geometrie(calepinage, contexte_devis, geo)
     # ACAL191 — la dérive du GPS du lead (LECTURE PURE : rien n'est
     # translaté ici ; seuls les gestes recentrer / garder écrivent).
@@ -1328,7 +1330,7 @@ def contexte_conception(calepinage, request=None):
         },
         'geometrie': geometrie,
         'cible': cible,
-        'carte': _config_carte(),
+        'carte': config_carte(),
         'modifiable': not _raison_lecture_seule(contexte_devis),
         'raison_lecture_seule': _raison_lecture_seule(contexte_devis),
         'avertissements': _avertissements(geometrie, cible, contexte_devis),
@@ -1388,6 +1390,11 @@ def _devis_lie_resume(contexte_devis):
             for cle in ('id', 'reference', 'statut', 'client_nom')}
 
 
+#: ACAL250 — ``geometrie.source_repere`` (contrat) depuis la source de
+#: ``selectors.contexte_geographique`` ; ``None`` sans repère.
+_SOURCE_REPERE = {'lead_gps': 'gps', 'lead_roof_point': 'roof_point'}
+
+
 def _geometrie(calepinage, contexte_devis, geo=None):
     """``{source, roof_layout, pin, outline, contour_client}``.
 
@@ -1401,7 +1408,12 @@ def _geometrie(calepinage, contexte_devis, geo=None):
     from .. import selectors as cal_selectors
 
     if geo is None:
-        geo = cal_selectors.contexte_geographique(calepinage)
+        geo = cal_selectors.contexte_geographique(calepinage, avec_repere=True)
+    # ACAL250 — le drapeau de ``repere_toit`` est PUBLIÉ, jamais jeté : un
+    # contour client dans lequel le repère ne tombe pas reste servi en calque
+    # (``contour_client``) mais n'ensemence aucun pan (``outline`` = []).
+    utilisable = bool(geo.get('contour_utilisable'))
+    source_repere = _SOURCE_REPERE.get(geo.get('source'))
     contour_client = geo['outline'] or []
     if contexte_devis is not None:
         contour_client = (contexte_devis.get('geometrie', {})
@@ -1437,7 +1449,7 @@ def _geometrie(calepinage, contexte_devis, geo=None):
         # aucun toit, et c'est exactement ce qu'écrit un premier
         # enregistrement fait avant tout dessin).
         if not layout_decrit_une_geometrie(layout):
-            outline = contour_client or []
+            outline = (contour_client or []) if utilisable else []
             if pin is None:
                 pin = geo['pin']
         return {
@@ -1449,19 +1461,24 @@ def _geometrie(calepinage, contexte_devis, geo=None):
             # ACAL22 — le jeton If-Match de l'écriture (empreinte
             # « document » du document STOCKÉ, D-ACAL-4).
             'empreinte_document': empreinte_document(layout) or None,
+            'contour_utilisable': utilisable,
+            'source_repere': source_repere,
         }
     if geo['pin'] is not None or geo['outline']:
         return {
             'source': 'lead',
             'roof_layout': None,
             'pin': geo['pin'],
-            'outline': geo['outline'] or [],
+            'outline': (geo['outline'] or []) if utilisable else [],
             'contour_client': contour_client,
             'empreinte_document': empreinte_document(layout) or None,
+            'contour_utilisable': utilisable,
+            'source_repere': source_repere,
         }
     return {'source': 'none', 'roof_layout': None, 'pin': None,
             'outline': [], 'contour_client': contour_client,
-            'empreinte_document': empreinte_document(layout) or None}
+            'empreinte_document': empreinte_document(layout) or None,
+            'contour_utilisable': utilisable, 'source_repere': source_repere}
 
 
 def _cible(calepinage, contexte_devis):
@@ -1556,21 +1573,6 @@ def _avertissements(geometrie, cible, contexte_devis):
         messages.append('Cible de puissance non calculée : '
                         + cible['refus'])
     return messages
-
-
-def _config_carte():
-    """Clés carte du builder 3D, lues comme ``ventes/views/roof_config.py``.
-
-    Mêmes variables d'environnement, même forme que le contexte devis :
-    c'est de la CONFIGURATION, pas une donnée société — la lire ici évite de
-    faire dépendre ce module de ventes pour une clé d'API.
-    """
-    import os
-
-    maptiler = os.environ.get('PUBLIC_MAPTILER_KEY', '') or ''
-    mapbox = os.environ.get('PUBLIC_MAPBOX_TOKEN', '') or ''
-    return {'available': bool(maptiler), 'maptilerKey': maptiler,
-            'mapboxToken': mapbox or None}
 
 
 # ── CAL17 — L'AGRÉGAT DE DÉTAIL (la forme est le contrat) ──────────────────

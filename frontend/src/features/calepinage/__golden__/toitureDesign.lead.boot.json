@@ -16,6 +16,7 @@
               -7.6
             ]
           ],
+          "contour_utilisable": true,
           "bill_kwh": 7200,
           "fullName": "Alaoui Youssef",
           "phone": "0600000000",

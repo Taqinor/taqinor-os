@@ -1,3 +1,4 @@
+import { sansRecommande } from '../../../test/fixtures/offresTailles'
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -1448,13 +1449,7 @@ describe('LANE E — SUBSTITUTIONS : catalogue chargé paresseusement pour « Mo
       offres: [{
         cle: 'recommande', titre: 'Recommandé', recommande: true, est_le_devis: true,
         config: { nb_panneaux: 22, batterie_nb_modules: 0, batterie_module_kwh: 5.0 },
-        sans: {
-          nb_panneaux: 22, puissance_kwc: 12.1, prix_ttc: 108900.0,
-          economie_annuelle_mad: 13260.0, payback_annees: 8.21, couverture_pct: 61.0,
-          production_annuelle_kwh: 19140.0,
-          materiel: [{ role: 'panneau', famille: 'panneau', marque: 'Longi', modele: 'Panneau 550 W' }],
-          toit_ok: true,
-        },
+        sans: sansRecommande(),
         avec: null,
       }],
     },

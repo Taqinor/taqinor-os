@@ -1,3 +1,4 @@
+import { refusServeur as refusCommun } from './commun/refusServeur'
 /* ============================================================================
    Lot 2 critique #23 / #29 — LE décodeur des refus du pont devis, partagé par
    « Générer / Resynchroniser le devis » (`BoutonDevis`) et l'enregistrement
@@ -65,12 +66,11 @@ export function refusServeur(erreur) {
     if (Array.isArray(data.errors) && data.errors.length > 0) {
       return { champ: 'composition', message: String(data.errors[0]) }
     }
-    const premier = Object.entries(data).find(([, v]) => v)
-    if (premier) {
-      const [champ, brut] = premier
-      const message = Array.isArray(brut) ? brut.join(' ') : String(brut)
-      return { champ, message }
-    }
+    // ACAL279 — LE décodeur commun : l'enveloppe `error` n'est jamais un champ.
+    const { message, champs } = refusCommun(erreur)
+    const champ = Object.keys(champs)[0]
+    if (champ) return { champ, message: champs[champ] }
+    if (message) return { champ: 'detail', message }
   }
   return {
     champ: 'detail',

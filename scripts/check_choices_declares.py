@@ -679,6 +679,8 @@ REFUS = {
         ("electrical_service.py", "SCALAIRE")],
     "frontend/src/features/ventes/module.config.jsx": [
         ("/sav/action-requise", "COMPORTEMENT")],
+    # SPL195 — le modèle tarifaire (et sa promesse QF5) a quitté solar.js.
+    "frontend/src/features/ventes/calc/tarifs.js": [("computeROI", "NOMBRES")],
     "frontend/src/features/ventes/solar.js": [
         # ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION (28/09) — deux promesses
         # decrivent le MIROIR de fonctions (familles_servables /
@@ -699,7 +701,6 @@ REFUS = {
         # COMPORTEMENT (choix pur payback hors horizon), pas une liste.
         ("GARDE DÉPART-HORS-HORIZON", "COMPORTEMENT"),
         ("MIROIR de la source Python", "NOMBRES"),
-        ("computeROI", "NOMBRES"),
         ("plafonds cumulatifs", "NOMBRES"),
         ("constants_82_21.py", "NOMBRES"),
         ("injection_annuelle", "COMPORTEMENT"),

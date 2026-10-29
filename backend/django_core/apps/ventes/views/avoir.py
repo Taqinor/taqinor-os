@@ -19,6 +19,7 @@ from authentication.permissions import (
 )
 from authentication.scoping import scope_queryset
 from core.mixins import company_qs
+from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 import logging
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 @extend_schema_view(list=extend_schema(
     parameters=[qint('facture')]))
-class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
+class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     """Avoirs (notes de crédit) : lecture pour tout rôle ; PDF pour
     Responsable/Admin ; annulation Admin. Création via la facture
     (creer-avoir), jamais directement."""
@@ -45,7 +46,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'facture__reference', 'client__nom']
     ordering_fields = ['date_emission', 'reference']
-    ordering = ['-date_emission']
+    ordering = ['-date_emission', '-id']  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 
     def get_queryset(self):
         qs = company_qs(super().get_queryset(), self.request.user)
@@ -239,7 +240,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
 
 @extend_schema_view(list=extend_schema(
     parameters=[qint('facture')]))
-class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
+class NoteDebitViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     """ZFAC4 — notes de débit : lecture pour tout rôle ; PDF pour
     Responsable/Admin. Création via la facture (creer-note-debit), jamais
     directement — même patron qu'``AvoirViewSet``."""
@@ -250,7 +251,7 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'facture__reference', 'client__nom']
     ordering_fields = ['date_emission', 'reference']
-    ordering = ['-date_emission']
+    ordering = ['-date_emission', '-id']  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 
     def get_queryset(self):
         qs = company_qs(super().get_queryset(), self.request.user)

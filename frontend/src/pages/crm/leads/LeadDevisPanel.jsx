@@ -14,6 +14,7 @@ import { createAutoQuote, libelleSuccesDevisAuto } from '../../../features/vente
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { usePdfPreview } from '../../../features/ventes/usePdfPreview'
 import PdfPreviewBody from '../../../features/ventes/PdfPreviewBody'
+import { previewBodyProps } from '../../../features/ventes/previewBodyProps'
 import DevisGenerator from '../../ventes/DevisGenerator'
 import {
   peutEditerDevis, peutReviserDevis, libelleStatutDevis,
@@ -659,14 +660,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                 )}
 
                 <PdfPreviewBody
-                  blob={preview.blob}
-                  loading={preview.loading}
-                  errorKind={preview.errorKind}
-                  errorMessage={preview.errorMessage}
-                  renderFailed={preview.renderFailed}
-                  onRenderError={preview.onRenderError}
-                  onReload={reloadPreview}
-                  reloadKey={preview.reloadKey}
+                  {...previewBodyProps(preview, reloadPreview)}
                   loadingText="Chargement de l'aperçu… La première génération d'un devis peut prendre ~30 secondes."
                   serverMessage={"Le serveur n'a pas pu générer ce PDF. Ouvrez l'édition complète "
                     + 'pour vérifier le devis, puis réessayez.'}

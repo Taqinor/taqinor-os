@@ -15,6 +15,7 @@ import { exempleContrat } from './contractSamples'
 
 export const espions = {
   layout: vi.fn(),
+  get: vi.fn(),
   enregistrerLayoutCalepinage: vi.fn(),
   enregistrerSectionLayout: vi.fn(),
   horizon: vi.fn(),
@@ -33,6 +34,8 @@ const relais = (nom) => (...a) => espions[nom](...a)
 export function apiDocument({ moteur = false, horizon = false } = {}) {
   const calepinages = {
     layout: relais('layout'),
+    // ACAL251 — le détail (`contexte_geographique`) : repli de latitude des onglets.
+    get: relais('get'),
     enregistrerLayoutCalepinage: relais('enregistrerLayoutCalepinage'),
     enregistrerSectionLayout: relais('enregistrerSectionLayout'),
   }

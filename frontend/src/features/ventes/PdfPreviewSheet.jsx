@@ -19,6 +19,7 @@ import { Button } from '../../ui'
 import { openPdfBlob, ouvrirPdfBlob } from '../../utils/pdfBlob'
 import { usePdfPreview } from './usePdfPreview'
 import PdfPreviewBody from './PdfPreviewBody'
+import { previewBodyProps } from './previewBodyProps'
 
 export default function PdfPreviewSheet({
   open,
@@ -59,14 +60,7 @@ export default function PdfPreviewSheet({
     >
       <div className="apx-pdf-preview" data-testid="apx-pdf-preview">
         <PdfPreviewBody
-          blob={preview.blob}
-          loading={preview.loading}
-          errorKind={preview.errorKind}
-          errorMessage={preview.errorMessage}
-          renderFailed={preview.renderFailed}
-          onRenderError={preview.onRenderError}
-          onReload={preview.reload}
-          reloadKey={preview.reloadKey}
+          {...previewBodyProps(preview)}
         />
       </div>
     </ResponsiveDialog>

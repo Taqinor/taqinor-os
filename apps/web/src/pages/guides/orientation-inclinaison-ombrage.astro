@@ -13,11 +13,11 @@ import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('orientation-inclinaison-ombrage');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const guideBodyText = `
   Avant même de parler de marques ou de puissance, trois paramètres physiques décident d'une bonne part
   de ce que votre toit produira pendant vingt-cinq ans : la direction vers laquelle les panneaux

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import useDocumentCalepinage, { MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
+import { lireConflit } from './conflitEcriture'
+import { refusServeur } from './commun/refusServeur'
 import RetourAtelier from './atelier/RetourAtelier'
 import { echelleDepuisDeuxPoints } from './PlanImporteCalage.helpers'
 
@@ -77,6 +79,13 @@ function ChampNombre({ cle, label, valeur, erreur, onChange }) {
   )
 }
 
+/** ACAL280 — `{champ, message}` d'un refus : le champ NOMMÉ par le serveur
+ *  (sinon `fichier`), le motif du décodeur commun, sinon `repli`. */
+function refusDuPlan(e, repli) {
+  const { message, champs } = refusServeur(e)
+  return { champ: Object.keys(champs)[0] ?? 'fichier', message: message || repli }
+}
+
 export default function PlanImporteCalage({
   calepinageId: idPropose, builderApi = null, documentVivant = null,
 }) {
@@ -138,14 +147,8 @@ export default function PlanImporteCalage({
       })
       .catch((e) => {
         // Le motif vient du SERVEUR, et il NOMME son champ (`fichier` ou
-        // `calque`) : on ne réécrit ni l'un ni l'autre.
-        const corpsErreur = e?.response?.data ?? {}
-        const champ = Object.keys(corpsErreur)[0] ?? 'fichier'
-        setRefusImport({
-          champ,
-          message: String(corpsErreur[champ]
-            ?? 'Le plan n’a pas pu être analysé.'),
-        })
+        // `calque`) : on ne réécrit ni l'un ni l'autre (ACAL280 : décodeur commun).
+        setRefusImport(refusDuPlan(e, 'Le plan n’a pas pu être analysé.'))
       })
   }
 
@@ -206,12 +209,7 @@ export default function PlanImporteCalage({
         }
       })
       .catch((e) => {
-        const corpsErreur = e?.response?.data ?? {}
-        const champ = Object.keys(corpsErreur)[0] ?? 'fichier'
-        setRefusImport({
-          champ,
-          message: String(corpsErreur[champ] ?? 'Le plan n’a pas pu être calé.'),
-        })
+        setRefusImport(refusDuPlan(e, 'Le plan n’a pas pu être calé.'))
       })
   }
 
@@ -244,14 +242,15 @@ export default function PlanImporteCalage({
       setMessageFond('Image posée comme fond de l’atelier : calez-la avec l’outil deux points, '
         + 'puis enregistrez le calepinage.')
     } catch (e) {
-      if (e?.response?.status === 409) {
+      // ACAL280 — jeton périmé (relire) ≠ verrou (SON motif) ; sinon le motif serveur.
+      const conflit = lireConflit(e)
+      if (conflit?.documentModifie) {
         setRefusFond('La conception a changé ailleurs : elle est relue, recommencez.')
         doc.recharger()
         return
       }
-      const donnees = e?.response?.data ?? {}
-      const champ = Object.keys(donnees)[0]
-      setRefusFond(String((champ && donnees[champ]) || 'L’image n’a pas pu être posée en fond.'))
+      setRefusFond(conflit?.motif
+        || refusDuPlan(e, 'L’image n’a pas pu être posée en fond.').message)
     }
   }
 

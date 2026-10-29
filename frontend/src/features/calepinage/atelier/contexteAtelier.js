@@ -12,20 +12,19 @@ export function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime })
 }
 
-// Correction fondateur 24/08 — quand le client n'a JAMAIS posé d'épingle
-// publique (`roof_point`, alimenté par l'outil site web), la fiche lead porte
-// souvent déjà `gps_lat`/`gps_lng` (saisis côté « Toiture & site » du CRM,
-// bornés ±90/±180 en base) : sans ce repli, la carte 3D démarrait TOUJOURS au
-// niveau Maroc alors qu'une position réelle existait. Repli RÉEL, jamais une
-// valeur inventée — `roof_point` posé prime toujours quand il existe.
-export function pinDepuisLead(lead) {
-  if (lead?.roof_point) return lead.roof_point
-  const lat = lead?.gps_lat
-  const lng = lead?.gps_lng
-  if (lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
-    return { lat: Number(lat), lng: Number(lng) }
-  }
-  return null
+// ACAL251 — LE repère toit du lead est celui que le SERVEUR calcule et sert
+// (`repere_toit` du GET lead, `crm.selectors.repere_toit` : le GPS corrigé
+// prime sur l'épingle du tunnel, sinon l'épingle, sinon le GPS). L'écran ne
+// re-décide plus rien (l'ancien `pinDepuisLead` faisait primer `roof_point`) ;
+// `null` sans repère — jamais une position devinée.
+export function repereDuLead(lead) {
+  return lead?.repere_toit?.pin ?? null
+}
+
+// ACAL251 — le contour client n'ENSEMENCE un pan éditable que si le serveur le
+// dit utilisable (le repère tombe dedans) ; sinon il reste un calque L-MAP.
+export function contourUtilisableDuLead(lead) {
+  return lead?.repere_toit?.contour_utilisable === true
 }
 
 // Le builder s'hydrate depuis un payload `LeadPayload` (roof_point/roof_outline/
@@ -37,9 +36,11 @@ export function leadToBuilderPayload(lead) {
   const phone = (lead.whatsapp || lead.telephone || '').trim()
   const city = (lead.ville || '').trim()
   const billKwh = lead.bill_kwh != null ? Number(lead.bill_kwh) : null
+  const utilisable = contourUtilisableDuLead(lead)
   return {
-    roof_point: pinDepuisLead(lead),
-    roof_outline: lead.roof_outline ?? null,
+    roof_point: repereDuLead(lead),
+    roof_outline: utilisable ? (lead.roof_outline ?? null) : null,
+    contour_utilisable: utilisable,
     bill_kwh: Number.isFinite(billKwh) ? billKwh : null,
     fullName: fullName || undefined,
     phone: phone || undefined,

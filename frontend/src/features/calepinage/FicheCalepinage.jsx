@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { messageRefus, refusServeur } from './commun/refusServeur'
 import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { urlFichierCalepinage } from '../../lib/calage/fichierCalepinage'
@@ -89,21 +90,11 @@ function personne(p) {
  * geste concerné quand le serveur n'a nommé aucun champ. Jamais un
  * « non enregistré » générique (règle fondateur du 08/09/2026).
  */
-function refusServeur(erreur, geste) {
-  const corps = erreur?.response?.data
-  if (typeof corps === 'string' && corps.trim()) {
-    return { geste, message: corps.trim() }
-  }
-  if (corps && typeof corps === 'object') {
-    const entree = Object.entries(corps)[0]
-    if (entree) {
-      const brut = Array.isArray(entree[1]) ? entree[1].join(' ') : entree[1]
-      if (brut) return { geste, message: String(brut) }
-    }
-  }
+function refusDuGeste(erreur, geste) {
+  // ACAL279 — LE décodeur commun (l'enveloppe `error` n'est jamais un motif).
   return {
     geste,
-    message: "Le serveur n’a rendu aucun motif : rien n’a été modifié.",
+    message: messageRefus(erreur, "Le serveur n’a rendu aucun motif : rien n’a été modifié."),
   }
 }
 
@@ -129,14 +120,9 @@ const CHAMP_NOM = 'titre'
 
 /** Le refus d'un PATCH DRF, ramené au message du champ demandé. */
 function refusChamp(erreur, champ) {
-  const corps = erreur?.response?.data
-  if (typeof corps === 'string' && corps.trim()) return corps.trim()
-  if (corps && typeof corps === 'object') {
-    const brut = corps[champ] ?? corps.detail ?? Object.values(corps)[0]
-    const message = Array.isArray(brut) ? brut.join(' ') : brut
-    if (message) return String(message)
-  }
-  return "Le serveur n’a rendu aucun motif : rien n’a été enregistré."
+  // ACAL279 — le motif DU champ demandé, sinon le motif du refus (commun).
+  const { message, champs } = refusServeur(erreur)
+  return champs[champ] || message || "Le serveur n’a rendu aucun motif : rien n’a été enregistré."
 }
 
 export default function FicheCalepinage({ detail, onRelire }) {
@@ -301,7 +287,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
       setConfirmation(false)
       setArchive(true)
     } catch (erreur) {
-      setRefus(refusServeur(erreur, 'archiver'))
+      setRefus(refusDuGeste(erreur, 'archiver'))
     } finally {
       setEnCours(false)
     }
@@ -314,7 +300,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
       await calepinageApi.calepinages.restaurerCorbeille(detail.id)
       setArchive(false)
     } catch (erreur) {
-      setRefus(refusServeur(erreur, 'restaurer'))
+      setRefus(refusDuGeste(erreur, 'restaurer'))
     } finally {
       setEnCours(false)
     }

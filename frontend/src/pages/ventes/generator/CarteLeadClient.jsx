@@ -94,12 +94,17 @@ export default function CarteLeadClient({
                   (`roof_outline`, la donnée la plus riche, chargée telle
                   quelle dans l'outil) s'annonçait « pas de repère ». Les
                   deux états sont désormais nommés, le tracé d'abord. */}
+              {/* ACAL251 — la source est celle du repère SERVI (`repere_toit`) :
+                  un contour où le repère ne tombe pas n'est pas « chargé ». */}
               <span>
-                {Array.isArray(selectedLead?.roof_outline) && selectedLead.roof_outline.length >= 3
+                {selectedLead?.repere_toit?.contour_utilisable
+                  && Array.isArray(selectedLead?.roof_outline) && selectedLead.roof_outline.length >= 3
                   ? '🛰️ Contour de toit tracé par le client sur ce lead — il est chargé dans l\'outil 3D.'
-                  : selectedLead?.roof_point
-                    ? '🛰️ Repère toit disponible sur ce lead (GPS).'
-                    : '🛰️ Concevez la toiture en 3D — le devis est d\'abord enregistré en brouillon.'}
+                  : selectedLead?.repere_toit?.source === 'gps'
+                    ? '🛰️ Repère toit disponible sur ce lead (coordonnées GPS corrigées).'
+                    : selectedLead?.repere_toit?.source === 'roof_point'
+                      ? '🛰️ Repère toit disponible sur ce lead (épingle posée par le client).'
+                      : '🛰️ Concevez la toiture en 3D — le devis est d\'abord enregistré en brouillon.'}
               </span>
               {/* PV23bis — remplace PV23 : édition COMME création passent
                   désormais par `ouvrirConception3D` (enregistrement

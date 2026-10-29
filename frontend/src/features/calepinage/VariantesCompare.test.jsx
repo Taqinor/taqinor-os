@@ -153,13 +153,19 @@ describe('VariantesCompare (CAL42)', () => {
   })
 
   it('un refus de « Retenir » s’affiche tel quel, et la retenue ne bouge pas', async () => {
+    // ACAL279 — la forme RÉELLE du handler : `{approbation: [msg], error: {…}}`.
     mocks.retenirVariante.mockRejectedValue({
-      response: { data: { detail: 'Calepinage verrouillé.' } },
+      response: { status: 400, data: {
+        approbation: ['Approbation exigée : faites approuver la conception avant de la retenir.'],
+        error: { code: 'validation_error', message: 'Requête invalide.', fields: {}, request_id: 'r-1' },
+      } },
     })
     rendre()
     await screen.findByTestId('cal-tableau-variantes')
     fireEvent.click(screen.getAllByRole('button', { name: 'Retenir' })[0])
-    expect(await screen.findByRole('alert')).toHaveTextContent('Calepinage verrouillé.')
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent('Approbation exigée')
+    expect(alerte).not.toHaveTextContent('Impossible de retenir cette variante')
     expect(screen.getByTestId(`cal-retenue-${RETENUE.id}`)).toBeInTheDocument()
   })
 

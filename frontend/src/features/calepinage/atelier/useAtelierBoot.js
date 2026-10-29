@@ -7,7 +7,7 @@ import { urlFichierCalepinage } from '../../../lib/calage/fichierCalepinage'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
-  pinDepuisLead, leadToBuilderPayload,
+  repereDuLead, leadToBuilderPayload,
   contexteCalepinageVersPayload, bankableFromDevis,
   stockageBrouillonLocal, stockageSessionLocal, tailleImagePlan, messageRefusRepere,
 } from './contexteAtelier.js'
@@ -163,7 +163,7 @@ export function useAtelierBoot(ctx) {
       // Best-effort, jamais bloquant — un échec réseau laisse le tracé manuel
       // intact, exactement comme le repli existant. Ne s'applique QUE si le
       // lead n'a pas déjà de contour (tracé manuel déjà posé = jamais écrasé).
-      if (!leadData.roof_outline && pinDepuisLead(leadData)) {
+      if (!leadData.roof_outline && repereDuLead(leadData)) {
         try {
           const fp = await crmApi.getRoofFootprint(leadId)
           // CALX132 câblage — la MÊME réponse porte un bloc `batiment`
@@ -187,7 +187,12 @@ export function useAtelierBoot(ctx) {
               .map((p) => [Number(p?.lat), Number(p?.lng)])
               .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng))
             if (paires.length >= 3) {
-              leadData = { ...leadData, roof_outline: paires }
+              // ACAL251 — l'emprise OSM est cherchée AUTOUR du repère servi :
+              // elle l'entoure, donc elle ensemence le pan (contour utilisable).
+              leadData = {
+                ...leadData, roof_outline: paires,
+                repere_toit: { ...leadData.repere_toit, contour_utilisable: true },
+              }
             }
           } else if (fp?.data?.message) {
             setContourMessage(fp.data.message)

@@ -79,7 +79,7 @@ import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
 // CALX129 — bascule plein écran RÉVERSIBLE du conteneur de la scène 3D, MÊME
 // mécanique que celle de `Vue2DPlan.jsx` (CAL104) — voir l'en-tête du module.
 import {
-  dataUrlToBlob, pinDepuisLead, httpMessage,
+  dataUrlToBlob, repereDuLead, contourUtilisableDuLead, httpMessage,
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
   messageRefusRepere, libelleEcartRepere, libelleCibleEstimee,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
@@ -923,7 +923,7 @@ function AtelierToiture({
   // DIT discrètement plutôt que de laisser deviner pourquoi la carte est loin
   // de chez le client. Mode AO non concerné (affaire, pas de repli GPS ici).
   const sansPositionGps = !loadError && (
-    (estLead && !!lead && !pinDepuisLead(lead))
+    (estLead && !!lead && !repereDuLead(lead))
     || (estCalepinage && !!contexte && !contexte?.geometrie?.pin)
   )
 
@@ -979,14 +979,14 @@ function AtelierToiture({
   const calepinageAutomatiqueVisible = estCalepinage
     ? (layoutPoseAutomatiquement
       || (devisRoofLayoutSansZones && contourExploitable(contourClientOuOutlinePourNote)))
-    : (estLead && toitClientPresent)
+    : (estLead && toitClientPresent && contourUtilisableDuLead(lead))
   // Le bouton « Recommencer » relit `opts.referenceContour`, c'est-à-dire le contour
   // CLIENT et lui seul : il n'est proposé que si ce contour-là existe encore. Sans ce
   // garde-fou la branche `layoutPoseAutomatiquement` pourrait afficher un bouton
   // inerte (layout estampillé, mais tracé du lead effacé depuis).
   const recommencerDisponible = estCalepinage
     ? contourExploitable(contexte?.geometrie?.contour_client)
-    : (estLead && toitClientPresent)
+    : (estLead && toitClientPresent && contourUtilisableDuLead(lead))
 
   // PV21 — le bloc « Prêt à envoyer » est PARTAGÉ par les deux modes : un devis
   // conçu depuis sa propre fiche se livre exactement comme un devis né d'un

@@ -27,6 +27,7 @@ import { NAP } from '../../lib/nap';
 import { estimateReadingTime, extractTocFromMarkdown } from '../../lib/readingTime';
 import { BLOG_THEMES } from '../../lib/blogThemes';
 import '../../styles/prose.css';
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W299 — un lien cluster (hub argent-cible) par thème, même vocabulaire que
 // GUIDE_BY_THEME de blog/index.astro (W329) : le pied de chaque article
@@ -62,7 +63,6 @@ const { post, prev, next, related } = Astro.props;
 const { data, body } = post;
 const { Content } = await render(post);
 
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const url = new URL(`/blog/${post.id}`, Astro.site).href;
 
 // W299 — lien cluster optionnel (voir CLUSTER_LINK_BY_THEME plus haut) ; absent

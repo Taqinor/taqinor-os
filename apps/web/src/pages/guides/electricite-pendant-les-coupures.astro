@@ -15,11 +15,11 @@ import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('electricite-pendant-les-coupures');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const guideBodyText = `
   L'ONEE coupe en pleine journée, le soleil tape sur le toit, et pourtant tout s'éteint chez vous comme
   chez les voisins. Un onduleur on-grid classique est conçu pour injecter de l'électricité en phase

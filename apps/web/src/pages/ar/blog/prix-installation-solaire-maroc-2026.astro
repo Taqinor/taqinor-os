@@ -22,12 +22,12 @@ import { estimateReadingTime } from '../../../lib/readingTime';
 import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
 import '../../../styles/prose.css';
+import { DATE_LONGUE_FR as dateFmt } from '../../../lib/format';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const pubDate = new Date('2026-06-21');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 const bodyText = `
 كم تكلّف حقاً؟ هوامش جاهزة حسب القدرة: 3 kWc من 28000 إلى 42000 درهم، 5 kWc من 45000 إلى 65000 درهم،

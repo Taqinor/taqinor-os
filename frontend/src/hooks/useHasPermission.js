@@ -50,6 +50,15 @@ export function useHasRole(allowedRoles) {
   return Array.isArray(allowedRoles) ? allowedRoles.includes(role) : false
 }
 
+// ERR-SAV-TECH-USERS-403 — `GET /users/` (liste des comptes) est réservé au
+// palier admin ou à `users_gerer` (authentication/views.py, ASEC10) : tout écran
+// qui peuple un sélecteur d'utilisateurs n'appelle l'endpoint que si ce hook dit oui.
+export function useCanListUsers() {
+  const estAdmin = useHasRole(['admin'])
+  const aUsersGerer = useHasPermission('users_gerer')
+  return estAdmin || aUsersGerer
+}
+
 // Alias lisibles pour les deux paliers les plus fréquents.
 export function useIsAdmin() {
   return useHasRole(['admin'])

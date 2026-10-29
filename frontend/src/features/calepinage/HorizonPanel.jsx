@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
-import useDocumentCalepinage, { ecrireSection, MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
+import useDocumentCalepinage, {
+  ecrireSection, MESSAGE_ILLISIBLE, useLatitudeDuSite,
+} from './useDocumentCalepinage'
 import {
   sortedHorizonPoints, horizonMaxHeightDeg, hourlyHorizonFactors, maskedHourCount,
 } from '@rooflib/horizonEngine'
@@ -70,7 +72,6 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
   const doc = useDocumentCalepinage(calepinageId)
   const [points, setPoints] = useState([])
   const [source, setSource] = useState('saisie')
-  const [latitudeDeg, setLatitudeDeg] = useState(null)
   const [saisie, setSaisie] = useState({ azimut: '', hauteur: '' })
   const [message, setMessage] = useState(null)
   const [recuperation, setRecuperation] = useState(false)
@@ -82,7 +83,6 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
   const [lectureHydratee, setLectureHydratee] = useState(null)
   if (doc.etat === 'ok' && lectureHydratee !== doc.generation) {
     setLectureHydratee(doc.generation)
-    setLatitudeDeg(nombre(doc.document?.pin?.lat))
     const profil = doc.document?.horizonProfile
     if (profil && Array.isArray(profil.points)) {
       setPoints(sortedHorizonPoints(profil.points))
@@ -90,6 +90,8 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
     }
   }
 
+  // ACAL251 — latitude de l'épingle du document, sinon du repère servi (détail).
+  const latitudeDeg = useLatitudeDuSite(calepinageId, doc.etat === 'ok' ? doc.document : null)
   const hauteurMaxDeg = horizonMaxHeightDeg(points)
   // ACAL254 — le MÊME compte que l'atelier : heures (mois × heure) de la matrice de
   // dérate réellement appliquée à la production, en heures — plus de pas de 0,5 h.

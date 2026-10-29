@@ -14,13 +14,13 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W303 — date de vérification (badge de fraîcheur sur les cartes) + estimation de
 // temps de lecture à partir du résumé affiché (repère indicatif pour la carte ; le
 // temps de lecture précis vit sur la page du guide). WB12 — chaque carte lit
 // désormais sa propre date via guideMeta.ts (source unique par slug) au lieu d'une
 // constante globale partagée entre les 12 guides.
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 const groups = [
   {

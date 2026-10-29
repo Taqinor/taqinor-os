@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { initState } from './draftCore'
 import SectionsPane from './SectionsPane'
+import { nettoyerSectionsPane, sectionsPaneBase } from '../../../test/sectionsPaneSetup'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 /* CRX36 — le repli automatique des sections est recalculé au CHANGEMENT DE
@@ -23,21 +24,9 @@ vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-
 vi.mock('../../../components/CustomFieldsInput', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => <div data-testid="booker" /> }))
 
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  // Le repli est PERSISTÉ (localStorage `taqinor.lw.collapsed`) et les choix
-  // de l'utilisatrice priment sur l'auto-repli : sans ce nettoyage, un test
-  // dicterait l'état d'ouverture des suivants.
-  try { localStorage.clear() } catch { /* noop */ }
-})
+afterEach(nettoyerSectionsPane)
 
-const base = {
-  setField: vi.fn(),
-  errors: {},
-  mode: 'edit',
-  refData: { users: [], tagOptions: [], motifOptions: [] },
-}
+const base = sectionsPaneBase('edit')
 
 // Lead A : richement renseigné. Lead B : quasi vide. Deux profils opposés,
 // donc deux replis automatiques différents, quels que soient les identifiants

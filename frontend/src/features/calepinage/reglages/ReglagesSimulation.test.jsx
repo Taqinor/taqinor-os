@@ -319,3 +319,58 @@ describe('ACAL132 — le PUT fusionne : une clé stockée puis vidée part à `n
     expect('fenetre_annees' in envoi).toBe(false)
   })
 })
+
+describe('ACAL289 — cartes « Historique » et « Rapport d’étude » (fin de page)', () => {
+  it('la carte Historique envoie presets.versions_conservees et la carte Rapport documents.rapport_etude.sections', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    rendre()
+    const historique = await screen.findByTestId('acal289-historique')
+    const champ = within(historique).getByLabelText('Versions conservées')
+    expect(champ).toHaveValue(String(REGLAGES.presets.versions_conservees))
+    // Rien de changé : rien n'est envoyé.
+    expect(screen.getByTestId('acal289-enregistrer-historique')).toBeDisabled()
+    fireEvent.change(champ, { target: { value: '5' } })
+    fireEvent.click(screen.getByTestId('acal289-enregistrer-historique'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0]).toEqual({ presets: { versions_conservees: 5 } })
+
+    fireEvent.click(screen.getByTestId('acal289-section-pertes'))
+    fireEvent.click(screen.getByTestId('acal289-enregistrer-rapport'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(2))
+    expect(mocks.putParametres.mock.calls[1][0]).toEqual({
+      documents: { rapport_etude: { sections: ['synthese', 'production'], langue: null } },
+    })
+  })
+
+  it('vider le champ remet la purge à OFF (null)', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES_VIDES })
+    rendre()
+    const champ = within(await screen.findByTestId('acal289-historique')).getByLabelText('Versions conservées')
+    fireEvent.change(champ, { target: { value: '' } })
+    fireEvent.click(screen.getByTestId('acal289-enregistrer-historique'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0]).toEqual({ presets: { versions_conservees: null } })
+  })
+
+  it('une section obligatoire n’est pas décochable', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    const obligatoire = await screen.findByTestId('acal289-section-synthese')
+    expect(obligatoire).toBeChecked()
+    expect(obligatoire).toBeDisabled()
+  })
+
+  it('un 400 est affiché mot pour mot', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockRejectedValue({ response: { status: 400, data: {
+      presets: 'versions_conservees : un entier supérieur à 0 est attendu.' } } })
+    rendre()
+    const champ = within(await screen.findByTestId('acal289-historique')).getByLabelText('Versions conservées')
+    fireEvent.change(champ, { target: { value: '7' } })
+    fireEvent.click(screen.getByTestId('acal289-enregistrer-historique'))
+    expect(await screen.findByTestId('acal289-erreur-historique'))
+      .toHaveTextContent('versions_conservees : un entier supérieur à 0 est attendu.')
+  })
+})
