@@ -220,8 +220,6 @@ export function etatCorpsDepuisProfil(profil, ctx = {}) {
       longueur_dc_m: sContraintes.longueur_dc_m ?? null,
       longueur_ac_m: sContraintes.longueur_ac_m ?? null,
       besoin_cellule_mt: sContraintes.besoin_cellule_mt ?? null,
-      // R3.7 (fondateur 28/10/2026) — la visite est la source ; l'écran ne l'envoie que si un jour il la porte.
-      mise_a_la_terre_necessaire: sContraintes.mise_a_la_terre_necessaire ?? null,
     },
     tva_recuperable: ctx.tvaRecuperable ?? null,
     options: { batterie_souhaitee: sOptions.batterie_souhaitee ?? null, om: sOptions.om ?? null },
