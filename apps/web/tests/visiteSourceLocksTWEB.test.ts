@@ -123,7 +123,8 @@ describe('devis/mon-toit.astro (FR) — appareil_id additif au payload lead du t
   const src = read('../src/pages/devis/mon-toit.astro');
 
   it("importe appareilId et le joint au corps du lead, jamais bloquant", () => {
-    expect(src).toContain("import { appareilId } from '../../lib/visite';");
+    // RWEB17-M19 — la page passe par lib/tunnel/tunnel.ts ; la section validation importe l'empreinte.
+    expect(src).toContain("import { appareilId } from '../visite';");
     // QJW5 — la page LIT l'empreinte dans son état ; c'est le registre partagé
     // qui décide de l'émettre (et l'OMET quand le stockage est indisponible).
     expect(src).toContain('appareilId: appareilId(),');

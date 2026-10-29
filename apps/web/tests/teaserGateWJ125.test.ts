@@ -169,11 +169,15 @@ describe('WJ125 — la promesse « étude complète et personnalisée » est pr�
 });
 
 describe('WJ125 — le message aria-live gaté ne divulgue aucun chiffre (parité voyant/lecteur d\'écran)', () => {
-  it.each(Object.entries(PAGES))('%s : GATED_ANNOUNCE est figure-free', (_label, src) => {
-    const m = /const GATED_ANNOUNCE = '([^']*)';/.exec(src);
-    expect(m).not.toBeNull();
-    if (!m) return;
-    expect(m[1]).not.toMatch(FIGURE_LEAK);
+  // RWEB17-M19 — GATED_ANNOUNCE de chaque page vit dans TEXTES_RESIDENTIEL[<locale>].annonceGatee
+  // (lib/tunnel/estimationResidentielle.ts), passé aussi à la section pro par lib/tunnel/config.ts.
+  it.each(Object.entries(PAGES))('%s : GATED_ANNOUNCE est figure-free', async (label, src) => {
+    const { TEXTES_RESIDENTIEL } = await import('../src/lib/tunnel/estimationResidentielle');
+    const locale = label.toLowerCase() as 'fr' | 'en' | 'ar';
+    const message = TEXTES_RESIDENTIEL[locale].annonceGatee;
+    expect(message.length).toBeGreaterThan(0);
+    expect(message).not.toMatch(FIGURE_LEAK);
+    expect(src).toContain(`annonceGatee: TEXTES_RESIDENTIEL.${locale}.annonceGatee,`);
   });
 });
 

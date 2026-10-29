@@ -295,7 +295,8 @@ describe('QJW21 (1) — égalité d’ENSEMBLES des clés, chaque locale lue dep
 
 describe('QJW21 — les trois pages passent par LE MÊME lecteur de DOM', () => {
   it.each(SOURCES)('%s — appelle lireChampsDomTunnel(document) dans son lireEtatTunnel', (locale, src) => {
-    expect(src, `${locale} : n'importe pas le lecteur partagé`).toContain("lib/tunnel/lecture'");
+    // RWEB17-M19 — via lib/tunnel/tunnel.ts -> validation.ts, qui importe le lecteur partagé.
+    expect(src, `${locale} : n'importe pas le lecteur partagé`).toContain("import { lireChampsDomTunnel } from './lecture';");
     expect(src, `${locale} : ne l'applique pas à son propre DOM`).toContain('lireChampsDomTunnel(document)');
 
     // …et n'a pas GARDÉ une lecture recopiée à côté (le défaut d'origine).
@@ -383,8 +384,9 @@ describe('QJW6 — plus aucune page ne construit son propre corps', () => {
     expect(src, `${locale} : un buildBody local subsiste`).not.toContain('function buildBody(');
     expect(src, `${locale} : dérivation de payload recopiée`).not.toContain('function resolveRoofType(');
     expect(src, `${locale} : dérivation de payload recopiée`).not.toContain('function resolveProBillRange(');
+    // RWEB17-M19 — la page importe lib/tunnel/tunnel.ts, dont la section validation importe le constructeur.
     expect(src, `${locale} : n'importe pas le constructeur partagé`)
-      .toContain("lib/tunnel/corps'");
+      .toContain("import { construireCorps, type MessagesErreurs } from './corps';");
     expect(src).toContain('construireCorps(lireEtatTunnel()');
   });
 });
