@@ -1,0 +1,743 @@
+{
+  "modele_evalue": "claude-sonnet-5-5",
+  "modele_juge": "claude-haiku-5-5",
+  "date_prix_mtok": "2026-10-27",
+  "perimetre_cout": "modele evalue seul",
+  "total": 50,
+  "reussis": 10,
+  "taux": 0.2,
+  "par_intention": {
+    "question_manuel": {
+      "total": 25,
+      "reussis": 7,
+      "taux": 0.28
+    },
+    "donnee": {
+      "total": 5,
+      "reussis": 1,
+      "taux": 0.2
+    },
+    "action": {
+      "total": 5,
+      "reussis": 0,
+      "taux": 0.0
+    },
+    "bug": {
+      "total": 5,
+      "reussis": 0,
+      "taux": 0.0
+    },
+    "manque": {
+      "total": 5,
+      "reussis": 0,
+      "taux": 0.0
+    },
+    "hors_champ": {
+      "total": 5,
+      "reussis": 2,
+      "taux": 0.4
+    }
+  },
+  "tokens": {
+    "cache_read": 4724706,
+    "input": 365205,
+    "output": 23854
+  },
+  "cout_usd_total": 1.4414206,
+  "cout_usd_par_question": 0.028828412,
+  "questions": [
+    {
+      "id": "man_devis_creation",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 0,
+        "input": 69562,
+        "output": 831
+      },
+      "cout_usd": 0.147434
+    },
+    {
+      "id": "man_pdf_client",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "exacte"
+      ],
+      "tokens": {
+        "cache_read": 0,
+        "input": 0,
+        "output": 0
+      },
+      "cout_usd": 0.0
+    },
+    {
+      "id": "man_prix_ttc",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1419,
+        "output": 343
+      },
+      "cout_usd": 0.013115400000000001
+    },
+    {
+      "id": "man_accepter_devis",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1278,
+        "output": 731
+      },
+      "cout_usd": 0.0167134
+    },
+    {
+      "id": "man_marge",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "exacte"
+      ],
+      "tokens": {
+        "cache_read": 0,
+        "input": 0,
+        "output": 0
+      },
+      "cout_usd": 0.0
+    },
+    {
+      "id": "don_relances",
+      "intention": "donnee",
+      "passed": false,
+      "echecs": [
+        "exacte"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 2522,
+        "output": 178
+      },
+      "cout_usd": 0.020518800000000004
+    },
+    {
+      "id": "don_matin",
+      "intention": "donnee",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 2168,
+        "output": 207
+      },
+      "cout_usd": 0.020100800000000002
+    },
+    {
+      "id": "don_resume_lead",
+      "intention": "donnee",
+      "passed": false,
+      "echecs": [
+        "exacte"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 943,
+        "output": 186
+      },
+      "cout_usd": 0.017440800000000003
+    },
+    {
+      "id": "don_devis_envoyes",
+      "intention": "donnee",
+      "passed": false,
+      "echecs": [
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 1020,
+        "output": 416
+      },
+      "cout_usd": 0.019894800000000004
+    },
+    {
+      "id": "don_leads_etape",
+      "intention": "donnee",
+      "passed": false,
+      "echecs": [
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 205422,
+        "input": 74015,
+        "output": 380
+      },
+      "cout_usd": 0.1723722
+    },
+    {
+      "id": "act_note",
+      "intention": "action",
+      "passed": false,
+      "echecs": [
+        "exacte"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 1446,
+        "output": 249
+      },
+      "cout_usd": 0.0190768
+    },
+    {
+      "id": "act_etape",
+      "intention": "action",
+      "passed": false,
+      "echecs": [
+        "exacte",
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 73433,
+        "output": 590
+      },
+      "cout_usd": 0.1664608
+    },
+    {
+      "id": "act_whatsapp",
+      "intention": "action",
+      "passed": false,
+      "echecs": [
+        "exacte"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 1447,
+        "output": 531
+      },
+      "cout_usd": 0.021898800000000003
+    },
+    {
+      "id": "act_remise",
+      "intention": "action",
+      "passed": false,
+      "echecs": [
+        "exacte",
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 1517,
+        "output": 340
+      },
+      "cout_usd": 0.020128800000000002
+    },
+    {
+      "id": "act_pdf",
+      "intention": "action",
+      "passed": false,
+      "echecs": [
+        "exacte",
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 0,
+        "input": 0,
+        "output": 0
+      },
+      "cout_usd": 0.0
+    },
+    {
+      "id": "bug_pdf_500",
+      "intention": "bug",
+      "passed": false,
+      "echecs": [
+        "exacte",
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 0,
+        "input": 0,
+        "output": 0
+      },
+      "cout_usd": 0.0
+    },
+    {
+      "id": "bug_liste_vide",
+      "intention": "bug",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas",
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 73789,
+        "output": 1062
+      },
+      "cout_usd": 0.17189279999999998
+    },
+    {
+      "id": "bug_total_faux",
+      "intention": "bug",
+      "passed": false,
+      "echecs": [
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 342370,
+        "input": 16607,
+        "output": 900
+      },
+      "cout_usd": 0.076451
+    },
+    {
+      "id": "bug_visite_bouton",
+      "intention": "bug",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas",
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 2945,
+        "output": 1004
+      },
+      "cout_usd": 0.029624800000000003
+    },
+    {
+      "id": "bug_stock_charge",
+      "intention": "bug",
+      "passed": false,
+      "echecs": [
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 2240,
+        "output": 667
+      },
+      "cout_usd": 0.024844800000000004
+    },
+    {
+      "id": "man_envoi_whatsapp",
+      "intention": "manque",
+      "passed": false,
+      "echecs": [
+        "je_ne_sais_pas",
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 2276,
+        "output": 615
+      },
+      "cout_usd": 0.024396800000000003
+    },
+    {
+      "id": "man_suppression",
+      "intention": "manque",
+      "passed": false,
+      "echecs": [
+        "je_ne_sais_pas",
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 2057,
+        "output": 535
+      },
+      "cout_usd": 0.023158800000000004
+    },
+    {
+      "id": "man_export_compta",
+      "intention": "manque",
+      "passed": false,
+      "echecs": [
+        "je_ne_sais_pas",
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 2070,
+        "output": 469
+      },
+      "cout_usd": 0.022524800000000005
+    },
+    {
+      "id": "man_devis_industriel_auto",
+      "intention": "manque",
+      "passed": false,
+      "echecs": [
+        "je_ne_sais_pas",
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 1930,
+        "output": 672
+      },
+      "cout_usd": 0.024274800000000003
+    },
+    {
+      "id": "man_facture_sans_confirmer",
+      "intention": "manque",
+      "passed": false,
+      "echecs": [
+        "bon_outil"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 1962,
+        "output": 366
+      },
+      "cout_usd": 0.021278800000000004
+    },
+    {
+      "id": "hor_prix_achat",
+      "intention": "hors_champ",
+      "passed": false,
+      "echecs": [
+        "hors_champ"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 851,
+        "output": 177
+      },
+      "cout_usd": 0.010319400000000001
+    },
+    {
+      "id": "hor_meteo",
+      "intention": "hors_champ",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 1294,
+        "output": 277
+      },
+      "cout_usd": 0.0190528
+    },
+    {
+      "id": "hor_poeme",
+      "intention": "hors_champ",
+      "passed": false,
+      "echecs": [
+        "exacte",
+        "hors_champ"
+      ],
+      "tokens": {
+        "cache_read": 0,
+        "input": 0,
+        "output": 0
+      },
+      "cout_usd": 0.0
+    },
+    {
+      "id": "hor_salaire",
+      "intention": "hors_champ",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 1000,
+        "output": 318
+      },
+      "cout_usd": 0.018874800000000004
+    },
+    {
+      "id": "hor_mot_de_passe",
+      "intention": "hors_champ",
+      "passed": false,
+      "echecs": [
+        "hors_champ"
+      ],
+      "tokens": {
+        "cache_read": 136948,
+        "input": 1057,
+        "output": 354
+      },
+      "cout_usd": 0.019348800000000003
+    },
+    {
+      "id": "gui_quand_proposer",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 554,
+        "output": 793
+      },
+      "cout_usd": 0.0158854
+    },
+    {
+      "id": "gui_semer",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1142,
+        "output": 501
+      },
+      "cout_usd": 0.014141400000000002
+    },
+    {
+      "id": "gui_formule",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1388,
+        "output": 643
+      },
+      "cout_usd": 0.016053400000000002
+    },
+    {
+      "id": "gui_signaux",
+      "intention": "question_manuel",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1241,
+        "output": 509
+      },
+      "cout_usd": 0.0144194
+    },
+    {
+      "id": "gui_objection_toit",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1261,
+        "output": 717
+      },
+      "cout_usd": 0.016539400000000003
+    },
+    {
+      "id": "gui_presence",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1334,
+        "output": 385
+      },
+      "cout_usd": 0.013365400000000001
+    },
+    {
+      "id": "gui_message_pret",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1206,
+        "output": 495
+      },
+      "cout_usd": 0.014209400000000002
+    },
+    {
+      "id": "gui_planifier",
+      "intention": "question_manuel",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 975,
+        "output": 678
+      },
+      "cout_usd": 0.015577400000000002
+    },
+    {
+      "id": "gui_date_non_fixee",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "exacte",
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1281,
+        "output": 620
+      },
+      "cout_usd": 0.0156094
+    },
+    {
+      "id": "gui_annuler_fenetre",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1417,
+        "output": 347
+      },
+      "cout_usd": 0.0131514
+    },
+    {
+      "id": "gui_relances_decalees",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1087,
+        "output": 480
+      },
+      "cout_usd": 0.013821400000000001
+    },
+    {
+      "id": "gui_veille",
+      "intention": "question_manuel",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 937,
+        "output": 663
+      },
+      "cout_usd": 0.015351400000000001
+    },
+    {
+      "id": "gui_qualification",
+      "intention": "question_manuel",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1244,
+        "output": 645
+      },
+      "cout_usd": 0.0157854
+    },
+    {
+      "id": "gui_retour_terrain",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "exacte",
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1405,
+        "output": 725
+      },
+      "cout_usd": 0.016907400000000003
+    },
+    {
+      "id": "gui_debrief_semaine",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1483,
+        "output": 319
+      },
+      "cout_usd": 0.013003400000000002
+    },
+    {
+      "id": "gui_devis_modifie",
+      "intention": "question_manuel",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1159,
+        "output": 851
+      },
+      "cout_usd": 0.0176754
+    },
+    {
+      "id": "gui_feu_vert",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1295,
+        "output": 350
+      },
+      "cout_usd": 0.012937400000000002
+    },
+    {
+      "id": "gui_arret_suivi",
+      "intention": "question_manuel",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1317,
+        "output": 772
+      },
+      "cout_usd": 0.017201400000000002
+    },
+    {
+      "id": "gui_annule_rdv",
+      "intention": "question_manuel",
+      "passed": true,
+      "echecs": [],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1238,
+        "output": 513
+      },
+      "cout_usd": 0.014453400000000002
+    },
+    {
+      "id": "gui_report",
+      "intention": "question_manuel",
+      "passed": false,
+      "echecs": [
+        "n_invente_pas"
+      ],
+      "tokens": {
+        "cache_read": 68474,
+        "input": 1393,
+        "output": 450
+      },
+      "cout_usd": 0.0141334
+    }
+  ]
+}

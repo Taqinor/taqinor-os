@@ -1,0 +1,35 @@
+{
+ "etape": "P1.11",
+ "titre": "Cle Claude invalide : 401 puis repli Groq gpt-oss-120b, action crm.leads.a_relancer",
+ "taches": [
+  "AIC4",
+  "AIC30"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "evenement": {
+   "id": 13,
+   "intention": "action",
+   "modele": "openai/gpt-oss-120b",
+   "repli": true,
+   "manuel_present": false,
+   "tokens": {
+    "input": 13117,
+    "output": 192,
+    "cache_read": 0
+   },
+   "outils_appeles": [
+    "crm.leads.a_relancer"
+   ],
+   "erreur": null,
+   "note": 0,
+   "commentaire": null,
+   "lead_id": null,
+   "ecran": "/crm",
+   "user_id": 286,
+   "question": "Qui dois-je relancer aujourd'hui ?",
+   "resume": "Aucun lead n’est à relancer aujourd’hui selon les données disponibles.",
+   "cree_le": "2026-10-29T21:39:56.632101+00:00"
+  }
+ }
+}

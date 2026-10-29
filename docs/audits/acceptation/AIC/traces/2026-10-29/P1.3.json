@@ -1,0 +1,60 @@
+{
+ "etape": "P1.3",
+ "titre": "Actions internes : note au chatter, date de relance",
+ "taches": [
+  "AIC6"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "evenements": [
+   {
+    "id": 2,
+    "intention": "action",
+    "modele": "claude-sonnet-5-5",
+    "repli": false,
+    "manuel_present": true,
+    "tokens": {
+     "input": 3312,
+     "output": 348,
+     "cache_read": 136136
+    },
+    "outils_appeles": [
+     "crm.lead.note"
+    ],
+    "erreur": null,
+    "note": 0,
+    "commentaire": null,
+    "lead_id": 2344,
+    "ecran": "/crm/leads/2344",
+    "user_id": 286,
+    "question": "Ajoute une note au lead 2344 : appel de test acceptation AIC13, client intéressé par une visite.",
+    "resume": "La note est ajoutée à l'historique du lead #2344 : « Appel de test acceptation AIC13, client intéressé par une visite. »\n\nLe client est intéressé par une visite",
+    "cree_le": "2026-10-29T21:17:21.919070+00:00"
+   },
+   {
+    "id": 4,
+    "intention": "action",
+    "modele": "claude-sonnet-5-5",
+    "repli": false,
+    "manuel_present": true,
+    "tokens": {
+     "input": 9535,
+     "output": 507,
+     "cache_read": 272272
+    },
+    "outils_appeles": [
+     "crm.lead.update"
+    ],
+    "erreur": null,
+    "note": 0,
+    "commentaire": null,
+    "lead_id": 2344,
+    "ecran": "/crm/leads/2344",
+    "user_id": 286,
+    "question": "Pose la date de relance du lead 2344 à demain matin.",
+    "resume": "La date de relance du lead #2344 est maintenant fixée au 30 octobre 2026, c'est-à-dire demain.\n\nLe système ne gère que des dates. Je n'ai donc pas pu fixer une ",
+    "cree_le": "2026-10-29T21:19:36.494404+00:00"
+   }
+  ]
+ }
+}

@@ -306,6 +306,17 @@ def repondeur_reel(company_id: int, user_id: int, action_ctx=None):
     return repondre
 
 
+def texte_du_message(contenu) -> str:
+    """Premier bloc TEXTE d une reponse Messages : les modeles 5.5 placent un
+    bloc de reflexion (sans `.text`) en tete — releve en acceptation AIC13."""
+    for bloc in contenu or []:
+        if getattr(bloc, "type", None) == "text" and getattr(bloc, "text", None):
+            return bloc.text
+        if isinstance(bloc, dict) and bloc.get("type") == "text":
+            return str(bloc.get("text") or "")
+    return ""
+
+
 def juge_reel(modele_juge: str):
     """Juge LLM (SQL_AGENT_JUGE_MODEL) : repond en JSON ``{critere: bool}``.
     Appel PAYANT : jamais lance en CI."""
@@ -324,10 +335,12 @@ def juge_reel(modele_juge: str):
             "je_ne_sais_pas (avoue ne pas savoir quand il le faut), "
             "hors_champ (signale que ce n'est pas le role de l'ERP).")
         msg = client.messages.create(model=modele_juge, max_tokens=300,
+                                     thinking={"type": "disabled"},
                                      messages=[{"role": "user", "content": consigne}])
+        texte = texte_du_message(msg.content)
         try:
-            return json.loads(msg.content[0].text)
-        except (ValueError, IndexError):
+            return json.loads(texte[texte.index("{"):texte.rindex("}") + 1])
+        except ValueError:
             return {}
     return juger
 

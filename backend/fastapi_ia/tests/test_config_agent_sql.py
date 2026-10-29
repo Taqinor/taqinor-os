@@ -158,16 +158,16 @@ class FournisseurClaudeAic3Tests(unittest.TestCase):
 
     def test_modele_par_defaut_sous_claude(self):
         # Vide, ou le defaut Groq laisse dans le .env => Sonnet 5.5.
-        for modele in ("", "llama-3.3-70b-versatile"):
+        for modele in ("", "openai/gpt-oss-120b"):
             self.assertEqual(self._llm("claude", modele).model,
                              "claude-sonnet-5-5")
         self.assertEqual(self._llm("claude", "claude-haiku-5-5").model,
                          "claude-haiku-5-5")
 
     def test_groq_inchange(self):
-        llm = self._llm("groq", "llama-3.3-70b-versatile")
+        llm = self._llm("groq", "openai/gpt-oss-120b")
         self.assertLess(llm.temperature, 0.01)  # ChatGroq: 0 -> 1e-8
-        self.assertEqual(llm.model_name, "llama-3.3-70b-versatile")
+        self.assertEqual(llm.model_name, "openai/gpt-oss-120b")
 
 
 if __name__ == "__main__":
