@@ -809,6 +809,12 @@ REGLES_PAR_CHEMIN = (
     # CI #997 fuzz (4) - cible d'un profil saisonnier : un produit OU une catégorie du stock.
     (r'^/api/django/stock/profils-saisonniers/', ('categorie',), 'stock.Categorie', None, None),
     (r'^/api/django/stock/quais/', ('emplacement',), 'stock.EmplacementStock', None, None),
+    # ENF11 — réservation d'un créneau par le portail fournisseur : ``quai`` et
+    # ``bon_commande`` sont des ids de la société du jeton (stock.Quai seedé).
+    (r'^/api/django/public/stock/portail-fournisseur/', ('quai',), 'stock.Quai',
+     None, None),
+    (r'^/api/django/public/stock/portail-fournisseur/', ('bon_commande',),
+     'achats.BonCommandeFournisseur', None, None),
     # CI #997 fuzz (4) - besoins d'une vague : produit, chantiers (réservations)
     # et BCF sources sont des ids de corps imbriqués (``besoins[].produit_id``).
     (r'^/api/django/stock/vagues-picking/$', ('produit_id',), 'stock.Produit', None, None),

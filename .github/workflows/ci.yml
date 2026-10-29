@@ -669,8 +669,10 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
       - name: Test the OpenAPI-schema checker itself (YAPIC6)
         run: python -m unittest scripts.tests.test_check_openapi_schema -v
-      - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
-        run: python scripts/check_openapi_schema.py
+      # ENF11 — base `openapi_schema_allow.txt` vidée (ENF3-ENF10) : `--strict`
+      # rend le job rouge sur TOUT avertissement du générateur, base ignorée.
+      - name: OpenAPI schema — generate, validate, zero warning (YAPIC6, ENF11 --strict)
+        run: python scripts/check_openapi_schema.py --strict
       # PACT6 — quand l'instantané est en retard, le régénérer ICI (même image,
       # mêmes dépendances) et l'offrir en artefact : un poste sans Docker le
       # télécharge et le committe au lieu de deviner l'inventaire.

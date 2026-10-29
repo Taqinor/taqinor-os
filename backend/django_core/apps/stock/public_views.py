@@ -355,7 +355,17 @@ def portail_fournisseur_creneaux_view(request, token):
     }))
 
 
-@extend_schema(request=None, responses={
+# ENF11 — le corps LU par la vue est déclaré (il l'était « sans corps » : le
+# fuzz envoyait une requête vide, conforme au schéma, que la vue refusait).
+@extend_schema(request=inline_serializer('StockPortailCreneauReservation', {
+    'quai': serializers.IntegerField(),
+    'debut': serializers.DateTimeField(),
+    'bon_commande': serializers.IntegerField(required=False, allow_null=True),
+    'chauffeur_nom': serializers.CharField(required=False, allow_blank=True,
+                                           max_length=120),
+    'immatriculation': serializers.CharField(required=False, allow_blank=True,
+                                             max_length=30),
+}), responses={
     201: inline_serializer('StockPortailCreneauReserve', {
         'id': serializers.IntegerField(),
         'quai': serializers.IntegerField(),
