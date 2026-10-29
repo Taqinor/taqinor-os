@@ -85,14 +85,15 @@ def _empreinte_recue(request):
     return recue.strip() if isinstance(recue, str) else None
 
 
-def _aucun_code_requis(link):
+def _aucun_code_requis(request, link):
     """L-NIV / ADEV97 — 200 « Aucun code requis » (``code_requis: false``)
     quand ce lien n'exige AUCUN code de lecture — ``otp_lecture`` non posé, ou
     déjà déverrouillé dans l'heure ; ``None`` sinon (un code part). La page
     s'en sert au clic « Télécharger » : jamais un second code pour rien. LA
-    garde unique (``services.otp_lecture_verified``, QJR417)."""
-    from ..services import otp_lecture_verified
-    if link.otp_lecture and not otp_lecture_verified(link):
+    garde unique (``services.preuve_lecture_valide``, QJR417 ; ASEC23 : la
+    preuve DU navigateur)."""
+    from ..services import preuve_lecture_valide
+    if link.otp_lecture and not preuve_lecture_valide(request, link):
         return None
     return _noindex(Response({'detail': 'Aucun code requis pour ce lien.',
                               'code_requis': False}))
@@ -154,6 +155,10 @@ def proposal_contact_request(request, token):
     refus = _refus_brouillon(link)
     if refus is not None:
         return refus
+    # D-ASEC-23-CONTACT (fondateur, 29/10/2026) — « Contacter mon conseiller »
+    # reste OUVERT sur un lien ``otp_lecture`` SANS preuve (QJR418) : un client
+    # qui a perdu son code doit joindre son commercial, et la demande ne
+    # révèle rien du devis. Lire, signer, options, engagement : preuve exigée.
 
     canal = (str(
         request.data.get('channel') or request.data.get('canal') or ''
@@ -293,7 +298,7 @@ def proposal_request_otp_lecture(request, token):
     refus = _refus_brouillon(link)
     if refus is not None:
         return refus
-    refus = _aucun_code_requis(link)
+    refus = _aucun_code_requis(request, link)
     if refus is not None:
         return refus
     from ..services import request_otp_lecture
@@ -315,11 +320,13 @@ def proposal_request_otp_lecture(request, token):
 def proposal_verify_otp_lecture(request, token):
     """L-NIV (24/08/2026) — Vérifie l'OTP de LECTURE soumis.
 
-    Succès → la LECTURE de ce lien reste déverrouillée pendant
-    ``OTP_LECTURE_VERIFIED_TTL`` (1 h) : ``proposal_data``/``proposal_pdf``
-    relisent ce drapeau à chaque appel plutôt que d'exiger un code par GET
-    (contrairement à l'acceptation, la lecture est consultée plusieurs
-    fois)."""
+    Succès → ASEC23 (contrat ASEC1 ``proposition_otp_preuve.json``) : la
+    réponse porte une PREUVE opaque propre au navigateur qui vient de
+    vérifier (``preuve``, ``expire_dans`` = ``OTP_LECTURE_VERIFIED_TTL``).
+    ``apps/web`` la range dans son cookie httpOnly et la relaie en en-tête
+    ``X-Proposition-Preuve`` ; chaque lecture/action la relit
+    (``preuve_lecture_valide``). Plus aucun drapeau global au jeton : un
+    second navigateur sans preuve reste sur l'écran OTP."""
     link = _resolve_proposal_link(token, refuser_brouillon=False)
     if link is None:
         return _not_found()
@@ -331,10 +338,11 @@ def proposal_verify_otp_lecture(request, token):
     refus = _refus_brouillon(link)
     if refus is not None:
         return refus
-    refus = _aucun_code_requis(link)
+    refus = _aucun_code_requis(request, link)
     if refus is not None:
         return refus
-    from ..services import validate_otp_lecture
+    from ..services import (
+        OTP_LECTURE_VERIFIED_TTL, emettre_preuve_lecture, validate_otp_lecture)
     # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
     otp_code, refus = _texte_du_corps(request, 'otp_code')
     if refus is not None:
@@ -343,7 +351,12 @@ def proposal_verify_otp_lecture(request, token):
     if err:
         return _noindex(Response(
             {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
-    return _noindex(Response({'detail': 'Code vérifié.'}))
+    return _noindex(Response({
+        'detail': 'Code vérifié.',
+        'verifie': True,
+        'preuve': emettre_preuve_lecture(link),
+        'expire_dans': OTP_LECTURE_VERIFIED_TTL,
+    }))
 
 
 @api_view(['POST'])
@@ -373,7 +386,7 @@ def proposal_accept(request, token):
     if refus is not None:
         return refus
     # ── QJR132 / ES1 (audit du 30/08/2026) — SIGNER EST AU MOINS AUSSI GARDÉ
-    #    QUE LIRE. Ce endpoint n'appelait JAMAIS ``otp_lecture_verified``,
+    #    QUE LIRE. Ce endpoint n'appelait JAMAIS la garde de lecture,
     #    contrairement aux TROIS routes de LECTURE de la même proposition
     #    (``proposal_data``, la page et ``proposal_pdf``). Sur un lien où le
     #    commercial a activé l'OTP de lecture, quiconque détenait le jeton
@@ -388,7 +401,7 @@ def proposal_accept(request, token):
     #    ne dépend d'aucun réglage : elle suit ce que LE LIEN porte
     #    (``ShareLink.otp_lecture``), exactement comme les trois lectures.
     #
-    #    NO-OP SUR UN LIEN SANS OTP DE LECTURE : ``otp_lecture_verified``
+    #    NO-OP SUR UN LIEN SANS OTP DE LECTURE : ``preuve_lecture_valide``
     #    répond True quand ``link.otp_lecture`` est faux — aucun lien
     #    d'aujourd'hui ne change de comportement. Le jeton interne, lui, est
     #    déjà refusé au-dessus (il ne signe jamais).
@@ -396,8 +409,8 @@ def proposal_accept(request, token):
     #    Posée AVANT toute lecture du corps et tout effet de bord, et sur le
     #    MÊME contrat que les lectures (403 ``otp_required``) pour que l'écran
     #    client sache redemander le code au lieu d'afficher une erreur nue.
-    from ..services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    from ..services import preuve_lecture_valide
+    if not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     devis = link.devis
@@ -477,7 +490,6 @@ def proposal_accept(request, token):
                 'accepte_par_nom': devis.accepte_par_nom,
                 'avenant_signe': {'signe_le': signature.signed_at.isoformat()},
             }))
-    statut_avant = devis.statut
     try:
         # ── QJR135 / ES4 — L'ÉCRAN DE CONFIRMATION LIT CE QUI VIENT D'ÊTRE
         #    ÉCRIT. ``accept_devis`` REBIND son nom local sur la relecture
@@ -518,11 +530,14 @@ def proposal_accept(request, token):
             corps,
             status=(status.HTTP_409_CONFLICT if exc.conflict
                     else status.HTTP_400_BAD_REQUEST)))
-    # ADEV97 — qui VIENT de signer télécharge son exemplaire sans code (1 h).
+    # ADEV97 — qui VIENT de signer télécharge son exemplaire sans second
+    # code : ASEC23 — sur un lien ``otp_lecture`` l'acceptation EXIGE déjà la
+    # preuve de CE navigateur (garde ci-dessus), qui reste valable pour son
+    # exemplaire ; plus aucun drapeau global au jeton (un tiers détenant le
+    # lien n'est jamais déverrouillé par la signature d'un autre).
     # G (revue du 24/10/2026) — APRÈS LE COMMIT, le devis EST accepté : un
-    # incident ici (cache, lecture du reçu, acompte) dégrade la réponse
+    # incident ici (lecture du reçu, acompte) dégrade la réponse
     # (champ à null, journalisé) au lieu d'un 500 sur une signature réussie.
-    _apres_signature(_deverrouiller_exemplaire_signe, link, statut_avant, devis)
     # QX33be — état de succès post-signature : acompte (tranche 1 sur le TTC
     # REMISÉ per QX1) + instructions de virement (RIB) + ``declare_url``.
     # ADEV53 — plus de lien carte (aucune route ``pay-card``) ; RIB vide quand
@@ -557,22 +572,6 @@ def _langue_du_corps(request):
     """ADEV99 — ``fr``/``en``/``ar`` envoyé par la page, sinon ``''``."""
     brut = request.data.get('langue') if hasattr(request.data, 'get') else ''
     return brut if brut in ('fr', 'en', 'ar') else ''
-
-
-def _deverrouiller_exemplaire_signe(link, statut_avant, devis):
-    """ADEV97 — une acceptation FRAÎCHE (envoyé → accepté par CET appel) pose
-    le drapeau de lecture vérifiée du lien pour ``OTP_LECTURE_VERIFIED_TTL`` :
-    l'écran de succès offre l'exemplaire signé tout de suite. Une
-    resoumission sur un devis déjà accepté (idempotente, 200) ne déverrouille
-    JAMAIS rien : sans quoi tout détenteur du jeton contournerait le code."""
-    if statut_avant == 'accepte' or getattr(devis, 'statut', None) != 'accepte':
-        return
-    from django.core.cache import cache
-    from ..domain.cycle_vie import (
-        OTP_LECTURE_VERIFIED_TTL, _otp_lecture_verified_key,
-    )
-    cache.set(_otp_lecture_verified_key(link.token), True,
-              timeout=OTP_LECTURE_VERIFIED_TTL)
 
 
 def recu_signature(devis, empreinte_lue=None):
@@ -661,7 +660,7 @@ def proposal_activate_option(request, token):
         return refus
     # ── QJR418 (DR2, actions) — SIGNER EST AU MOINS AUSSI GARDÉ QUE LIRE, ET
     # ACTIVER UNE OPTION PAYANTE AUSSI. Ce endpoint ne consultait JAMAIS
-    # ``otp_lecture_verified`` : quiconque détenait le jeton pouvait CHANGER LE
+    # la garde de lecture : quiconque détenait le jeton pouvait CHANGER LE
     # PÉRIMÈTRE FACTURÉ d'un devis sans franchir la garde que la lecture, elle,
     # exige (QJR132/QJR417). Le raisonnement de QJR132 ne leur avait jamais été
     # appliqué. DR2 tranche : la garde couvre les actions clientes,
@@ -671,8 +670,8 @@ def proposal_activate_option(request, token):
     # sans OTP de lecture : la garde répond True — aucun lien d'aujourd'hui ne
     # change. Même contrat de refus que les lectures (403 ``otp_required``)
     # pour que l'écran client sache redemander le code.
-    from ..services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    from ..services import preuve_lecture_valide
+    if not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     try:
@@ -725,8 +724,8 @@ def proposal_decliner(request, token):
     # décliner engage la relation commerciale (note au lead, vendeur notifié) ;
     # sur un lien qui exige le code de lecture, pas sans lui. Posée AVANT la
     # lecture du corps et tout effet de bord ; no-op sans ``otp_lecture``.
-    from ..services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    from ..services import preuve_lecture_valide
+    if not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     motif, refus = _texte_du_corps(request, 'motif')

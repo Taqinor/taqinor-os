@@ -27,6 +27,7 @@ import {
 } from '../../lib/suivi';
 import { whatsappLink } from '../../lib/proposition';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { entetePreuve } from '../api/_apiBase';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 const { token } = Astro.params as { token: string };
@@ -65,7 +66,8 @@ if (!rl.allowed) {
   const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(suiviEndpoint(API_BASE, token), {
-      headers: { accept: 'application/json' },
+      // ASEC53 (contrat ASEC1) — la preuve OTP de lecture de CE navigateur, relayée en en-tête.
+      headers: { accept: 'application/json', ...entetePreuve(Astro.request) },
       signal: controller.signal,
     });
     httpStatus = res.status;
@@ -157,7 +159,8 @@ const ogTitle = 'Suivi de votre projet solaire | Taqinor';
     <!-- ADOC133 — écran de code de LECTURE (même mécanisme et mêmes endpoints que
          /proposition : proxy same-origin /api/proposition-otp, mode `lecture`,
          MÊME jeton ShareLink). Vérification réussie ⇒ le serveur déverrouille la
-         lecture une heure (otp_lecture_verified) : on recharge la même URL. -->
+         lecture une heure pour CE navigateur (preuve en cookie httpOnly, ASEC53) :
+         on recharge la même URL. -->
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
       <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Suivi protégé</h1>
       <p class="v2-body mt-4 max-w-md">

@@ -198,7 +198,6 @@
 5607a5919666|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
 5614ef794d45|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 56c160e3691d|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-574392d084b2|apps/web/src/pages/api/proposition-accept.ts,apps/web/src/pages/api/proposition-engagement.ts
 579f24532b4b|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 57eccfdb7a11|frontend/src/pages/crm/leads/SigneDialog.jsx,frontend/src/pages/crm/leads/SigneDialog.test.mjs
 57f76e12361a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro

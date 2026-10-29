@@ -20,7 +20,7 @@ import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest } from '../../lib/rateLimit';
 import { isPlausibleUuid, lireCookie } from '../../lib/visite';
 import { corpsAvecToken, jsonResponse as json, relayJson, resolveApiBase } from './_proxy';
-import { entetesIpVisiteur } from './_apiBase';
+import { entetePreuve, entetesIpVisiteur } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   if (!isSameOriginRequest(request)) return crossSiteRejection();
@@ -40,6 +40,7 @@ export const POST: APIRoute = async ({ request }) => {
       ...(ua ? { 'user-agent': ua } : {}),
       ...(lireCookie(cookies, 'tq_equipe') === '1' ? { 'X-Equipe-Appareil': '1' } : {}),
       ...(isPlausibleUuid(appareil) ? { 'X-Appareil-Id': appareil as string } : {}),
+      ...entetePreuve(cookies), // ASEC53 — preuve OTP de lecture de CE navigateur.
     },
     body: '{}',
     signal: AbortSignal.timeout(8000),

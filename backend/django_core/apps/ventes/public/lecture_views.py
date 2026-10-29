@@ -635,6 +635,14 @@ def proposal_engagement(request, token):
     # `X-Appareil-Id` ou du cookie `tq_appareil`, posés par le site et l'ERP).
     if link.via_interne or _lecture_equipe(link, request):
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
+    # ASEC23 — sur un lien ``otp_lecture``, seul le navigateur vérifié (preuve
+    # relayée en en-tête par ``apps/web``) écrit un beacon : un tiers sans
+    # preuve ne gonfle ni ``ShareLink.engagement`` ni les notes chatter.
+    # Garde posée AVANT tout effet de bord.
+    from ..services import preuve_lecture_valide
+    if not preuve_lecture_valide(request, link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
     section = str(request.data.get('section') or '').strip().lower()
     seconds_raw = request.data.get('seconds')
@@ -793,8 +801,8 @@ def proposal_vu(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
-    from ..services import otp_lecture_verified
-    if link.via_interne or not otp_lecture_verified(link):
+    from ..services import preuve_lecture_valide
+    if link.via_interne or not preuve_lecture_valide(request, link):
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
     is_first = _stamp_view_si_public(link, False, request)
     _notify_open(link, request, is_first=is_first)
