@@ -1197,7 +1197,7 @@ def logo_html(role="entete"):
         logger.warning("generate_devis_premium.logo_html : erreur ignorée (mode dégradé)", exc_info=True)
         b64_data = None
     if b64_data:
-        return _logo.img_html(_logo.pour_role(b64_data, role), role)
+        return _logo.img_html(_logo.pour_role(b64_data, role), role, alt=ENT_NOM_MARQUE)
     return (f'<span style="font-size:15pt;font-weight:900;letter-spacing:1px;color:white;">'
             f'TAQIN<span style="color:{CA};">&#9728;</span>R</span>')
 
@@ -1214,7 +1214,7 @@ def logo_p1_dark():
         logger.warning("generate_devis_premium.logo_p1_dark : erreur ignorée (mode dégradé)", exc_info=True)
         b64_data = None
     if b64_data:
-        return _logo.img_html(b64_data, "couverture", style="margin-bottom:10px;")
+        return _logo.img_html(b64_data, "couverture", alt=ENT_NOM_MARQUE, style="margin-bottom:10px;")
     # Fallback: text on dark background
     return (f'<div style="display:inline-block;">'
             f'<div style="font-size:17px;font-weight:900;color:white;letter-spacing:1px;line-height:1.1;">'

@@ -3,9 +3,9 @@ numpy ; aucune base, aucun Django, aucune dépendance nouvelle).
 
 Deux sources, UN traitement :
 
-* le logo TAQINOR embarqué, ``assets/logo.png`` — octet pour octet le
-  ``taqinor_main.png`` du pack officiel « TAQINOR_Logo_Pack_Final »
-  (17/10/2025, dossier Marketing/TAQINOR_Logo) : mot-marque « TAQIN☀R » bleu
+* le logo Taqinor embarqué, ``assets/logo.png`` — octet pour octet le
+  ``taqinor_main.png`` du pack officiel « Taqinor_Logo_Pack_Final »
+  (17/10/2025, dossier Marketing/Taqinor_Logo) : mot-marque « TAQIN☀R » bleu
   nuit, le « O » remplacé par le soleil doré à 8 rayons traversé d'un éclair
   bleu nuit, tagline « TAQA. INNOVATION. NOR. » dessous. Couleurs LUES sur le
   fichier (mode des pixels intérieurs) : ``BLEU_NUIT`` #022F53, ``DORE``
@@ -58,7 +58,7 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 ASSETS = Path(__file__).resolve().parent / "assets"
-CHEMIN_TAQINOR = ASSETS / "logo.png"
+CHEMIN_Taqinor = ASSETS / "logo.png"
 
 #: Couleurs de marque lues sur ``assets/logo.png`` (modes des pixels intérieurs).
 BLEU_NUIT = "#022F53"
@@ -235,9 +235,9 @@ def _est_dore(rgb: np.ndarray) -> np.ndarray:
 @functools.lru_cache(maxsize=1)
 def _lockup_clair():
     """Le logo officiel détouré (mot-marque + tagline), ou ``None`` sans asset."""
-    if not CHEMIN_TAQINOR.exists():
+    if not CHEMIN_Taqinor.exists():
         return None
-    with Image.open(CHEMIN_TAQINOR) as img:
+    with Image.open(CHEMIN_Taqinor) as img:
         return detourer(img)
 
 
@@ -277,10 +277,10 @@ def _bloc(a: np.ndarray, bloc: str) -> np.ndarray:
 
 @functools.lru_cache(maxsize=8)
 def taqinor_png(variante: str = "sombre", bloc: str = "lockup") -> bytes:
-    """PNG RGBA du logo TAQINOR : ``variante`` clair|sombre, ``bloc``
+    """PNG RGBA du logo Taqinor : ``variante`` clair|sombre, ``bloc``
     mot|lockup|embleme ; ``b''`` sans asset."""
     if variante not in _VARIANTES or bloc not in _BLOCS:
-        raise ValueError(f"logo TAQINOR : variante {variante!r} / bloc {bloc!r}")
+        raise ValueError(f"logo Taqinor : variante {variante!r} / bloc {bloc!r}")
     a = _lockup_clair()
     if a is None:
         return b""
@@ -351,7 +351,7 @@ def _carre_blanc(a: np.ndarray, marge: float = 0.08) -> Image.Image:
 
 @functools.lru_cache(maxsize=1)
 def taqinor_image_qr():
-    """Centre des QR TAQINOR : l'emblème (soleil, rayons, éclair) de l'asset —
+    """Centre des QR Taqinor : l'emblème (soleil, rayons, éclair) de l'asset —
     carré, lisible à 4-5 mm là où le mot-marque entier serait une tache ;
     ``None`` sans asset."""
     a = _lockup_clair()
@@ -365,6 +365,7 @@ def image_qr_societe(b64: str):
         img = Image.open(io.BytesIO(base64.b64decode(b64)))
         img.load()
     except Exception:  # noqa: BLE001 — illisible : aucun logo central (D-ENF22-BLE001)
+        logger.warning("logo.image_qr_societe : logo société illisible, QR sans image centrale", exc_info=True)
         return None
     return _carre_blanc(_rgba(img))
 
@@ -389,7 +390,7 @@ def css_boite(role: str) -> str:
             "object-fit:contain;display:block;")
 
 
-def img_html(b64: str, role: str, alt: str = "TAQINOR", style: str = "") -> str:
+def img_html(b64: str, role: str, alt: str = "logo", style: str = "") -> str:
     """Balise ``<img>`` du logo (base64 PNG) dimensionnée par la capitale du
     rôle ; '' sans image."""
     if not b64:
@@ -399,7 +400,7 @@ def img_html(b64: str, role: str, alt: str = "TAQINOR", style: str = "") -> str:
 
 
 def est_taqinor(b64: str):
-    """Variante (« clair » | « sombre ») si ``b64`` EST le lockup TAQINOR —
+    """Variante (« clair » | « sombre ») si ``b64`` EST le lockup Taqinor —
     l'asset embarqué, ou le même carré 1024 TÉLÉVERSÉ par le profil (cas de la
     prod) : égalité des octets en sortie du même pipeline, jamais un nom."""
     if not b64:
@@ -411,7 +412,7 @@ def est_taqinor(b64: str):
 
 
 def pour_role(b64: str, role: str) -> str:
-    """Le logo à imprimer pour un rôle : le lockup TAQINOR (embarqué ou
+    """Le logo à imprimer pour un rôle : le lockup Taqinor (embarqué ou
     téléversé) devient le bloc du rôle (mot-marque seul en « entete » /
     « hero », lockup ailleurs) ; tout autre logo (société, bandeau neutre)
     est rendu tel quel."""
@@ -421,11 +422,11 @@ def pour_role(b64: str, role: str) -> str:
 
 def image_qr(b64: str):
     """Centre des QR pour un logo base64 (clair) : l'emblème si c'est le lockup
-    TAQINOR (embarqué ou téléversé), sinon le logo dans un carré blanc."""
+    Taqinor (embarqué ou téléversé), sinon le logo dans un carré blanc."""
     return taqinor_image_qr() if est_taqinor(b64) else image_qr_societe(b64)
 
 
 def bloc_taqinor(role: str) -> str:
-    """Bloc du logo TAQINOR pour un rôle : lockup là où la tagline passe,
+    """Bloc du logo Taqinor pour un rôle : lockup là où la tagline passe,
     mot-marque ailleurs."""
     return "lockup" if AVEC_TAGLINE[role] else "mot"

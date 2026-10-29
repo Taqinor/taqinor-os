@@ -512,11 +512,11 @@ def page1(ctx):
     entete += "".join(f'<div class="ag-sub">{m}</div>'
                       for m in theme.marques_correction(d))
     declare = debit_declare_sans_courbe(d)
-    # R3 — le logo (société ou TAQINOR) en rangée au-dessus du kicker, comme
+    # R3 — le logo (société ou Taqinor) en rangée au-dessus du kicker, comme
     # les autres couvertures (jamais à côté du titre, qu'il ferait replier) ;
     # la page 1 garde une large réserve, les joints ``_qj`` absorbent.
     logo = _logo.img_html(ctx.get("logo_clair") or "", "couverture",
-                          alt=ctx["ident"].get("brand_name") or "TAQINOR")
+                          alt=ctx["ident"].get("brand_name") or "logo")
     if logo:
         entete = f'<div class="ag-logo">{logo}</div>{entete}'
     # AGC12 — un bloc argent absent n'empile plus deux respirations.
