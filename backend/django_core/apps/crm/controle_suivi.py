@@ -16,6 +16,10 @@ Ce qu'il sert :
 * une FRISE d'un jour par case (jour Africa/Casablanca, échéance COURANTE) ;
 * les EXCEPTIONS de l'instant, triées par ancienneté, 10 lignes au plus par
   liste (``total`` dit le vrai nombre) ;
+* le tableau PAR COMMERCIAL (``par_commercial``) : la mesure du verdict
+  restreinte aux dossiers de chaque responsable concerné, sur TOUTE la portée
+  et quel que soit ``owner`` — il nourrit le graphe « une barre par
+  commercial » de l'écran ;
 * le détail PAR TYPE d'étape, dans l'ordre de la table du parcours ;
 * la vitesse de PREMIER CONTACT (médiane, jamais la moyenne) ;
 * trois RÉSULTATS lus à côté de l'effort (visites planifiées, devis envoyés,
@@ -748,6 +752,54 @@ def _commerciaux(proprietaires):
     return sorted(lignes, key=lambda ligne: (ligne['nom'], ligne['id']))
 
 
+def _par_commercial(periode_tous, en_retard, today, absences, proprietaire,
+                    ouvres, commerciaux):
+    """``par_commercial`` (contrat, ``notes.par_commercial``) : UNE ligne par
+    entrée de ``commerciaux`` — la MESURE DU VERDICT
+    (``_mesure_de_la_periode``, mêmes étapes jugées, mêmes absences
+    excusées) restreinte aux étapes des dossiers de ce commercial.
+
+    ``periode_tous`` = les étapes dues de la période courante de TOUTE la
+    portée (jamais filtrées sur ``owner`` : le tableau par commercial reste
+    celui de tous). ``en_retard`` = la liste ``[(owner_id, ligne)]`` déjà
+    calculée, non plafonnée : ``en_retard_actuel`` = ses lignes de ce
+    commercial, quelle que soit la période. ``aujourdhui`` = ses étapes dues
+    aujourd'hui, tous statuts (annulations du moteur déjà exclues de
+    ``periode_tous``). Pur : aucune requête. Trié par ``en_retard_actuel``
+    décroissant, puis ``ouvert`` décroissant, puis ``nom``, puis ``id``."""
+    etapes_par_commercial = {}
+    for etape in periode_tous:
+        etapes_par_commercial.setdefault(
+            proprietaire.get(etape.lead_id), []).append(etape)
+    retard_actuel = {}
+    for proprietaire_id, _ligne in en_retard:
+        retard_actuel[proprietaire_id] = (
+            retard_actuel.get(proprietaire_id, 0) + 1)
+    lignes = []
+    for commercial in commerciaux:
+        etapes = etapes_par_commercial.get(commercial['id'], [])
+        verdict = _mesure_de_la_periode(
+            etapes, today, absences, proprietaire, ouvres)[2]
+        lignes.append({
+            'id': commercial['id'],
+            'nom': commercial['nom'],
+            'du': verdict['du'],
+            A_TEMPS: verdict[A_TEMPS],
+            EN_RETARD: verdict[EN_RETARD],
+            SAUTEES: verdict[SAUTEES],
+            OUVERT: verdict[OUVERT],
+            'reportees': verdict['reportees'],
+            'a_temps_pct': _pct(verdict[A_TEMPS], verdict['du']),
+            'en_retard_actuel': retard_actuel.get(commercial['id'], 0),
+            'aujourdhui': sum(1 for etape in etapes
+                              if etape.due_date == today),
+        })
+    lignes.sort(key=lambda ligne: (-ligne['en_retard_actuel'],
+                                   -ligne[OUVERT], ligne['nom'],
+                                   ligne['id']))
+    return lignes
+
+
 # ── LA lecture ───────────────────────────────────────────────────────────────
 
 def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
@@ -826,8 +878,9 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
         hors_delai = _premier_contact_hors_delai(
             candidats, company, maintenant, sla, ouvres)
 
-        periode = [e for e in dues if e.due_date >= debut
-                   and (owner is None or proprietaire.get(e.lead_id) == owner)]
+        periode_tous = [e for e in dues if e.due_date >= debut]
+        periode = [e for e in periode_tous
+                   if owner is None or proprietaire.get(e.lead_id) == owner]
         precedente = [e for e in dues if e.due_date < debut
                       and (owner is None
                            or proprietaire.get(e.lead_id) == owner)]
@@ -888,17 +941,24 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
         precedent_pct = _a_temps_pct(precedente, today, absences,
                                      proprietaire, ouvres)
 
-    concernes = {proprietaire.get(e.lead_id) for e in dues
-                 if e.due_date >= debut}
-    for lignes in (en_retard, taches, reports, sans_etape, hors_delai):
-        concernes.update(proprietaire_id for proprietaire_id, _l in lignes)
+        # Les responsables concernés (la période courante de TOUTE la portée
+        # et chaque liste d'exceptions, jamais filtrés sur ``owner``) : la
+        # liste ``commerciaux`` et, une ligne chacun, ``par_commercial`` —
+        # lus sur les données DÉJÀ chargées, aucune requête de plus.
+        concernes = {proprietaire.get(e.lead_id) for e in periode_tous}
+        for lignes in (en_retard, taches, reports, sans_etape, hors_delai):
+            concernes.update(proprietaire_id for proprietaire_id, _l in lignes)
+        commerciaux = _commerciaux(concernes)
+        par_commercial = _par_commercial(
+            periode_tous, en_retard, today, absences, proprietaire, ouvres,
+            commerciaux)
 
     return {
         'periode_jours': jours,
         'owner': owner,
         # AGR542 — écho du paramètre (``None`` = tous les segments).
         'segment': segment,
-        'commerciaux': _commerciaux(concernes),
+        'commerciaux': commerciaux,
         'seuils': {
             'retard_alerte_jours': RETARD_ALERTE_JOURS,
             'tache_attente_jours': TACHE_ATTENTE_JOURS,
@@ -917,6 +977,7 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
             'precedent_a_temps_pct': precedent_pct,
         },
         'jours': frise,
+        'par_commercial': par_commercial,
         'exceptions': exceptions,
         'par_type': _lignes_par_type(par_type),
         'premier_contact': premier_contact,
