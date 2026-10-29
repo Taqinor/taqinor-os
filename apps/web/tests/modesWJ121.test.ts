@@ -28,6 +28,7 @@ vi.mock('cloudflare:workers', () => ({
   waitUntil: undefined,
 }));
 import { resetRateLimit } from '../src/lib/rateLimit';
+import { normaliserIndirectionsTunnel } from './astroBlocsHelper';
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -163,7 +164,8 @@ describe('WJ121 — capture-lead : le CRM reçoit mode=commercial / mode=industr
 });
 
 describe.each(LOCALES)('WJ121 — 4 cartes de mode dans mon-toit.astro (%s)', (_locale, rel) => {
-  const src = read(rel);
+  // RWEB17-M10 — `ctx.etat.mode` / `ctx.crochets.appeler('isProMode', …)` relus dans leur forme d'origine.
+  const src = normaliserIndirectionsTunnel(read(rel));
 
   it('le sélecteur propose EXACTEMENT les 4 modes émis (residentiel/industriel/commercial/agricole)', () => {
     for (const id of ['residentiel', 'industriel', 'commercial', 'agricole']) {

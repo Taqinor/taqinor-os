@@ -60,8 +60,17 @@ export function lireLibProposition(): string {
  * (un module qui en importe un autre le fait suivre), chaque module lu UNE seule fois. Les sections
  * extraites hors de la page restent ainsi trouvables par les tests de source, pages actuelles ou fusionnées.
  */
+/**
+ * RWEB17-M10 — les pages câblées lisent leur état dans `ctx.etat.<x>` et appellent les autres sections par
+ * `ctx.crochets.appeler('<f>', …)` : pour les tests de source, ces deux indirections se relisent dans la
+ * forme d'origine (`<x>`, `<f>(…)`). Rien n'est ajouté au texte : un compte de littéraux reste juste.
+ */
+export function normaliserIndirectionsTunnel(src: string): string {
+  return src.replace(/\bctx\.etat\./g, '').replace(/\bctx\.crochets\.appeler\('(\w+)'(?:, )?/g, '$1(');
+}
+
 export function lireAstroAvecModulesTunnel(chemin: string): string {
-  const base = lireAstroAvecBlocs(chemin);
+  const base = normaliserIndirectionsTunnel(lireAstroAvecBlocs(chemin));
   const vus = new Set<string>();
   let suite = '';
   const suivre = (fichier: string, texte: string): void => {

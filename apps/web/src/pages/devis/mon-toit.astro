@@ -2171,6 +2171,22 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   import { renderJourType } from '../../scripts/tunnel/jourType';
   import { brancherAffiner } from '../../scripts/tunnel/affiner';
 
+  import { creerContexte, type ConfigLocale } from '../../lib/tunnel/contexte';
+  import { creerDom } from '../../lib/tunnel/dom';
+  import { creerEtat } from '../../lib/tunnel/etat';
+  import { loadWizardState as relireInstantane } from '../../lib/tunnel/persistance';
+
+  // RWEB17-M10 — UN état et UN registre de crochets pour les trois pages : les
+  // `let` de haut niveau vivent dans `ctx.etat` (valeurs initiales de
+  // `creerEtat`, identiques à celles de la page), et les fonctions appelées par
+  // une AUTRE section passent par `ctx.crochets` (liaison tardive, sans TDZ).
+  const CONFIG_FR: ConfigLocale = {
+    locale: 'fr',
+    langueBasculable: true,
+    formatNombre: (n: number): string => (Math.round(n * 10) / 10).toLocaleString('fr-FR'),
+  };
+  const ctx = creerContexte(creerDom(document), creerEtat(relireInstantane(), 'fr'), CONFIG_FR);
+
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
   const fallback = $('mt-fallback');
@@ -2213,8 +2229,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // désormais la RÉVÉLATION de l'écran 1. Tant qu'elle n'est pas ouverte, la
   // case de consentement n'est pas à l'écran — donc aucun beacon.
   function hasReachedConsentStep(): boolean {
-    return step >= 1 && revealed;
+    return ctx.etat.step >= 1 && ctx.etat.revealed;
   }
+  ctx.crochets.installer('hasReachedConsentStep', hasReachedConsentStep);
   /** Best-effort, JAMAIS bloquant : sendBeacon survit à la fermeture d'onglet,
    *  avec repli fetch(keepalive) si sendBeacon est indisponible. Aucune PII
    *  possible dans ce corps (4 champs seulement — cf. lib/funnelBeacon.ts).
@@ -2247,15 +2264,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       // Mesure best-effort seulement — ne doit jamais perturber le parcours.
     }
   }
+  ctx.crochets.installer('sendFunnelBeacon', sendFunnelBeacon);
 
   // ——— état capture (repère / contour) tenu par onCaptureChange ———
-  let capturePin: { lat: number; lng: number } | null = null;
-  let captureOutline: Array<[number, number]> = [];
   // ACAL304 — tous les pans FERMÉS ([lat,lng]) + le roofLayout v2 à émettre (≥ 2 pans).
-  let capturePans: Array<Array<[number, number]>> = [];
-  let captureLayout: RoofLayoutPublic | null = null;
-  let cityTouched = false;
-  cityEl?.addEventListener('input', () => { cityTouched = true; });
+  cityEl?.addEventListener('input', () => { ctx.etat.cityTouched = true; });
 
   // ORDRE FONDATEUR (24/08/2026) — le GPS est la source de vérité de
   // localisation : dès qu'un repère est posé (capturePin), l'adresse/ville
@@ -2265,7 +2278,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // Rejouée à chaque changement de repère (onCaptureChange) et à la
   // restauration WJ61 — jamais un simple libellé figé qui pourrait diverger.
   function syncCityRequirement() {
-    const hasGps = capturePin != null;
+    const hasGps = ctx.etat.capturePin != null;
     if (cityEl) {
       cityEl.required = !hasGps;
       cityEl.setAttribute('aria-required', hasGps ? 'false' : 'true');
@@ -2273,7 +2286,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     const hint = $('mt-city-hint');
     if (hint) hint.hidden = !hasGps;
   }
-  syncCityRequirement();
+  ctx.crochets.installer('syncCityRequirement', syncCityRequirement);
+  ctx.crochets.appeler('syncCityRequirement');
 
   // ——— WJ6/WJ33 : bascule de langue FR/AR (data-i18n) ———
   // WJ30 — la langue active est transmise au webhook (langue_preferee).
@@ -2287,7 +2301,6 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // du DOM sont aujourd'hui du texte brut) — puis on masque/affiche la bonne
   // paire. Aucune balise n'est plus jamais perdue, quel que soit le nombre
   // d'allers-retours FR↔AR.
-  let currentLang: 'fr' | 'ar' = 'fr';
   const i18nPairs: Array<{ fr: HTMLElement; ar: HTMLElement }> = [];
   function prepareI18n() {
     document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
@@ -2307,7 +2320,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   }
   function applyLang(lang: 'fr' | 'ar') {
     const isAr = lang === 'ar';
-    currentLang = lang;
+    ctx.etat.currentLang = lang;
     i18nPairs.forEach(({ fr, ar }) => {
       fr.hidden = isAr;
       ar.hidden = !isAr;
@@ -2344,7 +2357,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   function syncOfflineBanner() {
     if (offlineBanner) offlineBanner.hidden = navigator.onLine;
   }
-  syncOfflineBanner();
+  ctx.crochets.installer('syncOfflineBanner', syncOfflineBanner);
+  ctx.crochets.appeler('syncOfflineBanner');
   window.addEventListener('online', syncOfflineBanner);
   window.addEventListener('offline', syncOfflineBanner);
 
@@ -2425,9 +2439,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // L-WEBT — équipements (facultatifs).
     'mt-equip-chauffe-eau', 'mt-equip-ve', 'mt-equip-clim', 'mt-equip-piscine',
   ];
-  let restoring = false; // WJ61 — évite de ré-enregistrer PENDANT la réhydratation elle-même.
+   // WJ61 — évite de ré-enregistrer PENDANT la réhydratation elle-même.
   function saveWizardState() {
-    if (restoring) return;
+    if (ctx.etat.restoring) return;
     try {
       const fields: Record<string, string> = {};
       for (const id of PERSISTED_TEXT_FIELDS) {
@@ -2440,12 +2454,12 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
         if (el) checks[id] = el.checked;
       }
       const snapshot: WizardSnapshot = {
-        step, revealed, mode,
-        visitWindowPart, visitWindowWeek,
-        sel: { proUnit, tension, activity, tensionTouched: tensionTouched ? '1' : '', activityTouched: activityTouched ? '1' : '', surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
-        capturePin, captureOutline, capturePans, captureLayout,
+        step: ctx.etat.step, revealed: ctx.etat.revealed, mode: ctx.etat.mode,
+        visitWindowPart: ctx.etat.visitWindowPart, visitWindowWeek: ctx.etat.visitWindowWeek,
+        sel: { proUnit: ctx.etat.proUnit, tension: ctx.etat.tension, activity: ctx.etat.activity, tensionTouched: ctx.etat.tensionTouched ? '1' : '', activityTouched: ctx.etat.activityTouched ? '1' : '', surfaceType: ctx.etat.surfaceType, waterSource: ctx.etat.waterSource, waterUnit: ctx.etat.waterUnit, commercialCategory: ctx.etat.commercialCategory, ccUnit: ctx.etat.ccUnit, equipes: ctx.etat.equipes, regionAgricole: ctx.etat.regionAgricole, roofInputMode: ctx.etat.roofInputMode, occupationJour: ctx.etat.occupationJour },
+        capturePin: ctx.etat.capturePin, captureOutline: ctx.etat.captureOutline, capturePans: ctx.etat.capturePans, captureLayout: ctx.etat.captureLayout,
         fields, checks,
-        idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
+        idempotencyKey: ctx.etat.dedupIdempotencyKey, eventId: ctx.etat.dedupEventId,
       };
       sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(snapshot));
     } catch {
@@ -2453,6 +2467,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       // persistance est un CONFORT, jamais un blocage de la saisie/l'envoi.
     }
   }
+  ctx.crochets.installer('saveWizardState', saveWizardState);
   function loadWizardState(): WizardSnapshot | null {
     try {
       const raw = sessionStorage.getItem(WIZARD_STORAGE_KEY);
@@ -2464,13 +2479,14 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   function clearWizardState() {
     try { sessionStorage.removeItem(WIZARD_STORAGE_KEY); } catch { /* confort seulement */ }
   }
+  ctx.crochets.installer('clearWizardState', clearWizardState);
   // WJ61 — garde-fou de sortie : une fois que le visiteur a commencé à saisir
   // quelque chose, un rafraîchissement/fermeture ACCIDENTEL affiche l'invite de
   // confirmation native du navigateur (texte non personnalisable par spec).
-  let hasEnteredData = false;
-  function markDataEntered() { hasEnteredData = true; }
+  function markDataEntered() { ctx.etat.hasEnteredData = true; }
+  ctx.crochets.installer('markDataEntered', markDataEntered);
   window.addEventListener('beforeunload', (e) => {
-    if (!hasEnteredData || submitted) return;
+    if (!ctx.etat.hasEnteredData || ctx.etat.submitted) return;
     e.preventDefault();
     e.returnValue = '';
   });
@@ -2494,36 +2510,35 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     } catch { /* accès crypto refusé : on prend le repli */ }
     return buildIdempotencyKey();
   }
-  let dedupIdempotencyKey = savedWizard?.idempotencyKey || newDedupToken();
-  let dedupEventId = savedWizard?.eventId || newDedupToken();
   function getOrCreateDedupTokens(): { idempotencyKey: string; eventId: string } {
-    if (!dedupIdempotencyKey) dedupIdempotencyKey = newDedupToken();
-    if (!dedupEventId) dedupEventId = newDedupToken();
-    return { idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId };
+    if (!ctx.etat.dedupIdempotencyKey) ctx.etat.dedupIdempotencyKey = newDedupToken();
+    if (!ctx.etat.dedupEventId) ctx.etat.dedupEventId = newDedupToken();
+    return { idempotencyKey: ctx.etat.dedupIdempotencyKey, eventId: ctx.etat.dedupEventId };
   }
+  ctx.crochets.installer('getOrCreateDedupTokens', getOrCreateDedupTokens);
 
   // ——— WJ6/QX : sélecteur de mode — plus AUCUN défaut silencieux (le profil
   // pilote des questions d'étape 2 entièrement différentes) ; « Continuer »
   // exige un choix explicite (validateStep0, nudge inline sur les cartes). ———
-  let mode = savedWizard?.mode || '';
   // AGW401 — l'intention déclarée par le visiteur en cliquant (?mode=…, liste
   // FERMÉE des 4 modes) présélectionne VISIBLEMENT la carte (aria-pressed) ;
   // elle reste modifiable. Valeur inconnue = aucun effet. SEUL lecteur de
   // `?mode=` de ce tunnel. Aucune clé webhook nouvelle.
   try {
     const wantedMode = new URLSearchParams(window.location.search).get('mode');
-    if (wantedMode && ['residentiel', 'industriel', 'commercial', 'agricole'].includes(wantedMode)) mode = wantedMode;
+    if (wantedMode && ['residentiel', 'industriel', 'commercial', 'agricole'].includes(wantedMode)) ctx.etat.mode = wantedMode;
   } catch { /* URL illisible : aucun mode présélectionné */ }
   // WJ121 — migration des sessions en cours : l'ancien profil unique
   // 'professionnel' est réhydraté comme 'industriel' (le backend mappe déjà
   // professionnel→industriel) — le site n'ÉMET plus jamais 'professionnel'.
-  if (mode === 'professionnel') mode = 'industriel';
+  if (ctx.etat.mode === 'professionnel') ctx.etat.mode = 'industriel';
   /** WJ121 — les deux modes C&I partagent le sous-panneau/moteur pro existant
    *  (panneaux dédiés = WJ122/WJ123) ; 'professionnel' couvert par défense en
    *  profondeur (la migration ci-dessus l'élimine déjà). */
   function isProMode(m: string): boolean {
     return m === 'industriel' || m === 'commercial' || m === 'professionnel';
   }
+  ctx.crochets.installer('isProMode', isProMode);
   // QX — libellés du fil d'étapes + habillage du document par profil.
   // COUPE FONDATEUR 21/08 — DEUX libellés par profil : l'ancien libellé de
   // l'étape 2 (« Votre facture »/« Votre énergie »/« Votre pompage ») et celui
@@ -2548,7 +2563,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
    *  textContent direct — la paire data-i18n dormante de ces nœuds n'est plus
    *  jamais basculée (aucun bouton de langue sur cette route). */
   function syncStepLabels() {
-    const labels = STEP_LABELS_BY_MODE[mode] || STEP_LABELS_BY_MODE.residentiel;
+    const labels = STEP_LABELS_BY_MODE[ctx.etat.mode] || STEP_LABELS_BY_MODE.residentiel;
     document.querySelectorAll<HTMLElement>('.mt-step-label').forEach((el, i) => {
       if (labels[i]) el.textContent = labels[i];
     });
@@ -2561,7 +2576,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
    *  profil. (Le nom `syncStep2Panels` est resté celui de l'assistant à trois
    *  écrans : ces sous-panneaux sont ceux de l'ex-étape 2.) */
   function syncStep2Panels() {
-    const m = mode || 'residentiel';
+    const m = ctx.etat.mode || 'residentiel';
     const res = $('mt-sub-residentiel');
     const pro = $('mt-sub-professionnel');
     const commercial = $('mt-sub-commercial');
@@ -2588,11 +2603,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
    *  particulier n'a pas de raison sociale à donner. */
   function syncRaisonSociale() {
     const wrap = $('mt-raison-sociale-wrap');
-    if (wrap) wrap.hidden = !isProMode(mode);
+    if (wrap) wrap.hidden = !ctx.crochets.appeler('isProMode', ctx.etat.mode);
   }
   function syncModeCards() {
     document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((b) => {
-      const on = mode !== '' && b.dataset.mode === mode;
+      const on = ctx.etat.mode !== '' && b.dataset.mode === ctx.etat.mode;
       b.setAttribute('aria-pressed', String(on));
       b.classList.toggle('border-brass-400', on);
       b.classList.toggle('border-white/15', !on);
@@ -2600,20 +2615,20 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   }
   document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
     btn.addEventListener('click', () => {
-      mode = btn.dataset.mode || '';
+      ctx.etat.mode = btn.dataset.mode || '';
       syncModeCards();
       const modeErr = $('mt-mode-err');
       if (modeErr) { modeErr.textContent = ''; modeErr.hidden = true; }
       syncStepLabels();
       syncStep2Panels();
-      markDataEntered();
-      saveWizardState();
+      ctx.crochets.appeler('markDataEntered');
+      ctx.crochets.appeler('saveWizardState');
       // WJ111 — si l'estimation (la révélation de l'écran 1) a déjà été
       // calculée, basculer de/vers
       // agricole doit mettre à jour le document IMMÉDIATEMENT (numérique <->
       // carte qualitative) sans attendre un nouveau clic sur « Voir mon estimation ».
-      if (!$('mt-estimate-body')?.hidden || !$('mt-estimate-agricole')?.hidden) computeEstimate();
-      else if (docRendered) computeEstimate();
+      if (!$('mt-estimate-body')?.hidden || !$('mt-estimate-agricole')?.hidden) ctx.crochets.appeler('computeEstimate');
+      else if (ctx.etat.docRendered) ctx.crochets.appeler('computeEstimate');
     });
   });
   // état initial : réhydraté depuis l'instantané, sinon AUCUN mode marqué.
@@ -2643,8 +2658,6 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // groupes de cartes de ce tunnel.
   // Préférence STATIQUE et FACULTATIVE : aucun calendrier, aucune réservation
   // confirmée — un humain valide le créneau réel après contact. ———
-  let visitWindowPart = savedWizard?.visitWindowPart || '';
-  let visitWindowWeek = savedWizard?.visitWindowWeek || '';
   function wireVisitToggle(selector: string, getCurrent: () => string, setCurrent: (v: string) => void) {
     document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -2656,8 +2669,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
           b.classList.toggle('border-brass-400', on);
           b.classList.toggle('border-white/15', !on);
         });
-        markDataEntered();
-        saveWizardState();
+        ctx.crochets.appeler('markDataEntered');
+        ctx.crochets.appeler('saveWizardState');
       });
     });
     const current = getCurrent();
@@ -2670,8 +2683,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       });
     }
   }
-  wireVisitToggle('.mt-visit-part', () => visitWindowPart, (v) => { visitWindowPart = v; });
-  wireVisitToggle('.mt-visit-week', () => visitWindowWeek, (v) => { visitWindowWeek = v; });
+  wireVisitToggle('.mt-visit-part', () => ctx.etat.visitWindowPart, (v) => { ctx.etat.visitWindowPart = v; });
+  wireVisitToggle('.mt-visit-week', () => ctx.etat.visitWindowWeek, (v) => { ctx.etat.visitWindowWeek = v; });
 
   // ════════════════════════════════════════════════════════════════════════
   // L-WEBT TASK1/3 — « Passez-vous la journée à la maison ? » : trois
@@ -2723,12 +2736,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   }
   renderOccupancyChart();
 
-  let occupationJour = savedWizard?.sel?.occupationJour || '';
   function syncOccupancySelection() {
     document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
       const id = (btn.dataset.occId || '') as OccupancyId;
       const field = OCC_TO_LEAD_FIELD[id];
-      const on = !!field && occupationJour === field;
+      const on = !!field && ctx.etat.occupationJour === field;
       btn.setAttribute('aria-pressed', String(on));
       btn.classList.toggle('border-brass-400', on);
       btn.classList.toggle('border-white/15', !on);
@@ -2737,22 +2749,22 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     });
     document.querySelectorAll<SVGPathElement>('[data-occ-line]').forEach((p) => {
       const id = (p.getAttribute('data-occ-line') || '') as OccupancyId;
-      const on = !occupationJour || OCC_TO_LEAD_FIELD[id] === occupationJour;
+      const on = !ctx.etat.occupationJour || OCC_TO_LEAD_FIELD[id] === ctx.etat.occupationJour;
       p.style.opacity = on ? '1' : '0.25';
-      p.setAttribute('stroke-width', OCC_TO_LEAD_FIELD[id] === occupationJour ? '3' : '2');
+      p.setAttribute('stroke-width', OCC_TO_LEAD_FIELD[id] === ctx.etat.occupationJour ? '3' : '2');
     });
     const hidden = $('mt-occupation-jour') as HTMLInputElement | null;
-    if (hidden) hidden.value = occupationJour;
+    if (hidden) hidden.value = ctx.etat.occupationJour;
   }
   document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = (btn.dataset.occId || '') as OccupancyId;
       const field = OCC_TO_LEAD_FIELD[id];
       if (!field) return;
-      occupationJour = occupationJour === field ? '' : field;
+      ctx.etat.occupationJour = ctx.etat.occupationJour === field ? '' : field;
       syncOccupancySelection();
-      markDataEntered();
-      saveWizardState();
+      ctx.crochets.appeler('markDataEntered');
+      ctx.crochets.appeler('saveWizardState');
     });
   });
   syncOccupancySelection();
@@ -2783,11 +2795,12 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       if (wrap) wrap.hidden = !chk?.checked;
     }
   }
+  ctx.crochets.installer('syncEquipDetails', syncEquipDetails);
   for (const { checkId } of EQUIP_TOGGLES) {
     const chk = $(checkId) as HTMLInputElement | null;
-    chk?.addEventListener('change', () => { syncEquipDetails(); markDataEntered(); saveWizardState(); });
+    chk?.addEventListener('change', () => { ctx.crochets.appeler('syncEquipDetails'); ctx.crochets.appeler('markDataEntered'); ctx.crochets.appeler('saveWizardState'); });
   }
-  syncEquipDetails();
+  ctx.crochets.appeler('syncEquipDetails');
 
   // ════════════════════════════════════════════════════════════════════════
   // L-WEBT TASK2 — « Une journée type » : production (doré #eda100, fond
@@ -2806,14 +2819,13 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // photo, et plus aucun sélecteur de fichier n'est ouvert par cette page.
 
   // ——— boot carte (captureOnly). Repli sans clé carte AUTORISE la suite (WJ4) ———
-  let started = false;
   const mapEl = $('rp9-map');
   // WJ34 — retire le squelette de chargement dès que la carte annonce son
   // premier rendu (onReady) ou dès qu'on bascule sur le repli sans carte.
   function clearMapSkeleton() { mapEl?.classList.remove('mt-skeleton-shimmer'); }
   async function boot(key: string, mapboxToken: string) {
-    if (started) return;
-    started = true;
+    if (ctx.etat.started) return;
+    ctx.etat.started = true;
     try {
       // WJ47 — importe roofPro11/captureBoot DIRECTEMENT (pas tout
       // roof-tool-pro11.ts) : le boot complet entraîne scene3d/optimizer/matrix
@@ -2830,26 +2842,26 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
         // d'avis) : « dessiner » ouvre le contour dès le premier appui, «
         // pointer » fait atterrir la carte serrée sur le repère pour la
         // confirmation ci-dessous.
-        roofInputMode: () => roofInputMode,
+        roofInputMode: () => ctx.etat.roofInputMode,
         // WJ61 — un repère/contour restauré depuis sessionStorage (rafraîchissement
         // ou retour navigateur en cours de parcours) est semé directement dans la
         // carte au boot, via le même mécanisme que l'hydratation depuis un lead
         // existant (W113) : le visiteur n'a pas à re-pointer son toit.
         // ACAL304 — les pans multiples sont restaurés tels quels (≥ 2 pans).
-        hydratePans: capturePans.length >= 2 ? capturePans : undefined,
-        hydrate: capturePin
-          ? { lead: { roof_point: capturePin, roof_outline: captureOutline.length >= 3 ? captureOutline : null } }
+        hydratePans: ctx.etat.capturePans.length >= 2 ? ctx.etat.capturePans : undefined,
+        hydrate: ctx.etat.capturePin
+          ? { lead: { roof_point: ctx.etat.capturePin, roof_outline: ctx.etat.captureOutline.length >= 3 ? ctx.etat.captureOutline : null } }
           : undefined,
         onCaptureChange: (s) => {
-          capturePin = s.pin;
-          captureOutline = s.outline;
-          capturePans = s.pans;
-          captureLayout = s.layout;
-          syncCityRequirement();
+          ctx.etat.capturePin = s.pin;
+          ctx.etat.captureOutline = s.outline;
+          ctx.etat.capturePans = s.pans;
+          ctx.etat.captureLayout = s.layout;
+          ctx.crochets.appeler('syncCityRequirement');
           // QX/Lane C — le contour a changé : l'instantané satellite mis en
           // cache ne correspond plus, on le laissera se reconstruire.
-          roofImageSpecPromise = null;
-          if (cityEl && !cityTouched) {
+          ctx.etat.roofImageSpecPromise = null;
+          if (cityEl && !ctx.etat.cityTouched) {
             const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
             if (fromMap) cityEl.value = fromMap;
           }
@@ -2861,11 +2873,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
           // WJ2 — le contour peut arriver/changer APRÈS le calcul d'estimation :
           // on ré-évalue l'éligibilité du bouton « voir les panneaux » à chaque
           // changement de tracé (fonction déclarée plus bas, hissée par `function`).
-          updatePanels3dVisibility();
+          ctx.crochets.appeler('updatePanels3dVisibility');
         },
       });
     } catch {
-      started = false;
+      ctx.etat.started = false;
       showFallback();
     }
   }
@@ -2897,10 +2909,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // paie plus jamais ce poids pour une carte qu'il ne verra pas. `mapFetchDone`
   // garde l'appel idempotent (un seul fetch par visite, y compris si l'on
   // revient plusieurs fois à l'étape 0 via Retour/Continuer).
-  let mapFetchDone = false;
   function ensureMapBooted() {
-    if (mapFetchDone) return;
-    mapFetchDone = true;
+    if (ctx.etat.mapFetchDone) return;
+    ctx.etat.mapFetchDone = true;
     (async () => {
       try {
         const res = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -2912,6 +2923,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       }
     })();
   }
+  ctx.crochets.installer('ensureMapBooted', ensureMapBooted);
 
   // ——— WJ6 : assistant multi-étapes + barre de progression ———
   // WJ61 — l'étape initiale reprend l'instantané sessionStorage s'il existe
@@ -2923,31 +2935,27 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // Le `Math.min(1, …)` borne aussi toute valeur aberrante (3, 42, NaN écarté
   // par le `!= null` + les bornes) : l'assistant ne peut plus viser un panneau
   // qui n'existe pas.
-  const savedStepRaw = savedWizard?.step;
-  let step = savedStepRaw != null ? Math.max(0, Math.min(1, savedStepRaw)) : 0;
   /** COUPE FONDATEUR 21/08 — l'estimation + le contact sont RÉVÉLÉS sur l'écran
    *  1 (jamais une étape de plus). `revealed` est le seul état qui pilote leur
    *  visibilité ; il survit à un rafraîchissement (instantané WJ61) et se migre
    *  depuis un ancien `step === 2`. */
-  let revealed = savedWizard?.revealed === true || savedStepRaw === 2;
   const panels = [0, 1].map((i) => $(`mt-panel-${i}`));
   const revealEl = $('mt-reveal');
-  let firstRender = true;
   function renderStep() {
-    panels.forEach((p, i) => { if (p) p.hidden = i !== step; });
+    panels.forEach((p, i) => { if (p) p.hidden = i !== ctx.etat.step; });
     // La révélation vit DANS l'écran 1 : elle ne s'affiche que sur cet écran, et
     // seulement une fois « Voir mon estimation » pressé (ou restauré).
-    if (revealEl) revealEl.hidden = !(step === 1 && revealed);
+    if (revealEl) revealEl.hidden = !(ctx.etat.step === 1 && ctx.etat.revealed);
     document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
       const bar = li.querySelector<HTMLElement>('.mt-step-bar');
       const label = li.querySelector<HTMLElement>('.mt-step-label');
-      const active = i <= step;
+      const active = i <= ctx.etat.step;
       if (bar) bar.className = `h-1.5 w-full rounded-full mt-step-bar transition-colors ${active ? 'bg-brass-400' : 'bg-white/10'}`;
-      if (label) label.classList.toggle('text-white', i === step);
+      if (label) label.classList.toggle('text-white', i === ctx.etat.step);
     });
     // W324 — l'étape carte est ACTIVE : c'est ICI (jamais au simple chargement
     // de page) qu'on engage le fetch de config + l'import lazy de maplibre-gl.
-    if (step === 0) ensureMapBooted();
+    if (ctx.etat.step === 0) ctx.crochets.appeler('ensureMapBooted');
     // WJ59 — « étape atteinte », dédupliquée par sendFunnelBeacon (une seule
     // fois par étape et par visite, y compris après un aller-retour Retour/Continuer).
     // WB30 — pas de beacon avant l'étape de consentement (la RÉVÉLATION, qui
@@ -2958,11 +2966,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // écran 1 AVANT révélation (ex-écran 1) ; 'estimation' = écran 1 APRÈS
     // révélation (ex-écran 2, désormais émis par le bouton « Voir mon
     // estimation ») ; 'contact' inchangé (émis par computeEstimate).
-    if (hasReachedConsentStep()) sendFunnelBeacon(step === 0 ? 'toit' : revealed ? 'estimation' : 'facture', 'reached');
+    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', ctx.etat.step === 0 ? 'toit' : ctx.etat.revealed ? 'estimation' : 'facture', 'reached');
     // WJ61 — au tout premier rendu (chargement/réhydratation), ne pas imposer de
     // défilement : le visiteur vient d'arriver/de revenir, la page n'a pas
     // encore bougé sous lui. Le défilement reste pour chaque étape SUIVANTE.
-    if (firstRender) { firstRender = false; return; }
+    if (ctx.etat.firstRender) { ctx.etat.firstRender = false; return; }
     const root = document.querySelector('section');
     root?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
   }
@@ -2971,11 +2979,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // fréquent d'un « retour » accidentel). `fromPopstate` évite de repousser un
   // état pendant qu'on réagit déjà à un `popstate`.
   function goStep(n: number, fromPopstate = false) {
-    step = Math.max(0, Math.min(1, n));
+    ctx.etat.step = Math.max(0, Math.min(1, n));
     renderStep();
-    saveWizardState();
+    ctx.crochets.appeler('saveWizardState');
     if (!fromPopstate) {
-      history.pushState({ mtStep: step, mtRevealed: revealed }, '', location.href);
+      history.pushState({ mtStep: ctx.etat.step, mtRevealed: ctx.etat.revealed }, '', location.href);
     }
   }
   // COUPE FONDATEUR 21/08 — l'historique porte désormais la PAIRE (étape,
@@ -2986,20 +2994,20 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // `mtStep === 2` valait « estimation affichée ».
   window.addEventListener('popstate', (e) => {
     const st = e.state as { mtStep?: number; mtRevealed?: boolean } | null;
-    const n = st?.mtStep != null ? st.mtStep : Math.max(0, step - 1);
-    revealed = st?.mtRevealed === true || st?.mtStep === 2;
+    const n = st?.mtStep != null ? st.mtStep : Math.max(0, ctx.etat.step - 1);
+    ctx.etat.revealed = st?.mtRevealed === true || st?.mtStep === 2;
     goStep(n, true);
   });
   // QX — l'étape carte exige un PROFIL choisi (nudge inline sur les cartes,
   // jamais une alerte) : le profil pilote tout le questionnaire de l'écran 1.
   $('mt-next-0')?.addEventListener('click', () => {
-    if (validateStep0()) goStep(1);
+    if (ctx.crochets.appeler('validateStep0')) goStep(1);
   });
   $('mt-back-1')?.addEventListener('click', () => goStep(0));
   // `mt-back-2` retiré avec l'ancienne étape 3 (voir la note dans le markup).
   // WJ61 — pose une première entrée d'historique dès le chargement pour que le
   // tout premier « retour » ait un état `mtStep` à consulter.
-  history.replaceState({ mtStep: step, mtRevealed: revealed }, '', location.href);
+  history.replaceState({ mtStep: ctx.etat.step, mtRevealed: ctx.etat.revealed }, '', location.href);
   renderStep();
   // WJ96(c) — un visiteur qui REPREND son parcours (instantané sessionStorage
   // WJ61) directement à l'écran 1 ne déclenche PAS `ensureMapBooted()` via
@@ -3009,7 +3017,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // plan dès que l'on sait que ce visiteur a déjà une étape restaurée > 0 —
   // sans jamais bloquer le rendu de l'étape actuelle (best-effort, idempotent
   // via `mapFetchDone`).
-  if (savedWizard?.step != null && savedWizard.step > 0) ensureMapBooted();
+  if (savedWizard?.step != null && savedWizard.step > 0) ctx.crochets.appeler('ensureMapBooted');
 
   // ——— helpers de saisie ———
   const val = (id: string) => (($(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '');
@@ -3034,9 +3042,10 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   function syncCallbackSla(): void {
     if (callbackSla) callbackSla.hidden = contactPhoneRadio?.checked !== true;
   }
+  ctx.crochets.installer('syncCallbackSla', syncCallbackSla);
   contactPhoneRadio?.addEventListener('change', syncCallbackSla);
   contactWhatsappRadio?.addEventListener('change', syncCallbackSla);
-  syncCallbackSla();
+  ctx.crochets.appeler('syncCallbackSla');
 
   // WJ61 — réhydratation des champs de saisie + du repère/contour de carte à
   // partir de l'instantané (AVANT le boot de la carte : `hydrate` plus bas sème
@@ -3045,7 +3054,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // qu'on peuple les champs (les événements `input`/`change` natifs se
   // déclenchent en JS lors d'une affectation `.value`/`.checked`).
   if (savedWizard) {
-    restoring = true;
+    ctx.etat.restoring = true;
     for (const [id, v] of Object.entries(savedWizard.fields ?? {})) {
       const el = $(id) as HTMLInputElement | HTMLSelectElement | null;
       if (el) el.value = v;
@@ -3058,7 +3067,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // `.value` par script ne déclenche pas l'événement `input` natif qui pose
     // normalement `cityTouched`, et sans ce garde-fou le prochain repère posé
     // sur la carte écraserait silencieusement la ville qu'on vient de restaurer.
-    if (savedWizard.fields?.['mt-city']) cityTouched = true;
+    if (savedWizard.fields?.['mt-city']) ctx.etat.cityTouched = true;
     // AGW403 — un curseur « heures de pompage » restauré à une valeur ≠ 7 a
     // forcément été touché (affecter `.value` par script ne déclenche pas
     // `input`) ; à 7 on ne peut pas le savoir : jamais une réponse inventée.
@@ -3070,26 +3079,26 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // WJ105 — une préférence de contact restaurée doit re-synchroniser la
     // visibilité de la SLA de rappel (affecter `.checked` par script ne
     // déclenche pas `change`).
-    syncCallbackSla();
+    ctx.crochets.appeler('syncCallbackSla');
     // L-WEBT — même raison : un détail équipement restauré coché reste masqué
     // sans ce second passage (`.checked` affecté par script ne déclenche pas
     // `change`).
-    syncEquipDetails();
-    if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
-    if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
-    if (savedWizard.capturePans?.length) capturePans = savedWizard.capturePans;
-    if (savedWizard.captureLayout) captureLayout = savedWizard.captureLayout;
-    syncCityRequirement();
-    if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
-    restoring = false;
+    ctx.crochets.appeler('syncEquipDetails');
+    if (savedWizard.capturePin) ctx.etat.capturePin = savedWizard.capturePin;
+    if (savedWizard.captureOutline?.length) ctx.etat.captureOutline = savedWizard.captureOutline;
+    if (savedWizard.capturePans?.length) ctx.etat.capturePans = savedWizard.capturePans;
+    if (savedWizard.captureLayout) ctx.etat.captureLayout = savedWizard.captureLayout;
+    ctx.crochets.appeler('syncCityRequirement');
+    if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) ctx.crochets.appeler('markDataEntered');
+    ctx.etat.restoring = false;
   }
   // WJ61 — persiste sur toute frappe/changement des champs texte/select/case à
   // cocher restants (au-delà des puces déjà câblées plus haut).
   const PERSIST_ON_INPUT_IDS = [...PERSISTED_TEXT_FIELDS, ...PERSISTED_CHECK_FIELDS];
   for (const id of PERSIST_ON_INPUT_IDS) {
     const el = $(id);
-    el?.addEventListener('input', () => { markDataEntered(); saveWizardState(); });
-    el?.addEventListener('change', () => { markDataEntered(); saveWizardState(); });
+    el?.addEventListener('input', () => { ctx.crochets.appeler('markDataEntered'); ctx.crochets.appeler('saveWizardState'); });
+    el?.addEventListener('change', () => { ctx.crochets.appeler('markDataEntered'); ctx.crochets.appeler('saveWizardState'); });
   }
 
   // ——— QX : groupes de cartes/segments à sélection unique des sous-panneaux
@@ -3097,26 +3106,13 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // relance l'estimation en direct quand le choix pilote un chiffre affiché.
   // BT + « Journée » sont présélectionnés : des défauts VISIBLES à l'écran
   // (jamais une hypothèse cachée), modifiables d'un tap. ———
-  const savedSel = savedWizard?.sel ?? {};
-  let proUnit = savedSel.proUnit || 'mad';
-  let tension = savedSel.tension || 'bt';
-  let activity = savedSel.activity || 'day';
   // CIW410 — le visiteur a-t-il CLIQUÉ la tension / l'activité ? Les défauts visibles
   // (BT, « Journée » — WJ123) restent, mais ne partent comme déclarés que touchés.
-  let tensionTouched = savedSel.tensionTouched === '1';
-  let activityTouched = savedSel.activityTouched === '1';
-  let surfaceType = savedSel.surfaceType || '';
-  let waterSource = savedSel.waterSource || '';
   // `generator` (groupe électrogène) et `irrigation` retirés du tunnel (coupe
   // fondateur 18/08) : aucun n'entrait dans estimatePro/estimateAgricole.
-  let waterUnit = savedSel.waterUnit || 'm3h';
   // WJ122 — mode COMMERCIAL : catégorie active + unité de facture (MAD/kWh).
-  let commercialCategory = savedSel.commercialCategory || '';
-  let ccUnit = savedSel.ccUnit || 'mad';
   // WJ123 — mode INDUSTRIEL : pattern d'équipes (plafond d'autoconsommation).
-  let equipes = savedSel.equipes || '';
   // WJ124 — mode AGRICOLE : région agronomique (pilote le moteur eau FAO-56).
-  let regionAgricole = savedSel.regionAgricole || '';
 
   // ——— CHOIX EXPLICITE « pointer » / « dessiner » + CONFIRMATION VISUELLE ———
   // Le geste de repérage était implicite (clic = repère, double-clic = contour,
@@ -3124,12 +3120,10 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // venait de désigner : il validait un point sur une vue large. On demande donc
   // le geste, puis — en mode « pointer » — la carte atterrit serrée sur le
   // repère (captureBoot.landOn) et on lui pose la question à côté de l'image.
-  let roofInputMode: 'point' | 'draw' = savedSel.roofInputMode === 'draw' ? 'draw' : 'point';
   const pinConfirmEl = $('mt-pin-confirm');
   const pinConfirmAddrEl = $('mt-pin-confirm-address');
   /** Clé du repère DÉJÀ confirmé : déplacer le repère redemande confirmation,
    *  un simple re-rendu (adresse qui arrive plus tard) ne la redemande pas. */
-  let confirmedPinKey = '';
   const pinKey = (p: { lat: number; lng: number } | null) =>
     p ? `${p.lat.toFixed(6)},${p.lng.toFixed(6)}` : '';
   function setMapStatus(msg: string) {
@@ -3138,24 +3132,24 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   }
   function syncRoofModeCards() {
     document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
-      const on = b.dataset.value === roofInputMode;
+      const on = b.dataset.value === ctx.etat.roofInputMode;
       b.setAttribute('aria-pressed', String(on));
       b.classList.toggle('border-brass-400', on);
       b.classList.toggle('border-white/15', !on);
     });
     // « Terminer le tracé » ne veut rien dire quand on ne trace pas.
     const finishBtn = $('rp9-finish');
-    if (finishBtn) finishBtn.hidden = roofInputMode !== 'draw';
+    if (finishBtn) finishBtn.hidden = ctx.etat.roofInputMode !== 'draw';
   }
   /** Montre la confirmation UNIQUEMENT quand elle a un sens : geste « pointer »,
    *  un repère posé, aucun contour tracé, et pas déjà confirmé pour ce repère. */
   function syncPinConfirm() {
     if (!pinConfirmEl) return;
     pinConfirmEl.hidden = !(
-      roofInputMode === 'point'
-      && capturePin != null
-      && captureOutline.length < 3
-      && pinKey(capturePin) !== confirmedPinKey
+      ctx.etat.roofInputMode === 'point'
+      && ctx.etat.capturePin != null
+      && ctx.etat.captureOutline.length < 3
+      && pinKey(ctx.etat.capturePin) !== ctx.etat.confirmedPinKey
     );
   }
   /** Adresse du repère — affichée seulement si le géocodage inverse en a rendu
@@ -3169,26 +3163,26 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
     b.addEventListener('click', () => {
       const v: 'point' | 'draw' = b.dataset.value === 'draw' ? 'draw' : 'point';
-      if (v === roofInputMode) return;
-      roofInputMode = v;
+      if (v === ctx.etat.roofInputMode) return;
+      ctx.etat.roofInputMode = v;
       syncRoofModeCards();
       syncPinConfirm();
-      setMapStatus(roofInputMode === 'draw'
+      setMapStatus(ctx.etat.roofInputMode === 'draw'
         ? 'Tracez le contour de votre toit : appuyez sur chaque coin, puis « Terminer le tracé ».'
         : 'Appuyez sur votre toit pour y poser le repère.');
-      markDataEntered();
-      saveWizardState();
+      ctx.crochets.appeler('markDataEntered');
+      ctx.crochets.appeler('saveWizardState');
     });
   });
   $('mt-pin-confirm-yes')?.addEventListener('click', () => {
-    confirmedPinKey = pinKey(capturePin);
+    ctx.etat.confirmedPinKey = pinKey(ctx.etat.capturePin);
     syncPinConfirm();
     setMapStatus('Repère confirmé. Continuez avec vos coordonnées ci-dessous.');
   });
   $('mt-pin-confirm-adjust')?.addEventListener('click', () => {
     // On ne SUPPRIME pas le repère : le visiteur en pose simplement un autre,
     // et s'il change d'avis il n'a rien perdu.
-    confirmedPinKey = '';
+    ctx.etat.confirmedPinKey = '';
     if (pinConfirmEl) pinConfirmEl.hidden = true;
     setMapStatus('Appuyez sur le bon endroit de votre toit pour déplacer le repère.');
     $('rp9-map')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
@@ -3216,9 +3210,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
         setCurrent(same && opts.allowUnset ? '' : (btn.dataset.value || ''));
         paint();
         opts.onChange?.();
-        markDataEntered();
-        saveWizardState();
-        if (opts.recompute) computeEstimate();
+        ctx.crochets.appeler('markDataEntered');
+        ctx.crochets.appeler('saveWizardState');
+        if (opts.recompute) ctx.crochets.appeler('computeEstimate');
       });
     });
     paint();
@@ -3226,22 +3220,22 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // Le champ « Puissance souscrite (kVA) » (et donc son affichage conditionnel
   // en moyenne tension) est retiré du tunnel — comme les cartes « groupe
   // électrogène » (coupe fondateur 18/08).
-  wireCardGroup('.mt-pro-unit', () => proUnit, (v) => { proUnit = v || 'mad'; }, { recompute: true });
-  wireCardGroup('.mt-tension', () => tension, (v) => { tension = v || 'bt'; tensionTouched = true; }, { recompute: true });
-  wireCardGroup('.mt-activity', () => activity, (v) => { activity = v || 'day'; activityTouched = true; }, { recompute: true });
-  wireCardGroup('.mt-surface-type', () => surfaceType, (v) => { surfaceType = v; }, { allowUnset: true, recompute: true });
+  wireCardGroup('.mt-pro-unit', () => ctx.etat.proUnit, (v) => { ctx.etat.proUnit = v || 'mad'; }, { recompute: true });
+  wireCardGroup('.mt-tension', () => ctx.etat.tension, (v) => { ctx.etat.tension = v || 'bt'; ctx.etat.tensionTouched = true; }, { recompute: true });
+  wireCardGroup('.mt-activity', () => ctx.etat.activity, (v) => { ctx.etat.activity = v || 'day'; ctx.etat.activityTouched = true; }, { recompute: true });
+  wireCardGroup('.mt-surface-type', () => ctx.etat.surfaceType, (v) => { ctx.etat.surfaceType = v; }, { allowUnset: true, recompute: true });
   // WJ122 — COMMERCIAL : cartes catégorie + bascule d'unité de facture. Le choix
   // de catégorie recalcule l'estimation (day-share par archétype → hôtel ≠
   // bureau à facture égale). Les grilles de questions PAR CATÉGORIE qu'il
   // révélait sont retirées du tunnel (coupe fondateur 18/08) : elles ne
   // changeaient aucun chiffre — le commercial les complète dans l'ERP.
-  wireCardGroup('.mt-commercial-cat', () => commercialCategory, (v) => { commercialCategory = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-cc-unit', () => ccUnit, (v) => { ccUnit = v || 'mad'; }, { recompute: true });
+  wireCardGroup('.mt-commercial-cat', () => ctx.etat.commercialCategory, (v) => { ctx.etat.commercialCategory = v; }, { allowUnset: true, recompute: true });
+  wireCardGroup('.mt-cc-unit', () => ctx.etat.ccUnit, (v) => { ctx.etat.ccUnit = v || 'mad'; }, { recompute: true });
   // WJ123 — INDUSTRIEL : pattern d'équipes (le plafond d'autoconsommation recalcule).
-  wireCardGroup('.mt-equipes', () => equipes, (v) => { equipes = v; }, { allowUnset: true, recompute: true });
+  wireCardGroup('.mt-equipes', () => ctx.etat.equipes, (v) => { ctx.etat.equipes = v; }, { allowUnset: true, recompute: true });
   // WJ124 — AGRICOLE : région (cartes) pilote le moteur eau ; culture (cartes)
   // synchronise le <select> sr-only mt-culture (source de vérité du payload).
-  wireCardGroup('.mt-region-card', () => regionAgricole, (v) => { regionAgricole = v; }, { allowUnset: true, recompute: true });
+  wireCardGroup('.mt-region-card', () => ctx.etat.regionAgricole, (v) => { ctx.etat.regionAgricole = v; }, { allowUnset: true, recompute: true });
   const cultureSelect = $('mt-culture') as HTMLSelectElement | null;
   function syncCultureCards() {
     const current = cultureSelect?.value || '';
@@ -3256,16 +3250,16 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     btn.addEventListener('click', () => {
       if (cultureSelect) cultureSelect.value = cultureSelect.value === btn.dataset.value ? '' : (btn.dataset.value || '');
       syncCultureCards();
-      markDataEntered();
-      saveWizardState();
-      computeEstimate();
+      ctx.crochets.appeler('markDataEntered');
+      ctx.crochets.appeler('saveWizardState');
+      ctx.crochets.appeler('computeEstimate');
     });
   });
   syncCultureCards();
   // AGRICOLE — la source d'eau pilote le type de pompe (immergée/surface).
   // « Votre irrigation » est retirée du tunnel (coupe fondateur 18/08).
-  wireCardGroup('.mt-water-source', () => waterSource, (v) => { waterSource = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-water-unit', () => waterUnit, (v) => { waterUnit = v || 'm3h'; }, { recompute: true });
+  wireCardGroup('.mt-water-source', () => ctx.etat.waterSource, (v) => { ctx.etat.waterSource = v; }, { allowUnset: true, recompute: true });
+  wireCardGroup('.mt-water-unit', () => ctx.etat.waterUnit, (v) => { ctx.etat.waterUnit = v || 'm3h'; }, { recompute: true });
   // Curseur « heures de pompage / jour » — valeur affichée en direct.
   const heuresInput = $('mt-heures-pompage') as HTMLInputElement | null;
   function syncHeuresLabel() {
@@ -3281,7 +3275,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   heuresInput?.addEventListener('input', () => {
     marquerHeuresTouchees();
     syncHeuresLabel();
-    computeEstimate();
+    ctx.crochets.appeler('computeEstimate');
   });
   syncHeuresLabel();
   // Recalcul en direct sur chaque champ numérique qui pilote un chiffre affiché
@@ -3311,6 +3305,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (range && RANGE_MIDPOINT[range] != null) return RANGE_MIDPOINT[range];
     return null;
   }
+  ctx.crochets.installer('resolveMonthlyBill', resolveMonthlyBill);
 
   // ——— QX : FIX « tranche redondante » (résidentiel) — un montant exact VALIDE
   // dérive la tranche automatiquement (billRangeFromExact), masque le <select>
@@ -3337,16 +3332,12 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (wrap) wrap.hidden = false;
     if (detected) detected.hidden = true;
   }
+  ctx.crochets.installer('syncBillRangeFromExact', syncBillRangeFromExact);
 
   // ——— WJ1/QX : calculer + afficher l'estimation dans LE DOCUMENT ———
-  let lastKwcLabel = '';
-  let lastSavingsLabel = '';
-  let lastKwc: number | null = null;
   // QX — le document a-t-il déjà été rendu au moins une fois (fallback compris) ?
-  let docRendered = false;
   // QX — estimateShown : EXACTEMENT les chiffres calculés, joints au lead (le
   // conseiller CRM voit tout). WJ125 — ils ne sont PLUS rendus à l'écran public.
-  let estimateShown: Record<string, number | string> | null = null;
   // ——— WJ125 — RÈGLE FONDATEUR anti-concurrent : en parcours public, le
   // document d'estimation chiffré (#mt-doc), l'« installation la plus proche »
   // (kWc + km) et le « coût de l'attente » (MAD) NE SE RENDENT PLUS. Le calcul
@@ -3377,7 +3368,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
    *  `announceEstimate` sur ces chemins — parité voyant / lecteur d'écran. */
   type VarianteTeaser = 'standard' | 'etude' | 'rappel';
   function showEstimateTeaser(m: string, variante: VarianteTeaser = 'standard') {
-    docRendered = true;
+    ctx.etat.docRendered = true;
     const doc = $('mt-doc');
     if (doc) doc.hidden = true;
     const printBtn = $('mt-print-estimate');
@@ -3398,9 +3389,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     const rappelHook = $('mt-teaser-hook-rappel');
     if (rappelHook) rappelHook.hidden = variante !== 'rappel';
   }
+  ctx.crochets.installer('showEstimateTeaser', showEstimateTeaser);
   // QX — tarif MAD/kWh de la dernière estimation PRO affichée (hypothèses du
   // moteur) : sert à dériver un billRange cohérent quand la conso est en kWh.
-  let lastProTarifMadKwh: number | null = null;
   // WJ88 — annonce UNIQUE du résultat (jamais pendant la phase squelette) :
   // remplace l'ancien aria-live posé sur toute la carte, qui déclenchait un
   // double-fire lecteur d'écran (squelette PUIS résultat).
@@ -3408,9 +3399,12 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     const el = $('mt-estimate-announce');
     if (el) el.textContent = message;
   }
+  ctx.crochets.installer('announceEstimate', announceEstimate);
   // ——— QX : petits formateurs du document (fr-FR, déterministes) ———
   const fmtNum = (n: number): string => (Math.round(n * 10) / 10).toLocaleString('fr-FR');
+  ctx.crochets.installer('fmtNum', fmtNum);
   const fmtYears = (n: number): string => (Math.round(n * 10) / 10).toLocaleString('fr-FR');
+  ctx.crochets.installer('fmtYears', fmtYears);
   /** Pourcentage robuste : accepte 0–1 (ratio) comme 0–100 (déjà en %). */
   const pct = (v: number): number => (v <= 1 ? Math.round(v * 100) : Math.round(v));
   function setText(id: string, text: string) {
@@ -3423,6 +3417,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (cardEl) cardEl.hidden = text == null;
     if (text != null) setText(valueId, text);
   }
+  ctx.crochets.installer('setCard', setCard);
   // ——— QX : graphe 12 mois (SVG pur, or/navy — aucune lib). Répartition
   // mensuelle INDICATIVE de l'irradiation au Maroc (profil PVGIS type
   // Casablanca, normalisé à 1,00) : sert UNIQUEMENT à répartir sur 12 mois une
@@ -3462,13 +3457,14 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       '</svg>';
     wrap.hidden = false;
   }
+  ctx.crochets.installer('renderMonthlyChart', renderMonthlyChart);
   // ——— QX : habillage commun du document (date, sous-titre par profil, ville,
   // ligne client/site — uniquement des faits CONNUS, jamais un tiret). ———
   function fillDocChrome() {
-    docRendered = true;
+    ctx.etat.docRendered = true;
     const dateEl = $('mt-doc-date');
     if (dateEl) dateEl.textContent = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-    const m = mode || 'residentiel';
+    const m = ctx.etat.mode || 'residentiel';
     const subEl = $('mt-doc-subtitle');
     if (subEl) subEl.textContent = MODE_DOC_SUBTITLE[m] || MODE_DOC_SUBTITLE.residentiel;
     const city = (val('mt-city') || addressEl?.value || fallbackAddrEl?.value || '').trim();
@@ -3481,12 +3477,13 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       const parts: string[] = [];
       if (city) parts.push(city);
       parts.push(`Projet ${(MODE_LABEL[m] || 'Résidentiel').toLowerCase()}`);
-      if (capturePin) parts.push('toit repéré sur carte satellite');
+      if (ctx.etat.capturePin) parts.push('toit repéré sur carte satellite');
       metaEl.textContent = parts.join(' · ');
       metaEl.hidden = false;
     }
-    void tryRoofSnapshot();
+    void ctx.crochets.appeler('tryRoofSnapshot');
   }
+  ctx.crochets.installer('fillDocChrome', fillDocChrome);
   // ——— QX/Lane C : instantané satellite du toit — branché sur le VRAI helper
   // Lane C `buildPublicRoofImageSpec(outline)` (roofPro11/viewerOnly), en
   // import dynamique + garde typeof (défensif : tout échec/absence → null,
@@ -3494,18 +3491,17 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // PARTAGÉ avec l'aperçu 3D (même photo, un seul fetch), invalidé quand le
   // contour change. NOTE orchestrateur : câblage Lane C effectif — le
   // TODO(orchestrator): wire roofImage once Lane C lands est RÉSOLU ici. ———
-  let roofImageSpecPromise: Promise<RoofImageSpec | null> | null = null;
   function fetchRoofImageSpec(): Promise<RoofImageSpec | null> {
-    if (!roofImageSpecPromise) {
-      roofImageSpecPromise = (async () => {
-        if (captureOutline.length < 3) return null;
+    if (!ctx.etat.roofImageSpecPromise) {
+      ctx.etat.roofImageSpecPromise = (async () => {
+        if (ctx.etat.captureOutline.length < 3) return null;
         const mod = await import('../../scripts/roofPro11/viewerOnly');
         if (typeof mod.buildPublicRoofImageSpec !== 'function') return null;
-        const spec = await mod.buildPublicRoofImageSpec({ outline: captureOutline });
+        const spec = await mod.buildPublicRoofImageSpec({ outline: ctx.etat.captureOutline });
         return spec && spec.image ? spec : null;
       })().catch(() => null);
     }
-    return roofImageSpecPromise;
+    return ctx.etat.roofImageSpecPromise as Promise<RoofImageSpec | null>;
   }
   /** « Votre toit » dans le document : petite photo satellite + attribution
    *  fournisseur (obligation), UNIQUEMENT quand un contour ≥3 sommets existe. */
@@ -3513,7 +3509,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     const fig = $('mt-doc-roof');
     const img = $('mt-doc-roof-img') as HTMLImageElement | null;
     if (!fig || !img) return;
-    if (captureOutline.length < 3) {
+    if (ctx.etat.captureOutline.length < 3) {
       fig.hidden = true;
       return;
     }
@@ -3524,6 +3520,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (attr) attr.textContent = spec.attribution || '';
     fig.hidden = false;
   }
+  ctx.crochets.installer('tryRoofSnapshot', tryRoofSnapshot);
   /** QX — remise à zéro des zones transverses du document ; chaque branche
    *  (résidentiel/pro/agricole) ré-affiche ensuite uniquement les siennes. */
   function resetDocZones() {
@@ -3554,9 +3551,12 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   }
   // WJ122 — la facture C&I vient du panneau ACTIF : 'commercial' a son propre
   // champ (mt-cc-bill / ccUnit), 'industriel' garde mt-pro-bill / proUnit.
-  const proBillId = () => (mode === 'commercial' ? 'mt-cc-bill' : 'mt-pro-bill');
-  const proBillErrId = () => (mode === 'commercial' ? 'mt-cc-bill-err' : 'mt-pro-bill-err');
-  const proBillUnit = () => (mode === 'commercial' ? ccUnit : proUnit);
+  const proBillId = () => (ctx.etat.mode === 'commercial' ? 'mt-cc-bill' : 'mt-pro-bill');
+  ctx.crochets.installer('proBillId', proBillId);
+  const proBillErrId = () => (ctx.etat.mode === 'commercial' ? 'mt-cc-bill-err' : 'mt-pro-bill-err');
+  ctx.crochets.installer('proBillErrId', proBillErrId);
+  const proBillUnit = () => (ctx.etat.mode === 'commercial' ? ctx.etat.ccUnit : ctx.etat.proUnit);
+  ctx.crochets.installer('proBillUnit', proBillUnit);
   function computeProEstimate(): boolean {
     const unavail = $('mt-estimate-unavailable');
     const toolarge = $('mt-estimate-toolarge');
@@ -3566,74 +3566,74 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (unavail) unavail.hidden = true;
     if (toolarge) toolarge.hidden = true;
     const clearShown = () => {
-      lastKwcLabel = '';
-      lastSavingsLabel = '';
-      lastKwc = null;
-      estimateShown = null;
+      ctx.etat.lastKwcLabel = '';
+      ctx.etat.lastSavingsLabel = '';
+      ctx.etat.lastKwc = null;
+      ctx.etat.estimateShown = null;
       // CIW404 — un tarif périmé ne survit pas à une estimation en échec.
-      lastProTarifMadKwh = null;
+      ctx.etat.lastProTarifMadKwh = null;
       if (printBtn) printBtn.hidden = true;
     };
-    const proBill = num(proBillId());
+    const proBill = num(ctx.crochets.appeler('proBillId'));
     if (proBill == null || proBill <= 0) {
       if (proMissing) proMissing.hidden = false;
       clearShown();
-      fillDocChrome();
-      updatePanels3dVisibility();
-      announceEstimate('Estimation indisponible : indiquez votre consommation mensuelle (MAD ou kWh).');
+      ctx.crochets.appeler('fillDocChrome');
+      ctx.crochets.appeler('updatePanels3dVisibility');
+      ctx.crochets.appeler('announceEstimate', 'Estimation indisponible : indiquez votre consommation mensuelle (MAD ou kWh).');
       return false;
     }
     // WJ121 — plafond du mode C&I actif (industriel et commercial partagent 1 M MAD).
-    if (proBillUnit() === 'mad' && proBill > maxBillFor(mode)) {
+    if (ctx.crochets.appeler('proBillUnit') === 'mad' && proBill > maxBillFor(ctx.etat.mode)) {
       if (toolargePro) toolargePro.hidden = false;
       // WJ127 — `#mt-doc` (donc cette carte) est masqué en parcours public :
       // sans ceci, un visiteur industriel à 2 000 000 MAD ne voyait que
       // l'accroche générique, alors que le lecteur d'écran, lui, recevait bien
       // le message honnête ci-dessous. L'accroche « étude dédiée » rétablit la
       // parité, toujours sans le moindre chiffre.
-      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
+      if (PUBLIC_ESTIMATE_GATED) ctx.crochets.appeler('showEstimateTeaser', ctx.etat.mode, 'etude');
       clearShown();
-      fillDocChrome();
-      updatePanels3dVisibility();
-      announceEstimate("À cette échelle, votre site relève d'une étude dédiée — un ingénieur vous contacte.");
+      ctx.crochets.appeler('fillDocChrome');
+      ctx.crochets.appeler('updatePanels3dVisibility');
+      ctx.crochets.appeler('announceEstimate', "À cette échelle, votre site relève d'une étude dédiée — un ingénieur vous contacte.");
       return true;
     }
-    setFieldError(proBillId(), proBillErrId(), null);
+    setFieldError(ctx.crochets.appeler('proBillId'), ctx.crochets.appeler('proBillErrId'), null);
     const raw = estimatePro({
-      monthlyKwh: proBillUnit() === 'kwh' ? proBill : undefined,
-      monthlyMad: proBillUnit() === 'mad' ? proBill : undefined,
-      raccordement: tension === 'mt' ? 'mt' : 'bt',
-      activityProfile: activity === 'day_evening' || activity === 'continuous' ? activity : 'day',
-      surfaceType: surfaceType ? (surfaceType as 'bac_acier' | 'terrasse' | 'ombriere' | 'terrain') : undefined,
+      monthlyKwh: ctx.crochets.appeler('proBillUnit') === 'kwh' ? proBill : undefined,
+      monthlyMad: ctx.crochets.appeler('proBillUnit') === 'mad' ? proBill : undefined,
+      raccordement: ctx.etat.tension === 'mt' ? 'mt' : 'bt',
+      activityProfile: ctx.etat.activity === 'day_evening' || ctx.etat.activity === 'continuous' ? ctx.etat.activity : 'day',
+      surfaceType: ctx.etat.surfaceType ? (ctx.etat.surfaceType as 'bac_acier' | 'terrasse' | 'ombriere' | 'terrain') : undefined,
       surfaceM2: num('mt-surface-m2') ?? undefined,
       // WJ122 — la catégorie commerciale (day-share par archétype) prime sur le
       // profil d'activité : hôtel 55 % ≠ bureau 80 % à facture égale.
-      categorieCommerciale: mode === 'commercial' && commercialCategory ? commercialCategory : undefined,
+      categorieCommerciale: ctx.etat.mode === 'commercial' && ctx.etat.commercialCategory ? ctx.etat.commercialCategory : undefined,
       // WJ123 — le pattern d'équipes industriel impose son plafond honnête : un
       // 3x8 ne voit plus l'autoconsommation d'un bureau.
-      equipes: (mode === 'industriel' || mode === 'professionnel') && equipes ? equipes : undefined,
+      equipes: (ctx.etat.mode === 'industriel' || ctx.etat.mode === 'professionnel') && ctx.etat.equipes ? ctx.etat.equipes : undefined,
     }) as unknown as ProEstimateOk | { ok: false; reason: 'missing_conso' | 'too_large' | 'invalid' };
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
         if (toolargePro) toolargePro.hidden = false;
         // WJ127 — même repli honnête (cf. ci-dessus).
-        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
+        if (PUBLIC_ESTIMATE_GATED) ctx.crochets.appeler('showEstimateTeaser', ctx.etat.mode, 'etude');
         clearShown();
-        fillDocChrome();
-        updatePanels3dVisibility();
-        announceEstimate("À cette échelle, votre site relève d'une étude dédiée — un ingénieur vous contacte.");
+        ctx.crochets.appeler('fillDocChrome');
+        ctx.crochets.appeler('updatePanels3dVisibility');
+        ctx.crochets.appeler('announceEstimate', "À cette échelle, votre site relève d'une étude dédiée — un ingénieur vous contacte.");
         return true;
       }
       if (proMissing) proMissing.hidden = false;
       clearShown();
-      fillDocChrome();
-      updatePanels3dVisibility();
-      announceEstimate('Estimation indisponible : vérifiez la consommation saisie.');
+      ctx.crochets.appeler('fillDocChrome');
+      ctx.crochets.appeler('updatePanels3dVisibility');
+      ctx.crochets.appeler('announceEstimate', 'Estimation indisponible : vérifiez la consommation saisie.');
       return false;
     }
     const est = raw;
-    lastProTarifMadKwh = est.hypotheses && est.hypotheses.tarifMadKwh > 0 ? est.hypotheses.tarifMadKwh : null;
-    if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
+    ctx.etat.lastProTarifMadKwh = est.hypotheses && est.hypotheses.tarifMadKwh > 0 ? est.hypotheses.tarifMadKwh : null;
+    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'estimation', 'viewed');
     // WJ125 — payload lead (chiffres exacts) + labels construits AVANT tout
     // rendu ; en parcours public gaté on s'arrête ici SANS écrire un chiffre.
     {
@@ -3644,37 +3644,37 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       // tension. Seul un drapeau « étude dédiée » reste ; l'écran garde le teaser (WJ125).
       // Le seul chiffre montré au client sera celui du moteur serveur (/proposition, D-CIQ-0).
       const kOk = Number.isFinite(est.kwc) && est.kwc > 0;
-      estimateShown = null; // CIW404 — aucun chiffre vers le CRM
+      ctx.etat.estimateShown = null; // CIW404 — aucun chiffre vers le CRM
       // `lastKwc` ne sert qu'à l'aperçu 3D local : il ne part jamais au CRM.
-      lastKwc = kOk ? est.kwc : null;
-      lastKwcLabel = '';
-      lastSavingsLabel = '';
+      ctx.etat.lastKwc = kOk ? est.kwc : null;
+      ctx.etat.lastKwcLabel = '';
+      ctx.etat.lastSavingsLabel = '';
     }
     if (PUBLIC_ESTIMATE_GATED) {
-      updatePanels3dVisibility();
-      if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
-      announceEstimate(GATED_ANNOUNCE);
+      ctx.crochets.appeler('updatePanels3dVisibility');
+      if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'contact', 'reached');
+      ctx.crochets.appeler('announceEstimate', GATED_ANNOUNCE);
       return true;
     }
     const kpis = $('mt-doc-kpis-pro');
     if (kpis) kpis.hidden = false;
     const shown: Record<string, number | string> = {};
     const kwcOk = Number.isFinite(est.kwc) && est.kwc > 0;
-    setCard('mt-pro-kwc-card', 'mt-pro-kwc', kwcOk ? formatKwc(est.kwc) : null);
+    ctx.crochets.appeler('setCard', 'mt-pro-kwc-card', 'mt-pro-kwc', kwcOk ? formatKwc(est.kwc) : null);
     if (kwcOk) shown.kwc = est.kwc;
     if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) shown.nbPanneaux = est.nbPanneaux;
     const prodOk = Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0;
-    setCard('mt-pro-prod-card', 'mt-pro-prod', prodOk ? formatMad(Math.round(est.prodAnnuelleKwh)) : null);
+    ctx.crochets.appeler('setCard', 'mt-pro-prod-card', 'mt-pro-prod', prodOk ? formatMad(Math.round(est.prodAnnuelleKwh)) : null);
     if (prodOk) shown.prodKwh = Math.round(est.prodAnnuelleKwh);
     const autocOk = Number.isFinite(est.tauxAutoconso) && est.tauxAutoconso > 0;
-    setCard('mt-pro-autoconso-card', 'mt-pro-autoconso', autocOk ? String(pct(est.tauxAutoconso)) : null);
+    ctx.crochets.appeler('setCard', 'mt-pro-autoconso-card', 'mt-pro-autoconso', autocOk ? String(pct(est.tauxAutoconso)) : null);
     if (autocOk) shown.tauxAutoconso = pct(est.tauxAutoconso);
     const couvOk = Number.isFinite(est.tauxCouverture) && est.tauxCouverture > 0;
-    setCard('mt-pro-couverture-card', 'mt-pro-couverture', couvOk ? String(pct(est.tauxCouverture)) : null);
+    ctx.crochets.appeler('setCard', 'mt-pro-couverture-card', 'mt-pro-couverture', couvOk ? String(pct(est.tauxCouverture)) : null);
     if (couvOk) shown.tauxCouverture = pct(est.tauxCouverture);
     const ecoOk = est.ecoAnnuelleMadLow > 0 && est.ecoAnnuelleMadHigh > 0;
     const ecoLabel = ecoOk ? formatMadRange(est.ecoAnnuelleMadLow, est.ecoAnnuelleMadHigh) : null;
-    setCard('mt-pro-eco-card', 'mt-pro-eco', ecoLabel);
+    ctx.crochets.appeler('setCard', 'mt-pro-eco-card', 'mt-pro-eco', ecoLabel);
     if (ecoOk) {
       shown.ecoMadYearLow = est.ecoAnnuelleMadLow;
       shown.ecoMadYearHigh = est.ecoAnnuelleMadHigh;
@@ -3682,14 +3682,14 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     const retourOk = est.paybackYearsLow > 0 && est.paybackYearsHigh > 0;
     const retourLabel = retourOk
       ? (est.paybackYearsLow === est.paybackYearsHigh
-        ? `${fmtYears(est.paybackYearsLow)} ans`
-        : `${fmtYears(est.paybackYearsLow)} – ${fmtYears(est.paybackYearsHigh)} ans`)
+        ? `${ctx.crochets.appeler('fmtYears', est.paybackYearsLow)} ans`
+        : `${ctx.crochets.appeler('fmtYears', est.paybackYearsLow)} – ${ctx.crochets.appeler('fmtYears', est.paybackYearsHigh)} ans`)
       : null;
-    setCard('mt-pro-retour-card', 'mt-pro-retour', retourLabel);
+    ctx.crochets.appeler('setCard', 'mt-pro-retour-card', 'mt-pro-retour', retourLabel);
     if (retourLabel) shown.paybackLabel = retourLabel;
     const capped = $('mt-pro-capped');
     if (capped) capped.hidden = est.surfaceCapped !== true;
-    if (prodOk) renderMonthlyChart(est.prodAnnuelleKwh);
+    if (prodOk) ctx.crochets.appeler('renderMonthlyChart', est.prodAnnuelleKwh);
     // Hypothèses honnêtes — uniquement celles que le moteur fournit (jamais un
     // prix système absolu : fourchette MAD/kWc seulement).
     const hypEl = $('mt-doc-hypotheses');
@@ -3707,17 +3707,18 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (noteEl) noteEl.hidden = true;
     if (hypWrap) hypWrap.hidden = false;
     // CIW404 — même règle côté écran non gaté : rien de chiffré vers le CRM ni WhatsApp.
-    estimateShown = null; // CIW404 — aucun chiffre vers le CRM
-    lastKwc = kwcOk ? est.kwc : null;
-    lastKwcLabel = '';
-    lastSavingsLabel = '';
+    ctx.etat.estimateShown = null; // CIW404 — aucun chiffre vers le CRM
+    ctx.etat.lastKwc = kwcOk ? est.kwc : null;
+    ctx.etat.lastKwcLabel = '';
+    ctx.etat.lastSavingsLabel = '';
     if (printBtn) printBtn.hidden = false;
-    fillDocChrome();
-    updatePanels3dVisibility();
-    if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
-    announceEstimate(`Votre estimation : ${lastKwcLabel || 'calculée'}${ecoLabel ? `, économies estimées ${ecoLabel}/an` : ''}.`);
+    ctx.crochets.appeler('fillDocChrome');
+    ctx.crochets.appeler('updatePanels3dVisibility');
+    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'contact', 'reached');
+    ctx.crochets.appeler('announceEstimate', `Votre estimation : ${ctx.etat.lastKwcLabel || 'calculée'}${ecoLabel ? `, économies estimées ${ecoLabel}/an` : ''}.`);
     return true;
   }
+  ctx.crochets.installer('computeProEstimate', computeProEstimate);
   // ——— QX : moteur AGRICOLE (contrat Lane A estimatorAgricole) — JAMAIS
   // estimateFromBill (garde WJ111). ———
   interface AgricoleEstimateOk {
@@ -3734,8 +3735,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     hypotheses: { pumpEff: number; pvFactor: number };
   }
   function computeAgricoleEstimate(): AgricoleEstimateOk | null {
-    let debitM3h = waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined;
-    let besoinM3j = waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined;
+    let debitM3h = ctx.etat.waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined;
+    let besoinM3j = ctx.etat.waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined;
     // WJ124 — sans débit/besoin explicite, on DÉDUIT le besoin du mois de pointe
     // via le moteur agronomique FAO-56 (culture + région + surface + irrigation).
     // Le chemin « je connais mon débit/HMT » (valeurs saisies) reste prioritaire.
@@ -3743,11 +3744,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (debitM3h == null && besoinM3j == null) {
       const crop = val('mt-culture');
       const surfaceHa = num('mt-surface-ha');
-      if (crop && regionAgricole && surfaceHa != null && surfaceHa > 0) {
+      if (crop && ctx.etat.regionAgricole && surfaceHa != null && surfaceHa > 0) {
         // « Votre irrigation » retirée du tunnel (coupe fondateur 18/08) : le
         // moteur retombe sur IRRIGATION_EFFICIENCY_DEFAUT, comme pour un
         // visiteur qui ne répondait pas à la question.
-        const md = monthlyWaterDemand(crop, regionAgricole, surfaceHa);
+        const md = monthlyWaterDemand(crop, ctx.etat.regionAgricole, surfaceHa);
         if (md.peak_m3_farm_day > 0) { besoinM3j = md.peak_m3_farm_day; agroPeak = md.peak_m3_farm_day; }
       }
     }
@@ -3758,7 +3759,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (waterNote) waterNote.hidden = agroPeak == null || PUBLIC_ESTIMATE_GATED;
     if (!PUBLIC_ESTIMATE_GATED && agroPeak != null) {
       const waterVal = $('mt-agri-water-value');
-      if (waterVal) waterVal.textContent = `${fmtNum(Math.round(agroPeak))} m³/jour`;
+      if (waterVal) waterVal.textContent = `${ctx.crochets.appeler('fmtNum', Math.round(agroPeak))} m³/jour`;
     }
     const raw = estimateAgricole({
       hmtM: num('mt-hmt') ?? undefined,
@@ -3767,13 +3768,14 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       debitM3h,
       besoinM3j,
       heuresPompage: num('mt-heures-pompage') ?? undefined,
-      pompeType: waterSource === 'puits' || waterSource === 'forage' ? 'immergee' : waterSource ? 'surface' : undefined,
+      pompeType: ctx.etat.waterSource === 'puits' || ctx.etat.waterSource === 'forage' ? 'immergee' : ctx.etat.waterSource ? 'surface' : undefined,
       fuelSpendMadMonth: num('mt-fuel-spend') ?? undefined,
     }) as unknown as AgricoleEstimateOk | { ok: false; reason: string };
     return raw && raw.ok === true ? raw : null;
   }
+  ctx.crochets.installer('computeAgricoleEstimate', computeAgricoleEstimate);
   function renderAgricoleEstimate(ag: AgricoleEstimateOk) {
-    if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
+    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'estimation', 'viewed');
     // WJ125 — payload lead (chiffres pompage) + labels construits AVANT tout
     // rendu ; en parcours public gaté on s'arrête ici SANS écrire un chiffre.
     {
@@ -3787,50 +3789,50 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
       // WJ124 — bassin suggéré = besoin journalier (1×), borne basse de la fourchette 1-3×.
       if (ag.m3Jour > 0) s.bassinM3 = ag.m3Jour;
-      estimateShown = s;
-      lastKwc = null;
-      lastKwcLabel = cOk ? `${formatKwc(ag.champKwc)} kWc (champ PV)` : '';
+      ctx.etat.estimateShown = s;
+      ctx.etat.lastKwc = null;
+      ctx.etat.lastKwcLabel = cOk ? `${formatKwc(ag.champKwc)} kWc (champ PV)` : '';
       // AGW404 — aucune économie carburant dans le payload ni dans le message WhatsApp.
-      lastSavingsLabel = '';
+      ctx.etat.lastSavingsLabel = '';
     }
     if (PUBLIC_ESTIMATE_GATED) {
-      updatePanels3dVisibility();
-      if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
-      announceEstimate(GATED_ANNOUNCE);
+      ctx.crochets.appeler('updatePanels3dVisibility');
+      if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'contact', 'reached');
+      ctx.crochets.appeler('announceEstimate', GATED_ANNOUNCE);
       return;
     }
     const kpis = $('mt-doc-kpis-agri');
     if (kpis) kpis.hidden = false;
     const shown: Record<string, number | string> = {};
     const pompeOk = ag.pompeCv > 0;
-    const pompeLabel = pompeOk ? `${fmtNum(ag.pompeCv)} CV${ag.pompeKw > 0 ? ` · ${fmtNum(ag.pompeKw)} kW` : ''}` : null;
-    setCard('mt-agri-pompe-card', 'mt-agri-pompe', pompeLabel);
+    const pompeLabel = pompeOk ? `${ctx.crochets.appeler('fmtNum', ag.pompeCv)} CV${ag.pompeKw > 0 ? ` · ${ctx.crochets.appeler('fmtNum', ag.pompeKw)} kW` : ''}` : null;
+    ctx.crochets.appeler('setCard', 'mt-agri-pompe-card', 'mt-agri-pompe', pompeLabel);
     if (pompeOk) shown.pompeCv = ag.pompeCv;
     const champOk = ag.champKwc > 0;
     const champLabel = champOk ? `${formatKwc(ag.champKwc)} kWc${ag.nbPanneaux > 0 ? ` · ${ag.nbPanneaux} panneaux` : ''}` : null;
-    setCard('mt-agri-champ-card', 'mt-agri-champ', champLabel);
+    ctx.crochets.appeler('setCard', 'mt-agri-champ-card', 'mt-agri-champ', champLabel);
     if (champOk) shown.champKwc = ag.champKwc;
     if (ag.nbPanneaux > 0) shown.nbPanneaux = ag.nbPanneaux;
     const eauOk = ag.m3Jour > 0;
     const eauLabel = eauOk
-      ? `${fmtNum(ag.m3Jour)} m³${ag.hmtM > 0 ? ` à HMT ${fmtNum(ag.hmtM)} m${ag.hmtEstimated ? ' (estimée)' : ''}` : ''}`
+      ? `${ctx.crochets.appeler('fmtNum', ag.m3Jour)} m³${ag.hmtM > 0 ? ` à HMT ${ctx.crochets.appeler('fmtNum', ag.hmtM)} m${ag.hmtEstimated ? ' (estimée)' : ''}` : ''}`
       : null;
-    setCard('mt-agri-eau-card', 'mt-agri-eau', eauLabel);
+    ctx.crochets.appeler('setCard', 'mt-agri-eau-card', 'mt-agri-eau', eauLabel);
     if (eauOk) shown.m3Jour = ag.m3Jour;
     if (eauOk) shown.bassinM3 = ag.m3Jour;
     // AGW404 — plus de bande « économie carburant » : la valeur DÉCLARÉE du visiteur, telle quelle
     // (sans × 12 ni pourcentage), masquée si vide.
     const depenseDeclaree = num('mt-fuel-spend');
-    const fuelLabel = depenseDeclaree != null && depenseDeclaree > 0 ? `${fmtNum(depenseDeclaree)} MAD/mois` : null;
-    setCard('mt-agri-fuel-card', 'mt-agri-fuel', fuelLabel);
+    const fuelLabel = depenseDeclaree != null && depenseDeclaree > 0 ? `${ctx.crochets.appeler('fmtNum', depenseDeclaree)} MAD/mois` : null;
+    ctx.crochets.appeler('setCard', 'mt-agri-fuel-card', 'mt-agri-fuel', fuelLabel);
     // Bande de flux soleil → pompe → eau : uniquement si les 3 chiffres existent.
     const flow = $('mt-doc-flow');
     const flowOk = ag.heures > 0 && pompeLabel != null && eauOk;
     if (flow) flow.hidden = !flowOk;
     if (flowOk) {
-      setText('mt-flow-heures', `${fmtNum(ag.heures)} h`);
+      setText('mt-flow-heures', `${ctx.crochets.appeler('fmtNum', ag.heures)} h`);
       setText('mt-flow-pompe', pompeLabel as string);
-      setText('mt-flow-eau', `${fmtNum(ag.m3Jour)} m³/jour`);
+      setText('mt-flow-eau', `${ctx.crochets.appeler('fmtNum', ag.m3Jour)} m³/jour`);
     }
     // Hypothèses pompage honnêtes (rendement, facteur champ/pompe).
     const hypEl = $('mt-doc-hypotheses');
@@ -3838,33 +3840,34 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     const noteEl = $('mt-estimate-note');
     const hypParts: string[] = [];
     if (ag.hypotheses && ag.hypotheses.pumpEff > 0) hypParts.push(`rendement de pompage estimé ${pct(ag.hypotheses.pumpEff)} %`);
-    if (ag.hypotheses && ag.hypotheses.pvFactor > 0) hypParts.push(`champ PV ≈ ${fmtNum(ag.hypotheses.pvFactor)} × la puissance de la pompe`);
+    if (ag.hypotheses && ag.hypotheses.pvFactor > 0) hypParts.push(`champ PV ≈ ${ctx.crochets.appeler('fmtNum', ag.hypotheses.pvFactor)} × la puissance de la pompe`);
     if (hypEl) {
       hypEl.textContent = hypParts.length > 0 ? `Hypothèses : ${hypParts.join(' · ')} — dimensionnement affiné après visite du forage.` : '';
       hypEl.hidden = hypParts.length === 0;
     }
     if (noteEl) noteEl.hidden = true;
     if (hypWrap) hypWrap.hidden = false;
-    estimateShown = shown;
+    ctx.etat.estimateShown = shown;
     // Pas d'aperçu « panneaux sur votre toit » pour un champ au sol : lastKwc
     // reste null (le bloc 3D reste réservé aux toits résidentiel/pro).
-    lastKwc = null;
-    lastKwcLabel = champLabel ? `${formatKwc(ag.champKwc)} kWc (champ PV)` : '';
-    lastSavingsLabel = '';
+    ctx.etat.lastKwc = null;
+    ctx.etat.lastKwcLabel = champLabel ? `${formatKwc(ag.champKwc)} kWc (champ PV)` : '';
+    ctx.etat.lastSavingsLabel = '';
     const printBtn = $('mt-print-estimate');
     if (printBtn) printBtn.hidden = false;
-    fillDocChrome();
-    updatePanels3dVisibility();
-    if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
-    announceEstimate(`Votre estimation pompage : ${pompeLabel ? `pompe ${pompeLabel}` : 'calculée'}${champLabel ? `, champ ${champLabel}` : ''}.`);
+    ctx.crochets.appeler('fillDocChrome');
+    ctx.crochets.appeler('updatePanels3dVisibility');
+    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'contact', 'reached');
+    ctx.crochets.appeler('announceEstimate', `Votre estimation pompage : ${pompeLabel ? `pompe ${pompeLabel}` : 'calculée'}${champLabel ? `, champ ${champLabel}` : ''}.`);
   }
+  ctx.crochets.installer('renderAgricoleEstimate', renderAgricoleEstimate);
   /** @returns true si une estimation réelle a été calculée et affichée (false si
    *  indisponible — facture absente/non chiffrable/hors plafond). WJ46 — le SEUL
    *  appelant qui agit sur cette valeur est le clic « Voir mon estimation » (pic
    *  d'intérêt) ; les recalculs silencieux (retour corriger la facture) l'ignorent. */
   function computeEstimate(): boolean {
     const exact = num('mt-facture-hiver');
-    const bill = resolveMonthlyBill();
+    const bill = ctx.crochets.appeler('resolveMonthlyBill');
     const card = $('mt-estimate-body');
     const note = $('mt-estimate-note');
     const unavail = $('mt-estimate-unavailable');
@@ -3878,8 +3881,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // masque le document chiffré + les zones fuiantes AVANT tout rendu. Le
     // calcul se poursuit plus bas (silencieux) ; les chemins « succès »
     // s'arrêtent avant d'écrire le moindre chiffre à l'écran.
-    if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode);
-    if (mode === 'agricole') {
+    if (PUBLIC_ESTIMATE_GATED) ctx.crochets.appeler('showEstimateTeaser', ctx.etat.mode);
+    if (ctx.etat.mode === 'agricole') {
       // WJ111 — jamais estimateFromBill ici : le pompage se dimensionne sur
       // l'hydraulique (profondeur/HMT + besoin en eau), pas sur une facture.
       if (card) card.hidden = true;
@@ -3887,7 +3890,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       if (unavail) unavail.hidden = true;
       if (toolarge) toolarge.hidden = true;
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
-      const ag = computeAgricoleEstimate();
+      const ag = ctx.crochets.appeler('computeAgricoleEstimate');
       if (!ag) {
         // Hydraulique manquante → carte chaleureuse DANS le document (jamais
         // un chiffre résidentiel fabriqué). WJ127 — ce document étant masqué en
@@ -3895,27 +3898,27 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
         // l'annonce ci-dessous : le visiteur voyant lit ce que le lecteur
         // d'écran entend, et aucun chiffre n'est divulgué.
         if (agricoleEl) agricoleEl.hidden = false;
-        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'rappel');
-        lastKwcLabel = '';
-        lastSavingsLabel = '';
-        lastKwc = null;
-        estimateShown = null;
+        if (PUBLIC_ESTIMATE_GATED) ctx.crochets.appeler('showEstimateTeaser', ctx.etat.mode, 'rappel');
+        ctx.etat.lastKwcLabel = '';
+        ctx.etat.lastSavingsLabel = '';
+        ctx.etat.lastKwc = null;
+        ctx.etat.estimateShown = null;
         if (printBtn) printBtn.hidden = true;
-        fillDocChrome();
-        updatePanels3dVisibility();
-        announceEstimate('Le pompage se dimensionne sur votre profondeur et votre besoin en eau — un ingénieur vous rappelle avec un calcul adapté.');
+        ctx.crochets.appeler('fillDocChrome');
+        ctx.crochets.appeler('updatePanels3dVisibility');
+        ctx.crochets.appeler('announceEstimate', 'Le pompage se dimensionne sur votre profondeur et votre besoin en eau — un ingénieur vous rappelle avec un calcul adapté.');
         return true;
       }
       if (agricoleEl) agricoleEl.hidden = true;
-      renderAgricoleEstimate(ag);
+      ctx.crochets.appeler('renderAgricoleEstimate', ag);
       return true;
     }
     if (agricoleEl) agricoleEl.hidden = true;
-    if (isProMode(mode)) {
+    if (ctx.crochets.appeler('isProMode', ctx.etat.mode)) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
-      return computeProEstimate();
+      return ctx.crochets.appeler('computeProEstimate');
     }
     // ——— RÉSIDENTIEL (défaut) — moteur billEstimate inchangé (WJ1/WJ112) ———
     // WJ65 — montant exact au-delà du plafond : message honnête dédié (jamais un
@@ -3929,21 +3932,21 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       if (toolarge) toolarge.hidden = false;
       // WJ127 — `#mt-doc` (donc cette carte) est masqué en parcours public :
       // l'accroche du teaser dit la même chose, sans divulguer de chiffre.
-      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
+      if (PUBLIC_ESTIMATE_GATED) ctx.crochets.appeler('showEstimateTeaser', ctx.etat.mode, 'etude');
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', 'Vérifiez le montant saisi.');
-      lastKwcLabel = '';
-      lastSavingsLabel = '';
-      lastKwc = null;
-      estimateShown = null;
+      ctx.etat.lastKwcLabel = '';
+      ctx.etat.lastSavingsLabel = '';
+      ctx.etat.lastKwc = null;
+      ctx.etat.estimateShown = null;
       if (printBtn) printBtn.hidden = true;
-      fillDocChrome();
-      updatePanels3dVisibility();
-      announceEstimate('Estimation indisponible — vérifiez le montant saisi.');
+      ctx.crochets.appeler('fillDocChrome');
+      ctx.crochets.appeler('updatePanels3dVisibility');
+      ctx.crochets.appeler('announceEstimate', 'Estimation indisponible — vérifiez le montant saisi.');
       return false;
     }
     setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
     if (toolarge) toolarge.hidden = true;
-    const lat = capturePin?.lat;
+    const lat = ctx.etat.capturePin?.lat;
     const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
     // Coupe fondateur 18/08 — la conso exacte en kWh/mois est retirée du tunnel :
     // `exactKwhMonthly` n'est plus transmis, donc estimateFromBill retombe sur sa
@@ -3960,23 +3963,23 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       if (card) card.hidden = true;
       if (note) note.hidden = true;
       if (unavail) unavail.hidden = false;
-      lastKwcLabel = '';
-      lastSavingsLabel = '';
-      lastKwc = null;
-      estimateShown = null;
+      ctx.etat.lastKwcLabel = '';
+      ctx.etat.lastSavingsLabel = '';
+      ctx.etat.lastKwc = null;
+      ctx.etat.estimateShown = null;
       if (printBtn) printBtn.hidden = true;
-      fillDocChrome();
-      updatePanels3dVisibility();
-      announceEstimate('Estimation indisponible : indiquez votre facture mensuelle pour la calculer.');
+      ctx.crochets.appeler('fillDocChrome');
+      ctx.crochets.appeler('updatePanels3dVisibility');
+      ctx.crochets.appeler('announceEstimate', 'Estimation indisponible : indiquez votre facture mensuelle pour la calculer.');
       return false;
     }
     // WJ125 — chiffres calculés (payload lead) + labels (deeplink WhatsApp / CRM),
     // construits AVANT tout rendu ; puis, en parcours public gaté, on s'arrête ici
     // SANS écrire le moindre chiffre à l'écran (la carte teaser est déjà affichée).
-    lastKwc = est.kwc;
-    lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
-    lastSavingsLabel = `${formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh)}/mois`;
-    estimateShown = {
+    ctx.etat.lastKwc = est.kwc;
+    ctx.etat.lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
+    ctx.etat.lastSavingsLabel = `${formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh)}/mois`;
+    ctx.etat.estimateShown = {
       kwc: est.kwc,
       prodKwh: est.productionKwhYr,
       ecoMadMonthLow: est.savingsMonthlyLow,
@@ -3991,11 +3994,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // discontinuité de conversion se lit « estimation calculée en coulisse +
     // bascule immédiate vers le contact », pas comme deux actions distinctes
     // du visiteur.
-    if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
+    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'estimation', 'viewed');
     if (PUBLIC_ESTIMATE_GATED) {
-      updatePanels3dVisibility();
-      if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
-      announceEstimate(GATED_ANNOUNCE);
+      ctx.crochets.appeler('updatePanels3dVisibility');
+      if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'contact', 'reached');
+      ctx.crochets.appeler('announceEstimate', GATED_ANNOUNCE);
       return true;
     }
     if (card) card.hidden = false;
@@ -4011,7 +4014,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // résultat réel à l'écran (distinct du simple « étape atteinte » émis par
     // ailleurs — celui-ci dit rien du succès du calcul). Dédupliqué une fois
     // par visite (sendFunnelBeacon), jamais avant le consentement (WB30).
-    if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
+    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'estimation', 'viewed');
     const kwcEl = $('mt-est-kwc');
     const savEl = $('mt-est-savings');
     const payEl = $('mt-est-payback');
@@ -4020,9 +4023,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     const monthly = formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh);
     if (savEl) savEl.textContent = monthly;
     if (payEl) payEl.textContent = est.paybackLabel;
-    lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
-    lastSavingsLabel = `${monthly}/mois`;
-    lastKwc = est.kwc;
+    ctx.etat.lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
+    ctx.etat.lastSavingsLabel = `${monthly}/mois`;
+    ctx.etat.lastKwc = est.kwc;
     // WJ71 — bande de confiance climatique, affichée SEULEMENT quand elle dit
     // vraiment quelque chose (un été côtier réduit la fourchette de savings
     // basse — sinon on n'affiche pas une ligne qui répéterait le même chiffre).
@@ -4035,7 +4038,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       }
     }
     // QX — exactement les chiffres affichés dans le document (payload lead).
-    estimateShown = {
+    ctx.etat.estimateShown = {
       kwc: est.kwc,
       prodKwh: est.productionKwhYr,
       ecoMadMonthLow: est.savingsMonthlyLow,
@@ -4047,8 +4050,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // proximité honnête (≤ 80 km, cf. nearestRealisation). Sans repère, la
     // carte reste masquée — jamais une ville devinée depuis le texte libre.
     const nearestEl = $('mt-nearest-install');
-    if (nearestEl && capturePin) {
-      const near = nearestRealisation(capturePin.lat, capturePin.lng, 80, REALISATIONS_WITH_KWC);
+    if (nearestEl && ctx.etat.capturePin) {
+      const near = nearestRealisation(ctx.etat.capturePin.lat, ctx.etat.capturePin.lng, 80, REALISATIONS_WITH_KWC);
       if (near) {
         const { realisation: r, distanceKm } = near;
         const textEl = $('mt-nearest-install-text');
@@ -4071,19 +4074,20 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       cowEl.hidden = est.savingsMonthlyLow <= 0;
     }
     // QX — répartition mensuelle de la production annuelle déjà calculée.
-    renderMonthlyChart(est.productionKwhYr);
+    ctx.crochets.appeler('renderMonthlyChart', est.productionKwhYr);
     if (printBtn) printBtn.hidden = false;
-    fillDocChrome();
-    updatePanels3dVisibility();
+    ctx.crochets.appeler('fillDocChrome');
+    ctx.crochets.appeler('updatePanels3dVisibility');
     // WJ59 — l'estimation réelle est le moment où le formulaire de contact
     // devient l'action pertinente : « étape contact atteinte ».
     // WB30 — pas de beacon avant l'étape de consentement (la révélation).
-    if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
+    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'contact', 'reached');
     // WJ88 — annonce UNIQUE et propre du résultat final (jamais pendant le
     // squelette — cf. announceEstimate ci-dessus).
-    announceEstimate(`Votre estimation : ${formatKwc(est.kwc)} kWc, économies estimées ${monthly}/mois, amortissement ${est.paybackLabel}.`);
+    ctx.crochets.appeler('announceEstimate', `Votre estimation : ${formatKwc(est.kwc)} kWc, économies estimées ${monthly}/mois, amortissement ${est.paybackLabel}.`);
     return true;
   }
+  ctx.crochets.installer('computeEstimate', computeEstimate);
   // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
   // chiffres passent en squelette shimmer AVANT le calcul, puis
   // requestAnimationFrame laisse peindre ce squelette une fois avant de
@@ -4094,7 +4098,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // QX — le squelette chiffres ne concerne que la grille RÉSIDENTIELLE (les
     // profils pro/agricole ont la puce « calcul » mt-estimate-thinking, et
     // leurs cartes KPI n'apparaissent qu'avec de vraies valeurs).
-    if (mode && mode !== 'residentiel') return;
+    if (ctx.etat.mode && ctx.etat.mode !== 'residentiel') return;
     const card = $('mt-estimate-body');
     const unavail = $('mt-estimate-unavailable');
     const toolarge = $('mt-estimate-toolarge');
@@ -4126,7 +4130,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // QX — validation de l'étape AVANT le calcul : erreurs inline + focus +
     // défilement doux vers le premier champ invalide (plus jamais « tout va
     // bien » jusqu'à un refus global à la fin).
-    if (!validateStep1()) return;
+    if (!ctx.crochets.appeler('validateStep1')) return;
     showEstimateSkeleton();
     const thinkingEl = $('mt-estimate-thinking');
     if (thinkingEl) thinkingEl.hidden = false;
@@ -4135,21 +4139,21 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // puce « calcul » WJ48 → rAF → délai perçu ≤500 ms, 0 ms en reduced-motion
     // → computeEstimate()) : seule la destination change — le teaser verrouillé
     // et le formulaire apparaissent sous les questions, sur le même écran.
-    revealed = true;
+    ctx.etat.revealed = true;
     // On dévoile le bloc DIRECTEMENT plutôt que via renderStep() : à `step === 1`
     // rien d'autre ne bouge (mêmes panneaux, mêmes barres de progression déjà
     // actives), et renderStep() ramènerait la page tout en haut — un défilement
     // parasite juste avant celui, voulu, vers la révélation.
     if (revealEl) revealEl.hidden = false;
-    saveWizardState();
+    ctx.crochets.appeler('saveWizardState');
     // Le pas d'historique de l'ancien écran 3 est conservé : le bouton
     // précédent du navigateur referme la révélation au lieu de quitter la page.
-    history.pushState({ mtStep: step, mtRevealed: true }, '', location.href);
+    history.pushState({ mtStep: ctx.etat.step, mtRevealed: true }, '', location.href);
     // WJ59 — 'estimation' / 'reached' était émis par renderStep() en arrivant
     // sur l'ancien écran 3 ; il est désormais émis ICI, au même instant du
     // parcours. Vocabulaire de télémétrie strictement inchangé (dédupliqué par
     // sendFunnelBeacon : un seul envoi par visite).
-    if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'reached');
+    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'estimation', 'reached');
     // La révélation vient d'apparaître SOUS les questions : on l'amène à
     // l'écran (l'ancien changement d'étape faisait remonter la page en haut).
     revealEl?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
@@ -4157,7 +4161,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     requestAnimationFrame(() => {
       setTimeout(() => {
         if (thinkingEl) thinkingEl.hidden = true;
-        const hasEstimate = computeEstimate();
+        const hasEstimate = ctx.crochets.appeler('computeEstimate');
         // WJ46 — pic d'intérêt : dès que l'estimation instantanée est RÉELLEMENT
         // affichée (pas le squelette, pas l'état « indisponible »), on propose
         // l'offre WhatsApp ici plutôt que d'attendre un exit-intent (desktop
@@ -4169,7 +4173,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
         // l'interrompt jamais — l'exit-intent, lui, reste actif.
         if (hasEstimate) {
           setTimeout(() => {
-            if (!docEngaged) showWhatsappOffer(triggerEl);
+            if (!ctx.etat.docEngaged) ctx.crochets.appeler('showWhatsappOffer', triggerEl);
           }, 12_000);
         }
       }, thinkingDelayMs());
@@ -4178,16 +4182,15 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // QX — « engagé » : le visiteur remplit déjà le formulaire de contact ou
   // imprime son document — l'offre WhatsApp automatique (pic d'intérêt) ne
   // doit alors JAMAIS l'interrompre. L'exit-intent reste actif, lui.
-  let docEngaged = false;
-  $('mt-form')?.addEventListener('focusin', () => { docEngaged = true; });
-  $('mt-print-estimate')?.addEventListener('click', () => { docEngaged = true; }, { capture: true });
+  $('mt-form')?.addEventListener('focusin', () => { ctx.etat.docEngaged = true; });
+  $('mt-print-estimate')?.addEventListener('click', () => { ctx.etat.docEngaged = true; }, { capture: true });
   // recalcule à la volée si l'utilisateur revient corriger sa facture (ne
   // redéclenche PAS l'offre WhatsApp : showWhatsappOffer n'est ici jamais appelée).
   // QX — la saisie du montant exact synchronise d'abord la tranche dérivée
   // (fix « tranche redondante »), puis recalcule.
   $('mt-facture-hiver')?.addEventListener('input', () => {
-    syncBillRangeFromExact();
-    computeEstimate();
+    ctx.crochets.appeler('syncBillRangeFromExact');
+    ctx.crochets.appeler('computeEstimate');
   });
   $('mt-bill')?.addEventListener('change', computeEstimate);
   // La conso exacte (kWh/mois) est retirée du tunnel (coupe fondateur 18/08) :
@@ -4200,7 +4203,6 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   const panels3dOverlay = $('mt-panels3d-overlay') as HTMLElement | null;
   const panels3dStart = $('mt-panels3d-start') as HTMLButtonElement | null;
   const panels3dHint = $('mt-panels3d-hint') as HTMLElement | null;
-  let panels3dStarted = false;
 
   /** Le bouton n'apparaît QUE si un contour (≥3 sommets) a été tracé ET qu'un
    *  kWc est disponible — sinon rien de significatif à montrer (pas de faux
@@ -4212,19 +4214,20 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // quand PUBLIC_3D_PREVIEW est vrai. Les deux drapeaux à false ⇒
     // comportement byte-identique à l'ancien (l'éligibilité pilote seule).
     if (PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW) { panels3dBlock.hidden = true; return; }
-    const eligible = captureOutline.length >= 3 && lastKwc != null;
+    const eligible = ctx.etat.captureOutline.length >= 3 && ctx.etat.lastKwc != null;
     panels3dBlock.hidden = !eligible;
   }
+  ctx.crochets.installer('updatePanels3dVisibility', updatePanels3dVisibility);
 
   async function startPanels3d() {
-    if (panels3dStarted || !panels3dStage || lastKwc == null) return;
-    panels3dStarted = true;
+    if (ctx.etat.panels3dStarted || !panels3dStage || ctx.etat.lastKwc == null) return;
+    ctx.etat.panels3dStarted = true;
     try {
       const [{ capturePreviewLayout, buildViewerModel }, { createRoofViewer }] = await Promise.all([
         import('../../lib/proposition'),
         import('../../scripts/roofPro11/viewerOnly'),
       ]);
-      const layout = capturePreviewLayout(captureOutline, lastKwc);
+      const layout = capturePreviewLayout(ctx.etat.captureOutline, ctx.etat.lastKwc);
       const model = layout ? buildViewerModel(layout) : null;
       if (!model) throw new Error('modèle indisponible');
       // QX/Lane C — la VRAIE photo satellite du toit, drapée sous les panneaux
@@ -4241,17 +4244,17 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
           if (panels3dOverlay) panels3dOverlay.hidden = true;
           if (panels3dHint) panels3dHint.hidden = false;
         },
-        onFail: () => { panels3dStarted = false; },
+        onFail: () => { ctx.etat.panels3dStarted = false; },
       });
       if (!handle) throw new Error('WebGL indisponible');
     } catch {
       // Repli gracieux : le bouton reste, avec un message sobre — jamais de blocage.
-      panels3dStarted = false;
+      ctx.etat.panels3dStarted = false;
       if (panels3dOverlay) {
         const btn = panels3dStart;
         if (btn) {
           btn.disabled = true;
-          btn.textContent = currentLang === 'ar' ? 'المعاينة ثلاثية الأبعاد غير متوفرة' : 'Aperçu 3D indisponible sur cet appareil';
+          btn.textContent = ctx.etat.currentLang === 'ar' ? 'المعاينة ثلاثية الأبعاد غير متوفرة' : 'Aperçu 3D indisponible sur cet appareil';
         }
       }
     }
@@ -4373,7 +4376,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   });
   /** Étape carte : un profil doit être choisi (nudge inline sur les cartes). */
   function validateStep0(): boolean {
-    if (mode) return true;
+    if (ctx.etat.mode) return true;
     const err = $('mt-mode-err');
     if (err) {
       err.textContent = 'Choisissez votre type de projet pour continuer.';
@@ -4382,20 +4385,21 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     scrollToInvalid(document.querySelector<HTMLButtonElement>('.mt-mode'));
     return false;
   }
+  ctx.crochets.installer('validateStep0', validateStep0);
   /** Étape questions : validation PAR PROFIL avant le calcul. */
   function validateStep1(): boolean {
-    if (isProMode(mode)) {
-      const raw = val(proBillId()).trim();
-      const n = num(proBillId());
+    if (ctx.crochets.appeler('isProMode', ctx.etat.mode)) {
+      const raw = val(ctx.crochets.appeler('proBillId')).trim();
+      const n = num(ctx.crochets.appeler('proBillId'));
       if (raw === '' || n == null || n <= 0) {
-        setFieldError(proBillId(), proBillErrId(), 'Indiquez votre consommation mensuelle (MAD ou kWh) pour calculer votre estimation.');
-        scrollToInvalid($(proBillId()));
+        setFieldError(ctx.crochets.appeler('proBillId'), ctx.crochets.appeler('proBillErrId'), 'Indiquez votre consommation mensuelle (MAD ou kWh) pour calculer votre estimation.');
+        scrollToInvalid($(ctx.crochets.appeler('proBillId')));
         return false;
       }
-      setFieldError(proBillId(), proBillErrId(), null);
+      setFieldError(ctx.crochets.appeler('proBillId'), ctx.crochets.appeler('proBillErrId'), null);
       return true;
     }
-    if (mode === 'agricole') {
+    if (ctx.etat.mode === 'agricole') {
       // Rien n'est REQUIS (hydraulique manquante = chemin honnête « un
       // ingénieur vous rappelle ») — mais un nombre saisi doit être un nombre.
       for (const [id, label] of OPTIONAL_NUMBER_FIELDS) {
@@ -4427,6 +4431,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     setFieldError('mt-bill', 'mt-bill-err', null);
     return true;
   }
+  ctx.crochets.installer('validateStep1', validateStep1);
 
   // QJW5 — `resolveProBillRange()` (tranche C&I dérivée de la conso saisie) et
   // `resolveRoofType()` (type de toit dérivé, jamais demandé depuis la coupe
@@ -4439,11 +4444,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // Stable sur des soumissions répétées (ex. échec réseau puis nouvel essai) :
   // générée à la première tentative, réutilisée telle quelle ensuite — jamais
   // régénérée en silence, jamais une clé d'unicité serveur (cf. lib/lead.ts).
-  let clientRef = '';
   function getOrCreateClientRef(): string {
-    if (!clientRef) clientRef = buildClientRef();
-    return clientRef;
+    if (!ctx.etat.clientRef) ctx.etat.clientRef = buildClientRef();
+    return ctx.etat.clientRef;
   }
+  ctx.crochets.installer('getOrCreateClientRef', getOrCreateClientRef);
 
   // WJ116 — reprise fbclid + UTM depuis sessionStorage (capture first-touch du
   // Layout, apps/web/src/layouts/Layout.astro ~l.206) : sans ceci, AUCUNE
@@ -4463,6 +4468,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     }
     return out;
   }
+  ctx.crochets.installer('readTrackingParams', readTrackingParams);
 
   // WJ122 — `readCommercialAnswers()` a disparu avec les questions par catégorie
   // (coupe fondateur 18/08) : aucune n'entrait dans estimatePro, elles partaient
@@ -4507,55 +4513,55 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       adresseCarte: addressEl?.value ?? '',
       adresseSecours: fallbackAddrEl?.value ?? '',
       // WJ30 — le type de projet et la langue active partent aussi au webhook.
-      mode,
-      languePreferee: currentLang,
+      mode: ctx.etat.mode,
+      languePreferee: ctx.etat.currentLang,
       // WJ122 — la conso C&I vient du panneau ACTIF (commercial : mt-cc-bill).
       // Le tarif MAD/kWh du moteur accompagne la valeur : sans lui, le registre
       // refuse de convertir une saisie en kWh plutôt que d'inventer un montant.
-      factureProValeur: num(proBillId()),
-      factureProUnite: proBillUnit(),
-      tarifProMadKwh: lastProTarifMadKwh,
-      tension,
-      activite: activity,
-      tensionTouchee: tensionTouched,
-      activiteTouchee: activityTouched,
-      categorieCommerciale: commercialCategory,
+      factureProValeur: num(ctx.crochets.appeler('proBillId')),
+      factureProUnite: ctx.crochets.appeler('proBillUnit'),
+      tarifProMadKwh: ctx.etat.lastProTarifMadKwh,
+      tension: ctx.etat.tension,
+      activite: ctx.etat.activity,
+      tensionTouchee: ctx.etat.tensionTouched,
+      activiteTouchee: ctx.etat.activityTouched,
+      categorieCommerciale: ctx.etat.commercialCategory,
       // WJ123 — mode INDUSTRIEL : les ÉQUIPES plafonnent honnêtement
       // l'autoconsommation dans estimatePro.
-      equipes,
-      typeSurface: surfaceType,
+      equipes: ctx.etat.equipes,
+      typeSurface: ctx.etat.surfaceType,
       // QX — sous-panneau AGRICOLE : la source d'eau et son unité sont des
       // groupes de cartes, pas des champs identifiés.
-      sourceEau: waterSource,
-      uniteEau: waterUnit,
-      regionAgricole,
+      sourceEau: ctx.etat.waterSource,
+      uniteEau: ctx.etat.waterUnit,
+      regionAgricole: ctx.etat.regionAgricole,
       // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
-      creneauVisitePartie: visitWindowPart,
-      creneauVisiteSemaine: visitWindowWeek,
+      creneauVisitePartie: ctx.etat.visitWindowPart,
+      creneauVisiteSemaine: ctx.etat.visitWindowWeek,
       // L-WEBT — l'occupation du jour est un GROUPE DE CARTES dont la page tient
       // l'état ; l'input caché `mt-occupation-jour` n'en est que le miroir.
-      occupationJour,
+      occupationJour: ctx.etat.occupationJour,
       // WJ52 — référence courte pour l'artefact post-soumission (échoée telle
       // quelle, jamais une clé d'unicité serveur — cf. lib/lead.ts).
-      clientRef: getOrCreateClientRef(),
+      clientRef: ctx.crochets.appeler('getOrCreateClientRef'),
       // Jetons de DÉDOUBLONNAGE (CRM + Meta CAPI) : générés au premier
       // affichage, stables pour toute la session de saisie, donc un renvoi
       // (échec réseau, double-clic, retour arrière puis re-soumission) porte le
       // MÊME couple.
-      idempotencyKey: getOrCreateDedupTokens().idempotencyKey,
-      eventId: getOrCreateDedupTokens().eventId,
+      idempotencyKey: ctx.crochets.appeler('getOrCreateDedupTokens').idempotencyKey,
+      eventId: ctx.crochets.appeler('getOrCreateDedupTokens').eventId,
       // LANE T-WEB — empreinte d'appareil anonyme, additive et jamais
       // bloquante : '' (stockage indisponible) devient une clé ABSENTE.
       appareilId: appareilId(),
       // QX — EXACTEMENT les chiffres affichés dans le document d'estimation
       // (le conseiller CRM voit ce que le client a vu — jamais plus).
-      estimationAffichee: estimateShown,
+      estimationAffichee: ctx.etat.estimateShown,
       // WJ116 — fbclid/UTM (parrainage inclus) repris de sessionStorage.
-      tracking: readTrackingParams(),
+      tracking: ctx.crochets.appeler('readTrackingParams'),
       // WJ4 — repère et contour FACULTATIFS : on ne BLOQUE jamais sans eux.
-      repereToit: capturePin,
-      contourToit: captureOutline,
-      layoutToit: captureLayout,
+      repereToit: ctx.etat.capturePin,
+      contourToit: ctx.etat.captureOutline,
+      layoutToit: ctx.etat.captureLayout,
     };
   }
 
@@ -4567,8 +4573,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
    * (cette page bascule FR/عربي en direct), pas par celle de son URL.
    */
   function corpsDuLead(): { body: Record<string, unknown>; errors: Record<string, string> } {
-    return construireCorps(lireEtatTunnel(), { messages: ERREURS[currentLang] });
+    return construireCorps(lireEtatTunnel(), { messages: ERREURS[ctx.etat.currentLang] });
   }
+  ctx.crochets.installer('corpsDuLead', corpsDuLead);
 
   function showInlineErrors(errors: Record<string, string>) {
     setFieldError('mt-name', 'mt-name-err', errors.fullName ?? null);
@@ -4578,22 +4585,23 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     // retiré du tunnel (coupe fondateur 18/08) et resolveRoofType garantit une
     // valeur valide — l'erreur ne peut donc plus se produire depuis cette page.
     // CIW404 — l'erreur de tranche va sur le champ VISIBLE du profil actif (jamais sur le <select> résidentiel caché en C&I).
-    if (isProMode(mode)) setFieldError(proBillId(), proBillErrId(), errors.billRange ?? null);
+    if (ctx.crochets.appeler('isProMode', ctx.etat.mode)) setFieldError(ctx.crochets.appeler('proBillId'), ctx.crochets.appeler('proBillErrId'), errors.billRange ?? null);
     else setFieldError('mt-bill', 'mt-bill-err', errors.billRange ?? null);
     const cErr = $('mt-consent-err');
     if (cErr) { cErr.textContent = errors.consent ?? ''; cErr.hidden = !errors.consent; }
   }
+  ctx.crochets.installer('showInlineErrors', showInlineErrors);
 
   // ——— WJ3 : deeplink WhatsApp prérempli avec l'estimation ———
   function buildWaUrl(): string {
     const text = captureWhatsappText({
       fullName: val('mt-name'),
       city: (val('mt-city') || addressEl?.value || '').trim(),
-      kwcLabel: lastKwcLabel || undefined,
-      savingsLabel: lastSavingsLabel || undefined,
+      kwcLabel: ctx.etat.lastKwcLabel || undefined,
+      savingsLabel: ctx.etat.lastSavingsLabel || undefined,
       // WREF — le code promis par l'écran de succès voyage ENFIN dans le
       // message (le client n'a plus à le retaper de mémoire).
-      clientRef: getOrCreateClientRef(),
+      clientRef: ctx.crochets.appeler('getOrCreateClientRef'),
     });
     return whatsappLink(WHATSAPP_LEADS, text);
   }
@@ -4624,9 +4632,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
           });
           const data = (await res.json().catch(() => null)) as { ok?: boolean; client_ref?: string } | null;
           if (data?.ok && data.client_ref) {
-            clientRef = data.client_ref; // getOrCreateClientRef() renvoie désormais la vraie référence.
+            ctx.etat.clientRef = data.client_ref; // getOrCreateClientRef() renvoie désormais la vraie référence.
             const refEl = $('mt-client-ref');
-            if (refEl) refEl.textContent = clientRef;
+            if (refEl) refEl.textContent = ctx.etat.clientRef;
             const waLink = $('mt-success-wa') as HTMLAnchorElement | null;
             if (waLink) waLink.href = buildWaUrl();
             return;
@@ -4648,7 +4656,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // Logique partagée (fetch du proxy, ouverture du questionnaire, retrait sur échec) :
   // scripts/tunnel/affiner.ts. Ici, seul le garde de profil.
   function setupAffiner(idempotencyKey: string) {
-    if (mode !== 'commercial' && mode !== 'industriel') return;
+    if (ctx.etat.mode !== 'commercial' && ctx.etat.mode !== 'industriel') return;
     brancherAffiner($('mt-affiner') as HTMLButtonElement | null, idempotencyKey);
   }
 
@@ -4660,7 +4668,6 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   const submitBtn = $('mt-submit') as HTMLButtonElement | null;
   const submitLabelEl = $('mt-submit-label');
   const submitPendingEl = $('mt-submit-pending');
-  let submitted = false;
 
   // WJ60 — bascule le CTA sur « Envoi en cours… » pendant l'attente réseau (jamais
   // de bouton muet sur 3G lente) ; restaurée à la fin quel que soit le résultat
@@ -4680,7 +4687,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // panne serveur générique. Cette page bascule FR/عربي en direct : les
   // messages suivent `currentLang` plutôt qu'un texte figé en français.
   function serverErrorMsg(): string {
-    return currentLang === 'ar'
+    return ctx.etat.currentLang === 'ar'
       ? 'مشكلة تقنية من جانبنا — يرجى إعادة المحاولة.'
       : 'Un problème technique de notre côté — réessayez.';
   }
@@ -4688,15 +4695,15 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // de notre côté) : rassure que rien n'est perdu plutôt que la formule
   // générique « problème technique de notre côté ».
   function offlineMsg(): string {
-    return currentLang === 'ar'
+    return ctx.etat.currentLang === 'ar'
       ? 'لا يوجد اتصال — إجاباتكم محفوظة، سنعيد المحاولة فور عودة الشبكة.'
       : "Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau.";
   }
   function fieldsHighlightedMsg(): string {
-    return currentLang === 'ar' ? 'يرجى مراجعة الحقول المُبرزة أعلاه.' : 'Vérifiez les champs surlignés ci-dessus.';
+    return ctx.etat.currentLang === 'ar' ? 'يرجى مراجعة الحقول المُبرزة أعلاه.' : 'Vérifiez les champs surlignés ci-dessus.';
   }
   function missingFieldMsg(): string {
-    return currentLang === 'ar' ? 'حقل ناقص أو غير صالح. يرجى مراجعة معلوماتكم.' : 'Un champ est manquant ou invalide. Vérifiez vos informations.';
+    return ctx.etat.currentLang === 'ar' ? 'حقل ناقص أو غير صالح. يرجى مراجعة معلوماتكم.' : 'Un champ est manquant ou invalide. Vérifiez vos informations.';
   }
   // WJ60 — 15 s laisse le temps à une connexion lente de répondre, sans
   // laisser le CTA « Envoi en cours… » indéfiniment (l'échec, timeout inclus,
@@ -4706,9 +4713,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (errEl) errEl.hidden = true;
-    const { body, errors } = corpsDuLead();
+    const { body, errors } = ctx.crochets.appeler('corpsDuLead');
     if (Object.keys(errors).length > 0) {
-      showInlineErrors(errors);
+      ctx.crochets.appeler('showInlineErrors', errors);
       if (errEl) {
         errEl.textContent = fieldsHighlightedMsg();
         errEl.hidden = false;
@@ -4721,7 +4728,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       if (firstId) ($(firstId) as HTMLElement | null)?.focus();
       return;
     }
-    showInlineErrors({});
+    ctx.crochets.appeler('showInlineErrors', {});
 
     setSubmitPending(true);
     try {
@@ -4739,15 +4746,15 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
         return {};
       })) as { ok?: boolean; qualified?: boolean; errors?: Record<string, string> };
       if (res.ok && !malformed && data.ok) {
-        submitted = true;
-        hasEnteredData = false; // WJ61 — succès : plus besoin du garde-fou beforeunload.
-        clearWizardState(); // WJ61 — la demande a abouti : l'instantané n'a plus lieu d'être.
+        ctx.etat.submitted = true;
+        ctx.etat.hasEnteredData = false; // WJ61 — succès : plus besoin du garde-fou beforeunload.
+        ctx.crochets.appeler('clearWizardState'); // WJ61 — la demande a abouti : l'instantané n'a plus lieu d'être.
         // WJ104 — « rappel demandé » : signal DISTINCT d'un opt-in WhatsApp,
         // émis UNIQUEMENT quand la préférence de contact choisie est « on
         // m'appelle » (mt-contact-phone), jamais pour le repli WhatsApp par
         // défaut. Dédupliqué comme les autres beacons de cette page.
         if (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true) {
-          sendFunnelBeacon('contact', 'callback_requested');
+          ctx.crochets.appeler('sendFunnelBeacon', 'contact', 'callback_requested');
         }
         const waUrl = buildWaUrl();
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
@@ -4756,24 +4763,24 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
           // que le relais CAPI serveur : Meta déduplique les deux signaux.
           // No-op si le pixel est absent ou refusé (tqPixelTrack se gate seul).
           (window as unknown as { tqPixelTrack?: (e: string, p?: object, id?: string) => void })
-            .tqPixelTrack?.('Lead', {}, getOrCreateDedupTokens().eventId);
+            .tqPixelTrack?.('Lead', {}, ctx.crochets.appeler('getOrCreateDedupTokens').eventId);
           // Google Ads / GA4 — même eventId (transaction_id) ; no-op sans
           // PUBLIC_GOOGLE_TAG_ID ou si refusé (tqGoogleTrack se gate seul).
           (window as unknown as { tqGoogleTrack?: (id?: string) => void })
-            .tqGoogleTrack?.(getOrCreateDedupTokens().eventId);
+            .tqGoogleTrack?.(ctx.crochets.appeler('getOrCreateDedupTokens').eventId);
           if (okEl) okEl.hidden = false;
           // WJ52 — affiche la référence générée à la lecture de l'état (déjà
           // incluse dans le body envoyé — on la relit ici via
           // getOrCreateClientRef() pour rester la MÊME valeur, jamais régénérée).
           const refEl = $('mt-client-ref');
-          if (refEl) refEl.textContent = getOrCreateClientRef();
+          if (refEl) refEl.textContent = ctx.crochets.appeler('getOrCreateClientRef');
           const waLink = $('mt-success-wa') as HTMLAnchorElement | null;
           if (waLink) waLink.href = waUrl;
           // WREF2-L3 — relève best-effort de la vraie référence serveur (voir
           // pollServerClientRef ci-dessus) : remplace le code + le lien
           // WhatsApp affichés dès qu'elle arrive, silencieuse sinon.
-          pollServerClientRef(getOrCreateDedupTokens().idempotencyKey);
-          setupAffiner(getOrCreateDedupTokens().idempotencyKey); // CIW405
+          pollServerClientRef(ctx.crochets.appeler('getOrCreateDedupTokens').idempotencyKey);
+          setupAffiner(ctx.crochets.appeler('getOrCreateDedupTokens').idempotencyKey); // CIW405
           // WJ3/WJ51 — sur mobile, on propose WhatsApp tout de suite quand la
           // préférence de contact est « Uniquement sur WhatsApp » (option cochée par défaut).
           const wantsWa = ($('mt-contact-phone') as HTMLInputElement | null)?.checked !== true;
@@ -4782,7 +4789,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
           }
         } else {
           // sous le seuil : PAS de faux « enregistré » — message adapté + WhatsApp.
-          if (mode === 'commercial' || mode === 'industriel') {
+          if (ctx.etat.mode === 'commercial' || ctx.etat.mode === 'industriel') {
             // CIW409 — jamais le texte « pas rentable à votre échelle » pour un pro :
             // message neutre (le seuil / `qualified` / l'étiquette restent inchangés).
             const neutreEl = $('mt-belowthreshold-pro');
@@ -4807,7 +4814,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       // jamais notre copie honnête : seul le champ `errors.rate` bascule sur le
       // message serveur générique lui aussi.
       const isServerError = malformed || res.status >= 500 || (!!data.errors && 'rate' in data.errors);
-      if (!isServerError && data.errors) showInlineErrors(data.errors);
+      if (!isServerError && data.errors) ctx.crochets.appeler('showInlineErrors', data.errors);
       const firstFieldErr = !isServerError && data.errors ? Object.values(data.errors)[0] : null;
       if (errEl) {
         errEl.textContent = isServerError ? serverErrorMsg() : (firstFieldErr || missingFieldMsg());
@@ -4821,7 +4828,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       // notre côté » — qui blâmerait à tort notre infrastructure. Le formulaire
       // reste rempli et l'instantané sessionStorage (WJ61) persiste : rien n'est
       // perdu, il suffit de renvoyer une fois le réseau revenu.
-      syncOfflineBanner();
+      ctx.crochets.appeler('syncOfflineBanner');
       if (errEl) {
         errEl.textContent = navigator.onLine ? serverErrorMsg() : offlineMsg();
         errEl.hidden = false;
@@ -4838,8 +4845,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   const exitModal = $('mt-exit') as HTMLElement | null;
   const exitPhoneInput = $('mt-exit-phone') as HTMLInputElement | null;
   const exitWaLink = $('mt-exit-wa') as HTMLAnchorElement | null;
-  let exitShown = false;
-  let exitTriggerEl: HTMLElement | null = null; // WJ33 — pour restaurer le focus à la fermeture
+   // WJ33 — pour restaurer le focus à la fermeture
 
   /** WJ33 — construit (ou reconstruit) le lien WhatsApp d'abandon depuis l'état actuel. */
   function buildExitWaHref(): string {
@@ -4847,8 +4853,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     const text = captureWhatsappText({
       fullName: '',
       city: (val('mt-city') || addressEl?.value || '').trim(),
-      kwcLabel: lastKwcLabel || undefined,
-      savingsLabel: lastSavingsLabel || undefined,
+      kwcLabel: ctx.etat.lastKwcLabel || undefined,
+      savingsLabel: ctx.etat.lastSavingsLabel || undefined,
     }) + (phone.length >= 6 ? ` Mon numéro : ${phone}.` : '');
     return whatsappLink(WHATSAPP_LEADS, text);
   }
@@ -4883,9 +4889,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   /** WJ46 — affiche l'offre WhatsApp (exit-intent OU pic d'intérêt). Ne
    *  s'affiche qu'une fois par visite (`exitShown`), jamais après soumission. */
   function showWhatsappOffer(triggerEl: HTMLElement | null = null) {
-    if (exitShown || submitted) return;
-    exitShown = true;
-    exitTriggerEl = triggerEl ?? (document.activeElement as HTMLElement | null);
+    if (ctx.etat.exitShown || ctx.etat.submitted) return;
+    ctx.etat.exitShown = true;
+    ctx.etat.exitTriggerEl = triggerEl ?? (document.activeElement as HTMLElement | null);
     if (exitWaLink) exitWaLink.href = buildExitWaHref();
     if (exitModal) {
       exitModal.hidden = false;
@@ -4895,32 +4901,32 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       exitPhoneInput?.focus();
     }
   }
+  ctx.crochets.installer('showWhatsappOffer', showWhatsappOffer);
   // WJ59 — « étape abandonnée » : dédupliquée séparément de l'offre WhatsApp
   // (celle-ci ne s'affiche qu'une fois par visite via `exitShown`, mais le
   // signal de mesure reste utile même si l'offre a déjà été vue une fois).
-  let funnelAbandonSent = false;
   function maybeShowExit(triggerEl: HTMLElement | null = null) {
     // WJ46 — la fenêtre de grâce « sélecteur de photo ouvert » a disparu avec la
     // question « Photo du compteur ou de la facture » (coupe fondateur 18/08) :
     // cette page n'ouvre plus AUCUN sélecteur de fichier, donc plus aucun
     // passage en arrière-plan à ne pas confondre avec un abandon.
     // ne déranger que si l'utilisateur a au moins commencé (mode/facture ou step > 0)
-    const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
+    const started2 = ctx.etat.step > 0 || ctx.crochets.appeler('resolveMonthlyBill') != null || (ctx.etat.capturePin != null);
     if (!started2) return;
     // WB30 — pas de beacon « abandonné » avant l'étape de consentement (panneau 2).
-    if (!submitted && !funnelAbandonSent && hasReachedConsentStep()) {
-      funnelAbandonSent = true;
+    if (!ctx.etat.submitted && !ctx.etat.funnelAbandonSent && ctx.crochets.appeler('hasReachedConsentStep')) {
+      ctx.etat.funnelAbandonSent = true;
       // COUPE FONDATEUR 21/08 — même projection que renderStep() : 'toit' =
       // écran 0, 'facture' = écran 1 avant révélation, puis 'contact' si les
       // chiffres sont réellement sortis, sinon 'estimation'. Vocabulaire figé.
-      const currentStep = step === 0
+      const currentStep = ctx.etat.step === 0
         ? 'toit'
-        : !revealed
+        : !ctx.etat.revealed
           ? 'facture'
-          : (lastKwc != null ? 'contact' : 'estimation');
-      sendFunnelBeacon(currentStep, 'abandoned');
+          : (ctx.etat.lastKwc != null ? 'contact' : 'estimation');
+      ctx.crochets.appeler('sendFunnelBeacon', currentStep, 'abandoned');
     }
-    showWhatsappOffer(triggerEl);
+    ctx.crochets.appeler('showWhatsappOffer', triggerEl);
   }
   function closeExit() {
     if (!exitModal || exitModal.hidden) return;
@@ -4930,8 +4936,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     setBackgroundInert(false);
     // WJ33 — restauration du focus vers l'élément qui a déclenché l'ouverture
     // (ou, à défaut, un point d'ancrage stable de la page).
-    (exitTriggerEl && document.contains(exitTriggerEl) ? exitTriggerEl : $('mt-lang-fr'))?.focus();
-    exitTriggerEl = null;
+    (ctx.etat.exitTriggerEl && document.contains(ctx.etat.exitTriggerEl) ? ctx.etat.exitTriggerEl : $('mt-lang-fr'))?.focus();
+    ctx.etat.exitTriggerEl = null;
   }
   // desktop : la souris quitte par le haut
   document.addEventListener('mouseout', (e) => {
@@ -4981,7 +4987,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
       // WJ63 — suit `currentLang` (bascule FR/عربي en direct) plutôt qu'un
       // texte figé en français.
       if (err) {
-        err.textContent = currentLang === 'ar' ? 'يرجى إدخال رقم للرد عليكم.' : 'Indiquez un numéro pour qu\'on vous réponde.';
+        err.textContent = ctx.etat.currentLang === 'ar' ? 'يرجى إدخال رقم للرد عليكم.' : 'Indiquez un numéro pour qu\'on vous réponde.';
         err.hidden = false;
       }
       return;
@@ -4991,9 +4997,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
 
   // ——— QX : état initial après réhydratation complète (tout est défini ici) ———
   // Tranche dérivée d'un montant exact restauré (fix « tranche redondante »).
-  syncBillRangeFromExact();
+  ctx.crochets.appeler('syncBillRangeFromExact');
   // Parcours restauré avec l'estimation DÉJÀ révélée (WJ61 — y compris migré
   // depuis un ancien `step === 2`) : recalcule le document immédiatement —
   // sinon des tirets jusqu'à la première interaction.
-  if (step === 1 && revealed) computeEstimate();
+  if (ctx.etat.step === 1 && ctx.etat.revealed) ctx.crochets.appeler('computeEstimate');
 </script>

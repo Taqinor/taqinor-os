@@ -494,7 +494,8 @@ describe('CIW410 — tension / activité touchées : parité des 3 locales', () 
       expect(src).toContain('activiteTouchee: activityTouched,');
       // persisté dans l'instantané : une reprise de session ne perd pas le clic
       expect(src).toContain("tensionTouched: tensionTouched ? '1' : ''");
-      expect(src).toContain("tensionTouched = savedSel.tensionTouched === '1'");
+      // RWEB17-M10 — l'état initial vit dans `lib/tunnel/etat.ts::creerEtat` (lu à la suite de la page).
+      expect(src).toContain("tensionTouched: savedSel.tensionTouched === '1',");
     });
   }
 });

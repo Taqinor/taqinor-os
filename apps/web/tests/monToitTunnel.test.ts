@@ -643,7 +643,8 @@ describe("Chantier 4 — l'assistant est passé de 3 à 2 écrans", () => {
       expect(script).toContain('Math.min(1, savedStepRaw)');
       // …et l'ancien `step === 2` (estimation affichée) revient AVEC sa
       // révélation ouverte, jamais sur un écran de questions muet.
-      expect(script).toContain('let revealed = savedWizard?.revealed === true || savedStepRaw === 2;');
+      // RWEB17-M10 — l'état initial vit dans `lib/tunnel/etat.ts::creerEtat` (lu à la suite de la page).
+      expect(script).toContain('revealed: savedWizard?.revealed === true || savedStepRaw === 2,');
       // Idem pour une entrée d'historique héritée (sans `mtRevealed`).
       expect(script).toContain("revealed = st?.mtRevealed === true || st?.mtStep === 2;");
     });
