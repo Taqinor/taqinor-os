@@ -170,7 +170,7 @@ def _tranche_au_montant(devis, plan, tranche, ttc):
     if ttc > plan['reste_a_facturer']:
         raise FacturationVenteRefusee(
             'Le montant dépasse le reste à facturer.',
-            code='montant_depasse_reste')
+            code='montant_depasse_reste', status=409)
     ht, tva, vent = montants_au_prorata(devis, plan, ttc)
     prix = plan['prix_convenu_ttc']
     return dict(tranche, montant_ttc=ttc, ht=ht, tva=tva,
@@ -430,7 +430,7 @@ def _facturer_acompte(devis, plan, *, user, montant, cle_attendue, libelle):
     if montant >= prix:
         raise FacturationVenteRefusee(
             'Le montant dépasse le reste à facturer.',
-            code='montant_depasse_reste')
+            code='montant_depasse_reste', status=409)
     cle = ecrire_echeancier_depuis_acompte(
         devis, montant, user=user, plan=plan, cle_attendue=cle_attendue)
     plan = plan_facturation(devis)

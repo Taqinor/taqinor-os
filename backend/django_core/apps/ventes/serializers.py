@@ -1472,6 +1472,9 @@ class ParametresGammesSerializer(ChampsStrictsSansDecimalMixin,  # CI #997 (2)
 
 #: Code d'erreur d'un id de produit bien formé mais absent de la société.
 CODE_PRODUIT_INCONNU = 'does_not_exist'
+#: api-fuzz-full 28/10 (ENF11) — produit existant mais sans prix : état du
+#: catalogue, refus 409 (seul ; à côté d'un id inconnu, le 404 l'emporte).
+CODE_PRODUIT_SANS_PRIX = 'sans_prix'
 
 
 class OffreTailleConfigSerializer(serializers.Serializer):
@@ -1597,10 +1600,11 @@ class OffreTailleConfigSerializer(serializers.Serializer):
                     code=CODE_PRODUIT_INCONNU)
                 continue
             if not (produit.prix_vente or 0) > 0:
-                erreurs[role] = (
+                erreurs[role] = serializers.ErrorDetail(
                     'Ce produit n\'a pas encore de prix de vente : il ne peut '
                     'pas chiffrer une taille (elle s\'afficherait gratuite '
-                    'chez le client). Renseignez son prix au catalogue.')
+                    'chez le client). Renseignez son prix au catalogue.',
+                    code=CODE_PRODUIT_SANS_PRIX)
         if erreurs:
             raise serializers.ValidationError(erreurs)
         return value
@@ -1620,15 +1624,20 @@ class OffreTailleEcritureSerializer(serializers.Serializer):
         valide = super().is_valid(raise_exception=False)
         if not valide and raise_exception:
             from rest_framework.exceptions import NotFound
+            from core.conflit_etat import ConflitEtat
             config = self.errors.get('config')
+            codes = set()
             if (list(self.errors) == ['config'] and isinstance(config, dict)
                     and list(config) == ['equipements']
-                    and isinstance(config['equipements'], dict)
-                    and all(getattr(d, 'code', None) == CODE_PRODUIT_INCONNU
-                            for details in config['equipements'].values()
-                            for d in (details if isinstance(details, list)
-                                      else [details]))):
-                raise NotFound(self.errors)
+                    and isinstance(config['equipements'], dict)):
+                codes = {getattr(d, 'code', None)
+                         for details in config['equipements'].values()
+                         for d in (details if isinstance(details, list)
+                                   else [details])}
+            if codes and codes <= {CODE_PRODUIT_INCONNU, CODE_PRODUIT_SANS_PRIX}:
+                if CODE_PRODUIT_INCONNU in codes:
+                    raise NotFound(self.errors)
+                raise ConflitEtat(self.errors)
             raise serializers.ValidationError(self.errors)
         return valide
 

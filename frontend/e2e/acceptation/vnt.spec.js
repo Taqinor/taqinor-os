@@ -442,8 +442,8 @@ etape('P1.6', ['VNT33', 'VNT34', 'VNT46'], async ({ page, suivi, testInfo }) => 
 etape('P1.7', ['VNT44', 'VNT45'], async ({ page, suivi, testInfo }) => {
   // Montant 60 000 > reste : l'erreur s'affiche SOUS le champ + bandeau « Corrigez : Montant », jamais un toast.
   await avecReplique(page, testInfo, async (r) => {
-    // refus métier montant_depasse_reste (devis_facturer.json erreurs_400) : le SEUL 4xx excusé
-    suivi.attendre(new RegExp(`/ventes/devis/${r.devisId}/facturer/$`), 400)
+    // refus d'état montant_depasse_reste (devis_facturer.json erreurs_409, ENF11) : le SEUL 4xx excusé
+    suivi.attendre(new RegExp(`/ventes/devis/${r.devisId}/facturer/$`), 409)
     const dialogue = await ouvrirFacturer(page, r)
     await dialogue.getByRole('tab', { name: 'Acompte' }).click()
     const montant = dialogue.getByRole('spinbutton', { name: 'Montant (MAD)' })
