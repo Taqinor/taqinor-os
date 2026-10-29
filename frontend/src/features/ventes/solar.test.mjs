@@ -113,7 +113,7 @@ test('prix saisi librement : aller-retour TTC → HT stocké → TTC sans dériv
   // doit revenir exactement après enregistrement HT et réaffichage TTC.
   for (const typed of [1453, 999, 1, 7, 123457, 2849, 18351]) {
     const stockedHt = htFromTtc(typed)            // ce que la base enregistre
-    assert.match(stockedHt, /^\d+\.\d{2}$/)        // 2 décimales (modèle)
+    assert.equal(String(stockedHt), Number(stockedHt).toFixed(2))  // 2 décimales (modèle)
     assert.equal(ttcFromHt(stockedHt), typed,
       `TTC ${typed} a dérivé via HT ${stockedHt}`)
   }

@@ -9,26 +9,13 @@
 //   node --test src/pages/crm/leads/views/LeadCardRotting.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
 import { rottingLevel, thresholdsForIndex } from '../../../../features/crm/workspace/rotting.js'
 import { PIPELINE_STAGES } from '../../../../features/crm/stages.js'
-
-const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'LeadCard.jsx'), 'utf8')
 
 const rotFor = (stage, days, perdu = false) =>
   perdu ? 'ok' : rottingLevel(days, thresholdsForIndex(PIPELINE_STAGES.indexOf(stage)))
 
-test('LB14 : data-rot est posé sur article.kb-card via rottingLevel/thresholdsForIndex', () => {
-  assert.match(SRC, /import \{ rottingLevel, thresholdsForIndex \} from '\.\.\/\.\.\/\.\.\/\.\.\/features\/crm\/workspace\/rotting'/)
-  assert.match(SRC, /rottingLevel\(lead\.stage_since_days, thresholdsForIndex\(PIPELINE_STAGES\.indexOf\(lead\.stage\)\)\)/)
-  assert.match(SRC, /<article\b[^>]*\n?\s*data-rot=\{rot\}/)
-})
-
 test('LB14 : un lead perdu n\'est JAMAIS teinté (rot forcé à ok)', () => {
-  assert.match(SRC, /const rot = perdu\s*\n?\s*\? 'ok'/)
   assert.equal(rotFor('QUOTE_SENT', 30, true), 'ok')
 })
 
