@@ -60,7 +60,7 @@ from .devis_selectors import (
     entrees_pompage_du_lead, entrees_pompage_pour_lead_id, _CI_DETAIL_SOURCE,
     _CI_COLONNE_SOURCE, _CI_INFORMATIONS, _CI_PHASES, _CI_REGISTRES_MT, _ci_nombre,
     entrees_ci_du_lead, entrees_ci_pour_lead_id, releve_declare_ci,
-    site_location_for_devis, PROFILS_ACTIVITE, profil_activite_pour_devis,
+    site_du_client, site_location_for_devis, PROFILS_ACTIVITE, profil_activite_pour_devis,
     occupation_jour_pour_devis, equipements_pour_lead, equipements_pour_devis,
     lead_devis_ids_by_id, _kwh_positif, SEGMENTS_REPLI_KWH_SITE,
     conso_mensuelle_kwh_pour_devis,
@@ -164,7 +164,7 @@ __all__ = [
     'releve_commissions_partenaire', 'releve_declare_ci', 'repere_toit', 'reporting_lead_rows',
     'resume_portail_partenaire', 'revenu_attribue_campagne', 'revenu_pipeline_pondere_par_mois',
     'salle_vente_analytics', 'salle_vente_summary_for_lead', 'signed_lead_phone_keys',
-    'signed_leads_for_campaigns', 'site_location_for_devis', 'site_profile_for_client',
+    'signed_leads_for_campaigns', 'site_du_client', 'site_location_for_devis', 'site_profile_for_client',
     'soumissions_partenaire_portail', 'specialites_partenaire_cles', 'stats_equipe',
     'trier_file_du_jour', 'ville_effective', 'visite_point_eau_du_lead',
 ]
