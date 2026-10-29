@@ -1225,8 +1225,10 @@ class PorteePRTests(unittest.TestCase):
         self.assertIn('… et 10 autre(s)', long)
 
     def test_dette_versionnee_bien_formee(self):
+        # ENF11 — une dette VIDE est l'état cible (D-ENF11-CRENEAU-400 a soldé
+        # la dernière ligne) : seule la forme des lignes restantes est vérifiée.
         dette = self.m.charger_dette()
-        self.assertTrue(dette)
+        self.assertIsInstance(dette, set)
         for ligne in dette:
             with self.subTest(ligne=ligne):
                 titre, _, operation = ligne.partition('|')
@@ -1286,18 +1288,44 @@ class ConfigSchemathesisTests(unittest.TestCase):
             config = tomllib.load(fh)
         visees = [op for op in config['operations']
                   if 'positive_data_acceptance' in op.get('checks', {})]
-        self.assertEqual(len(visees), 1)
-        op = visees[0]
+        # Deux routes nommées, jamais un motif : la route retirée du portail
+        # SAV (410) et le créneau hors grille (400, D-ENF11-CRENEAU-400).
+        self.assertEqual(sorted(op.get('include-name') for op in visees), [
+            'POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/',
+            'POST /api/django/sav/portail/tickets/'])
+        op = next(o for o in visees
+                  if o['include-name'] == 'POST /api/django/sav/portail/tickets/')
         self.assertEqual(
             {k for k in op if k.startswith(('include-', 'exclude-'))},
             {'include-name'})
-        self.assertEqual(op['include-name'],
-                         'POST /api/django/sav/portail/tickets/')
         self.assertNotIn('enabled', op)
         attendus = op['checks']['positive_data_acceptance']['expected-statuses']
         # Les défauts de Schemathesis 4.28 gardés, 410 ajouté.
         self.assertEqual(sorted(str(s) for s in attendus),
                          ['2xx', '401', '403', '404', '409', '410', '429',
+                          '5xx'])
+
+    def test_400_admis_pour_le_seul_creneau_hors_grille(self):
+        # D-ENF11-CRENEAU-400 — refus hors grille (ASTK191) = règle métier.
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        nom = ('POST /api/django/public/stock/portail-fournisseur/{token}/'
+               'reserver-creneau/')
+        visees = [op for op in config['operations']
+                  if 'positive_data_acceptance' in op.get('checks', {})
+                  and op.get('include-name') == nom]
+        self.assertEqual(len(visees), 1)
+        op = visees[0]
+        self.assertEqual(
+            {k for k in op if k.startswith(('include-', 'exclude-'))},
+            {'include-name'})
+        self.assertNotIn('enabled', op)
+        attendus = op['checks']['positive_data_acceptance']['expected-statuses']
+        # Les défauts de Schemathesis 4.28 gardés, 400 ajouté (et rien d'autre).
+        self.assertEqual(sorted(str(s) for s in attendus),
+                         ['2xx', '400', '401', '403', '404', '409', '429',
                           '5xx'])
 
     def test_503_admis_pour_la_seule_route_scan_carte_sans_cle_ocr(self):

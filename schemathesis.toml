@@ -95,3 +95,16 @@ checks.positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 
 [[operations]]
 include-name = 'POST /api/django/crm/leads/scan-carte/'
 checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 503]
+
+# ── 6. Créneau hors grille : le 400 est la règle métier (D-ENF11-CRENEAU-400) ─
+# `POST …/portail-fournisseur/{token}/reserver-creneau/` refuse un début qui ne
+# tombe pas sur la grille proposée (heure pleine, plage d'ouverture, jours
+# ouvrés du calendrier société, horizon) par 400 `{debut: [...]}` — contrat
+# ASTK191, inchangé. Cette grille est un ÉTAT du serveur qu'aucun schéma
+# OpenAPI ne peut exprimer : un `debut` conforme au format `date-time` mais
+# hors grille n'est pas « refusé à tort ». Décision fondateur du 29-30/10/2026 :
+# 400 AJOUTÉ aux statuts attendus de `positive_data_acceptance` pour CETTE
+# SEULE opération (un seul filtre `include-name`) ; le check reste actif partout.
+[[operations]]
+include-name = 'POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]

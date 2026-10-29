@@ -2719,3 +2719,15 @@ decisions:
     date: "2026-10-29"
     source: "Reda, décision fondateur du 29/10/2026 (lane ASEC23/ASEC53)"
     taches: [ASEC53]
+
+  - id: D-ENF11-CRENEAU-400
+    question: "ENF11 : le fuzz signale « API rejected schema-compliant request » sur POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/ (créneau hors grille refusé en 400 {debut:[...]}, contrat ASTK191) : que faire ?"
+    options:
+      - cle: a
+        texte: "accepter 400 comme réponse attendue du check positive_data_acceptance pour CETTE seule route (refus hors grille = règle métier correcte, contrat ASTK191 inchangé)"
+      - cle: b
+        texte: "passer les refus d'état du créneau en 409 (contrat et tests ASTK191 modifiés)"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 29-30/10/2026 (lane w7-enf, question interactive)"
+    taches: [ENF11]
