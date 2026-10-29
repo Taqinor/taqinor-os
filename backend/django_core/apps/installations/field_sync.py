@@ -144,7 +144,21 @@ def _h_checkin(company, user, payload):
             payload.get('lng'), user, suffixe=' (synchro hors-ligne)')
     except field_services.CoordonneesInvalides:
         raise FieldOpError('Coordonnées invalides.')
-    return {'intervention': iv.id, 'arrivee_site_le': iv.arrivee_site_le.isoformat()}
+    res = {'intervention': iv.id, 'arrivee_site_le': iv.arrivee_site_le.isoformat()}
+    # ERR-CHT-CHECKIN-HORS-LIGNE-STATUT (EZ6) — en ligne, l'écran dérive
+    # « Sur site » du check-in ; rejoué hors-ligne, personne ne le faisait.
+    # Même service que le PATCH (gardes + cascade), jamais de recul ; un
+    # refus de garde garde l'arrivée (NO-OP du statut, comme l'écran).
+    from .services import TransitionRefusee, changer_statut_intervention
+    ordre = Intervention.STATUT_ORDER
+    sur_site = Intervention.Statut.SUR_SITE
+    if iv.statut in ordre and ordre.index(iv.statut) < ordre.index(sur_site):
+        try:
+            changer_statut_intervention(iv, sur_site, user)
+        except TransitionRefusee as exc:
+            res['statut_refuse'] = ' ; '.join(exc.raisons)
+    res['statut'] = iv.statut
+    return res
 
 
 def _h_retour(company, user, payload):
