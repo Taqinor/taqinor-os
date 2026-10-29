@@ -143,9 +143,6 @@ class InventaireDesActionsPubliquesTests(TestCase):
             'ADEV98 — balise de lecture HUMAINE émise par la page APRÈS '
             'qu\'elle a été lue : sur un lien sous code non déverrouillé, '
             'aucune lecture n\'est comptée (204 muet, aucun effet).',
-        'proposal_contact_request':
-            'ASEC23/D-ASEC-3 — demander un rappel AU NOM du client (chatter du '
-            'lead + notifications) depuis la page : seul le navigateur vérifié.',
         'proposal_engagement':
             'ASEC23/D-ASEC-3 — le beacon écrit ShareLink.engagement et des '
             'notes chatter : un tiers sans preuve ne mesure rien.',
@@ -159,6 +156,10 @@ class InventaireDesActionsPubliquesTests(TestCase):
             'DEMANDE le code de lecture : même raison circulaire.',
         'proposal_verify_otp_lecture':
             'VÉRIFIE le code : c\'est le point d\'entrée de la garde.',
+        'proposal_contact_request':
+            'D-ASEC-23-CONTACT (fondateur, 29/10/2026) — le client demande à '
+            'être RAPPELÉ : rien du devis n\'est lu ni modifié, et un client '
+            'qui a perdu son code doit pouvoir joindre son commercial.',
         'pay_webhook':
             'Webhook PSP, PAS une action cliente : authentifié par le jeton '
             'PaymentLink et la signature du prestataire, aucun ShareLink.',

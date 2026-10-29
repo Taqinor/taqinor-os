@@ -2697,3 +2697,25 @@ decisions:
     date: "2026-10-28"
     source: "AskUserQuestion, session all-plans-w2 (Reda)"
     taches: [RWEB17A, RWEB17]
+
+  - id: D-ASEC-23-CONTACT
+    question: "ASEC23 : sur un lien protégé par code de lecture, « Contacter mon conseiller » exige-t-il la preuve du navigateur vérifié ?"
+    options:
+      - cle: a
+        texte: "non : le contact reste OUVERT sans preuve (QJR418 — un client qui a perdu son code doit joindre son commercial ; la demande ne révèle rien du devis) ; lecture, signature, options et engagement exigent la preuve"
+      - cle: b
+        texte: "oui : le contact exige la preuve comme les autres actions"
+    reponse: a
+    date: "2026-10-29"
+    source: "Reda, décision fondateur du 29/10/2026 (lane ASEC23/ASEC53)"
+    taches: [ASEC23]
+
+  - id: D-ASEC-53-RELAIS
+    question: "ASEC53 : sur un lien protégé, PDF, exemplaire signé et image de toiture sont lus directement sur api.taqinor.ma, qui ne voit pas le cookie du site (403 pour un client vérifié) : que faire ?"
+    options:
+      - cle: a
+        texte: "relais même origine dans apps/web qui relaient le cookie de preuve en X-Proposition-Preuve ; corps binaires transmis tels quels (content-type, content-disposition) ; liens client pointés sur ces relais"
+    reponse: a
+    date: "2026-10-29"
+    source: "Reda, décision fondateur du 29/10/2026 (lane ASEC23/ASEC53)"
+    taches: [ASEC53]

@@ -155,14 +155,10 @@ def proposal_contact_request(request, token):
     refus = _refus_brouillon(link)
     if refus is not None:
         return refus
-    # ASEC23 — demander un rappel au nom du client est une ACTION de la page :
-    # sur un lien ``otp_lecture``, seul le navigateur vérifié (preuve en
-    # en-tête) la déclenche — garde posée AVANT tout effet de bord (verrou
-    # d'idempotence, chatter, notifications).
-    from ..services import preuve_lecture_valide
-    if not preuve_lecture_valide(request, link):
-        return _noindex(Response(
-            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+    # D-ASEC-23-CONTACT (fondateur, 29/10/2026) — « Contacter mon conseiller »
+    # reste OUVERT sur un lien ``otp_lecture`` SANS preuve (QJR418) : un client
+    # qui a perdu son code doit joindre son commercial, et la demande ne
+    # révèle rien du devis. Lire, signer, options, engagement : preuve exigée.
 
     canal = (str(
         request.data.get('channel') or request.data.get('canal') or ''

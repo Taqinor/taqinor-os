@@ -353,11 +353,22 @@ class OtpParNavigateurTests(TestCase):
         self.ligne.refresh_from_db()
         self.assertTrue(self.ligne.optionnelle)
 
-    def test_second_navigateur_ni_contact_ni_engagement(self):
-        self._verifier(self.n1)
-        self._assert_refus(self.n2.post(
+    def test_contact_ouvert_sans_preuve_lecture_refusee(self):
+        """D-ASEC-23-CONTACT (fondateur, 29/10/2026) — « Contacter mon
+        conseiller » reste ouvert SANS preuve sur un lien protégé (QJR418 :
+        un client qui a perdu son code joint son commercial), alors que la
+        lecture du même lien, par le même navigateur, reste refusée."""
+        self._assert_refus(
+            self.n2.get(f'{BASE_PUBLIQUE}/{self.link.token}/data/'))
+        resp = self.n2.post(
             f'{BASE_PUBLIQUE}/{self.link.token}/contact/',
-            {'channel': 'rappel'}, format='json'))
+            {'channel': 'rappel'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIs(resp.data['already_sent'], False)
+        self.assertNotIn('preuve', resp.data)
+
+    def test_second_navigateur_sans_engagement(self):
+        self._verifier(self.n1)
         self._assert_refus(self.n2.post(
             f'{BASE_PUBLIQUE}/{self.link.token}/engagement/',
             {'section': 'prix', 'seconds': 12}, format='json'))
