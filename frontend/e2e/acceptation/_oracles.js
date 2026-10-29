@@ -39,7 +39,10 @@ export class Suivi {
       if (m.type() !== 'error') return
       // « Failed to load resource » d'un échec INJECTÉ par l'étape : attendu.
       if (/^Failed to load resource/.test(m.text()) && this._attendu(m.location()?.url || '', null)) return
-      this.incidents.push({ oracle: '3', texte: `console.error : ${m.text()}` })
+      // L'URL de la ressource en échec (clé/jeton masqués) : sans elle, un 403
+      // tiers (tuiles, imagerie) est indiscernable d'un 403 de l'ERP.
+      const url = (m.location()?.url || '').replace(/(key|access_token|token)=[^&]+/g, '$1=…')
+      this.incidents.push({ oracle: '3', texte: `console.error : ${m.text()}${url ? ` (${url})` : ''}` })
     })
     page.on('pageerror', (e) => this.incidents.push({ oracle: '3', texte: `pageerror : ${e.message}` }))
     page.on('dialog', async (d) => {

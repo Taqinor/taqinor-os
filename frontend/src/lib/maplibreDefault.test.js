@@ -19,6 +19,14 @@ describe('ERR122 — shim d’export par défaut maplibre-gl 6', () => {
     expect(maplibregl.Map).toBe(NamedMap)
   })
 
+  it('ERR-CARTE-WORKER-MAPLIBRE6 — le worker est bundlé par Vite et son URL donnée à maplibre', () => {
+    // 6.x calcule `./maplibre-gl-worker.mjs` à l'exécution : sans ce câblage le
+    // build n'émet aucun worker et la carte 3D reste vide (index.html servi).
+    const shim = readFileSync(join(process.cwd(), 'src/lib/maplibreDefault.js'), 'utf8')
+    expect(shim).toContain("from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'")
+    expect(shim).toMatch(/maplibregl\.setWorkerUrl\(workerUrl\)/)
+  })
+
   it('vite.config.js redirige le spécifieur exact vers le shim', () => {
     // Vitest tourne depuis frontend/ (jsdom : import.meta.url n'est pas file:).
     const cfg = readFileSync(join(process.cwd(), 'vite.config.js'), 'utf8')

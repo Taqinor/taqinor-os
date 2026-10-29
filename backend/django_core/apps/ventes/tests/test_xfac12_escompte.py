@@ -148,3 +148,12 @@ class ENF15EscompteArrondiTests(TestCase):
         self.assertEqual(
             facture.calcul_escompte(Decimal('12.50'), aujourdhui),
             Decimal('0.13'))
+
+    def test_fenetre_hors_calendrier_jamais_500(self):
+        # api-fuzz-full 29/10 : émission + escompte_jours au-delà de l'an 9999
+        # levait OverflowError (500) ; la fenêtre couvre alors toute date.
+        import datetime
+        facture = Facture(
+            escompte_pct=Decimal('1'), escompte_jours=10 ** 7,
+            date_emission=datetime.date(9999, 1, 1))
+        self.assertTrue(facture.escompte_applicable(datetime.date(58, 10, 13)))

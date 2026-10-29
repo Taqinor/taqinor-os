@@ -54,6 +54,10 @@ export default function InterventionRapportPublicPage() {
   const photos = data?.photos ?? {}
   const consommation = data?.consommation ?? []
   const reserves = data?.reserves ?? []
+  // ERR-CHT-RAPPORT-PUBLIC-EQUIPE — les intervenants servis (`equipe`, même
+  // source que le PDF : `intervention_pdf._equipe_payload`), rendus comme le
+  // bloc « Équipe » du compte-rendu PDF.
+  const equipe = (data?.equipe ?? []).filter(Boolean)
 
   return (
     <div className="ui-root page" style={{ maxWidth: 640, margin: '40px auto' }}>
@@ -74,6 +78,11 @@ export default function InterventionRapportPublicPage() {
           </a>
         </p>
       )}
+
+      <section data-testid="rapport-equipe">
+        <h3>Équipe</h3>
+        <p>{equipe.length > 0 ? equipe.join(', ') : 'Non renseignée.'}</p>
+      </section>
 
       {PHASES.map(([cle, libelle]) => (
         (photos[cle] ?? []).length > 0 && (

@@ -757,7 +757,12 @@ class Facture(TotauxDocumentMixin, models.Model):
         if not self.date_emission or not date_paiement:
             return False
         from datetime import timedelta
-        limite = self.date_emission + timedelta(days=self.escompte_jours)
+        try:
+            limite = self.date_emission + timedelta(days=self.escompte_jours)
+        except OverflowError:
+            # api-fuzz 29/10 : une fenêtre qui dépasse le calendrier (an 9999)
+            # couvre toute date de paiement — jamais un 500.
+            return True
         return date_paiement <= limite
 
     def calcul_escompte(self, montant, date_paiement):

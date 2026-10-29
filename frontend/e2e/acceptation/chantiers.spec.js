@@ -70,14 +70,24 @@ async function monterChantier(request, t, techId, { quantite = '4.00', prestatio
   // Produit SANS mouvement de stock (stock 0) => manque certain ; sans catégorie =>
   // de nature à porter un n° de série (`serie_attendue`).
   const produit = await lireJson(await request.post(`${API_DJANGO}/stock/produits/`, {
-    data: { nom: uniq('ACC Panneau'), prix_vente: '1000.00', fournisseur: fournisseur.id },
+    data: { nom: uniq('ACC Panneau'), prix_vente: '1000.00', fournisseur_id: fournisseur.id },
   }), 'produit sans stock')
   t.produit = produit.id
   t.produitNom = produit.nom
   if (prestation) {
     // Une ligne de devis exige un produit : la prestation est un produit « Installation ».
+    // ACHT94 : « les prestations (catégorie de type « Service ») » sortent du parc — la
+    // prestation porte donc une catégorie de type service (réutilisée, créée si absente).
+    const categories = listeDe(await lireJson(
+      await request.get(`${API_DJANGO}/stock/categories/?page_size=200`), 'catégories'))
+    let service = categories.find((c) => c.type_equipement === 'service')
+    if (!service) {
+      service = await lireJson(await request.post(`${API_DJANGO}/stock/categories/`, {
+        data: { nom: uniq('ACC Services'), type_equipement: 'service' },
+      }), 'catégorie service')
+    }
     t.prestation = (await lireJson(await request.post(`${API_DJANGO}/stock/produits/`, {
-      data: { nom: uniq('Installation'), prix_vente: '4000.00' },
+      data: { nom: uniq('Installation'), prix_vente: '4000.00', categorie_id: service.id },
     }), 'prestation Installation')).id
   }
   const lead = await lireJson(await request.post(`${API_DJANGO}/crm/leads/`, {
@@ -138,6 +148,7 @@ async function nettoyer(request, t) {
   if (t.devis) await sup(`${API_DJANGO}/ventes/devis/${t.devis}/`)
   if (t.lead) await sup(`${API_DJANGO}/crm/leads/${t.lead}/`)
   if (t.produit) await sup(`${API_DJANGO}/stock/produits/${t.produit}/`)
+  if (t.prestation) await sup(`${API_DJANGO}/stock/produits/${t.prestation}/`)
   if (t.fournisseur) await sup(`${API_DJANGO}/stock/fournisseurs/${t.fournisseur}/`)
 }
 
@@ -161,7 +172,7 @@ async function ouvrirChantier(page, id, onglet) {
 // Contexte NEUF connecté en demo_tech ; la fiche de la Pose de CETTE étape s'ouvre
 // au chargement de « Ma journée » (restauration VX105, patron `adep.spec.js`).
 // Les données sont montées par l'admin (`page.request`) puis nettoyées.
-async function avecTechnicien({ page, suivi, testInfo, context }, corps, onglet = 'prep') {
+async function avecTechnicien({ page, suivi, testInfo, context }, corps, onglet = 'prep', options = {}) {
   const ctx = await context.browser().newContext({
     baseURL: testInfo.project.use.baseURL, serviceWorkers: 'block',
   })
@@ -181,8 +192,10 @@ async function avecTechnicien({ page, suivi, testInfo, context }, corps, onglet 
           sessionStorage.setItem('mj.tab', tab)
         } catch { /* stockage indisponible */ }
       }, [t.pose, onglet])
-      await corps({ p, t })
-    })
+      // La page du technicien est fermée AVANT le nettoyage : sinon elle relit
+      // l'intervention supprimée (404 d'artefact, pas un défaut produit).
+      try { await corps({ p, t }) } finally { await p.close() }
+    }, options)
   } finally { await ctx.close() }
 }
 
@@ -194,12 +207,73 @@ async function ouvrirMaJournee(p) {
 const statutIntervention = async (p, id) => (await lireJson(
   await p.request.get(`${API}/interventions/${id}/`), 'intervention')).statut
 
+// Prépa : chaque case « chargé » cochée (matériel + outils), puis « Tout est chargé »
+// (le bouton n'est actif qu'une fois toute la liste cochée — F5).
+async function toutCharger(p) {
+  await p.getByRole('tab', { name: /Prépa/ }).click()
+  const panneau = p.getByRole('tabpanel')
+  await expect(panneau.getByText(/Préparation/).first()).toBeVisible()
+  const cases = panneau.getByRole('checkbox', { checked: false })
+  for (let n = await cases.count(); n > 0; n -= 1) {
+    await cases.first().click()
+    await expect(cases).toHaveCount(n - 1)
+  }
+  await p.getByRole('button', { name: /Tout est chargé/ }).click()
+  await expect(p.getByRole('button', { name: /^Tout est chargé$/ })).toBeVisible()
+}
+
+// Photos : chaque emplacement « Obligatoire » reçoit une image par le bouton « Photo »
+// de SA carte (sélecteur de fichier) ; la liste « Photos obligatoires manquantes » se vide.
+async function remplirPhotosObligatoires(p) {
+  await p.getByRole('tab', { name: 'Photos' }).click()
+  const badges = p.getByRole('tabpanel').getByText('Obligatoire', { exact: true })
+  await expect(badges.first()).toBeVisible({ timeout: 30_000 }).catch(() => null)
+  const n = await badges.count()
+  if (n === 0) nonCouvert('aucun emplacement photo obligatoire affiché')
+  for (let i = 0; i < n; i += 1) {
+    const carte = badges.nth(i).locator('xpath=ancestor::div[contains(@class,"rounded border")][1]')
+    const choix = p.waitForEvent('filechooser')
+    await carte.getByRole('button', { name: /^Photo$/ }).click()
+    await (await choix).setFiles(photo(`acceptation-${i}.jpg`))
+    await expect(carte.getByText('Aucune photo.')).toHaveCount(0, { timeout: 30_000 })
+  }
+  await expect(p.getByText(/Photos obligatoires manquantes/)).toHaveCount(0)
+}
+
+// Signature client tracée sur le canevas, puis « Retour dépôt » : l'intervention passe « Terminée ».
+async function signerEtRentrer(p, id) {
+  await p.getByRole('tab', { name: /Signature/ }).click()
+  await p.getByPlaceholder(/Nom du signataire/).fill('Client ACC Chantier')
+  const zone = p.locator('canvas').first()
+  await expect(zone).toBeVisible()
+  const box = await zone.boundingBox()
+  await p.mouse.move(box.x + 20, box.y + 20)
+  await p.mouse.down()
+  await p.mouse.move(box.x + box.width - 20, box.y + box.height - 20, { steps: 8 })
+  await p.mouse.up()
+  const accord = p.getByLabel(/J'ai lu et j'accepte/)
+  if (await accord.count()) await accord.check()
+  await p.getByRole('button', { name: /Enregistrer la signature/ }).click()
+  await expect(p.getByText(/Signé par/).first()).toBeVisible()
+  await p.getByRole('tab', { name: /Trajet/ }).click()
+  await p.getByRole('button', { name: /Retour dépôt/ }).click()
+  await expect.poll(() => statutIntervention(p, id), { timeout: 20_000 }).toBe('terminee')
+}
+
+// Composant choisi dans la liste fermée (ACHT108) puis n° saisi, « Ajouter le relevé ».
+async function ajouterSerie(p, produitId, sn) {
+  await p.getByLabel('Composant').selectOption(String(produitId))
+  await p.getByPlaceholder(/N° de série/).fill(sn)
+  await p.getByRole('button', { name: /Ajouter le relevé/ }).click()
+}
+
 // Départ dépôt + check-in (l'intervention passe « sur site »).
 async function jusquAuSite(p, id) {
-  await p.getByRole('tab', { name: /Prépa/ }).click()
-  await p.getByRole('button', { name: /Tout est chargé/ }).click()
+  await toutCharger(p)
   await p.getByRole('tab', { name: /Trajet/ }).click()
   await p.getByRole('button', { name: /Départ dépôt/ }).click()
+  // Le départ (horodatage puis statut dérivé « en route ») est servi AVANT le check-in.
+  await expect.poll(() => statutIntervention(p, id), { timeout: 20_000 }).toBe('en_route')
   await p.getByRole('button', { name: /Check-in/ }).click()
   await expect.poll(() => statutIntervention(p, id), { timeout: 20_000 }).toBe('sur_site')
 }
@@ -277,6 +351,10 @@ etape('P1.4', ['ACHT107', 'ACHT110'], async (ctx) => {
   await avecTechnicien(ctx, async ({ p, t }) => {
     await ouvrirMaJournee(p)
     await jusquAuSite(p, t.pose)
+    // ACHT107 — suivi lancé seul sur site, signalé de façon visible ; fondateur 27/10/2026 : le
+    // bandeau « Position partagée » devient la puce discrète « Suivi actif » (jamais cachée ;
+    // « Suivi interrompu… » sur un navigateur sans géolocalisation).
+    await expect(p.getByTestId('gps-suivi-puce')).toContainText(/Suivi (actif|interrompu)/)
     await p.reload() // persistance
     await expect.poll(() => statutIntervention(p, t.pose), { timeout: 20_000 }).toBe('sur_site')
   })
@@ -286,14 +364,13 @@ etape('P1.5', ['ACHT108'], async (ctx) => {
   // Photos : une image dans chaque emplacement obligatoire, géolocalisation best-effort.
   await avecTechnicien(ctx, async ({ p, t }) => {
     await ouvrirMaJournee(p)
+    await remplirPhotosObligatoires(p)
+    const photos = await lireJson(await p.request.get(`${API}/interventions/${t.pose}/photos/`), 'photos')
+    expect(photos.obligatoires_manquants ?? [], 'aucun emplacement obligatoire manquant').toEqual([])
+    await p.reload() // persistance
     await p.getByRole('tab', { name: 'Photos' }).click()
-    const champs = p.locator('input[type="file"]')
-    const n = await champs.count()
-    if (n === 0) nonCouvert('aucun emplacement photo obligatoire affiché')
-    for (let i = 0; i < n; i += 1) await champs.nth(i).setInputFiles(photo(`acceptation-${i}.jpg`))
-    await expect.poll(async () => listeDe(await lireJson(
-      await p.request.get(`${API}/interventions/${t.pose}/photos/`), 'photos')).length,
-    { timeout: 30_000 }).toBeGreaterThanOrEqual(n)
+    await expect(p.getByRole('tabpanel').getByText('Obligatoire', { exact: true }).first()).toBeVisible()
+    await expect(p.getByText(/Photos obligatoires manquantes/)).toHaveCount(0)
   })
 })
 
@@ -309,10 +386,8 @@ etape('P1.6', ['ACHT108'], async (ctx) => {
     await p.getByRole('tab', { name: /N° série|Séries/ }).click()
     await expect(p.getByText(/\d+\s*\/\s*\d+/).first()).toBeVisible()
     await expect(p.getByRole('button', { name: /Scanner/ })).toBeVisible()
-    await p.getByRole('combobox').first().selectOption({ index: 1 })
     const sn = `ACC-SN-${Date.now().toString(36)}`
-    await p.getByPlaceholder(/N° de série/).fill(sn)
-    await p.getByRole('button', { name: /Ajouter/ }).click()
+    await ajouterSerie(p, t.produit, sn)
     await expect(p.getByText(sn)).toBeVisible()
     await p.reload() // persistance
     await p.getByRole('tab', { name: /N° série|Séries/ }).click()
@@ -328,20 +403,10 @@ etape('P1.7', ['ACHT107', 'ACHT108'], async (ctx) => {
   await avecTechnicien(ctx, async ({ p, t }) => {
     await ouvrirMaJournee(p)
     await jusquAuSite(p, t.pose)
-    await p.getByRole('tab', { name: /Signature/ }).click()
-    const zone = p.locator('canvas').first()
-    await expect(zone).toBeVisible()
-    const box = await zone.boundingBox()
-    await p.mouse.move(box.x + 20, box.y + 20)
-    await p.mouse.down()
-    await p.mouse.move(box.x + box.width - 20, box.y + box.height - 20, { steps: 8 })
-    await p.mouse.up()
-    const accord = p.getByLabel(/J'ai lu et j'accepte/)
-    if (await accord.count()) await accord.check()
-    await p.getByRole('button', { name: /Enregistrer la signature|Valider/ }).first().click()
-    await p.getByRole('tab', { name: /Trajet/ }).click()
-    await p.getByRole('button', { name: /Retour dépôt/ }).click()
-    await expect.poll(() => statutIntervention(p, t.pose), { timeout: 20_000 }).toBe('terminee')
+    // « Terminée » exige les photos obligatoires (garde ACHT108) : parcours fondateur
+    // S1-S8 = photos, puis signature, puis retour dépôt.
+    await remplirPhotosObligatoires(p)
+    await signerEtRentrer(p, t.pose)
   })
 })
 
@@ -356,10 +421,13 @@ etape('P1.8', ['ACHT107', 'ACHT109'], async ({ page, testInfo }) => {
     }
     const recu = await lireJson(await page.request.get(`${API}/chantiers/${t.chantier}/`), 'chantier réceptionné')
     expect(Array.isArray(recu.avertissements_cloture), 'avertissements_cloture est une liste').toBeTruthy()
+    // Page Suivi GPS (admin) : la liste des consentements porte l'accord de demo_tech.
     await page.goto('/planification/suivi-gps')
-    await expect(page.getByText(/Position partagée/).first()).toBeVisible()
+    const consentement = page.getByRole('tabpanel', { name: 'Consentements' })
+    await expect(consentement.getByText(/demo_tech/).first()).toBeVisible()
+    await expect(consentement.getByText(/Accord donné le/).first()).toBeVisible()
     await page.reload() // persistance
-    await expect(page.getByText(/Position partagée/).first()).toBeVisible()
+    await expect(page.getByRole('tabpanel', { name: 'Consentements' }).getByText(/demo_tech/).first()).toBeVisible()
   })
 })
 
@@ -439,9 +507,11 @@ etape('P99.2', ['ACHT99'], async ({ page }) => {
     await page.getByRole('button', { name: 'Mettre à jour' }).click()
     await expect.poll(async () => (await chantierDe(page.request, t.chantier)).notes, { timeout: 30_000 }).toBe(note)
     expect((await chantierDe(page.request, t.chantier)).statut, 'statut avancé conservé').toBe('materiel_commande')
-    await page.reload()
-    await expect(page.getByRole('dialog')).toBeVisible()
+    // « Mettre à jour » ferme la fiche (l'URL perd `?id=`) : la persistance se relit en ROUVRANT
+    // le chantier (CLAUSE PERSISTANCE « rouvrir chaque objet »).
+    await ouvrirChantier(page, t.chantier)
     await expect(page.locator('#ch-notes')).toHaveValue(note)
+    await expect(page.getByText(/Matériel commandé/).first()).toBeVisible()
   }, J2)
 })
 
@@ -480,6 +550,29 @@ etape('P99.3', ['ACHT99'], async ({ page, testInfo }) => {
 etape('P99.4', ['ACHT99'], async ({ page }) => {
   // (4) Ateliers : ordre d'assemblage du kit depuis le devis du chantier.
   await avecChantier(page.request, null, async (t) => {
+    // Donnée de l'étape : le produit vendu est l'article composé d'un kit (Given ACHT99 :
+    // « ordre d'assemblage du kit ») — sans kit, « Assembler à la commande » n'a rien à créer.
+    const kit = await lireJson(await page.request.post(`${API}/kits/`, {
+      data: { nom: uniq('ACC Kit'), produit_compose: t.produit },
+    }), 'kit du produit vendu')
+    t.kit = kit.id
+    await lireJson(await page.request.post(`${API}/kit-composants/`, {
+      data: { kit: kit.id, designation: 'Visserie ACC', quantite: '4' },
+    }), 'composant du kit')
+    try {
+      await assemblerDepuisDevis(page, t)
+    } finally {
+      const ordres = listeDe(await lireOuNull(page.request, `${API}/ordres-assemblage/?page_size=200`))
+      for (const o of ordres.filter((x) => x.devis === t.devis)) {
+        await page.request.delete(`${API}/ordres-assemblage/${o.id}/`).catch(() => null)
+      }
+      await page.request.delete(`${API}/kits/${kit.id}/`).catch(() => null)
+    }
+  }, J2)
+})
+
+async function assemblerDepuisDevis(page, t) {
+  {
     const r = await page.request.post(`${API}/ordres-assemblage/depuis-devis/`, { data: { devis: t.devis } })
     if (!r.ok()) nonCouvert(`ordre d'assemblage depuis le devis refusé (${r.status()} ${(await r.text()).slice(0, 200)})`)
     const ordres = listeDe(await lireJson(
@@ -488,8 +581,8 @@ etape('P99.4', ['ACHT99'], async ({ page }) => {
     if (ordres.length === 0) nonCouvert('le devis ne porte aucun kit : aucun ordre d’assemblage créable')
     await page.goto('/atelier')
     await expect(page.getByText(ordres[0].reference || String(ordres[0].id)).first()).toBeVisible()
-  }, J2)
-})
+  }
+}
 
 etape('P99.5', ['ACHT99'], async (ctx) => {
   // (5) Intervention : check-in HORS LIGNE puis retour du réseau (arrivée « dans
@@ -502,15 +595,26 @@ etape('P99.5', ['ACHT99'], async (ctx) => {
       data: { fenetre_debut: '00:00', fenetre_fin: '23:59' },
     }), 'fenêtre promise')
     await ouvrirMaJournee(p)
-    await p.getByRole('tab', { name: /Prépa/ }).click()
-    await p.getByRole('button', { name: /Tout est chargé/ }).click()
+    await toutCharger(p)
     await p.getByRole('tab', { name: /Trajet/ }).click()
     await p.getByRole('button', { name: /Départ dépôt/ }).click()
+    // Le départ est servi (statut dérivé « en route ») AVANT la coupure réseau : seul le
+    // check-in est joué hors ligne.
+    await expect.poll(() => statutIntervention(p, t.pose), { timeout: 20_000 }).toBe('en_route')
     suivi.attendre(/\/api\/django\//, 'reseau')
     await p.context().setOffline(true)
     await p.getByRole('button', { name: /Check-in/ }).click()
+    // Le réseau ne revient qu'une fois le check-in MIS EN FILE (sinon l'événement « online »
+    // précède la mise en file et rien ne déclenche la synchro — course du test, pas du produit).
+    await expect(p.getByText(/Hors ligne — enregistré, synchro au retour du réseau/).first())
+      .toBeVisible({ timeout: 20_000 })
     await p.context().setOffline(false)
-    await expect.poll(() => statutIntervention(p, t.pose), { timeout: 60_000 }).toBe('sur_site')
+    // La file rejoue l'arrivée (horodatage) au retour du réseau…
+    await expect.poll(async () => (await lireJson(
+      await page.request.get(`${API}/interventions/${t.pose}/`), 'intervention')).arrivee_site_le,
+    { timeout: 60_000 }).toBeTruthy()
+    // …et le check-in fait « Sur site » (EZ6 : « check-in → Sur site »), en ligne comme hors ligne.
+    await expect.poll(() => statutIntervention(p, t.pose), { timeout: 30_000 }).toBe('sur_site')
     const iv = await lireJson(await page.request.get(`${API}/interventions/${t.pose}/`), 'intervention')
     expect(iv.arrivee_dans_fenetre, 'arrivée dans la fenêtre').toBe(true)
 
@@ -519,9 +623,7 @@ etape('P99.5', ['ACHT99'], async (ctx) => {
     const sn = `ACC99-${Date.now().toString(36)}`
     suivi.attendre(/ajouter-serial/, 409)
     for (let i = 0; i < 2; i += 1) {
-      await p.getByRole('combobox').first().selectOption({ index: 1 })
-      await p.getByPlaceholder(/N° de série/).fill(sn)
-      await p.getByRole('button', { name: /Ajouter/ }).click()
+      await ajouterSerie(p, t.produit, sn)
       if (i === 0) await expect(p.getByText(sn)).toBeVisible()
     }
     await expect(p.getByText(/déjà relevé|déjà au parc/).first()).toBeVisible()
@@ -537,6 +639,11 @@ etape('P99.5', ['ACHT99'], async (ctx) => {
       expect(r.status(), 'Viewer refusé').toBe(403)
     } finally { await viewer.dispose() }
 
+    // ACHT99 (5) « photo, signature client » : le compte-rendu public n'est servi qu'une
+    // fois l'intervention Terminée (ACHT36) — photos obligatoires, signature, retour dépôt.
+    await remplirPhotosObligatoires(p)
+    await signerEtRentrer(p, t.pose)
+
     // Compte-rendu PDF + page publique du compte-rendu en navigation privée.
     const pdf = await page.request.get(`${API}/interventions/${t.pose}/compte-rendu/`)
     expect(pdf.status(), 'compte-rendu PDF').toBe(200)
@@ -546,51 +653,69 @@ etape('P99.5', ['ACHT99'], async (ctx) => {
     try {
       const pub = suivi.surveiller(await prive.newPage())
       await pub.goto(lien.path || new URL(lien.url).pathname)
-      await expect(pub.getByText(/Youssef/).first()).toBeVisible({ timeout: 30_000 })
+      await expect(pub.getByRole('heading', { name: /Compte-rendu/ })).toBeVisible({ timeout: 30_000 })
+      // CLAUSE CLIENT : la signature posée est sur la page publique.
+      await expect(pub.getByText(/Signé par Client ACC Chantier/).first()).toBeVisible()
+      // « photos visibles sans session » : chaque lien photo répond sans cookie.
+      const liens = await pub.getByRole('link', { name: /Toiture avant pose/ }).first().getAttribute('href')
+      const sansSession = await pwRequest.newContext()
+      try {
+        expect((await sansSession.get(liens)).status(), 'photo publique sans session').toBe(200)
+      } finally { await sansSession.dispose() }
+      // (5) « intervenants nommés » ; CLAUSE CLIENT « compte-rendu PDF = page publique ».
+      expect(await textePdf(await pdf.body()), 'intervenant nommé dans le PDF').toMatch(/Youssef/)
+      await expect(pub.getByText(/Youssef/).first()).toBeVisible()
     } finally { await prive.close() }
   })
 })
 
-etape('P99.6', ['ACHT99'], async ({ page, testInfo }) => {
+etape('P99.6', ['ACHT99'], async (ctx) => {
   // (6)+(7) Réception : BL signé, réceptionné, date de réception CORRIGÉE ⇒ date de
   // pose du parc = date corrigée ; parc = matériel seul, une série par relevé.
-  const tech = await contexteApi(testInfo.project.use.baseURL, TECH)
-  try {
-    const techId = (await lireJson(await tech.get(`${API_DJANGO}/auth/me/`), 'tech')).id
-    await tech.post(`${API}/gps-consentements/mon-consentement/accepter/`)
-    await avecChantier(page.request, techId, async (t) => {
-      const sns = [`ACC99A-${Date.now().toString(36)}`, `ACC99B-${Date.now().toString(36)}`]
-      for (const sn of sns) {
-        await lireJson(await tech.post(`${API}/interventions/${t.pose}/ajouter-serial/`, {
-          data: { produit: t.produit, numero_serie: sn },
-        }), `série ${sn}`)
-      }
-      await lireJson(await page.request.post(`${API}/chantiers/${t.chantier}/signer-client/`, {
-        data: { signature_client: SIGNATURE, signataire_nom: 'Client ACC Chantier' },
-      }), 'BL signé')
-      for (const statut of ['materiel_commande', 'planifie', 'en_cours', 'installe', 'receptionne']) {
-        const pas = await page.request.patch(`${API}/chantiers/${t.chantier}/`, { data: { statut } })
-        if (!pas.ok()) nonCouvert(`passage « ${statut} » refusé (${pas.status()} ${(await pas.text()).slice(0, 200)})`)
-      }
-      const corrigee = isoIlYa(3)
-      await lireJson(await page.request.patch(`${API}/chantiers/${t.chantier}/`, {
-        data: { date_reception: corrigee },
-      }), 'date de réception corrigée')
-      const ch = await chantierDe(page.request, t.chantier)
-      expect(ch.date_reception).toBe(corrigee)
-      const parc = listeDe(await lireJson(
-        await page.request.get(`${API_DJANGO}/sav/equipements/?installation=${t.chantier}&page_size=100`), 'parc'))
-      try {
-        expect(parc.map((e) => e.numero_serie).sort(), 'une série par relevé, aucun fantôme').toEqual([...sns].sort())
-        expect(parc.every((e) => e.produit === t.produit), 'parc = matériel seul').toBe(true)
-        expect(parc.map((e) => e.date_pose), 'date de pose = réception corrigée').toEqual(parc.map(() => corrigee))
-        await page.goto('/equipements')
-        await expect(page.getByText(sns[0]).first()).toBeVisible({ timeout: 30_000 })
-      } finally {
-        for (const e of parc) await page.request.delete(`${API_DJANGO}/sav/equipements/${e.id}/`).catch(() => null)
-      }
-    }, J2)
-  } finally { await tech.dispose() }
+  // Parcours J2 : les deux séries sont relevées pendant l'intervention, qui est menée à
+  // « Terminée » (photos, signature, retour) — c'est la clôture qui pousse les relevés
+  // au parc (ACHT37) — PUIS le chantier est réceptionné.
+  const { page } = ctx
+  await avecTechnicien(ctx, async ({ p, t }) => {
+    const sns = [`ACC99A-${Date.now().toString(36)}`, `ACC99B-${Date.now().toString(36)}`]
+    await ouvrirMaJournee(p)
+    await jusquAuSite(p, t.pose)
+    await p.getByRole('tab', { name: /N° série|Séries/ }).click()
+    for (const sn of sns) {
+      await ajouterSerie(p, t.produit, sn)
+      await expect(p.getByText(sn)).toBeVisible()
+    }
+    await remplirPhotosObligatoires(p)
+    await signerEtRentrer(p, t.pose)
+    await lireJson(await page.request.post(`${API}/chantiers/${t.chantier}/signer-client/`, {
+      data: { signature_client: SIGNATURE, signataire_nom: 'Client ACC Chantier' },
+    }), 'BL signé')
+    for (const statut of ['materiel_commande', 'planifie', 'en_cours', 'installe', 'receptionne']) {
+      const pas = await page.request.patch(`${API}/chantiers/${t.chantier}/`, { data: { statut } })
+      if (!pas.ok()) nonCouvert(`passage « ${statut} » refusé (${pas.status()} ${(await pas.text()).slice(0, 200)})`)
+    }
+    const corrigee = isoIlYa(3)
+    await lireJson(await page.request.patch(`${API}/chantiers/${t.chantier}/`, {
+      data: { date_reception: corrigee },
+    }), 'date de réception corrigée')
+    const ch = await chantierDe(page.request, t.chantier)
+    expect(ch.date_reception).toBe(corrigee)
+    const parc = listeDe(await lireJson(
+      await page.request.get(`${API_DJANGO}/sav/equipements/?installation=${t.chantier}&page_size=100`), 'parc'))
+    try {
+      const series = parc.map((e) => e.numero_serie).filter(Boolean).sort()
+      expect(series, 'une série par relevé').toEqual([...sns].sort())
+      // ACHT46 : « un placeholder sans série existe tant que les séries relevées sont moins
+      // nombreuses que la quantité de la ligne » (12 panneaux, 2 relevés) — UN seul, jamais plus.
+      expect(parc.filter((e) => !e.numero_serie).length, 'aucun fantôme (un seul emplacement sans série)').toBe(1)
+      expect(parc.every((e) => e.produit === t.produit), 'parc = matériel seul').toBe(true)
+      expect(parc.map((e) => e.date_pose), 'date de pose = réception corrigée').toEqual(parc.map(() => corrigee))
+      await page.goto('/equipements')
+      await expect(page.getByText(sns[0]).first()).toBeVisible({ timeout: 30_000 })
+    } finally {
+      for (const e of parc) await page.request.delete(`${API_DJANGO}/sav/equipements/${e.id}/`).catch(() => null)
+    }
+  }, 'prep', J2)
 })
 
 etape('P99.8', ['ACHT99'], async ({ page }) => {
@@ -599,7 +724,8 @@ etape('P99.8', ['ACHT99'], async ({ page }) => {
   await avecChantier(page.request, null, async (t) => {
     const r = await page.request.get(`${API}/chantiers/${t.chantier}/rapport-energie/`)
     if (r.status() === 409) {
-      expect((await r.json()).detail, 'refus lisible').toMatch(/kWc|puissance/i)
+      // ERR-ENF11 : le refus d'état est servi par champ ({champ: [message]}), pas en `detail`.
+      expect(Object.values(await r.json()).flat().join(' '), 'refus lisible').toMatch(/kWc|puissance/i)
       return
     }
     expect(r.status()).toBe(200)
