@@ -28,6 +28,7 @@ from apps.roles.permissions import (
     DroitDeLaGrille, is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
+from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 # AUD403 — brique UNIQUE du dépôt pour qu'un ``get_permissions()`` par action
 # ne jette pas en silence la garde qu'une ``@action`` déclare elle-même.
 from core.permissions import declared_action_permissions
@@ -115,7 +116,7 @@ def _idempotente(suffixe):
     qint('lead'), qstr('concevable', enum=CONCEVABLE),
     qstr('statut', enum=Devis.Statut.values), ENTITE]),
     create=extend_schema(extensions=D.CORPS_LEAD_OU_CLIENT))
-class DevisViewSet(DevisEditionActionsMixin,
+class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                    DevisCycleActionsMixin,
                    DevisEtudesActionsMixin,
                    DevisEnvoiActionsMixin,
