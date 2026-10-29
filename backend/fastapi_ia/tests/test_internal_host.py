@@ -85,6 +85,23 @@ class InternalHostTests(unittest.TestCase):
             _, headers = self._run(lambda: at.fetch_catalogue(_ctx()))
         self.assertEqual(headers.get("Host"), "api.taqinor.ma")
 
+    def test_forwarded_proto_https_avec_host(self):
+        """30/10/2026 : sans X-Forwarded-Proto, settings.prod (SECURE_SSL_REDIRECT)
+        repond 301 a tout appel interne ; l en-tete est pose a cote du Host."""
+        with self._env(DJANGO_ALLOWED_HOSTS="api.taqinor.ma"):
+            _, headers = self._run(
+                lambda: at._django_call(_ctx(), "/x/", method="GET"))
+        self.assertEqual(headers.get("X-Forwarded-Proto"), "https")
+        self.assertEqual(headers.get("Host"), "api.taqinor.ma")
+
+    def test_forwarded_proto_https_sans_host(self):
+        """Meme sans Host (ALLOWED_HOSTS = *), l en-tete de proxy est pose."""
+        with self._env(DJANGO_ALLOWED_HOSTS="*"):
+            _, headers = self._run(
+                lambda: at._django_call(_ctx(), "/x/", method="GET"))
+        self.assertEqual(headers.get("X-Forwarded-Proto"), "https")
+        self.assertNotIn("Host", headers)
+
     def test_explicit_internal_host_wins(self):
         with self._env(DJANGO_ALLOWED_HOSTS="api.taqinor.ma",
                        DJANGO_INTERNAL_HOST="interne.taqinor.ma"):
