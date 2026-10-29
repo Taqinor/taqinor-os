@@ -183,7 +183,11 @@ export default function CockpitEquipePage() {
   const [interdit, setInterdit] = useState(false)
   const [cible, setCible] = useState(null)
 
-  const charger = useCallback(() => crmApi.getCockpitEquipe(params)
+  // Clés EXPLICITES (garde ENF D1 : chaque ?x= doit être déclaré au schéma).
+  const charger = useCallback(() => crmApi.getCockpitEquipe({
+    equipe: params.equipe, periode: params.periode, annee: params.annee,
+    mois: params.mois, trimestre: params.trimestre,
+  })
     .then((res) => { setData(res.data); setErreur(null); setInterdit(false) })
     .catch((e) => {
       if (e?.response?.status === 403) { setInterdit(true); return }

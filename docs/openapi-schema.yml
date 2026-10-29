@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4882, operations: 7668, components: 3595}
+counts: {paths: 4884, operations: 7670, components: 3596}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -931,6 +931,7 @@ operations:
 - post /api/django/crm/clients/{id}/dupliquer/ -> django_crm_clients_dupliquer_create
 - get /api/django/crm/clients/{id}/engagement/ -> django_crm_clients_engagement_retrieve
 - post /api/django/crm/clients/{id}/relancer-dormance/ -> django_crm_clients_relancer_dormance_create
+- get /api/django/crm/cockpit-equipe/ -> django_crm_cockpit_equipe_retrieve
 - get /api/django/crm/concurrents-perte/ -> django_crm_concurrents_perte_list
 - post /api/django/crm/concurrents-perte/ -> django_crm_concurrents_perte_create
 - delete /api/django/crm/concurrents-perte/{id}/ -> django_crm_concurrents_perte_destroy
@@ -4805,6 +4806,7 @@ operations:
 - post /api/v1/crm/clients/{id}/dupliquer/ -> v1_crm_clients_dupliquer_create
 - get /api/v1/crm/clients/{id}/engagement/ -> v1_crm_clients_engagement_retrieve
 - post /api/v1/crm/clients/{id}/relancer-dormance/ -> v1_crm_clients_relancer_dormance_create
+- get /api/v1/crm/cockpit-equipe/ -> v1_crm_cockpit_equipe_retrieve
 - get /api/v1/crm/concurrents-perte/ -> v1_crm_concurrents_perte_list
 - post /api/v1/crm/concurrents-perte/ -> v1_crm_concurrents_perte_create
 - delete /api/v1/crm/concurrents-perte/{id}/ -> v1_crm_concurrents_perte_destroy
@@ -7861,6 +7863,7 @@ query_params:
   get /api/django/crm/clients/: ordering page page_size search
   get /api/django/crm/clients/dormants/: seuil
   get /api/django/crm/clients/search/: q
+  get /api/django/crm/cockpit-equipe/: annee equipe mois periode trimestre
   get /api/django/crm/concurrents-perte/: lead ordering page page_size search
   get /api/django/crm/deals-enregistres/: ordering page page_size search
   get /api/django/crm/deals-enregistres/a-payer/: ordering search
@@ -8653,6 +8656,7 @@ query_params:
   get /api/v1/crm/clients/: ordering page page_size search
   get /api/v1/crm/clients/dormants/: seuil
   get /api/v1/crm/clients/search/: q
+  get /api/v1/crm/cockpit-equipe/: annee equipe mois periode trimestre
   get /api/v1/crm/concurrents-perte/: lead ordering page page_size search
   get /api/v1/crm/deals-enregistres/: ordering page page_size search
   get /api/v1/crm/deals-enregistres/a-payer/: ordering search
@@ -10022,6 +10026,7 @@ components:
 - CrmChaineCommerciale
 - CrmClientSearch
 - CrmClientsExportRequestRequest
+- CrmCockpitEquipeReponse
 - CrmControleSuivi
 - CrmConvertirClientRequestModeEnum
 - CrmConvertirClientRequestRequest
