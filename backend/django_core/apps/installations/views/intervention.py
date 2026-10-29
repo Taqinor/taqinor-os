@@ -2262,7 +2262,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         # api-fuzz-full 27/10 (ENF11) : `date_prevue` est publiée comme une
         # DATE (AAAA-MM-JJ) — ce que `parser_date_rdv` accepte ; une chaîne
         # libre était déclarée conforme puis refusée en 400.
-        request=oa.body('ConfirmerRdvRequete', confirme=oa.b(), date_prevue=oa.d(null=True), motif=oa.ChaineStricte(required=False, allow_null=True, allow_blank=True)),
+        request=oa.body('ConfirmerRdvRequete', confirme=oa.b(), date_prevue=oa.d(null=True),
+                        motif=oa.ChaineStricte(required=False, allow_null=True, allow_blank=True)),
         responses=InterventionSerializer,
     )
     @action(detail=True, methods=['post'], url_path='confirmer-rdv',
