@@ -118,7 +118,7 @@ export interface Parcours {
 
 export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapshot | null): Parcours {
   const { etat, dom, crochets } = ctx;
-  const { $ } = dom;
+  const { $, doc } = dom;
   const tables = TABLES_PARCOURS[ctx.locale];
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
   const fallback = $('mt-fallback');
@@ -141,13 +141,13 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
   // ——— WJ6/WJ33 : bascule de langue FR/AR (data-i18n), FR et AR seulement ———
   const i18nPairs: Array<{ fr: HTMLElement; ar: HTMLElement }> = [];
   function prepareI18n() {
-    document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
+    doc.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
       const arText = el.dataset.ar;
       if (typeof arText !== 'string') return;
-      const frSpan = document.createElement('span');
+      const frSpan = doc.createElement('span');
       // Le markup FR ORIGINAL est préservé tel quel — capturé UNE SEULE fois.
       frSpan.innerHTML = el.innerHTML;
-      const arSpan = document.createElement('span');
+      const arSpan = doc.createElement('span');
       arSpan.textContent = arText;
       arSpan.hidden = true;
       el.textContent = '';
@@ -163,9 +163,9 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
       ar.hidden = !isAr;
     });
     // WJ33 — RTL/langue au niveau DOCUMENT.
-    document.documentElement.lang = isAr ? 'ar' : 'fr';
-    document.documentElement.dir = isAr ? 'rtl' : 'ltr';
-    const root = document.querySelector('section') as HTMLElement | null;
+    doc.documentElement.lang = isAr ? 'ar' : 'fr';
+    doc.documentElement.dir = isAr ? 'rtl' : 'ltr';
+    const root = doc.querySelector('section') as HTMLElement | null;
     if (root) {
       root.dir = isAr ? 'rtl' : 'ltr';
       root.style.lineHeight = isAr ? '1.75' : '';
@@ -200,7 +200,7 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
 
   function syncStepLabels() {
     const labels = tables.stepLabelsByMode[etat.mode] || tables.stepLabelsByMode.residentiel;
-    document.querySelectorAll<HTMLElement>('.mt-step-label').forEach((el, i) => {
+    doc.querySelectorAll<HTMLElement>('.mt-step-label').forEach((el, i) => {
       if (labels[i]) el.textContent = labels[i];
     });
     [0, 1].forEach((i) => {
@@ -233,7 +233,7 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
     if (wrap) wrap.hidden = !isProMode(etat.mode);
   }
   function syncModeCards() {
-    document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((b) => {
+    doc.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((b) => {
       const on = etat.mode !== '' && b.dataset.mode === etat.mode;
       b.setAttribute('aria-pressed', String(on));
       b.classList.toggle('border-brass-400', on);
@@ -241,7 +241,7 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
     });
   }
   function brancherModes() {
-    document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
+    doc.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
       btn.addEventListener('click', () => {
         etat.mode = btn.dataset.mode || '';
         syncModeCards();
@@ -269,7 +269,7 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
     panels.forEach((p, i) => { if (p) p.hidden = i !== etat.step; });
     // La révélation vit DANS l'écran 1.
     if (revealEl) revealEl.hidden = !(etat.step === 1 && etat.revealed);
-    document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
+    doc.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
       const bar = li.querySelector<HTMLElement>('.mt-step-bar');
       const label = li.querySelector<HTMLElement>('.mt-step-label');
       const active = i <= etat.step;
@@ -282,7 +282,7 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
     if (crochets.appeler('hasReachedConsentStep')) crochets.appeler('sendFunnelBeacon', etat.step === 0 ? 'toit' : etat.revealed ? 'estimation' : 'facture', 'reached');
     // WJ61 — au tout premier rendu, ne pas imposer de défilement.
     if (etat.firstRender) { etat.firstRender = false; return; }
-    const root = document.querySelector('section');
+    const root = doc.querySelector('section');
     root?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
   }
   // WJ61 — pushState PAR ÉTAPE ; `fromPopstate` évite de repousser un état.

@@ -141,3 +141,29 @@ describe('parcours — divers', () => {
     expect(p).toBeTruthy();
   });
 });
+
+describe('parcours — Document injecté (≠ global)', () => {
+  it('modes, étapes et langue agissent sur le Document injecté, jamais sur le global', () => {
+    monter(); // le global porte un DOM complet qui doit rester INTACT
+    const avant = document.body.innerHTML;
+    const autre = document.implementation.createHTMLDocument('autre');
+    autre.body.innerHTML = document.body.innerHTML;
+    const ctx = creerContexte(creerDom(autre), creerEtat({ mode: 'agricole' }, 'ar'), {
+      locale: 'ar', langueBasculable: true, formatNombre: String,
+    });
+    for (const n of ['saveWizardState', 'markDataEntered', 'ensureMapBooted', 'computeEstimate']) ctx.crochets.installer(n, () => {});
+    ctx.crochets.installer('hasReachedConsentStep', () => false);
+    const p = installerParcours(ctx, null);
+    p.brancherModes();
+    p.brancherEtapes();
+    expect(autre.getElementById('mt-sub-agricole')!.hidden).toBe(false);
+    expect(autre.getElementById('mt-sub-residentiel')!.hidden).toBe(true);
+    expect(autre.querySelector('.mt-step-label')!.textContent).toBe(TABLES_PARCOURS.ar.stepLabelsByMode.agricole[0]);
+    expect(autre.documentElement.dir).toBe('rtl'); // applyLang('ar') sur le Document injecté
+    expect(autre.querySelector('[data-i18n]')!.children).toHaveLength(2);
+    // le Document global n'a pas bougé
+    expect(document.body.innerHTML).toBe(avant);
+    expect(document.documentElement.dir).not.toBe('rtl');
+    expect(document.querySelector('[data-i18n]')!.children).toHaveLength(0);
+  });
+});
