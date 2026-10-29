@@ -2,6 +2,7 @@
 articles existants (migration de données gardée sur « rôle vide »).
 """
 import importlib
+from decimal import Decimal
 from io import StringIO
 
 from django.apps import apps as django_apps
@@ -237,6 +238,37 @@ class ArticlesCiTests(TestCase):
         _seed(self.co)
         p = Produit.objects.get(company=self.co, sku='SMART-MET')
         self.assertEqual(p.role_ci, 'compteur_injection')
+
+    def test_r3_compteurs_huawei_par_calibre_et_cle_wifi_au_seed(self):
+        # R3.5 / R3.6 (fondateur 28/10/2026) — prix de vente RÉELS (TTC →
+        # HT), prix d'achat vide (0), fiche au calibre ; la clé wifi seedée
+        # devient la supervision « une par onduleur ».
+        _seed(self.co)
+        attendus = (('SM-HUA-100A', Decimal('2000.00'), 'compteur_direct', 100.0),
+                    ('SM-HUA-250A-TC', Decimal('3000.00'), 'compteur_tc', 250.0),
+                    ('SM-HUA-TC-EXT', Decimal('4000.00'), 'compteur_tc_externe', None))
+        for sku, prix_ht, mode, calibre in attendus:
+            p = Produit.objects.get(company=self.co, sku=sku)
+            self.assertEqual(p.role_ci, 'compteur_injection', sku)
+            self.assertEqual(p.marque, 'Huawei', sku)
+            self.assertEqual(p.prix_vente, prix_ht, sku)
+            self.assertEqual(p.prix_achat, 0, sku)
+            fiche = FicheTechnique.objects.get(produit=p)
+            self.assertEqual((fiche.type_fiche, fiche.lim_mode, fiche.lim_calibre_a),
+                             ('limiteur', mode, calibre), sku)
+            self.assertIsNone(fiche.lim_onduleurs_max, sku)  # non publié
+        cle = Produit.objects.get(company=self.co, sku='WIFI-DON')
+        self.assertEqual(cle.role_ci, 'logger_supervision')
+        fiche = FicheTechnique.objects.get(produit=cle)
+        self.assertEqual((fiche.type_fiche, fiche.log_type, fiche.log_onduleurs_max),
+                         ('logger', 'dongle', 1))
+        # Idempotent, additif : un prix saisi n'est jamais réécrit.
+        Produit.objects.filter(company=self.co, sku='SM-HUA-100A').update(
+            prix_vente=Decimal('2100'))
+        _seed(self.co)
+        self.assertEqual(Produit.objects.get(company=self.co, sku='SM-HUA-100A').prix_vente,
+                         Decimal('2100'))
+        self.assertEqual(Produit.objects.filter(company=self.co, sku='SM-HUA-100A').count(), 1)
 
 
 class MigrationRolesCiTests(TestCase):

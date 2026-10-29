@@ -4,7 +4,7 @@ les validateurs de courbe CALX60, déplacés tels quels depuis ``models.py``
 from decimal import Decimal
 
 from core.product_roles import (
-    CABLE_AMES, COTES_AC_DC, LIM_MODES, OND_LIMITATIONS_EXPORT,
+    CABLE_AMES, COTES_AC_DC, LIM_MODES, LOG_TYPES, OND_LIMITATIONS_EXPORT,
     OND_RELAIS_DECOUPLAGE, PROT_TYPES, TYPES_POSE,
 )
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -803,10 +803,21 @@ class FicheTechnique(models.Model):
         help_text="Limiteur — marques d'onduleur compatibles.")
     lim_phases = models.PositiveSmallIntegerField(
         null=True, blank=True, help_text='Limiteur — 1 ou 3 phases.')
+    # R3.5 (fondateur, 28/10/2026) — le compteur est choisi par CALIBRE.
+    lim_calibre_a = models.FloatField(
+        null=True, blank=True,
+        help_text="Limiteur — calibre du comptage (A) : courant maxi au point "
+                  "d'injection, TC compris (vide = non publié ; compteur à "
+                  "TC externes = sans borne).")
     # Logger de supervision.
     log_onduleurs_max = models.PositiveSmallIntegerField(
         null=True, blank=True,
         help_text="Logger — nombre d'onduleurs supervisés.")
+    log_type = models.CharField(
+        max_length=16, blank=True, default='',
+        choices=[(v, v) for v in LOG_TYPES],
+        help_text='Logger — dongle (clé wifi, une par onduleur) ou logger '
+                  'central (vide = non publié).')
     log_marques = models.JSONField(
         default=list, blank=True, help_text='Logger — marques supervisées.')
     # Protection.
