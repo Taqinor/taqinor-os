@@ -57,10 +57,12 @@ class _BaseLienProtege(TestCase):
         cache.clear()
 
     def _deverrouiller(self):
-        """Pose le drapeau que ``validate_otp_lecture`` pose après un code
-        correct — on exerce la GARDE, pas l'envoi du code."""
-        from apps.ventes.domain.cycle_vie import _otp_lecture_verified_key
-        cache.set(_otp_lecture_verified_key(self.link.token), True, 3600)
+        """ASEC23 — émet la preuve que la vérification d'un code correct rend
+        au navigateur, et la relaie en en-tête (comme ``apps/web``) — on
+        exerce la GARDE, pas l'envoi du code."""
+        from apps.ventes.services import emettre_preuve_lecture
+        self.anon.credentials(
+            HTTP_X_PROPOSITION_PREUVE=emettre_preuve_lecture(self.link))
 
 
 class PublicDocumentGardeTests(_BaseLienProtege):
@@ -170,25 +172,27 @@ class LesQuatreLecturesTests(TestCase):
             with self.subTest(lecture=nom):
                 corps = ast.unparse(fonctions[nom])
                 self.assertIn(
-                    'otp_lecture_verified', corps,
+                    'preuve_lecture_valide', corps,
                     '%s ne consulte pas la garde OTP' % nom)
 
     def test_aucun_second_helper_de_garde_n_a_ete_cree(self):
         """Règle permanente 2 : une seule formulation dans le dépôt.
 
         Aucune fonction de garde n'est DÉFINIE ici, et chaque usage vient de
-        l'import ``from .services import otp_lecture_verified``."""
+        l'import ``from .services import preuve_lecture_valide`` (ASEC23 :
+        preuve par navigateur)."""
         noeuds = [n for arbre in self._arbres() for n in ast.walk(arbre)]
         definitions = [
             noeud.name for noeud in noeuds
             if isinstance(noeud, ast.FunctionDef)
-            and 'lecture_verified' in noeud.name
+            and ('lecture_verified' in noeud.name
+                 or 'preuve_lecture' in noeud.name)
         ]
         self.assertEqual(definitions, [])
         origines = {
             noeud.module for noeud in noeuds
             if isinstance(noeud, ast.ImportFrom)
-            and any(a.name == 'otp_lecture_verified' for a in noeud.names)
+            and any(a.name == 'preuve_lecture_valide' for a in noeud.names)
         }
         self.assertEqual(origines, {'services'})
 
@@ -201,4 +205,4 @@ class LesQuatreLecturesTests(TestCase):
                 corps = ast.unparse(fonctions[nom])
                 self.assertIn(
                     'if not link.via_interne and '
-                    '(not otp_lecture_verified(link)):', corps)
+                    '(not preuve_lecture_valide(request, link)):', corps)

@@ -107,9 +107,7 @@ class Qx33DepositSuccessTests(TestCase):
         vrai code : 200."""
         from django.core.cache import cache
         from apps.notifications.models import Notification
-        from apps.ventes.domain.cycle_vie import (
-            _otp_lecture_cache_key, validate_otp_lecture,
-        )
+        from apps.ventes.domain.cycle_vie import _otp_lecture_cache_key
         self.devis.statut = Devis.Statut.ACCEPTE
         self.devis.save(update_fields=['statut'])
         self.link.otp_lecture = True
@@ -124,7 +122,15 @@ class Qx33DepositSuccessTests(TestCase):
             recipient=self.seller, title__startswith='Virement déclaré')
         self.assertFalse(virement.exists())
         cache.set(_otp_lecture_cache_key(self.link.token), '123456', 600)
-        self.assertIsNone(validate_otp_lecture(self.link, '123456'))
+        # ASEC23 — le vrai code, puis la preuve DE CE navigateur relayée en
+        # en-tête (comme ``apps/web``) : le code seul ne déverrouille rien.
+        verif = self.api.post(f'{base}/otp-lecture/verifier/',
+                              {'otp_code': '123456'}, format='json')
+        self.assertEqual(verif.status_code, 200, verif.data)
+        self.assertEqual(
+            self.api.post(f'{base}/virement/', {}, format='json').status_code,
+            403)
+        self.api.credentials(HTTP_X_PROPOSITION_PREUVE=verif.data['preuve'])
         ok = self.api.post(f'{base}/virement/', {}, format='json')
         self.assertEqual(ok.status_code, 200, ok.data)
         self.assertTrue(virement.exists())

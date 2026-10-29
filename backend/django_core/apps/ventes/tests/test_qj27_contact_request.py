@@ -264,7 +264,7 @@ class DeclinPropositionTests(ContactRequestBase):
         """F (revue du 24/10/2026) — même garde que l'acceptation : lien qui
         exige le code de lecture, code non saisi ⇒ 403 ``otp_required``, ni
         note ni notification ; code vérifié ⇒ 200."""
-        from apps.ventes.domain.cycle_vie import _otp_lecture_verified_key
+        from apps.ventes.services import emettre_preuve_lecture
         from apps.ventes.models import DevisActivity
         self.link.otp_lecture = True
         self.link.save(update_fields=['otp_lecture'])
@@ -276,7 +276,9 @@ class DeclinPropositionTests(ContactRequestBase):
             event_type=EventType.CLIENT_CONTACT_REQUEST).exists())
         self.assertEqual(
             DevisActivity.objects.filter(devis=self.devis).count(), notes)
-        cache.set(_otp_lecture_verified_key(self.link.token), True, 3600)
+        # ASEC23 — la preuve DU navigateur vérifié, relayée en en-tête.
+        self.api.credentials(
+            HTTP_X_PROPOSITION_PREUVE=emettre_preuve_lecture(self.link))
         self.assertEqual(self._decliner({'motif': 'prix'}).status_code, 200)
 
     def test_cache_indisponible_jamais_500(self):
