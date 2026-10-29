@@ -133,6 +133,9 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             'ond_relais_decouplage', 'ond_cos_phi_min', 'ond_cos_phi_max',
             'lim_mode', 'lim_i_max_a', 'lim_onduleurs_max', 'lim_marques',
             'lim_phases',
+            # R3.5 / R3.6 (fondateur, 28/10/2026) — calibre du comptage et
+            # nature du produit de supervision (dongle | logger).
+            'lim_calibre_a', 'log_type',
             'log_onduleurs_max', 'log_marques',
             'prot_type', 'prot_cote', 'prot_calibre_a',
             'prot_pouvoir_coupure_ka', 'prot_poles', 'prot_tension_v',

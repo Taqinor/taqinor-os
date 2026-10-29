@@ -368,6 +368,12 @@ CATEGORIES_CI = [
             {'code': 'phases', 'libelle': 'Phases du compteur',
              'nature': CHOIX, 'requis': False,
              'choix': ['monophase', 'triphase']},
+            # R3 (fondateur 28/10/2026) — la mise à la terre n'est plus ajoutée
+            # d'office au devis : c'est une question de la visite. Aucun seuil
+            # ni verdict ici (VT1) ; le moteur ventes décide.
+            {'code': 'mise_a_la_terre', 'libelle': 'Mise à la terre existante',
+             'nature': CHOIX, 'requis': True,
+             'choix': ['conforme', 'a_creer', 'a_verifier']},
         ],
     },
     {
