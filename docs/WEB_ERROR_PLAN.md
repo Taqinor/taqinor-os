@@ -68,7 +68,8 @@ never block silently.
 
 _(none yet — the error-autopilot appends verified items here)_
 
-- [ ] WEBERR-TUNNEL-PAYBACK-FR — [web/tunnel] **Le corps du lead envoyé par les tunnels EN et AR porte `estimateShown.paybackLabel` en FRANÇAIS (« 4 à 6 ans »)** — constaté le 28/10/2026 par le filet RWEB17A (goldens `tunnelExecution/*.en.json`, `*.ar.json`). Attendu : libellé dans la langue de la page, ou une valeur numérique sans texte (une seule source). Test rouge d'abord : `apps/web/tests/tunnelExecution.test.ts` (parité, `CLES_PROPRES_A_LA_LOCALE`). Touche le flux lead du formulaire : stop-and-ask (WEB_PLAN). (@model: sonnet)
+- [x] WEBERR-TUNNEL-PAYBACK-FR — [web/tunnel] **Le corps du lead envoyé par les tunnels EN et AR porte `estimateShown.paybackLabel` en FRANÇAIS (« 4 à 6 ans »)** — constaté le 28/10/2026 par le filet RWEB17A (goldens `tunnelExecution/*.en.json`, `*.ar.json`). Attendu : libellé dans la langue de la page, ou une valeur numérique sans texte (une seule source). Test rouge d'abord : `apps/web/tests/tunnelExecution.test.ts` (parité, `CLES_PROPRES_A_LA_LOCALE`). Touche le flux lead du formulaire : stop-and-ask (WEB_PLAN). (@model: sonnet)
+- [ ] WEBERR-TUNNEL-PAYBACK-ECRAN-FR — [web/tunnel] **Les pages mon-toit EN et AR AFFICHENT encore le libellé de retour en français (« 4 à 6 ans ») : `payEl.textContent = est.paybackLabel` et le texte d'`announceEstimate`** — constaté le 29/10/2026 par la lane WEBERR-TUNNEL-PAYBACK-FR (le corps du lead est corrigé, fbf756f7e). Bloqué par la même garde que RWEB17 (lignes dans les blocs dupliqués FR/EN/AR) : à faire dans la fusion du tunnel (RWEB17-M*, phase C). (@model: sonnet)
 
 ### High
 
@@ -110,3 +111,4 @@ with a non-negotiable rule. (none yet)
 - 2026-10-05 — WEBERR1 : astro 6.4.6 → 7.3.5, @astrojs/cloudflare 14.3.3, wrangler 4.147, sharp 0.35.5 ; override vite ^7 retiré (astro 7 exige vite 8), commentaires HTML après « ( » déplacés (Layout, proposition, suivi).
 
 - *(none yet)*
+- 2026-10-29 — WEBERR-TUNNEL-PAYBACK-FR — corrigée (fbf756f7e, lib partagée `lib/tunnel/corps.ts` + `i18n.ts`) : le corps du lead EN/AR porte « 4 – 6 years » / « 4 – 6 سنة » ; rouge d'abord via le filet RWEB17A (5 échecs → verts), goldens EN/AR de ce seul champ mis à jour ; 40 fichiers tunnel, 1 049 tests verts. L'affichage écran reste à faire : WEBERR-TUNNEL-PAYBACK-ECRAN-FR.
