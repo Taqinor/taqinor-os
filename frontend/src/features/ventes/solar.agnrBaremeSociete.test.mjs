@@ -9,10 +9,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import {
-  baremeDepuisProfil, consoAnnuelleDepuisFactures, controlerFacturesSaisies, controlerKwhDeclare,
-  consoDescendDesFactures, computeROI, chargesFixesTtc, ttcExactFromHt, htFromTtc,
-} from './solar.js'
+import { computeROI, ttcExactFromHt, htFromTtc} from './solar.js'
+import { baremeDepuisProfil, consoAnnuelleDepuisFactures, controlerFacturesSaisies, controlerKwhDeclare, consoDescendDesFactures, chargesFixesTtc } from './calc/tarifs.js'
 import { exempleContrat } from '../../test/fixtures/contractSamples.js'
 
 const SOCIETE = exempleContrat('parametres', 'bareme_effectif').bareme_effectif
