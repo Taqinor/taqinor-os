@@ -105,7 +105,10 @@ class PariteCompositionTests(SimpleTestCase):
                                'pmax_wc': 710, 'prix_connu': True},
                     'phase': 'tri', 'tension': 'BT', 'type_pose': pose,
                     'longueur_dc_m': 40, 'longueur_ac_m': 30,
-                    'nb_points_raccordement': 1, 'revente_choisie': False})
+                    'nb_points_raccordement': 1, 'revente_choisie': False,
+                    # R3.7 — la mise à la terre n'est composée que si la
+                    # visite la dit nécessaire.
+                    'mise_a_la_terre_necessaire': True})
             codes = [a.get('code') for a in comp['alertes']]
             self.assertNotIn('POSTE_ABSENT_CATALOGUE', codes, pose)
             skus = {par_id.get(ligne['produit']) for ligne in comp['lignes']}
