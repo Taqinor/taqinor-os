@@ -169,3 +169,32 @@ describe('facture mensuelle', () => {
     expect((document.getElementById('mt-bill-detected') as HTMLElement).hidden).toBe(true);
   });
 });
+
+describe('sélections — Document injecté (≠ global)', () => {
+  it('les cartes se câblent et se peignent dans le Document injecté, pas dans le global', () => {
+    monter();
+    const avant = document.body.innerHTML;
+    const autre = document.implementation.createHTMLDocument('autre');
+    autre.body.innerHTML = document.body.innerHTML;
+    const ctx = creerContexte(creerDom(autre), creerEtat(null, 'en'), {
+      locale: 'en', langueBasculable: false, formatNombre: String,
+    });
+    const calc = vi.fn(() => true);
+    ctx.crochets.installer('computeEstimate', calc);
+    ctx.crochets.installer('markDataEntered', () => {});
+    ctx.crochets.installer('saveWizardState', () => {});
+    const s = installerSelections(ctx);
+    s.brancherVisiteOccupationEquipements();
+    s.brancherGroupes();
+    const btn = autre.querySelectorAll<HTMLElement>('.mt-tension')[1];
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(ctx.etat.tension).toBe('mt');
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    expect(calc).toHaveBeenCalledTimes(1);
+    expect(autre.querySelectorAll('[data-occ-line]')).toHaveLength(3);
+    // clic sur le bouton du Document global : aucun effet sur l'état
+    document.querySelectorAll<HTMLElement>('.mt-tension')[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(ctx.etat.tension).toBe('mt');
+    expect(document.body.innerHTML).toBe(avant);
+  });
+});

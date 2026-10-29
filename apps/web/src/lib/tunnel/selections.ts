@@ -99,7 +99,7 @@ export interface Selections {
 
 export function installerSelections(ctx: ContexteTunnel): Selections {
   const { etat, dom, crochets } = ctx;
-  const { $, val, num, setFieldError, maxBillFor, occShapePaths } = dom;
+  const { doc, $, val, num, setFieldError, maxBillFor, occShapePaths } = dom;
   const marquerEtSauver = () => {
     crochets.appeler('markDataEntered');
     crochets.appeler('saveWizardState');
@@ -107,11 +107,11 @@ export function installerSelections(ctx: ContexteTunnel): Selections {
 
   // ——— W353 : créneau de visite technique — deux puces à bascule unique INDÉPENDANTES ———
   function wireVisitToggle(selector: string, getCurrent: () => string, setCurrent: (v: string) => void) {
-    document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
+    doc.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
       btn.addEventListener('click', () => {
         const same = getCurrent() === btn.dataset.value;
         setCurrent(same ? '' : (btn.dataset.value || ''));
-        document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
+        doc.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
           const on = !same && b === btn;
           b.setAttribute('aria-pressed', String(on));
           b.classList.toggle('border-brass-400', on);
@@ -122,7 +122,7 @@ export function installerSelections(ctx: ContexteTunnel): Selections {
     });
     const current = getCurrent();
     if (current) {
-      document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
+      doc.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
         const on = b.dataset.value === current;
         b.setAttribute('aria-pressed', String(on));
         b.classList.toggle('border-brass-400', on);
@@ -149,7 +149,7 @@ export function installerSelections(ctx: ContexteTunnel): Selections {
     svg.innerHTML = markup;
   }
   function syncOccupancySelection() {
-    document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
+    doc.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
       const id = (btn.dataset.occId || '') as OccupancyId;
       const field = OCC_TO_LEAD_FIELD[id];
       const on = !!field && etat.occupationJour === field;
@@ -159,7 +159,7 @@ export function installerSelections(ctx: ContexteTunnel): Selections {
       const badge = btn.querySelector<HTMLElement>('.mt-occ-chosen');
       if (badge) badge.hidden = !on;
     });
-    document.querySelectorAll<SVGPathElement>('[data-occ-line]').forEach((p) => {
+    doc.querySelectorAll<SVGPathElement>('[data-occ-line]').forEach((p) => {
       const id = (p.getAttribute('data-occ-line') || '') as OccupancyId;
       const on = !etat.occupationJour || OCC_TO_LEAD_FIELD[id] === etat.occupationJour;
       p.style.opacity = on ? '1' : '0.25';
@@ -184,7 +184,7 @@ export function installerSelections(ctx: ContexteTunnel): Selections {
     wireVisitToggle('.mt-visit-part', () => etat.visitWindowPart, (v) => { etat.visitWindowPart = v; });
     wireVisitToggle('.mt-visit-week', () => etat.visitWindowWeek, (v) => { etat.visitWindowWeek = v; });
     renderOccupancyChart();
-    document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
+    doc.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = (btn.dataset.occId || '') as OccupancyId;
         const field = OCC_TO_LEAD_FIELD[id];
@@ -201,7 +201,7 @@ export function installerSelections(ctx: ContexteTunnel): Selections {
     }
     syncEquipDetails();
     // QJR664 — « Une journée type » : rendu partagé fr/en/ar.
-    renderJourType(ctx.locale);
+    renderJourType(ctx.locale, doc);
   }
 
   // ——— QX : groupes de cartes/segments à sélection unique (aria-pressed) ———
@@ -213,14 +213,14 @@ export function installerSelections(ctx: ContexteTunnel): Selections {
   ) {
     const paint = () => {
       const current = getCurrent();
-      document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
+      doc.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
         const on = current !== '' && b.dataset.value === current;
         b.setAttribute('aria-pressed', String(on));
         b.classList.toggle('border-brass-400', on);
         b.classList.toggle('border-white/15', !on);
       });
     };
-    document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
+    doc.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
       btn.addEventListener('click', () => {
         const same = getCurrent() === btn.dataset.value;
         setCurrent(same && opts.allowUnset ? '' : (btn.dataset.value || ''));
@@ -236,7 +236,7 @@ export function installerSelections(ctx: ContexteTunnel): Selections {
   const cultureSelect = $('mt-culture') as HTMLSelectElement | null;
   function syncCultureCards() {
     const current = cultureSelect?.value || '';
-    document.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((b) => {
+    doc.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((b) => {
       const on = current !== '' && b.dataset.value === current;
       b.setAttribute('aria-pressed', String(on));
       b.classList.toggle('border-brass-400', on);
@@ -261,7 +261,7 @@ export function installerSelections(ctx: ContexteTunnel): Selections {
     wireCardGroup('.mt-equipes', () => etat.equipes, (v) => { etat.equipes = v; }, { allowUnset: true, recompute: true });
     // WJ124 — AGRICOLE : région (moteur eau) ; culture synchronise le <select> sr-only.
     wireCardGroup('.mt-region-card', () => etat.regionAgricole, (v) => { etat.regionAgricole = v; }, { allowUnset: true, recompute: true });
-    document.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((btn) => {
+    doc.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (cultureSelect) cultureSelect.value = cultureSelect.value === btn.dataset.value ? '' : (btn.dataset.value || '');
         syncCultureCards();
