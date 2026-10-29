@@ -10,9 +10,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  optionTotalsTTC, appartientAuPanierSans, appartientAuPanierAvec,
-  isAnyInverter, isSmartMeter, isWifiDongle, totauxCanoniquesTtc,
+  appartientAuPanierSans, appartientAuPanierAvec,
+  isAnyInverter,
 } from './solar.js'
+import { optionTotalsTTC, isSmartMeter, isWifiDongle, totauxCanoniquesTtc } from './calc/totaux.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
 import { lignesFusionSansAvec } from './solarLignesFusionFixture.mjs'
 

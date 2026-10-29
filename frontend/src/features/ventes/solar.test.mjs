@@ -12,11 +12,10 @@ import {
 } from './quote/sizingReducer.js'
 import {
   DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
-  computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, GHI,
-  totauxCanoniquesTtc, appartientAuPanierSans, appartientAuPanierAvec,
+  computeROI, ttcFromHt, htFromTtc, GHI,
+  appartientAuPanierSans, appartientAuPanierAvec,
   groupProduitsByCategory,
   KWH_PRICE, AUTOCONSO_SANS, AUTOCONSO_AVEC,
-  multiPropertyPreviewTTC,
   productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
   computeCashflowPayback,
   isReseauInverter, batterieCompatible, plageBatterieOnduleur, DAYS_IN_MONTH,
@@ -25,6 +24,7 @@ import {
   batteryKwhFromLines, INVERTER_REPLACE_YEAR, BATTERY_ROUNDTRIP,
   // STKCAT10 — sélecteur de structures piloté par le catalogue.,
   structureRoleForName, structureChoisie} from './solar.js'
+import { optionTotalsTTC, totauxCanoniquesTtc, multiPropertyPreviewTTC } from './calc/totaux.js'
 import { FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh, ONEE_TRANCHES } from './calc/tarifs.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
 
@@ -417,9 +417,9 @@ test('PVOND — une plage SERVIE par l\'API l\'emporte sur le défaut de famille
 // ── QF8 — Smart Meter + Clé Wifi UNIQUEMENT sur onduleur Huawei ─────────────
 // ══ Multi-marchés ═════════════════════════════════════════════════════════════
 import {
-  prixParKwc, discountForTarget, computeBuyCost,
   expectedTvaForDesignation,
 } from './solar.js'
+import { prixParKwc, discountForTarget, computeBuyCost } from './calc/totaux.js'
 
 // ══ Classification pompe (le moteur pompage JS est retiré, AGR132) ═══════════
 import { isPompe } from './solar.js'
@@ -1231,7 +1231,7 @@ test('QJR529 — totauxCanoniquesTtc applique la remise de ligne', () => {
 })
 
 test('ERR-QJR576 — SCENARIOS_ALTERNATIVE est la liste unique de quote/scenarios.js (SCENARIOS_VALIDES)', async () => {
-  const { SCENARIOS_ALTERNATIVE } = await import('./solar.js')
+  const { SCENARIOS_ALTERNATIVE } = await import('./calc/totaux.js')
   const { SCENARIOS_VALIDES } = await import('./quote/sizingReducer.js')
   assert.equal(SCENARIOS_ALTERNATIVE, SCENARIOS_VALIDES)
   assert.deepEqual([...SCENARIOS_ALTERNATIVE].sort(),

@@ -35,8 +35,8 @@ import {
   isPanel, isBattery, isHybridInverter, isReseauInverter, isAnyInverter, isOffgridInverter,
   parseKwh, batteryKwhFromLines, classifyProduct,
   texteClassement, appartientAuPanierSans, appartientAuPanierAvec, inverterCostFromLines,
-  optionTotalsTTC, avecBatterieAvailability,
 } from './solar.js'
+import { optionTotalsTTC, avecBatterieAvailability } from './calc/totaux.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const CONTRAT = join(

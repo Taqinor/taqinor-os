@@ -30,10 +30,10 @@ import {
   sizingReducer, ETAT_INITIAL, SCENARIO_LES_DEUX, SCENARIO_AVEC, SCENARIO_SANS,
 } from '../../features/ventes/quote/sizingReducer.js'
 import {
-  appartientAuPanierSans, appartientAuPanierAvec, optionTotalsTTC,
+  appartientAuPanierSans, appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
-  totauxCanoniquesTtc,
 } from '../../features/ventes/solar.js'
+import { optionTotalsTTC, totauxCanoniquesTtc } from '../../features/ventes/calc/totaux.js'
 import { PAS_ARRONDI_DEVIS } from '../../features/ventes/remise.js'
 
 const SRV_SANS = { panneaux: 12, kwc: 8.52 }

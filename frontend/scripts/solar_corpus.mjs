@@ -93,8 +93,9 @@ import { fileURLToPath } from 'node:url'
 import {
   isBattery, isHybridInverter, isReseauInverter, isOffgridInverter,
   isAnyInverter, isPanel, parseWatt, productibleForCity,
-  PRODUCTIBLE_NET_FACTOR, optionTotalsTTC,
+  PRODUCTIBLE_NET_FACTOR,
 } from '../src/features/ventes/solar.js'
+import { optionTotalsTTC } from '../src/features/ventes/calc/totaux.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(

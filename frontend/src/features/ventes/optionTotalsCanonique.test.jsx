@@ -13,7 +13,7 @@
 // Observé avant le correctif : 13 300,00 (remisé) et 14 000 (brut) — la somme
 // des TTC saisis, remisée ensuite.
 import { describe, expect, it } from 'vitest'
-import { optionTotalsTTC, totauxCanoniquesTtc } from './solar.js'
+import { optionTotalsTTC, totauxCanoniquesTtc } from './calc/totaux.js'
 
 const LIGNES = [
   { designation: 'Panneau solaire 710W', quantite: '13', prix_unit_ttc: '1000', taux_tva: 10, variante: '' },
