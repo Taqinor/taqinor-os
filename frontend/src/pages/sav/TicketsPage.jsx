@@ -37,7 +37,7 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 // `records-panels.css`. Écriture réservée responsable/admin côté serveur, d'où
 // le `readOnly` piloté par le rôle.
 import TagChipInput from '../../components/TagChipInput'
-import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useHasPermission, useHasRole, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // WIR19 — historique AuditLog record-scopé (visible au propriétaire du ticket
 // sans la permission globale journal_activite_voir).
 import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
@@ -262,7 +262,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   // (records.TaggedItemViewSet) : le champ reste en lecture seule pour les
   // autres rôles au lieu de proposer une action qui finirait en 403.
   const peutTaguer = useIsAdminOrResponsable()
-  const F = (k, d = '') => current?.[k] ?? d
+  // ERR-SAV-TECH-USERS-403 — `GET /users/` exige `users_gerer` (ou le palier
+  // admin) : un Technicien ne l'appelle pas (403 + console.error), la liste des
+  // techniciens retombe directement sur les assignés (`technicienOptions`).
+  const peutListerUsers = useHasRole(['admin']) || useHasPermission('users_gerer')
+  const F =(k, d = '') => current?.[k] ?? d
 
   // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
   // réalisée parmi `current.interventions` (TicketInterventionSerializer,
@@ -434,7 +438,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         .then((r) => setEquipements(r.data?.results ?? r.data ?? [])).catch(() => {})
     }
     // Liste des techniciens — best effort (réservé admin) ; sinon dropdown vide.
-    api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+    if (peutListerUsers) {
+      api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+    }
     // ASAV54 — référentiels cause / remède (tolère les mocks partiels).
     if (savApi.getCausesDefaillance) {
       lireTout(savApi.getCausesDefaillance).then(setCauses).catch(() => {})

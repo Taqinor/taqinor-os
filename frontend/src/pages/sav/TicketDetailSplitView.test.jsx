@@ -14,6 +14,7 @@ vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailTe
 
 vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailTestKit')).installationsApiVideMock())
 
+import api from '../../api/axios'
 import { TicketDetail } from './TicketsPage'
 import { makeTicketStore } from './__tests__/ticketDetailTestKit'
 import { mockMatchMedia } from '../../test/matchMedia'
@@ -30,14 +31,39 @@ const baseTicket = {
   couverture: 'a_determiner', devis_id_ext: null, facture_id_ext: null,
 }
 
-function renderDetail() {
-  const store = makeTicketStore()
+function renderDetail(auth) {
+  const store = makeTicketStore(auth)
   return render(
     <Provider store={store}>
       <TicketDetail ticket={baseTicket} onClose={() => {}} onSaved={() => {}} />
     </Provider>,
   )
 }
+
+describe('TicketDetail — ERR-SAV-TECH-USERS-403 liste des utilisateurs', () => {
+  const appelsUsers = () => api.get.mock.calls.filter(([url]) => url === '/users/')
+
+  it("n'appelle pas GET /users/ pour un Technicien (permission servie absente)", async () => {
+    mockMatchMedia(true)
+    renderDetail({ role: 'normal', role_nom: 'Technicien', permissions: ['sav_voir'] })
+    await screen.findByText('SAV-1', { exact: false })
+    expect(appelsUsers()).toHaveLength(0)
+  })
+
+  it('appelle GET /users/ quand users_gerer est servie', async () => {
+    mockMatchMedia(true)
+    renderDetail({ role: 'normal', permissions: ['users_gerer'] })
+    await screen.findByText('SAV-1', { exact: false })
+    expect(appelsUsers()).toHaveLength(1)
+  })
+
+  it('appelle GET /users/ pour le palier admin', async () => {
+    mockMatchMedia(true)
+    renderDetail({ role: 'admin', permissions: [] })
+    await screen.findByText('SAV-1', { exact: false })
+    expect(appelsUsers()).toHaveLength(1)
+  })
+})
 
 describe('TicketDetail — VX31 split-view desktop vs Sheet mobile/tablette', () => {
   it('sur grand viewport (≥1280px) rend un panneau latéral persistant (aside), jamais un tiroir', async () => {

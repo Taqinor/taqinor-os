@@ -54,11 +54,11 @@ export function installationsApiVideMock() {
 }
 
 /** Store redux minimal (admin, aucun ticket en mémoire). */
-export function makeTicketStore() {
+export function makeTicketStore(auth = { role: 'admin', permissions: [] }) {
   return configureStore({
     reducer: {
       tickets: (state = { items: [] }) => state,
-      auth: (state = { role: 'admin', permissions: [] }) => state,
+      auth: (state = auth) => state,
     },
   })
 }
