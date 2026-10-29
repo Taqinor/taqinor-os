@@ -94,6 +94,23 @@ D8 WhatsApp : tap manuel inchangé, français par défaut (Darija non prouvée).
   + AICM1-3 (gestes de Reda : réclamer les crédits + workspace `erp-assistant`, réglage de
   confidentialité, juriste 09-08).
 
+## Prod basculée sur Claude le 30/10/2026 (geste fait par Claude sur demande explicite de Reda)
+
+- Sur le serveur : rôle Postgres `sql_agent_ro` créé (section 4 de `backend/db/rls_roles.sql`, lecture des tables
+  de la liste blanche, `authentication_customuser` refusée), `.env` sauvegardé en `.env.avant-claude-<date>` puis
+  `SQL_AGENT_PROVIDER=claude`, `CLAUDE_API_KEY`, `SQL_AGENT_EFFORT=low`, `SQL_AGENT_FALLBACK_PROVIDER=groq`,
+  `SQL_AGENT_MODEL=openai/gpt-oss-120b`, `SQL_AGENT_DB_USER/PASSWORD`, `AGENT_HMAC_SECRET` (absent avant : toute
+  confirmation d'action était refusée) ; services recréés, puis `restart nginx` (sinon 502 : nginx garde l'ancienne
+  adresse du conteneur Django recréé).
+- **Trois raisons pour lesquelles l'assistant ne marchait pas en prod** : rôle `sql_agent_ro` jamais provisionné
+  (agent désactivé depuis `settings.prod`, 10/10 ; la page « IA (diagnostic) » disait « ok » sans rien appeler),
+  modèle Groq retiré, et **relais FastAPI → Django en 301** : `settings.prod` a `SECURE_SSL_REDIRECT` et l'appel
+  interne `http://django_core:8000` n'avait pas d'en-tête de proxy → permissions, catalogue d'actions et journal
+  refusés depuis le 10/10. Remède posé : `DJANGO_INTERNAL_URL=https://api.taqinor.ma` ; correctif durable = le
+  relais pose `X-Forwarded-Proto: https` (PR du 30/10).
+- Vérifié de bout en bout en prod : « Qui dois-je relancer aujourd'hui ? » → Sonnet 5.5, action
+  `crm.leads.a_relancer`, événement #1 journalisé avec le manuel en cache.
+
 ## Phase 0 (Reda, 15 min) et non vérifié
 
 Réclamer les crédits, créer le workspace `erp-assistant` avec limite de dépense = crédits, une clé API ;

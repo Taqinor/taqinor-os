@@ -58,9 +58,18 @@ DJANGO_INTERNAL_HOST = resolve_internal_host()
 
 
 def internal_headers() -> dict:
-    """En-tetes communs a tout appel FastAPI -> Django interne (Host autorise)."""
+    """En-tetes communs a tout appel FastAPI -> Django interne : Host autorise
+    (AANA52) et `X-Forwarded-Proto: https` (30/10/2026) — en production
+    (settings.prod : SECURE_SSL_REDIRECT) un appel interne en http sans cet
+    en-tete recevait un 301 vers https, donc permissions, catalogue et journal
+    de l assistant etaient REFUSES depuis le 10/10. Django le lit via
+    SECURE_PROXY_SSL_HEADER ; le reseau docker interne est de confiance (le
+    port 8000 n est pas publie)."""
     host = resolve_internal_host()
-    return {"Host": host} if host else {}
+    headers = {"X-Forwarded-Proto": "https"}
+    if host:
+        headers["Host"] = host
+    return headers
 
 
 # Transcription audio (chat vocal) — Whisper auto-heberge via faster-whisper.
