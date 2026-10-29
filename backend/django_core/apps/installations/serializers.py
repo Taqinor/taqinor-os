@@ -1280,7 +1280,7 @@ class BudgetEngagementSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixi
 
 
 class BudgetProjetSerializer(
-    IdInconnu404Mixin,
+    IdInconnu404Mixin, ChampsTexteStrictsMixin,  # api-fuzz-full 28/10 : `devise` sans NUL
     UniciteEn409Mixin,
     SameCompanyFKSerializerMixin,
         serializers.ModelSerializer):

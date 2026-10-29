@@ -207,6 +207,17 @@ class DossierApiTests(TestCase):
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('titre', reponse.data)
 
+    def test_proprietaire_inconnu_ou_voisin_404(self):
+        # api-fuzz-full 28/10 (ENF11) : un propriétaire inconnu, ou de la
+        # société voisine (ASEC18), répond 404 — même réponse dans les deux cas.
+        for proprietaire in (999999, self.autre_user.pk):
+            requete = APIRequestFactory().post('/', {
+                'type_dossier': Dossier.TYPE_RECLAMATION_COMPLEXE,
+                'titre': 'T', 'proprietaire': proprietaire}, format='json')
+            force_authenticate(requete, user=self.user)
+            reponse = LISTE(requete)
+            self.assertEqual(reponse.status_code, 404, (proprietaire, reponse.data))
+
     def test_checklist_corps_vide_400(self):
         # ERR-ENF11-FUZZ-CORE — `{}` n'est conforme à aucune des deux formes.
         dossier_id = self._creer_dossier()
