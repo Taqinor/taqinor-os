@@ -68,6 +68,8 @@ never block silently.
 
 _(none yet — the error-autopilot appends verified items here)_
 
+- [ ] WEBERR-TUNNEL-PAYBACK-FR — [web/tunnel] **Le corps du lead envoyé par les tunnels EN et AR porte `estimateShown.paybackLabel` en FRANÇAIS (« 4 à 6 ans »)** — constaté le 28/10/2026 par le filet RWEB17A (goldens `tunnelExecution/*.en.json`, `*.ar.json`). Attendu : libellé dans la langue de la page, ou une valeur numérique sans texte (une seule source). Test rouge d'abord : `apps/web/tests/tunnelExecution.test.ts` (parité, `CLES_PROPRES_A_LA_LOCALE`). Touche le flux lead du formulaire : stop-and-ask (WEB_PLAN). (@model: sonnet)
+
 ### High
 
 _(none yet)_

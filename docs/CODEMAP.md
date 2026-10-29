@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: db6f45ad3d7b39cb3a6f7e2e8ad6f79fe292de9357f304c23c75de16485be1e2
-Plan fingerprint: b9b2fd4a352aff897bc0086509f95cb3e792a5f160023ab2b804ce4ca04b63f0
+Plan fingerprint: 3a943a6cd5eeda01a16906a359719e8f9712122f24d538c8bbf3be2fab5de06f
 
 
 
@@ -591,7 +591,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1289)**
+**Done (1290)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -773,6 +773,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGR623` — Fiche produit : saisir le profil saisonnier de réappro (saison d'irrigation), aucun…
 - `AGR624` — Aller-retour EN DIRECT du parcours chantier pompage (pile locale, Playwright)
 - `AGR625` — Chantier pompage (2/2, l'« AGR602b » de la critique) : gate 82-21 consultatif, étape…
+- `AIC50` — Skill `assistant-manuel` : Claude Code génère sur l'abonnement de Reda (jamais une clé…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -1883,7 +1884,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (130)**
+**Open — to build (129)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1929,7 +1930,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGRM41` — Engagement SAV affichable
 - `AGRM42` — Assurance vol des panneaux
 - `AGRM43` — Consignes de remise au fermier (FR + darija)
-- `AIC50` — Skill `assistant-manuel` : Claude Code génère sur l'abonnement de Reda (jamais une clé…
 - `AIC51` — Skill `assistant-tri` + `docs/assistant-tri.md` + interrupteur…
 - `AIC52` — [GATED: secret `CLAUDE_CODE_OAUTH_TOKEN` GitHub (`claude setup-token`, valable un an…
 - `AICM1` — Réclamer les crédits API et créer le workspace de l'assistant

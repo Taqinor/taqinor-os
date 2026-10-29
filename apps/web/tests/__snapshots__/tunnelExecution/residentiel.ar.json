@@ -1,0 +1,33 @@
+{
+  "adresse": "Casablanca, Maarif",
+  "appareilId": "<appareilId>",
+  "billRange": "1500-3000",
+  "city": "Casablanca, Maarif",
+  "clientRef": "<clientRef>",
+  "consent": true,
+  "contactPreference": "phone_ok",
+  "email": "karim@example.com",
+  "equip_ve_km_semaine": 250,
+  "equip_voiture_electrique": true,
+  "estimateShown": {
+    "kwc": 9.5,
+    "prodKwh": 14590,
+    "ecoMadMonthLow": 1500,
+    "ecoMadMonthHigh": 1800,
+    "paybackLabel": "4 à 6 ans"
+  },
+  "eventId": "<eventId>",
+  "factureHiver": 1800,
+  "fbclid": "fb.1.123",
+  "fullName": "Karim Benali",
+  "idempotencyKey": "<idempotencyKey>",
+  "langue_preferee": "ar",
+  "mode": "residentiel",
+  "occupation_jour": "present",
+  "phone": "0612345678",
+  "roofType": "autre",
+  "utm_campaign": "toit-casa",
+  "utm_source": "facebook",
+  "website_url": "",
+  "whatsappOptIn": false
+}

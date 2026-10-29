@@ -79,3 +79,7 @@ var/anon/
 
 # Facture generator rendered outputs (PDF/HTML artifacts, never committed)
 tools/facture/out/
+
+# AIC10 - rapports d'evaluation de l'assistant (un rapport de reference commite a la main)
+backend/fastapi_ia/tests/eval/rapports/*
+!backend/fastapi_ia/tests/eval/rapports/reference.json
