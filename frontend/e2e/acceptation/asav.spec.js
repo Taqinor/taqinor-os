@@ -23,7 +23,7 @@ test.describe.configure({ timeout: 300_000 })
 const ECRAN = { width: 1920, height: 1080 }
 // Pile chargée : une requête API peut dépasser 15 s.
 test.use({ viewport: ECRAN, actionTimeout: 60_000 })
-const etape = groupe('ASAV', [...plage(104, 114)])
+const etape = groupe('ASAV', [...plage(104, 114), 'ASAV99'])
 // La session du storageState expire au fil d'une longue passe : rouverte par l'API.
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
 const SAV = `${API_DJANGO}/sav`
@@ -450,3 +450,212 @@ etape('P114.10', ['ASAV113', 'ASAV114'], async ({ page }) => {
   })
 })
 
+// ════════════════════════════════════════════════════════════════════════════
+// ASAV99 — parcours J4 parc → ticket → SLA → contrat → facture → page publique
+// → alarmes → production → réglages (acceptation de groupe ASAV). Les étapes
+// suspendues (remplacement d'onduleur ASAV9, quotas > 50 lignes) ne sont pas
+// jouées : voir le rapport de l'orchestrateur.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Réglages SLA société : lus, modifiés le temps de l'étape, TOUJOURS restaurés.
+async function avecReglagesSla(request, modifs, corps) {
+  const avant = await lireJson(await request.get(`${SAV}/sla-settings/`), 'réglages SLA')
+  try {
+    await lireJson(await request.post(`${SAV}/sla-settings/`, { data: modifs }), 'réglages SLA modifiés')
+    await corps(avant)
+  } finally {
+    const retour = Object.fromEntries(Object.keys(modifs).map((k) => [k, avant[k]]))
+    await request.post(`${SAV}/sla-settings/`, { data: retour }).catch(() => null)
+  }
+}
+
+etape('P99.1', ['ASAV99'], async ({ page }) => {
+  // (1) Parc : la note d'un équipement corrigée — fin de garantie inchangée.
+  await avecDonnees(page.request, async (t) => {
+    const client = await creerClient(page.request, t)
+    const produit = await creerProduit(page.request, t, { garantieMois: 24 })
+    const eq = await creerEquipement(page.request, t, { client, produit, datePose: isoMois(-3) })
+    const note = uniq('Note parc ASAV99')
+    const maj = await lireJson(await page.request.patch(`${SAV}/equipements/${eq.id}/`, { data: { note } }), 'note')
+    expect(maj.note).toBe(note)
+    expect(maj.date_fin_garantie, 'fin de garantie inchangée').toBe(eq.date_fin_garantie)
+    expect(maj.date_fin_garantie_effective).toBe(eq.date_fin_garantie_effective)
+    await page.goto(`/equipements?id=${eq.id}`)
+    await expect(page.getByText(eq.numero_serie).first()).toBeVisible({ timeout: 30_000 })
+    await page.reload()
+    await expect(page.getByText(eq.numero_serie).first()).toBeVisible({ timeout: 30_000 })
+    const relu = await lireJson(await page.request.get(`${SAV}/equipements/${eq.id}/`), 'équipement relu')
+    expect(relu.note).toBe(note)
+    expect(relu.date_fin_garantie).toBe(eq.date_fin_garantie)
+  })
+})
+
+etape('P99.2', ['ASAV99'], async ({ page }) => {
+  // (2) Ticket : priorité urgente ⇒ échéance recalculée + ligne d'historique ;
+  // attente client ; résolu (date posée par le serveur) ; rouvert.
+  await avecReglagesSla(page.request, {
+    sla_par_priorite: { urgente: { response: 0, resolution: 1 } }, sla_resolution_days: 7,
+  }, async () => {
+    await avecDonnees(page.request, async (t) => {
+      const client = await creerClient(page.request, t)
+      const tk = await creerTicket(page.request, t, { client: client.id })
+      const urg = await lireJson(await page.request.patch(`${SAV}/tickets/${tk.id}/`, {
+        data: { priorite: 'urgente' },
+      }), 'priorité urgente')
+      expect(urg.sla_due_at, 'échéance urgente recalculée').toBe(isoDansJours(1))
+      const histo = await lireJson(await page.request.get(`${SAV}/tickets/${tk.id}/historique/`), 'historique')
+      expect(histo.some((a) => a.field === 'priorite'), 'ligne d’historique « priorité »').toBe(true)
+      await lireJson(await page.request.post(`${SAV}/tickets/${tk.id}/attente-client/`, { data: {} }), 'attente client')
+      await lireJson(await page.request.post(`${SAV}/tickets/${tk.id}/reprendre/`, { data: {} }), 'reprise')
+      await lireJson(await page.request.post(`${SAV}/tickets/${tk.id}/demarrer/`, { data: {} }), 'démarrer')
+      const res = await lireJson(await page.request.post(`${SAV}/tickets/${tk.id}/resoudre/`, { data: {} }), 'résoudre')
+      expect(res.date_resolution, 'date de résolution posée par le serveur').toBe(isoDansJours(0))
+      const rouvert = await lireJson(await page.request.post(`${SAV}/tickets/${tk.id}/reouvrir/`, { data: {} }), 'rouvrir')
+      expect(rouvert.statut).toBe('nouveau')
+      expect(rouvert.date_resolution, 'date de résolution vidée').toBeNull()
+      expect(rouvert.reopen_count).toBe(1)
+      await ouvrirTicket(page, tk.id)
+      await page.reload()
+      await ficheVisible(page)
+      const relu = await lireTicket(page.request, tk.id)
+      expect(relu.priorite).toBe('urgente')
+      expect(relu.statut).toBe('nouveau')
+    })
+  })
+})
+
+etape('P99.3', ['ASAV99'], async ({ page, testInfo }) => {
+  // (3) Technicien : édition en masse et fusion sur le ticket d'un AUTRE — refusées.
+  const tech = await apiTechnicien(testInfo.project.use.baseURL)
+  try {
+    await avecDonnees(page.request, async (t) => {
+      const client = await creerClient(page.request, t)
+      const autre = await creerTicket(page.request, t, { client: client.id })
+      const sien = await creerTicket(page.request, t, { client: client.id, technicien_responsable: tech.id })
+      const lot = await tech.api.post(`${SAV}/tickets/actions-groupees/`, {
+        data: { ids: [autre.id], operation: 'priorite', priorite: 'urgente' },
+      })
+      if (lot.ok()) expect((await lot.json()).nb_traites, 'aucun ticket hors portée traité').toBe(0)
+      else expect([403, 404]).toContain(lot.status())
+      const fusion = await tech.api.post(`${SAV}/tickets/${sien.id}/fusionner/`, { data: { doublon_id: autre.id } })
+      expect([403, 404], 'fusion hors portée refusée').toContain(fusion.status())
+      const relu = await lireTicket(page.request, autre.id)
+      expect(relu.priorite).toBe('normale')
+      expect(relu.annule).toBe(false)
+    })
+  } finally { await tech.api.dispose() }
+})
+
+etape('P99.4', ['ASAV99'], async ({ page }) => {
+  // (4) Contrat quota 1 : 1er ticket couvert facturé 0 MAD, 2e au prix ; un seul
+  // bouton « Facturer » sur la fiche.
+  await avecDonnees(page.request, async (t) => {
+    const client = await creerClient(page.request, t)
+    const produit = await creerProduit(page.request, t)
+    const c = await lireJson(await page.request.post(`${SAV}/contrats-maintenance/`, {
+      data: { client: client.id, date_debut: isoDansJours(-30), duree_mois: 12, actif: true, deplacements_inclus_an: 1 },
+    }), 'contrat quota 1')
+    t.contrats.push(c.id)
+    const prix = []
+    for (let i = 0; i < 2; i += 1) {
+      const tk = await creerTicket(page.request, t, { client: client.id })
+      await ajouterPiece(page.request, tk.id, produit.id)
+      if (i === 0) {
+        await ouvrirTicket(page, tk.id)
+        await expect(page.getByRole('button', { name: /^Facturer$/ }), 'un seul bouton « Facturer »').toHaveCount(1)
+      }
+      const f = await lireJson(await page.request.post(`${SAV}/tickets/${tk.id}/facturer/`, { data: {} }), `facturer ${i + 1}`)
+      prix.push((await prixLignesFacture(page.request, f.facture_id)).prix)
+    }
+    expect(prix[0], '1er ticket couvert : 0 MAD').toEqual([0])
+    expect(prix[1], '2e ticket : quota épuisé, au prix').toEqual([5000])
+  })
+})
+
+etape('P99.6', ['ASAV99'], async ({ page, context, suivi, testInfo }) => {
+  // (6) `/suivi/<token>` d'un ticket annulé, en navigation privée : « Annulé ».
+  // Signalement QR avec photo HEIC : refusé sous le champ, AUCUN ticket créé.
+  await avecDonnees(page.request, async (t) => {
+    const client = await creerClient(page.request, t)
+    const produit = await creerProduit(page.request, t)
+    const eq = await creerEquipement(page.request, t, { client, produit, datePose: isoMois(-2) })
+    const tk = await creerTicket(page.request, t, { client: client.id, equipement: eq.id })
+    const lien = await lireJson(await page.request.get(`${SAV}/tickets/${tk.id}/lien-client/`), 'lien de suivi')
+    await lireJson(await page.request.post(`${SAV}/tickets/${tk.id}/annuler/`, { data: { motif: 'ASAV99' } }), 'annulation')
+    const qr = await lireJson(await page.request.get(`${SAV}/equipements/${eq.id}/partage-qr/`), 'lien QR')
+    const prive = await context.browser().newContext({ baseURL: testInfo.project.use.baseURL, serviceWorkers: 'block' })
+    try {
+      const p = suivi.surveiller(await prive.newPage())
+      await p.goto(new URL(lien.url).pathname)
+      await expect(p.getByRole('status').filter({ hasText: 'Annulé' })).toBeVisible({ timeout: 30_000 })
+      suivi.attendre(/\/public\/sav\/equipement\/[^/]+\/signaler\//, 400)
+      await p.goto(new URL(qr.url).pathname)
+      await p.locator('#es-description').fill(uniq('Panne QR ASAV99'))
+      await p.locator('#es-photo').setInputFiles({ name: 'photo.heic', mimeType: 'image/heic', buffer: HEIC })
+      await p.getByRole('button', { name: /Envoyer le signalement/ }).click()
+      await expect(p.getByRole('alert').first()).toBeVisible({ timeout: 30_000 })
+    } finally { await prive.close() }
+    // `ouvert=tous` : la file par défaut cache les tickets annulés.
+    const ids = listeDe(await lireJson(await page.request.get(
+      `${SAV}/tickets/?equipement=${eq.id}&ouvert=tous&page_size=50`), 'tickets de l’équipement')).map((x) => x.id)
+    expect(ids, 'aucun ticket créé par le refus').toEqual([tk.id])
+  })
+})
+
+etape('P99.7', ['ASAV99'], async ({ page }) => {
+  // (7) Alarmes : créée, acquittée, escaladée (ticket lié) ; visible à l'écran.
+  await avecDonnees(page.request, async (t) => {
+    const client = await creerClient(page.request, t)
+    const produit = await creerProduit(page.request, t)
+    const eq = await creerEquipement(page.request, t, { client, produit, datePose: isoMois(-2) })
+    const code = uniq('ACC-E').replace(/\s/g, '')
+    const a = await lireJson(await page.request.post(`${SAV}/alarmes-onduleur/`, {
+      data: { equipement: eq.id, code, gravite: 'critique', libelle: 'Défaut isolement ASAV99' },
+    }), 'alarme')
+    const ack = await lireJson(await page.request.post(`${SAV}/alarmes-onduleur/${a.id}/acquitter/`, { data: {} }), 'acquitter')
+    expect(ack.statut).toBe('acquittee')
+    const esc = await lireJson(await page.request.post(`${SAV}/alarmes-onduleur/${a.id}/escalader/`, { data: {} }), 'escalader')
+    expect(esc.statut, 'escalade aboutie').toBe('escaladee')
+    expect(esc.ticket, 'ticket créé par l’escalade').toBeTruthy()
+    t.tickets.push(esc.ticket)
+    await page.goto('/sav/alarmes')
+    await expect(page.getByText(code).first()).toBeVisible({ timeout: 30_000 })
+    await page.request.delete(`${SAV}/alarmes-onduleur/${a.id}/`).catch(() => null)
+  })
+})
+
+etape('P99.8', ['ASAV99'], async ({ page }) => {
+  // (8) Production : le même relevé saisi deux fois — le second refusé.
+  await avecDonnees(page.request, async (t) => {
+    const client = await creerClient(page.request, t)
+    const inst = await lireJson(await page.request.post(`${INST}/chantiers/`, {
+      data: { client: client.id, site_ville: 'Casablanca' },
+    }), 'chantier')
+    t.chantiers.push(inst.id)
+    const releve = { installation: inst.id, date: isoDansJours(-1), period_days: 1, energy_kwh: '18.50' }
+    const r1 = await lireJson(await page.request.post(`${API_DJANGO}/monitoring/readings/`, { data: releve }), '1er relevé')
+    const r2 = await page.request.post(`${API_DJANGO}/monitoring/readings/`, { data: releve })
+    await page.request.delete(`${API_DJANGO}/monitoring/readings/${r1.id}/`).catch(() => null)
+    if (r2.ok()) await page.request.delete(`${API_DJANGO}/monitoring/readings/${(await r2.json()).id}/`).catch(() => null)
+    expect([400, 409], 'second relevé identique refusé').toContain(r2.status())
+    await page.goto('/production')
+    await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 30_000 })
+  })
+})
+
+etape('P99.9', ['ASAV99'], async ({ page }) => {
+  // (9) Paramètres SAV : SLA par priorité et auto-clôture enregistrés puis relus.
+  await avecReglagesSla(page.request, {
+    sla_par_priorite: { urgente: { response: 0, resolution: 2 } }, auto_cloture_jours: 9,
+  }, async () => {
+    await page.goto('/sav/parametres')
+    await page.getByRole('tab', { name: 'SLA / Automatisation' }).click()
+    await page.reload()
+    await page.getByRole('tab', { name: 'SLA / Automatisation' }).click()
+    await expect(page.getByRole('tabpanel')).toBeVisible()
+    const relu = await lireJson(await page.request.get(`${SAV}/sla-settings/`), 'réglages relus')
+    expect(relu.auto_cloture_jours).toBe(9)
+    expect(relu.sla_par_priorite?.urgente?.resolution).toBe(2)
+    await expect(page.getByRole('tabpanel').locator('input[value="9"]').first()).toBeVisible()
+  })
+})
