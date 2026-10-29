@@ -309,6 +309,15 @@ table td.v{text-align:right;font-weight:700;color:#0f172a;}
 def _logo_html(ctx):
     uri = ctx.get('logo_uri')
     if uri:
+        # ACHT112 — même module image pur que les devis (rognage, détourage,
+        # bloc du rôle « entete ») ; le rapport n'est pas un devis (règle #4).
+        from apps.ventes.quote_engine import logo
+        b64 = logo.societe_b64(uri, variante='clair')
+        if b64:
+            img = logo.img_html(logo.pour_role(b64, 'entete'), 'entete',
+                                alt='logo')
+            return f'<div class="hdr-logo">{img}</div>'
+        # Non raster (SVG, corrompu) : l'URI telle quelle, comme avant.
         return (f'<div class="hdr-logo"><img src="{escape(uri, quote=True)}" '
                 f'alt="logo"></div>')
     nom = escape(str(ctx.get('entreprise_nom') or 'TAQINOR'))
