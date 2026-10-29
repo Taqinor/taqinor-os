@@ -37,7 +37,7 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 // `records-panels.css`. Écriture réservée responsable/admin côté serveur, d'où
 // le `readOnly` piloté par le rôle.
 import TagChipInput from '../../components/TagChipInput'
-import { useHasPermission, useHasRole, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useCanListUsers, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // WIR19 — historique AuditLog record-scopé (visible au propriétaire du ticket
 // sans la permission globale journal_activite_voir).
 import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
@@ -261,13 +261,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   // PACT174 — poser/retirer un tag est réservé responsable/admin côté serveur
   // (records.TaggedItemViewSet) : le champ reste en lecture seule pour les
   // autres rôles au lieu de proposer une action qui finirait en 403.
-  const peutTaguer = useIsAdminOrResponsable()
-  // ERR-SAV-TECH-USERS-403 — `GET /users/` exige `users_gerer` (ou le palier
-  // admin) : un Technicien ne l'appelle pas (403 + console.error), la liste des
-  // techniciens retombe directement sur les assignés (`technicienOptions`).
-  const estAdminPalier = useHasRole(['admin'])
-  const aUsersGerer = useHasPermission('users_gerer')
-  const peutListerUsers = estAdminPalier || aUsersGerer
+  // ERR-SAV-TECH-USERS-403 — `GET /users/` n'est appelé que si la permission
+  // servie le permet (sinon repli direct sur les techniciens assignés).
+  const peutTaguer = useIsAdminOrResponsable(), peutListerUsers = useCanListUsers()
   const F =(k, d = '') => current?.[k] ?? d
 
   // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
@@ -440,9 +436,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         .then((r) => setEquipements(r.data?.results ?? r.data ?? [])).catch(() => {})
     }
     // Liste des techniciens — best effort (réservé admin) ; sinon dropdown vide.
-    if (peutListerUsers) {
-      api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
-    }
+    if (peutListerUsers) api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     // ASAV54 — référentiels cause / remède (tolère les mocks partiels).
     if (savApi.getCausesDefaillance) {
       lireTout(savApi.getCausesDefaillance).then(setCauses).catch(() => {})
@@ -1372,9 +1366,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           </div>
         )}
 
-        {/* ERR-SAV-BARRE-ACTIONS-DEBORDE — la barre porte jusqu'à 7 boutons : en
-            panneau latéral (1280/1920 px) elle revient à la ligne au lieu de
-            déborder (« Facturer » rogné, clic tombant sur la div de mise en page). */}
+        {/* ERR-SAV-BARRE-ACTIONS-DEBORDE — la barre revient à la ligne (7 boutons
+            en panneau latéral) au lieu de déborder. */}
         <FormActions sticky={false} className="sm:flex-wrap" data-testid="ticket-actions">
           {!current.annule && (
             <Button type="button" variant="destructive" className="mr-auto" onClick={() => setAnnulerOpen(true)}>
