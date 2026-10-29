@@ -6,7 +6,7 @@
  * Les props ne sont pas substituées : les tests de source ne cherchent que le balisage et les
  * chaînes littérales.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 // CPRW (27/10/2026) — même déroulé pour les blocs C&I / agricoles déplacés hors de /proposition
@@ -52,4 +52,38 @@ export function lireLibProposition(): string {
   return ['src/lib/proposition.ts', 'src/components/proposition/agricole/syntheseAgricole.ts', 'src/components/proposition/ci/syntheseCi.ts']
     .map((rel) => readFileSync(resolve(process.cwd(), rel), 'utf-8'))
     .join('\n');
+}
+
+/**
+ * RWEB17-M9 — page du tunnel (`pages/**\/devis/mon-toit.astro`) avec ses blocs déroulés PUIS le texte de tous
+ * les modules du tunnel (`src/lib/tunnel/*` et `src/scripts/tunnel/*`) qu'elle importe, récursivement
+ * (un module qui en importe un autre le fait suivre), chaque module lu UNE seule fois. Les sections
+ * extraites hors de la page restent ainsi trouvables par les tests de source, pages actuelles ou fusionnées.
+ */
+export function lireAstroAvecModulesTunnel(chemin: string): string {
+  const base = lireAstroAvecBlocs(chemin);
+  const vus = new Set<string>();
+  let suite = '';
+  const suivre = (fichier: string, texte: string): void => {
+    for (const [, rel] of texte.matchAll(/(?:from|import)\s*\(?\s*'(\.[^']*)'/g)) {
+      const cible = resolve(dirname(fichier), rel).replace(/\\/g, '/');
+      if (!/\/src\/(?:lib|scripts)\/tunnel\//.test(cible)) continue;
+      const abs = [`${cible}.ts`, `${cible}/index.ts`].find((c) => existsSync(c));
+      if (!abs || vus.has(abs)) continue;
+      vus.add(abs);
+      const contenu = readFileSync(abs, 'utf-8');
+      suite += `\n${contenu}`;
+      suivre(abs, contenu);
+    }
+  };
+  suivre(chemin, readFileSync(chemin, 'utf-8'));
+  return base + suite;
+}
+
+/**
+ * RWEB17-M9 — lecture d'un fichier de source pour un test : une page `devis/mon-toit.astro` passe par
+ * `lireAstroAvecModulesTunnel`, tout autre fichier est lu tel quel (comportement d'avant).
+ */
+export function lireSourceTunnel(chemin: string): string {
+  return /[\\/]devis[\\/]mon-toit\.astro$/.test(chemin) ? lireAstroAvecModulesTunnel(chemin) : readFileSync(chemin, 'utf-8');
 }

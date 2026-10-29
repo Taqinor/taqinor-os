@@ -8,12 +8,13 @@
 // test comportemental unitaire.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { etatVide } from '../src/lib/tunnel/champs';
 import { construireCorps } from '../src/lib/tunnel/corps';
 import { lirePageProposition, lireLibProposition } from './astroBlocsHelper';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const read = (rel: string) => lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
 
 describe('Layout.astro — balise de visite branchée sitewide', () => {
   const layout = read('../src/layouts/Layout.astro');

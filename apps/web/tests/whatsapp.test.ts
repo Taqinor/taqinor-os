@@ -151,6 +151,7 @@ describe('caseStudyWhatsappText (W350 — bouton WhatsApp propre à une étude d
 // l'anglais de l'accueil n'est plus servi en français.
 // ———————————————————————————————————————————————————————————————————————————
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { zeroFormWhatsappText } from '../src/lib/whatsapp';
 
@@ -185,7 +186,7 @@ describe('AGW402 — zeroFormWhatsappText variante pompage', () => {
   });
 
   it('les 3 pages pompage utilisent la variante pompage ; l’accueil EN passe sa langue', () => {
-    const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+    const read = (rel: string) => lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
     expect(read('../src/pages/pompage-solaire.astro')).toContain("zeroFormWhatsappText('fr', 'pompage')");
     expect(read('../src/pages/en/pompage-solaire.astro')).toContain("zeroFormWhatsappText('en', 'pompage')");
     expect(read('../src/pages/ar/pompage-solaire.astro')).toContain("zeroFormWhatsappText('ar', 'pompage')");
@@ -209,7 +210,7 @@ describe('CIW404 — WhatsApp pro sans économie ni retour', () => {
     ['AR', '../src/pages/ar/devis/mon-toit.astro'],
   ] as const) {
     it(`${lang} — le bloc pro vide lastSavingsLabel/lastKwcLabel (jamais de libellé chiffré hérité des hypothèses)`, () => {
-      const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+      const src = lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
       const debut = src.indexOf('function computeProEstimate');
       const fin = src.indexOf('interface AgricoleEstimateOk', debut);
       const bloc = fin > debut ? src.slice(debut, fin) : src.slice(debut, debut + 12000);

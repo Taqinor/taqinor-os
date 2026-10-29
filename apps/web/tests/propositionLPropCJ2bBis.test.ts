@@ -14,6 +14,7 @@
 // d'avant).
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import {
   tarifBracketStory,
@@ -25,7 +26,7 @@ import {
 } from '../src/lib/proposition';
 import { lirePageProposition } from './astroBlocsHelper';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
+const read = (rel: string) => lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
 // mon-toit.astro / proposition sources are CRLF (Windows-authored) — normalize
 // before pinning multi-line source snippets, same discipline as L-WEBT.
 const PAGE = lirePageProposition().replace(/\r\n/g, '\n');

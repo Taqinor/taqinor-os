@@ -210,10 +210,10 @@ function monterDom(html: string, route: string) {
   window.history.replaceState(null, '', route);
 }
 
-interface Enregistrement { lead: Record<string, unknown>[]; autres: string[] }
+interface Enregistrement { lead: Record<string, unknown>[]; autres: string[]; balises: string[] }
 
 function bouchonner(): Enregistrement {
-  const rec: Enregistrement = { lead: [], autres: [] };
+  const rec: Enregistrement = { lead: [], autres: [], balises: [] };
   const repondre = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -225,7 +225,21 @@ function bouchonner(): Enregistrement {
     if (url.startsWith('/api/roof-config')) return repondre({ available: false });
     return repondre({ ok: false });
   }));
-  Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: () => true });
+  // RWEB17-M9 — les balises de funnel sont désormais LUES (suite ordonnée), jeton de session masqué.
+  Object.defineProperty(navigator, 'sendBeacon', {
+    configurable: true,
+    value: (_url: string, blob: Blob) => {
+      const i = rec.balises.length;
+      rec.balises.push('');
+      const lecteur = new FileReader();
+      lecteur.onload = () => {
+        const p = JSON.parse(String(lecteur.result)) as { step: string; action: string; path: string };
+        rec.balises[i] = `${p.step}:${p.action} ${p.path}`;
+      };
+      lecteur.readAsText(blob);
+      return true;
+    },
+  });
   window.matchMedia = ((q: string) => ({
     matches: q.includes('prefers-reduced-motion'), media: q, onchange: null,
     addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
@@ -282,6 +296,7 @@ async function jouer(actions: Action[], rec: Enregistrement) {
 
 /** Exécute un parcours dans une locale ; rend le corps du lead (jetons masqués). */
 async function executer(locale: Locale, parcours: string): Promise<Record<string, unknown>> {
+  delete (ecrans[parcours] ||= {})[locale];
   const html = builtPage(ROUTES[locale]);
   const chunk = chunkDeLaPage(html);
   sessionStorage.clear();
@@ -297,6 +312,8 @@ async function executer(locale: Locale, parcours: string): Promise<Record<string
   await jouer(PARCOURS[parcours], rec);
   const erreur = document.getElementById('mt-error');
   expect(rec.lead, `aucun POST /api/capture-lead (${locale}/${parcours}) — erreur affichée : « ${erreur && !erreur.hidden ? erreur.textContent : ''} »`).toHaveLength(1);
+  await pause(30); // laisse les balises (FileReader) arriver
+  (ecrans[parcours] ||= {})[locale] = instantaneEcran(rec);
   const corps = { ...rec.lead[0] };
   for (const [cle, forme] of Object.entries(JETONS)) {
     if (cle in corps) {
@@ -306,6 +323,33 @@ async function executer(locale: Locale, parcours: string): Promise<Record<string
   }
   return corps;
 }
+
+// ── RWEB17-M9 : filet d'ÉCRAN — instantané TEXTE de l'écran au moment de l'envoi ──
+const normaliser = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
+
+/** Texte normalisé + `hidden` des zones d'estimation / d'erreur / de succès, libellés d'étape,
+ *  `hidden` des éléments `mt-*`, `aria-pressed` des cartes, et la suite des balises de funnel. */
+function instantaneEcran(rec: Enregistrement): Record<string, unknown> {
+  const zones: Record<string, unknown> = {};
+  const zoneIds = ['mt-estimate-announce', 'mt-error', 'mt-success', ...Array.from(document.querySelectorAll('[id^="mt-est-"]')).map((e) => e.id)];
+  for (const id of [...new Set(zoneIds)].sort()) {
+    const e = document.getElementById(id);
+    zones[id] = e ? { texte: normaliser(e.textContent), hidden: e.hidden } : null;
+  }
+  const cartes: Record<string, string> = {};
+  document.querySelectorAll<HTMLElement>('[aria-pressed]').forEach((e, i) => {
+    const donnees = Object.entries(e.dataset).map(([k, v]) => `${k}=${v}`).join(',');
+    cartes[`${String(i).padStart(3, '0')} ${e.id || e.className} ${donnees}`.trim()] = e.getAttribute('aria-pressed') ?? '';
+  });
+  return {
+    libellesEtapes: Array.from(document.querySelectorAll('.mt-step-label')).map((e) => normaliser(e.textContent)),
+    masques: Array.from(document.querySelectorAll<HTMLElement>('[id^="mt-"]')).filter((e) => e.hidden).map((e) => e.id).sort(),
+    zones,
+    cartes,
+    balises: rec.balises,
+  };
+}
+const ecrans: Record<string, Partial<Record<Locale, Record<string, unknown>>>> = {};
 
 // ── les tests ────────────────────────────────────────────────────────────────
 const corps: Record<string, Partial<Record<Locale, Record<string, unknown>>>> = {};
@@ -330,6 +374,13 @@ describe('RWEB17 (filet) — le tunnel mon-toit EXÉCUTÉ, corps du lead par loc
           `./__snapshots__/tunnelExecution/${parcours}.${locale}.json`,
         );
       }, 60_000); // 1er import à froid du chunk (transformation vite) : plusieurs secondes.
+      it(`tunnelEcran · ${parcours} · ${locale} — écran identique au golden`, async () => {
+        const e = ecrans[parcours]?.[locale];
+        expect(e, `écran ${parcours}/${locale} non enregistré (le test du corps précédent a échoué ?)`).toBeDefined();
+        await expect(`${JSON.stringify(e, null, 2)}\n`).toMatchFileSnapshot(
+          `./__snapshots__/tunnelEcran/${parcours}.${locale}.json`,
+        );
+      });
     }
     it(`${parcours} — FR, EN et AR envoient le MÊME corps (hors clés propres à la locale)`, () => {
       const parLocale = corps[parcours];

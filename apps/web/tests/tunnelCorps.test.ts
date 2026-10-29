@@ -398,6 +398,7 @@ describe('construireCorps — le pré-contrôle passe par validateLead', () => {
 // curseur (data-touche="1"), dans les trois locales.
 // ———————————————————————————————————————————————————————————————————————————
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { lireChampsDomTunnel } from '../src/lib/tunnel/lecture';
 
@@ -442,7 +443,7 @@ describe('AGW403 — heuresPompage seulement si le curseur a été touché', () 
     ['AR', '../src/pages/ar/devis/mon-toit.astro'],
   ] as const) {
     it(`${lang} — la page pose data-touche au premier input/change du curseur`, () => {
-      const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+      const src = lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
       expect(src).toContain("heuresInput.dataset.touche = '1'");
       expect(src).toContain("heuresInput?.addEventListener('change', marquerHeuresTouchees);");
       expect(src).toContain('marquerHeuresTouchees();\n    syncHeuresLabel();'.replace(/\n/g, src.includes('\r\n') ? '\r\n' : '\n'));
@@ -524,7 +525,7 @@ describe('CIW404 — gros compte en kWh : tranche gt10000, jamais d\'erreur sur 
     ['EN', '../src/pages/en/devis/mon-toit.astro'],
     ['AR', '../src/pages/ar/devis/mon-toit.astro'],
   ] as const) {
-    const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+    const src = lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
     it(`${lang} — plus de « 1,01 » ; tarif périmé remis à null ; erreur de tranche sur le champ visible`, () => {
       expect(src).not.toMatch(/1[,.]01/);
       expect(src).toContain('lastProTarifMadKwh = null;');
@@ -702,6 +703,33 @@ describe('RWEB17-M7 — lireEtatTunnel → construireCorps = corps des goldens t
     vi.stubGlobal('localStorage', dom.window.localStorage);
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  // Fragment minimal : validation d'étape et blur, messages de CHAQUE locale.
+  const MESSAGES_M7: Record<LocaleM7, { type: string; nom: string; facture: string }> = {
+    fr: { type: 'Choisissez votre type de projet pour continuer.', nom: 'Nom complet requis', facture: 'Indiquez votre facture : montant exact ou tranche.' },
+    en: { type: 'Choose your project type to continue.', nom: 'Full name required', facture: 'Enter your bill: exact amount or a range.' },
+    ar: { type: 'اختاروا نوع مشروعكم للمتابعة.', nom: 'الاسم الكامل مطلوب', facture: 'أدخلوا فاتورتكم: المبلغ الدقيق أو شريحة.' },
+  };
+  for (const locale of ['fr', 'en', 'ar'] as LocaleM7[]) {
+    it(`validateStep0/1 et blur — messages ${locale}`, () => {
+      document.body.innerHTML = '<button class="mt-mode"></button><p id="mt-mode-err" hidden></p>'
+        + '<input id="mt-name"><p id="mt-name-err" hidden></p>'
+        + '<input id="mt-facture-hiver"><p id="mt-facture-hiver-err" hidden></p><select id="mt-bill"></select><p id="mt-bill-err" hidden></p>';
+      (document.defaultView as unknown as { Element: typeof Element }).Element.prototype.scrollIntoView = () => {};
+      const ctx = creerContexte(creerDom(document), creerEtat(null, locale), { locale, langueBasculable: locale !== 'en', formatNombre: String });
+      ctx.crochets.installer('isProMode', () => false);
+      const s = installerValidation(ctx, document);
+      expect(s.validateStep0()).toBe(false);
+      expect(document.getElementById('mt-mode-err')!.textContent).toBe(MESSAGES_M7[locale].type);
+      ctx.etat.mode = 'residentiel';
+      expect(s.validateStep0()).toBe(true);
+      expect(s.validateStep1()).toBe(false);
+      expect(document.getElementById('mt-facture-hiver-err')!.textContent).toBe(MESSAGES_M7[locale].facture);
+      (document.getElementById('mt-name') as HTMLInputElement).value = 'x';
+      document.getElementById('mt-name')!.dispatchEvent(new (document.defaultView as unknown as { Event: typeof Event }).Event('blur'));
+      expect(document.getElementById('mt-name-err')!.textContent).toBe(MESSAGES_M7[locale].nom);
+    });
+  }
   for (const [nom, p] of Object.entries(PARCOURS_M7)) {
     for (const locale of ['fr', 'en', 'ar'] as LocaleM7[]) {
       it(`${nom} · ${locale}`, () => {
@@ -726,7 +754,7 @@ describe('RWEB17-M7 — lireEtatTunnel → construireCorps = corps des goldens t
         ctx.crochets.installer('getOrCreateClientRef', () => 'TQ-ABCD1');
         ctx.crochets.installer('getOrCreateDedupTokens', () => ({ idempotencyKey: 'idem-12345678', eventId: 'evt-12345678' }));
         ctx.crochets.installer('readTrackingParams', () => p.tracking ?? {});
-        const { corpsDuLead } = installerValidation(ctx);
+        const { corpsDuLead } = installerValidation(ctx, document);
         const { body, errors } = corpsDuLead();
         expect(errors).toEqual({});
         const masque: Record<string, unknown> = { ...body };

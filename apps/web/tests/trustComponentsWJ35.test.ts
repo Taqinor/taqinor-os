@@ -9,21 +9,22 @@
 // realisations.ts directement.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 
 import { REALISATIONS } from '../src/lib/realisations';
 import { TESTIMONIALS, GOOGLE_RATING, hasTestimonials, hasRating } from '../src/lib/testimonials';
-import { lireAstroAvecBlocs, lirePageProposition } from './astroBlocsHelper';
+import { lireAstroAvecBlocs, lireAstroAvecModulesTunnel, lirePageProposition } from './astroBlocsHelper';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
-const read = (rel: string) => readFileSync(root(rel), 'utf-8');
+const read = (rel: string) => lireSourceTunnel(root(rel));
 
 const STAR_RATING = read('../src/components/StarRating.astro');
 const TESTIMONIAL_CAROUSEL = read('../src/components/TestimonialCarousel.astro');
 const INSTALL_COUNTER = read('../src/components/InstallCounter.astro');
 const CERT_LOGO_ROW = read('../src/components/CertLogoRow.astro');
 // ENF19 — la page est lue avec ses blocs partagés (components/blocs) déroulés.
-const MON_TOIT = lireAstroAvecBlocs(root('../src/pages/devis/mon-toit.astro'));
+const MON_TOIT = lireAstroAvecModulesTunnel(root('../src/pages/devis/mon-toit.astro'));
 const PROPOSITION = lirePageProposition();
 
 describe('WJ35/WN6 — StarRating : jamais de note/avis fabriqués, jamais un scaffold "bientôt"', () => {
