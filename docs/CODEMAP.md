@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 2479635e561b8bfc1af619ec30af8728b934efddf349238a08c2a1ec3838e291
+Structure fingerprint: 64a7acaa4ce05e9bd0e5dd89bca4122c84aa78ef5330f76b57bcce0db1c2cb89
 Plan fingerprint: 3a943a6cd5eeda01a16906a359719e8f9712122f24d538c8bbf3be2fab5de06f
 
 
