@@ -6,7 +6,7 @@
 // jamais fabriquer ». Une question qu'on n'a pas posée est une clé ABSENTE —
 // jamais un `false`, un `0` ou une chaîne vide inventés à sa place.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { construireCorps, type MessagesErreurs } from '../src/lib/tunnel/corps';
 import { CHAMPS_TUNNEL, etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
 
@@ -398,6 +398,7 @@ describe('construireCorps — le pré-contrôle passe par validateLead', () => {
 // curseur (data-touche="1"), dans les trois locales.
 // ———————————————————————————————————————————————————————————————————————————
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { lireChampsDomTunnel } from '../src/lib/tunnel/lecture';
 
@@ -442,7 +443,7 @@ describe('AGW403 — heuresPompage seulement si le curseur a été touché', () 
     ['AR', '../src/pages/ar/devis/mon-toit.astro'],
   ] as const) {
     it(`${lang} — la page pose data-touche au premier input/change du curseur`, () => {
-      const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+      const src = lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
       expect(src).toContain("heuresInput.dataset.touche = '1'");
       expect(src).toContain("heuresInput?.addEventListener('change', marquerHeuresTouchees);");
       expect(src).toContain('marquerHeuresTouchees();\n    syncHeuresLabel();'.replace(/\n/g, src.includes('\r\n') ? '\r\n' : '\n'));
@@ -524,7 +525,7 @@ describe('CIW404 — gros compte en kWh : tranche gt10000, jamais d\'erreur sur 
     ['EN', '../src/pages/en/devis/mon-toit.astro'],
     ['AR', '../src/pages/ar/devis/mon-toit.astro'],
   ] as const) {
-    const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+    const src = lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
     it(`${lang} — plus de « 1,01 » ; tarif périmé remis à null ; erreur de tranche sur le champ visible`, () => {
       expect(src).not.toMatch(/1[,.]01/);
       expect(src).toContain('lastProTarifMadKwh = null;');
@@ -638,4 +639,129 @@ describe('WEBERR-TUNNEL-PAYBACK-FR — estimateShown.paybackLabel dans la langue
     expect(libelleRetourLocale('8 سنة', 'ar')).toBe('8 سنة');
     expect(avec(MESSAGES).paybackLabel).toBe('4 à 6 ans');
   });
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+// RWEB17-M7 — `lireEtatTunnel` (lib/tunnel/validation.ts) : sur un DOM rempli
+// comme chaque parcours des goldens tunnelExecution, `construireCorps` rend le
+// corps du golden (jetons masqués), dans les trois locales.
+// ———————————————————————————————————————————————————————————————————————————
+import { JSDOM } from 'jsdom';
+import { readFileSync as lireGolden } from 'node:fs';
+import { dirname, join as joinM7 } from 'node:path';
+import { creerContexte } from '../src/lib/tunnel/contexte';
+import { creerDom } from '../src/lib/tunnel/dom';
+import { creerEtat, type LocaleTunnel as LocaleM7 } from '../src/lib/tunnel/etat';
+import { installerValidation } from '../src/lib/tunnel/validation';
+
+const IDS_M7 = [
+  'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-consent', 'mt-contact-phone', 'mt-facture-hiver', 'mt-bill',
+  'mt-raison-sociale', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage', 'mt-culture',
+  'mt-surface-ha', 'mt-fuel-spend', 'mt-equip-ve', 'mt-equip-ve-km', 'mt-hp', 'mt-pro-bill', 'mt-cc-bill',
+];
+interface ParcoursM7 {
+  champs: Record<string, string>; coches: string[]; touche?: string[];
+  etat: Record<string, unknown>; proBillId?: string; proUnite?: string;
+  tracking?: Record<string, string>; consentement?: boolean;
+}
+const CONTACT_M7 = { 'mt-name': 'Karim Benali', 'mt-phone': '0612345678', 'mt-city': 'Casablanca, Maarif', 'mt-email': 'karim@example.com' };
+const PARCOURS_M7: Record<string, ParcoursM7> = {
+  residentiel: {
+    champs: { ...CONTACT_M7, 'mt-facture-hiver': '1800', 'mt-bill': '1500-3000', 'mt-equip-ve-km': '250' },
+    coches: ['mt-consent', 'mt-contact-phone', 'mt-equip-ve'],
+    etat: { mode: 'residentiel', occupationJour: 'present' }, consentement: true,
+    tracking: { fbclid: 'fb.1.123', utm_source: 'facebook', utm_campaign: 'toit-casa' },
+  },
+  residentiel_tranche: {
+    champs: { ...CONTACT_M7, 'mt-bill': '1500-3000' }, coches: ['mt-consent'], etat: { mode: 'residentiel' },
+  },
+  industriel: {
+    champs: { ...CONTACT_M7, 'mt-pro-bill': '42000', 'mt-surface-m2': '900', 'mt-raison-sociale': 'Atlas Plast SARL' },
+    coches: ['mt-consent'], proBillId: 'mt-pro-bill', proUnite: 'mad',
+    etat: { mode: 'industriel', tension: 'mt', tensionTouched: true, activity: 'continuous', activityTouched: true, equipes: '3x8', surfaceType: 'terrasse' },
+  },
+  commercial: {
+    champs: { ...CONTACT_M7, 'mt-cc-bill': '9000', 'mt-raison-sociale': 'Hôtel Les Palmiers' },
+    coches: ['mt-consent'], proBillId: 'mt-cc-bill', proUnite: 'kwh',
+    etat: { mode: 'commercial', commercialCategory: 'hotel', lastProTarifMadKwh: 1.3 },
+  },
+  agricole: {
+    champs: { ...CONTACT_M7, 'mt-profondeur': '60', 'mt-hmt': '85', 'mt-water-need': '30', 'mt-heures-pompage': '9', 'mt-culture': 'agrumes', 'mt-surface-ha': '4', 'mt-fuel-spend': '2500' },
+    coches: ['mt-consent'], touche: ['mt-heures-pompage'],
+    etat: { mode: 'agricole', waterSource: 'forage', regionAgricole: 'souss-massa' },
+  },
+};
+
+describe('RWEB17-M7 — lireEtatTunnel → construireCorps = corps des goldens tunnelExecution', () => {
+  // Ce module reste en environnement node (autres tests) : le DOM est un JSDOM local.
+  beforeEach(() => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://taqinor.ma/devis/mon-toit' });
+    dom.window.matchMedia = (() => ({ matches: false })) as unknown as typeof dom.window.matchMedia;
+    vi.stubGlobal('window', dom.window);
+    vi.stubGlobal('document', dom.window.document);
+    vi.stubGlobal('sessionStorage', dom.window.sessionStorage);
+    vi.stubGlobal('localStorage', dom.window.localStorage);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  // Fragment minimal : validation d'étape et blur, messages de CHAQUE locale.
+  const MESSAGES_M7: Record<LocaleM7, { type: string; nom: string; facture: string }> = {
+    fr: { type: 'Choisissez votre type de projet pour continuer.', nom: 'Nom complet requis', facture: 'Indiquez votre facture : montant exact ou tranche.' },
+    en: { type: 'Choose your project type to continue.', nom: 'Full name required', facture: 'Enter your bill: exact amount or a range.' },
+    ar: { type: 'اختاروا نوع مشروعكم للمتابعة.', nom: 'الاسم الكامل مطلوب', facture: 'أدخلوا فاتورتكم: المبلغ الدقيق أو شريحة.' },
+  };
+  for (const locale of ['fr', 'en', 'ar'] as LocaleM7[]) {
+    it(`validateStep0/1 et blur — messages ${locale}`, () => {
+      document.body.innerHTML = '<button class="mt-mode"></button><p id="mt-mode-err" hidden></p>'
+        + '<input id="mt-name"><p id="mt-name-err" hidden></p>'
+        + '<input id="mt-facture-hiver"><p id="mt-facture-hiver-err" hidden></p><select id="mt-bill"></select><p id="mt-bill-err" hidden></p>';
+      (document.defaultView as unknown as { Element: typeof Element }).Element.prototype.scrollIntoView = () => {};
+      const ctx = creerContexte(creerDom(document), creerEtat(null, locale), { locale, langueBasculable: locale !== 'en', formatNombre: String });
+      ctx.crochets.installer('isProMode', () => false);
+      const s = installerValidation(ctx, document);
+      expect(s.validateStep0()).toBe(false);
+      expect(document.getElementById('mt-mode-err')!.textContent).toBe(MESSAGES_M7[locale].type);
+      ctx.etat.mode = 'residentiel';
+      expect(s.validateStep0()).toBe(true);
+      expect(s.validateStep1()).toBe(false);
+      expect(document.getElementById('mt-facture-hiver-err')!.textContent).toBe(MESSAGES_M7[locale].facture);
+      (document.getElementById('mt-name') as HTMLInputElement).value = 'x';
+      document.getElementById('mt-name')!.dispatchEvent(new (document.defaultView as unknown as { Event: typeof Event }).Event('blur'));
+      expect(document.getElementById('mt-name-err')!.textContent).toBe(MESSAGES_M7[locale].nom);
+    });
+  }
+  for (const [nom, p] of Object.entries(PARCOURS_M7)) {
+    for (const locale of ['fr', 'en', 'ar'] as LocaleM7[]) {
+      it(`${nom} · ${locale}`, () => {
+        const golden = JSON.parse(lireGolden(joinM7(dirname(fileURLToPath(import.meta.url)), '__snapshots__', 'tunnelExecution', `${nom}.${locale}.json`), 'utf-8'));
+        sessionStorage.clear();
+        localStorage.clear();
+        if (p.consentement) localStorage.setItem('tq_consent', 'granted');
+        for (const [k, v] of Object.entries(p.tracking ?? {})) sessionStorage.setItem('tq_' + k, v);
+        const casesM7 = ['mt-consent', 'mt-contact-phone', 'mt-equip-ve'];
+        document.body.innerHTML = IDS_M7.map((id) => `<input id="${id}"${casesM7.includes(id) ? ' type="checkbox"' : ''}>`).join('');
+        for (const [id, v] of Object.entries(p.champs)) (document.getElementById(id) as HTMLInputElement).value = v;
+        for (const id of p.coches) (document.getElementById(id) as HTMLInputElement).checked = true;
+        for (const id of p.touche ?? []) document.getElementById(id)!.setAttribute('data-touche', '1');
+        const etat = creerEtat(null, locale);
+        Object.assign(etat, p.etat, { currentLang: locale === 'ar' ? 'ar' : 'fr', estimateShown: golden.estimateShown ?? null });
+        const ctx = creerContexte(creerDom(document), etat, { locale, langueBasculable: locale !== 'en', formatNombre: (n) => String(n) });
+        ctx.crochets.installer('langueActive', () => (locale === 'en' ? 'en' : etat.currentLang));
+        ctx.crochets.installer('isProMode', (m: string) => m === 'industriel' || m === 'commercial');
+        ctx.crochets.installer('proBillId', () => p.proBillId ?? 'mt-pro-bill');
+        ctx.crochets.installer('proBillErrId', () => `${p.proBillId ?? 'mt-pro-bill'}-err`);
+        ctx.crochets.installer('proBillUnit', () => p.proUnite ?? 'mad');
+        ctx.crochets.installer('getOrCreateClientRef', () => 'TQ-ABCD1');
+        ctx.crochets.installer('getOrCreateDedupTokens', () => ({ idempotencyKey: 'idem-12345678', eventId: 'evt-12345678' }));
+        ctx.crochets.installer('readTrackingParams', () => p.tracking ?? {});
+        const { corpsDuLead } = installerValidation(ctx, document);
+        const { body, errors } = corpsDuLead();
+        expect(errors).toEqual({});
+        const masque: Record<string, unknown> = { ...body };
+        for (const cle of ['idempotencyKey', 'eventId', 'clientRef', 'appareilId']) if (cle in masque) masque[cle] = `<${cle}>`;
+        const trie = (o: Record<string, unknown>) => Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]]));
+        expect(trie(masque)).toEqual(trie(golden));
+      });
+    }
+  }
 });

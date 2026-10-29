@@ -35,13 +35,13 @@ import { monthlyWaterDemand } from '../src/lib/agronomy';
 // couvre les trois locales par construction.
 import { CHAMPS_TUNNEL, etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
 import { construireCorps } from '../src/lib/tunnel/corps';
-import { lireAstroAvecBlocs } from './astroBlocsHelper';
+import { lireAstroAvecModulesTunnel } from './astroBlocsHelper';
 
 // ENF19 — le balisage partagé fr/en/ar vit dans components/blocs : les pages .astro sont lues avec
 // leurs blocs déroulés (le reste — scripts .ts — est lu tel quel).
 const read = (rel: string) => {
   const chemin = fileURLToPath(new URL(rel, import.meta.url));
-  return rel.endsWith('.astro') ? lireAstroAvecBlocs(chemin) : readFileSync(chemin, 'utf-8');
+  return rel.endsWith('.astro') ? lireAstroAvecModulesTunnel(chemin) : readFileSync(chemin, 'utf-8');
 };
 
 const LOCALES: Array<[string, string]> = [

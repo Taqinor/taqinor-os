@@ -50,12 +50,12 @@ import { validateLead } from '../src/lib/lead';
 import { CHAMPS_DOM_TUNNEL, lireChampsDomTunnel, type ChampDomTunnel } from '../src/lib/tunnel/lecture';
 import { construireCorps, type LocaleTunnel } from '../src/lib/tunnel/corps';
 import { ERREURS } from '../src/lib/tunnel/i18n';
-import { lireAstroAvecBlocs } from './astroBlocsHelper';
+import { lireAstroAvecBlocs, lireAstroAvecModulesTunnel } from './astroBlocsHelper';
 
 // ENF19 — blocs partagés (components/blocs) déroulés dans la source de la page.
 const read = (rel: string) => {
   const chemin = fileURLToPath(new URL(rel, import.meta.url));
-  return rel.endsWith('.astro') ? lireAstroAvecBlocs(chemin) : readFileSync(chemin, 'utf-8');
+  return rel.endsWith('.astro') ? lireAstroAvecModulesTunnel(chemin) : readFileSync(chemin, 'utf-8');
 };
 
 const SOURCES: Array<[LocaleTunnel, string]> = [
@@ -433,7 +433,9 @@ describe('QJR664 — graphe « Une journée type » : parité FR / EN / AR', () 
   });
 
   it('plus aucune copie inline du rendu dans les pages', () => {
-    for (const [loc, src] of SOURCES) {
+    // La page SEULE (sans ses modules : le rendu partagé vit justement dans l'un d'eux).
+    for (const [loc, rel] of [['fr', '../src/pages/devis/mon-toit.astro'], ['en', '../src/pages/en/devis/mon-toit.astro'], ['ar', '../src/pages/ar/devis/mon-toit.astro']]) {
+      const src = lireAstroAvecBlocs(fileURLToPath(new URL(rel, import.meta.url)));
       expect(src, loc).not.toContain('function jourTypeChartSvg');
       expect(src, loc).not.toContain('function renderJourType');
     }

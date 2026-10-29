@@ -5,6 +5,7 @@
 // regionAgricole traverse validateLead.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -26,7 +27,7 @@ import { etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
 import { construireCorps } from '../src/lib/tunnel/corps';
 
 const read = (rel: string) =>
-  readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+  lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
 
 const LOCALES: Array<[string, string]> = [
   ['FR', '../src/pages/devis/mon-toit.astro'],
