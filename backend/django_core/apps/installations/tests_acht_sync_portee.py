@@ -169,7 +169,8 @@ class LectureChantierTechnicienInterventionTests(TestCase):
         data = self._api(self.b).get(
             '/api/django/installations/chantiers/').data
         lignes = data['results'] if isinstance(data, dict) else data
-        self.assertEqual([c['id'] for c in lignes].count(self.inst.id), 1)
+        # La fiche seule s'ouvre : la LISTE reste bornée (ACHT50 / ACHT79).
+        self.assertNotIn(self.inst.id, [c['id'] for c in lignes])
 
     def test_technicien_non_assigne_meme_societe_404(self):
         r = self._api(self.c).get(self.URL.format(self.inst.id))

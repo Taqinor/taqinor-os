@@ -1138,7 +1138,7 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
             conception, saisies, user=user,
             verdicts_publies=_verdicts_electriques(
                 conception, materiel.get('optimiseur'),
-                materiel['designations'].get('optimiseur', ''),
+                (materiel.get('designations') or {}).get('optimiseur', ''),
                 reglages=_reglages_electrique_societe(calepinage)))
 
     avant_saisie = dict(entree_stockee(calepinage))
