@@ -77,11 +77,13 @@ class InterventionInstallationTests(TestCase):
         self.assertIsNone(self.interv.equipe_ref_id)
         self.assertFalse(self.interv.equipe.filter(pk=self.tech_b.pk).exists())
 
-    def test_technicien_responsable_etranger_400(self):
+    def test_technicien_responsable_etranger_404(self):
+        # api-fuzz-full 28/10 (ENF11) : IdInconnu404Mixin — un technicien d'une
+        # autre société répond comme un id absent : 404, même corps.
         r = self.api.patch(f'{BASE}/chantiers/{self.inst.pk}/',
                            {'technicien_responsable': self.tech_b.pk},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('technicien_responsable', r.data)
         self.inst.refresh_from_db()
         self.assertIsNone(self.inst.technicien_responsable_id)
