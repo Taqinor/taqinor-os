@@ -1,0 +1,48 @@
+{
+ "etape": "P1.9",
+ "titre": "Export anonymise : admin 200, commercial 404, aucun telephone ni nom",
+ "taches": [
+  "AIC11"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "totaux": {
+   "par_intention": {
+    "question_manuel": 2,
+    "donnee": 2,
+    "action": 4,
+    "bug": 4,
+    "manque": 1,
+    "hors_champ": 2
+   },
+   "non_supportes": 3
+  },
+  "periode": {
+   "depuis": "2026-10-29T00:00:00Z",
+   "jusqu_a": "2026-10-31T00:00:00Z"
+  },
+  "n": 15,
+  "cles": [
+   "commentaire_anonymise",
+   "ecran",
+   "erreur",
+   "horodatage",
+   "id_hache",
+   "intention",
+   "modele",
+   "note",
+   "question_anonymisee",
+   "repli",
+   "resume_reponse_anonymise",
+   "utilisateur_hache"
+  ],
+  "exemples": [
+   "Résume-moi le lead 2344 avant mon appel.",
+   "Ajoute une note au lead 2344 : appel de test acceptation AIC13, client intéressé par une visite.",
+   "Envoie un e-mail au client du lead 2344 pour le relancer.",
+   "Pose la date de relance du lead 2344 à demain matin.",
+   "Résume-moi le lead [num] avant mon appel.",
+   "Crée un devis agricole de pompage pour le lead 2344."
+  ]
+ }
+}

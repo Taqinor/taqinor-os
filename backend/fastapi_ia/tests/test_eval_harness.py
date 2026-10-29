@@ -86,9 +86,20 @@ class EvalHarnessTests(unittest.TestCase):
             return
         modele = runner.svc._modele_effectif(runner.svc.SQL_AGENT_PROVIDER.lower())
         juge = os.environ["SQL_AGENT_JUGE_MODEL"]
+        # AIC13 (29/10/2026) : avec ASSISTANT_EVAL_TOKEN (jeton d acces du
+        # commercial evalue), le rejeu porte les outils d action du registre ;
+        # sans jeton, l agent repond en lecture seule (cas donnee/action non jouables).
+        ctx = None
+        jeton = os.environ.get("ASSISTANT_EVAL_TOKEN", "").strip()
+        if jeton:
+            from app.services.action_tools import ActionContext, resolve_caller_permissions
+            ctx = ActionContext(
+                company_id=int(os.environ.get("ASSISTANT_EVAL_COMPANY_ID", "1")),
+                role="normal", permissions=[], token=jeton, is_superuser=False)
+            resolve_caller_permissions(ctx)
         rapport = runner.run_eval_commerciaux(
             runner.repondeur_reel(int(os.environ.get("ASSISTANT_EVAL_COMPANY_ID", "1")),
-                                  int(os.environ.get("ASSISTANT_EVAL_USER_ID", "1"))),
+                                  int(os.environ.get("ASSISTANT_EVAL_USER_ID", "1")), ctx),
             runner.juge_reel(juge), modele, juge)
         self.assertTrue(os.path.exists(runner.ecrire_rapport(rapport)))
 

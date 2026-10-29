@@ -1,0 +1,37 @@
+{
+ "etape": "P1.6",
+ "titre": "Pouce bas du commercial : PATCH note -1 persistee",
+ "taches": [
+  "AIC6"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "patch": {
+   "id": 3,
+   "note": -1,
+   "commentaire": "test AIC13 : pouce bas"
+  },
+  "evenement": {
+   "id": 3,
+   "intention": "donnee",
+   "modele": "claude-sonnet-5-5",
+   "repli": false,
+   "manuel_present": true,
+   "tokens": {
+    "input": 945,
+    "output": 275,
+    "cache_read": 68068
+   },
+   "outils_appeles": [],
+   "erreur": null,
+   "note": -1,
+   "commentaire": "test AIC13 : pouce bas",
+   "lead_id": 2344,
+   "ecran": "/crm/leads/2344",
+   "user_id": 286,
+   "question": "Envoie un e-mail au client du lead 2344 pour le relancer.",
+   "resume": "Je ne peux pas envoyer d'e-mail. L'assistant ne fait que préparer le texte, et c'est vous qui l'envoyez.\n\nJe peux rédiger un brouillon de relance pour le lead #",
+   "cree_le": "2026-10-29T21:17:26.805925+00:00"
+  }
+ }
+}

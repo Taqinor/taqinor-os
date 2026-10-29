@@ -1,0 +1,434 @@
+{
+ "etape": "P1.4",
+ "titre": "Action a risque : accepter le devis — proposition puis confirmation",
+ "taches": [
+  "AIC40",
+  "AIC6",
+  "AIC13"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "proposal_keys": [
+   "action_key",
+   "confirm_token",
+   "human_preview",
+   "inputs"
+  ],
+  "confirm": {
+   "ok": true,
+   "action_key": "ventes.devis.accepter",
+   "detail": "Action executee.",
+   "data": {
+    "id": 1468,
+    "lignes": [
+     {
+      "id": 13172,
+      "total_ht": "12345.67",
+      "produit_tva": null,
+      "groupe_client": null,
+      "designation": "Onduleur hybride Deye 5kW Monophasé",
+      "quantite": "1.00",
+      "prix_unitaire": "12345.67",
+      "remise": "0.00",
+      "type_ligne": "produit",
+      "ordre": 0,
+      "taux_tva": "20.00",
+      "tva_base_legale": "",
+      "groupe_index": null,
+      "groupe_label": "",
+      "optionnelle": false,
+      "variante": "",
+      "quantite_manuelle": false,
+      "prix_manuel": false,
+      "ligne_composee": null,
+      "role_devis": "onduleur_hybride",
+      "devis": 1468,
+      "produit": 2282,
+      "lot": null
+     },
+     {
+      "id": 13173,
+      "total_ht": "9876.56",
+      "produit_tva": null,
+      "groupe_client": null,
+      "designation": "Panneau Canadian Solar 710W",
+      "quantite": "8.00",
+      "prix_unitaire": "1234.57",
+      "remise": "0.00",
+      "type_ligne": "produit",
+      "ordre": 1,
+      "taux_tva": "10.00",
+      "tva_base_legale": "",
+      "groupe_index": null,
+      "groupe_label": "",
+      "optionnelle": false,
+      "variante": "",
+      "quantite_manuelle": false,
+      "prix_manuel": false,
+      "ligne_composee": null,
+      "role_devis": "panneau",
+      "devis": 1468,
+      "produit": 2283,
+      "lot": null
+     },
+     {
+      "id": 13174,
+      "total_ht": "3333.36",
+      "produit_tva": null,
+      "groupe_client": null,
+      "designation": "Structures acier",
+      "quantite": "8.00",
+      "prix_unitaire": "416.67",
+      "remise": "0.00",
+      "type_ligne": "produit",
+      "ordre": 2,
+      "taux_tva": "20.00",
+      "tva_base_legale": "",
+      "groupe_index": null,
+      "groupe_label": "",
+      "optionnelle": false,
+      "variante": "",
+      "quantite_manuelle": false,
+      "prix_manuel": false,
+      "ligne_composee": null,
+      "role_devis": "structure",
+      "devis": 1468,
+      "produit": 2284,
+      "lot": null
+     },
+     {
+      "id": 13175,
+      "total_ht": "3333.33",
+      "produit_tva": null,
+      "groupe_client": null,
+      "designation": "Installation",
+      "quantite": "1.00",
+      "prix_unitaire": "3333.33",
+      "remise": "0.00",
+      "type_ligne": "produit",
+      "ordre": 3,
+      "taux_tva": "20.00",
+      "tva_base_legale": "",
+      "groupe_index": null,
+      "groupe_label": "",
+      "optionnelle": false,
+      "variante": "",
+      "quantite_manuelle": false,
+      "prix_manuel": false,
+      "ligne_composee": null,
+      "role_devis": "installation",
+      "devis": 1468,
+      "produit": 2285,
+      "lot": null
+     }
+    ],
+    "total_ht": "27365.23",
+    "total_tva": "4534.77",
+    "total_ttc": "31900.00",
+    "total_affiche": 31900.0,
+    "nb_options": 1,
+    "client_nom": "ATOT17 Client mvsshvf21",
+    "lead_nom": "ATOT17 Client mvsshvf21",
+    "updated_by_nom": "demo_admin",
+    "lead_facture_hiver": null,
+    "lead_type_installation": null,
+    "lead_meta_ad_id": null,
+    "lead_valeurs_modifiees": [],
+    "layout_stale": false,
+    "layout_nb_panneaux": 0,
+    "calepinage": null,
+    "solde": {
+     "total_ttc": "31900.00",
+     "facture": "0.00",
+     "paye": "0.00",
+     "avoirs": "0.00",
+     "restant": "31900.00",
+     "tranches_total": "3",
+     "tranches_facturees": "0",
+     "porte_facturation": "libre",
+     "facturation_terminee": "False",
+     "emis": "0.00",
+     "brouillons": "9570.00",
+     "reste_a_facturer": "22330.00"
+    },
+    "vente": {
+     "prix_convenu_ttc": "31900.00",
+     "emis_ttc": "0.00",
+     "brouillons_ttc": "9570.00",
+     "paye_ttc": "0.00",
+     "reste_a_facturer_ttc": "22330.00",
+     "reste_a_payer_ttc": "31900.00",
+     "acompte_propose": "9570.00",
+     "factures": [
+      {
+       "id": 622,
+       "reference": "BROUILLON-622",
+       "nature": "acompte",
+       "statut": "brouillon",
+       "total_ttc": "9570.00",
+       "montant_paye": "0.00",
+       "date_emission": null,
+       "paiements": [],
+       "peut": {
+        "emettre": true,
+        "pdf": true,
+        "envoyer": false,
+        "encaisser": false,
+        "annuler": false,
+        "supprimer": false,
+        "modifier_montant": false
+       }
+      }
+     ],
+     "versions": [
+      {
+       "id": 1468,
+       "reference": "DEV-202610-0107",
+       "version": 1,
+       "statut": "accepte",
+       "is_active": true
+      }
+     ],
+     "est_tete": true,
+     "tete_id": 1468,
+     "revision_en_cours": null,
+     "prochaine_action": "acompte",
+     "raison_bloquee": "L'acompte est en brouillon : émettez-le.",
+     "prochaines_echeances": [
+      {
+       "cle": "materiel",
+       "libelle": "Livraison du matériel",
+       "montant_ttc": "19140.00"
+      },
+      {
+       "cle": "solde",
+       "libelle": "Solde",
+       "montant_ttc": "3190.00"
+      }
+     ],
+     "peut": {
+      "facturer_acompte": true,
+      "facturer_solde": false,
+      "facturer_complete": false,
+      "prix_negocie": false,
+      "modifier_echeancier": false
+     }
+    },
+    "is_expired": false,
+    "date_expiration": "2026-11-12",
+    "superseded_by_ref": null,
+    "version_parent_ref": null,
+    "a_variantes": false,
+    "modifiable": false,
+    "raison_non_modifiable": "Devis accepté : révisez-le",
+    "revision_possible": true,
+    "chantier": {
+     "id": 461,
+     "reference": "CHT-202610-0176",
+     "statut": "signe"
+    },
+    "factures_liees": [
+     {
+      "id": 622,
+      "reference": "BROUILLON-622",
+      "statut": "brouillon",
+      "statut_display": "Brouillon",
+      "type_facture": "acompte"
+     }
+    ],
+    "bon_commande_etat": {
+     "exists": false,
+     "reference": null,
+     "statut": null,
+     "statut_display": null,
+     "mismatch": true
+    },
+    "comparaison_options": null,
+    "est_signe": true,
+    "signature_info": {
+     "signataire_nom": "",
+     "signed_at": "2026-10-29T21:21:21.766480+00:00",
+     "has_pdf": false,
+     "pdf_signe": "en_preparation",
+     "empreinte_contenu": "64e734292cdbbc[num]fd01d8b[num]c6dbdfd4a[num]ce8e",
+     "empreinte_pdf": ""
+    },
+    "nombre_vues": 0,
+    "derniere_consultation": null,
+    "deja_consulte": false,
+    "engagement": {},
+    "marge_snapshot": null,
+    "reference": "DEV-202610-0107",
+    "retenue_garantie": null,
+    "penalites_retard_livraison": null,
+    "caution": null,
+    "reference_commande_client": "",
+    "statut": "accepte",
+    "date_creation": "2026-10-29T00:13:06.045208Z",
+    "date_validite": "2026-11-12",
+    "taux_tva": "20.00",
+    "remise_globale": "5.00",
+    "note": null,
+    "fichier_pdf": null,
+    "date_envoi": "2026-10-29T00:13:09.961350Z",
+    "date_acceptation": "2026-10-29",
+    "accepte_par_nom": "",
+    "date_refus": null,
+    "motif_refus": "",
+    "option_acceptee": "sans_batterie",
+    "mode_installation": null,
+    "etude_params": {
+     "provenance": {
+      "valeurs": {
+       "ville": "Casablanca",
+       "gps_lat": null,
+       "gps_lng": null,
+       "bill_kwh": null,
+       "facture_ete": null,
+       "orientation": null,
+       "pompe_hmt_m": null,
+       "raccordement": null,
+       "type_toiture": null,
+       "facture_hiver": null,
+       "ete_differente": false,
+       "structure_pref": null,
+       "inclinaison_deg": null,
+       "pompe_debit_m3h": null,
+       "ville_reference": "",
+       "pompe_actuelle_cv": null,
+       "structure_produit": null,
+       "type_installation": null,
+       "batterie_souhaitee": null,
+       "surface_toiture_m2": null,
+       "conso_mensuelle_kwh": null,
+       "pompe_alim_actuelle": null,
+       "taille_souhaitee_kwc": null
+      },
+      "captured_at": "2026-10-29T00:13:06.362659+00:00",
+      "source_lead_id": 2344
+     },
+     "ville_calcul": {
+      "ville": "Casablanca",
+      "reference": "Casablanca"
+     },
+     "puissance_kwc": 5.68
+    },
+    "echeancier": [
+     {
+      "type": "acompte",
+      "libelle": "Acompte",
+      "pct_or_montant": 30.0,
+      "unite": "pct",
+      "fige_le": "2026-10-29T21:21:21.771511+00:00"
+     },
+     {
+      "type": "materiel",
+      "libelle": "Livraison du matériel",
+      "pct_or_montant": 60.0,
+      "unite": "pct",
+      "fige_le": "2026-10-29T21:21:21.771511+00:00"
+     },
+     {
+      "type": "solde",
+      "libelle": "Solde",
+      "pct_or_montant": 10.0,
+      "unite": "pct",
+      "fige_le": "2026-10-29T21:21:21.771511+00:00"
+     }
+    ],
+    "prix_cible_kwc": null,
+    "prix_par_kwc": "5616.20",
+    "remise_approuvee": false,
+    "remise_approuvee_pct": null,
+    "regles_calcul": 3,
+    "version": 1,
+    "is_active": true,
+    "custom_data": null,
+    "devise": "MAD",
+    "taux_change": "1.000000",
+    "roof_layout": null,
+    "roof_image": null,
+    "layout_hash": null,
+    "pdf_render_meta": null,
+    "electrical_design": null,
+    "electrical_design_hash": null,
+    "updated_at": "2026-10-29T00:13:07.861208Z",
+    "variante_tier": "",
+    "numero_renouvellement": 0,
+    "clauses_appliquees": [
+     {
+      "type": "doc_texts_geles",
+      "textes": {
+       "bpa_titre": "Bon pour accord",
+       "cgv_titre": "Conditions générales du devis",
+       "bpa_mention": "Lu et approuvé — Signature précédée de « Bon pour accord »",
+       "cgv_bullets": [
+        "{validite_offre}",
+        "Acompte à la commande&#160;: {acompte}&#37;",
+        "{materiel}&#37; à la réception du matériel",
+        "{solde}&#37; après la mise en marche",
+        "{tva_note}",
+        "Tarifs de référence&#160;: barème ONEE/SRM"
+       ],
+       "garantie_titre": "",
+       "garantie_detail": "",
+       "acceptance_stamp": "Accepté le {date} par {nom}",
+       "validite_onepage": "&#183; {validite}",
+       "validite_badge_p1": "{validite}",
+       "garantie_perf_label": "Performance panneau"
+      },
+      "version": 11
+     }
+    ],
+    "offres_tailles_config": null,
+    "overrides": null,
+    "company": 1,
+    "client": 761,
+    "lead": 2344,
+    "tiers_payeur": null,
+    "created_by": 1,
+    "remise_approuvee_par": null,
+    "version_parent": null,
+    "superseded_by": null,
+    "updated_by": 1,
+    "variante_de": null,
+    "devis_origine": null,
+    "entite": null
+   }
+  },
+  "agent_action_log": [
+   {
+    "id": 14,
+    "action_key": "ventes.devis.accepter",
+    "risk_level": "outward",
+    "user_id": 286,
+    "confirmed_at": "2026-10-29 21:21:22.737418+00:00",
+    "executed_at": "2026-10-29 21:21:22.736929+00:00"
+   }
+  ],
+  "evenement": {
+   "id": 7,
+   "intention": "hors_champ",
+   "modele": "claude-sonnet-5-5",
+   "repli": false,
+   "manuel_present": true,
+   "tokens": {
+    "input": 14218,
+    "output": 1251,
+    "cache_read": 340340
+   },
+   "outils_appeles": [
+    "ventes.devis.accepter"
+   ],
+   "erreur": null,
+   "note": 0,
+   "commentaire": null,
+   "lead_id": 2344,
+   "ecran": "/crm/leads/2344",
+   "user_id": 286,
+   "question": "Accepte le devis DEV-202610-0107 du lead 2344 : le client a accepté aujourd'hui.",
+   "resume": "J'ai préparé l'acceptation du devis DEV-202610-0107, mais elle n'est pas encore appliquée. Il faut d'abord que vous la confirmiez.\n\n- **Devis :** DEV-202610-010",
+   "cree_le": "2026-10-29T21:21:19.125292+00:00"
+  }
+ }
+}
