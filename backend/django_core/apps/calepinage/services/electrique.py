@@ -582,7 +582,7 @@ def _verdict_par_code(conception, code, verdicts_publies=()):
         nature=NATURE_MATERIELLE if p.get('bloquant') else NATURE_FONCTIONNELLE,
         statut=STATUT_BLOQUANT if p.get('bloquant') else STATUT_ALERTE,
         libelle=str(p.get('libelle') or code), source=str(p.get('source') or ''))
-        for p in verdicts_publies or ()
+        for p in (verdicts_publies() if callable(verdicts_publies) else verdicts_publies) or ()
         if isinstance(p, dict) and p.get('code') == code
         and p.get('conforme') is False), None)
 
@@ -1133,10 +1133,11 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         conception, materiel, _donnees, _doc = conception_du_calepinage(
             calepinage, entree=entree)
         # ACAL284 (suite) — les MÊMES verdicts que ``resultat_calepinage``
-        # sert sous ``electrique.verdicts[]`` : l'écran dérogé par ces codes.
+        # sert sous ``electrique.verdicts[]`` : l'écran dérogé par ces codes
+        # (calculés seulement si un code n'est pas un code du noyau).
         traces = _traces_de_derogation(
             conception, saisies, user=user,
-            verdicts_publies=_verdicts_electriques(
+            verdicts_publies=lambda: _verdicts_electriques(
                 conception, materiel.get('optimiseur'),
                 (materiel.get('designations') or {}).get('optimiseur', ''),
                 reglages=_reglages_electrique_societe(calepinage)))
