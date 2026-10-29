@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -207,6 +208,63 @@ class DepotReelTests(unittest.TestCase):
         self.assertTrue(base, "base vide — la mesure du jour a disparu")
         for fichier, module in base:
             self.assertTrue(module.startswith("apps.ged."), (fichier, module))
+
+
+# --- ACAL339 : plafonds des trois passifs calepinage (décroissance forcée) ---
+PLAFONDS = ROOT / "scripts" / "plafonds_calepinage.json"
+BASES_PASSIFS = {
+    "services_appeles": ("services_appeles_allow.txt", "apps/calepinage/"),
+    "actions": ("calepinage_actions_allow.txt", ""),
+    "frontiere": ("frontiere_calepinage_allow.txt", ""),
+}
+
+
+def lignes_de_base(texte: str, filtre: str = "") -> list:
+    """Lignes de dette : ni vides ni commentaires, filtrées par sous-chaîne."""
+    return [ligne.strip() for ligne in texte.splitlines()
+            if ligne.strip() and not ligne.lstrip().startswith("#")
+            and filtre in ligne]
+
+
+def comptes_reels() -> dict:
+    return {
+        cle: len(lignes_de_base(
+            (ROOT / "scripts" / fichier).read_text(encoding="utf-8"), filtre))
+        for cle, (fichier, filtre) in BASES_PASSIFS.items()
+    }
+
+
+def depassements(comptes: dict, plafonds: dict) -> list:
+    return [cle for cle in BASES_PASSIFS if comptes[cle] > plafonds[cle]]
+
+
+class PlafondsPassifsCalepinageTest(unittest.TestCase):
+
+    def setUp(self):
+        self.plafonds = json.loads(PLAFONDS.read_text(encoding="utf-8"))
+
+    def test_les_passifs_ne_depassent_pas_leur_plafond(self):
+        self.assertEqual(depassements(comptes_reels(), self.plafonds), [])
+
+    def test_une_ligne_de_plus_depasse_le_plafond(self):
+        """Test-du-test : une ligne fictive ajoutée à une copie de la base."""
+        fichier, filtre = BASES_PASSIFS["services_appeles"]
+        texte = (ROOT / "scripts" / fichier).read_text(encoding="utf-8")
+        texte += "\napps/calepinage/services/x.py::fonction_fictive\n"
+        comptes = comptes_reels()
+        comptes["services_appeles"] = len(lignes_de_base(texte, filtre))
+        self.assertEqual(depassements(comptes, self.plafonds),
+                         ["services_appeles"])
+
+    def test_le_plafond_egale_le_compte_reel(self):
+        self.assertEqual(set(self.plafonds) - {"_note"}, set(BASES_PASSIFS))
+        reels = comptes_reels()
+        for cle in BASES_PASSIFS:
+            with self.subTest(passif=cle):
+                self.assertEqual(
+                    self.plafonds[cle], reels[cle],
+                    "le plafond suit la base à la baisse : le baisser dans le "
+                    "même commit que --write-baseline")
 
 
 if __name__ == "__main__":

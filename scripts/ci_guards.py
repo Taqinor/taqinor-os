@@ -535,9 +535,6 @@ GARDES = {
         ('Test the calepinage-frontier checker itself (CALX372)',
          'python -m unittest scripts.tests.test_check_frontiere_calepinage -v',
          '.'),
-        ('Plafonds des passifs calepinage (services_appeles, actions, frontiere, ACAL339)',
-         'python -m unittest scripts.tests.test_plafonds_calepinage -v',
-         '.'),
         # QAH11 (28/09/2026) — les scripts de la QA de nuit ne tournent pas en
         # CI (Docker Desktop + planificateur Windows + claude -p) : on verrouille
         # leurs garde-fous dans le TEXTE (jamais --force, jamais d'URL prod,
