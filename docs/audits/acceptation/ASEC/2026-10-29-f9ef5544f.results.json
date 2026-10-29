@@ -1,5 +1,5 @@
 {
-  "sha": "f9ef5544fdfc3173de3435b9358b4b427f31c0fb",
+  "sha": "f9ef5544f",
   "date": "2026-10-29",
   "groupe": "ASEC",
   "verdict": "PASS",
@@ -20,7 +20,14 @@
       "oracles": {
         "1": "PASS",
         "2": "PASS",
-        "3": "PASS"
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
       },
       "trace": "lien otp_lecture neuf : écran « Proposition protégée » ; /api/proposition-pdf et /api/proposition-toiture 403 sans code"
     },
@@ -35,7 +42,14 @@
       "oracles": {
         "1": "PASS",
         "2": "PASS",
-        "3": "PASS"
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
       },
       "trace": "code reçu (console) saisi → proposition rendue (SSR avec preuve cookie httpOnly, invisible à document.cookie)"
     },
@@ -49,7 +63,14 @@
       "oracles": {
         "1": "PASS",
         "2": "PASS",
-        "3": "PASS"
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
       },
       "trace": "navigateur vérifié : PDF via relais 200 application/pdf 346 179 o, %PDF-, inline, private no-store ; liens de la page pointent /api/proposition-pdf/<jeton>"
     },
@@ -63,7 +84,14 @@
       "oracles": {
         "1": "PASS",
         "2": "PASS",
-        "3": "PASS"
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
       },
       "trace": "affiche de toiture via relais 200 image/png private max-age=300 (406 avant le correctif Accept du même jour, base FAIL)"
     },
@@ -77,7 +105,14 @@
       "oracles": {
         "1": "PASS",
         "2": "PASS",
-        "3": "PASS"
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
       },
       "trace": "second navigateur (sans cookie) : page = écran protégé, PDF/toiture/données 403"
     },
@@ -91,7 +126,14 @@
       "oracles": {
         "1": "PASS",
         "2": "PASS",
-        "3": "PASS"
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
       },
       "trace": "D-ASEC-23-CONTACT : POST contact sans preuve sur lien protégé → 200 already_sent=false"
     }
