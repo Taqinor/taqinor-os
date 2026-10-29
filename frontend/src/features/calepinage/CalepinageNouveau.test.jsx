@@ -61,13 +61,27 @@ import CalepinageNouveau from './CalepinageNouveau'
 
 const rendre = () => render(<MemoryRouter><CalepinageNouveau /></MemoryRouter>)
 
+// ACAL251 — chaque lead porte `repere_toit` tel que le SERVEUR le sert
+// (contrat crm/contract_samples/lead_repere_toit.json).
 const LEAD_AVEC_EPINGLE = {
   id: 1, nom: 'Lead', prenom: 'd’essai', ville: 'Casablanca',
   roof_point: { lat: 33.5, lng: -7.6 },
+  repere_toit: { pin: { lat: 33.5, lng: -7.6 }, source: 'roof_point', contour_utilisable: false },
 }
-const LEAD_SANS_REPERE = { id: 2, nom: 'Lead', prenom: 'sans repère', ville: 'Berrechid' }
-const LEAD_GPS_SAISI = { id: 5, nom: 'Lead', prenom: 'GPS saisi', ville: 'Settat', gps_lat: '33.0', gps_lng: '-7.6' }
-const LEAD_LAT_SEULE = { id: 6, nom: 'Lead', prenom: 'latitude seule', ville: 'Settat', gps_lat: '33.0' }
+const LEAD_SANS_REPERE = {
+  id: 2, nom: 'Lead', prenom: 'sans repère', ville: 'Berrechid',
+  repere_toit: { pin: null, source: null, contour_utilisable: false },
+}
+// GPS corrigé B hors de l'épingle A : le serveur retient B (source « gps »).
+const LEAD_GPS_SAISI = {
+  id: 5, nom: 'Lead', prenom: 'GPS saisi', ville: 'Settat', gps_lat: '33.0', gps_lng: '-7.6',
+  roof_point: { lat: 33.5, lng: -7.6 },
+  repere_toit: { pin: { lat: 33.0, lng: -7.6 }, source: 'gps', contour_utilisable: false },
+}
+const LEAD_LAT_SEULE = {
+  id: 6, nom: 'Lead', prenom: 'latitude seule', ville: 'Settat', gps_lat: '33.0',
+  repere_toit: { pin: null, source: null, contour_utilisable: false },
+}
 const CLIENT_AVEC_ADRESSE = { id: 3, nom: 'Client', prenom: 'd’essai', adresse: '12 rue d’essai' }
 const CLIENT_SANS_ADRESSE = { id: 4, nom: 'Client', prenom: 'sans adresse' }
 
@@ -173,17 +187,19 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(await screen.findByText('non renseigné')).toBeInTheDocument()
   })
 
-  it('à défaut d’épingle, les coordonnées SAISIES dans la fiche font la source', async () => {
+  it('source du repère GPS corrigé : celle SERVIE, même quand le lead porte une épingle', async () => {
+    // ACAL251 — réintroduire « roof_point prime » afficherait l'épingle : échec.
     rendre()
     await choisirDansCombobox('Lead', 'Lead GPS saisi')
-    expect(await screen.findByText(/Coordonnées GPS saisies/)).toBeInTheDocument()
+    expect(await screen.findByText('Coordonnées GPS corrigées')).toBeInTheDocument()
+    expect(screen.queryByText(/Épingle posée par le client/)).not.toBeInTheDocument()
   })
 
   it('une LATITUDE SEULE n’est pas une position : rien n’est complété', async () => {
     rendre()
     await choisirDansCombobox('Lead', 'Lead latitude seule')
     expect(await screen.findByText('non renseigné')).toBeInTheDocument()
-    expect(screen.queryByText(/Coordonnées GPS saisies/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Coordonnées GPS/)).not.toBeInTheDocument()
   })
 
   it('l’onglet Client ne promet aucun géocodage serveur et n’affiche pas de « Source du repère »', async () => {

@@ -24,11 +24,9 @@ import {
    n'apparaisse jamais — c'est la raison de fond, pas une préférence de style.
 
    LE CONTEXTE GÉOGRAPHIQUE EST LU, JAMAIS DEVINÉ (D5).
-     * Un LEAD peut porter une épingle publique `roof_point` (posée par le
-       client depuis le site), un contour `roof_outline`, ou à défaut les
-       `gps_lat`/`gps_lng` saisis côté « Toiture & site » du CRM. C'est
-       exactement le repli déjà tenu par `pinDepuisLead` dans l'atelier — on ne
-       s'en écarte pas, et on n'invente JAMAIS un centre du Maroc quand aucune
+     * Un LEAD porte LE repère toit calculé par le serveur (`repere_toit`,
+       ACAL251 : GPS corrigé, sinon épingle publique `roof_point`) — le même que
+       lit l'atelier ; on n'invente JAMAIS un centre du Maroc quand aucune
        source n'existe : l'écran affiche « non renseigné ».
      * Un CLIENT n'a PAS de `roof_point` : `crm.Client` ne porte pas ce champ.
        ACAL336 — il n'existe AUCUN géocodage serveur : son adresse préremplit
@@ -107,15 +105,17 @@ function listeServie(res) {
    composant n'exporte que des composants, et cette fonction n'a pas assez de
    vie propre pour mériter un module à elle. Elle est vérifiée À TRAVERS
    L'ÉCRAN, qui est de toute façon le seul endroit où son résultat compte. */
+/* ACAL251 — la source du repère est celle que le SERVEUR a retenue
+   (`repere_toit.source`, crm.selectors.repere_toit) : un GPS différent de
+   l'épingle vient d'une correction et prime — l'écran ne re-décide rien. */
+const LIBELLES_SOURCE_REPERE = {
+  roof_point: 'Épingle posée par le client (site web)',
+  gps: 'Coordonnées GPS corrigées',
+}
+
 function contexteDuLead(lead) {
   if (!lead) return null
-  const lat = lead.gps_lat
-  const lng = lead.gps_lng
-  const coordsSaisies = (lat != null && lng != null
-    && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)))
-  if (lead.roof_point) return { source: 'Épingle posée par le client (site web)' }
-  if (coordsSaisies) return { source: 'Coordonnées GPS saisies dans la fiche (Toiture & site)' }
-  return { source: null }
+  return { source: LIBELLES_SOURCE_REPERE[lead.repere_toit?.source] ?? null }
 }
 
 /* Le bandeau d'erreur (règle fondateur 08/09) focus le champ fautif par son

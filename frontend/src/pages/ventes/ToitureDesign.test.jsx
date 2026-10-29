@@ -365,6 +365,7 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
       id: 88, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
       telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
       roof_outline: CONTOUR_CLIENT, bill_kwh: 7200,
+      repere_toit: { pin: { lat: 33.5, lng: -7.6 }, source: 'roof_point', contour_utilisable: true },
     }
     api.get.mockImplementation((url) => {
       if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
@@ -480,6 +481,7 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
       id: 88, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
       telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
       roof_outline: CONTOUR_CLIENT, bill_kwh: 7200,
+      repere_toit: { pin: { lat: 33.5, lng: -7.6 }, source: 'roof_point', contour_utilisable: true },
     }
     api.get.mockImplementation((url) => {
       if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
@@ -695,6 +697,7 @@ describe('ToitureDesign — mode lead GOLDEN (inchangé par PV20)', () => {
     expect(options.hydrate.lead).toEqual({
       roof_point: lead.roof_point,
       roof_outline: lead.roof_outline,
+      contour_utilisable: true,
       bill_kwh: 7200,
       fullName: 'Alaoui Youssef',
       phone: '0600000000',
@@ -717,11 +720,12 @@ describe('ToitureDesign — mode lead GOLDEN (inchangé par PV20)', () => {
 
 // ── Correction fondateur 24/08 — repli GPS de la fiche lead ────────────────
 describe('ToitureDesign — mode lead : repli GPS de la fiche (correction 24/08)', () => {
-  it('sans roof_point mais avec gps_lat/gps_lng : hydrate.lead.roof_point vient du GPS de la fiche', async () => {
+  it('sans roof_point mais avec gps_lat/gps_lng : hydrate.lead.roof_point vient du repère servi', async () => {
     const lead = {
       id: 89, nom: 'Bennani', prenom: 'Amine', ville: 'Marrakech',
       telephone: '0611111111', roof_point: null, roof_outline: null,
       gps_lat: '31.629472', gps_lng: '-8.008889',
+      repere_toit: { pin: { lat: 31.629472, lng: -8.008889 }, source: 'gps', contour_utilisable: false },
     }
     api.get.mockImplementation((url) => {
       if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
@@ -740,11 +744,41 @@ describe('ToitureDesign — mode lead : repli GPS de la fiche (correction 24/08)
     expect(screen.queryByTestId('pv-sans-gps')).toBeNull()
   })
 
+  it('mode lead hydrate sur le GPS corrigé : épingle A ignorée, contour inutilisable non semé', async () => {
+    // ACAL251 — le serveur retient B (GPS corrigé hors du contour R) :
+    // `roof_point` = B, R ne part PAS en graine éditable (seulement en calque).
+    const contour = [[33.5, -7.6], [33.5, -7.599], [33.501, -7.599], [33.501, -7.6]]
+    const lead = {
+      id: 94, nom: 'Tazi', prenom: 'Nadia', ville: 'Casablanca',
+      telephone: '0655555555', roof_point: { lat: 33.5005, lng: -7.5995 },
+      roof_outline: contour, gps_lat: '33.6', gps_lng: '-7.7',
+      repere_toit: { pin: { lat: 33.6, lng: -7.7 }, source: 'gps', contour_utilisable: false },
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    rendreEcranLead(94)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.hydrate.lead.roof_point).toEqual({ lat: 33.6, lng: -7.7 })
+    expect(options.hydrate.lead.roof_outline).toBeNull()
+    expect(options.hydrate.lead.contour_utilisable).toBe(false)
+    // Aucune note « calepinage automatique » : rien n'a été semé.
+    expect(screen.queryByTestId('rp9-calepinage-auto-note')).toBeNull()
+  })
+
   it('sans roof_point ni GPS : la carte reste au niveau Maroc, message discret affiché', async () => {
     const lead = {
       id: 90, nom: 'Idrissi', prenom: 'Sara', ville: '',
       telephone: '', roof_point: null, roof_outline: null,
       gps_lat: null, gps_lng: null,
+      repere_toit: { pin: null, source: null, contour_utilisable: false },
     }
     api.get.mockImplementation((url) => {
       if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
@@ -771,6 +805,7 @@ describe('ToitureDesign — mode lead : contour OSM (WIR227/QJ25)', () => {
       id: 91, nom: 'Zahra', prenom: 'Kenza', ville: 'Rabat',
       telephone: '0622222222', roof_point: { lat: 34.02, lng: -6.83 },
       roof_outline: null,
+      repere_toit: { pin: { lat: 34.02, lng: -6.83 }, source: 'roof_point', contour_utilisable: false },
     }
     const polygon = [{ lat: 34.02, lng: -6.83 }, { lat: 34.021, lng: -6.83 }, { lat: 34.021, lng: -6.831 }]
     api.get.mockImplementation((url) => {
@@ -809,6 +844,7 @@ describe('ToitureDesign — mode lead : contour OSM (WIR227/QJ25)', () => {
       id: 92, nom: 'Fassi', prenom: 'Omar', ville: 'Fès',
       telephone: '0633333333', roof_point: { lat: 34.04, lng: -5.0 },
       roof_outline: null,
+      repere_toit: { pin: { lat: 34.04, lng: -5.0 }, source: 'roof_point', contour_utilisable: false },
     }
     const message = 'Aucun bâtiment trouvé à cet emplacement — tracez le contour manuellement.'
     api.get.mockImplementation((url) => {
@@ -837,6 +873,7 @@ describe('ToitureDesign — mode lead : contour OSM (WIR227/QJ25)', () => {
       id: 93, nom: 'Amrani', prenom: 'Hind', ville: 'Tanger',
       telephone: '0644444444', roof_point: { lat: 35.77, lng: -5.8 },
       roof_outline: [{ lat: 35.77, lng: -5.8 }],
+      repere_toit: { pin: { lat: 35.77, lng: -5.8 }, source: 'roof_point', contour_utilisable: false },
     }
     api.get.mockImplementation((url) => {
       if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
@@ -864,6 +901,7 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
       id, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
       telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
       roof_outline: CONTOUR_CLIENT, bill_kwh: 7200,
+      repere_toit: { pin: { lat: 33.5, lng: -7.6 }, source: 'roof_point', contour_utilisable: true },
     }
   }
 
@@ -1007,6 +1045,7 @@ describe('ToitureDesign — VT13 : la photo réelle du toit sous le tracé', () 
       id: 88, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
       telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
       roof_outline: CONTOUR_CLIENT, bill_kwh: 7200,
+      repere_toit: { pin: { lat: 33.5, lng: -7.6 }, source: 'roof_point', contour_utilisable: true },
     }
     api.get.mockImplementation((url) => {
       if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })

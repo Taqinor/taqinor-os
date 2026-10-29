@@ -1907,7 +1907,8 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   // panneaux n'apparaissaient jamais tant que le commercial ne retraçait pas le toit
   // à la main. Sortie IDENTIQUE à avant pour la forme tuple (même conversion
   // [lat,lng] → [lng,lat], même règle ≥ 3 sommets valides, même bornage).
-  const ring = referenceContourRing(lead.roof_outline);
+  // ACAL251 — un contour que le serveur dit inutilisable (repère hors du toit) n'ensemence aucun pan.
+  const ring = lead.contour_utilisable === false ? null : referenceContourRing(lead.roof_outline);
   const vertices: LngLat[] = ring ?? [];
   let center: LngLat | null = null;
   const pt = lead.roof_point;

@@ -129,3 +129,38 @@ export async function ecrireSection({
     return { ok: false, conflit, motif: typeof refus === 'string' ? refus : '' }
   }
 }
+
+/** Une latitude lisible (nombre fini dans [-90, 90]), sinon `null`. */
+function latitude(brut) {
+  if (brut === null || brut === undefined || brut === '') return null
+  const v = Number(brut)
+  return Number.isFinite(v) && v >= -90 && v <= 90 ? v : null
+}
+
+/**
+ * ACAL251 — LA latitude du site pour les onglets Horizon / Course du soleil :
+ * celle de l'épingle du document (`pin.lat`) ; à défaut (calepinage NEUF, aucun
+ * pin écrit), celle du repère servi par le détail
+ * (`contexte_geographique.pin`, crm.selectors.repere_toit). `null` sinon —
+ * jamais une latitude devinée.
+ */
+export function useLatitudeDuSite(calepinageId, document) {
+  const duDocument = latitude(document?.pin?.lat)
+  const aRelire = document != null && duDocument === null && !!calepinageId
+  const [repli, setRepli] = useState({ cle: null, valeur: null })
+  useEffect(() => {
+    if (!aRelire) return undefined
+    let annule = false
+    Promise.resolve()
+      .then(() => calepinageApi.calepinages.get(calepinageId))
+      .then((res) => {
+        if (!annule) {
+          setRepli({ cle: calepinageId, valeur: latitude(res?.data?.contexte_geographique?.pin?.lat) })
+        }
+      })
+      .catch(() => {})
+    return () => { annule = true }
+  }, [aRelire, calepinageId])
+  if (duDocument !== null) return duDocument
+  return repli.cle === calepinageId ? repli.valeur : null
+}

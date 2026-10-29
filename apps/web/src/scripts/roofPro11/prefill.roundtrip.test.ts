@@ -330,3 +330,18 @@ describe('ACAL29 — choixConception voyage avec le document', () => {
     expect('choixConception' in sortie).toBe(false);
   });
 });
+
+describe('ACAL251 — hydrateFromLead ne sème pas un contour inutilisable', () => {
+  const contour: Array<[number, number]> = [[33.5, -7.6], [33.5, -7.599], [33.501, -7.599], [33.501, -7.6]];
+
+  it('contour_utilisable === false : aucun sommet éditable, centré sur le repère servi', () => {
+    const h = hydrateFromLead({ roof_point: { lat: 33.6, lng: -7.7 }, roof_outline: contour, contour_utilisable: false });
+    expect(h.vertices).toEqual([]);
+    expect(h.center).toEqual([-7.7, 33.6]);
+  });
+
+  it('contour utilisable (ou drapeau absent, tunnel public) : le pan est semé comme avant', () => {
+    expect(hydrateFromLead({ roof_outline: contour, contour_utilisable: true }).vertices).toHaveLength(4);
+    expect(hydrateFromLead({ roof_outline: contour }).vertices).toHaveLength(4);
+  });
+});
