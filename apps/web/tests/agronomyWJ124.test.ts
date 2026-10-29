@@ -148,14 +148,17 @@ describe.each(LOCALES)('WJ124 — panneau agricole enrichi dans mon-toit.astro (
   });
 
   it('n’expose PAS le besoin dimensionnant avant l’envoi (garde WJ125)', () => {
-    expect(src).toContain('agroPeak == null || PUBLIC_ESTIMATE_GATED');
+    // RWEB17-M15 — lib/tunnel/estimationPro.ts : `GATED` = config.estimationGatee (PUBLIC_ESTIMATE_GATED de la page).
+    expect(src).toContain('agroPeak == null || GATED');
+    expect(src).toContain('estimationGatee: PUBLIC_ESTIMATE_GATED');
   });
 
   it('suggère un bassin', () => {
     // QJW5 — « la région part au payload » ne se vérifie plus sur la source de
     // chaque page : le corps vient du registre partagé, et c'est le
     // comportement qui est épinglé (describe suivant, hors boucle par locale).
-    expect(src).toContain('s.bassinM3 = ag.m3Jour');
+    // RWEB17-M15 — lib/tunnel/estimationPro.ts nomme l'objet affiché `shown`.
+    expect(src).toContain('shown.bassinM3 = ag.m3Jour');
   });
 
   it('un SEUL mt-culture (pas de doublon d’id après remontée)', () => {

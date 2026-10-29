@@ -212,7 +212,10 @@ describe('CIW404 — WhatsApp pro sans économie ni retour', () => {
     it(`${lang} — le bloc pro vide lastSavingsLabel/lastKwcLabel (jamais de libellé chiffré hérité des hypothèses)`, () => {
       const src = lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
       const debut = src.indexOf('function computeProEstimate');
-      const fin = src.indexOf('interface AgricoleEstimateOk', debut);
+      // RWEB17-M15 — dans lib/tunnel/estimationPro.ts, le type agricole est déclaré en tête : la fin du
+      // bloc pro est alors le calcul agricole qui le suit.
+      const fins = [src.indexOf('interface AgricoleEstimateOk', debut), src.indexOf('function computeAgricoleEstimate', debut)];
+      const fin = Math.min(...fins.filter((i) => i > debut), Number.MAX_SAFE_INTEGER);
       const bloc = fin > debut ? src.slice(debut, fin) : src.slice(debut, debut + 12000);
       expect(bloc).not.toMatch(/lastSavingsLabel = (?!'')/);
       expect(bloc).not.toMatch(/lastKwcLabel = (?!'')/);

@@ -102,11 +102,14 @@ describe.each(Object.entries(PAGES))('WJ125 — %s mon-toit.astro : rendu public
     // combiné PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW — voir le test
     // ci-dessus). Le VRAI compte des retours succès reste 3 — vérifié par les
     // 3 GATED_ANNOUNCE ci-dessous.
-    const gatedBlocks = (src.match(/if \(PUBLIC_ESTIMATE_GATED\) \{/g) ?? []).length;
+    // RWEB17-M15/M16 — les chemins pro/agricole puis résidentiel vivent dans lib/tunnel/estimation*.ts :
+    // `GATED` (= config.estimationGatee = PUBLIC_ESTIMATE_GATED de la page), annonce `config.annonceGatee`
+    // (= GATED_ANNOUNCE de la page) ou `T.annonceGatee` (même texte, table de locale).
+    const gatedBlocks = (src.match(/if \((?:PUBLIC_ESTIMATE_GATED|GATED)\) \{/g) ?? []).length;
     expect(gatedBlocks).toBe(3);
     // Chaque retour gaté annonce un message SANS chiffre (GATED_ANNOUNCE), jamais
     // l'ancienne annonce « Votre estimation : X kWc … ».
-    const gatedAnnounce = (src.match(/announceEstimate\(GATED_ANNOUNCE\)/g) ?? []).length;
+    const gatedAnnounce = (src.match(/announceEstimate\((?:GATED_ANNOUNCE|config\.annonceGatee|T\.annonceGatee)\)/g) ?? []).length;
     expect(gatedAnnounce).toBe(3);
   });
 
