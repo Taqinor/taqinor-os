@@ -1366,8 +1366,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           </div>
         )}
 
-        {/* ERR-SAV-BARRE-ACTIONS-DEBORDE — la barre revient à la ligne (7 boutons
-            en panneau latéral) au lieu de déborder. */}
         <FormActions sticky={false} className="sm:flex-wrap" data-testid="ticket-actions">
           {!current.annule && (
             <Button type="button" variant="destructive" className="mr-auto" onClick={() => setAnnulerOpen(true)}>
