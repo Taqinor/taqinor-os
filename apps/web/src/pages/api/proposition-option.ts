@@ -21,7 +21,7 @@ import { buildOptionBody, normalizeOptionResponse, optionEndpoint } from '../../
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest } from '../../lib/rateLimit';
 import { corpsAvecToken, jsonResponse as json, relayJson, resolveApiBase } from './_proxy';
-import { entetesIpVisiteur } from './_apiBase';
+import { entetePreuve, entetesIpVisiteur } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — un POST cross-site forgé est refusé avant tout traitement : activer une option
@@ -46,6 +46,7 @@ export const POST: APIRoute = async ({ request }) => {
       'content-type': 'application/json',
       accept: 'application/json',
       ...entetesIpVisiteur(ip),
+      ...entetePreuve(request), // ASEC53 — preuve OTP de lecture de CE navigateur.
     },
     body: JSON.stringify(upstreamBody),
   });

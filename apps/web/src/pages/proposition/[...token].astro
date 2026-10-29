@@ -253,7 +253,7 @@ import { dasharrayDonut } from '../../lib/tailleDetail';
 import { economiesPeriodes } from '../../lib/economiesPeriodes';
 import { ficheSlugPourLigne } from '../../lib/ficheMatcher';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-import { entetesIpVisiteur } from '../api/_apiBase';
+import { entetePreuve, entetesIpVisiteur } from '../api/_apiBase';
 // QJ-EQUIPE (cookie partagé ERP↔site, T2) — `isPlausibleUuid` filtre le cookie
 // `tq_appareil` avant de le transmettre en en-tête SSR ; `domaineCookiePartage`
 // + `SITE_HOST` posent `tq_equipe` sur le domaine partagé (`taqinor.ma`), lisible
@@ -404,6 +404,10 @@ if (!rl.allowed) {
         ...(visitorUa ? { 'user-agent': visitorUa } : {}),
         ...(equipeAppareil ? { 'X-Equipe-Appareil': '1' } : {}),
         ...(appareilCookie ? { 'X-Appareil-Id': appareilCookie } : {}),
+        // ASEC53 (contrat ASEC1) — la preuve OTP de lecture de CE navigateur (cookie httpOnly
+        // `tq_prop_preuve`, posé par /api/proposition-otp) : sans elle, un lien `otp_lecture`
+        // reste sur l'écran de code — même patron que `tq_appareil` ci-dessus.
+        ...entetePreuve(Astro.request),
         // ADEV98 — ce rendu SERVEUR n'est qu'un APERÇU (un scanner de messagerie
         // le déclenche autant qu'un humain) : la lecture humaine est la balise
         // `/api/proposition-vu` que la page émet après 3 s de visibilité.

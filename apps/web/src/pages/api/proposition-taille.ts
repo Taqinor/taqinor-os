@@ -23,7 +23,7 @@ import { estChargeable, tailleDetailEndpoint } from '../../lib/tailleDetail';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
-import { resolveApiBase } from './_apiBase';
+import { entetePreuve, resolveApiBase } from './_apiBase';
 
 export const GET: APIRoute = async ({ request }) => {
   if (!isSameOriginRequest(request)) return crossSiteRejection();
@@ -53,7 +53,8 @@ export const GET: APIRoute = async ({ request }) => {
   try {
     const res = await fetch(tailleDetailEndpoint(resolveApiBase(), token, cle, variante), {
       method: 'GET',
-      headers: { accept: 'application/json' },
+      // ASEC53 — preuve OTP de lecture de CE navigateur (lien `otp_lecture`).
+      headers: { accept: 'application/json', ...entetePreuve(request) },
       signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return json({ ok: false }, 200);

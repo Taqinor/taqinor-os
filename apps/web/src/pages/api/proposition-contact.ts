@@ -39,7 +39,7 @@ import {
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
-import { resolveApiBase } from './_apiBase';
+import { entetePreuve, resolveApiBase } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
@@ -89,7 +89,11 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        ...entetePreuve(request), // ASEC53 — preuve OTP de lecture de CE navigateur.
+      },
       body: JSON.stringify({ token, ...upstreamBody }),
     });
     upstreamStatus = res.status;

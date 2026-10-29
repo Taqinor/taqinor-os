@@ -27,7 +27,7 @@ import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { isPlausibleUuid, lireCookie } from '../../lib/visite';
 import { jsonResponse as json } from '../../lib/apiJson';
-import { resolveApiBase } from './_apiBase';
+import { entetePreuve, resolveApiBase } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — refuse un POST cross-site forgé avant tout traitement.
@@ -85,6 +85,7 @@ export const POST: APIRoute = async ({ request }) => {
         accept: 'application/json',
         ...(equipeAppareil ? { 'X-Equipe-Appareil': '1' } : {}),
         ...(appareilCookie ? { 'X-Appareil-Id': appareilCookie } : {}),
+        ...entetePreuve(cookieHeader), // ASEC53 — preuve OTP de lecture de CE navigateur.
       },
       body: JSON.stringify(upstreamBody),
       // Le beacon ne doit jamais faire traîner la navigation : l'appel

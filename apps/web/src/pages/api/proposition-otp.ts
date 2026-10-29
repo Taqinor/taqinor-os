@@ -31,7 +31,7 @@ import { otpLectureEndpoint, otpRequestEndpoint } from '../../lib/proposition';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
-import { resolveApiBase } from './_apiBase';
+import { cookieDePreuve, entetePreuve, resolveApiBase } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
@@ -62,7 +62,8 @@ export const POST: APIRoute = async ({ request }) => {
   // n'avait AUCUN moyen de satisfaire ce gate — elle affichait le littéral
   // machine au client. Ce proxy relaie donc aussi les deux endpoints de ce
   // mécanisme : `demander` (sans code) puis `verifier` (avec code), qui
-  // déverrouille le lien côté serveur pour une heure.
+  // déverrouille la lecture pour une heure — ASEC53 : pour CE navigateur seul
+  // (preuve en cookie httpOnly), jamais pour le lien entier.
   //
   // `mode` ABSENT ⇒ 'esign' ⇒ comportement d'hier, octet pour octet.
   const mode = body.mode === 'lecture' ? 'lecture' : 'esign';
@@ -77,7 +78,13 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        // ASEC53 — en mode lecture, la preuve de CE navigateur (cookie httpOnly) : un navigateur
+        // déjà vérifié reçoit « aucun code requis » (ADEV97) au lieu d'un second code.
+        ...(mode === 'lecture' ? entetePreuve(request) : {}),
+      },
       // PREVIEW-V3-FIX (16/09/2026, audit C5) — LE CHAMP S'APPELLE `otp_code`.
       // `proposal_verify_otp_lecture` lit son corps avec
       // `_texte_du_corps(request, 'otp_code')` : un corps `{code: "123456"}`
@@ -100,6 +107,10 @@ export const POST: APIRoute = async ({ request }) => {
   const payload = (upstreamPayload ?? {}) as Record<string, unknown>;
   const detail = typeof payload.detail === 'string' ? payload.detail : '';
   const ok = upstreamStatus >= 200 && upstreamStatus < 300;
+  // ASEC53 (contrat ASEC1) — vérification de LECTURE réussie : la preuve opaque rendue par l'ERP
+  // devient le cookie httpOnly `tq_prop_preuve` de CE navigateur. Elle ne figure JAMAIS dans le
+  // corps renvoyé ci-dessous (construit champ par champ), ni dans une URL, ni dans un journal.
+  const setCookie = ok && mode === 'lecture' && code ? cookieDePreuve(payload) : null;
   // ADEV97 — `code_requis: false` (aucun code de lecture sur ce lien) relayé tel quel : au clic
   // « Télécharger », la page sait si l'exemplaire signé exige un code avant de l'ouvrir.
   return json(
@@ -109,5 +120,6 @@ export const POST: APIRoute = async ({ request }) => {
       ...(payload.code_requis === false ? { code_requis: false } : {}),
     },
     upstreamStatus >= 200 && upstreamStatus < 600 ? upstreamStatus : 502,
+    setCookie ? { 'set-cookie': setCookie } : {},
   );
 };
