@@ -70,6 +70,11 @@ class ReplanifierTests(TestCase):
             'properties']['date_prevue']
         self.assertEqual(champ['format'], 'date')
         self.assertTrue(champ['nullable'])
+        # api-fuzz-full 29/10 : `motif` publie le motif sans NUL (refusé 400).
+        from core.champs_stricts import MOTIF_SANS_NUL
+        motif = schema['components']['schemas']['ConfirmerRdvRequeteRequest'][
+            'properties']['motif']
+        self.assertEqual(motif['pattern'], MOTIF_SANS_NUL)
         r = self.api.post(f'{BASE}/{self.iv.id}/confirmer-rdv/',
                           {'date_prevue': ''}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
