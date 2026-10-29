@@ -15,7 +15,8 @@
 // `showWhatsappOffer` (estimation). INSCRITS ICI : `goStep`, `renderStep`,
 // `syncStepLabels`, `syncStep2Panels`, `syncRaisonSociale`, `syncModeCards`,
 // `isProMode`, `syncCityRequirement`, `syncCallbackSla`, `applyLang`,
-// `langueActive`, `showEstimateSkeleton`, `thinkingDelayMs`.
+// `langueActive`, `showEstimateSkeleton`, `thinkingDelayMs`, `modeLabel`,
+// `modeDocSubtitle` (RWEB17-M12 : lus par le document d'estimation, M6).
 //
 // PHASES. Les instructions de haut niveau d'origine sont réparties dans la page
 // (l. 2257-2342, 2508-2645, 2926-3014, 3031-3039, 4093-4180 du FR) : `installer…`
@@ -139,6 +140,17 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
   syncCityRequirement();
 
   // ——— WJ6/WJ33 : bascule de langue FR/AR (data-i18n), FR et AR seulement ———
+  // WJ30 — la langue active est transmise au webhook (langue_preferee).
+  //
+  // WJ33 — FIX : `el.textContent = v` APLATISSAIT toute balise imbriquée à
+  // l'intérieur d'un élément `data-i18n` (ex. un futur <strong>/<a> perdu au
+  // premier passage AR→FR→AR). On bascule désormais par PAIRE DE NŒUDS
+  // show/hide : au premier appel, chaque élément `data-i18n` est ENVELOPPÉ de
+  // deux <span> — un FR (markup ORIGINAL, capturé une fois via innerHTML avant
+  // toute mutation) et un AR (texte simple depuis data-ar) — puis on
+  // masque/affiche la bonne paire. Aucune balise n'est plus jamais perdue, quel
+  // que soit le nombre d'allers-retours FR↔AR. (Commentaire repris de la page
+  // au câblage RWEB17-M12.)
   const i18nPairs: Array<{ fr: HTMLElement; ar: HTMLElement }> = [];
   function prepareI18n() {
     doc.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
@@ -401,5 +413,9 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
   crochets.installer('langueActive', langueActive);
   crochets.installer('showEstimateSkeleton', showEstimateSkeleton);
   crochets.installer('thinkingDelayMs', thinkingDelayMs);
+  // RWEB17-M12 — libellés de mode lus par le document d'estimation (M6) : `undefined` hors table,
+  // comme `MODE_LABEL[m]` / `MODE_DOC_SUBTITLE[m]` de la page.
+  crochets.installer('modeLabel', (m: string): string | undefined => tables.modeLabel[m]);
+  crochets.installer('modeDocSubtitle', (m: string): string | undefined => tables.modeDocSubtitle[m]);
   return section;
 }

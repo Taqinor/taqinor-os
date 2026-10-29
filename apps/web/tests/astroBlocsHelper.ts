@@ -66,9 +66,11 @@ export function lireLibProposition(): string {
  * forme d'origine (`<x>`, `<f>(…)`). Rien n'est ajouté au texte : un compte de littéraux reste juste.
  * RWEB17-M11 — même relecture pour les modules `lib/tunnel/*` (`etat.<x>`, `crochets.appeler('<f>'`, et
  * leurs alias locaux `appeler('<f>'`, `h('<f>'`, `appelerCrochet(ctx, '<f>'`).
+ * RWEB17-M12 — le `Document` injecté des modules (`doc.`, `ctx.dom.doc.`) se relit `document.`.
  */
 export function normaliserIndirectionsTunnel(src: string): string {
   return src
+    .replace(/\b(?:ctx\.)?(?:dom\.)?doc\./g, 'document.')
     .replace(/\b(?:ctx\.)?etat\./g, '')
     .replace(/(?:\b(?:ctx\.)?crochets\.appeler|\bappeler|\bh)\('(\w+)'(?:, )?/g, '$1(')
     .replace(/\bappelerCrochet\(ctx, '(\w+)'(?:, )?/g, '$1(');

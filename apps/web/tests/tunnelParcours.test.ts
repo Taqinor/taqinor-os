@@ -133,6 +133,20 @@ describe('parcours — divers', () => {
     expect(sla.hidden).toBe(false);
   });
 
+  it.each(LOCALES)('RWEB17-M12 — crochets modeLabel / modeDocSubtitle (%s) : table de la locale, undefined hors table', (locale) => {
+    const { ctx } = installer(locale, '');
+    const t = TABLES_PARCOURS[locale];
+    for (const m of ['residentiel', 'industriel', 'commercial', 'agricole']) {
+      expect(ctx.crochets.appeler('modeLabel', m)).toBe(t.modeLabel[m]);
+      expect(ctx.crochets.appeler('modeDocSubtitle', m)).toBe(t.modeDocSubtitle[m]);
+    }
+    expect(ctx.crochets.appeler('modeLabel', '')).toBeUndefined();
+    expect(ctx.crochets.appeler('modeDocSubtitle', 'inconnu')).toBeUndefined();
+    // L'installation AR bascule le document global en RTL : on le rend tel quel aux tests suivants.
+    document.documentElement.dir = '';
+    document.documentElement.lang = '';
+  });
+
   it('un crochet manquant lève une erreur claire', () => {
     const { p } = installer('fr', '', {});
     const ctx2 = creerContexte(creerDom(document), creerEtat(null, 'fr'), { locale: 'fr', langueBasculable: true, formatNombre: String });

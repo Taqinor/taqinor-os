@@ -2175,6 +2175,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   import { creerDom } from '../../lib/tunnel/dom';
   import { creerEtat } from '../../lib/tunnel/etat';
   import { installerPersistance, loadWizardState } from '../../lib/tunnel/persistance';
+  import { installerParcours } from '../../lib/tunnel/parcours';
 
   // RWEB17-M10 — UN état et UN registre de crochets pour les trois pages : les
   // `let` de haut niveau vivent dans `ctx.etat` (valeurs initiales de
@@ -2199,209 +2200,12 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
   // (WJ61), garde `beforeunload`, jetons de dédoublonnage, référence client (WJ52) et
   // clés de suivi ; ses crochets sont inscrits ici. ———
   const persistance = installerPersistance(ctx, savedWizard);
-
-  // ——— état capture (repère / contour) tenu par onCaptureChange ———
-  // ACAL304 — tous les pans FERMÉS ([lat,lng]) + le roofLayout v2 à émettre (≥ 2 pans).
-  cityEl?.addEventListener('input', () => { ctx.etat.cityTouched = true; });
-
-  // ORDRE FONDATEUR (24/08/2026) — le GPS est la source de vérité de
-  // localisation : dès qu'un repère est posé (capturePin), l'adresse/ville
-  // n'est plus BLOQUANTE. `validateLead` (lib/lead.ts, même condition GPS)
-  // porte déjà la garde réelle côté validation — cette fonction ne fait que
-  // refléter l'état côté UI (aria-required + indice visuel), jamais l'inverse.
-  // Rejouée à chaque changement de repère (onCaptureChange) et à la
-  // restauration WJ61 — jamais un simple libellé figé qui pourrait diverger.
-  function syncCityRequirement() {
-    const hasGps = ctx.etat.capturePin != null;
-    if (cityEl) {
-      cityEl.required = !hasGps;
-      cityEl.setAttribute('aria-required', hasGps ? 'false' : 'true');
-    }
-    const hint = $('mt-city-hint');
-    if (hint) hint.hidden = !hasGps;
-  }
-  ctx.crochets.installer('syncCityRequirement', syncCityRequirement);
-  ctx.crochets.appeler('syncCityRequirement');
-
-  // ——— WJ6/WJ33 : bascule de langue FR/AR (data-i18n) ———
-  // WJ30 — la langue active est transmise au webhook (langue_preferee).
-  //
-  // WJ33 — FIX : `el.textContent = v` APLATISSAIT toute balise imbriquée à
-  // l'intérieur d'un élément `data-i18n` (ex. un futur <strong>/<a> perdu au
-  // premier passage AR→FR→AR). On bascule désormais par PAIRE DE NŒUDS
-  // show/hide : au premier appel, chaque élément `data-i18n` est ENVELOPPÉ de
-  // deux <span> — un FR (markup ORIGINAL, capturé une fois via innerHTML avant
-  // toute mutation) et un AR (texte simple depuis data-ar, car les libellés AR
-  // du DOM sont aujourd'hui du texte brut) — puis on masque/affiche la bonne
-  // paire. Aucune balise n'est plus jamais perdue, quel que soit le nombre
-  // d'allers-retours FR↔AR.
-  const i18nPairs: Array<{ fr: HTMLElement; ar: HTMLElement }> = [];
-  function prepareI18n() {
-    document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
-      const arText = el.dataset.ar;
-      if (typeof arText !== 'string') return;
-      const frSpan = document.createElement('span');
-      // Le markup FR ORIGINAL (pouvant contenir des balises imbriquées) est
-      // préservé tel quel — capturé UNE SEULE fois, avant toute mutation.
-      frSpan.innerHTML = el.innerHTML;
-      const arSpan = document.createElement('span');
-      arSpan.textContent = arText;
-      arSpan.hidden = true;
-      el.textContent = '';
-      el.append(frSpan, arSpan);
-      i18nPairs.push({ fr: frSpan, ar: arSpan });
-    });
-  }
-  function applyLang(lang: 'fr' | 'ar') {
-    const isAr = lang === 'ar';
-    ctx.etat.currentLang = lang;
-    i18nPairs.forEach(({ fr, ar }) => {
-      fr.hidden = isAr;
-      ar.hidden = !isAr;
-    });
-    // WJ33 — RTL/langue au niveau DOCUMENT (pas seulement un bloc local) :
-    // un lecteur d'écran ou le rendu natif du navigateur doivent voir la vraie
-    // langue de la page, pas seulement une classe locale.
-    document.documentElement.lang = isAr ? 'ar' : 'fr';
-    document.documentElement.dir = isAr ? 'rtl' : 'ltr';
-    const root = document.querySelector('section') as HTMLElement | null;
-    if (root) {
-      root.dir = isAr ? 'rtl' : 'ltr';
-      root.style.lineHeight = isAr ? '1.75' : '';
-    }
-    const frBtn = $('mt-lang-fr');
-    const arBtn = $('mt-lang-ar');
-    frBtn?.setAttribute('aria-pressed', String(!isAr));
-    arBtn?.setAttribute('aria-pressed', String(isAr));
-    for (const [btn, on] of [[frBtn, !isAr], [arBtn, isAr]] as const) {
-      if (!btn) continue;
-      btn.className = on
-        ? 'px-3 py-1.5 text-sm font-semibold text-azur-950 bg-brass-400 transition-colors'
-        : 'px-3 py-1.5 text-sm font-semibold text-lune-soft transition-colors hover:text-white';
-    }
-  }
-  prepareI18n();
-  $('mt-lang-fr')?.addEventListener('click', () => applyLang('fr'));
-  $('mt-lang-ar')?.addEventListener('click', () => applyLang('ar'));
-
-  // ——— WJ6/QX : sélecteur de mode — plus AUCUN défaut silencieux (le profil
-  // pilote des questions d'étape 2 entièrement différentes) ; « Continuer »
-  // exige un choix explicite (validateStep0, nudge inline sur les cartes). ———
-  // AGW401 — l'intention déclarée par le visiteur en cliquant (?mode=…, liste
-  // FERMÉE des 4 modes) présélectionne VISIBLEMENT la carte (aria-pressed) ;
-  // elle reste modifiable. Valeur inconnue = aucun effet. SEUL lecteur de
-  // `?mode=` de ce tunnel. Aucune clé webhook nouvelle.
-  try {
-    const wantedMode = new URLSearchParams(window.location.search).get('mode');
-    if (wantedMode && ['residentiel', 'industriel', 'commercial', 'agricole'].includes(wantedMode)) ctx.etat.mode = wantedMode;
-  } catch { /* URL illisible : aucun mode présélectionné */ }
-  // WJ121 — migration des sessions en cours : l'ancien profil unique
-  // 'professionnel' est réhydraté comme 'industriel' (le backend mappe déjà
-  // professionnel→industriel) — le site n'ÉMET plus jamais 'professionnel'.
-  if (ctx.etat.mode === 'professionnel') ctx.etat.mode = 'industriel';
-  /** WJ121 — les deux modes C&I partagent le sous-panneau/moteur pro existant
-   *  (panneaux dédiés = WJ122/WJ123) ; 'professionnel' couvert par défense en
-   *  profondeur (la migration ci-dessus l'élimine déjà). */
-  function isProMode(m: string): boolean {
-    return m === 'industriel' || m === 'commercial' || m === 'professionnel';
-  }
-  ctx.crochets.installer('isProMode', isProMode);
-  // QX — libellés du fil d'étapes + habillage du document par profil.
-  // COUPE FONDATEUR 21/08 — DEUX libellés par profil : l'ancien libellé de
-  // l'étape 2 (« Votre facture »/« Votre énergie »/« Votre pompage ») et celui
-  // de l'étape 3 (« Votre estimation ») décrivaient deux moitiés d'un écran
-  // désormais UNIQUE. On garde celui de la DESTINATION (« Votre estimation »),
-  // qui est aussi le libellé du bouton qui la révèle — le fil d'étapes annonce
-  // où l'on va, jamais un écran qui n'existe plus.
-  const STEP_LABELS_BY_MODE: Record<string, [string, string]> = {
-    residentiel: ['Votre toit', 'Votre estimation'],
-    industriel: ['Votre site', 'Votre estimation'],
-    commercial: ['Votre établissement', 'Votre estimation'],
-    agricole: ['Votre terrain', 'Votre estimation'],
-  };
-  const MODE_LABEL: Record<string, string> = {
-    residentiel: 'Résidentiel', industriel: 'Industriel', commercial: 'Commercial', agricole: 'Agricole',
-  };
-  const MODE_DOC_SUBTITLE: Record<string, string> = {
-    residentiel: 'Résidentielle', industriel: 'Autoconsommation Industrielle',
-    commercial: 'Autoconsommation Commerciale', agricole: 'Pompage Agricole',
-  };
-  /** QX — le fil d'étapes suit le profil. Page FR figée en français (WJ106) :
-   *  textContent direct — la paire data-i18n dormante de ces nœuds n'est plus
-   *  jamais basculée (aucun bouton de langue sur cette route). */
-  function syncStepLabels() {
-    const labels = STEP_LABELS_BY_MODE[ctx.etat.mode] || STEP_LABELS_BY_MODE.residentiel;
-    document.querySelectorAll<HTMLElement>('.mt-step-label').forEach((el, i) => {
-      if (labels[i]) el.textContent = labels[i];
-    });
-    [0, 1].forEach((i) => {
-      const h = $(`mt-h2-${i}`);
-      if (h && labels[i]) h.textContent = labels[i];
-    });
-  }
-  /** QX — un seul sous-panneau de questions visible sur l'écran 1, selon le
-   *  profil. (Le nom `syncStep2Panels` est resté celui de l'assistant à trois
-   *  écrans : ces sous-panneaux sont ceux de l'ex-étape 2.) */
-  function syncStep2Panels() {
-    const m = ctx.etat.mode || 'residentiel';
-    const res = $('mt-sub-residentiel');
-    const pro = $('mt-sub-professionnel');
-    const commercial = $('mt-sub-commercial');
-    const agri = $('mt-sub-agricole');
-    if (res) res.hidden = m !== 'residentiel';
-    // WJ122 — 'commercial' a désormais son PROPRE panneau (cartes catégorie) ;
-    // 'industriel' (et l'alias hérité 'professionnel') gardent le panneau pro.
-    if (pro) pro.hidden = !(m === 'industriel' || m === 'professionnel');
-    if (commercial) commercial.hidden = m !== 'commercial';
-    if (agri) agri.hidden = m !== 'agricole';
-    // AGW401 — étape 0 en mode agricole : repère « forage / parcelle », sans le
-    // choix Pointer/Dessiner mon toit (GPS et ville conservés).
-    const introStd = $('mt-step0-intro');
-    const introAgri = $('mt-step0-intro-agri');
-    if (introStd) introStd.hidden = m === 'agricole';
-    if (introAgri) introAgri.hidden = m !== 'agricole';
-    const roofModeGrp = $('mt-roof-mode-group');
-    if (roofModeGrp) roofModeGrp.hidden = m === 'agricole' || !!(fallback && !fallback.hidden);
-    syncRaisonSociale();
-  }
-  /** La raison sociale vit désormais sur l'écran CONTACT (coupe fondateur
-   *  18/08) : elle ne nourrit aucun calcul, elle n'a donc rien à faire avant
-   *  l'estimation. On ne la montre qu'aux profils professionnels — un
-   *  particulier n'a pas de raison sociale à donner. */
-  function syncRaisonSociale() {
-    const wrap = $('mt-raison-sociale-wrap');
-    if (wrap) wrap.hidden = !ctx.crochets.appeler('isProMode', ctx.etat.mode);
-  }
-  function syncModeCards() {
-    document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((b) => {
-      const on = ctx.etat.mode !== '' && b.dataset.mode === ctx.etat.mode;
-      b.setAttribute('aria-pressed', String(on));
-      b.classList.toggle('border-brass-400', on);
-      b.classList.toggle('border-white/15', !on);
-    });
-  }
-  document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      ctx.etat.mode = btn.dataset.mode || '';
-      syncModeCards();
-      const modeErr = $('mt-mode-err');
-      if (modeErr) { modeErr.textContent = ''; modeErr.hidden = true; }
-      syncStepLabels();
-      syncStep2Panels();
-      ctx.crochets.appeler('markDataEntered');
-      ctx.crochets.appeler('saveWizardState');
-      // WJ111 — si l'estimation (la révélation de l'écran 1) a déjà été
-      // calculée, basculer de/vers
-      // agricole doit mettre à jour le document IMMÉDIATEMENT (numérique <->
-      // carte qualitative) sans attendre un nouveau clic sur « Voir mon estimation ».
-      if (!$('mt-estimate-body')?.hidden || !$('mt-estimate-agricole')?.hidden) ctx.crochets.appeler('computeEstimate');
-      else if (ctx.etat.docRendered) ctx.crochets.appeler('computeEstimate');
-    });
-  });
-  // état initial : réhydraté depuis l'instantané, sinon AUCUN mode marqué.
-  syncModeCards();
-  syncStepLabels();
-  syncStep2Panels();
+  // ——— RWEB17-M12 — section « parcours » (lib/tunnel/parcours.ts) : ville facultative
+  // avec GPS, bascule FR/AR (FR et AR seulement), `?mode=` et migration 'professionnel' ;
+  // puis, à leur place d'origine, modes, étapes, rappel et clic « estimation ». ———
+  const parcours = installerParcours(ctx, savedWizard);
+  // QX/WJ121 — cartes de mode, fil d'étapes et sous-panneaux par profil.
+  parcours.brancherModes();
 
   // Les cartes « type de toit » (.mt-roof-card + le <select> sr-only mt-roof)
   // sont retirées du tunnel (coupe fondateur 18/08) : plus rien à synchroniser
@@ -2691,100 +2495,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     })();
   }
   ctx.crochets.installer('ensureMapBooted', ensureMapBooted);
-
-  // ——— WJ6 : assistant multi-étapes + barre de progression ———
-  // WJ61 — l'étape initiale reprend l'instantané sessionStorage s'il existe
-  // (rafraîchissement/retour en cours de parcours), sinon 0 comme avant.
-  // COUPE FONDATEUR 21/08 — MIGRATION DÉFENSIVE des instantanés de l'ANCIEN
-  // assistant à 3 étapes : un `step` de 2 (ex-écran estimation+contact) devient
-  // l'écran 1 AVEC sa révélation déjà ouverte — le visiteur retrouve exactement
-  // ce qu'il avait à l'écran, jamais un plantage ni un retour en arrière muet.
-  // Le `Math.min(1, …)` borne aussi toute valeur aberrante (3, 42, NaN écarté
-  // par le `!= null` + les bornes) : l'assistant ne peut plus viser un panneau
-  // qui n'existe pas.
-  /** COUPE FONDATEUR 21/08 — l'estimation + le contact sont RÉVÉLÉS sur l'écran
-   *  1 (jamais une étape de plus). `revealed` est le seul état qui pilote leur
-   *  visibilité ; il survit à un rafraîchissement (instantané WJ61) et se migre
-   *  depuis un ancien `step === 2`. */
-  const panels = [0, 1].map((i) => $(`mt-panel-${i}`));
-  const revealEl = $('mt-reveal');
-  function renderStep() {
-    panels.forEach((p, i) => { if (p) p.hidden = i !== ctx.etat.step; });
-    // La révélation vit DANS l'écran 1 : elle ne s'affiche que sur cet écran, et
-    // seulement une fois « Voir mon estimation » pressé (ou restauré).
-    if (revealEl) revealEl.hidden = !(ctx.etat.step === 1 && ctx.etat.revealed);
-    document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
-      const bar = li.querySelector<HTMLElement>('.mt-step-bar');
-      const label = li.querySelector<HTMLElement>('.mt-step-label');
-      const active = i <= ctx.etat.step;
-      if (bar) bar.className = `h-1.5 w-full rounded-full mt-step-bar transition-colors ${active ? 'bg-brass-400' : 'bg-white/10'}`;
-      if (label) label.classList.toggle('text-white', i === ctx.etat.step);
-    });
-    // W324 — l'étape carte est ACTIVE : c'est ICI (jamais au simple chargement
-    // de page) qu'on engage le fetch de config + l'import lazy de maplibre-gl.
-    if (ctx.etat.step === 0) ctx.crochets.appeler('ensureMapBooted');
-    // WJ59 — « étape atteinte », dédupliquée par sendFunnelBeacon (une seule
-    // fois par étape et par visite, y compris après un aller-retour Retour/Continuer).
-    // WB30 — pas de beacon avant l'étape de consentement (la RÉVÉLATION, qui
-    // porte la case de consentement — voir hasReachedConsentStep).
-    // WJ59/WJ104 — VOCABULAIRE D'ÉVÉNEMENTS INCHANGÉ (4 identifiants figés dans
-    // lib/telemetryEvents.ts) : la fusion d'écrans ne renomme RIEN, elle
-    // reprojette. ANCIEN → NOUVEAU : 'toit' = écran 0 (inchangé) ; 'facture' =
-    // écran 1 AVANT révélation (ex-écran 1) ; 'estimation' = écran 1 APRÈS
-    // révélation (ex-écran 2, désormais émis par le bouton « Voir mon
-    // estimation ») ; 'contact' inchangé (émis par computeEstimate).
-    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', ctx.etat.step === 0 ? 'toit' : ctx.etat.revealed ? 'estimation' : 'facture', 'reached');
-    // WJ61 — au tout premier rendu (chargement/réhydratation), ne pas imposer de
-    // défilement : le visiteur vient d'arriver/de revenir, la page n'a pas
-    // encore bougé sous lui. Le défilement reste pour chaque étape SUIVANTE.
-    if (ctx.etat.firstRender) { ctx.etat.firstRender = false; return; }
-    const root = document.querySelector('section');
-    root?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
-  }
-  // WJ61 — pushState PAR ÉTAPE : le bouton précédent du navigateur recule d'une
-  // étape de l'assistant au lieu de quitter carrément la page (l'échec le plus
-  // fréquent d'un « retour » accidentel). `fromPopstate` évite de repousser un
-  // état pendant qu'on réagit déjà à un `popstate`.
-  function goStep(n: number, fromPopstate = false) {
-    ctx.etat.step = Math.max(0, Math.min(1, n));
-    renderStep();
-    ctx.crochets.appeler('saveWizardState');
-    if (!fromPopstate) {
-      history.pushState({ mtStep: ctx.etat.step, mtRevealed: ctx.etat.revealed }, '', location.href);
-    }
-  }
-  // COUPE FONDATEUR 21/08 — l'historique porte désormais la PAIRE (étape,
-  // révélation) : la révélation ayant remplacé une étape entière, le bouton
-  // précédent du navigateur doit encore pouvoir la refermer, exactement comme
-  // il ramenait de l'ancien écran 3 à l'écran 2. Une entrée d'historique
-  // héritée (assistant 3 étapes, sans `mtRevealed`) est migrée à la lecture :
-  // `mtStep === 2` valait « estimation affichée ».
-  window.addEventListener('popstate', (e) => {
-    const st = e.state as { mtStep?: number; mtRevealed?: boolean } | null;
-    const n = st?.mtStep != null ? st.mtStep : Math.max(0, ctx.etat.step - 1);
-    ctx.etat.revealed = st?.mtRevealed === true || st?.mtStep === 2;
-    goStep(n, true);
-  });
-  // QX — l'étape carte exige un PROFIL choisi (nudge inline sur les cartes,
-  // jamais une alerte) : le profil pilote tout le questionnaire de l'écran 1.
-  $('mt-next-0')?.addEventListener('click', () => {
-    if (ctx.crochets.appeler('validateStep0')) goStep(1);
-  });
-  $('mt-back-1')?.addEventListener('click', () => goStep(0));
-  // `mt-back-2` retiré avec l'ancienne étape 3 (voir la note dans le markup).
-  // WJ61 — pose une première entrée d'historique dès le chargement pour que le
-  // tout premier « retour » ait un état `mtStep` à consulter.
-  history.replaceState({ mtStep: ctx.etat.step, mtRevealed: ctx.etat.revealed }, '', location.href);
-  renderStep();
-  // WJ96(c) — un visiteur qui REPREND son parcours (instantané sessionStorage
-  // WJ61) directement à l'écran 1 ne déclenche PAS `ensureMapBooted()` via
-  // `renderStep()` (qui ne boote qu'à `step === 0`) : cliquer « Retour » vers
-  // l'étape carte affichait alors le squelette de chargement à chaque fois,
-  // au lieu d'une carte déjà prête. On préchauffe la config/carte en arrière-
-  // plan dès que l'on sait que ce visiteur a déjà une étape restaurée > 0 —
-  // sans jamais bloquer le rendu de l'étape actuelle (best-effort, idempotent
-  // via `mapFetchDone`).
-  if (savedWizard?.step != null && savedWizard.step > 0) ctx.crochets.appeler('ensureMapBooted');
+  // WJ61 — étapes : historique, popstate, « Continuer » / « Retour », premier rendu.
+  parcours.brancherEtapes();
 
   // ——— helpers de saisie ———
   const val = (id: string) => (($(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '');
@@ -2794,25 +2506,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     const n = Number(raw);
     return Number.isFinite(n) ? n : null;
   };
-
-  // La case « L'été est différent de l'hiver ? » et la facture d'été qu'elle
-  // révélait sont retirées du tunnel (coupe fondateur 18/08) — le commercial
-  // les complète dans l'ERP. `factureEte`/`eteDifferente` ne partent plus.
-
-  // WJ105 — SLA de rappel concret : visible UNIQUEMENT quand « Un conseiller
-  // peut m'appeler » est la préférence active. `sync` est ré-appelée après une
-  // éventuelle réhydratation (WJ61, plus bas) : affecter `.checked` par script
-  // ne déclenche pas l'événement `change` natif.
-  const contactPhoneRadio = $('mt-contact-phone') as HTMLInputElement | null;
-  const contactWhatsappRadio = $('mt-contact-whatsapp') as HTMLInputElement | null;
-  const callbackSla = $('mt-callback-sla') as HTMLElement | null;
-  function syncCallbackSla(): void {
-    if (callbackSla) callbackSla.hidden = contactPhoneRadio?.checked !== true;
-  }
-  ctx.crochets.installer('syncCallbackSla', syncCallbackSla);
-  contactPhoneRadio?.addEventListener('change', syncCallbackSla);
-  contactWhatsappRadio?.addEventListener('change', syncCallbackSla);
-  ctx.crochets.appeler('syncCallbackSla');
+  // WJ105 — SLA de rappel visible seulement si « Un conseiller peut m'appeler ».
+  parcours.brancherRappel();
   // WJ61 — réhydratation des champs, du repère et du contour (avant le boot de la carte).
   persistance.rehydrater();
   // WJ61 — persiste sur toute frappe/changement des champs listés.
@@ -3183,7 +2878,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (dateEl) dateEl.textContent = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
     const m = ctx.etat.mode || 'residentiel';
     const subEl = $('mt-doc-subtitle');
-    if (subEl) subEl.textContent = MODE_DOC_SUBTITLE[m] || MODE_DOC_SUBTITLE.residentiel;
+    if (subEl) subEl.textContent = ctx.crochets.appeler('modeDocSubtitle', m) || ctx.crochets.appeler('modeDocSubtitle', 'residentiel');
     const city = (val('mt-city') || addressEl?.value || fallbackAddrEl?.value || '').trim();
     const citySpan = $('mt-doc-city');
     const cityLine = $('mt-doc-city-line');
@@ -3193,7 +2888,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     if (metaEl) {
       const parts: string[] = [];
       if (city) parts.push(city);
-      parts.push(`Projet ${(MODE_LABEL[m] || 'Résidentiel').toLowerCase()}`);
+      parts.push(`Projet ${(ctx.crochets.appeler('modeLabel', m) || 'Résidentiel').toLowerCase()}`);
       if (ctx.etat.capturePin) parts.push('toit repéré sur carte satellite');
       metaEl.textContent = parts.join(' · ');
       metaEl.hidden = false;
@@ -3805,97 +3500,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../components/blocs/DevisMonTo
     return true;
   }
   ctx.crochets.installer('computeEstimate', computeEstimate);
-  // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
-  // chiffres passent en squelette shimmer AVANT le calcul, puis
-  // requestAnimationFrame laisse peindre ce squelette une fois avant de
-  // révéler les vrais chiffres — sensation de « calcul », zéro CLS (mêmes
-  // dimensions text-3xl), et prêt à absorber un futur calcul plus lourd
-  // (PVGIS réseau) sans changement d'UX.
-  function showEstimateSkeleton() {
-    // QX — le squelette chiffres ne concerne que la grille RÉSIDENTIELLE (les
-    // profils pro/agricole ont la puce « calcul » mt-estimate-thinking, et
-    // leurs cartes KPI n'apparaissent qu'avec de vraies valeurs).
-    if (ctx.etat.mode && ctx.etat.mode !== 'residentiel') return;
-    const card = $('mt-estimate-body');
-    const unavail = $('mt-estimate-unavailable');
-    const toolarge = $('mt-estimate-toolarge');
-    if (unavail) unavail.hidden = true;
-    if (toolarge) toolarge.hidden = true;
-    if (card) card.hidden = false;
-    for (const id of ['mt-est-kwc', 'mt-est-prod', 'mt-est-savings']) {
-      const el = $(id);
-      if (el) el.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
-    }
-    const payEl = $('mt-est-payback');
-    if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
-  }
-  // WJ48/WJ112 — anticipation BRANDÉE, RÉDUITE à ≤500 ms (250–450 ms, tirage
-  // aléatoire) : le calcul réel (billEstimate) est synchrone et instantané —
-  // un délai perçu très court laisse encore « voir » un calcul se produire
-  // (Enpal/EnergySage) sans pénaliser la promesse WJ112 d'un premier chiffre en
-  // ≤0.5 s, y compris pour les recalculs en direct (facture/kWh exact/mode —
-  // la puce d'ombrage a quitté le tunnel le 21/08).
-  // reduced-motion → INSTANTANÉ (aucun délai artificiel, aucune roue de
-  // chargement à observer) — inchangé.
-  const THINKING_MIN_MS = 250;
-  const THINKING_MAX_MS = 450;
-  function thinkingDelayMs(): number {
-    if (reducedMotion) return 0;
-    return THINKING_MIN_MS + Math.random() * (THINKING_MAX_MS - THINKING_MIN_MS);
-  }
-  $('mt-estimate')?.addEventListener('click', (e) => {
-    // QX — validation de l'étape AVANT le calcul : erreurs inline + focus +
-    // défilement doux vers le premier champ invalide (plus jamais « tout va
-    // bien » jusqu'à un refus global à la fin).
-    if (!ctx.crochets.appeler('validateStep1')) return;
-    showEstimateSkeleton();
-    const thinkingEl = $('mt-estimate-thinking');
-    if (thinkingEl) thinkingEl.hidden = false;
-    // COUPE FONDATEUR 21/08 — RÉVÉLATION SUR PLACE, à la place de l'ancien
-    // `goStep(2)`. Le calcul déclenché est EXACTEMENT le même (squelette →
-    // puce « calcul » WJ48 → rAF → délai perçu ≤500 ms, 0 ms en reduced-motion
-    // → computeEstimate()) : seule la destination change — le teaser verrouillé
-    // et le formulaire apparaissent sous les questions, sur le même écran.
-    ctx.etat.revealed = true;
-    // On dévoile le bloc DIRECTEMENT plutôt que via renderStep() : à `step === 1`
-    // rien d'autre ne bouge (mêmes panneaux, mêmes barres de progression déjà
-    // actives), et renderStep() ramènerait la page tout en haut — un défilement
-    // parasite juste avant celui, voulu, vers la révélation.
-    if (revealEl) revealEl.hidden = false;
-    ctx.crochets.appeler('saveWizardState');
-    // Le pas d'historique de l'ancien écran 3 est conservé : le bouton
-    // précédent du navigateur referme la révélation au lieu de quitter la page.
-    history.pushState({ mtStep: ctx.etat.step, mtRevealed: true }, '', location.href);
-    // WJ59 — 'estimation' / 'reached' était émis par renderStep() en arrivant
-    // sur l'ancien écran 3 ; il est désormais émis ICI, au même instant du
-    // parcours. Vocabulaire de télémétrie strictement inchangé (dédupliqué par
-    // sendFunnelBeacon : un seul envoi par visite).
-    if (ctx.crochets.appeler('hasReachedConsentStep')) ctx.crochets.appeler('sendFunnelBeacon', 'estimation', 'reached');
-    // La révélation vient d'apparaître SOUS les questions : on l'amène à
-    // l'écran (l'ancien changement d'étape faisait remonter la page en haut).
-    revealEl?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
-    const triggerEl = e.currentTarget as HTMLElement | null;
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        if (thinkingEl) thinkingEl.hidden = true;
-        const hasEstimate = ctx.crochets.appeler('computeEstimate');
-        // WJ46 — pic d'intérêt : dès que l'estimation instantanée est RÉELLEMENT
-        // affichée (pas le squelette, pas l'état « indisponible »), on propose
-        // l'offre WhatsApp ici plutôt que d'attendre un exit-intent (desktop
-        // uniquement, de moins en moins vu). QX — le document d'estimation doit
-        // d'abord RESPIRER : 12 s de lecture (l'ancien 1,5 s recouvrait les
-        // chiffres à l'instant où ils apparaissaient — et 0 ms en reduced-motion,
-        // pire encore : le délai d'une modale n'est pas une animation). Et si le
-        // visiteur est déjà ENGAGÉ (il remplit le formulaire ou imprime), on ne
-        // l'interrompt jamais — l'exit-intent, lui, reste actif.
-        if (hasEstimate) {
-          setTimeout(() => {
-            if (!ctx.etat.docEngaged) ctx.crochets.appeler('showWhatsappOffer', triggerEl);
-          }, 12_000);
-        }
-      }, thinkingDelayMs());
-    });
-  });
+  // WJ34/WJ48 — squelette, délai de calcul et révélation sur place au clic « estimation ».
+  parcours.brancherEstimation();
   // QX — « engagé » : le visiteur remplit déjà le formulaire de contact ou
   // imprime son document — l'offre WhatsApp automatique (pic d'intérêt) ne
   // doit alors JAMAIS l'interrompre. L'exit-intent reste actif, lui.

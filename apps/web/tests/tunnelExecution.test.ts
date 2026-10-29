@@ -408,6 +408,40 @@ describe('RWEB17 (filet) — le tunnel mon-toit EXÉCUTÉ, corps du lead par loc
   }
 });
 
+// RWEB17-M12 — étape 0 → étape 1 puis RETOUR ARRIÈRE (popstate), joués dans les 5 parcours × 3 locales
+// sur le chunk construit : le panneau affiché et `history.state` suivent, sans erreur.
+describe('RWEB17-M12 — étapes et retour arrière (popstate) du tunnel EXÉCUTÉ', () => {
+  for (const parcours of Object.keys(PARCOURS)) {
+    for (const locale of LOCALES) {
+      it(`${parcours} · ${locale} — 0 → 1, popstate → 0, puis 1 à nouveau`, async () => {
+        const html = builtPage(ROUTES[locale]);
+        const chunk = chunkDeLaPage(html);
+        sessionStorage.clear();
+        localStorage.clear();
+        monterDom(html, ROUTES[locale]);
+        bouchonner();
+        vi.resetModules();
+        await import(/* @vite-ignore */ chunk);
+        await pause(10);
+        const panneau = (i: number) => !(el(`#mt-panel-${i}`) as HTMLElement).hidden;
+        expect(panneau(0) && !panneau(1)).toBe(true);
+        const premier = PARCOURS[parcours][0] as { clic: string };
+        el(premier.clic).click();
+        el('#mt-next-0').click();
+        await pause();
+        expect(panneau(1) && !panneau(0)).toBe(true);
+        expect((history.state as { mtStep?: number } | null)?.mtStep).toBe(1);
+        window.dispatchEvent(new PopStateEvent('popstate', { state: { mtStep: 0, mtRevealed: false } }));
+        await pause();
+        expect(panneau(0) && !panneau(1)).toBe(true);
+        el('#mt-next-0').click();
+        await pause();
+        expect(panneau(1) && !panneau(0)).toBe(true);
+      }, 60_000);
+    }
+  }
+});
+
 it('le harness lit bien le chunk RÉELLEMENT référencé par chaque page', () => {
   for (const l of LOCALES) {
     const src = readFileSync(chunkDeLaPage(builtPage(ROUTES[l])), 'utf-8');
