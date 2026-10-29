@@ -1,12 +1,12 @@
 # Rapport du matin — run L3 « générateurs de devis », nuit du 27 au 28/10/2026 (PC1 puis PC2)
 
-_Rédigé par la coordinatrice PC2 (session « Passation PC2 L3 générateurs de devis »), 28/10/2026 08:35 UTC. Déploiement = Reda._
+_Rédigé par la coordinatrice PC2 (session « Passation PC2 L3 générateurs de devis »), 28/10/2026 09:20 UTC — run terminé, tout est sur `main`. Déploiement = Reda._
 
 ## 1. Ce qui est sur `main` ce matin
 
 **PC1 (02:00 → 00:27 UTC)** : 21 PR puis 5 autres (#1113, #1115 CORC v2, #1116/#1119/#1122 CPRW, #1118, #1111, #1097 CQST, #1103 RGEN, #1114 RPDF R1-R3 à 02:32). Détail dans `passation/registre-pc1.md`.
 
-**PC2 (23:45 → 06:40 UTC)** — 8 PR mergées, toutes passées par la file de merge avec leur CI de groupe verte :
+**PC2 (23:45 → 09:15 UTC)** — 12 PR mergées (10 lanes + 2 correctives après l'audit Fable), toutes passées par la file de merge avec leur CI de groupe verte :
 
 | PR | Lane | Ce que ça change pour un devis |
 |---|---|---|
@@ -18,11 +18,10 @@ _Rédigé par la coordinatrice PC2 (session « Passation PC2 L3 générateurs de
 | #1124 | RSIZ — taille & composition résidentiel | Jamais Huawei + Deye dans la même offre ; « avec batterie » exige une batterie en stock chiffrée ; câble DC dérivé des paires MPPT ; plafond 2 000 panneaux, balayage adaptatif ; **4 corrections qui touchaient des devis envoyés remises au niveau 3**. |
 | #1131 | RWEB — site & page résidentielle | « Non rentabilisé sur 25 ans » cohérent avec le PDF, retour par carte d'option, économie calculée/estimée comme le PDF, incertitudes retirées, garanties réelles sur tout le site (Deye 5, Huawei 10, Dyness DL5.0C 7, Powerbox 10). |
 | #1130 | CPDF — PDF client C&I | L'option batterie imprime ses propres chiffres/échéancier/retour ; deux cartes d'option en couverture et deux cases au bon pour accord ; plus de jargon ni d'incertitude (« scénario prudent », IEA/P50, « (moteur C&I) », « VAN omise ») ; prix du kWh évité imprimé ; **toute correction de chiffre gardée au niveau 3** (drapeau `regles_avant_2710` reposé par chaque renderer) ; fuite des tables i18n C&I dans le catalogue global corrigée. |
-
 | #1128 | CCAT — catalogue « prêt pour devis » | Tableau Stock « ce qui manque pour chiffrer un devis » C&I + agricole + résidentiel (CCAT16), encadré à onglets, semis à prix vide (protections, structures, Nexans), fiche Deye sans « SUN-…SG » (migration stock 0175/0176 réversible), prestations C&I en tableau. Mergée 07:31. |
 | #1133 | CE2E — recette de bout en bout (docs) | 16 devis joués sur `main` (10 C&I, 4 résidentiels, 2 agricoles) : aucun 5xx, aucun prix d'achat, aucun code interne ; 5 enregistrements d'acceptation (CE2E, CEC, AMOT, CLD, RHOR — verdicts FAIL/partiel, rien coché) ; 9 défauts posés en tâches v3 (voir §2). |
 
-**Après l'audit Fable final (07:15 UTC)** — deux PR correctives, armées en file :
+**Après l'audit Fable final (07:15 UTC)** — deux PR correctives, mergées (#1134 à 08:26, #1135 à 09:15) :
 
 | PR | Ce que ça corrige |
 |---|---|
