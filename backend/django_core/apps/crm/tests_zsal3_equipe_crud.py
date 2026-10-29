@@ -570,7 +570,9 @@ class TestDispatchLeads(TestCase):
                                  'delai_minutes': 5})
         # Membres ACTIFS servis pour l'éditeur de règles (un responsable au
         # rôle Commercial n'a pas accès à /crm/assignable-users/).
-        self.assertEqual({m['id'] for m in membres}, {self.m1.pk, self.m2.pk})
+        # Le responsable figure en tête des choix (il prend aussi des leads).
+        self.assertEqual({m['id'] for m in membres},
+                         {self.chef.pk, self.m1.pk, self.m2.pk})
 
     def test_file_vide_respecte_le_contrat(self):
         import json
@@ -885,7 +887,8 @@ class TestCockpitEquipe(TestCase):
     def test_ligne_du_responsable(self):
         """Le responsable prend des leads : SES leads comptent, le lead garé
         chez lui en attendant l'attribution non."""
-        from apps.crm.models import AttributionEnAttente, Lead
+        from apps.crm.models import Lead
+        from apps.crm.models_clients import AttributionEnAttente
         self.assertEqual(self.attente.owner_id, self.chef.pk)
         self.assertTrue(AttributionEnAttente.objects.filter(
             lead=self.attente).exists())
