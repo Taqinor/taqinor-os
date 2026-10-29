@@ -427,7 +427,9 @@ describe('QJR664 — graphe « Une journée type » : parité FR / EN / AR', () 
     for (const [loc, src] of SOURCES) {
       expect(src, loc).toContain('<div id="mt-jourtype-wrap" hidden class="mt-doc-section">');
       expect(src, loc).toContain('<div id="mt-jourtype-grid"');
-      expect(src, loc).toContain(`renderJourType('${loc}')`);
+      // RWEB17-M13 — le rendu est appelé par lib/tunnel/selections.ts avec la locale de la page (CONFIG_<LOCALE>).
+      expect(src, loc).toContain(`locale: '${loc}',`);
+      expect(src, loc).toContain('renderJourType(ctx.locale, doc)');
       expect(src, loc).toContain("scripts/tunnel/jourType'");
     }
   });

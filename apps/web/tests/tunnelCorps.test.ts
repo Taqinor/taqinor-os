@@ -446,7 +446,8 @@ describe('AGW403 — heuresPompage seulement si le curseur a été touché', () 
       const src = lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
       expect(src).toContain("heuresInput.dataset.touche = '1'");
       expect(src).toContain("heuresInput?.addEventListener('change', marquerHeuresTouchees);");
-      expect(src).toContain('marquerHeuresTouchees();\n    syncHeuresLabel();'.replace(/\n/g, src.includes('\r\n') ? '\r\n' : '\n'));
+      // RWEB17-M13 — la section vit dans lib/tunnel/selections.ts (indentation du module) : même suite d'appels.
+      expect(src).toMatch(/marquerHeuresTouchees\(\);\r?\n\s+syncHeuresLabel\(\);/);
       // le curseur lui-même ne porte aucun data-touche au chargement
       expect(src).not.toMatch(/id="mt-heures-pompage"[^>]*data-touche/);
     });

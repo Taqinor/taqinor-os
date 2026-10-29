@@ -2020,6 +2020,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   import { creerEtat } from '../../../lib/tunnel/etat';
   import { installerPersistance, loadWizardState } from '../../../lib/tunnel/persistance';
   import { installerParcours } from '../../../lib/tunnel/parcours';
+  import { installerSelections } from '../../../lib/tunnel/selections';
 
   // RWEB17-M10 — UN état et UN registre de crochets pour les trois pages : les
   // `let` de haut niveau vivent dans `ctx.etat` (valeurs initiales de
@@ -2035,7 +2036,6 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
-  renderJourType('ar'); // QJR664 — « يوم نموذجي »
   const fallback = $('mt-fallback');
   const cityEl = $('mt-city') as HTMLInputElement | null;
   const addressEl = $('rp9-address') as HTMLInputElement | null;
@@ -2051,166 +2051,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   const parcours = installerParcours(ctx, savedWizard);
   // QX/WJ121 — cartes de mode, fil d'étapes et sous-panneaux par profil.
   parcours.brancherModes();
-
-  // Les cartes « type de toit » (.mt-roof-card + le <select> sr-only mt-roof)
-  // sont retirées du tunnel (coupe fondateur 18/08) : plus rien à synchroniser
-  // ni à valider ici. `roofType` reste exigé par validateLead — resolveRoofType
-  // le DÉRIVE désormais pour tous les profils.
-
-  // ——— OMBRAGE : question RETIRÉE du tunnel (ordre fondateur 21/08) ———
-  // La puce à bascule WJ31/WJ112 et son état n'existent plus : plus aucun
-  // visiteur ne déclare son ombrage sur cette page. (Sa classe CSS est épinglée
-  // ABSENTE de ce fichier par tests/wj112RefineEstimate.test.ts, qui lit la
-  // source BRUTE — ne pas la réécrire ici, même en commentaire.)
-  // Le dérate reste INTACT côté
-  // moteur (billEstimate.ts OMBRAGE_DERATE + ombrageDerateFactor) — simplement,
-  // `estimateFromBill` n'en reçoit plus, et `ombrageDerateFactor(undefined)`
-  // rend 1 : c'est LE MÊME chemin, au facteur près, que suivait déjà tout
-  // visiteur qui n'avait cliqué aucune puce (l'état initial `''` partait en
-  // `ombrage: undefined`). Aucun changement de chiffre pour ce visiteur-là.
-
-  // ——— W353 : créneau de visite technique — deux puces à bascule unique. ———
-  function wireVisitToggle(selector: string, getCurrent: () => string, setCurrent: (v: string) => void) {
-    document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const same = getCurrent() === btn.dataset.value;
-        setCurrent(same ? '' : (btn.dataset.value || ''));
-        document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
-          const on = !same && b === btn;
-          b.setAttribute('aria-pressed', String(on));
-          b.classList.toggle('border-brass-400', on);
-          b.classList.toggle('border-white/15', !on);
-        });
-        ctx.crochets.appeler('markDataEntered');
-        ctx.crochets.appeler('saveWizardState');
-      });
-    });
-    const current = getCurrent();
-    if (current) {
-      document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
-        const on = b.dataset.value === current;
-        b.setAttribute('aria-pressed', String(on));
-        b.classList.toggle('border-brass-400', on);
-        b.classList.toggle('border-white/15', !on);
-      });
-    }
-  }
-  wireVisitToggle('.mt-visit-part', () => ctx.etat.visitWindowPart, (v) => { ctx.etat.visitWindowPart = v; });
-  wireVisitToggle('.mt-visit-week', () => ctx.etat.visitWindowWeek, (v) => { ctx.etat.visitWindowWeek = v; });
-
-  // ════════════════════════════════════════════════════════════════════════
-  // L-WEBT TASK1/3 — « Passez-vous la journée à la maison ? » : trois
-  // silhouettes 24 h superposées (couleurs VALIDÉES fondateur, reproduites à
-  // l'identique) — présent bleu plein #2a78d6 (remplissage 10 %), absent
-  // orange pointillé [6,3] #eb6834, partiel vert pointillé [2,3] #1baf7a.
-  // Les 24 poids par silhouette sont ceux du SERVEUR (import ci-dessus) —
-  // ce bloc ne fait QUE tracer, il n'invente aucun chiffre.
-  //
-  // QJW5 — porté depuis la page FR, où il tourne depuis le 24/08/2026.
-  // ════════════════════════════════════════════════════════════════════════
-  const OCC_COLORS: Record<OccupancyId, { stroke: string; dash: string | null; fill?: string }> = {
-    presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' },
-    absence_jour: { stroke: '#eb6834', dash: '6,3' },
-    presence_partielle: { stroke: '#1baf7a', dash: '2,3' },
-  };
-  // Lead.occupation_jour (backend crm.Lead, apps/crm/models.py) n'utilise PAS
-  // le même vocabulaire que les identifiants d'affichage OCCUPANCY_IDS —
-  // cette table est la SEULE traduction entre les deux.
-  const OCC_TO_LEAD_FIELD: Record<OccupancyId, 'present' | 'absent' | 'partiel'> = {
-    presence_jour: 'present', absence_jour: 'absent', presence_partielle: 'partiel',
-  };
-
-  function occShapePaths(shape: readonly number[], w: number, h: number, pad: number): { line: string; area: string } {
-    const max = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
-    const x = (i: number) => pad + (i / (shape.length - 1)) * (w - 2 * pad);
-    const y = (v: number) => pad + (1 - (max > 0 ? v / max : 0)) * (h - 2 * pad);
-    const pts = shape.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
-    const line = `M${pts.join(' L')}`;
-    const area = `${line} L${x(shape.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
-    return { line, area };
-  }
-
-  function renderOccupancyChart() {
-    const svg = $('mt-occ-chart');
-    if (!svg) return;
-    const W = 320;
-    const H = 140;
-    const PAD = 8;
-    let markup = '';
-    for (const id of OCCUPANCY_IDS) {
-      const shape = OCCUPANCY_SHAPES[id];
-      const { line, area } = occShapePaths(shape, W, H, PAD);
-      const c = OCC_COLORS[id];
-      if (c.fill) markup += `<path d="${area}" fill="${c.fill}" stroke="none"></path>`;
-      markup += `<path data-occ-line="${id}" d="${line}" fill="none" stroke="${c.stroke}" stroke-width="2"${c.dash ? ` stroke-dasharray="${c.dash}"` : ''}></path>`;
-    }
-    svg.innerHTML = markup;
-  }
-  renderOccupancyChart();
-
-  function syncOccupancySelection() {
-    document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
-      const id = (btn.dataset.occId || '') as OccupancyId;
-      const field = OCC_TO_LEAD_FIELD[id];
-      const on = !!field && ctx.etat.occupationJour === field;
-      btn.setAttribute('aria-pressed', String(on));
-      btn.classList.toggle('border-brass-400', on);
-      btn.classList.toggle('border-white/15', !on);
-      const badge = btn.querySelector<HTMLElement>('.mt-occ-chosen');
-      if (badge) badge.hidden = !on;
-    });
-    document.querySelectorAll<SVGPathElement>('[data-occ-line]').forEach((p) => {
-      const id = (p.getAttribute('data-occ-line') || '') as OccupancyId;
-      const on = !ctx.etat.occupationJour || OCC_TO_LEAD_FIELD[id] === ctx.etat.occupationJour;
-      p.style.opacity = on ? '1' : '0.25';
-      p.setAttribute('stroke-width', OCC_TO_LEAD_FIELD[id] === ctx.etat.occupationJour ? '3' : '2');
-    });
-    const hidden = $('mt-occupation-jour') as HTMLInputElement | null;
-    if (hidden) hidden.value = ctx.etat.occupationJour;
-  }
-  document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = (btn.dataset.occId || '') as OccupancyId;
-      const field = OCC_TO_LEAD_FIELD[id];
-      if (!field) return;
-      ctx.etat.occupationJour = ctx.etat.occupationJour === field ? '' : field;
-      syncOccupancySelection();
-      ctx.crochets.appeler('markDataEntered');
-      ctx.crochets.appeler('saveWizardState');
-    });
-  });
-  syncOccupancySelection();
-
-  // ════════════════════════════════════════════════════════════════════════
-  // L-WEBT TASK3 — équipements (facultatifs, jamais bloquants) : la case
-  // révèle son détail SEULEMENT si coché (case décochée = question jamais
-  // posée, jamais un « Non » fabriqué — le registre partagé
-  // `src/lib/tunnel/champs.ts` omet la clé entière tant que la case n'est pas
-  // cochée).
-  // ════════════════════════════════════════════════════════════════════════
-  const EQUIP_TOGGLES: Array<{ checkId: string; detailId?: string }> = [
-    { checkId: 'mt-equip-chauffe-eau', detailId: 'mt-equip-chauffe-eau-kw' },
-    { checkId: 'mt-equip-ve', detailId: 'mt-equip-ve-km' },
-    { checkId: 'mt-equip-clim', detailId: 'mt-equip-clim-pieces' },
-    { checkId: 'mt-equip-piscine', detailId: 'mt-equip-piscine-kw' },
-  ];
-  // Ré-appelée après la réhydratation WJ61 (plus bas) : affecter `.checked`
-  // par script ne déclenche pas `change`, donc un détail restauré coché
-  // resterait masqué sans ce second passage.
-  function syncEquipDetails() {
-    for (const { checkId, detailId } of EQUIP_TOGGLES) {
-      const chk = $(checkId) as HTMLInputElement | null;
-      const detail = detailId ? $(detailId) : null;
-      const wrap = detail?.closest<HTMLElement>('[data-equip-detail]') || null;
-      if (wrap) wrap.hidden = !chk?.checked;
-    }
-  }
-  ctx.crochets.installer('syncEquipDetails', syncEquipDetails);
-  for (const { checkId } of EQUIP_TOGGLES) {
-    const chk = $(checkId) as HTMLInputElement | null;
-    chk?.addEventListener('change', () => { ctx.crochets.appeler('syncEquipDetails'); ctx.crochets.appeler('markDataEntered'); ctx.crochets.appeler('saveWizardState'); });
-  }
-  ctx.crochets.appeler('syncEquipDetails');
+  // ——— RWEB17-M13 — section « sélections » (lib/tunnel/selections.ts) : créneau de visite
+  // (W353), occupation de la journée et équipements (L-WEBT), « journée type » (QJR664) ;
+  // les groupes de cartes et la facture sont branchés plus bas, à leur place. ———
+  const selections = installerSelections(ctx);
+  selections.brancherVisiteOccupationEquipements();
 
   // « Charges futures envisagées » (.mt-future-load) et « Photo du compteur ou
   // de la facture » (mt-meter-photo) sont retirées du tunnel (coupe fondateur
@@ -2414,142 +2259,11 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
     $('rp9-map')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
   });
   syncRoofModeCards();
-
-  function wireCardGroup(
-    selector: string,
-    getCurrent: () => string,
-    setCurrent: (v: string) => void,
-    opts: { allowUnset?: boolean; recompute?: boolean; onChange?: () => void } = {},
-  ) {
-    const paint = () => {
-      const current = getCurrent();
-      document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
-        const on = current !== '' && b.dataset.value === current;
-        b.setAttribute('aria-pressed', String(on));
-        b.classList.toggle('border-brass-400', on);
-        b.classList.toggle('border-white/15', !on);
-      });
-    };
-    document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const same = getCurrent() === btn.dataset.value;
-        setCurrent(same && opts.allowUnset ? '' : (btn.dataset.value || ''));
-        paint();
-        opts.onChange?.();
-        ctx.crochets.appeler('markDataEntered');
-        ctx.crochets.appeler('saveWizardState');
-        if (opts.recompute) ctx.crochets.appeler('computeEstimate');
-      });
-    });
-    paint();
-  }
-  // Le champ « Puissance souscrite (kVA) » (et donc son affichage conditionnel
-  // en moyenne tension) est retiré du tunnel — comme les cartes « groupe
-  // électrogène » (coupe fondateur 18/08).
-  wireCardGroup('.mt-pro-unit', () => ctx.etat.proUnit, (v) => { ctx.etat.proUnit = v || 'mad'; }, { recompute: true });
-  wireCardGroup('.mt-tension', () => ctx.etat.tension, (v) => { ctx.etat.tension = v || 'bt'; ctx.etat.tensionTouched = true; }, { recompute: true });
-  wireCardGroup('.mt-activity', () => ctx.etat.activity, (v) => { ctx.etat.activity = v || 'day'; ctx.etat.activityTouched = true; }, { recompute: true });
-  wireCardGroup('.mt-surface-type', () => ctx.etat.surfaceType, (v) => { ctx.etat.surfaceType = v; }, { allowUnset: true, recompute: true });
-  // WJ122 — COMMERCIAL : cartes catégorie + bascule d'unité de facture. Le choix
-  // de catégorie recalcule l'estimation (day-share par archétype → hôtel ≠
-  // bureau à facture égale). Les grilles de questions PAR CATÉGORIE qu'il
-  // révélait sont retirées du tunnel (coupe fondateur 18/08) : elles ne
-  // changeaient aucun chiffre — le commercial les complète dans l'ERP.
-  wireCardGroup('.mt-commercial-cat', () => ctx.etat.commercialCategory, (v) => { ctx.etat.commercialCategory = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-cc-unit', () => ctx.etat.ccUnit, (v) => { ctx.etat.ccUnit = v || 'mad'; }, { recompute: true });
-  // WJ123 — INDUSTRIEL : pattern d'équipes (le plafond d'autoconsommation recalcule).
-  wireCardGroup('.mt-equipes', () => ctx.etat.equipes, (v) => { ctx.etat.equipes = v; }, { allowUnset: true, recompute: true });
-  // WJ124 — AGRICOLE : région (cartes) pilote le moteur eau ; culture (cartes)
-  // synchronise le <select> sr-only mt-culture (source de vérité du payload).
-  wireCardGroup('.mt-region-card', () => ctx.etat.regionAgricole, (v) => { ctx.etat.regionAgricole = v; }, { allowUnset: true, recompute: true });
-  const cultureSelect = $('mt-culture') as HTMLSelectElement | null;
-  function syncCultureCards() {
-    const current = cultureSelect?.value || '';
-    document.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((b) => {
-      const on = current !== '' && b.dataset.value === current;
-      b.setAttribute('aria-pressed', String(on));
-      b.classList.toggle('border-brass-400', on);
-      b.classList.toggle('border-white/15', !on);
-    });
-  }
-  document.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (cultureSelect) cultureSelect.value = cultureSelect.value === btn.dataset.value ? '' : (btn.dataset.value || '');
-      syncCultureCards();
-      ctx.crochets.appeler('markDataEntered');
-      ctx.crochets.appeler('saveWizardState');
-      ctx.crochets.appeler('computeEstimate');
-    });
-  });
-  syncCultureCards();
-  // AGRICOLE — la source d'eau pilote le type de pompe (immergée/surface).
-  // « Votre irrigation » est retirée du tunnel (coupe fondateur 18/08).
-  wireCardGroup('.mt-water-source', () => ctx.etat.waterSource, (v) => { ctx.etat.waterSource = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-water-unit', () => ctx.etat.waterUnit, (v) => { ctx.etat.waterUnit = v || 'm3h'; }, { recompute: true });
-  const heuresInput = $('mt-heures-pompage') as HTMLInputElement | null;
-  function syncHeuresLabel() {
-    const out = $('mt-heures-pompage-value');
-    if (out && heuresInput) out.textContent = `${heuresInput.value} h`;
-  }
-  // AGW403 — le curseur vaut 7 AVANT toute interaction : `data-touche="1"` est
-  // posé dès son premier événement input/change, et seul un curseur touché
-  // envoie `heuresPompage` (lecture.ts : type « nombreTouche »). L'estimation
-  // affichée garde ses 7 h par défaut (hypothèse interne), sans effet visible.
-  const marquerHeuresTouchees = () => { if (heuresInput) heuresInput.dataset.touche = '1'; };
-  heuresInput?.addEventListener('change', marquerHeuresTouchees);
-  heuresInput?.addEventListener('input', () => {
-    marquerHeuresTouchees();
-    syncHeuresLabel();
-    ctx.crochets.appeler('computeEstimate');
-  });
-  syncHeuresLabel();
-  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
-    $(id)?.addEventListener('input', computeEstimate);
-  }
-
-  // ——— WJ1 : résoudre la facture mensuelle (montant exact prioritaire, sinon tranche) ———
-  const RANGE_MIDPOINT: Record<string, number> = {
-    'lt800': 600, '800-1000': 900, '1000-1500': 1250, '1500-3000': 2250,
-    '3000-5000': 4000, '5000-10000': 7500, 'gt10000': 12000,
-  };
+  // QX/WJ122/WJ123/WJ124/AGW403 — groupes de cartes, cultures, heures de pompage, recalcul en direct.
+  selections.brancherGroupes();
   function maxBillFor(m: string): number {
     return MAX_BILL_BY_MODE[m as keyof typeof MAX_BILL_BY_MODE] ?? 200_000;
   }
-  function resolveMonthlyBill(): number | null {
-    const exact = num('mt-facture-hiver');
-    if (exact != null && exact > 0) return exact;
-    const range = val('mt-bill');
-    if (range && RANGE_MIDPOINT[range] != null) return RANGE_MIDPOINT[range];
-    return null;
-  }
-  ctx.crochets.installer('resolveMonthlyBill', resolveMonthlyBill);
-
-  // ——— QX : FIX « tranche redondante » (résidentiel). ———
-  function syncBillRangeFromExact() {
-    const wrap = $('mt-bill-wrap');
-    const detected = $('mt-bill-detected');
-    const detectedValue = $('mt-bill-detected-value');
-    const billSelect = $('mt-bill') as HTMLSelectElement | null;
-    const exact = num('mt-facture-hiver');
-    if (exact != null && exact > 0 && exact <= maxBillFor('residentiel')) {
-      const rid = billRangeFromExact(exact);
-      if (rid && billSelect) {
-        billSelect.value = rid;
-        if (detectedValue) {
-          // AR — libellé de tranche arabe (lu depuis l'<option> traduite), repli lib.
-          const opt = billSelect.querySelector<HTMLOptionElement>(`option[value="${rid}"]`);
-          detectedValue.textContent = (opt?.textContent ?? '').trim() || billRangeLabel(rid as BillRangeId);
-        }
-        if (wrap) wrap.hidden = true;
-        if (detected) detected.hidden = false;
-        setFieldError('mt-bill', 'mt-bill-err', null);
-        return;
-      }
-    }
-    if (wrap) wrap.hidden = false;
-    if (detected) detected.hidden = true;
-  }
-  ctx.crochets.installer('syncBillRangeFromExact', syncBillRangeFromExact);
 
   // ——— WJ1/QX : calculer + afficher l'estimation dans LE DOCUMENT ———
   // ——— WJ125 — RÈGLE FONDATEUR anti-concurrent : en parcours public, le

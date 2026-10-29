@@ -26,6 +26,8 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
+// RWEB17-M13 — table anglaise des tranches, UNE source pour le serveur et le script.
+import { BILL_RANGE_LABEL_EN } from '../../../lib/tunnel/selections';
 // "Roof type" (ROOF_TYPES) removed from the funnel (founder cut 18/08) — the
 // sales rep fills it in the ERP. `roofType` stays REQUIRED by validateLead:
 // it is now DERIVED (resolveRoofType -> 'autre'), never asked again.
@@ -72,15 +74,6 @@ const inputClass =
 // BILL_RANGES is shared (lead.ts/billRange.ts contract UNCHANGED): the `id`
 // values stay identical across locales, only the displayed label is
 // translated here (that lib is out of scope).
-const BILL_RANGE_LABEL_EN: Record<string, string> = {
-  lt800: 'Under 800 MAD',
-  '800-1000': '800 – 1,000 MAD',
-  '1000-1500': '1,000 – 1,500 MAD',
-  '1500-3000': '1,500 – 3,000 MAD',
-  '3000-5000': '3,000 – 5,000 MAD',
-  '5000-10000': '5,000 – 10,000 MAD',
-  gt10000: 'Over 10,000 MAD',
-};
 const billRanges = BILL_RANGES.map((b) => ({ ...b, label: BILL_RANGE_LABEL_EN[b.id] ?? b.label }));
 
 // WJ6 — assistant steps (English labels; residential defaults, overridden
@@ -2068,19 +2061,8 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   // visitor can see it. Only the WhatsApp deep-link text stays French by
   // design (frontmatter note above) — it reaches the French-speaking sales team.
 
-  // Detected-range label (QX bill auto-detect) — own English map, the
-  // frontmatter's BILL_RANGE_LABEL_EN is NOT reachable here (a plain
-  // <script> tag compiles to a separate client module with no access to
-  // frontmatter bindings).
-  const BILL_RANGE_LABEL_EN: Record<string, string> = {
-    lt800: 'Under 800 MAD',
-    '800-1000': '800 – 1,000 MAD',
-    '1000-1500': '1,000 – 1,500 MAD',
-    '1500-3000': '1,500 – 3,000 MAD',
-    '3000-5000': '3,000 – 5,000 MAD',
-    '5000-10000': '5,000 – 10,000 MAD',
-    gt10000: 'Over 10,000 MAD',
-  };
+  // Detected-range label (QX bill auto-detect) : la table anglaise vit dans
+  // lib/tunnel/selections.ts (BILL_RANGE_LABEL_EN) depuis RWEB17-M13.
 
   // WJ39 — known client-side validateLead() error strings (src/lib/lead.ts,
   // out of this page's file scope) translated to English so inline field
@@ -2123,6 +2105,7 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   import { creerEtat } from '../../../lib/tunnel/etat';
   import { installerPersistance, loadWizardState } from '../../../lib/tunnel/persistance';
   import { installerParcours } from '../../../lib/tunnel/parcours';
+  import { installerSelections } from '../../../lib/tunnel/selections';
 
   // RWEB17-M10 — UN état et UN registre de crochets pour les trois pages : les
   // `let` de haut niveau vivent dans `ctx.etat` (valeurs initiales de
@@ -2138,7 +2121,6 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
-  renderJourType('en'); // QJR664 — « A typical day »
   const fallback = $('mt-fallback');
   const cityEl = $('mt-city') as HTMLInputElement | null;
   const addressEl = $('rp9-address') as HTMLInputElement | null;
@@ -2154,169 +2136,11 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   const parcours = installerParcours(ctx, savedWizard);
   // QX/WJ121 — cartes de mode, fil d'étapes et sous-panneaux par profil.
   parcours.brancherModes();
-
-  // The "roof type" cards (.mt-roof-card + the sr-only <select> mt-roof) are
-  // removed from the funnel (founder cut 18/08): nothing left to sync or
-  // validate here. `roofType` stays required by validateLead — resolveRoofType
-  // now DERIVES it for every profile.
-
-  // ——— OMBRAGE : question RETIRÉE du tunnel (ordre fondateur 21/08) ———
-  // La puce à bascule WJ31/WJ112 et son état n'existent plus : plus aucun
-  // visiteur ne déclare son ombrage sur cette page. (Sa classe CSS est épinglée
-  // ABSENTE de ce fichier par tests/wj112RefineEstimate.test.ts, qui lit la
-  // source BRUTE — ne pas la réécrire ici, même en commentaire.)
-  // Le dérate reste INTACT côté
-  // moteur (billEstimate.ts OMBRAGE_DERATE + ombrageDerateFactor) — simplement,
-  // `estimateFromBill` n'en reçoit plus, et `ombrageDerateFactor(undefined)`
-  // rend 1 : c'est LE MÊME chemin, au facteur près, que suivait déjà tout
-  // visiteur qui n'avait cliqué aucune puce (l'état initial `''` partait en
-  // `ombrage: undefined`). Aucun changement de chiffre pour ce visiteur-là.
-
-  // ——— W353 : technical visit slot — two INDEPENDENT single-select toggles
-  // (time of day + week), same aria-pressed pattern as the other card groups
-  // in this funnel. STATIC and OPTIONAL preference: no calendar, no confirmed
-  // booking — a human validates the real slot after contact. ———
-  function wireVisitToggle(selector: string, getCurrent: () => string, setCurrent: (v: string) => void) {
-    document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const same = getCurrent() === btn.dataset.value;
-        setCurrent(same ? '' : (btn.dataset.value || ''));
-        document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
-          const on = !same && b === btn;
-          b.setAttribute('aria-pressed', String(on));
-          b.classList.toggle('border-brass-400', on);
-          b.classList.toggle('border-white/15', !on);
-        });
-        ctx.crochets.appeler('markDataEntered');
-        ctx.crochets.appeler('saveWizardState');
-      });
-    });
-    const current = getCurrent();
-    if (current) {
-      document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
-        const on = b.dataset.value === current;
-        b.setAttribute('aria-pressed', String(on));
-        b.classList.toggle('border-brass-400', on);
-        b.classList.toggle('border-white/15', !on);
-      });
-    }
-  }
-  wireVisitToggle('.mt-visit-part', () => ctx.etat.visitWindowPart, (v) => { ctx.etat.visitWindowPart = v; });
-  wireVisitToggle('.mt-visit-week', () => ctx.etat.visitWindowWeek, (v) => { ctx.etat.visitWindowWeek = v; });
-
-  // ════════════════════════════════════════════════════════════════════════
-  // L-WEBT TASK1/3 — "Are you home during the day?": three 24h silhouettes
-  // overlaid (founder-approved colours, reproduced identically) — home solid
-  // blue #2a78d6 (10 % fill), away dashed orange [6,3] #eb6834, partly dashed
-  // green [2,3] #1baf7a. The 24 weights per silhouette are the SERVER's
-  // (import above) — this block only DRAWS, it invents no figure.
-  //
-  // QJW5 — ported from the French page, where it has run since 24/08/2026.
-  // ════════════════════════════════════════════════════════════════════════
-  const OCC_COLORS: Record<OccupancyId, { stroke: string; dash: string | null; fill?: string }> = {
-    presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' },
-    absence_jour: { stroke: '#eb6834', dash: '6,3' },
-    presence_partielle: { stroke: '#1baf7a', dash: '2,3' },
-  };
-  // Lead.occupation_jour (backend crm.Lead, apps/crm/models.py) does NOT use
-  // the same vocabulary as the display ids OCCUPANCY_IDS — this table is the
-  // ONLY translation between the two (see also
-  // apps/ventes/courbes_journalieres.py _OCCUPATION_JOUR_VERS_DRAPEAU on the
-  // server side, other direction).
-  const OCC_TO_LEAD_FIELD: Record<OccupancyId, 'present' | 'absent' | 'partiel'> = {
-    presence_jour: 'present', absence_jour: 'absent', presence_partielle: 'partiel',
-  };
-
-  function occShapePaths(shape: readonly number[], w: number, h: number, pad: number): { line: string; area: string } {
-    const max = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
-    const x = (i: number) => pad + (i / (shape.length - 1)) * (w - 2 * pad);
-    const y = (v: number) => pad + (1 - (max > 0 ? v / max : 0)) * (h - 2 * pad);
-    const pts = shape.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
-    const line = `M${pts.join(' L')}`;
-    const area = `${line} L${x(shape.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
-    return { line, area };
-  }
-
-  function renderOccupancyChart() {
-    const svg = $('mt-occ-chart');
-    if (!svg) return;
-    const W = 320;
-    const H = 140;
-    const PAD = 8;
-    let markup = '';
-    for (const id of OCCUPANCY_IDS) {
-      const shape = OCCUPANCY_SHAPES[id];
-      const { line, area } = occShapePaths(shape, W, H, PAD);
-      const c = OCC_COLORS[id];
-      if (c.fill) markup += `<path d="${area}" fill="${c.fill}" stroke="none"></path>`;
-      markup += `<path data-occ-line="${id}" d="${line}" fill="none" stroke="${c.stroke}" stroke-width="2"${c.dash ? ` stroke-dasharray="${c.dash}"` : ''}></path>`;
-    }
-    svg.innerHTML = markup;
-  }
-  renderOccupancyChart();
-
-  function syncOccupancySelection() {
-    document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
-      const id = (btn.dataset.occId || '') as OccupancyId;
-      const field = OCC_TO_LEAD_FIELD[id];
-      const on = !!field && ctx.etat.occupationJour === field;
-      btn.setAttribute('aria-pressed', String(on));
-      btn.classList.toggle('border-brass-400', on);
-      btn.classList.toggle('border-white/15', !on);
-      const badge = btn.querySelector<HTMLElement>('.mt-occ-chosen');
-      if (badge) badge.hidden = !on;
-    });
-    document.querySelectorAll<SVGPathElement>('[data-occ-line]').forEach((p) => {
-      const id = (p.getAttribute('data-occ-line') || '') as OccupancyId;
-      const on = !ctx.etat.occupationJour || OCC_TO_LEAD_FIELD[id] === ctx.etat.occupationJour;
-      p.style.opacity = on ? '1' : '0.25';
-      p.setAttribute('stroke-width', OCC_TO_LEAD_FIELD[id] === ctx.etat.occupationJour ? '3' : '2');
-    });
-    const hidden = $('mt-occupation-jour') as HTMLInputElement | null;
-    if (hidden) hidden.value = ctx.etat.occupationJour;
-  }
-  document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = (btn.dataset.occId || '') as OccupancyId;
-      const field = OCC_TO_LEAD_FIELD[id];
-      if (!field) return;
-      ctx.etat.occupationJour = ctx.etat.occupationJour === field ? '' : field;
-      syncOccupancySelection();
-      ctx.crochets.appeler('markDataEntered');
-      ctx.crochets.appeler('saveWizardState');
-    });
-  });
-  syncOccupancySelection();
-
-  // ════════════════════════════════════════════════════════════════════════
-  // L-WEBT TASK3 — appliances (optional, never blocking): the checkbox reveals
-  // its detail ONLY when ticked (unticked box = question never asked, never a
-  // fabricated "No" — the shared registry `src/lib/tunnel/champs.ts` omits the
-  // whole key as long as the box is not ticked).
-  // ════════════════════════════════════════════════════════════════════════
-  const EQUIP_TOGGLES: Array<{ checkId: string; detailId?: string }> = [
-    { checkId: 'mt-equip-chauffe-eau', detailId: 'mt-equip-chauffe-eau-kw' },
-    { checkId: 'mt-equip-ve', detailId: 'mt-equip-ve-km' },
-    { checkId: 'mt-equip-clim', detailId: 'mt-equip-clim-pieces' },
-    { checkId: 'mt-equip-piscine', detailId: 'mt-equip-piscine-kw' },
-  ];
-  // Called again after the WJ61 rehydration (below): setting `.checked` by
-  // script does not fire `change`, so a restored ticked detail would stay
-  // hidden without this second pass.
-  function syncEquipDetails() {
-    for (const { checkId, detailId } of EQUIP_TOGGLES) {
-      const chk = $(checkId) as HTMLInputElement | null;
-      const detail = detailId ? $(detailId) : null;
-      const wrap = detail?.closest<HTMLElement>('[data-equip-detail]') || null;
-      if (wrap) wrap.hidden = !chk?.checked;
-    }
-  }
-  ctx.crochets.installer('syncEquipDetails', syncEquipDetails);
-  for (const { checkId } of EQUIP_TOGGLES) {
-    const chk = $(checkId) as HTMLInputElement | null;
-    chk?.addEventListener('change', () => { ctx.crochets.appeler('syncEquipDetails'); ctx.crochets.appeler('markDataEntered'); ctx.crochets.appeler('saveWizardState'); });
-  }
-  ctx.crochets.appeler('syncEquipDetails');
+  // ——— RWEB17-M13 — section « sélections » (lib/tunnel/selections.ts) : créneau de visite
+  // (W353), occupation de la journée et équipements (L-WEBT), « journée type » (QJR664) ;
+  // les groupes de cartes et la facture sont branchés plus bas, à leur place. ———
+  const selections = installerSelections(ctx);
+  selections.brancherVisiteOccupationEquipements();
 
   // "Future loads planned" (.mt-future-load) and "Photo of your meter or
   // bill" (mt-meter-photo) are removed from the funnel (founder cut 18/08) —
@@ -2538,109 +2362,8 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
     $('rp9-map')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
   });
   syncRoofModeCards();
-
-  function wireCardGroup(
-    selector: string,
-    getCurrent: () => string,
-    setCurrent: (v: string) => void,
-    opts: { allowUnset?: boolean; recompute?: boolean; onChange?: () => void } = {},
-  ) {
-    const paint = () => {
-      const current = getCurrent();
-      document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
-        const on = current !== '' && b.dataset.value === current;
-        b.setAttribute('aria-pressed', String(on));
-        b.classList.toggle('border-brass-400', on);
-        b.classList.toggle('border-white/15', !on);
-      });
-    };
-    document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const same = getCurrent() === btn.dataset.value;
-        setCurrent(same && opts.allowUnset ? '' : (btn.dataset.value || ''));
-        paint();
-        opts.onChange?.();
-        ctx.crochets.appeler('markDataEntered');
-        ctx.crochets.appeler('saveWizardState');
-        if (opts.recompute) ctx.crochets.appeler('computeEstimate');
-      });
-    });
-    paint();
-  }
-  // The "Contracted power (kVA)" field (and therefore its conditional display
-  // at medium voltage) is removed from the funnel — like the "backup
-  // generator" cards (founder cut 18/08).
-  wireCardGroup('.mt-pro-unit', () => ctx.etat.proUnit, (v) => { ctx.etat.proUnit = v || 'mad'; }, { recompute: true });
-  wireCardGroup('.mt-tension', () => ctx.etat.tension, (v) => { ctx.etat.tension = v || 'bt'; ctx.etat.tensionTouched = true; }, { recompute: true });
-  wireCardGroup('.mt-activity', () => ctx.etat.activity, (v) => { ctx.etat.activity = v || 'day'; ctx.etat.activityTouched = true; }, { recompute: true });
-  wireCardGroup('.mt-surface-type', () => ctx.etat.surfaceType, (v) => { ctx.etat.surfaceType = v; }, { allowUnset: true, recompute: true });
-  // WJ122 — COMMERCIAL: category cards + bill unit toggle. Picking a category
-  // recomputes the estimate (archetype day-share → hotel ≠ office at equal
-  // bill). The per-category question grids it used to reveal are removed
-  // from the funnel (founder cut 18/08): they never changed a single figure
-  // shown — the sales rep fills them in the ERP.
-  wireCardGroup('.mt-commercial-cat', () => ctx.etat.commercialCategory, (v) => { ctx.etat.commercialCategory = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-cc-unit', () => ctx.etat.ccUnit, (v) => { ctx.etat.ccUnit = v || 'mad'; }, { recompute: true });
-  // WJ123 — INDUSTRIAL: shift pattern (the self-consumption ceiling recomputes).
-  wireCardGroup('.mt-equipes', () => ctx.etat.equipes, (v) => { ctx.etat.equipes = v; }, { allowUnset: true, recompute: true });
-  // WJ124 — AGRICULTURAL: region (cards) drives the water engine; crop (cards)
-  // syncs the sr-only mt-culture <select> (the payload source of truth).
-  wireCardGroup('.mt-region-card', () => ctx.etat.regionAgricole, (v) => { ctx.etat.regionAgricole = v; }, { allowUnset: true, recompute: true });
-  const cultureSelect = $('mt-culture') as HTMLSelectElement | null;
-  function syncCultureCards() {
-    const current = cultureSelect?.value || '';
-    document.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((b) => {
-      const on = current !== '' && b.dataset.value === current;
-      b.setAttribute('aria-pressed', String(on));
-      b.classList.toggle('border-brass-400', on);
-      b.classList.toggle('border-white/15', !on);
-    });
-  }
-  document.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (cultureSelect) cultureSelect.value = cultureSelect.value === btn.dataset.value ? '' : (btn.dataset.value || '');
-      syncCultureCards();
-      ctx.crochets.appeler('markDataEntered');
-      ctx.crochets.appeler('saveWizardState');
-      ctx.crochets.appeler('computeEstimate');
-    });
-  });
-  syncCultureCards();
-  // AGRICULTURAL — the water source drives the pump type (submersible/surface).
-  // "Your irrigation" is removed from the funnel (founder cut 18/08).
-  wireCardGroup('.mt-water-source', () => ctx.etat.waterSource, (v) => { ctx.etat.waterSource = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-water-unit', () => ctx.etat.waterUnit, (v) => { ctx.etat.waterUnit = v || 'm3h'; }, { recompute: true });
-  // "Pumping hours / day" slider — live displayed value.
-  const heuresInput = $('mt-heures-pompage') as HTMLInputElement | null;
-  function syncHeuresLabel() {
-    const out = $('mt-heures-pompage-value');
-    if (out && heuresInput) out.textContent = `${heuresInput.value} h`;
-  }
-  // AGW403 — le curseur vaut 7 AVANT toute interaction : `data-touche="1"` est
-  // posé dès son premier événement input/change, et seul un curseur touché
-  // envoie `heuresPompage` (lecture.ts : type « nombreTouche »). L'estimation
-  // affichée garde ses 7 h par défaut (hypothèse interne), sans effet visible.
-  const marquerHeuresTouchees = () => { if (heuresInput) heuresInput.dataset.touche = '1'; };
-  heuresInput?.addEventListener('change', marquerHeuresTouchees);
-  heuresInput?.addEventListener('input', () => {
-    marquerHeuresTouchees();
-    syncHeuresLabel();
-    ctx.crochets.appeler('computeEstimate');
-  });
-  syncHeuresLabel();
-  // Live recompute on every numeric field that drives a shown figure (same
-  // pattern as mt-facture-hiver / mt-bill-kwh on the residential side).
-  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
-    $(id)?.addEventListener('input', computeEstimate);
-  }
-
-  // ——— WJ1 : resolve the monthly bill (exact amount first, else range) ———
-  /** Indicative midpoint of a range (MAD) — ONLY used to ESTIMATE when the
-   *  exact amount is absent; never used for the threshold (that stays on billRange/qualifies). */
-  const RANGE_MIDPOINT: Record<string, number> = {
-    'lt800': 600, '800-1000': 900, '1000-1500': 1250, '1500-3000': 2250,
-    '3000-5000': 4000, '5000-10000': 7500, 'gt10000': 12000,
-  };
+  // QX/WJ122/WJ123/WJ124/AGW403 — groupes de cartes, cultures, heures de pompage, recalcul en direct.
+  selections.brancherGroupes();
   // WJ65/QX — sanity cap PER PROFILE (MAX_BILL_BY_MODE, lib/lead.ts): beyond
   // it, a typo would produce a confidently stated figure — we ask to double
   // check (residential) or route to a dedicated study (pro). Only applies to
@@ -2648,41 +2371,6 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   function maxBillFor(m: string): number {
     return MAX_BILL_BY_MODE[m as keyof typeof MAX_BILL_BY_MODE] ?? 200_000;
   }
-  function resolveMonthlyBill(): number | null {
-    const exact = num('mt-facture-hiver');
-    if (exact != null && exact > 0) return exact;
-    const range = val('mt-bill');
-    if (range && RANGE_MIDPOINT[range] != null) return RANGE_MIDPOINT[range];
-    return null;
-  }
-  ctx.crochets.installer('resolveMonthlyBill', resolveMonthlyBill);
-
-  // ——— QX : fix "redundant range" (residential) — a VALID exact amount
-  // derives the range automatically (billRangeFromExact), hides the <select>
-  // and shows a discreet confirmation line. The payload billRange (read off
-  // the <select>) stays ALWAYS consistent with what drove the estimate
-  // shown. Empty/invalid exact field -> the <select> reappears, as before. ———
-  function syncBillRangeFromExact() {
-    const wrap = $('mt-bill-wrap');
-    const detected = $('mt-bill-detected');
-    const detectedValue = $('mt-bill-detected-value');
-    const billSelect = $('mt-bill') as HTMLSelectElement | null;
-    const exact = num('mt-facture-hiver');
-    if (exact != null && exact > 0 && exact <= maxBillFor('residentiel')) {
-      const rid = billRangeFromExact(exact);
-      if (rid && billSelect) {
-        billSelect.value = rid;
-        if (detectedValue) detectedValue.textContent = BILL_RANGE_LABEL_EN[rid as BillRangeId] ?? '';
-        if (wrap) wrap.hidden = true;
-        if (detected) detected.hidden = false;
-        setFieldError('mt-bill', 'mt-bill-err', null);
-        return;
-      }
-    }
-    if (wrap) wrap.hidden = false;
-    if (detected) detected.hidden = true;
-  }
-  ctx.crochets.installer('syncBillRangeFromExact', syncBillRangeFromExact);
 
   // ——— WJ1/QX : compute + display the estimate in THE DOCUMENT ———
   // QX — has the document already been rendered at least once (fallback included)?
