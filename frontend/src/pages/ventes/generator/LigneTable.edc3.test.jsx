@@ -122,6 +122,23 @@ describe('R2 — LigneTable : « Tableau de protection AC/DC — total HT » au-
     expect(container.querySelector('[data-groupe-total-ht]').textContent.replace(/[\s\u202f\u00a0]/g, '')).toMatch(/^4320/)
   })
 
+  it('R3 — un groupe « supervision_ci » reçoit son en-tête « Supervision & comptage », composants toujours éditables', () => {
+    const avecSupervision = [
+      { _key: 's1', produit: '91', designation: 'Smart Meter', quantite: '1', prix_unit_ttc: '2160', taux_tva: '20', typeLigne: 'produit', groupeClient: 'supervision_ci' },
+      { _key: 's2', produit: '92', designation: 'Clé wifi', quantite: '1', prix_unit_ttc: '600', taux_tva: '20', typeLigne: 'produit', groupeClient: 'supervision_ci' },
+    ]
+    const { container } = rendre({ lines: avecSupervision, lignesRemiseesTtc: [null, null] })
+    const entetes = container.querySelectorAll('tr.lines-groupe-client')
+    expect(entetes).toHaveLength(1)
+    expect(entetes[0]).toHaveAttribute('data-groupe-client', 'supervision_ci')
+    expect(entetes[0].textContent).toContain('Supervision & comptage')
+    // 1 800 + 500 = 2 300 HT.
+    expect(entetes[0].querySelector('[data-groupe-total-ht]').textContent.replace(/[\s  ]/g, '')).toMatch(/^2300/)
+    for (const key of ['s1', 's2']) {
+      expect(container.querySelector(`tr[data-line-key="${key}"] input[type="number"]`)).not.toBeNull()
+    }
+  })
+
   it('sans groupe_client, aucun en-tête : la table d’hier, ligne par ligne', () => {
     const { container } = rendre({ lines: lignes.map((l) => ({ ...l, groupeClient: null })), lignesRemiseesTtc: [null, null, null, null] })
     expect(container.querySelectorAll('tr.lines-groupe-client')).toHaveLength(0)

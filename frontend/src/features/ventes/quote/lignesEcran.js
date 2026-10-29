@@ -91,7 +91,7 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         // saisie (vide = aucune).
         tvaBaseLegale: l.tva_base_legale ?? '',
         // R2 (fondateur 28/10/2026) — groupe CLIENT servi par le serveur
-        // (`groupe_client` : 'tableau_ci' | 'installation_ci' | null), calculé
+        // (`groupe_client` : 'tableau_ci' | 'supervision_ci' | 'installation_ci' | null), calculé
         // du rôle C&I du produit. Marqueur d'écran seulement : l'écran regroupe
         // à l'AFFICHAGE (`sequenceGroupesClient`), jamais envoyé.
         groupeClient: l.groupe_client ?? null,
@@ -100,7 +100,7 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
 }
 
 // ── R2 — en-têtes de groupe client du tableau des lignes ─────────────────────
-// Les composants d'un même `groupe_client` (Tableau de protection AC/DC,
+// Les composants d'un même `groupe_client` (Tableau de protection AC/DC, Supervision & comptage,
 // Installation clé en main) s'affichent SOUS un en-tête de section qui dit le
 // total HT du groupe, chaque composant restant éditable ligne à ligne. Tant
 // qu'aucun geste n'est fait, l'ordre PERSISTÉ (`ordre` = index du state) ne
@@ -109,6 +109,7 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
 // l'ordre persisté devient l'ordre affiché.
 export const LIBELLES_GROUPE_CLIENT = Object.freeze({
   tableau_ci: 'Tableau de protection AC/DC',
+  supervision_ci: 'Supervision & comptage',
   installation_ci: 'Installation clé en main',
 })
 
