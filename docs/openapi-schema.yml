@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4881, operations: 7667, components: 3595}
+counts: {paths: 4882, operations: 7668, components: 3595}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -4828,6 +4828,7 @@ operations:
 - put /api/v1/crm/defis/{id}/ -> v1_crm_defis_update
 - get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_list
 - get /api/v1/crm/dispatch/ -> v1_crm_dispatch_retrieve
+- patch /api/v1/crm/dispatch/reglages/{equipe_id}/ -> v1_crm_dispatch_reglages_partial_update
 - post /api/v1/crm/dispatch/{lead_id}/attribuer/ -> v1_crm_dispatch_attribuer_create
 - get /api/v1/crm/equipes/ -> v1_crm_equipes_list
 - post /api/v1/crm/equipes/ -> v1_crm_equipes_create
