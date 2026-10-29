@@ -64,16 +64,18 @@ class FactureVerrouTests(TestCase):
         return self.api.patch(f'{URL}{facture.pk}/', body, format='json')
 
     def test_facture_payee_verrouillee(self):
+        # api-fuzz-full 28/10 (ENF11) : le verrou tient à l'ÉTAT de la facture
+        # (réglée) — refus d'état 409, même corps, plus un 400.
         for body in ({'montant_ttc': '1500'}, {'montant_ttc': '400'},
                      {'fournisseur': self.autre_fournisseur.pk}):
             rep = self._patch(self.payee, body)
-            self.assertEqual(rep.status_code, 400, (body, rep.data))
+            self.assertEqual(rep.status_code, 409, (body, rep.data))
             self.assertIn('montants verrouillés', str(rep.data))
         # Retirer / poser le lien BCF ne déverrouille rien.
         rep = self._patch(self.payee, {'bon_commande': None})
-        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertEqual(rep.status_code, 409, rep.data)
         rep = self._patch(self.payee, {'montant_ttc': '1500'})
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)
         # Persistance : relue intacte, cohérente avec les comptes à payer.
         self.payee.refresh_from_db()
         self.assertEqual(self.payee.montant_ttc, Decimal('1000'))

@@ -18,7 +18,8 @@ Module PUR : listes de dicts du builder → nouvelle liste, aucune base,
 aucun statut touché (règle #4). Résidentiel et agricole : liste inchangée.
 
 R2 (fondateur, 28/10/2026) — le MÊME regroupement sert le « Tableau de
-protection AC/DC » (``ci/tableau.py``, rôles ``ROLES_TABLEAU_CI`` du moteur) :
+protection AC/DC » (``ci/tableau.py``, rôles ``ROLES_TABLEAU_CI`` du moteur)
+et, depuis R3, la « Supervision & comptage » (``ROLES_SUPERVISION_CI``) :
 ``regrouper_roles`` est la fonction générique, ``regrouper_installation`` en
 est le cas « prestations ».
 """
@@ -176,14 +177,16 @@ def _sans_jargon(it):
 
 def lignes_client(items, data):
     """Les lignes que le CLIENT lit : regroupées sur un devis C&I
-    (``data['mode_installation']`` — « Tableau de protection AC/DC » R2 puis
-    « Installation clé en main »), désignations sans « C&I » (CPDF),
-    ``items`` inchangé sinon."""
+    (``data['mode_installation']`` — « Tableau de protection AC/DC » R2, puis
+    « Supervision & comptage » R3, puis « Installation clé en main »),
+    désignations sans « C&I » (CPDF), ``items`` inchangé sinon."""
     if not est_ci(data):
         return items
-    from .tableau import regrouper_tableau  # frère : import local (cycle)
+    # frère : import local (cycle)
+    from .tableau import regrouper_supervision, regrouper_tableau
     langue = (data or {}).get("langue_sortie") or "fr"
-    lignes = regrouper_installation(regrouper_tableau(items, langue), langue)
+    lignes = regrouper_installation(
+        regrouper_supervision(regrouper_tableau(items, langue), langue), langue)
     return [_sans_jargon(it) for it in lignes]
 
 

@@ -75,3 +75,44 @@ Session coordinatrice : worktree `passation-pc2-l3-devis-fa13c5`. Dossier partag
 - 08:10 UTC : #1133 CE2E (docs : acceptations + tâches CE2E1-9) MERGÉE 08:08. #1134 FIX-MOTEUR : run PR rouge e2e-shard 2 (diagnostic à la fin du run). FIX-WEB en cours.
 - 08:15 UTC : #1134 run PR : e2e mobile E16+ flaky (select rôle) → rerun --failed du job seul.
 - 08:30 UTC : FIX-WEB → PR #1135 ARMÉE (garantie batterie via garantie_mois des lignes, « 5 à 30 ans », gain_net_25_ans servi niveau 3 = PDF, RWEB24 cochée, solar.js 2 604). Écart antérieur signalé non corrigé : recommendedOption() ignore « Sans batterie » (changerait des devis envoyés).
+- 08:40 UTC : PR docs de clôture ouverte (claude/pc2-cloture-docs), sans auto-merge ; à armer après #1134/#1135.
+- 08:45 UTC : #1136 docs MERGÉE 08:36. #1135 FIX-WEB rouge : backend shard 5 test_split_devis_solar::test_empreintes_html_identiques (empreintes HTML du rendu résidentiel, recapture DB) + e2e shard 2 (E16+ flaky probable) → agent relancé avec JETON DOCKER.
+- 08:58 UTC : suppression groupée des worktrees refusée (classificateur) → commandes dans worktrees-a-supprimer.sh (7 worktrees, dont FIX-WEB à supprimer APRÈS le merge de #1135).
+- 09:05 UTC : FIX-WEB correctif 106e080a8 poussé (split_sd_rendu_html recapturé : 3 empreintes résidentielles seulement ; figures.js aligné gain_net_25_ans ; harnais 62 OK). #1135 armée, dernière PR en vol.
+- 09:20 UTC : #1135 FIX-WEB MERGÉE (09:15). RUN TERMINÉ : 12 PR PC2 mergées (#1120 AGV, #1121 CPRS, #1123 CSV, #1126 CEC, #1129 AGC, #1124 RSIZ, #1131 RWEB, #1130 CPDF, #1128 CCAT, #1133 CE2E docs, #1134 FIX-MOTEUR, #1136 docs clôture, #1135 FIX-WEB) + #1114 RPDF (PC1). Claim app:jeton-ci RENDUE. Worktree agent FIX-WEB supprimé. Restent pour Reda : worktrees-a-supprimer.sh (6), branches-mergees-commande.sh (371), .claude/settings.json projet (gh run cancel), rebuild image front locale, deploy prod (deploy-prod.ps1).
+
+## 28/10 ~18:05 UTC — Section 8 de la passation (demandes fondateur du soir)
+- Lue sur `origin/claude/passation-l3-devis-pc2` (commits a921bd434f, 1d7bce0f06) : R1 taille C&I (rasante 10° avant borne toit, boulangerie → ≈ 40 kWc), R2 section « Tableau de protection AC/DC ».
+- PC1 tient `app:ventes` (all-plans-w1, PR #1139 rouge 13 jobs, touche etude_ci.py/blocs.py/builder.py) ; construction sur origin/main 3915e0eaa5 décidée (decisions-prises).
+- Lanes lancées : R1 `local_931df9aa` (branche pc2-r1-taille-rasante), R2 `local_e614b2df` (pc2-r2-tableau-protection), Opus/high, worktrees. Jeton Docker : R1 puis R2. Fold prévu dans UNE PR `pc2-section8-boulangerie` (préfixe non-claude → CI PR complète).
+28/10 ~18:15 UTC — pile allégée pendant R1/R2 (fastapi_ia, celery ×3, frontend, nginx arrêtés ; RAM 2,4 Go libres avant)
+- ~18:50 UTC — R1 d726f2b0e0 / R2 58c4a6c293 poussés ; fusion à blanc R1×R2 sans conflit ; #1139 conflit i18n_labels_ci.py. Relecture Opus R1 : 4 bloquants (phrase « limitée par le toit » jamais au PDF réel ni au commercial ; option avec bornée 30° ; inclinaison absente de `taille`/générateur ; repli PVGIS 30° vs 10°) + garde niveau 3 → renvoyés à R1 avec arbitrages. R2 : generate_devis_premium.py +3 lignes → à ramener.
+- ~19:05 UTC — Relecture Opus R2 : 2 bloquants (ligne regroupée ignore la remise globale — défaut hérité d'« Installation clé en main », corrigé dans la fonction partagée ; Monter/Descendre sur l'index du state vs affiché) + 4 rapides (groupe_client null hors C&I, échapper `unite`, total en-tête après remise, test WeasyPrint une-page 8 sous-lignes) → renvoyés à R2. Laissé : dédoublonnage bloc_option_avec, groupeClient avant enregistrement.
+- ~19:40 UTC — Vérifications fraîches : R2 d0cb2b06b0 = 6/6 corrigés, 0 nouveau bloquant (finitions : test ordre persisté, commentaire) → fold-eligible après rejeu Docker. R1 4cda049014 = 3/5 corrigés, 2 bloquants restants (B1 verdict toit = heuristique « à un panneau près » perdue hors palier aligné / fausse sur taille saisie → stocker le verdict de création ; B2 option « avec » imposée évaluée avec la production de « sans ») → renvoyés à R1.
+- ~20:10 UTC — Demande Reda : logo des devis « moche ». Diagnostic : couverture sombre = petit carré blanc (logo téléversé APDF4 embarqué tel quel, fond blanc + marges) ; asset moteur = PNG 1024 carré à larges marges, blanc→transparent et navy→blanc par seuil (bords crénelés). Lane R3 lancée (Opus), PR séparée après section 8 ; jeton Docker R1 → R2 → R3.
+- ~20:40 UTC — R1 18048664c (Docker runs 5/7 verts, goldens intacts) et R2 75c349983e (7 modules, 119 tests, goldens intacts) TERMINÉES ; jeton Docker → R3 ; fold R1+R2 dans pc2-section8-boulangerie.
+- ~20:50 UTC — main a bougé (#1139 PC1 mergée, 99b62d78f5, CORC10 touche _option_imposee) : R1 en conflit sur etude_ci_batterie.py + i18n_labels_ci.py → renvoyé à R1 pour intégration de main ; R2 foldée sans conflit sur pc2-section8-boulangerie.
+- ~21:00 UTC — PR #1141 ouverte (pc2-section8-boulangerie = main 99b62d78f5 + R2 75c349983e) ; CI PR complète lancée (préfixe non-claude) ; auto-merge PAS armé tant que R1 n'est pas foldée ; auto-fix allumé.
+- ~21:25 UTC — R1 f0d86a8b18 foldée (résolution _option_imposee relue : CORC10 + B2 cohérents) ; PR #1141 = main + R2 + R1 poussée, jeton CI pris, auto-merge armé.
+- ~21:30 UTC — auto-fix : 4 « rouges » sur 0bef6adbee = run CI ANNULÉ par le push de e6aaccfb44 (pas de vrai rouge) ; run 40758399966 en cours sur la tête R1+R2.
+- ~22:05 UTC — CI #1141 rouge (e6aaccfb44) : PACT159 (commentaire lignesEcran.js), QJW20 (notes.sous_lignes_r2), golden vitest SPL40 (d)(e) déplacé par le champ inclinaison R1 → les 2 premiers corrigés par la coordinatrice, le golden par R1.
+- ~22:35 UTC — golden SPL40 (d)(e) recapturé par R1 (f714441c3c, 6 lignes = champ inclinaison seul), test 10/10 local ; fold poussé, CI relancée sur #1141 ; auto-merge toujours armé.
+- ~23:20 UTC — backend-openapi rouge = instantané docs/openapi-schema.yml en retard (GroupeClientEnum) ; régénéré dans l'image django (--write), poussé. backend-lint-fast vert en local. R3 livrée 9509157e2a (PNG HD détouré, goldens recapturés, 331 tests docker) ; relecture Opus en cours ; jeton docker → R1.
+- ~23:40 UTC — Relecture Opus R3 : 2 bloquants (PNG téléversé déjà transparent à encre claire → disparaît ; cas prod carré 1024 téléversé → lockup entier en en-têtes 4,5 mm et au centre des QR) + 3 optionnels → renvoyés à R3 (Docker après R1). Vérifié propre : APDF4 bandeau neutre, cache par contenu, goldens recapturés sans assertion retirée, fichiers-murs en baisse (gdp 4044→4028, theme 1190→1169), aucun chiffre bougé.
+- 21:12 UTC (heure GitHub) — PR #1141 MERGÉE (36 checks verts) : section 8 R1 + R2 + 4 correctifs CI. R1 Docker run 8 vert sur base fusionnée ; R1 archivée. Jeton CI gardé pour la PR R3 ; jeton Docker LIBRE → R3.
+
+- 29/10 00:46 UTC — PR R3 #1146 ouverte depuis `pc2-r3-logo-devis` (R3 74e298429b + main 5aafc1ff5 = c653e0d292), mise en file de merge, auto-fix armé. B1/B2 vérifiés en lecture (logo.py 464fdd0435). Jeton CI = R3-PR1146 (claim app:jeton-ci tenue).
+
+- 29/10 01:01 UTC — #1146 rouge sur stage-names (SCA29 marque en dur dans logo.py/agricole/pages.py ; ENF22 except muet image_qr_societe) : corrigé en d2bea28569, repoussé ; goldens legacy gardés octet pour octet (alt = ENT_NOM_MARQUE, défaut TAQINOR sans profil).
+
+- 29/10 01:04 UTC — #1146 : shard 0 rouge sur test_qx49_proposal_payload (« 9999 » trouvé dans empreinte_contenu, sha256 daté : flake de calendrier) → empreintes hex neutralisées dans le test, poussé 85d6d815ed.
+
+- 29/10 01:07 UTC — #1146 : R3 signale 2 tests cassés par le renommage CHEMIN_TAQINOR (mutilé en CHEMIN_Taqinor par mon remplacement) → constante renommée CHEMIN_LOGO + 2 lecteurs de tests, poussé bd1580dd2a.
+
+- 29/10 01:21 UTC — #1146 : shard 2 rouge sur QJR307 (empreinte du one-page agricole : alt du logo legacy = nom de marque de la société, voulu) → ré-épinglée 964070a7… depuis le run CI, poussé 6b7284d41d.
+
+- 29/10 01:33 UTC — #1146 : CI verte sur 6b7284d41d, PR entrée seule dans la merge queue → RETIRÉE de la file (dequeuePullRequest) pour attendre le commit goldens legacy ×21 de R3 (tests @tag pdf, hors CI de PR, nightly release-verify) ; remise en file dès sa poussée.
+
+- 29/10 01:39 UTC — R3 a poussé 365d109c5a (goldens legacy ×21 recapturés, preuve docker 122 tests verts) ; #1146 remise en file de merge (auto-merge), CI relancée.
+
+- 29/10 02:21 UTC — PR #1146 (R3 logo) MERGÉE, main 418420bac7 ; claim app:jeton-ci rendue, jetons ci\/docker LIBRE. Reste : PR docs de clôture, nettoyage.

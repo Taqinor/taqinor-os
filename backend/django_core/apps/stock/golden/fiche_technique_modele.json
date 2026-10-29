@@ -1,6 +1,6 @@
 {
   "ast": {
-    "FicheTechnique": "482280422884f2077d47795a3c7e22c0a804051d",
+    "FicheTechnique": "1e21e155720b117386d3624468ff64239b4b9f7f",
     "_est_nombre": "5d18c0bef90e040ff010a635babf0336bbe24585",
     "_valider_courbe": "bfa8fece7cfe0c8262df1bb3994254992b14c056",
     "valider_courbe_irradiance": "1569e31152555f78800b28b078b5ba0ff5c2a04f",
@@ -1730,6 +1730,20 @@
       },
       {
         "blank": true,
+        "classe": "FloatField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "d281462f43825f7de8747bfbb6bb89b1fd5a6023",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "lim_calibre_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
         "classe": "PositiveSmallIntegerField",
         "decimal_places": null,
         "defaut": null,
@@ -1743,6 +1757,22 @@
         "validateurs": [
           "MinValueValidator",
           "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "CharField",
+        "decimal_places": null,
+        "defaut": "''",
+        "help_text_sha1": "e308e4bec2f4c8e2000220df31a35d4af40c55f8",
+        "max_digits": null,
+        "max_length": 16,
+        "nom": "log_type",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MaxLengthValidator"
         ]
       },
       {

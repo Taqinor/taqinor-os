@@ -1862,8 +1862,17 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # octet-identique. Toujours 1 page (garde ci-dessus, verte dans le
         # même run). Valeur recopiée du message d'échec du gate image de la
         # lane (gate_moteur2) — jamais calculée à la main.
+        # R3 (28/10/2026) — CHANGEMENT VOULU : le logo de l'en-tête passe par
+        # ``quote_engine.logo`` (boîte « onepage » par capitale, plus de
+        # ``height:80px``) ; valeur recopiée du harnais docker de la lane.
+        # CI #1146 (29/10/2026, run 40798481626, shard 2) — CHANGEMENT VOULU :
+        # l'``alt`` du logo legacy est le nom de marque de la société
+        # (``ENT_NOM_MARQUE`` = « TAQINOR FIXTURE QJR307 » ici), comme les
+        # renderers de famille (``alt="{brand}"``) et comme les pieds de page —
+        # plus la constante « TAQINOR » (SCA29). Valeur recopiée du message
+        # d'échec du run CI, jamais calculée à la main.
         EMPREINTE_EPINGLEE = (
-            '6f5c0907632b176681fda4fdcf4eefe785af1d19a496b6a38e932705255b80e0')
+            '964070a7b3a83fa0ce5312f73e20dae0f0f3fda1426112963a8a5c06ca877e60')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,

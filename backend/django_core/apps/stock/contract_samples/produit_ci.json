@@ -94,11 +94,12 @@
       "type_fiche": "limiteur",
       "roles": ["compteur_injection", "controleur_injection"],
       "champs": {
-        "lim_mode": "texte : compteur_direct | compteur_tc | controleur — vide = non publié",
+        "lim_mode": "texte : compteur_direct | compteur_tc | controleur | compteur_tc_externe (R3, TC fournis à part, sans calibre borné) — vide = non publié",
         "lim_i_max_a": "nombre ou null — courant maxi mesuré en direct (A) ; sans objet en TC",
         "lim_onduleurs_max": "entier ou null — nombre d'onduleurs pilotés",
         "lim_marques": "liste de textes — marques d'onduleur compatibles ; vide = non publié",
-        "lim_phases": "entier ou null — 1 ou 3"
+        "lim_phases": "entier ou null — 1 ou 3",
+        "lim_calibre_a": "nombre ou null — R3.5 (fondateur 28/10/2026) : calibre du comptage (A), courant maxi au point d'injection TC compris ; la composition C&I retient le plus petit calibre ≥ Σ courant d'emploi AC des onduleurs, le compteur à TC externes au-delà ; vide = article sans calibre, retenu seulement en repli (alerte interne COMPTAGE_CALIBRE_A_CONFIRMER)"
       },
       "exemple": {
         "type_fiche": "limiteur",
@@ -106,7 +107,8 @@
         "lim_i_max_a": null,
         "lim_onduleurs_max": null,
         "lim_marques": [],
-        "lim_phases": null
+        "lim_phases": null,
+        "lim_calibre_a": null
       },
       "regle": "Exemple = le Smart Meter Huawei du seed (`SMART-MET`) : `lim_mode` et `lim_onduleurs_max` VIDES = non publiés — la fiche seedée (« Compteur intelligent triphasé/monophasé ») ne dit ni le mode de raccordement ni le nombre d'onduleurs pilotés ; `lim_phases` reste vide (la description dit « triphasé/monophasé » sans préciser le modèle) et `lim_marques` aussi (aucune liste de compatibilité publiée dans le seed). Le moteur ne suppose JAMAIS qu'un compteur pilote N onduleurs : `lim_onduleurs_max` vide ⇒ quantité non vérifiable, motif nommé."
     },
@@ -115,13 +117,16 @@
       "roles": ["logger_supervision"],
       "champs": {
         "log_onduleurs_max": "entier ou null — nombre d'onduleurs supervisés",
-        "log_marques": "liste de textes — marques supervisées ; vide = non publié"
+        "log_marques": "liste de textes — marques supervisées ; vide = non publié",
+        "log_type": "texte : dongle | logger — R3.6 (fondateur 28/10/2026) : une clé wifi (dongle) PAR ONDULEUR, de la marque des onduleurs d'abord ; logger central seulement sans clé de la marque, dès 2 onduleurs ; vide = non publié (traité comme un logger)"
       },
       "exemple": {
         "type_fiche": "logger",
-        "log_onduleurs_max": null,
-        "log_marques": []
-      }
+        "log_onduleurs_max": 1,
+        "log_marques": [],
+        "log_type": "dongle"
+      },
+      "regle": "Exemple = la clé wifi Huawei du seed (`WIFI-DON`, 1 200 TTC, prix fondateur) : `log_type` dongle, `log_onduleurs_max` 1."
     },
     "protection": {
       "type_fiche": "protection",
@@ -236,7 +241,8 @@
           "lim_i_max_a": null,
           "lim_onduleurs_max": null,
           "lim_marques": [],
-          "lim_phases": null
+          "lim_phases": null,
+          "lim_calibre_a": null
         },
         "prix_connu": true,
         "eligible_ci": true,

@@ -110,3 +110,14 @@ class ReplanifierTests(TestCase):
         self.iv.refresh_from_db()
         self.assertTrue(self.iv.rdv_confirme)
         self.assertEqual(self.iv.rdv_reschedule_count, 1)
+
+    def test_types_du_corps_400(self):
+        """api-fuzz-full 29/10 : `motif` publié texte et `confirme` booléen —
+        un tableau ou une chaîne répond 400, rien n'est écrit."""
+        for corps in ({'motif': [[True]], 'date_prevue': None},
+                      {'confirme': 'oui'}, {'confirme': None}):
+            r = self.api.post(f'{BASE}/{self.iv.id}/confirmer-rdv/', corps,
+                              format='json')
+            self.assertEqual(r.status_code, 400, r.data)
+        self.iv.refresh_from_db()
+        self.assertTrue(self.iv.rdv_confirme)

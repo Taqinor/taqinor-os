@@ -171,6 +171,7 @@ export function normaliserCorpsCi(etat) {
       longueur_dc_m: nombreOuNull(contraintes.longueur_dc_m),
       longueur_ac_m: nombreOuNull(contraintes.longueur_ac_m),
       besoin_cellule_mt: booleenOuNull(contraintes.besoin_cellule_mt),
+      mise_a_la_terre_necessaire: booleenOuNull(contraintes.mise_a_la_terre_necessaire),
     },
     tva_recuperable: texteOuNull(e.tva_recuperable),
     options: {

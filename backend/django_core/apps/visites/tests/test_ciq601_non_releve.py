@@ -73,6 +73,22 @@ class NonReleveTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['statut'], VisiteTerrain.Statut.TERMINEE)
 
+    def test_la_mise_a_la_terre_non_relevee_garde_son_motif(self):
+        # R3 (fondateur 28/10/2026) — mesure requise : « non relevée » + motif
+        # laisse terminer, et le relevé reprend le motif (jamais une valeur).
+        visite_id = self._visite_sans_calibre()
+        resp = self._mesures(visite_id, 'tableau_general',
+                             {'_non_releves': {'calibre_a': 'dangereux'}})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resp = self._mesures(visite_id, 'comptage', {
+            '_non_releves': {'mise_a_la_terre': 'site_ferme'}})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(self._terminer(visite_id).status_code, 200)
+        releve = selectors.releve_ci_de_visite(
+            VisiteTerrain.objects.get(pk=visite_id), declare={})
+        self.assertEqual(releve['mise_a_la_terre'],
+                         {'constate': None, 'motif': 'site_ferme'})
+
     def test_sans_motif_400_qui_nomme_le_champ(self):
         visite_id = self._visite_sans_calibre()
         for vide in ('', None, '   '):

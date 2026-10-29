@@ -20,6 +20,7 @@ import logging
 
 from ..i18n_labels_residentiel import accord_annees_ar
 from ..montants import decimale
+from .. import logo as _logo
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,9 @@ def build(ctx):
     # QJR614 — le prix TTC des cartes d'option s'imprime au centime.
     fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
-    logo_dark = ctx["logo_dark"]
+    # R3 — héros photo de 53 mm (boîte « hero ») : le lockup TAQINOR (embarqué
+    # ou téléversé) devient le mot-marque seul ; un logo société reste tel quel.
+    logo_dark = _logo.pour_role(ctx["logo_dark"], "hero")
     charts = ctx["charts"]
     hero_img = ctx.get("hero_img", "")
     # QX4 — identité société (multi-tenant) : marque affichée sur la cover
@@ -475,7 +478,7 @@ def build(ctx):
   pointer-events:none;}}
 .c1-hero-top{{display:flex;align-items:flex-start;justify-content:space-between;
   position:relative;z-index:1;}}
-.c1-logo{{height:9mm;width:auto;object-fit:contain;display:block;}}
+.c1-logo{{{_logo.css_boite("hero")}}}
 .c1-hero-meta{{text-align:right;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.45);}}
 .c1-hero-meta .c1-ref-l{{font-size:6.5pt;letter-spacing:1.5px;text-transform:uppercase;
   color:{muted_2};}}

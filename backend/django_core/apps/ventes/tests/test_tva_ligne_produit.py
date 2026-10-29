@@ -193,7 +193,7 @@ class SerialiseurExposeProduitTva(_Base):
 
 class SerialiseurExposeGroupeClient(_Base):
     """R2 (fondateur 28/10/2026) — ``groupe_client`` ('tableau_ci' |
-    'installation_ci' | null), calculé du ``role_ci`` du PRODUIT (une seule
+    'supervision_ci' (R3) | 'installation_ci' | null), calculé du ``role_ci`` du PRODUIT (une seule
     source : ``moteur_ci.composition``), en lecture seule ; la ligne reste une
     par composant en base."""
 
@@ -223,11 +223,18 @@ class SerialiseurExposeGroupeClient(_Base):
 
     def test_organe_du_tableau(self):
         for role in ('coffret_dc', 'coffret_ac', 'protection_ac',
-                     'protection_dc', 'mise_a_la_terre',
-                     'compteur_injection', 'controleur_injection'):
+                     'protection_dc', 'mise_a_la_terre'):
             ligne = self._ligne(self._produit_ci('Organe %s' % role, role))
             self.assertEqual(LigneDevisSerializer(ligne).data['groupe_client'],
                              'tableau_ci', role)
+
+    def test_supervision_et_comptage(self):
+        # R3.4 (fondateur 28/10/2026 soir) — le Smart Meter SORT du tableau.
+        for role in ('compteur_injection', 'controleur_injection',
+                     'logger_supervision'):
+            ligne = self._ligne(self._produit_ci('Organe %s' % role, role))
+            self.assertEqual(LigneDevisSerializer(ligne).data['groupe_client'],
+                             'supervision_ci', role)
 
     def test_prestation_et_autres(self):
         pose = self._ligne(self._produit_ci('Pose des modules C&I',

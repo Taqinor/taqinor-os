@@ -1198,8 +1198,11 @@ def _option_offerte(option, *, qd, nb_options, scenario):
                     (Devis.OptionAcceptee.SANS_BATTERIE, 'sans_ok'),
                     (Devis.OptionAcceptee.AVEC_BATTERIE, 'avec_ok'))
                 if qd.get(ok, True)}):
+        # api-fuzz-full 28/10 (ENF11) : dépend du CONTENU du devis (options
+        # chiffrées), inexprimable au schéma — refus d'état 409.
         raise AcceptError(
-            "L'option demandée ne fait pas partie de cette proposition.")
+            "L'option demandée ne fait pas partie de cette proposition.",
+            conflict=True)
     return option or deduite
 
 

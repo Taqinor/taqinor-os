@@ -1087,7 +1087,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         ),
         responses={200: ComponentSerialSerializer, 201: ComponentSerialSerializer},
     )
-    @action(parser_classes=oa.JSON_AND_UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-serial',
+    @action(parser_classes=oa.JSON_ET_MULTIPART_PARSERS, detail=True, methods=['post'], url_path='ajouter-serial',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_serial(self, request, pk=None):
         """F9 — relève un n° de série de composant. Optionnellement une photo de
@@ -2274,8 +2274,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         ne touche JAMAIS le statut de l'intervention."""
         from ..services import replanifier
         interv = self.get_object()
-        confirme = bool(request.data.get('confirme', True))
-        new_date = request.data.get('date_prevue')
+        confirme, new_date, motif = oa.confirmation_rdv(request)  # ENF11 : types du corps → 400
         # ACHT38 — report via le service unique (date parsée AVANT toute
         # écriture : date invalide → 400 sous le champ, jamais de 500).
         is_reschedule = False
@@ -2284,7 +2283,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if new_date is not None:
             try:
                 is_reschedule = replanifier(
-                    interv, new_date, request.data.get('motif'),
+                    interv, new_date, motif,
                     request.user, confirme=confirme, trace=False)
             except ValueError as exc:
                 return Response({'date_prevue': str(exc)},

@@ -223,6 +223,7 @@ export default function AttributionLeadsPage() {
                   <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                     {m.leads_ouverts} lead(s) ouvert(s)
                     {m.au_plafond && <Badge tone="warning">au plafond</Badge>}
+                    {m.est_responsable && <Badge tone="neutral">Responsable</Badge>}
                   </div>
                 </button>
               )
