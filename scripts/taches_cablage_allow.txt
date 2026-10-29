@@ -33,9 +33,6 @@
 # La signature est l'IDENTIFIANT DE TACHE (ou <Composant>|<fichier>), jamais
 # `fichier:ligne` : une tache qui se decale, ou un composant qui descend de
 # vingt lignes, ne doit pas invalider la base.
-clauses-absentes|SPL195
-clauses-absentes|SPL196
-clauses-absentes|SPL197
 clauses-absentes|SPL198
 clauses-absentes|SPL199
 clauses-absentes|SPL200
