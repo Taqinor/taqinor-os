@@ -2,16 +2,16 @@
   "cas": "signe_au_domicile",
   "graphes_etude": [],
   "graphes_roi_mensuel_masques": 2,
-  "octets": 60652,
+  "octets": 60692,
   "ordre": 9,
   "pages": 4,
   "polices_masquees": 6,
-  "sha256": "33bd29d1ee8e56e855dfe4aee920a0ff79fc6efd1277eb169852d110702488bf",
+  "sha256": "43f62dc05a4ec829a6457c2461f8fcfd0bc96a632eb49fe015853d0996ea0231",
   "sha256_par_segment": [
     "2357db846b0271a83f293d9deb831e98d4e0f9d51c12e6dc70dd16cf50ac4286",
-    "f0377bf3ad21ba6d2bfc95816e32816fe1c3a2e4c510167fcad11e57b17bfa84",
-    "42d950b9eb4ea935af06936fd28bc230595552fd39508130ba330e758a345909",
-    "f8786bb6b8ad21335161985ea6b0a63eb7bef71917a407b066783201bba4a68e",
-    "db616cd138642f30cadab99bdeeed1678fbb8ce338dbfffa1f5b0719b55413aa"
+    "c959eb31099253473d7ff4ccd6cbee90ac0b4bde798a94f9cd0af30ff96ccffa",
+    "ae4f58a04197ddc424edca7efe09b45efa37dd7ef7b008f8c2b5fc7632215f66",
+    "84298a8a727117342eaa45ec9cdcc6d52989739a5c5fc33f315b14e35912d818",
+    "acb777f56e3ca327b84c2092b14975aba6643f90347fb96e3ff9558c464b9304"
   ]
 }
