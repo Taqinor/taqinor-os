@@ -27,8 +27,8 @@ frontend/src/features/audit/ObjectHistoryButton.jsx::charger  audit/objets/<ct>/
 frontend/src/features/crm/workspace/TimelineTab.jsx::TimelineTab  crm/leads/<id>/jalons-devis/  @action(pagination_class=None) liste complète des jalons @backend/django_core/apps/crm/views.py:1130
 frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::CadenceFrise  crm/relance-etapes/?lead=  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:271
 frontend/src/pages/crm/RelancesDuJourWidget.jsx::charger  crm/relance-etapes/  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:271
-frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx::rien  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1881
-frontend/src/features/offlinesync/mobile/EquipeCommercialeHome.jsx::EquipeCommercialeHome  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1881
+frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx::rien  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1882
+frontend/src/features/offlinesync/mobile/EquipeCommercialeHome.jsx::EquipeCommercialeHome  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1882
 frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour  crm/relance-etapes/suivi/  @action(pagination_class=None) liste calculée complète @backend/django_core/apps/crm/cadence_views.py:370
 frontend/src/pages/crm/DormantAccountsWidget.jsx::DormantAccountsWidget  crm/clients/dormants/  @action(pagination_class=None) liste complète @backend/django_core/apps/crm/clients_views.py:997
 frontend/src/pages/crm/dashboard/PortfolioWidget.jsx::PortfolioWidget  crm/clients/mon-portefeuille/  @action(pagination_class=None) portefeuille complet @backend/django_core/apps/crm/clients_views.py:1062

@@ -533,6 +533,16 @@ export default function RelancesSuiviPage() {
   const [donnees, setDonnees] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [messageEtape, setMessageEtape] = useState(null)
+
+  // Employés assignables pour le sélecteur Responsable — inutile (et non
+  // requêté) pour un rôle normal, qui ne voit jamais ce contrôle.
+  useEffect(() => {
+    if (!isResponsableOuAdmin) return
+    crmApi.getAssignableUsers()
+      .then((r) => setUsers(r.data?.results ?? r.data ?? []))
+      .catch(() => {})
+  }, [isResponsableOuAdmin])
+
   // SUIVI-FILTRE — les cases cochées vivent dans l'URL, dans l'ordre des
   // compteurs (URL stable, partageable : « En retard · toute l'équipe »).
   const [searchParams, setSearchParams] = useSearchParams()
@@ -555,15 +565,6 @@ export default function RelancesSuiviPage() {
   // SUIVI-ÉQUIPE — cliquer un commercial dans la barre de la vue d'équipe
   // borne la file à lui (re-cliquer revient à toute l'équipe).
   const choisirOwnerDepuisBarre = (id) => setOwnerFiltre(id ? String(id) : 'tous')
-
-  // Employés assignables pour le sélecteur Responsable — inutile (et non
-  // requêté) pour un rôle normal, qui ne voit jamais ce contrôle.
-  useEffect(() => {
-    if (!isResponsableOuAdmin) return
-    crmApi.getAssignableUsers()
-      .then((r) => setUsers(r.data?.results ?? r.data ?? []))
-      .catch(() => {})
-  }, [isResponsableOuAdmin])
 
   const today = useMemo(() => todayCasa(), [])
   const owner = ownerFiltre === 'moi'
