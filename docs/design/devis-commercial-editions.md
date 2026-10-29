@@ -75,3 +75,36 @@ quand le catalogue porte la clé.
    vignette PDF n'est pas garantie.
 6. Le logo PNG actuel est petit et pâle sur photo ; un SVG/PNG haute définition de la
    marque améliorerait les deux couvertures.
+
+## Révision du 29/10 (matin) — direction Khatam, trois éditions
+
+Retour du fondateur sur la première passe : « Directe » devait porter beaucoup moins
+d'information, « Signature » n'était pas assez marocaine et trop claire, et il faut trois
+versions (Signature, Normale, Basique) qui rendent le devis actuel bien meilleur.
+
+**Panel de conception (Workflow, 8 agents)** : quatre directions marocaines
+indépendantes — Khatam (géométrie, marine et or), Majorelle & safran (couleur, arc
+outrepassé), Riad (tadelakt, vert zellige, terracotta), Atlas (vert et or
+institutionnel) — notées par trois juges (jury design, patron de PME marocaine,
+ingénieur WeasyPrint) sur premium / marocain / sans cliché / lisibilité / marque /
+faisabilité. **Khatam gagne à l'unanimité** (143 points contre 121-122 et 107) ; la
+synthèse greffe : Fraunces 400 au lieu de 300 (réponse au « trop léger »), fenêtre en arc
+pour la photo (de Majorelle, sans clipPath), double filet encre + or et laiton #7A5C1E
+comme seul or lisible en texte (d'Atlas), accroche en italique (de Riad), QR dans la
+Basique.
+
+**Système** : marine #0F2345 en aplats tramés d'un carreau khatam (étoile à huit
+branches au trait, SVG base64, jamais d'opacité), or #C9A04E en filets et losanges
+seulement, bleu royal #1E4A8C réservé aux données, contrastes WCAG mesurés (script du
+panel). Une seule marque ; seul le papier change (#FAF8F3 Signature, blanc ailleurs).
+
+| Édition | Pages | Contenu | Aplat |
+|---|---|---|---|
+| Signature | 3 | tout le devis actuel + énergie mois par mois + position nette 25 ans ; photo en arc, héros 60 pt, bloc prix marine, cartouche d'accord | ≈ 44 % en page 1 |
+| Normale | 3 | exactement le contenu actuel, registre de six faits, prix sur papier ; variante A (garanties + échéancier en page 2) puis B | bandeau 64 mm |
+| Basique | 1 (2 si tableau long) | titre, client, réserve, trois chiffres, tableau simple, chaîne de totaux, échéancier et garanties sur une ligne, conditions, QR, accord, bande légale ; FR/AR du catalogue | bandeau 30 mm, pied à filets |
+
+**Vérifié** : 15 rendus fixtures + devis réel DEV-202610-0119 + arabe, pages exactes ;
+parité des ancres de chiffres avec le moteur actuel. **À signaler au moteur** : la bande
+légale servie porte « Gérant : … » (contraire à D-APDF) ; la société TAQINOR Solutions
+n'a pas de logo dans son profil (les éditions impriment la marque en lettres).
