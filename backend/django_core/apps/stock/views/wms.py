@@ -231,8 +231,8 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
         vague = self.get_object()
         try:
             configurer_liberation_vague(
-                vague=vague, mode=request.data.get('mode'),
-                seuil_lignes=request.data.get('seuil_lignes'))
+                vague=vague, mode=corps_objet(request).get('mode'),  # corps non objet -> 400
+                seuil_lignes=corps_objet(request).get('seuil_lignes'))
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=statut_refus_metier(exc))
@@ -255,7 +255,7 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
                             status=status.HTTP_404_NOT_FOUND)
         try:
             prelever_ligne_picking(
-                ligne=ligne, quantite=request.data.get('quantite'),
+                ligne=ligne, quantite=corps_objet(request).get('quantite'),
                 user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
@@ -428,7 +428,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         from ..services import deplacer_unite_logistique
         unite = self.get_object()
         modele_bin = UniteLogistique._meta.get_field('bin_actuel').related_model
-        cible = request.data.get('bin_destination')
+        cible = corps_objet(request).get('bin_destination')  # corps non objet -> 400
         if cible is None:
             # Paramètre de requête : type entier déjà contrôlé (ENFP).
             cible = request.query_params.get('bin_destination')
