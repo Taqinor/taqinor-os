@@ -276,3 +276,49 @@ class FullFlowTests(FieldSyncBaseTest):
         r2 = self.api.post(SYNC_URL, {'ops': ops}, format='json')
         self.assertEqual(r2.data['replayed'], 7)
         self.assertEqual(r2.data['applied'], 0)
+
+
+class CheckinStatutSurSiteTests(FieldSyncBaseTest):
+    """ERR-CHT-CHECKIN-HORS-LIGNE-STATUT (EZ6) — un check-in rejoué par la
+    synchro passe l'intervention « Sur site » (service unique), idempotent,
+    sans jamais reculer un statut ; un refus de garde garde l'arrivée."""
+
+    def _checkin(self, op_id):
+        op = {'client_op_id': op_id, 'op_type': 'intervention.checkin',
+              'payload': {'intervention': self.iv.id, 'lat': 33.5, 'lng': -7.6}}
+        r = self.api.post(SYNC_URL, {'ops': [op]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.iv.refresh_from_db()
+        return r.data['results'][0]
+
+    def _statut(self, statut):
+        Intervention.objects.filter(pk=self.iv.pk).update(statut=statut)
+
+    def test_en_route_passe_sur_site_et_rejeu_idempotent(self):
+        self._statut(Intervention.Statut.EN_ROUTE)
+        res = self._checkin('ck-1')
+        self.assertEqual(res['status'], 'applied', res)
+        self.assertEqual(res['result']['statut'], Intervention.Statut.SUR_SITE)
+        self.assertEqual(self.iv.statut, Intervention.Statut.SUR_SITE)
+        self.assertIsNotNone(self.iv.arrivee_site_le)
+        res2 = self._checkin('ck-1')
+        self.assertEqual(res2['status'], 'replayed', res2)
+        self.assertEqual(self.iv.statut, Intervention.Statut.SUR_SITE)
+
+    def test_jamais_de_recul(self):
+        self._statut(Intervention.Statut.TERMINEE)
+        res = self._checkin('ck-2')
+        self.assertEqual(res['status'], 'applied', res)
+        self.assertEqual(self.iv.statut, Intervention.Statut.TERMINEE)
+
+    def test_refus_de_garde_garde_l_arrivee(self):
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(self.company)
+        profil.securite_obligatoire_avant_demarrage = True
+        profil.save()
+        self._statut(Intervention.Statut.EN_ROUTE)
+        res = self._checkin('ck-3')
+        self.assertEqual(res['status'], 'applied', res)
+        self.assertIn('statut_refuse', res['result'])
+        self.assertEqual(self.iv.statut, Intervention.Statut.EN_ROUTE)
+        self.assertIsNotNone(self.iv.arrivee_site_le)
