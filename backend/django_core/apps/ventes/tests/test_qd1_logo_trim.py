@@ -297,7 +297,7 @@ class LogoDetourageTests(SimpleTestCase):
         import base64
         from PIL import Image
         from apps.ventes.quote_engine import logo
-        uri = 'data:image/png;base64,' + base64.b64encode(logo.CHEMIN_TAQINOR.read_bytes()).decode()
+        uri = 'data:image/png;base64,' + base64.b64encode(logo.CHEMIN_LOGO.read_bytes()).decode()
         sombre, clair = logo.societe_b64(uri, 'sombre'), logo.societe_b64(uri, 'clair')
         self.assertEqual(logo.est_taqinor(sombre), 'sombre')
         self.assertEqual(logo.est_taqinor(clair), 'clair')

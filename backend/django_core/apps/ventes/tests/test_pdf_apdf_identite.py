@@ -464,7 +464,7 @@ class LogoRegleTests(SimpleTestCase):
         # plus jamais un petit carré blanc au logo minuscule.
         from apps.ventes.quote_engine import logo
         uri_asset = 'data:image/png;base64,' + base64.b64encode(
-            logo.CHEMIN_TAQINOR.read_bytes()).decode()
+            logo.CHEMIN_LOGO.read_bytes()).decode()
         prod = {'entreprise': {'nom': 'TAQINOR Solutions', 'logo_uri': uri_asset}}
         self.assertEqual(theme.logo_imprime_b64(prod), theme.logo_dark_b64())
         self.assertEqual(theme.logo_imprime_b64(prod, sombre=False), theme.logo_color_b64())

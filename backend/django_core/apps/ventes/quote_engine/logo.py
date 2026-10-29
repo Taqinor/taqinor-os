@@ -58,7 +58,7 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 ASSETS = Path(__file__).resolve().parent / "assets"
-CHEMIN_Taqinor = ASSETS / "logo.png"
+CHEMIN_LOGO = ASSETS / "logo.png"
 
 #: Couleurs de marque lues sur ``assets/logo.png`` (modes des pixels intérieurs).
 BLEU_NUIT = "#022F53"
@@ -235,9 +235,9 @@ def _est_dore(rgb: np.ndarray) -> np.ndarray:
 @functools.lru_cache(maxsize=1)
 def _lockup_clair():
     """Le logo officiel détouré (mot-marque + tagline), ou ``None`` sans asset."""
-    if not CHEMIN_Taqinor.exists():
+    if not CHEMIN_LOGO.exists():
         return None
-    with Image.open(CHEMIN_Taqinor) as img:
+    with Image.open(CHEMIN_LOGO) as img:
         return detourer(img)
 
 
