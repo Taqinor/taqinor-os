@@ -168,7 +168,8 @@ class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
 
     # R2 (fondateur 28/10/2026) — groupe CLIENT de la ligne, calculé du
     # ``role_ci`` du PRODUIT (une seule source : ``moteur_ci.composition``) :
-    # 'tableau_ci' (Tableau de protection AC/DC) | 'installation_ci'
+    # 'tableau_ci' (Tableau de protection AC/DC) | 'supervision_ci'
+    # (Supervision & comptage — R3, fondateur 28/10/2026) | 'installation_ci'
     # (Installation clé en main) | null. L'écran regroupe à l'AFFICHAGE sous un
     # en-tête de section ; rien n'est fusionné en base. Lecture seule.
     groupe_client = serializers.SerializerMethodField()
@@ -183,7 +184,8 @@ class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         fields = '__all__'
 
     @extend_schema_field(serializers.ChoiceField(
-        choices=['tableau_ci', 'installation_ci'], allow_null=True))
+        choices=['tableau_ci', 'supervision_ci', 'installation_ci'],
+        allow_null=True))
     def get_groupe_client(self, obj):
         from .moteur_ci.composition import groupe_client_du_role
         from .quote_engine.ci.installation import MODES_CI
