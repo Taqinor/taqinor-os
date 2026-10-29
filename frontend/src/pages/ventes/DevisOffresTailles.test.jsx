@@ -17,6 +17,7 @@ vi.mock('../../api/ventesApi', () => ({
   },
 }))
 
+import { sansRecommande } from '../../test/fixtures/offresTailles'
 import ventesApi from '../../api/ventesApi'
 import DevisOffresTailles from './DevisOffresTailles'
 
@@ -61,13 +62,7 @@ function offre(overrides) {
 const OFFRE_RECOMMANDE = offre({
   cle: 'recommande', titre: 'Recommandé', recommande: true, est_le_devis: true,
   config: { nb_panneaux: 22, batterie_nb_modules: 3, batterie_module_kwh: 5.0 },
-  sans: {
-    nb_panneaux: 22, puissance_kwc: 12.1, prix_ttc: 108900.0,
-    economie_annuelle_mad: 13260.0, payback_annees: 8.21, couverture_pct: 61.0,
-    production_annuelle_kwh: 19140.0,
-    materiel: [{ role: 'panneau', famille: 'panneau', marque: 'Longi', modele: 'Panneau 550 W' }],
-    toit_ok: true,
-  },
+  sans: sansRecommande(),
   avec: {
     nb_panneaux: 22, puissance_kwc: 12.1, prix_ttc: 142700.0,
     economie_annuelle_mad: 17880.0, payback_annees: 7.98, couverture_pct: 79.4,
