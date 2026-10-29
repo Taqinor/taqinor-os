@@ -114,6 +114,34 @@
    }
   ],
   "owner": null,
+  "par_commercial": [
+   {
+    "a_temps": 0,
+    "a_temps_pct": null,
+    "aujourdhui": 4,
+    "du": 0,
+    "en_retard": 0,
+    "en_retard_actuel": 0,
+    "id": "user#2",
+    "nom": "golden-http-comm",
+    "ouvert": 0,
+    "reportees": 0,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "a_temps_pct": null,
+    "aujourdhui": 1,
+    "du": 0,
+    "en_retard": 0,
+    "en_retard_actuel": 0,
+    "id": "user#1",
+    "nom": "golden-http-resp",
+    "ouvert": 0,
+    "reportees": 0,
+    "sautees": 0
+   }
+  ],
   "par_type": [],
   "periode_jours": 7,
   "premier_contact": {
