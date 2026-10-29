@@ -60,12 +60,12 @@
     "statuts": "aucune nouvelle valeur de statut Devis ou Facture (règle #4)."
   },
   "erreurs_400": {
-    "montant_depasse_reste": {"detail": "Le montant dépasse le reste à facturer.", "code": "montant_depasse_reste"},
     "rien_a_facturer": {"detail": "Il n'y a plus rien à facturer sur cette vente.", "code": "rien_a_facturer"},
     "paiements_invalides": {"detail": "Les paiements saisis dépassent le montant de la facture.", "code": "paiements_invalides"},
     "montant_invalide": {"detail": "Montant invalide.", "code": "montant_invalide"}
   },
   "erreurs_409": {
+    "montant_depasse_reste": {"detail": "Le montant dépasse le reste à facturer.", "code": "montant_depasse_reste"},
     "deja_facture": {"detail": "Cette vente est déjà entièrement facturée.", "code": "deja_facture"},
     "brouillons_a_remplacer": {
       "detail": "Des brouillons existent : confirmez leur remplacement.",

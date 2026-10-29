@@ -651,6 +651,15 @@ class FacturerVenteEncaissementVNT30(_BaseVente):
         self.assertFalse(Facture.objects.filter(devis=devis).exists())
         self.assertEqual(Paiement.objects.count(), 0)
 
+    def test_montant_au_dela_du_reste_409(self):
+        # api-fuzz-full 28/10 (ENF11) : « le montant dépasse le reste à
+        # facturer » dépend des factures déjà émises — refus d'état 409.
+        devis = self._388('DEV-VNT30-RESTE')
+        refus = self._refus(devis, nature='acompte', pourcentage='100')
+        self.assertEqual((refus.status, refus.corps['code']),
+                         (409, 'montant_depasse_reste'))
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+
     def test_paiement_date_future_409(self):
         # api-fuzz-full 28/10 (ENF11) : la date future est conforme au schéma
         # (format date) ; le refus dépend du jour courant → 409, rien écrit.
