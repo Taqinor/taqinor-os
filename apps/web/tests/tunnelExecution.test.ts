@@ -442,9 +442,24 @@ describe('RWEB17-M12 — étapes et retour arrière (popstate) du tunnel EXÉCUT
   }
 });
 
+/** RWEB17-M18 — le chunk de la page et ses imports STATIQUES relatifs (récursivement) : la logique
+ *  du tunnel vit désormais dans un chunk partagé par les trois pages (lib/tunnel/*), que le chunk
+ *  de page importe — c'est ce que le navigateur (et le harness, par `import()`) exécute. */
+function sourceExecutee(chunk: string): string {
+  const vus = new Set<string>();
+  const lire = (chemin: string): string => {
+    if (vus.has(chemin) || !existsSync(chemin)) return '';
+    vus.add(chemin);
+    const src = readFileSync(chemin, 'utf-8');
+    const imports = [...src.matchAll(/(?:^|[;}\s])(?:import\s*|from\s*)"(\.\/[^"]+\.js)"/g)].map((m) => m[1]);
+    return src + imports.map((rel) => lire(join(dirname(chemin), rel))).join('\n');
+  };
+  return lire(chunk);
+}
+
 it('le harness lit bien le chunk RÉELLEMENT référencé par chaque page', () => {
   for (const l of LOCALES) {
-    const src = readFileSync(chunkDeLaPage(builtPage(ROUTES[l])), 'utf-8');
+    const src = sourceExecutee(chunkDeLaPage(builtPage(ROUTES[l])));
     expect(src).toContain('/api/capture-lead');
   }
 });

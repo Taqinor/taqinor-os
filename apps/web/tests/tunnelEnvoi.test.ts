@@ -130,7 +130,9 @@ describe.each(LOCALES)('RWEB17-M8 — envoi et sortie · %s', (locale) => {
     vi.stubGlobal('fetch', f);
     const { appels } = monter(locale, { fullName: 'x' });
     await envoyer();
-    expect(f).not.toHaveBeenCalled();
+    // RWEB17-M18 — seul l'ENVOI est interdit : sous charge, la relève de référence (/api/lead-ref-lookup,
+    // minuterie ≥ 1 s) d'un test « envoi OK » précédent peut tomber pendant celui-ci.
+    expect(f.mock.calls.filter(([url]) => String(url).startsWith('/api/capture-lead'))).toHaveLength(0);
     expect(texte('mt-error')).toBe(MSG[locale].surligne);
     expect(appels).toContain('inline:1');
   });

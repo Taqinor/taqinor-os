@@ -170,7 +170,8 @@ describe.each(LOCALES)('tunnel %s — bouton « Affiner »', (_l, rel) => {
   });
 
   it("n'appelle setupAffiner qu'après un succès (pas avant l'envoi)", () => {
-    const calls = src.match(/setupAffiner\(/g) ?? [];
+    // RWEB17-M18 — lib/tunnel/envoi.ts déclare aussi la signature dans son interface : elle ne compte pas.
+    const calls = src.match(/setupAffiner\((?!idempotencyKey: string\): void;)/g) ?? [];
     expect(calls.length).toBe(2); // définition + UN appel
     expect(src.indexOf('setupAffiner(getOrCreateDedupTokens')).toBeGreaterThan(src.indexOf("fetch('/api/capture-lead'"));
   });
