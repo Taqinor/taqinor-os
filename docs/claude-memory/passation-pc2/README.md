@@ -219,7 +219,9 @@ décision 30°, la même surface donnait ≈ 30 kWc ; le fondateur attend **40 k
   vérifier à la visite ». CONSTRUIT PAR PC1 le 28-29/10 (session boulangerie, quota remis à zéro) — PC2 : ne pas
   reconstruire ; relire la PR « R3 » si une lane touche `moteur_ci/composition.py`, `quote_engine/ci/tableau.py`,
   `visites/visite_checklist.py`.
-  → **PR #1148** (`claude/ci-tableau-r3`, 29/10 ~01:00 UTC, en file). Décisions prises POUR le fondateur dans cette PR, à
+  → **PR #1148 MERGÉE** (`claude/ci-tableau-r3`, 29/10 04:06 UTC, merge ba4e1e17e ; 3 tours de file : C20 fichier-mur,
+  golden SPL40, compteurs du seed). Déploiement = Reda (deploy-prod.ps1 relance `seed_catalogue` → les 3 Smart Meter
+  Huawei et la clé wifi arrivent au catalogue aux prix du 28/10). Décisions prises POUR le fondateur dans cette PR, à
   revoir : (a) ≥ 2 onduleurs avec clés wifi ⇒ pas de logger central composé, alerte interne seulement ; (b) une clé wifi
   sans marque sert toute marque ; (c) chaînes estimées ≥ 1 par onduleur ; (d) parafoudre AC au mauvais nombre de pôles
   jamais pris (alerte) ; (e) compteur à calibre trop petit exclu même en repli (SMART-MET legacy = repli, alerte) ;
