@@ -343,7 +343,8 @@ class TestDispatchLeads(TestCase):
         self.auth_as(seul)
         r = self.api.get('/api/django/crm/dispatch/')
         self.assertEqual(r.json(), {'equipe': None, 'en_attente': 0,
-                                    'leads': [], 'membres': []})
+                                    'leads': [], 'membres': [],
+                                    'equipes_reglables': []})
 
     def test_responsable_confirme_la_proposition(self):
         from apps.crm.models import LeadActivity
@@ -420,8 +421,8 @@ class TestDispatchLeads(TestCase):
         self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('facture_max', r.json())
         r = self.api.post(url, {'equipe': self.equipe.pk, 'membre': self.m2.pk,
-                                'type_installation': 'agricole',
-                                'source': 'meta_ads',
+                                'types_installation': ['agricole'],
+                                'sources': ['meta_ads'],
                                 'company': make_company('dsp-x').pk},
                           format='json')
         self.assertEqual(r.status_code, 201, r.content)
@@ -442,6 +443,167 @@ class TestDispatchLeads(TestCase):
         self.assertEqual(self.api.patch(
             f'/api/django/crm/regles-attribution/{regle.pk}/', {'ordre': 3},
             format='json').status_code, 404)
+
+    # ── Réglages par responsable / directeur commercial (fondateur, 28/10/2026)
+    def _organigramme(self):
+        from apps.roles.models import Departement
+        mk = User.objects.create_user
+        self.directeur = mk(username='dsp_dir', password='x',
+                            company=self.company)
+        self.autre_dir = mk(username='dsp_dir2', password='x',
+                            company=self.company)
+        commercial = Departement.objects.create(
+            company=self.company, nom='Commercial', responsable=self.directeur)
+        Departement.objects.create(
+            company=self.company, nom='Technique', responsable=self.autre_dir)
+        self.equipe.departement = commercial
+        self.equipe.save(update_fields=['departement'])
+
+    def _reglages(self, user, equipe, corps):
+        self.auth_as(user)
+        return self.api.patch(f'/api/django/crm/dispatch/reglages/{equipe.pk}/',
+                              corps, format='json')
+
+    def test_reglages_matrice_des_droits(self):
+        self._organigramme()
+        corps = {'delai_minutes': 7}
+        for user, attendu in ((self.chef, 200), (self.directeur, 200),
+                              (self.admin, 200), (self.autre_dir, 403),
+                              (self.autre_chef, 403), (self.m1, 403)):
+            r = self._reglages(user, self.equipe, corps)
+            self.assertEqual(r.status_code, attendu, (user.username, r.content))
+        etrangere = EquipeCommerciale.objects.create(
+            company=make_company('dsp-regl-etr'), nom='Ailleurs')
+        self.assertEqual(
+            self._reglages(self.admin, etrangere, corps).status_code, 404)
+
+    def test_reglages_ecrit_les_deux_champs_seuls(self):
+        r = self._reglages(self.chef, self.equipe, {
+            'confirmation_responsable': False, 'delai_minutes': 12,
+            'nom': 'Pirate', 'recoit_leads': False})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json(), {'id': self.equipe.pk, 'nom': 'Casa',
+                                    'confirmation_responsable': False,
+                                    'delai_minutes': 12})
+        self.equipe.refresh_from_db()
+        self.assertEqual(self.equipe.nom, 'Casa')
+        self.assertTrue(self.equipe.recoit_leads)
+        self.assertFalse(self.equipe.confirmation_responsable)
+        self.assertEqual(self.equipe.delai_attribution_minutes, 12)
+
+    def test_reglages_types_json_stricts(self):
+        for corps in ({'delai_minutes': 0}, {'delai_minutes': 481},
+                      {'delai_minutes': '5'}, {'delai_minutes': True},
+                      {'confirmation_responsable': 1},
+                      {'confirmation_responsable': 'oui'}):
+            r = self._reglages(self.chef, self.equipe, corps)
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+            self.assertIn(next(iter(corps)), r.json())
+
+    def test_couper_la_confirmation_ne_bloque_aucun_lead(self):
+        # Les attentes déjà posées gardent leur échéance : la tâche les
+        # attribue toujours à la proposition.
+        import datetime
+        from django.utils import timezone
+        from apps.crm.dispatch import attribuer_echeances
+        from apps.crm.models_clients import AttributionEnAttente
+        propose = self.lead.attribution_en_attente.proposee
+        r = self._reglages(self.chef, self.equipe,
+                           {'confirmation_responsable': False})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(AttributionEnAttente.objects.filter(
+            lead=self.lead).exists())
+        self.assertEqual(
+            attribuer_echeances(timezone.now() + datetime.timedelta(days=30)), 1)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.owner_id, propose.pk)
+
+    def test_equipes_reglables_selon_le_role(self):
+        self._organigramme()
+        EquipeCommerciale.objects.create(
+            company=self.company, nom='Archivée', responsable=self.chef,
+            actif=False)
+
+        def reglables(user):
+            self.auth_as(user)
+            r = self.api.get('/api/django/crm/dispatch/')
+            self.assertEqual(r.status_code, 200, r.content)
+            return [e['nom'] for e in r.json()['equipes_reglables']]
+
+        self.assertEqual(reglables(self.chef), ['Casa'])
+        self.assertEqual(reglables(self.directeur), ['Casa'])
+        self.assertEqual(reglables(self.autre_chef), ['Rabat'])
+        self.assertEqual(reglables(self.admin), ['Casa', 'Rabat'])
+        self.assertEqual(reglables(self.autre_dir), [])
+        self.assertEqual(reglables(self.m1), [])
+        self.auth_as(self.chef)
+        ligne = dict(self.api.get('/api/django/crm/dispatch/').json()
+                     ['equipes_reglables'][0])
+        membres = ligne.pop('membres')
+        self.assertEqual(ligne, {'id': self.equipe.pk, 'nom': 'Casa',
+                                 'confirmation_responsable': True,
+                                 'delai_minutes': 5})
+        # Membres ACTIFS servis pour l'éditeur de règles (un responsable au
+        # rôle Commercial n'a pas accès à /crm/assignable-users/).
+        self.assertEqual({m['id'] for m in membres}, {self.m1.pk, self.m2.pk})
+
+    def test_file_vide_respecte_le_contrat(self):
+        import json
+        import pathlib
+        chemin = (pathlib.Path(__file__).resolve().parent
+                  / 'contract_samples' / 'dispatch_leads.json')
+        contrat = json.loads(chemin.read_text(encoding='utf-8'))
+        self.auth_as(self.m1)
+        r = self.api.get('/api/django/crm/dispatch/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(_cles(r.json()), _cles(contrat['exemple_vide']))
+
+    def test_regles_directeur_commercial_de_son_departement(self):
+        self._organigramme()
+        url = '/api/django/crm/regles-attribution/'
+        self.auth_as(self.directeur)
+        r = self.api.post(url, {'equipe': self.equipe.pk,
+                                'membre': self.m1.pk}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        regle = r.json()['id']
+        self.assertEqual(self.api.patch(f'{url}{regle}/', {'ordre': 4},
+                                        format='json').status_code, 200)
+        self.auth_as(self.autre_dir)
+        self.assertEqual(self.api.post(url, {'equipe': self.equipe.pk,
+                                             'membre': self.m1.pk},
+                                       format='json').status_code, 403)
+        self.assertEqual(self.api.patch(f'{url}{regle}/', {'ordre': 2},
+                                        format='json').status_code, 403)
+        self.assertEqual(self.api.delete(f'{url}{regle}/').status_code, 403)
+        self.auth_as(self.admin)
+        self.assertEqual(self.api.delete(f'{url}{regle}/').status_code, 204)
+
+    def test_regle_choix_multiples_api(self):
+        url = '/api/django/crm/regles-attribution/'
+        self.auth_as(self.chef)
+        r = self.api.post(url, {
+            'equipe': self.equipe.pk, 'membre': self.m1.pk,
+            'types_installation': ['agricole', 'industriel', 'agricole'],
+            'sources': ['meta_ads', 'site_web']}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.json()['types_installation'],
+                         ['agricole', 'industriel'])
+        self.assertEqual(r.json()['sources'], ['meta_ads', 'site_web'])
+        r = self.api.post(url, {'equipe': self.equipe.pk,
+                                'membre': self.m1.pk}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual((r.json()['types_installation'], r.json()['sources']),
+                         ([], []))
+        for champ, valeur in (('types_installation', 'agricole'),
+                              ('types_installation', ['inconnu']),
+                              ('types_installation', [1]),
+                              ('sources', {'a': 1}), ('sources', None),
+                              ('sources', [''])):
+            r = self.api.post(url, {'equipe': self.equipe.pk,
+                                    'membre': self.m1.pk, champ: valeur},
+                              format='json')
+            self.assertEqual(r.status_code, 400, (champ, valeur, r.content))
+            self.assertIn(champ, r.json())
 
     def test_equipe_expose_confirmation_et_delai(self):
         self.auth_as(self.admin)
