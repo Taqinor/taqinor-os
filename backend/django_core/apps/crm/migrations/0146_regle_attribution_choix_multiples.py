@@ -4,7 +4,8 @@ Une règle peut désormais viser plusieurs types de client et plusieurs
 sources : ``type_installation`` / ``source`` (texte, une valeur) deviennent
 ``types_installation`` / ``sources`` (listes JSON, vide = tous).
 
-Données : une valeur non vide devient une liste d'un élément. Réversible :
+Données : une valeur non vide devient une liste d'un élément ; les colonnes
+texte restent (obsolètes) jusqu'à une migration de retrait revue. Réversible :
 au retour, le PREMIER élément de chaque liste reprend la colonne texte
 (``migrate crm 0145``).
 """
@@ -48,12 +49,6 @@ class Migration(migrations.Migration):
             field=models.JSONField(blank=True, default=list),
         ),
         migrations.RunPython(vers_listes, vers_textes),
-        migrations.RemoveField(
-            model_name='regleattribution',
-            name='type_installation',
-        ),
-        migrations.RemoveField(
-            model_name='regleattribution',
-            name='source',
-        ),
+        # Les colonnes texte restent (obsolètes, non servies) : pas de
+        # RemoveField dans une migration neuve (garde YOPSB4) — expand/contract.
     ]

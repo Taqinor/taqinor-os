@@ -1472,6 +1472,11 @@ class RegleAttribution(TenantModel):
     # et de canaux marketing (``Lead.Canal``) ; liste vide = tous.
     types_installation = models.JSONField(default=list, blank=True)
     sources = models.JSONField(default=list, blank=True)
+    # OBSOLÈTES (valeur unique, remplacées par les listes ci-dessus ; copiées
+    # par la migration 0146). Gardées : la garde YOPSB4 refuse un RemoveField
+    # dans une migration neuve — retrait dans une migration revue à part.
+    type_installation = models.CharField(max_length=20, blank=True, default='')
+    source = models.CharField(max_length=20, blank=True, default='')
     # Facture mensuelle (DH) — bornes incluses ; vide = pas de borne.
     facture_min = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)

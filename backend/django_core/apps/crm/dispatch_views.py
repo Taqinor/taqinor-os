@@ -12,7 +12,7 @@
 
 La logique vit dans ``dispatch.py`` ; ce module ne fait que lire la requête.
 """
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -164,12 +164,13 @@ class ReglagesEquipeSerializer(serializers.Serializer):
 
 
 @extend_schema(request=ReglagesEquipeSerializer,
-               responses=sd.corps(
-                   'CrmDispatchReglagesReponse',
-                   id=serializers.IntegerField(),
-                   nom=serializers.CharField(),
-                   confirmation_responsable=serializers.BooleanField(),
-                   delai_minutes=serializers.IntegerField()))
+               # ``inline_serializer`` direct : ``sd.corps(nom, **champs)``
+               # entrerait en collision avec le champ « nom » de la réponse.
+               responses=inline_serializer('CrmDispatchReglagesReponse', {
+                   'id': serializers.IntegerField(),
+                   'nom': serializers.CharField(),
+                   'confirmation_responsable': serializers.BooleanField(),
+                   'delai_minutes': serializers.IntegerField()}))
 @api_view(['PATCH'])
 @parser_classes([JSONParser])
 @permission_classes([IsAnyRole])
