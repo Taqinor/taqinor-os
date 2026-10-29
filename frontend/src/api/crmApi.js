@@ -276,6 +276,11 @@ const crmApi = {
   getObjectifsAttainment: (params) =>
     api.get('/crm/objectifs/attainment/', { params }),
   getObjectifAttainment: (id) => api.get(`/crm/objectifs/${id}/attainment/`),
+  // Cockpit d'équipe (28/10/2026) : contrat crm/contract_samples/cockpit_equipe.json.
+  getCockpitEquipe: (params) => api.get('/crm/cockpit-equipe/', { params }),
+  saveObjectif: (id, data) =>
+    id ? api.patch(`/crm/objectifs/${id}/`, data) : api.post('/crm/objectifs/', data),
+  deleteObjectif: (id) => api.delete(`/crm/objectifs/${id}/`),
   // MRY29 — panneau KPI du Cockpit : premier contact (forme
   // `kpi_premier_contact`) + bilan des cadences (forme `kpi_cadences`).
   // `?jours=` (défaut 30 côté serveur). `null` partout quand le dénominateur
