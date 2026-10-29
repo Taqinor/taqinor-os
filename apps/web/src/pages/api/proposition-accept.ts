@@ -32,7 +32,7 @@ import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { lirePaiementAcceptation } from '../../lib/paiementAcceptation';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
-import { entetePreuve, resolveApiBase } from './_apiBase';
+import { entetesJsonPreuve, resolveApiBase } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : le chemin d'e-signature est le plus
@@ -138,13 +138,8 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        accept: 'application/json',
-        ...entetesIpVisiteur(signerIp),
-        // ASEC53 — seul le navigateur vérifié signe un lien `otp_lecture` (contrat ASEC1).
-        ...entetePreuve(request),
-      },
+      // ASEC53 — seul le navigateur vérifié signe un lien `otp_lecture` (contrat ASEC1).
+      headers: { ...entetesJsonPreuve(request), ...entetesIpVisiteur(signerIp) },
       body: JSON.stringify(upstream),
     });
     upstreamStatus = res.status;

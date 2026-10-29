@@ -81,6 +81,15 @@ export function entetePreuve(source: Request | string | null | undefined): Recor
 }
 
 /**
+ * En-têtes d'un POST JSON vers l'ERP portant la preuve de CE navigateur (ASEC53 — une seule
+ * copie pour tous les proxys `proposition-*`, ENF19) : `source` = la requête entrante ou son
+ * en-tête `Cookie` ; `null` → aucune preuve relayée.
+ */
+export function entetesJsonPreuve(source: Request | string | null | undefined): Record<string, string> {
+  return { 'content-type': 'application/json', accept: 'application/json', ...entetePreuve(source) };
+}
+
+/**
  * `Set-Cookie` à poser après une vérification RÉUSSIE (`{ verifie: true, preuve, expire_dans }`,
  * contrat ASEC1 `exemple`) ; `null` pour toute autre réponse. HttpOnly ; Secure ; SameSite=Lax ;
  * Path=/ ; Max-Age = `expire_dans` (borné à 1 h).

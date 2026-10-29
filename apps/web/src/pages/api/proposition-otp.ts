@@ -31,7 +31,7 @@ import { otpLectureEndpoint, otpRequestEndpoint } from '../../lib/proposition';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
-import { cookieDePreuve, entetePreuve, resolveApiBase } from './_apiBase';
+import { cookieDePreuve, entetesJsonPreuve, resolveApiBase } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
@@ -78,13 +78,9 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        accept: 'application/json',
-        // ASEC53 — en mode lecture, la preuve de CE navigateur (cookie httpOnly) : un navigateur
-        // déjà vérifié reçoit « aucun code requis » (ADEV97) au lieu d'un second code.
-        ...(mode === 'lecture' ? entetePreuve(request) : {}),
-      },
+      // ASEC53 — en mode lecture, la preuve de CE navigateur (cookie httpOnly) : un navigateur
+      // déjà vérifié reçoit « aucun code requis » (ADEV97) au lieu d'un second code.
+      headers: entetesJsonPreuve(mode === 'lecture' ? request : null),
       // PREVIEW-V3-FIX (16/09/2026, audit C5) — LE CHAMP S'APPELLE `otp_code`.
       // `proposal_verify_otp_lecture` lit son corps avec
       // `_texte_du_corps(request, 'otp_code')` : un corps `{code: "123456"}`
