@@ -48,6 +48,21 @@ const FORME_PREUVE = /^[A-Za-z0-9_-]{16,256}$/;
 /** Durée plafond du cookie (s) : jamais plus que la fenêtre serveur d'aujourd'hui (1 h). */
 const MAX_AGE_PREUVE = 3600;
 
+/**
+ * ASEC53 (D-ASEC-53-RELAIS) — liens SAME-ORIGIN des flux binaires de la proposition : l'ERP
+ * (`api.taqinor.ma`) ne voit jamais le cookie du site, ces relais lui transmettent la preuve.
+ * Le PDF couvre aussi l'exemplaire SIGNÉ (même `/pdf/` côté ERP, QJR670) ; `?variante=` se
+ * compose derrière, comme avant.
+ */
+export function relaisPdfProposition(token: string): string {
+  return `/api/proposition-pdf/${encodeURIComponent(token)}`;
+}
+
+/** Relais same-origin de l'affiche de toiture (`/roof-image/` de l'ERP, ACAL314). */
+export function relaisAfficheToiture(token: string): string {
+  return `/api/proposition-toiture/${encodeURIComponent(token)}`;
+}
+
 /** La preuve lue dans un en-tête `Cookie`, ou `''` (absente ou mal formée). */
 export function preuveDuCookie(cookieHeader: string | null | undefined): string {
   const brute = lireCookie(cookieHeader, COOKIE_PREUVE);

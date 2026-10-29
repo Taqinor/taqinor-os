@@ -34,8 +34,9 @@ describe('L-VAR — un seul lien PDF, qui suit l’option cochée', () => {
     expect(PROPOSITION).toContain('data-fr="Télécharger le devis (PDF)"');
     expect(PROPOSITION).toContain('data-en="Download the quote (PDF)"');
     expect(PROPOSITION).toContain('data-ar="تحميل العرض (PDF)"');
-    // Une seule fabrique d'URL PDF : proposalPdfEndpoint (aucun endpoint parallèle).
-    expect(PROPOSITION.match(/proposalPdfEndpoint\(/g) ?? []).toHaveLength(1);
+    // Une seule fabrique d'URL PDF : le relais same-origin ASEC53 (aucun endpoint parallèle).
+    expect(PROPOSITION.match(/relaisPdfProposition\(/g) ?? []).toHaveLength(1);
+    expect(PROPOSITION).not.toContain('proposalPdfEndpoint(');
   });
 
   it('le href de départ est inchangé : complet (« les_deux ») quand les deux côtés sont servables', () => {

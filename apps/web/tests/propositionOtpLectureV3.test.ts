@@ -31,6 +31,9 @@ import { POST as postDecliner } from '../src/pages/api/proposition-decliner';
 import { POST as postVirement } from '../src/pages/api/proposition-virement';
 import { POST as postVu } from '../src/pages/api/proposition-vu';
 import { GET as getTaille } from '../src/pages/api/proposition-taille';
+import { GET as getPdf } from '../src/pages/api/proposition-pdf/[token]';
+import { GET as getToiture } from '../src/pages/api/proposition-toiture/[token]';
+import { relaisAfficheToiture, relaisPdfProposition } from '../src/pages/api/_apiBase';
 import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -237,5 +240,83 @@ describe('ASEC53 — chaque relais vers l’ERP porte la preuve de CE navigateur
 
   it('la télémétrie WJ55 (webhook externe) ne reçoit JAMAIS la preuve', () => {
     expect(read('../src/pages/api/proposition-track.ts')).not.toContain('entetePreuve');
+  });
+});
+
+// ── ASEC53 / D-ASEC-53-RELAIS (29/10/2026) — PDF, exemplaire signé et affiche de toiture ──
+//
+// L'ERP ne voit pas le cookie du site : la page pointe ces trois flux sur des relais
+// same-origin qui transmettent la preuve et renvoient le binaire tel quel. L'exemplaire signé
+// est le même `/pdf/` côté ERP (QJR670) : le relais PDF le couvre.
+describe('ASEC53 — relais binaires same-origin (PDF / exemplaire signé / toiture)', () => {
+  beforeEach(() => resetRateLimit());
+  afterEach(() => vi.unstubAllGlobals());
+
+  type GetParams = (ctx: { request: Request; params: Record<string, string> }) => Promise<Response>;
+  const get = (h: unknown, chemin: string, token: string, cookie = `${COOKIE_PREUVE}=${PREUVE}`) =>
+    (h as GetParams)({ request: requete(chemin, undefined, cookie), params: { token } });
+  const OCTETS = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x00, 0xff, 0x0a]); // %PDF- + binaire
+  const binaire = (status: number, entetes: Record<string, string>) =>
+    vi.fn().mockResolvedValue(new Response(OCTETS, { status, headers: entetes }));
+
+  it('PDF : preuve relayée, octets / content-type / content-disposition inchangés, cache privé', async () => {
+    const fn = binaire(200, { 'content-type': 'application/pdf', 'content-disposition': 'inline; filename="Devis_DV-1.pdf"' });
+    vi.stubGlobal('fetch', fn);
+    const res = await get(getPdf, '/api/proposition-pdf/tok?variante=avec', 'tok');
+    const [url] = fn.mock.calls[0] as [string];
+    expect(url).toBe('https://api.taqinor.ma/api/django/ventes/proposal/tok/pdf/?variante=avec');
+    expect(entetesAmont(fn)[EN_TETE_PREUVE]).toBe(PREUVE);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    expect(res.headers.get('content-disposition')).toBe('inline; filename="Devis_DV-1.pdf"');
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(OCTETS);
+    expect([...res.headers.values()].join(' ')).not.toContain(PREUVE);
+  });
+
+  it('PDF : variante hors liste blanche jamais relayée', async () => {
+    const fn = binaire(200, { 'content-type': 'application/pdf' });
+    vi.stubGlobal('fetch', fn);
+    await get(getPdf, '/api/proposition-pdf/tok?variante=x%26y', 'tok');
+    expect((fn.mock.calls[0] as [string])[0]).toBe('https://api.taqinor.ma/api/django/ventes/proposal/tok/pdf/');
+  });
+
+  it('toiture : preuve relayée, image inchangée, cache privé amont conservé', async () => {
+    const fn = binaire(200, { 'content-type': 'image/png', 'cache-control': 'private, max-age=300' });
+    vi.stubGlobal('fetch', fn);
+    const res = await get(getToiture, '/api/proposition-toiture/tok', 'tok');
+    expect((fn.mock.calls[0] as [string])[0]).toBe('https://api.taqinor.ma/api/django/ventes/proposal/tok/roof-image/');
+    expect(entetesAmont(fn)[EN_TETE_PREUVE]).toBe(PREUVE);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('cache-control')).toBe('private, max-age=300');
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(OCTETS);
+  });
+
+  it('sans cookie (second navigateur) : aucun en-tête, le 403 de l’ERP est relayé tel quel', async () => {
+    for (const [h, chemin] of [[getPdf, '/api/proposition-pdf/tok'], [getToiture, '/api/proposition-toiture/tok']] as const) {
+      const fn = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(CONTRAT.exemple_refus_sans_preuve), { status: 403, headers: { 'content-type': 'application/json' } }),
+      );
+      vi.stubGlobal('fetch', fn);
+      const res = await get(h, chemin, 'tok', '');
+      expect(entetesAmont(fn)[EN_TETE_PREUVE]).toBeUndefined();
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual(CONTRAT.exemple_refus_sans_preuve);
+    }
+  });
+
+  it('ERP injoignable → 502 JSON, jamais un faux succès', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')));
+    expect((await get(getPdf, '/api/proposition-pdf/tok', 'tok')).status).toBe(502);
+    expect((await get(getToiture, '/api/proposition-toiture/tok', 'tok')).status).toBe(502);
+  });
+
+  it('la page pointe PDF, exemplaire signé et affiche sur les relais (jamais sur api.taqinor.ma)', () => {
+    expect(relaisPdfProposition('a b')).toBe('/api/proposition-pdf/a%20b');
+    expect(relaisAfficheToiture('a b')).toBe('/api/proposition-toiture/a%20b');
+    expect(PROPOSITION).toContain("const pdfUrl = ok ? relaisPdfProposition(token) : '';");
+    expect(PROPOSITION).toContain('? relaisAfficheToiture(token) : null;');
+    // Le garde ADEV97 compare un href ABSOLU au relais RELATIF résolu sur la page.
+    expect(read('../src/lib/propositionPdfSigne.ts')).toContain('new URL(g.pdfUrl, window.location.href).href');
   });
 });

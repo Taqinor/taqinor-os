@@ -108,7 +108,6 @@ import {
   isOfferDead,
   proposalEndpoint,
   urlAfficheToiture,
-  proposalPdfEndpoint,
   pdfDisponible,
   hasProductionSeries,
   monthlySeries,
@@ -253,7 +252,7 @@ import { dasharrayDonut } from '../../lib/tailleDetail';
 import { economiesPeriodes } from '../../lib/economiesPeriodes';
 import { ficheSlugPourLigne } from '../../lib/ficheMatcher';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-import { entetePreuve, entetesIpVisiteur } from '../api/_apiBase';
+import { entetePreuve, entetesIpVisiteur, relaisAfficheToiture, relaisPdfProposition } from '../api/_apiBase';
 // QJ-EQUIPE (cookie partagé ERP↔site, T2) — `isPlausibleUuid` filtre le cookie
 // `tq_appareil` avant de le transmettre en en-tête SSR ; `domaineCookiePartage`
 // + `SITE_HOST` posent `tq_equipe` sur le domaine partagé (`taqinor.ma`), lisible
@@ -568,8 +567,8 @@ const noteClient = ok ? resolveNoteClient(data!) : null;
 // APDF107 (C-APDF-VER-007) — « Qui est … ? » : la société ÉMETTRICE du devis.
 const emetteur = identiteEmetteur(data && 'emetteur' in data ? data.emetteur : undefined);
 
-// ACAL314 — chemin relatif du proxy Django, préfixé par l'origine de l'API.
-const roofImg = urlAfficheToiture(API_BASE, data?.roof_image_url);
+// ACAL314 — chemin du proxy Django ; ASEC53 — chargé par le relais same-origin (preuve OTP).
+const roofImg = urlAfficheToiture(API_BASE, data?.roof_image_url) ? relaisAfficheToiture(token) : null;
 const clientName = data?.client_name || q?.client_name || 'Client';
 const reference = data?.reference || q?.ref || '';
 const proposalDate = data?.date || q?.date || '';
@@ -1758,7 +1757,7 @@ const waLinkShare = ok ? whatsappShareLink(shareUrl, reference) : '';
 const waLinkReferral = ok ? whatsappReferralLink(Astro.url.origin, reference) : '';
 
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
-const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
+const pdfUrl = ok ? relaisPdfProposition(token) : ''; // ASEC53 — relais same-origin (preuve OTP).
 // ADEV49 — case « PDF » décochée (`pdf_disponible: false`) : AUCUN des trois
 // liens « Télécharger » n'est rendu (ils pointeraient vers un 404).
 const avecPdf = ok && pdfDisponible(data!);

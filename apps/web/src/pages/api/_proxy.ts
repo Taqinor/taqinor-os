@@ -32,6 +32,32 @@ export async function relayJson(url: string, init: RequestInit): Promise<RelayRe
   return { status: reponse.status, payload };
 }
 
+/** En-têtes de réponse amont conservés par `relayBinaire` (ASEC53) — jamais `set-cookie`. */
+const ENTETES_BINAIRE = ['content-type', 'content-disposition', 'content-length', 'x-content-type-options', 'x-robots-tag'];
+
+/**
+ * ASEC53 (D-ASEC-53-RELAIS) — relais d'un flux BINAIRE (PDF, image) : statut et corps amont
+ * transmis tels quels (flux, jamais relu ni réencodé), `content-type` / `content-disposition`
+ * conservés. Cache toujours PRIVÉ (la réponse dépend de la preuve du navigateur) : la valeur
+ * amont si elle est déjà `private`/`no-store`, sinon `private, no-store`. `null` si injoignable.
+ */
+export async function relayBinaire(url: string, init: RequestInit): Promise<Response | null> {
+  let reponse: Response;
+  try {
+    reponse = await fetch(url, init);
+  } catch {
+    return null;
+  }
+  const entetes = new Headers();
+  for (const nom of ENTETES_BINAIRE) {
+    const valeur = reponse.headers.get(nom);
+    if (valeur) entetes.set(nom, valeur);
+  }
+  const cache = reponse.headers.get('cache-control') ?? '';
+  entetes.set('cache-control', /\b(private|no-store)\b/.test(cache) ? cache : 'private, no-store');
+  return new Response(reponse.body, { status: reponse.status, headers: entetes });
+}
+
 /**
  * Garde commune des proxys `proposition-*` : limite de débit par IP, corps JSON, jeton de
  * proposition. Renvoie la réponse d'erreur à retourner telle quelle, sinon `{ body, token }`.
