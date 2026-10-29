@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import calepinageApi from '../../api/calepinageApi'
+import { lireConflit } from './conflitEcriture'
+import { messageRefus } from './commun/refusServeur'
 
 /* ============================================================================
    ACAL24 (C-ACAL-044) — LE DOCUMENT DU CALEPINAGE, LU UNE FOIS, JAMAIS INVENTÉ.
@@ -121,12 +123,13 @@ export async function ecrireSection({
     }
     return { ok: true, empreinte: apres }
   } catch (e) {
-    const conflit = e?.response?.status === 409
-    const donnees = e?.response?.data
-    // `detail` (jeton périmé) ou le refus métier du verrou (`roof_layout`).
-    const refus = donnees?.detail ?? (Array.isArray(donnees?.roof_layout)
-      ? donnees.roof_layout[0] : donnees?.roof_layout)
-    return { ok: false, conflit, motif: typeof refus === 'string' ? refus : '' }
+    // ACAL280 — DEUX 409 : jeton périmé (`document_modifie` → relire) ≠ verrou
+    // (devis accepté : SON motif, jamais « a changé ailleurs ») ; un 400 dit le
+    // motif de son champ (décodeur commun). Jamais un message générique quand
+    // le serveur a parlé.
+    const lu = lireConflit(e)
+    const conflit = lu?.documentModifie === true
+    return { ok: false, conflit, motif: (conflit ? '' : lu?.motif) || messageRefus(e) }
   }
 }
 

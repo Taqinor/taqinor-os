@@ -175,6 +175,17 @@ describe('CAL93 — l’écran', () => {
     await waitFor(() => expect(layout).toHaveBeenCalledTimes(2))
   })
 
+  it('ACAL280 — verrou 409 (devis accepté) : le motif serveur tel quel, aucune relecture', async () => {
+    enregistrerSectionLayout.mockRejectedValue({ response: { status: 409, data: { roof_layout: ['Ce devis est accepté : révisez-le (V2) pour modifier sa conception.'] } } })
+    rendre()
+    await screen.findByTestId('cal-horizon')
+    ajouterUnTour()
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    expect(await screen.findByText(/révisez-le \(V2\)/)).toBeInTheDocument()
+    expect(screen.queryByText(/n’a pas pu être enregistré/)).toBeNull()
+    expect(layout).toHaveBeenCalledTimes(1)
+  })
+
   it('retirer un point le fait disparaître de la liste', async () => {
     rendre()
     await screen.findByTestId('cal-horizon')

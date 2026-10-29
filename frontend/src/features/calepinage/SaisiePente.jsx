@@ -4,6 +4,7 @@ import calepinageApi from '../../api/calepinageApi'
 import useDocumentCalepinage from './useDocumentCalepinage'
 import RetourAtelier from './atelier/RetourAtelier'
 import { RAISON_LECTURE_SEULE, lireConflit } from './conflitEcriture'
+import { messageRefus } from './commun/refusServeur'
 import { mesuresDeVisite, panParDefaut, penteRetenue, pourcentageDepuisPente, saisieDuPan, sourceDePente, suggestionsEnAttente, zonesDuDocument } from './SaisiePente.helpers'
 
 /* ============================================================================
@@ -174,9 +175,10 @@ export default function SaisiePente({
         setMessageSuggestions(donnees?.pays || donnees?.detail
           || 'La suggestion IGN n’est pas offerte pour cette société.')
       } else {
-        setMessageSuggestions(operation === 'proposer'
+        // ACAL280 — le motif serveur (400 : son champ) avant tout repli.
+        setMessageSuggestions(messageRefus(e, operation === 'proposer'
           ? 'La suggestion IGN n’a pas pu être obtenue.'
-          : 'La décision sur la suggestion n’a pas pu être enregistrée.')
+          : 'La décision sur la suggestion n’a pas pu être enregistrée.'))
       }
       return null
     }
@@ -285,7 +287,8 @@ export default function SaisiePente({
       } else if (conflit) {
         setMessage(conflit.motif)
       } else {
-        setMessage('La pente n’a pas pu être enregistrée.')
+        // ACAL280 — le motif serveur (400 : son champ) avant tout repli.
+        setMessage(messageRefus(e, 'La pente n’a pas pu être enregistrée.'))
       }
     }
   }
