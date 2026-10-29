@@ -283,16 +283,6 @@ class ContexteConceptionTest(BaseApiCalepinage):
         with mock.patch.dict('os.environ', {'PUBLIC_MAPTILER_KEY': ''}):
             self.assertFalse(self._contexte(self.nu)['carte']['available'])
 
-    def test_env_example_declare_la_cle(self):
-        """ACAL282 — la variable lue est déclarée dans .env.example."""
-        racine = pathlib.Path(__file__).resolve().parents[5]
-        exemple = racine / '.env.example'
-        if not exemple.exists():  # image docker : seul backend/ est monté
-            self.skipTest('.env.example hors de l’arbre monté')
-        texte = exemple.read_text(encoding='utf-8')
-        for cle in ('PUBLIC_MAPTILER_KEY=', 'PUBLIC_MAPBOX_TOKEN='):
-            self.assertIn(f'\n{cle}', texte)
-
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))
         self.assertEqual(reponse.status_code, 404)

@@ -71,6 +71,11 @@ class EnvExempleTests(SimpleTestCase):
                 return ligne.split('=', 1)[1].strip()
         self.fail(f'EMAIL_BACKEND non imprimé : {sortie}')
 
+    def test_env_exemple_declare_la_cle_carte(self):
+        """ACAL282 — la clé carte lue par config_carte est déclarée."""
+        for cle in ('PUBLIC_MAPTILER_KEY', 'PUBLIC_MAPBOX_TOKEN'):
+            self.assertIn(cle, self.valeurs)
+
     def test_env_exemple_ne_pose_aucun_backend_reel(self):
         self.assertNotIn(
             'EMAIL_BACKEND', self.valeurs,

@@ -18,12 +18,12 @@ import Faq from '../../components/Faq.astro';
 import { NAP } from '../../lib/nap';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const verifiedDate = new Date('2026-07-03');
-import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 const fourchettes = [
   { kwc: '3 kWc', prix: '28 000 – 42 000 درهم' },

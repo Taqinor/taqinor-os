@@ -19,11 +19,11 @@ import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('loi-82-21-expliquee');
-import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 const guideBodyText = `
   Depuis le 9 juin 2026, la loi 82-21 sur l'autoproduction d'énergie électrique et son décret 2-25-100
   s'appliquent. La règle est plus simple qu'elle n'en a l'air : deux nombres — votre puissance et votre

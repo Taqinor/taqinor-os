@@ -7,6 +7,7 @@ import { Badge, Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { messageRefus } from '../commun/refusServeur'
+import { formatDateTime } from '../../../lib/format'
 import { PARAM_ONGLET, ongletParCle } from '../atelier/onglets'
 import { grouperMotifs, libelleStatut, motifsRefusants, statutRefuse, tonStatut } from './VerdictElectrique.helpers'
 
@@ -143,7 +144,7 @@ function Motif({ motif }) {
 function dateLisible(iso) {
   const d = iso ? new Date(iso) : null
   if (!d || Number.isNaN(d.getTime())) return iso || ''
-  return d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+  return formatDateTime(d)
 }
 
 const phraseDerogation = (d) => `Passée outre par ${d.auteur || '—'} le ${dateLisible(d.horodatage)}`

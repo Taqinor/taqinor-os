@@ -21,12 +21,12 @@ import { estimateReadingTime } from '../../../lib/readingTime';
 import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
 import '../../../styles/prose.css';
+import { DATE_LONGUE_FR as dateFmt } from '../../../lib/format';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const pubDate = new Date('2026-06-21');
-import { DATE_LONGUE_FR as dateFmt } from '../../../lib/format';
 
 const bodyText = `
 PVOUT حسب المدينة يتراوح من 1500 إلى 1950 kWh لكل kWc سنوياً، مراكش مؤكّدة عند 1779. تعريفات ONEE من
