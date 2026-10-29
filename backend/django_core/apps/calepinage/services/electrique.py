@@ -43,7 +43,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from core.electrique.types import TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C
+from core.electrique.types import (
+    NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE, STATUT_BLOQUANT,
+    TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C, VerdictElectrique,
+)
 from .valeurs import nombre as _nombre
 
 __all__ = [
@@ -558,20 +561,34 @@ def _nom_auteur(user):
     return ''
 
 
-def _verdict_par_code(conception, code):
+def _verdict_par_code(conception, code, verdicts_publies=()):
     """Le ``VerdictElectrique`` de CE code sur cette conception, ou ``None``.
 
     Un verdict se désigne par son CODE (CALX215), jamais par sa position dans
     une liste ni par un morceau de sa phrase.
+
+    ACAL284 (suite) — l'écran ne connaît que les codes SERVIS sous
+    ``electrique.verdicts[]`` (contrat CAL244 : ``ratio_dc_ac``,
+    ``courant_par_entree_mppt``…), pas ceux du noyau (``CH_*``). Un code servi
+    n'est retenu que s'il est réellement prononcé (``conforme`` faux) ; son
+    ``bloquant`` en fait un BLOQUANT que ``passer_outre`` refusera.
     """
     resultat = getattr(conception, 'resultat', None)
     for verdict in getattr(resultat, 'verdicts', ()) or ():
         if getattr(verdict, 'code', None) == code:
             return verdict
-    return None
+    return next((VerdictElectrique(
+        code=code,
+        nature=NATURE_MATERIELLE if p.get('bloquant') else NATURE_FONCTIONNELLE,
+        statut=STATUT_BLOQUANT if p.get('bloquant') else STATUT_ALERTE,
+        libelle=str(p.get('libelle') or code), source=str(p.get('source') or ''))
+        for p in verdicts_publies or ()
+        if isinstance(p, dict) and p.get('code') == code
+        and p.get('conforme') is False), None)
 
 
-def _traces_de_derogation(conception, saisies, *, user=None):
+def _traces_de_derogation(conception, saisies, *, user=None,
+                          verdicts_publies=()):
     """CALX215 — les traces des alertes PASSÉES OUTRE, prêtes pour le fil.
 
     Le noyau (``core.electrique.types.passer_outre``) prononce la règle :
@@ -603,7 +620,7 @@ def _traces_de_derogation(conception, saisies, *, user=None):
                 "La dérogation n° %d doit être un objet « { code, motif } »."
                 % rang, champ=champ)
         code = str(saisie.get('code') or '').strip()
-        verdict = _verdict_par_code(conception, code)
+        verdict = _verdict_par_code(conception, code, verdicts_publies)
         if verdict is None:
             raise EntreeInvalide(
                 "Aucun verdict électrique ne porte le code « %s » sur cette "
@@ -1113,9 +1130,16 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         # toutes les dérogations ne tiennent pas.
         entree = dict(entree_stockee(calepinage))
         entree.update(reglages)
-        conception, _materiel, _donnees, _doc = conception_du_calepinage(
+        conception, materiel, _donnees, _doc = conception_du_calepinage(
             calepinage, entree=entree)
-        traces = _traces_de_derogation(conception, saisies, user=user)
+        # ACAL284 (suite) — les MÊMES verdicts que ``resultat_calepinage``
+        # sert sous ``electrique.verdicts[]`` : l'écran dérogé par ces codes.
+        traces = _traces_de_derogation(
+            conception, saisies, user=user,
+            verdicts_publies=_verdicts_electriques(
+                conception, materiel.get('optimiseur'),
+                materiel['designations'].get('optimiseur', ''),
+                reglages=_reglages_electrique_societe(calepinage)))
 
     avant_saisie = dict(entree_stockee(calepinage))
 
