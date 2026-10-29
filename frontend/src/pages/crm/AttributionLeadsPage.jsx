@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import crmApi from '../../api/crmApi'
-import { Card, CardContent, Badge, Spinner } from '../../ui'
+import { Card, CardContent, Badge, Button, Spinner } from '../../ui'
+import ReglesAttributionEditor from '../parametres/ReglesAttributionEditor'
 import { apiErrorMessage } from '../../lib/apiError'
 
 /* ============================================================================
@@ -36,8 +37,43 @@ function Info({ label, children }) {
 // Les raccourcis ne partent jamais d'un champ de saisie ni d'une fenêtre ouverte.
 function toucheIgnoree(e) {
   const t = e.target
-  if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return true
+  if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [data-reglages-panel]')) return true
   return Boolean(document.querySelector('[role="dialog"]'))
+}
+
+// Réglages des équipes que l'appelant peut configurer (responsable, directeur
+// commercial, Direction/Admin) : interrupteur, délai et règles de proposition.
+function ReglagesAttribution({ equipes, onSaveReglages }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [erreur, setErreur] = useState(null)
+
+  const enregistrer = (equipe, patch) =>
+    onSaveReglages(equipe, patch)
+      .then(() => setErreur(null))
+      .catch((e) => setErreur(apiErrorMessage(e, 'L’enregistrement des réglages a échoué.')))
+
+  return (
+    <div data-reglages-panel>
+      <Button type="button" variant="outline" size="sm" aria-expanded={ouvert}
+              onClick={() => setOuvert((o) => !o)}>
+        Réglages de l’attribution
+      </Button>
+      {ouvert && (
+        <Card className="mt-2"><CardContent className="space-y-4 pt-4">
+          {erreur && <p role="alert" className="text-sm text-destructive">{erreur}</p>}
+          {equipes.map((eq) => (
+            <div key={eq.id}>
+              <h3 className="text-sm font-semibold text-foreground">{eq.nom}</h3>
+              {/* Membres fournis par /crm/dispatch/ (un responsable au rôle
+                  Commercial n'a pas accès à la liste des comptes). */}
+              <ReglesAttributionEditor equipe={eq} onSaveReglages={enregistrer}
+                                       membres={(eq.membres ?? []).map((m) => ({ id: m.id, username: m.nom }))} />
+            </div>
+          ))}
+        </CardContent></Card>
+      )}
+    </div>
+  )
 }
 
 export default function AttributionLeadsPage() {
@@ -105,6 +141,11 @@ export default function AttributionLeadsPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [lead, leadId, membres, selected, attribuer])
 
+  const reglerEquipe = useCallback(async (equipe, patch) => {
+    await crmApi.saveReglagesDispatch(equipe.id, patch)
+    await charger()
+  }, [charger])
+
   if (!data && !error) {
     return <div className="flex justify-center p-10"><Spinner /></div>
   }
@@ -117,6 +158,10 @@ export default function AttributionLeadsPage() {
         </h1>
         {data && <Badge tone="neutral">{data.en_attente} en attente</Badge>}
       </div>
+
+      {data?.equipes_reglables?.length > 0 && (
+        <ReglagesAttribution equipes={data.equipes_reglables} onSaveReglages={reglerEquipe} />
+      )}
 
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {message && <p role="alert" className="text-sm text-destructive">{message}</p>}

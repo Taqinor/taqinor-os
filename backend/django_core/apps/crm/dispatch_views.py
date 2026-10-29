@@ -4,12 +4,15 @@
   ``contract_samples/dispatch_leads.json``) ;
 * ``POST /crm/dispatch/<lead_id>/attribuer/`` ``{"owner": <id>}`` — sa
   décision ;
+* ``PATCH /crm/dispatch/reglages/<equipe_id>/`` — l'interrupteur
+  « Le responsable confirme chaque lead » et le délai d'une équipe ;
 * ``/crm/regles-attribution/`` — les règles de Paramètres → Leads (lecture
-  tout rôle ; écriture Admin, ou le responsable pour SA seule équipe).
+  tout rôle de la société ; écriture : ``dispatch.peut_regler`` — Admin, le
+  responsable de l'équipe ou la tête de son département).
 
 La logique vit dans ``dispatch.py`` ; ce module ne fait que lire la requête.
 """
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -17,20 +20,22 @@ from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
-from core.champs_stricts import IdInconnu404Mixin
+from core.champs_stricts import EntierStrict, IdInconnu404Mixin
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import dispatch
 from . import schema_docs as sd
-from .champs_api import MAPPING_STRICT_COMPLET
+from .champs_api import MAPPING_STRICT_COMPLET, BooleenStrict
 from .models import Lead
 from .models_clients import RegleAttribution
 from .params_requete import corps_objet, entier_param
 from .serializers import _CompanyScopedRelationsMixin
 
-_TYPES = [('', 'Tous')] + list(Lead.TypeInstallation.choices)
-_SOURCES = [('', 'Toutes')] + list(Lead.Canal.choices)
+
+def _sans_doublons(valeurs):
+    """Ordre de saisie gardé, doublons retirés (``[]`` = tous)."""
+    return list(dict.fromkeys(valeurs))
 
 
 class RegleAttributionSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
@@ -42,16 +47,21 @@ class RegleAttributionSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin
     scoped_relations = ('equipe', 'membre')
     serializer_field_mapping = MAPPING_STRICT_COMPLET
 
-    type_installation = serializers.ChoiceField(
-        choices=_TYPES, required=False, allow_blank=True)
-    source = serializers.ChoiceField(
-        choices=_SOURCES, required=False, allow_blank=True)
+    # Choix multiples (fondateur, 28/10/2026) — liste JSON stricte (un
+    # non-tableau → 400 nommant le champ), chaque valeur dans les choix du
+    # lead, doublons retirés ; ``[]`` = tous.
+    types_installation = serializers.ListField(
+        child=serializers.ChoiceField(choices=Lead.TypeInstallation.choices),
+        required=False)
+    sources = serializers.ListField(
+        child=serializers.ChoiceField(choices=Lead.Canal.choices),
+        required=False)
     membre_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = RegleAttribution
-        fields = ['id', 'equipe', 'ordre', 'villes', 'type_installation',
-                  'source', 'facture_min', 'facture_max', 'membre',
+        fields = ['id', 'equipe', 'ordre', 'villes', 'types_installation',
+                  'sources', 'facture_min', 'facture_max', 'membre',
                   'membre_nom', 'actif']
         extra_kwargs = {'membre': {'required': True, 'allow_null': False},
                         'facture_min': {'min_value': 0},
@@ -59,6 +69,12 @@ class RegleAttributionSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin
 
     def get_membre_nom(self, obj) -> str:
         return dispatch.nom_affiche(obj.membre) or ''
+
+    def validate_types_installation(self, valeur):
+        return _sans_doublons(valeur)
+
+    def validate_sources(self, valeur):
+        return _sans_doublons(valeur)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -78,14 +94,14 @@ class RegleAttributionSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin
 
 
 def _verifier_ecriture(user, *equipes):
-    """Admin : toute équipe. Sinon : uniquement l'équipe dont on est le
-    responsable — jamais celle d'un autre (403)."""
-    if getattr(user, 'is_admin_role', False):
-        return
+    """Écriture d'une règle : ``dispatch.peut_regler`` sur CHAQUE équipe
+    touchée (Admin ; responsable de l'équipe ; tête de son département) —
+    jamais l'équipe d'un autre (403)."""
     for equipe in equipes:
-        if equipe is None or equipe.responsable_id != user.pk:
+        if not dispatch.peut_regler(user, equipe):
             raise PermissionDenied(
-                "Seul le responsable de l'équipe modifie ses règles.")
+                "Seuls le responsable de l'équipe, le directeur commercial et "
+                "la Direction modifient ses règles.")
 
 
 @extend_schema_view(list=extend_schema(parameters=[
@@ -136,7 +152,37 @@ def dispatch_file(request):
         'en_attente': file['en_attente'],
         'leads': file['leads'],
         'membres': file['membres'],
+        'equipes_reglables': file['equipes_reglables'],
     })
+
+
+class ReglagesEquipeSerializer(serializers.Serializer):
+    """Corps de ``PATCH crm/dispatch/reglages/<equipe_id>/`` — types JSON
+    exacts (``1`` n'est pas un booléen, ``"5"`` n'est pas un entier)."""
+    confirmation_responsable = BooleenStrict(required=False)
+    # Minutes OUVRÉES, bornées à une journée de travail (comme l'équipe).
+    delai_minutes = EntierStrict(min_value=1, max_value=480, required=False)
+
+
+@extend_schema(request=ReglagesEquipeSerializer,
+               # ``inline_serializer`` direct : ``sd.corps(nom, **champs)``
+               # entrerait en collision avec le champ « nom » de la réponse.
+               responses=inline_serializer('CrmDispatchReglagesReponse', {
+                   'id': serializers.IntegerField(),
+                   'nom': serializers.CharField(),
+                   'confirmation_responsable': serializers.BooleanField(),
+                   'delai_minutes': serializers.IntegerField()}))
+@api_view(['PATCH'])
+@parser_classes([JSONParser])
+@permission_classes([IsAnyRole])
+def dispatch_reglages(request, equipe_id):
+    """Interrupteur « Le responsable confirme chaque lead » et délai d'une
+    équipe : responsable, directeur commercial (tête du département) ou
+    Direction/Admin. 404 hors société, 403 sans droit."""
+    corps = ReglagesEquipeSerializer(data=corps_objet(request))
+    corps.is_valid(raise_exception=True)
+    return Response(dispatch.modifier_reglages(
+        request.user, equipe_id, corps.validated_data))
 
 
 @extend_schema(request=sd.corps('CrmDispatchAttribuerRequest',
