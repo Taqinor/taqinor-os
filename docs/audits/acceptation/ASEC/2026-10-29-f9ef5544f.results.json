@@ -1,0 +1,99 @@
+{
+  "sha": "f9ef5544fdfc3173de3435b9358b4b427f31c0fb",
+  "date": "2026-10-29",
+  "groupe": "ASEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ASEC23",
+    "ASEC53"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P23.1",
+      "taches": [
+        "ASEC23",
+        "ASEC53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS"
+      },
+      "trace": "lien otp_lecture neuf : écran « Proposition protégée » ; /api/proposition-pdf et /api/proposition-toiture 403 sans code"
+    },
+    {
+      "id": "P23.2",
+      "taches": [
+        "ASEC23",
+        "ASEC53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS"
+      },
+      "trace": "code reçu (console) saisi → proposition rendue (SSR avec preuve cookie httpOnly, invisible à document.cookie)"
+    },
+    {
+      "id": "P53.1",
+      "taches": [
+        "ASEC53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS"
+      },
+      "trace": "navigateur vérifié : PDF via relais 200 application/pdf 346 179 o, %PDF-, inline, private no-store ; liens de la page pointent /api/proposition-pdf/<jeton>"
+    },
+    {
+      "id": "P53.2",
+      "taches": [
+        "ASEC53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS"
+      },
+      "trace": "affiche de toiture via relais 200 image/png private max-age=300 (406 avant le correctif Accept du même jour, base FAIL)"
+    },
+    {
+      "id": "P23.3",
+      "taches": [
+        "ASEC23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS"
+      },
+      "trace": "second navigateur (sans cookie) : page = écran protégé, PDF/toiture/données 403"
+    },
+    {
+      "id": "P23.4",
+      "taches": [
+        "ASEC23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS"
+      },
+      "trace": "D-ASEC-23-CONTACT : POST contact sans preuve sur lien protégé → 200 already_sent=false"
+    }
+  ]
+}
