@@ -360,6 +360,10 @@ class AssistantStatsTests(TestCase):
         note = doc['paths']['/api/django/agent/evenements/{id}/note/']['patch']
         self.assertTrue(note['requestBody'].get('required'))
         self.assertIn('"required": ["note"]', json.dumps(note['requestBody']))
+        # api-fuzz-full 29/10 : `commentaire` publie le motif sans NUL.
+        from core.champs_stricts import MOTIF_SANS_NUL
+        self.assertEqual(doc['components']['schemas']['PatchedNoteEvenementRequest'][
+            'properties']['commentaire']['pattern'], MOTIF_SANS_NUL)
         for brut in ('0', '53', '-17739'):
             resp = _auth(self.admin).get(self.URL, {'semaines': brut})
             self.assertEqual(resp.status_code, 400, brut)

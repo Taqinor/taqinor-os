@@ -12,6 +12,7 @@ from rest_framework import status
 from rest_framework.exceptions import NotFound, ParseError, PermissionDenied
 from rest_framework.response import Response
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from core.champs_stricts import ChaineStricte
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from rest_framework.views import APIView
 
@@ -329,7 +330,9 @@ class EvenementAssistantEntreeSerializer(drf_serializers.Serializer):
 
 class NoteEvenementSerializer(drf_serializers.Serializer):
     note = drf_serializers.ChoiceField(choices=[-1, 0, 1])
-    commentaire = drf_serializers.CharField(
+    # api-fuzz 29/10 (ENF11) : le caractère nul est refusé 400 — publié
+    # (motif sans NUL de ``ChaineStricte``), plus « conforme » puis refusé.
+    commentaire = ChaineStricte(
         max_length=200, required=False, allow_null=True, allow_blank=True)
 
 
