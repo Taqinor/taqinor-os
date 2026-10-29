@@ -8,6 +8,7 @@ import { creerDom } from '../src/lib/tunnel/dom';
 import { creerEtat, type LocaleTunnel } from '../src/lib/tunnel/etat';
 import { installerEnvoi } from '../src/lib/tunnel/envoi';
 
+vi.setConfig({ testTimeout: 30_000 }); // jsdom sous charge (suite complète en parallèle)
 const LOCALES: LocaleTunnel[] = ['fr', 'en', 'ar'];
 const HTML = `
 <main id="page"><form id="mt-form">
