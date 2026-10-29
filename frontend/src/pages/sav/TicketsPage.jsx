@@ -1372,7 +1372,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           </div>
         )}
 
-        <FormActions sticky={false}>
+        {/* ERR-SAV-BARRE-ACTIONS-DEBORDE — la barre porte jusqu'à 7 boutons : en
+            panneau latéral (1280/1920 px) elle revient à la ligne au lieu de
+            déborder (« Facturer » rogné, clic tombant sur la div de mise en page). */}
+        <FormActions sticky={false} className="sm:flex-wrap" data-testid="ticket-actions">
           {!current.annule && (
             <Button type="button" variant="destructive" className="mr-auto" onClick={() => setAnnulerOpen(true)}>
               <Trash2 /> Annuler le ticket
