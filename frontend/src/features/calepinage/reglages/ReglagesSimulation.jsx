@@ -3,6 +3,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
 import ReglagesSite from './ReglagesSite'
+import { refusServeur } from '../commun/refusServeur'
 
 /* ============================================================================
    CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, AVEC
@@ -291,6 +292,173 @@ function phraseRecalcul(rendu) {
     : `${base}.`
 }
 
+/* ============================================================================
+   ACAL289 (D-ACAL-8) — DEUX CARTES EN FIN DE PAGE : « Historique »
+   (`presets.versions_conservees`) et « Rapport d'étude »
+   (`documents.rapport_etude.sections`, catalogue DÉRIVÉ `catalogue_rapport`
+   servi en lecture seule). Chaque carte envoie un PUT qui ne porte QUE sa
+   section (le serveur FUSIONNE par clé) ; rien n'est envoyé tant que rien n'a
+   changé ; un 400 est affiché mot pour mot, champ nommé (décodeur commun).
+   ========================================================================== */
+
+/** Le refus d'un PUT de carte : le motif serveur, sinon le repli. */
+function motifDuRefus(e) {
+  const { message } = refusServeur(e)
+  return message || 'Le serveur n’a rendu aucun motif : rien n’a été enregistré.'
+}
+
+/** Une borne lisible : entier > 0, ou `null` (vide = tout conserver). */
+function borneDepuisTexte(texte) {
+  const brut = String(texte ?? '').trim()
+  if (!brut) return { valeur: null }
+  const n = Number(brut)
+  if (!Number.isInteger(n) || n < 1) {
+    return { erreur: 'Saisissez un nombre entier de versions (au moins 1), ou laissez vide pour tout conserver.' }
+  }
+  return { valeur: n }
+}
+
+function CarteHistorique({ servi, peutGerer }) {
+  const initial = servi == null ? '' : String(servi)
+  const [base, setBase] = useState(initial)
+  const [texte, setTexte] = useState(initial)
+  const [erreur, setErreur] = useState(null)
+  const [message, setMessage] = useState(null)
+  const [envoi, setEnvoi] = useState(false)
+  const modifie = texte.trim() !== base.trim()
+
+  const enregistrer = async () => {
+    const borne = borneDepuisTexte(texte)
+    setMessage(null)
+    if (borne.erreur) { setErreur(borne.erreur); return }
+    setErreur(null)
+    setEnvoi(true)
+    try {
+      const res = await calepinageApi.parametres.update({ presets: { versions_conservees: borne.valeur } })
+      const relu = res?.data?.presets?.versions_conservees
+      const suivant = relu == null ? '' : String(relu)
+      setBase(suivant)
+      setTexte(suivant)
+      setMessage(relu == null ? 'Toutes les versions sont conservées.' : `${relu} versions conservées au plus.`)
+    } catch (e) {
+      setErreur(motifDuRefus(e))
+    } finally {
+      setEnvoi(false)
+    }
+  }
+
+  return (
+    <Card className="mt-5 p-4" data-testid="acal289-historique">
+      <h2 className="text-base font-semibold text-foreground">Historique</h2>
+      <label className="mt-2 block" htmlFor="acal289-versions-conservees">
+        <span className="text-xs text-muted-foreground">Versions conservées</span>
+        <input
+          id="acal289-versions-conservees"
+          type="text"
+          inputMode="numeric"
+          value={texte}
+          disabled={!peutGerer || envoi}
+          onChange={(e) => setTexte(e.target.value)}
+          className={CLASSE_CHAMP}
+        />
+      </label>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Une borne retire les versions les plus anciennes à chaque enregistrement ;
+        vide = toutes les versions sont conservées.
+      </p>
+      {erreur && (
+        <p role="alert" className="mt-2 text-xs text-destructive" data-testid="acal289-erreur-historique">{erreur}</p>
+      )}
+      {message && <p role="status" className="mt-2 text-xs text-muted-foreground">{message}</p>}
+      {peutGerer && (
+        <Button type="button" size="sm" variant="outline" className="mt-3"
+          disabled={!modifie || envoi} data-testid="acal289-enregistrer-historique" onClick={enregistrer}>
+          Enregistrer l’historique
+        </Button>
+      )}
+    </Card>
+  )
+}
+
+/** Les sections cochées : celles stockées (sinon toutes), obligatoires toujours. */
+function sectionsInitiales(catalogue, rapport) {
+  const stockees = Array.isArray(rapport?.sections) ? rapport.sections : catalogue.map((s) => s.code)
+  return catalogue.filter((s) => s.obligatoire || stockees.includes(s.code)).map((s) => s.code)
+}
+
+function CarteRapport({ documents, peutGerer }) {
+  const catalogue = Array.isArray(documents?.catalogue_rapport) ? documents.catalogue_rapport : []
+  const rapport = documents?.rapport_etude ?? null
+  const [base, setBase] = useState(() => sectionsInitiales(catalogue, rapport))
+  const [cochees, setCochees] = useState(base)
+  const [erreur, setErreur] = useState(null)
+  const [message, setMessage] = useState(null)
+  const [envoi, setEnvoi] = useState(false)
+  if (catalogue.length === 0) return null
+  const modifie = cochees.length !== base.length || cochees.some((c) => !base.includes(c))
+
+  const basculer = (section) => {
+    if (section.obligatoire) return
+    setCochees((courant) => (courant.includes(section.code)
+      ? courant.filter((c) => c !== section.code) : [...courant, section.code]))
+  }
+
+  const enregistrer = async () => {
+    setErreur(null)
+    setMessage(null)
+    setEnvoi(true)
+    // Ordre du catalogue ; `langue` renvoyée telle que servie ; jamais le catalogue.
+    const sections = catalogue.map((s) => s.code).filter((c) => cochees.includes(c))
+    try {
+      const res = await calepinageApi.parametres.update({
+        documents: { rapport_etude: { sections, langue: rapport?.langue ?? null } },
+      })
+      const relu = res?.data?.documents?.rapport_etude
+      const suivant = Array.isArray(relu?.sections) ? sectionsInitiales(catalogue, relu) : sections
+      setBase(suivant)
+      setCochees(suivant)
+      setMessage('Sections du rapport d’étude enregistrées.')
+    } catch (e) {
+      setErreur(motifDuRefus(e))
+    } finally {
+      setEnvoi(false)
+    }
+  }
+
+  return (
+    <Card className="mt-5 p-4" data-testid="acal289-rapport">
+      <h2 className="text-base font-semibold text-foreground">Rapport d’étude</h2>
+      <ul className="mt-2 space-y-1">
+        {catalogue.map((s) => (
+          <li key={s.code}>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={cochees.includes(s.code)}
+                disabled={!peutGerer || envoi || s.obligatoire}
+                onChange={() => basculer(s)}
+                data-testid={`acal289-section-${s.code}`}
+              />
+              {s.titre}
+              {s.obligatoire && <span className="text-xs text-muted-foreground">(obligatoire)</span>}
+            </label>
+          </li>
+        ))}
+      </ul>
+      {erreur && (
+        <p role="alert" className="mt-2 text-xs text-destructive" data-testid="acal289-erreur-rapport">{erreur}</p>
+      )}
+      {message && <p role="status" className="mt-2 text-xs text-muted-foreground">{message}</p>}
+      {peutGerer && (
+        <Button type="button" size="sm" variant="outline" className="mt-3"
+          disabled={!modifie || envoi} data-testid="acal289-enregistrer-rapport" onClick={enregistrer}>
+          Enregistrer le rapport d’étude
+        </Button>
+      )}
+    </Card>
+  )
+}
+
 export default function ReglagesSimulation() {
   const peutGerer = useHasPermission('calepinage_gerer')
 
@@ -301,6 +469,9 @@ export default function ReglagesSimulation() {
   const [registres, setRegistres] = useState(null)
   // ACAL130 — la section « imagerie » servie, pour « Site & imagerie ».
   const [imagerie, setImagerie] = useState(null)
+  // ACAL289 — `presets` et `documents` servis, pour les deux cartes de fin.
+  const [presetsServis, setPresetsServis] = useState(null)
+  const [documentsServis, setDocumentsServis] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [erreurChargement, setErreurChargement] = useState(null)
   const [erreurs, setErreurs] = useState({})
@@ -326,6 +497,8 @@ export default function ReglagesSimulation() {
         }
         setRegistres({ simulation, electrique_societe: electrique })
         setImagerie(data.imagerie && typeof data.imagerie === 'object' ? data.imagerie : null)
+        setPresetsServis(data.presets && typeof data.presets === 'object' ? data.presets : {})
+        setDocumentsServis(data.documents && typeof data.documents === 'object' ? data.documents : {})
         setLignesParSection({
           simulation: lignesDepuis(simulation, data.simulation),
           electrique_societe: lignesDepuis(electrique, data.electrique_societe),
@@ -531,6 +704,9 @@ export default function ReglagesSimulation() {
           {message}
         </p>
       )}
+
+      <CarteHistorique servi={presetsServis?.versions_conservees ?? null} peutGerer={peutGerer} />
+      <CarteRapport documents={documentsServis} peutGerer={peutGerer} />
     </div>
   )
 }
