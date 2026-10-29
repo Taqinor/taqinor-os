@@ -18,7 +18,8 @@
 // contrat sont textuels et doivent rester vrais sur les trois à la fois — c'est
 // exactement le genre de divergence FR/EN/AR qui passe inaperçue autrement.
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { COMMERCIAL_QUESTION_WEBHOOK_KEY } from '../src/lib/commercialCategories';
@@ -937,4 +938,41 @@ describe('CIW409 — sous le seuil : message neutre pour commercial / industriel
       expect(bloc).toMatch(/pas encore rentable|isn't profitable yet/);
     });
   }
+});
+
+// RWEB17-M20 — RWEB17 refait sur le module fusionné : les 8 utilitaires du tunnel, le formateur de
+// nombres et les deux câblages de cartes n'existent qu'en UN exemplaire. Périmètre : le tunnel
+// (lib/tunnel, scripts/tunnel et les trois pages mon-toit) — d'autres fichiers de src/ ont des
+// homonymes (`val`, `num`, `pct`, `setText`) sans rapport.
+describe('RWEB17-M20 — une seule définition des utilitaires du tunnel', () => {
+  const racine = fileURLToPath(new URL('../src/', import.meta.url));
+  const lister = (dossier: string): string[] =>
+    readdirSync(join(racine, dossier)).filter((f) => f.endsWith('.ts')).map((f) => `${dossier}/${f}`);
+  const MODULES = [...lister('lib/tunnel'), ...lister('scripts/tunnel')];
+  const PAGES_TUNNEL = ['pages/devis/mon-toit.astro', 'pages/en/devis/mon-toit.astro', 'pages/ar/devis/mon-toit.astro'];
+  const source = (rel: string) => readFileSync(join(racine, rel), 'utf-8');
+  const definitions = (nom: string, fichiers: string[]) => {
+    const n = nom.replace('$', '\\$');
+    const motif = new RegExp(`(?:\\bfunction ${n}\\s*\\(|(?:^|[^\\w$.])const ${n}\\s*=)`, 'gm');
+    return fichiers.flatMap((f) => (source(f).match(motif) ?? []).map(() => f));
+  };
+
+  it.each(['$', 'val', 'num', 'pct', 'setText', 'maxBillFor', 'occShapePaths', 'setFieldError'])(
+    '« %s » : défini dans lib/tunnel/dom.ts seulement, jamais dans une page mon-toit',
+    (nom) => {
+      expect(definitions(nom, MODULES)).toEqual(['lib/tunnel/dom.ts']);
+      expect(definitions(nom, PAGES_TUNNEL)).toEqual([]);
+    },
+  );
+
+  it('un seul formateur de nombres (fmtNumLocale, lu par config.formatNombre) ; wireCardGroup et wireVisitToggle en un exemplaire', () => {
+    const tous = [...MODULES, ...PAGES_TUNNEL];
+    expect(definitions('fmtNumLocale', tous)).toEqual(['lib/tunnel/estimationResidentielle.ts']);
+    expect(tous.filter((f) => /toLocaleString\(LOCALE_NOMBRE/.test(source(f)))).toEqual(['lib/tunnel/estimationResidentielle.ts']);
+    // Les sections lisent le formateur de la config, sans le redéfinir.
+    expect(source('lib/tunnel/estimationPro.ts')).toContain('= config.formatNombre;');
+    expect(tous.filter((f) => /\bfunction fmtNum\b|\bconst fmtNum = \(/.test(source(f)))).toEqual([]);
+    expect(definitions('wireCardGroup', tous)).toEqual(['lib/tunnel/selections.ts']);
+    expect(definitions('wireVisitToggle', tous)).toEqual(['lib/tunnel/selections.ts']);
+  });
 });
