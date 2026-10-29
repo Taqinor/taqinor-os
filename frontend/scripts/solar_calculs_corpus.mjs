@@ -36,10 +36,8 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import {
-  ONEE_TRANCHES, monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures,
-  factureMad, tppanMad, twoBillsSavings, computeROI,
-} from '../src/features/ventes/solar.js'
+import { computeROI} from '../src/features/ventes/solar.js'
+import { ONEE_TRANCHES, monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures, factureMad, tppanMad, twoBillsSavings } from '../src/features/ventes/calc/tarifs.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(

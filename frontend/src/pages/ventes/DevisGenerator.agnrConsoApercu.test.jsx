@@ -10,7 +10,7 @@ import { cycleEcran } from '../../test/cycleEcran'
 import { act, fireEvent, waitFor } from '@testing-library/react'
 
 import { DATE_FIGEE, monter, attendreStable, DEVIS_REGISTRE } from './DevisGeneratorGoldenHarnais'
-import { consoAnnuelleDepuisFactures } from '../../features/ventes/solar'
+import { consoAnnuelleDepuisFactures } from '../../features/ventes/calc/tarifs.js'
 
 vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())

@@ -12,10 +12,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  autoconsoAvecRatio, twoBillsSavings, computeROI, batteryKwhFromLines,
+  autoconsoAvecRatio, computeROI, batteryKwhFromLines,
   AUTOCONSO_SANS, AUTOCONSO_AVEC, DAYS_PER_YEAR, DAYS_IN_MONTH, GHI,
-  PRODUCTIBLE_NET_FACTOR, SYSTEM_LOSS_TOTAL,
-} from './solar.js'
+  PRODUCTIBLE_NET_FACTOR, SYSTEM_LOSS_TOTAL} from './solar.js'
+import { twoBillsSavings } from './calc/tarifs.js'
 
 // ── Fixture MIROIR (identique côté Python) ───────────────────────────────────
 // 10 kWc à Casablanca : productible stocké 1651 (PVGIS, déjà net de 14 %)
@@ -346,7 +346,8 @@ test('RGEN5 economieAvecNette : déduction unique, jamais hors niveau 3', async 
 // fallback_tarif_kwh = onee_tarif_kwh), 5 kWc, productible 1651, part 60 %.
 test('RGEN10 prix kWh estimation = serveur', async () => {
   const { prixKwhEstimation } = await import('./quote/prixKwhEstimation.js')
-  const { ONEE_TRANCHES, monthlyBillFromKwh, KWH_PRICE, FALLBACK_KWH_PRICE } = await import('./solar.js')
+  const { KWH_PRICE } = await import('./solar.js')
+  const { ONEE_TRANCHES, monthlyBillFromKwh, FALLBACK_KWH_PRICE } = await import('./calc/tarifs.js')
   const SOC = [[100, 1.0], [150, 1.2], [200, 1.2], [300, 1.3], [500, 1.5], [null, 1.7]]
   Object.defineProperty(SOC, 'selectif', { value: { seuil: 150, tolerance: 10 } })
   const cas = [

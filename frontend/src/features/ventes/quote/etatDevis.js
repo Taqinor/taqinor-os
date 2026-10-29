@@ -17,9 +17,8 @@
 // Convention : une clé ABSENTE (`undefined`) de l'état veut dire « le devis ne
 // la porte pas, l'écran garde sa valeur » — jamais une valeur inventée.
 // Fonctions PURES : aucun React, aucun réseau (node --test).
-import {
-  consoAnnuelleDepuisFactures, consoDescendDesFactures, comptePanneauxOption, estimerMois,
-} from '../solar.js'
+import { comptePanneauxOption, estimerMois} from '../solar.js'
+import { consoAnnuelleDepuisFactures, consoDescendDesFactures } from '../calc/tarifs.js'
 import { SCENARIO_SANS, SCENARIO_AVEC } from './sizingReducer.js'
 import { lignesServeurVersEcran, lignesEcranVersPayload } from './lignesEcran.js'
 import { deriverReouverture } from './reouverture.js'

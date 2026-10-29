@@ -11,7 +11,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { estimerMois, consoAnnuelleDepuisFactures } from '../../features/ventes/solar'
+import { estimerMois} from '../../features/ventes/solar'
+import { consoAnnuelleDepuisFactures } from '../../features/ventes/calc/tarifs.js'
 
 vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
 vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())

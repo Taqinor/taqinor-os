@@ -6,11 +6,8 @@
 // react-hooks/immutability).
 import { erreursConditions, erreurEcheancier } from '../../echeancierEdition'
 import {
-  controlerFacturesSaisies,
-  isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe, texteClassement,
-  consoAnnuelleDepuisFactures,
-  controlerKwhDeclare, MESSAGE_KWH_INCOHERENT,
-} from '../../solar'
+  isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe, texteClassement} from '../../solar'
+import { controlerFacturesSaisies, consoAnnuelleDepuisFactures, controlerKwhDeclare, MESSAGE_KWH_INCOHERENT } from '../../calc/tarifs.js'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
 import { etatVersEcritures, baremePourDerivation, facturesHiverEte } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
