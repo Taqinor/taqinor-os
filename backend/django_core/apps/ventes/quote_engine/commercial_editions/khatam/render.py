@@ -1,12 +1,12 @@
 # flake8: noqa
 # D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
-"""Édition Normale — assemblage des 3 pages."""
+"""Édition Khatam — assemblage des 3 pages."""
 from __future__ import annotations
 
 from .. import commun, donnees, harnais
 from . import confiance, couverture, offre
 
-JETON = commun.jeton(commun.NORMALE)
+JETON = commun.jeton(commun.KHATAM)
 #: Variante A (garanties et échéancier en page 2) aux paliers 0-3, puis
 #: variante B (l'ordre exact du devis actuel) aux paliers 0-3.
 ESSAIS = [(v, pal) for v in ("A", "B") for pal in range(4)]

@@ -1,6 +1,6 @@
 # flake8: noqa
 # D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
-"""Édition Normale — PAGE 2 : équipements et investissement (synthèse §4) :
+"""Édition Khatam — PAGE 2 : équipements et investissement (synthèse §4) :
 bandeau d'en-tête 10 mm, tableau, chaîne de totaux, note, clauses, option
 batterie, options proposées, surplus, activité et installation en bref côte
 à côte ; en variante A, garanties et échéancier remontent ici. Classes

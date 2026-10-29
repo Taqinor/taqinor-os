@@ -16,7 +16,7 @@ from __future__ import annotations
 import importlib
 import sys
 
-EDITIONS = ("signature", "normale", "basique")
+EDITIONS = ("khatam",)
 
 
 def _edition(nom: str):

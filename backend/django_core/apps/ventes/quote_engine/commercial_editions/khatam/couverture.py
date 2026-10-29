@@ -1,6 +1,6 @@
 # flake8: noqa
 # D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
-"""Édition Normale — PAGE 1 : la couverture du devis actuel, mieux composée
+"""Édition Khatam — PAGE 1 : la couverture du devis actuel, mieux composée
 (synthèse §4). Bandeau marine tramé 64 mm (logo, référence, kicker, titre
 Fraunces 400 24 pt, accroche), filet or, ligne client, réserve, registre de
 six faits (économies en royal), méthode, phrase autoconsommation à filet

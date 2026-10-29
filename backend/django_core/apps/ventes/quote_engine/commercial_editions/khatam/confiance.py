@@ -1,6 +1,6 @@
 # flake8: noqa
 # D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
-"""Édition Normale — PAGE 3 : confiance et accord (synthèse §4) :
+"""Édition Khatam — PAGE 3 : confiance et accord (synthèse §4) :
 procédure en trois colonnes à filet or (numéros laiton), (variante B :
 garanties et échéancier), services, financement, bases du calcul,
 conditions, bon pour accord à filet maître, bande légale. Classes ``no3-``.

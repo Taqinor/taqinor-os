@@ -66,7 +66,7 @@ _KHATAM = {
 SIGNATURE = dict(_KHATAM, nom="signature", paper="#FFFFFF", line="#D9DCE3",
                  line_soft="#E8EAEF", wash="#F3F4F7", pied="plein",
                  marge="20mm", marge_g="20mm", haut="22mm")
-NORMALE = dict(_KHATAM, nom="normale", paper="#FFFFFF", line="#D9DCE3",
+KHATAM = dict(_KHATAM, nom="khatam", paper="#FFFFFF", line="#D9DCE3",
                line_soft="#E8EAEF", wash="#F3F4F7", pied="plein",
                marge="20mm", marge_g="20mm", haut="18mm")
 BASIQUE = dict(_KHATAM, nom="basique", paper="#FFFFFF", line="#D9DCE3",
