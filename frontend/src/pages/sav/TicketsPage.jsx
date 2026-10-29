@@ -265,7 +265,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   // ERR-SAV-TECH-USERS-403 — `GET /users/` exige `users_gerer` (ou le palier
   // admin) : un Technicien ne l'appelle pas (403 + console.error), la liste des
   // techniciens retombe directement sur les assignés (`technicienOptions`).
-  const peutListerUsers = useHasRole(['admin']) || useHasPermission('users_gerer')
+  const estAdminPalier = useHasRole(['admin'])
+  const aUsersGerer = useHasPermission('users_gerer')
+  const peutListerUsers = estAdminPalier || aUsersGerer
   const F =(k, d = '') => current?.[k] ?? d
 
   // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
