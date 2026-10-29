@@ -36,7 +36,7 @@ from rest_framework.response import Response
 
 from . import dossiers as dossiers_service
 from .champs_stricts import (
-    BooleenStrict, ChaineStricte, ChampsStrictsMixin, TexteLie)
+    BooleenStrict, ChaineStricte, ChampsStrictsMixin, IdInconnu404Mixin, TexteLie)
 from .mixins import SameCompanyFKSerializerMixin
 from .parseurs import corps_valide
 from .models import (
@@ -96,10 +96,11 @@ class DossierWorkflowChecklistItemSerializer(CompanyScopedRelationsMixin, serial
                             'created_at', 'updated_at']
 
 
-class DossierSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class DossierSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                         serializers.ModelSerializer):
     # ASEC18 — le propriétaire est un utilisateur de LA société de la requête :
-    # l'id d'un utilisateur voisin échoue comme un id absent (POST et PATCH).
+    # l'id d'un utilisateur voisin échoue comme un id absent (POST et PATCH) ;
+    # api-fuzz-full 28/10 (ENF11) : 404 dans les deux cas (IdInconnu404Mixin).
     same_company_fields = ('proprietaire',)
     type_dossier_label = serializers.CharField(
         source='get_type_dossier_display', read_only=True)

@@ -75,9 +75,25 @@ def marquer_en_attente(equipe):
 
 
 def membre_actif(equipe, user):
+    """Membre actif de l'équipe — ou son RESPONSABLE (fondateur, 28/10/2026 :
+    le responsable prend aussi des leads lui-même ; il est choisissable à
+    l'écran et dans les règles, la rotation reste entre les membres)."""
     return (user is not None and user.is_active
             and user.company_id == equipe.company_id
-            and equipe.membres.filter(pk=user.pk).exists())
+            and (user.pk == equipe.responsable_id
+                 or equipe.membres.filter(pk=user.pk).exists()))
+
+
+def _choix_equipe(equipe, membres):
+    """Les personnes choisissables : le responsable actif EN PREMIER (s'il
+    n'est pas déjà membre), puis les membres actifs donnés."""
+    choix = list(membres)
+    resp = equipe.responsable
+    if (resp is not None and resp.is_active
+            and resp.company_id == equipe.company_id
+            and all(m.pk != resp.pk for m in choix)):
+        choix.insert(0, resp)
+    return choix
 
 
 def rotation(equipe):
@@ -230,7 +246,9 @@ def equipes_reglables(user):
                                           to_attr='membres_actifs'))
                .order_by('nom', 'id'))
     return [{**reglage_equipe(e), 'membres': [
-        {'id': m.pk, 'nom': nom_affiche(m)} for m in e.membres_actifs]}
+        {'id': m.pk, 'nom': nom_affiche(m),
+         'est_responsable': m.pk == e.responsable_id}
+        for m in _choix_equipe(e, e.membres_actifs)]}
         for e in equipes if peut_regler(user, e)]
 
 
@@ -423,7 +441,7 @@ def _ligne_lead(attente, maintenant):
     }
 
 
-def _ligne_membre(user, plafond):
+def _ligne_membre(user, plafond, responsable_id=None):
     ouverts = _leads_ouverts_count(user)
     return {
         'id': user.pk,
@@ -431,6 +449,7 @@ def _ligne_membre(user, plafond):
         'fonction': (user.poste or '').strip() or None,
         'leads_ouverts': ouverts,
         'au_plafond': ouverts >= plafond,
+        'est_responsable': user.pk == responsable_id,
     }
 
 
@@ -471,6 +490,7 @@ def file_attente(user):
                    'delai_minutes': affichee.delai_attribution_minutes},
         'en_attente': len(attentes),
         'leads': [_ligne_lead(a, maintenant) for a in attentes],
-        'membres': [_ligne_membre(m, plafond) for m in membres],
+        'membres': [_ligne_membre(m, plafond, affichee.responsable_id)
+                    for m in _choix_equipe(affichee, membres)],
         'equipes_reglables': vide['equipes_reglables'],
     }

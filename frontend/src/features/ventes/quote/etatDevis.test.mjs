@@ -62,7 +62,7 @@ const entreesCi = (mode, { tension, puissance_souscrite_kva = null, consommation
   },
   contraintes: {
     revente_choisie: false, nb_points_raccordement: null, longueur_dc_m: null,
-    longueur_ac_m: null, besoin_cellule_mt: null, ...contraintes,
+    longueur_ac_m: null, besoin_cellule_mt: null, mise_a_la_terre_necessaire: null, ...contraintes,
   },
   options: { batterie_souhaitee: null, om: null },
   taille_explicite_kwc: null,

@@ -163,7 +163,8 @@
           "nb_points_raccordement": null,
           "longueur_dc_m": null,
           "longueur_ac_m": null,
-          "besoin_cellule_mt": null
+          "besoin_cellule_mt": null,
+          "mise_a_la_terre_necessaire": null
         },
         "options": {
           "batterie_souhaitee": null,

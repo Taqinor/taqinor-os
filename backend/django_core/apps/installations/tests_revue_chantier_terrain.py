@@ -235,6 +235,16 @@ class AjouterSerialTests(_Base):
         ]).get_schema(request=None, public=True)
         champ = schema['components']['schemas']['AjouterSerialRequeteRequest'][
             'properties']['caracteristiques']
+        # api-fuzz-full 28/10 : l'objet ne passe pas en formulaire urlencodé
+        # (clés répétées) — ni publié, ni accepté (415).
+        operation = schema['paths'][
+            '/api/django/installations/interventions/{id}/ajouter-serial/']['post']
+        self.assertNotIn('application/x-www-form-urlencoded',
+                         operation['requestBody']['content'])
+        r = self.api.post(
+            f'{self.url}/ajouter-serial/', 'designation=X&caracteristiques=A',
+            content_type='application/x-www-form-urlencoded')
+        self.assertEqual(r.status_code, 415, r.content)
         self.assertEqual(champ['maxProperties'], 10)
         self.assertEqual({t['type'] for t in
                           champ['additionalProperties']['oneOf']},

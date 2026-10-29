@@ -192,12 +192,14 @@ class FactureDocumentsActionsMixin:
         from ..utils.whatsapp import build_facture_whatsapp, build_wa_url
         facture = self.get_object()
         phone = facture.client.telephone if facture.client_id else ''
+        saisie = valider_corps(request, D.FactureWhatsappRequest)
         if not normalize_phone_e164(phone):
             return Response(
+                # ENF11 (api-fuzz 29/10) — le numéro vient de la FICHE client,
+                # pas du corps : refus d'état (409), la requête est valide.
                 {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
-        saisie = valider_corps(request, D.FactureWhatsappRequest)
         modele, langue = saisie.get('modele', 'facture'), saisie.get('langue', 'fr')
         message, link = build_facture_whatsapp(request, facture, modele, langue)
         # L856 — trace l'action dans le chatter de la facture (Historique).

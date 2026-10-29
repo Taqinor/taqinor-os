@@ -248,6 +248,13 @@ class DiffVersionsApiEnBaseTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('contre', reponse.data)
 
+    def test_contre_entier_inconnu_404(self):
+        """api-fuzz-full 29/10 (ENF11) : un entier conforme au schéma mais
+        qui ne désigne aucune version (négatif, zéro) → 404, jamais 400."""
+        for contre in (-13073, 0):
+            reponse = self.api.get(self._url(self.v1.pk), {'contre': contre})
+            self.assertEqual(reponse.status_code, 404, reponse.data)
+
     def test_un_calepinage_d_une_autre_societe_est_introuvable(self):
         reponse = self.api_autre.get(self._url(self.v1.pk))
         self.assertEqual(reponse.status_code, 404)

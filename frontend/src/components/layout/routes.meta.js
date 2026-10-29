@@ -46,6 +46,7 @@ const BASE_PAGE_TITLES = [
   // `/crm/cockpit`/`/crm/forecast`, cf. la note ODY5 ci-dessus).
   ['/crm/visiteurs', 'Visiteurs & alertes'],
   ['/crm/attribution', 'Attribution des leads'],
+  ['/crm/cockpit-equipe', 'Cockpit d’équipe'],
   ['/crm', 'Clients'],
   ['/activites', 'Mes activités'],
   ['/calendrier', 'Calendrier'],

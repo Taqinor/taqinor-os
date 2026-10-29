@@ -2,16 +2,16 @@
   "cas": "etude_optimum_publie",
   "graphes_etude": [],
   "graphes_roi_mensuel_masques": 2,
-  "octets": 60270,
+  "octets": 60344,
   "ordre": 6,
   "pages": 4,
   "polices_masquees": 6,
-  "sha256": "d6c1d5dc3f22746df4df061f54bd397c3ea848be1f989c1bdbde201ddf5d0652",
+  "sha256": "2eb59fe38c75be66ddcbe14b81f57cd6abb58af9404c7a0868fd681fa92a99b3",
   "sha256_par_segment": [
     "2357db846b0271a83f293d9deb831e98d4e0f9d51c12e6dc70dd16cf50ac4286",
-    "f11d831729e22634caee30ae2d354902cf57b28080e904f12062f04e143d18c9",
-    "ecf3de4ea7f60e1759e11b374764bf70eda90aa95fa825a7d8a5237ab4132808",
-    "71a930da5812d8306f49a2f8911fd12f3f753688e77b6da6baa394fac34bb299",
-    "889d90543dafe376e115c9fd5694b645c13a0414b5652aa4d759a54086395217"
+    "dc1c4d49f2d38efc6cf80d837b1388aa32f73e36d0a88a2bc64adc48722de18f",
+    "91bf0a2ca71396db1a63e8bde4e84b2c6761db8fbe709222c3702b98f066fd31",
+    "4d5b6bb19b9aaf8da0757ff7dde6b8b8b467901dbdf1978d675d692f8d941368",
+    "f13a769e6aa2575df1ae73ba095a1af904e4f7e229cc38fee922bbb7cfe09bb4"
   ]
 }

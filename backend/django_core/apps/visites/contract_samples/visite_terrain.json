@@ -805,7 +805,7 @@
       "colonne_lead": "compteur_eau"
     }
   ],
-  "gabarit_ci_regle": "CIQ5 (Groupe CIQ, 03/10/2026 ; D-CIQ-5) — CONTRAT D'ABORD (PACT10), ce MÊME fichier étendu (jamais un second). Valeur de gabarit `ci` : posée à la PLANIFICATION quand le lead est `commercial` ou `industriel`, sinon inchangée (toiture / point_eau) ; le type du lead n'est JAMAIS changé par une visite. Le gabarit `ci` remplace les catégories résidentielles par `gabarit_ci` ; le SUPPLÉMENT MT (`gabarit_ci_supplement_mt`) s'affiche quand la mesure `comptage.niveau_tension_constate` vaut `mt` (`bt` / `inconnu` = socle commun + BT). `_non_releves` = {code_mesure: motif}, motifs FERMÉS : acces_refuse | dangereux | site_ferme | a_faire_par_electricien | non_applicable — une mesure requise non relevée avec son motif ne bloque pas « terminer ». `releve_ci` = {declare, constate, ecart} pour niveau_tension, puissance_souscrite_kva, type_toiture, surface_utile, statut_occupation (déclaré = colonnes du contrat crm `lead_pro.json`, CIQ1 ; `statut_occupation` = colonne Lead existante `ownership`) + `validee_le`. `retour_lead_ci` = table mesure → colonne Lead de `lead_pro.json`, appliquée à la VALIDATION (jamais avant), provenance `{origine: 'mesure_visite', detail, date}`. AUCUN seuil, aucun verdict (règle VT1), aucun chiffre de dimensionnement. `exemple`, `exemple_point_eau` et leurs clés restent identiques à l'octet. Valeurs ILLUSTRATIVES ; `site_commerce` est la catégorie de CIQ651. CIQ651 : la catégorie `site_commerce` (`gabarit_ci_site_commerce`) est servie en tête du gabarit `ci`, REQUISE pour un lead `commercial` (`requis` ci-dessous), FACULTATIVE pour tout autre type (aucun `requis`) ; la pièce `accord_proprietaire` n'est servie que si le lead est locataire (`releve_ci.statut_occupation.declare`). CIQ660 : le cos φ constaté exige `source_cos_phi` (400 sinon). CSV9 : l'agrégat `ci` porte `declare` = {categorie: {code_mesure: {valeur, libelle}}}, ce que la FICHE du lead porte déjà (catégorie, horaires, groupe électrogène, tension, puissance), lu par `crm.selectors` ; clé optionnelle par mesure : champ vide du lead ⇒ pas de `declare`, jamais de valeur inventée ; l'écran dit « Sur la fiche : … » (jamais « déclaré au téléphone ») et enregistre la valeur au bouton « Confirmer ».",
+  "gabarit_ci_regle": "R3 (fondateur 28/10/2026) — la mise à la terre n'est plus ajoutée d'office au devis C&I : c'est une MESURE REQUISE du socle commun (catégorie `comptage`, code `mise_a_la_terre`, choix fermé conforme | a_creer | a_verifier), 'non relevée' possible avec motif fermé sans bloquer « terminer » ; `releve_ci.mise_a_la_terre` = {constate, motif} ; aucun seuil ni verdict côté visites (VT1), le moteur ventes décide. CIQ5 (Groupe CIQ, 03/10/2026 ; D-CIQ-5) — CONTRAT D'ABORD (PACT10), ce MÊME fichier étendu (jamais un second). Valeur de gabarit `ci` : posée à la PLANIFICATION quand le lead est `commercial` ou `industriel`, sinon inchangée (toiture / point_eau) ; le type du lead n'est JAMAIS changé par une visite. Le gabarit `ci` remplace les catégories résidentielles par `gabarit_ci` ; le SUPPLÉMENT MT (`gabarit_ci_supplement_mt`) s'affiche quand la mesure `comptage.niveau_tension_constate` vaut `mt` (`bt` / `inconnu` = socle commun + BT). `_non_releves` = {code_mesure: motif}, motifs FERMÉS : acces_refuse | dangereux | site_ferme | a_faire_par_electricien | non_applicable — une mesure requise non relevée avec son motif ne bloque pas « terminer ». `releve_ci` = {declare, constate, ecart} pour niveau_tension, puissance_souscrite_kva, type_toiture, surface_utile, statut_occupation (déclaré = colonnes du contrat crm `lead_pro.json`, CIQ1 ; `statut_occupation` = colonne Lead existante `ownership`) + `validee_le`. `retour_lead_ci` = table mesure → colonne Lead de `lead_pro.json`, appliquée à la VALIDATION (jamais avant), provenance `{origine: 'mesure_visite', detail, date}`. AUCUN seuil, aucun verdict (règle VT1), aucun chiffre de dimensionnement. `exemple`, `exemple_point_eau` et leurs clés restent identiques à l'octet. Valeurs ILLUSTRATIVES ; `site_commerce` est la catégorie de CIQ651. CIQ651 : la catégorie `site_commerce` (`gabarit_ci_site_commerce`) est servie en tête du gabarit `ci`, REQUISE pour un lead `commercial` (`requis` ci-dessous), FACULTATIVE pour tout autre type (aucun `requis`) ; la pièce `accord_proprietaire` n'est servie que si le lead est locataire (`releve_ci.statut_occupation.declare`). CIQ660 : le cos φ constaté exige `source_cos_phi` (400 sinon). CSV9 : l'agrégat `ci` porte `declare` = {categorie: {code_mesure: {valeur, libelle}}}, ce que la FICHE du lead porte déjà (catégorie, horaires, groupe électrogène, tension, puissance), lu par `crm.selectors` ; clé optionnelle par mesure : champ vide du lead ⇒ pas de `declare`, jamais de valeur inventée ; l'écran dit « Sur la fiche : … » (jamais « déclaré au téléphone ») et enregistre la valeur au bouton « Confirmer ».",
   "gabarit_ci": {
     "toiture_ci": {
       "photos": {
@@ -916,6 +916,16 @@
           "choix": [
             "monophase",
             "triphase"
+          ]
+        },
+        "mise_a_la_terre": {
+          "type": "choix",
+          "requis": true,
+          "libelle": "Mise à la terre existante",
+          "choix": [
+            "conforme",
+            "a_creer",
+            "a_verifier"
           ]
         }
       }
@@ -1302,7 +1312,8 @@
         "type_compteur": "électronique triphasé",
         "niveau_tension_constate": "bt",
         "puissance_souscrite_kva_constatee": null,
-        "phases": null
+        "phases": null,
+        "mise_a_la_terre": "conforme"
       },
       "cheminement": {
         "trajets": [
@@ -1371,6 +1382,10 @@
       },
       "raccordement": {
         "constate": "triphase"
+      },
+      "mise_a_la_terre": {
+        "constate": "conforme",
+        "motif": null
       },
       "validee_le": null
     },
@@ -1497,7 +1512,8 @@
         "type_compteur": "comptage MT",
         "niveau_tension_constate": "mt",
         "puissance_souscrite_kva_constatee": 250.0,
-        "phases": "triphase"
+        "phases": "triphase",
+        "mise_a_la_terre": "conforme"
       },
       "cheminement": {
         "trajets": [
@@ -1612,6 +1628,10 @@
       },
       "raccordement": {
         "constate": "triphase"
+      },
+      "mise_a_la_terre": {
+        "constate": "conforme",
+        "motif": null
       },
       "validee_le": null
     },
@@ -1748,7 +1768,8 @@
         "type_compteur": "électronique triphasé",
         "niveau_tension_constate": "bt",
         "puissance_souscrite_kva_constatee": 36.0,
-        "phases": "triphase"
+        "phases": "triphase",
+        "mise_a_la_terre": "a_verifier"
       }
     },
     "declare": {
@@ -1805,6 +1826,10 @@
       },
       "raccordement": {
         "constate": "triphase"
+      },
+      "mise_a_la_terre": {
+        "constate": "a_verifier",
+        "motif": null
       },
       "validee_le": null
     },

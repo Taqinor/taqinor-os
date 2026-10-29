@@ -464,27 +464,38 @@ class Cpdf5Cpdf8Couverture(SimpleTestCase):
 # ── R2 (fondateur 28/10/2026) — UNE ligne « Tableau de protection AC/DC » ──
 #: Les organes C&I du tableau (rôle produit ``role_ci`` de
 #: ``ROLES_TABLEAU_CI``), Σ HT = 7 800 ; le câble AC (``cable_ac``) n'en fait
-#: PAS partie et reste une ligne à part.
+#: PAS partie et reste une ligne à part. R3 (28/10/2026 soir) : protections DC
+#: par chaîne, organes AC 4P ; le Smart Meter n'est PLUS un organe du tableau
+#: (``SUPERVISION`` ci-dessous).
 ORGANES = [
     ("coffret_dc", "Coffret DC C&I", 2, 1500.0),
-    ("protection_ac", "Disjoncteur AC 63 A (C&I)", 2, 400.0),
-    ("protection_dc", "Protection DC (fusibles / sectionneur) par MPPT", 2, 150.0),
-    ("protection_dc", "Parafoudre DC par onduleur", 1, 200.0),
-    ("protection_ac", "Parafoudre AC", 1, 300.0),
+    ("protection_ac", "Disjoncteur AC 63 A 4P — sortie SUN2000-50KTL (C&I)", 2, 400.0),
+    ("protection_dc", "Protection DC par chaîne", 2, 150.0),
+    ("protection_dc", "Parafoudre DC par chaîne", 1, 200.0),
+    ("protection_ac", "Parafoudre AC 4P", 1, 300.0),
     ("mise_a_la_terre", "Mise à la terre du champ PV", 1, 900.0),
-    ("compteur_injection", "Comptage / limitation d'injection", 1, 1800.0),
-    ("coffret_ac", "Coffret AC C&I", 1, 500.0),
+    ("coffret_ac", "Coffret AC C&I", 1, 2300.0),
+]
+#: R3.4 — la ligne « Supervision & comptage » : compteur choisi par calibre et
+#: une clé wifi par onduleur (Σ HT = 3 000).
+SUPERVISION = [
+    ("compteur_injection", "Smart Meter Huawei DTSU666-H 100 A (raccordement direct)", 1, 2000.0),
+    ("logger_supervision", "Clé wifi Huawei SDongleA-05 (WLAN-FE)", 2, 500.0),
 ]
 CABLE_AC = {"designation": "Câble AC 16 mm²", "marque": "", "quantite": 30,
             "prix_unit_ht": 50.0, "prix_unit_ttc": 60.0, "taux_tva": 20,
             "role_ci": "cable_ac"}
 
 
-def items_organes(taux=20):
+def items_organes(taux=20, organes=ORGANES):
     return [{"designation": nom, "marque": "", "quantite": q,
              "prix_unit_ht": pu, "prix_unit_ttc": round(pu * 1.2, 2),
              "taux_tva": taux, "role_ci": role}
-            for role, nom, q, pu in ORGANES]
+            for role, nom, q, pu in organes]
+
+
+def items_supervision(taux=20):
+    return items_organes(taux, SUPERVISION)
 
 
 def avec_organes(data, cle="all_items"):
@@ -501,6 +512,9 @@ class TableauProtectionAcDc(SimpleTestCase):
         from apps.ventes.quote_engine.ci.tableau import regrouper_tableau
         items = [{"designation": "Panneau", "quantite": 2, "prix_unit_ht": 1.0,
                   "taux_tva": 10, "ordre": 0}] + items_organes() + [dict(CABLE_AC)]
+        # R3.4 — le Smart Meter n'est jamais un organe du tableau.
+        supervision = items_supervision()
+        self.assertIs(regrouper_tableau(supervision), supervision)
         for i, it in enumerate(items):
             it.setdefault("ordre", i)
         sortie = regrouper_tableau(items)
@@ -529,7 +543,7 @@ class TableauProtectionAcDc(SimpleTestCase):
         groupes = regrouper_tableau(items)
         self.assertEqual([g["taux_tva"] for g in groupes], [10, 20])
         self.assertEqual([g["prix_unit_ht"] for g in groupes], [3000.0, 4800.0])
-        self.assertEqual([len(g["sous_lignes"]) for g in groupes], [1, 7])
+        self.assertEqual([len(g["sous_lignes"]) for g in groupes], [1, 6])
 
     def test_libelle_trilingue_jargon_et_hors_ci(self):
         from apps.ventes.quote_engine.ci.installation import lignes_client
@@ -544,7 +558,7 @@ class TableauProtectionAcDc(SimpleTestCase):
             self.assertEqual(sortie[0]["sous_lignes"][0]["designation"],
                              "Coffret DC")
             self.assertEqual(sortie[0]["sous_lignes"][1]["designation"],
-                             "Disjoncteur AC 63 A")
+                             "Disjoncteur AC 63 A 4P — sortie SUN2000-50KTL")
         for mode in ("residentiel", "agricole", ""):
             self.assertIs(lignes_client(items, {"mode_installation": mode}),
                           items)
@@ -570,7 +584,7 @@ class TableauProtectionAcDc(SimpleTestCase):
         regrouper_paniers(data)
         self.assertEqual(len(data["sans_items"]), 1)
         self.assertEqual(data["sans_items"][0]["prix_unit_ht"], 7800.0)
-        self.assertEqual(len(data["sans_items"][0]["sous_lignes"]), 8)
+        self.assertEqual(len(data["sans_items"][0]["sous_lignes"]), 7)
         self.assertEqual(data["avec_items"][0]["prix_unit_ht"], 4100.0)
         self.assertEqual(data["option_batterie"]["lignes"][0]["prix_unit_ht"],
                          3800.0)
@@ -591,6 +605,7 @@ class TableauProtectionAcDc(SimpleTestCase):
         self.assertNotIn("C&amp;I", html)
         self.assertIn('<td class="c2-d">Câble AC 16 mm²', u)
         self.assertIn("7 800,00", u.replace("\u202f", " ").replace("\xa0", " "))
+        self.assertNotIn("Supervision", u)  # aucune ligne de supervision ici
 
     def test_totaux_identiques_ligne_a_ligne_ou_groupes(self):
         from apps.ventes.quote_engine.ci import tableau
@@ -617,6 +632,56 @@ class TableauProtectionAcDc(SimpleTestCase):
         self.assertIn("&lt;PV&gt;", html)
         self.assertNotIn("<PV>", html)
         self.assertNotIn("C&amp;I", html)
+
+
+class SupervisionEtComptage(SimpleTestCase):
+    """R3.4 (fondateur 28/10/2026 soir) — le Smart Meter SORT du « Tableau de
+    protection AC/DC » : compteur et clés wifi forment UNE ligne « Supervision
+    & comptage », détaillée en sous-lignes, entre le tableau et
+    l'installation."""
+
+    def test_trois_lignes_groupees_dans_l_ordre(self):
+        from apps.ventes.quote_engine.ci.installation import lignes_client
+        sortie = lignes_client(items_organes() + items_supervision() + items_prestations(),
+                               {"mode_installation": "commercial"})
+        self.assertEqual([it["designation"] for it in sortie],
+                         ["Tableau de protection AC/DC", "Supervision & comptage",
+                          "Installation clé en main"])
+        self.assertEqual([it["prix_unit_ht"] for it in sortie], [7800.0, 3000.0, 90000.0])
+        tableau, supervision, _installation = sortie
+        self.assertEqual(supervision["role_ci"], "supervision_ci")
+        self.assertEqual(supervision["quantite"], 1.0)
+        self.assertEqual(
+            [(sl["designation"], sl["quantite"]) for sl in supervision["sous_lignes"]],
+            [(nom, float(q)) for _r, nom, q, _pu in SUPERVISION])
+        noms_tableau = [sl["designation"] for sl in tableau["sous_lignes"]]
+        self.assertFalse([n for n in noms_tableau if "Smart Meter" in n or "wifi" in n])
+
+    def test_libelle_trilingue(self):
+        from apps.ventes.quote_engine.ci.installation import lignes_client
+        for langue, libelle in (("fr", "Supervision & comptage"),
+                                ("en", "Monitoring & metering"),
+                                ("ar", "المراقبة والعدّ")):
+            sortie = lignes_client(items_supervision(), {"mode_installation": "industriel",
+                                                         "langue_sortie": langue})
+            self.assertEqual([it["designation"] for it in sortie], [libelle])
+        items = items_supervision()
+        self.assertIs(lignes_client(items, {"mode_installation": "residentiel"}), items)
+
+    def test_le_pdf_commercial_imprime_la_ligne_et_son_detail(self):
+        from html import unescape
+        data = avec_organes(_data())
+        data["all_items"] = list(data["all_items"]) + items_supervision()
+        html = _html(data)
+        u = unescape(html)
+        self.assertEqual(u.count("Supervision & comptage"), 1)
+        self.assertEqual(u.count("Tableau de protection AC/DC"), 1)
+        self.assertEqual(html.count('class="ci-sl"'), len(ORGANES) + len(SUPERVISION))
+        for _role, nom, _q, _pu in SUPERVISION:
+            self.assertNotIn(f'<td class="c2-d">{nom}', u)
+        self.assertIn("1&#160;×&#160;Smart Meter Huawei DTSU666-H 100 A", html)
+        self.assertIn("3 000,00", u.replace("\u202f", " ").replace("\xa0", " "))
+        self.assertNotIn("&amp;amp;", html)
 
 
 def avec_remise_globale(items, pct):

@@ -11,7 +11,7 @@ Le différentiel champ par champ entre deux versions d'UN calepinage (contrat
   INTROUVABLE : 404, pour la version du chemin comme pour ``contre`` — les
   deux sont cherchées dans ``selectors.versions(calepinage)``, et le
   calepinage lui-même passe par ``get_object()`` (404 hors société) ;
-* un ``contre`` non entier est refusé 400 en NOMMANT le champ.
+* un ``contre`` non entier est refusé 400 (un entier inconnu, même négatif : 404) en NOMMANT le champ.
 
 LA GREFFE (piège de classe #105)
 ---------------------------------
@@ -22,6 +22,8 @@ sous-route de ``versions/<version_id>/`` — même forme que ``restaurer``
 (``views/calepinages.py``), sans ``/`` de tête.
 """
 from __future__ import annotations
+
+import re
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -78,7 +80,10 @@ def versions_diff(self, request, pk=None, version_id=None):
         droite = etat_courant(calepinage)
     else:
         contre = _identifiant_ou_404(brut)
-        if contre is None:
+        # api-fuzz-full 29/10 (ENF11) : un entier publié conforme (négatif,
+        # nul, hors plage) est un identifiant INCONNU → 404 ; seul un texte
+        # non entier reste un 400 nommant le champ.
+        if contre is None and not re.fullmatch(r'\s*-?\d+\s*', brut):
             return Response(
                 {'contre': ("Le paramètre « contre » attend l'identifiant "
                             "d'une version (reçu : « %s »)." % brut)},

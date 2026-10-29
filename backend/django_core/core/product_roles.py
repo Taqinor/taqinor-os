@@ -191,7 +191,13 @@ LIBELLES_TYPES_POSE = {
 }
 
 #: CIQ101 — vocabulaires des fiches C&I (vide = « non publié »).
-LIM_MODES = ('compteur_direct', 'compteur_tc', 'controleur')
+#: R3.5 (fondateur, 28/10/2026) — ``compteur_tc_externe`` : compteur dont les
+#: TC sont fournis à part, sans calibre borné (au-delà des calibres finis).
+LIM_MODES = ('compteur_direct', 'compteur_tc', 'controleur',
+             'compteur_tc_externe')
+#: R3.6 (fondateur, 28/10/2026) — nature d'un article de supervision : clé
+#: wifi (une par onduleur) ou logger central.
+LOG_TYPES = ('dongle', 'logger')
 OND_LIMITATIONS_EXPORT = ('integree', 'compteur_requis', 'controleur_requis',
                           'non_publiee')
 OND_RELAIS_DECOUPLAGE = ('integre', 'externe', 'non_publie')

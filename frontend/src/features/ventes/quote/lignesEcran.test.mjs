@@ -272,6 +272,18 @@ test('R2 — sequenceGroupesClient : en-tête « Tableau de protection AC/DC —
   assert.deepEqual([...indexes].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5])
 })
 
+test('R3 — sequenceGroupesClient : le groupe « supervision_ci » reçoit son en-tête « Supervision & comptage — total HT »', () => {
+  const lines = [
+    { designation: 'Coffret DC', quantite: '1', prix_unit_ttc: '1800', taux_tva: '20', groupeClient: 'tableau_ci' },
+    { designation: 'Smart Meter', quantite: '1', prix_unit_ttc: '2160', taux_tva: '20', groupeClient: 'supervision_ci' },
+    { designation: 'Clé wifi', quantite: '2', prix_unit_ttc: '600', taux_tva: '20', groupeClient: 'supervision_ci' },
+  ]
+  const seq = sequenceGroupesClient(lines)
+  assert.deepEqual(seq.map((p) => (p.kind === 'entete' ? `${p.groupe}:${p.nb}:${p.totalHt}` : p.index)),
+    ['tableau_ci:1:1500', 0, 'supervision_ci:2:2800', 1, 2])
+  assert.equal(seq[2].libelle, 'Supervision & comptage')
+})
+
 test('R2 — en-tête : total HT APRÈS remise globale quand le miroir la donne (comme le PDF)', () => {
   const lines = [
     { quantite: '2', prix_unit_ttc: '1800', taux_tva: '20', groupeClient: 'tableau_ci' },

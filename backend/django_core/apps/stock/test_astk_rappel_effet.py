@@ -139,7 +139,7 @@ class RappelTests(TestCase):
 
     def test_sorties_hors_lot_respectent_la_quarantaine(self):
         """ASTK248 — rejoue la sonde C-ASTK-VER-004 : stock 15 dont 10
-        rappelés. Une SORTIE de 12 est refusée (400 / ValueError nommant le
+        rappelés. Une SORTIE de 12 est refusée (409 / ValueError nommant le
         produit et les 10 unités) par le poste scanner, le mouvement manuel et
         la confirmation d'expédition : stock 15, aucun mouvement. Une sortie de
         5 passe ; après levée du rappel, l'expédition (part bloquée comprise)
@@ -160,8 +160,8 @@ class RappelTests(TestCase):
         expedition = creer_expedition_transporteur(company=self.co, unite=colis)
         corps = {'produit': self.produit.id, 'type_mouvement': 'sortie',
                  'quantite': 12}
-        # CI #997 : le mouvement libre répond 409 (état), le scanner garde 400.
-        for url, attendu in (('/api/django/stock/scanner/mouvement/', 400),
+        # CI #997 / api-fuzz 29/10 : refus d'ÉTAT → 409 sur les deux postes.
+        for url, attendu in (('/api/django/stock/scanner/mouvement/', 409),
                              ('/api/django/stock/mouvements/', 409)):
             rep = self.api.post(url, corps, format='json')
             self.assertEqual(rep.status_code, attendu, rep.content)

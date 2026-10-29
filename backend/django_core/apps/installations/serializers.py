@@ -562,7 +562,7 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class InstallationSerializer(ChampsStrictsEntiersMixin,
+class InstallationSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,  # id inconnu → 404 (ENF11)
                              SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC32 — technicien responsable d'une autre société = id absent (400).
@@ -1280,7 +1280,7 @@ class BudgetEngagementSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixi
 
 
 class BudgetProjetSerializer(
-    IdInconnu404Mixin,
+    IdInconnu404Mixin, ChampsTexteStrictsMixin,  # api-fuzz-full 28/10 : `devise` sans NUL
     UniciteEn409Mixin,
     SameCompanyFKSerializerMixin,
         serializers.ModelSerializer):

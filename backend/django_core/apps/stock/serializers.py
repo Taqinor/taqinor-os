@@ -2219,8 +2219,8 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
             changes.append('bon_commande')
         if 'lignes' in validated_data:
             changes.append('lignes')
-        if changes:
-            raise serializers.ValidationError({
+        if changes:  # état de la facture (réglée) : refus d'ÉTAT 409 (ENF11)
+            raise ConflitEtat({
                 'detail': self._MSG_FACTURE_REGLEE,
                 'champs': changes,
             })

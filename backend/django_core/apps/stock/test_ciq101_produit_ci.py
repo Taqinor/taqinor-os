@@ -30,6 +30,10 @@ CONTRAT = json.loads(
     (Path(__file__).parent / 'contract_samples' / 'produit_ci.json')
     .read_text(encoding='utf-8'))
 MIGRATION = '0163_ciq101_produit_ci'
+#: R3 (fondateur, 28/10/2026) — champs de fiche du contrat ajoutés APRÈS
+#: CIQ101, par leur propre migration additive.
+MIGRATION_R3 = '0177_r3_fiche_comptage_calibre_log_type'
+CHAMPS_FICHE_R3 = ('lim_calibre_a', 'log_type')
 
 
 def api_for(user):
@@ -185,7 +189,20 @@ class TestMigration(SimpleTestCase):
         for cle in ('role_ci', 'type_pose', 'delai_appro_jours'):
             self.assertIn(cle, ajoutes)
         for cle in _champs_fiches_ci():
-            self.assertIn(cle, ajoutes)
+            if cle not in CHAMPS_FICHE_R3:
+                self.assertIn(cle, ajoutes)
+
+    def test_r3_champs_additifs_et_reversibles(self):
+        module = import_module(f'apps.stock.migrations.{MIGRATION_R3}')
+        ops = module.Migration.operations
+        for op in ops:
+            self.assertIsInstance(op, (AddField, AlterField))
+            self.assertTrue(op.reversible)
+        self.assertEqual({op.name for op in ops if isinstance(op, AddField)},
+                         set(CHAMPS_FICHE_R3))
+        lim_mode = next(op for op in ops if isinstance(op, AlterField))
+        self.assertEqual(lim_mode.name, 'lim_mode')
+        self.assertIn('compteur_tc_externe', [v for v, _l in lim_mode.field.choices])
 
     def test_aller_retour_des_etats(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
