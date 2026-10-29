@@ -194,9 +194,12 @@ class LeCheminNominalEstInchange(_BaseOptions):
         batterie) ne se signe jamais « avec batterie » (corps forgé)."""
         devis = self._mono_option('DEV-QJR133-B5')
         lien = ShareLink.objects.create(company=devis.company, devis=devis)
-        with self.assertRaises(AcceptError):
+        with self.assertRaises(AcceptError) as leve:
             accept_devis(devis=devis, user=None, nom='M. Client',
                          option='avec_batterie', lien=lien)
+        # api-fuzz-full 28/10 (ENF11) : l'option dépend du CONTENU du devis,
+        # inexprimable au schéma — refus d'état (409), plus un 400.
+        self.assertTrue(leve.exception.conflict)
         self._assert_pas_accepte(devis)
         accept_devis(devis=devis, user=None, nom='M. Client',
                      option='sans_batterie', lien=lien)

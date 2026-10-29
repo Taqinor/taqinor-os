@@ -562,7 +562,7 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class InstallationSerializer(ChampsStrictsEntiersMixin,
+class InstallationSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,  # id inconnu → 404 (ENF11)
                              SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC32 — technicien responsable d'une autre société = id absent (400).

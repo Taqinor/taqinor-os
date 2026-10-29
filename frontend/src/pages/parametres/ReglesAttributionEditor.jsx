@@ -7,23 +7,45 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import crmApi from '../../api/crmApi'
 import useCanaux from '../../features/crm/useCanaux'
 import { TYPE_INSTALLATION_LABELS } from '../../features/crm/stages'
-import { Button, IconButton, Input, Label, Switch } from '../../ui'
+import { Button, Checkbox, IconButton, Input, Label, Switch } from '../../ui'
 import { apiErrorMessage } from '../../lib/apiError'
 import fetchAllPages from '../../utils/fetchAllPages'
 
 const VIDE = {
-  villes: '', type_installation: '', source: '', facture_min: '', facture_max: '',
+  villes: '', types_installation: [], sources: [], facture_min: '', facture_max: '',
   membre: '', actif: true,
 }
 
 // Le serveur attend les montants en CHAÎNE décimale (« 1500.00 »), jamais un flottant.
 const num = (v) => (v === '' || v == null ? null : Number(v).toFixed(2))
 
+// Filtre à choix multiples : rien de coché = « tous ».
+function CasesMultiples({ titre, options, valeur, onChange }) {
+  const coches = valeur ?? []
+  const basculer = (k) => onChange(coches.includes(k) ? coches.filter((x) => x !== k) : [...coches, k])
+  return (
+    <div role="group" aria-label={titre}>
+      <Label>{titre}</Label>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {options.map(([k, l]) => (
+          <label key={k} className="flex items-center gap-1.5 text-sm">
+            <Checkbox checked={coches.includes(k)} aria-label={l}
+                      onCheckedChange={() => basculer(k)} />
+            {l}
+          </label>
+        ))}
+        {coches.length === 0 && <span className="text-xs text-muted-foreground">Tous</span>}
+      </div>
+    </div>
+  )
+}
+
 function LigneRegle({ regle, membres, canaux, typesClient, onSave, onDelete, onMove, busy }) {
   const [r, setR] = useState(regle)
   const maj = (k, v) => setR((cur) => ({ ...cur, [k]: v }))
   const enregistrer = () => onSave({
-    ...r, facture_min: num(r.facture_min), facture_max: num(r.facture_max),
+    ...r, types_installation: r.types_installation ?? [], sources: r.sources ?? [],
+    facture_min: num(r.facture_min), facture_max: num(r.facture_max),
     membre: r.membre ? Number(r.membre) : null,
   })
   return (
@@ -34,22 +56,10 @@ function LigneRegle({ regle, membres, canaux, typesClient, onSave, onDelete, onM
         <Input value={r.villes ?? ''} placeholder="Casablanca, Rabat"
                onChange={(e) => maj('villes', e.target.value)} />
       </div>
-      <div>
-        <Label>Type de client</Label>
-        <select className="form-control" value={r.type_installation ?? ''}
-                onChange={(e) => maj('type_installation', e.target.value)}>
-          <option value="">Tous</option>
-          {typesClient.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>
-      </div>
-      <div>
-        <Label>Source</Label>
-        <select className="form-control" value={r.source ?? ''}
-                onChange={(e) => maj('source', e.target.value)}>
-          <option value="">Toutes</option>
-          {canaux.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-        </select>
-      </div>
+      <CasesMultiples titre="Type de client" options={typesClient}
+                      valeur={r.types_installation} onChange={(v) => maj('types_installation', v)} />
+      <CasesMultiples titre="Source" options={canaux.map((c) => [c.value, c.label])}
+                      valeur={r.sources} onChange={(v) => maj('sources', v)} />
       <div>
         <Label>Membre proposé</Label>
         <select className="form-control" value={r.membre ?? ''}
@@ -95,11 +105,15 @@ function LigneRegle({ regle, membres, canaux, typesClient, onSave, onDelete, onM
   )
 }
 
-export default function ReglesAttributionEditor({ equipe, assignables = [], onSaveEquipe, busy }) {
+export default function ReglesAttributionEditor({
+  equipe, assignables = [], membres: membresProp = null, onSaveReglages, busy,
+}) {
   const { options: canaux } = useCanaux()
   const [regles, setRegles] = useState([])
   const [erreur, setErreur] = useState(null)
-  const membres = assignables.filter((u) => (equipe.membres ?? []).includes(u.id))
+  const membres = membresProp
+    ?? assignables.filter((u) => (equipe.membres ?? []).includes(u.id))
+  const delai = equipe.delai_minutes ?? equipe.delai_attribution_minutes
   const typesClient = Object.entries(TYPE_INSTALLATION_LABELS)
 
   const charger = useCallback(() =>
@@ -139,7 +153,7 @@ export default function ReglesAttributionEditor({ equipe, assignables = [], onSa
       <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
         <Switch checked={!!equipe.confirmation_responsable} disabled={busy}
                 aria-label={`Le responsable confirme chaque lead — ${equipe.nom}`}
-                onCheckedChange={(v) => onSaveEquipe(equipe, { confirmation_responsable: v })} />
+                onCheckedChange={(v) => onSaveReglages(equipe, { confirmation_responsable: v })} />
         Le responsable confirme chaque lead
       </label>
       {equipe.confirmation_responsable && (
@@ -148,13 +162,13 @@ export default function ReglesAttributionEditor({ equipe, assignables = [], onSa
             <Label htmlFor={`delai-attr-${equipe.id}`}>
               Délai avant attribution automatique (minutes ouvrées)
             </Label>
-            <Input id={`delai-attr-${equipe.id}`} type="number" step="any" min="0"
-                   key={equipe.delai_attribution_minutes}
-                   defaultValue={equipe.delai_attribution_minutes ?? ''}
+            <Input id={`delai-attr-${equipe.id}`} type="number" step="any" min="1" max="480"
+                   key={delai}
+                   defaultValue={delai ?? ''}
                    onBlur={(e) => {
                      const v = e.target.value
-                     if (v !== '' && Number(v) !== equipe.delai_attribution_minutes) {
-                       onSaveEquipe(equipe, { delai_attribution_minutes: Math.round(Number(v)) })
+                     if (v !== '' && Number(v) !== delai) {
+                       onSaveReglages(equipe, { delai_minutes: Math.round(Number(v)) })
                      }
                    }} />
           </div>

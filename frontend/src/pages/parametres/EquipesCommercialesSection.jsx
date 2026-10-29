@@ -94,7 +94,7 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
   const saveReglage = async (equipe, patch) => {
     setBusyId(equipe.id)
     try {
-      await crmApi.saveEquipe(equipe.id, patch)
+      await crmApi.saveReglagesDispatch(equipe.id, patch)
       setError(null)
       load()
     } catch (e) {
@@ -134,7 +134,7 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
       onToggleRecoitLeads={toggleRecoitLeads}
       renderExtra={(eq) => (
         <ReglesAttributionEditor equipe={eq} assignables={assignables}
-                                 busy={busyId === eq.id} onSaveEquipe={saveReglage} />
+                                 busy={busyId === eq.id} onSaveReglages={saveReglage} />
       )}
       newNom={newNom} setNewNom={setNewNom} onAdd={addEquipe} />
   )

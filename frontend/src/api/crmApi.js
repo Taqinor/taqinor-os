@@ -340,6 +340,8 @@ const crmApi = {
   getDispatch: () => api.get('/crm/dispatch/'),
   attribuerLead: (leadId, owner) =>
     api.post(`/crm/dispatch/${leadId}/attribuer/`, { owner }),
+  // Réglages d'attribution d'une équipe (responsable, directeur commercial, Direction/Admin).
+  saveReglagesDispatch: (equipeId, data) => api.patch(`/crm/dispatch/reglages/${equipeId}/`, data),
   getReglesAttribution: (equipe, params = {}) =>
     api.get('/crm/regles-attribution/', { params: { equipe, ...params } }),
   saveRegleAttribution: (id, data) =>

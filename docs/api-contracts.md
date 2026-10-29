@@ -93,7 +93,7 @@
 - frontend/src/api/crmApi.js :: getControleSuivi -> /api/django/crm/relance-etapes/controle
     commerciaux:inconnu, exceptions:inconnu, jours:inconnu, owner:inconnu, par_type:inconnu, periode_jours:inconnu, premier_contact:inconnu, resultats:objet, segment:inconnu, seuils:objet, verdict:objet
 - frontend/src/api/crmApi.js :: getDispatch -> /api/django/crm/dispatch
-    en_attente:inconnu, equipe:inconnu, leads:inconnu, membres:inconnu
+    en_attente:inconnu, equipe:inconnu, equipes_reglables:inconnu, leads:inconnu, membres:inconnu
 - frontend/src/api/crmApi.js :: getEquipesStatistiques -> /api/django/crm/equipes/statistiques
     equipes:inconnu
 - frontend/src/api/crmApi.js :: getLeadJalonsDevis -> /api/django/crm/leads/<>/jalons-devis
@@ -136,6 +136,8 @@
     record:inconnu, restored:booleen
 - frontend/src/api/crmApi.js :: resumeAssocie -> /api/django/crm/leads/<>/resume-associe
     accord_client:liste, contact_secondaire_telephone:liste, detail:texte, devis_id:liste, message:inconnu, phone:inconnu, wa_url:inconnu
+- frontend/src/api/crmApi.js :: saveReglagesDispatch -> /api/django/crm/dispatch/reglages/<>
+    confirmation_responsable:inconnu, delai_minutes:inconnu, id:inconnu, nom:inconnu
 - frontend/src/api/crmApi.js :: scanCarteVisite -> /api/django/crm/leads/scan-carte
     detail:inconnu, doublons:inconnu, email:inconnu, nom:inconnu, prenom:inconnu, societe:inconnu, telephone:inconnu
 - frontend/src/api/crmApi.js :: searchClients -> /api/django/crm/clients/search
@@ -764,7 +766,7 @@
     champs: company, date_creation, filleul_client, filleul_display_nom, filleul_lead, filleul_nom, id, notes, parrain, parrain_nom, recompense, statut, statut_display
     statut ∈ {converti, en_attente, recompense_versee}
 - frontend/src/api/crmApi.js :: deleteRegleAttribution -> /api/django/crm/regles-attribution/<>  [RegleAttributionSerializer]
-    champs: actif, equipe, facture_max, facture_min, id, membre, membre_nom, ordre, source, type_installation, villes
+    champs: actif, equipe, facture_max, facture_min, id, membre, membre_nom, ordre, sources, types_installation, villes
 - frontend/src/api/crmApi.js :: deleteSavedView -> /api/django/crm/vues-enregistrees/<>  [SavedViewSerializer]
     champs: created_at, id, name, page, payload, rank, user
 - frontend/src/api/crmApi.js :: getAppointments -> /api/django/crm/appointments  [AppointmentSerializer]
@@ -787,7 +789,7 @@
 - frontend/src/api/crmApi.js :: getPlansActivite -> /api/django/crm/plans-activite  [PlanActiviteSerializer]
     champs: actif, company, date_creation, etapes, id, nom
 - frontend/src/api/crmApi.js :: getReglesAttribution -> /api/django/crm/regles-attribution  [RegleAttributionSerializer]
-    champs: actif, equipe, facture_max, facture_min, id, membre, membre_nom, ordre, source, type_installation, villes
+    champs: actif, equipe, facture_max, facture_min, id, membre, membre_nom, ordre, sources, types_installation, villes
 - frontend/src/api/crmApi.js :: getSiteProfiles -> /api/django/crm/site-profiles  [SiteProfileSerializer]
     champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}

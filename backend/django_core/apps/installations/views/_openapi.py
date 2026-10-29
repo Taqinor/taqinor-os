@@ -38,6 +38,10 @@ from ..signature_validation import (
 #: api-fuzz 24/10 envoyait ``file=`` (texte) et recevait « Fichier requis ».
 UPLOAD_PARSERS = [MultiPartParser]
 JSON_AND_UPLOAD_PARSERS = [JSONParser, MultiPartParser, FormParser]
+#: api-fuzz-full 28/10 (ENF11) — un corps qui porte un OBJET (``caracteristiques``)
+#: ne passe pas en ``x-www-form-urlencoded`` (l'objet y arrive en clés
+#: répétées, illisible) : JSON ou multipart (partie JSON) seulement.
+JSON_ET_MULTIPART_PARSERS = [JSONParser, MultiPartParser]
 
 
 class JsonOnlyMixin:
