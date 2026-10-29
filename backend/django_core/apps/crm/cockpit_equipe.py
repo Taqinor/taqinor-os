@@ -26,6 +26,7 @@ ne comptent pas dans son premier contact, ses leads non contactés ni ses
 leads ouverts.
 """
 import calendar
+from collections.abc import Mapping
 import datetime
 from decimal import Decimal
 
@@ -98,8 +99,9 @@ def owner_demande(data, defaut=None):
     serializer (le droit se vérifie avant l'unicité : un 409 ne doit jamais
     révéler qu'un objectif existe pour quelqu'un que l'appelant ne gère pas).
     Clé absente → ``defaut`` ; vide → None ; illisible → ``defaut`` (le
-    serializer répond ensuite 400)."""
-    if 'owner' not in data:
+    serializer répond ensuite 400) ; corps qui n'est pas un objet JSON →
+    ``defaut`` (le serializer répond 400, jamais un 500)."""
+    if not isinstance(data, Mapping) or 'owner' not in data:
         return defaut
     brut = data.get('owner')
     if brut in (None, ''):

@@ -979,3 +979,12 @@ class TestCockpitEquipe(TestCase):
             'period_type': 'month', 'period_year': 2026, 'period_month': 10,
             'cible': '5'}, format='json')
         self.assertEqual(r.status_code, 403, r.content)
+
+    def test_corps_non_objet_400(self):
+        """api-fuzz-full 29/10 : un corps JSON qui n'est pas un objet
+        (nombre, liste, chaîne) répond 400, jamais 500."""
+        self.auth_as(self.admin)
+        for corps in (-1.5, [1, 2], 'x'):
+            r = self.api.post('/api/django/crm/objectifs/', corps,
+                              format='json')
+            self.assertEqual(r.status_code, 400, r.content)
