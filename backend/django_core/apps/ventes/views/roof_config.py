@@ -8,9 +8,10 @@ appel cross-origin vers taqinor.ma et sans exposer la clé dans le bundle front.
 Les valeurs viennent des variables d'environnement ERP
 (``PUBLIC_MAPTILER_KEY`` / ``PUBLIC_MAPBOX_TOKEN``), posées au déploiement.
 ``available`` est vrai dès qu'une clé MapTiler est présente (la carte ne peut
-booter sans elle)."""
-import os
+booter sans elle).
 
+ACAL282 — le corps est ``ventes.selectors.config_carte`` : la MÊME fonction
+sert la 3D du devis et l'atelier calepinage (une seule lecture de la clé)."""
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -30,10 +31,6 @@ def roof_config(request):
     utilisateur authentifié de l'ERP y a accès (auth cookie par défaut DRF).
     Aucune écriture, aucune donnée société : seules les clés carte d'environnement
     sont renvoyées."""
-    maptiler = os.environ.get('PUBLIC_MAPTILER_KEY', '') or ''
-    mapbox = os.environ.get('PUBLIC_MAPBOX_TOKEN', '') or ''
-    return Response({
-        'available': bool(maptiler),
-        'maptilerKey': maptiler,
-        'mapboxToken': mapbox or None,
-    })
+    from ..selectors import config_carte
+
+    return Response(config_carte())

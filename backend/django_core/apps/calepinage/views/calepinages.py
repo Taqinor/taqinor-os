@@ -1280,6 +1280,8 @@ def contexte_conception(calepinage, request=None):
     Dictionnaire LITTÉRAL (comme ``detail_calepinage``) pour que la garde de
     contrat lise la forme réellement renvoyée.
     """
+    from apps.ventes.selectors import config_carte  # ACAL282 — lecture unique
+
     from .. import selectors as cal_selectors
 
     company = getattr(calepinage, 'company', None)
@@ -1328,7 +1330,7 @@ def contexte_conception(calepinage, request=None):
         },
         'geometrie': geometrie,
         'cible': cible,
-        'carte': _config_carte(),
+        'carte': config_carte(),
         'modifiable': not _raison_lecture_seule(contexte_devis),
         'raison_lecture_seule': _raison_lecture_seule(contexte_devis),
         'avertissements': _avertissements(geometrie, cible, contexte_devis),
@@ -1571,21 +1573,6 @@ def _avertissements(geometrie, cible, contexte_devis):
         messages.append('Cible de puissance non calculée : '
                         + cible['refus'])
     return messages
-
-
-def _config_carte():
-    """Clés carte du builder 3D, lues comme ``ventes/views/roof_config.py``.
-
-    Mêmes variables d'environnement, même forme que le contexte devis :
-    c'est de la CONFIGURATION, pas une donnée société — la lire ici évite de
-    faire dépendre ce module de ventes pour une clé d'API.
-    """
-    import os
-
-    maptiler = os.environ.get('PUBLIC_MAPTILER_KEY', '') or ''
-    mapbox = os.environ.get('PUBLIC_MAPBOX_TOKEN', '') or ''
-    return {'available': bool(maptiler), 'maptilerKey': maptiler,
-            'mapboxToken': mapbox or None}
 
 
 # ── CAL17 — L'AGRÉGAT DE DÉTAIL (la forme est le contrat) ──────────────────

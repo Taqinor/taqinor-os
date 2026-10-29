@@ -369,13 +369,14 @@ def comparaison_calepinage_devis(devis):
 # LECTURE PURE : aucun statut, aucune ligne, aucun layout n'est écrit ici.
 
 
-def _config_carte():
-    """Clés carte du builder 3D — MIROIR de ``views/roof_config.py``.
+def config_carte():
+    """ACAL282 — LA lecture UNIQUE des clés carte du builder 3D.
 
-    Mêmes variables d'environnement (``PUBLIC_MAPTILER_KEY`` /
-    ``PUBLIC_MAPBOX_TOKEN``), même forme ``{available, maptilerKey,
-    mapboxToken}`` : l'écran de conception lit la carte DANS le contexte plutôt
-    que d'enchaîner un second appel. Aucune donnée société, aucune écriture.
+    ``PUBLIC_MAPTILER_KEY`` / ``PUBLIC_MAPBOX_TOKEN`` (déclarées dans
+    ``.env.example``), forme ``{available, maptilerKey, mapboxToken}`` : servie
+    telle quelle par ``GET /ventes/roof-config/``, par le contexte de conception
+    devis et par le design-context calepinage (import fonction-local) — trois
+    portes, une réponse. Aucune donnée société, aucune écriture.
     """
     import os
 
@@ -652,7 +653,7 @@ def contexte_conception_devis(devis, company):
             'source_repere': source_repere,
         },
         'cible': cible,
-        'carte': _config_carte(),
+        'carte': config_carte(),
         'modifiable': not raison,
         'raison_lecture_seule': raison,
         'avertissements': avertissements,

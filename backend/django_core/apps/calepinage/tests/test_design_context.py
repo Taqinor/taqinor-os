@@ -263,6 +263,36 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(geometrie['source_repere'], 'roof_point')
         self.assertEqual(geometrie['outline'], CONTOUR_AUTOUR_DU_REPERE)
 
+    def test_trois_portes_meme_reponse(self):
+        """ACAL282 — roof-config, contexte devis et design-context calepinage
+        lisent la clé carte par UNE fonction (ventes.selectors.config_carte)."""
+        from apps.ventes.selectors import contexte_conception_devis
+
+        attendu = {'available': True, 'maptilerKey': 'k', 'mapboxToken': None}
+        env = {'PUBLIC_MAPTILER_KEY': 'k', 'PUBLIC_MAPBOX_TOKEN': ''}
+        with mock.patch.dict('os.environ', env):
+            roof = self.api.get('/api/django/ventes/roof-config/')
+            self.assertEqual(roof.status_code, 200)
+            portes = [
+                roof.data,
+                contexte_conception_devis(self.devis, self.company)['carte'],
+                self._contexte(self.avec_devis)['carte'],
+            ]
+        for carte in portes:
+            self.assertEqual(dict(carte), attendu)
+        with mock.patch.dict('os.environ', {'PUBLIC_MAPTILER_KEY': ''}):
+            self.assertFalse(self._contexte(self.nu)['carte']['available'])
+
+    def test_env_example_declare_la_cle(self):
+        """ACAL282 — la variable lue est déclarée dans .env.example."""
+        racine = pathlib.Path(__file__).resolve().parents[5]
+        exemple = racine / '.env.example'
+        if not exemple.exists():  # image docker : seul backend/ est monté
+            self.skipTest('.env.example hors de l’arbre monté')
+        texte = exemple.read_text(encoding='utf-8')
+        for cle in ('PUBLIC_MAPTILER_KEY=', 'PUBLIC_MAPBOX_TOKEN='):
+            self.assertIn(f'\n{cle}', texte)
+
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))
         self.assertEqual(reponse.status_code, 404)
