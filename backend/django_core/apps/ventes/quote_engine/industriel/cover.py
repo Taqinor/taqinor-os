@@ -30,6 +30,7 @@ from ..lecture_pure import nombre_ou_none
 from ..montants import decimale
 # QJR651 — kwc_str et la cellule KPI : harnais premium commun.
 from .. import premium_base
+from .. import logo as _logo
 
 _MONTHS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
 
@@ -308,7 +309,7 @@ def build(ctx):
 .i1-hero{{background:{navy_900};padding:9mm 14mm 7mm 14mm;border-bottom:3px solid {gold};}}
 .i1-htop{{display:table;width:100%;}}
 .i1-hlogo{{display:table-cell;vertical-align:middle;}}
-.i1-hlogo img{{height:9mm;width:auto;}}
+.i1-hlogo img{{{_logo.css_boite("couverture")}}}
 .i1-hmeta{{display:table-cell;vertical-align:middle;text-align:right;color:#fff;}}
 .i1-rl{{font-size:6.5pt;letter-spacing:1.6px;text-transform:uppercase;color:{muted_2};}}
 .i1-rv{{font-size:12pt;font-weight:700;color:#fff;}}

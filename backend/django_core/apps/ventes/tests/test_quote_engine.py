@@ -54,7 +54,6 @@ def _qr_ancien_rendu(url, *, logo=True, correction="H", box_size=16, border=2,
     ``StyledPilImage`` + ``SolidFillColorMask``, boucle par pixel), gardé ICI
     seulement pour prouver que le nouveau rendu ne bouge pas d'un pixel."""
     import qrcode
-    from PIL import Image
     from qrcode.image.styledpil import StyledPilImage
     from qrcode.image.styles.colormasks import SolidFillColorMask
     from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
@@ -68,10 +67,14 @@ def _qr_ancien_rendu(url, *, logo=True, correction="H", box_size=16, border=2,
     kw = dict(image_factory=StyledPilImage, module_drawer=RoundedModuleDrawer(),
               color_mask=SolidFillColorMask(front_color=tuple(front),
                                             back_color=(255, 255, 255)))
+    # R3 — l'image centrale est celle de ``quote_engine.logo`` (emblème
+    # TAQINOR, logo société dans un carré blanc) : l'oracle ne porte que sur
+    # le masque de couleur, jamais sur le choix du logo.
+    from apps.ventes.quote_engine import logo as _logo
     if logo is True:
-        kw["embeded_image_path"] = str(theme._LIVE_ASSETS / "logo.png")
+        kw["embeded_image"] = _logo.taqinor_image_qr()
     elif logo:
-        kw["embeded_image"] = Image.open(io.BytesIO(base64.b64decode(logo)))
+        kw["embeded_image"] = _logo.image_qr_societe(logo)
     buf = io.BytesIO()
     qr.make_image(**kw).save(buf, "PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()

@@ -83,6 +83,7 @@ _RENDER_LOCK = threading.RLock()
 from .identite import (ligne_rib as _ligne_rib_identite,  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     LEGALE_TAQINOR_LEGACY, mentions_legales as _mentions_legales,
     profil_renseigne as _profil_renseigne)
+from . import logo as _logo  # noqa: E402 — R3, module pur (D-ENF22)
 # AMOT57 — « est-ce un onduleur ? » : LE classifieur partagé (« Deye off-Grid »).
 from apps.ventes.solar_classification import is_inverter  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
@@ -1186,49 +1187,34 @@ def badge(mar):
     return (f'<span style="display:inline-block;background:{bg};color:{fg};border-radius:3px;'
             f'padding:1px 5px;font-size:5.5pt;font-weight:700;vertical-align:middle;">{mar}</span>')
 
-def logo_html(h="36px"):
-    """Dark logo for pages 2-3 navy headers — transparent, matching page 1 style."""
+def logo_html(role="entete"):
+    """R3 — logo des en-têtes sombres (``quote_engine.logo``) : société ou
+    TAQINOR (mot-marque seul en « entete », lockup avec tagline en « onepage »),
+    dimensionné par la capitale du rôle ; repli texte sans asset."""
     try:
-        b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64()
+        b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64(role)
     except Exception:
         logger.warning("generate_devis_premium.logo_html : erreur ignorée (mode dégradé)", exc_info=True)
         b64_data = None
     if b64_data:
-        return f'<img src="data:image/png;base64,{b64_data}" alt="TAQINOR" style="height:{h};width:auto;object-fit:contain;">'
+        return _logo.img_html(_logo.pour_role(b64_data, role), role, alt=ENT_NOM_MARQUE)
     return (f'<span style="font-size:15pt;font-weight:900;letter-spacing:1px;color:white;">'
             f'TAQIN<span style="color:{CA};">&#9728;</span>R</span>')
 
-def _logo_dark_b64():
-    """Return base64 PNG of logo.png with white bg removed and dark pixels → white."""
-    from PIL import Image
-    p = ASSET_DIR / "logo.png"
-    if not p.exists():
-        return None
-    img = Image.open(p).convert("RGBA")
-    arr = np.array(img, dtype=np.float32)
-    r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
-    lightness = (r + g + b) / 765.0
-    # Near-white → transparent (removes white background)
-    white = lightness > 0.88
-    arr[white, 3] = 0
-    # Dark pixels (navy/black text) → white for visibility on dark bg
-    dark = (~white) & (lightness < 0.42)
-    arr[dark, 0] = 255; arr[dark, 1] = 255; arr[dark, 2] = 255
-    from PIL import Image as _I
-    buf = io.BytesIO()
-    _I.fromarray(arr.astype(np.uint8), 'RGBA').save(buf, format='PNG')
-    return base64.b64encode(buf.getvalue()).decode()
+def _logo_dark_b64(role="couverture"):
+    """R3 — base64 PNG du logo TAQINOR des fonds sombres pour un rôle (bloc
+    lu dans ``quote_engine.logo``) ; None sans asset."""
+    return _logo.taqinor_b64("sombre", _logo.bloc_taqinor(role)) or None
 
 def logo_p1_dark():
-    """Logo for dark header — white bg removed, dark pixels → white, rendered on navy."""
+    """Logo de la couverture sombre (R3 : lockup mot-marque + tagline, ou le logo société)."""
     try:
-        b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64()
+        b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64("couverture")
     except Exception:
         logger.warning("generate_devis_premium.logo_p1_dark : erreur ignorée (mode dégradé)", exc_info=True)
         b64_data = None
     if b64_data:
-        return (f'<img src="data:image/png;base64,{b64_data}" alt="TAQINOR" '
-                f'style="height:144px;width:auto;object-fit:contain;display:block;">')
+        return _logo.img_html(b64_data, "couverture", alt=ENT_NOM_MARQUE, style="margin-bottom:10px;")
     # Fallback: text on dark background
     return (f'<div style="display:inline-block;">'
             f'<div style="font-size:17px;font-weight:900;color:white;letter-spacing:1px;line-height:1.1;">'
@@ -2204,10 +2190,8 @@ def page1():
       </div>
     </div>
 
-    <!-- Tagline BELOW logo box — 20px gap -->
-    <div style="color:{CA};font-size:6px;letter-spacing:2.5px;font-weight:600;margin-top:8px;margin-bottom:3px;white-space:nowrap;">TAQA &nbsp;&#183;&nbsp; INNOVATION &nbsp;&#183;&nbsp; NOR</div>
-
-    <!-- Gold separator — AFTER tagline, BEFORE PROPOSITION -->
+    <!-- R3 — la tagline fait partie du lockup du logo (plus de doublon texte) -->
+    <!-- Gold separator — AFTER logo, BEFORE PROPOSITION -->
     <div style="height:1px;background:{CA};opacity:0.80;margin-bottom:4px;"></div>
 
     <!-- Row 2: Title+client left / Ref+validity right -->
@@ -2440,7 +2424,7 @@ def page2(sans_items, img_roi, img_mon):
       <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_p2_titre")}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
     </div>
-    {logo_html("42px")}
+    {logo_html("entete")}
   </div>
   <div style="height:3px;background:{CA};flex-shrink:0;"></div>
 
@@ -2722,7 +2706,7 @@ def page3():
       <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_confiance_bpa")}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} \u2014 {CLIENT_NAME}</div>
     </div>
-    {logo_html("42px")}
+    {logo_html("entete")}
   </div>
   <div style="height:3px;background:{CA};flex-shrink:0;"></div>
 
@@ -2984,7 +2968,7 @@ def page_annexe_technique():
       <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_annexe_technique")}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
     </div>
-    {logo_html("42px")}
+    {logo_html("entete")}
   </div>
   <div style="height:3px;background:{CA};flex-shrink:0;"></div>
 
@@ -3045,7 +3029,7 @@ def page_annexe_domicile(pied=None):
       <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_ret_titre")}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} — {CLIENT_NAME} — {DATE_STR}</div>
     </div>
-    {logo_html("42px")}
+    {logo_html("entete")}
   </div>
   <div style="height:3px;background:{CA};flex-shrink:0;"></div>
 
@@ -3087,7 +3071,7 @@ def page_calepinage():
       <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_calepinage")}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} — {CLIENT_NAME} — {DATE_STR}</div>
     </div>
-    {logo_html("42px")}
+    {logo_html("entete")}
   </div>
   <div style="height:3px;background:{CA};flex-shrink:0;"></div>
 
