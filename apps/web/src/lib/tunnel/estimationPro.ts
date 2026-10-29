@@ -143,36 +143,16 @@ export type ContexteEstimationPro = Omit<ContexteTunnel, 'config'> & {
   config: ConfigLocale & ConfigEstimationPro;
 };
 
-interface ProEstimateOk {
-  ok: true;
-  kwc: number;
-  nbPanneaux: number;
-  prodAnnuelleKwh: number;
-  consoAnnuelleKwh: number;
-  tauxAutoconso: number;
-  tauxCouverture: number;
-  ecoAnnuelleMadLow: number;
-  ecoAnnuelleMadHigh: number;
-  paybackYearsLow: number;
-  paybackYearsHigh: number;
-  surfaceCapped: boolean;
-  hypotheses: { tarifMadKwh: number; dayShare: number; prixKwcLow: number; prixKwcHigh: number };
-}
+type ProEstimateOk = { ok: true; surfaceCapped: boolean }
+  & Record<'kwc' | 'nbPanneaux' | 'prodAnnuelleKwh' | 'consoAnnuelleKwh' | 'tauxAutoconso' | 'tauxCouverture', number>
+  & Record<'ecoAnnuelleMadLow' | 'ecoAnnuelleMadHigh' | 'paybackYearsLow' | 'paybackYearsHigh', number>
+  & { hypotheses: { tarifMadKwh: number; dayShare: number; prixKwcLow: number; prixKwcHigh: number } };
 
-export interface AgricoleEstimateOk {
-  ok: true;
-  hmtM: number;
-  hmtEstimated: boolean;
-  debitM3h: number;
-  pompeKw: number;
-  pompeCv: number;
-  champKwc: number;
-  nbPanneaux: number;
-  m3Jour: number;
-  heures: number;
-  hypotheses: { pumpEff: number; pvFactor: number };
-}
+export type AgricoleEstimateOk = { ok: true; hmtEstimated: boolean }
+  & Record<'hmtM' | 'debitM3h' | 'pompeKw' | 'pompeCv' | 'champKwc' | 'nbPanneaux' | 'm3Jour' | 'heures', number>
+  & { hypotheses: { pumpEff: number; pvFactor: number } };
 
+/** FR l. 3557-3864 (une seule plage) : alias nommé `installerEstimationPro`. */
 export function installerEstimationPro(ctx: ContexteEstimationPro): void {
   const { etat, dom, crochets, config } = ctx;
   const { $, num, val, pct, setText, maxBillFor, setFieldError } = dom;
@@ -189,13 +169,13 @@ export function installerEstimationPro(ctx: ContexteEstimationPro): void {
   const proBillUnit = () => (etat.mode === 'commercial' ? etat.ccUnit : etat.proUnit);
 
   function computeProEstimate(): boolean {
-    const unavail = $('mt-estimate-unavailable');
-    const toolarge = $('mt-estimate-toolarge');
+    const indispo = $('mt-estimate-unavailable');
+    const tropGrand = $('mt-estimate-toolarge');
     const toolargePro = $('mt-estimate-toolarge-pro');
     const proMissing = $('mt-estimate-pro-missing');
     const printBtn = $('mt-print-estimate');
-    if (unavail) unavail.hidden = true;
-    if (toolarge) toolarge.hidden = true;
+    if (indispo) indispo.hidden = true;
+    if (tropGrand) tropGrand.hidden = true;
     const clearShown = () => {
       etat.lastKwcLabel = '';
       etat.lastSavingsLabel = '';
@@ -296,12 +276,9 @@ export function installerEstimationPro(ctx: ContexteEstimationPro): void {
     const ecoOk = est.ecoAnnuelleMadLow > 0 && est.ecoAnnuelleMadHigh > 0;
     const ecoLabel = ecoOk ? formatMadRange(est.ecoAnnuelleMadLow, est.ecoAnnuelleMadHigh) : null;
     h('setCard', 'mt-pro-eco-card', 'mt-pro-eco', ecoLabel);
-    if (ecoOk) {
-      shown.ecoMadYearLow = est.ecoAnnuelleMadLow;
-      shown.ecoMadYearHigh = est.ecoAnnuelleMadHigh;
-    }
-    const retourOk = est.paybackYearsLow > 0 && est.paybackYearsHigh > 0;
-    const retourLabel = retourOk
+    if (ecoOk) Object.assign(shown, { ecoMadYearLow: est.ecoAnnuelleMadLow, ecoMadYearHigh: est.ecoAnnuelleMadHigh });
+    const paybackOk = est.paybackYearsLow > 0 && est.paybackYearsHigh > 0;
+    const retourLabel = paybackOk
       ? (est.paybackYearsLow === est.paybackYearsHigh
         ? T.unAns(fmtYears(est.paybackYearsLow))
         : T.fourchetteAns(fmtYears(est.paybackYearsLow), fmtYears(est.paybackYearsHigh)))
@@ -363,11 +340,11 @@ export function installerEstimationPro(ctx: ContexteEstimationPro): void {
       if (waterVal) waterVal.textContent = T.eauPointe(fmtNum(Math.round(agroPeak)));
     }
     const raw = estimateAgricole({
+      debitM3h,
+      besoinM3j,
       hmtM: num('mt-hmt') ?? undefined,
       profondeurM: num('mt-profondeur') ?? undefined,
       refoulementM: undefined,
-      debitM3h,
-      besoinM3j,
       heuresPompage: num('mt-heures-pompage') ?? undefined,
       pompeType: etat.waterSource === 'puits' || etat.waterSource === 'forage' ? 'immergee' : etat.waterSource ? 'surface' : undefined,
       fuelSpendMadMonth: num('mt-fuel-spend') ?? undefined,
@@ -380,13 +357,14 @@ export function installerEstimationPro(ctx: ContexteEstimationPro): void {
     // WJ125 — payload lead (chiffres pompage) + labels construits AVANT tout rendu.
     {
       const s: Record<string, number | string> = {};
-      if (ag.pompeCv > 0) s.pompeCv = ag.pompeCv;
       const cOk = ag.champKwc > 0;
-      if (cOk) s.champKwc = ag.champKwc;
-      if (ag.nbPanneaux > 0) s.nbPanneaux = ag.nbPanneaux;
-      if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
+      // Ordre des clés = celui du payload de la page (pompeCv, champKwc, nbPanneaux, m3Jour, bassinM3).
       // WJ124 — bassin suggéré = besoin journalier (1×), borne basse de la fourchette 1-3×.
-      if (ag.m3Jour > 0) s.bassinM3 = ag.m3Jour;
+      const candidats: Array<[string, number]> = [
+        ['pompeCv', ag.pompeCv], ['champKwc', ag.champKwc], ['nbPanneaux', ag.nbPanneaux],
+        ['m3Jour', ag.m3Jour], ['bassinM3', ag.m3Jour],
+      ];
+      for (const [cle, valeur] of candidats) if (valeur > 0) s[cle] = valeur;
       etat.estimateShown = s;
       etat.lastKwc = null;
       etat.lastKwcLabel = cOk ? T.champPv(formatKwc(ag.champKwc)) : '';
@@ -423,9 +401,9 @@ export function installerEstimationPro(ctx: ContexteEstimationPro): void {
     const fuelLabel = depenseDeclaree != null && depenseDeclaree > 0 ? T.carburant(fmtNum(depenseDeclaree)) : null;
     h('setCard', 'mt-agri-fuel-card', 'mt-agri-fuel', fuelLabel);
     // Bande de flux soleil → pompe → eau : uniquement si les 3 chiffres existent.
-    const flow = $('mt-doc-flow');
+    const bandeFlux = $('mt-doc-flow');
     const flowOk = ag.heures > 0 && pompeLabel != null && eauOk;
-    if (flow) flow.hidden = !flowOk;
+    if (bandeFlux) bandeFlux.hidden = !flowOk;
     if (flowOk) {
       setText('mt-flow-heures', `${fmtNum(ag.heures)} h`);
       setText('mt-flow-pompe', pompeLabel as string);
