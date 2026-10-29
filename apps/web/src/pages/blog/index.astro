@@ -26,7 +26,7 @@ const posts = (
   await getCollection('blog', ({ data }) => (import.meta.env.PROD ? !data.draft && data.pubDate.getTime() <= Date.now() : true))
 ).sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime());
 
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W329 — un guide associé par thème, MÊME vocabulaire de thème que les groupes
 // de /guides (src/pages/guides/index.astro) : le guide le plus représentatif

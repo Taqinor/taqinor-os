@@ -24,7 +24,7 @@ import { getGuideVerifiedDate } from '../../lib/guideMeta';
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('mon-toit-peut-il-supporter-des-panneaux');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 const guideBodyText = `
   C'est l'objection qui revient juste après le prix : et si mon toit ne tient pas le poids ? Un panneau
   photovoltaïque haute puissance actuel pèse d'après sa fiche technique constructeur environ 37,8 kg

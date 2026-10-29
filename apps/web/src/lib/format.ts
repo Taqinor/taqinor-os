@@ -9,3 +9,6 @@ export function formatMAD(amount: number): string {
   const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return `${sign}${grouped} MAD`;
 }
+
+/** Date longue française (`21 juin 2026`) — partagée par les pages blog/guides. */
+export const DATE_LONGUE_FR = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });

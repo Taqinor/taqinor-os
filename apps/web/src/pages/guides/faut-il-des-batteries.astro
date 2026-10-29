@@ -20,7 +20,7 @@ import { getGuideVerifiedDate } from '../../lib/guideMeta';
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('faut-il-des-batteries');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 const guideBodyText = `
   Réponse courte : souvent non. La batterie n'est pas le cœur d'une installation, c'est une option. Ce
   qui la justifie ou non, c'est l'heure à laquelle vous consommez votre électricité. Quand l'essentiel

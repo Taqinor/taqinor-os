@@ -17,7 +17,7 @@ import { getGuideVerifiedDate } from '../../lib/guideMeta';
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('quelle-taille-de-batterie');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 const guideBodyText = `
   Le plus simple pour répondre, c'est de suivre une vraie maison. Prenons une villa à Casablanca de
   quatre personnes. Tout part de ce que la maison consomme une fois le soleil couché. Selon le mode de

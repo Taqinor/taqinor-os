@@ -18,7 +18,7 @@ import { getGuideVerifiedDate } from '../../lib/guideMeta';
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('monocristallin-ou-polycristallin');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 const guideBodyText = `
   Ces deux questions reviennent dès qu'on compare des devis, mais pour la plupart des maisons
   marocaines l'une d'elles est déjà tranchée. Le monocristallin a gagné. Un panneau monocristallin est
