@@ -154,7 +154,8 @@ class TestDesignContext(TestCase):
     def test_forme_complete_geometrie_depuis_le_lead(self):
         lead = self._lead(
             roof_point={'lat': 31.6, 'lng': -8.0},
-            roof_outline=[[31.6, -8.0], [31.61, -8.0]],
+            roof_outline=[[31.599, -8.001], [31.601, -8.001],
+                          [31.601, -7.999], [31.599, -7.999]],
             bill_kwh=Decimal('850'))
         devis = self._devis(lead=lead)
         resp = self._get(devis)
@@ -164,12 +165,14 @@ class TestDesignContext(TestCase):
         self.assertEqual(data['geometrie']['source'], 'lead')
         self.assertIsNone(data['geometrie']['roof_layout'])
         self.assertEqual(data['geometrie']['pin'], {'lat': 31.6, 'lng': -8.0})
-        self.assertEqual(len(data['geometrie']['outline']), 2)
+        # ACAL250 — un contour utilisable (polygone ≥ 3 points autour du repère).
+        self.assertEqual(len(data['geometrie']['outline']), 4)
         self.assertEqual(data['cible']['bill_kwh'], 850.0)
         self.assertEqual(data['devis']['lead'], lead.id)
         # Sans layout, `contour_client` == `outline` (même contour du lead).
         self.assertEqual(
-            data['geometrie']['contour_client'], [[31.6, -8.0], [31.61, -8.0]])
+            data['geometrie']['contour_client'],
+            data['geometrie']['outline'])
 
     # ── L-MAP (fondateur 26/08/2026) — le contour CLIENT survit à l'édition ──
     def test_contour_client_reste_le_contour_original_meme_avec_un_layout(self):

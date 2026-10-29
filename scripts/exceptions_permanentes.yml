@@ -369,6 +369,7 @@ tests_sautes_environnement:
     - "backend/fastapi_ia/tests/test_sql_security.py::TenantGucTests"
     # Condition : arbre partiel du conteneur (tools/, scripts/, apps/web, frontend/, docs/, .env.example)
     - "backend/django_core/apps/adsengine/tests/test_veille_fiches.py::ScriptTrierTests.setUp"
+    - "backend/django_core/apps/calepinage/tests/test_design_context.py::ContexteConceptionTest.test_env_example_declare_la_cle"
     - "backend/django_core/apps/ged/tests_guide_suivi_a_jour.py::GuideSuiviAJourTests"
     - "backend/django_core/apps/installations/tests_acht53_fk_purge_allowlist.py::FkPurgeAllowlistTests.test_aucune_ligne_installations_dans_les_sections"
     - "backend/django_core/apps/ventes/tests/test_adev2_contrat_proposal_accept.py::ContratProposalAcceptTests.test_copies_web_json_egales"

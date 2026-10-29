@@ -114,7 +114,10 @@ test('le panneau ne contient AUCUN embed PDF blocable (iframe/embed/object)', ()
 
 test('le panneau rend l’aperçu via PDF.js (PdfCanvas)', () => {
   assert.match(PANEL, /<PdfPreviewBody/, 'le panneau monte le corps d’aperçu partagé')
-  assert.match(PANEL, /blob=\{preview\.blob\}/, 'il passe les octets (blob) au corps')
+  // ENF19 — les props d'état viennent du helper partagé previewBodyProps.
+  assert.match(PANEL, /\{\.\.\.previewBodyProps\(preview,/, 'il passe l’état d’aperçu au corps')
+  assert.match(readFileSync(join(HERE, 'previewBodyProps.js'), 'utf8'), /blob: preview\.blob/,
+    'il passe les octets (blob) au corps')
   assert.match(BODY, /<PdfCanvas/, 'le corps monte le composant PdfCanvas')
   assert.match(BODY, /blob=\{blob\}/, 'il passe les octets (blob) à PDF.js')
 })
