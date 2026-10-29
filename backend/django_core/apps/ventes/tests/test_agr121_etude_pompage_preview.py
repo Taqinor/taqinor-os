@@ -282,6 +282,97 @@ class PrioriteEtEcritureTests(_Base):
         self.assertEqual(ecritures, [])
 
 
+class SiteFicheClientTests(_Base):
+    """AGRI-SITE (fondateur, 28/10/2026) — devis agricole démarré d'un CLIENT
+    sans lead : le site (irradiation) vient de la fiche client (ville / GPS du
+    répertoire) ; le lead reste la première source. PVGIS simulé : un profil
+    SEULEMENT quand un site est transmis (sinon ``None``, comme le réel)."""
+
+    def setUp(self):
+        super().setUp()
+        self.profils.side_effect = (
+            lambda ville=None, lat=None, lon=None:
+            PROFILS if (ville or (lat is not None and lon is not None))
+            else None)
+
+    def _client(self, ville='', company=None):
+        from apps.crm.models import Client
+        from apps.tiers.models import Tiers
+        company = company or self.co
+        tiers = Tiers.objects.create(company=company, nom='Ferme', ville=ville)
+        return Client.objects.create(company=company, nom='Ferme',
+                                     tiers=tiers)
+
+    def _sans_site(self, **extra):
+        corps = self.corps(**extra)
+        corps.pop('localisation', None)
+        return corps
+
+    @staticmethod
+    def _codes(data):
+        return [a['code'] for a in data['alertes']]
+
+    def test_client_seul_marrakech_site_resolu_auto_remplir_permis(self):
+        client = self._client('Marrakech')
+        data = self.post(self._sans_site(client=client.id))
+        loc = data['entrees_resolues']['localisation']
+        self.assertEqual(loc['valeur']['ville'], 'Marrakech')
+        self.assertEqual(loc['provenance']['origine'], 'saisie')
+        self.assertEqual(loc['provenance']['detail'], 'fiche_client')
+        self.assertNotIn('site_inconnu', self._codes(data))
+        self.assertEqual(data['production']['source_irradiation'], 'pvgis')
+        self.assertIsNotNone(data['champ']['nb_panneaux'])
+        # Même résultat que la ville tapée dans le corps (une seule règle).
+        tapee = self.post(self.corps(localisation={'ville': 'Marrakech'}))
+        self.assertEqual(data['roles_minimum_manquants'],
+                         tapee['roles_minimum_manquants'])
+        self.assertNotIn('panneaux', [r['cle'] for r in
+                                      data['roles_minimum_manquants']])
+
+    def test_client_sans_ville_meme_refus_qu_aujourdhui(self):
+        client = self._client('')
+        data = self.post(self._sans_site(client=client.id))
+        aujourdhui = self.post(self._sans_site())
+        self.assertIn('site_inconnu', self._codes(data))
+        alerte = next(a for a in data['alertes']
+                      if a['code'] == 'site_inconnu')
+        self.assertIn('Site non renseigné (ville ou GPS)', alerte['message'])
+        self.assertNotIn('localisation', data['entrees_resolues'])
+        self.assertEqual(data['alertes'], aujourdhui['alertes'])
+        self.assertEqual(data['roles_minimum_manquants'],
+                         aujourdhui['roles_minimum_manquants'])
+
+    def test_lead_avec_ville_prime_sur_la_fiche_client(self):
+        client = self._client('Marrakech')
+        lead = Lead.objects.create(
+            company=self.co, nom='Agri', prenom='Lead',
+            telephone='+212600000122', ville='Taroudant')
+        data = self.post(self._sans_site(client=client.id, lead=lead.id))
+        loc = data['entrees_resolues']['localisation']
+        self.assertEqual(loc['valeur']['ville'], 'Taroudant')
+        self.assertEqual(loc['provenance']['origine'], 'lead')
+
+    def test_client_dune_autre_societe_ignore(self):
+        client = self._client('Marrakech', company=self.autre)
+        data = self.post(self._sans_site(client=client.id))
+        self.assertIn('site_inconnu', self._codes(data))
+
+    def test_devis_envoye_aux_regles_anterieures_garde_son_site(self):
+        """Nouveaux calculs seulement : un devis aux règles < 3 ne lit pas
+        la fiche client (il garde le site de ce qu'il a imprimé)."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES
+        client = self._client('Marrakech')
+        devis = SimpleNamespace(etude_params={}, client=client, lead=None,
+                                regles_calcul=REGLES_CORRIGEES)
+        res, _ = pompage.resoudre_entrees(self.co, {}, devis=devis,
+                                          client=client)
+        self.assertIsNone(res.valeur('localisation.ville'))
+        res, _ = pompage.resoudre_entrees(self.co, {}, client=client)
+        self.assertEqual(res.valeur('localisation.ville'), 'Marrakech')
+
+
 # ── Rejeu live AGQ41 (24/10) — pompe EXISTANTE sans kW de plaque ────────────
 
 def _var_cat(id_, kw, tension=380):

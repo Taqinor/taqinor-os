@@ -198,6 +198,7 @@ export function construireCorpsPompage(etat) {
   }
   if (nombreOuNull(e.lead) !== null) corps.lead = nombreOuNull(e.lead)
   if (nombreOuNull(e.devis) !== null) corps.devis = nombreOuNull(e.devis)
+  if (nombreOuNull(e.client) !== null) corps.client = nombreOuNull(e.client)
   return corps
 }
 
@@ -292,6 +293,8 @@ export function etatPompageEcran(saisie, ecran = {}) {
     taille: s.taille || '',
     lead: e.leadId ?? null,
     devis: e.editId ?? null,
+    // AGRI-SITE (28/10) — sans lead, le serveur lit le SITE sur la fiche client.
+    client: e.clientId ?? null,
   }
 }
 
