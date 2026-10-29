@@ -1,9 +1,9 @@
 // ENF15 — remplace deux tests « regex sur code source » (LeadCardRotting,
-// LeadCardVX45Emojis) par un MONTAGE réel de la carte : on lit le DOM rendu.
+// LeadCardVX45Emojis, LeadCardFirstTouchTimer, partie source de LeadCardTouchPII) par un MONTAGE réel de la carte : on lit le DOM rendu.
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import LeadCard from './LeadCard'
-import { PIPELINE_STAGES } from '../../../../features/crm/stages'
+import { PIPELINE_STAGES, NEW_STAGE } from '../../../../features/crm/stages'
 
 afterEach(() => { cleanup() })
 
@@ -43,5 +43,50 @@ describe("LeadCard — icônes lucide Zap, pas d'emoji ⚡ (VX45)", () => {
     const icone = container.querySelector('.kb-readi-devis')
     if (icone) expect(icone.querySelector('svg')).not.toBeNull()
     expect(container.textContent).not.toContain('⚡')
+  })
+})
+
+describe('LeadCard — minuteur premier contact, colonne NEW seulement (QX31)', () => {
+  const ilYa = (minutes) => new Date(Date.now() - minutes * 60000 - 5000).toISOString()
+  const slaDe = (over) => monter(lead({ stage: NEW_STAGE, ...over })).container.querySelector('.kb-sla')
+
+  it('libellé FR compact : min, h, j', () => {
+    expect(slaDe({ date_creation: ilYa(12) }).textContent).toContain('À contacter — il y a 12 min, non contacté')
+    cleanup()
+    expect(slaDe({ date_creation: ilYa(180) }).textContent).toContain('il y a 3 h')
+    cleanup()
+    expect(slaDe({ date_creation: ilYa(60 * 24 * 2) }).textContent).toContain('il y a 2 j')
+  })
+
+  it('ambre sous 30 min, rouge à partir de 30 min', () => {
+    expect(slaDe({ date_creation: ilYa(12) }).className).toContain('kb-actionline-warning')
+    cleanup()
+    expect(slaDe({ date_creation: ilYa(45) }).className).toContain('kb-actionline-danger')
+  })
+
+  it("aucun minuteur hors de l'étape NEW", () => {
+    const { container } = monter(lead({ stage: QUOTE_SENT, date_creation: ilYa(12) }))
+    expect(container.querySelector('.kb-sla')).toBeNull()
+  })
+})
+
+describe('LeadCard — cible tactile et PII (LB17)', () => {
+  it('la case de sélection est enveloppée du label .kb-check-hit, sans style inline', () => {
+    const { container } = render(<LeadCard lead={lead()} users={[]} onToggleSelect={() => {}} />)
+    const case_ = container.querySelector('label.kb-check-hit input.kb-card-check')
+    expect(case_).not.toBeNull()
+    expect(case_.getAttribute('style')).toBeNull()
+  })
+
+  it("PII masquée : cadenas tooltipé à la place des actions d'appel", () => {
+    const { container } = monter(lead({ pii_masked: true, telephone: null, whatsapp: null }))
+    const cadenas = container.querySelector('.kb-quick-lock')
+    expect(cadenas.getAttribute('title')).toBe('Coordonnées masquées (permission PII)')
+    expect(cadenas.querySelector('svg')).not.toBeNull()
+  })
+
+  it('PII non masquée : pas de cadenas', () => {
+    const { container } = monter(lead({ pii_masked: false, telephone: '0600000000' }))
+    expect(container.querySelector('.kb-quick-lock')).toBeNull()
   })
 })

@@ -198,13 +198,11 @@ CRM_ALLOWLIST: dict[str, str] = {
     "frontend/src/pages/crm/leads/views/KanbanViewColumns.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/KanbanViewFocusRestore.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardDensity.apx2.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/pages/crm/leads/views/LeadCardFirstTouchTimer.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardMenu.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardReadinessChips.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardSelectionActive.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardSwipeAction.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardTouchAnatomy.apx7.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/pages/crm/leads/views/LeadCardTouchPII.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardVX24.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCard.mry16.test.mjs":
         "MRY16 (2026-09-06) - LeadCard.jsx (composant React/JSX, imports "
