@@ -123,26 +123,34 @@ const VALIDATION_ERROR_EN: Record<string, string> = {
   'Le consentement est requis pour être recontacté': 'Consent is required so we can contact you back',
 };
 
-export interface SectionValidation {
+export interface SectionChamps {
   scrollToInvalid(el: HTMLElement | null): void;
   checkOptionalNumber(id: string, label: string): boolean;
   checkFactureHiver(): boolean;
   validateStep0(): boolean;
   validateStep1(): boolean;
+}
+export interface SectionCorps {
   lireEtatTunnel(): EtatTunnel;
   corpsDuLead(): { body: Record<string, unknown>; errors: Record<string, string> };
   showInlineErrors(errors: Record<string, string>): void;
 }
+export type SectionValidation = SectionChamps & SectionCorps;
+
+/** Les deux installeurs d'un coup (ordre de la page : champs, puis corps). */
+export function installerValidation(ctx: ContexteTunnel, doc: Document): SectionValidation {
+  return { ...installerValidationChamps(ctx, doc), ...installerCorpsLead(ctx, doc) };
+}
 
 /**
- * Installe la section : écouteurs `blur`, puis inscrit dans `ctx.crochets` les
- * fonctions que les autres sections appellent (`validateStep0/1`,
- * `corpsDuLead`, `showInlineErrors`, `checkFactureHiver`, `scrollToInvalid`).
+ * Installe la validation en direct : écouteurs `blur`, puis inscrit dans
+ * `ctx.crochets` `validateStep0/1`, `checkFactureHiver`, `scrollToInvalid`
+ * (FR l. 4271-4437). `doc` : le Document de la page (injecté).
  */
-export function installerValidation(ctx: ContexteTunnel): SectionValidation {
+export function installerValidationChamps(ctx: ContexteTunnel, doc: Document): SectionChamps {
   const { $, val, num, maxBillFor, setFieldError } = ctx.dom;
   const t = TEXTES[ctx.locale];
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reducedMotion = doc.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches ?? false;
   const appeler = (nom: string, ...args: unknown[]) => ctx.crochets.appeler(nom, ...args);
 
   // ——— QX : VALIDATION EN DIRECT. Les valeurs tapées ne sont JAMAIS
@@ -229,7 +237,7 @@ export function installerValidation(ctx: ContexteTunnel): SectionValidation {
       err.textContent = t.typeProjet;
       err.hidden = false;
     }
-    scrollToInvalid(document.querySelector<HTMLButtonElement>('.mt-mode'));
+    scrollToInvalid(doc.querySelector<HTMLButtonElement>('.mt-mode'));
     return false;
   }
   /** Étape questions : validation PAR PROFIL avant le calcul. */
@@ -279,6 +287,21 @@ export function installerValidation(ctx: ContexteTunnel): SectionValidation {
     return true;
   }
 
+  const section: SectionChamps = {
+    scrollToInvalid, checkOptionalNumber, checkFactureHiver, validateStep0, validateStep1,
+  };
+  for (const [nom, fn] of Object.entries(section)) ctx.crochets.installer(nom, fn as (...a: any[]) => any);
+  return section;
+}
+
+/**
+ * Installe le corps du lead : `lireEtatTunnel`, `corpsDuLead`, `showInlineErrors`
+ * (FR l. 4486-4587). `doc` : le Document de la page (injecté).
+ */
+export function installerCorpsLead(ctx: ContexteTunnel, doc: Document): SectionCorps {
+  const { $, num, setFieldError } = ctx.dom;
+  const appeler = (nom: string, ...args: unknown[]) => ctx.crochets.appeler(nom, ...args);
+
   /** L'état de la page : « un champ ↔ un id » vient du lecteur partagé, le reste
    *  de l'état interne (groupes de cartes, carte, jetons, tracking, mode). */
   function lireEtatTunnel(): EtatTunnel {
@@ -288,7 +311,7 @@ export function installerValidation(ctx: ContexteTunnel): SectionValidation {
     return {
       ...etatVide(),
       // On lit TOUT, sans condition : les gates sont dans le registre.
-      ...lireChampsDomTunnel(document),
+      ...lireChampsDomTunnel(doc),
       adresseCarte: addressEl?.value ?? '',
       adresseSecours: fallbackAddrEl?.value ?? '',
       // WJ30 — type de projet et langue active partent au webhook ; la page EN
@@ -350,10 +373,7 @@ export function installerValidation(ctx: ContexteTunnel): SectionValidation {
     }
   }
 
-  const section: SectionValidation = {
-    scrollToInvalid, checkOptionalNumber, checkFactureHiver, validateStep0, validateStep1,
-    lireEtatTunnel, corpsDuLead, showInlineErrors,
-  };
+  const section: SectionCorps = { lireEtatTunnel, corpsDuLead, showInlineErrors };
   for (const [nom, fn] of Object.entries(section)) ctx.crochets.installer(nom, fn as (...a: any[]) => any);
   return section;
 }
