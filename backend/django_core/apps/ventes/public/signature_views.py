@@ -324,8 +324,8 @@ def proposal_verify_otp_lecture(request, token):
     réponse porte une PREUVE opaque propre au navigateur qui vient de
     vérifier (``preuve``, ``expire_dans`` = ``OTP_LECTURE_VERIFIED_TTL``).
     ``apps/web`` la range dans son cookie httpOnly et la relaie en en-tête
-    ``X-Proposition-Preuve`` ; chaque lecture/action la relit
-    (``preuve_lecture_valide``). Plus aucun drapeau global au jeton : un
+    ``X-Proposition-Preuve`` ; chaque lecture/action la relit (garde
+    unique des services). Plus aucun drapeau global au jeton : un
     second navigateur sans preuve reste sur l'écran OTP."""
     link = _resolve_proposal_link(token, refuser_brouillon=False)
     if link is None:
