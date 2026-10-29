@@ -2731,3 +2731,14 @@ decisions:
     date: "2026-10-29"
     source: "Reda, decision fondateur du 29/10/2026 (lane RWEB17-M8, question interactive)"
     taches: [RWEB17-M8]
+  - id: D-RWEB17-DUP-PRINT
+    question: "RWEB17-M19 : le bloc CSS d impression (@media print du <style is:global>, identique dans les trois pages mon-toit, deja en base sous fe75990add10) change d empreinte (066871c51477) parce que la premiere ligne du script de page a change ; la base des doublons ne peut que retrecir : que faire ?"
+    options:
+      - cle: a
+        texte: "autoriser cette SEULE re-cle (--autoriser-croissance, meme duplication), puis --write-baseline : -74 / +1"
+      - cle: b
+        texte: "extraire le CSS global commun des trois pages dans une feuille partagee (tache CSS a part)"
+    reponse: a
+    date: "2026-10-29"
+    source: "Reda, decision fondateur du 29/10/2026 (lane RWEB17-M19, question interactive) ; couvre cette seule entree"
+    taches: [RWEB17-M19]
