@@ -123,6 +123,18 @@ class GouvernanceTest(TestCase):
         self.assertEqual((allee.user_id, allee.old_value, allee.new_value),
                          (self.resp.pk, '', '0.5'))
 
+    def test_jeux_de_reglages_passent_par_le_put_fusionne(self):
+        """ACAL347 (c) : un jeu s'ajoute par le PUT ``parametres/``, les
+        jumeaux ``enregistrer_jeu`` / ``retirer_jeu`` n'existent plus."""
+        from apps.calepinage.services import presets
+        for nom in ('enregistrer_jeu', 'retirer_jeu'):
+            self.assertFalse(hasattr(presets, nom), nom)
+        jeux = self._presets()['jeux'] + [{'id': 'nouveau', 'nom': 'Nouveau'}]
+        reponse = self._put_presets(self.api_resp, jeux=jeux)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual([jeu['id'] for jeu in self._presets()['jeux']],
+                         ['std', 'nouveau'])
+
     def test_put_sans_changement_ne_journalise_rien(self):
         reponse = self._put_presets(self.api_resp)
         self.assertEqual(reponse.status_code, 200, reponse.data)
