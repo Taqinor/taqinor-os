@@ -119,6 +119,9 @@ FEUILLES = (
     ('longueur_dc_m', 'contraintes.longueur_dc_m'),
     ('longueur_ac_m', 'contraintes.longueur_ac_m'),
     ('besoin_cellule_mt', 'contraintes.besoin_cellule_mt'),
+    # R3.7 (fondateur, 28/10/2026) — la mise à la terre n'est composée que si
+    # elle est dite nécessaire (visite « à créer », ou saisie) : jamais d'office.
+    ('mise_a_la_terre_necessaire', 'contraintes.mise_a_la_terre_necessaire'),
     ('tva_recuperable', 'tva_recuperable'),
     ('batterie_souhaitee', 'options.batterie_souhaitee'), ('om', 'options.om'),
     ('taille_explicite_kwc', 'taille_explicite_kwc'),
@@ -395,6 +398,22 @@ def _poser_mesure_visite(res, feuille, valeur, provenance, devis_modifiable=Fals
     res.poser(feuille, valeur, provenance)
 
 
+#: R3.7 — constat de la visite (``releve['mise_a_la_terre']['constate']``,
+#: contrat ``apps.visites.selectors.releve_ci_pour_lead``) → besoin d'une
+#: mise à la terre : « à créer » ⇒ oui, « conforme » ⇒ non ; « à vérifier » ou
+#: absent ⇒ rien (la composition lève alors l'alerte interne de visite).
+MISE_A_LA_TERRE_DU_CONSTAT = {'a_creer': True, 'conforme': False}
+
+
+def mise_a_la_terre_du_releve(releve):
+    """R3.7 — ``True`` / ``False`` / ``None`` : la mise à la terre est-elle
+    nécessaire d'après le relevé de visite C&I ? (Fonction pure.)"""
+    terre = (releve or {}).get('mise_a_la_terre')
+    if not isinstance(terre, dict):
+        return None
+    return MISE_A_LA_TERRE_DU_CONSTAT.get(terre.get('constate'))
+
+
 def _couche_visite(res, lead, alertes, devis=None):
     """CIQ141 — le relevé de la dernière visite ``ci`` VALIDÉE du lead (façade
     ``apps.visites.selectors.releve_ci_pour_lead``, jamais ses modèles) :
@@ -456,6 +475,9 @@ def _couche_visite(res, lead, alertes, devis=None):
     puissance = (releve.get('puissance_souscrite_kva') or {}).get('constate')
     if puissance is not None and res.valeur('puissance_souscrite_kva') is None:
         res.poser('puissance_souscrite_kva', puissance, prov)
+    # R3.7 — la mise à la terre constatée à la visite (jamais une saisie
+    # écrasée : même règle que les autres mesures).
+    poser('mise_a_la_terre_necessaire', mise_a_la_terre_du_releve(releve))
     for mesure, motif in sorted((releve.get('non_releves') or {}).items()):
         alertes.append(_alerte('mesure_non_verifiee', mesure,
                                '%s non vérifiée à la visite (%s).' % (mesure, motif)))
@@ -1315,6 +1337,8 @@ def _entrees_composition(res, catalogue, phase, tension, revente):
         'nb_points_raccordement': res.valeur('nb_points_raccordement'),
         'revente_choisie': revente,
         'besoin_cellule_mt': res.valeur('besoin_cellule_mt'),
+        # R3.7 — None (inconnue) ⇒ aucune ligne, alerte interne de visite.
+        'mise_a_la_terre_necessaire': res.valeur('mise_a_la_terre_necessaire'),
         'batterie_souhaitee': bool(res.valeur('batterie_souhaitee')),
     }
 
