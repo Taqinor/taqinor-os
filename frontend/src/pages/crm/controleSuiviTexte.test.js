@@ -406,15 +406,13 @@ describe('libelleReponse — clé absente du type : repli générique, sinon la 
 })
 
 describe('LIBELLES_ISSUE — le repli unique', () => {
-  it('les six issues, avec les libellés attendus', () => {
-    expect(LIBELLES_ISSUE).toEqual({
-      non_joint: 'Pas de réponse',
-      joint: 'Client joint',
-      rappel: 'À rappeler',
-      refuse: 'Refus',
-      visite_acceptee: 'Visite acceptée',
-      sans_issue: 'Fait',
-    })
+  // ENF19 — les libellés viennent de la table (test suivant) : ici, les six clés
+  // et les deux replis ABRÉGÉS, que la table ne donne qu'en préfixe.
+  it('les six issues ; les replis abrégés gardent leur seul verbe', () => {
+    expect(Object.keys(LIBELLES_ISSUE).sort()).toEqual(
+      ['joint', 'non_joint', 'rappel', 'refuse', 'sans_issue', 'visite_acceptee'])
+    expect(LIBELLES_ISSUE.rappel).toBe('À rappeler')
+    expect(LIBELLES_ISSUE.sans_issue).toBe('Fait')
   })
 
   it('reste rattaché à la table du parcours : un libellé qui y change fait rougir ce test', () => {
