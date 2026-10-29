@@ -133,7 +133,7 @@ describe('R2 — LigneTable : « Tableau de protection AC/DC — total HT » au-
     expect(entetes[0]).toHaveAttribute('data-groupe-client', 'supervision_ci')
     expect(entetes[0].textContent).toContain('Supervision & comptage')
     // 1 800 + 500 = 2 300 HT.
-    expect(entetes[0].querySelector('[data-groupe-total-ht]').textContent.replace(/[\s  ]/g, '')).toMatch(/^2300/)
+    expect(entetes[0].querySelector('[data-groupe-total-ht]').textContent.replace(/[\s\u202F\u00A0]/g, '')).toMatch(/^2300/)
     for (const key of ['s1', 's2']) {
       expect(container.querySelector(`tr[data-line-key="${key}"] input[type="number"]`)).not.toBeNull()
     }
