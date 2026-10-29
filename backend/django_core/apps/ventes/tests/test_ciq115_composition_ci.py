@@ -11,7 +11,8 @@ from pathlib import Path
 from unittest import TestCase
 
 from apps.stock.management.commands.seed_catalogue import (
-    ARTICLES_CI_PRIX_A_RENSEIGNER, CATALOGUE, ht_at,
+    ARTICLES_CI_PRIX_A_RENSEIGNER, CATALOGUE, FICHES, FICHES_TECHNIQUES,
+    ROLES_CI_ARTICLES_EXISTANTS, ht_at,
 )
 from apps.ventes.moteur_ci.composition import (
     ROLES_SUPERVISION_CI, ROLES_TABLEAU_CI, composer_ci, groupe_client_du_role,
@@ -474,6 +475,37 @@ class CompositionTests(TestCase):
         comp, _l = self._comptage_ondu(cat, 3)
         supervision = self._lignes(comp, 'logger_supervision')
         self.assertEqual([li['produit'] for li in supervision], [5401])
+
+    def test_semis_r3_compteurs_huawei_et_cle_wifi(self):
+        # R3.5 / R3.6 — les articles SEMÉS (tables du seeder, jamais
+        # recopiées) : un onduleur Huawei 50 kW ⇒ le Smart Meter 100 A et UNE
+        # clé wifi ; trois ⇒ le 250 A à TC et trois clés.
+        skus = ('SMART-MET', 'SM-HUA-100A', 'SM-HUA-250A-TC', 'SM-HUA-TC-EXT', 'WIFI-DON')
+        semis = []
+        for i, (nom, sku, _c, ttc, _a, _q, _s) in enumerate(CATALOGUE):
+            if sku in skus:
+                semis.append({
+                    'id': 7000 + i, 'nom': nom, 'sku': sku,
+                    'marque': FICHES[sku]['marque'], 'role_devis': '',
+                    'role_ci': ROLES_CI_ARTICLES_EXISTANTS[sku], 'classement': 'declare',
+                    'type_pose': '', 'fiche': FICHES_TECHNIQUES.get(sku),
+                    'prix_connu': True, 'prix_vente_ht': ht_at(ttc, Decimal('20')),
+                    'eligible_ci': True, 'motif_exclusion': None})
+        self.assertEqual({p['sku'] for p in semis}, set(skus))
+        par_sku = {p['sku']: p for p in semis}
+        self.assertEqual([par_sku[s]['prix_vente_ht'] for s in skus[1:4]],
+                         [Decimal('2000.00'), Decimal('3000.00'), Decimal('4000.00')])
+        self.assertEqual(par_sku['WIFI-DON']['prix_vente_ht'], Decimal('1000.00'))
+        for sku in skus[1:4]:
+            self.assertIsNone(par_sku[sku]['fiche'].get('lim_onduleurs_max'))
+        cat = self._cat_marque('Huawei', *semis)
+        for quantite, compteur in ((1, 'SM-HUA-100A'), (3, 'SM-HUA-250A-TC')):
+            comp, ligne = self._comptage_ondu(cat, quantite)
+            self.assertEqual(ligne['produit'], par_sku[compteur]['id'], quantite)
+            supervision = self._lignes(comp, 'logger_supervision')
+            self.assertEqual([(li['produit'], li['quantite']) for li in supervision],
+                             [(par_sku['WIFI-DON']['id'], quantite)])
+            self.assertNotIn('COMPTAGE_CALIBRE_A_CONFIRMER', self._codes(comp))
 
     def test_groupes_client_des_roles(self):
         # R3.4 — le comptage SORT du Tableau : groupe « supervision_ci ».
