@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { refusServeur } from '../commun/refusServeur'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
@@ -91,10 +92,12 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
         setMotif('')
       })
       .catch((err) => {
-        const corps = err?.response?.data
-        setErreurs(corps && typeof corps === 'object'
-          ? corps
-          : { detail: 'La décision a été refusée par le serveur.' })
+        // ACAL279 — LE décodeur commun : jamais l'enveloppe `error` (objet)
+        // rendue telle quelle ; un 403/404 dit son `detail`.
+        const { message, champs } = refusServeur(err)
+        setErreurs(Object.keys(champs).length
+          ? champs
+          : { detail: message || 'La décision a été refusée par le serveur.' })
       })
       .finally(() => setEnCours(false))
   }
@@ -108,7 +111,7 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
   const etat = etatDecide ?? data
   if (!etat) return null
 
-  const champsFautifs = Object.keys(erreurs)
+  const champsFautifs = Object.keys(erreurs).filter((champ) => champ !== 'detail')
   const enAttente = suggestionsEnAttente(erreurs)
 
   return (
@@ -156,6 +159,12 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
           className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
         >
           {`Décision refusée — à corriger : ${champsFautifs.join(', ')}`}
+        </p>
+      )}
+
+      {erreurs.detail && (
+        <p role="alert" data-testid="calx349-refus" className="text-sm text-red-300">
+          {erreurs.detail}
         </p>
       )}
 

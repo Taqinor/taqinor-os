@@ -194,6 +194,24 @@ describe('CALX25 — la géométrie résolue OU le point de rupture nommé', () 
       .toHaveTextContent('à confirmer')
   })
 
+  it('releve_le refusé : le message en français SOUS le champ date, jamais une clé brute', async () => {
+    // ACAL279 — forme du handler : `{releve_le: '…', error: {…}}`.
+    enregistrerReleve.mockRejectedValue({
+      response: { status: 400, data: {
+        releve_le: 'La date du relevé est obligatoire.',
+        error: { code: 'validation_error', message: 'Requête invalide.', fields: {}, request_id: 'r-1' },
+      } },
+    })
+    rendre()
+    remplirChaineValide()
+    fireEvent.click(screen.getByTestId('cal-releve-envoyer'))
+    expect(await screen.findByTestId('cal-releve-erreur-releve_le'))
+      .toHaveTextContent('La date du relevé est obligatoire.')
+    const bandeau = screen.getByTestId('cal-releve-bandeau')
+    expect(bandeau).toHaveTextContent('Relevé le')
+    expect(bandeau.textContent).not.toMatch(/releve_le|error/)
+  })
+
   it('le refus 400 du serveur (champ nommé) atterrit sous la bonne chaîne', async () => {
     enregistrerReleve.mockRejectedValue({
       response: { data: { 'chaines[0]': 'chaîne « Pignon nord » : une seule cote manquante peut être déduite par fermeture.' } },

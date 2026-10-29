@@ -124,6 +124,22 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
     expect(screen.getByTestId('calx349-bandeau')).toHaveTextContent('motif')
   })
 
+  it('403 sans crash : le motif `detail` est affiché, l’enveloppe `error` jamais rendue', async () => {
+    // ACAL279 — avant : `{detail, error: {…}}` faisait rendre un OBJET.
+    servir('exemple_vide')
+    calepinageApi.calepinages.decisionApprobation.mockRejectedValue({
+      response: { status: 403, data: {
+        detail: 'Vous n’avez pas la permission d’approuver.',
+        error: { code: 'permission_denied', message: 'x', fields: {}, request_id: 'r-1' },
+      } },
+    })
+    rendre()
+    await screen.findByTestId('calx349-decider')
+    fireEvent.click(screen.getByTestId('calx349-approuver'))
+    expect(await screen.findByTestId('calx349-refus')).toHaveTextContent('permission d’approuver')
+    expect(screen.queryByTestId('calx349-suggestion-error')).toBeNull()
+  })
+
   it('une décision inconnue est rendue SOUS le champ « decision »', async () => {
     servir('exemple_vide')
     calepinageApi.calepinages.decisionApprobation.mockRejectedValue({

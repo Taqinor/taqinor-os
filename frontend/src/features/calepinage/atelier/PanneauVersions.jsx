@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { messageRefus } from '../commun/refusServeur'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import { Badge, Button, Card, EmptyState, Spinner } from '../../../ui'
@@ -41,22 +42,8 @@ const TEXTE_CONFIRMATION_RESTAURATION = 'Remplace le dessin et vide le rendu 3D 
    `{roof_layout: [msg]}` (devis lié accepté, refusé, expiré ou remplacé ; un
    devis envoyé se corrige sur place), 409/400 `{detail}` ou un champ nommé. Jamais
    reformulé ; repli générique seulement quand le serveur n'a rien dit. */
-function messageRefusServeur(err, repli) {
-  const data = err?.response?.data
-  if (typeof data === 'string' && data.trim()) return data.trim()
-  if (data && typeof data === 'object') {
-    const texte = (v) => (Array.isArray(v) ? v.find((x) => typeof x === 'string' && x.trim()) : v)
-    for (const cle of ['detail', 'roof_layout', 'version']) {
-      const v = texte(data[cle])
-      if (typeof v === 'string' && v.trim()) return v.trim()
-    }
-    for (const v of Object.values(data)) {
-      const t = texte(v)
-      if (typeof t === 'string' && t.trim()) return t.trim()
-    }
-  }
-  return repli
-}
+// ACAL279 — LE décodeur commun (`commun/refusServeur.js`).
+const messageRefusServeur = messageRefus
 
 /* ACAL23 — APRÈS une restauration réussie, la scène 3D est relue : sans
    `onRecharger`, « Enregistrer le calepinage » republiait la copie d'avant et

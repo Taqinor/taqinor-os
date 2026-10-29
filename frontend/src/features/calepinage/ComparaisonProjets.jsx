@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
+import { messageRefus } from './commun/refusServeur'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, Download, X } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
 import { formatNumber } from '../../lib/format'
 import { Badge, Button, Card, EmptyState, Spinner } from '../../ui'
-import { telechargerBlob } from './exportImage'
+import { telechargerBlob } from './exportImage'
+
 import { motifDuRefusBlob } from './motifRefusBlob'
 
 /* ============================================================================
@@ -39,14 +41,8 @@ import { motifDuRefusBlob } from './motifRefusBlob'
 /** La borne du comparatif — celle du serveur (`BORNE_PROJETS`, CALX341). */
 const BORNE = 5
 
-const errMsg = (e, repli) => {
-  const donnees = e?.response?.data
-  if (donnees && typeof donnees === 'object') {
-    if (donnees.ids) return String(donnees.ids)
-    if (donnees.detail) return String(donnees.detail)
-  }
-  return repli
-}
+// ACAL279 — LE décodeur commun des refus (`{ids: [msg]}`, `{detail}`…).
+const errMsg = messageRefus
 
 /** `?ids=3,1,3,x` → `[3, 1]` : entiers positifs, dédoublonnés, dans l'ordre. */
 function idsDepuisRecherche(brut) {

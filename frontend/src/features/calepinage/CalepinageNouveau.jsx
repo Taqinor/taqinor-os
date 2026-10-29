@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { refusServeur } from './commun/refusServeur'
 import { useNavigate } from 'react-router-dom'
 import { AlertCircle, MapPin, Plus } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
@@ -59,16 +60,15 @@ const CHAMPS_DU_CORPS = {
 
 /** Le message serveur, tel quel. Jamais un texte fabriqué par l'écran. */
 function erreursServeur(e) {
-  const data = e?.response?.data
-  if (!data) return { global: 'Le serveur n’a pas répondu. Réessayez dans un instant.' }
-  if (typeof data === 'string') return { global: data }
+  // ACAL279 — LE décodeur commun : chaque champ nommé sous SON champ,
+  // `detail` / `non_field_errors` au bandeau ; `error` n'est jamais un champ.
+  const { message, champs } = refusServeur(e)
+  if (!message) return { global: 'Le serveur n’a pas répondu. Réessayez dans un instant.' }
   const parChamp = {}
-  let global = null
-  for (const [cle, valeur] of Object.entries(data)) {
-    const texte = Array.isArray(valeur) ? valeur.join(' ') : String(valeur)
-    if (cle === 'detail' || cle === 'non_field_errors') global = texte
-    else parChamp[CHAMPS_DU_CORPS[cle] || cle] = texte
+  for (const [cle, texte] of Object.entries(champs)) {
+    if (cle !== 'non_field_errors') parChamp[CHAMPS_DU_CORPS[cle] || cle] = texte
   }
+  const global = champs.non_field_errors || (Object.keys(parChamp).length ? null : message)
   return { ...parChamp, global }
 }
 
