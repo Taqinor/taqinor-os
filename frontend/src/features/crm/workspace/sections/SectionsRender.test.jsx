@@ -5,6 +5,7 @@ import { axe } from 'vitest-axe'
 import * as axeMatchers from 'vitest-axe/matchers'
 import { initState, dirtyKeys, reducer } from '../draftCore'
 import fieldLabels from '../fieldLabels'
+import { nettoyerSectionsPane, sectionsPaneBase } from '../../../../test/sectionsPaneSetup'
 import { documentContrat } from '../../../../test/fixtures/contractSamples'
 import SectionContact from './SectionContact'
 import SectionPipeline from './SectionPipeline'
@@ -30,22 +31,9 @@ vi.mock('../../relances/PlanifierVisiteModal', () => ({
   default: ({ open, leadId }) => (open ? <div data-testid="modal-planifier-visite" data-lead={leadId} /> : null),
 }))
 
-// Le repli des sections est PERSISTÉ (localStorage `taqinor.lw.collapsed`) et
-// les choix de l'utilisatrice priment sur le repli automatique : sans ce
-// nettoyage, un test qui replie une section dicterait l'état d'ouverture de
-// tous les suivants.
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  try { localStorage.clear() } catch { /* noop */ }
-})
+afterEach(nettoyerSectionsPane)
 
-const base = {
-  setField: vi.fn(),
-  errors: {},
-  mode: 'create',
-  refData: { users: [], tagOptions: [], motifOptions: [] },
-}
+const base = sectionsPaneBase('create')
 const createState = () => initState({ mode: 'create', currentUserId: 1 })
 
 describe('LW11 — rendu des sections (port 1:1 des champs)', () => {

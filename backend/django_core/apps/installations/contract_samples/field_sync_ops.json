@@ -32,7 +32,7 @@
         "client_op_id": "c0ffee00-0000-4000-8000-000000000101",
         "op_type": "intervention.checkin",
         "status": "applied",
-        "result": {"intervention": 41, "arrivee_site_le": "2026-10-01T08:00:00+00:00"}
+        "result": {"intervention": 41, "arrivee_site_le": "2026-10-01T08:00:00+00:00", "statut": "sur_site"}
       },
       {
         "client_op_id": "c0ffee00-0000-4000-8000-000000000102",

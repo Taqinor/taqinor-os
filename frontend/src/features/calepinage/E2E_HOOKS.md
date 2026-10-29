@@ -470,6 +470,7 @@ retiré plus un hook ajouté.
 |---|---|
 | `cal-releve-ajouter-chaine` | relevé ajouter chaîne. |
 | `cal-releve-bandeau` | relevé bandeau. |
+| `cal-releve-erreur` | relevé : message de refus serveur sous le champ (préfixe, suffixé par le champ ou la chaîne ; ACAL280). |
 | `cal-releve-chaine` | relevé chaîne. |
 | `cal-releve-appliquer-cote` | relevé ouvrir « Appliquer la cote au pan » (ACAL207). |
 | `cal-releve-cote-pan` | relevé cote : choix du pan (ACAL207). |

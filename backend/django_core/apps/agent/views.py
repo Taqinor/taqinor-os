@@ -12,6 +12,8 @@ from rest_framework import status
 from rest_framework.exceptions import NotFound, ParseError, PermissionDenied
 from rest_framework.response import Response
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from core.champs_stricts import ChaineStricte
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminRole, IsAnyRole
@@ -328,7 +330,9 @@ class EvenementAssistantEntreeSerializer(drf_serializers.Serializer):
 
 class NoteEvenementSerializer(drf_serializers.Serializer):
     note = drf_serializers.ChoiceField(choices=[-1, 0, 1])
-    commentaire = drf_serializers.CharField(
+    # api-fuzz 29/10 (ENF11) : le caractère nul est refusé 400 — publié
+    # (motif sans NUL de ``ChaineStricte``), plus « conforme » puis refusé.
+    commentaire = ChaineStricte(
         max_length=200, required=False, allow_null=True, allow_blank=True)
 
 
@@ -550,7 +554,10 @@ class AssistantEventStatsView(APIView):
 
     permission_classes = [IsAnyRole, IsAdminRole]
 
-    @extend_schema(parameters=[OpenApiParameter('semaines', int, required=False)],
+    # api-fuzz-full 28/10 (ENF11) : la borne 1..52 appliquée est publiée.
+    @extend_schema(parameters=[OpenApiParameter(
+        'semaines', {'type': 'integer', 'minimum': 1, 'maximum': 52},
+        required=False)],
                    responses=inline_serializer('AssistantStats', {
                        'questions': drf_serializers.IntegerField(),
                        'commerciaux_actifs': drf_serializers.IntegerField(),
@@ -618,7 +625,11 @@ class AssistantEventNoteView(APIView):
     permission_classes = [IsAnyRole]
     parser_classes = [JSONParser]
 
-    @extend_schema(request=NoteEvenementSerializer, responses=inline_serializer(
+    # api-fuzz-full 28/10 (ENF11) : un PATCH publie un composant « Patched »
+    # (tout facultatif) alors que ``note`` est exigée — ``{}`` était
+    # « conforme » puis refusé 400 : ``note`` publiée obligatoire.
+    @extend_schema(request=NoteEvenementSerializer, extensions={
+        EXTENSION_CORPS_RESSERRE: {'required': ['note']}}, responses=inline_serializer(
         'AssistantEvenementNote', {
             'id': drf_serializers.IntegerField(),
             'note': drf_serializers.IntegerField(),

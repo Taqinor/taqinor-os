@@ -142,6 +142,8 @@ export const LEAD_88 = {
   id: 88, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
   telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
   roof_outline: [[33.5, -7.6]], bill_kwh: 7200,
+  // ACAL251 — le repère SERVI (crm.selectors.repere_toit), lu tel quel.
+  repere_toit: { pin: { lat: 33.5, lng: -7.6 }, source: 'roof_point', contour_utilisable: true },
 }
 
 /** `api.get` répond à la fiche lead et à la config carte, rejette le reste. */

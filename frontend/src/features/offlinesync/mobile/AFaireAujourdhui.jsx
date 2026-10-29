@@ -6,6 +6,7 @@
 // chacun tolérant l'échec indépendamment (un module en panne n'éteint jamais
 // le widget). Tri/normalisation dans `aFaireItems.js` (logique pure).
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { ListChecks, ChevronRight } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
@@ -33,6 +34,22 @@ const TONE = {
   facture: 'danger',
 }
 
+// ERR-TECH-MAJOURNEE-RELANCES-403 — `GET /crm/leads/relances/` exige le code
+// servi `crm_voir` (un Technicien ne l'a pas → 403). La permission est lue dans
+// l'état d'auth servi (une seule source). Hors Provider redux (widget monté
+// seul, ex. suites de test d'écrans), `useSelector` lève : on garde alors le
+// comportement historique — la source est tentée, son échec reste silencieux.
+function usePeutVoirRelances() {
+  let auth = null
+  try {
+    auth = useSelector((s) => s.auth) // eslint-disable-line react-hooks/rules-of-hooks
+  } catch {
+    return true
+  }
+  if (!auth) return true
+  return auth.role === 'admin' || (auth.permissions || []).includes('crm_voir')
+}
+
 /**
  * @param {string[]} exclure — natures dont l'écran hôte est DÉJÀ la vue
  *   complète (ex. `['intervention']` sur « Ma journée ») : la source
@@ -42,12 +59,14 @@ const TONE = {
 export default function AFaireAujourdhui({ exclure = [] }) {
   const navigate = useNavigate()
   const [items, setItems] = useState(null)
+  const peutVoirRelances = usePeutVoirRelances()
   const exclureCle = exclure.join(',')
 
   useEffect(() => {
     let alive = true
     const exclus = exclureCle ? exclureCle.split(',') : []
     const veut = (kind) => !exclus.includes(kind)
+      && (kind !== 'relance' || peutVoirRelances)
     const today = todayLocalIso()
     // Chaque source échoue INDÉPENDAMMENT (réseau, droits, module absent) :
     // le widget se contente alors de ne rien afficher pour elle.
@@ -79,7 +98,7 @@ export default function AFaireAujourdhui({ exclure = [] }) {
       ))
     })
     return () => { alive = false }
-  }, [exclureCle])
+  }, [exclureCle, peutVoirRelances])
 
   return (
     <CarteContenu data-widget="a-faire-aujourdhui"

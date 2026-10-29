@@ -94,6 +94,25 @@ D8 WhatsApp : tap manuel inchangé, français par défaut (Darija non prouvée).
   + AICM1-3 (gestes de Reda : réclamer les crédits + workspace `erp-assistant`, réglage de
   confidentialité, juriste 09-08).
 
+## Construit et accepté (28-29/10/2026)
+
+- Groupe AIC construit par les vagues « all-plans » du 28/10 (AIC1-9, 11, 12, 30-35, 40, 50) ; AICM1 fait par
+  Reda le 29/10 (organisation Platform + clé du workspace `erp-assistant`, posée dans le `.env` LOCAL seulement).
+- **Acceptation AIC13 jouée le 29/10 sur la pile locale** (13 étapes PASS, `docs/audits/acceptation/AIC/`) :
+  les tests simulés étaient verts et le fournisseur réel cassé sur 5 points, tous corrigés dans la vague AIC13 :
+  sortie du modèle en LISTE de blocs (langchain-anthropic 0.3.22), juge Haiku 5.5 avec ThinkingBlock, `report_gap`
+  non appelé sur un e-mail, acceptation de devis étiquetée `hors_champ`, et repli Groq mort.
+- **Groq (relevé 29/10) : `llama-3.3-70b-versatile` n'existe plus** (404 model_not_found ; catalogue de la clé :
+  gpt-oss-120b, gpt-oss-20b, qwen3.8-27b) et **le palier gratuit limite à 8 000 tokens/minute** : le manuel ne
+  passe que sous `claude` ; hors claude le bloc système est allégé (préfixe + politique + `ne_fait_pas`). Défaut
+  de repli = `openai/gpt-oss-120b`. **Tant que la prod reste sur Groq, `SQL_AGENT_MODEL` du serveur doit passer à
+  `openai/gpt-oss-120b`, sinon l'assistant de prod répond en erreur.**
+- Bascule prod (geste de Reda) : `SQL_AGENT_PROVIDER=claude`, `CLAUDE_API_KEY`, `SQL_AGENT_EFFORT=low`,
+  `SQL_AGENT_FALLBACK_PROVIDER=groq`, `SQL_AGENT_MODEL=openai/gpt-oss-120b`, `AGENT_HMAC_SECRET` posé (sinon
+  aucun événement n'est journalisé), puis `showmigrations agent` = 0003 appliquée.
+- Mesuré en acceptation : ~0,03 $ par question Sonnet 5.5 avec le manuel en cache (cache_read 60-340 k
+  tokens par appel, lecture de cache à 0,10 $/MTok) ; 15 questions = 0,45 $.
+
 ## Phase 0 (Reda, 15 min) et non vérifié
 
 Réclamer les crédits, créer le workspace `erp-assistant` avec limite de dépense = crédits, une clé API ;

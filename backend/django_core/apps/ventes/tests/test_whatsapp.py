@@ -333,10 +333,14 @@ class TestFactureWhatsAppEndpoint(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIn('RAPPEL', resp.data['message'])
 
-    def test_no_phone_is_400(self):
+    def test_no_phone_is_409(self):
+        # api-fuzz 29/10 (ENF11) : le numéro vient de la fiche client, pas du
+        # corps — refus d'état 409 ; un corps illisible reste un 400.
         self.client_obj.telephone = ''
         self.client_obj.save(update_fields=['telephone'])
         resp = self.api.post(self._url(), {'modele': 'facture'}, format='json')
+        self.assertEqual(resp.status_code, 409)
+        resp = self.api.post(self._url(), {'modele': 'inconnu'}, format='json')
         self.assertEqual(resp.status_code, 400)
 
     # 25/08/2026 — LANE NUMÉROS INTERNATIONAUX.

@@ -93,8 +93,8 @@ def proposal_virement_declare(request, token):
     # ADEV53 (C-ADEV-022) — même garde que la LECTURE de la proposition : un
     # lien à OTP de lecture non déverrouillé ne déclare rien (403
     # ``otp_required``, le contrat que la page sait déjà traiter).
-    from ..services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    from ..services import preuve_lecture_valide
+    if not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     devis = link.devis

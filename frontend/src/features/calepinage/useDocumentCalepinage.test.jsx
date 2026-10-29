@@ -122,13 +122,24 @@ describe('ecrireSection', () => {
     })
   })
 
-  it('409 = conflit, aucune clé poussée dans l’atelier', async () => {
-    enregistrerSectionLayout.mockRejectedValue({ response: { status: 409, data: { detail: 'périmé' } } })
+  it('409 jeton périmé = conflit, aucune clé poussée dans l’atelier', async () => {
+    // Forme RÉELLE de DocumentModifie.corps() : {detail, code, empreinte_courante}.
+    enregistrerSectionLayout.mockRejectedValue({ response: { status: 409, data: {
+      detail: 'périmé', code: 'document_modifie', empreinte_courante: 'E1' } } })
     const documentVivant = { empreinte: null, appliquerSection: vi.fn() }
     const res = await ecrireSection({
       calepinageId: 7, cle: 'horizonProfile', valeur: null, empreinte: 'E0', documentVivant,
     })
     expect(res).toEqual({ ok: false, conflit: true, motif: 'périmé' })
     expect(documentVivant.appliquerSection).not.toHaveBeenCalled()
+  })
+
+  it('ACAL280 — 409 verrou : PAS un conflit, le motif serveur tel quel', async () => {
+    enregistrerSectionLayout.mockRejectedValue({ response: { status: 409, data: {
+      roof_layout: ['Devis accepté : révisez-le (V2).'] } } })
+    const res = await ecrireSection({
+      calepinageId: 7, cle: 'horizonProfile', valeur: null, empreinte: 'E0',
+    })
+    expect(res).toEqual({ ok: false, conflit: false, motif: 'Devis accepté : révisez-le (V2).' })
   })
 })

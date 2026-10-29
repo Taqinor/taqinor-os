@@ -15,11 +15,11 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
+import { DATE_LONGUE_FR as dateFmt } from '../../../lib/format';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 const posts = [
   {

@@ -76,6 +76,8 @@ export function installerGardePdfSigne(g: GardePdfSigne): void {
   const valider = document.getElementById('pdf-otp-valider');
   const statut = document.getElementById('pdf-otp-status');
   let cible = g.pdfUrl;
+  // ASEC53 — `pdfUrl` est le relais same-origin RELATIF ; `lien.href` est toujours absolu.
+  const base = new URL(g.pdfUrl, window.location.href).href;
   const dire = (texte: string): void => {
     if (!statut) return;
     statut.textContent = texte;
@@ -83,7 +85,7 @@ export function installerGardePdfSigne(g: GardePdfSigne): void {
   };
   document.addEventListener('click', async (ev) => {
     const lien = (ev.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
-    if (!lien || !g.estAccepte() || !lien.href.startsWith(g.pdfUrl)) return;
+    if (!lien || !g.estAccepte() || !lien.href.startsWith(base)) return;
     ev.preventDefault();
     cible = lien.href;
     const r = await demanderAcces(g.token);

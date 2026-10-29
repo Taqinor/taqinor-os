@@ -37,6 +37,12 @@
  },
  {
   "actions_map": null,
+  "motif": "cockpit-equipe/",
+  "nom": "cockpit-equipe",
+  "vue": "cockpit_equipe"
+ },
+ {
+  "actions_map": null,
   "motif": "dispatch/",
   "nom": "dispatch-leads",
   "vue": "dispatch_file"

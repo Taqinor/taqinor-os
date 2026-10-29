@@ -73,6 +73,21 @@ def _repere_anneau(outline):
     return anneau if len(anneau) >= 3 else []
 
 
+def contour_lnglat(lead):
+    """ACAL250 — LE normaliseur du contour client : ``[[lng, lat], …]`` ou ``[]``.
+
+    Lit ``Lead.roof_outline`` sous ses DEUX formes stockées (``[lat, lng]``
+    du webhook, ``{lat, lng}`` de l'import), écarte tout sommet illisible ou
+    hors bornes (lat ∈ [-90, 90], lng ∈ [-180, 180] — jamais conservé) et
+    rend ``[]`` sous 3 sommets. Mêmes règles que ``repere_toit`` (un seul
+    lecteur : ``_repere_anneau``). Lecture pure, aucune requête.
+    """
+    if lead is None:
+        return []
+    return [[lng, lat] for lat, lng in _repere_anneau(
+        getattr(lead, 'roof_outline', None))]
+
+
 def _repere_dans_anneau(pin, anneau):
     """Lancer de rayon dans le plan (lat, lng) — un toit fait quelques
     dizaines de mètres, la projection plane suffit."""

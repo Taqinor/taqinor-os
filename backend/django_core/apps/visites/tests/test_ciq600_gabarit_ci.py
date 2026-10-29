@@ -48,7 +48,8 @@ MESURES_CI = {
     'toiture_ci': {'zones_toiture': [ZONE_COMPLETE]},
     'tableau_general': {'calibre_a': 250, 'depart_disponible': True},
     'comptage': {'type_compteur': 'électronique triphasé',
-                 'niveau_tension_constate': 'bt'},
+                 'niveau_tension_constate': 'bt',
+                 'mise_a_la_terre': 'conforme'},
     'cheminement': {'trajets': [
         {'libelle': 'toiture → local onduleurs', 'longueur_dc_m': 45},
         {'libelle': 'local onduleurs → TGBT', 'longueur_ac_m': 30}]},
@@ -105,6 +106,35 @@ class ChecklistCiDuContrat(SimpleTestCase):
         visite.mesures = {}
         releve = selectors.releve_ci_de_visite(visite, declare={})
         self.assertIsNone(releve['raccordement']['constate'])
+
+    def test_mise_a_la_terre_requise_en_choix_ferme(self):
+        # R3 (fondateur 28/10/2026) — question de la visite, sans verdict (VT1).
+        terre = {m['code']: m for m in checklist.mesures('comptage', 'ci')}[
+            'mise_a_la_terre']
+        self.assertEqual(terre['choix'], ['conforme', 'a_creer', 'a_verifier'])
+        self.assertTrue(terre['requis'])
+        self.assertEqual(terre['libelle'], 'Mise à la terre existante')
+
+    def test_le_releve_sert_la_mise_a_la_terre_constatee(self):
+        # R3 — {constate, motif} : les trois valeurs, puis None (vide / non relevée).
+        from apps.visites import selectors
+
+        for valeur in ('conforme', 'a_creer', 'a_verifier'):
+            visite = VisiteTerrain(gabarit='ci', lead=Lead(nom='x'), mesures={
+                'comptage': {'mise_a_la_terre': valeur}})
+            releve = selectors.releve_ci_de_visite(visite, declare={})
+            self.assertEqual(releve['mise_a_la_terre'],
+                             {'constate': valeur, 'motif': None})
+        visite.mesures = {'comptage': {
+            'mise_a_la_terre': 'a_creer',
+            '_non_releves': {'mise_a_la_terre': 'a_faire_par_electricien'}}}
+        releve = selectors.releve_ci_de_visite(visite, declare={})
+        self.assertEqual(releve['mise_a_la_terre'], {
+            'constate': None, 'motif': 'a_faire_par_electricien'})
+        visite.mesures = {}
+        releve = selectors.releve_ci_de_visite(visite, declare={})
+        self.assertEqual(releve['mise_a_la_terre'],
+                         {'constate': None, 'motif': None})
 
     def test_libelles_trajets_disent_la_mesure(self):
         # CSV10 / D-CMP-2 — DC = distance champ -> onduleur, UN SENS (le câble

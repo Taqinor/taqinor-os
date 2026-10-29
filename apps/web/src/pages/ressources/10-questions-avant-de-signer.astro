@@ -31,9 +31,9 @@ import RelatedLinks from '../../components/RelatedLinks.astro';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { estimateReadingTime } from '../../lib/readingTime';
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 const verifiedDate = new Date('2026-07-03');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 const waHref = whatsappLink(
   WHATSAPP_LEADS,

@@ -18,7 +18,7 @@ ZHIPU_API_KEY = os.environ.get("ZHIPU_API_KEY", "")
 # Agent SQL — provider modifiable via .env sans changer le code
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 SQL_AGENT_PROVIDER = os.environ.get("SQL_AGENT_PROVIDER", "groq")
-SQL_AGENT_MODEL = os.environ.get("SQL_AGENT_MODEL", "llama-3.3-70b-versatile")
+SQL_AGENT_MODEL = os.environ.get("SQL_AGENT_MODEL", "openai/gpt-oss-120b")
 # AIC3 — effort des modeles Claude 5.5 (output_config.effort) : low par defaut
 # (Sonnet 5.5 reflechit en `high` sinon, surcout de sortie mesure).
 SQL_AGENT_EFFORT = os.environ.get("SQL_AGENT_EFFORT", "low")

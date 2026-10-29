@@ -14,12 +14,12 @@ import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W303 — date de vérification + auteur + temps de lecture (le blog a déjà ce mécanisme ;
 // les guides n'étant pas une content collection, la date/le texte sont posés ici en dur).
 // WB12 — la date vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('combien-de-panneaux-pour-ma-maison');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const guideBodyText = `
   La question revient à chaque premier contact : combien de panneaux il me faut. La réponse ne se lit
   pas sur un panneau, elle se lit sur une facture. Prenons-en une vraie et suivons-la jusqu'au nombre

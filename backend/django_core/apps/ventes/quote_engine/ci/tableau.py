@@ -1,13 +1,18 @@
-"""Ligne « Tableau de protection AC/DC » du document CLIENT C&I (R2).
+"""Lignes « Tableau de protection AC/DC » (R2) et « Supervision & comptage »
+(R3) du document CLIENT C&I.
 
 Demande fondateur (Reda, 28/10/2026 — le devis 460, boulangerie, lisait 21
 lignes) : sur un devis COMMERCIAL ou INDUSTRIEL, le client lit UNE ligne
 « Tableau de protection AC/DC » qui regroupe le coffret DC, le coffret AC, le
-disjoncteur AC, la protection DC (par MPPT), les parafoudres DC et AC, la mise
-à la terre et le comptage / limitation d'injection (Smart Meter) — les lignes
-dont le produit porte un ``role_ci`` de
-``moteur_ci.composition.ROLES_TABLEAU_CI``, jamais reconnues à leur
-désignation.
+disjoncteur AC, la protection DC et le parafoudre DC (par chaîne), le
+parafoudre AC et la mise à la terre — les lignes dont le produit porte un
+``role_ci`` de ``moteur_ci.composition.ROLES_TABLEAU_CI``, jamais reconnues à
+leur désignation.
+
+R3 (fondateur, 28/10/2026 soir) — le Smart Meter SORT du tableau : le
+comptage / limitation d'injection et la supervision (clé wifi par onduleur,
+logger central) forment UNE ligne « Supervision & comptage »
+(``ROLES_SUPERVISION_CI``), même mécanique.
 
 Quantité 1, P.U. HT = Σ (quantité × P.U. HT), une ligne PAR TAUX de TVA, et
 un champ ``sous_lignes`` (désignation, quantité, unité, jamais un prix) que
@@ -22,7 +27,9 @@ from __future__ import annotations
 
 from html import escape
 
-from apps.ventes.moteur_ci.composition import ROLES_TABLEAU_CI
+from apps.ventes.moteur_ci.composition import (
+    ROLES_SUPERVISION_CI, ROLES_TABLEAU_CI,
+)
 
 from .installation import regrouper_roles
 
@@ -36,12 +43,31 @@ LIBELLE_TABLEAU = {
 ROLE_TABLEAU = "tableau_ci"
 
 
+#: R3.4 — libellé de la ligne « Supervision & comptage ».
+LIBELLE_SUPERVISION = {
+    "fr": "Supervision & comptage",
+    "en": "Monitoring & metering",
+    "ar": "المراقبة والعدّ",
+}
+
+ROLE_SUPERVISION = "supervision_ci"
+
+
 def regrouper_tableau(items, langue="fr"):
     """``items`` avec les organes du tableau regroupés (une ligne par taux de
     TVA, ``sous_lignes`` = les composants). Sans organe : ``items`` tel quel
     (même objet)."""
     return regrouper_roles(items, ROLES_TABLEAU_CI, LIBELLE_TABLEAU,
                            ROLE_TABLEAU, langue, sous_lignes=True)
+
+
+def regrouper_supervision(items, langue="fr"):
+    """R3.4 — ``items`` avec le comptage (Smart Meter) et la supervision (clé
+    wifi, logger) regroupés en « Supervision & comptage » (une ligne par taux
+    de TVA, ``sous_lignes`` = les composants). Sans ligne du groupe :
+    ``items`` tel quel (même objet)."""
+    return regrouper_roles(items, ROLES_SUPERVISION_CI, LIBELLE_SUPERVISION,
+                           ROLE_SUPERVISION, langue, sous_lignes=True)
 
 
 def _quantite(valeur):

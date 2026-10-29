@@ -27,7 +27,7 @@ import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { isPlausibleUuid, lireCookie } from '../../lib/visite';
 import { jsonResponse as json } from '../../lib/apiJson';
-import { resolveApiBase } from './_apiBase';
+import { entetesJsonPreuve, resolveApiBase } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — refuse un POST cross-site forgé avant tout traitement.
@@ -81,8 +81,7 @@ export const POST: APIRoute = async ({ request }) => {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
-        accept: 'application/json',
+        ...entetesJsonPreuve(cookieHeader), // ASEC53 — preuve OTP de lecture de CE navigateur.
         ...(equipeAppareil ? { 'X-Equipe-Appareil': '1' } : {}),
         ...(appareilCookie ? { 'X-Appareil-Id': appareilCookie } : {}),
       },

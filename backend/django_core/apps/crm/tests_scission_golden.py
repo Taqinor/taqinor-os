@@ -631,7 +631,7 @@ _CLES_ID = {'id', 'pk'}
 _FAMILLE_PAR_PARENT = {
     'touche': 'etape', 'etape_courante': 'etape', 'prochaine_touche': 'etape',
     'derniere_touche': 'etape', 'appointment': 'rdv', 'rdv': 'rdv',
-    'commerciaux': 'user'}
+    'commerciaux': 'user', 'par_commercial': 'user'}
 
 
 class _Fixture:

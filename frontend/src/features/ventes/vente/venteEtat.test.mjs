@@ -63,12 +63,13 @@ test("aplatirErreurs : champ plat, liste d'objets", () => {
 
 test('aplatirErreurs : codes de devis_facturer.json (detail seul => erreur générale portant son code)', () => {
   const doc = documentContrat('ventes', 'devis_facturer')
-  const d400 = doc.erreurs_400.montant_depasse_reste
-  const liste = aplatirErreurs(d400)
+  // api-fuzz-full 28/10 (ENF11) : « dépasse le reste » est un refus d'état (409).
+  const depasse = doc.erreurs_409.montant_depasse_reste
+  const liste = aplatirErreurs(depasse)
   assert.equal(liste.length, 1)
   assert.equal(liste[0].cle, 'submit')
   assert.equal(liste[0].code, 'montant_depasse_reste')
-  assert.equal(liste[0].message, d400.detail)
+  assert.equal(liste[0].message, depasse.detail)
   const d409 = doc.erreurs_409.version_remplacee
   const l409 = aplatirErreurs(d409)
   assert.equal(l409[0].code, 'version_remplacee')

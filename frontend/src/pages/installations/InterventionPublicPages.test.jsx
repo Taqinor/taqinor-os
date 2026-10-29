@@ -46,6 +46,7 @@ const RAPPORT = {
   serials: [],
   consommation: [{ designation: 'Câble 6mm²', quantite_prevue: '10', quantite_utilisee: '12', variance: 2 }],
   reserves: [{ description: 'Reprise étanchéité', statut: 'Ouverte' }],
+  equipe: ['Youssef Technicien', 'Karim Aide'],
   signataire_nom: 'M. Client',
   signe_le: '2026-08-20T16:00:00Z',
   pdf_url: '/api/django/public/installations/intervention-rapport/JETON/pdf/',
@@ -102,6 +103,9 @@ describe('InterventionRapportPublicPage — WIR264/ZFSM2', () => {
     expect(screen.getByTestId('rapport-signature')).toHaveTextContent('M. Client')
     expect(screen.getByRole('link', { name: /Télécharger le compte-rendu/ }))
       .toHaveAttribute('href', RAPPORT.pdf_url)
+    // ERR-CHT-RAPPORT-PUBLIC-EQUIPE — les techniciens nommés, comme le PDF.
+    expect(screen.getByTestId('rapport-equipe'))
+      .toHaveTextContent('Youssef Technicien, Karim Aide')
     // Aucun coût d'achat ni marge n'apparaît sur une page CLIENT.
     expect(container.textContent).not.toMatch(/prix d.achat|marge|coût d.achat/i)
   })
@@ -111,6 +115,13 @@ describe('InterventionRapportPublicPage — WIR264/ZFSM2', () => {
     renderRoute('/intervention-rapport/NOPE', '/intervention-rapport/:token',
       <InterventionRapportPublicPage />)
     expect(await screen.findByRole('alert')).toHaveTextContent(/introuvable ou a été révoqué/)
+  })
+
+  it('équipe absente → « Non renseignée. », comme le PDF', async () => {
+    api.getInterventionRapportPublic.mockResolvedValue({ data: { ...RAPPORT, equipe: [] } })
+    renderRoute('/intervention-rapport/JETON', '/intervention-rapport/:token',
+      <InterventionRapportPublicPage />)
+    expect(await screen.findByTestId('rapport-equipe')).toHaveTextContent('Non renseignée.')
   })
 })
 

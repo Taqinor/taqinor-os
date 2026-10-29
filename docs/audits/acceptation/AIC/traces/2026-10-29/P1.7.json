@@ -1,0 +1,38 @@
+{
+ "etape": "P1.7",
+ "titre": "Erreur d outil inattendue (404) journalisee en bug",
+ "taches": [
+  "AIC7"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "evenement": {
+   "id": 5,
+   "intention": "bug",
+   "modele": "claude-sonnet-5-5",
+   "repli": false,
+   "manuel_present": true,
+   "tokens": {
+    "input": 2173,
+    "output": 350,
+    "cache_read": 136136
+   },
+   "outils_appeles": [
+    "crm.lead.resume"
+   ],
+   "erreur": {
+    "outil": "crm.lead.resume",
+    "status": 404,
+    "message": "Pas trouvé."
+   },
+   "note": 0,
+   "commentaire": null,
+   "lead_id": null,
+   "ecran": "/crm/leads/9999999",
+   "user_id": 286,
+   "question": "Résume-moi le lead 9999999 avant mon appel.",
+   "resume": "Je n'ai pas trouvé de lead portant le numéro 9999999. Il n'existe pas dans votre société, ou vous n'y avez pas accès, donc je ne peux pas le résumer.\n\nVérifiez ",
+   "cree_le": "2026-10-29T21:19:49.435528+00:00"
+  }
+ }
+}

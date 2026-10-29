@@ -1641,13 +1641,29 @@ def _figer_avoir_retour(avoir, facture, *, epuise, reste_creditable):
     cible = quantize_mad(cible)
     if cible == naturel:
         return
-    ttc_f = Decimal(str(facture.total_ttc))
-    tva = (quantize_mad(cible * Decimal(str(facture.total_tva)) / ttc_f)
-           if ttc_f else Decimal('0'))
-    avoir.montant_ht = cible - tva
+    # ERR-RETOUR-CLIENT-TVA-MELANGEE (29/10/2026) — le TTC cible se ventile
+    # sur les paniers de L'AVOIR (ses lignes, au taux de chaque ligne, remise
+    # comprise : le calcul de ``creer-avoir``), jamais au taux mélangé de la
+    # facture dans un panier d'en-tête unique. Le HT ne dépasse jamais le HT
+    # net des lignes rendues : un solde au centime au-dessus va à la TVA.
+    paniers = avoir.tva_par_taux
+    ht_net = Decimal(str(avoir.total_ht))
+    if cible < naturel:
+        tva = quantize_mad(cible * Decimal(str(avoir.total_tva)) / naturel)
+        ht = cible - tva
+    else:
+        ht = ht_net
+        tva = cible - ht
+    from apps.facturation.totaux import ventilation_document_fige
+    vent = ventilation_document_fige(paniers, cible, ht=ht, tva=tva) or [
+        {'taux': str(p['taux']), 'base_ht': str(ht), 'montant': str(tva)}
+        for p in paniers]
+    avoir.montant_ht = ht
     avoir.montant_tva = tva
     avoir.montant_ttc = cible
-    avoir.save(update_fields=['montant_ht', 'montant_tva', 'montant_ttc'])
+    avoir.ventilation_tva = vent
+    avoir.save(update_fields=['montant_ht', 'montant_tva', 'montant_ttc',
+                              'ventilation_tva'])
 
 
 def creer_avoir_facture(*, facture, user, motif, mode='correction',

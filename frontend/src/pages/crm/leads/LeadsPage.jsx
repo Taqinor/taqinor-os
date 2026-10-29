@@ -298,17 +298,24 @@ export default function LeadsPage() {
   const facets = useMemo(() => buildLeadFacets(filters, canalOptions), [filters, canalOptions])
   const equipeId = searchParams.get('equipe')
   const equipeMembreIds = useEquipeMembreIds(equipeId)
+  // Cockpit d'équipe (28/10/2026) : `?owner=<id>` ouvre la liste d'UN membre
+  // (même filtre additif client que `?equipe=`).
+  const ownerId = searchParams.get('owner')
+  const parProprietaire = useCallback(
+    (liste) => (ownerId ? liste.filter((l) => String(l.owner) === ownerId) : liste),
+    [ownerId])
   const filtered = useMemo(() => {
-    const base = filterLeads(leads, deferredFilters, { myUsername: currentUser?.username })
+    const base = parProprietaire(filterLeads(leads, deferredFilters, { myUsername: currentUser?.username }))
     if (!equipeId || !equipeMembreIds) return base
     return base.filter((l) => equipeMembreIds.has(l.owner))
-  }, [leads, deferredFilters, currentUser?.username, equipeId, equipeMembreIds])
+  }, [leads, deferredFilters, currentUser?.username, equipeId, equipeMembreIds, parProprietaire])
   // Pool KPI : les leads APRÈS le filtre additif équipe (mais AVANT les
   // filtres utilisateur — la tuile force sa dimension par-dessus `filters`).
   const kpiPool = useMemo(() => {
-    if (!equipeId || !equipeMembreIds) return leads
-    return leads.filter((l) => equipeMembreIds.has(l.owner))
-  }, [leads, equipeId, equipeMembreIds])
+    const base = parProprietaire(leads)
+    if (!equipeId || !equipeMembreIds) return base
+    return base.filter((l) => equipeMembreIds.has(l.owner))
+  }, [leads, equipeId, equipeMembreIds, parProprietaire])
 
   // LB49 — vues enregistrées DE COMPTE (crm.SavedView) : listées par rang,
   // la n°1 est le défaut appliqué à toute nouvelle connexion, réordonnables

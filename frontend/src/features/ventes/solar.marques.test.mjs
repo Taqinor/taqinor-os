@@ -15,9 +15,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   estimerMois,
-  DAY_USAGE_DEFAULTS, KWH_PRICE, EFFICIENCY,
-  consoAnnuelleDepuisFactures,
-} from './solar.js'
+  DAY_USAGE_DEFAULTS, KWH_PRICE, EFFICIENCY} from './solar.js'
+import { consoAnnuelleDepuisFactures } from './calc/tarifs.js'
 
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
 let _id = 0

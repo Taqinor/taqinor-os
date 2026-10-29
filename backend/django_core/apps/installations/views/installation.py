@@ -169,8 +169,25 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # chantiers qu'il a créés ou dont il est le technicien responsable /
         # ceux de son équipe. 'all' → inchangé.
         # ACHT27 — même sélecteur que la synchro terrain (`field_sync`).
+        # ERR-CHT-TECH-CHANTIER-404 — en LECTURE d'UNE fiche (retrieve), le
+        # technicien d'une intervention voit aussi son chantier ; listes,
+        # calendrier et Gantt et l'écriture restent bornés (ACHT50/ACHT79).
+        # Société bornée (Intervention de SA société), Exists sans doublon.
+        from django.db.models import Exists, OuterRef, Q
+        from rest_framework.permissions import SAFE_METHODS
+        from core.scoping import visible_user_ids
         from ..selectors import scoper_chantiers
-        qs = scoper_chantiers(qs, self.request.user)
+        user = self.request.user
+        portee = scoper_chantiers(qs, user)
+        if (self.request.method in SAFE_METHODS
+                and getattr(self, 'action', None) == 'retrieve'
+                and visible_user_ids(user) is not None):
+            assignee = Intervention.objects.filter(
+                installation=OuterRef('pk'), technicien=user,
+                company_id=user.company_id)
+            portee = qs.filter(
+                Q(pk__in=portee.values('pk')) | Q(Exists(assignee)))
+        qs = portee
         params = self.request.query_params
         statut = params.get('statut')
         technicien = params.get('technicien')

@@ -86,9 +86,20 @@ class EvalHarnessTests(unittest.TestCase):
             return
         modele = runner.svc._modele_effectif(runner.svc.SQL_AGENT_PROVIDER.lower())
         juge = os.environ["SQL_AGENT_JUGE_MODEL"]
+        # AIC13 (29/10/2026) : avec ASSISTANT_EVAL_TOKEN (jeton d acces du
+        # commercial evalue), le rejeu porte les outils d action du registre ;
+        # sans jeton, l agent repond en lecture seule (cas donnee/action non jouables).
+        ctx = None
+        jeton = os.environ.get("ASSISTANT_EVAL_TOKEN", "").strip()
+        if jeton:
+            from app.services.action_tools import ActionContext, resolve_caller_permissions
+            ctx = ActionContext(
+                company_id=int(os.environ.get("ASSISTANT_EVAL_COMPANY_ID", "1")),
+                role="normal", permissions=[], token=jeton, is_superuser=False)
+            resolve_caller_permissions(ctx)
         rapport = runner.run_eval_commerciaux(
             runner.repondeur_reel(int(os.environ.get("ASSISTANT_EVAL_COMPANY_ID", "1")),
-                                  int(os.environ.get("ASSISTANT_EVAL_USER_ID", "1"))),
+                                  int(os.environ.get("ASSISTANT_EVAL_USER_ID", "1")), ctx),
             runner.juge_reel(juge), modele, juge)
         self.assertTrue(os.path.exists(runner.ecrire_rapport(rapport)))
 
@@ -115,6 +126,18 @@ class EvalCommerciauxTests(unittest.TestCase):
         for intention in INTENTIONS_ATTENDUES:
             self.assertEqual(sum(c["intention"] == intention for c in base), 5, intention)
         self.assertEqual(sum(c["source"] == "guide" for c in CASES_COMMERCIAUX), 20)
+
+    def test_texte_du_message_saute_le_bloc_de_reflexion(self):
+        """AIC13 : Haiku 5.5 repond [ThinkingBlock, TextBlock] ; le juge lit le texte."""
+        class Bloc:
+            def __init__(self, type, text=None):
+                self.type = type
+                if text is not None:
+                    self.text = text
+        self.assertEqual(runner.texte_du_message(
+            [Bloc("thinking"), Bloc("text", "{\"exacte\": true}")]), "{\"exacte\": true}")
+        self.assertEqual(runner.texte_du_message([{"type": "text", "text": "ok"}]), "ok")
+        self.assertEqual(runner.texte_du_message([]), "")
 
     def test_juge_different_du_modele_evalue(self):
         with self.assertRaises(ValueError):

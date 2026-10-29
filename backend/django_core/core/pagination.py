@@ -88,6 +88,34 @@ class StandardPagination(PageNumberPagination):
         return super().paginate_queryset(queryset, request, view)
 
 
+# ERR-FACTURES-LISTE-ORDRE-INSTABLE (29/10/2026) — un tri sur une colonne NON
+# unique (``-date_emission``, ``?ordering=statut``…) laisse PostgreSQL libre de
+# l'ordre des ex-aequo À CHAQUE requête : les pages ``LIMIT/OFFSET`` se
+# chevauchent (mesuré : 132 factures → 128 distinctes, doublons et absentes).
+# ``ordre_total`` ajoute la clé primaire en DERNIER départage, dans le sens de
+# la première clé, sauf si ``pk``/``id`` y figure déjà.
+def ordre_total(queryset):
+    """Rend l'ordre de ``queryset`` total (départage final par ``pk``)."""
+    query = queryset.query
+    ordre = list(query.order_by) if query.order_by else (
+        list(query.get_meta().ordering or []) if query.default_ordering else [])
+    noms = {o.lstrip('-') for o in ordre if isinstance(o, str)}
+    if noms & {'pk', 'id'}:
+        return queryset
+    premier = ordre[0] if ordre else '-pk'
+    descendant = (premier.startswith('-') if isinstance(premier, str)
+                  else bool(getattr(premier, 'descending', False)))
+    return queryset.order_by(*ordre, '-pk' if descendant else 'pk')
+
+
+class OrdreTotalMixin:
+    """Viewset : le queryset filtré/trié (``OrderingFilter`` compris) reçoit
+    le départage ``pk`` — pages stables, union des pages = toutes les lignes."""
+
+    def filter_queryset(self, queryset):
+        return ordre_total(super().filter_queryset(queryset))
+
+
 # ---------------------------------------------------------------------------
 # NTPLT14 — Pagination KEYSET pour les tables à forte croissance (étend YAPIC1).
 #

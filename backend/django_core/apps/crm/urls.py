@@ -38,7 +38,8 @@ from .clients_views import (
 # SPL77 — intake des leads (rapport d'attribution, points de contact).
 from .leads_views import PointContactViewSet, rapport_attribution
 from .dispatch_views import (
-    RegleAttributionViewSet, dispatch_attribuer, dispatch_file, dispatch_reglages)
+    RegleAttributionViewSet, cockpit_equipe, dispatch_attribuer, dispatch_file,
+    dispatch_reglages)
 # SPL79 — rendez-vous (visites).
 from .visites_views import AppointmentViewSet
 # SPL76 — sous-parcours clients : salle de vente, partenaires, apporteurs,
@@ -141,6 +142,7 @@ urlpatterns = [
     # ZSAL6 — Rapport d'attribution des leads (par commercial + par source).
     path('rapports/attribution/', rapport_attribution, name='rapport-attribution'),
     # Attribution des leads par le responsable d'équipe (27/10/2026).
+    path('cockpit-equipe/', cockpit_equipe, name='cockpit-equipe'),
     path('dispatch/', dispatch_file, name='dispatch-leads'),
     path('dispatch/<int:lead_id>/attribuer/', dispatch_attribuer,
          name='dispatch-attribuer'),

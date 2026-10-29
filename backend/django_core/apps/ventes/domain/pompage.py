@@ -308,6 +308,38 @@ def _couche_lead(res, lead):
         res.poser('localisation.lon', _num(lon), prov)
 
 
+def _couche_client(res, client, devis=None):
+    """AGRI-SITE (fondateur, 28/10/2026) — repli du SITE sur la fiche client.
+
+    Le lead reste la première source : la fiche client (ville / GPS du
+    répertoire, ``crm.selectors.site_du_client``) ne sert que si le lead n'a
+    posé AUCUN élément de localisation (pas de lead, ou lead sans ville ni
+    GPS) — jamais un mélange ville du lead + GPS du client. Même résolution
+    ensuite que pour le lead (PVGIS par ville / GPS, rien d'inventé). Nouveaux
+    calculs seulement : un devis aux règles < 3 (envoyé) garde son site.
+    Sans ``client`` fourni, celui du devis (``devis.client``)."""
+    if client is None:
+        client = getattr(devis, 'client', None)
+    if client is None or any(
+            res.valeur('localisation.%s' % champ) is not None
+            for champ in ('ville', 'lat', 'lon')):
+        return
+    from .regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+    if not regles_au_moins(devis, REGLES_CORRIGEES_2710):
+        return
+    # Règle fondateur 08/10 : un devis déjà envoyé garde ce que le client a reçu.
+    if devis is not None and getattr(devis, 'statut', 'brouillon') != 'brouillon':
+        return
+    from apps.crm.selectors import site_du_client
+
+    site = site_du_client(client) or {}
+    prov = _provenance('saisie', 'fiche_client', _date_iso(site.get('date')))
+    res.poser('localisation.ville', site.get('ville') or None, prov)
+    if site.get('lat') is not None and site.get('lon') is not None:
+        res.poser('localisation.lat', _num(site['lat']), prov)
+        res.poser('localisation.lon', _num(site['lon']), prov)
+
+
 def _visite_point_eau(lead):
     """La dernière visite « relevé du point d'eau » VALIDÉE du lead, par la
     façade de lecture de ``visites`` (jamais ses modèles)."""
@@ -358,12 +390,15 @@ def _couche_corps(res, corps):
     res.poser_arbre(corps, _provenance('saisie', None, _aujourdhui()))
 
 
-def resoudre_entrees(company, entrees, *, devis=None, lead=None):
+def resoudre_entrees(company, entrees, *, devis=None, lead=None,
+                     client=None):
     """``(_Resolution, reglages)`` — priorité corps > devis > lead (+ mesures
-    de visite) > réglage société. Lecture seule."""
+    de visite ; site : fiche client en repli) > réglage société. Lecture
+    seule."""
     res = _Resolution()
     reglages = _couche_reglage(_profil_societe(company))
     _couche_lead(res, lead)
+    _couche_client(res, client, devis)
     _couche_visite(res, lead)
     _couche_devis(res, devis)
     _couche_corps(res, entrees)
@@ -866,13 +901,14 @@ def _alerte_type_suppose(mode_pompe, type_pompe):
 
 
 def etudier_pompage(company, entrees, *, devis=None, lead=None,
-                    facture=None, sans_tmy=False):
+                    facture=None, sans_tmy=False, client=None):
     """AGR121 — l'étude de pompage complète, forme EXACTE du contrat
     ``etude_pompage_preview.json`` (``exemple``). Aucune écriture.
 
     ``company`` : TOUJOURS celle de l'appelant (``request.user``) ;
     ``entrees`` : le corps (forme ``corps`` du contrat) ; ``devis`` / ``lead``
-    déjà scopés société par l'appelant (``lead`` retombe sur ``devis.lead``).
+    déjà scopés société par l'appelant (``lead`` retombe sur ``devis.lead``,
+    ``client`` — AGRI-SITE, repli du site — sur ``devis.client``).
 
     AGR123 — ``facture`` (:func:`facture_du_devis`) : le système RÉELLEMENT
     facturé (pompe, variateur, panneaux des LIGNES). Fourni, la pompe, la
@@ -887,7 +923,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     if lead is None and devis is not None:
         lead = getattr(devis, 'lead', None)
     res, reglages = resoudre_entrees(company, entrees or {}, devis=devis,
-                                     lead=lead)
+                                     lead=lead, client=client)
     mode_pompe, alertes_entree = _lire_mode_pompe(res.valeur('mode_pompe'))
     alim = res.valeur('alim')
     type_pompe = res.valeur('type_pompe')

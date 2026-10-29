@@ -385,6 +385,7 @@ export const ALL_HOOKS = [
   // ── atelier/PanneauReleve.jsx ──
   'cal-releve-ajouter-chaine',
   'cal-releve-bandeau',
+  'cal-releve-erreur',
   'cal-releve-chaine',
   'cal-releve-appliquer-cote',
   'cal-releve-cote-pan',

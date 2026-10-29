@@ -124,6 +124,14 @@ class TestConfiguration(Ntwms12Base):
             'configurer-liberation/', {'mode': 'auto_seuil'}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_endpoint_corps_non_objet_400(self):
+        # api-fuzz-full 29/10 : un corps JSON liste faisait un 500 (`.get`).
+        vague = self._vague()
+        resp = self.api.post(
+            f'/api/django/stock/vagues-picking/{vague.id}/'
+            'configurer-liberation/', [[True, 1], {}], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
     def test_endpoint_seuil_hors_int4_400_jamais_500(self):
         # api-fuzz-full 27/10 : `seuil_lignes` = 2**65 débordait la colonne
         # (500) ; la borne int4 est publiée et appliquée.

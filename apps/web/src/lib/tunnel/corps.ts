@@ -23,6 +23,7 @@
 
 import { validateLead } from '../lead';
 import { CHAMPS_TUNNEL, type CleChamp, type EtatTunnel } from './champs';
+import { libelleRetourLocale } from './i18n';
 
 /** Les trois locales servies par le tunnel. */
 export type LocaleTunnel = 'fr' | 'en' | 'ar';
@@ -43,6 +44,14 @@ export type LocaleTunnel = 'fr' | 'en' | 'ar';
  */
 export type MessagesErreurs = Partial<Record<CleChamp, string>> & {
   readonly nomComplet: string;
+  /**
+   * WEBERR-TUNNEL-PAYBACK-FR — la langue de CETTE table (les tables `ERREURS`
+   * de i18n.ts la portent). Les pages passent déjà la table de la langue
+   * affichée au moment de l'envoi : c'est donc elle qui dit dans quelle langue
+   * écrire les libellés textuels du corps (`estimateShown.paybackLabel`).
+   * Absente (table de test ad hoc) → aucun libellé n'est réécrit.
+   */
+  readonly locale?: LocaleTunnel;
 };
 
 /**
@@ -85,6 +94,14 @@ export function construireCorps(etat: EtatTunnel, ctx: ContexteCorps): ResultatC
     // Jamais un `false`, un `0` ou une chaîne vide fabriqués à sa place.
     if (valeur === undefined) continue;
     body[champ.webhookKey] = valeur;
+  }
+
+  // WEBERR-TUNNEL-PAYBACK-FR — le libellé d'amortissement des bandes (billRange)
+  // est en français ; le corps le porte dans la langue de l'écran. Copie : l'état
+  // reçu n'est jamais modifié.
+  const montre = body.estimateShown as Record<string, unknown> | undefined;
+  if (ctx.messages.locale && montre && typeof montre.paybackLabel === 'string') {
+    body.estimateShown = { ...montre, paybackLabel: libelleRetourLocale(montre.paybackLabel, ctx.messages.locale) };
   }
 
   const v = validateLead(body);

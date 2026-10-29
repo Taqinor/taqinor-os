@@ -14,6 +14,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from core.mixins import company_qs
+from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 from core.conflit_etat import ConflitEtat
 from core.parseurs import corps_valide
 from ..models import Facture, Paiement, RetenueSubie
@@ -71,7 +72,7 @@ def _refus_si_rejete(paiement):
 
 @extend_schema_view(list=extend_schema(
     parameters=[qstr('remisable', desc='1/true : seulement les paiements remisables en banque.')]))
-class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
+class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     """Lecture seule des paiements (l'enregistrement passe par la facture) —
     XFAC1 ajoute deux actions d'écriture pour les AVANCES non affectées
     (règlement reçu sans facture) : enregistrement + ventilation sur des
@@ -86,7 +87,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PaiementSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_paiement', 'montant', 'date_creation']
-    ordering = ['-date_paiement']
+    ordering = ['-date_paiement', '-id']  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 
     def get_queryset(self):
         # AFAC55 (C-AFAC-048) — même portée que `FactureViewSet` : un rôle

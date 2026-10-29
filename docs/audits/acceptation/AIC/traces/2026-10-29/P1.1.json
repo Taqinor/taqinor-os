@@ -1,0 +1,37 @@
+{
+ "etape": "P1.1",
+ "titre": "Question de manuel : comment creer un devis",
+ "taches": [
+  "AIC3",
+  "AIC5",
+  "AIC6"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "question": "Comment créer un devis pour un lead dans TAQINOR ?",
+  "http": 200,
+  "evenement": {
+   "id": 9,
+   "intention": "question_manuel",
+   "modele": "claude-sonnet-5-5",
+   "repli": false,
+   "manuel_present": true,
+   "tokens": {
+    "input": 1532,
+    "output": 892,
+    "cache_read": 68068
+   },
+   "outils_appeles": [],
+   "erreur": null,
+   "note": 0,
+   "commentaire": null,
+   "lead_id": null,
+   "ecran": "/ventes/devis",
+   "user_id": 286,
+   "question": "Comment créer un devis pour un lead dans TAQINOR ?",
+   "resume": "Voici comment créer un devis pour un lead dans TAQINOR. Vous êtes sur l'écran des devis (`/ventes/devis`), d'où vous pouvez démarrer.\n\n**1. Lancer la création**",
+   "cree_le": "2026-10-29T21:25:13.279957+00:00"
+  },
+  "reponse_extrait": "Voici comment créer un devis pour un lead dans TAQINOR. Vous êtes sur l'écran des devis (`/ventes/devis`), d'où vous pouvez démarrer.\n\n**1. Lancer la création**\n- Ouvrez `/ventes/devis/nouveau`. Vous pouvez aussi lancer le devis depuis la fiche du lead (CRM → `/crm/leads/<id>`).\n- Un devis peut port"
+ }
+}

@@ -177,6 +177,24 @@ class TestFG294BudgetCreation(TestCase):
             format='json')
         self.assertEqual(r.status_code, 409, r.data)
 
+    def test_devise_texte_strict_publie(self):
+        """api-fuzz-full 28/10 (ENF11) — ``devise`` était publiée texte libre
+        puis refusée 400 sur un NUL : motif « sans NUL » publié, même refus."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        champ = schema['components']['schemas']['BudgetProjetRequest'][
+            'properties']['devise']
+        self.assertIn('\\u0000', champ.get('pattern', ''))
+        r = self.api.post(f'{BASE}/programme-budgets/', {
+            'projet': self.projet.id, 'devise': 'M\x00D'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('devise', r.data)
+
 
 # ── Rattachement d'un coût fournisseur ────────────────────────────────────────
 

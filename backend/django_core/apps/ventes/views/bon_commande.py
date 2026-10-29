@@ -21,6 +21,7 @@ from authentication.permissions import (
 )
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.viewsets import CompanyScopedModelViewSet  # noqa: ARC5 — exception documentée (D-ENF22)
+from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 from ..domain.facturation_ops import StockInsuffisantError
 import logging
 
@@ -152,7 +153,7 @@ def _erreur_lignes_livraison(lignes, date_livraison):
     return None
 
 
-class BonCommandeViewSet(CompanyScopedModelViewSet):
+class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/get_permissions
@@ -185,7 +186,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
     ordering_fields = [
         'date_creation', 'date_livraison_prevue', 'statut'
     ]
-    ordering = ['-date_creation']
+    ordering = ['-date_creation', '-id']  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['pdf']:

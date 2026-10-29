@@ -337,3 +337,73 @@ class TestSurPaiementGuard(TestCase):
         r = self._pay('0')
         self.assertEqual(r.status_code, 400, r.data)
         self.assertEqual(Paiement.objects.count(), 0)
+
+
+class TestListesPagineesOrdreTotal(TestCase):
+    """ERR-FACTURES-LISTE-ORDRE-INSTABLE (29/10/2026) — trié sur une colonne
+    NON unique (``-date_emission``), PostgreSQL ordonnait les ex-aequo au
+    hasard à chaque page : 132 factures → 128 distinctes sur 3 pages. Les
+    pages d'une liste paginée couvrent CHAQUE ligne exactement une fois, au
+    tri par défaut comme au ``?ordering=`` du client."""
+
+    N = 7
+
+    def setUp(self):
+        self.company = make_company(slug='ordre-co', nom='Ordre Co')
+        self.client_obj = make_client(self.company, email='ordre@example.com')
+        self.owner = User.objects.create_user(
+            username='ordre_owner', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.owner)
+        self.ids = []
+        for n in range(self.N):
+            f = Facture.objects.create(
+                company=self.company, reference=f'FAC-{MONTH}-O{n:04d}',
+                client=self.client_obj, statut=Facture.Statut.BROUILLON,
+                taux_tva=Decimal('20'))
+            self.ids.append(f.id)
+            Paiement.objects.create(
+                company=self.company, facture=f, montant=Decimal('10'),
+                date_paiement=timezone.localdate(), mode='virement')
+
+    def _pages(self, url, extra):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        vus, sqls, page = [], [], 1
+        while True:
+            with CaptureQueriesContext(connection) as ctx:
+                r = self.api.get(f'{url}?page_size=3&page={page}{extra}')
+            self.assertEqual(r.status_code, 200, r.data)
+            sqls += [q['sql'] for q in ctx.captured_queries]
+            vus += [row['id'] for row in r.data['results']]
+            if not r.data['next']:
+                return vus, sqls
+            page += 1
+
+    def _assert_union_des_pages(self, url, attendus, table, extra=''):
+        vus, sqls = self._pages(url, extra)
+        self.assertGreaterEqual(len(attendus), 2 * 3 - 1)  # ≥ 2 pages
+        self.assertEqual(len(vus), len(set(vus)), vus)
+        self.assertEqual(sorted(vus), sorted(attendus))
+        # Départage par la clé primaire en DERNIÈRE clé du tri : sans lui,
+        # l'ordre des ex-aequo n'est pas garanti d'une requête à l'autre.
+        pages = [s for s in sqls if f'FROM "{table}"' in s and 'LIMIT' in s]
+        self.assertTrue(pages, sqls)
+        for sql in pages:
+            self.assertRegex(sql.rsplit('ORDER BY', 1)[1],
+                             rf'"{table}"\."id" (ASC|DESC)\s+LIMIT', sql)
+
+    def test_factures_meme_date_union_des_pages(self):
+        self._assert_union_des_pages(
+            '/api/django/ventes/factures/', self.ids, 'ventes_facture')
+
+    def test_factures_ordering_client_non_unique_union_des_pages(self):
+        self._assert_union_des_pages(
+            '/api/django/ventes/factures/', self.ids, 'ventes_facture',
+            extra='&ordering=statut')
+
+    def test_paiements_meme_date_union_des_pages(self):
+        attendus = list(Paiement.objects.filter(
+            company=self.company).values_list('id', flat=True))
+        self._assert_union_des_pages(
+            '/api/django/ventes/paiements/', attendus, 'ventes_paiement')

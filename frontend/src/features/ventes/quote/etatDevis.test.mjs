@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat } from './etatDevis.js'
-import { consoAnnuelleDepuisFactures } from '../solar.js'
+import { consoAnnuelleDepuisFactures } from '../calc/tarifs.js'
 import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
@@ -62,7 +62,7 @@ const entreesCi = (mode, { tension, puissance_souscrite_kva = null, consommation
   },
   contraintes: {
     revente_choisie: false, nb_points_raccordement: null, longueur_dc_m: null,
-    longueur_ac_m: null, besoin_cellule_mt: null, ...contraintes,
+    longueur_ac_m: null, besoin_cellule_mt: null, mise_a_la_terre_necessaire: null, ...contraintes,
   },
   options: { batterie_souhaitee: null, om: null },
   taille_explicite_kwc: null,

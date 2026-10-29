@@ -26,6 +26,7 @@ from core.permissions import declared_action_permissions
 from ..domain.encaissements import arrondir_au_pas
 from authentication.scoping import scope_queryset
 from core.viewsets import CompanyScopedModelViewSet
+from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 from core.entite_scoping import EntiteScopeMixin
 from ..utils.company_settings import create_provisoire
 
@@ -62,7 +63,7 @@ MESSAGE_MONTANT_FIGE = (
     # VNT14 — seul un « BROUILLON-<id> » se supprime : 409 sinon (ENF11).
     destroy=extend_schema(
         responses={204: None, 409: D.ErreurSuppressionFacture}))
-class FactureViewSet(FactureCycleActionsMixin,
+class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
                      FactureEncaissementActionsMixin,
                      FactureRectificatifsActionsMixin,
                      FactureDocumentsActionsMixin,
@@ -102,7 +103,7 @@ class FactureViewSet(FactureCycleActionsMixin,
     ordering_fields = [
         'date_emission', 'date_echeance', 'statut', 'reference'
     ]
-    ordering = ['-date_emission']
+    ordering = ['-date_emission', '-id']  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 
     def get_queryset(self):
         qs = super().get_queryset()

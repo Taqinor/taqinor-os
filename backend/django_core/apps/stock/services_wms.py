@@ -1759,7 +1759,7 @@ def exiger_hors_quarantaine(company, produit, quantite):
     disponible = quantite_disponible_hors_quarantaine(company, produit)
     bloquee = quantite_en_quarantaine(company, produit=produit)
     if bloquee and quantite > disponible:
-        raise ValueError(
+        raise EtatIncompatible(  # api-fuzz 29/10 : refus d'ÉTAT → 409 (ValueError)
             f'Sortie refusée pour « {produit.nom} » : {bloquee} unité(s) en '
             f'quarantaine, {disponible} disponible(s) hors quarantaine.')
 

@@ -1,0 +1,318 @@
+{
+  "sha": "35edb9225e43b50997ddfc457a522301bf2f71e6",
+  "date": "2026-10-29",
+  "groupe": "AIC",
+  "verdict": "PASS",
+  "couvre": [
+    "AIC3",
+    "AIC4",
+    "AIC5",
+    "AIC6",
+    "AIC7",
+    "AIC11",
+    "AIC12",
+    "AIC13",
+    "AIC30",
+    "AIC31",
+    "AIC32",
+    "AIC33",
+    "AIC35",
+    "AIC40"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "AIC3",
+        "AIC5",
+        "AIC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.1.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "modele claude-sonnet-5-5, manuel present, cache_read > 0 des la premiere relecture (bloc systeme en cache 1 h)"
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "AIC31",
+        "AIC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.2.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.3",
+      "taches": [
+        "AIC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.3.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.4",
+      "taches": [
+        "AIC40",
+        "AIC6",
+        "AIC13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.4.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "intention du modele = hors_champ sur cet evenement (corrige par 35edb9225 : action proposee/executee vaut action)"
+    },
+    {
+      "id": "P1.5",
+      "taches": [
+        "AIC7",
+        "AIC32"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.5.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "premier rejeu etiquete donnee sans report_gap ; consigne renforcee (35edb9225) puis rejoue : hors_champ"
+    },
+    {
+      "id": "P1.6",
+      "taches": [
+        "AIC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.6.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "moitie API de AIC8 ; le clic dans le panneau n est pas rejoue ici"
+    },
+    {
+      "id": "P1.7",
+      "taches": [
+        "AIC7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.7.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.8",
+      "taches": [
+        "AIC7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.8.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.9",
+      "taches": [
+        "AIC11"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.9.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "observation : une reference de devis DEV-AAAAMM-NNNN sort en DEV-[tel] (sur-anonymisation, sans risque)"
+    },
+    {
+      "id": "P1.10",
+      "taches": [
+        "AIC12"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.10.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "moitie API de AIC12 ; la carte /ia/agent n est pas rejouee ici"
+    },
+    {
+      "id": "P1.11",
+      "taches": [
+        "AIC4",
+        "AIC30"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.11.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "llama-3.3-70b-versatile retire par Groq et 8 000 TPM : defaut gpt-oss-120b + bloc systeme allege (35edb9225)"
+    },
+    {
+      "id": "P1.12",
+      "taches": [
+        "AIC35"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.12.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.13",
+      "taches": [
+        "AIC33"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AIC/traces/2026-10-29/P1.13.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

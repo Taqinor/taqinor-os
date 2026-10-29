@@ -37,6 +37,24 @@ describe('HorizonPanel — onglet monté', () => {
     expect(screen.getByTestId('cal-horizon-hauteur-max')).toHaveTextContent('12.0°')
   })
 
+  it('latitude du contexte sans épingle : la course du soleil est tracée (ACAL251)', async () => {
+    // Calepinage NEUF : aucun pin dans le document ; le détail sert le repère.
+    espions.layout.mockResolvedValue({ data: { roof_layout: {} } })
+    espions.get.mockResolvedValue({ data: { contexte_geographique: { pin: { lat: 33.6, lng: -7.6 } } } })
+    rendre()
+    await screen.findByTestId('cal-horizon')
+    await vi.waitFor(() => expect(espions.get).toHaveBeenCalledWith(7))
+    await vi.waitFor(() => expect(screen.queryByText(/Latitude du site inconnue/)).toBeNull())
+  })
+
+  it('ni épingle ni repère servi : latitude inconnue, dite (jamais devinée)', async () => {
+    espions.layout.mockResolvedValue({ data: { roof_layout: {} } })
+    espions.get.mockResolvedValue({ data: { contexte_geographique: { pin: null } } })
+    rendre()
+    await vi.waitFor(() => expect(espions.get).toHaveBeenCalled())
+    expect(await screen.findByText(/Latitude du site inconnue/)).toBeInTheDocument()
+  })
+
   it('lecture du document en échec : message d’illisibilité, rien d’enregistrable', async () => {
     espions.layout.mockRejectedValue(new Error('500'))
     rendre()

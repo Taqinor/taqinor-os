@@ -46,7 +46,9 @@ describe('DashboardScreen (ENG23)', () => {
   it('affiche le héro coût-par-signature et les tuiles avec les chiffres de l\'API', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
-    expect(screen.getByTestId('ae-value-cost_per_signature')).toHaveTextContent('1 850 MAD')
+    // Le rendu suit la RÉSOLUTION du mock, pas son appel : attendre le chiffre
+    // (vu « — » une fois sur un shard chargé de la file de merge, 29/10/2026).
+    await waitFor(() => expect(screen.getByTestId('ae-value-cost_per_signature')).toHaveTextContent('1 850 MAD'))
     expect(screen.getByTestId('ae-value-spend')).toHaveTextContent('4 200 MAD')
     expect(screen.getByTestId('ae-value-cpl')).toHaveTextContent('95 MAD')
     expect(screen.getByTestId('ae-value-frequency')).toHaveTextContent('1,8')

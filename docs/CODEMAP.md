@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: db6f45ad3d7b39cb3a6f7e2e8ad6f79fe292de9357f304c23c75de16485be1e2
-Plan fingerprint: 3a943a6cd5eeda01a16906a359719e8f9712122f24d538c8bbf3be2fab5de06f
+Structure fingerprint: 38716ee0afbdbea1ba850abd3111ac05fd36a90379c666169817ca28edf2aae6
+Plan fingerprint: b40444dc4bf389c1b8079f8611d56a35af1141c979ab5cf79b1c6eb2c09b2c43
 
 
 
@@ -333,6 +333,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 
 - **CAD176/CAD178 (28/09/2026)** : la touche e-mail générique J+10 porte la clé `relance_email_j10` (gabarit ✎, migration parametres 0110) et le contrat `relance_etape_v2` sert `lead_email` (masqué comme le téléphone) ; `crm.GesteRelanceAppareil` (migration crm 0115, compteur journalier société × geste Fait/Reporter/Appeler/WhatsApp × famille d'appareil, aucun User-Agent brut stocké) alimenté par `fait`/`reporter`/`whatsapp` et la nouvelle action `POST crm/relance-etapes/<id>/appel-compose/`, servi en `gestes_par_appareil` par `mesure_cadence` (troisième tableau de `RelancesSuiviPage`).
 - **COCKPIT-CONTRÔLE (30/09/2026)** : bloc « Contrôle du suivi » du cockpit CRM — `apps/crm/controle_suivi.py` (lecture pure, requêtes indépendantes du volume) servi par `GET crm/relance-etapes/controle/?jours=7|14|30&owner=` (contrat `contract_samples/controle_suivi.json` : retard en JOURS OUVRÉS, congés déclarés, étapes reportées) ; traces `RelanceEtape.due_initial_at`/`nb_reports` (migration crm 0116, règle unique `services.deplacer_echeance_etape`) ; la liste `relance-etapes/?scope=` sert le bloc `file` (`selectors.file_du_cockpit`, tâches ouvertes dans « maintenant ») ; « Sauter » refusé sur une tâche ; écran `pages/crm/ControleSuiviPanel.jsx` + `controleSuiviTexte.js` (repliable, même ordre pour tous les rôles), file « À faire aujourd'hui » (`RelancesDuJourWidget.jsx`) ; garde « scénario vécu » `apps/crm/tests_cockpit_scenario.py` contre l'oracle indépendant `apps/crm/cockpit_oracle_outils.py`.
+- **SUIVI-FILTRE + SUIVI-ÉQUIPE (29/10/2026)** : écran « Suivi des relances » (`pages/crm/RelancesSuiviPage.jsx`) — les cinq compteurs serveur (`resume`) sont des cases à cocher multi-sélection (filtrage d'écran des lignes servies, choix dans l'URL `?statut=a_faire&statut=en_retard`, « En retard » = à faire ET échue, règle unique `estEnRetard`) ; bloc « Vue d'équipe » des rôles responsable/admin (`pages/crm/RelancesEquipePanel.jsx` : 4 tuiles, une barre empilée HTML par commercial toujours en retard → traitées en retard → à temps → sautées, colonnes recharts par jour avec tableau équivalent, clic = borner la file au commercial) nourri par le bloc ADDITIF `par_commercial` de `GET crm/relance-etapes/controle/` (`controle_suivi._par_commercial`, pure, une ligne par entrée de `commerciaux` quel que soit `owner`, `en_retard_actuel` + `aujourdhui`, contrat `controle_suivi.json`).
 - **QAH (28/09/2026) — tester « comme un humain »** : `tests/test_tenant_sweep.py` + `testkit/tenant_sweep.py` (balayage IDOR/BOLA de ~390 viewsets, cliquets `EXCLUSIONS`/`FUITES_CONNUES`, opt-in `ci_shard.TOP_LEVEL_MODULES`) ; invariants Hypothesis `apps/ventes/tests/test_invariants_{money,documents}.py` ; différentiel `solar.js` ↔ serveur `apps/ventes/tests/test_solar_differential.py` + corpus figé `fixtures/solar_corpus*.json` (`frontend/scripts/solar_corpus.mjs`).
 
 ### ventes / crm / parametres / visites / core — Groupes CIQ (C&I) et AGR (agricole), vague 1 (05/10/2026)
@@ -547,7 +548,7 @@ All verified against source, not prose.
 - **`/proposal` is the only client-facing quote-PDF path** — canonical endpoint `GET /api/django/ventes/devis/<id>/proposal/`, rendered by the vendored `quote_engine/generate_devis_premium.py`. `generer-pdf` (async Celery) routes through the same engine (toggle `USE_PREMIUM_QUOTE_ENGINE`). The legacy WeasyPrint quote PDF remains only as the off-switch fallback; invoices keep their own separate legacy PDF. Premium renderers = the ONE list `quote_engine/builder.registre_renderers()` (industriel, commercial, agricole — dedicated 3-page document `quote_engine/agricole/{renderer,pages}.py` fed by `agricole/synthese.synthese_agricole`, AGR312 —, résidentiel); `quote_engine/ci/synthese.py` = `synthese_ci(data)` (CIQ303); `ci/options_cote.py` = cartes sans / avec batterie de la couverture C&I, `i18n_labels_ci.py` / `i18n_labels_ci_pages.py` = libellés CPDF enregistrés dans le catalogue (CPDF). See `docs/quote-engine-swap-map.md`.
 - **Multi-tenant scoping** — the tenant field is **`company`** (FK -> `authentication.Company`) on every business model; there is **no** field named `tenant_id`. ViewSets filter `get_queryset()` by `request.user.company` and force-assign `company` in `perform_create`/`perform_update`, never from the request body.
 - **Staff structure = org chart (26-27/10/2026)** — `apps/roles` holds `Departement` (one `est_direction` per company, a head), `Poste` (job position → department + default `Role`; `CustomUser.fonction`, required at user creation once a company has postes) and `EquipeOrg` (generic teams); routes `roles/departements|postes|equipes/` and `GET roles/organisation/` (contract `apps/roles/contract_samples/organisation.json`, built by `apps/roles/selectors.py`). Teams of the 3 types (`crm.EquipeCommerciale.responsable`, `installations.Equipe.chef`, `roles.EquipeOrg.chef`) carry a `departement`; `authentication/equipes_structure.py::recalculer_hierarchie` recomputes every `supervisor` from the structure (Direction → department heads → team leads → members), one person = one active team, cycles refused (409). Visibility follows `core/scoping.py` (`records_scope_soi` on the Commercial role = own + subtree, never peers). The team flagged `recoit_leads` (one per company) gets new leads in rotation (`crm/leads_attribution.py`).
-- **Lead dispatch by the team lead (27/10/2026)** — a commercial team with `confirmation_responsable` holds new leads in `crm.AttributionEnAttente` (owner = team responsable meanwhile; suggestion = first matching `crm.RegleAttribution` — city, client type, source, bill — else balanced rotation); `GET crm/dispatch/` (contract `apps/crm/contract_samples/dispatch_leads.json`) + `POST crm/dispatch/<id>/attribuer/` serve the screen `/crm/attribution`; Celery `crm.attribuer_leads_echus` assigns the suggestion once the working-minutes delay passes (`apps/crm/dispatch.py`). Settings (switch, delay, multi-choice rules `types_installation`/`sources`) are editable by the team responsable, the head of its department and Direction/Admin (`dispatch.peut_regler`, `PATCH crm/dispatch/reglages/<id>/`).
+- **Lead dispatch by the team lead (27/10/2026)** — a commercial team with `confirmation_responsable` holds new leads in `crm.AttributionEnAttente` (owner = team responsable meanwhile; suggestion = first matching `crm.RegleAttribution` — city, client type, source, bill — else balanced rotation); `GET crm/dispatch/` (contract `apps/crm/contract_samples/dispatch_leads.json`) + `POST crm/dispatch/<id>/attribuer/` serve the screen `/crm/attribution`; Celery `crm.attribuer_leads_echus` assigns the suggestion once the working-minutes delay passes (`apps/crm/dispatch.py`). Settings (switch, delay, multi-choice rules `types_installation`/`sources`) are editable by the team responsable, the head of its department and Direction/Admin (`dispatch.peut_regler`, `PATCH crm/dispatch/reglages/<id>/`). **Team cockpit** `GET crm/cockpit-equipe/` (contract `cockpit_equipe.json`, `apps/crm/cockpit_equipe.py`, screen `/crm/cockpit-equipe`): per member (team lead first) and team — targets vs actual (`ObjectifCommercial`, writes open to the same people for their teams), follow-up discipline, pipeline.
 - **Cross-app boundary** — between business-core domain apps, reads go through the target app's `selectors.py` and writes/orchestration through its `services.py` (or string FKs); never an import of its `models`/`views`. Cross-app reactions go through the synchronous `core/events.py` signal bus, subscribed in each app's `apps.py` `ready()`. **CI-enforced** by `backend/django_core/.importlinter` + the `lint-imports` step in `backend-lint-fast` (16 contracts, 0 broken).
 - **Migration-shell contract (SOLMVP, 20-21/09/2026)** — a parked app (`core.parked.APPS_PARQUEES`, the single copy of the 47 labels) keeps ONLY `__init__.py`, `apps.py` (`parked = True` + `'parked': True` in its manifest), `migrations/` verbatim plus ONE final `SeparateDatabaseAndState(state_operations=[DeleteModel…], database_operations=[])`, and a `models.py` declaring **no Django model** (a verbatim *talon* of module-level functions, enums and namespace classes is allowed, and is required whenever a frozen migration imports a symbol from that file — an empty `models.py` would make the migration unimportable and break the whole graph, visible only in a FRESH process). It **stays in `INSTALLED_APPS`** (that is what keeps the kept apps' graph valid — never a squash) and exposes no url, Celery task/beat entry, test, screen, `contract_samples/` or e2e spec. **No table and no `django_migrations` row is ever touched**; the 5 kept->parked FK links left as `RemoveField` (revertable: only the link column goes). The only authorised tool is `manage.py parquer_app <label>` (`--dry-run`, `--check`), which verifies in a fresh subprocess that the migration graph still loads before deleting anything; the host wrapper `python scripts/parquer_app.py --verifier-tout` asserts all 47 still satisfy the contract (it does, at this commit). The **permanent** CI guard is **`scripts/check_parked_apps.py`** in the `stage-names` job — it fails if any import, FK, url include or beat entry targets a parked label outside `*/migrations/*`; it is delivered by **SOLMVP53** in this same batch and is the guard a future session must keep green. Restoring a module: the proven recipe in `docs/parked-modules.md` §5, plus `docs/module-playbook.md`.
 - **Reference numbering** — never `count()+1` (it collided in production when quotes were deleted). `core.numbering.next_reference` / `apps/ventes/utils/references.py` compute highest-used+1 per company+month under a savepoint with retry; `scripts/check_platform.py` (ARC6) blocks any new `count() + 1`.
@@ -591,7 +592,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1290)**
+**Done (1292)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -774,6 +775,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGR624` — Aller-retour EN DIRECT du parcours chantier pompage (pile locale, Playwright)
 - `AGR625` — Chantier pompage (2/2, l'« AGR602b » de la critique) : gate 82-21 consultatif, étape…
 - `AIC50` — Skill `assistant-manuel` : Claude Code génère sur l'abonnement de Reda (jamais une clé…
+- `AIC51` — Skill `assistant-tri` + `docs/assistant-tri.md` + interrupteur…
+- `AICM1` — Réclamer les crédits API et créer le workspace de l'assistant
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -1884,7 +1887,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (129)**
+**Open — to build (127)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1930,9 +1933,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGRM41` — Engagement SAV affichable
 - `AGRM42` — Assurance vol des panneaux
 - `AGRM43` — Consignes de remise au fermier (FR + darija)
-- `AIC51` — Skill `assistant-tri` + `docs/assistant-tri.md` + interrupteur…
 - `AIC52` — [GATED: secret `CLAUDE_CODE_OAUTH_TOKEN` GitHub (`claude setup-token`, valable un an…
-- `AICM1` — Réclamer les crédits API et créer le workspace de l'assistant
 - `AICM2` — Réglage de confidentialité du compte claude.ai
 - `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]

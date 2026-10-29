@@ -14,11 +14,11 @@ import datetime
 from decimal import Decimal
 from unittest import mock
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Lead
 from apps.ventes import roof_load
-from apps.ventes.domain import etude_ci
+from apps.ventes.domain import etude_ci, etude_ci_visite
 from apps.ventes.tests.test_ciq122_cas_reference import CATALOGUE_TEST, PVGIS
 from apps.visites.models import VisiteTerrain
 from authentication.models import Company
@@ -34,6 +34,37 @@ CORPS = {'mode': 'commercial', 'tension': 'bt', 'phases': 'tri',
          'consommation': {'kwh_mensuels': [6000] * 12},
          'rythme': {'categorie_commerciale': 'bureau'},
          'taille_explicite_kwc': 40}
+
+
+class MiseALaTerreDuReleveTests(SimpleTestCase):
+    """R3.7 (fondateur, 28/10/2026) — la mise à la terre n'est JAMAIS
+    automatique : le constat de la visite (``releve['mise_a_la_terre']``,
+    contrat de ``releve_ci_pour_lead``) la rend nécessaire (« à créer ») ou
+    non (« conforme ») ; sinon rien n'est posé et la composition alerte."""
+
+    def test_constat_de_la_visite_vers_le_besoin(self):
+        lire = etude_ci_visite.mise_a_la_terre_du_releve
+        for constate, attendu in (('a_creer', True), ('conforme', False),
+                                  ('a_verifier', None), (None, None)):
+            self.assertIs(lire({'mise_a_la_terre': {'constate': constate, 'motif': None}}),
+                          attendu, constate)
+        self.assertIsNone(lire({}))
+        self.assertIsNone(lire(None))
+        self.assertIsNone(lire({'mise_a_la_terre': 'a_creer'}))  # forme inconnue
+
+    def test_feuille_persistee_et_transmise_a_la_composition(self):
+        res = etude_ci._Resolution()
+        res.poser_arbre({'contraintes': {'mise_a_la_terre_necessaire': False}},
+                        etude_ci._provenance('saisie', None, '2026-10-28'))
+        self.assertIs(res.valeur('mise_a_la_terre_necessaire'), False)
+        entrees = etude_ci._entrees_composition(res, {'module': None}, 'tri', 'bt', False)
+        self.assertIs(entrees['mise_a_la_terre_necessaire'], False)
+        arbre = etude_ci.entrees_pour_etude_params(res.entrees_resolues())
+        self.assertIs(arbre['contraintes']['mise_a_la_terre_necessaire'], False)
+        # Rien de déclaré ⇒ None (la composition alerte, n'ajoute rien).
+        vide = etude_ci._entrees_composition(etude_ci._Resolution(), {'module': None},
+                                             'tri', 'bt', False)
+        self.assertIsNone(vide['mise_a_la_terre_necessaire'])
 
 
 class ReleveVisiteTests(TestCase):

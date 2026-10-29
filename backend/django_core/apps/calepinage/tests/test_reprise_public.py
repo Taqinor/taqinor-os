@@ -32,8 +32,9 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.reprise_public import (
-    CHAMP_PORTEUR, CLE_LAYOUT, _document_public_du_lead, _latlng_vers_lnglat,
+    CHAMP_PORTEUR, CLE_LAYOUT, _document_public_du_lead,
 )
+from apps.crm.selectors import contour_lnglat
 
 #: Le contour que le visiteur trace, tel que le lead le stocke : [lat, lng].
 CONTOUR_LATLNG = [[33.4999, -7.6001], [33.4999, -7.5999],
@@ -94,10 +95,39 @@ class LeDocumentPublicSansBase(SimpleTestCase):
         self.assertEqual(_document_public_du_lead(lead)['outline'],
                          [[lat, lng] for lat, lng in CONTOUR_LATLNG])
 
-    def test_la_conversion_nommee_refuse_un_point_illisible(self):
-        self.assertEqual(_latlng_vers_lnglat([[33.5, -7.6], ['x', 2]]), [])
-        self.assertEqual(_latlng_vers_lnglat([[33.5]]), [])
-        self.assertEqual(_latlng_vers_lnglat(None), [])
+    def test_le_normaliseur_unique_ecarte_un_point_illisible(self):
+        """ACAL250 — UN normaliseur (crm) : point illisible écarté, < 3 ⇒ []."""
+        self.assertEqual(contour_lnglat(LeadFactice(
+            roof_outline=[[33.5, -7.6], ['x', 2]])), [])
+        self.assertEqual(contour_lnglat(LeadFactice(roof_outline=[[33.5]])),
+                         [])
+        self.assertEqual(contour_lnglat(LeadFactice()), [])
+        self.assertEqual(contour_lnglat(None), [])
+
+    def test_contour_inutilisable_ni_zone_ni_graine(self):
+        """ACAL250 — GPS corrigé B HORS du contour R : aucune zone depuis R,
+        le document ne porte que le repère B (jamais roof_point)."""
+        lead = LeadFactice(roof_outline=CONTOUR_LATLNG,
+                           roof_point={'lat': 33.5, 'lng': -7.6},
+                           gps_lat=33.6, gps_lng=-7.7)
+        document = _document_public_du_lead(lead)
+        self.assertEqual(document['zones'], [])
+        self.assertEqual(document['outline'], [])
+        self.assertEqual(document['pin'], {'lat': 33.6, 'lng': -7.7})
+
+    def test_contour_objets_lat_lng_et_bornes(self):
+        """ACAL250 — un contour {lat, lng} donne le MÊME document qu'en
+        [lat, lng] ; un sommet hors bornes (lat 233,57) est écarté."""
+        en_objets = [{'lat': lat, 'lng': lng} for lat, lng in CONTOUR_LATLNG]
+        attendu = _document_public_du_lead(
+            LeadFactice(roof_outline=CONTOUR_LATLNG))
+        self.assertEqual(
+            _document_public_du_lead(LeadFactice(roof_outline=en_objets)),
+            attendu)
+        hors_bornes = CONTOUR_LATLNG + [[233.57, -7.6]]
+        self.assertEqual(
+            _document_public_du_lead(LeadFactice(roof_outline=hors_bornes)),
+            attendu)
 
     def test_un_lead_sans_trace_ne_donne_aucun_document(self):
         self.assertIsNone(_document_public_du_lead(LeadFactice()))

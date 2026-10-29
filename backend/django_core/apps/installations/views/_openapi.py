@@ -38,6 +38,10 @@ from ..signature_validation import (
 #: api-fuzz 24/10 envoyait ``file=`` (texte) et recevait « Fichier requis ».
 UPLOAD_PARSERS = [MultiPartParser]
 JSON_AND_UPLOAD_PARSERS = [JSONParser, MultiPartParser, FormParser]
+#: api-fuzz-full 28/10 (ENF11) — un corps qui porte un OBJET (``caracteristiques``)
+#: ne passe pas en ``x-www-form-urlencoded`` (l'objet y arrive en clés
+#: répétées, illisible) : JSON ou multipart (partie JSON) seulement.
+JSON_ET_MULTIPART_PARSERS = [JSONParser, MultiPartParser]
 
 
 class JsonOnlyMixin:
@@ -174,6 +178,19 @@ def texte_corps(request, nom, *autres):
         if valeur is not None and (not isinstance(valeur, str) or chr(0) in valeur):
             raise ValidationError({cle: 'Texte attendu (sans caractère nul).'})
     return (corps.get(nom) or '').strip()
+
+
+def confirmation_rdv(request):
+    """api-fuzz-full 29/10 (ENF11) — corps de ``confirmer-rdv`` lu AVANT toute
+    écriture : ``(confirme, date_prevue, motif)``. ``confirme`` est publié
+    booléen (absent = vrai) et ``motif`` texte : un tableau ou un nombre était
+    accepté (200) puis ignoré ou écrit tel quel → 400 nommant le champ."""
+    motif = texte_corps(request, 'motif') or None
+    corps = corps_objet(request)
+    confirme = corps.get('confirme', True)
+    if not isinstance(confirme, bool):
+        raise ValidationError({'confirme': 'Booléen attendu.'})
+    return confirme, corps.get('date_prevue'), motif
 
 
 #: Plus grand pourcentage qu'une colonne ``DecimalField(5, 2)`` sait garder.

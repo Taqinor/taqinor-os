@@ -1058,7 +1058,8 @@ describe('LIENS ERP — les chemins tokenisés émis par la page sont intacts', 
 
   it('les endpoints backend passent toujours par leurs constructeurs testés', () => {
     expect(CODE).toContain('proposalEndpoint(API_BASE, token)');
-    expect(CODE).toContain('proposalPdfEndpoint');
+    // ASEC53 — le PDF passe par le relais same-origin (proposalPdfEndpoint côté relais).
+    expect(CODE).toContain('relaisPdfProposition(token)');
     // La base API reste la base canonique.
     expect(CODE).toContain("'https://api.taqinor.ma'");
   });

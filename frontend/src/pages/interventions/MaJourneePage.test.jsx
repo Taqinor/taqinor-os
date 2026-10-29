@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import MaJourneePage from './MaJourneePage'
 
 // jsdom n'implémente pas ResizeObserver (mesuré par certains primitifs UI) —
@@ -34,7 +36,12 @@ vi.mock('../../api/installationsApi', async () => ({
   },
 }))
 
+vi.mock('../../api/crmApi', () => ({
+  default: { getRelances: vi.fn(() => Promise.resolve({ data: { results: [] } })) },
+}))
+
 import installationsApi from '../../api/installationsApi'
+import crmApi from '../../api/crmApi'
 import { polyfillResizeObserver } from '../../test/selectNatif'
 import { reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -292,5 +299,32 @@ describe('MaJourneePage — accord géolocalisation bloquant (27/10/2026)', () =
     const signal = await screen.findByTestId('mj-suivi-interrompu')
     expect(signal.textContent).toBe('Suivi interrompu depuis 18 min')
     expect(signal.className).toContain('text-warning')
+  })
+})
+
+/* ERR-TECH-MAJOURNEE-RELANCES-403 — « À faire aujourd'hui » ne demande les
+   relances commerciales (GET /crm/leads/relances/ → 403 pour un Technicien) que
+   si la permission servie `crm_voir` (ou le palier admin) l'autorise. */
+describe('MaJourneePage — relances commerciales gatées par la permission servie', () => {
+  const rendreAvec = (auth) => render(
+    <Provider store={configureStore({ reducer: { auth: (s = auth) => s } })}>
+      <MemoryRouter><MaJourneePage /></MemoryRouter>
+    </Provider>,
+  )
+
+  it("un Technicien (sans crm_voir) n'appelle pas les relances", async () => {
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
+    rendreAvec({ role: 'normal', role_nom: 'Technicien', permissions: ['sav_voir'] })
+    expect(await screen.findByRole('heading', { name: 'Ma journée' })).toBeInTheDocument()
+    await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalled())
+    expect(crmApi.getRelances).not.toHaveBeenCalled()
+  })
+
+  it('un porteur de crm_voir demande les relances du jour', async () => {
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
+    rendreAvec({ role: 'normal', permissions: ['crm_voir'] })
+    await waitFor(() => expect(crmApi.getRelances).toHaveBeenCalledWith(
+      { scope: 'today' }, expect.anything(),
+    ))
   })
 })

@@ -38,6 +38,16 @@ const baseTicket = {
   couverture: 'a_determiner', devis_id_ext: null, facture_id_ext: null,
 }
 
+describe('TicketDetail — ERR-SAV-BARRE-ACTIONS-DEBORDE barre d\'actions', () => {
+  it('la barre revient à la ligne : « Facturer » reste dans la barre, qui ne déborde pas', async () => {
+    renderDetail(baseTicket)
+    const facturer = await screen.findByRole('button', { name: /Facturer/ })
+    const barre = screen.getByTestId('ticket-actions')
+    expect(barre).toContainElement(facturer)
+    expect(barre.className).toMatch(/\bsm:flex-wrap\b/)
+  })
+})
+
 describe('TicketDetail — XSAV3 création de devis de réparation', () => {
   it('affiche « Créer un devis » pour un ticket hors garantie et crée le devis', async () => {
     renderDetail(baseTicket)

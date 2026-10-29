@@ -97,7 +97,7 @@ import {
   // dans `etude_params` (registre de surcharges D12 côté serveur). La fonction
   // reste dans solar.js, avec ses tests — elle n'a simplement plus d'appelant
   // sur ce chemin d'enregistrement.
-  baremeDepuisProfil, multiPropertyPreviewTTC, lignesRemiseesParPanier,
+  multiPropertyPreviewTTC, lignesRemiseesParPanier,
   COMMERCIAL_CATEGORY_QUESTIONS,
   // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
   // sans elle le modèle d'économie ne sature pas et l'ascension marginale
@@ -107,10 +107,8 @@ import {
   // ordre »), appliquée par la composition SERVEUR (`ordre_lignes`) ;
   // ADEV69 — l'ancien composeur JS `autoFillLines` est supprimé.
   // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
-  _hasPrix,
-  // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré vs factures du lead.
-  MESSAGE_KWH_INCOHERENT,
-} from '../../features/ventes/solar'
+  _hasPrix} from '../../features/ventes/solar'
+import { MESSAGE_KWH_INCOHERENT, baremeDepuisProfil } from '../../features/ventes/calc/tarifs.js'
 import { formatNumber, todayLocalIso } from '../../lib/format'
 // CJ2b — l'aperçu du moteur horaire résidentiel vit dans `useApercuEtude`
 // (SPL51, dérivations) et `ApercuSimulation` (SPL52, carte).
@@ -1462,12 +1460,12 @@ export default function DevisGenerator({
   const etatPompage = useMemo(() => etatPompageEcran(pompageSaisie, {
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
-    farmHmtStatic, farmHmtDrawdown, leadId: leadId || null,
+    farmHmtStatic, farmHmtDrawdown, leadId: leadId || null, clientId: clientId || null,
     // AGQ26 (C-AGQ-025) — le SITE du lead (ville de calcul + GPS) : sans lui,
-    // la production retombait en repli plat en accusant PVGIS.
+    // la production retombait en repli plat en accusant PVGIS (sans lead : fiche client, AGRI-SITE).
     editId: editId || null, ...siteDuLead(villeCalculLead, selectedLead),
   }), [pompageSaisie, pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit,
-    pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
+    pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa, clientId,
     farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId, villeCalculLead, selectedLead])
   const pompageManquants = modeInstallation === 'agricole'
     ? manquantsPompage(etatPompage) : []

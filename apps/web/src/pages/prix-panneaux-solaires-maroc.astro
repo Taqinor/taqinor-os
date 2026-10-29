@@ -20,12 +20,12 @@ import StickyCta from '../components/StickyCta.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 import Faq from '../components/Faq.astro';
 import { NAP } from '../lib/nap';
+import { DATE_LONGUE_FR as dateFmt } from '../lib/format';
 
 // Rafraîchie à chaque révision annuelle des fourchettes ci-dessous (voir
 // CONTENT_SEO_NOTES.md §5/§6 pour les sources). Pas de contenu "collection" —
 // page évergreen simple, comme les guides.
 const verifiedDate = new Date('2026-07-03');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 const fourchettes = [
   { kwc: '3 kWc', prix: '28 000 – 42 000 DH' },

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { messageRefus } from './commun/refusServeur'
 import { useParams } from 'react-router-dom'
 import { AlertCircle, Check } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
@@ -39,17 +40,10 @@ import {
    a basculé un drapeau local.
    ========================================================================== */
 
-/* ACAL109 — le refus SERVEUR, mot pour mot : `{detail}` ou `{<champ>: msg}`
-   (ex. `{retenue: « … est la variante RETENUE … »}`). */
-const errMsg = (e, repli) => {
-  const data = e?.response?.data
-  if (typeof data?.detail === 'string' && data.detail) return data.detail
-  if (data && typeof data === 'object') {
-    const premier = Object.values(data).find((v) => v)
-    if (premier) return Array.isArray(premier) ? premier.join(' ') : String(premier)
-  }
-  return repli
-}
+/* ACAL109/ACAL279 — le refus SERVEUR, mot pour mot, par LE décodeur commun
+   (`commun/refusServeur.js` : `{detail}`, `{<champ>: [msg]}` — l'enveloppe
+   `error` du handler n'est jamais un champ). */
+const errMsg = messageRefus
 
 /* ACAL109 (D-ACAL-2) — ce que « Retenir » veut dire, dit à l'écran. */
 const BANDEAU_RETENIR = 'Retenir rend cette variante conception courante : c’est elle que Générer le devis chiffre.'

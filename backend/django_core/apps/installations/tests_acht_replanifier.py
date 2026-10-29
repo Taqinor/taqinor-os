@@ -70,6 +70,11 @@ class ReplanifierTests(TestCase):
             'properties']['date_prevue']
         self.assertEqual(champ['format'], 'date')
         self.assertTrue(champ['nullable'])
+        # api-fuzz-full 29/10 : `motif` publie le motif sans NUL (refusé 400).
+        from core.champs_stricts import MOTIF_SANS_NUL
+        motif = schema['components']['schemas']['ConfirmerRdvRequeteRequest'][
+            'properties']['motif']
+        self.assertEqual(motif['pattern'], MOTIF_SANS_NUL)
         r = self.api.post(f'{BASE}/{self.iv.id}/confirmer-rdv/',
                           {'date_prevue': ''}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
@@ -110,3 +115,14 @@ class ReplanifierTests(TestCase):
         self.iv.refresh_from_db()
         self.assertTrue(self.iv.rdv_confirme)
         self.assertEqual(self.iv.rdv_reschedule_count, 1)
+
+    def test_types_du_corps_400(self):
+        """api-fuzz-full 29/10 : `motif` publié texte et `confirme` booléen —
+        un tableau ou une chaîne répond 400, rien n'est écrit."""
+        for corps in ({'motif': [[True]], 'date_prevue': None},
+                      {'confirme': 'oui'}, {'confirme': None}):
+            r = self.api.post(f'{BASE}/{self.iv.id}/confirmer-rdv/', corps,
+                              format='json')
+            self.assertEqual(r.status_code, 400, r.data)
+        self.iv.refresh_from_db()
+        self.assertTrue(self.iv.rdv_confirme)

@@ -241,17 +241,23 @@ class GardeStructurelleCompareDigestTests(SimpleTestCase):
                         % (chemin, site.lineno, rendu))
         # 9 sites recalés par QJR413 + les 2 de ``cycle_vie`` déjà en bytes
         # + YBW51 (signature HMAC de la demande de rendez-vous YanBow,
-        # apps/crm/webhooks.py — née en bytes).
-        self.assertEqual(total, 12, '%d sites trouvés' % total)
+        # apps/crm/webhooks.py — née en bytes) + ASEC23 (empreinte de la
+        # preuve de lecture par navigateur, cycle_vie — née en bytes).
+        self.assertEqual(total, 13, '%d sites trouvés' % total)
 
     def test_les_deux_sites_de_cycle_vie_sont_inchanges(self):
-        """Troisième test du `Done` : ils appartiennent à une autre lane."""
-        sites = self._sites('apps/ventes/domain/cycle_vie.py')
-        self.assertEqual(len(sites), 2)
-        for site in sites:
+        """Troisième test du `Done` : ils appartiennent à une autre lane.
+        ASEC23 ajoute un troisième site (la preuve de lecture), né en bytes."""
+        sites = sorted(self._sites('apps/ventes/domain/cycle_vie.py'),
+                       key=lambda n: n.lineno)
+        self.assertEqual(len(sites), 3)
+        for site in sites[:2]:
             gauche, droite = (ast.unparse(a) for a in site.args)
             self.assertEqual(gauche, "str(stored).encode('utf-8')")
             self.assertEqual(droite, "otp_code.strip().encode('utf-8')")
+        gauche, droite = (ast.unparse(a) for a in sites[2].args)
+        self.assertEqual(gauche, "str(stockee.get('empreinte') or '').encode('utf-8')")
+        self.assertEqual(droite, "empreinte.encode('utf-8')")
 
 
 class TexteDuCorpsTests(SimpleTestCase):

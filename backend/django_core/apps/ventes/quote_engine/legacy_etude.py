@@ -653,7 +653,7 @@ def page_etude():
       <div style="color:white;font-size:10pt;font-weight:700;">{_g._L("lg_etude_titre")}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_g._L("lg_devis_n_nbsp").format(ref=_g.REF)} \u2014 {_g.CLIENT_NAME} \u2014 {_g.DATE_STR}</div>
     </div>
-    {_g.logo_html("42px")}
+    {_g.logo_html("entete")}
   </div>
   <div style="height:3px;background:{_g.CA};flex-shrink:0;"></div>
 

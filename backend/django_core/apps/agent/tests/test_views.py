@@ -343,3 +343,27 @@ class AssistantStatsTests(TestCase):
     def test_stats_admin_seul(self):
         self.assertEqual(_auth(self.vendeur).get(self.URL).status_code, 403)
         self.assertEqual(_auth(self.admin).get(self.URL, {'semaines': 'x'}).status_code, 400)
+
+    def test_bornes_et_corps_publies_tels_qu_appliques(self):
+        """api-fuzz-full 28/10 (ENF11) — ``semaines`` publié 1..52 (``-17739``
+        était « conforme » puis refusé) ; le PATCH de note publie ``note``
+        obligatoire (un ``{}`` était « conforme » puis refusé 400)."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        doc = SchemaGenerator(patterns=[path(
+            'api/django/agent/', include('apps.agent.urls'))]).get_schema(
+            request=None, public=True)
+        stats = doc['paths']['/api/django/agent/evenements/stats/']['get']
+        semaines = next(p for p in stats['parameters']
+                        if p['name'] == 'semaines')['schema']
+        self.assertEqual((semaines['minimum'], semaines['maximum']), (1, 52))
+        note = doc['paths']['/api/django/agent/evenements/{id}/note/']['patch']
+        self.assertTrue(note['requestBody'].get('required'))
+        self.assertIn('"required": ["note"]', json.dumps(note['requestBody']))
+        # api-fuzz-full 29/10 : `commentaire` publie le motif sans NUL.
+        from core.champs_stricts import MOTIF_SANS_NUL
+        self.assertEqual(doc['components']['schemas']['PatchedNoteEvenementRequest'][
+            'properties']['commentaire']['pattern'], MOTIF_SANS_NUL)
+        for brut in ('0', '53', '-17739'):
+            resp = _auth(self.admin).get(self.URL, {'semaines': brut})
+            self.assertEqual(resp.status_code, 400, brut)

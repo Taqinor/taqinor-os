@@ -59,6 +59,7 @@ const RelancesSuiviPage = lazy(() => import('../../pages/crm/RelancesSuiviPage')
 const VisiteursPage = lazy(() => import('../../pages/crm/VisiteursPage'))
 // Attribution des leads par le responsable d'équipe (fondateur 27/10/2026).
 const AttributionLeadsPage = lazy(() => import('../../pages/crm/AttributionLeadsPage'))
+const CockpitEquipePage = lazy(() => import('../../pages/crm/CockpitEquipePage'))
 // VTA8 — les 4 écrans de visite technique terrain ont QUITTÉ le CRM : ils
 // vivent dans l'app autonome « Visites » (`features/visites/module.config.jsx`,
 // routes `/visites/...`), parce que le commercial terrain qui les utilise n'a
@@ -112,6 +113,7 @@ const config = {
       // reste serveur, sur l'écriture d'`appareils-equipe/`).
       { to: '/crm/visiteurs',        label: 'Visiteurs & alertes', k: 'nav.visiteurs', icon: navIcon(Radar), roles: ['normal','responsable','admin'] },
       { to: '/crm/attribution',     label: 'Attribution des leads', icon: navIcon(UserPlus), roles: ['normal','responsable','admin'] },
+      { to: '/crm/cockpit-equipe',  label: 'Cockpit d’équipe', icon: navIcon(Users), roles: ['normal','responsable','admin'] },
       // VTA8 — « Visites terrain » et « Revue technique » sont passées à l'app
       // Visites (nav `features/visites/module.config.jsx`).
     ],
@@ -142,6 +144,7 @@ const config = {
     // VIS1 — Visiteurs & alertes (anti-fraude anonyme/appareil équipe).
     { path: '/crm/visiteurs', component: VisiteursPage },
     { path: '/crm/attribution', component: AttributionLeadsPage },
+    { path: '/crm/cockpit-equipe', component: CockpitEquipePage },
     // VTA8 — les 4 routes `/crm/visites*` sont parties dans l'app Visites
     // (`/visites`, `/visites/toutes`, `/visites/revue`, `/visites/:id[/calage]`).
   ],

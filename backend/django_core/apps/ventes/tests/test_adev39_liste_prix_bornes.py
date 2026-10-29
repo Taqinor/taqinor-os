@@ -126,3 +126,25 @@ class ListePrixBornesTests(TestCase):
         composition = _texte(doc['paths'][
             '/api/django/ventes/devis/composition/']['post']['requestBody'])
         self.assertIn('"maximum": 100000', composition)
+
+    def test_offre_taille_produit_sans_prix_409_inconnu_404(self):
+        """api-fuzz-full 28/10 (ENF11) — substitution de composant : un
+        produit EXISTANT sans prix est un état du catalogue (409) ; un id
+        inconnu, seul ou à côté, l'emporte (404) ; plus jamais un 400."""
+        from rest_framework.exceptions import NotFound
+
+        from apps.ventes.serializers import OffreTailleEcritureSerializer
+        from core.conflit_etat import ConflitEtat
+        gratuit = Produit.objects.create(
+            company=self.company, nom='Structure sans prix', sku='ADEV39-SP',
+            prix_vente=Decimal('0'), quantite_stock=1)
+
+        def _valider(equipements):
+            OffreTailleEcritureSerializer(
+                data={'cle': 'eco', 'config': {'equipements': equipements}},
+                context={'company': self.company}).is_valid(
+                    raise_exception=True)
+        with self.assertRaises(ConflitEtat):
+            _valider({'structure': gratuit.pk})
+        with self.assertRaises(NotFound):
+            _valider({'structure': gratuit.pk, 'cable_dc': 999999})

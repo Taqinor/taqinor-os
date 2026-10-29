@@ -13,9 +13,8 @@ import {
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec, isBattery, texteClassement,
   batteryKwhFromLines, batteryCapaciteInconnue,
-  consoAnnuelleDepuisFactures,
-  productibleForCity,
-} from '../../../../features/ventes/solar'
+  productibleForCity} from '../../../../features/ventes/solar'
+import { consoAnnuelleDepuisFactures } from '../../../../features/ventes/calc/tarifs.js'
 import {
   construireCorpsPreview, etiquetteSource, lignesAffichables,
   useEtudeHorairePreview, verdictBatteriePourTaille,

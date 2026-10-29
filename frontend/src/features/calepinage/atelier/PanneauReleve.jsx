@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { messageRefus, refusServeur } from '../commun/refusServeur'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
@@ -314,13 +315,34 @@ function mesuresDuReleve(releve) {
   return mesures
 }
 
-function premierMessage(data) {
-  if (typeof data?.detail === 'string' && data.detail) return data.detail
-  for (const valeur of Object.values(data && typeof data === 'object' ? data : {})) {
-    if (typeof valeur === 'string' && valeur) return valeur
-    if (Array.isArray(valeur) && typeof valeur[0] === 'string') return valeur[0]
-  }
-  return 'La cote n’a pas pu être appliquée — réessayez.'
+// ACAL279 — LE décodeur commun (`commun/refusServeur.js`).
+const premierMessage = (err) => messageRefus(err, 'La cote n’a pas pu être appliquée — réessayez.')
+
+/** Un refus du serveur, champ par champ (sinon son motif sous `detail`). */
+function erreursDuRefus(err, repli) {
+  const { message, champs } = refusServeur(err)
+  return Object.keys(champs).length ? champs : { detail: message || repli }
+}
+
+/* ACAL279 — le bandeau nomme les champs EN FRANÇAIS, jamais par leur clé brute. */
+const LIBELLES_CHAMPS = {
+  releve_le: 'Relevé le', azimut_boussole_deg: 'Azimut boussole',
+  precision_azimut_deg: 'Précision de l’azimut', notes: 'Notes de terrain',
+  chaines: 'Chaînes de cotes', photo_ids: 'Photos',
+}
+const libelleChamp = (cle) => {
+  const chaine = /^chaines\[(\d+)\]$/.exec(cle)
+  if (chaine) return `Chaîne ${Number(chaine[1]) + 1}`
+  return LIBELLES_CHAMPS[cle] || cle
+}
+
+function ErreurChamp({ champ, erreurs }) {
+  if (!erreurs[champ]) return null
+  return (
+    <p role="alert" data-testid={`cal-releve-erreur-${champ}`} className="mt-1 text-xs text-red-300">
+      {erreurs[champ]}
+    </p>
+  )
 }
 
 function AppliquerCoteAuPan({ calepinageId, releve, lectureSeule = false }) {
@@ -367,7 +389,7 @@ function AppliquerCoteAuPan({ calepinageId, releve, lectureSeule = false }) {
         const conflit = lireConflit(err)
         setRetour({ ok: false, texte: conflit?.documentModifie
           ? 'Le calepinage a changé ailleurs : rechargez avant d’appliquer la cote.'
-          : (conflit?.motif ?? premierMessage(err?.response?.data)) })
+          : (conflit?.motif ?? premierMessage(err)) })
       })
       .finally(() => setEnCours(false))
   }
@@ -507,7 +529,7 @@ function AppliquerAzimutAuPan({
           ok: false,
           texte: conflit?.documentModifie
             ? 'Le calepinage a changé ailleurs : rechargez avant d’appliquer l’azimut.'
-            : (conflit?.motif ?? premierMessage(err?.response?.data)),
+            : (conflit?.motif ?? premierMessage(err)),
         })
       })
       .finally(() => setEnCours(false))
@@ -643,10 +665,7 @@ export default function PanneauReleve({
         setMessage(corriger ? 'Relevé corrigé.' : 'Relevé enregistré.')
       })
       .catch((err) => {
-        const corpsRefus = err?.response?.data
-        setErreurs(corpsRefus && typeof corpsRefus === 'object'
-          ? corpsRefus
-          : { detail: 'Le relevé a été refusé par le serveur.' })
+        setErreurs(erreursDuRefus(err, 'Le relevé a été refusé par le serveur.'))
         setResultat(null)
       })
       .finally(() => setEnCours(false))
@@ -667,28 +686,27 @@ export default function PanneauReleve({
         setMessage('Relevé supprimé.')
       })
       .catch((err) => {
-        const corpsRefus = err?.response?.data
-        setErreurs(corpsRefus && typeof corpsRefus === 'object'
-          ? corpsRefus
-          : { detail: 'La suppression a été refusée par le serveur.' })
+        setErreurs(erreursDuRefus(err, 'La suppression a été refusée par le serveur.'))
       })
       .finally(() => setEnCours(false))
   }
 
-  const champsFautifs = Object.keys(erreurs)
+  const champsFautifs = Object.keys(erreurs).filter((cle) => cle !== 'detail')
   const geometrieChaines = resultat?.releve?.geometrie?.chaines ?? null
 
   return (
     <div className="cine-card mt-6 p-6" data-testid="cal-releve-panel">
       <p className="tech-label rule-brass text-brass-300">Relevé terrain</p>
 
-      {champsFautifs.length > 0 && (
+      {(champsFautifs.length > 0 || erreurs.detail) && (
         <p
           role="alert"
           data-testid="cal-releve-bandeau"
           className="mt-3 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
         >
-          {`Relevé incomplet — à corriger : ${champsFautifs.join(', ')}`}
+          {champsFautifs.length > 0
+            ? `Relevé incomplet — à corriger : ${champsFautifs.map(libelleChamp).join(', ')}`
+            : erreurs.detail}
         </p>
       )}
 
@@ -701,7 +719,7 @@ export default function PanneauReleve({
           valeur={releveLe}
           onChange={setReleveLe}
         />
-        <div />
+        <ErreurChamp champ="releve_le" erreurs={erreurs} />
         <ChampTexte
           id="cal-releve-azimut_boussole_deg"
           testId="cal-releve-champ-azimut_boussole_deg"
@@ -710,6 +728,7 @@ export default function PanneauReleve({
           valeur={azimutDeg}
           onChange={setAzimutDeg}
         />
+        <ErreurChamp champ="azimut_boussole_deg" erreurs={erreurs} />
         <div>
           <ChampTexte
             id="cal-releve-precision_azimut_deg"
@@ -719,12 +738,7 @@ export default function PanneauReleve({
             valeur={precisionDeg}
             onChange={setPrecisionDeg}
           />
-          {erreurs.precision_azimut_deg && (
-            <p role="alert" data-testid="cal-releve-erreur-precision_azimut_deg"
-              className="mt-1 text-xs text-red-300">
-              {erreurs.precision_azimut_deg}
-            </p>
-          )}
+          <ErreurChamp champ="precision_azimut_deg" erreurs={erreurs} />
         </div>
       </div>
 
@@ -737,6 +751,7 @@ export default function PanneauReleve({
           className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
         />
       </label>
+      <ErreurChamp champ="notes" erreurs={erreurs} />
 
       {chaines.map((chaine, index) => (
         <BlocChaine

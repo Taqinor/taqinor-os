@@ -98,6 +98,31 @@
         "groupe_client": "tableau_ci"
       },
       {
+        "id": 9004,
+        "devis": 413,
+        "produit": 91,
+        "designation": "Smart Meter Huawei DTSU666-H 100 A (raccordement direct)",
+        "quantite": "1.00",
+        "prix_unitaire": "2000.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "tva_base_legale": "",
+        "type_ligne": "produit",
+        "ordre": 7,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "groupe_index": null,
+        "groupe_label": "",
+        "lot": null,
+        "ligne_composee": true,
+        "role_devis": "",
+        "total_ht": "2000.00",
+        "produit_tva": "20.00",
+        "groupe_client": "supervision_ci"
+      },
+      {
         "id": 9002,
         "devis": 413,
         "produit": 95,
@@ -494,5 +519,5 @@
     "detail": "Pénalités de retard : le plafond (plafond_pct) est obligatoire avec le taux par semaine.",
     "champ": "entete.penalites_retard_livraison.plafond_pct"
   },
-  "regles_r2_groupe_client": "R2 (fondateur 28/10/2026, contrat d'abord — PACT10) — chaque ligne LUE (LigneDevisSerializer : réponse de replace-lines, GET devis/<id>/ `lignes`, GET devis-lignes/<id>/) porte `groupe_client` en LECTURE SEULE : 'tableau_ci' (organe du « Tableau de protection AC/DC » : coffret DC/AC, disjoncteur AC, protection DC par MPPT, parafoudres DC/AC, mise à la terre, comptage / limitation d'injection) | 'installation_ci' (prestation « Installation clé en main ») | null. Calculé côté serveur du `role_ci` du PRODUIT (une seule source : moteur_ci.composition.ROLES_TABLEAU_CI / PRESTATIONS_CI), jamais de la désignation. Le générateur et l'édition affichent les lignes d'un même groupe sous un en-tête de section « <libellé> — total HT » et gardent chaque composant éditable ligne à ligne : rien n'est fusionné en base, le PDF / /proposition regroupent au rendu (quote_engine/ci/tableau.py, ci/installation.py). Ignoré en écriture."
+  "regles_r2_groupe_client": "R2 (fondateur 28/10/2026, contrat d'abord — PACT10) — chaque ligne LUE (LigneDevisSerializer : réponse de replace-lines, GET devis/<id>/ `lignes`, GET devis-lignes/<id>/) porte `groupe_client` en LECTURE SEULE : 'tableau_ci' (organe du « Tableau de protection AC/DC » : coffret DC/AC, disjoncteur AC, protection DC et parafoudre DC par chaîne, parafoudre AC, mise à la terre) | 'supervision_ci' (R3, fondateur 28/10/2026 : « Supervision & comptage » — compteur / contrôleur d'injection (Smart Meter, choisi par calibre), clé wifi par onduleur ou logger central ; le Smart Meter n'est PLUS dans le Tableau) | 'installation_ci' (prestation « Installation clé en main ») | null. Calculé côté serveur du `role_ci` du PRODUIT (une seule source : moteur_ci.composition.ROLES_TABLEAU_CI / ROLES_SUPERVISION_CI / PRESTATIONS_CI), jamais de la désignation. Le générateur et l'édition affichent les lignes d'un même groupe sous un en-tête de section « <libellé> — total HT » et gardent chaque composant éditable ligne à ligne : rien n'est fusionné en base, le PDF / /proposition regroupent au rendu (quote_engine/ci/tableau.py, ci/installation.py). Ignoré en écriture."
 }
