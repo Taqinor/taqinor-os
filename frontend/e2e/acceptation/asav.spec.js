@@ -476,14 +476,24 @@ etape('P99.1', ['ASAV99'], async ({ page }) => {
     const produit = await creerProduit(page.request, t, { garantieMois: 24 })
     const eq = await creerEquipement(page.request, t, { client, produit, datePose: isoMois(-3) })
     const note = uniq('Note parc ASAV99')
-    const maj = await lireJson(await page.request.patch(`${SAV}/equipements/${eq.id}/`, { data: { note } }), 'note')
-    expect(maj.note).toBe(note)
+    // L'écran Parc n'ouvre pas une fiche par `?id=` et trie par fin de garantie (l'équipement
+    // neuf n'est pas en page 1) : on le RETROUVE par la recherche, comme l'utilisateur.
+    const ouvrirFiche = async () => {
+      await page.goto('/equipements')
+      await page.getByPlaceholder(/Rechercher \(série/).fill(eq.numero_serie)
+      await page.getByText(eq.numero_serie, { exact: true }).first().click({ timeout: 30_000 })
+      await expect(page.getByRole('dialog')).toBeVisible()
+      return page.getByRole('dialog').locator('textarea').first()
+    }
+    await (await ouvrirFiche()).fill(note)
+    await page.getByRole('dialog').getByRole('button', { name: /Mettre à jour/ }).click()
+    await expect.poll(async () => (await lireJson(
+      await page.request.get(`${SAV}/equipements/${eq.id}/`), 'équipement')).note, { timeout: 30_000 }).toBe(note)
+    const maj = await lireJson(await page.request.get(`${SAV}/equipements/${eq.id}/`), 'note')
     expect(maj.date_fin_garantie, 'fin de garantie inchangée').toBe(eq.date_fin_garantie)
     expect(maj.date_fin_garantie_effective).toBe(eq.date_fin_garantie_effective)
-    await page.goto(`/equipements?id=${eq.id}`)
-    await expect(page.getByText(eq.numero_serie).first()).toBeVisible({ timeout: 30_000 })
-    await page.reload()
-    await expect(page.getByText(eq.numero_serie).first()).toBeVisible({ timeout: 30_000 })
+    await page.reload() // persistance : rouverte, la fiche relit la note du serveur
+    await expect(await ouvrirFiche()).toHaveValue(note)
     const relu = await lireJson(await page.request.get(`${SAV}/equipements/${eq.id}/`), 'équipement relu')
     expect(relu.note).toBe(note)
     expect(relu.date_fin_garantie).toBe(eq.date_fin_garantie)
