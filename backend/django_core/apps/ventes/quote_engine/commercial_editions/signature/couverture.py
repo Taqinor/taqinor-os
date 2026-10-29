@@ -35,7 +35,9 @@ def build(ctx, m, j):
     ligne_client = donnees.ci_couverture.ligne_client(d, "com", cl["nom"], cl["meta"], "sg1")
     bandeau_txt = donnees.bandeau_reserve(d, "sg1")
     reserve = f'<div class="sg1-reserve">{bandeau_txt}</div>' if bandeau_txt else ""
-    arc = commun.fenetre_arc(photo, j["hero_bg"], j["or"])
+    # En arabe (droite à gauche), le titre s'aligne à droite : la fenêtre en
+    # arc passe à gauche (x 20-74 mm), le texte garde sa largeur de 108 mm.
+    arc = commun.fenetre_arc(photo, j["hero_bg"], j["or"], left_mm=20 if m["rtl"] else 136)
 
     # ── Héros ─────────────────────────────────────────────────────────────
     if m["deux_options"]:
@@ -169,8 +171,10 @@ def build(ctx, m, j):
 .sg1-kick{{margin-top:4mm;font-size:7pt;letter-spacing:.16em;text-transform:uppercase;color:{j['or_texte']};font-weight:500;}}
 .sg1-titre{{font-family:{j['display']};font-weight:400;font-size:{taille_titre}pt;line-height:1.08;letter-spacing:-.01em;
   margin-top:2.5mm;max-width:108mm;color:{j['on_hero']};}}
+{".sg1-titre,.sg1-acc,.sg1-client,.sg1-reserve,.sg1-kick,.sg1-filet{max-width:none !important;width:auto;margin-left:62mm;}" if m["rtl"] else ""}
 .sg1-acc{{font-family:{j['display']};font-weight:300;font-style:italic;font-size:10.5pt;line-height:1.35;color:{j['on_hero_2']};
   margin-top:3mm;max-width:104mm;}}
+.sg1-kick,.sg1-reserve{{max-width:108mm;}}
 .sg1-client{{margin-top:3mm;font-size:7.8pt;color:{j['on_hero_3']};max-width:108mm;}}
 .sg1-client b{{color:{j['on_hero']};font-weight:600;}}
 .sg1-reserve{{margin-top:4mm;padding:3px 0 3px 8px;border-left:2pt solid {j['or']};font-size:8pt;font-weight:500;color:{j['on_hero']};max-width:108mm;}}

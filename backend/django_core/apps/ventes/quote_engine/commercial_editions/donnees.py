@@ -62,9 +62,17 @@ def L(d, cle, fr, **valeurs):
         return fr.format(**valeurs) if valeurs else fr
 
 
+#: La couche de courtoisie FR + AR ne s'imprime que sur un document
+#: français : en arabe, les libellés sont déjà arabes (``modele`` la règle).
+_COURTOISIE_AR = True
+
+
 def ar(cle, fr=""):
     """Le libellé ARABE du catalogue pour ``cle`` — '' quand le catalogue ne
-    le porte pas (jamais une traduction inventée ici)."""
+    le porte pas (jamais une traduction inventée ici), ni sur un document
+    qui n'est pas en français."""
+    if not _COURTOISIE_AR:
+        return ""
     table = i18n_labels.LIBELLES.get(cle) or ci_blocs._LIBELLES_CPDF.get(cle)
     valeur = _txt((table or {}).get("ar"))
     return "" if not valeur or valeur == fr else valeur
@@ -558,6 +566,8 @@ def vendeur(d, ident):
 def modele(d, ctx):
     """Le modèle de vue complet d'un document (lecture + formatage)."""
     fmt, fmt_mad = ctx["fmt"], ctx.get("fmt_mad") or ctx["fmt"]
+    global _COURTOISIE_AR
+    _COURTOISIE_AR = ci_blocs.langue(d) == "fr"
     ident = ctx.get("ident") or {}
     brand, ligne_vendeur, bande_legale = vendeur(d, ident)
     deux_options = __import__(
