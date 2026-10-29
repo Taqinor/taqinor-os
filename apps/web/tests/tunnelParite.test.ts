@@ -429,7 +429,7 @@ describe('QJR664 — graphe « Une journée type » : parité FR / EN / AR', () 
       expect(src, loc).toContain('<div id="mt-jourtype-grid"');
       // RWEB17-M13 — le rendu est appelé par lib/tunnel/selections.ts avec la locale de la page (CONFIG_<LOCALE>).
       expect(src, loc).toContain(`locale: '${loc}',`);
-      expect(src, loc).toContain('renderJourType(ctx.locale, doc)');
+      expect(src, loc).toContain('renderJourType(ctx.locale, document)');
       expect(src, loc).toContain("scripts/tunnel/jourType'");
     }
   });
@@ -492,8 +492,9 @@ describe('CIW410 — tension / activité touchées : parité des 3 locales', () 
     it(`${locale} — la page marque le clic (setter du groupe de cartes) et le transmet à l'état`, () => {
       expect(src).toContain("tension = v || 'bt'; tensionTouched = true;");
       expect(src).toContain("activity = v || 'day'; activityTouched = true;");
-      expect(src).toContain('tensionTouchee: tensionTouched,');
-      expect(src).toContain('activiteTouchee: activityTouched,');
+      // RWEB17-M17 — lireEtatTunnel vit dans lib/tunnel/validation.ts, où `e` = ctx.etat.
+      expect(src).toContain('tensionTouchee: e.tensionTouched,');
+      expect(src).toContain('activiteTouchee: e.activityTouched,');
       // persisté dans l'instantané : une reprise de session ne perd pas le clic
       expect(src).toContain("tensionTouched: tensionTouched ? '1' : ''");
       // RWEB17-M10 — l'état initial vit dans `lib/tunnel/etat.ts::creerEtat` (lu à la suite de la page).
