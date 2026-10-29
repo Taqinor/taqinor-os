@@ -35,7 +35,9 @@ export const GET: APIRoute = async ({ params, request }) => {
 
   const relais = await relayBinaire(afficheToitureEndpoint(resolveApiBase(), token), {
     method: 'GET',
-    headers: { accept: 'image/*', ...entetePreuve(request) }, // ASEC53 — preuve de CE navigateur.
+    // ASEC53 — preuve de CE navigateur. `*/*` en repli : la négociation DRF de
+    // l'ERP (rendus JSON seulement) répond 406 à un `image/*` seul, avant la vue.
+    headers: { accept: 'image/*,*/*;q=0.8', ...entetePreuve(request) },
     signal: AbortSignal.timeout(12_000),
   });
   return relais ?? json({ ok: false, status: 502, detail: 'Service momentanément indisponible. Veuillez réessayer.' }, 502);

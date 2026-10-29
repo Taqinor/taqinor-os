@@ -287,6 +287,8 @@ describe('ASEC53 — relais binaires same-origin (PDF / exemplaire signé / toit
     const res = await get(getToiture, '/api/proposition-toiture/tok', 'tok');
     expect((fn.mock.calls[0] as [string])[0]).toBe('https://api.taqinor.ma/api/django/ventes/proposal/tok/roof-image/');
     expect(entetesAmont(fn)[EN_TETE_PREUVE]).toBe(PREUVE);
+    // Rejeu en direct 29/10 : un `image/*` seul vaut 406 côté DRF (rendus JSON) — `*/*` en repli.
+    expect(entetesAmont(fn).accept).toContain('*/*');
     expect(res.headers.get('content-type')).toBe('image/png');
     expect(res.headers.get('cache-control')).toBe('private, max-age=300');
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(OCTETS);
