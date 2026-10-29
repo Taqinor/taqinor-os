@@ -515,6 +515,16 @@ export const MESURES_SCHEMA_CI = {
       key: 'phases', label: 'Phases du compteur', unite: '', type: 'select',
       options: [{ value: 'monophase', label: 'Monophasé' }, { value: 'triphase', label: 'Triphasé' }],
     },
+    // R3 (fondateur 28/10/2026) — question de la visite (mesure requise, peut être
+    // « non relevée » avec un motif) ; le serveur la lit, le moteur ventes décide.
+    {
+      key: 'mise_a_la_terre', label: 'Mise à la terre existante', unite: '', type: 'select',
+      options: [
+        { value: 'conforme', label: 'Conforme, rien à ajouter' },
+        { value: 'a_creer', label: 'Absente ou non conforme : à créer / reprendre' },
+        { value: 'a_verifier', label: 'À vérifier par un électricien' },
+      ],
+    },
   ],
   cheminement: [
     {

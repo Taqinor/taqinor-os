@@ -10,7 +10,7 @@ donnée (`Produit.role_devis`) et l'ORDRE DE LECTURE
     déclaré → famille de la catégorie (si sans ambiguïté) → mots-clés du nom
 
 LE POINT LE PLUS IMPORTANT DE CE FICHIER EST LA NON-RÉGRESSION : sur le
-catalogue RÉELLEMENT semé (les 93 désignations de `seed_catalogue`), aucun
+catalogue RÉELLEMENT semé (les 96 désignations de `seed_catalogue`), aucun
 produit n'ayant de rôle déclaré ni de catégorie, la résolution doit rendre
 EXACTEMENT ce que `classer_produit` rendait hier, avec `source='nom'`. Les
 mots-clés ne sont pas remplacés : ils deviennent un REPLI PERMANENT.
@@ -152,12 +152,12 @@ class TestStkcat21OrdreDeResolution(SimpleTestCase):
 
 
 class TestStkcat21NonRegressionCatalogueSeme(SimpleTestCase):
-    """LES 93 DÉSIGNATIONS SEMÉES RENDENT LE MÊME RÔLE QU'HIER."""
+    """LES 96 DÉSIGNATIONS SEMÉES RENDENT LE MÊME RÔLE QU'HIER (R3 : + 3 Smart Meter Huawei)."""
 
     def test_le_catalogue_seme_est_bien_celui_qu_on_croit(self):
         noms = _noms_semes()
-        self.assertEqual(len(noms), 93)
-        self.assertEqual(len(set(noms)), 93, 'un nom semé en double')
+        self.assertEqual(len(noms), 96)
+        self.assertEqual(len(set(noms)), 96, 'un nom semé en double')
 
     def test_sans_role_ni_categorie_le_resultat_est_celui_des_mots_cles(self):
         for nom in _noms_semes():

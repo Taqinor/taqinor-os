@@ -11,9 +11,12 @@ from pathlib import Path
 from unittest import TestCase
 
 from apps.stock.management.commands.seed_catalogue import (
-    ARTICLES_CI_PRIX_A_RENSEIGNER, CATALOGUE, ht_at,
+    ARTICLES_CI_PRIX_A_RENSEIGNER, CATALOGUE, FICHES, FICHES_TECHNIQUES,
+    ROLES_CI_ARTICLES_EXISTANTS, ht_at,
 )
-from apps.ventes.moteur_ci.composition import composer_ci
+from apps.ventes.moteur_ci.composition import (
+    ROLES_SUPERVISION_CI, ROLES_TABLEAU_CI, composer_ci, groupe_client_du_role,
+)
 from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
 from core.electrique.cables import SECTIONS_MM2_CI
 
@@ -349,6 +352,174 @@ class CompositionTests(TestCase):
         self.assertFalse(self._codes(comp) & {'COMPTAGE_MARQUE_A_CONFIRMER',
                                               'LOGGER_MARQUE_A_CONFIRMER'})
 
+    # ── R3.5 (fondateur 28/10/2026) : Smart Meter choisi PAR CALIBRE ─────────
+
+    def _compteurs_huawei(self):
+        return [
+            self._accessoire(5300, 'Smart Meter Huawei DTSU666-H 100 A (raccordement direct)',
+                             'compteur_injection', 'Huawei', '2000',
+                             {'type_fiche': 'limiteur', 'lim_mode': 'compteur_direct',
+                              'lim_calibre_a': 100}),
+            self._accessoire(5301, 'Smart Meter Huawei DTSU666-H 250 A (avec TC)',
+                             'compteur_injection', 'Huawei', '3000',
+                             {'type_fiche': 'limiteur', 'lim_mode': 'compteur_tc',
+                              'lim_calibre_a': 250}),
+            self._accessoire(5302, 'Smart Meter Huawei DTSU666-H + TC externes (> 250 A)',
+                             'compteur_injection', 'Huawei', '4000',
+                             {'type_fiche': 'limiteur', 'lim_mode': 'compteur_tc_externe',
+                              'lim_calibre_a': None}),
+            self._accessoire(5303, 'Smart Meter', 'compteur_injection', 'Huawei', '1500')]
+
+    def _comptage_ondu(self, cat, quantite, kwc=None):
+        premier = next(p for p in cat if p['role_ci'] == 'onduleur_string_tri'
+                       and p['kw_ac'] == 50)
+        ond = {'combinaison': [{'produit': premier['id'], 'nom': premier['nom'],
+                                'kw_ac': 50, 'quantite': quantite}]}
+        comp = composer_ci(kwc or 60 * quantite, cat, onduleurs=ond, entrees=_entrees(),
+                           forfaits={})
+        comptage = [li for li in comp['lignes']
+                    if li['role'] in ('compteur_injection', 'controleur_injection')]
+        self.assertEqual(len(comptage), 1)
+        return comp, comptage[0]
+
+    def test_compteur_du_plus_petit_calibre_suffisant(self):
+        cat = self._cat_marque('Huawei', *self._compteurs_huawei())
+        # 1 × 50 kW triphasé : I = 72,2 A ⇒ le 100 A direct.
+        comp, ligne = self._comptage_ondu(cat, 1)
+        self.assertEqual(ligne['produit'], 5300)
+        self.assertEqual(ligne['designation'],
+                         'Smart Meter Huawei DTSU666-H 100 A (raccordement direct)')
+        self.assertEqual(ligne['quantite'], 1)
+        # Un seul onduleur : aucun motif « fournisseur », rien à confirmer.
+        self.assertIsNone(ligne['motif'])
+        self.assertFalse(ligne['a_confirmer_visite'])
+        hyp = next(h for h in comp['hypotheses'] if h['cle'] == 'comptage_courant_a')
+        self.assertEqual(hyp['valeur'], round(50000 / (400 * math.sqrt(3)), 1))
+        self.assertEqual(hyp['statut'], 'calculee')
+        self.assertNotIn('COMPTAGE_CALIBRE_A_CONFIRMER', self._codes(comp))
+        # 3 × 50 kW : I = 216,5 A ⇒ le 250 A à TC ; fiche muette sur le nombre
+        # d'onduleurs pilotés ⇒ « à confirmer fournisseur » (nb_ond > 1).
+        comp, ligne = self._comptage_ondu(cat, 3)
+        self.assertEqual(ligne['produit'], 5301)
+        self.assertIn('à confirmer fournisseur', ligne['motif'])
+        # 5 × 50 kW : I = 360,8 A > 250 A ⇒ TC externes (sans borne).
+        comp, ligne = self._comptage_ondu(cat, 5)
+        self.assertEqual(ligne['produit'], 5302)
+
+    def test_compteur_sans_calibre_seulement_en_repli_avec_alerte(self):
+        compteurs = self._compteurs_huawei()
+        # Les compteurs à calibre SANS prix : le Smart Meter sans calibre
+        # (legacy) tarifé sert de repli, alerte interne.
+        for c in compteurs[:3]:
+            c['prix_connu'] = False
+            c.pop('prix_vente_ht')
+        comp, ligne = self._comptage_ondu(self._cat_marque('Huawei', *compteurs), 1)
+        self.assertEqual(ligne['produit'], 5303)
+        alerte = next(a for a in comp['alertes'] if a['code'] == 'COMPTAGE_CALIBRE_A_CONFIRMER')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('72.2 A', alerte['message'])
+        # Calibre trop petit (100 A seul) tarifé, legacy tarifé : jamais un
+        # compteur sous-dimensionné — repli legacy + alerte.
+        petit = self._compteurs_huawei()[:1] + self._compteurs_huawei()[3:]
+        comp, ligne = self._comptage_ondu(self._cat_marque('Huawei', *petit), 3)
+        self.assertEqual(ligne['produit'], 5303)
+        self.assertIn('COMPTAGE_CALIBRE_A_CONFIRMER', self._codes(comp))
+
+    def test_preference_de_marque_dans_l_ensemble_eligible(self):
+        # Onduleurs Deye : le compteur Deye 250 A passe devant le Huawei 100 A
+        # (tous deux éligibles à 72 A) — CMP10 DANS l'ensemble éligible.
+        deye = self._accessoire(5310, 'Compteur Deye 250 A', 'compteur_injection', 'Deye',
+                                '2500', {'type_fiche': 'limiteur', 'lim_calibre_a': 250})
+        cat = self._cat_marque('Deye', *self._compteurs_huawei(), deye)
+        comp, ligne = self._comptage_ondu(cat, 1)
+        self.assertEqual(ligne['produit'], 5310)
+        self.assertFalse(self._codes(comp) & {'COMPTAGE_MARQUE_A_CONFIRMER',
+                                              'COMPTAGE_CALIBRE_A_CONFIRMER'})
+        # Sans compteur Deye : le plus petit Huawei éligible + alerte de marque.
+        comp, ligne = self._comptage_ondu(self._cat_marque('Deye', *self._compteurs_huawei()), 1)
+        self.assertEqual(ligne['produit'], 5300)
+        self.assertIn('COMPTAGE_MARQUE_A_CONFIRMER', self._codes(comp))
+
+    # ── R3.6 (fondateur 28/10/2026) : une clé wifi PAR ONDULEUR ──────────────
+
+    def _dongle(self, marque='Huawei', prix='1000'):
+        return self._accessoire(5400, 'Clé wifi %s SDongleA-05' % marque, 'logger_supervision',
+                                marque, prix, {'type_fiche': 'logger', 'log_type': 'dongle',
+                                               'log_onduleurs_max': 1})
+
+    def _central(self):
+        return self._accessoire(5401, 'SmartLogger 3000', 'logger_supervision', 'Huawei',
+                                '4500', {'type_fiche': 'logger', 'log_onduleurs_max': 80})
+
+    def test_une_cle_wifi_par_onduleur(self):
+        cat = self._cat_marque('Huawei', self._dongle(), self._central())
+        comp, _l = self._comptage_ondu(cat, 1)
+        supervision = self._lignes(comp, 'logger_supervision')
+        self.assertEqual([(li['produit'], li['quantite']) for li in supervision], [(5400, 1)])
+        self.assertNotIn('SUPERVISION_LOGGER_A_CONFIRMER', self._codes(comp))
+        comp, _l = self._comptage_ondu(cat, 3)
+        supervision = self._lignes(comp, 'logger_supervision')
+        # 3 clés, AUCUN logger central composé ; alerte interne « à confirmer ».
+        self.assertEqual([(li['produit'], li['quantite']) for li in supervision], [(5400, 3)])
+        alerte = next(a for a in comp['alertes']
+                      if a['code'] == 'SUPERVISION_LOGGER_A_CONFIRMER')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('logger central à confirmer selon la marque', alerte['message'])
+
+    def test_sans_cle_de_la_marque_logger_central_des_deux_onduleurs(self):
+        # Onduleurs Deye, seule une clé Huawei : comportement d'hier (logger
+        # central dès 2 onduleurs, rien pour un seul).
+        cat = self._cat_marque('Deye', self._dongle('Huawei'), self._central())
+        comp, _l = self._comptage_ondu(cat, 1)
+        self.assertEqual(self._lignes(comp, 'logger_supervision'), [])
+        comp, _l = self._comptage_ondu(cat, 3)
+        supervision = self._lignes(comp, 'logger_supervision')
+        self.assertEqual([li['produit'] for li in supervision], [5401])
+
+    def test_semis_r3_compteurs_huawei_et_cle_wifi(self):
+        # R3.5 / R3.6 — les articles SEMÉS (tables du seeder, jamais
+        # recopiées) : un onduleur Huawei 50 kW ⇒ le Smart Meter 100 A et UNE
+        # clé wifi ; trois ⇒ le 250 A à TC et trois clés.
+        skus = ('SMART-MET', 'SM-HUA-100A', 'SM-HUA-250A-TC', 'SM-HUA-TC-EXT', 'WIFI-DON')
+        semis = []
+        for i, (nom, sku, _c, ttc, _a, _q, _s) in enumerate(CATALOGUE):
+            if sku in skus:
+                semis.append({
+                    'id': 7000 + i, 'nom': nom, 'sku': sku,
+                    'marque': FICHES[sku]['marque'], 'role_devis': '',
+                    'role_ci': ROLES_CI_ARTICLES_EXISTANTS[sku], 'classement': 'declare',
+                    'type_pose': '', 'fiche': FICHES_TECHNIQUES.get(sku),
+                    'prix_connu': True, 'prix_vente_ht': ht_at(ttc, Decimal('20')),
+                    'eligible_ci': True, 'motif_exclusion': None})
+        self.assertEqual({p['sku'] for p in semis}, set(skus))
+        par_sku = {p['sku']: p for p in semis}
+        self.assertEqual([par_sku[s]['prix_vente_ht'] for s in skus[1:4]],
+                         [Decimal('2000.00'), Decimal('3000.00'), Decimal('4000.00')])
+        self.assertEqual(par_sku['WIFI-DON']['prix_vente_ht'], Decimal('1000.00'))
+        for sku in skus[1:4]:
+            self.assertIsNone(par_sku[sku]['fiche'].get('lim_onduleurs_max'))
+        cat = self._cat_marque('Huawei', *semis)
+        for quantite, compteur in ((1, 'SM-HUA-100A'), (3, 'SM-HUA-250A-TC')):
+            comp, ligne = self._comptage_ondu(cat, quantite)
+            self.assertEqual(ligne['produit'], par_sku[compteur]['id'], quantite)
+            supervision = self._lignes(comp, 'logger_supervision')
+            self.assertEqual([(li['produit'], li['quantite']) for li in supervision],
+                             [(par_sku['WIFI-DON']['id'], quantite)])
+            self.assertNotIn('COMPTAGE_CALIBRE_A_CONFIRMER', self._codes(comp))
+
+    def test_groupes_client_des_roles(self):
+        # R3.4 — le comptage SORT du Tableau : groupe « supervision_ci ».
+        for role in ('compteur_injection', 'controleur_injection', 'logger_supervision'):
+            self.assertEqual(groupe_client_du_role(role), 'supervision_ci', role)
+            self.assertNotIn(role, ROLES_TABLEAU_CI)
+        self.assertEqual(ROLES_SUPERVISION_CI, {'compteur_injection', 'controleur_injection',
+                                                'logger_supervision'})
+        for role in ('coffret_dc', 'coffret_ac', 'protection_ac', 'protection_dc',
+                     'mise_a_la_terre'):
+            self.assertEqual(groupe_client_du_role(role), 'tableau_ci', role)
+        self.assertEqual(groupe_client_du_role('pose_modules'), 'installation_ci')
+        self.assertIsNone(groupe_client_du_role('cable_ac'))
+
     # ── ADEV83 : protections DC, parafoudres DC/AC, mise à la terre ──────────
 
     @staticmethod
@@ -358,12 +529,12 @@ class CompositionTests(TestCase):
                 'prix_connu': True, 'prix_vente_ht': Decimal(prix), 'eligible_ci': True,
                 'motif_exclusion': None}
 
-    def test_roles_presents_lignes_composees_par_onduleur_et_mppt(self):
+    def _cat_protections(self, n_mppt=4):
         cat = [dict(p) for p in self.cat]
         for p in cat:
             if p['role_ci'] == 'onduleur_string_tri':
-                p['fiche'] = {'ond_n_mppt': 4}
-        cat += [
+                p['fiche'] = {'ond_n_mppt': n_mppt}
+        return cat + [
             self._article(6000, 'Sectionneur DC 1000 V', 'protection_dc',
                           {'prot_type': 'sectionneur', 'prot_cote': 'dc'}, '320'),
             self._article(6001, 'Parafoudre DC type 2', 'protection_dc',
@@ -371,13 +542,33 @@ class CompositionTests(TestCase):
             self._article(6002, 'Parafoudre AC type 2', 'protection_ac',
                           {'prot_type': 'parafoudre', 'prot_cote': 'ac'}, '700'),
             self._article(6003, 'Kit de mise à la terre C&I', 'mise_a_la_terre', None, '1200')]
+
+    @staticmethod
+    def _ond_50(cat, quantite=2, chaines=None):
         ondu = next(p for p in cat if p['role_ci'] == 'onduleur_string_tri' and p['kw_ac'] == 50)
         ond = {'combinaison': [{'produit': ondu['id'], 'nom': ondu['nom'], 'kw_ac': 50,
-                                'quantite': 2}]}
-        comp = composer_ci(110, cat, onduleurs=ond, entrees=_entrees(), forfaits={})
+                                'quantite': quantite}]}
+        if chaines is not None:
+            ond['chaines'] = chaines
+        return ond
+
+    def test_protections_dc_une_par_chaine_jamais_par_mppt(self):
+        # R3.1 / R3.2 (fondateur 28/10/2026) — protection DC ET parafoudre DC :
+        # une par CHAÎNE conçue (Σ nb_chaines), jamais par MPPT ni par onduleur.
+        cat = self._cat_protections(n_mppt=4)
+        chaines = [{'produit': 1, 'nb_modules': 80, 'nb_chaines': 5, 'bloquants': []},
+                   {'produit': 1, 'nb_modules': 75, 'nb_chaines': 6, 'bloquants': []}]
+        comp = composer_ci(110, cat, onduleurs=self._ond_50(cat, chaines=chaines),
+                           entrees=_entrees(mise_a_la_terre_necessaire=True), forfaits={})
         par_produit = {ligne['produit']: ligne for ligne in comp['lignes']}
-        self.assertEqual(par_produit[6000]['quantite'], 8)       # 2 onduleurs × 4 MPPT
-        self.assertEqual(par_produit[6001]['quantite'], 2)       # un par onduleur
+        self.assertEqual(par_produit[6000]['quantite'], 11)      # 5 + 6 chaînes
+        self.assertNotEqual(par_produit[6000]['quantite'], 8)    # jamais 2 × 4 MPPT
+        self.assertEqual(par_produit[6001]['quantite'], 11)
+        self.assertEqual(par_produit[6000]['designation'], 'Protection DC par chaîne')
+        self.assertEqual(par_produit[6001]['designation'], 'Parafoudre DC par chaîne')
+        for pid in (6000, 6001):
+            self.assertFalse(par_produit[pid]['a_confirmer_visite'])
+            self.assertIsNone(par_produit[pid]['motif'])
         self.assertEqual(par_produit[6002]['quantite'], 1)
         self.assertEqual(par_produit[6003]['quantite'], 1)
         for pid, prix in ((6000, '320'), (6001, '650'), (6002, '700'), (6003, '1200')):
@@ -389,13 +580,103 @@ class CompositionTests(TestCase):
         self.assertTrue(disj)
         self.assertNotIn('POSTE_ABSENT_CATALOGUE', [a['code'] for a in comp['alertes']])
 
+    def test_protections_dc_chaines_non_concues_estimees(self):
+        # Sans conception de chaînes : plafond(panneaux ÷ 12), à confirmer.
+        cat = self._cat_protections()
+        comp = composer_ci(110, cat, onduleurs=self._ond_50(cat), entrees=_entrees(),
+                           forfaits={})
+        attendu = math.ceil(math.ceil(110 * 1000 / 710) / 12)
+        for pid in (6000, 6001):
+            ligne = next(li for li in comp['lignes'] if li['produit'] == pid)
+            self.assertEqual(ligne['quantite'], attendu)
+            self.assertTrue(ligne['a_confirmer_visite'])
+            self.assertIn('chaînes non conçues : %d chaînes estimées' % attendu,
+                          ligne['motif'])
+
+    def test_protections_dc_chaines_bloquantes_a_chiffrer_visite(self):
+        cat = self._cat_protections()
+        chaines = [{'produit': 1, 'nb_modules': 80, 'nb_chaines': 5,
+                    'bloquants': ['tension de chaîne hors plage']}]
+        comp = composer_ci(110, cat, onduleurs=self._ond_50(cat, chaines=chaines),
+                           entrees=_entrees(), forfaits={})
+        for pid in (6000, 6001):
+            ligne = next(li for li in comp['lignes'] if li['produit'] == pid)
+            self.assertIsNone(ligne['quantite'])
+            self.assertTrue(ligne['a_chiffrer_visite'])
+        self.assertIn('Protection DC par chaîne', comp['a_chiffrer_visite'])
+        self.assertIn('Parafoudre DC par chaîne', comp['a_chiffrer_visite'])
+
+    def test_triphase_disjoncteur_et_parafoudre_ac_4p(self):
+        # R3.3 — triphasé : disjoncteur « … 4P — sortie … », parafoudre AC 4P
+        # (article à 4 pôles préféré, la désignation du moteur gagne).
+        cat = self._cat_protections() + [
+            self._article(6010, 'Parafoudre AC 2P', 'protection_ac',
+                          {'prot_type': 'parafoudre', 'prot_cote': 'ac', 'prot_poles': 2}, '300'),
+            self._article(6011, 'Parafoudre AC tétrapolaire', 'protection_ac',
+                          {'prot_type': 'parafoudre', 'prot_cote': 'ac', 'prot_poles': 4}, '800')]
+        comp = composer_ci(110, cat, onduleurs=self._ond_50(cat), entrees=_entrees(),
+                           forfaits={})
+        parafoudres = [li for li in comp['lignes']
+                       if li['role'] == 'protection_ac' and li['produit'] in (6002, 6010, 6011)]
+        self.assertEqual([(li['produit'], li['designation']) for li in parafoudres],
+                         [(6011, 'Parafoudre AC 4P')])
+        disj = [li for li in comp['lignes'] if li['role'] == 'protection_ac'
+                and li['produit'] not in (6002, 6010, 6011)]
+        self.assertEqual(len(disj), 2)
+        for ligne in disj:
+            self.assertRegex(ligne['designation'], r'^Disjoncteur AC \d+ A 4P — sortie ')
+            if ligne['produit'] is not None:
+                self.assertNotEqual(ligne['designation'], next(
+                    p['nom'] for p in cat if p['id'] == ligne['produit']))
+
+    def test_monophase_2p_et_repli_parafoudre_sans_poles(self):
+        cat = [dict(p, role_ci='onduleur_string_mono') if p['role_ci'] == 'onduleur_string_tri'
+               else dict(p) for p in self._cat_protections()]
+        cat += [self._article(6011, 'Parafoudre AC tétrapolaire', 'protection_ac',
+                              {'prot_type': 'parafoudre', 'prot_cote': 'ac', 'prot_poles': 4},
+                              '800')]
+        ondu = next(p for p in cat if p['role_ci'] == 'onduleur_string_mono')
+        ond = {'combinaison': [{'produit': ondu['id'], 'nom': 'Mono', 'kw_ac': 10,
+                                'quantite': 1}]}
+        comp = composer_ci(12, cat, onduleurs=ond, entrees=_entrees(phase='mono'), forfaits={})
+        parafoudre = [li for li in comp['lignes'] if li['produit'] in (6002, 6011)]
+        # Aucun 2P au catalogue : repli sur le parafoudre sans pôles publiés,
+        # jamais le 4P.
+        self.assertEqual([(li['produit'], li['designation']) for li in parafoudre],
+                         [(6002, 'Parafoudre AC 2P')])
+        disj = next(li for li in comp['lignes'] if li['role'] == 'protection_ac'
+                    and li['produit'] not in (6002, 6011))
+        self.assertRegex(disj['designation'], r'^Disjoncteur AC \d+ A 2P — sortie Mono$')
+
+    def test_mise_a_la_terre_jamais_automatique(self):
+        # R3.7 — ajoutée seulement si la visite la dit nécessaire ; inconnue ⇒
+        # alerte interne non bloquante ; non nécessaire ⇒ rien.
+        cat = self._cat_protections()
+        for besoin, ligne_attendue, alerte_attendue in ((None, False, True),
+                                                        (False, False, False),
+                                                        (True, True, False)):
+            comp = composer_ci(110, cat, onduleurs=self._ond_50(cat), forfaits={},
+                               entrees=_entrees(mise_a_la_terre_necessaire=besoin))
+            terre = self._lignes(comp, 'mise_a_la_terre')
+            self.assertEqual(bool(terre), ligne_attendue, besoin)
+            if terre:
+                self.assertEqual(terre[0]['quantite'], 1)
+                self.assertEqual(terre[0]['produit'], 6003)
+            alertes = [a for a in comp['alertes'] if a['code'] == 'CI_MISE_A_LA_TERRE_VISITE']
+            self.assertEqual(bool(alertes), alerte_attendue, besoin)
+            for alerte in alertes:
+                self.assertTrue(alerte['interne'])
+                self.assertNotEqual(alerte['niveau'], 'bloquant')
+                self.assertIn('visite technique', alerte['message'])
+
     def test_roles_absents_alerte_interne_composition_inchangee(self):
         # Un catalogue SANS ces rôles (le semis CCAT10 les crée désormais :
         # voir le test suivant) — l'alerte interne reste le filet.
         roles_retires = {'protection_dc', 'protection_ac', 'mise_a_la_terre'}
         cat = [p for p in self.cat if p['role_ci'] not in roles_retires]
         ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50, 'quantite': 2}]}
-        comp = composer_ci(110, cat, onduleurs=ond, entrees=_entrees(), forfaits={})
+        comp = composer_ci(110, cat, onduleurs=ond, forfaits={},
+                           entrees=_entrees(mise_a_la_terre_necessaire=True))
         absents = [a for a in comp['alertes'] if a['code'] == 'POSTE_ABSENT_CATALOGUE']
         self.assertEqual({a['champ'] for a in absents},
                          {'composition.protection_dc', 'composition.parafoudre_dc',
@@ -412,7 +693,8 @@ class CompositionTests(TestCase):
         # à prix vide : le poste n'est plus « absent », il est composé et dit
         # « prix à renseigner ».
         ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50, 'quantite': 2}]}
-        comp = composer_ci(110, self.cat, onduleurs=ond, entrees=_entrees(), forfaits={})
+        comp = composer_ci(110, self.cat, onduleurs=ond, forfaits={},
+                           entrees=_entrees(mise_a_la_terre_necessaire=True))
         self.assertFalse([a for a in comp['alertes']
                           if a['code'] == 'POSTE_ABSENT_CATALOGUE'])
         roles = {ligne['role'] for ligne in comp['lignes']}

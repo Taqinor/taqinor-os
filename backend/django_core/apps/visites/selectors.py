@@ -515,6 +515,13 @@ def releve_ci_de_visite(visite, declare=None):
     # à la validation (``RETOUR_LEAD_CI``), « non relevé » ne remonte rien.
     phase, motif = _mesure_ci(visite, 'comptage', 'phases')
     releve['raccordement'] = {'constate': None if motif else phase}
+    # R3 (fondateur 28/10/2026) — la mise à la terre existante RELEVÉE
+    # (``conforme`` / ``a_creer`` / ``a_verifier``) ; aucun verdict ici (VT1) :
+    # le moteur ventes décide si elle est nécessaire. « Non relevée » = None
+    # + le motif.
+    terre, motif = _mesure_ci(visite, 'comptage', 'mise_a_la_terre')
+    releve['mise_a_la_terre'] = {
+        'constate': None if motif else terre, 'motif': motif}
     return releve
 
 
