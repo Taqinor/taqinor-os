@@ -24,7 +24,7 @@ def build(ctx, m, j):
         svg = graphiques.barres_mensuelles(
             m["energie"], (j["bar_conso"], j["accent"], j["or"], j["line"], j["muted"]), "IBM Plex Sans",
             list("JFMAMJJASOND") if m["langue"] != "ar" else [str(i) for i in range(1, 13)],
-            f'{fmt(round(plafond))} kWh', 170, 58 if m["palier"] < 2 else 46,
+            f'{fmt(round(plafond))} kWh', 170, 56 if m["palier"] < 2 else 46,
             legende=(L("ci_legende_conso", "Votre consommation"), L("ci_legende_autoconso", "Production autoconsommée"),
                      L("ci_legende_surplus", "Surplus non consommé sur place")), contour=j["ink"])
         energie_html = (commun.kicker(L("ci_votre_energie", "Votre énergie"), j, p)
@@ -35,6 +35,7 @@ def build(ctx, m, j):
                         + L("ci_energie_mois_legende", "kWh par mois : votre consommation et la production estimée de la centrale, calculées heure par heure.")
                         + (f' {c["methode"]}' if c["methode"] else "") + '</div>')
 
+    # Paliers 2-3 : « en bref » cède (le tableau liste déjà modules et onduleurs).
     rangees = [] if m["palier"] >= 2 else donnees.installation_en_bref(d, L, fmt)
     bref = ""
     if rangees:
@@ -60,19 +61,18 @@ def build(ctx, m, j):
         fin = cu["serie"][-1]
         lib_retour = L("ci_retour_en", "Retour en {ans} ans", ans=c["payback"]) if c["payback"] else ""
         lib_fin = f'{"+" if fin[1] >= 0 else "−"}{fmt(round(abs(fin[1])))} MAD · {fin[0]} {L("ci_ans", "ans")}'
+        origine = cu["serie"][0][1]
+        origine_txt = f'{"−" if origine < 0 else ""}{fmt(round(abs(origine)))} MAD'
         svg = graphiques.frise_cumul(
-            cu["serie"], cu["jalons"], cu["retour"], (lib_retour, lib_fin, "0"),
+            cu["serie"], cu["jalons"], c["payback_num"], (lib_retour, lib_fin, "0 MAD"),
             (j["sable"], j["accent"], j["line"], j["muted"], j["or"]), "IBM Plex Sans", 106,
-            52 if m["palier"] < 2 else 42)
+            52 if m["palier"] < 2 else 44, origine_txt=origine_txt,
+            lib_annees=L("ci_annees", "années"))
         jalons = "".join(
             f'<tr><td style="color:{j["muted"]};padding:2px 0;border-bottom:0.5pt solid {j["line_soft"]};">{L("ci_apres_n_ans", "Après {n} ans", n=a)}</td>'
             f'<td style="text-align:right;padding:2px 0;border-bottom:0.5pt solid {j["line_soft"]};white-space:nowrap;">{lib} MAD</td></tr>'
             for a, lib in cu["jalons"])
         indic = ""
-        if c["payback"]:
-            indic += (f'<div class="sg2-ind"><span class="sg2-indv">{c["payback"]}</span>'
-                      f'<span class="sg-ru"> {c["payback_unite"].replace("&nbsp;", " ")}</span>'
-                      f'<div class="sg-lab">{L("ci_retour_estime_base", "Retour estimé ({base})", base=c["payback_base"])}</div></div>')
         if c["tri_pct"]:
             indic += (f'<div class="sg2-ind"><span class="sg2-indv">{c["tri_pct"]}</span><span class="sg-ru"> %</span>'
                       f'<div class="sg-lab">{L("ci_tri_horizon", "TRI sur {n} ans", n=c["horizon"] or cu["horizon"])}</div></div>')
@@ -93,14 +93,24 @@ def build(ctx, m, j):
         if option_avec or extras:
             complements = (f'<div class="sg-sec">' + commun.kicker(L("ci_complements_offre", "Compléments de l&#8217;offre"), j, p)
                            + f'{option_avec}{extras}</div>')
-    hyp = commun.hypotheses_tableau(m, p, j, L, colonnes=2 if m["palier"] < 2 else 3)
+    hyp = commun.hypotheses_tableau(m, p, j, L, colonnes=2)
     hyp_html = (f'<div class="sg-h3" style="margin-top:5mm;">{L("ci_bases_calcul", "Bases du calcul")}</div>'
                 f'<div style="margin-top:2mm;">{hyp}</div>') if hyp else ""
+    # Critique 29/10 (équilibre des pages) : garanties et échéancier vivent ici.
+    ar = donnees.ar
+    # Palier 3 : les garanties passent en page 3 avec l'offre chiffrée.
+    garanties = "" if m["palier"] >= 3 else commun.garanties_rangee(m, p, j, L, 22, 600, etoiles=True)
+    echeancier = ""
+    engagements = ""
+    if garanties:
+        engagements += (f'<div class="sg-sec">{commun.kicker(L("ci_garanties", "Garanties"), j, p, ar("ci_garanties"))}'
+                        f'<div style="margin-top:2.5mm;">{garanties}</div></div>')
+    echeancier = ""  # en page 3, avec l'offre chiffrée
 
     css = f"""
 <style>
 .sg2-ind{{display:table-cell;vertical-align:top;padding-right:6mm;}}
-.sg2-indv{{font-family:{j['display']};font-weight:400;font-size:22pt;line-height:1;letter-spacing:-.01em;}}
+.sg2-indv{{font-family:{j['display']};font-weight:600;font-size:22pt;line-height:1;letter-spacing:-.01em;}}
 </style>"""
     return f"""{css}
 <div class="sg-root">
@@ -108,5 +118,6 @@ def build(ctx, m, j):
   {energie_html}
   {duo}
   <div class="sg-sec">{retour_html}{hyp_html}</div>
+  {engagements}
   {complements}
 </div>"""

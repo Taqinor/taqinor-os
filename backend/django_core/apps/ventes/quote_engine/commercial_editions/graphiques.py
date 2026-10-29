@@ -30,15 +30,19 @@ def _t(x, y, texte, taille, fill, anchor="start", poids=400, extra=""):
 def barres_mensuelles(mois, couleurs, police, reperes, graduation_txt,
                       largeur_mm=120, hauteur_mm=52, legende=None, contour=None,
                       echelle_texte=1.0):
-    """Barres GROUPÉES par mois : consommation (encre) à gauche, production
-    (accent) à droite — la part autoconsommée pleine, le surplus en teinte
-    claire par-dessus. ``couleurs`` = (conso, auto, surplus, axe, texte) ;
-    ``reperes`` = 12 étiquettes de mois ; ``graduation_txt`` = le plus
-    grand kWh servi, déjà formaté ; ``legende`` = (conso, auto, surplus)."""
+    """Barres GROUPÉES par mois : consommation (claire à contour encre) à
+    gauche, production (accent) à droite — la part autoconsommée pleine, le
+    surplus en or par-dessus. Corps de texte PHYSIQUES (7,5 pt) quelle que
+    soit la largeur du dessin (critique 29/10). ``couleurs`` = (conso, auto,
+    surplus, axe, texte) ; ``reperes`` = 12 étiquettes de mois ;
+    ``graduation_txt`` = le plus grand kWh servi, déjà formaté."""
     conso_c, auto_c, surplus_c, axe_c, texte_c = couleurs
-    e = echelle_texte
+    um = 520.0 / largeur_mm            # unités du dessin par mm
+    upt = um * 0.3528                  # unités par point typographique
+    t_axe, t_leg, t_grad = 7.5 * upt, 7.5 * upt, 7 * upt
     W, H = 520.0, 520.0 * hauteur_mm / largeur_mm
-    mg, md, mh, mb = 4.0, 4.0, 14.0, 26.0 if legende else 16.0
+    mg, md, mh = 1.5 * um, 1.5 * um, 5 * um
+    mb = (12 if legende else 6) * um
     plafond = max(max(m["consommation_kwh"], m["production_kwh"])
                   for m in mois) or 1
     zone = H - mh - mb
@@ -46,10 +50,10 @@ def barres_mensuelles(mois, couleurs, police, reperes, graduation_txt,
     barre = pas * 0.30
     base = H - mb
     f = []
-    f.append(f'<line x1="{mg}" y1="{mh:.1f}" x2="{W - md}" y2="{mh:.1f}" '
+    f.append(f'<line x1="{mg:.1f}" y1="{mh:.1f}" x2="{W - md:.1f}" y2="{mh:.1f}" '
              f'stroke="{axe_c}" stroke-width="0.5" stroke-dasharray="2 3"/>')
-    f.append(_t(mg, mh - 4, graduation_txt, 10 * e, texte_c))
-    f.append(f'<line x1="{mg}" y1="{base:.1f}" x2="{W - md}" y2="{base:.1f}" '
+    f.append(_t(mg, mh - 0.8 * um, graduation_txt, t_grad, texte_c))
+    f.append(f'<line x1="{mg:.1f}" y1="{base:.1f}" x2="{W - md:.1f}" y2="{base:.1f}" '
              f'stroke="{axe_c}" stroke-width="0.8"/>')
     for i, m in enumerate(mois):
         x0 = mg + i * pas + (pas - 2 * barre - 2) / 2
@@ -61,65 +65,74 @@ def barres_mensuelles(mois, couleurs, police, reperes, graduation_txt,
         xp = x0 + barre + 2
         f.append(_r(xp, base - hp, barre, hp, surplus_c, 1.2))
         f.append(_r(xp, base - ha, barre, ha, auto_c, 1.2))
-        f.append(_t(x0 + barre + 1, base + 11, reperes[i], 10 * e, texte_c,
-                    "middle"))
+        f.append(_t(x0 + barre + 1, base + 3.2 * um, reperes[i], t_axe, texte_c, "middle"))
     if legende:
-        y = H - 6
+        y = H - 2.2 * um
         x = mg
+        carre = 2.4 * um
         for col, lib in zip((conso_c, auto_c, surplus_c), legende):
-            f.append(_r(x, y - 7, 8, 8, col, 1.5,
+            f.append(_r(x, y - carre + 0.3 * um, carre, carre, col, 1.5,
                         f'stroke="{contour}" stroke-width="0.7"' if (contour and col == conso_c) else ""))
-            f.append(_t(x + 11, y, lib, 9.5 * e, texte_c))
-            x += 11 + len(lib) * 5.0 * e + 16
+            f.append(_t(x + carre + 1.2 * um, y, lib, t_leg, texte_c))
+            x += carre + 1.2 * um + len(lib) * 0.52 * t_leg + 4 * um
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.0f} '
             f'{H:.0f}" width="{largeur_mm}mm" height="{hauteur_mm}mm" '
             f'font-family="{police}">{"".join(f)}</svg>')
 
 
 def facture_avant_apres(avant, apres, textes, couleurs, police,
-                        largeur_mm=90, hauteur_mm=30):
+                        largeur_mm=68, hauteur_mm=26):
     """Deux barres horizontales alignées : la facture d'énergie AVANT
-    (encre pleine) et APRÈS (accent) ; ``avant``/``apres`` = nombres servis
-    (échelle), ``textes`` = (lib_avant, lib_apres, val_avant, val_apres,
-    lib_economie) déjà formatés ; ``couleurs`` = (encre, accent, ligne,
-    texte)."""
-    encre, accent, ligne, texte = couleurs
+    (grise) et APRÈS (accent) ; ``avant``/``apres`` = nombres servis
+    (échelle seulement), ``textes`` = (lib_avant, lib_apres, val_avant,
+    val_apres, lib_economie) déjà formatés — ``lib_economie`` (la part
+    servie, « −35 % ») s'imprime en grand au bout de la barre « avec »
+    (critique 29/10). ``couleurs`` = (gris, accent, ligne, texte)."""
+    gris, accent, ligne, texte = couleurs
+    um = 400.0 / largeur_mm
+    upt = um * 0.3528
     W, H = 400.0, 400.0 * hauteur_mm / largeur_mm
     lib_avant, lib_apres, val_avant, val_apres, lib_eco = textes
-    x0 = 92.0
-    larg = W - x0 - (90 if (val_avant or val_apres) else 12)
-    h = 22.0
-    y1, y2 = 12.0, 12.0 + h + 14
+    x0 = 16 * um
+    larg_pct = 21 * um if lib_eco else 0
+    larg = W - x0 - larg_pct - 1 * um
+    h = 5.5 * um
+    y1, y2 = 1.5 * um, 1.5 * um + h + 3.5 * um
     w1 = larg
     w2 = larg * (apres / avant) if avant else 0
     f = [
-        _t(0, y1 + 15, lib_avant, 9.5, texte),
-        _r(x0, y1, w1, h, encre, 3),
-        _t(x0 + w1 + 8, y1 + 15, val_avant, 9.5, texte, poids=600),
-        _t(0, y2 + 15, lib_apres, 9.5, texte),
-        _r(x0, y2, w2, h, accent, 3),
-        _r(x0 + w2, y2, w1 - w2, h, "none", 3,
-           f'stroke="{ligne}" stroke-width="1" stroke-dasharray="3 3"'),
-        _t(x0 + w1 + 8, y2 + 15, val_apres, 9.5, texte, poids=600),
+        _t(0, y1 + h * 0.72, lib_avant, 7.5 * upt, texte),
+        _r(x0, y1, w1, h, gris, 1.5),
+        _t(0, y2 + h * 0.72, lib_apres, 7.5 * upt, texte),
+        _r(x0, y2, w2, h, accent, 1.5),
     ]
-    if lib_eco and w1 - w2 > 40:
-        f.append(_t(x0 + w2 + (w1 - w2) / 2, y2 + 15, lib_eco, 8.5, texte,
-                    "middle", 600))
+    if val_avant:
+        f.append(_t(x0 + w1 + 1.5 * um, y1 + h * 0.72, val_avant, 7.5 * upt, texte, poids=600))
+    if val_apres:
+        f.append(_t(x0 + w2 + 1.5 * um, y2 + h * 0.72, val_apres, 7.5 * upt, texte, poids=600))
+    if lib_eco:
+        f.append(_t(x0 + w1 + 1.5 * um, y2 + h * 0.95, lib_eco, 20 * upt, accent, "start", 600,
+                    'font-family="EdDisplay"'))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.0f} '
             f'{H:.0f}" width="{largeur_mm}mm" height="{hauteur_mm}mm" '
             f'font-family="{police}">{"".join(f)}</svg>')
 
 
 def frise_cumul(serie, jalons, retour, textes, couleurs, police,
-                largeur_mm=120, hauteur_mm=56):
+                largeur_mm=120, hauteur_mm=56, origine_txt="", lib_annees=""):
     """La position nette cumulée année par année (``flux.cumul_mad`` servi)
-    : aire sous zéro en encre claire, aire au-dessus en accent, ligne du
-    zéro, point de retour (``retour_ans`` servi) et ses jalons étiquetés.
-    ``textes`` = (lib_retour, lib_fin, lib_zero) déjà formatés ;
-    ``couleurs`` = (negatif, positif, axe, texte, point)."""
+    : aire sous zéro en sable, aire au-dessus en accent, ligne du zéro
+    étiquetée « 0 MAD », montant de départ servi (``origine_txt``) à
+    l'origine, étoile khatam au point de retour DÉCIMAL servi (ou au
+    croisement de zéro interpolé entre les deux années qui l'encadrent),
+    jalons étiquetés, unité « années » sous l'axe. ``textes`` =
+    (lib_retour, lib_fin, lib_zero) ; ``couleurs`` = (negatif, positif,
+    axe, texte, point)."""
     neg_c, pos_c, axe_c, texte_c, point_c = couleurs
+    um = 520.0 / largeur_mm
+    upt = um * 0.3528
     W, H = 520.0, 520.0 * hauteur_mm / largeur_mm
-    mg, md, mh, mb = 6.0, 6.0, 26.0, 24.0
+    mg, md, mh, mb = 20 * um, 1.5 * um, 7 * um, 11 * um
     annees = [a for a, _ in serie]
     valeurs = [c for _, c in serie]
     a_max = max(annees) or 1
@@ -135,36 +148,47 @@ def frise_cumul(serie, jalons, retour, textes, couleurs, police,
 
     y0 = Y(0)
     f = []
-    # Aires : au-dessus (accent) et sous zéro (encre claire), fermées sur l'axe.
     pts = " ".join(f"{X(a):.1f},{Y(c):.1f}" for a, c in serie)
     f.append(f'<clipPath id="pos"><rect x="0" y="0" width="{W}" height="{y0:.1f}"/></clipPath>')
     f.append(f'<clipPath id="neg"><rect x="0" y="{y0:.1f}" width="{W}" height="{H}"/></clipPath>')
     poly = (f'<polygon points="{X(annees[0]):.1f},{y0:.1f} {pts} '
             f'{X(annees[-1]):.1f},{y0:.1f}" ')
-    f.append(poly + f'fill="{pos_c}" fill-opacity="0.18" clip-path="url(#pos)"/>')
-    f.append(poly + f'fill="{neg_c}" fill-opacity="0.22" clip-path="url(#neg)"/>')
+    f.append(poly + f'fill="{pos_c}" fill-opacity="0.16" clip-path="url(#pos)"/>')
+    f.append(poly + f'fill="{neg_c}" clip-path="url(#neg)"/>')
     f.append(f'<polyline points="{pts}" fill="none" stroke="{pos_c}" '
              f'stroke-width="2.2" stroke-linejoin="round"/>')
-    f.append(f'<line x1="{mg}" y1="{y0:.1f}" x2="{W - md}" y2="{y0:.1f}" '
+    f.append(f'<line x1="{mg:.1f}" y1="{y0:.1f}" x2="{W - md:.1f}" y2="{y0:.1f}" '
              f'stroke="{axe_c}" stroke-width="1"/>')
     lib_retour, lib_fin, lib_zero = textes
-    f.append(_t(W - md, y0 - 5, lib_zero, 10, texte_c, "end"))
-    if retour is not None and 0 < retour <= a_max:
-        xr = X(retour)
-        f.append(f'<line x1="{xr:.1f}" y1="{mh}" x2="{xr:.1f}" y2="{H - mb}" '
+    f.append(_t(mg - 1.5 * um, y0 + 2.5 * upt, lib_zero, 7.5 * upt, texte_c, "end"))
+    if origine_txt:
+        f.append(_t(mg - 1.5 * um, Y(valeurs[0]) + 2.5 * upt, origine_txt, 7.5 * upt, texte_c, "end"))
+    # Point de retour : la valeur décimale servie, sinon le croisement de zéro.
+    xr = None
+    if retour is not None and 0 < float(retour) <= a_max:
+        xr = X(float(retour))
+    else:
+        for (a1, c1), (a2, c2) in zip(serie, serie[1:]):
+            if c1 < 0 <= c2 and c2 != c1:
+                xr = X(a1 + (0 - c1) / (c2 - c1) * (a2 - a1)); break
+    if xr is not None:
+        f.append(f'<line x1="{xr:.1f}" y1="{mh:.1f}" x2="{xr:.1f}" y2="{H - mb:.1f}" '
                  f'stroke="{point_c}" stroke-width="0.8" stroke-dasharray="2 3"/>')
-        # L'étoile khatam pleine (2,5 mm, 12 unités) marque le point de retour.
         from .commun import ETOILE_D
-        f.append(f'<path d="{ETOILE_D}" transform="translate({xr - 6:.1f},{y0 - 6:.1f}) scale(0.3)" '
+        r = 1.4 * um
+        f.append(f'<path d="{ETOILE_D}" transform="translate({xr - r:.1f},{y0 - r:.1f}) scale({r / 20:.3f})" '
                  f'fill="{point_c}"/>')
-        f.append(_t(xr + 8, mh - 8, lib_retour, 12, texte_c, "start", 600))
+        if lib_retour:
+            f.append(_t(xr + 2 * um, mh - 1.5 * um + 7.5 * upt, lib_retour, 7.5 * upt, texte_c, "start", 600))
     for a, lib in jalons:
         if 0 < a <= a_max:
-            f.append(f'<line x1="{X(a):.1f}" y1="{H - mb}" x2="{X(a):.1f}" '
-                     f'y2="{H - mb + 3}" stroke="{axe_c}" stroke-width="0.8"/>')
-            f.append(_t(X(a), H - mb + 14, str(a), 10.5, texte_c, "middle"))
+            f.append(f'<line x1="{X(a):.1f}" y1="{H - mb:.1f}" x2="{X(a):.1f}" '
+                     f'y2="{H - mb + 0.8 * um:.1f}" stroke="{axe_c}" stroke-width="0.8"/>')
+            f.append(_t(X(a), H - mb + 3.6 * um, str(a), 7.5 * upt, texte_c, "middle"))
+    if lib_annees:
+        f.append(_t(W - md, H - mb + 7.2 * um, lib_annees, 7 * upt, texte_c, "end"))
     if lib_fin:
-        f.append(_t(X(annees[-1]) - 2, Y(valeurs[-1]) - 8, lib_fin, 12,
+        f.append(_t(X(annees[-1]) - 1 * um, Y(valeurs[-1]) - 2 * um, lib_fin, 7.5 * upt,
                     texte_c, "end", 600))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.0f} '
             f'{H:.0f}" width="{largeur_mm}mm" height="{hauteur_mm}mm" '

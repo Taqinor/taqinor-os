@@ -57,9 +57,9 @@ def pied(data: dict, ident: dict, n: int, total: int, j: dict,
     suffixe = f" &nbsp;·&nbsp; {filigrane}" if filigrane else ""
     ref_lbl = theme.libelle_doc(data, "reference", "Réf.")
     page_lbl = theme.libelle_doc(data, "res_page", "Page")
+    tel = (ident.get("phone") or "").replace(" ", "\u00a0")
     gauche = " &nbsp;·&nbsp; ".join(
-        x for x in (f"<b>{ident['brand_name']}</b>", ident.get("email") or "",
-                    ident.get("phone") or "") if x)
+        x for x in (f"<b>{ident['brand_name']}</b>", ident.get("email") or "", tel) if x)
     droite = (f"{page_lbl} {n} / {total} &nbsp;·&nbsp; {ref_lbl} {data['ref']}"
               + (f" &nbsp;·&nbsp; <span class='ed-site'>{site}</span>" if site else "") + suffixe)
     return (f'<div class="foot ed-foot ed-foot-{j.get("pied", "plein")}"><div>{gauche}</div>'

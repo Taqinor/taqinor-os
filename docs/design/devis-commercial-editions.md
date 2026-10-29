@@ -108,3 +108,18 @@ panel). Une seule marque ; seul le papier change (#FAF8F3 Signature, blanc aille
 parité des ancres de chiffres avec le moteur actuel. **À signaler au moteur** : la bande
 légale servie porte « Gérant : … » (contraire à D-APDF) ; la société TAQINOR Solutions
 n'a pas de logo dans son profil (les éditions impriment la marque en lettres).
+
+**Critique adversariale (Workflow, 3 lentilles × 3 éditions, 62 contre-vérifications) :**
+59 constats confirmés. 43 corrigés dans la foulée : trame khatam lisible et rognée à sa
+boîte (plus de tirets parasites), Fraunces 600 vendorisé pour les titres et chiffres
+(réponse au « trop léger »), vert zellige #0E6B53 comme accent de données et or aligné
+sur le logo, frise or sous les bandeaux des trois éditions, arc en fer à cheval, barres
+de facture avec la part servie en 20 pt, typographie des graphiques au corps du document,
+bandeaux intérieurs fixes de 16 mm, garanties en page 2 de la Signature, Basique sur une
+page avec P.U./TVA et sous-lignes résumées, arabe selon une règle unique, téléphones
+insécables, « MAD » aligné, point de retour au décimal servi, étiquettes MAD servies sur
+la courbe, marque en lettres sans logo. 14 hors périmètre des éditions, à traiter au
+moteur ou dans la fixture : « Gérant : … » dans la bande légale (D-APDF), fixture hôtel
+incohérente (Σ lignes ≠ sous-total, TVA, retour, remplacement onduleur repris du 461),
+raison sociale et précision du kWc servies, deux listes d'étapes héritées, photo unique
+pour tous les clients (décision : n'afficher l'arc qu'avec une photo du site).

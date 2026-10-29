@@ -14,9 +14,9 @@ from .. import commun, donnees
 from ...figures import ancre
 
 
-def bil(d, cle, fr, p="ba", **v):
-    """« libellé FR » + « libellé AR » (catalogue) côte à côte."""
-    fr_txt = donnees.L(d, cle, fr, **v)
+def bil(d, cle, fr, p="ba", suffixe_fr="", **v):
+    """« libellé FR (+ suffixe) » puis « libellé AR » (catalogue) en bloc."""
+    fr_txt = donnees.L(d, cle, fr, **v) + suffixe_fr
     ar_txt = donnees.ar(cle, fr)
     if not ar_txt or donnees.ci_blocs.langue(d) != "fr":
         return fr_txt
@@ -80,12 +80,12 @@ def build(ctx, m, j):
         faits.append(fait(c["kwc"], L("res_unite_kwc", "&nbsp;kWc"), bil(d, "ci_puissance_crete", "Puissance crête"),
                           ancre("puissance_kwc", c["kwc"])))
         if c["economies"] is not None:
-            lib = bil(d, "ci_economies_estimees", "Économies estimées / an") + \
-                (f' <span class="ba-cap">({c["economies_base"]})</span>' if c["economies_base"] else "")
+            suffixe = f' ({c["economies_base"]})' if c["economies_base"] else ""
+            lib = bil(d, "ci_economies_estimees", "Économies estimées / an", suffixe_fr=suffixe)
             faits.append(fait(c["economies"], "&nbsp;MAD", lib, ancre("economie_annuelle", c["economies"]), royal=True))
             if c["payback"]:
                 faits.append(fait(c["payback"], c["payback_unite"],
-                                  bil(d, "ci_retour_estime", "Retour estimé") + f' <span class="ba-cap">({c["payback_base"]})</span>',
+                                  bil(d, "ci_retour_estime", "Retour estimé", suffixe_fr=f' ({c["payback_base"]})'),
                                   ancre("payback_ans", c["payback"])))
         elif c["production"] is not None:
             faits.append(fait(c["production"], L("ci_unite_kwh_an", "&nbsp;kWh/an"),
@@ -94,14 +94,15 @@ def build(ctx, m, j):
         registre = f'<div class="ba-reg" style="margin-top:4mm;">{"".join(faits)}</div>'
     methode = ""
     if m["methode"]:
-        methode = f'<div class="ba-cap" style="margin-top:2mm;font-size:6.9pt;">{m["methode"][0]}</div>'
+        tarif = next((t for t in m["methode"] if "arif" in t), m["methode"][0])
+        methode = f'<div class="ba-cap" style="margin-top:2mm;font-size:6.9pt;">{tarif}</div>'
     if c["economies"] is None and (c["motif_non_chiffre"] or c["motif_investissement"]):
         methode += f'<div class="ba-cap" style="margin-top:1mm;">{c["motif_non_chiffre"] or c["motif_investissement"]}</div>'
     elif c["postes_hors_total"] and c["economies"] is not None:
         methode += (f'<div class="ba-cap" style="margin-top:1mm;">'
                     + L("ci_retour_prix_complet", "retour calculé sur le prix complet, après la visite") + '</div>')
 
-    tableau = commun.tableau_equipements(m, p, j, L, simple=True)
+    tableau = commun.tableau_equipements(m, p, j, L, simple=False, resume=True)
     totaux = commun.chaine_totaux(m, p, L, ar_ttc=ar("total_ttc"), ttc_display=True)
     reste = suite(ctx, m, j) if m["variante"] == "une" else ""
 
@@ -115,8 +116,9 @@ def build(ctx, m, j):
 .ba1-tr{{display:table-cell;vertical-align:middle;text-align:right;}}
 .ba1-rv{{font-size:11pt;font-weight:600;}}
 .ba1-hd{{font-size:7.4pt;color:{j['on_hero_2']};margin-top:1px;}}
+.ba1-galon{{height:5mm;{commun.css_motif(j['galon'], 5, '1.1', 'repeat-x')}border-bottom:0.4pt solid {j['or']};}}
 .ba1-corps{{padding:6mm {j['marge']} 0 {j['marge_g']};}}
-.ba1-titre{{font-family:{j['display']};font-weight:400;font-size:{taille_titre}pt;line-height:1.15;letter-spacing:-.01em;}}
+.ba1-titre{{font-family:{j['display']};font-weight:600;font-size:{taille_titre}pt;line-height:1.15;letter-spacing:-.01em;}}
 .ba1-client{{margin-top:1.5mm;font-size:7.8pt;color:{j['muted']};}}
 .ba1-client b{{color:{j['ink']};font-weight:600;}}
 .ba1-reserve{{margin-top:3mm;padding:3px 0 3px 8px;border-left:2pt solid {j['or']};font-size:8pt;font-weight:500;}}
@@ -133,6 +135,7 @@ def build(ctx, m, j):
     <div class="ba1-tr"><div class="ba1-rv">{m["ref"]}</div>
       <div class="ba1-hd">{m["date"]}{(" &nbsp;·&nbsp; " + validite) if validite else ""}</div>{corrections}</div>
   </div></div>
+  <div class="ba1-galon"></div>
   <div class="ba1-corps">
     <div class="ba1-titre">{titre}</div>
     <div class="ba1-client">{ligne_client}</div>

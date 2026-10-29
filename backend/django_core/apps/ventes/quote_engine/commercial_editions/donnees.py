@@ -107,7 +107,7 @@ def lignes(d, fmt_mad, muted="#6B7280"):
             "pu_ht": fmt_mad(pu_ht),
             "taux": f"{taux:g} %",
             "total": fmt_mad(total),
-            "sous_lignes": sous_lignes_html(it, 6.5, muted),
+            "sous_lignes": sous_lignes_html(it, 7.2, "#4A5263"),
         }))
     return sortie
 
@@ -214,6 +214,7 @@ def chiffres(d, fmt):
         base = L(d, f"ci_{base.lower()}", base)
     payback = None if masque else ci_couverture.retour_affiche(d, "com")
     payback_txt = ci_couverture.ans(payback) if payback is not None else None
+    payback_num = _num(payback)
     argent_base_ttc = argent.get("base") == "ttc"
     out = {
         "kwc": premium_base.kwc_str(d.get("com_kwc")),
@@ -232,7 +233,7 @@ def chiffres(d, fmt):
         "part_facture_pct": (f"{round(_num(eco1.get('part_facture_energie_pct')))}"
                              if _num(eco1.get("part_facture_energie_pct"))
                              is not None and not masque else None),
-        "payback": payback_txt,
+        "payback": payback_txt, "payback_num": payback_num,
         "payback_unite": (ci_couverture.unite_ans(d, payback_txt)
                           if payback_txt else ""),
         "payback_base": (L(d, "ci_ttc", "TTC") if argent_base_ttc
@@ -557,10 +558,18 @@ def installation_en_bref(d, L_, fmt):
     return _rangees_installation(d, L_, fmt)
 
 
+_TEL = re.compile(r"(\+?\d[\d ]{7,}\d)")
+
+
+def _tel_insecable(html):
+    """Les numéros de téléphone en espaces insécables (jamais coupés)."""
+    return _TEL.sub(lambda mm: mm.group(1).replace(" ", "\u00a0"), html or "")
+
+
 def vendeur(d, ident):
     brand = ident.get("brand_name") or "TAQINOR"
-    return brand, ci_blocs.ligne_vendeur(brand, ident), \
-        ci_blocs.nettoyer_separateurs(premium_base.bande_legale(d, ident))
+    return brand, _tel_insecable(ci_blocs.ligne_vendeur(brand, ident)), \
+        _tel_insecable(ci_blocs.nettoyer_separateurs(premium_base.bande_legale(d, ident)))
 
 
 def modele(d, ctx):

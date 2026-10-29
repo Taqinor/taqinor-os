@@ -15,7 +15,7 @@ def build(ctx, m, j):
     L = lambda cle, fr, **v: donnees.L(d, cle, fr, **v)
     ar = donnees.ar
     entete = commun.bande_entete(ctx, j, p, L("ci_votre_installation", "Votre installation"),
-                                 f'{L("ci_ref_devis", "Réf. devis")} {m["ref"]}', hauteur_mm=10, logo_mm=18)
+                                 f'{L("ci_ref_devis", "Réf. devis")} {m["ref"]}')
     tableau = commun.tableau_equipements(m, p, j, L)
     totaux = commun.chaine_totaux(m, p, L, ar_ttc=ar("total_ttc"))
     note = (f'<div class="no-cap" style="margin-top:4px;white-space:pre-line;">'
@@ -44,18 +44,18 @@ def build(ctx, m, j):
                f'<div class="no-gap"></div><div class="no-col">{activite}</div></div>')
     remontes = ""
     if m["variante"] == "A":
-        garanties = commun.garanties_rangee(m, p, j, L, 20, 400, etoiles=False)
+        garanties = commun.garanties_rangee(m, p, j, L, 20, 600, etoiles=True)
         echeancier = commun.echeancier_rangee(m, p, j, L)
         if garanties:
             remontes += (f'<div class="no-sec">{commun.kicker(L("ci_garanties", "Garanties"), j, p, ar("ci_garanties"))}'
                          f'<div style="margin-top:2.5mm;">{garanties}</div></div>')
         if echeancier:
-            remontes += (f'<div class="no-sec">{commun.kicker(L("ci_cpdf_echeancier", "Échéancier de paiement"), j, p)}'
+            remontes += (f'<div class="no-sec">{commun.kicker(L("ci_cpdf_echeancier", "Échéancier de paiement"), j, p, ar("ci_cpdf_echeancier"))}'
                          f'<div style="margin-top:2.5mm;">{echeancier}</div></div>')
     return f"""
-<div class="no-root" style="padding-top:18mm;">
+<div class="no-root" style="padding-top:22mm;">
   {entete}
-  {commun.kicker(L("ci_votre_installation", "Votre installation"), j, p)}
+  {commun.kicker(L("ci_votre_installation", "Votre installation"), j, p, ar("ci_votre_installation"))}
   <div class="no-h2" style="margin-top:1.5mm;">{L("ci_equipements_investissement", "Équipements &amp; investissement")}</div>
   <div style="margin-top:3.5mm;">{tableau}</div>
   {totaux}{note}{clauses}{option_avec}{extras}

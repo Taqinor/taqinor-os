@@ -30,7 +30,7 @@ def build(ctx, m, j):
     kicker = (f'{cat["label"]} &nbsp;·&nbsp; ' if cat["label"] else "") + \
         L("ci_kicker_autoconso_commerciale", "Autoconsommation solaire commerciale")
     titre_brut = donnees.ci_couverture.titre_projet(d, "com", c["kwc"], cl["nom"])
-    titre = commun.titre_scinde(titre_brut, m["langue"], j["on_hero_3"], 20, 30, 25, 24)
+    titre = commun.titre_scinde(titre_brut, m["langue"], "#E3E9F3", 20, 30, 25, 24, ville=cl["ville"])
     taille_titre = 30
     ligne_client = donnees.ci_couverture.ligne_client(d, "com", cl["nom"], cl["meta"], "sg1")
     bandeau_txt = donnees.bandeau_reserve(d, "sg1")
@@ -38,6 +38,10 @@ def build(ctx, m, j):
     # En arabe (droite à gauche), le titre s'aligne à droite : la fenêtre en
     # arc passe à gauche (x 20-74 mm), le texte garde sa largeur de 108 mm.
     arc = commun.fenetre_arc(photo, j["hero_bg"], j["or"], left_mm=20 if m["rtl"] else 136)
+    if photo:
+        arc += (f'<div style="position:absolute;left:{20 if m["rtl"] else 136}mm;top:107.5mm;width:54mm;'
+                f'font-size:6.6pt;color:{j["on_hero_2"]};text-align:center;">'
+                + L("ci_realisation", "Réalisation {marque}", marque=commun.esc(m["brand"])) + '</div>')
 
     # ── Héros ─────────────────────────────────────────────────────────────
     if m["deux_options"]:
@@ -71,9 +75,9 @@ def build(ctx, m, j):
             f["avant_num"], f["apres_num"],
             (L("ci_facture_sans_solaire", "Sans solaire"), L("ci_facture_avec_solaire", "Avec solaire"),
              "", "", f'−{c["part_facture_pct"]}&#160;%'),
-            (j["bar_sans"], j["accent"], j["line"], j["ink"]), "IBM Plex Sans", 70, 26)
+            (j["bar_sans"], j["accent"], j["line"], j["ink"]), "IBM Plex Sans", 68, 24)
         droite = (f'<div class="sg-kicker">{L("ci_facture_energie_an1", "Votre facture d&#8217;énergie, année 1")}'
-                  f' ({f["unite"]})</div><div style="margin-top:3mm;">{svg}</div>')
+                  f' ({f["unite"]})</div><div style="margin-top:2mm;">{svg}</div>')
     elif c["couverture"] is not None and not m["deux_options"]:
         droite = (f'<div class="sg-kicker">{L("ci_part_conso_couverte", "Part de votre consommation couverte")}</div>'
                   f'<div class="sg1-fv" style="font-size:22pt;margin-top:2mm;">{c["couverture"]}'
@@ -107,10 +111,14 @@ def build(ctx, m, j):
         faits.append((L("ci_production_annuelle", "Production annuelle"),
                       f'{c["production"]}<span class="sg-ru">{L("ci_unite_kwh_an", "&nbsp;kWh/an")}</span>',
                       ancre("production_annuelle_kwh", c["production"]), ""))
+    if c["economies"] is not None and not m["deux_options"]:
+        faits.append((L("ci_puissance_crete", "Puissance crête"),
+                      f'{c["kwc"]}<span class="sg-ru">{L("res_unite_kwc", "&nbsp;kWc")}</span>',
+                      ancre("puissance_kwc", c["kwc"]), ""))
     if c["co2_t"]:
         faits.append((L("ci_co2_evite", "CO₂ évité / an"), f'≈&#160;{c["co2_t"]}<span class="sg-ru">&nbsp;t</span>',
                       "", ""))
-    faits = faits[:4]
+    faits = faits[:5]
     faits_html = ""
     for lib, val, a, jauge in faits:
         jauge_html = f'<div style="margin-top:3px;">{jauge}</div>' if jauge else ""
@@ -168,7 +176,7 @@ def build(ctx, m, j):
 .sg1-hd{{font-size:7.4pt;color:{j['on_hero_2']};margin-top:1px;}}
 .sg1-filet{{margin-top:4mm;width:98mm;border-top:0.5pt solid {j['or']};position:relative;}}
 .sg1-filet svg{{position:absolute;left:0;top:-1mm;}}
-.sg1-kick{{margin-top:4mm;font-size:7pt;letter-spacing:.16em;text-transform:uppercase;color:{j['or_texte']};font-weight:500;}}
+.sg1-kick{{margin-top:4mm;font-size:7pt;letter-spacing:.12em;text-transform:uppercase;color:{j['or_texte']};font-weight:500;max-width:105mm;white-space:normal;line-height:1.5;}}
 .sg1-titre{{font-family:{j['display']};font-weight:400;font-size:{taille_titre}pt;line-height:1.08;letter-spacing:-.01em;
   margin-top:2.5mm;max-width:108mm;color:{j['on_hero']};}}
 {".sg1-titre,.sg1-acc,.sg1-client,.sg1-reserve,.sg1-kick,.sg1-filet{max-width:none !important;width:auto;margin-left:62mm;}" if m["rtl"] else ""}
@@ -179,13 +187,13 @@ def build(ctx, m, j):
 .sg1-client b{{color:{j['on_hero']};font-weight:600;}}
 .sg1-reserve{{margin-top:4mm;padding:3px 0 3px 8px;border-left:2pt solid {j['or']};font-size:8pt;font-weight:500;color:{j['on_hero']};max-width:108mm;}}
 .sg1-galon{{height:8mm;border-top:0.8pt solid {j['or']};}}
-.sg1-galon-in{{height:6mm;margin-top:0.6mm;{commun.css_motif(j['galon'], 6, '.9', 'repeat-x')}border-bottom:0.4pt solid {j['or']};}}
+.sg1-galon-in{{height:6mm;margin-top:0.6mm;{commun.css_motif(j['galon'], 6, '1.1', 'repeat-x')}border-bottom:0.4pt solid {j['or']};}}
 .sg1-corps{{padding:6mm {j['marge']} 0 {j['marge_g']};}}
-.sg1-hero{{font-family:{j['display']};font-weight:400;font-size:60pt;line-height:1;letter-spacing:-.01em;color:{j['accent']};margin-top:2mm;}}
+.sg1-hero{{font-family:{j['display']};font-weight:400;font-size:58pt;line-height:1;letter-spacing:-.01em;color:{j['accent']};margin-top:2mm;}}
 .sg1-hunit{{font-family:{j['sans']};font-size:11pt;font-weight:600;letter-spacing:0;color:{j['ink']};}}
 .sg1-base{{width:92mm;margin-top:2mm;border-top:0.8pt solid {j['or']};}}
 .sg1-base div{{margin-top:1mm;border-top:0.3pt solid {j['ink']};}}
-.sg1-fv{{font-family:{j['display']};font-weight:400;font-size:20pt;line-height:1;letter-spacing:-.01em;}}
+.sg1-fv{{font-family:{j['display']};font-weight:600;font-size:20pt;line-height:1;letter-spacing:-.01em;}}
 .sg1-reg{{margin-top:4mm;}}
 .sg1-meth{{margin-top:3mm;font-size:6.9pt;color:{j['muted']};line-height:1.45;}}
 .sg1-pointe{{margin-top:2mm;font-size:8.3pt;line-height:1.45;max-width:160mm;}}
@@ -195,7 +203,7 @@ def build(ctx, m, j):
 .sg1-pl{{font-size:9.5pt;font-weight:500;}}
 .sg1-par{{font-size:8pt;color:{j['on_hero_2']};margin-top:1px;text-align:left;}}
 .sg1-ps{{font-size:7.6pt;color:{j['on_hero_2']};margin-top:2px;}}
-.sg1-pv{{font-family:{j['display']};font-weight:400;font-size:28pt;letter-spacing:-.01em;line-height:1;}}
+.sg1-pv{{font-family:{j['display']};font-weight:600;font-size:28pt;letter-spacing:-.01em;line-height:1;}}
 .sg1-pu{{font-size:8.5pt;font-weight:600;color:{j['or_texte']};}}
 .sg1-opts{{margin-top:4mm;}}
 .sg1-bas{{margin-top:4mm;}}

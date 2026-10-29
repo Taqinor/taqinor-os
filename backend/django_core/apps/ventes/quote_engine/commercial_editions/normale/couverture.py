@@ -22,7 +22,7 @@ def build(ctx, m, j):
     kicker = (f'{cat["label"]} &nbsp;·&nbsp; ' if cat["label"] else "") + \
         L("ci_kicker_autoconso_commerciale", "Autoconsommation solaire commerciale")
     titre_brut = donnees.ci_couverture.titre_projet(d, "com", c["kwc"], cl["nom"])
-    titre = commun.titre_scinde(titre_brut, m["langue"], j["on_hero_3"], 17, 24, 21, 30)
+    titre = commun.titre_scinde(titre_brut, m["langue"], "#E3E9F3", 17, 24, 21, 30, ville=cl["ville"])
     ligne_client = donnees.ci_couverture.ligne_client(d, "com", cl["nom"], cl["meta"], "no1")
     bandeau_txt = donnees.bandeau_reserve(d, "no1")
 
@@ -86,9 +86,9 @@ def build(ctx, m, j):
         svg = graphiques.barres_mensuelles(
             m["energie"], (j["bar_conso"], j["accent"], j["or"], j["line"], j["muted"]), "IBM Plex Sans",
             list("JFMAMJJASOND") if m["langue"] != "ar" else [str(i) for i in range(1, 13)],
-            f'{fmt(round(plafond))} kWh', 106, 48,
+            f'{fmt(round(plafond))} kWh', 106, 50,
             legende=(L("ci_legende_conso", "Votre consommation"), L("ci_legende_autoconso", "Production autoconsommée"),
-                     L("ci_legende_surplus", "Surplus non consommé sur place")), contour=j["ink"], echelle_texte=1.2)
+                     L("ci_legende_surplus", "Surplus non consommé sur place")), contour=j["ink"])
         chart = (f'<div class="no-h3">{L("ci_energie_mois_titre_court", "Votre énergie mois par mois")}</div>'
                  f'<div style="margin-top:2mm;">{svg}</div>'
                  f'<div class="no-cap">{L("ci_energie_mois_legende", "kWh par mois : votre consommation et la production estimée de la centrale, calculées heure par heure.")}</div>')
@@ -112,8 +112,9 @@ def build(ctx, m, j):
 .no1-rl{{font-size:6.6pt;letter-spacing:.14em;text-transform:uppercase;color:{j['or_texte']};font-weight:500;}}
 .no1-rv{{font-size:12pt;font-weight:600;margin-top:1px;}}
 .no1-hd{{font-size:7.4pt;color:{j['on_hero_2']};margin-top:1px;}}
-.no1-kick{{margin-top:5mm;font-size:7pt;letter-spacing:.16em;text-transform:uppercase;color:{j['or_texte']};font-weight:500;}}
-.no1-titre{{font-family:{j['display']};font-weight:400;font-size:24pt;line-height:1.1;margin-top:2mm;letter-spacing:-.01em;}}
+.no1-kick{{margin-top:5mm;font-size:7pt;letter-spacing:.12em;text-transform:uppercase;color:{j['or_texte']};font-weight:500;line-height:1.5;}}
+.no1-galon{{height:5mm;{commun.css_motif(j['galon'], 5, '1.1', 'repeat-x')}border-bottom:0.4pt solid {j['or']};}}
+.no1-titre{{font-family:{j['display']};font-weight:600;font-size:24pt;line-height:1.1;margin-top:2mm;letter-spacing:-.01em;}}
 .no1-acc{{margin-top:2mm;font-size:9.6pt;color:{j['on_hero_2']};max-width:150mm;line-height:1.4;}}
 .no1-corps{{padding:6mm {j['marge']} 0 {j['marge_g']};}}
 .no1-client{{font-size:7.8pt;color:{j['muted']};}}
@@ -124,7 +125,7 @@ def build(ctx, m, j):
 .no1-pointe b{{font-weight:600;}}
 .no1-inv{{margin-top:4mm;border-top:1pt solid {j['ink']};border-bottom:0.4pt solid {j['or']};padding:6px 0;}}
 .no1-invl{{font-size:9pt;font-weight:500;}}
-.no1-invv{{font-family:{j['display']};font-weight:400;font-size:24pt;letter-spacing:-.01em;line-height:1;}}
+.no1-invv{{font-family:{j['display']};font-weight:600;font-size:24pt;letter-spacing:-.01em;line-height:1;}}
 .no1-invu{{font-size:8.5pt;font-weight:500;color:{j['muted']};}}
 .no1-bas{{margin-top:4.5mm;}}
 .no1-n{{font-family:{j['display']};font-weight:400;font-size:13pt;color:{j['laiton']};}}
@@ -140,6 +141,7 @@ def build(ctx, m, j):
     <div class="no1-titre">{titre}</div>
     <div class="no1-acc">{cat["accroche"]}</div>
   </div>
+  <div class="no1-galon"></div>
   <div class="no1-corps">
     <div class="no1-client">{ligne_client}</div>
     {f'<div class="no1-reserve">{bandeau_txt}</div>' if bandeau_txt else ''}
