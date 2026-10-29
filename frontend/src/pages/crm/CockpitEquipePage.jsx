@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import crmApi from '../../api/crmApi'
 import {
-  Card, CardContent, Button, Spinner, Input, Label,
+  Badge, Card, CardContent, Button, Spinner, Input, Label,
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from '../../ui'
 import { apiErrorMessage } from '../../lib/apiError'
@@ -160,12 +160,16 @@ function Tableau({ children }) {
 const TH = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground whitespace-nowrap'
 const TD = 'px-3 py-2 align-top whitespace-nowrap'
 
-// La liste des leads comprend `?owner=<id>` : les leads de CE membre.
+// La liste des leads comprend `?owner=<id>` : les leads de CE membre. Le
+// responsable de l'équipe (il prend aussi des leads) porte un badge.
 function NomMembre({ m }) {
   return (
-    <Link to={`/crm/leads?owner=${m.id}`} className="font-medium text-foreground hover:underline">
-      {m.nom}
-    </Link>
+    <>
+      <Link to={`/crm/leads?owner=${m.id}`} className="font-medium text-foreground hover:underline">
+        {m.nom}
+      </Link>
+      {m.est_responsable && <Badge tone="neutral" className="ml-2">Responsable</Badge>}
+    </>
   )
 }
 
@@ -288,7 +292,7 @@ export default function CockpitEquipePage() {
                 </td>
                 <td className={TD}>{l.s.relances_en_retard}</td>
                 <td className={TD}>{l.s.leads_non_contactes}</td>
-                <td className={TD}>{l.m ? '—' : l.s.leads_en_attente}</td>
+                <td className={TD}>{l.s.leads_en_attente}</td>
               </tr>
             ))}
           </tbody>

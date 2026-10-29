@@ -17,7 +17,13 @@ d'équipe. Lecture pure. Aucune règle n'est réécrite ici :
 
 Accès : ``dispatch.peut_regler`` (responsable, tête du département,
 Direction/Admin). Les mêmes personnes fixent les objectifs des membres de
-leurs équipes (``peut_fixer_objectif``).
+leurs équipes et de leur responsable (``peut_fixer_objectif``).
+
+Le responsable prend aussi des leads lui-même (fondateur, 28/10/2026) : sa
+ligne figure EN PREMIER (``dispatch._choix_equipe``, ``est_responsable``) ;
+les leads garés chez lui le temps de l'attribution (``AttributionEnAttente``)
+ne comptent pas dans son premier contact, ses leads non contactés ni ses
+leads ouverts.
 """
 import calendar
 import datetime
@@ -63,27 +69,45 @@ def equipes_pilotees(user):
 
 def peut_fixer_objectif(user, owner_id):
     """Qui écrit un objectif commercial : Direction/Admin toujours ; sinon
-    seulement pour un ``owner`` MEMBRE d'une équipe active que ``user`` pilote
-    (``peut_regler``). Un objectif sans owner (société/équipe) reste Admin."""
+    seulement pour un ``owner`` MEMBRE ou RESPONSABLE d'une équipe active que
+    ``user`` pilote (``peut_regler``). Un objectif sans owner (société/équipe)
+    reste Admin."""
     if getattr(user, 'is_admin_role', False):
         return True
     if owner_id is None or not getattr(user, 'company_id', None):
         return False
     equipes = (EquipeCommerciale.objects
-               .filter(company_id=user.company_id, actif=True,
-                       membres__id=owner_id)
-               .select_related('departement'))
+               .filter(Q(membres__id=owner_id) | Q(responsable_id=owner_id),
+                       company_id=user.company_id, actif=True)
+               .select_related('departement').distinct())
     return any(dispatch.peut_regler(user, e) for e in equipes)
 
 
 def verifier_objectif(user, *owners):
     """403 si ``user`` ne peut pas écrire l'objectif de CHACUN de ``owners``
-    (instances utilisateur ou None)."""
+    (instances utilisateur, identifiants bruts ou None)."""
     for owner in owners:
-        if not peut_fixer_objectif(user, getattr(owner, 'pk', None)):
+        if not peut_fixer_objectif(user, getattr(owner, 'pk', owner)):
             raise PermissionDenied(
                 "Seuls la Direction, le directeur commercial et le responsable "
                 "de l'équipe fixent les objectifs de ses membres.")
+
+
+def owner_demande(data, defaut=None):
+    """L'``owner`` d'un corps de requête objectif, lu AVANT la validation du
+    serializer (le droit se vérifie avant l'unicité : un 409 ne doit jamais
+    révéler qu'un objectif existe pour quelqu'un que l'appelant ne gère pas).
+    Clé absente → ``defaut`` ; vide → None ; illisible → ``defaut`` (le
+    serializer répond ensuite 400)."""
+    if 'owner' not in data:
+        return defaut
+    brut = data.get('owner')
+    if brut in (None, ''):
+        return None
+    try:
+        return int(brut)
+    except (TypeError, ValueError):
+        return defaut
 
 
 # ── Période ──────────────────────────────────────────────────────────────────
@@ -182,17 +206,27 @@ def _objectifs_membre(company, membre, periode, existants):
     return out
 
 
-def _premier_contact(company, membre_ids, debut, fin):
+def _sans_attente_du_responsable(qs, responsable_id):
+    """Retire de ``qs`` les leads garés chez le responsable en attendant leur
+    attribution (``AttributionEnAttente``) — ils ne sont pas encore à lui."""
+    if responsable_id is None:
+        return qs
+    return qs.exclude(owner_id=responsable_id,
+                      attribution_en_attente__isnull=False)
+
+
+def _premier_contact(company, membre_ids, debut, fin, responsable_id=None):
     """{owner_id: (mesurés, sous l'objectif)} — la règle de
     ``leads_selectors.kpi_premier_contact`` sur les leads arrivés dans la
-    période, par propriétaire."""
+    période, par propriétaire (hors leads en attente chez le responsable)."""
     from .leads_selectors import _objectif_premier_contact
     from .models import Lead
     objectif = _objectif_premier_contact(company)
     leads = (Lead.objects
              .filter(company=company, is_archived=False,
                      source=Lead.Source.OS_NATIVE, owner_id__in=membre_ids,
-                     date_creation__gte=debut, date_creation__lt=fin)
+                     date_creation__gte=debut, date_creation__lt=fin))
+    leads = (_sans_attente_du_responsable(leads, responsable_id)
              .only('id', 'owner', 'date_creation', 'date_creation_origine',
                    'first_contacted_at'))
     out = {}
@@ -222,11 +256,13 @@ def _relances_en_retard(company, membre_ids):
     return out
 
 
-def _leads_ouverts(company, membre_ids):
+def _leads_ouverts(company, membre_ids, responsable_id=None):
     """{owner_id: (ouverts, jamais contactés)} — leads ouverts de
-    ``_lignes_pipeline_ouvertes`` (STAGES.py, hors perdus/archivés)."""
+    ``_lignes_pipeline_ouvertes`` (STAGES.py, hors perdus/archivés), hors
+    leads en attente chez le responsable."""
     from .clients_selectors import _lignes_pipeline_ouvertes
-    lignes = (_lignes_pipeline_ouvertes(company, membre_ids)
+    lignes = (_sans_attente_du_responsable(
+                  _lignes_pipeline_ouvertes(company, membre_ids), responsable_id)
               .prefetch_related(None).order_by().values('owner_id')
               .annotate(n=Count('id'),
                         jamais=Count('id', filter=Q(first_contacted_at__isnull=True))))
@@ -235,12 +271,14 @@ def _leads_ouverts(company, membre_ids):
 
 def _devis_ouverts(company, membre_ids):
     """{owner_id: (nombre, valeur TTC)} — devis ``envoye`` en vigueur
-    (``is_active``) des leads du membre, lus par ``lead.devis``."""
-    from .models import Lead
-    leads = (Lead.objects
-             .filter(company=company, owner_id__in=membre_ids,
-                     devis__statut=STATUT_DEVIS_OUVERT, devis__is_active=True)
-             .distinct().prefetch_related('devis__lignes__produit'))
+    (``is_active``) des leads OUVERTS du membre (même filtre que
+    ``_lignes_pipeline_ouvertes`` : ni archivé, ni perdu, étape hors
+    SIGNED/COLD), lus par ``lead.devis``."""
+    from .clients_selectors import _lignes_pipeline_ouvertes
+    leads = (_lignes_pipeline_ouvertes(company, membre_ids)
+             .filter(devis__statut=STATUT_DEVIS_OUVERT, devis__is_active=True)
+             .distinct().prefetch_related(None)
+             .prefetch_related('devis__lignes__produit'))
     out = {}
     for lead in leads:
         for devis in lead.devis.all():
@@ -278,9 +316,13 @@ def _totaux(membres):
         cible = sum(cibles, Decimal('0')) if cibles else None
         realise = sum((Decimal(str(ligne['realise'])) for ligne in lignes),
                       Decimal('0'))
+        # Le % d'équipe ne compare que ce qui a une cible : le réalisé d'un
+        # membre sans objectif reste dans ``realise``, pas dans le ratio.
+        realise_cible = sum((Decimal(str(ligne['realise'])) for ligne in lignes
+                             if ligne['cible'] is not None), Decimal('0'))
         objectifs[metric.value] = {
             'cible': float(cible) if cible is not None else None,
-            'realise': float(realise), 'pct': _pct(realise, cible)}
+            'realise': float(realise), 'pct': _pct(realise_cible, cible)}
     pipeline = {cle: sum(m['pipeline'][cle] for m in membres)
                 for cle in ('leads_ouverts', 'devis_ouverts')}
     pipeline['valeur_devis_ouverts'] = float(sum(
@@ -294,7 +336,7 @@ def _equipe_demandee(user, equipe_id, accessibles):
     if equipe_id is None:
         return accessibles[0] if accessibles else None
     equipe = (EquipeCommerciale.objects
-              .filter(pk=equipe_id, company_id=user.company_id)
+              .filter(pk=equipe_id, company_id=user.company_id, actif=True)
               .select_related('company', 'departement', 'responsable').first()
               if user.company_id else None)
     if equipe is None:
@@ -317,15 +359,18 @@ def cockpit(user, request):
     if equipe is None:
         return dict(VIDE)
     company = equipe.company
-    membres = sorted(
+    # Le responsable actif EN PREMIER (s'il n'est pas déjà membre), puis les
+    # membres actifs par nom — les mêmes choix que l'écran d'attribution.
+    membres = dispatch._choix_equipe(equipe, sorted(
         equipe.membres.filter(is_active=True, company_id=equipe.company_id),
-        key=lambda u: ((dispatch.nom_affiche(u) or '').lower(), u.pk))
+        key=lambda u: ((dispatch.nom_affiche(u) or '').lower(), u.pk)))
     ids = [m.pk for m in membres]
+    resp_id = equipe.responsable_id
     debut, fin = _fenetre(periode)
     existants = _objectifs_existants(company, ids, periode)
-    contact = _premier_contact(company, ids, debut, fin)
+    contact = _premier_contact(company, ids, debut, fin, resp_id)
     retard = _relances_en_retard(company, ids)
-    ouverts = _leads_ouverts(company, ids)
+    ouverts = _leads_ouverts(company, ids, resp_id)
     devis = _devis_ouverts(company, ids)
     attentes = _attentes(equipe)
     lignes = []
@@ -337,6 +382,7 @@ def cockpit(user, request):
             'id': m.pk,
             'nom': dispatch.nom_affiche(m),
             'fonction': (m.poste or '').strip() or None,
+            'est_responsable': m.pk == resp_id,
             'objectifs': _objectifs_membre(company, m, periode, existants),
             'suivi': _suivi(mesures, sous, retard.get(m.pk, 0), jamais,
                             sum(1 for a in attentes if a.proposee_id == m.pk)),

@@ -735,6 +735,10 @@ class TestCockpitEquipe(TestCase):
         self.attente = Lead.objects.create(
             company=self.company, nom='Attente',
             owner=default_responsable_for(self.company))
+        # Date figée (jamais l'horloge réelle) : le lead garé compte dans le
+        # réalisé « leads » du responsable, jamais dans son suivi/pipeline.
+        Lead.objects.filter(pk=self.attente.pk).update(date_creation=a(6, 11))
+        self.a = a
         self.api = APIClient()
 
     def auth_as(self, user):
@@ -792,8 +796,12 @@ class TestCockpitEquipe(TestCase):
         self.assertEqual(corps['periode']['debut'], '2026-10-01')
         self.assertEqual(corps['periode']['fin'], '2026-10-31')
         self.assertEqual(corps['periode']['libelle'], 'Octobre 2026')
-        self.assertEqual([m['nom'] for m in corps['membres']], ['Amine', 'Sara'])
-        sara = corps['membres'][1]
+        # Le responsable (non membre) EN PREMIER, puis les membres par nom.
+        self.assertEqual([m['nom'] for m in corps['membres']],
+                         ['Meryem', 'Amine', 'Sara'])
+        self.assertEqual([m['est_responsable'] for m in corps['membres']],
+                         [True, False, False])
+        sara = corps['membres'][2]
         self.assertEqual(sara['fonction'], 'Chargée de clientèle')
         self.assertEqual(sara['objectifs']['nb_leads'], {
             'objectif_id': self.obj_leads.pk, 'cible': 4.0, 'realise': 3.0,
@@ -816,12 +824,14 @@ class TestCockpitEquipe(TestCase):
         self.assertEqual(sara['pipeline'], {
             'leads_ouverts': 3, 'devis_ouverts': 1,
             'valeur_devis_ouverts': valeur})
-        amine = corps['membres'][0]
+        amine = corps['membres'][1]
         self.assertEqual(amine['suivi']['leads_en_attente'], 1)
         self.assertIsNone(amine['suivi']['premier_contact_5min_pct'])
         totaux = corps['equipe_totaux']
+        # Réalisé = toutes les lignes (le lead garé compte dans le réalisé
+        # « leads » du responsable) ; % = lignes ciblées seulement (3/4).
         self.assertEqual(totaux['objectifs']['nb_leads'],
-                         {'cible': 4.0, 'realise': 3.0, 'pct': 75.0})
+                         {'cible': 4.0, 'realise': 4.0, 'pct': 75.0})
         self.assertIsNone(totaux['objectifs']['ca_signe']['cible'])
         self.assertEqual(totaux['suivi']['leads_en_attente'], 1)
         self.assertEqual(totaux['suivi']['premier_contact_mesures'], 3)
@@ -866,3 +876,98 @@ class TestCockpitEquipe(TestCase):
         self.auth_as(self.chef)
         self.assertEqual(self.api.post(url, corps(self.m2),
                                        format='json').status_code, 409)
+
+    def test_ligne_du_responsable(self):
+        """Le responsable prend des leads : SES leads comptent, le lead garé
+        chez lui en attendant l'attribution non."""
+        from apps.crm.models import AttributionEnAttente, Lead
+        self.assertEqual(self.attente.owner_id, self.chef.pk)
+        self.assertTrue(AttributionEnAttente.objects.filter(
+            lead=self.attente).exists())
+        propre = Lead.objects.create(company=self.company, nom='Propre',
+                                     owner=self.chef)
+        Lead.objects.filter(pk=propre.pk).update(
+            date_creation=self.a(7, 10), first_contacted_at=self.a(7, 10, 1))
+        chef = self._get(self.chef, **self.OCT).json()['membres'][0]
+        self.assertTrue(chef['est_responsable'])
+        self.assertEqual(chef['id'], self.chef.pk)
+        self.assertEqual(chef['suivi']['premier_contact_mesures'], 1)
+        self.assertEqual(chef['suivi']['premier_contact_5min_pct'], 100.0)
+        self.assertEqual(chef['suivi']['leads_non_contactes'], 0)
+        self.assertEqual(chef['pipeline']['leads_ouverts'], 1)
+        # Sans attente, le même lead (toujours à lui) compte normalement.
+        AttributionEnAttente.objects.filter(lead=self.attente).delete()
+        chef = self._get(self.chef, **self.OCT).json()['membres'][0]
+        self.assertEqual(chef['pipeline']['leads_ouverts'], 2)
+        self.assertEqual(chef['suivi']['leads_non_contactes'], 1)
+        self.assertEqual(chef['suivi']['premier_contact_mesures'], 2)
+
+    def test_objectif_du_responsable(self):
+        url = '/api/django/crm/objectifs/'
+        corps = {'owner': self.chef.pk, 'metric': 'nb_rdv',
+                 'period_type': 'month', 'period_year': 2026,
+                 'period_month': 10, 'cible': '6'}
+        self.auth_as(self.directeur)
+        r = self.api.post(url, corps, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        objectif = r.json()['id']
+        self.auth_as(self.chef)
+        self.assertEqual(self.api.patch(f'{url}{objectif}/', {'cible': '7'},
+                                        format='json').status_code, 200)
+        for user in (self.autre_chef, self.autre_dir, self.m1):
+            self.auth_as(user)
+            self.assertEqual(self.api.patch(f'{url}{objectif}/', {'cible': '9'},
+                                            format='json').status_code, 403)
+        ligne = self._get(self.chef, **self.OCT).json()['membres'][0]
+        self.assertEqual(ligne['objectifs']['nb_rdv']['cible'], 7.0)
+
+    def test_pct_d_equipe_sur_les_seules_lignes_ciblees(self):
+        from apps.crm.cockpit_equipe import METRIQUES, _totaux
+
+        def ligne(cible, realise):
+            return {'objectifs': {m.value: {'cible': cible, 'realise': realise}
+                                  for m in METRIQUES},
+                    'pipeline': {'leads_ouverts': 0, 'devis_ouverts': 0,
+                                 'valeur_devis_ouverts': 0.0}}
+        objectifs, _ = _totaux([ligne(40.0, 36.0), ligne(None, 20.0)])
+        self.assertEqual(objectifs['nb_leads'],
+                         {'cible': 40.0, 'realise': 56.0, 'pct': 90.0})
+        objectifs, _ = _totaux([ligne(None, 5.0)])
+        self.assertEqual(objectifs['nb_leads'],
+                         {'cible': None, 'realise': 5.0, 'pct': None})
+
+    def test_devis_des_leads_clos_hors_pipeline(self):
+        from apps.crm.models import Lead
+        for champs in ({'perdu': True}, {'is_archived': True}):
+            Lead.objects.filter(pk=self.leads[0].pk).update(
+                perdu=False, is_archived=False)
+            Lead.objects.filter(pk=self.leads[0].pk).update(**champs)
+            corps = self._get(self.chef, **self.OCT).json()
+            sara = next(m for m in corps['membres'] if m['id'] == self.m1.pk)
+            self.assertEqual(sara['pipeline']['devis_ouverts'], 0, champs)
+            self.assertEqual(sara['pipeline']['valeur_devis_ouverts'], 0.0,
+                             champs)
+            self.assertEqual(
+                corps['equipe_totaux']['pipeline']['devis_ouverts'], 0, champs)
+
+    def test_equipe_archivee_introuvable(self):
+        self.equipe.actif = False
+        self.equipe.save(update_fields=['actif'])
+        self.assertEqual(
+            self._get(self.admin, equipe=self.equipe.pk).status_code, 404)
+
+    def test_pas_de_409_revelateur(self):
+        """Le droit passe AVANT l'unicité : un objectif existant pour un
+        membre d'une autre équipe répond 403, jamais 409."""
+        from decimal import Decimal
+        from apps.crm.models import ObjectifCommercial
+        ObjectifCommercial.objects.create(
+            company=self.company, owner=self.m3, metric='nb_contacts',
+            cible=Decimal('5'), period_type='month', period_year=2026,
+            period_month=10)
+        self.auth_as(self.chef)
+        r = self.api.post('/api/django/crm/objectifs/', {
+            'owner': self.m3.pk, 'metric': 'nb_contacts',
+            'period_type': 'month', 'period_year': 2026, 'period_month': 10,
+            'cible': '5'}, format='json')
+        self.assertEqual(r.status_code, 403, r.content)

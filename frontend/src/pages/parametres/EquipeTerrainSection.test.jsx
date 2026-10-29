@@ -350,6 +350,23 @@ describe('CockpitEquipePage (cockpit d’équipe)', () => {
     expect(screen.getByTestId('cockpit-total-objectifs')).toBeInTheDocument()
   })
 
+  it('responsable badgé et leads en attente par membre affichés', async () => {
+    getCockpitEquipe.mockResolvedValue(reponseContrat('crm', 'cockpit_equipe', 'exemple'))
+    monter()
+    await screen.findByText('Octobre 2026')
+    const lignes = screen.getAllByRole('row')
+    // Badge « Responsable » sur la ligne du responsable (une fois par tableau), jamais sur un membre.
+    const meryem = lignes.filter((r) => within(r).queryByText('Meryem'))
+    expect(meryem).toHaveLength(3)
+    meryem.forEach((r) => expect(within(r).getByText('Responsable')).toBeInTheDocument())
+    lignes.filter((r) => within(r).queryByText('Sara'))
+      .forEach((r) => expect(within(r).queryByText('Responsable')).toBeNull())
+    // Suivi de Sara : sa colonne « En attente d’attribution » montre son chiffre, pas « — ».
+    const suiviSara = lignes.filter((r) => within(r).queryByText('Sara'))[1]
+    const cellules = within(suiviSara).getAllByRole('cell')
+    expect(cellules[cellules.length - 1]).toHaveTextContent('1')
+  })
+
   it('exemple vide : message sans équipe', async () => {
     getCockpitEquipe.mockResolvedValue(reponseContrat('crm', 'cockpit_equipe', 'exemple_vide'))
     monter()
@@ -361,7 +378,8 @@ describe('CockpitEquipePage (cockpit d’équipe)', () => {
     const user = userEvent.setup()
     monter()
     await screen.findByText('Octobre 2026')
-    await user.click(screen.getByRole('button', { name: /Fixer un objectif/ }))
+    const ligne = screen.getAllByRole('row').find((r) => within(r).queryByText('Sara'))
+    await user.click(within(ligne).getByRole('button', { name: /Fixer un objectif/ }))
     await user.type(await screen.findByLabelText('Cible'), '30')
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(saveObjectif).toHaveBeenCalledWith(null, {

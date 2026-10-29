@@ -26,7 +26,7 @@ from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .actions_crud import READ_ACTIONS, WRITE_ACTIONS, _PorteeEnfantsMixin
-from .cockpit_equipe import verifier_objectif
+from .cockpit_equipe import owner_demande, verifier_objectif
 from apps.records.views import ChatterViewSetMixin
 from .models import (
     AppareilEquipe, Apporteur, Client, ConcurrentPerte, DealEnregistre, Defi,
@@ -1414,7 +1414,20 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
 
     # Cockpit d'équipe (fondateur, 28/10/2026) — écriture : Admin, ou
     # ``dispatch.peut_regler`` sur une équipe dont l'owner (ancien ET nouveau)
-    # est membre ; objectif sans owner = Admin seul (``cockpit_equipe``).
+    # est membre ou responsable ; objectif sans owner = Admin seul. Le droit
+    # est vérifié AVANT la validation : un 409 d'unicité ne doit pas révéler
+    # l'objectif de quelqu'un que l'appelant ne gère pas. Les perform_*
+    # revérifient sur les données validées.
+    def create(self, request, *args, **kwargs):
+        verifier_objectif(request.user, owner_demande(request.data))
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        verifier_objectif(request.user, instance.owner_id,
+                          owner_demande(request.data, instance.owner_id))
+        return super().update(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         verifier_objectif(self.request.user, serializer.validated_data.get('owner'))
         serializer.save(

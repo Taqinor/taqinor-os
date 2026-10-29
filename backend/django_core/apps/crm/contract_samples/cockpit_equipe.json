@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/crm/cockpit-equipe/",
   "forme_serveur": "partielle",
-  "pourquoi": "Cockpit d'équipe du responsable (fondateur, 28/10/2026) : pour UNE équipe commerciale et UNE période, chaque membre sur tous ses points — objectifs contre réalisé (leads, contacts, rendez-vous, devis, CA signé), discipline de suivi (premier contact en moins de 5 minutes ouvrées, relances en retard, leads jamais contactés, leads en attente d'attribution), pipeline (leads et devis ouverts, valeurs) — plus la ligne d'équipe. Accès : le responsable de l'équipe, la tête de son département (directeur commercial) et Direction/Admin (même règle que les réglages d'attribution, `dispatch.peut_regler`). Paramètres : `?equipe=<id>` (défaut : la première équipe accessible), `?periode=month|quarter|year` (défaut month), `?annee=`, `?mois=` / `?trimestre=` (défaut : période en cours, Casablanca). Les objectifs s'écrivent par `crm/objectifs/` (mêmes personnes, pour les membres de leurs équipes). Lecture pure.",
+  "pourquoi": "Cockpit d'équipe du responsable (fondateur, 28/10/2026) : pour UNE équipe commerciale et UNE période, chaque membre sur tous ses points — objectifs contre réalisé (leads, contacts, rendez-vous, devis, CA signé), discipline de suivi (premier contact en moins de 5 minutes ouvrées, relances en retard, leads jamais contactés, leads en attente d'attribution), pipeline (leads et devis ouverts, valeurs) — plus la ligne d'équipe. Accès : le responsable de l'équipe, la tête de son département (directeur commercial) et Direction/Admin (même règle que les réglages d'attribution, `dispatch.peut_regler`). Paramètres : `?equipe=<id>` (défaut : la première équipe accessible), `?periode=month|quarter|year` (défaut month), `?annee=`, `?mois=` / `?trimestre=` (défaut : période en cours, Casablanca). Les objectifs s'écrivent par `crm/objectifs/` (mêmes personnes, pour les membres et le responsable de leurs équipes). Lecture pure.",
   "exemple": {
     "equipes_accessibles": [
       {
@@ -47,9 +47,60 @@
     ],
     "membres": [
       {
+        "id": 2,
+        "nom": "Meryem",
+        "fonction": "Responsable d'équipe",
+        "est_responsable": true,
+        "objectifs": {
+          "nb_leads": {
+            "objectif_id": null,
+            "cible": null,
+            "realise": 5.0,
+            "pct": null
+          },
+          "nb_contacts": {
+            "objectif_id": null,
+            "cible": null,
+            "realise": 4.0,
+            "pct": null
+          },
+          "nb_rdv": {
+            "objectif_id": null,
+            "cible": null,
+            "realise": 2.0,
+            "pct": null
+          },
+          "nb_devis": {
+            "objectif_id": null,
+            "cible": null,
+            "realise": 1.0,
+            "pct": null
+          },
+          "ca_signe": {
+            "objectif_id": null,
+            "cible": null,
+            "realise": 0.0,
+            "pct": null
+          }
+        },
+        "suivi": {
+          "premier_contact_5min_pct": 100.0,
+          "premier_contact_mesures": 4,
+          "relances_en_retard": 0,
+          "leads_non_contactes": 0,
+          "leads_en_attente": 0
+        },
+        "pipeline": {
+          "leads_ouverts": 3,
+          "devis_ouverts": 1,
+          "valeur_devis_ouverts": 58000.0
+        }
+      },
+      {
         "id": 4,
         "nom": "Sara",
         "fonction": "Chargée de clientèle",
+        "est_responsable": false,
         "objectifs": {
           "nb_leads": {
             "objectif_id": 31,
@@ -87,7 +138,7 @@
           "premier_contact_mesures": 34,
           "relances_en_retard": 3,
           "leads_non_contactes": 2,
-          "leads_en_attente": 0
+          "leads_en_attente": 1
         },
         "pipeline": {
           "leads_ouverts": 14,
@@ -100,22 +151,22 @@
       "objectifs": {
         "nb_leads": {
           "cible": 40.0,
-          "realise": 36.0,
+          "realise": 41.0,
           "pct": 90.0
         },
         "nb_contacts": {
           "cible": null,
-          "realise": 33.0,
+          "realise": 37.0,
           "pct": null
         },
         "nb_rdv": {
           "cible": 12.0,
-          "realise": 9.0,
+          "realise": 11.0,
           "pct": 75.0
         },
         "nb_devis": {
           "cible": 15.0,
-          "realise": 11.0,
+          "realise": 12.0,
           "pct": 73.3
         },
         "ca_signe": {
@@ -125,16 +176,16 @@
         }
       },
       "suivi": {
-        "premier_contact_5min_pct": 82.0,
-        "premier_contact_mesures": 34,
+        "premier_contact_5min_pct": 84.2,
+        "premier_contact_mesures": 38,
         "relances_en_retard": 3,
         "leads_non_contactes": 2,
         "leads_en_attente": 1
       },
       "pipeline": {
-        "leads_ouverts": 14,
-        "devis_ouverts": 6,
-        "valeur_devis_ouverts": 412000.0
+        "leads_ouverts": 17,
+        "devis_ouverts": 7,
+        "valeur_devis_ouverts": 470000.0
       }
     }
   },
@@ -148,9 +199,9 @@
   },
   "notes": {
     "objectifs": "Une entrée par métrique de `metriques` (clés de `ObjectifCommercial.Metric`). `cible` null = aucun objectif posé pour ce membre et cette période (`objectif_id` null, `pct` null) ; `realise` toujours calculé (même calcul que `crm/objectifs/attainment/`) ; `pct` = realise / cible × 100, une décimale.",
-    "equipe_totaux.objectifs": "Cible = somme des cibles des membres (null si aucune) ; réalisé = somme des réalisés.",
-    "suivi.premier_contact_5min_pct": "Part des leads arrivés dans la période et attribués au membre qui ont été contactés en moins de 5 minutes ouvrées (même règle que `leads/kpi-premier-contact/`) ; null si aucun lead mesuré. `leads_en_attente` (ligne d'équipe) = leads de l'équipe en attente d'attribution par le responsable.",
-    "pipeline": "Instantané à la date de la requête (indépendant de la période) : leads ouverts (étape non SIGNED/COLD, non perdus) et devis envoyés non clos du membre ; valeur TTC en MAD.",
-    "membres": "Membres ACTIFS de l'équipe (hors responsable s'il n'est pas membre), triés par nom."
+    "equipe_totaux.objectifs": "Cible = somme des cibles des lignes (null si aucune) ; réalisé = somme des réalisés de TOUTES les lignes (responsable compris) ; pct = somme des réalisés des seules lignes qui ont une cible / cible × 100, une décimale (null sans cible) — un membre sans objectif ne gonfle pas le pourcentage.",
+    "suivi.premier_contact_5min_pct": "Part des leads arrivés dans la période et attribués à la personne qui ont été contactés en moins de 5 minutes ouvrées (même règle que `leads/kpi-premier-contact/`) ; null si aucun lead mesuré. `leads_en_attente` : par membre = leads en attente d'attribution qui lui sont proposés ; ligne d'équipe = tous les leads de l'équipe en attente d'attribution par le responsable.",
+    "pipeline": "Instantané à la date de la requête (indépendant de la période) : leads ouverts (non archivés, non perdus, étape hors SIGNED/COLD) et devis envoyés en vigueur de ces seuls leads ouverts ; valeur TTC en MAD.",
+    "membres": "Le responsable de l'équipe EN PREMIER s'il est actif (il prend aussi des leads lui-même — fondateur 28/10/2026 ; `est_responsable` true), puis les membres ACTIFS triés par nom (`est_responsable` false). Sur la ligne du responsable, les leads garés chez lui en attendant leur attribution (`AttributionEnAttente`) ne comptent ni dans le premier contact, ni dans les leads non contactés, ni dans les leads ouverts. Ses objectifs se fixent comme ceux des membres."
   }
 }
