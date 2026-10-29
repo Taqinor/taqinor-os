@@ -68,7 +68,7 @@ from .devis_selectors import (
 from .roof_selectors import (
     conception_3d_du_lead, REPERE_SOURCE_ROOF_POINT, REPERE_SOURCE_GPS,
     _REPERE_TOLERANCE_DEG, _repere_nombre, _repere_pin, _repere_anneau,
-    _repere_dans_anneau, repere_toit,
+    _repere_dans_anneau, repere_toit, contour_lnglat,
 )
 from .stock_selectors import (
     leads_utilisant_produit,
@@ -132,7 +132,7 @@ __all__ = [
     'client_ids_anonymises', 'client_ids_par_identifiant', 'client_label',
     'clients_contact_identifiers', 'clients_pour_controle_ice', 'cold_reactivation_by_age_bucket',
     'comptes_dormants', 'compute_attainment', 'conception_3d_du_lead',
-    'conso_mensuelle_kwh_pour_devis', 'consolidation_client', 'credit_hold_check', 'datetime',
+    'conso_mensuelle_kwh_pour_devis', 'consolidation_client', 'contour_lnglat', 'credit_hold_check', 'datetime',
     'delai_paiement_client', 'dernier_contact_lead', 'devis_a_cadence_active',
     'devis_expirant_bientot', 'doublons_foyer_probables', 'entrees_ci_du_lead',
     'entrees_ci_pour_lead_id', 'entrees_pompage_du_lead', 'entrees_pompage_pour_lead_id',

@@ -36,15 +36,18 @@ CONTRAT = json.loads(
 #: back : chaque tâche nommée sert sa clé et retire son entrée ; la table
 #: vide, ``forme_serveur`` redevient ``complete``.
 # ACAL178 (calepinage.lead_supprime) est livrée : sa clé est servie.
-EN_ATTENTE = {
-    'geometrie.contour_utilisable': 'ACAL250',
-    'geometrie.source_repere': 'ACAL250',
-}
+# ACAL250 (geometrie.contour_utilisable / source_repere) est livrée.
+EN_ATTENTE = {}
 EXEMPLE_SERVI = sans(CONTRAT['exemple'], EN_ATTENTE)
 
 LAYOUT = {'schema_version': 2, 'result': {'panels': 12, 'kwc': 8.64},
           'pin': {'lat': 33.5731, 'lng': -7.5898},
           'outline': [[33.5731, -7.5898], [33.5732, -7.5898]]}
+
+
+#: Un contour qui ENTOURE l'épingle du lead (33.5731, -7.5898).
+CONTOUR_AUTOUR_DU_REPERE = [[33.5730, -7.5899], [33.5732, -7.5899],
+                            [33.5732, -7.5897], [33.5730, -7.5897]]
 
 
 def url_contexte(pk):
@@ -141,7 +144,7 @@ class ContexteConceptionTest(BaseApiCalepinage):
         valait ``[]`` et l'atelier n'avait AUCUN pan à ouvrir, alors que le
         contour du client était là. Miroir du repli déjà posé côté ventes.
         """
-        contour = [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]]
+        contour = CONTOUR_AUTOUR_DU_REPERE
         self.lead_lie.roof_outline = contour
         self.lead_lie.save(update_fields=['roof_outline'])
         calepinage = Calepinage.objects.create(
@@ -181,7 +184,7 @@ class ContexteConceptionTest(BaseApiCalepinage):
         présent ? ») lisait ce layout comme un calepinage déjà dessiné et
         jetait le contour du client.
         """
-        contour = [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]]
+        contour = CONTOUR_AUTOUR_DU_REPERE
         self.lead_lie.roof_outline = contour
         self.lead_lie.save(update_fields=['roof_outline'])
         calepinage = Calepinage.objects.create(
@@ -209,6 +212,56 @@ class ContexteConceptionTest(BaseApiCalepinage):
         bloc = self._contexte(self.nu)['calepinage']
         self.assertEqual(bloc['client_adresse'], '')
         self.assertEqual(bloc['client_ville'], '')
+
+    def _lead_gps_hors_contour(self):
+        """ACAL250 — roof_point A DANS R, GPS corrigé B HORS de R."""
+        self.lead_lie.roof_outline = CONTOUR_AUTOUR_DU_REPERE
+        self.lead_lie.gps_lat, self.lead_lie.gps_lng = 33.6, -7.7
+        self.lead_lie.save(update_fields=['roof_outline', 'gps_lat',
+                                          'gps_lng'])
+
+    def test_contour_inutilisable_ni_graine_ni_zone(self):
+        """ACAL250 — le drapeau est publié ; R reste un calque, jamais une
+        graine éditable, et le pin est le GPS corrigé B."""
+        self._lead_gps_hors_contour()
+        sans_layout = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk, titre='Lead')
+        layout_vide = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk, titre='Vide',
+            roof_layout={'version': 2, 'outline': [],
+                         'zones': [{'id': 'z1', 'vertices': []}]})
+        for calepinage in (sans_layout, layout_vide):
+            geometrie = self._contexte(calepinage)['geometrie']
+            self.assertFalse(geometrie['contour_utilisable'])
+            self.assertEqual(geometrie['source_repere'], 'gps')
+            self.assertEqual(geometrie['outline'], [])
+            self.assertEqual(geometrie['contour_client'],
+                             CONTOUR_AUTOUR_DU_REPERE)
+            self.assertEqual(geometrie['pin'], {'lat': 33.6, 'lng': -7.7})
+
+    def test_contour_inutilisable_cote_devis(self):
+        """ACAL250 — le contexte de conception DEVIS dit la même chose."""
+        from apps.ventes.selectors import contexte_conception_devis
+
+        self._lead_gps_hors_contour()
+        devis = Devis.objects.create(
+            company=self.company, client=self.client_lie, lead=self.lead_lie,
+            reference='DEV-202609-2312')
+        geometrie = contexte_conception_devis(devis, self.company)['geometrie']
+        self.assertFalse(geometrie['contour_utilisable'])
+        self.assertEqual(geometrie['source_repere'], 'gps')
+        self.assertEqual(geometrie['outline'], [])
+        self.assertEqual(geometrie['contour_client'], CONTOUR_AUTOUR_DU_REPERE)
+
+    def test_contour_utilisable_ensemence_le_pan(self):
+        self.lead_lie.roof_outline = CONTOUR_AUTOUR_DU_REPERE
+        self.lead_lie.save(update_fields=['roof_outline'])
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk, titre='Lead')
+        geometrie = self._contexte(calepinage)['geometrie']
+        self.assertTrue(geometrie['contour_utilisable'])
+        self.assertEqual(geometrie['source_repere'], 'roof_point')
+        self.assertEqual(geometrie['outline'], CONTOUR_AUTOUR_DU_REPERE)
 
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))

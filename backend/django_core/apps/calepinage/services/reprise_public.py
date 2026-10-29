@@ -40,8 +40,9 @@ ORDRE DES AXES — LE PIÈGE, FERMÉ ICI
 --------------------------------------
 ``Lead.roof_outline`` est en ``[lat, lng]`` (comme ``outline`` du document),
 tandis que ``zones[].vertices`` est en ``[lng, lat]``. Les deux se ressemblent
-et la confusion produit une toiture retournée, plausible et fausse. La
-conversion est donc faite par une fonction NOMMÉE, et un test la couvre.
+et la confusion produit une toiture retournée, plausible et fausse. ACAL250 :
+la conversion est celle du normaliseur UNIQUE ``crm.selectors.contour_lnglat``
+(formes ``[lat, lng]`` et ``{lat, lng}``, sommets hors bornes écartés).
 """
 from __future__ import annotations
 
@@ -63,39 +64,6 @@ __all__ = [
     'CLE_LAYOUT', 'CHAMP_PORTEUR', 'REPERE_ZONE_CONTOUR',
     'reprendre_trace_public',
 ]
-
-
-def _latlng_vers_lnglat(points):
-    """``[[lat, lng], …]`` -> ``[[lng, lat], …]`` — l'échange est NOMMÉ.
-
-    Rend ``[]`` sur une entrée illisible : un contour à moitié lu vaut moins
-    que pas de contour du tout.
-    """
-    propres = []
-    for point in points or ():
-        if not isinstance(point, (list, tuple)) or len(point) < 2:
-            return []
-        lat, lng = point[0], point[1]
-        if isinstance(lat, bool) or isinstance(lng, bool):
-            return []
-        if not isinstance(lat, (int, float)) \
-                or not isinstance(lng, (int, float)):
-            return []
-        propres.append([float(lng), float(lat)])
-    return propres
-
-
-def _epingle(lead):
-    """``{lat, lng}`` du lead, ou ``None`` — jamais une ville devinée."""
-    brut = getattr(lead, 'roof_point', None)
-    if not isinstance(brut, dict):
-        return None
-    lat, lng = brut.get('lat'), brut.get('lng')
-    if isinstance(lat, bool) or isinstance(lng, bool):
-        return None
-    if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
-        return None
-    return {'lat': float(lat), 'lng': float(lng)}
 
 
 def _document_transporte(lead):
@@ -131,8 +99,14 @@ def _document_et_motif(lead):
     if lead is None:
         return None, ''
 
+    # ACAL250 — LE repère toit du lead (``crm.selectors.repere_toit``) et UN
+    # seul normaliseur de contour (``crm.selectors.contour_lnglat``) : le GPS
+    # corrigé prime sur l'épingle du tunnel, et un contour dans lequel ce
+    # repère ne tombe pas n'ensemence AUCUNE zone (il reste le calque client).
+    from apps.crm.selectors import contour_lnglat, repere_toit
+
     transporte = _document_transporte(lead)
-    epingle = _epingle(lead)
+    epingle, _source, contour_utilisable = repere_toit(lead)
     motif = ''
     if transporte is not None:
         document = dict(transporte)
@@ -146,15 +120,21 @@ def _document_et_motif(lead):
         if not motif:
             return document, ''
 
-    contour = _latlng_vers_lnglat(getattr(lead, 'roof_outline', None) or [])
+    contour = contour_lnglat(lead)
     if len(contour) < 3:
         return None, motif
-    document = {
-        'version': 2,
-        'source': 'lead',
-        'zones': [{'id': REPERE_ZONE_CONTOUR, 'vertices': contour}],
-        'outline': [[point[1], point[0]] for point in contour],
-    }
+    if contour_utilisable:
+        document = {
+            'version': 2,
+            'source': 'lead',
+            'zones': [{'id': REPERE_ZONE_CONTOUR, 'vertices': contour}],
+            'outline': [[point[1], point[0]] for point in contour],
+        }
+    else:
+        # Le repère est HORS du contour : l'ancien toit n'est pas un pan à
+        # calepiner — le document ne porte que le repère, jamais une zone.
+        document = {'version': 2, 'source': 'lead', 'zones': [],
+                    'outline': []}
     if epingle is not None:
         document['pin'] = epingle
     return document, motif

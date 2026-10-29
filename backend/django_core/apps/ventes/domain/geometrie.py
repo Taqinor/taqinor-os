@@ -1250,37 +1250,14 @@ _AUTO_ZONE_ID = 'area-1'
 def contour_client_lnglat(lead):
     """Le tracé du client en ``[[lng, lat], …]`` (convention builder), ou ``[]``.
 
-    MÊMES règles que ``referenceContourRing`` (apps/web prefill.ts) et que
-    ``normaliserContour`` (frontend traceToit.js) : les DEUX formes réellement
-    stockées dans ``Lead.roof_outline`` — ``[lat, lng]`` (posée par le webhook,
-    cf. ``_clean_roof_outline``) et ``{lat, lng}`` (import / saisie manuelle) —
-    le MÊME bornage lat ∈ [-90, 90] / lng ∈ [-180, 180], et le MÊME seuil de
-    3 sommets (un polygone commence à 3). Jamais une version plus permissive :
-    un contour que l'écran refuse de dessiner ne doit pas devenir une zone
-    côté serveur.
+    ACAL250 — UN seul normaliseur : ``crm.selectors.contour_lnglat`` (les deux
+    formes stockées ``[lat, lng]`` / ``{lat, lng}``, bornage lat/lng, seuil de
+    3 sommets). Nom gardé pour les appelants et le ré-export
+    ``ventes.services.contour_client_lnglat``.
     """
-    brut = getattr(lead, 'roof_outline', None)
-    if not isinstance(brut, (list, tuple)):
-        return []
-    anneau = []
-    for point in brut:
-        if isinstance(point, dict):
-            lat, lng = point.get('lat'), point.get('lng')
-        elif isinstance(point, (list, tuple)) and len(point) >= 2:
-            lat, lng = point[0], point[1]
-        else:
-            continue
-        try:
-            lat, lng = float(lat), float(lng)
-        except (TypeError, ValueError):
-            continue
-        # Ce test rejette AUSSI les NaN : toute comparaison avec NaN est
-        # fausse, donc `-90 <= nan <= 90` l'est, et le point est écarté. (Un
-        # second garde-fou `lat != lat` vivait ici : il était inatteignable.)
-        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-            continue
-        anneau.append([lng, lat])
-    return anneau if len(anneau) >= 3 else []
+    from apps.crm.selectors import contour_lnglat
+
+    return contour_lnglat(lead)
 
 
 def aire_contour_m2(contour):

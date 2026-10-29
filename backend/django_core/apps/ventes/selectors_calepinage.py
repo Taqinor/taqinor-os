@@ -538,8 +538,15 @@ def contexte_conception_devis(devis, company):
     # ── Géométrie : le layout du devis PRIME sur le repère du lead ──
     # QJR598 — LE repère toit du lead (crm.selectors.repere_toit) : le GPS
     # corrigé prime sur l'épingle du tunnel, sinon l'épingle, sinon le GPS.
-    from apps.crm.selectors import repere_toit
-    pin_lead = repere_toit(lead)[0] if lead is not None else None
+    # ACAL250 — le drapeau ``contour_utilisable`` est PUBLIÉ, jamais jeté :
+    # un contour où le repère ne tombe pas reste le calque ``contour_client``
+    # mais n'ensemence aucun pan (``outline`` = []).
+    from apps.crm.selectors import REPERE_SOURCE_GPS, repere_toit
+    pin_lead, source_lead, contour_utilisable = (
+        repere_toit(lead) if lead is not None else (None, None, False))
+    source_repere = ('gps' if source_lead == REPERE_SOURCE_GPS
+                     else 'roof_point' if source_lead else None)
+    contour_graine = contour_client if contour_utilisable else []
     layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else None
     if layout:
         source = 'devis'
@@ -566,12 +573,12 @@ def contexte_conception_devis(devis, company):
         # circonstances. Le contour rendu reste celui du CLIENT (`contour_client`,
         # `Lead.roof_outline` tel quel), jamais une géométrie inventée.
         if not outline and not (layout.get('zones') or layout.get('areas')):
-            outline = contour_client
+            outline = contour_graine
     else:
         roof_layout = None
         pin = pin_lead
-        outline = contour_client
-        source = 'lead' if (pin or outline) else 'none'
+        outline = contour_graine
+        source = 'lead' if (pin or contour_client) else 'none'
     # Un layout sans épingle centre quand même la carte sur le repère du lead
     # (n'écrit rien nulle part ; jamais une valeur inventée).
     if pin is None and pin_lead is not None:
@@ -641,6 +648,8 @@ def contexte_conception_devis(devis, company):
             'pin': pin,
             'outline': outline,
             'contour_client': contour_client,
+            'contour_utilisable': bool(contour_utilisable),
+            'source_repere': source_repere,
         },
         'cible': cible,
         'carte': _config_carte(),
