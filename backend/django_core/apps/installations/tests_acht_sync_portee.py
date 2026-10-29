@@ -110,3 +110,86 @@ class SyncPorteeTests(TestCase):
                          ['applied', 'applied', 'applied'], res)
         self.iv.refresh_from_db()
         self.assertEqual(self.iv.statut, Intervention.Statut.TERMINEE)
+
+
+class LectureChantierTechnicienInterventionTests(TestCase):
+    """ERR-CHT-TECH-CHANTIER-404 — le technicien d'une intervention LIT son
+    chantier (panneau « Infos client ») sans en être le responsable ; rien
+    d'autre ne s'élargit (écriture, synchro, autre société)."""
+
+    URL = '/api/django/installations/chantiers/{}/'
+
+    def _user(self, company, role, username):
+        return User.objects.create_user(
+            username=username, password='x', company=company,
+            role_legacy='normal', role=role)
+
+    def _role(self, company, nom):
+        return Role.objects.create(
+            company=company, nom=nom,
+            permissions=['installation_voir', 'intervention_gerer',
+                         SCOPE_TEAM])
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='co-cht404', defaults={'nom': 'Co CHT404'})
+        role = self._role(self.company, 'technicien-cht404')
+        chef = User.objects.create_user(
+            username='cht404-chef', password='x', company=self.company,
+            role_legacy='responsable')
+        self.a = self._user(self.company, role, 'cht404-a')
+        self.b = self._user(self.company, role, 'cht404-b')
+        self.c = self._user(self.company, role, 'cht404-c')
+        # Chantier de A (responsable) ; l'intervention est assignée à B.
+        self.inst = Installation.objects.create(
+            company=self.company, reference='CH-CHT404',
+            technicien_responsable=self.a, created_by=chef)
+        for _ in range(2):  # deux interventions → aucune ligne dupliquée
+            Intervention.objects.create(
+                company=self.company, installation=self.inst,
+                type_intervention='pose', technicien=self.b,
+                created_by=chef)
+        ChantierChecklistItem.objects.create(
+            company=self.company, installation=self.inst, cle='cht404',
+            libelle='Étape CHT404')
+        autre = Company.objects.create(slug='co-cht404-autre', nom='Autre')
+        self.x = self._user(
+            autre, self._role(autre, 'technicien-cht404-autre'), 'cht404-x')
+
+    def _api(self, user):
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def test_technicien_assigne_lit_le_chantier(self):
+        r = self._api(self.b).get(self.URL.format(self.inst.id))
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        self.assertEqual(r.data['id'], self.inst.id)
+        data = self._api(self.b).get(
+            '/api/django/installations/chantiers/').data
+        lignes = data['results'] if isinstance(data, dict) else data
+        # La fiche seule s'ouvre : la LISTE reste bornée (ACHT50 / ACHT79).
+        self.assertNotIn(self.inst.id, [c['id'] for c in lignes])
+
+    def test_technicien_non_assigne_meme_societe_404(self):
+        r = self._api(self.c).get(self.URL.format(self.inst.id))
+        self.assertEqual(r.status_code, 404)
+
+    def test_autre_societe_404(self):
+        r = self._api(self.x).get(self.URL.format(self.inst.id))
+        self.assertEqual(r.status_code, 404)
+
+    def test_aucune_ecriture_elargie(self):
+        r = self._api(self.b).patch(
+            self.URL.format(self.inst.id), {'notes': 'b'}, format='json')
+        self.assertEqual(r.status_code, 404)
+        r = self._api(self.b).post(SYNC, {'ops': [{
+            'client_op_id': str(uuid.uuid4()),
+            'op_type': 'chantier.cocher_checklist',
+            'payload': {'chantier': self.inst.id, 'cle': 'cht404',
+                        'fait': True}}]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['results'][0]['status'], 'error', r.data)
+        self.assertFalse(ChantierChecklistItem.objects.get(
+            installation=self.inst).fait)

@@ -7,6 +7,13 @@
    `.Point`… — tous exports nommés en 6.x) et garde les exports nommés. Les
    sous-chemins (`maplibre-gl/dist/maplibre-gl.css?url`) ne sont pas touchés. */
 import * as maplibregl from 'maplibre-gl/dist/maplibre-gl.mjs'
+// ERR-CARTE-WORKER-MAPLIBRE6 — 6.x calcule l'URL de son worker À L'EXÉCUTION
+// (`./maplibre-gl-worker.mjs` à côté du chunk) : Vite ne l'émet donc jamais et
+// le serveur renvoie index.html → carte 3D vide. Le worker est bundlé par Vite
+// (avec son import `maplibre-gl-shared.mjs`) et son URL donnée à maplibre.
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
+
+maplibregl.setWorkerUrl(workerUrl)
 
 export * from 'maplibre-gl/dist/maplibre-gl.mjs'
 export default maplibregl

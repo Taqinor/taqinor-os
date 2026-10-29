@@ -28,6 +28,8 @@ LAYOUT = {
 #: courant d'entrée admissible (écrêtage), aucune borne Isc publiée.
 CODE_ALERTE = 'CH_IMP_CUMULE_ECRETAGE'
 CODE_BLOQUANT = 'CH_ISC_CUMULE_HORS_SPECIFICATION'
+#: Le MÊME contrôle tel que `GET resultat/` le sert à l'écran (CAL244).
+CODE_ALERTE_SERVI = 'courant_par_entree_mppt'
 
 
 def _url(pk, suffixe):
@@ -129,5 +131,28 @@ class Derogations(BaseApiCalepinage):
         reponse = self._deroger(self._client(self.user_sans), CODE_ALERTE)
         self.assertEqual(reponse.status_code, 403, reponse.data)
         self.assertIn('derogations', reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertNotIn('journal_derogations', self.calepinage.resultat)
+
+    def test_code_servi_a_l_ecran_est_derogeable_et_relu(self):
+        """ACAL284 (suite) — l'écran déroge par le code de
+        ``electrique.verdicts[]`` (``courant_par_entree_mppt``), jamais par un
+        code du noyau : il doit être accepté ET relu sous ce même code."""
+        servi = self.api.get(_url(self.calepinage.pk, 'resultat'))
+        alertes = [v['code'] for v in servi.data['electrique']['verdicts']
+                   if v['conforme'] is False and not v['bloquant']]
+        self.assertIn(CODE_ALERTE_SERVI, alertes)
+        reponse = self._deroger(self.api, CODE_ALERTE_SERVI)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        relu = self.api.get(_url(self.calepinage.pk, 'resultat'))
+        self.assertEqual([d['code'] for d in relu.data['derogations']],
+                         [CODE_ALERTE_SERVI])
+
+    def test_code_servi_bloquant_reste_refuse(self):
+        FicheTechnique.objects.filter(produit=self.onduleur).update(
+            ond_isc_max_mppt_a=10.0)
+        reponse = self._deroger(self.api, CODE_ALERTE_SERVI)
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('derogations.1.code', reponse.data)
         self.calepinage.refresh_from_db()
         self.assertNotIn('journal_derogations', self.calepinage.resultat)
