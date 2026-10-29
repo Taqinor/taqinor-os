@@ -205,3 +205,17 @@ décision 30°, la même surface donnait ≈ 30 kWc ; le fondateur attend **40 k
   détail en sous-lignes ou en annexe), sur l'écran, le devis auto et les PDF C&I. Même esprit que le rôle unique
   `tableau` du résidentiel (RSIZ). Garder les prix des composants au catalogue (ils viennent d'être saisis : CI-TERRE,
   CI-PROT-DC, CI-PARAF-DC, CI-PARAF-AC).
+- **R3 — DÉCISION FONDATEUR (28/10 soir, après #1141 déployée) : contenu du Tableau et de la supervision.** Vu sur le
+  devis boulangerie regénéré (1 onduleur Huawei triphasé à 6 MPPT, 35,5 kWc) : 6 protections DC, 1 seul parafoudre DC,
+  disjoncteur/parafoudre AC sans « 4P », Smart Meter dans le Tableau, mise à la terre ajoutée d'office. Règles :
+  (1) protection DC et parafoudre DC : **une par chaîne (string)**, plus jamais par MPPT ni par onduleur ;
+  (2) installation triphasée : disjoncteur AC **et** parafoudre AC **tétrapolaires (4P)**, écrit dans la désignation
+  (2P en monophasé) ; (3) le **Smart Meter sort du Tableau** : il va avec la **clé wifi (1 par onduleur)** dans un groupe
+  client « Supervision & comptage » (`groupe_client = supervision_ci`) ; le compteur est choisi **par calibre** (courant
+  AC au point d'injection) : 3 paliers confirmés le 28/10 — Huawei DTSU666-H 100 A direct **2 400 TTC**, 250 A avec TC
+  **3 600 TTC**, > 250 A TC externes **4 800 TTC** ; clé wifi Huawei SDongleA-05 **1 200 TTC** (prix d'achat vides) ;
+  (4) **mise à la terre jamais automatique** : question du relevé de visite C&I (`mise_a_la_terre` : conforme /
+  a_creer / a_verifier) ; ajoutée au devis seulement si la visite dit « à créer » ; sans visite, alerte interne « à
+  vérifier à la visite ». CONSTRUIT PAR PC1 le 28-29/10 (session boulangerie, quota remis à zéro) — PC2 : ne pas
+  reconstruire ; relire la PR « R3 » si une lane touche `moteur_ci/composition.py`, `quote_engine/ci/tableau.py`,
+  `visites/visite_checklist.py`.
