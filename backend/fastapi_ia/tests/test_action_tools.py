@@ -859,6 +859,18 @@ class JournalEvenementAic6Tests(unittest.TestCase):
         self.assertEqual(svc._extraire_intention(
             '<intention>{"intention": "pirate"}</intention>')[1], "donnee")
 
+    def test_sortie_en_blocs_de_contenu_anthropic(self):
+        """AIC13 (acceptation en direct, 29/10/2026) : sous claude, `output` est
+        une liste de blocs ; le texte et la balise finale en sont extraits."""
+        from app.services import sql_agent_service as svc
+        blocs = [{"type": "text", "text": "Voici le devis."},
+                 {"type": "text", "text": "<intention>{\"intention\": \"action\"}</intention>"}]
+        self.assertEqual(svc._extraire_intention(blocs), ("Voici le devis.", "action"))
+        self.assertEqual(svc._extraire_intention(["a", "b"]), ("ab", "donnee"))
+        self.assertEqual(svc._extraire_intention(None), ("", "donnee"))
+        self.assertEqual(svc._texte_de_sortie(
+            [{"type": "tool_use", "id": "x"}, {"type": "text", "text": "ok"}]), "ok")
+
 
 class CapteurErreursAic7Tests(unittest.TestCase):
     """AIC7 — un echec inattendu d'une action devient un evenement `bug` sans
@@ -876,6 +888,21 @@ class CapteurErreursAic7Tests(unittest.TestCase):
     def _intention(self, collector):
         from app.services import sql_agent_service as svc
         return svc._intention_et_erreur(collector, "donnee")
+
+    def test_action_proposee_ou_executee_vaut_intention_action(self):
+        """AIC13 : la balise du modele ne prime pas sur une action reelle."""
+        from app.services import sql_agent_service as svc
+        proposition = [{"type": "proposal", "action_key": "ventes.devis.accepter"}]
+        self.assertEqual(svc._intention_et_erreur(proposition, "hors_champ"),
+                         ("action", None))
+        resultat = [{"type": "result", "action_key": "crm.lead.note"}]
+        self.assertEqual(svc._intention_et_erreur(resultat, "donnee")[0], "action")
+        erreur = [{"type": "result", "action_key": "crm.lead.resume"},
+                  {"type": "erreur", "intention": "bug", "status": 404,
+                   "outil": "crm.lead.resume", "message": "Pas trouve."}]
+        self.assertEqual(svc._intention_et_erreur(erreur, "donnee")[0], "bug")
+        self.assertEqual(svc._intention_et_erreur([], "hors_champ"),
+                         ("hors_champ", None))
 
     def test_5xx_devient_evenement_bug(self):
         for status in (500, 404, 409, 422, 0):

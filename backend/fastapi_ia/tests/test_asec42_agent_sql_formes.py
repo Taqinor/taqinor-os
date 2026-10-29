@@ -208,6 +208,18 @@ class PromptSystemeAic5Tests(unittest.TestCase):
         self.assertIsInstance(texte_groq, str)
         self.assertNotIn("RESTRICTION PRIX D'ACHAT", texte_groq)
 
+    def test_hors_claude_bloc_allege_sans_manuel(self):
+        """AIC13 : sous groq (repli ou principal), ni manuel ni manifeste complet —
+        seule la liste ne_fait_pas ; manuel_present faux (8 000 TPM chez Groq)."""
+        self._dossier()
+        texte, present = svc._contenu_systeme("groq", True)
+        self.assertFalse(present)
+        self.assertIsInstance(texte, str)
+        self.assertIn("CE QUE TAQINOR NE FAIT PAS", texte)
+        self.assertIn("Envoyer un e-mail", texte)
+        self.assertNotIn("MANUEL TAQINOR", texte)
+        self.assertNotIn("Ventes > Devis", texte)
+
     def test_manuel_absent_repond_comme_avant(self):
         self._dossier(manuel=None)
         contenu, present = svc._contenu_systeme("groq", True)

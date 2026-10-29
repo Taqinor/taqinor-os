@@ -1,0 +1,32 @@
+{
+ "etape": "P1.8",
+ "titre": "Fonction absente signalee par report_gap (manque)",
+ "taches": [
+  "AIC7"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "evenement": {
+   "id": 6,
+   "intention": "manque",
+   "modele": "claude-sonnet-5-5",
+   "repli": false,
+   "manuel_present": true,
+   "tokens": {
+    "input": 1673,
+    "output": 534,
+    "cache_read": 136136
+   },
+   "outils_appeles": [],
+   "erreur": null,
+   "note": 0,
+   "commentaire": null,
+   "lead_id": 2344,
+   "ecran": "/crm/leads/2344",
+   "user_id": 286,
+   "question": "Crée un devis agricole de pompage pour le lead 2344.",
+   "resume": "Le besoin est signalé à l'équipe. Pour le devis, passez par le générateur de devis, comme indiqué ci-dessus.",
+   "cree_le": "2026-10-29T21:19:56.445135+00:00"
+  }
+ }
+}

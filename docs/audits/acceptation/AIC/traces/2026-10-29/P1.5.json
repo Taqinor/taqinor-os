@@ -1,0 +1,37 @@
+{
+ "etape": "P1.5",
+ "titre": "Demande hors champ : envoyer un e-mail — report_gap puis brouillon de suivi",
+ "taches": [
+  "AIC7",
+  "AIC32"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "evenement": {
+   "id": 14,
+   "intention": "hors_champ",
+   "modele": "claude-sonnet-5-5",
+   "repli": false,
+   "manuel_present": true,
+   "tokens": {
+    "input": 72925,
+    "output": 657,
+    "cache_read": 136356
+   },
+   "outils_appeles": [
+    "crm.lead.brouillon_suivi",
+    "crm.lead.brouillon_suivi"
+   ],
+   "erreur": null,
+   "note": 0,
+   "commentaire": null,
+   "lead_id": 2344,
+   "ecran": "/crm/leads/2344",
+   "user_id": 286,
+   "question": "Envoie un e-mail au client du lead 2344 pour le relancer.",
+   "resume": "Je ne peux pas envoyer d'e-mail. L'ERP prépare le texte, et c'est vous qui l'envoyez. J'ai signalé cette demande à l'équipe.\n\nVoici un brouillon de relance pour",
+   "cree_le": "2026-10-29T21:41:22.142788+00:00"
+  },
+  "reponse_extrait": "Je ne peux pas envoyer d'e-mail. L'ERP prépare le texte, et c'est vous qui l'envoyez. J'ai signalé cette demande à l'équipe.\n\nVoici un brouillon de relance pour le lead 2344, à relire et à copier dans votre messagerie :\n\n> Bonjour ATOT17 Client mvsshvf21, c'est demo_commercial de TAQINOR Démo : je r"
+ }
+}

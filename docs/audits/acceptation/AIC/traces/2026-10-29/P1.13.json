@@ -1,0 +1,42 @@
+{
+ "etape": "P1.13",
+ "titre": "Catalogue d actions vu par un Commercial (for_user)",
+ "taches": [
+  "AIC33"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "catalogue": {
+   "http": 200,
+   "count": 26,
+   "cles": [
+    "adsengine.ads.top",
+    "adsengine.campaigns.list",
+    "adsengine.spend.week",
+    "automation.rule.propose_draft",
+    "crm.client.create",
+    "crm.digest_matin",
+    "crm.lead.brouillon_suivi",
+    "crm.lead.create",
+    "crm.lead.list",
+    "crm.lead.note",
+    "crm.lead.resume",
+    "crm.lead.update",
+    "crm.lead.whatsapp_prepare",
+    "crm.leads.a_relancer",
+    "ged.docqa.retrieve",
+    "ventes.devis.accepter",
+    "ventes.devis.convertir_bc",
+    "ventes.devis.creer_auto",
+    "ventes.devis.generer_facture",
+    "ventes.devis.generer_pdf",
+    "ventes.devis.ligne_ajouter",
+    "ventes.devis.ligne_modifier",
+    "ventes.devis.ligne_supprimer",
+    "ventes.devis.proposal_pdf",
+    "ventes.devis.remise",
+    "ventes.facture.enregistrer_paiement"
+   ]
+  }
+ }
+}

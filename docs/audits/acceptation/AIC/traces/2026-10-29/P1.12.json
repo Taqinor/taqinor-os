@@ -1,0 +1,34 @@
+{
+ "etape": "P1.12",
+ "titre": "Digest du matin (crm.digest_matin)",
+ "taches": [
+  "AIC35"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "evenement": {
+   "id": 15,
+   "intention": "action",
+   "modele": "claude-sonnet-5-5",
+   "repli": false,
+   "manuel_present": true,
+   "tokens": {
+    "input": 1102,
+    "output": 205,
+    "cache_read": 136356
+   },
+   "outils_appeles": [
+    "crm.digest_matin"
+   ],
+   "erreur": null,
+   "note": 0,
+   "commentaire": null,
+   "lead_id": 2344,
+   "ecran": "/crm/leads/2344",
+   "user_id": 286,
+   "question": "Mon matin : qu'ai-je à faire aujourd'hui ?",
+   "resume": "Votre matinée est vide pour l'instant :\n\n- **Visites du jour** : aucune, et aucune en retard.\n- **Relances du jour** : aucune.\n- **Devis sans réponse depuis plu",
+   "cree_le": "2026-10-29T21:43:10.269577+00:00"
+  }
+ }
+}

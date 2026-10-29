@@ -935,3 +935,9 @@ L'assistant dispose de 27 actions déclarées dans le code. Toute action vérifi
 - **parametres** : `/parametres` + 24 tabs/screens (export, notifications, alertes-kpi, vues, playbooks, achats(+cloture), gammes, tiers-doublons, ia, objets-personnalises, pieces-jointes, plans-commission, corbeille, ux, sauvegardes, export-reversibilite, limites-usage, etat-dependances, sla, maintenance, messages-accueil, historique-statut), `/objets/:code`, `/journal`
 - **offlinesync** : `/mobile/commercial`, `/mobile/cockpit`, `/mobile/equipe-terrain`, `/mobile/equipe-commerciale`, `/synchro/conflits`
 - **admin** : `/admin/users`, `/admin/roles`, `/admin/tenants`, `/admin/securite-identite`, `/admin/gouvernance-acces`, `/admin/impersonation` (+`/demander`), `/admin/demo/nouveau`
+
+<!-- FAQ-TRI:debut -->
+## FAQ ajoutée par le tri nocturne
+### Comment relancer un client par e-mail depuis l'ERP ?
+L'assistant n'envoie jamais d'e-mail ni de WhatsApp. Demandez-lui « Prépare un message de suivi pour ce lead » (action `crm.lead.brouillon_suivi`, depuis la fiche lead `/crm/leads/:id`, menu ⋯ « Demander à l'assistant ») : il rend un texte à relire, que vous copiez dans votre messagerie ou ouvrez via le lien wa.me ; l'envoi reste votre geste. <!-- source : backend/django_core/apps/crm/agent_actions.py::register_crm_actions ; tri 2026-10-29 -->
+<!-- FAQ-TRI:fin -->

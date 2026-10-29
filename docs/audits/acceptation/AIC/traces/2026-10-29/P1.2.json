@@ -1,0 +1,37 @@
+{
+ "etape": "P1.2",
+ "titre": "Resume du lead avant appel (crm.lead.resume)",
+ "taches": [
+  "AIC31",
+  "AIC6"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "question": "Résume-moi le lead 2344 avant mon appel.",
+  "evenement": {
+   "id": 1,
+   "intention": "donnee",
+   "modele": "claude-sonnet-5-5",
+   "repli": false,
+   "manuel_present": true,
+   "tokens": {
+    "input": 3392,
+    "output": 593,
+    "cache_read": 136136
+   },
+   "outils_appeles": [
+    "crm.lead.resume"
+   ],
+   "erreur": null,
+   "note": 0,
+   "commentaire": null,
+   "lead_id": 2344,
+   "ecran": "/crm/leads/2344",
+   "user_id": 286,
+   "question": "Résume-moi le lead 2344 avant mon appel.",
+   "resume": "**Lead #2344 : ATOT17 Client mvsshvf21**\n- Ville : Casablanca\n- Téléphone : [num]\n- Contact préféré : non renseigné\n\n**Étape :** Devis envoyé\n\n**Devis**\n",
+   "cree_le": "2026-10-29T21:17:14.086462+00:00"
+  },
+  "reponse_extrait": "**Lead #2344 : ATOT17 Client mvsshvf21**\n- Ville : Casablanca\n- Téléphone : [num]\n- Contact préféré : non renseigné\n\n**Étape :** Devis envoyé\n\n**Devis**\n- DEV-202610-0107 : 31 900 DH TTC, statut « envoyé », parti le 29/10/2026.\n\n**Historique récent**\n- 29/10 à 12h35 : note automatique indiqua"
+ }
+}

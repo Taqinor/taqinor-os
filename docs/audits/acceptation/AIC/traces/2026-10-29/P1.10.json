@@ -1,0 +1,32 @@
+{
+ "etape": "P1.10",
+ "titre": "Statistiques : cout > 0, taux non supporte, part de repli",
+ "taches": [
+  "AIC12"
+ ],
+ "verdict": "PASS",
+ "trace": {
+  "stats": {
+   "questions": 15,
+   "commerciaux_actifs": 1,
+   "questions_par_commercial_semaine": 3.75,
+   "taux_non_supporte": 0.2,
+   "part_repli": 0.0667,
+   "cout_estime_usd": 0.45,
+   "par_intention": {
+    "question_manuel": 2,
+    "donnee": 2,
+    "action": 4,
+    "bug": 4,
+    "manque": 1,
+    "hors_champ": 2
+   },
+   "manques_recents": [
+    {
+     "question_anonymisee": "Crée un devis agricole de pompage pour le lead 2344.",
+     "vu_n_fois": 1
+    }
+   ]
+  }
+ }
+}

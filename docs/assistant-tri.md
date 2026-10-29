@@ -76,7 +76,7 @@ conserve le bloc `FAQ-TRI` tel quel.
 
 | Date | Événements lus | FAQ | ERR | Tâches routées | PR |
 |---|---|---|---|---|---|
-| _(aucun passage réel — tâche livrée éteinte)_ | | | | | |
+| 2026-10-29 — joué à la main (recette ci-dessous) sur l'export de la pile locale après le rejeu AIC13 | 15 (1 commercial) | 1 | 0 (le seul `bug` : 404 provoqué sur un lead inexistant, faux positif écarté) | 0 (1 `manque` « devis agricole automatique », 1 seul commercial : compté, non routé) | vague AIC13 (dev-aic) |
 
 ## Pour jouer un tri à la main (recette de l'acceptation)
 
@@ -85,4 +85,5 @@ interrogeant l'assistant (une question de manuel sans bonne réponse, un bug, un
 `AGENT_HMAC_SECRET` et `ASSISTANT_EXPORT_TOKEN`, passer `actif: true` en local, puis taper
 « run the assistant-tri skill ». Attendu : une PR avec une FAQ, une ligne `ERR-AIC-…` et une tâche
 routée chez son propriétaire, plus le digest. Cette recette demande un appel payant à l'assistant ; elle n'a
-pas été jouée à la livraison d'AIC51 (voir le journal de livraison).
+pas été jouée à la livraison d'AIC51 ; elle l'a été le 29/10/2026 à la main par l'orchestrateur, sur les 15 événements
+du rejeu AIC13 (voir « Passages » : 1 FAQ, 0 ERR, 0 tâche routée, digest dans la PR de la vague).
