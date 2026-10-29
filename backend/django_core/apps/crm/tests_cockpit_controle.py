@@ -274,6 +274,104 @@ class MesurePureTests(SimpleTestCase):
         self.assertEqual(cs._liste(lignes, 8),
                          {'total': 1, 'lignes': [{'n': 99}]})
 
+    def test_par_commercial_la_mesure_du_verdict_pour_chaque_responsable(self):
+        """``par_commercial`` : une ligne par commercial, la mesure du
+        verdict restreinte à ses dossiers (contrat, ``notes.par_commercial``)
+        — jamais une autre règle."""
+        etapes = [
+            # Dossier 1, à 7 (commerciale).
+            self._etape(_jour(-9), FAIT, fait=_jour(-9), nb_reports=1),
+            self._etape(_jour(-8), FAIT, fait=_jour(-7)),      # en retard
+            self._etape(_jour(-7), SAUTEE, fait=_jour(-7)),
+            self._etape(_jour(-2)),                  # ouverte, en retard
+            self._etape(_jour(-1)),                  # ouverte, en retard
+            self._etape(_jour(0)),                   # du jour : non jugée
+            self._etape(_jour(0), FAIT, fait=_jour(0)),
+            # Dossier 2, à 3 (responsable).
+            self._etape(_jour(-9), FAIT, fait=_jour(-9), lead_id=2),
+            self._etape(_jour(-1), FAIT, fait=_jour(-1), lead_id=2),
+            # Dossier 3 : responsable inconnu, dans aucune ligne.
+            self._etape(_jour(-5), lead_id=3),
+        ]
+        proprietaire = {1: 7, 2: 3}
+        personne = cadence_absence.CouvertureAbsences()
+        en_retard = [(7, {'jours_de_retard': 2}), (7, {'jours_de_retard': 1}),
+                     (9, {'jours_de_retard': 4})]
+        commerciaux = [{'id': 3, 'nom': 'responsable'},
+                       {'id': 7, 'nom': 'commerciale'}]
+        lignes = cs._par_commercial(etapes, en_retard, AUJOURDHUI, personne,
+                                    proprietaire, OUVRES, commerciaux)
+        # Une ligne par commercial, jamais pour un responsable absent de
+        # `commerciaux` ; `en_retard_actuel` d'abord : 7 (2) avant 3 (0).
+        self.assertEqual([ligne['id'] for ligne in lignes], [7, 3])
+        commerciale, responsable = lignes
+        self.assertEqual(commerciale, {
+            'id': 7, 'nom': 'commerciale', 'du': 6, 'a_temps': 2,
+            'en_retard': 1, 'sautees': 1, 'ouvert': 2, 'reportees': 1,
+            'a_temps_pct': 33.3, 'en_retard_actuel': 2, 'aujourdhui': 2})
+        self.assertEqual(responsable, {
+            'id': 3, 'nom': 'responsable', 'du': 2, 'a_temps': 2,
+            'en_retard': 0, 'sautees': 0, 'ouvert': 0, 'reportees': 0,
+            'a_temps_pct': 100.0, 'en_retard_actuel': 0, 'aujourdhui': 0})
+        for ligne in lignes:
+            with self.subTest(commercial=ligne['id']):
+                self.assertEqual(
+                    ligne['du'], ligne['a_temps'] + ligne['en_retard']
+                    + ligne['sautees'] + ligne['ouvert'])
+        # La somme des lignes est le verdict des dossiers connus.
+        connues = [e for e in etapes if e.lead_id in proprietaire]
+        verdict = cs._mesure_de_la_periode(
+            connues, AUJOURDHUI, personne, proprietaire, OUVRES)[2]
+        for cle in ('du', 'a_temps', 'en_retard', 'sautees', 'ouvert',
+                    'reportees'):
+            with self.subTest(cle=cle):
+                self.assertEqual(sum(ligne[cle] for ligne in lignes),
+                                 verdict[cle])
+
+    def test_par_commercial_sans_etape_due_pct_null(self):
+        [ligne] = cs._par_commercial(
+            [], [], AUJOURDHUI, cadence_absence.CouvertureAbsences(),
+            {}, OUVRES, [{'id': 7, 'nom': 'commerciale'}])
+        self.assertEqual(ligne, {
+            'id': 7, 'nom': 'commerciale', 'du': 0, 'a_temps': 0,
+            'en_retard': 0, 'sautees': 0, 'ouvert': 0, 'reportees': 0,
+            'a_temps_pct': None, 'en_retard_actuel': 0, 'aujourdhui': 0})
+        self.assertEqual(
+            cs._par_commercial([], [], AUJOURDHUI,
+                               cadence_absence.CouvertureAbsences(), {},
+                               OUVRES, []), [])
+
+    def test_par_commercial_une_absence_excuse_son_responsable_seulement(self):
+        """Les absences déclarées jouent PAR responsable, comme au verdict :
+        la même étape en retard est « à temps » chez celui qui était absent,
+        « en retard » chez l'autre."""
+        absences = cadence_absence.CouvertureAbsences([PeriodeAbsence(
+            utilisateur_id=7, date_debut=_jour(-8), date_fin=_jour(-8))])
+        etapes = [self._etape(_jour(-8), FAIT, fait=_jour(-7)),
+                  self._etape(_jour(-8), FAIT, fait=_jour(-7), lead_id=2)]
+        lignes = cs._par_commercial(
+            etapes, [], AUJOURDHUI, absences, {1: 7, 2: 3}, OUVRES,
+            [{'id': 7, 'nom': 'commerciale'}, {'id': 3, 'nom': 'responsable'}])
+        parmi = {ligne['id']: ligne for ligne in lignes}
+        self.assertEqual((parmi[7]['a_temps'], parmi[7]['en_retard']), (1, 0))
+        self.assertEqual((parmi[3]['a_temps'], parmi[3]['en_retard']), (0, 1))
+
+    def test_par_commercial_tri_retard_actuel_ouvert_nom_puis_id(self):
+        etapes = [self._etape(_jour(-2), lead_id=5)]     # ouverte, en retard
+        commerciaux = [
+            {'id': 6, 'nom': 'beta'}, {'id': 4, 'nom': 'beta'},
+            {'id': 8, 'nom': 'alpha'}, {'id': 5, 'nom': 'zeta'},
+            {'id': 9, 'nom': 'omega'}, {'id': 7, 'nom': 'zzz'}]
+        en_retard = [(7, {}), (7, {}), (5, {}), (8, {}), (9, {})]
+        lignes = cs._par_commercial(
+            etapes, en_retard, AUJOURDHUI,
+            cadence_absence.CouvertureAbsences(), {5: 5}, OUVRES,
+            commerciaux)
+        # 7 (2 en retard) ; puis 1 en retard chacun : 5 (1 ouverte) avant 8
+        # et 9 (nom : alpha < omega) ; puis aucun retard : beta 4 avant 6.
+        self.assertEqual([ligne['id'] for ligne in lignes],
+                         [7, 5, 8, 9, 4, 6])
+
 
 class JoursComptesTests(SimpleTestCase):
     """Sans base : LA règle du retard (contrat v2, ``notes.retard``) — un
@@ -1101,6 +1199,12 @@ class VolumeTests(_Base):
             {'en_retard': 12, 'taches_en_attente': 12, 'reports': 24,
              'sans_prochaine_etape': 12, 'premier_contact_hors_delai': 12})
         self.assertEqual(controle['verdict']['du'], 12 * 4)
+        # `par_commercial` est lu sur les mêmes données (aucune requête de
+        # plus) et `en_retard_actuel` est le VRAI nombre, non plafonné à 10.
+        [ligne] = controle['par_commercial']
+        self.assertEqual(
+            (ligne['id'], ligne['du'], ligne['en_retard_actuel'],
+             ligne['aujourdhui']), (self.acteur.pk, 12 * 4, 12, 12))
         self.assertEqual(avec_douze, avec_deux)
 
 
@@ -1294,6 +1398,76 @@ class PorteeEtOwnerTests(_Base):
         chez_lui = self._controle(owner=self.collegue.pk)
         self.assertEqual(chez_lui['verdict']['du'], 2)
         self.assertEqual(chez_lui['exceptions']['en_retard']['total'], 1)
+
+    def test_par_commercial_une_ligne_par_commercial(self):
+        """Une ligne par entrée de ``commerciaux`` (mêmes ids, mêmes noms),
+        la mesure du verdict par responsable ; ``en_retard_actuel`` somme à
+        ``exceptions.en_retard.total`` ; ``aujourdhui`` compte les étapes du
+        jour de tout statut, annulations du moteur exclues."""
+        mien = Lead.objects.get(company=self.company, owner=self.acteur)
+        sien = Lead.objects.get(company=self.company, owner=self.collegue)
+        self._fait(mien, _jour(0), heure=9)                # du jour, faite
+        self._etape(sien, _jour(0), heure=15)              # du jour, ouverte
+        self._etape(sien, _jour(0), statut=ANNULEE,
+                    fait_le=_a(_jour(0)))      # moteur : hors compte
+        controle = self._controle()
+        lignes = controle['par_commercial']
+        self.assertEqual(len(lignes), len(controle['commerciaux']))
+        self.assertEqual({ligne['id'] for ligne in lignes},
+                         {ligne['id'] for ligne in controle['commerciaux']})
+        self.assertEqual(
+            {ligne['id']: ligne['nom'] for ligne in lignes},
+            {ligne['id']: ligne['nom'] for ligne in controle['commerciaux']})
+        # En retard maintenant d'abord : le collègue (1) avant l'acteur (0).
+        self.assertEqual([ligne['id'] for ligne in lignes],
+                         [self.collegue.pk, self.acteur.pk])
+        collegue, acteur = lignes
+        self.assertEqual(
+            {cle: collegue[cle] for cle in (
+                'du', 'a_temps', 'en_retard', 'sautees', 'ouvert',
+                'reportees', 'a_temps_pct', 'en_retard_actuel',
+                'aujourdhui')},
+            {'du': 2, 'a_temps': 0, 'en_retard': 1, 'sautees': 0,
+             'ouvert': 1, 'reportees': 0, 'a_temps_pct': 0.0,
+             'en_retard_actuel': 1, 'aujourdhui': 1})
+        self.assertEqual(
+            {cle: acteur[cle] for cle in (
+                'du', 'a_temps', 'en_retard', 'sautees', 'ouvert',
+                'reportees', 'a_temps_pct', 'en_retard_actuel',
+                'aujourdhui')},
+            {'du': 2, 'a_temps': 2, 'en_retard': 0, 'sautees': 0,
+             'ouvert': 0, 'reportees': 0, 'a_temps_pct': 100.0,
+             'en_retard_actuel': 0, 'aujourdhui': 1})
+        for ligne in lignes:
+            with self.subTest(commercial=ligne['id']):
+                self.assertEqual(
+                    ligne['du'], ligne['a_temps'] + ligne['en_retard']
+                    + ligne['sautees'] + ligne['ouvert'])
+        self.assertEqual(sum(ligne['en_retard_actuel'] for ligne in lignes),
+                         controle['exceptions']['en_retard']['total'])
+        self.assertEqual(sum(ligne['du'] for ligne in lignes),
+                         controle['verdict']['du'])
+
+    def test_par_commercial_est_servi_pour_tous_meme_avec_owner(self):
+        """``owner`` filtre le verdict, la frise et les exceptions — pas le
+        tableau par commercial, qui reste celui de TOUS les responsables."""
+        tous = self._controle()['par_commercial']
+        self.assertEqual({ligne['id'] for ligne in tous},
+                         {self.acteur.pk, self.collegue.pk})
+        for owner in (self.acteur, self.collegue):
+            with self.subTest(owner=owner.username):
+                controle = self._controle(owner=owner.pk)
+                self.assertEqual(controle['par_commercial'], tous)
+                self.assertEqual(
+                    {ligne['id'] for ligne in controle['par_commercial']},
+                    {ligne['id'] for ligne in controle['commerciaux']})
+        controle = self._controle(owner=self.acteur.pk)
+        self.assertEqual(controle['verdict']['du'], 1)
+        self.assertEqual(controle['exceptions']['en_retard']['total'], 0)
+        [collegue] = [ligne for ligne in controle['par_commercial']
+                      if ligne['id'] == self.collegue.pk]
+        self.assertEqual((collegue['du'], collegue['en_retard_actuel']),
+                         (2, 1))
 
     def test_un_role_restreint_ne_voit_que_sa_portee(self):
         role = Role.objects.create(
