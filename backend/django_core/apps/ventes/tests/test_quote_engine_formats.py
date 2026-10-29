@@ -1865,8 +1865,14 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # R3 (28/10/2026) — CHANGEMENT VOULU : le logo de l'en-tête passe par
         # ``quote_engine.logo`` (boîte « onepage » par capitale, plus de
         # ``height:80px``) ; valeur recopiée du harnais docker de la lane.
+        # CI #1146 (29/10/2026, run 40798481626, shard 2) — CHANGEMENT VOULU :
+        # l'``alt`` du logo legacy est le nom de marque de la société
+        # (``ENT_NOM_MARQUE`` = « TAQINOR FIXTURE QJR307 » ici), comme les
+        # renderers de famille (``alt="{brand}"``) et comme les pieds de page —
+        # plus la constante « TAQINOR » (SCA29). Valeur recopiée du message
+        # d'échec du run CI, jamais calculée à la main.
         EMPREINTE_EPINGLEE = (
-            '832db67c0fb27a60cf6d56dc6ed7747944e8ee544a56ae15f1196bbf41e46303')
+            '964070a7b3a83fa0ce5312f73e20dae0f0f3fda1426112963a8a5c06ca877e60')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,
