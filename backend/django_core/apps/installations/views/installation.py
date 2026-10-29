@@ -169,8 +169,14 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # chantiers qu'il a créés ou dont il est le technicien responsable /
         # ceux de son équipe. 'all' → inchangé.
         # ACHT27 — même sélecteur que la synchro terrain (`field_sync`).
-        from ..selectors import scoper_chantiers
-        qs = scoper_chantiers(qs, self.request.user)
+        # ERR-CHT-TECH-CHANTIER-404 — en LECTURE (GET), le technicien d'une
+        # intervention voit aussi son chantier ; l'écriture reste bornée.
+        from rest_framework.permissions import SAFE_METHODS
+        from ..selectors import scoper_chantiers, scoper_chantiers_lecture
+        if self.request.method in SAFE_METHODS:
+            qs = scoper_chantiers_lecture(qs, self.request.user)
+        else:
+            qs = scoper_chantiers(qs, self.request.user)
         params = self.request.query_params
         statut = params.get('statut')
         technicien = params.get('technicien')

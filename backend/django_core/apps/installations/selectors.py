@@ -3655,6 +3655,24 @@ def scoper_chantiers(qs, user):
     return scope_queryset(qs, user, CHAMPS_PORTEE_CHANTIER)
 
 
+def scoper_chantiers_lecture(qs, user):
+    """ERR-CHT-TECH-CHANTIER-404 — portée de LECTURE d'un chantier : celle de
+    ``scoper_chantiers`` PLUS les chantiers dont une intervention de la
+    société est assignée à ``user`` (panneau « Infos client » de son écran
+    terrain). Lecture seule : l'écriture et la synchro terrain gardent
+    ``scoper_chantiers``. Portée 'all' → inchangé."""
+    from django.db.models import Exists, OuterRef, Q
+    from core.scoping import visible_user_ids
+    from .models import Intervention
+    if visible_user_ids(user) is None:
+        return qs
+    assignee = Intervention.objects.filter(
+        installation=OuterRef('pk'), technicien=user,
+        company_id=user.company_id)
+    portee = scoper_chantiers(qs, user).values('pk')
+    return qs.filter(Q(pk__in=portee) | Q(Exists(assignee)))
+
+
 def interventions_visibles(user):
     """Interventions de la société de ``user`` visibles dans sa portée."""
     from .models import Intervention
