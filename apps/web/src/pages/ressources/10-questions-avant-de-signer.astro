@@ -33,7 +33,7 @@ import { whatsappLink } from '../../lib/whatsapp';
 import { estimateReadingTime } from '../../lib/readingTime';
 
 const verifiedDate = new Date('2026-07-03');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 const waHref = whatsappLink(
   WHATSAPP_LEADS,

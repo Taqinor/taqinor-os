@@ -33,10 +33,8 @@ const mocks = vi.hoisted(() => ({
   getAssignableUsers: vi.fn(),
 }))
 
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom')
-  return { ...actual, useNavigate: () => mocks.navigate }
-})
+vi.mock('react-router-dom', () => import('../../test/routerMock')
+  .then((m) => m.routerAvecNavigate(() => mocks.navigate)))
 
 vi.mock('../../api/calepinageApi', () => ({
   default: {

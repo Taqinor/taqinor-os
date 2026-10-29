@@ -62,7 +62,7 @@ const { post, prev, next, related } = Astro.props;
 const { data, body } = post;
 const { Content } = await render(post);
 
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 const url = new URL(`/blog/${post.id}`, Astro.site).href;
 
 // W299 — lien cluster optionnel (voir CLUSTER_LINK_BY_THEME plus haut) ; absent

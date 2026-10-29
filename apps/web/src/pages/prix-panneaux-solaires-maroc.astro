@@ -25,7 +25,7 @@ import { NAP } from '../lib/nap';
 // CONTENT_SEO_NOTES.md §5/§6 pour les sources). Pas de contenu "collection" —
 // page évergreen simple, comme les guides.
 const verifiedDate = new Date('2026-07-03');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+import { DATE_LONGUE_FR as dateFmt } from '../lib/format';
 
 const fourchettes = [
   { kwc: '3 kWc', prix: '28 000 – 42 000 DH' },

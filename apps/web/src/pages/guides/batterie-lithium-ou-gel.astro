@@ -17,7 +17,7 @@ import { getGuideVerifiedDate } from '../../lib/guideMeta';
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('batterie-lithium-ou-gel');
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 const guideBodyText = `
   Pour un stockage solaire résidentiel sous le climat marocain, nous installons du lithium fer
   phosphate (LFP, ou LiFePO4). Le plomb-acide gel coûte moins cher au moment de l'achat et le lithium
