@@ -18,7 +18,7 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Lead
 from apps.ventes import roof_load
-from apps.ventes.domain import etude_ci
+from apps.ventes.domain import etude_ci, etude_ci_visite
 from apps.ventes.tests.test_ciq122_cas_reference import CATALOGUE_TEST, PVGIS
 from apps.visites.models import VisiteTerrain
 from authentication.models import Company
@@ -43,7 +43,7 @@ class MiseALaTerreDuReleveTests(SimpleTestCase):
     non (« conforme ») ; sinon rien n'est posé et la composition alerte."""
 
     def test_constat_de_la_visite_vers_le_besoin(self):
-        lire = etude_ci.mise_a_la_terre_du_releve
+        lire = etude_ci_visite.mise_a_la_terre_du_releve
         for constate, attendu in (('a_creer', True), ('conforme', False),
                                   ('a_verifier', None), (None, None)):
             self.assertIs(lire({'mise_a_la_terre': {'constate': constate, 'motif': None}}),

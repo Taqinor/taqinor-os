@@ -35,10 +35,7 @@ from decimal import Decimal
 
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, option_avec_de_l_etude
 from .regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
-from .etude_ci_visite import (  # noqa: F401 — ré-exports (tests, revision_visite_ci)
-    MISE_A_LA_TERRE_DU_CONSTAT, POSE_DE_LA_COUVERTURE_VISITE, _couche_visite,
-    _poser_mesure_visite, mise_a_la_terre_du_releve,
-)
+from .etude_ci_visite import _couche_visite
 
 logger = logging.getLogger(__name__)
 
