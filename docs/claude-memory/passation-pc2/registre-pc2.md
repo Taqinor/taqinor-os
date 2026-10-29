@@ -102,3 +102,17 @@ Session coordinatrice : worktree `passation-pc2-l3-devis-fa13c5`. Dossier partag
 - 21:12 UTC (heure GitHub) — PR #1141 MERGÉE (36 checks verts) : section 8 R1 + R2 + 4 correctifs CI. R1 Docker run 8 vert sur base fusionnée ; R1 archivée. Jeton CI gardé pour la PR R3 ; jeton Docker LIBRE → R3.
 
 - 29/10 00:46 UTC — PR R3 #1146 ouverte depuis `pc2-r3-logo-devis` (R3 74e298429b + main 5aafc1ff5 = c653e0d292), mise en file de merge, auto-fix armé. B1/B2 vérifiés en lecture (logo.py 464fdd0435). Jeton CI = R3-PR1146 (claim app:jeton-ci tenue).
+
+- 29/10 01:01 UTC — #1146 rouge sur stage-names (SCA29 marque en dur dans logo.py/agricole/pages.py ; ENF22 except muet image_qr_societe) : corrigé en d2bea28569, repoussé ; goldens legacy gardés octet pour octet (alt = ENT_NOM_MARQUE, défaut TAQINOR sans profil).
+
+- 29/10 01:04 UTC — #1146 : shard 0 rouge sur test_qx49_proposal_payload (« 9999 » trouvé dans empreinte_contenu, sha256 daté : flake de calendrier) → empreintes hex neutralisées dans le test, poussé 85d6d815ed.
+
+- 29/10 01:07 UTC — #1146 : R3 signale 2 tests cassés par le renommage CHEMIN_TAQINOR (mutilé en CHEMIN_Taqinor par mon remplacement) → constante renommée CHEMIN_LOGO + 2 lecteurs de tests, poussé bd1580dd2a.
+
+- 29/10 01:21 UTC — #1146 : shard 2 rouge sur QJR307 (empreinte du one-page agricole : alt du logo legacy = nom de marque de la société, voulu) → ré-épinglée 964070a7… depuis le run CI, poussé 6b7284d41d.
+
+- 29/10 01:33 UTC — #1146 : CI verte sur 6b7284d41d, PR entrée seule dans la merge queue → RETIRÉE de la file (dequeuePullRequest) pour attendre le commit goldens legacy ×21 de R3 (tests @tag pdf, hors CI de PR, nightly release-verify) ; remise en file dès sa poussée.
+
+- 29/10 01:39 UTC — R3 a poussé 365d109c5a (goldens legacy ×21 recapturés, preuve docker 122 tests verts) ; #1146 remise en file de merge (auto-merge), CI relancée.
+
+- 29/10 02:21 UTC — PR #1146 (R3 logo) MERGÉE, main 418420bac7 ; claim app:jeton-ci rendue, jetons ci\/docker LIBRE. Reste : PR docs de clôture, nettoyage.

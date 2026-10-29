@@ -16,10 +16,17 @@ _Coordinatrice PC2, 28/10 → 29/10 01:00 UTC. Déploiement = Reda._
 - Hors périmètre, à poser au plan : `apps/installations/energy_report.py::_logo_html` (URI brute) ; couleurs de `Logo.astro` (#0a1238/#f7b919 vs #022F53/#FEC811 du pack).
 
 ## 3. État au moment du rapport
-- PR #1146 : EN FILE (voir §4 pour l'issue).
+- PR #1146 : MERGÉE le 29/10 à 02:20 UTC (main 418420bac7).
 - Jeton CI inter-PC (`app:jeton-ci`) tenu par PC2 pour #1146, rendu au merge. Jeton Docker LIBRE.
 - Sessions R1/R2 archivées, worktrees supprimés ; R3 archivée au merge.
 - Machine : 16 Go, 4 Go libres en fin de run ; pile Docker allégée pendant les lanes, remise complète en fin de run.
 
-## 4. Issue
-(complété au merge)
+## 4. Issue — PR #1146 mergée (29/10, 02:20 UTC, main 418420bac7)
+Quatre rouges CI traités par la coordinatrice avant le merge, tous nommés par le log du job :
+- `stage-names` — SCA29 (le mot « TAQINOR » en capitales dans `quote_engine/logo.py` et `agricole/pages.py`, docstrings comprises, baseline gelée) → prose en « Taqinor », alt par défaut « logo », constante `CHEMIN_LOGO`, le legacy passe `alt=ENT_NOM_MARQUE` ; ENF22 (`except Exception` muet dans `logo.image_qr_societe`) → journalisé.
+- `backend-tests-shard (0)` — `test_qx49_proposal_payload` : « 9999 » (sonde prix d'achat) trouvé dans `empreinte_contenu`, sha256 daté → flake de calendrier, empreintes hex neutralisées dans le test.
+- `backend-tests-shard (2)` — QJR307 : l'alt du logo legacy devient le nom de marque de la société identifiée (« TAQINOR FIXTURE QJR307 »), comme les renderers de famille → empreinte ré-épinglée depuis le run CI.
+- Hors CI de PR (tests `@tag('pdf')`, nightly release-verify) — les 21 goldens legacy dérivaient pour la même raison (fixture « TAQINOR Solutions ») : recapturés par la lane R3 sous Docker avec preuve sans `UPDATE_GOLDEN` (122 tests verts). La PR, entrée seule en file de merge avant ce commit, a été retirée de la file puis remise après sa poussée.
+- Leçons banquées (mémoire `plan_drain_ci_bug_classes` 47-48) : lancer `check_platform.py` + `check_except_larges.py` avant la première poussée ; ne jamais sonder un nombre nu contre un blob qui porte des hash.
+
+Déploiement = Reda (`scripts/deploy-prod.ps1`, 2 min) ; l'auto-deploy du serveur suit aussi ce merge.
