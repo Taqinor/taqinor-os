@@ -327,6 +327,9 @@ def _couche_client(res, client, devis=None):
     from .regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
     if not regles_au_moins(devis, REGLES_CORRIGEES_2710):
         return
+    # Règle fondateur 08/10 : un devis déjà envoyé garde ce que le client a reçu.
+    if devis is not None and getattr(devis, 'statut', 'brouillon') != 'brouillon':
+        return
     from apps.crm.selectors import site_du_client
 
     site = site_du_client(client) or {}

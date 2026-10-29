@@ -372,6 +372,21 @@ class SiteFicheClientTests(_Base):
         res, _ = pompage.resoudre_entrees(self.co, {}, client=client)
         self.assertEqual(res.valeur('localisation.ville'), 'Marrakech')
 
+    def test_devis_envoye_aux_regles_courantes_garde_son_site(self):
+        """Règle fondateur 08/10 : même aux règles 3, un devis ENVOYÉ garde ce
+        que le client a reçu ; seul un brouillon lit la fiche client."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710
+        client = self._client('Marrakech')
+        for statut, attendu in (('envoye', None), ('brouillon', 'Marrakech')):
+            devis = SimpleNamespace(etude_params={}, client=client, lead=None,
+                                    regles_calcul=REGLES_CORRIGEES_2710,
+                                    statut=statut)
+            res, _ = pompage.resoudre_entrees(self.co, {}, devis=devis,
+                                              client=client)
+            self.assertEqual(res.valeur('localisation.ville'), attendu, statut)
+
 
 # ── Rejeu live AGQ41 (24/10) — pompe EXISTANTE sans kW de plaque ────────────
 
