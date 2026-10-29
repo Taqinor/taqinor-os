@@ -11,7 +11,8 @@
 //
 // CROCHETS REQUIS : `resolveMonthlyBill` (sélections), `isProMode`, `modeLabel`,
 // `modeDocSubtitle` (parcours : `MODE_LABEL[m]` / `MODE_DOC_SUBTITLE[m]`, `undefined`
-// si absent), `langueActive` (parcours, seulement si `config.dateSuitLangue`),
+// si absent), `langueActive` (parcours : date si `config.dateSuitLangue`, et libellé de retour
+// affiché — RWEB17-M21 ; absent → locale de la page),
 // `tryRoofSnapshot`, `updatePanels3dVisibility` (carte), `computeProEstimate`,
 // `computeAgricoleEstimate`, `renderAgricoleEstimate` (pro/agricole),
 // `hasReachedConsentStep`, `sendFunnelBeacon` (funnel), `syncBillRangeFromExact`
@@ -19,12 +20,13 @@
 // CROCHETS INSCRITS ICI : `announceEstimate`, `showEstimateTeaser`, `setCard`,
 // `renderMonthlyChart`, `fillDocChrome`, `resetDocZones`, `computeEstimate`.
 //
-// Le texte de l'estimation reste celui de la page : `payEl.textContent =
-// est.paybackLabel` À L'IDENTIQUE (la correction du libellé affiché est en C2).
+// RWEB17-M21 — le libellé de retour AFFICHÉ (`#mt-est-payback` et l'annonce) passe par
+// `libelleRetourLocale(…, langueActive())` : même source que le corps du lead.
 
 import { estimateFromBill, formatMad, formatMadRange } from '../billEstimate';
 import { formatKwc } from '../proposition';
 import { nearestRealisation, REALISATIONS } from '../realisations';
+import { libelleRetourLocale } from './i18n';
 import type { ConfigLocale, ContexteTunnel } from './contexte';
 import type { LocaleTunnel } from './etat';
 
@@ -132,6 +134,9 @@ function construireResidentiel(ctx: ContexteEstimationResidentielle) {
   const GATED = config.estimationGatee;
   const REALISATIONS_WITH_KWC = REALISATIONS.filter((r) => r.kwc);
   const h = (nom: string, ...args: any[]) => crochets.appeler(nom, ...args);
+  /** Langue de l'écran (FR/AR : celle de la bascule ; EN : 'en'). */
+  const langueAffichee = (): LocaleTunnel =>
+    (crochets.a('langueActive') ? h('langueActive') : config.locale) as LocaleTunnel;
 
   /** WJ88 — annonce UNIQUE du résultat (jamais pendant la phase squelette). */
   function announceEstimate(message: string) {
@@ -352,7 +357,10 @@ function construireResidentiel(ctx: ContexteEstimationResidentielle) {
     setText('mt-est-kwc', formatKwc(est.kwc));
     setText('mt-est-prod', formatMad(est.productionKwhYr));
     setText('mt-est-savings', monthly);
-    setText('mt-est-payback', est.paybackLabel);
+    // RWEB17-M21 (WEBERR-TUNNEL-PAYBACK-ECRAN-FR) — le libellé de retour AFFICHÉ suit la langue de
+    // l'écran (même source que le corps, lib/tunnel/i18n.ts) ; estimateShown garde la forme source.
+    const retour = libelleRetourLocale(est.paybackLabel, langueAffichee());
+    setText('mt-est-payback', retour);
     etat.lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
     etat.lastSavingsLabel = `${monthly}${T.parMois}`;
     etat.lastKwc = est.kwc;
@@ -394,7 +402,7 @@ function construireResidentiel(ctx: ContexteEstimationResidentielle) {
     h('updatePanels3dVisibility');
     // WJ59/WB30 — l'estimation réelle rend le formulaire de contact pertinent.
     if (h('hasReachedConsentStep')) h('sendFunnelBeacon', 'contact', 'reached');
-    announceEstimate(T.annonceOk(formatKwc(est.kwc), monthly, est.paybackLabel));
+    announceEstimate(T.annonceOk(formatKwc(est.kwc), monthly, retour));
     return true;
   }
 

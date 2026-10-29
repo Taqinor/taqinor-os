@@ -58,16 +58,20 @@ const LOCALES: LocaleTunnel[] = ['fr', 'en', 'ar'];
 describe('estimation résidentielle — montant exact et tranche × 3 locales', () => {
   for (const loc of LOCALES) {
     it(`montant exact 1800, non gaté (${loc}) : textes #mt-est-*, annonce, 12 barres`, () => {
-      const { ctx, etat } = monter(loc, false, 1800);
+      // La langue affichée est celle de la page (EN : 'en' ; FR et AR : langue de départ).
+      const { ctx, etat } = monter(loc, false, 1800, {}, loc);
       expect(ctx.crochets.appeler('computeEstimate')).toBe(true);
+      // Le corps garde la forme source (corps.ts la localise à l'envoi, fbf756f7e).
       expect(etat.estimateShown).toEqual({ kwc: 9.5, prodKwh: 14590, ecoMadMonthLow: 1500, ecoMadMonthHigh: 1800, paybackLabel: '4 à 6 ans' });
       const T = TEXTES_RESIDENTIEL[loc];
       expect(etat.lastKwcLabel).toBe('9,5 kWc');
       expect(etat.lastSavingsLabel.endsWith(T.parMois)).toBe(true);
       expect(txt('mt-est-kwc')).toBe('9,5');
-      expect(txt('mt-est-payback')).toBe('4 à 6 ans'); // à l'identique : correction en C2
+      // RWEB17-M21 / WEBERR-TUNNEL-PAYBACK-ECRAN-FR — le libellé AFFICHÉ suit la langue de l'écran.
+      const retour = { fr: '4 à 6 ans', en: '4 – 6 years', ar: '4 – 6 سنة' }[loc];
+      expect(txt('mt-est-payback')).toBe(retour);
       expect(txt('mt-est-savings')).toBe(etat.lastSavingsLabel.slice(0, -T.parMois.length));
-      expect(txt('mt-estimate-announce')).toBe(T.annonceOk('9,5', txt('mt-est-savings')!, '4 à 6 ans'));
+      expect(txt('mt-estimate-announce')).toBe(T.annonceOk('9,5', txt('mt-est-savings')!, retour));
       expect(document.querySelectorAll('#mt-doc-chart rect')).toHaveLength(12);
       expect(document.getElementById('mt-doc-chart')!.textContent).toContain('kWh');
       expect(hid('mt-doc-chart-wrap')).toBe(false);
@@ -145,6 +149,13 @@ describe('estimation résidentielle — branches et document', () => {
     const { ctx } = monter('fr', false, 1800);
     ctx.crochets.appeler('renderMonthlyChart', 0);
     expect(hid('mt-doc-chart-wrap')).toBe(true);
+  });
+
+  it('RWEB17-M21 — page FR basculée en عربي : le retour affiché et annoncé passe en forme arabe', () => {
+    const { ctx } = monter('fr', false, 1800, {}, 'ar');
+    expect(ctx.crochets.appeler('computeEstimate')).toBe(true);
+    expect(txt('mt-est-payback')).toBe('4 – 6 سنة');
+    expect(txt('mt-estimate-announce')).toContain('4 – 6 سنة');
   });
 
   it('RWEB17-M16 — suivi : docEngaged au focus du formulaire et à l’impression ; facture → tranche puis recalcul', () => {
