@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { CalendarClock } from 'lucide-react'
 import crmApi from '../../api/crmApi'
@@ -7,13 +7,14 @@ import {
   Card, CardContent, Badge, Spinner,
   Tabs, TabsList, TabsTrigger,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  Button, Input,
+  Button, Input, Checkbox,
 } from '../../ui'
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
 import ArretCadenceChamps from '../../features/crm/relances/ArretCadenceChamps'
 import { PARCOURS } from '../../features/crm/relances/parcours'
 import { traiterGesteTouche } from '../../features/crm/relances/refusGeste'
 import ToucheMessageDialog from './ToucheMessageDialog'
+import RelancesEquipePanel from './RelancesEquipePanel'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toastError } from '../../lib/toast'
 import { TableauLignes } from '../../ui/TableauDefilant'
@@ -35,6 +36,15 @@ import { TableauLignes } from '../../ui/TableauDefilant'
    Distinct de `RelancesDuJourWidget.jsx` (Cockpit, aujourd'hui + retard
    seulement, format compact) — les deux partagent la même ligne d'action
    (`features/crm/relances/RelanceEtapeRow.jsx`, MRY31).
+
+   SUIVI-FILTRE (fondateur, 29/10/2026) : les cinq compteurs sont des CASES À
+   COCHER (multi-sélection) — cocher « À faire » ne garde que ce qu'il reste à
+   faire, « En retard » que les touches ouvertes déjà échues ; rien de coché =
+   tout est affiché. Le filtrage se fait CÔTÉ ÉCRAN sur les lignes servies
+   (comme l'onglet « Aujourd'hui + retard »), les compteurs restent ceux du
+   serveur ; le choix vit dans l'URL (`?statut=a_faire&statut=en_retard`) pour
+   être rechargé et partagé. SUIVI-ÉQUIPE : les rôles responsable/admin ont en
+   tête de page la « Vue d'équipe » (`RelancesEquipePanel.jsx`).
    ========================================================================== */
 
 // Bornes Casablanca — même trick que `LeadCard.jsx estAujourdhuiCasa` : `en-CA`
@@ -102,8 +112,41 @@ function bornesOnglet(onglet, today) {
 // fenêtre — aucun filtrage supplémentaire.
 function visiblesPourOnglet(onglet, results, today) {
   if (onglet !== 'aujourdhui') return results
-  return results.filter((e) => e.due_date === today
-    || (e.statut === 'a_faire' && e.due_date < today))
+  return results.filter((e) => e.due_date === today || estEnRetard(e, today))
+}
+
+// « En retard » = à faire ET échue strictement avant aujourd'hui — la définition
+// du contrat `relance_etapes_suivi` (`resume.en_retard`), écrite UNE fois.
+function estEnRetard(etape, today) {
+  return etape.statut === 'a_faire' && etape.due_date < today
+}
+
+// SUIVI-FILTRE — les cinq cases à cocher, dans l'ordre des compteurs ; `cle`
+// = la clé du `resume` serveur (le compteur affiché), `retient` = la règle
+// d'écran qui garde une ligne servie. « En retard » est un sous-ensemble de
+// « À faire » (contrat) : cocher les deux revient à cocher « À faire ».
+const STATUTS_FILTRE = [
+  { cle: 'a_faire', label: 'À faire', tone: 'outline', retient: (e) => e.statut === 'a_faire' },
+  { cle: 'en_retard', label: 'En retard', tone: 'danger', retient: estEnRetard },
+  { cle: 'fait', label: 'Faites', tone: 'success', retient: (e) => e.statut === 'fait' },
+  { cle: 'sautee', label: 'Sautées', tone: 'neutral', retient: (e) => e.statut === 'sautee' },
+  // CKP1/CKP3 — colonne SÉPARÉE (jamais fondue avec « Sautées ») : un arrêt
+  // du moteur (lead signé, devis accepté…) n'est jamais un manquement humain.
+  { cle: 'annulee', label: 'Annulées (moteur)', tone: 'outline', retient: (e) => e.statut === 'annulee' },
+]
+const CLES_STATUT = new Set(STATUTS_FILTRE.map((s) => s.cle))
+
+/** Les statuts cochés lus dans l'URL (`?statut=a_faire&statut=fait`) ; une
+ *  valeur inconnue est ignorée, jamais une erreur. */
+function lireStatuts(searchParams) {
+  return new Set(searchParams.getAll('statut').filter((v) => CLES_STATUT.has(v)))
+}
+
+/** Aucune case cochée = tout ; sinon l'UNION des règles cochées. */
+function visiblesPourStatuts(coches, results, today) {
+  if (coches.size === 0) return results
+  const regles = STATUTS_FILTRE.filter((s) => coches.has(s.cle))
+  return results.filter((e) => regles.some((s) => s.retient(e, today)))
 }
 
 // CAD100 (moitié écran de CAD87) — canal/jour en clair, mêmes clés que le
@@ -490,6 +533,28 @@ export default function RelancesSuiviPage() {
   const [donnees, setDonnees] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [messageEtape, setMessageEtape] = useState(null)
+  // SUIVI-FILTRE — les cases cochées vivent dans l'URL, dans l'ordre des
+  // compteurs (URL stable, partageable : « En retard · toute l'équipe »).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const statutsCoches = useMemo(() => lireStatuts(searchParams), [searchParams])
+  const basculerStatut = (cle, coche) => {
+    setSearchParams((prev) => {
+      const suivant = new URLSearchParams(prev)
+      const ens = lireStatuts(prev)
+      if (coche) ens.add(cle); else ens.delete(cle)
+      suivant.delete('statut')
+      STATUTS_FILTRE.filter((f) => ens.has(f.cle)).forEach((f) => suivant.append('statut', f.cle))
+      return suivant
+    }, { replace: true })
+  }
+  const effacerStatuts = () => setSearchParams((prev) => {
+    const suivant = new URLSearchParams(prev)
+    suivant.delete('statut')
+    return suivant
+  }, { replace: true })
+  // SUIVI-ÉQUIPE — cliquer un commercial dans la barre de la vue d'équipe
+  // borne la file à lui (re-cliquer revient à toute l'équipe).
+  const choisirOwnerDepuisBarre = (id) => setOwnerFiltre(id ? String(id) : 'tous')
 
   // Employés assignables pour le sélecteur Responsable — inutile (et non
   // requêté) pour un rôle normal, qui ne voit jamais ce contrôle.
@@ -572,14 +637,16 @@ export default function RelancesSuiviPage() {
   // (fait/sautée/annulée) ne porte jamais d'action.
 
   const groupes = useMemo(() => {
-    const lignes = donnees ? visiblesPourOnglet(onglet, donnees.results, today) : []
+    const lignes = donnees
+      ? visiblesPourStatuts(statutsCoches, visiblesPourOnglet(onglet, donnees.results, today), today)
+      : []
     const map = new Map()
     for (const etape of lignes) {
       if (!map.has(etape.due_date)) map.set(etape.due_date, [])
       map.get(etape.due_date).push(etape)
     }
     return [...map.entries()]
-  }, [donnees, onglet, today])
+  }, [donnees, onglet, today, statutsCoches])
 
   const resume = donnees?.resume ?? {
     a_faire: 0, en_retard: 0, fait: 0, sautee: 0, annulee: 0,
@@ -592,27 +659,6 @@ export default function RelancesSuiviPage() {
           <CalendarClock className="h-5 w-5" aria-hidden="true" />
           Suivi des relances
         </h1>
-      </div>
-
-      <Tabs value={onglet} onValueChange={setOnglet}>
-        <TabsList>
-          {ONGLETS.map((o) => (
-            <TabsTrigger key={o.value} value={o.value}>{o.label}</TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2" data-testid="relances-suivi-resume">
-          <Badge tone="outline">À faire : {resume.a_faire}</Badge>
-          <Badge tone="danger">En retard : {resume.en_retard}</Badge>
-          <Badge tone="success">Faites : {resume.fait}</Badge>
-          <Badge tone="neutral">Sautées : {resume.sautee}</Badge>
-          {/* CKP1/CKP3 — colonne SÉPARÉE (jamais fondue avec « Sautées ») :
-              un arrêt du moteur (lead signé, devis accepté…) n'est jamais un
-              manquement humain. */}
-          <Badge tone="outline">Annulées (moteur) : {resume.annulee ?? 0}</Badge>
-        </div>
         {isResponsableOuAdmin && (
           <Select value={ownerFiltre} onValueChange={setOwnerFiltre}>
             <SelectTrigger className="w-48" aria-label="Responsable"><SelectValue /></SelectTrigger>
@@ -624,6 +670,47 @@ export default function RelancesSuiviPage() {
               ))}
             </SelectContent>
           </Select>
+        )}
+      </div>
+
+      {/* SUIVI-ÉQUIPE — la vue d'équipe des responsables, AVANT la file ; elle
+          suit le sélecteur Responsable ci-dessus (tuiles, frise) et sert la
+          barre de TOUS les commerciaux quel qu'il soit. */}
+      {isResponsableOuAdmin && (
+        <RelancesEquipePanel owner={owner} onChoisirOwner={choisirOwnerDepuisBarre} />
+      )}
+
+      <Tabs value={onglet} onValueChange={setOnglet}>
+        <TabsList>
+          {ONGLETS.map((o) => (
+            <TabsTrigger key={o.value} value={o.value}>{o.label}</TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      {/* SUIVI-FILTRE — les compteurs du serveur (`resume`, jamais recomptés)
+          sont aussi les cases du filtre d'écran. */}
+      <div
+        className="mt-3 flex flex-wrap items-center gap-2" role="group"
+        aria-label="Filtrer par statut" data-testid="relances-suivi-resume"
+      >
+        <span className="text-xs text-muted-foreground">Afficher :</span>
+        {STATUTS_FILTRE.map((f) => {
+          const id = `statut-filtre-${f.cle}`
+          return (
+            <label key={f.cle} htmlFor={id} className="inline-flex cursor-pointer select-none items-center gap-1.5">
+              <Checkbox
+                id={id} aria-label={f.label} checked={statutsCoches.has(f.cle)}
+                onCheckedChange={(v) => basculerStatut(f.cle, v === true)}
+              />
+              <Badge tone={f.tone}>{f.label} : {resume[f.cle] ?? 0}</Badge>
+            </label>
+          )
+        })}
+        {statutsCoches.size > 0 && (
+          <Button type="button" size="sm" variant="ghost" onClick={effacerStatuts}>
+            Tout afficher
+          </Button>
         )}
       </div>
 

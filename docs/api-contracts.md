@@ -91,7 +91,7 @@
 - frontend/src/api/crmApi.js :: getComptesDormants -> /api/django/crm/clients/dormants
     count:nombre, results:inconnu, seuil:inconnu
 - frontend/src/api/crmApi.js :: getControleSuivi -> /api/django/crm/relance-etapes/controle
-    commerciaux:inconnu, exceptions:inconnu, jours:inconnu, owner:inconnu, par_type:inconnu, periode_jours:inconnu, premier_contact:inconnu, resultats:objet, segment:inconnu, seuils:objet, verdict:objet
+    commerciaux:inconnu, exceptions:inconnu, jours:inconnu, owner:inconnu, par_commercial:inconnu, par_type:inconnu, periode_jours:inconnu, premier_contact:inconnu, resultats:objet, segment:inconnu, seuils:objet, verdict:objet
 - frontend/src/api/crmApi.js :: getDispatch -> /api/django/crm/dispatch
     en_attente:inconnu, equipe:inconnu, equipes_reglables:inconnu, leads:inconnu, membres:inconnu
 - frontend/src/api/crmApi.js :: getEquipesStatistiques -> /api/django/crm/equipes/statistiques

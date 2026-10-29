@@ -29,6 +29,9 @@ vi.mock('../../lib/toast', async (importOriginal) => ({
 
 import crmApi from '../../api/crmApi'
 import { toastError } from '../../lib/toast'
+import { render } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
+import RelancesSuiviPage from './RelancesSuiviPage'
 
 beforeEach(() => {
   isAdminOrResponsableMock.mockReturnValue(false)
@@ -243,5 +246,79 @@ describe('RelancesSuiviPage — SUIVI-REFUS (Sauter / Reporter refusés)', () =>
     await waitFor(() => expect(crmApi.marquerRelanceEtapeSautee).toHaveBeenCalledWith(780, ''))
     await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(2))
     expect(toastError).not.toHaveBeenCalled()
+  })
+})
+
+/* SUIVI-FILTRE + SUIVI-ÉQUIPE (fondateur, 29/10/2026) — cases à cocher par
+   statut (filtrage d'ÉCRAN sur les lignes servies, compteurs serveur intacts,
+   choix dans l'URL) et la vue d'équipe réservée aux rôles responsable/admin. */
+describe('RelancesSuiviPage — filtre par statut et vue d\'équipe (29/10/2026)', () => {
+  function SondeUrl() {
+    const { search } = useLocation()
+    return <output data-testid="sonde-url">{search}</output>
+  }
+  function monterAvecUrl(url = '/crm/relances') {
+    return render(
+      <MemoryRouter initialEntries={[url]}>
+        <RelancesSuiviPage />
+        <SondeUrl />
+      </MemoryRouter>,
+    )
+  }
+  const lignesVisibles = () => screen.queryAllByTestId('relance-etape-row')
+  const caseStatut = (name) => screen.getByRole('checkbox', { name })
+
+  it('cocher « Faites » ne garde que les touches faites et écrit ?statut=fait ; les compteurs restent ceux du serveur', async () => {
+    monterAvecUrl()
+    activerOnglet('7 derniers jours')
+    await waitFor(() => expect(lignesVisibles()).toHaveLength(2))
+    fireEvent.click(caseStatut('Faites'))
+    await waitFor(() => expect(lignesVisibles()).toHaveLength(1))
+    expect(screen.getByText(new RegExp(`^Fait · \\d{2}:\\d{2} · ${ETAPES[0].traite_par_nom}$`))).toBeInTheDocument()
+    expect(screen.getByTestId('sonde-url').textContent).toBe('?statut=fait')
+    // `resume` vient TEL QUEL du serveur, quel que soit le filtre d'écran…
+    expect(screen.getByText(/À faire\s*:\s*1/)).toBeInTheDocument()
+    expect(screen.getByText(/Faites\s*:\s*1/)).toBeInTheDocument()
+    // …et le serveur n'est PAS re-sollicité (montage + onglet = 2 appels).
+    expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(2)
+
+    // Deux cases = l'UNION des lignes, l'URL dans l'ordre des compteurs.
+    fireEvent.click(caseStatut('À faire'))
+    await waitFor(() => expect(lignesVisibles()).toHaveLength(2))
+    expect(screen.getByTestId('sonde-url').textContent).toBe('?statut=a_faire&statut=fait')
+
+    // « Tout afficher » efface le filtre et disparaît.
+    fireEvent.click(screen.getByRole('button', { name: 'Tout afficher' }))
+    await waitFor(() => expect(screen.getByTestId('sonde-url').textContent).toBe(''))
+    expect(lignesVisibles()).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Tout afficher' })).not.toBeInTheDocument()
+  })
+
+  it('?statut=en_retard dans l\'URL s\'applique au chargement : seule la touche ouverte déjà échue reste', async () => {
+    // L'exemple committé est daté d'un autre jour : sa touche « à faire » est
+    // donc échue (en retard) ; sa touche « fait » ne l'est pas.
+    monterAvecUrl('/crm/relances?statut=en_retard')
+    activerOnglet('7 derniers jours')
+    await waitFor(() => expect(lignesVisibles()).toHaveLength(1))
+    expect(screen.queryByText(/^Fait · /)).not.toBeInTheDocument()
+    expect(caseStatut('En retard')).toHaveAttribute('aria-checked', 'true')
+    expect(caseStatut('Faites')).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('la vue d\'équipe est absente au rôle normal, présente aux responsables et lue sur le contrat controle_suivi', async () => {
+    isAdminOrResponsableMock.mockReturnValue(false)
+    mount()
+    await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalled())
+    expect(screen.queryByTestId('relances-equipe-panel')).not.toBeInTheDocument()
+    expect(crmApi.getControleSuivi).not.toHaveBeenCalled()
+    cleanup()
+
+    isAdminOrResponsableMock.mockReturnValue(true)
+    mount()
+    await waitFor(() => expect(screen.getByTestId('relances-equipe-panel')).toBeInTheDocument())
+    // Par défaut « Toute l'équipe » : 14 jours, aucun `owner` (comme la file).
+    await waitFor(() => expect(crmApi.getControleSuivi).toHaveBeenCalledWith({ jours: 14 }))
+    // Société vide (`exemple_vide`) : le bloc le dit, sans inventer un chiffre.
+    await waitFor(() => expect(screen.getByTestId('equipe-vide')).toBeInTheDocument())
   })
 })
