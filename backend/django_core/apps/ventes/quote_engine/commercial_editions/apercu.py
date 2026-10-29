@@ -16,7 +16,7 @@ from __future__ import annotations
 import importlib
 import sys
 
-EDITIONS = ("signature", "directe")
+EDITIONS = ("signature", "normale", "basique")
 
 
 def _edition(nom: str):
@@ -32,13 +32,16 @@ def html(edition: str, data: dict) -> str:
 
 
 def document(edition: str, data: dict):
-    """``(html, document WeasyPrint rendu, tient)`` — au PREMIER palier de
-    densité qui tient (pages exactes, rien sous le pied), sinon le dernier
-    palier, ``tient=False`` (le dispatch réel refuserait : CIQ317)."""
-    from . import commun, harnais
+    """``(html, document WeasyPrint rendu, tient)`` — au PREMIER essai
+    ``(variante, palier)`` de l'édition qui tient (pages exactes, rien sous
+    le pied, socle libre), sinon le dernier, ``tient=False`` (le dispatch
+    réel refuserait : CIQ317)."""
+    from . import harnais
+    module = _edition(edition)
+    essais = getattr(module, "ESSAIS", [("A", 0), ("A", 1), ("A", 2), ("A", 3)])
     h = doc = None
-    for palier in range(len(commun.PALIERS)):
-        donnees = data if palier == 0 else dict(data, _palier_ed=palier)
+    for variante, palier in essais:
+        donnees = dict(data, _variante_ed=variante, _palier_ed=palier)
         h = html(edition, donnees)
         doc = harnais.rendre(h)
         if harnais.tient(h, doc):

@@ -158,20 +158,30 @@ def investissement(d, fmt_mad):
     l_ht, l_ttc = L(d, "ci_ht", "HT"), L(d, "ci_ttc", "TTC")
     l_soit = L(d, "ci_soit", "soit")
     note = ci_couverture.note_tva(d, base) or ""
+    hors_visite = bool(ci_couverture.postes_hors_total(synthese))
+
+    def _cle(b):
+        # La clé du catalogue que ``titre_investissement`` a choisie (arabe
+        # du bloc prix, synthèse §0.2) : une lecture, pas un chiffre.
+        sans, hv = ci_couverture.TITRES_INVESTISSEMENT[b]
+        return (hv if hors_visite else sans)[0]
     if base in ("ht", "deux") and ht is not None:
         ht_txt = fmt_mad(ht)
         if base == "ht":
             return {"titre": ci_couverture.titre_investissement(d, synthese, "ht"),
+                    "cle_titre": _cle("ht"),
                     "montant": ht_txt, "unite": l_ht,
                     "ancre": ancre("total_ht", ht_txt),
                     "secondaire": f"{l_soit} {ttc_txt}&nbsp;MAD&nbsp;{l_ttc}"
                     + ancre("total_affiche", ttc_txt), "note": note}
         return {"titre": ci_couverture.titre_investissement(d, synthese, "deux"),
+                "cle_titre": _cle("deux"),
                 "montant": ttc_txt, "unite": l_ttc,
                 "ancre": ancre("total_affiche", ttc_txt),
                 "secondaire": f"{l_soit} {ht_txt}&nbsp;MAD&nbsp;{l_ht}"
                 + ancre("total_ht", ht_txt), "note": note}
     return {"titre": ci_couverture.titre_investissement(d, synthese, "ttc"),
+            "cle_titre": _cle("ttc"),
             "montant": ttc_txt, "unite": "",
             "ancre": ancre("total_affiche", ttc_txt), "secondaire": "",
             "note": ""}
@@ -236,7 +246,17 @@ def chiffres(d, fmt):
         "postes_hors_total": bool(ci_couverture.postes_hors_total(synthese)),
         "tri_pct": None,
         "horizon": None,
+        # AMOT100 — la tonne de CO₂ évitée SERVIE (``decarbonation.co2_evite``)
+        # et la source du facteur ; None sans facteur réglé.
+        "co2_t": None, "co2_facteur": "",
     }
+    co2 = (synthese.get("decarbonation") or {}).get("co2_evite")         if isinstance(synthese, dict) else None
+    if isinstance(co2, dict) and co2.get("t_an") is not None:
+        out["co2_t"] = decimale(f"{co2['t_an']:g}")
+        out["co2_facteur"] = L(
+            d, "ci_co2_facteur", "facteur réseau {g} gCO₂/kWh — {source}",
+            g=decimale(f"{co2['facteur_g_kwh']:g}"),
+            source=_html.escape(str(co2.get("source") or ""), quote=False))
     indic = argent.get("indicateurs") or {}
     tri = _num(indic.get("tri_pct"))
     if tri is not None and not masque:
@@ -566,4 +586,5 @@ def modele(d, ctx):
         # Palier de densité (0 = rendu nominal) posé par ``apercu.document``
         # quand le document ne tient pas — même mécanique que CIQ317.
         "palier": int(d.get("_palier_ed") or 0),
+        "variante": str(d.get("_variante_ed") or "A"),
     }

@@ -47,11 +47,11 @@ def build_ctx(data: dict) -> dict:
     return premium_base.build_ctx(data)
 
 
-def pied(data: dict, ident: dict, n: int, total: int, couleurs: dict,
+def pied(data: dict, ident: dict, n: int, total: int, j: dict,
          police: str) -> str:
-    """Le pied discret des éditions : filet, marque · contact à gauche,
-    page · réf. · site à droite. Même contenu que ``theme.page_footer``
-    (identité société, filigrane standard), autre habit."""
+    """Le pied : plein (marine tramé, Signature et Normale) ou à filets
+    (Basique). Même contenu que ``theme.page_footer`` (identité société,
+    filigrane standard), autre habit."""
     site = ident.get("site") if "site" in ident else theme._DEFAULT_SITE
     filigrane = theme._esc(data.get("_watermark_standard") or "")
     suffixe = f" &nbsp;·&nbsp; {filigrane}" if filigrane else ""
@@ -61,32 +61,34 @@ def pied(data: dict, ident: dict, n: int, total: int, couleurs: dict,
         x for x in (f"<b>{ident['brand_name']}</b>", ident.get("email") or "",
                     ident.get("phone") or "") if x)
     droite = (f"{page_lbl} {n} / {total} &nbsp;·&nbsp; {ref_lbl} {data['ref']}"
-              + (f" &nbsp;·&nbsp; <span class='ed-site'>{site}</span>"
-                 if site else "") + suffixe)
-    return (f'<div class="foot ed-foot"><div>{gauche}</div>'
+              + (f" &nbsp;·&nbsp; <span class='ed-site'>{site}</span>" if site else "") + suffixe)
+    return (f'<div class="foot ed-foot ed-foot-{j.get("pied", "plein")}"><div>{gauche}</div>'
             f'<div>{droite}</div></div>')
 
 
 def css_base(jeton: dict) -> str:
-    """La feuille de base d'une édition : ``jeton`` = {fonts_css, sans,
-    display, ink, muted, line, paper, accent}."""
+    """La feuille de base d'une édition."""
+    from .commun import css_motif
+    j = jeton
     return f"""
-{jeton['fonts_css']}
+{j['fonts_css']}
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 @page {{ size: A4; margin: 0; }}
-html, body {{ font-family:{jeton['sans']}; color:{jeton['ink']};
-  -weasy-hyphens:none; font-size:9pt; line-height:1.4; }}
-.page {{ position:relative; width:210mm; height:297mm; overflow:hidden;
-  background:{jeton['paper']}; page-break-after:always; }}
+html, body {{ font-family:{j['sans']}; color:{j['ink']}; -weasy-hyphens:none; font-size:9pt; line-height:1.4; }}
+.page {{ position:relative; width:210mm; height:297mm; overflow:hidden; background:{j['paper']}; page-break-after:always; }}
 .page:last-child {{ page-break-after:auto; }}
-.foot.ed-foot {{ position:absolute; left:0; right:0; bottom:0; height:12mm;
-  padding:0 {jeton.get('marge', '18mm')}; display:table; width:100%;
-  font-size:7pt; color:{jeton['muted']}; border-top:0.5pt solid {jeton['line']};
-  background:{jeton['paper']}; }}
+.foot.ed-foot {{ position:absolute; left:0; right:0; bottom:0; display:table; width:100%;
+  padding:0 {j.get('marge', '20mm')} 0 {j.get('marge_g', '20mm')}; font-size:7pt; }}
 .foot.ed-foot > div {{ display:table-cell; vertical-align:middle; }}
 .foot.ed-foot > div + div {{ text-align:right; }}
-.foot.ed-foot b {{ color:{jeton['ink']}; font-weight:600; }}
-.ed-site {{ color:{jeton['accent']}; }}
+.foot.ed-foot-plein {{ height:12mm; background:{j['hero_bg']}; {css_motif(j['motif_8'], 14)} color:{j['on_hero']};
+  border-top:0.6pt solid {j['or']}; }}
+.foot.ed-foot-plein b {{ color:{j['on_hero']}; font-weight:600; }}
+.foot.ed-foot-plein .ed-site {{ color:{j['or_texte']}; }}
+.foot.ed-foot-filet {{ height:10mm; color:{j['muted']}; border-top:0.5pt solid {j['ink']}; background:{j['paper']}; }}
+.foot.ed-foot-filet b {{ color:{j['ink']}; font-weight:600; }}
+.foot.ed-foot-filet .ed-site {{ color:{j['laiton']}; }}
+.ed-foot-or {{ position:absolute; left:0; right:0; bottom:9.2mm; border-top:0.4pt solid {j['or']}; }}
 .qj {{ height:0; }}
 """
 
@@ -149,4 +151,4 @@ def tient(html: str, doc) -> bool:
     """Pages exactes, aucun texte sous la bande de pied (AMOT36) et socle
     de couverture libre (B3)."""
     from ..commercial.equip import _tient
-    return _tient(html, doc) and socle_libre(doc)
+    return _tient(html, doc) and socle_libre(doc, socle="sg1-socle")

@@ -7,6 +7,8 @@ from .. import commun, donnees, harnais
 from . import couverture, devis, energie
 
 JETON = commun.jeton(commun.SIGNATURE)
+#: Essais de mise en page (variante, palier) dans l'ordre (synthèse §6).
+ESSAIS = [("A", 0), ("A", 1), ("A", 2), ("A", 3)]
 
 
 def pages(ctx: dict) -> list:

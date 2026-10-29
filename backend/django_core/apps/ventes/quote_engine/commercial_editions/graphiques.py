@@ -28,13 +28,15 @@ def _t(x, y, texte, taille, fill, anchor="start", poids=400, extra=""):
 
 
 def barres_mensuelles(mois, couleurs, police, reperes, graduation_txt,
-                      largeur_mm=120, hauteur_mm=52, legende=None):
+                      largeur_mm=120, hauteur_mm=52, legende=None, contour=None,
+                      echelle_texte=1.0):
     """Barres GROUPÉES par mois : consommation (encre) à gauche, production
     (accent) à droite — la part autoconsommée pleine, le surplus en teinte
     claire par-dessus. ``couleurs`` = (conso, auto, surplus, axe, texte) ;
     ``reperes`` = 12 étiquettes de mois ; ``graduation_txt`` = le plus
     grand kWh servi, déjà formaté ; ``legende`` = (conso, auto, surplus)."""
     conso_c, auto_c, surplus_c, axe_c, texte_c = couleurs
+    e = echelle_texte
     W, H = 520.0, 520.0 * hauteur_mm / largeur_mm
     mg, md, mh, mb = 4.0, 4.0, 14.0, 26.0 if legende else 16.0
     plafond = max(max(m["consommation_kwh"], m["production_kwh"])
@@ -46,7 +48,7 @@ def barres_mensuelles(mois, couleurs, police, reperes, graduation_txt,
     f = []
     f.append(f'<line x1="{mg}" y1="{mh:.1f}" x2="{W - md}" y2="{mh:.1f}" '
              f'stroke="{axe_c}" stroke-width="0.5" stroke-dasharray="2 3"/>')
-    f.append(_t(mg, mh - 4, graduation_txt, 10, texte_c))
+    f.append(_t(mg, mh - 4, graduation_txt, 10 * e, texte_c))
     f.append(f'<line x1="{mg}" y1="{base:.1f}" x2="{W - md}" y2="{base:.1f}" '
              f'stroke="{axe_c}" stroke-width="0.8"/>')
     for i, m in enumerate(mois):
@@ -54,19 +56,21 @@ def barres_mensuelles(mois, couleurs, police, reperes, graduation_txt,
         hc = zone * m["consommation_kwh"] / plafond
         ha = zone * m["autoconso_kwh"] / plafond
         hp = zone * m["production_kwh"] / plafond
-        f.append(_r(x0, base - hc, barre, hc, conso_c, 1.2))
+        f.append(_r(x0, base - hc, barre, hc, conso_c, 1.2,
+                    f'stroke="{contour}" stroke-width="0.7"' if contour else ""))
         xp = x0 + barre + 2
         f.append(_r(xp, base - hp, barre, hp, surplus_c, 1.2))
         f.append(_r(xp, base - ha, barre, ha, auto_c, 1.2))
-        f.append(_t(x0 + barre + 1, base + 11, reperes[i], 10, texte_c,
+        f.append(_t(x0 + barre + 1, base + 11, reperes[i], 10 * e, texte_c,
                     "middle"))
     if legende:
         y = H - 6
         x = mg
         for col, lib in zip((conso_c, auto_c, surplus_c), legende):
-            f.append(_r(x, y - 7, 8, 8, col, 1.5))
-            f.append(_t(x + 11, y, lib, 9.5, texte_c))
-            x += 11 + len(lib) * 5.0 + 16
+            f.append(_r(x, y - 7, 8, 8, col, 1.5,
+                        f'stroke="{contour}" stroke-width="0.7"' if (contour and col == conso_c) else ""))
+            f.append(_t(x + 11, y, lib, 9.5 * e, texte_c))
+            x += 11 + len(lib) * 5.0 * e + 16
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.0f} '
             f'{H:.0f}" width="{largeur_mm}mm" height="{hauteur_mm}mm" '
             f'font-family="{police}">{"".join(f)}</svg>')
@@ -149,8 +153,10 @@ def frise_cumul(serie, jalons, retour, textes, couleurs, police,
         xr = X(retour)
         f.append(f'<line x1="{xr:.1f}" y1="{mh}" x2="{xr:.1f}" y2="{H - mb}" '
                  f'stroke="{point_c}" stroke-width="0.8" stroke-dasharray="2 3"/>')
-        f.append(f'<circle cx="{xr:.1f}" cy="{y0:.1f}" r="4.5" fill="{point_c}" '
-                 f'stroke="#fff" stroke-width="1.5"/>')
+        # L'étoile khatam pleine (2,5 mm, 12 unités) marque le point de retour.
+        from .commun import ETOILE_D
+        f.append(f'<path d="{ETOILE_D}" transform="translate({xr - 6:.1f},{y0 - 6:.1f}) scale(0.3)" '
+                 f'fill="{point_c}"/>')
         f.append(_t(xr + 8, mh - 8, lib_retour, 12, texte_c, "start", 600))
     for a, lib in jalons:
         if 0 < a <= a_max:
