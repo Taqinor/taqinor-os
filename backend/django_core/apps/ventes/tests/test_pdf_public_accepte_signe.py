@@ -52,8 +52,11 @@ class TestPdfPublicAccepteSigne(TestCase):
             niveau=ShareLink.NIVEAU_CONFIANCE)
         return devis, link
 
-    def _get(self, url, link, mock_gen):
-        resp = DjangoClient().get(reverse(url, args=[link.token]))
+    def _get(self, url, link, mock_gen, preuve=None):
+        # ASEC23 — ``preuve`` : celle du navigateur vérifié, relayée en
+        # en-tête ``X-Proposition-Preuve`` comme le fait ``apps/web``.
+        en_tetes = {'HTTP_X_PROPOSITION_PREUVE': preuve} if preuve else {}
+        resp = DjangoClient().get(reverse(url, args=[link.token]), **en_tetes)
         self.assertEqual(resp.status_code, 200)
         return b''.join(resp) if hasattr(resp, 'streaming_content') \
             else resp.content
@@ -95,13 +98,15 @@ class TestPdfPublicAccepteSigne(TestCase):
 
     @staticmethod
     def _deverrouiller(link):
-        from django.core.cache import cache
-        from apps.ventes.domain.cycle_vie import _otp_lecture_verified_key
-        cache.set(_otp_lecture_verified_key(link.token), True, 3600)
+        """ASEC23 — la preuve que la vérification rend AU navigateur."""
+        from apps.ventes.services import emettre_preuve_lecture
+        return emettre_preuve_lecture(link)
 
-    def _demander(self, link):
+    def _demander(self, link, preuve=None):
+        en_tetes = {'HTTP_X_PROPOSITION_PREUVE': preuve} if preuve else {}
         return DjangoClient().post(
-            f'/api/django/public/proposal/{link.token}/otp-lecture/demander/')
+            f'/api/django/public/proposal/{link.token}/otp-lecture/demander/',
+            **en_tetes)
 
     @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
     @patch('apps.ventes.public_views.generate_premium_devis_pdf',
@@ -128,11 +133,13 @@ class TestPdfPublicAccepteSigne(TestCase):
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertTrue(envoi.called)
         self.assertIsNotNone(cache.get(_otp_lecture_cache_key(link.token)))
-        self._deverrouiller(link)
-        self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
-                         OCTETS_SIGNES)
-        # Déjà déverrouillé : aucun second code.
-        self.assertEqual(self._demander(link).json().get('code_requis'), False)
+        preuve = self._deverrouiller(link)
+        self.assertEqual(
+            self._get('public-proposal-pdf', link, mock_gen, preuve),
+            OCTETS_SIGNES)
+        # Déjà déverrouillé (CE navigateur) : aucun second code.
+        self.assertEqual(
+            self._demander(link, preuve).json().get('code_requis'), False)
 
     @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
     @patch('apps.ventes.public_views.generate_premium_devis_pdf',

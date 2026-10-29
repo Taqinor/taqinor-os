@@ -39,7 +39,7 @@ describe('PV80 — route catch-all', () => {
 
   it('tous les sous-appels partagent la MÊME variable token extraite', () => {
     expect(PROPOSITION).toContain('proposalEndpoint(API_BASE, token)');
-    expect(PROPOSITION).toContain('proposalPdfEndpoint(API_BASE, token)');
+    expect(PROPOSITION).toContain('relaisPdfProposition(token)');
     expect(PROPOSITION).toContain('data-contact-token={token}');
     expect(PROPOSITION).toContain('data-revision-token={token}');
   });
