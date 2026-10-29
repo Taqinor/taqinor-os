@@ -116,6 +116,18 @@ class EvalCommerciauxTests(unittest.TestCase):
             self.assertEqual(sum(c["intention"] == intention for c in base), 5, intention)
         self.assertEqual(sum(c["source"] == "guide" for c in CASES_COMMERCIAUX), 20)
 
+    def test_texte_du_message_saute_le_bloc_de_reflexion(self):
+        """AIC13 : Haiku 5.5 repond [ThinkingBlock, TextBlock] ; le juge lit le texte."""
+        class Bloc:
+            def __init__(self, type, text=None):
+                self.type = type
+                if text is not None:
+                    self.text = text
+        self.assertEqual(runner.texte_du_message(
+            [Bloc("thinking"), Bloc("text", "{\"exacte\": true}")]), "{\"exacte\": true}")
+        self.assertEqual(runner.texte_du_message([{"type": "text", "text": "ok"}]), "ok")
+        self.assertEqual(runner.texte_du_message([]), "")
+
     def test_juge_different_du_modele_evalue(self):
         with self.assertRaises(ValueError):
             runner.run_eval_commerciaux(self._repondre, self._juger,
