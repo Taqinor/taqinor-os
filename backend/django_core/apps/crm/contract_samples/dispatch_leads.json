@@ -35,18 +35,28 @@
     ],
     "membres": [
       {
+        "id": 2,
+        "nom": "Meryem",
+        "fonction": "Responsable commerciale",
+        "leads_ouverts": 8,
+        "au_plafond": false,
+        "est_responsable": true
+      },
+      {
         "id": 4,
         "nom": "Sara",
         "fonction": "Chargée de clientèle",
         "leads_ouverts": 12,
-        "au_plafond": false
+        "au_plafond": false,
+        "est_responsable": false
       },
       {
         "id": 5,
         "nom": "Amine",
         "fonction": "Chargé de clientèle",
         "leads_ouverts": 20,
-        "au_plafond": true
+        "au_plafond": true,
+        "est_responsable": false
       }
     ],
     "equipes_reglables": [
@@ -57,12 +67,19 @@
         "delai_minutes": 5,
         "membres": [
           {
+            "id": 2,
+            "nom": "Meryem",
+            "est_responsable": true
+          },
+          {
             "id": 4,
-            "nom": "Sara"
+            "nom": "Sara",
+            "est_responsable": false
           },
           {
             "id": 5,
-            "nom": "Amine"
+            "nom": "Amine",
+            "est_responsable": false
           }
         ]
       }
@@ -85,18 +102,28 @@
     "leads": [],
     "membres": [
       {
+        "id": 2,
+        "nom": "Meryem",
+        "fonction": "Responsable commerciale",
+        "leads_ouverts": 8,
+        "au_plafond": false,
+        "est_responsable": true
+      },
+      {
         "id": 4,
         "nom": "Sara",
         "fonction": "Chargée de clientèle",
         "leads_ouverts": 12,
-        "au_plafond": false
+        "au_plafond": false,
+        "est_responsable": false
       },
       {
         "id": 5,
         "nom": "Amine",
         "fonction": "Chargé de clientèle",
         "leads_ouverts": 20,
-        "au_plafond": true
+        "au_plafond": true,
+        "est_responsable": false
       }
     ],
     "equipes_reglables": [
@@ -107,12 +134,19 @@
         "delai_minutes": 5,
         "membres": [
           {
+            "id": 2,
+            "nom": "Meryem",
+            "est_responsable": true
+          },
+          {
             "id": 4,
-            "nom": "Sara"
+            "nom": "Sara",
+            "est_responsable": false
           },
           {
             "id": 5,
-            "nom": "Amine"
+            "nom": "Amine",
+            "est_responsable": false
           }
         ]
       }
@@ -122,7 +156,7 @@
     "equipe": "L'équipe qui reçoit les nouveaux leads avec confirmation activée et dont l'appelant est le responsable (ou toute équipe de ce type pour Direction/Admin) ; null si aucune.",
     "leads": "Leads en attente de décision, du plus ancien au plus récent. Champs absents du lead = null (jamais inventés). `attente_minutes` et `auto_le` en temps ouvré (horaires de la société).",
     "propose.raison": "Texte lisible de la règle appliquée, ou « Rotation équilibrée » quand aucune règle ne correspond.",
-    "membres": "Membres ACTIFS de l'équipe, dans l'ordre d'affichage ; `leads_ouverts` = leads non signés/froids/perdus ; `au_plafond` selon le plafond de leads ouverts du profil.",
+    "membres": "Membres ACTIFS de l'équipe, dans l'ordre d'affichage ; `leads_ouverts` = leads non signés/froids/perdus ; `au_plafond` selon le plafond de leads ouverts du profil. Le RESPONSABLE actif de l'équipe vient en premier avec `est_responsable: true` (il peut prendre un lead lui-même — fondateur, 28/10/2026) ; la rotation automatique reste entre les membres.",
     "exemple_file_vide": "Équipe dirigée, rien en attente (l'écran dit « Aucun lead en attente ») ; `exemple_vide` = l'appelant ne dirige aucune équipe qui confirme.",
     "equipes_reglables": "Équipes commerciales dont l'appelant peut régler l'attribution (interrupteur « Le responsable confirme chaque lead », délai, règles de proposition) : celles dont il est le responsable, celles du département dont il est la tête (directeur commercial), toutes pour Direction/Admin. Écriture : `PATCH /api/django/crm/dispatch/reglages/<equipe_id>/` `{confirmation_responsable, delai_minutes}` et le CRUD `crm/regles-attribution/`. `membres` = membres ACTIFS de l'équipe `{id, nom}` (choix du membre proposé dans l'éditeur de règles)."
   }

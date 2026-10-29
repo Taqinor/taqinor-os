@@ -312,6 +312,26 @@ class TestDispatchLeads(TestCase):
         attente = AttributionEnAttente.objects.get(lead=self.lead)
         self.assertLess(attente.echeance, avant)
 
+    def test_le_responsable_peut_prendre_le_lead_lui_meme(self):
+        # Fondateur 28/10 : le responsable figure parmi les choix (en tête,
+        # marqué) et peut s'attribuer le lead, ou être le membre d'une règle.
+        self.auth_as(self.chef)
+        r = self.api.get('/api/django/crm/dispatch/')
+        self.assertEqual(r.status_code, 200, r.content)
+        premier = r.json()['membres'][0]
+        self.assertEqual((premier['id'], premier['est_responsable']),
+                         (self.chef.pk, True))
+        self.assertFalse(any(m['est_responsable']
+                             for m in r.json()['membres'][1:]))
+        r = self._attribuer(self.chef, self.chef)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.owner_id, self.chef.pk)
+        r = self.api.post('/api/django/crm/regles-attribution/', {
+            'equipe': self.equipe.pk, 'membre': self.chef.pk, 'ordre': 0,
+            'villes': 'Casablanca'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+
     def test_file_reservee_au_responsable_et_a_la_direction(self):
         from apps.roles.models import Role
         rh = Role.objects.create(company=self.company, nom='Admin RH',
