@@ -17,7 +17,7 @@ vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevi
 vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 // RGEN6 — `computeROI` ENROBÉ (même fonction, appels observés) pour lire l'efficacité reçue.
-vi.mock('../../features/ventes/solar', async (importOriginal) => {
+vi.mock('../../features/ventes/calc/roi', async (importOriginal) => {
   const m = await importOriginal()
   return { ...m, computeROI: vi.fn(m.computeROI) }
 })
@@ -78,7 +78,8 @@ describe('RGEN6 rendement_global ignoré', () => {
     })
     const { container } = vue
     // L'instance que l'écran a importée (après `resetModules` du harnais).
-    const { computeROI, EFFICIENCY } = await import('../../features/ventes/solar')
+    const { computeROI } = await import('../../features/ventes/calc/roi')
+    const { EFFICIENCY } = await import('../../features/ventes/solar')
     await waitFor(() => expect(vue.parametresApi.getProfile).toHaveBeenCalled(), { timeout: 5000 })
     await waitFor(() => expect(computeROI).toHaveBeenCalled(), { timeout: 5000 })
     await attendreStable(container, act, { stables: 10 })

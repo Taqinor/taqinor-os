@@ -12,18 +12,21 @@ import {
 } from './quote/sizingReducer.js'
 import {
   DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
-  computeROI, ttcFromHt, htFromTtc, GHI,
+  ttcFromHt, htFromTtc, GHI,
   appartientAuPanierSans, appartientAuPanierAvec,
   groupProduitsByCategory,
-  KWH_PRICE, AUTOCONSO_SANS, AUTOCONSO_AVEC,
+  KWH_PRICE,
   productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
-  computeCashflowPayback,
-  isReseauInverter, batterieCompatible, plageBatterieOnduleur, DAYS_IN_MONTH,
-  PRODUCTIBLE_NET_FACTOR, TARIFF_ESCALATION,
+  isReseauInverter, batterieCompatible, plageBatterieOnduleur,
+  PRODUCTIBLE_NET_FACTOR,
   isBattery, isHybridInverter, isAnyInverter, inverterCostFromLines,
-  batteryKwhFromLines, INVERTER_REPLACE_YEAR, BATTERY_ROUNDTRIP,
+  batteryKwhFromLines,
   // STKCAT10 — sélecteur de structures piloté par le catalogue.,
   structureRoleForName, structureChoisie} from './solar.js'
+import {
+  computeROI, AUTOCONSO_SANS, AUTOCONSO_AVEC, computeCashflowPayback, DAYS_IN_MONTH,
+  TARIFF_ESCALATION, INVERTER_REPLACE_YEAR, BATTERY_ROUNDTRIP,
+} from './calc/roi.js'
 import { optionTotalsTTC, totauxCanoniquesTtc, multiPropertyPreviewTTC } from './calc/totaux.js'
 import { FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh, ONEE_TRANCHES } from './calc/tarifs.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'

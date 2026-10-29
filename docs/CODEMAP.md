@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 9cc384e0d65a3d8dc7aac2f909b86c68e6d568d490e47f436ff4f27bbdf69eec
+Structure fingerprint: c05de568c039d579088d1e916529ec9af2556fce339af7200b9787cf89016355
 Plan fingerprint: 3a943a6cd5eeda01a16906a359719e8f9712122f24d538c8bbf3be2fab5de06f
 
 
@@ -456,7 +456,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 
 - **auth** — session/JWT (`authSlice.js`).
 - **crm** — leads/clients state; `crmSlice.js`, `bulk.js`, `stages.js` (mirrors STAGES.py, CI-checked); **`workspace/`** = the lead cockpit (`LeadWorkspace.jsx` over the pure autosave engine `draftCore.js` via `useLeadDraft.js`, with `IdentityRail`/`SectionsPane`/`ContextRail`, `TimelineTab`, `DevisTab`, `ArbreHistorique.jsx`, `StageControl`); `traceToit.js` (pure: `Lead.roof_outline` -> SVG polygon + area, via `features/calepinage`'s roof-marker helper), `leadPrefetch.js`, `rotting.js`.
-- **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill: GHI/ONEE/ROI, panel/inverter/battery sizing, all TTC; split by pure moves into `calc/` — `tarifs.js` tariff model, `totaux.js` canonical totals/multi-property/prix-kWc/margin), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
+- **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill: GHI/ONEE/ROI, panel/inverter/battery sizing, all TTC; split by pure moves into `calc/` — `tarifs.js` tariff model, `totaux.js` canonical totals/multi-property/prix-kWc/margin, `roi.js` savings/ROI/25-year cashflow), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
 - **calepinage** — the roof-design studio (module.config-registered): library, sources, variantes, plan/pente/terrain/ombrière/schéma/production tabs, `repere.js` roof-marker helper (repatriated from `ao` by SOLMVP15).
 - **visites** — field technical visits (module.config-registered).
 - **installations** — chantiers; `installationsSlice.js`, `statuses.js`, offline field capture.

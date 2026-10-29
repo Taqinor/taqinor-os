@@ -719,14 +719,18 @@ REFUS = {
         ("plafonds cumulatifs", "NOMBRES"),
         ("constants_82_21.py", "NOMBRES"),
         ("injection_annuelle", "COMPORTEMENT"),
-        # PR #752 (30/09/2026) — deux miroirs de FONCTIONS serveur, aucune
-        # liste de valeurs : le drapeau « jamais remboursé » de
-        # `pricing.compute_cashflow_payback` (ERR-QAC-PAYBACK-JAMAIS-
-        # REMBOURSE-25-ANS) et le plancher à 0 du HT net de
-        # `_canonical_totaux` (ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF).
-        ("PAYBACK-JAMAIS-REMBOURSE-25-ANS — miroir de `pricing`",
-         "COMPORTEMENT"),
+        # PR #752 (30/09/2026) — miroir d'une FONCTION serveur, aucune liste
+        # de valeurs : le plancher à 0 du HT net de `_canonical_totaux`
+        # (ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF).
         ("REMISE-100-NEGATIF — HT net borné à 0 (miroir de", "COMPORTEMENT")],
+    # SPL199 — computeROI (et sa promesse PR #752) a quitté solar.js.
+    "frontend/src/features/ventes/calc/roi.js": [
+        # PR #752 (30/09/2026) — miroir d'une FONCTION serveur, aucune liste
+        # de valeurs : le drapeau « jamais remboursé » de
+        # `pricing.compute_cashflow_payback` (ERR-QAC-PAYBACK-JAMAIS-
+        # REMBOURSE-25-ANS).
+        ("PAYBACK-JAMAIS-REMBOURSE-25-ANS — miroir de `pricing`",
+         "COMPORTEMENT")],
     # AGNR36 (08/10/2026) — classement d'une ligne : miroir d'une FONCTION
     # serveur (`utils/options.texte_classement`), pas un vocabulaire.
     "frontend/src/features/ventes/quote/reouverture.js": [

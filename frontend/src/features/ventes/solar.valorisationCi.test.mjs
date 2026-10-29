@@ -7,6 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as solar from './solar.js'
+import * as roi from './calc/roi.js'
 
 const SUPPRIMES = [
   ['INJECTION', '_82_21'], ['netTarif', '8221'], ['injection', '8221'],
@@ -19,5 +20,5 @@ test('CIQ228 — aucun symbole de valorisation C&I exporté par solar.js', () =>
 
 test('CIQ228 — KWH_PRICE reste (lecteur résidentiel : computeROI)', () => {
   assert.equal(typeof solar.KWH_PRICE, 'number')
-  assert.equal(typeof solar.computeROI, 'function')
+  assert.equal(typeof roi.computeROI, 'function')
 })

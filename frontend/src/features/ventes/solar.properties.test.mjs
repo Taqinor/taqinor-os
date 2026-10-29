@@ -23,11 +23,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { computeROI, computeCashflowPayback,
+import {
   productibleForCity, PRODUCTIBLE_NET_FACTOR,
   panneauxPourKwc,
   ttcFromHt, htFromTtc,
   ligneProduitCatalogue} from './solar.js'
+import { computeROI, computeCashflowPayback } from './calc/roi.js'
 import { totauxCanoniquesTtc } from './calc/totaux.js'
 import { ONEE_TRANCHES, FALLBACK_KWH_PRICE, monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures, kwhDepuisFactureMad, factureMad, tppanMad, twoBillsSavings } from './calc/tarifs.js'
 import { forAll, premierNonFini } from './proprietes.aleatoire.js'
