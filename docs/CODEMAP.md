@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 49897e51ae6ad0558c24ef9c06c3d6c37a5dad8c6d9afce48729dd05bb5df050
-Plan fingerprint: b9b2fd4a352aff897bc0086509f95cb3e792a5f160023ab2b804ce4ca04b63f0
+Structure fingerprint: db6f45ad3d7b39cb3a6f7e2e8ad6f79fe292de9357f304c23c75de16485be1e2
+Plan fingerprint: 3a943a6cd5eeda01a16906a359719e8f9712122f24d538c8bbf3be2fab5de06f
 
 
 
@@ -547,7 +547,7 @@ All verified against source, not prose.
 - **`/proposal` is the only client-facing quote-PDF path** — canonical endpoint `GET /api/django/ventes/devis/<id>/proposal/`, rendered by the vendored `quote_engine/generate_devis_premium.py`. `generer-pdf` (async Celery) routes through the same engine (toggle `USE_PREMIUM_QUOTE_ENGINE`). The legacy WeasyPrint quote PDF remains only as the off-switch fallback; invoices keep their own separate legacy PDF. Premium renderers = the ONE list `quote_engine/builder.registre_renderers()` (industriel, commercial, agricole — dedicated 3-page document `quote_engine/agricole/{renderer,pages}.py` fed by `agricole/synthese.synthese_agricole`, AGR312 —, résidentiel); `quote_engine/ci/synthese.py` = `synthese_ci(data)` (CIQ303); `ci/options_cote.py` = cartes sans / avec batterie de la couverture C&I, `i18n_labels_ci.py` / `i18n_labels_ci_pages.py` = libellés CPDF enregistrés dans le catalogue (CPDF). See `docs/quote-engine-swap-map.md`.
 - **Multi-tenant scoping** — the tenant field is **`company`** (FK -> `authentication.Company`) on every business model; there is **no** field named `tenant_id`. ViewSets filter `get_queryset()` by `request.user.company` and force-assign `company` in `perform_create`/`perform_update`, never from the request body.
 - **Staff structure = org chart (26-27/10/2026)** — `apps/roles` holds `Departement` (one `est_direction` per company, a head), `Poste` (job position → department + default `Role`; `CustomUser.fonction`, required at user creation once a company has postes) and `EquipeOrg` (generic teams); routes `roles/departements|postes|equipes/` and `GET roles/organisation/` (contract `apps/roles/contract_samples/organisation.json`, built by `apps/roles/selectors.py`). Teams of the 3 types (`crm.EquipeCommerciale.responsable`, `installations.Equipe.chef`, `roles.EquipeOrg.chef`) carry a `departement`; `authentication/equipes_structure.py::recalculer_hierarchie` recomputes every `supervisor` from the structure (Direction → department heads → team leads → members), one person = one active team, cycles refused (409). Visibility follows `core/scoping.py` (`records_scope_soi` on the Commercial role = own + subtree, never peers). The team flagged `recoit_leads` (one per company) gets new leads in rotation (`crm/leads_attribution.py`).
-- **Lead dispatch by the team lead (27/10/2026)** — a commercial team with `confirmation_responsable` holds new leads in `crm.AttributionEnAttente` (owner = team responsable meanwhile; suggestion = first matching `crm.RegleAttribution` — city, client type, source, bill — else balanced rotation); `GET crm/dispatch/` (contract `apps/crm/contract_samples/dispatch_leads.json`) + `POST crm/dispatch/<id>/attribuer/` serve the screen `/crm/attribution`; Celery `crm.attribuer_leads_echus` assigns the suggestion once the working-minutes delay passes (`apps/crm/dispatch.py`).
+- **Lead dispatch by the team lead (27/10/2026)** — a commercial team with `confirmation_responsable` holds new leads in `crm.AttributionEnAttente` (owner = team responsable meanwhile; suggestion = first matching `crm.RegleAttribution` — city, client type, source, bill — else balanced rotation); `GET crm/dispatch/` (contract `apps/crm/contract_samples/dispatch_leads.json`) + `POST crm/dispatch/<id>/attribuer/` serve the screen `/crm/attribution`; Celery `crm.attribuer_leads_echus` assigns the suggestion once the working-minutes delay passes (`apps/crm/dispatch.py`). Settings (switch, delay, multi-choice rules `types_installation`/`sources`) are editable by the team responsable, the head of its department and Direction/Admin (`dispatch.peut_regler`, `PATCH crm/dispatch/reglages/<id>/`).
 - **Cross-app boundary** — between business-core domain apps, reads go through the target app's `selectors.py` and writes/orchestration through its `services.py` (or string FKs); never an import of its `models`/`views`. Cross-app reactions go through the synchronous `core/events.py` signal bus, subscribed in each app's `apps.py` `ready()`. **CI-enforced** by `backend/django_core/.importlinter` + the `lint-imports` step in `backend-lint-fast` (16 contracts, 0 broken).
 - **Migration-shell contract (SOLMVP, 20-21/09/2026)** — a parked app (`core.parked.APPS_PARQUEES`, the single copy of the 47 labels) keeps ONLY `__init__.py`, `apps.py` (`parked = True` + `'parked': True` in its manifest), `migrations/` verbatim plus ONE final `SeparateDatabaseAndState(state_operations=[DeleteModel…], database_operations=[])`, and a `models.py` declaring **no Django model** (a verbatim *talon* of module-level functions, enums and namespace classes is allowed, and is required whenever a frozen migration imports a symbol from that file — an empty `models.py` would make the migration unimportable and break the whole graph, visible only in a FRESH process). It **stays in `INSTALLED_APPS`** (that is what keeps the kept apps' graph valid — never a squash) and exposes no url, Celery task/beat entry, test, screen, `contract_samples/` or e2e spec. **No table and no `django_migrations` row is ever touched**; the 5 kept->parked FK links left as `RemoveField` (revertable: only the link column goes). The only authorised tool is `manage.py parquer_app <label>` (`--dry-run`, `--check`), which verifies in a fresh subprocess that the migration graph still loads before deleting anything; the host wrapper `python scripts/parquer_app.py --verifier-tout` asserts all 47 still satisfy the contract (it does, at this commit). The **permanent** CI guard is **`scripts/check_parked_apps.py`** in the `stage-names` job — it fails if any import, FK, url include or beat entry targets a parked label outside `*/migrations/*`; it is delivered by **SOLMVP53** in this same batch and is the guard a future session must keep green. Restoring a module: the proven recipe in `docs/parked-modules.md` §5, plus `docs/module-playbook.md`.
 - **Reference numbering** — never `count()+1` (it collided in production when quotes were deleted). `core.numbering.next_reference` / `apps/ventes/utils/references.py` compute highest-used+1 per company+month under a savepoint with retry; `scripts/check_platform.py` (ARC6) blocks any new `count() + 1`.
@@ -591,7 +591,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1289)**
+**Done (1290)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -773,6 +773,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGR623` — Fiche produit : saisir le profil saisonnier de réappro (saison d'irrigation), aucun…
 - `AGR624` — Aller-retour EN DIRECT du parcours chantier pompage (pile locale, Playwright)
 - `AGR625` — Chantier pompage (2/2, l'« AGR602b » de la critique) : gate 82-21 consultatif, étape…
+- `AIC50` — Skill `assistant-manuel` : Claude Code génère sur l'abonnement de Reda (jamais une clé…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -1883,7 +1884,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (130)**
+**Open — to build (129)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1929,7 +1930,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGRM41` — Engagement SAV affichable
 - `AGRM42` — Assurance vol des panneaux
 - `AGRM43` — Consignes de remise au fermier (FR + darija)
-- `AIC50` — Skill `assistant-manuel` : Claude Code génère sur l'abonnement de Reda (jamais une clé…
 - `AIC51` — Skill `assistant-tri` + `docs/assistant-tri.md` + interrupteur…
 - `AIC52` — [GATED: secret `CLAUDE_CODE_OAUTH_TOKEN` GitHub (`claude setup-token`, valable un an…
 - `AICM1` — Réclamer les crédits API et créer le workspace de l'assistant

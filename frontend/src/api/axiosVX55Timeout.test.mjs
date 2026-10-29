@@ -98,3 +98,10 @@ test('VX55 : ClientList annule le thunk fetchClients au cleanup d\'effet (démon
   const block = CLIENT_LIST_SRC.slice(start, start + 100)
   assert.match(block, /return \(\) => thunk\??\.abort\??\.\(\)/)
 })
+
+test('CE2E8 : fetchDevis relance la requête si la promesse partagée a été annulée par un autre montage', () => {
+  const body = VENTES_SLICE_SRC.slice(
+    VENTES_SLICE_SRC.indexOf("export const fetchDevis"),
+    VENTES_SLICE_SRC.indexOf("export const createDevis"))
+  assert.match(body, /isCancelledError\(err\) && !signal\.aborted \? charger\(\)/)
+})

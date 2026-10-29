@@ -3,7 +3,8 @@
 // AGR123), le navigateur n'envoie que les ENTRÉES v2.
 //
 // Pile locale `seed_demo`, aucun mock réseau sur les écrans testés. Deux devis,
-// créés PAR L'ÉCRAN puis relus par l'API et rouverts (`?edit=`) :
+// créés PAR L'ÉCRAN depuis un lead agricole à site connu (CAD177), puis relus
+// par l'API et rouverts (`?edit=`) :
 //   1. « pompe neuve » : besoin en eau + HMT, Auto-remplir (lignes du kit
 //      serveur), enregistrement ;
 //   2. « pompe existante » : plaque relevée, SANS ligne pompe — la garde
@@ -15,7 +16,7 @@
 // rouvert montre les chiffres de `etude_params`.
 // Nettoyage best-effort en afterAll (base partagée, workers: 1).
 import { test, expect } from '@playwright/test'
-import { choisirMarche, cliquerCreerDevis, retirerLignesPrixARenseigner } from './helpers'
+import { cliquerCreerDevis, ouvrirGenerateurDepuisLeadAgricole, retirerLignesPrixARenseigner } from './helpers'
 
 const API = '/api/django'
 const DERIVEES_CLIENT_INTERDITES = ['pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h',
@@ -25,30 +26,17 @@ const ENTREES_V2 = ['mode_pompe', 'besoin', 'source', 'hmt_entrees', 'alim', 'ty
   'localisation', 'distance_champ_m', 'options_cochees', 'taille']
 
 const devisIds = []
+const leadIds = []
 
 async function json(res, quoi) {
   expect(res.ok(), `${quoi} → HTTP ${res.status()} ${await res.text()}`).toBeTruthy()
   return res.json()
 }
 
-async function premierClient(request) {
-  const corps = await json(await request.get(`${API}/crm/clients/`), 'clients')
-  const liste = Array.isArray(corps) ? corps : (corps.results || [])
-  expect(liste.length, 'seed_demo doit fournir au moins un client').toBeGreaterThan(0)
-  return liste[0]
-}
-
-/** Ouvre le générateur en marché Agricole, client choisi, stock chargé. */
-async function ouvrirGenerateurAgricole(page, client) {
-  await page.goto('/ventes/devis/nouveau')
-  await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
-    .toBeVisible({ timeout: 30_000 })
-  await expect(page.locator('table.lines-table tbody tr').first())
-    .toBeVisible({ timeout: 45_000 })
-  await page.locator('#gen-client').click()
-  await page.locator('[role="searchbox"]').last().fill(client.nom || client.name || '')
-  await page.locator('[role="option"]').first().click()
-  await choisirMarche(page, /Agricole/)
+/** Ouvre le générateur en marché Agricole depuis SON lead (site connu, CAD177). */
+async function ouvrirGenerateurAgricole(page, request) {
+  const lead = await ouvrirGenerateurDepuisLeadAgricole(page, request, 'AGR130 ferme')
+  leadIds.push(lead.id)
   await expect(page.getByTestId('bloc-cas-pompe')).toBeVisible()
 }
 
@@ -135,12 +123,13 @@ test.describe.configure({ mode: 'serial' })
 test.afterAll(async ({ request }) => {
   await Promise.all(devisIds.map((id) =>
     request.delete(`${API}/ventes/devis/${id}/`).catch(() => null)))
+  await Promise.all(leadIds.map((id) =>
+    request.delete(`${API}/crm/leads/${id}/`).catch(() => null)))
 })
 
 test('AGR130 — pompe NEUVE : Auto-remplir (kit serveur), enregistrer, rouvrir, ré-enregistrer', async ({ page, request }) => {
   test.setTimeout(240_000)
-  const client = await premierClient(request)
-  await ouvrirGenerateurAgricole(page, client)
+  await ouvrirGenerateurAgricole(page, request)
   await page.getByRole('radio', { name: 'Pompe neuve' }).click()
   await renseignerBesoinEtHauteur(page)
 
@@ -163,8 +152,7 @@ test('AGR130 — pompe NEUVE : Auto-remplir (kit serveur), enregistrer, rouvrir,
 
 test('AGR130 — pompe EXISTANTE conservée : aucune ligne pompe, la garde ne bloque pas', async ({ page, request }) => {
   test.setTimeout(240_000)
-  const client = await premierClient(request)
-  await ouvrirGenerateurAgricole(page, client)
+  await ouvrirGenerateurAgricole(page, request)
   await page.getByRole('radio', { name: 'Pompe existante conservée' }).click()
   await page.locator('#gen-plaque-kw').fill('5.5')
   await page.locator('#gen-plaque-tension').fill('380')
