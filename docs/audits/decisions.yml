@@ -2719,3 +2719,15 @@ decisions:
     date: "2026-10-29"
     source: "Reda, décision fondateur du 29/10/2026 (lane ASEC23/ASEC53)"
     taches: [ASEC53]
+
+  - id: D-RWEB17-WA-REF
+    question: "RWEB17-M8 : le message WhatsApp du lien de succes porte `Ma reference : <code>` sur la page FR mais pas sur EN ni AR : que faire ?"
+    options:
+      - cle: a
+        texte: "la ligne `Ma reference : <code>` est ajoutee dans les TROIS locales (clientRef passe a captureWhatsappText partout) ; captureWhatsappText n a pas de gestion de locale, le message reste dans sa forme actuelle"
+      - cle: b
+        texte: "garder la difference : FR seulement"
+    reponse: a
+    date: "2026-10-29"
+    source: "Reda, decision fondateur du 29/10/2026 (lane RWEB17-M8, question interactive)"
+    taches: [RWEB17-M8]

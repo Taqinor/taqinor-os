@@ -374,6 +374,8 @@ export function installerCorpsLead(ctx: ContexteTunnel, doc: Document): SectionC
   }
 
   const section: SectionCorps = { lireEtatTunnel, corpsDuLead, showInlineErrors };
+  // Utilisé par la section « envoi » pour l'erreur de champ renvoyée par le serveur.
+  ctx.crochets.installer('traduireErreur', traduire);
   for (const [nom, fn] of Object.entries(section)) ctx.crochets.installer(nom, fn as (...a: any[]) => any);
   return section;
 }
