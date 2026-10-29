@@ -154,14 +154,20 @@ def images_page(octets, numero=0):
 
 
 def taille_logo_taqinor():
-    """Dimensions de l'asset ``assets/logo.png`` (son empreinte)."""
-    from pathlib import Path
+    """Empreintes (dimensions) de TOUTES les images TAQINOR que le moteur
+    peut embarquer — R3 : les variantes de ``quote_engine.logo`` (clair /
+    sombre × mot-marque / lockup / emblème) et le centre des QR — jamais le
+    canevas 1024 d'origine, qui n'est plus imprimé."""
+    import io
     from PIL import Image
-    from apps.ventes.quote_engine import residential
-    chemin = (Path(residential.__file__).resolve().parent.parent
-              / 'assets' / 'logo.png')
-    with Image.open(chemin) as img:
-        return img.size
+    from apps.ventes.quote_engine import logo
+    tailles = set()
+    for variante in ('clair', 'sombre'):
+        for bloc in ('mot', 'lockup', 'embleme'):
+            with Image.open(io.BytesIO(logo.taqinor_png(variante, bloc))) as img:
+                tailles.add(img.size)
+    tailles.add(logo.taqinor_image_qr().size)
+    return tailles
 
 
 def est_rouge(img) -> bool:
@@ -349,22 +355,22 @@ class LogoTests(TestCase):
             clean_pdf_options({}), _embed_roof_render=True))
         self.assertEqual(data['entreprise']['logo_uri'],
                          _company_context(self.company)['logo_uri'])
-        taille = taille_logo_taqinor()
+        tailles = taille_logo_taqinor()
         for nom in ('defaut', 'include_etude', 'onepage'):
             with self.subTest(format=nom):
                 images = images_page(rendre_pdf(self.devis, FORMATS[nom]))
                 self.assertTrue(any(est_rouge(i) for i in images), nom)
-                self.assertFalse(any(i.size == taille for i in images), nom)
+                self.assertFalse(any(i.size in tailles for i in images), nom)
 
     def test_societe_sans_logo_pas_de_logo_taqinor(self):
         autre = make_company(slug='apdf4-autre', nom='APDF4 autre')
         profil(autre, nom='SOLAIRE EXEMPLE SARL', ice='001111111000011')
         devis = devis_residentiel(autre, 'DEV-APDF4-2')
-        taille = taille_logo_taqinor()
+        tailles = taille_logo_taqinor()
         for nom in ('defaut', 'include_etude', 'onepage'):
             with self.subTest(format=nom):
                 images = images_page(rendre_pdf(devis, FORMATS[nom]))
-                self.assertFalse(any(i.size == taille for i in images), nom)
+                self.assertFalse(any(i.size in tailles for i in images), nom)
 
     def test_qr_signature_sans_logo_taqinor(self):
         """APDF102 — société sans logo, devis envoyé et partagé : chaque QR
@@ -427,6 +433,122 @@ class LogoRegleTests(SimpleTestCase):
         G._apply_entreprise(ent)
         self.assertIn(b64, G.logo_html())
         self.assertIn(b64, G.logo_p1_dark())
+
+    def test_logo_televerse_rogne_detoure_variantes(self):
+        """R3 (APDF4) — un logo téléversé dans un canevas blanc à larges
+        marges est ROGNÉ au trait et DÉTOURÉ (coins transparents) ; sa couleur
+        vive reste rouge sur fond sombre comme sur fond clair ; le QR reçoit
+        la version couleur."""
+        import base64
+        import io
+        from PIL import Image
+        from apps.ventes.quote_engine.residential import theme
+        canevas = Image.new('RGB', (200, 200), (255, 255, 255))
+        canevas.paste(Image.new('RGB', (60, 30), (220, 20, 20)), (70, 85))
+        buf = io.BytesIO()
+        canevas.save(buf, 'PNG')
+        uri = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
+        data = {'entreprise': {'nom': 'X', 'logo_uri': uri}}
+        for sombre in (True, False):
+            with self.subTest(sombre=sombre):
+                b64 = theme.logo_imprime_b64(data, sombre=sombre)
+                img = Image.open(io.BytesIO(base64.b64decode(b64))).convert('RGBA')
+                self.assertEqual(img.size, (60, 30))      # rogné au trait
+                self.assertEqual(img.getpixel((30, 15))[:3], (220, 20, 20))
+                self.assertEqual(img.getpixel((30, 15))[3], 255)
+        self.assertEqual(theme.logo_qr(data), theme.logo_imprime_b64(data, sombre=False))
+        self.assertEqual(theme.logo_imprime_b64({'entreprise': {'nom': 'X'}}, sombre=False),
+                         theme._PIXEL_TRANSPARENT_B64)
+        # Cas de la prod : le profil TAQINOR a téléversé le carré blanc 1024
+        # (= l'asset) ⇒ même pipeline, rendu IDENTIQUE au logo embarqué —
+        # plus jamais un petit carré blanc au logo minuscule.
+        from apps.ventes.quote_engine import logo
+        uri_asset = 'data:image/png;base64,' + base64.b64encode(
+            logo.CHEMIN_LOGO.read_bytes()).decode()
+        prod = {'entreprise': {'nom': 'TAQINOR Solutions', 'logo_uri': uri_asset}}
+        self.assertEqual(theme.logo_imprime_b64(prod), theme.logo_dark_b64())
+        self.assertEqual(theme.logo_imprime_b64(prod, sombre=False), theme.logo_color_b64())
+        # Bloquant B2 — le carré téléversé est reconnu comme l'asset : en-têtes
+        # legacy (pages 2-3, étude) et documents annexes impriment le MOT-MARQUE
+        # dans la boîte « entete », le centre des QR reçoit l'emblème (= asset).
+        from apps.ventes.quote_engine.extra_docs import _logo_block
+        mot = logo.taqinor_b64('sombre', 'mot')
+        G._apply_entreprise(prod['entreprise'])
+        self.assertIn(mot, G.logo_html('entete'))
+        self.assertIn(logo.css_boite('entete'), G.logo_html('entete'))
+        self.assertIn(theme.logo_dark_b64(), G.logo_html('onepage'))      # lockup : tagline permise
+        self.assertIn(theme.logo_dark_b64(), G.logo_p1_dark())
+        self.assertIn(mot, _logo_block({'logo_uri': uri_asset}))
+        self.assertIs(theme.logo_qr(prod), True)
+        url = 'https://taqinor.ma/proposition/r3-prod'
+        self.assertEqual(theme.qr_data_uri(url, logo=theme.logo_qr(prod)), theme.qr_data_uri(url))
+        # Un autre logo téléversé (rouge) n'est jamais substitué.
+        rouge = {'entreprise': {'nom': 'X', 'logo_uri': uri}}
+        G._apply_entreprise(rouge['entreprise'])
+        self.assertIn(theme.logo_imprime_b64(rouge), G.logo_html('entete'))
+        self.assertNotIn(mot, G.logo_html('entete'))
+
+    def test_logo_hd_dans_le_html_de_chaque_famille(self):
+        """R3 — le logo détouré de ``quote_engine.logo`` est dans le HTML de
+        chaque famille : legacy 3 pages (lockup sombre en page 1, mot-marque
+        seul dans les en-têtes, plus de tagline texte), une-page, résidentiel
+        premium, commercial, industriel (lockup sombre), agricole (lockup
+        couleur, page 1) ; les en-têtes de documents annexes posent le logo
+        société détouré dans la boîte « entete »."""
+        import base64
+        from importlib import import_module
+        from apps.ventes.quote_engine import logo
+        from apps.ventes.quote_engine.agricole import pages as ag_pages
+        from apps.ventes.quote_engine.agricole import renderer as ag_renderer
+        from apps.ventes.quote_engine.extra_docs import _logo_block
+        from apps.ventes.tests import _moteur_fixtures as F
+        from apps.ventes.tests.test_agr310_renderer_agricole import data_complete
+        sombre = logo.taqinor_b64('sombre', 'lockup')
+        mot = logo.taqinor_b64('sombre', 'mot')
+        clair = logo.taqinor_b64('clair', 'lockup')
+        self.assertTrue(sombre and mot and clair)
+
+        def dedans(b64, html, ou, attendu=True):
+            # Messages courts : jamais le base64 dans la sortie d'assertion.
+            self.assertIs(b64 in html, attendu, f'logo {"absent" if attendu else "présent"} : {ou}')
+
+        # Aucun profil (``entreprise={}``) ⇒ le logo TAQINOR embarqué.
+        legacy = F.html_legacy(entreprise={})
+        dedans(sombre, legacy, 'legacy page 1')
+        dedans(mot, legacy, 'legacy en-têtes')
+        self.assertIn(logo.css_boite('couverture'), legacy)
+        self.assertIn(logo.css_boite('entete'), legacy)
+        self.assertNotIn('TAQA &nbsp;', legacy)
+        onepage = F.html_onepage(entreprise={})
+        dedans(sombre, onepage, 'une-page')
+        self.assertIn(logo.css_boite('onepage'), onepage)
+        # Héros photo résidentiel (53 mm, bloc titre absolu) : mot-marque seul.
+        residentiel = F.html_residentiel(entreprise={})
+        dedans(mot, residentiel, 'résidentiel premium (héros)')
+        self.assertIn(logo.css_boite('hero'), residentiel)
+        for marche in ('commercial', 'industriel'):
+            paquet = f'apps.ventes.quote_engine.{marche}'
+            render, renderer, sample = (import_module(f'{paquet}.{m}') for m in (
+                'render', 'renderer', 'sample_data'))
+            html = render.build_html(renderer._augment(dict(sample.build(), entreprise={})))
+            dedans(sombre, html, marche)
+            self.assertIn(logo.css_boite('couverture'), html, marche)
+        agricole = ag_pages.build_html(ag_renderer._augment(dict(data_complete(), entreprise={})))
+        dedans(clair, agricole, 'agricole page 1 (couleur)')
+        dedans(sombre, agricole, 'agricole', attendu=False)
+        self.assertIn(logo.css_boite('couverture'), agricole)
+        uri = 'data:image/png;base64,' + base64.b64encode(png_rouge()).decode()
+        bloc = _logo_block({'logo_uri': uri})
+        dedans(logo.societe_b64(uri, 'sombre'), bloc, 'documents annexes (société)')
+        self.assertIn(logo.css_boite('entete'), bloc)
+        # Société identifiée sans logo : aucune image TAQINOR, nulle part.
+        sans = {'nom': 'SOLAIRE EXEMPLE SARL', 'ice': '001111111000011'}
+        for ou, html in (('legacy', F.html_legacy(entreprise=sans)),
+                         ('résidentiel', F.html_residentiel(entreprise=sans)),
+                         ('agricole', ag_pages.build_html(ag_renderer._augment(
+                             dict(data_complete(), entreprise=sans))))):
+            for b64 in (sombre, clair, mot):
+                dedans(b64, html, ou + ' sans logo', attendu=False)
 
     def test_cloture_agricole_qr_meme_regle(self):
         """APDF102 — le QR « Scannez pour signer » de la page 3 agricole
@@ -761,8 +883,8 @@ class GardeIdentiteTests(TestCase):
                         # nu (pied compris) hors lien de proposition.
                         self.assertNotIn('taqinor.ma',
                                          texte_hors_proposition(texte))
-                        self.assertNotIn(taille_taqinor,
-                                         [i.size for i in images])
+                        self.assertFalse(
+                            taille_taqinor & {i.size for i in images})
                         self.assertNotIn('TAQINOR', titre.upper())
                         urls = {c.args[0] for c in qr.call_args_list}
                         qr_encodes.setdefault((marche, etat), set()).update(urls)

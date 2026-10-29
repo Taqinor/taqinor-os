@@ -13,6 +13,8 @@ from html import escape
 from pathlib import Path
 import logging
 
+from .. import logo as _logo
+
 logger = logging.getLogger(__name__)
 
 # ── SCA27 — littéraux d'identité du fondateur (repli byte-identique) ──────────
@@ -59,34 +61,20 @@ def _font_b64(name: str) -> str:
 
 @functools.lru_cache(maxsize=1)
 def logo_dark_b64() -> str:
-    """Logo recolored white-on-transparent for navy headers.
+    """Logo TAQINOR des fonds sombres — R3 (``quote_engine.logo``) : lockup
+    mot-marque + tagline rogné au trait et détouré par alpha progressif,
+    lettres blanches, soleil doré et éclair bleu nuit conservés (plus aucun
+    seuil pixel à pixel) ; '' sans asset (l'appelant garde son repli texte).
 
-    QX8 — pur (aucun argument, lit un asset figé) : le recolorage par pixel +
-    l'encodage b64 sont mis en cache une fois par processus, donc une rafale de
-    rendus ne refait plus la boucle par pixel."""
-    from PIL import Image
-    import io
-    p = _LIVE_ASSETS / "logo.png"
-    img = Image.open(p).convert("RGBA")
-    px = img.load()
-    w, h = img.size
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = px[x, y]
-            if r > 230 and g > 230 and b > 230:          # white bg -> transparent
-                px[x, y] = (0, 0, 0, 0)
-            elif r < 120 and g < 120 and b < 120:        # dark ink -> white
-                px[x, y] = (255, 255, 255, a)
-    buf = io.BytesIO()
-    img.save(buf, "PNG")
-    return base64.b64encode(buf.getvalue()).decode()
+    QX8 — pur (aucun argument, lit un asset figé), en cache une fois par
+    processus : une rafale de rendus ne refait plus le traitement d'image."""
+    return _logo.taqinor_b64("sombre", "lockup")
 
 
 @functools.lru_cache(maxsize=1)
 def logo_color_b64() -> str:
-    # QX8 — asset figé, encodé une fois par processus (cache pur).
-    p = _LIVE_ASSETS / "logo.png"
-    return base64.b64encode(p.read_bytes()).decode()
+    """Logo TAQINOR couleur des fonds clairs (R3 : même lockup détouré)."""
+    return _logo.taqinor_b64("clair", "lockup")
 
 
 #: APDF4 — PNG 1×1 transparent : en-tête d'une société identifiée SANS logo
@@ -95,32 +83,19 @@ _PIXEL_TRANSPARENT_B64 = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQ
                           "nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==")
 
 
-def _png_b64(uri: str) -> str:
-    """APDF4 — data URI d'une image raster → base64 PNG ; '' si illisible."""
-    import io
-    try:
-        from PIL import Image
-        entete, _, charge = (uri or "").partition(",")
-        if ";base64" not in entete:
-            return ""
-        img = Image.open(io.BytesIO(base64.b64decode(charge)))
-        buf = io.BytesIO()
-        img.convert("RGBA").save(buf, "PNG")
-        return base64.b64encode(buf.getvalue()).decode()
-    except Exception:  # noqa: BLE001 — SVG / corrompu : traité comme absent (D-ENF22-BLE001)
-        logger.warning("theme._png_b64 : erreur ignorée (mode dégradé)", exc_info=True)
-        return ""
-
-
-def logo_societe_b64(data):
+def logo_societe_b64(data, sombre: bool = True):
     """APDF4 (C-APDF-001) — logo d'en-tête d'une SOCIÉTÉ, en base64 PNG.
 
     Logo téléversé (``entreprise['logo_uri']``, lu par le builder comme la
-    facture) → ce logo ; profil sans logo → pixel transparent (bandeau
-    neutre) ; aucun profil → ``None`` (l'appelant garde le logo TAQINOR)."""
+    facture) → ce logo, R3 : rogné au trait, fond uni clair détouré par alpha
+    progressif et, pour un fond ``sombre``, encre sombre passée en blanc
+    (``quote_engine.logo.societe_b64``, en cache par URI) ; profil sans logo →
+    pixel transparent (bandeau neutre) ; aucun profil → ``None`` (l'appelant
+    garde le logo TAQINOR)."""
     from ..identite import profil_renseigne
     ent = (data or {}).get("entreprise") or {}
-    png = _png_b64(ent.get("logo_uri") or "") if ent.get("logo_uri") else ""
+    uri = ent.get("logo_uri") or ""
+    png = _logo.societe_b64(uri, "sombre" if sombre else "clair") if uri else ""
     if png:
         return png
     return _PIXEL_TRANSPARENT_B64 if profil_renseigne(ent) else None
@@ -128,8 +103,9 @@ def logo_societe_b64(data):
 
 def logo_imprime_b64(data, sombre: bool = True) -> str:
     """APDF4 — LE logo imprimé par les gabarits premium : celui de la société
-    (``logo_societe_b64``), sinon l'asset TAQINOR (sombre ou couleur)."""
-    societe = logo_societe_b64(data)
+    (``logo_societe_b64``, variante du fond), sinon l'asset TAQINOR (sombre ou
+    couleur)."""
+    societe = logo_societe_b64(data, sombre)
     if societe is not None:
         return societe
     return logo_dark_b64() if sombre else logo_color_b64()
@@ -137,9 +113,12 @@ def logo_imprime_b64(data, sombre: bool = True) -> str:
 
 def logo_qr(data):
     """APDF102 — logo central des QR « Scannez pour signer » (``qr_data_uri``) :
-    celui de la société (``logo_societe_b64``), sinon l'asset TAQINOR (True)."""
-    societe = logo_societe_b64(data)
-    return True if societe is None else societe
+    celui de la société (``logo_societe_b64``, couleur : il se pose sur le
+    blanc du code), sinon l'asset TAQINOR (True)."""
+    societe = logo_societe_b64(data, sombre=False)
+    # R3 — le carré 1024 TAQINOR téléversé par le profil (prod) = l'asset :
+    # emblème, jamais le lockup entier écrasé au centre du code.
+    return True if societe is None or _logo.est_taqinor(societe) else societe
 
 
 # This renderer's own bundled assets (the page-1 hero photo).
@@ -284,14 +263,17 @@ def qr_data_uri(url: str, *, logo=True, correction: str = "H",
             module_drawer=RoundedModuleDrawer(),
             color_mask=_MasqueUni(front_color=tuple(front),
                                   back_color=(255, 255, 255)))
+        # R3 — ``qrcode`` redimensionne l'image centrale en CARRÉ et la colle
+        # telle quelle : l'emblème TAQINOR (soleil, rayons, éclair) ou le logo
+        # société posé dans un carré blanc (``quote_engine.logo``), jamais un
+        # canevas à marges ni un logo large écrasé.
+        centre = None
         if logo is True:
-            chemin = _LIVE_ASSETS / "logo.png"
-            if chemin.exists():
-                kw["embeded_image_path"] = str(chemin)
+            centre = _logo.taqinor_image_qr()
         elif logo and logo != _PIXEL_TRANSPARENT_B64:
-            from PIL import Image
-            kw["embeded_image"] = Image.open(io.BytesIO(
-                base64.b64decode(logo)))
+            centre = _logo.image_qr(logo)
+        if centre is not None:
+            kw["embeded_image"] = centre
         img = qr.make_image(**kw)
         buf = io.BytesIO()
         img.save(buf, "PNG")

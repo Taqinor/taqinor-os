@@ -11,6 +11,7 @@ from . import categories
 from ..figures import ancre
 # QJR651 — kwc_str et la cellule KPI : harnais premium commun.
 from .. import premium_base
+from .. import logo as _logo
 # CIQ307 — bandeau, méthode, tuiles d'argent : lus sur ``synthese_ci``.
 from ..ci import couverture as ci_couverture
 # CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
@@ -154,7 +155,7 @@ def build(ctx):
 .c1c-hero{{background:{navy_900};padding:11mm 14mm 9mm 14mm;border-bottom:3px solid {gold};}}
 .c1c-htop{{display:table;width:100%;}}
 .c1c-hlogo{{display:table-cell;vertical-align:middle;}}
-.c1c-hlogo img{{height:9mm;width:auto;}}
+.c1c-hlogo img{{{_logo.css_boite("couverture")}}}
 .c1c-hmeta{{display:table-cell;vertical-align:middle;text-align:right;color:#fff;}}
 .c1c-rl{{font-size:6.5pt;letter-spacing:1.6px;text-transform:uppercase;color:{muted_2};}}
 .c1c-rv{{font-size:12pt;font-weight:700;color:#fff;}}

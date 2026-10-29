@@ -349,11 +349,15 @@ class FkInstallationsBorneesSocieteTests(TestCase):
         ligne.refresh_from_db()
         self.assertEqual(ligne.produit_id, self.a.produit.pk)
 
-    def test_chantier_client_etranger_400(self):
+    def test_chantier_client_etranger_404(self):
+        # api-fuzz-full 28/10 (ENF11) : IdInconnu404Mixin — un client ou un
+        # lead étranger (ou absent) = 404, même corps.
         api = _api(self.a.user)
         url = f'{BASE}/chantiers/{self.a.chantier.id}/'
         r = api.patch(url, {'client': self.b.client.pk}, format='json')
-        self._refus(r, 'client')
+        self._refus(r, 'client', 404)
+        r = api.post(f'{BASE}/chantiers/', {'lead': 999999}, format='json')
+        self._refus(r, 'lead', 404)
         self.a.chantier.refresh_from_db()
         self.assertEqual(self.a.chantier.client_id, self.a.client.pk)
         r = api.patch(url, {'lead': self.a.lead.pk}, format='json')

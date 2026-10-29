@@ -1462,12 +1462,12 @@ export default function DevisGenerator({
   const etatPompage = useMemo(() => etatPompageEcran(pompageSaisie, {
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
-    farmHmtStatic, farmHmtDrawdown, leadId: leadId || null,
+    farmHmtStatic, farmHmtDrawdown, leadId: leadId || null, clientId: clientId || null,
     // AGQ26 (C-AGQ-025) — le SITE du lead (ville de calcul + GPS) : sans lui,
-    // la production retombait en repli plat en accusant PVGIS.
+    // la production retombait en repli plat en accusant PVGIS (sans lead : fiche client, AGRI-SITE).
     editId: editId || null, ...siteDuLead(villeCalculLead, selectedLead),
   }), [pompageSaisie, pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit,
-    pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
+    pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa, clientId,
     farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId, villeCalculLead, selectedLead])
   const pompageManquants = modeInstallation === 'agricole'
     ? manquantsPompage(etatPompage) : []

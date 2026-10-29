@@ -52,7 +52,7 @@ EtudePompagePreviewResponse = inline_serializer('EtudePompagePreviewResponse', {
 
 #: Identifiants de contexte retirés du corps avant le calcul (ce ne sont pas
 #: des entrées du dimensionnement).
-CLES_CONTEXTE = ('devis', 'lead')
+CLES_CONTEXTE = ('devis', 'lead', 'client')
 
 
 def _devis_de_la_societe(company, devis_id, user=None):
@@ -80,6 +80,18 @@ def _lead_de_la_societe(company, lead_id, user=None):
     from apps.crm.selectors import leads_visibles
     try:
         return leads_visibles(user, company).filter(pk=int(lead_id)).first()
+    except (TypeError, ValueError):
+        return None
+
+
+def _client_de_la_societe(company, client_id):
+    """AGRI-SITE — le client ``client_id`` de la société (façade crm), ou
+    ``None`` (absent, invalide ou d'une autre société)."""
+    if not client_id or company is None:
+        return None
+    from apps.crm.selectors import get_company_client
+    try:
+        return get_company_client(company, int(client_id))
     except (TypeError, ValueError):
         return None
 
@@ -114,8 +126,12 @@ def etude_pompage_preview(request):
         from rest_framework.exceptions import NotFound
         raise NotFound('Devis introuvable.')
     lead = _lead_de_la_societe(company, corps.get('lead'), request.user)
+    # AGRI-SITE (28/10/2026) — le client du devis en cours (sans lead) :
+    # repli du SITE sur sa fiche, borné société (un id étranger est ignoré).
+    client = _client_de_la_societe(company, corps.get('client'))
     entrees = {k: v for k, v in corps.items() if k not in CLES_CONTEXTE}
-    etude = etudier_pompage(company, entrees, devis=devis, lead=lead)
+    etude = etudier_pompage(company, entrees, devis=devis, lead=lead,
+                            client=client)
     return Response({
         'entrees_resolues': etude['entrees_resolues'],
         'hmt': etude['hmt'],

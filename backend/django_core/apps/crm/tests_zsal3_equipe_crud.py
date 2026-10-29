@@ -420,6 +420,11 @@ class TestDispatchLeads(TestCase):
         # champs, inexprimable au schéma — 409, même corps nommant le champ.
         self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('facture_max', r.json())
+        # api-fuzz-full 28/10 (ENF11) : équipe inconnue (ou d'une autre
+        # société) = 404, même réponse dans les deux cas.
+        r = self.api.post(url, {'equipe': 999999, 'membre': self.m2.pk},
+                          format='json')
+        self.assertEqual(r.status_code, 404, r.content)
         r = self.api.post(url, {'equipe': self.equipe.pk, 'membre': self.m2.pk,
                                 'types_installation': ['agricole'],
                                 'sources': ['meta_ads'],
