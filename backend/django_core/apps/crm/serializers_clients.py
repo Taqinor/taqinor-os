@@ -528,6 +528,15 @@ class ObjectifCommercialSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
     metric_display = serializers.SerializerMethodField()
     period_type_display = serializers.SerializerMethodField()
 
+    def run_validation(self, data=serializers.empty):
+        # Cockpit d'équipe (28/10/2026) — les contraintes d'unicité
+        # CONDITIONNELLES (mois / trimestre) font exiger par DRF les DEUX
+        # champs de période à la création : un objectif mensuel sans
+        # ``period_quarter`` répondait 400. Le champ hors sujet vaut null.
+        if self.instance is None and isinstance(data, dict):
+            data = {'period_month': None, 'period_quarter': None, **data}
+        return super().run_validation(data)
+
     class Meta:
         model = ObjectifCommercial
         fields = [

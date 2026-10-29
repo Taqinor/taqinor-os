@@ -120,6 +120,17 @@ CATALOGUE = [
     ('Câble de terre Nexans 6 mm² (au mètre)', 'CAB-NEX-TER-6', 'Accessoires', 14.4, 0, 10000, 500),
     ('Smart Meter',                'SMART-MET', 'Accessoires', 1800, 1200, 500, 5),
     ('Wifi Dongle',                'WIFI-DON',  'Accessoires', 1200, 700, 500, 5),
+    # R3.5 (fondateur, 28/10/2026) — Smart Meter Huawei choisis PAR CALIBRE par
+    # la composition C&I (courant AC au point d'injection) ; prix de VENTE
+    # RÉELS du fondateur (TTC), prix d'achat non communiqué → 0 (jamais
+    # inventé, comme les câbles Nexans). Placés APRÈS « Smart Meter » : le kit
+    # résidentiel (catalogue trié par id) garde son Smart Meter d'hier.
+    ('Smart Meter Huawei DTSU666-H 100 A (raccordement direct)',
+     'SM-HUA-100A', 'Accessoires', 2400, 0, 20, 2),
+    ('Smart Meter Huawei DTSU666-H 250 A (avec TC)',
+     'SM-HUA-250A-TC', 'Accessoires', 3600, 0, 20, 2),
+    ('Smart Meter Huawei DTSU666-H + TC externes (> 250 A)',
+     'SM-HUA-TC-EXT', 'Accessoires', 4800, 0, 20, 2),
     ('Accessoires',                'ACC-CAT',   'Accessoires', 2000, 2000, 999, 0),
     ('Tableau De Protection AC/DC', 'TAB-PROT', 'Accessoires', 2000, 1500, 999, 0),
     # APDF44 (D-APDF-4) — prestations : rangées en « Services & prestations »
@@ -645,7 +656,16 @@ from apps.stock.management.commands._articles_ci import (  # noqa: E402
 
 #: CIQ103 — rôle C&I des articles DÉJÀ seedés (``lim_mode`` laissé vide : la
 #: fiche du Smart Meter ne publie pas son mode de raccordement).
-ROLES_CI_ARTICLES_EXISTANTS = {'SMART-MET': 'compteur_injection'}
+#: R3 (fondateur, 28/10/2026) — les trois Smart Meter Huawei à calibre
+#: (compteurs d'injection) et la clé wifi Huawei ``WIFI-DON`` (une par
+#: onduleur, ``logger_supervision``) ; posés seulement sur ``role_ci`` vide.
+ROLES_CI_ARTICLES_EXISTANTS = {
+    'SMART-MET': 'compteur_injection',
+    'SM-HUA-100A': 'compteur_injection',
+    'SM-HUA-250A-TC': 'compteur_injection',
+    'SM-HUA-TC-EXT': 'compteur_injection',
+    'WIFI-DON': 'logger_supervision',
+}
 
 # AUD201 (R2-31, correctif 1) — SKU réellement SEMÉS par ce fichier : union de
 # tous les jeux de création (le SKU est toujours le 2ᵉ élément du tuple). Les
@@ -928,6 +948,23 @@ FICHES = {
     'WIFI-DON': {
         'marque': 'Huawei',
         'description': 'Passerelle Wi-Fi pour supervision en ligne de l\'onduleur',
+    },
+    # R3.5 — nombre d'onduleurs pilotés NON publié : ``lim_onduleurs_max``
+    # reste vide (jamais supposé).
+    'SM-HUA-100A': {
+        'marque': 'Huawei',
+        'description': ('Compteur intelligent triphasé, raccordement direct\n'
+                        'Mesure au point d\'injection pour zéro injection et suivi'),
+    },
+    'SM-HUA-250A-TC': {
+        'marque': 'Huawei',
+        'description': ('Compteur intelligent triphasé avec transformateurs de courant\n'
+                        'Mesure au point d\'injection pour zéro injection et suivi'),
+    },
+    'SM-HUA-TC-EXT': {
+        'marque': 'Huawei',
+        'description': ('Compteur intelligent triphasé, TC externes dimensionnés au site\n'
+                        'Mesure au point d\'injection pour zéro injection et suivi'),
     },
     'ACC-CAT': {
         'description': ('Connecteurs MC4, presse-étoupes, visserie inox\n'
@@ -1303,6 +1340,18 @@ ONDULEURS_CONTRAT_INCOMPLET = {}
 FICHES_TECHNIQUES = {
     # AGQ36 — la structure de pompage se pose AU SOL (vocabulaire TYPES_POSE).
     'STR-SOL-PMP': {'type_fiche': 'structure', 'struct_type_pose': 'sol'},
+    # R3.5 (fondateur, 28/10/2026) — calibre du comptage : la composition C&I
+    # retient le plus petit calibre ≥ courant AC au point d'injection, le
+    # compteur à TC externes au-delà. ``lim_onduleurs_max`` non publié.
+    'SM-HUA-100A': {'type_fiche': 'limiteur', 'lim_mode': 'compteur_direct',
+                    'lim_calibre_a': 100.0},
+    'SM-HUA-250A-TC': {'type_fiche': 'limiteur', 'lim_mode': 'compteur_tc',
+                       'lim_calibre_a': 250.0},
+    'SM-HUA-TC-EXT': {'type_fiche': 'limiteur',
+                      'lim_mode': 'compteur_tc_externe'},
+    # R3.6 (fondateur, 28/10/2026) — la clé wifi Huawei : UNE par onduleur.
+    'WIFI-DON': {'type_fiche': 'logger', 'log_type': 'dongle',
+                 'log_onduleurs_max': 1},
     # PV85 — Canadian Solar CS7N-710TB-AG (TOPBiHiKu7), datasheet
     # static.csisolar.com v1.61/v1.9 — valeurs STC. NON seedés faute de champ
     # sur FicheTechnique (jamais inventé) : NMOT 41±3 °C (537 W / Vmp 38,2 /

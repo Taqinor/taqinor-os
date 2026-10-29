@@ -5,7 +5,7 @@ câble DC = 2 × chaînes × 30 m, câble AC = 30 m par onduleur, toit inconnu =
 toit plat lesté ; « les prix pourront être ajustés après la visite
 technique »). Une fois la visite C&I VALIDÉE, ses mesures (longueurs de
 cheminement, couverture, surface, pente, charge admissible, tension,
-puissance souscrite) entrent dans l'étude (``etude_ci._couche_visite``) —
+puissance souscrite) entrent dans l'étude (``etude_ci_visite._couche_visite``) —
 mais le rafraîchisseur n'écrit jamais de LIGNES (règle CIQ119). Ce service
 est le geste qui manquait : il RECOMPOSE les lignes C&I avec les mesures.
 

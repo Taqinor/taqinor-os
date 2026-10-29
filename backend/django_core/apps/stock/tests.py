@@ -31,7 +31,7 @@ def seed(company, **options):
 #: Articles créés par ``seed_catalogue`` sur une société vide (AGQ36 :
 #: + STR-SOL-PMP ; D-BAT-2710 : + BAT-DYN-PB-SC-16 ; CCAT10 : + 7 postes C&I
 #: composés par le devis — protections, parafoudres, terre, structures).
-NB_ARTICLES_SEMES = 182
+NB_ARTICLES_SEMES = 185  # R3 (29/10/2026) : + 3 Smart Meter Huawei par calibre
 
 
 class TestSeedCatalogue(TestCase):

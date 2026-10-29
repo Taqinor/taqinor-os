@@ -469,8 +469,9 @@ export function typeFicheCi(roleCi) {
 export const CHAMPS_FICHE_CI = {
   onduleur: ['ond_limitation_export', 'ond_compteurs_compatibles',
     'ond_relais_decouplage', 'ond_cos_phi_min', 'ond_cos_phi_max'],
-  limiteur: ['lim_mode', 'lim_i_max_a', 'lim_onduleurs_max', 'lim_marques', 'lim_phases'],
-  logger: ['log_onduleurs_max', 'log_marques'],
+  limiteur: ['lim_mode', 'lim_i_max_a', 'lim_onduleurs_max', 'lim_marques', 'lim_phases',
+    'lim_calibre_a'],
+  logger: ['log_onduleurs_max', 'log_marques', 'log_type'],
   protection: ['prot_type', 'prot_cote', 'prot_calibre_a', 'prot_pouvoir_coupure_ka',
     'prot_poles', 'prot_tension_v'],
   cable: ['cable_cote', 'cable_section_mm2', 'cable_ame'],
@@ -481,7 +482,7 @@ export const CHAMPS_FICHE_CI = {
 const _LISTES_CI = ['ond_compteurs_compatibles', 'lim_marques', 'log_marques']
 const _ENTIERS_CI = ['lim_onduleurs_max', 'lim_phases', 'log_onduleurs_max', 'prot_poles',
   'struct_notice_page']
-const _NOMBRES_CI = ['ond_cos_phi_min', 'ond_cos_phi_max', 'lim_i_max_a', 'prot_calibre_a',
+const _NOMBRES_CI = ['ond_cos_phi_min', 'ond_cos_phi_max', 'lim_i_max_a', 'lim_calibre_a', 'prot_calibre_a',
   'prot_pouvoir_coupure_ka', 'prot_tension_v', 'cable_section_mm2', 'struct_masse_kg_m2']
 
 /** Libellés d'écran des champs de fiche C&I. */
@@ -493,10 +494,12 @@ export const LIBELLES_FICHE_CI = {
   ond_cos_phi_max: 'cos φ réglable maxi',
   lim_mode: 'Mode de raccordement',
   lim_i_max_a: 'Courant maxi en direct (A)',
+  lim_calibre_a: 'Calibre du comptage (A, TC compris)',
   lim_onduleurs_max: "Nombre d'onduleurs pilotés",
   lim_marques: 'Marques compatibles (séparées par des virgules)',
   lim_phases: 'Phases (1 ou 3)',
   log_onduleurs_max: "Nombre d'onduleurs supervisés",
+  log_type: 'Nature : clé wifi ou logger central',
   log_marques: 'Marques supervisées (séparées par des virgules)',
   prot_type: 'Type de protection',
   prot_cote: 'Côté de la protection',
@@ -519,6 +522,12 @@ export const CHOIX_LIM_MODE = [
   ['compteur_direct', 'Compteur en direct'],
   ['compteur_tc', 'Compteur à TC'],
   ['controleur', 'Contrôleur'],
+  ['compteur_tc_externe', 'Compteur à TC externes (sans calibre)'],
+]
+// source-choix: core.product_roles.LOG_TYPES
+export const CHOIX_LOG_TYPE = [
+  ['dongle', 'Clé wifi (une par onduleur)'],
+  ['logger', 'Logger central'],
 ]
 // source-choix: core.product_roles.OND_LIMITATIONS_EXPORT
 export const CHOIX_OND_LIMITATION = [
@@ -553,6 +562,7 @@ export function choixChampFicheCi(cle) {
     ond_limitation_export: CHOIX_OND_LIMITATION,
     ond_relais_decouplage: CHOIX_OND_RELAIS,
     lim_mode: CHOIX_LIM_MODE,
+    log_type: CHOIX_LOG_TYPE,
     prot_type: CHOIX_PROT_TYPE,
     prot_cote: CHOIX_COTE,
     cable_cote: CHOIX_COTE,

@@ -45,7 +45,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "IsAdminRole"
+    "classe": "IsAnyRole"
    }
   ]
  },
@@ -55,7 +55,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "IsAdminRole"
+    "classe": "IsAnyRole"
    }
   ]
  },
@@ -75,7 +75,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "IsAdminRole"
+    "classe": "IsAnyRole"
    }
   ]
  },
@@ -95,7 +95,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "IsAdminRole"
+    "classe": "IsAnyRole"
    }
   ]
  }
