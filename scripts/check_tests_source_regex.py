@@ -79,15 +79,6 @@ ALLOWLIST: dict[str, str] = {
         "U3-900/U3-MOTEUR : verrouille par lecture de SOURCE la suppression "
         "de estimerPanneaux et la souverainete de la taille explicite - "
         "meme contrainte node --test que autoQuote.ordre.test.mjs.",
-    "frontend/src/features/ventes/autoQuote.test.mjs":
-        "QJR245 - autoQuote.js importe ventesSlice/ventesApi (non importable "
-        "sous node --test) - noticePalierKwc est EXECUTEE (extraite du "
-        "fichier reel) ; seule la preuve de cablage LeadDevisPanel.jsx/"
-        "DevisTab.jsx (composants React non importables) lit leur SOURCE.",
-    "frontend/src/features/ventes/solar.test.mjs":
-        "Lecteur de MARKUP legitime (noValidate/step=\"any\" des 5 ecrans "
-        "de saisie) - explicitement exclu par l'enonce de QJR239, pas une "
-        "regression a geler.",
     "frontend/src/pages/ventes/DevisGeneratorApplySiteProfileMode.test.mjs":
         "DevisGenerator.jsx (composant React) non importable pur sous "
         "node --test - verifie le cablage applySiteProfile/applyLead par "
@@ -207,16 +198,12 @@ CRM_ALLOWLIST: dict[str, str] = {
     "frontend/src/pages/crm/leads/views/KanbanViewColumns.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/KanbanViewFocusRestore.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardDensity.apx2.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/pages/crm/leads/views/LeadCardFirstTouchTimer.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardMenu.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardReadinessChips.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/pages/crm/leads/views/LeadCardRotting.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardSelectionActive.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardSwipeAction.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardTouchAnatomy.apx7.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/pages/crm/leads/views/LeadCardTouchPII.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCardVX24.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/pages/crm/leads/views/LeadCardVX45Emojis.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/views/LeadCard.mry16.test.mjs":
         "MRY16 (2026-09-06) - LeadCard.jsx (composant React/JSX, imports "
         "Radix/router) non importable pur sous node --test, meme contrainte "
@@ -236,7 +223,6 @@ CRM_ALLOWLIST: dict[str, str] = {
     "frontend/src/pages/crm/leads/VX95ForgivenessKanbanArchive.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/WIR229_bulk_whatsapp.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/features/crm/workspace/devisAutoKwc.ez5.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/features/crm/workspace/DevisTab.test.jsx": _CRM_RAISON_GELEE,
     "frontend/src/features/crm/workspace/DevisTabKwcPalier.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/features/crm/workspace/NoteComposerSize.test.mjs": _CRM_RAISON_GELEE,
 }

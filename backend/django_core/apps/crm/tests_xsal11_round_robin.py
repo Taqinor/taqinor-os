@@ -308,8 +308,8 @@ class AttributionParResponsableTests(TestCase):
 
     def test_regle_type_source_et_facture(self):
         from decimal import Decimal
-        self._regle(self.a, type_installation='agricole')
-        self._regle(self.b, ordre=1, source='meta_ads')
+        self._regle(self.a, types_installation=['agricole'])
+        self._regle(self.b, ordre=1, sources=['meta_ads'])
         self._regle(self.a, ordre=2, facture_min=Decimal('2000'))
         self.assertEqual(self._nouveau(
             type_installation='agricole').attribution_en_attente.proposee, self.a)
@@ -319,6 +319,36 @@ class AttributionParResponsableTests(TestCase):
         self.assertEqual(lead.attribution_en_attente.proposee, self.a)
         self.assertEqual(lead.attribution_en_attente.raison,
                          'Règle : facture 2000–∞ DH')
+
+    def test_regle_plusieurs_types_de_client(self):
+        # Fondateur 28/10/2026 — choix multiples : un des types suffit.
+        self._regle(self.b, types_installation=['agricole', 'industriel'])
+        self.assertEqual(self._nouveau(
+            type_installation='industriel').attribution_en_attente.proposee,
+            self.b)
+        attente = self._nouveau(
+            type_installation='agricole').attribution_en_attente
+        self.assertEqual(attente.proposee, self.b)
+        self.assertEqual(attente.raison, 'Règle : type Agricole, Industriel')
+        self.assertEqual(self._nouveau(
+            type_installation='residentiel').attribution_en_attente.raison,
+            'Rotation équilibrée')
+
+    def test_regle_plusieurs_sources(self):
+        self._regle(self.a, sources=['meta_ads', 'site_web'])
+        self.assertEqual(self._nouveau(
+            canal='site_web').attribution_en_attente.proposee, self.a)
+        self.assertEqual(self._nouveau(
+            canal='meta_ads').attribution_en_attente.proposee, self.a)
+        attente = self._nouveau(canal='telephone').attribution_en_attente
+        self.assertEqual(attente.raison, 'Rotation équilibrée')
+
+    def test_listes_vides_tous_les_leads(self):
+        self._regle(self.b, types_installation=[], sources=[])
+        attente = self._nouveau(
+            type_installation='agricole', canal='meta_ads').attribution_en_attente
+        self.assertEqual(attente.proposee, self.b)
+        self.assertEqual(attente.raison, 'Règle : tous les leads')
 
     def test_premiere_regle_dans_l_ordre_gagne(self):
         self._regle(self.b, ordre=5, villes='Rabat')

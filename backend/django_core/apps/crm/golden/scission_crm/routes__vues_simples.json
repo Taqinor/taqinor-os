@@ -49,6 +49,12 @@
  },
  {
   "actions_map": null,
+  "motif": "dispatch/reglages/<int:equipe_id>/",
+  "nom": "dispatch-reglages",
+  "vue": "dispatch_reglages"
+ },
+ {
+  "actions_map": null,
   "motif": "equipes/statistiques/",
   "nom": "equipes-statistiques",
   "vue": "equipes_statistiques"
