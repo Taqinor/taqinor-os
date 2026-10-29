@@ -64,9 +64,14 @@ export function lireLibProposition(): string {
  * RWEB17-M10 — les pages câblées lisent leur état dans `ctx.etat.<x>` et appellent les autres sections par
  * `ctx.crochets.appeler('<f>', …)` : pour les tests de source, ces deux indirections se relisent dans la
  * forme d'origine (`<x>`, `<f>(…)`). Rien n'est ajouté au texte : un compte de littéraux reste juste.
+ * RWEB17-M11 — même relecture pour les modules `lib/tunnel/*` (`etat.<x>`, `crochets.appeler('<f>'`, et
+ * leurs alias locaux `appeler('<f>'`, `h('<f>'`, `appelerCrochet(ctx, '<f>'`).
  */
 export function normaliserIndirectionsTunnel(src: string): string {
-  return src.replace(/\bctx\.etat\./g, '').replace(/\bctx\.crochets\.appeler\('(\w+)'(?:, )?/g, '$1(');
+  return src
+    .replace(/\b(?:ctx\.)?etat\./g, '')
+    .replace(/(?:\b(?:ctx\.)?crochets\.appeler|\bappeler|\bh)\('(\w+)'(?:, )?/g, '$1(')
+    .replace(/\bappelerCrochet\(ctx, '(\w+)'(?:, )?/g, '$1(');
 }
 
 export function lireAstroAvecModulesTunnel(chemin: string): string {
@@ -86,7 +91,7 @@ export function lireAstroAvecModulesTunnel(chemin: string): string {
     }
   };
   suivre(chemin, readFileSync(chemin, 'utf-8'));
-  return base + suite;
+  return base + normaliserIndirectionsTunnel(suite);
 }
 
 /**

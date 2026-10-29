@@ -108,6 +108,12 @@ describe('persistance — clés de suivi et jetons', () => {
   it('crochet absent : erreur claire ; crochets de la section installés', () => {
     const { ctx } = ctxDepuis();
     expect(ctx.crochets.a('saveWizardState')).toBe(true);
+    // RWEB17-M11 — l'envoi (M8) appelle `syncOfflineBanner` : la persistance l'inscrit.
+    expect(ctx.crochets.a('syncOfflineBanner')).toBe(true);
+    const bandeau = document.getElementById('mt-offline-banner')!;
+    bandeau.hidden = !navigator.onLine;
+    ctx.crochets.appeler('syncOfflineBanner');
+    expect(bandeau.hidden).toBe(navigator.onLine);
     expect(() => ctx.crochets.appeler('inconnu')).toThrow('Crochet non installé : inconnu');
   });
 });

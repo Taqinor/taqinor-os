@@ -2121,7 +2121,7 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   import { creerContexte, type ConfigLocale } from '../../../lib/tunnel/contexte';
   import { creerDom } from '../../../lib/tunnel/dom';
   import { creerEtat } from '../../../lib/tunnel/etat';
-  import { loadWizardState as relireInstantane } from '../../../lib/tunnel/persistance';
+  import { installerPersistance, loadWizardState } from '../../../lib/tunnel/persistance';
 
   // RWEB17-M10 — UN état et UN registre de crochets pour les trois pages : les
   // `let` de haut niveau vivent dans `ctx.etat` (valeurs initiales de
@@ -2132,7 +2132,8 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
     langueBasculable: false,
     formatNombre: (n: number): string => (Math.round(n * 10) / 10).toLocaleString('en-GB'),
   };
-  const ctx = creerContexte(creerDom(document), creerEtat(relireInstantane(), 'en'), CONFIG_EN);
+  const savedWizard = loadWizardState();
+  const ctx = creerContexte(creerDom(document), creerEtat(savedWizard, 'en'), CONFIG_EN);
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
@@ -2141,74 +2142,11 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   const cityEl = $('mt-city') as HTMLInputElement | null;
   const addressEl = $('rp9-address') as HTMLInputElement | null;
   const fallbackAddrEl = $('mt-fallback-address') as HTMLInputElement | null;
-
-  // ——— WJ59 : per-step funnel beacon (privacy-light, no PII) ———
-  // Anonymous PER-TAB token (sessionStorage, never a device/user id): only
-  // used to dedupe/correlate "reached"/"abandoned" events within ONE visit,
-  // never to identify a visitor. See src/lib/funnelBeacon.ts for the full
-  // contract (strict 4-field allowlist, never name/phone/email/address/GPS/outline).
-  const FUNNEL_TOKEN_KEY = 'mt-funnel-token-v1';
-  function getFunnelToken(): string {
-    try {
-      let t = sessionStorage.getItem(FUNNEL_TOKEN_KEY);
-      if (!t) {
-        t = Math.random().toString(36).slice(2) + Date.now().toString(36);
-        sessionStorage.setItem(FUNNEL_TOKEN_KEY, t);
-      }
-      return t;
-    } catch {
-      // sessionStorage unavailable: an ephemeral token (single request, no
-      // correlation possible) — never a block on measurement or UX.
-      return Math.random().toString(36).slice(2);
-    }
-  }
-  const funnelToken = getFunnelToken();
-  const funnelStepReached = new Set<string>(); // avoids duplicate "reached" events on re-render.
-  // WB30 — consent (the checkbox) only exists in the revelation (contact): until the
-  // visitor has reached that panel, no behavioural signal should leave, even
-  // anonymous/best-effort. `hasReachedConsentStep` reads the `step` variable
-  // and `revealed` (both declared below) — checked at CALL time, never
-  // inside `sendFunnelBeacon` (whose `step` parameter deliberately shadows it).
-  // COUPE FONDATEUR 21/08 — la garantie WB30 est STRICTEMENT la même, seule sa
-  // coordonnée change : le bloc contact était l'écran 2 (`step >= 2`), il est
-  // désormais la RÉVÉLATION de l'écran 1. Tant qu'elle n'est pas ouverte, la
-  // case de consentement n'est pas à l'écran — donc aucun beacon.
-  function hasReachedConsentStep(): boolean {
-    return ctx.etat.step >= 1 && ctx.etat.revealed;
-  }
-  ctx.crochets.installer('hasReachedConsentStep', hasReachedConsentStep);
-  /** Best-effort, NEVER blocking: sendBeacon survives tab close, with a
-   *  fetch(keepalive) fallback if sendBeacon is unavailable. No PII possible
-   *  in this body (4 fields only — see lib/funnelBeacon.ts). WB30 — emits
-   *  nothing before the consent step (the revelation) is reached — see
-   *  hasReachedConsentStep, checked by every caller.
-   *  WJ104 — `action` widened to `viewed`/`callback_requested`; `reached`/
-   *  `abandoned` stay unchanged for every existing caller. */
-  function sendFunnelBeacon(
-    step: 'toit' | 'facture' | 'estimation' | 'contact',
-    action: 'reached' | 'abandoned' | 'viewed' | 'callback_requested',
-  ) {
-    // WJ104 — same dedupe discipline as "reached": an event that is only
-    // meaningful once must never fire in a loop (e.g. the estimate
-    // recomputing several times while the visitor adjusts their bill).
-    if (action === 'reached' || action === 'viewed' || action === 'callback_requested') {
-      const key = `${step}:${action}`;
-      if (funnelStepReached.has(key)) return;
-      funnelStepReached.add(key);
-    }
-    try {
-      const payload = JSON.stringify({ step, action, sessionToken: funnelToken, path: location.pathname });
-      if (navigator.sendBeacon) {
-        const blob = new Blob([payload], { type: 'application/json' });
-        navigator.sendBeacon('/api/funnel-beacon', blob);
-      } else {
-        void fetch('/api/funnel-beacon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
-      }
-    } catch {
-      // Best-effort measurement only — must never disrupt the flow.
-    }
-  }
-  ctx.crochets.installer('sendFunnelBeacon', sendFunnelBeacon);
+  // ——— RWEB17-M11 — section « persistance » (lib/tunnel/persistance.ts) : jeton et
+  // balises de funnel (WJ59/WB30), bandeau hors ligne (WJ45), instantané `mt-wizard-v1`
+  // (WJ61), garde `beforeunload`, jetons de dédoublonnage, référence client (WJ52) et
+  // clés de suivi ; ses crochets sont inscrits ici. ———
+  const persistance = installerPersistance(ctx, savedWizard);
 
   // ——— capture state (pin / outline) held by onCaptureChange ———
   // ACAL304 — tous les pans FERMÉS ([lat,lng]) + le roofLayout v2 à émettre (≥ 2 pans).
@@ -2232,184 +2170,6 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   }
   ctx.crochets.installer('syncCityRequirement', syncCityRequirement);
   ctx.crochets.appeler('syncCityRequirement');
-
-  // WJ39 — no in-page language toggle on this route: the /en/ URL already
-  // declares the locale (Layout.astro sets <html lang="en" dir="ltr">), so
-  // the FR/AR dual-node data-i18n toggle used by the FR/AR variants doesn't
-  // apply here. `langue_preferee` (fr/ar only, src/lib/lead.ts LEAD_LANGS)
-  // is simply omitted from the submitted body below — the webhook contract
-  // stays unchanged (the field is optional).
-
-  // ——— WJ45: offline banner (navigator.onLine + online/offline) ———
-  // A dropped mobile connection must never look like a silent failure: the
-  // banner appears/disappears live, independently of any submission. It is
-  // ALSO called from the submit `catch` below — the FR/AR variants declare it
-  // here and this page did not, so any failed submission (network cut,
-  // AbortSignal timeout) threw `syncOfflineBanner is not defined` BEFORE the
-  // error message and `setSubmitPending(false)`, leaving the button stuck on
-  // "sending". Same three lines as the FR/AR twins — keep them in sync.
-  const offlineBanner = $('mt-offline-banner');
-  function syncOfflineBanner() {
-    if (offlineBanner) offlineBanner.hidden = navigator.onLine;
-  }
-  ctx.crochets.installer('syncOfflineBanner', syncOfflineBanner);
-  ctx.crochets.appeler('syncOfflineBanner');
-  window.addEventListener('online', syncOfflineBanner);
-  window.addEventListener('offline', syncOfflineBanner);
-
-  // ——— WJ61 : the wizard's state survives a refresh/back navigation ———
-  // A phone call or an accidental back-swipe used to silently destroy
-  // everything typed — the costliest UX failure in the funnel. We persist a
-  // minimal snapshot (step/mode/bill/pin-outline/optional answers) to
-  // sessionStorage (per tab, never shared between visitors): rehydrated on
-  // load, cleared on success. Never blocks submission if sessionStorage is
-  // unavailable (strict private browsing…).
-  const WIZARD_STORAGE_KEY = 'mt-wizard-v1';
-  interface WizardSnapshot {
-    step?: number;
-    // COUPE FONDATEUR 21/08 — `revealed` : sur l'écran 1, l'estimation + le
-    // formulaire de contact sont révélés SUR PLACE (plus d'étape 3). Persisté
-    // pour qu'un rafraîchissement ne renvoie pas le visiteur à ses questions
-    // alors qu'il avait déjà son estimation à l'écran. Un instantané de
-    // l'ANCIEN assistant 3 étapes (step === 2, sans `revealed`) est migré à la
-    // relecture — voir `let revealed` plus bas.
-    revealed?: boolean;
-    mode?: string;
-    // `ombrage` retiré du tunnel (ordre fondateur 21/08) — plus rien à
-    // persister ; un ancien instantané qui en porte encore un est simplement
-    // ignoré (champ inconnu, aucune lecture).
-    visitWindowPart?: string;
-    visitWindowWeek?: string;
-    // `futureLoads` removed from the funnel (founder cut 18/08) — the sales
-    // rep fills it in the ERP; nothing left to persist.
-    // QX — states of the PRO + AGRICULTURAL card/segment groups (tension,
-    // activity, surface, water source, units).
-    sel?: Record<string, string>;
-    capturePin?: { lat: number; lng: number } | null;
-    capturePans?: Array<Array<[number, number]>>;
-    captureLayout?: RoofLayoutPublic | null;
-    captureOutline?: Array<[number, number]>;
-    fields?: Record<string, string>;
-    checks?: Record<string, boolean>;
-    // Dedup tokens: persisted WITH the rest of the draft so a refresh/back
-    // navigation does not mint a second technical identity for the SAME entry
-    // (which is exactly the duplicate they are meant to prevent).
-    idempotencyKey?: string;
-    eventId?: string;
-  }
-  // Founder cut 18/08 — the fields removed from the funnel also leave
-  // persistence: 'mt-facture-ete', 'mt-roof', 'mt-raccordement',
-  // 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age', 'mt-occupant-type',
-  // 'mt-project-timing', 'mt-facility-type', 'mt-site-count',
-  // 'mt-puissance-kva', 'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh',
-  // 'mt-pompe-actuelle' and 'mt-pompe-cv' no longer exist in the DOM —
-  // persisting them would have nothing to read. `mt-raison-sociale` stays: it
-  // is MOVED to the contact screen, not removed.
-  const PERSISTED_TEXT_FIELDS = [
-    'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-facture-hiver',
-    'mt-bill', 'mt-fallback-address',
-    'rp9-address',
-    // WJ68 — company name (contact screen since the 18/08 cut).
-    'mt-raison-sociale',
-    // QX — PROFESSIONAL sub-panel (step 2).
-    'mt-pro-bill', 'mt-surface-m2',
-    // WJ122 — COMMERCIAL sub-panel (bill).
-    'mt-cc-bill',
-    // QX — AGRICULTURAL sub-panel (step 2).
-    'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
-    'mt-culture', 'mt-surface-ha', 'mt-fuel-spend',
-    // L-WEBT — appliances (optional, "Refine my consumption profile" section).
-    'mt-equip-ve-km', 'mt-equip-clim-pieces', 'mt-equip-piscine-kw',
-    // L-WEBT2 (24/08/2026) — even more optional kW/slot details.
-    'mt-equip-chauffe-eau-kw', 'mt-equip-chauffe-eau-creneau',
-    'mt-equip-ve-kw', 'mt-equip-ve-creneau',
-    'mt-equip-clim-kw', 'mt-equip-clim-creneau',
-    'mt-equip-piscine-heures', 'mt-equip-piscine-creneau',
-  ];
-  // 'mt-ete-differente', 'mt-battery-interest' and 'mt-weekend' removed from
-  // the funnel (founder cut 18/08) — the sales rep fills them in the ERP.
-  const PERSISTED_CHECK_FIELDS = [
-    'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent',
-    // L-WEBT — appliances (optional).
-    'mt-equip-chauffe-eau', 'mt-equip-ve', 'mt-equip-clim', 'mt-equip-piscine',
-  ];
-   // WJ61 — avoids re-saving WHILE rehydrating.
-  function saveWizardState() {
-    if (ctx.etat.restoring) return;
-    try {
-      const fields: Record<string, string> = {};
-      for (const id of PERSISTED_TEXT_FIELDS) {
-        const v = val(id);
-        if (v) fields[id] = v;
-      }
-      const checks: Record<string, boolean> = {};
-      for (const id of PERSISTED_CHECK_FIELDS) {
-        const el = $(id) as HTMLInputElement | null;
-        if (el) checks[id] = el.checked;
-      }
-      const snapshot: WizardSnapshot = {
-        step: ctx.etat.step, revealed: ctx.etat.revealed, mode: ctx.etat.mode,
-        visitWindowPart: ctx.etat.visitWindowPart, visitWindowWeek: ctx.etat.visitWindowWeek,
-        sel: { proUnit: ctx.etat.proUnit, tension: ctx.etat.tension, activity: ctx.etat.activity, tensionTouched: ctx.etat.tensionTouched ? '1' : '', activityTouched: ctx.etat.activityTouched ? '1' : '', surfaceType: ctx.etat.surfaceType, waterSource: ctx.etat.waterSource, waterUnit: ctx.etat.waterUnit, commercialCategory: ctx.etat.commercialCategory, ccUnit: ctx.etat.ccUnit, equipes: ctx.etat.equipes, regionAgricole: ctx.etat.regionAgricole, roofInputMode: ctx.etat.roofInputMode, occupationJour: ctx.etat.occupationJour },
-        capturePin: ctx.etat.capturePin, captureOutline: ctx.etat.captureOutline, capturePans: ctx.etat.capturePans, captureLayout: ctx.etat.captureLayout,
-        fields, checks,
-        idempotencyKey: ctx.etat.dedupIdempotencyKey, eventId: ctx.etat.dedupEventId,
-      };
-      sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(snapshot));
-    } catch {
-      // sessionStorage unavailable (strict private browsing, quota…): the
-      // persistence is a CONVENIENCE, never a blocker for typing/submitting.
-    }
-  }
-  ctx.crochets.installer('saveWizardState', saveWizardState);
-  function loadWizardState(): WizardSnapshot | null {
-    try {
-      const raw = sessionStorage.getItem(WIZARD_STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as WizardSnapshot) : null;
-    } catch {
-      return null;
-    }
-  }
-  function clearWizardState() {
-    try { sessionStorage.removeItem(WIZARD_STORAGE_KEY); } catch { /* convenience only */ }
-  }
-  ctx.crochets.installer('clearWizardState', clearWizardState);
-  // WJ61 — exit guard: once the visitor has started entering something, an
-  // ACCIDENTAL refresh/close shows the browser's native confirmation prompt
-  // (text not customisable by spec).
-  function markDataEntered() { ctx.etat.hasEnteredData = true; }
-  ctx.crochets.installer('markDataEntered', markDataEntered);
-  window.addEventListener('beforeunload', (e) => {
-    if (!ctx.etat.hasEnteredData || ctx.etat.submitted) return;
-    e.preventDefault();
-    e.returnValue = '';
-  });
-
-  const savedWizard = loadWizardState();
-
-  // ——— Technical DEDUPLICATION tokens (CRM + Meta CAPI) ———
-  // `idempotencyKey` (CRM dedup signal) and `eventId` (the Meta CAPI spec's
-  // `event_id` field) have been validated by lib/lead.ts from the start, but
-  // this funnel never emitted them: the CRM could not recognise two sends of the
-  // same entry, and `fireCapi` fell back to a timestamp-derived id — DIFFERENT
-  // on every resend, so it deduplicated nothing on Meta's side.
-  // Minted on FIRST display, taken from the draft when one exists, stable after.
-  // Two DISTINCT tokens: they do not serve the same system.
-  function newDedupToken(): string {
-    try {
-      const c = globalThis.crypto;
-      // `randomUUID` only exists in a secure context: fall back to the in-house
-      // generator, already bounded by the same regex (^[A-Za-z0-9_-]{8,64}$).
-      if (c && typeof c.randomUUID === 'function') return c.randomUUID();
-    } catch { /* crypto access denied: take the fallback */ }
-    return buildIdempotencyKey();
-  }
-  function getOrCreateDedupTokens(): { idempotencyKey: string; eventId: string } {
-    if (!ctx.etat.dedupIdempotencyKey) ctx.etat.dedupIdempotencyKey = newDedupToken();
-    if (!ctx.etat.dedupEventId) ctx.etat.dedupEventId = newDedupToken();
-    return { idempotencyKey: ctx.etat.dedupIdempotencyKey, eventId: ctx.etat.dedupEventId };
-  }
-  ctx.crochets.installer('getOrCreateDedupTokens', getOrCreateDedupTokens);
 
   // ——— WJ6/QX : mode selector — no default at all (the profile drives an
   // entirely different step-2 questionnaire); "Continue" requires an
@@ -2923,57 +2683,10 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
   contactPhoneRadio?.addEventListener('change', syncCallbackSla);
   contactWhatsappRadio?.addEventListener('change', syncCallbackSla);
   ctx.crochets.appeler('syncCallbackSla');
-
-  // WJ61 — rehydrate input fields + map pin/outline from the snapshot
-  // (BEFORE the map boot: `hydrate` below seeds the pin/outline directly
-  // into captureBoot, without waiting for a first click). `restoring`
-  // prevents saveWizardState() from firing WHILE we populate fields (native
-  // `input`/`change` events don't fire on a scripted `.value`/`.checked` assignment).
-  if (savedWizard) {
-    ctx.etat.restoring = true;
-    for (const [id, v] of Object.entries(savedWizard.fields ?? {})) {
-      const el = $(id) as HTMLInputElement | HTMLSelectElement | null;
-      if (el) el.value = v;
-    }
-    for (const [id, v] of Object.entries(savedWizard.checks ?? {})) {
-      const el = $(id) as HTMLInputElement | null;
-      if (el) el.checked = v;
-    }
-    // WJ61 — a restored city counts as "already touched": assigning `.value`
-    // via script doesn't fire the native `input` event that normally sets
-    // `cityTouched`, and without this guard the next pin dropped on the map
-    // would silently overwrite the city we just restored.
-    if (savedWizard.fields?.['mt-city']) ctx.etat.cityTouched = true;
-    // AGW403 — un curseur « heures de pompage » restauré à une valeur ≠ 7 a
-    // forcément été touché (affecter `.value` par script ne déclenche pas
-    // `input`) ; à 7 on ne peut pas le savoir : jamais une réponse inventée.
-    {
-      const hp = $('mt-heures-pompage') as HTMLInputElement | null;
-      const savedHp = savedWizard.fields?.['mt-heures-pompage'];
-      if (hp && savedHp && savedHp !== '7') hp.dataset.touche = '1';
-    }
-    // WJ105 — a restored contact preference must re-sync the callback SLA
-    // visibility (assigning `.checked` via script never fires `change`).
-    ctx.crochets.appeler('syncCallbackSla');
-    // L-WEBT — same reason: a restored ticked appliance detail stays hidden
-    // without this second pass (`.checked` assigned by script fires no `change`).
-    ctx.crochets.appeler('syncEquipDetails');
-    if (savedWizard.capturePin) ctx.etat.capturePin = savedWizard.capturePin;
-    if (savedWizard.captureOutline?.length) ctx.etat.captureOutline = savedWizard.captureOutline;
-    if (savedWizard.capturePans?.length) ctx.etat.capturePans = savedWizard.capturePans;
-    if (savedWizard.captureLayout) ctx.etat.captureLayout = savedWizard.captureLayout;
-    ctx.crochets.appeler('syncCityRequirement');
-    if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) ctx.crochets.appeler('markDataEntered');
-    ctx.etat.restoring = false;
-  }
-  // WJ61 — persist on any typing/change of the remaining text/select/checkbox
-  // fields (beyond the chip groups already wired above).
-  const PERSIST_ON_INPUT_IDS = [...PERSISTED_TEXT_FIELDS, ...PERSISTED_CHECK_FIELDS];
-  for (const id of PERSIST_ON_INPUT_IDS) {
-    const el = $(id);
-    el?.addEventListener('input', () => { ctx.crochets.appeler('markDataEntered'); ctx.crochets.appeler('saveWizardState'); });
-    el?.addEventListener('change', () => { ctx.crochets.appeler('markDataEntered'); ctx.crochets.appeler('saveWizardState'); });
-  }
+  // WJ61 — réhydratation des champs, du repère et du contour (avant le boot de la carte).
+  persistance.rehydrater();
+  // WJ61 — persiste sur toute frappe/changement des champs listés.
+  persistance.brancherPersistanceSurSaisie();
 
   // ——— QX : single-select card/chip groups of the PRO and AGRICULTURAL
   // sub-panels (same visual/ARIA aria-pressed pattern). `recompute`
@@ -4293,43 +4006,6 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
     return true;
   }
   ctx.crochets.installer('validateStep1', validateStep1);
-
-  // QJW5 — `resolveProBillRange()` (C&I bracket derived from the entered
-  // consumption) and `resolveRoofType()` (roof type derived, never asked since
-  // the founder cut of 18/08) have left this page: they are PAYLOAD
-  // DERIVATIONS, so they live with the rest of the body in the shared registry
-  // (`src/lib/tunnel/champs.ts` — `trancheFactureProfessionnelle` and the
-  // `typeToiture` descriptor). Copied into three pages they could drift; there
-  // is now exactly one of each.
-  // ——— WJ52 : short client reference, generated ONCE in the browser ———
-  // Stable across repeated submissions (e.g. a network failure then a retry):
-  // generated on the first attempt, reused as-is afterwards — never silently
-  // regenerated, never a server uniqueness key (see lib/lead.ts).
-  function getOrCreateClientRef(): string {
-    if (!ctx.etat.clientRef) ctx.etat.clientRef = buildClientRef();
-    return ctx.etat.clientRef;
-  }
-  ctx.crochets.installer('getOrCreateClientRef', getOrCreateClientRef);
-
-  // WJ116 — resumes fbclid + UTM from sessionStorage (first-touch capture in
-  // the Layout, apps/web/src/layouts/Layout.astro ~l.206): without this, NO
-  // UTM attribution (referrals included — /parrainage) ever left this MAIN
-  // funnel even though the webhook / validateLead already accept them.
-  // Exact mirror of DiagnosticForm.astro ~l.279. Only PRESENT keys are
-  // joined (WJ30/WJ31 convention "absent rather than empty"): a visitor with
-  // no tracking parameter sends a byte-identical body to before.
-  const TRACK_KEYS = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
-  function readTrackingParams(): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const k of TRACK_KEYS) {
-      try {
-        const v = sessionStorage.getItem('tq_' + k);
-        if (v) out[k] = v;
-      } catch {}
-    }
-    return out;
-  }
-  ctx.crochets.installer('readTrackingParams', readTrackingParams);
 
   // WJ122 — `readCommercialAnswers()` is gone along with the per-category
   // questions (founder cut 18/08): none of them entered estimatePro, they

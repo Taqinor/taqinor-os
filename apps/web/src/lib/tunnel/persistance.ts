@@ -13,7 +13,7 @@
 // `syncEquipDetails` (sélections, M3). CROCHETS INSCRITS ICI : `saveWizardState`,
 // `markDataEntered`, `sendFunnelBeacon`, `hasReachedConsentStep`,
 // `getOrCreateDedupTokens`, `getOrCreateClientRef`, `readTrackingParams`,
-// `clearWizardState`.
+// `clearWizardState`, `syncOfflineBanner` (RWEB17-M11 : appelé par l'envoi, M8).
 
 import { buildClientRef } from '../lead';
 import { newDedupToken, type WizardSnapshot } from './etat';
@@ -251,5 +251,6 @@ export function installerPersistance(ctx: ContexteTunnel, savedWizard: WizardSna
   crochets.installer('getOrCreateClientRef', getOrCreateClientRef);
   crochets.installer('readTrackingParams', readTrackingParams);
   crochets.installer('clearWizardState', clearWizardState);
+  crochets.installer('syncOfflineBanner', syncOfflineBanner);
   return section;
 }
