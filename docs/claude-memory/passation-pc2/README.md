@@ -219,3 +219,11 @@ décision 30°, la même surface donnait ≈ 30 kWc ; le fondateur attend **40 k
   vérifier à la visite ». CONSTRUIT PAR PC1 le 28-29/10 (session boulangerie, quota remis à zéro) — PC2 : ne pas
   reconstruire ; relire la PR « R3 » si une lane touche `moteur_ci/composition.py`, `quote_engine/ci/tableau.py`,
   `visites/visite_checklist.py`.
+  → **PR #1148** (`claude/ci-tableau-r3`, 29/10 ~01:00 UTC, en file). Décisions prises POUR le fondateur dans cette PR, à
+  revoir : (a) ≥ 2 onduleurs avec clés wifi ⇒ pas de logger central composé, alerte interne seulement ; (b) une clé wifi
+  sans marque sert toute marque ; (c) chaînes estimées ≥ 1 par onduleur ; (d) parafoudre AC au mauvais nombre de pôles
+  jamais pris (alerte) ; (e) compteur à calibre trop petit exclu même en repli (SMART-MET legacy = repli, alerte) ;
+  (f) deux disjoncteurs identiques fusionnés par le devis auto gardent « — sortie » du premier onduleur ; (g) écran C&I
+  du générateur : la feuille `contraintes.mise_a_la_terre_necessaire` existe mais aucun champ ne l'envoie encore (la
+  visite est la seule source) ; (h) `Produit.lim_calibre_a` ≠ `lim_i_max_a` (courant mesuré en direct) : deux champs
+  proches, gardés distincts.
