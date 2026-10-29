@@ -2021,6 +2021,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   import { installerPersistance, loadWizardState } from '../../../lib/tunnel/persistance';
   import { installerParcours } from '../../../lib/tunnel/parcours';
   import { installerSelections } from '../../../lib/tunnel/selections';
+  import { installerCarteApercu3d, installerCarteBoot, installerCarteInstantane, type ContexteCarte } from '../../../lib/tunnel/carte';
 
   // RWEB17-M10 — UN état et UN registre de crochets pour les trois pages : les
   // `let` de haut niveau vivent dans `ctx.etat` (valeurs initiales de
@@ -2056,102 +2057,26 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   // les groupes de cartes et la facture sont branchés plus bas, à leur place. ———
   const selections = installerSelections(ctx);
   selections.brancherVisiteOccupationEquipements();
-
-  // « Charges futures envisagées » (.mt-future-load) et « Photo du compteur ou
-  // de la facture » (mt-meter-photo) sont retirées du tunnel (coupe fondateur
-  // 18/08) — le commercial les complète dans l'ERP. Avec le champ fichier
-  // disparaît aussi la fenêtre de grâce WJ46 de l'exit-intent : elle n'existait
-  // QUE pour éviter un faux déclenchement pendant l'ouverture du sélecteur de
-  // photo, et plus aucun sélecteur de fichier n'est ouvert par cette page.
-
-  // ——— boot carte (captureOnly). Repli sans clé carte AUTORISE la suite (WJ4) ———
-  const mapEl = $('rp9-map');
-  function clearMapSkeleton() { mapEl?.classList.remove('mt-skeleton-shimmer'); }
-  async function boot(key: string, mapboxToken: string) {
-    if (ctx.etat.started) return;
-    ctx.etat.started = true;
-    try {
-      const { bootCaptureOnly } = await import('../../../scripts/roofPro11/captureBoot');
-      bootCaptureOnly({
-        maptilerKey: key,
-        mapboxToken: mapboxToken || undefined,
-        reducedMotion,
-        // WJ41 — رسائل الخريطة/محدد المواقع بالعربية (الافتراضي بالفرنسية).
-        strings: ROOF_TOOL_STRINGS_AR,
-        // WJ62 — هذا المسار يعرض العربية (RTL): أدوات التحكم بالخريطة تنتقل إلى
-        // أعلى اليسار بدل تداخلها مع اتجاه القراءة/أزرار اللغة.
-        dir: 'rtl',
-        geolocateErrorMsg: 'تم رفض تحديد الموقع — ابحثوا عن عنوانكم أو ضعوا العلامة يدوياً.',
-        onReady: clearMapSkeleton,
-        // Le geste choisi par le visiteur, lu à CHAQUE clic (il peut changer
-        // d'avis) : « dessiner » ouvre le contour dès le premier appui,
-        // « pointer » fait atterrir la carte serrée sur le repère.
-        roofInputMode: () => ctx.etat.roofInputMode,
-        // WJ61 — repère/contour restaurés depuis sessionStorage semés au boot.
-        // ACAL304 — les pans multiples sont restaurés tels quels (≥ 2 pans).
-        hydratePans: ctx.etat.capturePans.length >= 2 ? ctx.etat.capturePans : undefined,
-        panStrings: { panAdded: 'تمت إضافة جزء. ارسم الجزء التالي (انقر مرتين للإغلاق) أو أرسل.', panRemoved: 'تمت إزالة الجزء.', maxPans: 'تم بلوغ الحد الأقصى لعدد الأجزاء.' },
-        hydrate: ctx.etat.capturePin
-          ? { lead: { roof_point: ctx.etat.capturePin, roof_outline: ctx.etat.captureOutline.length >= 3 ? ctx.etat.captureOutline : null } }
-          : undefined,
-        onCaptureChange: (s) => {
-          ctx.etat.capturePin = s.pin;
-          ctx.etat.captureOutline = s.outline;
-          ctx.etat.capturePans = s.pans;
-          ctx.etat.captureLayout = s.layout;
-          ctx.crochets.appeler('syncCityRequirement');
-          // QX/Lane C — le contour a changé : l'instantané satellite ne correspond plus.
-          ctx.etat.roofImageSpecPromise = null;
-          if (cityEl && !ctx.etat.cityTouched) {
-            const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
-            if (fromMap) cityEl.value = fromMap;
-          }
-          // Confirmation visuelle du repère : l'adresse arrive souvent APRÈS le
-          // repère (géocodage inverse asynchrone), d'où la re-synchronisation à
-          // chaque notification. Fonctions hissées, déclarées plus bas.
-          setPinConfirmAddress(s.address);
-          syncPinConfirm();
-          ctx.crochets.appeler('updatePanels3dVisibility');
-        },
-      });
-    } catch {
-      ctx.etat.started = false;
-      showFallback();
-    }
-  }
-  // QX — miroir du fix FR : sans clé imagerie on masque AUSSI le bloc carte
-  // entier (#mt-stage : géocodeur, canevas, boutons de tracé) — des contrôles
-  // morts à côté du repli adresse honnête. clearMapSkeleton() reste en tête
-  // (contrat WJ34 : jamais de shimmer figé).
-  function showFallback() {
-    clearMapSkeleton();
-    if (fallback) fallback.hidden = false;
-    const stage = $('mt-stage');
-    if (stage) stage.hidden = true;
-    // …et le choix « pointer / dessiner » avec : proposer un geste de carte
-    // au-dessus d'un repli adresse serait exactement l'UI mensongère que le
-    // masquage de #mt-stage vient d'éliminer.
-    const roofModeGroup = $('mt-roof-mode-group');
-    if (roofModeGroup) roofModeGroup.hidden = true;
-  }
-
-  // WJ60 — timeout de 10 s : l'échec (timeout inclus) tombe dans le repli adresse (WJ4).
-  const FETCH_TIMEOUT_MS = 10_000;
-  function ensureMapBooted() {
-    if (ctx.etat.mapFetchDone) return;
-    ctx.etat.mapFetchDone = true;
-    (async () => {
-      try {
-        const res = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-        const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
-        if (!cfg.available || !cfg.maptilerKey) { showFallback(); return; }
-        void boot(cfg.maptilerKey, cfg.mapboxToken || '');
-      } catch {
-        showFallback();
-      }
-    })();
-  }
-  ctx.crochets.installer('ensureMapBooted', ensureMapBooted);
+  // ——— RWEB17-M14 — section « carte et toiture » (lib/tunnel/carte.ts) : boot de la carte
+  // (W324 : un seul /api/roof-config, à l'écran 0), repli adresse, geste pointer/dessiner
+  // et confirmation du repère ; MapLibre/Three restent en import() dynamique (WJ18). ———
+  Object.assign(ctx.config, {
+    doc: document,
+    reducedMotion,
+    statutsSuiventLangue: true,
+    optionsBootLocale: {
+      strings: ROOF_TOOL_STRINGS_AR,
+      dir: 'rtl',
+      geolocateErrorMsg: 'تم رفض تحديد الموقع — ابحثوا عن عنوانكم أو ضعوا العلامة يدوياً.',
+      panStrings: { panAdded: 'تمت إضافة جزء. ارسم الجزء التالي (انقر مرتين للإغلاق) أو أرسل.', panRemoved: 'تمت إزالة الجزء.', maxPans: 'تم بلوغ الحد الأقصى لعدد الأجزاء.' },
+    },
+    chargeurs: {
+      captureBoot: () => import('../../../scripts/roofPro11/captureBoot'),
+      viewerOnly: () => import('../../../scripts/roofPro11/viewerOnly'),
+    },
+  });
+  const ctxCarte = ctx as unknown as ContexteCarte;
+  installerCarteBoot(ctxCarte);
   // WJ61 — étapes : historique, popstate, « Continuer » / « Retour », premier rendu.
   parcours.brancherEtapes();
 
@@ -2169,96 +2094,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
   persistance.rehydrater();
   // WJ61 — persiste sur toute frappe/changement des champs listés.
   persistance.brancherPersistanceSurSaisie();
-
-  // ——— QX : groupes de cartes/segments à sélection unique (PRO et AGRICOLE). ———
-  // CIW410 — le visiteur a-t-il CLIQUÉ la tension / l'activité ? Les défauts visibles
-  // (BT, « Journée » — WJ123) restent, mais ne partent comme déclarés que touchés.
-  // WJ122 — mode COMMERCIAL : catégorie active + unité de facture (MAD/kWh).
-  // WJ123 — mode INDUSTRIEL : pattern d'équipes (plafond d'autoconsommation).
-  // WJ124 — mode AGRICOLE : région agronomique (pilote le moteur eau FAO-56).
-
-  // ——— CHOIX EXPLICITE « pointer » / « dessiner » + CONFIRMATION VISUELLE ———
-  // Le geste de repérage était implicite (clic = repère, double-clic = contour,
-  // rien ne le disait), et un visiteur qui pointait ne voyait JAMAIS ce qu'il
-  // venait de désigner. Messages de statut suivant `currentLang` (bascule FR/عربي).
-  const pinConfirmEl = $('mt-pin-confirm');
-  const pinConfirmAddrEl = $('mt-pin-confirm-address');
-  /** Clé du repère DÉJÀ confirmé : déplacer le repère redemande confirmation,
-   *  un simple re-rendu (adresse qui arrive plus tard) ne la redemande pas. */
-  const pinKey = (p: { lat: number; lng: number } | null) =>
-    p ? `${p.lat.toFixed(6)},${p.lng.toFixed(6)}` : '';
-  function setMapStatus(msg: string) {
-    const el = $('rp9-status');
-    if (el) el.textContent = msg;
-  }
-  function syncRoofModeCards() {
-    document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
-      const on = b.dataset.value === ctx.etat.roofInputMode;
-      b.setAttribute('aria-pressed', String(on));
-      b.classList.toggle('border-brass-400', on);
-      b.classList.toggle('border-white/15', !on);
-    });
-    // « Terminer le tracé » ne veut rien dire quand on ne trace pas.
-    const finishBtn = $('rp9-finish');
-    if (finishBtn) finishBtn.hidden = ctx.etat.roofInputMode !== 'draw';
-  }
-  /** Montre la confirmation UNIQUEMENT quand elle a un sens : geste « pointer »,
-   *  un repère posé, aucun contour tracé, et pas déjà confirmé pour ce repère. */
-  function syncPinConfirm() {
-    if (!pinConfirmEl) return;
-    pinConfirmEl.hidden = !(
-      ctx.etat.roofInputMode === 'point'
-      && ctx.etat.capturePin != null
-      && ctx.etat.captureOutline.length < 3
-      && pinKey(ctx.etat.capturePin) !== ctx.etat.confirmedPinKey
-    );
-  }
-  /** Adresse du repère — affichée seulement si le géocodage inverse en a rendu
-   *  une (W2) : jamais une adresse devinée, jamais une ligne vide. */
-  function setPinConfirmAddress(addr?: string | null) {
-    if (!pinConfirmAddrEl) return;
-    const a = (addr || '').trim();
-    pinConfirmAddrEl.textContent = a;
-    pinConfirmAddrEl.hidden = a === '';
-  }
-  document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
-    b.addEventListener('click', () => {
-      const v: 'point' | 'draw' = b.dataset.value === 'draw' ? 'draw' : 'point';
-      if (v === ctx.etat.roofInputMode) return;
-      ctx.etat.roofInputMode = v;
-      syncRoofModeCards();
-      syncPinConfirm();
-      if (ctx.etat.roofInputMode === 'draw') {
-        setMapStatus(ctx.etat.currentLang === 'ar'
-          ? 'ارسموا محيط سطحكم: اضغطوا على كل زاوية، ثم « إنهاء الرسم ».'
-          : 'Tracez le contour de votre toit : appuyez sur chaque coin, puis « Terminer le tracé ».');
-      } else {
-        setMapStatus(ctx.etat.currentLang === 'ar'
-          ? 'اضغطوا على سطحكم لوضع العلامة عليه.'
-          : 'Appuyez sur votre toit pour y poser le repère.');
-      }
-      ctx.crochets.appeler('markDataEntered');
-      ctx.crochets.appeler('saveWizardState');
-    });
-  });
-  $('mt-pin-confirm-yes')?.addEventListener('click', () => {
-    ctx.etat.confirmedPinKey = pinKey(ctx.etat.capturePin);
-    syncPinConfirm();
-    setMapStatus(ctx.etat.currentLang === 'ar'
-      ? 'تم تأكيد العلامة. تابعوا بمعلومات الاتصال أدناه.'
-      : 'Repère confirmé. Continuez avec vos coordonnées ci-dessous.');
-  });
-  $('mt-pin-confirm-adjust')?.addEventListener('click', () => {
-    // On ne SUPPRIME pas le repère : le visiteur en pose simplement un autre,
-    // et s'il change d'avis il n'a rien perdu.
-    ctx.etat.confirmedPinKey = '';
-    if (pinConfirmEl) pinConfirmEl.hidden = true;
-    setMapStatus(ctx.etat.currentLang === 'ar'
-      ? 'اضغطوا على المكان الصحيح من سطحكم لتحريك العلامة.'
-      : 'Appuyez sur le bon endroit de votre toit pour déplacer le repère.');
-    $('rp9-map')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
-  });
-  syncRoofModeCards();
+  // Geste « pointer » / « dessiner » et confirmation du repère : branchés par installerCarteBoot (plus haut).
   // QX/WJ122/WJ123/WJ124/AGW403 — groupes de cartes, cultures, heures de pompage, recalcul en direct.
   selections.brancherGroupes();
   function maxBillFor(m: string): number {
@@ -2397,35 +2233,8 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
     void ctx.crochets.appeler('tryRoofSnapshot');
   }
   ctx.crochets.installer('fillDocChrome', fillDocChrome);
-  // ——— QX/Lane C : instantané satellite du toit — buildPublicRoofImageSpec. ———
-  function fetchRoofImageSpec(): Promise<RoofImageSpec | null> {
-    if (!ctx.etat.roofImageSpecPromise) {
-      ctx.etat.roofImageSpecPromise = (async () => {
-        if (ctx.etat.captureOutline.length < 3) return null;
-        const mod = await import('../../../scripts/roofPro11/viewerOnly');
-        if (typeof mod.buildPublicRoofImageSpec !== 'function') return null;
-        const spec = await mod.buildPublicRoofImageSpec({ outline: ctx.etat.captureOutline });
-        return spec && spec.image ? spec : null;
-      })().catch(() => null);
-    }
-    return ctx.etat.roofImageSpecPromise as Promise<RoofImageSpec | null>;
-  }
-  async function tryRoofSnapshot() {
-    const fig = $('mt-doc-roof');
-    const img = $('mt-doc-roof-img') as HTMLImageElement | null;
-    if (!fig || !img) return;
-    if (ctx.etat.captureOutline.length < 3) {
-      fig.hidden = true;
-      return;
-    }
-    const spec = await fetchRoofImageSpec();
-    if (!spec) return;
-    img.src = spec.image.src;
-    const attr = $('mt-doc-roof-attr');
-    if (attr) attr.textContent = spec.attribution || '';
-    fig.hidden = false;
-  }
-  ctx.crochets.installer('tryRoofSnapshot', tryRoofSnapshot);
+  // QX/Lane C — « Votre toit » dans le document : instantané satellite partagé avec l'aperçu 3D.
+  installerCarteInstantane(ctxCarte);
   function resetDocZones() {
     for (const id of [
       'mt-estimate-toolarge-pro', 'mt-estimate-pro-missing', 'mt-doc-kpis-pro',
@@ -2967,68 +2776,9 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
     ctx.crochets.appeler('computeEstimate');
   });
   $('mt-bill')?.addEventListener('change', computeEstimate);
-  // La conso exacte (kWh/mois) est retirée du tunnel (coupe fondateur 18/08) :
-  // la facture suffit — estimateFromBill fait lui-même la conversion MAD → kWh.
-  // ——— WJ2 : « voir les panneaux sur votre toit » — facultatif, lazy. ———
-  const panels3dBlock = $('mt-panels3d') as HTMLElement | null;
-  const panels3dStage = $('mt-panels3d-stage') as HTMLElement | null;
-  const panels3dOverlay = $('mt-panels3d-overlay') as HTMLElement | null;
-  const panels3dStart = $('mt-panels3d-start') as HTMLButtonElement | null;
-  const panels3dHint = $('mt-panels3d-hint') as HTMLElement | null;
-
-  function updatePanels3dVisibility() {
-    if (!panels3dBlock) return;
-    // WJ125 → PUBLIC_3D_PREVIEW (13/09/2026) : le bloc 3D n'expose aucun
-    // CHIFFRE (visuel seul) — autorisé même en parcours gaté quand le drapeau
-    // est vrai. Les deux drapeaux à false ⇒ comportement byte-identique.
-    if (PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW) { panels3dBlock.hidden = true; return; }
-    const eligible = ctx.etat.captureOutline.length >= 3 && ctx.etat.lastKwc != null;
-    panels3dBlock.hidden = !eligible;
-  }
-  ctx.crochets.installer('updatePanels3dVisibility', updatePanels3dVisibility);
-
-  async function startPanels3d() {
-    if (ctx.etat.panels3dStarted || !panels3dStage || ctx.etat.lastKwc == null) return;
-    ctx.etat.panels3dStarted = true;
-    try {
-      const [{ capturePreviewLayout, buildViewerModel }, { createRoofViewer }] = await Promise.all([
-        import('../../../lib/proposition'),
-        import('../../../scripts/roofPro11/viewerOnly'),
-      ]);
-      const layout = capturePreviewLayout(ctx.etat.captureOutline, ctx.etat.lastKwc);
-      const model = layout ? buildViewerModel(layout) : null;
-      if (!model) throw new Error('modèle indisponible');
-      const roofImage = await fetchRoofImageSpec().catch(() => null);
-      const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
-      const lowEnd = (nav.deviceMemory != null && nav.deviceMemory <= 4) || (navigator.hardwareConcurrency || 8) <= 4;
-      const handle = createRoofViewer(panels3dStage, model, {
-        reducedMotion,
-        lowEnd,
-        roofImage,
-        onReady: () => {
-          if (panels3dOverlay) panels3dOverlay.hidden = true;
-          if (panels3dHint) panels3dHint.hidden = false;
-        },
-        onFail: () => { ctx.etat.panels3dStarted = false; },
-      });
-      if (!handle) throw new Error('WebGL indisponible');
-    } catch {
-      ctx.etat.panels3dStarted = false;
-      if (panels3dOverlay) {
-        const btn = panels3dStart;
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = ctx.etat.currentLang === 'ar' ? 'المعاينة ثلاثية الأبعاد غير متوفرة' : 'Aperçu 3D indisponible sur cet appareil';
-        }
-      }
-    }
-  }
-  panels3dStart?.addEventListener('click', () => { void startPanels3d(); });
-
-  // ——— QX : « Imprimer / Enregistrer en PDF » — le document s'imprime tel quel. ———
-  $('mt-print-estimate')?.addEventListener('click', () => {
-    window.print();
-  });
+  // WJ2 — aperçu 3D des panneaux (visuel seul, PUBLIC_3D_PREVIEW) et impression du document.
+  Object.assign(ctx.config, { estimationGatee: PUBLIC_ESTIMATE_GATED, apercu3dPublic: PUBLIC_3D_PREVIEW });
+  installerCarteApercu3d(ctxCarte);
 
   // ——— WJ4 : validation INLINE alignée sur validateLead (avant le round-trip) ———
   function setFieldError(inputId: string, errId: string, message: string | null) {

@@ -36,7 +36,8 @@ describe('WJ18 — mon-toit.astro : le 3D (WJ2) n’est JAMAIS statiquement impo
   });
 
   it('le moteur 3D (WJ2) est chargé par import() dynamique, uniquement au tap explicite', () => {
-    expect(MON_TOIT).toContain("import('../../lib/proposition')");
+    // RWEB17-M14 — l'aperçu 3D vit dans lib/tunnel/carte.ts : même import() dynamique, chemin du module.
+    expect(MON_TOIT).toContain("import('../proposition')");
     expect(MON_TOIT).toContain("import('../../scripts/roofPro11/viewerOnly')");
     // Le tap explicite déclenche startPanels3d — jamais un scroll/auto-preload
     // pour le bloc panneaux 3D (budget perf plus serré qu'une proposition déjà
@@ -49,7 +50,9 @@ describe('WJ18 — mon-toit.astro : le 3D (WJ2) n’est JAMAIS statiquement impo
   it('la carte (MapLibre) est aussi chargée par import() dynamique (roofPro11/captureBoot — WJ47)', () => {
     // WJ47 : la capture importe directement roofPro11/captureBoot (qui charge MapLibre)
     // au lieu de roof-tool-pro11.ts, pour ne PAS embarquer Three.js dans le bundle capture.
-    expect(MON_TOIT).toContain("await import('../../scripts/roofPro11/captureBoot')");
+    // RWEB17-M14 — la page fournit le chargeur dynamique à lib/tunnel/carte.ts, qui l'attend au boot.
+    expect(MON_TOIT).toContain("captureBoot: () => import('../../scripts/roofPro11/captureBoot')");
+    expect(MON_TOIT).toContain('await config.chargeurs.captureBoot()');
   });
 });
 

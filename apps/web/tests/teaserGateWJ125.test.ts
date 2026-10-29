@@ -88,7 +88,9 @@ describe.each(Object.entries(PAGES))('WJ125 — %s mon-toit.astro : rendu public
     const start = src.indexOf('function updatePanels3dVisibility(');
     expect(start).toBeGreaterThan(-1);
     const fn = src.slice(start, start + 700);
-    expect(fn).toContain('if (PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW) { panels3dBlock.hidden = true; return; }');
+    // RWEB17-M14 — le point de contrôle vit dans lib/tunnel/carte.ts ; la page lui passe ses deux drapeaux.
+    expect(fn).toContain('if (config.estimationGatee && !config.apercu3dPublic) { panels3dBlock.hidden = true; return; }');
+    expect(src).toContain('estimationGatee: PUBLIC_ESTIMATE_GATED, apercu3dPublic: PUBLIC_3D_PREVIEW');
     // Le drapeau est déclaré à côté du gate (réversibilité en un mot).
     expect(src).toContain('const PUBLIC_3D_PREVIEW: boolean');
     // Et le bloc part `hidden` dans le markup statique (aucun flash avant JS).
