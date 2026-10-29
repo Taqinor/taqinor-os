@@ -98,7 +98,7 @@ function langueTextes(ctx: ContexteCarte, pourStatut: boolean): Langue {
   return ctx.crochets.a('langueActive') && ctx.crochets.appeler('langueActive') === 'ar' ? 'ar' : 'fr';
 }
 
-export function installerCarte(ctx: ContexteCarte): void {
+function construireCarte(ctx: ContexteCarte) {
   const { etat, dom, config } = ctx;
   const { $ } = dom;
   const doc = config.doc;
@@ -156,12 +156,14 @@ export function installerCarte(ctx: ContexteCarte): void {
 
   // Repli carte : champ d'adresse en clair, suite ouverte, bloc carte masqué.
   function showFallback() {
+    const masquer = (id: string) => {
+      const el = $(id);
+      if (el) el.hidden = true;
+    };
     clearMapSkeleton();
     if (fallback) fallback.hidden = false;
-    const stage = $('mt-stage');
-    if (stage) stage.hidden = true;
-    const roofModeGroup = $('mt-roof-mode-group');
-    if (roofModeGroup) roofModeGroup.hidden = true;
+    masquer('mt-stage');
+    masquer('mt-roof-mode-group');
   }
 
   async function boot(key: string, mapboxToken: string) {
@@ -188,12 +190,10 @@ export function installerCarte(ctx: ContexteCarte): void {
           ctx.crochets.appeler('syncCityRequirement');
           etat.roofImageSpecPromise = null;
           if (cityEl && !etat.cityTouched) {
-            const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
-            if (fromMap) cityEl.value = fromMap;
+            const depuisCarte = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
+            if (depuisCarte) cityEl.value = depuisCarte;
           }
-          setPinConfirmAddress(s.address);
-          syncPinConfirm();
-          updatePanels3dVisibility();
+          [() => setPinConfirmAddress(s.address), syncPinConfirm, updatePanels3dVisibility].forEach((f) => f());
         },
       });
     } catch {
@@ -208,16 +208,21 @@ export function installerCarte(ctx: ContexteCarte): void {
     etat.mapFetchDone = true;
     (async () => {
       try {
-        const res = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-        const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
-        if (!cfg.available || !cfg.maptilerKey) { showFallback(); return; }
-        void boot(cfg.maptilerKey, cfg.mapboxToken || '');
+        const reponse = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        const cfg = (await reponse.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
+        const cleCarte = cfg.maptilerKey;
+        if (!cfg.available || !cleCarte) {
+          showFallback();
+          return;
+        }
+        void boot(cleCarte, cfg.mapboxToken || '');
       } catch {
         showFallback();
       }
     })();
   }
 
+  const brancherBoot = () => {
   doc.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
     b.addEventListener('click', () => {
       const v: 'point' | 'draw' = b.dataset.value === 'draw' ? 'draw' : 'point';
@@ -243,6 +248,8 @@ export function installerCarte(ctx: ContexteCarte): void {
     $('rp9-map')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
   });
   syncRoofModeCards();
+  ctx.crochets.installer('ensureMapBooted', ensureMapBooted);
+  };
 
   // Instantané satellite du toit, mis en cache jusqu'à ce que le contour change.
   function fetchRoofImageSpec(): Promise<RoofImageSpecEtat | null> {
@@ -267,11 +274,11 @@ export function installerCarte(ctx: ContexteCarte): void {
       fig.hidden = true;
       return;
     }
-    const spec = await fetchRoofImageSpec();
-    if (!spec) return;
-    img.src = spec.image.src;
-    const attr = $('mt-doc-roof-attr');
-    if (attr) attr.textContent = spec.attribution || '';
+    const instantane = await fetchRoofImageSpec();
+    if (!instantane) return;
+    img.src = instantane.image.src;
+    const attribution = $('mt-doc-roof-attr');
+    if (attribution) attribution.textContent = instantane.attribution || '';
     fig.hidden = false;
   }
 
@@ -296,12 +303,12 @@ export function installerCarte(ctx: ContexteCarte): void {
       const model = layout ? buildViewerModel(layout) : null;
       if (!model) throw new Error(config.locale === 'en' ? 'model unavailable' : 'modèle indisponible');
       const roofImage = await fetchRoofImageSpec().catch(() => null);
-      const nav = (doc.defaultView?.navigator ?? navigator) as Navigator & { deviceMemory?: number };
-      const lowEnd = (nav.deviceMemory != null && nav.deviceMemory <= 4) || (nav.hardwareConcurrency || 8) <= 4;
+      const navig = (doc.defaultView?.navigator ?? ({} as Navigator)) as Navigator & { deviceMemory?: number };
+      const lowEnd = (navig.deviceMemory != null && navig.deviceMemory <= 4) || (navig.hardwareConcurrency || 8) <= 4;
       const handle = createRoofViewer(panels3dStage, model, {
-        reducedMotion,
-        lowEnd,
         roofImage,
+        lowEnd,
+        reducedMotion,
         onReady: () => {
           if (panels3dOverlay) panels3dOverlay.hidden = true;
           if (panels3dHint) panels3dHint.hidden = false;
@@ -321,14 +328,39 @@ export function installerCarte(ctx: ContexteCarte): void {
       }
     }
   }
-  panels3dStart?.addEventListener('click', () => { void startPanels3d(); });
+  const brancherApercu3d = () => {
+    panels3dStart?.addEventListener('click', () => { void startPanels3d(); });
+    // « Imprimer / Enregistrer en PDF » : le document s'imprime tel quel.
+    $('mt-print-estimate')?.addEventListener('click', () => {
+      doc.defaultView?.print();
+    });
+    ctx.crochets.installer('updatePanels3dVisibility', updatePanels3dVisibility);
+  };
+  const brancherInstantane = () => {
+    ctx.crochets.installer('tryRoofSnapshot', tryRoofSnapshot);
+  };
+  return { brancherBoot, brancherInstantane, brancherApercu3d };
+}
 
-  // « Imprimer / Enregistrer en PDF » : le document s'imprime tel quel.
-  $('mt-print-estimate')?.addEventListener('click', () => {
-    (doc.defaultView ?? window).print();
-  });
+// Une seule construction par contexte : les installeurs par plage partagent les
+// mêmes fermetures (état, éléments) quel que soit l'ordre où la page les appelle.
+const construits = new WeakMap<object, ReturnType<typeof construireCarte>>();
+const carteDe = (ctx: ContexteCarte) => {
+  let c = construits.get(ctx);
+  if (!c) { c = construireCarte(ctx); construits.set(ctx, c); }
+  return c;
+};
 
-  ctx.crochets.installer('ensureMapBooted', ensureMapBooted);
-  ctx.crochets.installer('updatePanels3dVisibility', updatePanels3dVisibility);
-  ctx.crochets.installer('tryRoofSnapshot', tryRoofSnapshot);
+/** FR l. 2809-2925 + 3127-3197 : boot de la carte, repli, mode point/tracé,
+ *  confirmation du repère (et crochet `ensureMapBooted`). */
+export function installerCarteBoot(ctx: ContexteCarte): void { carteDe(ctx).brancherBoot(); }
+/** FR l. 3497-3528 : instantané satellite du document (crochet `tryRoofSnapshot`). */
+export function installerCarteInstantane(ctx: ContexteCarte): void { carteDe(ctx).brancherInstantane(); }
+/** FR l. 4198-4270 : aperçu 3D, impression (crochet `updatePanels3dVisibility`). */
+export function installerCarteApercu3d(ctx: ContexteCarte): void { carteDe(ctx).brancherApercu3d(); }
+/** Les trois plages, dans l'ordre de la page. */
+export function installerCarte(ctx: ContexteCarte): void {
+  installerCarteBoot(ctx);
+  installerCarteInstantane(ctx);
+  installerCarteApercu3d(ctx);
 }
