@@ -762,6 +762,10 @@
     champs: actif, company, confirmation_responsable, date_creation, delai_attribution_minutes, departement, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: deleteMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
+- frontend/src/api/crmApi.js :: deleteObjectif -> /api/django/crm/objectifs/<>  [ObjectifCommercialSerializer]
+    champs: cible, company, created_by, date_creation, date_modification, id, metric, metric_display, notes, owner, owner_nom, period_month, period_quarter, period_type, period_type_display, period_year
+    metric ∈ {ca_signe, nb_contacts, nb_devis, nb_leads, nb_rdv}
+    period_type ∈ {month, quarter, year}
 - frontend/src/api/crmApi.js :: deleteParrainage -> /api/django/crm/parrainages/<>  [ParrainageSerializer]
     champs: company, date_creation, filleul_client, filleul_display_nom, filleul_lead, filleul_nom, id, notes, parrain, parrain_nom, recompense, statut, statut_display
     statut ∈ {converti, en_attente, recompense_versee}

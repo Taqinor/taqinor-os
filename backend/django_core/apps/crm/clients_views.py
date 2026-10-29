@@ -26,6 +26,7 @@ from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .actions_crud import READ_ACTIONS, WRITE_ACTIONS, _PorteeEnfantsMixin
+from .cockpit_equipe import verifier_objectif
 from apps.records.views import ChatterViewSetMixin
 from .models import (
     AppareilEquipe, Apporteur, Client, ConcurrentPerte, DealEnregistre, Defi,
@@ -1411,14 +1412,30 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
                 {nom: f'Valeur inconnue (attendu : {", ".join(choix.values)}).'})
         return valeur
 
+    # Cockpit d'équipe (fondateur, 28/10/2026) — écriture : Admin, ou
+    # ``dispatch.peut_regler`` sur une équipe dont l'owner (ancien ET nouveau)
+    # est membre ; objectif sans owner = Admin seul (``cockpit_equipe``).
     def perform_create(self, serializer):
+        verifier_objectif(self.request.user, serializer.validated_data.get('owner'))
         serializer.save(
             company=self.request.user.company,
             created_by=self.request.user,
         )
 
+    def perform_update(self, serializer):
+        verifier_objectif(self.request.user, serializer.instance.owner,
+                          serializer.validated_data.get(
+                              'owner', serializer.instance.owner))
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        verifier_objectif(self.request.user, instance.owner)
+        super().perform_destroy(instance)
+
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['attainment', 'attainment_list']:
+            return [IsAnyRole()]
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
             return [IsAnyRole()]
         return [IsAdminRole()]
 

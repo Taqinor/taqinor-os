@@ -615,3 +615,234 @@ class TestDispatchLeads(TestCase):
         self.assertEqual(r.json()['delai_attribution_minutes'], 15)
         self.assertEqual(self.api.patch(
             url, {'delai_attribution_minutes': 0}, format='json').status_code, 400)
+
+
+class TestCockpitEquipe(TestCase):
+    """Cockpit d'équipe du responsable (fondateur, 28/10/2026) — contrat
+    ``contract_samples/cockpit_equipe.json`` ; objectifs fixés par les mêmes
+    personnes (``dispatch.peut_regler``) pour les membres de leurs équipes."""
+
+    URL = '/api/django/crm/cockpit-equipe/'
+    OCT = {'periode': 'month', 'annee': 2026, 'mois': 10}
+
+    def setUp(self):
+        import datetime
+        from decimal import Decimal
+        from apps.crm import horaires
+        from apps.crm.leads_attribution import default_responsable_for
+        from apps.crm.models import (
+            Appointment, Client, Lead, ObjectifCommercial, RelanceEtape)
+        from apps.parametres.models import CompanyProfile
+        from apps.roles.models import Departement
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis, LigneDevis
+        self.company = make_company('cockpit-co')
+        CompanyProfile.objects.create(company=self.company)
+        mk = User.objects.create_user
+        self.chef = mk(username='ck_chef', password='x', company=self.company,
+                       first_name='Meryem')
+        self.m1 = mk(username='ck_m1', password='x', company=self.company,
+                     first_name='Sara', poste='Chargée de clientèle')
+        self.m2 = mk(username='ck_m2', password='x', company=self.company,
+                     first_name='Amine')
+        self.autre_chef = mk(username='ck_chef2', password='x',
+                             company=self.company)
+        self.m3 = mk(username='ck_m3', password='x', company=self.company)
+        self.directeur = mk(username='ck_dir', password='x',
+                            company=self.company)
+        self.autre_dir = mk(username='ck_dir2', password='x',
+                            company=self.company)
+        self.admin = mk(username='ck_admin', password='x', role_legacy='admin',
+                        company=self.company)
+        commercial = Departement.objects.create(
+            company=self.company, nom='Commercial', responsable=self.directeur)
+        Departement.objects.create(
+            company=self.company, nom='Technique', responsable=self.autre_dir)
+        self.equipe = EquipeCommerciale.objects.create(
+            company=self.company, nom='Casa', responsable=self.chef,
+            departement=commercial, recoit_leads=True,
+            confirmation_responsable=True)
+        self.equipe.membres.set([self.m1, self.m2])
+        self.autre = EquipeCommerciale.objects.create(
+            company=self.company, nom='Rabat', responsable=self.autre_chef)
+        self.autre.membres.set([self.m3])
+
+        def a(jour, h, mi=0):
+            return datetime.datetime(2026, 10, jour, h, mi,
+                                     tzinfo=horaires.CASABLANCA)
+
+        # m1 — 3 leads d'octobre : contacté en 2 min ouvrées, en 60 min,
+        # jamais contacté (lundi 05 et mardi 06/10, en pleine fenêtre).
+        self.leads = []
+        for cree, contacte in ((a(5, 10), a(5, 10, 2)), (a(5, 11), a(5, 12)),
+                               (a(6, 10), None)):
+            lead = Lead.objects.create(company=self.company, nom='Lead',
+                                       owner=self.m1)
+            Lead.objects.filter(pk=lead.pk).update(
+                date_creation=cree, first_contacted_at=contacte)
+            self.leads.append(lead)
+        self.obj_leads = ObjectifCommercial.objects.create(
+            company=self.company, owner=self.m1, metric='nb_leads',
+            cible=Decimal('4'), period_type='month', period_year=2026,
+            period_month=10)
+        Appointment.objects.create(
+            company=self.company, lead=self.leads[0], created_by=self.m1,
+            scheduled_at=a(7, 10), statut=Appointment.Statut.EFFECTUE)
+        # Touche échue en janvier, jamais faite (ordre hors plan : aucune
+        # collision avec une touche posée à la création du lead).
+        RelanceEtape.objects.create(
+            company=self.company, lead=self.leads[2], cadence='contact',
+            ordre=99, libelle='Appel', due_date=datetime.date(2026, 1, 5),
+            canal=RelanceEtape.Canal.APPEL)
+        client = Client.objects.create(company=self.company, nom='Client')
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku='CK-P',
+            prix_vente=Decimal('1000'), quantite_stock=50)
+        for ref, statut in (('DEV-CK-1', 'envoye'), ('DEV-CK-2', 'brouillon')):
+            devis = Devis.objects.create(
+                company=self.company, reference=ref, client=client,
+                lead=self.leads[0], statut=statut, taux_tva=Decimal('20.00'),
+                remise_globale=Decimal('0'), created_by=self.m1,
+                date_envoi=a(8, 10) if statut == 'envoye' else None)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation='Panneau',
+                quantite=Decimal('10'), prix_unitaire=Decimal('1000'),
+                remise=Decimal('0'))
+            if statut == 'envoye':
+                self.envoye = devis
+        # Un lead en attente d'attribution (chez le responsable) : proposé au
+        # moins chargé, m2.
+        self.attente = Lead.objects.create(
+            company=self.company, nom='Attente',
+            owner=default_responsable_for(self.company))
+        self.api = APIClient()
+
+    def auth_as(self, user):
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+
+    def _get(self, user, **params):
+        self.auth_as(user)
+        return self.api.get(self.URL, params)
+
+    def _contrat(self):
+        import json
+        import pathlib
+        chemin = (pathlib.Path(__file__).resolve().parent
+                  / 'contract_samples' / 'cockpit_equipe.json')
+        return json.loads(chemin.read_text(encoding='utf-8'))
+
+    def test_respecte_le_contrat(self):
+        r = self._get(self.chef, **self.OCT)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(_cles(r.json()), _cles(self._contrat()['exemple']))
+        r = self._get(self.m1)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json(), self._contrat()['exemple_vide'])
+
+    def test_matrice_des_acces(self):
+        for user, attendu in ((self.chef, 200), (self.directeur, 200),
+                              (self.admin, 200), (self.autre_dir, 403),
+                              (self.autre_chef, 403), (self.m1, 403)):
+            r = self._get(user, equipe=self.equipe.pk)
+            self.assertEqual(r.status_code, attendu, (user.username, r.content))
+        etranger = User.objects.create_user(
+            username='ck_etr', password='x', role_legacy='admin',
+            company=make_company('cockpit-etr'))
+        self.assertEqual(self._get(etranger, equipe=self.equipe.pk).status_code,
+                         404)
+        self.assertEqual(
+            [e['nom'] for e in self._get(self.admin).json()['equipes_accessibles']],
+            ['Casa', 'Rabat'])
+        self.assertEqual(self._get(self.autre_chef).json()['equipe']['nom'],
+                         'Rabat')
+        for params, cle in (({'periode': 'semaine'}, 'periode'),
+                            ({'mois': 13}, 'mois'), ({'annee': 'abc'}, 'annee'),
+                            ({'trimestre': 5}, 'trimestre'),
+                            ({'equipe': 'x'}, 'equipe')):
+            r = self._get(self.chef, **params)
+            self.assertEqual(r.status_code, 400, (params, r.content))
+            self.assertIn(cle, r.json())
+
+    def test_chiffres(self):
+        from decimal import Decimal
+        corps = self._get(self.chef, **self.OCT).json()
+        self.assertEqual(corps['equipe'], {'id': self.equipe.pk, 'nom': 'Casa',
+                                           'responsable': 'Meryem'})
+        self.assertEqual(corps['periode']['debut'], '2026-10-01')
+        self.assertEqual(corps['periode']['fin'], '2026-10-31')
+        self.assertEqual(corps['periode']['libelle'], 'Octobre 2026')
+        self.assertEqual([m['nom'] for m in corps['membres']], ['Amine', 'Sara'])
+        sara = corps['membres'][1]
+        self.assertEqual(sara['fonction'], 'Chargée de clientèle')
+        self.assertEqual(sara['objectifs']['nb_leads'], {
+            'objectif_id': self.obj_leads.pk, 'cible': 4.0, 'realise': 3.0,
+            'pct': 75.0})
+        self.assertEqual(sara['objectifs']['nb_contacts'], {
+            'objectif_id': None, 'cible': None, 'realise': 2.0, 'pct': None})
+        self.assertEqual(sara['objectifs']['nb_rdv']['realise'], 1.0)
+        self.assertEqual(sara['objectifs']['nb_devis']['realise'], 1.0)
+        # Même réalisé que crm/objectifs/<id>/attainment/.
+        self.auth_as(self.admin)
+        attainment = self.api.get(
+            f'/api/django/crm/objectifs/{self.obj_leads.pk}/attainment/').data
+        self.assertEqual(Decimal(str(attainment['realise'])), Decimal('3'))
+        self.assertEqual(sara['suivi'], {
+            'premier_contact_5min_pct': 33.3, 'premier_contact_mesures': 3,
+            'relances_en_retard': 1, 'leads_non_contactes': 1,
+            'leads_en_attente': 0})
+        valeur = float(Decimal(str(self.envoye.total_ttc)))
+        self.assertGreater(valeur, 0)
+        self.assertEqual(sara['pipeline'], {
+            'leads_ouverts': 3, 'devis_ouverts': 1,
+            'valeur_devis_ouverts': valeur})
+        amine = corps['membres'][0]
+        self.assertEqual(amine['suivi']['leads_en_attente'], 1)
+        self.assertIsNone(amine['suivi']['premier_contact_5min_pct'])
+        totaux = corps['equipe_totaux']
+        self.assertEqual(totaux['objectifs']['nb_leads'],
+                         {'cible': 4.0, 'realise': 3.0, 'pct': 75.0})
+        self.assertIsNone(totaux['objectifs']['ca_signe']['cible'])
+        self.assertEqual(totaux['suivi']['leads_en_attente'], 1)
+        self.assertEqual(totaux['suivi']['premier_contact_mesures'], 3)
+        self.assertEqual(totaux['pipeline']['devis_ouverts'], 1)
+
+    def test_objectifs_matrice_d_ecriture(self):
+        url = '/api/django/crm/objectifs/'
+
+        def corps(owner, metric='nb_contacts'):
+            return {'owner': owner.pk if owner else None, 'metric': metric,
+                    'period_type': 'month', 'period_year': 2026,
+                    'period_month': 10, 'cible': '5'}
+
+        self.auth_as(self.chef)
+        r = self.api.post(url, corps(self.m1), format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        objectif = r.json()['id']
+        self.assertEqual(self.api.post(url, corps(self.m3),
+                                       format='json').status_code, 403)
+        self.assertEqual(self.api.post(url, corps(None),
+                                       format='json').status_code, 403)
+        self.assertEqual(self.api.patch(f'{url}{objectif}/', {'cible': '8'},
+                                        format='json').status_code, 200)
+        self.assertEqual(self.api.patch(f'{url}{objectif}/', {'owner': self.m3.pk},
+                                        format='json').status_code, 403)
+        for user in (self.autre_chef, self.autre_dir, self.m1):
+            self.auth_as(user)
+            self.assertEqual(self.api.patch(f'{url}{objectif}/', {'cible': '9'},
+                                            format='json').status_code, 403)
+            self.assertEqual(self.api.delete(f'{url}{objectif}/').status_code, 403)
+        self.auth_as(self.directeur)
+        self.assertEqual(self.api.post(url, corps(self.m2),
+                                       format='json').status_code, 201)
+        self.auth_as(self.chef)
+        self.assertEqual(self.api.delete(f'{url}{objectif}/').status_code, 204)
+        self.auth_as(self.admin)
+        self.assertEqual(self.api.post(url, corps(None),
+                                       format='json').status_code, 201)
+        # Unicité membre + métrique + période : 409 (le front PATCHe alors
+        # l'``objectif_id`` servi par le cockpit). En DERNIER : selon la
+        # version de DRF, le refus vient du validateur ou de la contrainte.
+        self.auth_as(self.chef)
+        self.assertEqual(self.api.post(url, corps(self.m2),
+                                       format='json').status_code, 409)

@@ -6,13 +6,16 @@
   décision ;
 * ``PATCH /crm/dispatch/reglages/<equipe_id>/`` — l'interrupteur
   « Le responsable confirme chaque lead » et le délai d'une équipe ;
+* ``GET  /crm/cockpit-equipe/`` — le cockpit d'équipe (contrat
+  ``contract_samples/cockpit_equipe.json``, logique ``cockpit_equipe.py``) ;
 * ``/crm/regles-attribution/`` — les règles de Paramètres → Leads (lecture
   tout rôle de la société ; écriture : ``dispatch.peut_regler`` — Admin, le
   responsable de l'équipe ou la tête de son département).
 
 La logique vit dans ``dispatch.py`` ; ce module ne fait que lire la requête.
 """
-from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer)
 from rest_framework import serializers
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -28,7 +31,7 @@ from . import dispatch
 from . import schema_docs as sd
 from .champs_api import MAPPING_STRICT_COMPLET, BooleenStrict
 from .models import Lead
-from .models_clients import RegleAttribution
+from .models_clients import ObjectifCommercial, RegleAttribution
 from .params_requete import corps_objet, entier_param
 from .serializers import _CompanyScopedRelationsMixin
 
@@ -199,3 +202,42 @@ def dispatch_attribuer(request, lead_id):
     lead = dispatch.attribuer(request.user, lead_id, owner)
     return Response({'id': lead.pk, 'owner': lead.owner_id,
                      'owner_nom': dispatch.nom_affiche(lead.owner)})
+
+
+def _entier_borne(nom, mini, maxi, description):
+    """Paramètre entier BORNÉ facultatif (vide = défaut) : hors bornes, le
+    serveur répond 400 nommant le paramètre."""
+    return OpenApiParameter(
+        nom, {'anyOf': [{'type': 'integer', 'minimum': mini, 'maximum': maxi},
+                        {'type': 'string', 'maxLength': 0}]},
+        OpenApiParameter.QUERY, required=False, description=description)
+
+
+@extend_schema(
+    parameters=[
+        sd.param_entier_ou_vide('equipe', "Identifiant de l'équipe (défaut : "
+                                          'la première accessible).'),
+        sd.param_enum_ou_vide('periode', ObjectifCommercial.PeriodType.values,
+                              'Périodicité (défaut month).'),
+        _entier_borne('annee', 2000, 2100, 'Année (défaut : en cours).'),
+        _entier_borne('mois', 1, 12, 'Mois (défaut : en cours).'),
+        _entier_borne('trimestre', 1, 4, 'Trimestre (défaut : en cours).'),
+    ],
+    # ``inline_serializer`` direct (jamais ``sd.corps``) : champs « nom »
+    # dans les objets servis.
+    responses=inline_serializer('CrmCockpitEquipeReponse', {
+        'equipes_accessibles': serializers.ListField(
+            child=serializers.DictField()),
+        'equipe': serializers.DictField(allow_null=True),
+        'periode': serializers.DictField(allow_null=True),
+        'metriques': serializers.ListField(child=serializers.DictField()),
+        'membres': serializers.ListField(child=serializers.DictField()),
+        'equipe_totaux': serializers.DictField(allow_null=True)}))
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def cockpit_equipe(request):
+    """Cockpit d'équipe (contrat ``cockpit_equipe.json``) : responsable,
+    directeur commercial (tête du département) ou Direction/Admin. 400
+    paramètre invalide, 404 équipe hors société, 403 sans droit."""
+    from .cockpit_equipe import cockpit
+    return Response(cockpit(request.user, request))

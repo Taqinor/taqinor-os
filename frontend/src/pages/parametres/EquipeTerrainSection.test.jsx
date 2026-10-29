@@ -20,6 +20,7 @@ const USERS = [
 const {
   getEquipes, saveEquipe, deleteEquipe, apiGet, apiPatch, saveEquipeCom, rolesMock, getDispatch, attribuerLead,
   getEquipesCom, getAssignableUsers, getReglesAttribution, saveRegleAttribution, saveReglagesDispatch, getCanaux,
+  getCockpitEquipe, saveObjectif, deleteObjectif,
 } = vi.hoisted(() => ({
   getEquipes: vi.fn(),
   saveEquipe: vi.fn(() => Promise.resolve({ data: {} })),
@@ -35,6 +36,9 @@ const {
   saveRegleAttribution: vi.fn(() => Promise.resolve({ data: {} })),
   saveReglagesDispatch: vi.fn(() => Promise.resolve({ data: {} })),
   getCanaux: vi.fn(() => Promise.resolve({ data: [] })),
+  getCockpitEquipe: vi.fn(),
+  saveObjectif: vi.fn(() => Promise.resolve({ data: {} })),
+  deleteObjectif: vi.fn(() => Promise.resolve({ data: {} })),
   rolesMock: {
     getOrganisation: vi.fn(),
     getPostes: vi.fn(),
@@ -51,6 +55,7 @@ vi.mock('../../api/crmApi', () => ({
   default: {
     saveEquipe: saveEquipeCom, getDispatch, attribuerLead, getEquipes: getEquipesCom,
     getAssignableUsers, getReglesAttribution, saveRegleAttribution, saveReglagesDispatch, getCanaux,
+    getCockpitEquipe, saveObjectif, deleteObjectif,
   },
 }))
 vi.mock('../../api/rolesApi', () => ({ default: rolesMock }))
@@ -66,6 +71,8 @@ vi.mock('../../api/installationsApi', () => ({
 import EquipeTerrainSection from './EquipeTerrainSection'
 import EquipeSection from './EquipeSection'
 import AttributionLeadsPage from '../crm/AttributionLeadsPage'
+import CockpitEquipePage from '../crm/CockpitEquipePage'
+import { MemoryRouter } from 'react-router-dom'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -326,5 +333,53 @@ describe('AttributionLeadsPage (attribution des leads)', () => {
     await user.type(champ, '9')
     await user.tab()
     await waitFor(() => expect(saveReglagesDispatch).toHaveBeenCalledWith(7, { delai_minutes: 9 }))
+  })
+})
+
+describe('CockpitEquipePage (cockpit d’équipe)', () => {
+  const monter = () => render(<MemoryRouter><CockpitEquipePage /></MemoryRouter>)
+
+  it('affiche les membres avec réalisé / cible et pourcentage', async () => {
+    getCockpitEquipe.mockResolvedValue(reponseContrat('crm', 'cockpit_equipe', 'exemple'))
+    monter()
+    expect(await screen.findByText('Octobre 2026')).toBeInTheDocument()
+    const ligne = screen.getAllByRole('row').find((r) => within(r).queryByText('Sara'))
+    expect(within(ligne).getByText('36')).toBeInTheDocument()
+    expect(within(ligne).getByText(/\/ 40/)).toBeInTheDocument()
+    expect(within(ligne).getByText('90 %')).toBeInTheDocument()
+    expect(screen.getByTestId('cockpit-total-objectifs')).toBeInTheDocument()
+  })
+
+  it('exemple vide : message sans équipe', async () => {
+    getCockpitEquipe.mockResolvedValue(reponseContrat('crm', 'cockpit_equipe', 'exemple_vide'))
+    monter()
+    expect(await screen.findByText('Vous ne dirigez aucune équipe commerciale.')).toBeInTheDocument()
+  })
+
+  it('cellule sans objectif : création par saveObjectif(null, …)', async () => {
+    getCockpitEquipe.mockResolvedValue(reponseContrat('crm', 'cockpit_equipe', 'exemple'))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Octobre 2026')
+    await user.click(screen.getByRole('button', { name: /Fixer un objectif/ }))
+    await user.type(await screen.findByLabelText('Cible'), '30')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(saveObjectif).toHaveBeenCalledWith(null, {
+      owner: 4, metric: 'nb_contacts', period_type: 'month', period_year: 2026, period_month: 10, cible: '30.00',
+    }))
+  })
+
+  it('cellule avec objectif : modification par saveObjectif(id, { cible })', async () => {
+    getCockpitEquipe.mockResolvedValue(reponseContrat('crm', 'cockpit_equipe', 'exemple'))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Octobre 2026')
+    const ligne = screen.getAllByRole('row').find((r) => within(r).queryByText('Sara'))
+    await user.click(within(ligne).getByText(/\/ 40/))
+    const champ = await screen.findByLabelText('Cible')
+    await user.clear(champ)
+    await user.type(champ, '50')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(saveObjectif).toHaveBeenCalledWith(31, { cible: '50.00' }))
   })
 })
