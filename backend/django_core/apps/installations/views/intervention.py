@@ -1087,7 +1087,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         ),
         responses={200: ComponentSerialSerializer, 201: ComponentSerialSerializer},
     )
-    @action(parser_classes=oa.JSON_AND_UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-serial',
+    @action(parser_classes=oa.JSON_ET_MULTIPART_PARSERS, detail=True, methods=['post'], url_path='ajouter-serial',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_serial(self, request, pk=None):
         """F9 — relève un n° de série de composant. Optionnellement une photo de

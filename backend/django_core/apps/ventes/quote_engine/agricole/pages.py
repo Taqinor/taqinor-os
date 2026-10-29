@@ -31,6 +31,7 @@ from ..montants import fmt_centimes, lignes_remisees, pct_fr
 from ..textes import tronquer_au_mot
 from ..residential import theme
 from ..sequence import sequence_affichage
+from .. import logo as _logo
 from . import mentions
 from .schema import (TEXTE_COURBE_ABSENTE, courbe_svg, legende, schema_svg,
                      superposer)
@@ -116,6 +117,7 @@ def _css(C, fonts, compact):
 .ag-title {{ font-family:{serif}; font-weight:700; font-size:23pt;
   color:{C['navy']}; line-height:1.05; margin:2px 0 6px; }}
 .ag-sub {{ font-size:9pt; color:{C['muted']}; }}
+.ag-logo {{ margin:0 0 5mm 0; }}
 .ag-sec {{ font-family:{serif}; font-weight:700; font-size:13pt;
   color:{C['navy']}; margin:9px 0 5px; }}
 .ag-hero {{ margin-top:8px; background:{C['navy']}; color:#fff;
@@ -510,6 +512,13 @@ def page1(ctx):
     entete += "".join(f'<div class="ag-sub">{m}</div>'
                       for m in theme.marques_correction(d))
     declare = debit_declare_sans_courbe(d)
+    # R3 — le logo (société ou Taqinor) en rangée au-dessus du kicker, comme
+    # les autres couvertures (jamais à côté du titre, qu'il ferait replier) ;
+    # la page 1 garde une large réserve, les joints ``_qj`` absorbent.
+    logo = _logo.img_html(ctx.get("logo_clair") or "", "couverture",
+                          alt=ctx["ident"].get("brand_name") or "logo")
+    if logo:
+        entete = f'<div class="ag-logo">{logo}</div>{entete}'
     # AGC12 — un bloc argent absent n'empile plus deux respirations.
     argent = _argent(synthese, lg) or _depense_declaree(synthese, lg)
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'
@@ -1389,6 +1398,8 @@ def build_ctx(d):
                   "sans": theme.FONT_SANS},
         "ident": ident,
         "nom_societe": (d.get("entreprise") or {}).get("nom"),
+        # R3 — logo de la page 1 (fond clair) : société, sinon TAQINOR couleur.
+        "logo_clair": theme.logo_imprime_b64(d, sombre=False),
         # AMOT37 — le renderer peut IMPOSER une densité plus serrée quand
         # le contenu déborde de la bande de pied.
         "compact": max(densite_compacte(d), int(d.get("_compact_min") or 0)),

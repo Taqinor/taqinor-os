@@ -114,7 +114,7 @@ def _onepage_header_html():
             f'<div style="background:{_g.CN};padding:14px 24px;display:table;'
             'width:100%;table-layout:fixed;">'
             '<div style="display:table-cell;vertical-align:middle;width:50%;'
-            f'height:{h};">{_g.logo_html("80px")}</div>'
+            f'height:{h};">{_g.logo_html("onepage")}</div>'
             '<div style="display:table-cell;vertical-align:middle;width:50%;">'
             f'{ref_html}</div></div>')
     # A6 — platine BLANCHE derrière le code (aplat navy) et AUCUN arrondi sur
@@ -135,7 +135,7 @@ def _onepage_header_html():
         f'<div style="background:{_g.CN};padding:14px 24px;display:table;'
         'width:100%;table-layout:fixed;">'
         '<div style="display:table-cell;vertical-align:middle;width:26%;'
-        f'height:{h};">{_g.logo_html("80px")}</div>'
+        f'height:{h};">{_g.logo_html("onepage")}</div>'
         '<div style="display:table-cell;vertical-align:middle;width:48%;">'
         f'{qr_cell}</div>'
         '<div style="display:table-cell;vertical-align:middle;width:26%;">'

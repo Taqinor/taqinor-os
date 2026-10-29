@@ -11,6 +11,7 @@ Run:
         apps.ventes.tests.test_qx49_proposal_payload -v 2
 """
 import json
+import re
 import uuid
 from decimal import Decimal
 
@@ -163,7 +164,10 @@ class TestProposalPayloadModes(TestCase):
         # moteur C&I, il n'y a rien d'honnête à montrer.
         self.assertIsNone(p['mode_kpis']['taux_autoconso'])
         # RULE #4 — jamais de prix d'achat / marge dans tout le payload
-        blob = json.dumps(p)
+        # 29/10/2026 (#1146) — les empreintes sha256 du payload (``empreinte_contenu``,
+        # hex de 64 caractères qui dépend de la date du jour) peuvent contenir
+        # « 9999 » par hasard : on les neutralise avant de chercher le prix d'achat.
+        blob = re.sub(r'[0-9a-f]{64}', '<sha256>', json.dumps(p))
         self.assertNotIn('prix_achat', blob)
         self.assertNotIn('9999', blob)
 

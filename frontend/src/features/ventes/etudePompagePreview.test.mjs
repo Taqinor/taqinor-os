@@ -162,3 +162,20 @@ test('libellés de provenance', () => {
     'fiche lead — mesuré en visite (2026-09-15)')
   assert.equal(libelleProvenance(null), 'origine inconnue')
 })
+
+// AGRI-SITE (fondateur, 28/10/2026) — un devis agricole démarré d'un CLIENT
+// sans lead : le corps porte l'id du client (le serveur lit son site sur la
+// fiche) ; lead présent → les deux voyagent, le serveur fait primer le lead.
+test('site::test_client_sans_lead_transmis_au_serveur', () => {
+  const saisie = poserSaisie(POMPAGE_SAISIE_VIDE, 'mode_pompe', 'existante')
+  const base = { pompeDebit: '10', pompeHmt: '40', farmHmtStatic: '40', pompeCv: '7' }
+  const sansLead = construireCorpsPompage(etatPompageEcran(saisie, { ...base, clientId: '12' }))
+  assert.equal(sansLead.client, 12)
+  assert.equal('lead' in sansLead, false)
+  assert.deepEqual(sansLead.localisation, { ville: null, lat: null, lon: null })
+  const aucun = construireCorpsPompage(etatPompageEcran(saisie, { ...base, clientId: null }))
+  assert.equal('client' in aucun, false)
+  const avecLead = construireCorpsPompage(etatPompageEcran(saisie, { ...base, clientId: 12, leadId: 7 }))
+  assert.equal(avecLead.lead, 7)
+  assert.equal(avecLead.client, 12)
+})

@@ -184,14 +184,14 @@ describe('FacturerVenteDialog (VNT45)', () => {
   })
 
   it('montant_depasse_reste : sous le champ Montant + bandeau qui le nomme', async () => {
-    erreurPost(CONTRAT.erreurs_400.montant_depasse_reste, 400)
+    erreurPost(CONTRAT.erreurs_409.montant_depasse_reste, 409)
     const user = userEvent.setup()
     monter()
     await attendreApercu()
     await typer(user, 'Montant (MAD)', '99000')
     await user.click(screen.getByRole('button', { name: 'Créer la facture' }))
     const champ = screen.getByLabelText('Montant (MAD)')
-    const sous = await screen.findByText(CONTRAT.erreurs_400.montant_depasse_reste.detail)
+    const sous = await screen.findByText(CONTRAT.erreurs_409.montant_depasse_reste.detail)
     expect(sous.closest('p').id).toBe(champ.getAttribute('aria-describedby'))
     expect(screen.getByTestId('facturer-bandeau').textContent).toBe('Corrigez : Montant')
   })

@@ -31,6 +31,7 @@ from .generate_devis_premium import (
     _font_face,
 )
 from .montants import fmt_centimes_mad, pct_fr
+from . import logo as _logo
 import logging
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ body{{font-family:'DM Sans',sans-serif;font-size:10pt;color:{CG7};
 .serif{{font-family:'DM Serif Display',Georgia,serif;}}
 .hdr{{background:{CN};padding:20px 30px;display:flex;align-items:center;
   justify-content:space-between;}}
-.hdr-logo img{{height:42px;width:auto;object-fit:contain;display:block;}}
+.hdr-logo img{{{_logo.css_boite("entete")}}}
 .hdr-meta{{text-align:right;color:#FFFFFF;font-size:8pt;line-height:1.5;}}
 .hdr-meta .doc-kind{{color:{CA};font-weight:700;font-size:11pt;letter-spacing:.5px;}}
 .body{{flex:1;padding:26px 34px 18px;display:flex;flex-direction:column;}}
@@ -117,6 +118,12 @@ def _logo_block(ctx):
     """
     uri = ctx.get("logo_uri")
     if uri:
+        # R3 — même traitement que le devis (``quote_engine.logo``) : rogné,
+        # détouré, encre sombre en blanc sur l'en-tête navy ; une image
+        # illisible garde la balise d'origine.
+        b64 = _logo.societe_b64(uri, "sombre")
+        if b64:
+            return _logo.img_html(_logo.pour_role(b64, "entete"), "entete", alt="logo")
         return (f'<img src="{escape(uri, quote=True)}" alt="logo" '
                 f'style="height:42px;width:auto;object-fit:contain;'
                 f'display:block;">')
