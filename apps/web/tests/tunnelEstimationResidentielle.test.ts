@@ -7,7 +7,7 @@ import { creerContexte, type ConfigLocale } from '../src/lib/tunnel/contexte';
 import { creerDom } from '../src/lib/tunnel/dom';
 import { creerEtat, type EtatPage, type LocaleTunnel } from '../src/lib/tunnel/etat';
 import {
-  installerEstimationResidentielle, TEXTES_RESIDENTIEL, fmtNumLocale,
+  installerEstimationResidentielle, installerEstimationResidentielleSuivi, TEXTES_RESIDENTIEL, fmtNumLocale,
   type ConfigEstimationResidentielle, type ContexteEstimationResidentielle,
 } from '../src/lib/tunnel/estimationResidentielle';
 
@@ -145,6 +145,28 @@ describe('estimation résidentielle — branches et document', () => {
     const { ctx } = monter('fr', false, 1800);
     ctx.crochets.appeler('renderMonthlyChart', 0);
     expect(hid('mt-doc-chart-wrap')).toBe(true);
+  });
+
+  it('RWEB17-M16 — suivi : docEngaged au focus du formulaire et à l’impression ; facture → tranche puis recalcul', () => {
+    const { ctx, etat, appels } = monter('fr', true, 1800);
+    // Le gabarit commun n'a ni formulaire ni <select> de tranche : on les ajoute puis on rebranche
+    // le suivi (l'installateur est idempotent sur l'état, seuls des écouteurs s'ajoutent).
+    document.body.insertAdjacentHTML('beforeend', '<form id="mt-form"><input id="mt-name"></form><select id="mt-bill"><option value="x">x</option></select>');
+    ctx.crochets.installer('syncBillRangeFromExact', () => appels.push('tranche'));
+    installerEstimationResidentielleSuivi(ctx);
+    expect(etat.docEngaged).toBe(false);
+    document.getElementById('mt-name')!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    expect(etat.docEngaged).toBe(true);
+    etat.docEngaged = false;
+    document.getElementById('mt-print-estimate')!.click();
+    expect(etat.docEngaged).toBe(true);
+    appels.length = 0;
+    document.getElementById('mt-facture-hiver')!.dispatchEvent(new Event('input'));
+    expect(appels[0]).toBe('tranche');
+    expect(appels).toContain('beacon:contact:reached');
+    appels.length = 0;
+    document.getElementById('mt-bill')!.dispatchEvent(new Event('change'));
+    expect(appels).toContain('beacon:contact:reached');
   });
 
   it('carte KPI : valeur inconnue → carte masquée', () => {

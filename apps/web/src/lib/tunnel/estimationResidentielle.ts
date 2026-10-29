@@ -14,7 +14,8 @@
 // si absent), `langueActive` (parcours, seulement si `config.dateSuitLangue`),
 // `tryRoofSnapshot`, `updatePanels3dVisibility` (carte), `computeProEstimate`,
 // `computeAgricoleEstimate`, `renderAgricoleEstimate` (pro/agricole),
-// `hasReachedConsentStep`, `sendFunnelBeacon` (funnel).
+// `hasReachedConsentStep`, `sendFunnelBeacon` (funnel), `syncBillRangeFromExact`
+// (sélections — RWEB17-M16 : écouteur de la facture exacte, `installer…Suivi`).
 // CROCHETS INSCRITS ICI : `announceEstimate`, `showEstimateTeaser`, `setCard`,
 // `renderMonthlyChart`, `fillDocChrome`, `resetDocZones`, `computeEstimate`.
 //
@@ -407,6 +408,21 @@ function construireResidentiel(ctx: ContexteEstimationResidentielle) {
     },
     brancherZones: () => crochets.installer('resetDocZones', resetDocZones),
     brancherCalcul: () => crochets.installer('computeEstimate', computeEstimate),
+    // RWEB17-M16 — repris de la page (FR ex-l. 4181-4192, aucun module ne les portait) :
+    // `docEngaged` (possédé ici) et le recalcul à la volée sur la facture.
+    brancherSuivi: () => {
+      // QX — « engagé » : le visiteur remplit déjà le formulaire de contact ou imprime son
+      // document — l'offre WhatsApp automatique ne doit alors JAMAIS l'interrompre.
+      $('mt-form')?.addEventListener('focusin', () => { etat.docEngaged = true; });
+      $('mt-print-estimate')?.addEventListener('click', () => { etat.docEngaged = true; }, { capture: true });
+      // Recalcul si le visiteur revient corriger sa facture (sans relancer l'offre WhatsApp) ; la
+      // saisie du montant exact synchronise d'abord la tranche dérivée (« tranche redondante »).
+      $('mt-facture-hiver')?.addEventListener('input', () => {
+        h('syncBillRangeFromExact');
+        computeEstimate();
+      });
+      $('mt-bill')?.addEventListener('change', () => computeEstimate());
+    },
   };
 }
 
@@ -430,9 +446,14 @@ export function installerEstimationResidentielleZones(ctx: ContexteEstimationRes
 export function installerEstimationResidentielleCalcul(ctx: ContexteEstimationResidentielle): void {
   residentielDe(ctx).brancherCalcul();
 }
-/** Les trois plages, dans l'ordre de la page. */
+/** RWEB17-M16 — FR ex-l. 4181-4192 : `docEngaged` (focusin / impression) et recalcul sur la facture. */
+export function installerEstimationResidentielleSuivi(ctx: ContexteEstimationResidentielle): void {
+  residentielDe(ctx).brancherSuivi();
+}
+/** Les quatre plages, dans l'ordre de la page. */
 export function installerEstimationResidentielle(ctx: ContexteEstimationResidentielle): void {
   installerEstimationResidentielleAffichage(ctx);
   installerEstimationResidentielleZones(ctx);
   installerEstimationResidentielleCalcul(ctx);
+  installerEstimationResidentielleSuivi(ctx);
 }

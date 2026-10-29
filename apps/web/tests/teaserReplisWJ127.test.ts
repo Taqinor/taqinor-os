@@ -78,10 +78,12 @@ describe.each(Object.entries(PAGES))('WJ127 — %s : les chemins edge basculent 
     expect(src).toContain("type VarianteTeaser = 'standard' | 'etude' | 'rappel';");
     expect(src).toContain("function showEstimateTeaser(m: string, variante: VarianteTeaser = 'standard')");
     // Le chemin nominal ne montre QUE l'accroche toit ou pompage.
-    expect(src).toContain("if (roofHook) roofHook.hidden = isAgri || variante !== 'standard';");
-    expect(src).toContain("if (pumpHook) pumpHook.hidden = !isAgri || variante !== 'standard';");
-    expect(src).toContain("if (etudeHook) etudeHook.hidden = variante !== 'etude';");
-    expect(src).toContain("if (rappelHook) rappelHook.hidden = variante !== 'rappel';");
+    // RWEB17-M16 — forme de lib/tunnel/estimationResidentielle.ts (`standard` = variante === 'standard').
+    expect(src).toContain("const standard = variante === 'standard';");
+    expect(src).toContain("cacher('mt-teaser-hook-roof', isAgri || !standard);");
+    expect(src).toContain("cacher('mt-teaser-hook-pump', !isAgri || !standard);");
+    expect(src).toContain("cacher('mt-teaser-hook-etude', variante !== 'etude');");
+    expect(src).toContain("cacher('mt-teaser-hook-rappel', variante !== 'rappel');");
   });
 
   it("les deux chemins « trop grand » C&I et le résidentiel appellent la variante « étude »", () => {

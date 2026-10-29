@@ -67,9 +67,12 @@ export function lireLibProposition(): string {
  * RWEB17-M11 — même relecture pour les modules `lib/tunnel/*` (`etat.<x>`, `crochets.appeler('<f>'`, et
  * leurs alias locaux `appeler('<f>'`, `h('<f>'`, `appelerCrochet(ctx, '<f>'`).
  * RWEB17-M12 — le `Document` injecté des modules (`doc.`, `ctx.dom.doc.`) se relit `document.`.
+ * RWEB17-M16 — l'alias `GATED` des sections d'estimation (= `config.estimationGatee`, le
+ * `PUBLIC_ESTIMATE_GATED` de la page) se relit `PUBLIC_ESTIMATE_GATED`.
  */
 export function normaliserIndirectionsTunnel(src: string): string {
   return src
+    .replace(/\bGATED\b/g, 'PUBLIC_ESTIMATE_GATED')
     .replace(/\b(?:ctx\.)?(?:dom\.)?doc\./g, 'document.')
     .replace(/\b(?:ctx\.)?etat\./g, '')
     .replace(/(?:\b(?:ctx\.)?crochets\.appeler|\bappeler|\bh)\('(\w+)'(?:, )?/g, '$1(')

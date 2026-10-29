@@ -148,8 +148,8 @@ describe.each(LOCALES)('WJ124 — panneau agricole enrichi dans mon-toit.astro (
   });
 
   it('n’expose PAS le besoin dimensionnant avant l’envoi (garde WJ125)', () => {
-    // RWEB17-M15 — lib/tunnel/estimationPro.ts : `GATED` = config.estimationGatee (PUBLIC_ESTIMATE_GATED de la page).
-    expect(src).toContain('agroPeak == null || GATED');
+    // RWEB17-M15 — dans lib/tunnel/estimationPro.ts, `GATED` (relu PUBLIC_ESTIMATE_GATED) vient de la page.
+    expect(src).toContain('agroPeak == null || PUBLIC_ESTIMATE_GATED');
     expect(src).toContain('estimationGatee: PUBLIC_ESTIMATE_GATED');
   });
 

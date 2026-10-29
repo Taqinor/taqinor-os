@@ -69,13 +69,11 @@ describe.each(Object.entries(PAGES))('WJ125 — %s mon-toit.astro : rendu public
     const start = src.indexOf('function showEstimateTeaser(');
     expect(start).toBeGreaterThan(-1);
     const fn = src.slice(start, start + 900);
-    expect(fn).toContain("$('mt-doc')");
-    expect(fn).toContain("$('mt-nearest-install')");
-    expect(fn).toContain("$('mt-cost-of-waiting')");
-    expect(fn).toContain("$('mt-print-estimate')");
-    expect(fn).toContain("$('mt-teaser')");
+    // RWEB17-M16 — lib/tunnel/estimationResidentielle.ts masque les zones d'une boucle `cacher(id, true)`
+    // puis révèle le teaser par `cacher('mt-teaser', false)`.
+    expect(fn).toContain("for (const id of ['mt-doc', 'mt-print-estimate', 'mt-nearest-install', 'mt-cost-of-waiting']) cacher(id, true);");
     // révèle le teaser, masque le reste.
-    expect(fn).toContain('teaser.hidden = false');
+    expect(fn).toContain("cacher('mt-teaser', false)");
   });
 
   it('l\'aperçu 3D est re-masquable d\'un drapeau et le point de contrôle unique tient (PUBLIC_3D_PREVIEW)', () => {
