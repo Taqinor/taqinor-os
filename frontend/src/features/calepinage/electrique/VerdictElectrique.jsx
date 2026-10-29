@@ -1,9 +1,12 @@
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ShieldCheck } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
-import { Badge, Card, Spinner } from '../../../ui'
+import { Badge, Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
+import { useHasPermission } from '../../../hooks/useHasPermission'
+import { messageRefus } from '../commun/refusServeur'
 import { PARAM_ONGLET, ongletParCle } from '../atelier/onglets'
 import { grouperMotifs, libelleStatut, motifsRefusants, statutRefuse, tonStatut } from './VerdictElectrique.helpers'
 
@@ -119,6 +122,150 @@ function Motif({ motif }) {
           </p>
         )}
     </li>
+  )
+}
+
+/* ============================================================================
+   ACAL284 — LES DÉROGATIONS (CALX215), LUES ET POSÉES ICI.
+   ----------------------------------------------------------------------------
+   `GET resultat/` sert `derogations` [{code, libelle, auteur, horodatage,
+   motif, texte}] et `ecarts_longueur` [{longueur, longueur_dossier, ecart,
+   par_pan}] (contrat `calepinage_resultat.json`, listes VIDES jamais absentes).
+   Une alerte NON bloquante (`electrique.verdicts[]` : conforme false, bloquant
+   false) peut être PASSÉE OUTRE par un porteur de `calepinage_approuver`
+   (défaut gravé) : motif obligatoire, POST `entree-electrique/`
+   `{derogations: [{code, motif}]}` — l'auteur et l'instant sont posés par le
+   SERVEUR. Un refus (400 `derogations.N.motif`, 403, 409) est affiché mot
+   pour mot (décodeur commun). Rien n'est gardé localement : le fil est relu.
+   ========================================================================== */
+
+/** « 12/10/2026 à 09:30 » — la date du SERVEUR (ISO avec fuseau), lisible. */
+function dateLisible(iso) {
+  const d = iso ? new Date(iso) : null
+  if (!d || Number.isNaN(d.getTime())) return iso || ''
+  return d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+const phraseDerogation = (d) => `Passée outre par ${d.auteur || '—'} le ${dateLisible(d.horodatage)}`
+  + `${d.motif ? ` — ${d.motif}` : ''}`
+
+function AlertePassable({ alerte, derogation, peutDeroger, onPasserOutre }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [motif, setMotif] = useState('')
+  const [envoi, setEnvoi] = useState(false)
+  const [refus, setRefus] = useState(null)
+  const confirmer = async () => {
+    if (!motif.trim() || envoi) return
+    setEnvoi(true)
+    setRefus(null)
+    const erreur = await onPasserOutre(alerte.code, motif.trim())
+    setEnvoi(false)
+    if (erreur) setRefus(erreur)
+    else { setOuvert(false); setMotif('') }
+  }
+  return (
+    <li className="flex flex-col gap-1 text-sm" data-testid={`acal284-alerte-${alerte.code}`}>
+      <span>{alerte.libelle}</span>
+      {derogation ? (
+        <span className="text-xs text-muted-foreground" data-testid={`acal284-derogation-${alerte.code}`}>
+          {phraseDerogation(derogation)}
+        </span>
+      ) : !peutDeroger ? (
+        <span className="text-xs text-muted-foreground">Dérogation réservée aux approbateurs</span>
+      ) : ouvert ? (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground" htmlFor={`acal284-motif-${alerte.code}`}>
+            Motif de la dérogation (obligatoire)
+          </label>
+          <textarea
+            id={`acal284-motif-${alerte.code}`}
+            value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            className="w-full rounded border border-input bg-card px-2 py-1 text-sm"
+          />
+          <Button type="button" size="sm" variant="outline" disabled={!motif.trim() || envoi}
+            data-testid={`acal284-confirmer-${alerte.code}`} onClick={confirmer}>
+            Confirmer la dérogation
+          </Button>
+          {refus && (
+            <p role="alert" className="text-xs text-destructive" data-testid={`acal284-refus-${alerte.code}`}>{refus}</p>
+          )}
+        </div>
+      ) : (
+        <Button type="button" size="sm" variant="outline" data-testid={`acal284-passer-outre-${alerte.code}`}
+          onClick={() => setOuvert(true)}>
+          Passer outre
+        </Button>
+      )}
+    </li>
+  )
+}
+
+function BlocDerogations({ calepinageId }) {
+  const peutDeroger = useHasPermission('calepinage_approuver')
+  const [resultat, setResultat] = useState(null)
+  const relire = useCallback(() => {
+    if (!calepinageId) return
+    Promise.resolve()
+      .then(() => calepinageApi.calepinages.resultat(calepinageId))
+      .then((res) => setResultat(res?.data ?? null))
+      .catch(() => {})
+  }, [calepinageId])
+  useEffect(() => { relire() }, [relire])
+
+  const derogations = Array.isArray(resultat?.derogations) ? resultat.derogations : []
+  const ecarts = Array.isArray(resultat?.ecarts_longueur) ? resultat.ecarts_longueur : []
+  const verdicts = Array.isArray(resultat?.electrique?.verdicts) ? resultat.electrique.verdicts : []
+  const alertes = verdicts.filter((v) => v && v.conforme === false && !v.bloquant)
+  const codesAlertes = new Set(alertes.map((a) => a.code))
+  const orphelines = derogations.filter((d) => !codesAlertes.has(d.code))
+  if (alertes.length === 0 && derogations.length === 0 && ecarts.length === 0) return null
+
+  const passerOutre = async (code, motif) => {
+    try {
+      await calepinageApi.calepinages.enregistrerEntreeElectrique(calepinageId, { derogations: [{ code, motif }] })
+      relire()
+      return null
+    } catch (e) {
+      return messageRefus(e, 'La dérogation a été refusée par le serveur.')
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-2 border-t border-border/60 pt-3" data-testid="acal284-derogations">
+      {alertes.length > 0 && (
+        <>
+          <h3 className="text-sm font-semibold">Alertes non bloquantes</h3>
+          <ul className="flex flex-col gap-2">
+            {alertes.map((a) => (
+              <AlertePassable key={a.code} alerte={a} peutDeroger={peutDeroger}
+                derogation={derogations.find((d) => d.code === a.code)} onPasserOutre={passerOutre} />
+            ))}
+          </ul>
+        </>
+      )}
+      {orphelines.length > 0 && (
+        <div data-testid="acal284-derogations-enregistrees">
+          <h3 className="text-sm font-semibold">Dérogations enregistrées</h3>
+          <ul className="flex flex-col gap-1">
+            {orphelines.map((d, i) => (
+              <li key={`${d.code}-${i}`} className="text-sm">
+                {(d.libelle || d.code)} — {phraseDerogation(d)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {ecarts.length > 0 && (
+        <ul className="flex flex-col gap-1" data-testid="acal284-ecarts-longueur">
+          {ecarts.map((e, i) => (
+            <li key={i} className="text-xs text-muted-foreground">
+              {`Longueur de chaîne ${e.longueur} m — dossier ${e.longueur_dossier} m (écart ${e.ecart} m)`}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -266,6 +413,7 @@ export default function VerdictElectrique({ calepinageId } = {}) {
                 ))}
             </>
           )}
+        <BlocDerogations calepinageId={id} />
       </Card>
     </>
   )
