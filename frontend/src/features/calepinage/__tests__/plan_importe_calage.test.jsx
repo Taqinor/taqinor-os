@@ -276,6 +276,17 @@ describe('ACAL73 — une image de plan se pose comme fond de l’atelier', () =>
     await waitFor(() => expect(layout).toHaveBeenCalledTimes(2))
   })
 
+  it('ACAL280 — verrou 409 : le motif serveur, jamais « a changé ailleurs »', async () => {
+    const utilisateur = userEvent.setup()
+    envoyerFondPlan.mockRejectedValue({ response: { status: 409, data: { roof_layout: ['Ce devis est accepté : révisez-le (V2) pour modifier sa conception.'] } } })
+    rendre()
+    await deposerImage(utilisateur)
+    await utilisateur.click(screen.getByRole('button', { name: 'Poser comme fond de l’atelier' }))
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent('révisez-le (V2)')
+    expect(alerte).not.toHaveTextContent('changé ailleurs')
+  })
+
   it('document illisible : rien n’est envoyé', async () => {
     const utilisateur = userEvent.setup()
     layout.mockRejectedValue(new Error('500'))

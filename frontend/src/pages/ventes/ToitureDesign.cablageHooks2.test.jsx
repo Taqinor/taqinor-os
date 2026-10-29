@@ -84,6 +84,7 @@ describe('CALX132 câblage — la hauteur OSM est PROPOSÉE au panneau Bâtiment
       ville: 'Casablanca',
       roof_outline: null,
       roof_point: { lat: 33.59, lng: -7.6 },
+      repere_toit: { pin: { lat: 33.59, lng: -7.6 }, source: 'roof_point', contour_utilisable: false },
       latitude: 33.59,
       longitude: -7.6,
     }

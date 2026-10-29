@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import useDocumentCalepinage from './useDocumentCalepinage'
+import useDocumentCalepinage, { useLatitudeDuSite } from './useDocumentCalepinage'
 import SunDiagram from './SunDiagram'
 import { LegendeCourbes } from './LegendeCourbes'
 import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
@@ -93,7 +93,8 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   const zones = Array.isArray(layout?.zones) ? layout.zones : []
   const zone = zones.find((z) => z.id === panChoisi)
     ?? zones.find((z) => z.id === layout?.activeAreaId) ?? zones[0] ?? null
-  const latitudeDeg = typeof layout?.pin?.lat === 'number' ? layout.pin.lat : null
+  // ACAL251 — latitude de l'épingle du document, sinon du repère servi (détail).
+  const latitudeDeg = useLatitudeDuSite(calepinageId, layout)
   const horizonPoints = Array.isArray(layout?.horizonProfile?.points) ? layout.horizonProfile.points : []
 
   // CALX118 — le soleil de SCÈNE (contrat CALX88) : `scene` absent ⇒ le défaut

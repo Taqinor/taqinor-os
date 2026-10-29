@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { messageRefus } from './commun/refusServeur'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Columns3, LayoutGrid, Plus, Search, X } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
@@ -54,7 +55,8 @@ import { STATUTS_CALEPINAGE } from './CalepinageList.helpers'
 const rattachementDe = (c) => c?.client_apercu?.nom || c?.client?.nom || c?.lead?.nom
   || 'Sans rattachement'
 
-const errMsg = (e, repli) => e?.response?.data?.detail || repli
+// ACAL279 — LE décodeur commun des refus (motif serveur, sinon le repli).
+const errMsg = messageRefus
 
 /* CALX32 — LES 4 CHAMPS RÉELLEMENT SERVIS PAR LA LISTE (`ordering_fields`,
    `views/calepinages.py:173-174`). En inventer un cinquième produirait un

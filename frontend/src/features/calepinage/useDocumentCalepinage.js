@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import calepinageApi from '../../api/calepinageApi'
+import { lireConflit } from './conflitEcriture'
+import { messageRefus } from './commun/refusServeur'
 
 /* ============================================================================
    ACAL24 (C-ACAL-044) — LE DOCUMENT DU CALEPINAGE, LU UNE FOIS, JAMAIS INVENTÉ.
@@ -121,11 +123,47 @@ export async function ecrireSection({
     }
     return { ok: true, empreinte: apres }
   } catch (e) {
-    const conflit = e?.response?.status === 409
-    const donnees = e?.response?.data
-    // `detail` (jeton périmé) ou le refus métier du verrou (`roof_layout`).
-    const refus = donnees?.detail ?? (Array.isArray(donnees?.roof_layout)
-      ? donnees.roof_layout[0] : donnees?.roof_layout)
-    return { ok: false, conflit, motif: typeof refus === 'string' ? refus : '' }
+    // ACAL280 — DEUX 409 : jeton périmé (`document_modifie` → relire) ≠ verrou
+    // (devis accepté : SON motif, jamais « a changé ailleurs ») ; un 400 dit le
+    // motif de son champ (décodeur commun). Jamais un message générique quand
+    // le serveur a parlé.
+    const lu = lireConflit(e)
+    const conflit = lu?.documentModifie === true
+    return { ok: false, conflit, motif: (conflit ? '' : lu?.motif) || messageRefus(e) }
   }
+}
+
+/** Une latitude lisible (nombre fini dans [-90, 90]), sinon `null`. */
+function latitude(brut) {
+  if (brut === null || brut === undefined || brut === '') return null
+  const v = Number(brut)
+  return Number.isFinite(v) && v >= -90 && v <= 90 ? v : null
+}
+
+/**
+ * ACAL251 — LA latitude du site pour les onglets Horizon / Course du soleil :
+ * celle de l'épingle du document (`pin.lat`) ; à défaut (calepinage NEUF, aucun
+ * pin écrit), celle du repère servi par le détail
+ * (`contexte_geographique.pin`, crm.selectors.repere_toit). `null` sinon —
+ * jamais une latitude devinée.
+ */
+export function useLatitudeDuSite(calepinageId, document) {
+  const duDocument = latitude(document?.pin?.lat)
+  const aRelire = document != null && duDocument === null && !!calepinageId
+  const [repli, setRepli] = useState({ cle: null, valeur: null })
+  useEffect(() => {
+    if (!aRelire) return undefined
+    let annule = false
+    Promise.resolve()
+      .then(() => calepinageApi.calepinages.get(calepinageId))
+      .then((res) => {
+        if (!annule) {
+          setRepli({ cle: calepinageId, valeur: latitude(res?.data?.contexte_geographique?.pin?.lat) })
+        }
+      })
+      .catch(() => {})
+    return () => { annule = true }
+  }, [aRelire, calepinageId])
+  if (duDocument !== null) return duDocument
+  return repli.cle === calepinageId ? repli.valeur : null
 }

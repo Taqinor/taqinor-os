@@ -793,7 +793,7 @@ SOURCE_ROOF_POINT = 'lead_roof_point'   # le client a POINTÉ son bâtiment
 SOURCE_GPS_LEAD = 'lead_gps'            # coordonnées GPS saisies sur le lead
 
 
-def contexte_geographique(calepinage):
+def contexte_geographique(calepinage, *, avec_repere=False):
     """CAL15 — de quoi PRÉ-REMPLIR la carte : pin, contour, adresse, ville.
 
     Les cinq clés sont TOUJOURS présentes, à ``None`` quand la donnée est
@@ -815,6 +815,12 @@ def contexte_geographique(calepinage):
     Les lectures crm passent par ``apps.crm.selectors`` uniquement (jamais un
     import de ``apps.crm.models``), et tout est borné à la société du
     calepinage.
+
+    ACAL250 — ``avec_repere=True`` ajoute la clé ``contour_utilisable`` (le
+    drapeau de ``repere_toit``, jamais jeté : faux ⇒ le contour client n'est
+    qu'un calque, aucune graine éditable). Sans l'argument, les cinq clés
+    publiques restent exactement celles du détail (contrat
+    ``calepinage_detail.json``).
     """
     from apps.crm.selectors import (
         REPERE_SOURCE_GPS,
@@ -824,6 +830,8 @@ def contexte_geographique(calepinage):
     )
 
     vide = {cle: None for cle in CLES_CONTEXTE_GEO}
+    if avec_repere:
+        vide['contour_utilisable'] = False
     if calepinage is None:
         return vide
     company = getattr(calepinage, 'company', None)
@@ -839,7 +847,9 @@ def contexte_geographique(calepinage):
         contexte['ville'] = _texte(getattr(lead, 'ville', None))
         contexte['outline'] = _contour(getattr(lead, 'roof_outline', None))
         # QJR598 — LE repère toit du lead, lu chez crm (jamais recopié ici).
-        pin, source, _contour_utilisable = repere_toit(lead)
+        pin, source, contour_utilisable = repere_toit(lead)
+        if avec_repere:
+            contexte['contour_utilisable'] = bool(contour_utilisable)
         if pin is not None:
             contexte['pin'] = pin
             contexte['source'] = (SOURCE_GPS_LEAD

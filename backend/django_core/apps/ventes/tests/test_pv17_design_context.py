@@ -32,7 +32,9 @@ CLES_RACINE = {'devis', 'geometrie', 'cible', 'carte', 'modifiable',
 CLES_DEVIS = {'id', 'reference', 'statut', 'mode_installation', 'lead',
               'client', 'client_nom', 'client_telephone', 'client_ville',
               'client_adresse'}
-CLES_GEOMETRIE = {'source', 'roof_layout', 'pin', 'outline', 'contour_client'}
+# ACAL250 — le drapeau du repère toit est publié (contour_utilisable, source_repere).
+CLES_GEOMETRIE = {'source', 'roof_layout', 'pin', 'outline', 'contour_client',
+                  'contour_utilisable', 'source_repere'}
 CLES_CIBLE = {'panneaux', 'kwc', 'panel_watt', 'scenario', 'batterie',
               'avertissements', 'bill_kwh'}
 CLES_CARTE = {'available', 'maptilerKey', 'mapboxToken'}

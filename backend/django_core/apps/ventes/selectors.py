@@ -22,7 +22,7 @@ __all__ = [
     'analyse_facturation', 'annotations_engagement_proposition', 'ca_devis_factures_par_clients',
     'calepinage_du_devis', 'carnet_commande_par_mois', 'classer_produit_nom',
     'comparaison_calepinage_devis', 'compatibilites_du_produit', 'comportement_paiement',
-    'compter_factures', 'contexte_conception_devis', 'date_encaissement_prevue',
+    'compter_factures', 'config_carte', 'contexte_conception_devis', 'date_encaissement_prevue',
     'dates_declencheurs', 'declencheurs_actifs', 'devis_a_facturer',
     'devis_accepted_totals_by_lead', 'devis_action_requise', 'devis_brouillon_pour_layout',
     'devis_concevables', 'devis_deja_facture', 'devis_du_client_portail',
@@ -1743,6 +1743,7 @@ from .selectors_calepinage import (  # noqa: E402 — ré-export (SPL144) (D-ENF
     comparaison_calepinage_devis,
     devis_concevables,
     contexte_conception_devis,
+    config_carte,
 )
 
 
