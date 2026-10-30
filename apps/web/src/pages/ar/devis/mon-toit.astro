@@ -117,6 +117,16 @@ import DevisMonToitDivFEAA from '../../../components/blocs/DevisMonToitDivFEAA.a
 import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.astro';
 import DevisMonToitLi1880 from '../../../components/blocs/DevisMonToitLi1880.astro';
 import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMonToitTransitionOpacity10D0.astro';
+import '../../../styles/mon-toit-doc.css';
+import MonToitPart01 from '../../../components/blocs/MonToitPart01.astro';
+import MonToitPart02 from '../../../components/blocs/MonToitPart02.astro';
+import MonToitPart03 from '../../../components/blocs/MonToitPart03.astro';
+import MonToitPart04 from '../../../components/blocs/MonToitPart04.astro';
+import MonToitPart05 from '../../../components/blocs/MonToitPart05.astro';
+import MonToitPart06 from '../../../components/blocs/MonToitPart06.astro';
+import MonToitPart07 from '../../../components/blocs/MonToitPart07.astro';
+import MonToitPart08 from '../../../components/blocs/MonToitPart08.astro';
+import MonToitPart09 from '../../../components/blocs/MonToitPart09.astro';
 ---
 
 <Layout
@@ -173,13 +183,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
       </div>
 
       <!-- WJ6/WJ58 — microcopie « pas de pression » + promesse de délai honnête. -->
-      <p class="mt-3 text-sm text-lune-soft" data-i18n
-        data-fr="Réponse WhatsApp sous 1 h, 7j/7 · pas d'appels commerciaux."
-        data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7 · بدون مكالمات تجارية.">
-        Réponse WhatsApp sous 1 h, 7j/7 · pas d'appels commerciaux.
-      </p>
-
-      <!-- WJ6 — barre de progression étiquetée -->
+      <MonToitPart05 />
       <ol id="mt-progress" class="mt-6 grid grid-cols-2 gap-2" aria-label="التقدم">
         <DevisMonToitLi1880 STEPS={STEPS} />
       </ol>
@@ -548,14 +552,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
                 <span id="mt-cc-bill-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
               </label>
             </div>
-
-            <!-- Questions PAR CATÉGORIE retirées du tunnel (coupe fondateur
-                 18/08) : aucune n'entrait dans l'estimation — estimatePro ne lit
-                 que la CATÉGORIE elle-même (day-share par archétype), la facture,
-                 le raccordement, l'activité, les équipes et la surface. Elles
-                 partaient au webhook sans changer un seul chiffre affiché ; le
-                 commercial les complète désormais dans l'ERP. -->
-
+<MonToitPart01 />
             <p class="text-xs text-lune-faint">
               تقدير إرشادي (الاستهلاك الذاتي، القانون 82-21). تُنجَز دراسة مفصّلة على يد مهندس.
             </p>
@@ -658,12 +655,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
               <input id="mt-heures-pompage" name="heuresPompage" type="range" min="3" max="12" step="1" value="7"
                 class="mt-2 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/15 accent-brass-400" />
             </label>
-
-            <!-- « Votre irrigation » retirée du tunnel (coupe fondateur 18/08) —
-                 le commercial la complète dans l'ERP. Le moteur eau FAO-56
-                 retombe sur son efficience par défaut (IRRIGATION_EFFICIENCY_DEFAUT),
-                 exactement comme pour un visiteur qui ne répondait pas. -->
-
+<MonToitPart09 />
             <!-- AGW405 — دعم FDA: لا نسبة مئوية ولا وعد بمواكبة الملف (قرار Q22: لا وعد).
                  المصدر: دليل FDA طبعة 2024، ص 20-23 (casainvest.ma)، اطُّلع عليه أكتوبر 2026. -->
             <p id="mt-fda-note" class="text-xs text-lune-faint">
@@ -675,12 +667,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
 
           <!-- WJ124 — الزراعة + المساحة (« استغلاليتكم » سابقاً) نُقلت إلى أعلى
                اللوحة (صارت تقود محرّك الماء). -->
-
-          <!-- Carburant — SEUL rescapé de l'ancien accordéon « Votre pompe
-               actuelle » : la dépense mensuelle alimente RÉELLEMENT l'économie
-               carburant calculée par estimateAgricole. « Énergie actuelle »
-               (pompeActuelle) et « Puissance (CV) » sont retirées du tunnel
-               (coupe fondateur 18/08) — le commercial les complète dans l'ERP. -->
+<MonToitPart07 />
           <div class="cine-card mt-5 space-y-5 p-5 sm:p-6">
             <label class="block text-sm text-lune-soft">
               <span>الوقود (درهم/شهر)</span>
@@ -1024,12 +1011,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
              (« étude complète et personnalisée ») vit dans la carte teaser ci-dessus. -->
           <!-- W342 — « L'installation la plus proche de chez vous » : calculée
                côté client (haversine sur REALISATIONS) à partir du repère GPS. -->
-          <div id="mt-nearest-install" hidden class="mt-4 border border-brass-400/25 bg-white/5 p-3 text-sm text-white">
-            <p class="tech-label text-brass-300" data-i18n data-fr="L'installation la plus proche de chez vous" data-ar="أقرب تركيب من منزلكم">L'installation la plus proche de chez vous</p>
-            <p class="mt-1"><span id="mt-nearest-install-text">—</span></p>
-            <a id="mt-nearest-install-link" href="/realisations" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline" data-i18n data-fr="Voir cette réalisation" data-ar="مشاهدة هذا الإنجاز">Voir cette réalisation</a>
-          </div>
-
+          <MonToitPart08 />
           <!-- W360 — le coût honnête de l'attente : DÉRIVÉ de la même fourchette
                d'économies déjà calculée (savingsMonthlyLow), jamais un chiffre inventé. -->
           <p id="mt-cost-of-waiting" hidden class="mt-2 text-xs text-lune-soft">
@@ -1090,13 +1072,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
           </div>
 
           <label class="block text-sm text-lune-soft">
-            <span data-i18n data-fr="Adresse / ville" data-ar="العنوان / المدينة">Adresse / ville</span>
-            <!-- ORDRE FONDATEUR (24/08/2026) — quand la position GPS est déjà posée
-                 (repère carte), l'adresse devient SECONDAIRE : elle reste visible (elle
-                 sert au courrier) mais n'est plus obligatoire. `required`/`aria-required`
-                 sont mis à jour dynamiquement par syncCityRequirement() (jamais retirés
-                 en dur ici — un visiteur SANS repère doit toujours voir le champ requis). -->
-            <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
+            <MonToitPart03 />
               aria-describedby="mt-city-err mt-city-hint" placeholder="مقروء من الخريطة — قابل للتعديل عند الحاجة" class={`${inputClass} mt-1`} />
             <span id="mt-city-hint" hidden class="mt-1 block text-xs text-lune-faint" data-i18n
               data-fr="Facultatif — votre position GPS est déjà enregistrée. L'adresse reste utile pour le courrier."
@@ -1112,12 +1088,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
             <input id="mt-email" name="email" type="email" inputmode="email" autocomplete="email"
               placeholder="vous@exemple.com" dir="ltr" class={`${inputClass} mt-1`} />
           </label>
-
-          <!-- Raison sociale — DÉPLACÉE ici depuis l'accordéon « Votre contexte »
-               du panneau professionnel (coupe fondateur 18/08) : elle ne nourrit
-               AUCUN calcul, sa place est donc sur l'écran contact, avec le reste
-               des coordonnées. Mêmes id/name — contrat webhook inchangé. Affichée
-               uniquement pour un profil professionnel (syncRaisonSociale). -->
+<MonToitPart06 />
           <label id="mt-raison-sociale-wrap" hidden class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Raison sociale" data-ar="التسمية الاجتماعية">Raison sociale</span>
             <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
@@ -1227,13 +1198,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
                     </label>
                     <input id="mt-equip-chauffe-eau-kw" type="number" min="0" step="any" inputmode="decimal"
                       placeholder="2.4"
-                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
-                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
-                      data-fr="Il chauffe surtout quand ? (facultatif)"
-                      data-ar="متى يسخّن أكثر؟ (اختياري)">
-                      Il chauffe surtout quand&nbsp;? (facultatif)
-                    </label>
-                    <select id="mt-equip-chauffe-eau-creneau"
+                      <MonToitPart04 />
                       class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
                       <option value="">—</option>
                       <option value="matin">صباحاً</option>
@@ -1267,13 +1232,7 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
                     </label>
                     <input id="mt-equip-ve-kw" type="number" min="0" step="any" inputmode="decimal"
                       placeholder="7.4"
-                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
-                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
-                      data-fr="Vous rechargez surtout quand ? (facultatif)"
-                      data-ar="متى تشحنون أكثر؟ (اختياري)">
-                      Vous rechargez surtout quand&nbsp;? (facultatif)
-                    </label>
-                    <select id="mt-equip-ve-creneau"
+                      <MonToitPart02 />
                       class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
                       <option value="">—</option>
                       <option value="nuit">ليلاً</option>
@@ -1628,327 +1587,19 @@ import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMo
      `dir=rtl` du document ; propriétés logiques (border-inline-start, text-align:end)
      et valeurs numériques isolées `direction:ltr` pour lire correctement en RTL. ===== -->
 <style is:global>
-  @font-face {
-    font-family: 'DM Serif Display';
-    src: url('/fonts/dm-serif-display-400.woff2') format('woff2');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
-  @font-face {
-    font-family: 'DM Sans';
-    src: url('/fonts/dm-sans-400.woff2') format('woff2');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
-  @font-face {
-    font-family: 'DM Sans';
-    src: url('/fonts/dm-sans-700.woff2') format('woff2');
-    font-weight: 700;
-    font-style: normal;
-    font-display: swap;
-  }
-
-  .mt-doc {
-    max-width: 800px;
-    margin-inline: auto;
-    background: #ffffff;
-    color: #1f2937;
-    font-family: 'DM Sans', 'Hanken Grotesk', system-ui, sans-serif;
-    font-size: 13.5px;
-    line-height: 1.55;
-    border-radius: 6px;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.4), 0 14px 44px rgb(0 0 0 / 0.5);
-  }
-  .mt-doc-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
-    background: #1a2b4a;
-    border-bottom: 2.5px solid #f5a623;
-    padding: 20px 26px 16px;
-  }
-  .mt-doc-title {
-    font-family: 'DM Serif Display', Georgia, serif;
-    font-size: 25px;
-    line-height: 1.15;
-    color: #ffffff;
-    margin-top: 8px;
-  }
-  .mt-doc-subtitle {
-    color: #f5a623;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    margin-top: 2px;
-  }
-  .mt-doc-headmeta {
+  /* AR — surcharges logiques (RTL) de la feuille partagée styles/mon-toit-doc.css : bord de début, valeurs numériques isolées LTR. */
+  .mt-doc .mt-doc-headmeta {
     text-align: end;
-    font-size: 10.5px;
-    color: #cdd5e2;
-    line-height: 1.7;
-    flex: none;
   }
-  .mt-doc-body {
-    padding: 20px 26px 24px;
-    display: grid;
-    gap: 16px;
-  }
-  .mt-doc-meta {
-    font-size: 12px;
-    color: #6b7280;
-    border-bottom: 1px solid #eff1f4;
-    padding-bottom: 10px;
-  }
-  .mt-doc-roof {
-    justify-self: start;
-  }
-  .mt-doc-roof img {
-    width: 180px;
-    height: 180px;
-    max-width: 100%;
-    object-fit: cover;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-  }
-  .mt-doc-roof figcaption {
-    font-size: 10px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: #9ba3ae;
-    margin-top: 4px;
-  }
-  /* KPI : grille (jamais du flex — s'imprime proprement), cartes à liseré or (bord logique de début) */
-  .mt-doc-kpis {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-  @media (min-width: 640px) {
-    .mt-doc-kpis {
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    }
-  }
-  .mt-doc-kpi {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
+  .mt-doc .mt-doc-kpi {
+    border-left: 0;
     border-inline-start: 4px solid #f5a623;
-    border-radius: 12px;
-    padding: 12px 14px 10px;
   }
-  /* AR — valeurs numériques + unités : lecture LTR isolée, alignées au bord de début (droite en RTL). */
-  .mt-doc-kpi-value,
-  .mt-doc-flow-value {
+  .mt-doc .mt-doc-kpi-value,
+  .mt-doc .mt-doc-flow-value {
     direction: ltr;
     unicode-bidi: isolate;
     text-align: right;
-  }
-  .mt-doc-kpi-value {
-    font-family: 'DM Serif Display', Georgia, serif;
-    font-size: 21px;
-    line-height: 1.2;
-    color: #1a2b4a;
-    overflow-wrap: anywhere;
-  }
-  .mt-doc-kpi-unit {
-    font-size: 12px;
-    color: #6b7280;
-    font-family: 'DM Sans', system-ui, sans-serif;
-  }
-  .mt-doc-kpi-green .mt-doc-kpi-value {
-    color: #16a34a;
-  }
-  .mt-doc-kpi-label {
-    font-size: 9.5px;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: #9ba3ae;
-    margin-top: 3px;
-  }
-  .mt-doc-section-title {
-    font-family: 'DM Serif Display', Georgia, serif;
-    font-size: 15px;
-    color: #1a2b4a;
-    margin-bottom: 8px;
-  }
-  .mt-doc-chart svg {
-    display: block;
-    width: 100%;
-    height: auto;
-  }
-  .mt-doc-note {
-    font-size: 11px;
-    color: #6b7280;
-  }
-  .mt-doc-note strong {
-    color: #1a2b4a;
-  }
-  .mt-doc-fallback {
-    background: #fdf3e3;
-    border: 1px solid #f5a623;
-    border-radius: 12px;
-    padding: 12px 14px;
-    font-size: 12.5px;
-    color: #7c4a03;
-  }
-  .mt-doc-callback {
-    background: #fdf3e3;
-    border: 1px solid #f5a623;
-    border-radius: 14px;
-    padding: 16px 18px;
-    color: #374151;
-    font-size: 12.5px;
-  }
-  .mt-doc-callback-title {
-    font-family: 'DM Serif Display', Georgia, serif;
-    font-size: 16px;
-    color: #1a2b4a;
-    margin-bottom: 6px;
-  }
-  .mt-doc-hypo {
-    background: #f7f9fc;
-    border: 1px solid #eff1f4;
-    border-radius: 12px;
-    padding: 12px 14px;
-  }
-  .mt-doc-hypo-line {
-    font-size: 11px;
-    font-style: italic;
-    color: #6b7280;
-    margin-bottom: 4px;
-  }
-  .mt-doc-link {
-    font-size: 11px;
-    color: #b47710;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-  .mt-doc-flowgrid {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr auto 1fr;
-    align-items: center;
-    gap: 8px;
-    background: #f7f9fc;
-    border: 1px solid #eff1f4;
-    border-radius: 12px;
-    padding: 12px 14px;
-  }
-  .mt-doc-flow-value {
-    font-family: 'DM Serif Display', Georgia, serif;
-    font-size: 16px;
-    color: #1a2b4a;
-  }
-  .mt-doc-flowarrow {
-    color: #f5a623;
-    font-size: 18px;
-  }
-  .mt-doc-steps {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-  @media (min-width: 640px) {
-    .mt-doc-steps {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-  }
-  .mt-doc-step {
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 10px 12px;
-  }
-  .mt-doc-step-num {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 9999px;
-    background: #f5a623;
-    color: #1a2b4a;
-    font-family: 'DM Serif Display', Georgia, serif;
-    font-size: 13px;
-  }
-  .mt-doc-step-name {
-    font-weight: 700;
-    color: #1f2937;
-    font-size: 12px;
-    margin-top: 6px;
-  }
-  .mt-doc-step-sub {
-    font-size: 10.5px;
-    color: #6b7280;
-  }
-  .mt-doc-footer {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 6px 16px;
-    background: #1a2b4a;
-    color: #cdd5e2;
-    font-size: 10.5px;
-    padding: 13px 26px;
-  }
-  .mt-doc-footer strong {
-    color: #ffffff;
-  }
-
-  /* ===== QX — IMPRESSION : seul le document existe sur le papier (RTL préservé). ===== */
-  @media print {
-    @page {
-      size: A4;
-      margin: 10mm;
-    }
-    body {
-      background: #ffffff !important;
-    }
-    body * {
-      visibility: hidden !important;
-    }
-    #mt-doc,
-    #mt-doc * {
-      visibility: visible !important;
-    }
-    #mt-doc,
-    #mt-doc * {
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    #mt-doc {
-      position: absolute;
-      inset: 0 auto auto 0;
-      width: 100%;
-      max-width: none;
-      margin: 0;
-      border-radius: 0;
-      box-shadow: none;
-    }
-    .mt-doc-header,
-    .mt-doc-footer,
-    .mt-doc-kpi,
-    .mt-doc-hypo,
-    .mt-doc-step,
-    .mt-doc-flowgrid,
-    .mt-doc-callback,
-    #mt-doc-chart-wrap {
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-    .mt-doc-kpis {
-      display: grid !important;
-      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-    .mt-doc-steps {
-      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
   }
 </style>
 <script>
