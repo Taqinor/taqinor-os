@@ -1367,7 +1367,8 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
                                                    sd.param('period_type', enum=ObjectifCommercial.PeriodType.values),
                                                    sd.P_OWNER_OU_NULL]),
                     create=extend_schema(extensions=sd.OBJECTIF_PERIODE),
-                    update=extend_schema(extensions=sd.OBJECTIF_PERIODE))
+                    update=extend_schema(extensions=sd.OBJECTIF_PERIODE),
+                    partial_update=extend_schema(extensions=sd.OBJECTIF_PERIODE_PARTIEL))
 class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
 

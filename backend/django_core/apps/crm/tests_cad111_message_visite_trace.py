@@ -138,6 +138,22 @@ class TraceTests(_Base):
         self.assertFalse(LeadActivity.objects.filter(
             lead=self.lead, kind=LeadActivity.Kind.WHATSAPP).exists())
 
+    def test_fuzz_1176_cle_ou_langue_non_texte_400(self):
+        """api-fuzz PR #1176 — ``{"cle": [null, null], "etape": "0", "langue":
+        "fr"}`` levait ``.strip()`` (500) : 400 nommant le champ, rien écrit."""
+        for corps, champ in (
+                ({'cle': [None, None], 'etape': '0', 'langue': 'fr'}, 'cle'),
+                ({'cle': 'visite_proposition', 'langue': {}}, 'langue')):
+            resp = self._ouvert(**corps)
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertIn(champ, resp.data)
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/message-visite/ouvert/',
+            [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.WHATSAPP).exists())
+
 
 class LienServeurTests(_Base):
     slug = 'cad111-lien'

@@ -235,6 +235,24 @@ class PlanifierVisiteApiTests(VisiteApiBase):
         self.assertEqual(reponse.status_code, 403, reponse.status_code)
         self.assertEqual(VisiteTerrain.objects.count(), 0)
 
+    def test_fuzz_1176_commercial_ou_textes_mal_formes_400(self):
+        """api-fuzz PR #1176 — ``commercial: {}`` levait dans le filtre
+        (« Field 'id' expected a number », 500) ; ``notes`` non texte et un
+        corps tableau non plus : 400 nommé, rien planifié."""
+        cas = (
+            ({'commercial': {}, 'date_prevue': '2000-01-01', 'etape': '0',
+              'note_etape': '0', 'notes': '0', 'replanifier': False}, 'commercial'),
+            ({'date_prevue': DEMAIN.isoformat(), 'notes': ['x']}, 'notes'),
+        )
+        with frozen(MAINTENANT):
+            for corps, champ in cas:
+                reponse = self.api.post(self._url(self.URL), corps, format='json')
+                self.assertEqual(reponse.status_code, 400, reponse.content)
+                self.assertIn(champ, reponse.data)
+            reponse = self.api.post(self._url(self.URL), [None, None], format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(VisiteTerrain.objects.count(), 0)
+
 
 class MessageVisiteApiTests(VisiteApiBase):
     URL = 'message-visite/'
