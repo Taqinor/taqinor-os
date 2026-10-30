@@ -110,11 +110,6 @@ def _monthly_consumption_etude(devis) -> list:
     return serie if any(v > 0 for v in serie) else []
 
 
-def _kwh_entiers(kwh):
-    """kWh mensuels entiers : une grandeur physique, jamais un montant (ENF15)."""
-    return round(kwh or 0)
-
-
 def _monthly_consumption(devis) -> list:
     """T4 — consommation mensuelle (kWh/mois) depuis les données RÉELLES.
 
@@ -176,9 +171,9 @@ def _monthly_consumption(devis) -> list:
 
     def _kwh(mad):
         if mad not in _cache:
-            _cache[mad] = _kwh_entiers(
+            _cache[mad] = round(
                 kwh_from_bill(mad, utility=utility, facture_totale=True)
-                .get('kwh_mensuel'))
+                .get('kwh_mensuel') or 0)
         return _cache[mad]
 
     out = []

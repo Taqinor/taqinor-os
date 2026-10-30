@@ -473,11 +473,10 @@ class TestAvoirLineValidation(TestCase):
         acompte = Facture.objects.create(
             company=self.company, reference=f'FAC-{MONTH}-3402',
             client=self.client_obj, statut=Facture.Statut.EMISE,
-            taux_tva=Decimal('20.00'))
-        LigneFacture.objects.create(
-            facture=acompte, designation='Acompte 30 %',
-            quantite=Decimal('1'), prix_unitaire=Decimal('3000'),
-            taux_tva=Decimal('20.00'))
+            taux_tva=Decimal('20.00'), montant_ht=Decimal('3000.00'),
+            montant_tva=Decimal('600.00'), montant_ttc=Decimal('3600.00'))
+        # Comme ``creer_facture_acompte_situation`` : montants portés par la
+        # facture, AUCUNE ligne (``LigneFacture.produit`` est non nul en base).
         stock_avant = Produit.objects.get(pk=self.produit.pk).quantite_stock
         r = self.api.post(
             f'/api/django/ventes/factures/{acompte.id}/creer-avoir/',
