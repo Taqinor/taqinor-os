@@ -332,6 +332,10 @@ const calepinageApi = {
     // DELETE pose-reelle/<zone_id>/ → 204 ; 404 {detail} sans relevé
     // (contrat calepinage_asbuilt_ecarts.json › delete_pose_reelle).
     supprimerPoseReelle: (id, zoneId) => api.delete(`${pivot(id)}pose-reelle/${encodeURIComponent(zoneId)}/`), // ACAL — libellés hérités (« Toit N/E », « Pan 1.2 ») encodés
+    // ACAL311 — la consommation PROPOSÉE par le serveur (ACAL310, contrat
+    // calepinage_consommation_proposee.json) : LECTURE PURE, `{consumption, kwh_annuel,
+    // courbe24, saisons, avertissements}` ; 400/409 nomment le champ, 404 lead absent.
+    proposerConsommation: (id, corps) => api.post(`${pivot(id)}consommation/proposer/`, corps), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
