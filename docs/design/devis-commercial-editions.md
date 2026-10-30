@@ -225,3 +225,32 @@ règle « panneaux ajoutés jusqu'à batterie pleine » (26/10) appliquée au ta
 boulangerie ; alerte interne du moteur : 4 batteries écartées (fiche sans capacité utile ni
 tension nominale). Les deux rendus (moteur actuel et Khatam) tiennent en 3 pages ; le logo et le
 QR viennent de la charge utile de prod (pièces jointes hors du contexte local).
+
+**30/10 — règle de la banque contestée par le fondateur** (« the battery should be full, I never
+said add 6 batteries… the calculator should calculate the right number of batteries ; if I add
+batteries manually, more panels to fill them »). Ce que fait `moteur_ci/batterie.py` : besoin =
+toute la consommation hors fenêtre solaire d'un jour moyen (boulangerie, 70 % la nuit : 229 kWh)
+→ banque = le moins de modules qui la couvre (15 × 15,27 kWh) → panneaux ajoutés jusqu'au
+remplissage tous les mois (144) → hybrides sur la puissance de charge (6 × 15 kW). Balayage de
+la banque forcée à n modules, le reste de la chaîne inchangé (base locale `erp_khatam`,
+`scratchpad/batterie/balayage_banque.py`) — option « avec », coût de vente HT, économie HT/an,
+retour simple :
+
+| modules | kWh utiles | panneaux | coût HT | économie/an | retour |
+|---|---|---|---|---|---|
+| 1 | 15 | 77 | 338 339 | 80 986 | 4,2 ans |
+| 2 | 31 | 77 | 367 505 | 88 130 | 4,2 |
+| 4 | 61 | 77 | 425 839 | 102 418 | 4,2 |
+| 6 | 92 | 85 | 526 315 | 117 233 | 4,5 |
+| 8 | 122 | 105 | 643 193 | 135 600 | 4,8 |
+| 10 | 153 | 112 | 737 542 | 150 147 | 5,0 |
+| 15 | 229 | 144 | 1 013 572 | 177 180 | 5,8 |
+
+Lecture : jusqu'à 4 modules (61 kWh) le champ de la règle des 10 ans (77 panneaux) remplit déjà
+la banque ; au-delà, chaque module tire des panneaux. Retour marginal par module : ≈ 4 ans
+jusqu'à 4, 6,4-6,8 ans de 4 à 10, 10,2 ans de 10 à 15. Règles candidates : (A) banque = ce que
+le surplus du champ « sans » remplit chaque jour du mois le plus bas (4 modules ici ; une banque
+ajoutée à la main tire ses panneaux) ; (B) règle marginale des 10 ans sur les modules
+(≈ 10-12) ; (C) l'actuelle, toute la nuit (15). Décision fondateur attendue ; changement à
+faire dans le moteur (`moteur_ci/batterie.py::besoin_nocturne_kwh` / `choisir_banque`), pas
+dans l'édition.
