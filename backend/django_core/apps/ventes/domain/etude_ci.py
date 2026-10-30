@@ -15,7 +15,7 @@ Elle LIT seulement (aucun INSERT ni UPDATE) et assemble le noyau pur
    ``bill_kwh`` en lecture seule ;
 3. production PVGIS (CIQ109), profil déclaré (CIQ108, profil société puis
    archétype sourcé CIQ107), autoconsommation horaire (CIQ110), onduleurs
-   (CIQ111), composition (CIQ115), taille par la règle des 10 ans (CIQ116)
+   (CIQ111), composition (CIQ115), taille par la règle marginale (CIQ116)
    avec la valorisation ``economie_ci.valoriser`` (CIQ204) injectée ;
 4. toit : contenance mesurée du devis, sinon contenance de la surface
    déclarée (CIQ113, façade ``apps.calepinage.services``) ; charge de toiture
@@ -33,6 +33,8 @@ import logging
 import math
 from decimal import Decimal
 
+from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
+
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, option_avec_de_l_etude
 from .regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
 from .etude_ci_visite import _couche_visite
@@ -40,15 +42,18 @@ from .etude_ci_visite import _couche_visite
 logger = logging.getLogger(__name__)
 
 VERSION_MOTEUR = 'ci-1'
+#: L'horizon dit au client est CELUI du moteur (``taille.HORIZON_MARGINAL_CI``),
+#: jamais un nombre recopié ici.
 METHODE = (
     "autoconsommation horaire : production PVGIS du site × profil déclaré, "
     "12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à "
-    "l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2)")
+    "l'horizon marginal de %d ans (D-CIQ-1, D-CIQ-2)" % HORIZON_MARGINAL_CI)
 #: AMOT99 (D-ACI-18=a) — avec la série horaire ; ``METHODE`` = le repli (dit).
 METHODE_8760 = (
     "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, "
     "pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par "
-    "tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2, D-ACI-18)")
+    "tranches de 5 kWc jusqu'à l'horizon marginal de %d ans (D-CIQ-1, D-CIQ-2, D-ACI-18)"
+    % HORIZON_MARGINAL_CI)
 CLES_INTERDITES = frozenset({'prix_achat', 'marge'})
 MODES = ('commercial', 'industriel')
 
@@ -1555,7 +1560,8 @@ CHAMPS_COMPOSITION = frozenset({'composition', 'onduleurs', 'taille_explicite_kw
 #: ADEV78 — refus d'une étude SANS taille et sans alerte bloquante, par
 #: raison d'arrêt : « aucune taille rentable » est réservé à l'horizon.
 MESSAGES_ARRET = {
-    'horizon_marginal': ('Aucune taille C&I rentable dans l’horizon de 10 ans.', 'taille'),
+    'horizon_marginal': ('Aucune taille C&I rentable dans l’horizon de %d ans.'
+                         % HORIZON_MARGINAL_CI, 'taille'),
     'toit': ('Contenance du toit inférieure à la première tranche de 5 kWc : '
              'aucune taille C&I.', 'surface_toiture_m2'),
     'puissance_souscrite': ('Puissance souscrite déclarée inférieure à la première '
