@@ -25,6 +25,28 @@ la garde PV77. Rendu seulement (règle #4).
 from . import generate_devis_premium as _g
 
 
+#: ERR-RHOR8-PDF-AR-PAGES-ETUDE — interligne du document COMPLET arabe : celui
+#: de « DM Sans » (ascendante 0,992 + descendante 0,310 em, sans interligne
+#: ajouté), la police des documents fr/en.
+INTERLIGNE_DM_SANS = "1.302"
+
+
+def css_document_arabe():
+    """ERR-RHOR8-PDF-AR-PAGES-ETUDE — CSS arabe du document COMPLET de ce
+    moteur (cas résidentiel « + étude », C&I hérité) : la CSS arabe partagée
+    (``_g._css_arabe``, inchangée) + l'interligne de « DM Sans ».
+
+    Cause mesurée (devis 2007 / 2300 du rejeu RHOR8) : ``document=True`` pose
+    « Noto Sans Arabic » sur TOUT le document ; son interligne ``normal``
+    (≈ 1,7 em, contre 1,3 pour DM Sans) gonflait chaque ligne des tableaux
+    d'équipements, le bloc ``flex-shrink:0`` de la page 2 ne tenait plus sous
+    son en-tête et WeasyPrint fragmentait la page en trois feuilles (en-tête
+    seul, tableaux, graphes) : 5 pages en arabe contre 3/4 en fr/en. Les
+    interlignes posés explicitement par le gabarit restent les leurs. Le
+    une-page (``legacy_onepage``, densité adaptative) n'est pas concerné."""
+    return _g._css_arabe() + "body{line-height:%s;}" % INTERLIGNE_DM_SANS
+
+
 # \u2500\u2500 \u00c9TUDE PAGE (mode Industriel/Commercial \u2014 autoconsommation) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 def make_chart_etude(prod_m, conso_m):
     """Monthly production vs consumption chart for the \u00e9tude page."""
