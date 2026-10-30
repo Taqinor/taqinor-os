@@ -109,7 +109,7 @@ def sonde(ctx):
         for _ in range(k):
             i = next(seq)
             cl = Client.objects.create(company=co, nom='Site%d' % i, prenom='Sonde', email='aprf42i-%d@example.invalid' % i)
-            lead = Lead.objects.create(company=co, nom='Site%d' % i, prenom='Sonde', stage='SIGNED',
+            lead = Lead.objects.create(company=co, nom='Site%d' % i, prenom='Sonde', stage=__import__('apps.crm.stages', fromlist=['SIGNED']).SIGNED,
                                        type_installation='residentiel')
             d = Devis.objects.create(company=co, reference='DEV-AP42I-%d' % i, client=cl, lead=lead,
                                      statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'), mode_installation='residentiel')
