@@ -616,6 +616,8 @@ export async function creerDevisCommercialDepuisLead(page, leadId) {
   await page.goto(`/ventes/devis/nouveau?lead=${leadId}`)
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
     .toBeVisible({ timeout: 30_000 })
+  // Lead appliqué (ville → site PVGIS) AVANT de choisir le marché : sinon l'étude C&I part sans site.
+  await expect(page.locator('#gen-tel')).not.toHaveValue('', { timeout: 90_000 })
   await choisirMarche(page, /Commercial/)
   await expect(page.getByTestId('ci-profil')).toBeVisible()
   for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_COMMERCIAL[i]))
@@ -768,6 +770,8 @@ export async function creerDevisIndustrielDepuisLead(page, leadId, { tension = '
   await page.goto(`/ventes/devis/nouveau?lead=${leadId}`)
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
     .toBeVisible({ timeout: 30_000 })
+  // Lead appliqué (ville → site PVGIS) AVANT de choisir le marché : sinon l'étude C&I part sans site.
+  await expect(page.locator('#gen-tel')).not.toHaveValue('', { timeout: 90_000 })
   await choisirMarche(page, /Industriel/)
   await expect(page.getByTestId('ci-profil')).toBeVisible()
   await expect(page.getByTestId('ci-industriel-mt')).toBeVisible()

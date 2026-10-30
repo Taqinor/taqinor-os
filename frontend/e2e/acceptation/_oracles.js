@@ -18,6 +18,9 @@ export class Suivi {
     this.pages = []
     this.verifies = new Set()
     this.attendus = []
+    // 409 `idempotency_en_cours` (réponse documentée d'ERR-AGNR40, l'écran rejoue avec la même clé) : décidés à oracles().
+    this.r409 = []
+    this.c409 = []
   }
 
   attendre(url, statut) { this.attendus.push({ url, statut }) }
@@ -33,6 +36,12 @@ export class Suivi {
     page.on('response', (r) => {
       const s = r.status()
       if (s < 400 || !r.url().startsWith(this.origine) || this._attendu(r.url(), s)) return
+      if (s === 409) {
+        const texte = `${r.request().method()} ${r.url()} → ${s}`
+        this.r409.push(r.text().then((t) => { try { return JSON.parse(t)?.code === 'idempotency_en_cours' } catch { return false } },
+          () => false).then((enVol) => ({ url: r.url(), texte, enVol })))
+        return
+      }
       this.incidents.push({ oracle: s >= 500 ? '1' : '2', texte: `${r.request().method()} ${r.url()} → ${s}` })
     })
     page.on('console', (m) => {
@@ -42,7 +51,9 @@ export class Suivi {
       // L'URL de la ressource en échec (clé/jeton masqués) : sans elle, un 403
       // tiers (tuiles, imagerie) est indiscernable d'un 403 de l'ERP.
       const url = (m.location()?.url || '').replace(/(key|access_token|token)=[^&]+/g, '$1=…')
-      this.incidents.push({ oracle: '3', texte: `console.error : ${m.text()}${url ? ` (${url})` : ''}` })
+      const incident = { oracle: '3', texte: `console.error : ${m.text()}${url ? ` (${url})` : ''}` }
+      if (/status of 409/.test(m.text())) { this.c409.push({ url: m.location()?.url || '', incident }); return }
+      this.incidents.push(incident)
     })
     page.on('pageerror', (e) => this.incidents.push({ oracle: '3', texte: `pageerror : ${e.message}` }))
     page.on('dialog', async (d) => {
@@ -57,6 +68,16 @@ export class Suivi {
 
   async oracles() {
     const o = Object.fromEntries(ORACLES.map((k) => [k, 'NA']))
+    // Seul le 409 dont le corps est `idempotency_en_cours` est pardonné (une ligne console par réponse) ; tout autre 409 reste un échec.
+    const enVol = new Map()
+    for (const x of await Promise.all(this.r409.splice(0))) {
+      if (x.enVol) enVol.set(x.url, (enVol.get(x.url) || 0) + 1)
+      else this.incidents.push({ oracle: '2', texte: x.texte })
+    }
+    for (const c of this.c409.splice(0)) {
+      if ((enVol.get(c.url) || 0) > 0) enVol.set(c.url, enVol.get(c.url) - 1)
+      else this.incidents.push(c.incident)
+    }
     for (const k of ['1', '2', '3', '4']) o[k] = 'PASS'
     for (const k of this.verifies) o[k] = 'PASS'
     o['8'] = 'PASS'
