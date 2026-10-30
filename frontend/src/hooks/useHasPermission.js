@@ -91,4 +91,19 @@ export function useCanValiderVente() {
   return useHasPermission(VENTES_VALIDER_PERMISSION)
 }
 
+// ERR-PARAM-ASSIGNABLE-USERS-403 — `GET /crm/assignable-users/` est gardé par
+// IsResponsableOrAdmin (authentication/permissions.py, ASEC11) : pour un rôle
+// fin non administrateur, il faut au moins un code du module `crm`
+// (`crm_*`, apps/roles/permissions_registre.py) ; le palier admin et le
+// compte hérité sans rôle fin (palier responsable) passent. Un Admin RH n'y a
+// pas droit : l'écran ne doit pas appeler l'endpoint (403 en console).
+export function useCanListAssignableUsers() {
+  const role = useSelector((s) => s.auth.role)
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const permissions = useSelector((s) => s.auth.permissions) || []
+  if (role === 'admin') return true
+  if (role === 'responsable' && !roleNom && permissions.length === 0) return true
+  return permissions.some((c) => typeof c === 'string' && c.startsWith('crm_'))
+}
+
 export default useHasPermission
