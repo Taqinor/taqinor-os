@@ -1,9 +1,10 @@
-"""CIQ116 — taille C&I par la règle des 10 ans, sur l'autoconsommation HORAIRE.
+"""CIQ116 — taille C&I par la règle marginale des 7 ans, sur l'autoconsommation HORAIRE.
 
 La taille retenue est la plus grande dont chaque tranche de 5 kWc — ou, pour
 un palier cher seul (saut d'onduleur), le groupe qu'il forme avec les paliers
 suivants (fondateur 26/10/2026) — se rembourse encore en ≤
-``HORIZON_MARGINAL_PV`` (D-CIQ-2), bornée par le toit, la puissance
+``HORIZON_MARGINAL_CI`` (7 ans, fondateur 30/10/2026 — 10 ans auparavant,
+D-CIQ-2), bornée par le toit, la puissance
 souscrite DÉCLARÉE, la faisabilité de la combinaison d'onduleurs (CIQ111) et,
 revente choisie, le plafond 82-21 (traité dans le bilan, CIQ110). Fin de
 « facture d'hiver ÷ 900 × 5 » pour le C&I.
@@ -18,9 +19,11 @@ que si même la rasante ne suffit pas, et le devis le dit (hypothèse
 ``inclinaison_retenue_deg`` et dans ``evaluation``.
 
 La doctrine est RÉUTILISÉE telle quelle depuis ``apps.ventes.dimensionnement``
-(``point_depart_meilleur_payback``, ``depart_dans_horizon``,
-``ratio_pas_marginal``,
-``HORIZON_MARGINAL_PV``) : aucune copie, aucun second horizon.
+(``point_depart_meilleur_payback``, ``ratio_pas_marginal``) : aucune copie.
+L'HORIZON, lui, est celui du C&I (:data:`HORIZON_MARGINAL_CI`, 7 ans —
+décision fondateur du 30/10/2026, boulangerie lead 1637 : panneaux ET
+batteries suivent la même règle marginale) ; le résidentiel garde ses 10 ans
+(``dimensionnement.HORIZON_MARGINAL_PV``, D-CIQ-1 : modèle résidentiel intouché).
 
 Module PUR : aucun prix ici. L'orchestrateur (CIQ118) injecte
 
@@ -38,17 +41,20 @@ hypothèses.
 import math
 from decimal import Decimal, InvalidOperation
 
-from apps.ventes.dimensionnement import (
-    HORIZON_MARGINAL_PV,
-    depart_dans_horizon,
-    point_depart_meilleur_payback,
-    ratio_pas_marginal,
-)
+from apps.ventes.dimensionnement import point_depart_meilleur_payback, ratio_pas_marginal
 from apps.ventes.moteur_ci.autoconso import bilan_horaire
 from apps.ventes.moteur_ci.composition import prix_palier_ht
 from apps.ventes.moteur_ci.production import ANGLE_POSE_RASANTE_DEG, ANGLE_TOIT_PLAT_DEG
 
 PAS_KWC = 5
+#: Fondateur 30/10/2026 (boulangerie, lead 1637) — UN horizon marginal C&I pour
+#: les panneaux ET les batteries : un ajout (une tranche de panneaux ; UNE
+#: batterie AVEC les panneaux qu'elle tire pour se remplir et, le cas échéant,
+#: l'hybride supplémentaire) n'est retenu que si l'investissement ajouté est
+#: remboursé en ≤ 7 ans par l'économie ajoutée. Remplace, pour le C&I
+#: seulement, les 10 ans de la règle du 25/08 (D-CIQ-2,
+#: ``dimensionnement.HORIZON_MARGINAL_PV``, que le résidentiel garde — D-CIQ-1).
+HORIZON_MARGINAL_CI = 7
 #: Fondateur 26/10/2026 (boulangerie 30 → 40 kWc) : un palier cher SEUL (saut
 #: d'onduleur 25 → 50 kW) est gardé si, avec les paliers suivants, l'ensemble
 #: se rembourse dans l'horizon (C&I seulement ; le résidentiel garde la chaîne
@@ -64,7 +70,7 @@ PAS_KWC = 5
 #: un saut d'onduleur s'amortit au plus sur le champ que cet onduleur porte.
 #: Sans combinaison lisible (borne non servie), la fenêtre reste au plancher.
 #: Même critère pour ``grimper_avec_regard`` et pour l'arrêt du balayage.
-#: À ALIGNER : ``moteur_ci/batterie.py::monter_regle_10_ans`` (session CMP)
+#: À ALIGNER : ``moteur_ci/batterie.py::monter_regle_marginale`` (session CMP)
 #: arrête encore son balayage à ``PALIERS_REGARDES`` refus de suite.
 PALIERS_REGARDES = 4
 #: Garde de terminaison du balayage (nombre de pas), jamais une taille : la
@@ -84,7 +90,9 @@ SOURCE_RASANTE = 'décision fondateur du 28/10/2026 (R1 — pose rasante)'
 #: économique (repris trilingue par ``quote_engine.i18n_labels_ci``).
 TEXTE_TAILLE_LIMITEE_TOIT = 'taille limitée par le toit : %g m² déclarés → %g kWc en pose rasante'
 TEXTE_TAILLE_LIMITEE_TOIT_SANS_SURFACE = 'taille limitée par le toit : %g kWc en pose rasante'
-SOURCE_HORIZON = 'apps/ventes/dimensionnement.py HORIZON_MARGINAL_PV (règle du 25/08)'
+SOURCE_HORIZON = ('décision fondateur du 30/10/2026 — règle marginale des 7 ans, panneaux et '
+                  'batteries (moteur_ci/taille.py HORIZON_MARGINAL_CI ; remplace les 10 ans '
+                  'de la règle du 25/08)')
 
 
 def _alerte(code, champ, message, niveau='alerte', interne=True):
@@ -347,7 +355,7 @@ def _bornes_publiees(bornes, ps_kva, revente_choisie):
 def _vide(raison, bornes_pub, paliers=None):
     return {
         'retenue_kwc': None, 'nb_panneaux': None, 'pas_kwc': PAS_KWC,
-        'horizon_marginal_annees': HORIZON_MARGINAL_PV, 'raison_arret': raison,
+        'horizon_marginal_annees': HORIZON_MARGINAL_CI, 'raison_arret': raison,
         'paliers': paliers or [], 'bornes': bornes_pub, 'statut': None,
         'inclinaison_retenue_deg': None, 'taille_limitee_toit': None,
     }
@@ -460,7 +468,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     alertes = []
     hypotheses = [
         {'cle': 'pas_kwc', 'valeur': PAS_KWC, 'statut': 'source', 'source': 'D-CIQ-2'},
-        {'cle': 'horizon_marginal_annees', 'valeur': HORIZON_MARGINAL_PV,
+        {'cle': 'horizon_marginal_annees', 'valeur': HORIZON_MARGINAL_CI,
          'statut': 'source', 'source': SOURCE_HORIZON},
     ]
     ps_kva = _pos(puissance_souscrite_kva)
@@ -544,7 +552,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         # ``grimper_avec_regard`` (CLD8 : plafond de la combinaison d'avant la
         # suite, ou palier ordinaire hors horizon passé le plancher) — un saut
         # d'onduleur isolé ne clôt plus le balayage (fondateur 26/10/2026).
-        hors = ratio is not None and ratio > HORIZON_MARGINAL_PV and (
+        hors = ratio is not None and ratio > HORIZON_MARGINAL_CI and (
             meilleur is not None and ratio > meilleur)
         if hors and not refus:
             base_refus = precedent
@@ -579,16 +587,16 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     # ``depart_dans_horizon``, comme les appelants résidentiels), jamais sur
     # le meilleur payback du tableau : le départage « à égalité » peut retenir
     # un départ légèrement au-dessus du meilleur.
-    if depart_dans_horizon(depart['payback_sans_annees']):
+    if _depart_dans_horizon(depart['payback_sans_annees']):
         retenu = grimper_avec_regard(
-            depart['eval'], suivants, HORIZON_MARGINAL_PV,
+            depart['eval'], suivants, HORIZON_MARGINAL_CI,
             lambda e: e['cout'], lambda e: e['economie'] or 0.0)
     else:
         retenu = depart['eval']
         alertes.append(_alerte(
             'depart_hors_horizon', 'taille',
             'Le payback du point de départ (%.1f ans) dépasse l’horizon de %d ans : taille '
-            'au départ, sans montée.' % (depart['payback_sans_annees'], HORIZON_MARGINAL_PV)))
+            'au départ, sans montée.' % (depart['payback_sans_annees'], HORIZON_MARGINAL_CI)))
 
     index = evals.index(retenu)
     for p in paliers[index_depart:index + 1]:
@@ -613,13 +621,20 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     inclinaison, limite_toit = _hypotheses_toit(retenu, bornes_pub, raison, hypotheses)
     taille = {
         'retenue_kwc': retenu['kwc'], 'nb_panneaux': _nb_panneaux(retenu),
-        'pas_kwc': PAS_KWC, 'horizon_marginal_annees': HORIZON_MARGINAL_PV,
+        'pas_kwc': PAS_KWC, 'horizon_marginal_annees': HORIZON_MARGINAL_CI,
         'raison_arret': raison, 'paliers': paliers, 'bornes': bornes_pub,
         'statut': statut_taille(retenu['composition']),
         'inclinaison_retenue_deg': inclinaison, 'taille_limitee_toit': limite_toit,
     }
     return {'taille': taille, 'evaluation': retenu, 'alertes': alertes, 'hypotheses': hypotheses,
             'inclinaison_retenue_deg': retenu.get('inclinaison_retenue_deg')}
+
+
+def _depart_dans_horizon(payback):
+    """Garde du dossier faible (même règle que ``dimensionnement.depart_dans_horizon``,
+    sur l'horizon C&I) : la montée n'est permise que si le payback du DÉPART tient
+    déjà dans :data:`HORIZON_MARGINAL_CI`."""
+    return 0 < payback <= HORIZON_MARGINAL_CI + 1e-9
 
 
 def _alertes_injection(e, ps_kva, revente_choisie):
@@ -690,7 +705,7 @@ def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses)
     inclinaison, limite_toit = _hypotheses_toit(e, bornes_pub, 'taille_explicite', hypotheses)
     taille = {
         'retenue_kwc': kwc, 'nb_panneaux': _nb_panneaux(e), 'pas_kwc': PAS_KWC,
-        'horizon_marginal_annees': HORIZON_MARGINAL_PV, 'raison_arret': 'taille_explicite',
+        'horizon_marginal_annees': HORIZON_MARGINAL_CI, 'raison_arret': 'taille_explicite',
         'paliers': [_palier(e, None, True, None)], 'bornes': bornes_pub,
         'statut': statut_taille(e['composition']),
         'inclinaison_retenue_deg': inclinaison, 'taille_limitee_toit': limite_toit,

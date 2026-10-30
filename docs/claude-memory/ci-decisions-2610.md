@@ -1,6 +1,6 @@
 ---
 name: ci-decisions-2610
-description: Décisions fondateur des 26-27/10/2026 sur le devis C&I (boulangerie, lead 1637) — onduleurs, taille, devis préliminaire, rendu client, batterie, talon
+description: Décisions fondateur des 26-30/10/2026 sur le devis C&I (boulangerie, lead 1637) — onduleurs, taille, devis préliminaire, rendu client, batterie (règle marginale des 7 ans, 30/10), talon
 metadata:
   type: project
 ---
@@ -15,6 +15,7 @@ Décisions de Reda prises en construisant le devis automatique d'une boulangerie
 - **« Installation clé en main »** : une ligne client regroupe les 8 prestations ; le devis interne garde le détail (PR #1069).
 - **Coffrets** au barème par onduleur + par panneau (`prix_fixe_ht` = par onduleur) ; câbles AC « 5×S mm² », marque Nexans.
 - **Deux options sans / avec batterie** par défaut (choix du lead souverain) : hybrides Deye BT triphasés + Dyness (banque homogène), batterie = conso du soir/nuit, panneaux ajoutés jusqu'à batterie pleine puis règle des 10 ans (l'option « avec » peut être plus grande) ; batterie sans prix ⇒ offre « sans » seule + alerte interne ; phrase « Le soir et la nuit, votre consommation reste fournie par le réseau ; l'option avec batterie la couvre. » (PR #1070).
+- **30/10 — horizon marginal 7 ans, banque par la règle marginale** (boulangerie, devis 461 : la banque « toute la nuit » donnait 15 Dyness 16 kWh et 144 panneaux, rejetée : « the battery should be full, I never said add 6 batteries… the calculator should calculate the right number of batteries ; if I add batteries manually I should get more panels to fill them » ; « both panels and batteries should follow the 7 years rule »). Panneaux ET batteries suivent UNE règle marginale de 7 ans (`moteur_ci/taille.py HORIZON_MARGINAL_CI`, remplace les 10 ans du 25/08 pour le C&I seulement ; le résidentiel garde ses 10 ans) : la banque monte module par module (modèle le moins cher par kWh utile), chaque module composé avec les panneaux qu'il tire pour se remplir (QJR612) et l'hybride éventuel, gardé si l'investissement ajouté est remboursé en ≤ 7 ans par l'économie ajoutée, puis la montée des panneaux par la même règle (`moteur_ci/batterie.py::_monter_banque`).
 - **Talon** (conso hors horaires) en % du niveau de jour, par type de commerce (BDEW / NREL ComStock, sinon 20 % défaut fondateur) ; réponse client Aucun/Un peu/Beaucoup = 5/20/50 % ; lead commercial sans catégorie = 20 % ; 23 activités (pâtisserie → boulangerie) ; vrai nom d'activité au PDF (PR #1074).
 
 - **Toit plat : 30° par défaut, inclinaison modifiable** dans le générateur (10° ou autre) — annule D-CMP-4=a ; `toit.pente_deg` exposé par l'étude ; sans GPS le repli « journées moyennes » reste à 30° (Reda, 27/10 14:12 ; PR #1094).
