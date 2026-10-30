@@ -1,0 +1,164 @@
+{
+  "sha": "665a4ce5340e13c97a85bf50922dbf0fd76ef252",
+  "date": "2026-10-30",
+  "groupe": "RHOR",
+  "verdict": "PASS",
+  "couvre": [
+    "RHOR1",
+    "RHOR2",
+    "RHOR4",
+    "RHOR5",
+    "RHOR6",
+    "RHOR7"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "RHOR1.officiel",
+      "taches": [
+        "RHOR1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § RHOR1.officiel ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RHOR-generateur-reouvert.jpg ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RHOR-proposition-desktop.jpg ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RHOR-proposition-mobile.jpg — calepinage 162 simulé (PVGIS réel, perte 6,717 %) lié au devis 2007 : écran = PDF FR/EN = page 6 355 / 8 473 kWh, 7 461 / 12 663 MAD/an"
+    },
+    {
+      "id": "RHOR2",
+      "taches": [
+        "RHOR2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § RHOR2 — devis 2118 (VE possédé) : equipements_du_devis = [], facture 14 400 = 1 200 x 12 ; contre-épreuves en mémoire prevu / niveau 2 = [ve]"
+    },
+    {
+      "id": "RHOR4",
+      "taches": [
+        "RHOR4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § RHOR4 — courbes de saison du devis 2007 : -0,41 % (sans) et -0,16 % (avec) de la production ÷ 365"
+    },
+    {
+      "id": "RHOR5.pdf-bandeau",
+      "taches": [
+        "RHOR5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § RHOR5.pdf-bandeau — devis 2300 jamais remboursé : PDF FR/EN « Non rentabilisé sur 25 ans », economies_periodes sans retour_investissement_ans"
+    },
+    {
+      "id": "RHOR6",
+      "taches": [
+        "RHOR6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § RHOR6 — devis 2299 sans moteur horaire : eco_a_ann 12 034 = flux an 1 = somme mensuelle = PDF ; niveau 2 en mémoire 12 353 (brut)"
+    },
+    {
+      "id": "RHOR7",
+      "taches": [
+        "RHOR7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § RHOR7 — PDF 2007 et 2300 : « Tarif électricité : barème national par tranche », jamais « saisi pour ce devis »"
+    },
+    {
+      "id": "AMOT64.productible",
+      "taches": [
+        "AMOT64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § AMOT64 — productible société vide : PDF « ≈ 1 599 kWh par kWc … (donnée PVGIS) » (constat d appoint, tâche non cochée)"
+    }
+  ]
+}
