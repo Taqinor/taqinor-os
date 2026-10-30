@@ -87,14 +87,13 @@ import {
   DEFAULT_MONTHLY_BILLS,
   formatMoney, estimerMois, htFromTtc, comptePanneauxOption,
   kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux,
-  defaultProductLines, KWH_PRICE, EFFICIENCY,
+  KWH_PRICE, EFFICIENCY,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   // QJR66 — `buildEtudeParamsChoice` n'est PLUS importé ici : l'écran n'écrit
   // plus `scenario` / `recommended_option` / `distributeur` / `conso_annuelle`
   // dans `etude_params` (registre de surcharges D12 côté serveur). La fonction
   // reste dans solar.js, avec ses tests — elle n'a simplement plus d'appelant
   // sur ce chemin d'enregistrement.
-  COMMERCIAL_CATEGORY_QUESTIONS,
   // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
   // sans elle le modèle d'économie ne sature pas et l'ascension marginale
   // sur-vend jusqu'au plafond du balayage.
@@ -102,8 +101,8 @@ import {
   // dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
   // ordre »), appliquée par la composition SERVEUR (`ordre_lignes`) ;
   // ADEV69 — l'ancien composeur JS `autoFillLines` est supprimé.
-  // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
-  _hasPrix} from '../../features/ventes/solar'
+  COMMERCIAL_CATEGORY_QUESTIONS} from '../../features/ventes/solar'
+import { _hasPrix, defaultProductLines } from '../../features/ventes/calc/lignesDefaut.js' // QJR546 — garde « produit tarifé »
 import {
   optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCostDetail, avecBatterieAvailability,
   multiPropertyPreviewTTC, lignesRemiseesParPanier,

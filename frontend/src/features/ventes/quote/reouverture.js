@@ -11,7 +11,7 @@
 // Fonction PURE (node --test) ; mêmes prédicats que l'écran (solar.js).
 import {
   structureRoleForName,
-} from '../solar.js'
+} from '../calc/lignesDefaut.js'
 import {
   parseWatt, classifyProduct, isPanel, isOffgridInverter, isReseauInverter, isHybridInverter,
   isPompe, texteClassement,

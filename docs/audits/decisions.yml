@@ -2797,3 +2797,12 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; rejeu ASEC21 P2.3)"
     taches: [ERR-ASEC11-LISTE-FACTURES, ASEC11]
+  - id: D-SPL202-RESTE
+    question: "SPL202 devait déplacer autoFillLines de solar.js vers calc/autoFill.js, mais ADEV69 (8ff41d2bc) l'a déjà supprimé : que faire du reste de la région ?"
+    options:
+      - cle: a
+        texte: "déplacer tel quel (move only, comportement inchangé, appelants repointés) l'ordre des lignes, defaultProductLines, les structures et _hasPrix vers un module calc/ nommé d'après son rôle, et supprimer le code mort laissé par ADEV69 (_filtrerParMarque sans appelant, _marqueEpinglee/_marqueCorrespond qu'il était seul à lire)"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; lane w9-spl202)"
+    taches: [SPL202]

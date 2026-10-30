@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 7702eeb5f4921eaa8a91dfe8d916fc369b7b4610d9a1801ab6cf56391cbb2059
+Structure fingerprint: 27a0af01240ff77fe63acce18c3a2448357e10d1ffbbc254def0bc03bdd2bd91
 Plan fingerprint: cbe1e5fe01e50e14ba1db8058d8a07c43e24b3c908c215610a81a9f53da9e16f
 
 
@@ -456,7 +456,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 
 - **auth** — session/JWT (`authSlice.js`).
 - **crm** — leads/clients state; `crmSlice.js`, `bulk.js`, `stages.js` (mirrors STAGES.py, CI-checked); **`workspace/`** = the lead cockpit (`LeadWorkspace.jsx` over the pure autosave engine `draftCore.js` via `useLeadDraft.js`, with `IdentityRail`/`SectionsPane`/`ContextRail`, `TimelineTab`, `DevisTab`, `ArbreHistorique.jsx`, `StageControl`); `traceToit.js` (pure: `Lead.roof_outline` -> SVG polygon + area, via `features/calepinage`'s roof-marker helper), `leadPrefetch.js`, `rotting.js`.
-- **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill: GHI/ONEE/ROI, panel/inverter/battery sizing, all TTC; split by pure moves into `calc/` — `tarifs.js` tariff model, `totaux.js` canonical totals/multi-property/prix-kWc/margin, `roi.js` savings/ROI/25-year cashflow, `recomposition.js` line recomposition/variant merge, `classification.js` product/line classification keywords, rule #4; their tests in `calc/*.test.mjs`), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
+- **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill: GHI/ONEE/ROI, panel/inverter/battery sizing, all TTC; split by pure moves into `calc/` — `tarifs.js` tariff model, `totaux.js` canonical totals/multi-property/prix-kWc/margin, `roi.js` savings/ROI/25-year cashflow, `recomposition.js` line recomposition/variant merge, `classification.js` product/line classification keywords, rule #4, `lignesDefaut.js` default line table/role order/structure role/price guard; their tests in `calc/*.test.mjs`), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
 - **calepinage** — the roof-design studio (module.config-registered): library, sources, variantes, plan/pente/terrain/ombrière/schéma/production tabs, `repere.js` roof-marker helper (repatriated from `ao` by SOLMVP15).
 - **visites** — field technical visits (module.config-registered).
 - **installations** — chantiers; `installationsSlice.js`, `statuses.js`, offline field capture.
