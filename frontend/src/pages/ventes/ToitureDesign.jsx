@@ -1380,7 +1380,10 @@ function AtelierToiture({
             balisage UNIQUE partagé avec la preview publique (`@roofpro/consumptionMarkup`),
             sans lequel `consumption.ts monterProposition` ne montait rien ici (« Reprendre du
             lead », CSV, Ramadan, classe tarifaire). Chaîne constante : React ne la réécrit pas. */}
-        <div dangerouslySetInnerHTML={{ __html: CONS_WINDOW_HTML }} />
+        <div
+          // check-no-danger-allow: CONS_WINDOW_HTML est une chaîne CONSTANTE du dépôt (@roofpro/consumptionMarkup), aucune donnée utilisateur
+          dangerouslySetInnerHTML={{ __html: CONS_WINDOW_HTML }}
+        />
 
         {/* CALX65 — sous la carte du constructeur, en mode calepinage
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
