@@ -22,7 +22,7 @@ import {
 // ERR-ACAL311-PANNEAU-ABSENT-ERP — l'ERP n'a ni fenêtre de production ni la route
 // `/api/roof-production` d'apps/web : sans plan de production, « Affiner ma consommation »
 // restait masqué. La production PAR 1 kWc vient du repli PARTAGÉ `fallbackPerKwc` (productible
-// du devis, miroir de quote_engine/productible.py), étiqueté « estimation » — aucune requête.
+// du devis, même calcul que quote_engine/productible.py), étiqueté « estimation » — aucune requête.
 const productionAtelierErp = () => fallbackPerKwc()
 
 /**
