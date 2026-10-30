@@ -486,13 +486,14 @@ from django.utils import timezone
 from apps.automation.models import AutomationScheduledStep, AutomationRun
 from apps.automation.engine import resume_scheduled_step
 from apps.crm.models import Lead
+from apps.crm import stages
 UTC = datetime.timezone.utc
 nuit = datetime.datetime.combine(timezone.localdate(), datetime.time(22, 30), tzinfo=UTC)  # 23:30 au Maroc
 with override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
     mail.outbox = []
     with mock.patch('django.utils.timezone.now', return_value=nuit):
-        lead = Lead.objects.create(company_id=1, nom='ACC45 Fenetre', stage='NEW', email='acc45.fenetre@acc45.test')
-        lead.stage = 'FOLLOW_UP'; lead.save()
+        lead = Lead.objects.create(company_id=1, nom='ACC45 Fenetre', stage=stages.NEW, email='acc45.fenetre@acc45.test')
+        lead.stage = stages.FOLLOW_UP; lead.save()
         a_23h30 = len(mail.outbox)
         st = list(AutomationScheduledStep.objects.filter(rule_id=${regle.id}, target_id=lead.pk))
         ouverture = timezone.localtime(st[0].run_at) if st else None
