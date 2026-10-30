@@ -12,7 +12,8 @@ from django.test import SimpleTestCase
 
 from apps.ventes.domain.regles_calcul import (
     REGLES_CORRIGEES, REGLES_CORRIGEES_2710, REGLES_COURANTES, REGLES_ORIGINE,
-    REGLES_SENSIBILITES_3010, calcul_corrige, regles_au_moins)
+    REGLES_RETOURS_3010B, REGLES_SENSIBILITES_3010, calcul_corrige,
+    regles_au_moins)
 
 
 class ReglesCalculTests(SimpleTestCase):
@@ -29,7 +30,8 @@ class ReglesCalculTests(SimpleTestCase):
         from apps.ventes.models import Devis
         defaut = Devis._meta.get_field('regles_calcul').default
         self.assertEqual(defaut, REGLES_COURANTES)
-        self.assertEqual(REGLES_COURANTES, REGLES_SENSIBILITES_3010)
+        self.assertEqual(REGLES_COURANTES, REGLES_RETOURS_3010B)
+        self.assertGreater(REGLES_RETOURS_3010B, REGLES_SENSIBILITES_3010)
         self.assertTrue(calcul_corrige(SimpleNamespace(regles_calcul=defaut)))
 
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
@@ -80,6 +82,34 @@ class ReglesCalculTests(SimpleTestCase):
         self.assertEqual(Devis.objects.filter.call_args_list[0], mock.call(
             statut='brouillon', date_envoi__isnull=True, regles_calcul=3))
         Devis.objects.filter.assert_called_with(pk__in=[9])
+        Devis.objects.filter.return_value.update.assert_called_once_with(
+            regles_calcul=4)
+
+    def test_migration_0144_ne_touche_que_les_brouillons(self):
+        """D-CI-SENSIB-ENVOYES (30/10/2026) — un devis envoyé au niveau 4 y reste."""
+        mod = importlib.import_module(
+            'apps.ventes.migrations.0144_regles_calcul_niveau_5')
+        Devis = mock.MagicMock()
+        Devis.objects.filter.return_value.order_by.return_value             .values_list.return_value = [11]
+        apps = mock.MagicMock()
+        apps.get_model.return_value = Devis
+        mod.brouillons_au_niveau_5(apps, None)
+        self.assertEqual(Devis.objects.filter.call_args_list[0], mock.call(
+            statut='brouillon', date_envoi__isnull=True, regles_calcul=4))
+        Devis.objects.filter.assert_called_with(pk__in=[11])
+        Devis.objects.filter.return_value.update.assert_called_once_with(
+            regles_calcul=5)
+
+    def test_migration_0144_retour_ramene_5_a_4(self):
+        mod = importlib.import_module(
+            'apps.ventes.migrations.0144_regles_calcul_niveau_5')
+        Devis = mock.MagicMock()
+        Devis.objects.filter.return_value.order_by.return_value             .values_list.return_value = [12]
+        apps = mock.MagicMock()
+        apps.get_model.return_value = Devis
+        mod.retour_niveau_4(apps, None)
+        self.assertEqual(Devis.objects.filter.call_args_list[0],
+                         mock.call(regles_calcul=5))
         Devis.objects.filter.return_value.update.assert_called_once_with(
             regles_calcul=4)
 

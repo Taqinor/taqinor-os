@@ -301,8 +301,14 @@ def _ancrer_paliers_sur_le_devis(paliers, bruts, devis, ttc_offert):
     * payback republié sur ce prix (``payback_publiable``, AMOT29).
 
     Aucun palier offert identifiable (option sans batterie, packs absents du
-    balayage, coût illisible) ⇒ paliers inchangés (prix AMOT59). Modifie
+    balayage, coût illisible) ⇒ paliers inchangés (prix AMOT59). Nouveaux
+    rendus seulement (D-CI-SENSIB-ENVOYES) : un devis envoyé avant le niveau 5
+    (``REGLES_RETOURS_3010B``) garde les prix AMOT59 qu'il a reçus. Modifie
     ``paliers`` en place ; ne lève jamais."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_RETOURS_3010B, regles_au_moins)
+    if not regles_au_moins(devis, REGLES_RETOURS_3010B):
+        return
     try:
         total = float(ttc_offert)
     except (TypeError, ValueError):
