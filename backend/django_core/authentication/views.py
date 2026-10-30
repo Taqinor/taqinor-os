@@ -1000,7 +1000,7 @@ class CalendrierHegirienView(APIView):
 # ── Logout securise ────────────────────────────────────────────
 # ENF11 — schéma OpenAPI (corps optionnel, réponse {detail}) : SCHEMA_LOGOUT,
 # posé sur la route dans urls.py (ce fichier-mur ne grossit pas, C20).
-class LogoutView(generics.GenericAPIView):
+class LogoutView(APIView):  # ENF15 : ni queryset ni sérialiseur — pas une vue « générique »
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):

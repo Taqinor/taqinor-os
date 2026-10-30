@@ -19,12 +19,13 @@
 # (create the FIRST user/company, or an admin creating a user strictly in
 # their OWN request.user.company via IsAdminRole — no cross-tenant list
 # surface). MeView: get_object() always returns self.request.user (scoped to
-# exactly one row, the caller). LogoutView: no queryset, no data exposure —
-# a token-revocation action endpoint. Reviewed safe 2026-09-06.
+# exactly one row, the caller). Reviewed safe 2026-09-06.
+# ENF15 (30/10/2026) — LogoutView retirée : elle héritait de GenericAPIView
+# sans queryset ni sérialiseur ; elle hérite désormais d'APIView (vue d'action
+# de révocation de jeton, hors du périmètre « vue porteuse de queryset »).
 backend/django_core/authentication/views.py::RegisterView
 backend/django_core/authentication/views.py::RegisterCompanyView
 backend/django_core/authentication/views.py::MeView
-backend/django_core/authentication/views.py::LogoutView
 # ChangelogViewSet/OutboxEventViewSet (core/views.py): both explicitly
 # documented as GLOBAL/cross-company, SUPERUSER-only exploitant views
 # ("aucune portée société" / "vue transverse à toutes les sociétés,

@@ -16,7 +16,9 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import BandeauProvenanceProduction, { BandeauBorneHaute, ReglagesUtilises } from './BandeauProvenanceProduction'
+import BandeauProvenanceProduction, {
+  BandeauBorneHaute, IncertitudeSigma, ReglagesUtilises, SourceMeteo,
+} from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 
 const servir = (variante) => {
@@ -105,5 +107,51 @@ describe('BandeauBorneHaute / ReglagesUtilises (ACAL52)', () => {
     expect(lignes[1]).toHaveTextContent('tolerance_validation_pct')
     expect(lignes[1]).toHaveTextContent('3')
     expect(lignes[1]).toHaveTextContent('societe')
+  })
+})
+
+/* ENF15 — les moitiés CLIENTES des contrats `calepinage_meteo.json` (CALX143)
+   et `calepinage_incertitude.json` (CALX144) : chaque valeur affichée est celle
+   de l'exemple committé, jamais une charge écrite à la main. */
+describe('SourceMeteo / IncertitudeSigma (ENF15)', () => {
+  it('la source météo affiche les clés servies, « non publié » pour un null', () => {
+    const { meteo } = exempleContrat('calepinage', 'calepinage_meteo')
+    render(<SourceMeteo meteo={meteo} />)
+    const bloc = screen.getByTestId('enf15-source-meteo')
+    expect(bloc).toHaveTextContent(meteo.service)
+    expect(bloc).toHaveTextContent(meteo.base_rayonnement)
+    expect(bloc).toHaveTextContent(meteo.base_meteo)
+    expect(bloc).toHaveTextContent(meteo.fenetre_annees)
+    expect(bloc).toHaveTextContent(meteo.heure.fuseau_site)
+    expect(bloc).toHaveTextContent(`${meteo.horizon.origine} (${meteo.horizon.base_horizon})`)
+  })
+
+  it('sans simulation (exemple_vide) : aucun bloc météo', () => {
+    const { meteo } = exempleContrat('calepinage', 'calepinage_meteo', 'exemple_vide')
+    render(<SourceMeteo meteo={meteo} />)
+    expect(screen.queryByTestId('enf15-source-meteo')).toBeNull()
+  })
+
+  it('σ composé : une ligne par composante sourcée, méthode et portée nommées', () => {
+    const { incertitude } = exempleContrat('calepinage', 'calepinage_incertitude')
+    render(<IncertitudeSigma incertitude={incertitude} />)
+    const lignes = screen.getAllByTestId('enf15-composante')
+    expect(lignes).toHaveLength(incertitude.composantes.length)
+    incertitude.composantes.forEach((c, i) => {
+      expect(lignes[i]).toHaveTextContent(c.nom)
+      expect(lignes[i]).toHaveTextContent(c.source)
+    })
+    const bloc = screen.getByTestId('enf15-incertitude')
+    expect(bloc).toHaveTextContent(incertitude.methode)
+    expect(bloc).toHaveTextContent(`portée ${incertitude.portee}`)
+    expect(screen.queryByTestId('enf15-incertitude-refus')).toBeNull()
+  })
+
+  it('σ refusé : le motif du serveur mot pour mot, aucun σ inventé', () => {
+    const { incertitude } = exempleContrat('calepinage', 'calepinage_incertitude', 'exemple_sigma_refuse')
+    render(<IncertitudeSigma incertitude={incertitude} />)
+    expect(screen.getByTestId('enf15-incertitude-refus')).toHaveTextContent(incertitude.motif_refus)
+    expect(screen.getByTestId('enf15-incertitude')).toHaveTextContent('non composée')
+    expect(screen.queryByTestId('enf15-composante')).toBeNull()
   })
 })

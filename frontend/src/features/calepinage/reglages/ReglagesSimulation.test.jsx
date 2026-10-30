@@ -354,6 +354,34 @@ describe('ACAL289 — cartes « Historique » et « Rapport d’étude » (fin d
     expect(mocks.putParametres.mock.calls[0][0]).toEqual({ presets: { versions_conservees: null } })
   })
 
+  it('ENF15 — le catalogue servi, DÉRIVÉ de rapport_etude.json, s’affiche section par section', async () => {
+    // Le serveur (`views/parametres.py::_catalogue_rapport`) sert `catalogue_rapport`
+    // = `{code, titre, obligatoire}` de CHAQUE section du contrat
+    // `apps/calepinage/contract_samples/rapport_etude.json` (CALX292), dans son
+    // ordre : la carte doit les montrer toutes, obligatoires verrouillées, et
+    // renvoyer les codes dans l'ordre du contrat.
+    const sections = exempleContrat('calepinage', 'rapport_etude').sections
+    const catalogue = sections.map(({ code, titre, obligatoire }) => ({ code, titre, obligatoire: Boolean(obligatoire) }))
+    mocks.getParametres.mockResolvedValue({ data: {
+      ...REGLAGES, documents: { rapport_etude: null, catalogue_rapport: catalogue } } })
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    rendre()
+    const carte = await screen.findByTestId('acal289-rapport')
+    sections.forEach(({ code, titre, obligatoire }) => {
+      const caseSection = screen.getByTestId(`acal289-section-${code}`)
+      expect(caseSection).toBeChecked()
+      if (obligatoire) expect(caseSection).toBeDisabled()
+      else expect(caseSection).toBeEnabled()
+      expect(carte).toHaveTextContent(titre)
+    })
+    const facultative = sections.find((s) => !s.obligatoire)
+    fireEvent.click(screen.getByTestId(`acal289-section-${facultative.code}`))
+    fireEvent.click(screen.getByTestId('acal289-enregistrer-rapport'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0]).toEqual({ documents: { rapport_etude: {
+      sections: sections.map((s) => s.code).filter((c) => c !== facultative.code), langue: null } } })
+  })
+
   it('une section obligatoire n’est pas décochable', async () => {
     mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
     rendre()

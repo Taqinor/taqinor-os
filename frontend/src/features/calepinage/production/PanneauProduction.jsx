@@ -11,7 +11,9 @@ import RetourAtelier from '../atelier/RetourAtelier'
 import {
   LIBELLE_BOUTON, etatCalcul, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
-import { BandeauBorneHaute, ReglagesUtilises } from './BandeauProvenanceProduction'
+import {
+  BandeauBorneHaute, IncertitudeSigma, ReglagesUtilises, SourceMeteo,
+} from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import useSuiviJob from './useSuiviJob'
@@ -389,6 +391,9 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000 })
       <BlocBase base={production?.base} />
       <TotalKpis total={production?.total} />
       <ReglagesUtilises simulation={data?.simulation} />
+      {/* ENF15 — `meteo` / `incertitude` servis par `GET resultat/` (CALX143/144). */}
+      {data?.simule && <SourceMeteo meteo={data?.meteo} />}
+      {data?.simule && <IncertitudeSigma incertitude={data?.incertitude} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <p className="mb-1 text-xs font-medium text-muted-foreground">Production mensuelle</p>
