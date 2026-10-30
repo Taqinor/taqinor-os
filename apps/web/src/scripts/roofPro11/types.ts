@@ -113,6 +113,13 @@ export interface InitOptions {
    *  route `/api/roof-yield` d'apps/web : repli sur la table committée). Absent = le défaut
    *  `/api/roof-yield` des pages publiques. */
   rendementPvgis?: string | null;
+  /** ACAL311 — la consommation PROPOSÉE par le serveur (`POST calepinages/<pk>/consommation/
+   *  proposer/`, contrat `calepinage_consommation_proposee.json`), fournie par la page HÔTE
+   *  (même patron que `rendementPvgis`) : elle rend la réponse 200, ou rejette avec le refus
+   *  DÉCODÉ `{message, champs}`. `null` = page hôte sans serveur (kWh affichés « estimation
+   *  (barème indicatif) ») ; absente = pages publiques, comportement inchangé. */
+  proposerConsommation?: ((corps: import('./consumption').CorpsPropositionConsommation) =>
+    Promise<import('./consumption').PropositionConsommation>) | null;
 
   // CALX104/CALX403 — les deux sections des réglages société que l'ATELIER consomme
   // (`zones_types` pour les gabarits d'obstacle, `degagements` pour la largeur d'allée

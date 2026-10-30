@@ -231,6 +231,9 @@ TEXTES_AR = {
     'Avoir (note de crédit) lié à la facture': 'إشعار دائن مرتبط بالفاتورة',
     'Note de débit liée à la facture': 'إشعار مدين مرتبط بالفاتورة',
     'généré le': 'أُنشئ بتاريخ',
+    # ERR-PDF-AR-AVOIR-BIDI — « Page i / N » du pied de page et « date à heure ».
+    'Page': 'صفحة',
+    'à': 'في',
     'générée le': 'أُنشئت بتاريخ',
     'QUITTANCE': 'وصل أداء',
     'Reçu de paiement n°': 'وصل الأداء رقم',

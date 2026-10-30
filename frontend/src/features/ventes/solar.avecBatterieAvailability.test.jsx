@@ -3,7 +3,7 @@
 // servable avec un onduleur hybride + batterie, OU un hybride FACE à un
 // onduleur réseau (batterie différée). Un hybride seul reste indisponible.
 import { describe, expect, it } from 'vitest'
-import { avecBatterieAvailability } from './solar.js'
+import { avecBatterieAvailability } from './calc/totaux.js'
 
 const PRODUITS = [{ nom: 'Onduleur hybride Deye 10kW' }]
 

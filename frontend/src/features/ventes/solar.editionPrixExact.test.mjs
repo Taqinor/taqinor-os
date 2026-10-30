@@ -7,8 +7,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ttcExactFromHt, ttcFromHt, htFromTtc, totauxCanoniquesTtc,
+  ttcExactFromHt, ttcFromHt, htFromTtc,
 } from './solar.js'
+import { totauxCanoniquesTtc } from './calc/totaux.js'
 
 test('aller-retour HT → TTC centime → HT : identique pour tout prix à 2 décimales', () => {
   for (const taux of [10, 14, 20]) {

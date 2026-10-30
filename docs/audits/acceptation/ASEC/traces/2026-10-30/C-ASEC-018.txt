@@ -1,0 +1,5 @@
+﻿== C-ASEC-018 (sha 5908d43bb)
+attendu : refusé / inchangé : formulaire de connexion de l'admin Django (reverse('admin:login'), chemin DJANGO_ADMIN_URL) : superuser totp_enabled SANS code -> 200 formulaire en erreur, aucune session (index -> 302), failed_login_count +1 ; code faux -> idem ; is_staff non superuser -> refusé (formulaire en erreur, index fermé même après force_login) ; légitime : bon code -> 302, index 200, une UserSession de plus, compteur remis à 0
+observé : {"admin_login_url": "/api/django/admin/login/", "DJANGO_ADMIN_URL_env": "<défaut>", "superuser_2fa": {"sans_code": [200, true, 302, 1], "code_faux": [200, true, 302, 2], "sessions_creees": 0}, "staff_non_superuser": [200, true, 302, 302], "legitime_bon_code": {"status": 302, "index": 200, "sessions_creees": 1, "compteur": 0}, "verdicts": {"superuser_sans_code_ou_faux": true, "staff_refuse": true, "legitime": true}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0

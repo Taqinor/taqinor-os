@@ -16,9 +16,9 @@ interface Props {
   theme?: 'light' | 'dark';
 }
 const { size = 26, theme = 'light' } = Astro.props;
-const textColor = theme === 'dark' ? '#ffffff' : '#0a1238';
-const gold = '#f7b919'; // jaune solaire vif du logo officiel
-const ink = '#0a1238'; // bleu nuit de l'éclair (= azur-950)
+const textColor = theme === 'dark' ? '#ffffff' : '#022F53';
+const gold = '#FEC811'; // jaune solaire vif du logo officiel
+const ink = '#022F53'; // bleu nuit de l'éclair (= azur-950)
 const sun = Math.round(size * 1.2); // le soleil (rayons compris) déborde un peu la hauteur des lettres
 
 // 8 rayons régulièrement répartis (générés pour éviter le code répétitif).
@@ -73,7 +73,7 @@ const rays = Array.from({ length: 8 }, (_, i) => {
 <style>
   /* Static brass drop-shadow — always present, gives depth without animation */
   .sun-glow {
-    filter: drop-shadow(0 0 4px rgb(247 185 25 / 0.45)) drop-shadow(0 0 10px rgb(232 181 74 / 0.25));
+    filter: drop-shadow(0 0 4px rgb(254 200 17 / 0.45)) drop-shadow(0 0 10px rgb(232 181 74 / 0.25));
   }
 
   /* Gentle pulse only when motion is welcome */
@@ -85,10 +85,10 @@ const rays = Array.from({ length: 8 }, (_, i) => {
 
   @keyframes sun-pulse {
     0%, 100% {
-      filter: drop-shadow(0 0 4px rgb(247 185 25 / 0.45)) drop-shadow(0 0 10px rgb(232 181 74 / 0.25));
+      filter: drop-shadow(0 0 4px rgb(254 200 17 / 0.45)) drop-shadow(0 0 10px rgb(232 181 74 / 0.25));
     }
     50% {
-      filter: drop-shadow(0 0 6px rgb(247 185 25 / 0.65)) drop-shadow(0 0 18px rgb(232 181 74 / 0.35));
+      filter: drop-shadow(0 0 6px rgb(254 200 17 / 0.65)) drop-shadow(0 0 18px rgb(232 181 74 / 0.35));
     }
   }
 </style>

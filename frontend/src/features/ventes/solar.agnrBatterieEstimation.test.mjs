@@ -12,7 +12,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { computeROI } from './solar.js'
+import { computeROI } from './calc/roi.js'
 
 const base = {
   kwp: 5, factures: Array(12).fill(800), dayUsagePct: 60, totalSans: 50000, totalAvec: 90000,

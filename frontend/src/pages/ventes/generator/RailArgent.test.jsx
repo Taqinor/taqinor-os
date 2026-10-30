@@ -8,7 +8,8 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
 import RailArgent from './RailArgent'
-import { lignesRemiseesParPanier, optionTotalsTTC, formatMoney } from '../../../features/ventes/solar'
+import { formatMoney } from '../../../features/ventes/solar'
+import { lignesRemiseesParPanier, optionTotalsTTC } from '../../../features/ventes/calc/totaux.js'
 
 const L = (designation, quantite, ttc, taux = '20') => ({
   designation, quantite: String(quantite), prix_unit_ttc: String(ttc), taux_tva: taux,

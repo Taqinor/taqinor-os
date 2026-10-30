@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 38716ee0afbdbea1ba850abd3111ac05fd36a90379c666169817ca28edf2aae6
-Plan fingerprint: b40444dc4bf389c1b8079f8611d56a35af1141c979ab5cf79b1c6eb2c09b2c43
+Structure fingerprint: 7702eeb5f4921eaa8a91dfe8d916fc369b7b4610d9a1801ab6cf56391cbb2059
+Plan fingerprint: cbe1e5fe01e50e14ba1db8058d8a07c43e24b3c908c215610a81a9f53da9e16f
 
 
 
@@ -456,7 +456,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 
 - **auth** — session/JWT (`authSlice.js`).
 - **crm** — leads/clients state; `crmSlice.js`, `bulk.js`, `stages.js` (mirrors STAGES.py, CI-checked); **`workspace/`** = the lead cockpit (`LeadWorkspace.jsx` over the pure autosave engine `draftCore.js` via `useLeadDraft.js`, with `IdentityRail`/`SectionsPane`/`ContextRail`, `TimelineTab`, `DevisTab`, `ArbreHistorique.jsx`, `StageControl`); `traceToit.js` (pure: `Lead.roof_outline` -> SVG polygon + area, via `features/calepinage`'s roof-marker helper), `leadPrefetch.js`, `rotting.js`.
-- **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill: GHI/ONEE/ROI, panel/inverter/battery sizing, pompage HMT+débit -> pump + VEICHI variateur, all TTC), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
+- **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill: GHI/ONEE/ROI, panel/inverter/battery sizing, all TTC; split by pure moves into `calc/` — `tarifs.js` tariff model, `totaux.js` canonical totals/multi-property/prix-kWc/margin, `roi.js` savings/ROI/25-year cashflow, `recomposition.js` line recomposition/variant merge, `classification.js` product/line classification keywords, rule #4; their tests in `calc/*.test.mjs`), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
 - **calepinage** — the roof-design studio (module.config-registered): library, sources, variantes, plan/pente/terrain/ombrière/schéma/production tabs, `repere.js` roof-marker helper (repatriated from `ao` by SOLMVP15).
 - **visites** — field technical visits (module.config-registered).
 - **installations** — chantiers; `installationsSlice.js`, `statuses.js`, offline field capture.
@@ -592,7 +592,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1292)**
+**Done (1294)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1873,6 +1873,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT92` — Imprimer sur le reçu « Reste dû sur la vente (devis …) » à côté du solde de la facture…
 - `VNT93` — Garde FR/AR : chaque clé `_L` de `facture.html` et `recu.html` a sa traduction dans…
 - `VNT94` — Retirer les fonctions front mortes (`genererFacture`, `facturerComplet` de…
+- `VNT95` — Acceptation en direct M3 (orchestrateur) : KPI « devis signés » et carnet sur une…
 - `VNT96` — Capturer le golden des vues facture sur le code FINAL des lots M1-M3, avant tout…
 - `VNT97` — Déplacer le cycle de la facture (émettre, remettre en brouillon, marquer payée…
 - `VNT98` — Déplacer les gestes d'encaissement (`paiements`, `arrondi_caisse`…
@@ -1884,10 +1885,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT104` — Nommer le groupe de proposition : `racine_groupe(devis)` (objet) et…
 - `VNT105` — Supprimer les sommes de factures devenues orphelines dans `selectors_facturation.py` /…
 - `VNT106` — Refuser le renouvellement d'un devis ACCEPTÉ : `RENOUVELABLES = (EXPIRE,)`, un accepté…
+- `VNT107` — Acceptation en direct M4 (orchestrateur) : non-régression du parcours M1 sur le code…
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (127)**
+**Open — to build (125)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2012,8 +2014,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `QXG5` — [GATED: founder ops check, 10 minutes]
 - `QXG6` — [GATED: vérifs fondateur avant hard-coding]
 - `VNT83` — Acceptation en direct M2 (orchestrateur) : accepter → brouillon d'acompte automatique →…
-- `VNT95` — Acceptation en direct M3 (orchestrateur) : KPI « devis signés » et carnet sur une…
-- `VNT107` — Acceptation en direct M4 (orchestrateur) : non-régression du parcours M1 sur le code…
 - `VNT108` — [GATED: geste du fondateur — `reparer_vente_active --lister` = 0 en prod ; aujourd'hui…
 - `VTG1` — [GATED: décision fondateur coût/infra]
 

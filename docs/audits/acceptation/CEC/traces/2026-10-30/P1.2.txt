@@ -1,0 +1,12 @@
+(pile 127.0.0.1:5191 → :8010, anon_admin / taqinor-anon ; page /proposition non lancée : charge publique lue)
+# CEC6 — bureaux : devis DEV-202610-0120 (id 1693), lead 2666
+Économie an 1 HT — recalcul : tranche_2 67412 kWh × 1.4242 = 96008.17 = 96008.17 MAD
+  economie_ci.economie_annee1.total_mad = 96008.8 ; PDF = 96009 ; mode_kpis.economies_annuelles = 96008.8 ; synthese_ci.argent.economie_annee1.total_mad = 96008.8 ; devis/auto.economie_an_1_ht = 96008.8
+Investissement sans batterie : PDF 298200 TTC ; option_totals 298200 TTC / 257600 HT ; devis/auto.total_ttc 298200
+Retour — recalcul (base deux, investissement 257600) : cumul refait an 1 -161591.2 (servi -161591.2) ; an 2 -66062.44 (servi -66062.44) ; an 3 28988.67 (servi 28988.67)
+  passage à zéro an 3 : 3 − 1 + 66062.44 / 95051.11 = 2.7 ans ; simple 257600 / 96008.8 = 2.68 ans
+  PDF 2.7 ; mode_kpis.payback 2.7 → page /proposition « Rentabilisé en » 2.7 ; devis/auto.retour_ans 2.7 ; bannière 2,7 ; economie_ci.indicateurs.retour_ans (entier) 3
+Bannière écran : « Devis créé : DEV-202610-0120 · 65 kWc · 298 200 MAD TTC · économie ≈ 96 000 MAD/an · retour ≈ 2,7 ans »
+Avec batterie : PDF synthèse {"kwc":80.8,"ttc":717500,"eco":135935,"retour":null,"retourImprime":false} ; page d'option « Total TTC 717 500,00 — Économie annuelle HT 135 935,03 » ; option_batterie.valeur_chiffree.economie_annuelle_mad 135935.03 ; option_totals.avec_batterie.ttc 717500 ; retour_simple_ans null
+  recalcul avec : couverture 90.4 % × 105528 kWh/an × 1.4242 = 135865 MAD (servi 135935.03, écart -0.05 %) ; retour simple main 609216.67 / 135935.03 = 4.5 ans (non servi, non imprimé)
+PDF (texte, extrait) : Sans batterie Puissance 65,06 kWc Investissement TTC 298 200,00 MAD Économie annuelle 96 009 MAD HT Retour sur investissement 2,7 ans Part de votre consommation couverte 64 % Avec batterie Puissance 80,8 kWc Investissement TTC 717 500,00 MAD Économie annuelle 135 935 MAD HT Part de votre consommation couverte 90 % Votre énergie mois par mois Votre consommation Production autoconsommée Surplus non consommé sur place kWh par mois : votre con

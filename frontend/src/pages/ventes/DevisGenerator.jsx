@@ -85,19 +85,15 @@ import {
   // rendent. CIQ126 — l'étude C&I locale (et son avertissement MT) est
   // supprimée : le moteur serveur C&I est la seule source.
   DEFAULT_MONTHLY_BILLS,
-  formatMoney, estimerMois, htFromTtc,
-  comptePanneauxOption,
+  formatMoney, estimerMois, htFromTtc, comptePanneauxOption,
   kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux,
-  optionTotalsTTC, defaultProductLines,
-  prixParKwc, discountForTarget,
-  computeBuyCostDetail, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
+  defaultProductLines, KWH_PRICE, EFFICIENCY,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   // QJR66 — `buildEtudeParamsChoice` n'est PLUS importé ici : l'écran n'écrit
   // plus `scenario` / `recommended_option` / `distributeur` / `conso_annuelle`
   // dans `etude_params` (registre de surcharges D12 côté serveur). La fonction
   // reste dans solar.js, avec ses tests — elle n'a simplement plus d'appelant
   // sur ce chemin d'enregistrement.
-  multiPropertyPreviewTTC, lignesRemiseesParPanier,
   COMMERCIAL_CATEGORY_QUESTIONS,
   // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
   // sans elle le modèle d'économie ne sature pas et l'ascension marginale
@@ -108,6 +104,10 @@ import {
   // ADEV69 — l'ancien composeur JS `autoFillLines` est supprimé.
   // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
   _hasPrix} from '../../features/ventes/solar'
+import {
+  optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCostDetail, avecBatterieAvailability,
+  multiPropertyPreviewTTC, lignesRemiseesParPanier,
+} from '../../features/ventes/calc/totaux.js'
 import { MESSAGE_KWH_INCOHERENT, baremeDepuisProfil } from '../../features/ventes/calc/tarifs.js'
 import { formatNumber, todayLocalIso } from '../../lib/format'
 // CJ2b — l'aperçu du moteur horaire résidentiel vit dans `useApercuEtude`

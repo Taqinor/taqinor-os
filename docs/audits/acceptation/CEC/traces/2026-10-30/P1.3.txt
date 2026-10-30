@@ -1,0 +1,12 @@
+(pile 127.0.0.1:5191 → :8010, anon_admin / taqinor-anon ; page /proposition non lancée : charge publique lue)
+# CEC6 — usine : devis DEV-202610-0120 (id 1688), lead 2661
+Économie an 1 HT — recalcul : pointe 2809 kWh × 1.1798 = 3314.06 + pleines 148015 kWh × 0.8417 = 124584.23 + creuses 206 kWh × 0.6165 = 127.00 = 128025.28 MAD
+  economie_ci.economie_annee1.total_mad = 128025.17 ; PDF = 128025 ; mode_kpis.economies_annuelles = 128025.17 ; synthese_ci.argent.economie_annee1.total_mad = 128025.17 ; devis/auto.economie_an_1_ht = 128025.17
+Investissement sans batterie : PDF 541800 TTC ; option_totals 541800 TTC / 469700 HT ; devis/auto.total_ttc 541800
+Retour — recalcul (base deux, investissement 469700) : cumul refait an 1 -341674.83 (servi -341674.83) ; an 2 -214289.79 (servi -214289.79) ; an 3 -87541.67 (servi -87541.67) ; an 4 38572.71 (servi 38572.71)
+  passage à zéro an 4 : 4 − 1 + 87541.67 / 126114.38 = 3.7 ans ; simple 469700 / 128025.17 = 3.67 ans
+  PDF 3.7 ; mode_kpis.payback 3.7 → page /proposition « Rentabilisé en » 3.7 ; devis/auto.retour_ans 3.7 ; bannière 3,7 ; economie_ci.indicateurs.retour_ans (entier) 4
+Bannière écran : « Devis créé : DEV-202610-0120 · 130 kWc · 541 800 MAD TTC · économie ≈ 128 000 MAD/an · retour ≈ 3,7 ans »
+Avec batterie : PDF synthèse {"kwc":196.62,"ttc":1711100,"eco":222248,"retour":null,"retourImprime":false} ; page d'option « Total TTC 1 711 100,00 — Économie annuelle HT 222 247,94 » ; option_batterie.valeur_chiffree.economie_annuelle_mad 222247.94 ; option_totals.avec_batterie.ttc 1711100 ; retour_simple_ans null
+  recalcul avec : 3 postes tarifaires (pointe/pleines/creuses) — la batterie déplace l'énergie vers d'autres postes, recalcul au tarif moyen non probant, non fait ; retour simple main 1453416.67 / 222247.94 = 6.5 ans (non servi, non imprimé)
+PDF (texte, extrait) : Sans batterie Puissance 130,13 kWc Investissement TTC 541 800,00 MAD Économie annuelle 128 025 MAD HT Retour sur investissement 3,7 ans Part de votre consommation couverte 32 % Avec batterie Puissance 196,62 kWc Investissement TTC 1 711 100,00 MAD Économie annuelle 222 248 MAD HT Part de votre consommation couverte 50 % Prochaines étapes 1 Visite technique de votre site · 2 Validation de l'offre définitive · 3 Pose et mise en service TAQIN

@@ -4,6 +4,7 @@ import ventesApi from '../../../api/ventesApi'
 import crmApi from '../../../api/crmApi'
 import calepinageApi from '../../../api/calepinageApi'
 import { urlFichierCalepinage } from '../../../lib/calage/fichierCalepinage'
+import { refusServeur } from '../commun/refusServeur'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
@@ -49,6 +50,13 @@ export function useAtelierBoot(ctx) {
   const { setSceneHydratee } = ctx
   // ACAL192 — refus serveur du recentrage automatique (calepinage verrouillé…), en français.
   const { setRepereErreur } = ctx
+  // ACAL311 — la porte `consommation/proposer/` (ToitureDesign), liée au calepinage ouvert :
+  // l'atelier reçoit la réponse 200, ou le refus DÉCODÉ `{message, champs}` (refusServeur).
+  const { proposerConsommation } = ctx
+  const proposerPourAtelier = (typeof proposerConsommation === 'function' && calepinageId)
+    ? (corps) => proposerConsommation(calepinageId, corps).then(
+      (res) => res?.data, (err) => { throw refusServeur(err) })
+    : null
   // ENF22 — le corps du boot lit `ctx` (setters/refs du parent) a l'instant de
   // l'effet : un evenement d'effet, relance seulement par la liste ci-dessous.
   const demarrerBoot = useEffectEvent(() => {
@@ -231,6 +239,8 @@ export function useAtelierBoot(ctx) {
         // ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : aucune requête,
         // repli sur la table committée — plus aucune erreur 405 à l'ouverture.
         rendementPvgis: null,
+        // ACAL311 — mode lead : aucun calepinage, kWh affichés « estimation (barème indicatif) ».
+        proposerConsommation: null,
         maptilerKey,
         mapboxToken,
         reducedMotion: !!reducedMotion,
@@ -365,6 +375,8 @@ export function useAtelierBoot(ctx) {
           // ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : aucune requête,
           // repli sur la table committée — plus aucune erreur 405 à l'ouverture.
           rendementPvgis: null,
+          // ACAL311 — kWh au barème société (null hors calepinage : « estimation »).
+          proposerConsommation: proposerPourAtelier,
           maptilerKey: carte.maptilerKey,
           mapboxToken: carte.mapboxToken || undefined,
           reducedMotion: !!reducedMotion,

@@ -7,7 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { fusionnerRecomposition, appliquerRecomposition } from './solar.js'
+import { fusionnerRecomposition, appliquerRecomposition } from './calc/recomposition.js'
 import { lignesServeurVersEcran } from './quote/lignesEcran.js'
 
 const ANCIENNE = {

@@ -37,7 +37,7 @@ __all__ = [
     'nombre_proprietes', 'paiements_des_factures', 'paiements_totaux_par_mode',
     'peremption_layout_devis', 'puissance_kwc_projet', 'references_avoirs', 'references_factures',
     'releve_client_pdf_bytes', 'releve_client_portail', 'resume_dossier_8221',
-    'resume_portail_client', 'schema_unifilaire_svg', 'signature_velocity_by_month_and_mode',
+    'resume_portail_client', 'schema_unifilaire_svg', 'logo_entete_html', 'signature_velocity_by_month_and_mode',
     'signed_clients_cross_sell_segments', 'totaux_multi_proprietes', 'tranche_facturee', 'tranches_facturees',
     'tva_buckets', 'verdict_batterie_onduleur', 'verdict_panneau_onduleur',
 ]
@@ -230,7 +230,7 @@ def promesse_production_devis(devis_id, company):
     ``pr_modelise`` = 1 − pertes système du moteur (hypothèse ``pertes_pct``
     de l'étude, PVGIS) ; ``None`` si l'hypothèse est absente. Scopé société.
     Aucune garantie annoncée."""
-    from decimal import Decimal, InvalidOperation
+    from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
     from .models import Devis
     devis = (Devis.objects.filter(pk=devis_id, company=company)
@@ -255,7 +255,10 @@ def promesse_production_devis(devis_id, company):
             except (InvalidOperation, ValueError, TypeError):
                 break
             if 0 <= pertes < 100:
-                pr = float((1 - pertes / 100).quantize(Decimal('0.001')))
+                # ENF15 — moitié-vers-le-haut, la politique du dépôt
+                # (docs/money-convention.md), jamais l'arrondi bancaire.
+                pr = float((1 - pertes / 100).quantize(
+                    Decimal('0.001'), rounding=ROUND_HALF_UP))
             break
     return {'production_annuelle_kwh': float(production),
             'pr_modelise': pr, 'source': 'estimation moteur'}
@@ -1736,7 +1739,7 @@ from .selectors_facturation import (  # noqa: E402 — ré-export (SPL143) (D-EN
 from .selectors_calepinage import (  # noqa: E402 — ré-export (SPL144) (D-ENF22)
     conception_pour_lead,
     calepinage_du_devis,
-    schema_unifilaire_svg,
+    schema_unifilaire_svg, logo_entete_html,
     lignes_produits_calepinage,
     peremption_layout_devis,
     devis_brouillon_pour_layout,

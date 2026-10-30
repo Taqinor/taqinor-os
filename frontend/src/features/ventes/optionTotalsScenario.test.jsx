@@ -13,7 +13,7 @@
 // Les attentes ci-dessous sont dérivées à la main des lignes (et identiques à
 // celles de `apps/ventes/tests/test_err_qah_total_divergence_creation.py`).
 import { describe, expect, it } from 'vitest'
-import { optionTotalsTTC } from './solar.js'
+import { optionTotalsTTC } from './calc/totaux.js'
 
 const L = (designation, quantite, prix_unit_ttc, taux_tva = 20) =>
   ({ designation, quantite: String(quantite), prix_unit_ttc: String(prix_unit_ttc), taux_tva, variante: '' })

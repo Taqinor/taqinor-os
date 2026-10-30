@@ -12,12 +12,8 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    ARC54 — Migration des routes legacy Ventes vers le registre (phase 2, après
    les pilotes ARC48 stock/sav).
    ----------------------------------------------------------------------------
-   Routes migrées ici (section `nav` ajoutée depuis par ODX7, voir plus bas).
-   Les titres de page (`routes.meta.js` → `BASE_PAGE_TITLES`/`SECTION_LABELS`)
-   restent déjà déclarés là-bas pour ces chemins et ne sont PAS dupliqués ici.
-   Toutes ces routes utilisaient `authLoader` (aucun rôle/perm) dans
-   `index.jsx` — préservé à l'identique : aucune entrée `roles` ci-dessous, donc
-   `buildModuleRoutes` applique `authLoader` (cf. router/moduleRoutes.jsx).
+   Mêmes règles de migration que `features/crm/module.config.jsx` (titres
+   laissés à `routes.meta.js`, aucune entrée `roles` → `authLoader`).
 
    NON-MIGRABLES (laissées dans index.jsx, cf. rapport de lane) :
    `/ventes/devis/:id/3d` et `/devis-design/:id` portent un `errorElement`

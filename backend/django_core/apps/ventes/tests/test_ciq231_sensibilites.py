@@ -6,6 +6,7 @@ SimpleTestCase : aucune base.
 """
 import copy
 import json
+import math
 import os
 
 from django.test import SimpleTestCase
@@ -76,6 +77,154 @@ def _retour_manuel(investissement, economie1, *, idx=0.0, deg=None):
         if cumul >= 0:
             return annee
     return None
+
+
+_JOURS_MOIS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+
+
+def _serie_8760():
+    """Année type horaire déterministe (kWh/kWc) : cloche 6-18 h GMT, saison,
+    et un ciel qui change d'un jour à l'autre (comme la série PVGIS réelle)."""
+    serie = []
+    for jour in range(365):
+        ciel = 0.3 + 0.7 * ((jour * 37) % 11) / 10.0
+        saison = 1.0 + 0.25 * math.cos(2 * math.pi * (jour - 172) / 365.0)
+        for h in range(24):
+            cloche = max(0.0, math.sin(math.pi * (h - 6 + 0.5) / 12.0)) if 6 <= h < 18 else 0.0
+            serie.append(round(0.9 * ciel * saison * cloche, 4))
+    return serie
+
+
+def _profil(ouvre, repos, jours_repos_par_semaine):
+    """``profil_charge.jours_types`` : un jour ouvré + un jour de repos / mois."""
+    jours = []
+    for mois, n in enumerate(_JOURS_MOIS, start=1):
+        repos_n = round(n * jours_repos_par_semaine / 7.0)
+        jours.append({'mois': mois, 'type_jour': 'ouvre', 'nb_jours': n - repos_n,
+                      'charge_kwh': list(ouvre)})
+        jours.append({'mois': mois, 'type_jour': 'repos', 'nb_jours': repos_n,
+                      'charge_kwh': list(repos)})
+    return jours
+
+
+def _apercu_profil(nom):
+    """Trois profils réels du rejeu CEC6 : boulangerie BT, bureaux BT, usine MT —
+    bilan central par LE moteur (``bilan_horaire`` sur la série 8 760 h)."""
+    from apps.ventes.moteur_ci.autoconso import bilan_horaire
+    from apps.ventes.moteur_ci.production import production_pour_bilan
+    if nom == 'boulangerie':
+        ouvre = [4.0 if 2 <= h < 10 else 2.0 if 10 <= h < 19 else 0.8 for h in range(24)]
+        jours, kwc, tension = _profil(ouvre, [0.8] * 24, 1), 18.0, 'bt'
+    elif nom == 'bureaux':
+        ouvre = [12.0 if 7 <= h < 17 else 2.0 for h in range(24)]
+        jours, kwc, tension = _profil(ouvre, [2.0] * 24, 2), 60.0, 'bt'
+    else:
+        ouvre = [120.0 if 5 <= h < 21 else 30.0 for h in range(24)]
+        jours, kwc, tension = _profil(ouvre, [30.0] * 24, 1), 400.0, 'mt'
+    production = {'serie_horaire': {'kwh_kwc': _serie_8760()}}
+    bilan, _alertes = bilan_horaire(jours, production_pour_bilan(production), kwc,
+                                    tension=tension)
+    return {'entrees_resolues': {'tension': {'valeur': tension},
+                                 'tva_recuperable': {'valeur': 'oui'}},
+            'profil_charge': {'jours_types': jours}, 'production': production,
+            'taille': {'retenue_kwc': kwc}, 'bilan': bilan, 'alertes': []}
+
+
+SCENARIOS_P90 = [
+    {'cle': 'production', 'variation_pct': -7.7, 'source': 'P90 (test)'},
+    {'cle': 'tarif_kwh', 'variation_pct': -10, 'source': 'baisse (test)'},
+    {'cle': 'tarif_kwh', 'variation_pct': 10, 'source': 'hausse (test)'},
+    {'cle': 'production', 'variation_pct': 5, 'source': 'P10 (test)'}]
+
+
+#: Une ligne panneau au devis : l'investissement d'un devis lu est chiffré (ADEV81).
+LIGNES_DEVIS = [{'designation': 'Panneau', 'panneau': True, 'ht': 300000.0, 'ttc': 360000.0}]
+
+
+class SensibiliteMonotoneTest(SimpleTestCase):
+    """ERR-CI-SENSIBILITE-P90-INVERSEE (CEC6 P1.4) — moins de production ou un
+    tarif plus bas ne rapporte JAMAIS plus que le central (et l'inverse)."""
+
+    def _bloc(self, nom):
+        apercu = _apercu_profil(nom)
+        declare = TARIF_MT_DECLARE if nom == 'usine' else {'contrat': 'bt_patente'}
+        return eco.assembler_economie_ci(
+            apercu, tarif_declare=declare, investissement=INVESTISSEMENT,
+            mode_installation='industriel', reglages={'sensibilites_ci': SCENARIOS_P90})
+
+    def test_trois_profils_monotones(self):
+        for nom in ('boulangerie', 'bureaux', 'usine'):
+            with self.subTest(profil=nom):
+                bloc = self._bloc(nom)
+                centre = (bloc['economie_annee1']['total_mad'],
+                          bloc['flux_ht']['flux'][-1]['cumul_mad'],
+                          bloc['indicateurs']['tri_pct'])
+                for sc in bloc['sensibilites']:
+                    self.assertNotIn('motif', sc)
+                    valeurs = (sc['economie_annee1_mad'], sc['cumul_25_ans_mad'], sc['tri_pct'])
+                    for v, c in zip(valeurs, centre):
+                        if sc['variation_pct'] < 0:
+                            self.assertLess(v, c, (nom, sc))
+                        else:
+                            self.assertGreater(v, c, (nom, sc))
+
+    def test_production_meme_moteur_que_le_central(self):
+        """À +0 % le scénario production retrouve EXACTEMENT le central."""
+        apercu = _apercu_profil('usine')
+        modifie, motif = eco._options.apercu_production_comparable(
+            apercu, 1.0, eco._apercu_production, origine=False, motif_sans_charge='x')
+        self.assertIsNone(motif)
+        self.assertEqual(modifie['bilan']['horaire'], apercu['bilan']['horaire'])
+
+    def test_bilan_non_reproductible_omis_avec_motif(self):
+        apercu = _apercu_profil('usine')
+        apercu['taille'] = {'retenue_kwc': 380.0}  # étude périmée : autre puissance
+        modifie, motif = eco._options.apercu_production_comparable(
+            apercu, 0.923, eco._apercu_production, origine=False, motif_sans_charge='x')
+        self.assertIsNone(modifie)
+        self.assertEqual(motif, eco._options.MOTIF_SENSIBILITE_NON_REPRODUCTIBLE)
+
+    def _bloc_du_devis(self, regles_calcul, statut):
+        from types import SimpleNamespace
+        from unittest import mock
+        devis = SimpleNamespace(
+            etude_params={'etude_ci': _apercu_profil('usine'), 'tarif_declare': TARIF_MT_DECLARE},
+            mode_installation='industriel', regles_calcul=regles_calcul, statut=statut)
+        with mock.patch.object(eco, 'reglages_economie_ci',
+                               return_value={'sensibilites_ci': SCENARIOS_P90[:1]}), \
+                mock.patch.object(eco, 'lignes_pour_economie_ci', return_value=LIGNES_DEVIS), \
+                mock.patch('apps.ventes.utils.options.option_totaux', return_value=INVESTISSEMENT), \
+                mock.patch('apps.ventes.domain.etude_ci.courbe_degradation_du_devis', return_value=None):
+            return eco.economie_ci_pour_devis(devis, company=None)
+
+    def test_devis_envoye_garde_son_tableau_brouillon_corrige(self):
+        """D-CI-SENSIB-ENVOYES (fondateur 30/10/2026) — un devis envoyé au niveau
+        3 garde le tableau d'avant le correctif ; un brouillon (niveau 4) le
+        prend corrigé."""
+        from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, REGLES_SENSIBILITES_3010
+        apercu = _apercu_profil('usine')
+        reglages = {'sensibilites_ci': SCENARIOS_P90[:1]}
+        # Le tableau d'avant le correctif = calcul cellule par cellule (origine).
+        ancien = eco.assembler_economie_ci(
+            apercu, tarif_declare=TARIF_MT_DECLARE, investissement=INVESTISSEMENT,
+            mode_installation='industriel', reglages=dict(reglages, sensibilites_origine=True),
+            lignes=LIGNES_DEVIS)
+        neuf = eco.assembler_economie_ci(
+            apercu, tarif_declare=TARIF_MT_DECLARE, investissement=INVESTISSEMENT,
+            mode_installation='industriel', reglages=reglages, lignes=LIGNES_DEVIS)
+        self.assertNotEqual(ancien['sensibilites'], neuf['sensibilites'])
+        envoye = self._bloc_du_devis(REGLES_CORRIGEES_2710, 'envoye')
+        brouillon = self._bloc_du_devis(REGLES_SENSIBILITES_3010, 'brouillon')
+        self.assertEqual(envoye['sensibilites'], ancien['sensibilites'])
+        self.assertEqual(brouillon['sensibilites'], neuf['sensibilites'])
+        self.assertEqual(envoye['economie_annee1'], brouillon['economie_annee1'])
+
+    def test_regles_origine_gardent_le_calcul_envoye(self):
+        """Fondateur 08/10 : un devis envoyé garde ce que le client a reçu."""
+        apercu = _apercu_profil('usine')
+        modifie, _motif = eco._options.apercu_production_comparable(
+            apercu, 0.923, eco._apercu_production, origine=True, motif_sans_charge='x')
+        self.assertEqual(modifie, eco._apercu_production(apercu, 0.923))
 
 
 class SensibilitesTest(SimpleTestCase):

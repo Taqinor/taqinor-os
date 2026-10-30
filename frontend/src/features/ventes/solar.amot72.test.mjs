@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { paybackMoteurHoraire } from './solar.js'
+import { paybackMoteurHoraire } from './calc/roi.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 const FIXTURE = JSON.parse(readFileSync(join(ICI, 'golden', 'amot72_payback_serveur.json'), 'utf-8'))

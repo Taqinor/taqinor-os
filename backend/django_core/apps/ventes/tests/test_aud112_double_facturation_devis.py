@@ -105,6 +105,36 @@ class TestDoubleFacturationDevis(TestCase):
         self.assertEqual(resp2.status_code, 409, resp2.data)  # CI #997 fuzz : refus d'état, 409
         self.assertEqual(Facture.objects.count(), 1)
 
+    # ── ERR-FACT-ACOMPTE-PLUS-BC-DOUBLE (APDF99 P8) ───────────────────────
+
+    def test_brouillon_acompte_auto_puis_facture_bc_jamais_au_dela(self):
+        """Acompte automatique de l'acceptation (VNT62, brouillon) PUIS
+        facture de BC (complète) : comme ``facturer-complet`` (VNT65), le
+        brouillon d'acompte est ANNULÉ — le prévu de la vente reste le prix
+        du devis et ``DOC_FACTURATION_DEPASSE_DEVIS`` reste muette."""
+        from apps.ventes.coherence.moteur import _Ctx
+        from apps.ventes.coherence.registre import REGISTRE, charger_regles
+        from apps.ventes.domain.facturation_vente import (
+            acompte_a_l_acceptation)
+
+        acompte = acompte_a_l_acceptation(self.devis, self.user)
+        self.assertIsNotNone(acompte)
+        self.assertEqual(acompte.statut, Facture.Statut.BROUILLON)
+
+        resp = self._facturer_bc()
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(self._emettre(resp.data['id']).status_code, 200)
+
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.statut, Facture.Statut.ANNULEE)
+        actives = Facture.objects.filter(devis=self.devis).exclude(
+            statut=Facture.Statut.ANNULEE)
+        self.assertEqual([f.pk for f in actives], [resp.data['id']])
+        charger_regles()
+        regle = REGISTRE['DOC_FACTURATION_DEPASSE_DEVIS']
+        devis = Devis.objects.get(pk=self.devis.pk)
+        self.assertEqual(regle.check(regle, devis, _Ctx(self.company)), [])
+
     # ── Corollaire : la facture BC porte enfin son devis ──────────────────
 
     def test_la_facture_bc_porte_son_devis(self):

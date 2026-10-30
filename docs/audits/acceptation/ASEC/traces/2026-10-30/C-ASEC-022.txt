@@ -1,0 +1,5 @@
+﻿== C-ASEC-022 (sha 5908d43bb)
+attendu : refusé / inchangé : POST anonyme /api/django/auth/register-company/ (corps complet, valide) avec TENANT_SIGNUP_ENABLED à sa valeur réelle de réglage (attendue False, défaut '0') -> 404, aucune Company ni aucun utilisateur créés (comptes relus avant / après dans la sonde)
+observé : {"TENANT_SIGNUP_ENABLED": false, "throttle": "RegisterRateThrottle (scope register, 3/h par IP) neutralisé par mock", "status": 404, "comptes_avant": [5, 8], "comptes_apres": [5, 8], "societe_creee": false, "utilisateur_cree": false, "jeton_rendu": false, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0

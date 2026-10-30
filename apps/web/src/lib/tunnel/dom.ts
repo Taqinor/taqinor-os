@@ -7,6 +7,8 @@ import { OCCUPANCY_IDS, OCCUPANCY_SHAPES } from '../dayProfiles';
 import { MAX_BILL_BY_MODE } from '../lead';
 
 export interface Dom {
+  /** Le Document INJECTÉ (jamais le global) : les sections passent par lui. */
+  doc: Document;
   $: (id: string) => HTMLElement | null;
   val: (id: string) => string;
   num: (id: string) => number | null;
@@ -57,5 +59,5 @@ export function creerDom(doc: Document): Dom {
     err.textContent = message || '';
     err.hidden = !message;
   }
-  return { $, val, num, pct, setText, maxBillFor, occShapePaths, setFieldError };
+  return { doc, $, val, num, pct, setText, maxBillFor, occShapePaths, setFieldError };
 }

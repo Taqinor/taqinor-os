@@ -1,26 +1,42 @@
-"""Option « AVEC BATTERIE » d'un devis C&I (décision fondateur du 26/10/2026).
+"""Option « AVEC BATTERIE » d'un devis C&I (décisions fondateur des 26/10 et
+30/10/2026).
 
 Un devis commercial / industriel porte, comme le résidentiel, DEUX options :
-« sans batterie » (onduleurs string, la taille de la règle des 10 ans,
-``taille.dimensionner_ci``) et « avec batterie », calculée ICI :
+« sans batterie » (onduleurs string, la taille de la règle marginale —
+``taille.HORIZON_MARGINAL_CI``, ``taille.dimensionner_ci``) et « avec
+batterie », calculée ICI :
 
 * onduleurs HYBRIDES basse tension triphasés (Deye SG05LP3) À LA PLACE des
   onduleurs string — la MÊME combinaison ``onduleurs.combiner_onduleurs``
   (le moins d'appareils, puis le moins cher, AC ≤ puissance souscrite), sur
   le vivier des hybrides ;
-* banque HOMOGÈNE de modules (jamais deux capacités mêlées) dont la capacité
-  UTILE (fiche ``kwh_usable``) couvre la consommation hors production solaire
-  d'une journée MOYENNE (:func:`besoin_nocturne_kwh`) : le moins de modules,
-  puis la banque la moins chère ;
+* banque HOMOGÈNE de modules (jamais deux capacités mêlées) du modèle le
+  moins cher par kWh UTILE (fiche ``kwh_usable``, prix de vente publié —
+  :func:`choisir_modele_banque`), dimensionnée par la RÈGLE MARGINALE
+  (fondateur 30/10/2026, :func:`_monter_banque`) : pour n = 1, 2, 3…
+  modules, l'option « avec » à n modules est composée EN ENTIER — champ
+  porté jusqu'au remplissage de la banque chaque jour du mois le plus bas
+  (règle QJR612 « batteries toujours pleines »), hybrides combinés, coût de
+  vente HT, économie annuelle — et le n-ième module n'est gardé que si
+  l'investissement qu'il ajoute (module + panneaux tirés + hybride
+  supplémentaire) est remboursé en ≤ ``taille.HORIZON_MARGINAL_CI`` par
+  l'économie qu'il ajoute (n = 0 : l'option « sans ») ; arrêt au premier
+  refus. Jusqu'au 30/10 la banque couvrait TOUTE la consommation hors
+  fenêtre solaire d'un jour moyen (:func:`besoin_nocturne_kwh`, encore servi
+  à titre d'information) — boulangerie : 15 modules et 144 panneaux, rejetés
+  par le fondateur (« the battery should be full… both panels and batteries
+  should follow the [same marginal] rule » — horizon C&I tranché à 10 ans le
+  30/10, ``taille.HORIZON_MARGINAL_CI``) ;
 * panneaux AJOUTÉS (règle QJR612 « batteries toujours pleines ») tant que le
   surplus solaire du jour moyen de CHAQUE mois ne remplit pas la banque —
   bornés par le toit et les bornes de taille existantes ; au toit sans
-  remplissage, la banque se réduit au plus grand nombre de modules qui se
-  remplit encore (repli QJR612) ;
-* au-delà du champ qui remplit la banque, la RÈGLE DES 10 ANS de l'option
-  « sans » (``taille.grimper_avec_regard`` : un palier de 5 kWc, ou le groupe
-  qu'un palier cher seul forme avec les suivants, se rembourse en ≤
-  ``HORIZON_MARGINAL_PV``), sur le coût et l'économie de l'option « avec » ;
+  remplissage, la banque s'arrête au plus grand nombre de modules qui se
+  remplit encore (repli QJR612, « banque réduite au toit ») ;
+* au-delà du champ qui remplit la banque retenue, la MÊME règle marginale
+  que l'option « sans » (``taille.grimper_avec_regard`` : un palier de
+  5 kWc, ou le groupe qu'un palier cher seul forme avec les suivants, se
+  rembourse en ≤ ``HORIZON_MARGINAL_CI``), sur le coût et l'économie de
+  l'option « avec » (:func:`monter_regle_marginale`) ;
 * bilan : le bilan horaire de la taille (``autoconso.bilan_horaire``), puis
   la batterie heure par heure sur chaque jour type par LE simulateur du
   résidentiel (``etude_horaire.simuler_batterie_jour``, INJECTÉ par
@@ -44,8 +60,13 @@ from apps.ventes.moteur_ci.autoconso import HEURES, bilan_horaire, regime_inject
 TENSION_PORT_BT_MAX_V = 60.0
 SOURCE_DECISION = 'décision fondateur du 26/10/2026 — devis C&I à deux options'
 SOURCE_REMPLISSAGE = 'règle QJR612 « batteries toujours pleines » (fondateur 30/09/2026)'
-SOURCE_HORIZON_AVEC = ('règle des 10 ans de la taille C&I (taille.grimper_avec_regard, '
-                       'fondateur 26/10/2026)')
+SOURCE_BANQUE = ('règle marginale sur la banque — module + panneaux tirés, horizon '
+                 'taille.HORIZON_MARGINAL_CI (fondateur 30/10/2026)')
+SOURCE_HORIZON_AVEC = ('règle marginale de la taille C&I (taille.grimper_avec_regard, '
+                       'taille.HORIZON_MARGINAL_CI — fondateur 26/10 et 30/10/2026)')
+#: Garde de terminaison de la montée de la banque (modules), jamais une
+#: taille : la règle marginale, le toit ou les hybrides l'arrêtent bien avant.
+MAX_MODULES_BALAYAGE = 500
 #: CMP3 (D-CMP-3) — hybrides basse tension en parallèle : borne de fiche.
 MAX_HYBRIDES_PARALLELE = 10
 SOURCE_PARALLELE = (
@@ -124,34 +145,21 @@ def surplus_jour_min(bilan):
     return par_mois[mois], mois
 
 
-def _banque_du_modele(batterie, besoin_kwh):
-    """``(atteint, quantite)`` d'un modèle pour délivrer ``besoin_kwh``."""
-    unite = _f(batterie.get('kwh_utile')) or 0.0
-    rendement = _f(batterie.get('rendement')) or 1.0
-    quantite = max(1, int(math.ceil(besoin_kwh / rendement / unite - 1e-9)))
-    maxi = batterie.get('max_modules')
-    if maxi and quantite > int(maxi):
-        return False, int(maxi)
-    return True, quantite
-
-
-def choisir_banque(batteries, besoin_kwh):
-    """La banque HOMOGÈNE qui délivre ``besoin_kwh`` : le MOINS de modules,
-    puis le prix de vente total le plus bas, puis l'identifiant (déterministe).
-    Un modèle borné par ``max_modules_par_banc`` ne passe qu'à défaut. Rend
-    ``None`` quand aucun modèle n'a de prix ni de capacité utile publiés."""
+def choisir_modele_banque(batteries):
+    """Le MODÈLE de la banque homogène (fondateur 30/10/2026) : le moins cher
+    par kWh UTILE parmi les modèles à prix de vente ET capacité utile publiés,
+    puis le prix unitaire le plus bas, puis l'identifiant (déterministe) —
+    rendu à ``quantite`` 1 ; la quantité, c'est :func:`_monter_banque` qui la
+    décide. ``None`` quand aucun modèle n'est tarifé à capacité publiée."""
     candidats = []
     for b in batteries or []:
-        prix = _d(b.get('prix'))
-        if prix is None or prix <= 0 or not (_f(b.get('kwh_utile')) or 0) > 0:
+        prix, utile = _d(b.get('prix')), _f(b.get('kwh_utile')) or 0.0
+        if prix is None or prix <= 0 or not utile > 0:
             continue
-        atteint, quantite = _banque_du_modele(b, besoin_kwh)
-        cle = (not atteint, quantite, prix * quantite, b.get('produit') or 0)
-        candidats.append((cle, b, quantite))
+        candidats.append(((prix / Decimal(repr(utile)), prix, b.get('produit') or 0), b))
     if not candidats:
         return None
-    _cle, b, quantite = min(candidats, key=lambda c: c[0])
-    return dict(b, quantite=quantite)
+    return dict(min(candidats, key=lambda c: c[0])[1], quantite=1)
 
 
 def capacite_banque(banque):
@@ -421,18 +429,21 @@ def _champ_rempli(initiale, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kv
     return n, banque, reduite
 
 
-def monter_regle_10_ans(n_depart, n_haut, pmax_wc, evaluer):
-    """Au-delà du champ rempli, la règle des 10 ans de l'option « sans »
-    (``taille.grimper_avec_regard``, fondateur 26/10/2026) sur les paliers de
-    ``PAS_KWC`` de l'option « avec » : ``evaluer(n)`` rend l'évaluation à
+def monter_regle_marginale(n_depart, n_haut, pmax_wc, evaluer, horizon=None):
+    """Au-delà du champ rempli, la règle marginale de l'option « sans »
+    (``taille.grimper_avec_regard``, fondateur 26/10/2026 ; ``horizon`` =
+    ``taille.HORIZON_MARGINAL_CI``) sur les paliers
+    de ``PAS_KWC`` de l'option « avec » : ``evaluer(n)`` rend l'évaluation à
     ``n`` panneaux, ``None`` hors bornes (combinaison, puissance souscrite).
     Balayage arrêté au premier pas sans gain ou après ``PALIERS_REGARDES``
     pas de suite au-delà de l'horizon. Rend l'évaluation retenue (``None`` si
     le départ lui-même n'est pas évaluable)."""
-    from apps.ventes.dimensionnement import HORIZON_MARGINAL_PV, ratio_pas_marginal
+    from apps.ventes.dimensionnement import ratio_pas_marginal
     from apps.ventes.moteur_ci.taille import (
-        MAX_PAS, PALIERS_REGARDES, PAS_KWC, grimper_avec_regard,
+        HORIZON_MARGINAL_CI, MAX_PAS, PALIERS_REGARDES, PAS_KWC, grimper_avec_regard,
     )
+    if horizon is None:
+        horizon = HORIZON_MARGINAL_CI
     depart = evaluer(n_depart)
     if depart is None:
         return None
@@ -448,21 +459,106 @@ def monter_regle_10_ans(n_depart, n_haut, pmax_wc, evaluer):
                                    e['cout'] or 0.0, e['economie'] or 0.0)
         suivants.append(e)
         precedent = e
-        refus = 0 if ratio is not None and ratio <= HORIZON_MARGINAL_PV + 1e-9 else refus + 1
+        refus = 0 if ratio is not None and ratio <= horizon + 1e-9 else refus + 1
         if ratio is None or refus >= PALIERS_REGARDES:
             break
-    return grimper_avec_regard(depart, suivants, HORIZON_MARGINAL_PV,
+    return grimper_avec_regard(depart, suivants, horizon,
                                lambda e: e['cout'] or 0.0, lambda e: e['economie'] or 0.0)
+
+
+def _monter_banque(modele, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kva, evaluer,
+                   cout_depart=None, economie_depart=None):
+    """RÈGLE MARGINALE SUR LA BANQUE (fondateur 30/10/2026) : pour
+    q = 1, 2, 3… modules de ``modele``, l'option « avec » à q modules est
+    composée en entier — champ porté jusqu'au remplissage de la banque
+    (:func:`_champ_rempli`, QJR612), hybrides combinés, coût de vente HT et
+    économie (``evaluer(n, banque)``) — et q est gardé si le pas (q−1 → q),
+    panneaux tirés et hybrides compris, se rembourse en ≤
+    ``taille.HORIZON_MARGINAL_CI`` : (coût(q) − coût(q−1)) ÷ (économie(q) −
+    économie(q−1)). q = 0 est l'option « sans » (``cout_depart``,
+    ``economie_depart``) ; sans ces deux chiffres, le premier module est admis
+    d'office (aucun point de comparaison).
+
+    Le MÊME regard que la taille (``taille.grimper_avec_regard``, fondateur
+    26/10/2026 — un palier cher seul est gardé si, avec les suivants,
+    l'ensemble se rembourse dans l'horizon) : le PREMIER module porte le
+    passage des onduleurs string aux hybrides, un module de plus peut porter
+    un hybride de plus — ce coût fixe s'amortit sur les modules qui suivent,
+    jamais sur le seul module qui le déclenche. Quand chaque module passe
+    seul, c'est la règle stricte « arrêt au premier refus ».
+
+    Le balayage s'arrête au premier pas sans gain, après ``PALIERS_REGARDES``
+    refus de suite, au toit (la banque s'arrête au plus grand nombre de
+    modules que le champ maximal remplit encore : ``reduite``), à la fiche
+    (``max_modules``) ou à la combinaison d'hybrides. Rend ``(evaluation,
+    banque, reduite)`` ou ``_sans_option`` nommé."""
+    from apps.ventes.dimensionnement import ratio_pas_marginal
+    from apps.ventes.moteur_ci.taille import (
+        HORIZON_MARGINAL_CI, PALIERS_REGARDES, grimper_avec_regard,
+    )
+    maxi = int(modele.get('max_modules') or 0) or MAX_MODULES_BALAYAGE
+    depart = None
+    if cout_depart is not None and economie_depart is not None:
+        depart = {'cout': _f(cout_depart) or 0.0, 'economie': _f(economie_depart) or 0.0}
+    evals, banques, reduite, refus = [], {}, False, 0
+    for q in range(1, min(maxi, MAX_MODULES_BALAYAGE) + 1):
+        champ = _champ_rempli(dict(modele, quantite=q), n_bas=n_bas, n_haut=n_haut,
+                              pmax_wc=pmax_wc, bilan_de=bilan_de, combiner=combiner,
+                              ps_kva=ps_kva)
+        if isinstance(champ, dict):            # aucune option « avec » à q modules
+            if not evals:
+                return champ
+            break
+        n, banque, reduite_q = champ
+        if reduite_q and evals and int(banque['quantite']) <= int(banques[id(evals[-1])]['quantite']):
+            reduite = True                     # le toit ne remplit pas un module de plus
+            break
+        e = evaluer(n, banque)
+        if e is None:
+            if not evals:
+                return _sans_option("aucune combinaison d'onduleurs hybrides basse tension "
+                                    "tarifés ne porte le champ")
+            break
+        evals.append(e)
+        banques[id(e)] = banque
+        if reduite_q:
+            reduite = True
+            break
+        precedent = evals[-2] if len(evals) > 1 else depart
+        if precedent is None:
+            continue
+        ratio = ratio_pas_marginal(precedent['cout'] or 0.0, precedent['economie'] or 0.0,
+                                   e['cout'] or 0.0, e['economie'] or 0.0)
+        refus = 0 if ratio is not None and ratio <= HORIZON_MARGINAL_CI + 1e-9 else refus + 1
+        if ratio is None or refus >= PALIERS_REGARDES:
+            break
+    if depart is None:
+        depart, evals = evals[0], evals[1:]
+    retenu = grimper_avec_regard(depart, evals, HORIZON_MARGINAL_CI,
+                                 lambda x: x['cout'] or 0.0, lambda x: x['economie'] or 0.0)
+    if id(retenu) not in banques:              # aucun module ne tient dans l'horizon
+        premier = ratio_pas_marginal(depart['cout'] or 0.0, depart['economie'] or 0.0,
+                                     evals[0]['cout'] or 0.0, evals[0]['economie'] or 0.0)
+        return _sans_option(
+            'aucun module de batterie ne se rembourse en %d ans (premier module : %s)'
+            % (HORIZON_MARGINAL_CI,
+               'aucun gain' if premier is None else '%.1f ans' % premier))
+    reduite = reduite and retenu is evals[-1]
+    return retenu, banques[id(retenu)], reduite
 
 
 def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension,
                              revente_choisie, combiner, composer, valoriser, batteries, simuler,
                              hybrides=(), kwc_max=None, ps_kva=None, taux_tva_pct=None,
-                             production_de=None):
-    """L'option « avec batterie » : banque sur la consommation hors production
-    d'un jour moyen, champ porté jusqu'au remplissage (QJR612) puis par la
-    règle des 10 ans (:func:`monter_regle_10_ans`) dans les bornes, hybrides
-    combinés, composition, bilan et économie. Rend ``{evaluation, motif,
+                             production_de=None, cout_depart=None, economie_depart=None):
+    """L'option « avec batterie » : banque montée module par module par la
+    règle marginale (:func:`_monter_banque`, fondateur 30/10/2026 —
+    chaque module avec les panneaux qu'il tire pour se remplir, QJR612), puis,
+    au-dessus du champ qui remplit la banque retenue, la montée des panneaux
+    par la même règle (:func:`monter_regle_marginale`) dans les bornes,
+    hybrides combinés, composition, bilan et économie. ``cout_depart`` /
+    ``economie_depart`` : coût de vente HT et économie annuelle de l'option
+    « sans » (le point n = 0 de la règle). Rend ``{evaluation, motif,
     prix_a_renseigner, alertes, hypotheses}`` — ``evaluation`` ``None`` ⇒
     ``motif`` nommé (aucune option « avec »)."""
     if not pmax_wc or not kwc_depart:
@@ -479,21 +575,16 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     besoin = besoin_nocturne_kwh(charge, bilan_de(n_bas))
     if besoin <= EPSILON_KWH:
         return _sans_option('aucune consommation hors des heures de production solaire')
-    banque = choisir_banque(batteries, besoin)
-    if banque is None:
+    modele = choisir_modele_banque(batteries)
+    if modele is None:
         return _sans_option('aucune batterie basse tension tarifée au catalogue',
                             prix=_noms_sans_prix(batteries))
     if not kwc_max:
         from apps.ventes.moteur_ci.taille import MAX_PAS, PAS_KWC
         kwc_max = PAS_KWC * MAX_PAS      # la borne de taille existante (aucun toit)
     n_haut = max(n_bas, int(math.floor(kwc_max * 1000.0 / pmax_wc + 1e-9)))
-    champ = _champ_rempli(banque, n_bas=n_bas, n_haut=n_haut, pmax_wc=pmax_wc,
-                          bilan_de=bilan_de, combiner=combiner, ps_kva=ps_kva)
-    if isinstance(champ, dict):
-        return champ
-    n, banque, reduite = champ
 
-    def evaluer(m):
+    def evaluer(m, banque):
         kwc, onduleurs = _kwc(m, pmax_wc), combiner(_kwc(m, pmax_wc)) or {}
         if not _combinaison_tenue(onduleurs, ps_kva):
             return None
@@ -503,9 +594,17 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
             revente_choisie=revente_choisie, valoriser=valoriser, simuler=simuler,
             hybrides=hybrides, taux_tva_pct=taux_tva_pct), n=m)
 
-    evaluation = monter_regle_10_ans(n, n_haut, pmax_wc, evaluer)
+    montee = _monter_banque(modele, n_bas=n_bas, n_haut=n_haut, pmax_wc=pmax_wc,
+                            bilan_de=bilan_de, combiner=combiner, ps_kva=ps_kva,
+                            evaluer=evaluer, cout_depart=cout_depart,
+                            economie_depart=economie_depart)
+    if isinstance(montee, dict):
+        return montee
+    depart, banque, reduite = montee
+    evaluation = monter_regle_marginale(depart['n'], n_haut, pmax_wc,
+                                        lambda m: evaluer(m, banque))
     if evaluation is None:
-        return _sans_option("aucune combinaison d'onduleurs hybrides basse tension tarifés ne porte le champ")
+        evaluation = depart
     mord = _borne_parallele_mord(combiner, evaluation['n'] + 1, pmax_wc)
     borne_parallele = [_alerte('HYBRIDES_PARALLELE_MAX', (
         'Champ « avec batterie » borné à %.1f kWc : le plus grand champ porté par au plus '
@@ -523,5 +622,6 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
             if reduite else borne_parallele,
             'hypotheses': [{'cle': 'option_avec_batterie', 'valeur': evaluation['kwc'],
                             'statut': 'source',
-                            'source': '%s ; %s ; %s' % (SOURCE_DECISION, SOURCE_REMPLISSAGE,
-                                                        SOURCE_HORIZON_AVEC)}]}
+                            'source': '%s ; %s ; %s ; %s' % (
+                                SOURCE_DECISION, SOURCE_BANQUE, SOURCE_REMPLISSAGE,
+                                SOURCE_HORIZON_AVEC)}]}

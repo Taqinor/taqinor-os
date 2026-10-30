@@ -1,4 +1,5 @@
 import { definirProfil, rendreParametresEntreprise } from '../../test/parametresEntrepriseHarness'
+import crmApi from '../../api/crmApi'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { screen, cleanup, waitFor } from '@testing-library/react'
 
@@ -59,5 +60,26 @@ describe("CCAT101 — ?onglet=<clé> ouvre l'onglet demandé", () => {
     const autre = rendreParametresEntreprise({ role: 'admin', permissions: [] })
     await waitFor(() => expect(autre.container.querySelector('input[name="nom"]')).not.toBeNull())
     expect(screen.queryByTestId('prestations-ci')).toBeNull()
+  })
+})
+
+describe('ERR-PARAM-ASSIGNABLE-USERS-403 — liste des assignables', () => {
+  beforeEach(() => { definirProfil(PROFIL); crmApi.getAssignableUsers.mockClear() })
+  afterEach(cleanup)
+
+  it('Admin RH (sans droit crm) : getAssignableUsers non appelé', async () => {
+    const { container } = rendreParametresEntreprise({
+      role: 'responsable', role_nom: 'Admin RH', permissions: ['rh_voir'],
+    })
+    await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
+    expect(crmApi.getAssignableUsers).not.toHaveBeenCalled()
+  })
+
+  it('droit crm_voir : getAssignableUsers appelé', async () => {
+    const { container } = rendreParametresEntreprise({
+      role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir'],
+    })
+    await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
+    expect(crmApi.getAssignableUsers).toHaveBeenCalled()
   })
 })

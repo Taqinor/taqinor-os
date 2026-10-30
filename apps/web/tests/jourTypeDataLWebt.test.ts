@@ -8,15 +8,13 @@
 // to render the graph at all (never a curve drawn on invented numbers).
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { JOUR_TYPE_DATA, JOUR_TYPE_MONTH_IDS, hasJourTypeData, type JourTypeMonth } from '../src/lib/jourTypeData';
 
 // mon-toit.astro is CRLF (Windows-authored) — normalize before pinning
 // multi-line source snippets so this test is line-ending-agnostic.
-const PAGE = readFileSync(
-  fileURLToPath(new URL('../src/pages/devis/mon-toit.astro', import.meta.url)),
-  'utf-8',
-).replace(/\r\n/g, '\n');
+const PAGE = lireSourceTunnel(fileURLToPath(new URL('../src/pages/devis/mon-toit.astro', import.meta.url))).replace(/\r\n/g, '\n');
 // QJR664 — le rendu vit désormais dans scripts/tunnel/jourType.ts (3 langues).
 const SCRIPT = readFileSync(
   fileURLToPath(new URL('../src/scripts/tunnel/jourType.ts', import.meta.url)),

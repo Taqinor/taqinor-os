@@ -293,7 +293,12 @@ export function genEntrees(f, cat) {
 }
 
 async function main() {
-  const solar = await import('../src/features/ventes/solar.js')
+  // SPL198/SPL200 — les fonctions déplacées de solar.js sont relues dans leur module.
+  const solar = {
+    ...(await import('../src/features/ventes/solar.js')),
+    ...(await import('../src/features/ventes/calc/totaux.js')),
+    ...(await import('../src/features/ventes/calc/recomposition.js')),
+  }
   const cat = chargerCatalogues()
   // Aller-retour JSON AVANT le calcul : l'attendu est calculé sur l'entrée
   // exactement telle que le test la relira.

@@ -380,3 +380,97 @@ def cles_flux_offre(offre, echeance, duree_mois, economie_annee1):
     res = flux_offre(offre, echeance, duree_mois, economie_annee1)
     return {**cles, 'flux_offre': res['flux'],
             'retour_offre_ans': res['retour_ans']}
+
+
+# ERR-CI-SENSIBILITE-P90-INVERSEE (CEC6 P1.4) — le scénario « production » se
+# calcule comme le central. Avec la série 8 760 h (AMOT99), une cellule du bilan
+# central vaut la MOYENNE, sur les jours réels du mois, de min(charge, production
+# du jour) ; la recalculer min(charge, production moyenne × facteur) la gonfle
+# (moyenne des min ≤ min de la moyenne) : P90 montrait plus d'économie que le
+# central. Le scénario relance donc LE moteur du central
+# (``moteur_ci.autoconso.bilan_horaire``) à la puissance retenue × facteur, après
+# avoir vérifié que ce moteur reproduit le bilan central stocké.
+MOTIF_SENSIBILITE_NON_REPRODUCTIBLE = (
+    "production non recalculable par le calcul du scénario central (étude à "
+    "rafraîchir) : scénario non chiffré")
+
+
+def _proche(a, b):
+    x, y = _montant(a) or 0.0, _montant(b) or 0.0
+    return abs(x - y) <= 0.002 + 1e-6 * abs(y)
+
+
+def _meme_horaire(horaire, reference):
+    if len(horaire) != len(reference):
+        return False
+    for x, y in zip(horaire, reference):
+        if not isinstance(y, dict) or (x.get('mois'), x.get('type_jour')) != (y.get('mois'), y.get('type_jour')):
+            return False
+        for cle in ('autoconso_kwh', 'surplus_kwh'):
+            a, b = x.get(cle) or [], y.get(cle) or []
+            if len(a) != len(b) or not all(_proche(u, v) for u, v in zip(a, b)):
+                return False
+    return True
+
+
+def _central_par_cellule(apercu):
+    """Vrai si chaque cellule centrale vaut min(autoconsommé + surplus, charge) :
+    le recalcul cellule par cellule est alors LE calcul du central."""
+    charges = {(j.get('mois'), j.get('type_jour')): j.get('charge_kwh') or []
+               for j in (apercu.get('profil_charge') or {}).get('jours_types') or []
+               if isinstance(j, dict)}
+    bilan = apercu.get('bilan') if isinstance(apercu.get('bilan'), dict) else {}
+    for bloc in bilan.get('horaire') or []:
+        if not isinstance(bloc, dict):
+            continue
+        charge = charges.get((bloc.get('mois'), bloc.get('type_jour')))
+        if charge is None:
+            return True  # l'appelant nomme l'omission « charge absente »
+        auto, surplus = bloc.get('autoconso_kwh') or [], bloc.get('surplus_kwh') or []
+        for h, a in enumerate(auto):
+            prod = (_montant(a) or 0.0) + ((_montant(surplus[h]) or 0.0) if h < len(surplus) else 0.0)
+            c = (_montant(charge[h]) or 0.0) if h < len(charge) else 0.0
+            if not _proche(a, min(prod, c)):
+                return False
+    return True
+
+
+def _valeur(entrees, cle):
+    v = (entrees or {}).get(cle)
+    return v.get('valeur') if isinstance(v, dict) else v
+
+
+def _bilan_du_moteur(apercu, facteur):
+    """Le bilan du moteur central à la puissance retenue × ``facteur``, ou None
+    quand ce moteur ne reproduit pas le bilan central stocké."""
+    from apps.ventes.moteur_ci.autoconso import bilan_horaire
+    from apps.ventes.moteur_ci.production import production_pour_bilan
+    bilan, production = apercu.get('bilan'), apercu.get('production')
+    bilan = bilan if isinstance(bilan, dict) else {}
+    kwc = _montant((apercu.get('taille') or {}).get('retenue_kwc'))
+    jours = (apercu.get('profil_charge') or {}).get('jours_types')
+    if bilan.get('batterie') or not kwc or not jours or not isinstance(production, dict):
+        return None
+    er = apercu.get('entrees_resolues') or {}
+    kw = {'tension': str(_valeur(er, 'tension') or 'bt').lower(),
+          'revente_choisie': bool(_valeur(er, 'revente_choisie'))}
+    for source in (production_pour_bilan(production), production.get('jours_types')):
+        central = bilan_horaire(jours, source, kwc, **kw)[0] if source else {}
+        if central and _meme_horaire(central.get('horaire') or [], bilan.get('horaire') or []):
+            return bilan_horaire(jours, source, kwc * facteur, **kw)[0]
+    return None
+
+
+def apercu_production_comparable(apercu, facteur, par_cellule, *, origine, motif_sans_charge):
+    """``(aperçu du scénario | None, motif | None)`` — production × ``facteur``
+    par LE calcul du central. ``par_cellule`` : le recalcul cellule par cellule
+    d'origine, gardé tel quel pour un devis rendu sous les règles d'origine
+    (``origine`` — fondateur 08/10 : un devis envoyé garde ce que le client a
+    reçu) et quand le central est lui-même cellule par cellule."""
+    if origine or _central_par_cellule(apercu):
+        modifie = par_cellule(apercu, facteur)
+        return modifie, None if modifie is not None else motif_sans_charge
+    bilan = _bilan_du_moteur(apercu, facteur)
+    if bilan is None:
+        return None, MOTIF_SENSIBILITE_NON_REPRODUCTIBLE
+    return dict(apercu, bilan=dict(apercu.get('bilan') or {}, **bilan)), None

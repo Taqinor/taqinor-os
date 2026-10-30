@@ -1,0 +1,6 @@
+{
+  "_note": "ACAL339 - plafonds des trois passifs calepinage. Ne fait que BAISSER : baisser ce JSON dans le meme commit que --write-baseline. Le test echoue si un passif depasse son plafond ET si le plafond depasse le compte reel.",
+  "services_appeles": 0,
+  "actions": 0,
+  "frontiere": 2
+}

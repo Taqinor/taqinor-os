@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 
 import {
   multiPropertyPreviewTTC, optionTotalsTTC, totauxCanoniquesTtc, lignesRemiseesParPanier,
-} from './solar.js'
+} from './calc/totaux.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
 import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 

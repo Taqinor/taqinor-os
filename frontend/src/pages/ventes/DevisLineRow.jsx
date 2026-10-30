@@ -6,8 +6,9 @@ import {
 } from '../../ui'
 import ProduitPicker from '../../components/ProduitPicker'
 import {
-  formatMoney, expectedTvaForDesignation, classifyProduct, htFromTtc,
+  formatMoney, expectedTvaForDesignation, htFromTtc,
 } from '../../features/ventes/solar'
+import { classifyProduct } from '../../features/ventes/calc/classification.js'
 // QJRREM (fondateur 07/09/2026) — P.U. après remise globale, dérivé du TOTAL
 // réparti (miroir du noyau, calculé une seule fois dans DevisGenerator.jsx et
 // reçu ici en prop `totalTtcRemise` : cette ligne ne recalcule jamais la

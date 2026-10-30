@@ -1,0 +1,33 @@
+{
+  "sha": "0d3141eb002d7a5f4e532083a0c90e0ba36aebc2",
+  "date": "2026-10-30",
+  "groupe": "ASEC",
+  "verdict": "FAIL",
+  "couvre": [
+    "ASEC11"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-ASEC-004.b",
+      "taches": [
+        "ASEC11"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-004.txt — ÉCART : GET /api/django/ventes/factures/ -> 200 pour Commercial terrain (2 lignes) et Admin RH (4 lignes = toutes celles de la société) ; la clause ASEC11 « liste des factures -> 403 » n est pas tenue (FactureViewSet.get_permissions : list en IsAnyRole) ; base_verdict FAIL = reproduction V6 SROLE-1 du dossier à 51f22174f (non rejouée ce jour) : défaut préexistant non corrigé"
+    }
+  ]
+}

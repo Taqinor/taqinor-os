@@ -7,7 +7,6 @@
 # de dette (zéro constat exigé). Jamais d'ajout à la main : on retire une ligne quand sa
 # cause est corrigée (re-mesure : rapport JSON du nocturne, script api_fuzz_scope.py).
 # Format : <titre du check Schemathesis>|<MÉTHODE> <gabarit de chemin>
-API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
 # VNT lot M0, 2e tour (12/10/2026, PR #979) : memes causes (couverture variable), ventes/core pre-existants.

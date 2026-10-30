@@ -1,0 +1,138 @@
+{
+  "sha": "3bf09bfbf0c92a4395375ae69e534d8a8efa84c3",
+  "date": "2026-10-30",
+  "groupe": "AMET",
+  "verdict": "FAIL",
+  "couvre": [
+    "AMET102"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA4.acompte",
+      "taches": [
+        "AMET102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-30/AMET102-PA4-devis1050.txt"
+    },
+    {
+      "id": "PA4.emission",
+      "taches": [
+        "AMET102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-30/AMET102-PA4-devis1050.txt"
+    },
+    {
+      "id": "PA4.avoir-geste-partiel",
+      "taches": [
+        "AMET102"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-30/AMET102-PA4-devis1050.txt"
+    },
+    {
+      "id": "PA4.avoir-geste-total",
+      "taches": [
+        "AMET102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-30/AMET102-PA4-devis1050.txt"
+    },
+    {
+      "id": "PA4.tranches-suivantes",
+      "taches": [
+        "AMET102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-30/AMET102-PA4-devis1050.txt"
+    },
+    {
+      "id": "PA4.facturer-absent",
+      "taches": [
+        "AMET102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-30/AMET102-PA4-devis1050.txt"
+    }
+  ]
+}

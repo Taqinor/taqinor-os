@@ -50,7 +50,6 @@ backend/django_core/apps/ventes/quote_engine/legacy_onepage.py::page_onepage::1a
 
 # --- backend/django_core/apps/ventes/quote_engine/pricing.py
 backend/django_core/apps/ventes/quote_engine/pricing.py::kwh_from_bill::46412da316ea | Repli plat kWh<-facture quand aucune table tarifaire n'est resolue -- resultat marque "approximatif"/"estimation" (ESTIMATION_LABEL), jamais un chiffre precis non etiquete.
-backend/django_core/apps/ventes/quote_engine/pricing.py::kwh_from_bill::8751e504b4a4 | pas un montant : kWh entiers derives d'une facture MAD (QJR157/QJR141 ont recompose l'expression) — arrondi de grandeur physique, l'argent est en amont
 backend/django_core/apps/ventes/quote_engine/pricing.py::cashflow_assumptions::cbb83e600cac | Montant REEL provisionne (MAD TTC) pour le remplacement onduleur, lu par la legende de la courbe cashflow 25 ans (None si aucun onduleur chiffre, jamais un montant fabrique).
 backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::ff5bcfe4895b | Economie annuelle "sans batterie" (production x autoconso x prix kWh) -- coeur du calcul d'economie affiche au client, loi 82-21 (autoconsommation seule valorisee).
 backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::f21f8e619aea | Economie annuelle "avec batterie" -- jumeau du site ci-dessus, meme formule sur le taux d'autoconso avec stockage.
@@ -70,18 +69,12 @@ backend/django_core/apps/ventes/offres_tailles.py::_substituer::65a20b36c25d | E
 backend/django_core/apps/ventes/offres_tailles.py::_carte_du_devis::9352ee4da552 | ELARGISSEMENT QJR4 : prix TTC d'AFFICHAGE de la carte de taille (vue devis) ; meme expression que _carte_moteur, cle distincte par le qualname.
 
 # --- backend/django_core/apps/ventes/selectors.py
-backend/django_core/apps/ventes/selectors.py::promesse_production_devis::c78ef06fb352 | CIQ627 — ratio de performance modélisé (sans unité, 3 décimales), jamais un montant
 
 # --- backend/django_core/apps/ventes/domain/dimensionnement_devis.py
-backend/django_core/apps/ventes/domain/dimensionnement_devis.py::capacite_batterie_des_lignes::5a537e209151 | pas un montant : capacite batterie totale en kWh lue des lignes (le scan matche 'total') — arrondi d'affichage pre-existant, deplace tel quel par QJR77
 
 # --- backend/django_core/apps/ventes/domain/geometrie.py
-backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::4ccf19c2f770 | round(total_surface, 2) -- une SURFACE de toiture en m2, pas un montant (le regex retient le mot 'total').
-backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::7f663ec40580 | round(total_kwc, 2) -- une PUISSANCE en kWc, pas un montant.
 
 # --- backend/django_core/apps/ventes/domain/resynchronisation.py
-backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#1 | round(total_panneaux * watt / 1000.0, 3) -- derivation de PUISSANCE kWc = panneaux x Wc, pas un montant.
-backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#2 | idem, second site de la meme fonction (meme expression, departage par le suffixe #2).
 
 # --- backend/django_core/apps/ventes/public/payload_economie.py
 backend/django_core/apps/ventes/public/payload_economie.py::_monthly_consumption._kwh::016f23b2fff9 | pas un montant : kWh mensuels ENTIERS derives d'une facture MAD (QJR405 a bascule l'inversion sur facture_totale=True) — grandeur physique d'AFFICHAGE de la courbe de consommation, jamais persistee ; l'argent est en amont dans kwh_from_bill (deja allowliste).

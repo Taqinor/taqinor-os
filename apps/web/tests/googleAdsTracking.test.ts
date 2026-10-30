@@ -8,6 +8,7 @@
  *  - CSP : hôtes Google présents.
  */
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { parseGoogleTagIds, parseLeadSendTo } from '../src/lib/googleTag';
@@ -16,7 +17,7 @@ import { etatVide } from '../src/lib/tunnel/champs';
 import { construireCorps } from '../src/lib/tunnel/corps';
 import { CONTENT_SECURITY_POLICY } from '../worker/headers.mjs';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const read = (rel: string) => lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
 
 const body = {
   fullName: 'Karim Benali',

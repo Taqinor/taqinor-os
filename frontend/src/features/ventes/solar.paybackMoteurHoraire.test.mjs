@@ -7,7 +7,7 @@
 // par `pages/ventes/DevisGeneratorPaybackMoteur.test.jsx`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { paybackMoteurHoraire } from './solar.js'
+import { paybackMoteurHoraire } from './calc/roi.js'
 
 test("cas e2e : 36 873,11 MAD / 4 580 MAD/an ⇒ 8,2 ans (document), pas 8,05", () => {
   const r = paybackMoteurHoraire(36873.11, 4580, { inverterReplaceCost: 12000 })

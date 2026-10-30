@@ -18,7 +18,9 @@ import { echeancierAvecAcompte } from '../../../features/ventes/echeancierEditio
 // Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
 // AUCUNE ligne du devis ne porte un onduleur classifié : mêmes prédicats que la
 // garde de DevisGenerator.validate() (voir devisSansOnduleurClasse).
-import { isReseauInverter, isHybridInverter, isOffgridInverter, texteClassement } from '../../../features/ventes/solar.js'
+import {
+  isReseauInverter, isHybridInverter, isOffgridInverter, texteClassement,
+} from '../../../features/ventes/calc/classification.js'
 import { frenchError } from './devisListHelpers.js'
 
 // Les options PDF envoyées à `generer-pdf` (whitelist `clean_pdf_options`)

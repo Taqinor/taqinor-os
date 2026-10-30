@@ -14,7 +14,8 @@ import {
   arrondiCentime, ligneCompteDansTotaux, montantHtLigne, PAS_ARRONDI_DEVIS,
   puRemise, repartirRemiseParLigne, totauxCanoniques,
 } from './remise.js'
-import { htFromTtc, optionTotalsTTC, totauxCanoniquesTtc } from './solar.js'
+import { htFromTtc } from './solar.js'
+import { optionTotalsTTC, totauxCanoniquesTtc } from './calc/totaux.js'
 
 // nom, lignes [montant HT, type de ligne, optionnelle], remise globale en %,
 // puis ce que la chaîne canonique arrête (remise, ht_net) et la répartition.

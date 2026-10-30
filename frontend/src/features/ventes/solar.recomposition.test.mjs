@@ -7,9 +7,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  fusionnerRecomposition, lignesQuantiteFigee,
-  appliquerRecomposition, lignesManuellesEnConflitPossible,
-} from './solar.js'
+  fusionnerRecomposition, lignesQuantiteFigee, appliquerRecomposition,
+  lignesManuellesEnConflitPossible,
+} from './calc/recomposition.js'
 import { lignesServeurVersEcran } from './quote/lignesEcran.js'
 
 const L = (produit, designation, quantite, prix, extra = {}) => ({
