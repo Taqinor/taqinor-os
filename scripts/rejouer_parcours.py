@@ -92,6 +92,49 @@ def _c_route_de(C, ancre):
     return _c_chercher(C, lambda c: morceaux[0] in {k.__name__ for k in c.__mro__}, action)
 
 
+def _c_par_appelant(C, e, Mp, notes):
+    """Entrée DOMAINE : l'action de vue qui l'APPELLE (ancres de l'hôte, `actions_appelantes`, index AST) ;
+    préfère le modèle du checkpoint, puis un objet déjà lié, sinon l'ordre de l'hôte."""
+    trouves = []
+    for ancre in C["P"]["appelants"].get(e.get("id")) or []:
+        fichier, _, nom = ancre.partition("::")
+        mod = fichier.replace("backend/django_core/", "")[:-3].replace("/", ".")
+        vue_f = lambda c: c.__name__ == nom and c.__module__ == mod  # noqa: E731 — vue-fonction / classe nue
+        t = _c_route_de(C, ancre) if "." in nom else _c_chercher(C, vue_f, "create") or _c_chercher(C, vue_f, "post")
+        if t:
+            trouves.append((ancre, t))
+    if not trouves:
+        n = len(C["P"]["appelants"].get(e.get("id")) or [])
+        notes.append(f"{n} action(s) de vue appelante(s), aucune route DRF" if n else
+                     "aucune action de vue n'appelle la fonction d'entrée (index AST)")
+        return None
+    M = [_c_modele_vue(t[2]) for _, t in trouves]
+    i = min(range(len(trouves)), key=lambda k: (M[k] is not Mp or Mp is None,
+                                                getattr(getattr(M[k], "_meta", None), "label", "") not in C["objets"]))
+    notes.append(f"via {trouves[i][0]} (appelle la fonction d'entrée ; {len(trouves)} candidate(s) : "
+                 + ", ".join(a.partition("::")[2] for a, _ in trouves) + ")")
+    return trouves[i][1]
+
+
+def _c_artefact(C, Mp):
+    """Étape automatique : un `Mp` lié à N'IMPORTE QUEL objet chaîné à l'enregistrement (toutes les factures
+    du devis, pas seulement la dernière, souvent celle que le rejeu vient de créer)."""
+    objets = C["objets"]
+
+    def fks(M):
+        return [f for f in M._meta.fields if (f.many_to_one or f.one_to_one) and f.related_model is not None]
+    for f in fks(Mp):
+        R = f.related_model
+        ids = {objets[R._meta.label]} if R._meta.label in objets else set()
+        for g in [g for g in fks(R) if g.related_model._meta.label in objets]:
+            ids |= set(R._default_manager.filter(**{g.name: objets[g.related_model._meta.label]})
+                       .values_list("pk", flat=True))
+        o = Mp._default_manager.filter(**{f.name + "__in": ids}).order_by("-pk").first() if ids else None
+        if o is not None:
+            return o.pk
+    return None
+
+
 def _c_modele_de(ancre):
     from django.apps import apps
     fichier, _, sym = (ancre or "").partition("::")
@@ -169,6 +212,8 @@ def _c_jouer_api(C, e, res, trouve, types):
     chemin, corps = _c_url(route, pk), C["P"]["corps"].get(e.get("id"), {})
     reponse = _c_appeler(C, verbe, chemin, corps)
     res["joue"], res["appel"] = True, f"{verbe.upper()} {chemin} -> {reponse[0]}"
+    if 400 <= reponse[0] < 500 and not corps and verbe != "get":
+        res["notes"].append(f"corps vide envoyé ({reponse[2][:160]}) : fournir --corps {{\"{e.get('id')}\": {{...}}}}")
     _c_oracles_api(C, res, (verbe, chemin, corps, reponse), cls, types)
     return True
 
@@ -178,6 +223,7 @@ def _c_checkpoint(C, res, point, Mp, auto):
     R, notes = res["parcours"], res["notes"]
     pk_p = _c_lier(C, Mp)
     if auto:
+        pk_p = pk_p or (_c_artefact(C, Mp) if Mp is not None else None)
         R["auto"] = "PASS" if pk_p else "FAIL"
     if Mp is not None:
         R["checkpoint"] = "PASS" if pk_p else "FAIL"
@@ -210,13 +256,15 @@ def _c_etape(C, e):
     types = {r if isinstance(r, str) else r.get("type") for r in regles}
     entree = e.get("fonction_entree")
     trouve = _c_route_de(C, entree if isinstance(entree, str) else "") or _c_route_de(C, decl.get("source"))
+    if not trouve and not auto:
+        trouve = _c_par_appelant(C, e, Mp, res["notes"])
     if trouve:
         if not _c_jouer_api(C, e, res, trouve, types):
             return res
     elif auto:
         res["joue"], res["appel"] = True, f"auto ({decl.get('type')}) : artefact {getattr(Mp, '__name__', '?')}"
     else:
-        res["notes"].append("aucune route API pour la fonction d'entrée ni le déclencheur : non jouée")
+        res["notes"].append("aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée")
         return res
     _c_checkpoint(C, res, point, Mp, auto)
     autres = [x if isinstance(x, str) else (x.get("type") or x.get("regle")) for x in regles]
@@ -245,7 +293,8 @@ def _jouer(P):
     return {"repro": True, "etapes": len(resultats)}
 
 
-_CONTENEUR = (_c_routes, _c_url, _c_modele_vue, _c_chercher, _c_route_de, _c_modele_de, _c_lier, _c_appeler,
+_CONTENEUR = (_c_routes, _c_url, _c_modele_vue, _c_chercher, _c_route_de, _c_par_appelant, _c_artefact,
+              _c_modele_de, _c_lier, _c_appeler,
               _c_oracles_api, _c_jouer_api, _c_checkpoint, _c_etape, _jouer)
 EN_TETE_CONTENEUR = "import json\nimport re\nimport sys\n\n\n"
 
@@ -253,7 +302,7 @@ EN_TETE_CONTENEUR = "import json\nimport re\nimport sys\n\n\n"
 def programme(table: dict, params: dict, timeout: int) -> str:
     """Programme AUTONOME (sonde.py) : transaction annulée, comptes avant / après."""
     P = dict(params, etapes=table.get("etapes") or [], oracles=ORACLES, marque=MARQUE,
-             auto=sorted(cp.TYPES_AUTO), corps=params.get("corps") or {})
+             auto=sorted(cp.TYPES_AUTO), corps=params.get("corps") or {}, appelants=params.get("appelants") or {})
     source = (EN_TETE_CONTENEUR + "\n\n".join(inspect.getsource(f) for f in _CONTENEUR)
               + f"\n\nP = __import__('json').loads({json.dumps(P, ensure_ascii=True)!r})\n"
               "\n\ndef sonde(ctx):\n    return _jouer(P)\n")
@@ -301,7 +350,14 @@ def ecrire_enregistrement(groupe: str, charge: dict) -> int:
     return p.returncode
 
 
-def main(argv=None, executer=sonde.executer_docker, ecrire=ecrire_enregistrement) -> int:
+def appelants_des_etapes(table: dict, racine, appelants=cp.actions_appelantes) -> dict:
+    """{id: [ancres d'actions de vue]} des étapes dont la fonction d'entrée n'est pas une action de vue."""
+    return {e["id"]: a for e in cp.parcours.etapes(table) if isinstance(e.get("fonction_entree"), str)
+            and not cp.est_manquante(e) and (a := appelants(e["fonction_entree"], racine))}
+
+
+def main(argv=None, executer=sonde.executer_docker, ecrire=ecrire_enregistrement,
+         appelants=cp.actions_appelantes) -> int:
     a = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     a.add_argument("parcours", help="PA1..PA7")
     a.add_argument("--enregistrement", required=True, help="pk de l'enregistrement suivi")
@@ -329,7 +385,8 @@ def main(argv=None, executer=sonde.executer_docker, ecrire=ecrire_enregistrement
         return 1
     corps = json.loads(Path(a.corps).read_text(encoding="utf-8")) if a.corps else {}
     prog = programme(table, {"modele": modele, "enregistrement": a.enregistrement,
-                             "utilisateur": a.utilisateur, "corps": corps}, a.timeout)
+                             "utilisateur": a.utilisateur, "corps": corps,
+                             "appelants": appelants_des_etapes(table, racine, appelants)}, a.timeout)
     if a.dry_run:
         print(prog)
         return 0

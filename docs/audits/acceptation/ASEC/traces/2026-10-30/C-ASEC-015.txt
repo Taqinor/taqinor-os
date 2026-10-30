@@ -1,0 +1,5 @@
+﻿== C-ASEC-015 (sha 5908d43bb)
+attendu : refusé / inchangé : Admin RH et Technicien responsable -> 403 sur PATCH RIB/ICE du profil société (valeurs relues inchangées, société B aussi) ; rôle sans crm_export -> export clients xlsx 403 ; rôle sans users_gerer -> 403 droit_manquant sur POST/PATCH/DELETE /users/ ; Directeur -> 200 sur RIB/ICE ; rôle avec crm_export -> 200 ; rôle avec users_gerer -> 200
+observé : {"profil_refus": {"gestes": [["Admin RH", 403, "{'detail': ErrorDetail(string=\"Vous n'avez pas la permission"], ["Technicien responsable", 403, "{'detail': ErrorDetail(string=\"Vous n'avez pas la permission"]], "rib_ice_inchanges_A_et_B": true}, "directeur_profil": {"patch": 200, "rib_A_modifie": true, "rib_B_inchange": true}, "export_clients_xlsx": {"sans_crm_export": 403, "avec_crm_export": 200}, "users_gerer": {"sans_code_post_patch_delete": [403, 403, 403], "lecture_sans_code": 200, "cible_inchangee": true, "avec_code_patch": 200}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0

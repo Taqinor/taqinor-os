@@ -1,0 +1,5 @@
+﻿== C-ASEC-021 (sha 5908d43bb)
+attendu : STATIQUE : ni DEBUG ni la sous-chaîne « demo » du slug n'OUVRENT plus un geste démo ou un cookie sans Secure (commandes démo gardées par Company.est_demo — DEBUG n'y reste qu'un refus SUPPLÉMENTAIRE —, règle SEC_COMPTE_DEMO_ACTIF sans retour sous DEBUG, cookies Secure décidés par requête avant le repli historique)
+observé : STATIQUE — marqueurs d'environnement relus dans le code monté ; tenu=True ; {'reset_demo_company': {'est_demo cité': True, "slug 'demo' comme marqueur": False, 'DEBUG ouvreur': False, 'DEBUG refus supplémentaire': False}, 'seed_demo': {'est_demo cité': True, "slug 'demo' comme marqueur": False, 'DEBUG ouvreur': False, 'DEBUG refus supplémentaire': True}, 'seed_demo_company': {'est_demo cité': True, "slug 'demo' comme marqueur": False, 'DEBUG ouvreur': False, 'DEBUG refus supplémentaire': True}, 'regle SEC_COMPTE_DEMO_ACTIF': {'retour sous DEBUG': False, 'est_demo cité': True}, '_cookie_secure': {'is_secure() par requête': True, 'repli DEBUG après is_secure()': True}}
+verdict : STATIQUE
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0

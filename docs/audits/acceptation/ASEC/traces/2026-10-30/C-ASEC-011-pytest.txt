@@ -1,0 +1,14 @@
+﻿/usr/local/bin/python: No module named pytest
+--- pytest absent ; equivalent unittest (memes tests, lecture seule, tables TEMP dans une transaction annulee) :
+SQL_AGENT_DB_USER non defini : en DEVELOPPEMENT l'agent SQL utilise la connexion proprietaire (DATABASE_URL). En production il serait desactive — definir SQL_AGENT_DB_USER (role Postgres lecture seule).
+test_union_meme_table_isole (tests.test_asec42_agent_sql_formes.UnionTests.test_union_meme_table_isole) ... ok
+test_sous_requete_scalaire_isolee (tests.test_asec42_agent_sql_formes.ScalaireTests.test_sous_requete_scalaire_isolee) ... ok
+test_litteral_mono_table_isole (tests.test_asec42_agent_sql_formes.LitteralTests.test_litteral_mono_table_isole) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.766s
+
+OK
+exit=0
+
+--- verification : tests._moteur_test() is not None -> moteur_postgres_connecte= True (DB_HOST=db) : la branche d'execution reelle (comptage sur tables TEMP, transaction annulee) a tourne, pas seulement la verification d'arbre.

@@ -1,0 +1,5 @@
+﻿== C-ASEC-029 (sha 5908d43bb)
+attendu : STATIQUE : settings/prod.py durci (DEBUG=False, HSTS, cookies Secure, SSL redirect derrière proxy, CORS restreint) ; la bascule de la PROD sur settings.prod est un geste du fondateur (D-ASEC-6), non observable depuis la pile locale
+observé : STATIQUE — settings/prod.py : {'DEBUG': True, 'HSTS': True, 'SSL redirect': True, 'proxy SSL': True, 'session Secure': True, 'CSRF Secure': True, 'CORS restreint': True} ; pile locale sous DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev (attendu en local) ; réglage réel du serveur NON vérifié ici (lecture prod hors de cette acceptation, geste fondateur).
+verdict : STATIQUE
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0
