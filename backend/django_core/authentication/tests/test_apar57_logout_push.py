@@ -91,3 +91,17 @@ class LogoutPushTests(TestCase):
         self.assertIn(r.status_code, (200, 201), r.data)
         self.assertTrue(PushSubscription.objects.filter(
             user=self.user, endpoint=EP).exists())
+
+
+class LogoutVueSansQuerysetTests(TestCase):
+    """ENF15 — ``LogoutView`` n'expose AUCUNE donnée (révocation de jeton) : elle
+    hérite d'``APIView`` et non d'une vue générique porteuse d'un queryset, d'où
+    sa sortie de ``scripts/tenant_view_allowlist.txt``."""
+
+    def test_logout_n_est_pas_une_vue_generique(self):
+        from rest_framework.generics import GenericAPIView
+
+        from authentication.views import LogoutView
+
+        self.assertFalse(issubclass(LogoutView, GenericAPIView))
+        self.assertIsNone(getattr(LogoutView, 'queryset', None))
