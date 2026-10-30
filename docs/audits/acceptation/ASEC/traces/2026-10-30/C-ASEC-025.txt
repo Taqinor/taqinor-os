@@ -1,0 +1,6 @@
+﻿== C-ASEC-025 (sha 5908d43bb)
+attendu : refusé / inchangé : devis envoyé de A, lien otp_lecture ; N1 demande puis vérifie le code -> preuve ; N2 sans X-Proposition-Preuve -> 403 otp_required sur data, suivi, accept et activer-option, aucune DevisSignature, devis toujours envoyé, option intacte ; preuve de N1 présentée sur le lien de B -> 403 ; N1 avec la preuve -> 200 lecture puis 200 signature
+observé : {"gestes": {"n1_demander": 200, "code_en_cache": true, "n1_verifier": 200, "preuve_emise": true, "n2_data": [403, "otp_required"], "n2_suivi": [403, "otp_required"], "n2_accept": [403, "otp_required"], "n2_activer_option": [403, "otp_required"], "n1_preuve_sur_lien_b": [403, "otp_required"]}, "persistance": {"signatures_avant": 0, "signatures_apres_refus": 0, "devis_a_statut": "envoye", "devis_b_statut": "envoye", "option_a_optionnelle": true}, "legitime": {"n1_data": 200, "n1_suivi": 200, "n1_accept": 200, "devis_a_statut_apres": "accepte", "signatures_a": 1}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 1 ; tâches Celery bloquées 0
+

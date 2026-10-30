@@ -1,0 +1,15 @@
+﻿## 2026-10-30, sha 5908d43bb, hôte
+$ python scripts/check_fk_scoping.py
+check_fk_scoping: OK — 462 FK cross-app écrivables, toutes validées même-société ou allowlistées.
+exit 0
+$ python scripts/check_fk_scoping.py --list | grep FactureWriteSerializer
+OK  backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.bon_commande -> ventes.BonCommande
+OK  backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.client -> crm.Client
+OK  backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.condition_paiement_ref -> parametres.ConditionPaiement
+OK  backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.devis -> ventes.Devis
+OK  backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.entite -> entites.Entite
+OK  backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.lead -> crm.Lead
+$ python scripts/check_machine_etats_statut_readonly.py
+check_machine_etats_statut_readonly: 3 modele(s) a point de transition dedie decouvert(s), 2 entree(s) de reprise figee(s).
+check_machine_etats_statut_readonly: OK — aucun « statut » writable sur un modele gouverne.
+exit 0
