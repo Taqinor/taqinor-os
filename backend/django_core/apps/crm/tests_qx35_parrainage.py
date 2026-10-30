@@ -55,6 +55,40 @@ class ClientCodeParrainageTests(TestCase):
         client.refresh_from_db()
         self.assertEqual(client.code_parrainage, code)
 
+    def test_enf15_code_unique_par_societe_seulement(self):
+        """ENF15 — l'unicité du code est bornée à la société : un doublon DANS
+        la société est refusé en base, le même code dans une AUTRE société
+        est accepté (il n'y a aucune lecture inter-sociétés du code)."""
+        from django.db import IntegrityError, transaction
+
+        autre = Company.objects.create(nom='Autre QX35', slug='autre-qx35')
+        Client.objects.create(company=self.company, nom='A', code_parrainage='PARR-1')
+        Client.objects.create(company=autre, nom='B', code_parrainage='PARR-1')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Client.objects.create(company=self.company, nom='C', code_parrainage='PARR-1')
+
+    def test_enf15_patch_code_d_une_autre_societe_n_est_pas_un_oracle(self):
+        """ENF15 — avant : PATCH avec le code d'un client d'une AUTRE société
+        → 409 « déjà utilisé » (validateur DRF sur toute la table : oracle
+        d'existence). Après : accepté ; le doublon dans la société reste 409."""
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        autre = Company.objects.create(nom='Voisine QX35', slug='voisine-qx35')
+        voisin = Client.objects.create(company=autre, nom='Voisin')
+        user = User.objects.create_user(
+            username='enf15_admin', password='x', role_legacy='admin',
+            company=self.company)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        cible = Client.objects.create(company=self.company, nom='Cible')
+        url = f'/api/django/crm/clients/{cible.pk}/'
+        resp = api.patch(url, {'code_parrainage': voisin.code_parrainage}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        meme_societe = Client.objects.create(company=self.company, nom='Même')
+        resp = api.patch(url, {'code_parrainage': meme_societe.code_parrainage}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
 
 class HandleParrainageSignupTests(TestCase):
     def setUp(self):
