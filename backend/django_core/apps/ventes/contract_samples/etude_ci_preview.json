@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/ventes/etude-ci/preview/",
-  "pourquoi": "CIQ2 (Groupe CIQ, audit L3 des devis commercial et industriel du 03/10/2026 ; décisions D-CIQ-0, D-CIQ-1, D-CIQ-2, D-CIQ-5, D-QJR5-13) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant toute moitié. Aujourd'hui le C&I n'a AUCUN calcul serveur : `build_devis_auto` le refuse (apps/ventes/domain/creation.py:965-971) ; `etude-horaire/preview` (apps/ventes/etude_horaire_view.py) calcule le modèle RÉSIDENTIEL et son rafraîchisseur est résidentiel strict (apps/ventes/domain/etudes.py:333-388) ; l'écran et le devis automatique calculent seuls (solar.js `computeEtudeIndustrielle`, autoQuote.js `parametresBalayageCI`) ; le seul échantillon C&I est le bloc ÉCRAN `etude_ecran_industriel.json` (QJR510). Tranché (D-CIQ-0) : un ENDPOINT DÉDIÉ (calcul, AUCUNE écriture), pas une extension de `etude-horaire/preview` — `etude_horaire.json` est résidentiel de bout en bout, D-CIQ-1 garde le modèle résidentiel intouché, et c'est le patron de `etude-pompage/preview` (AGR2). Ce fichier fige : le `corps` (entrées), la réponse (`exemple` = commercial BT hôtel, 12 factures + horaires déclarés), quatre exemples annexes, les clés `etude_params` C&I v2 et leur propriétaire (`cles_etude_params_ci_v2`), et la forme des archétypes vendorisés par CIQ107 (`donnees_archetypes`) — dans le MÊME fichier, car un fichier de `contract_samples/` sans route rougit `check_api_shapes`. Formes RÉFÉRENCÉES, jamais recopiées : `tarif` = `tarifs_ci.json` (CIQ11) ; `economie_ci` = `economie_ci.json` (CIQ3) ; `toit.type_pose` et `composition.lignes[].role` = vocabulaires `type_pose` / `ROLES_CI` de `apps/stock/contract_samples/produit_ci.json` (CIQ7) ; `provenance` = la forme UNIQUE {origine, detail, date} d'`etude_pompage_preview.json` (AGR2). Les VALEURS sont ILLUSTRATIVES (aucun client réel ; production de forme PVGIS, prix de tranche `cout_ht` illustratif — QXG6 (b), la bande prix/kWc, reste au fondateur) mais cohérentes entre elles : le bilan est la somme de la matrice `horaire`, la taille s'arrête à la première tranche dont le retour marginal dépasse 7 ans (fondateur 30/10/2026 ; 10 ans jusqu'alors). Ce sont les clés, leurs natures et leurs règles d'omission qui font le contrat. JAMAIS `prix_achat` ni marge.",
+  "pourquoi": "CIQ2 (Groupe CIQ, audit L3 des devis commercial et industriel du 03/10/2026 ; décisions D-CIQ-0, D-CIQ-1, D-CIQ-2, D-CIQ-5, D-QJR5-13) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant toute moitié. Aujourd'hui le C&I n'a AUCUN calcul serveur : `build_devis_auto` le refuse (apps/ventes/domain/creation.py:965-971) ; `etude-horaire/preview` (apps/ventes/etude_horaire_view.py) calcule le modèle RÉSIDENTIEL et son rafraîchisseur est résidentiel strict (apps/ventes/domain/etudes.py:333-388) ; l'écran et le devis automatique calculent seuls (solar.js `computeEtudeIndustrielle`, autoQuote.js `parametresBalayageCI`) ; le seul échantillon C&I est le bloc ÉCRAN `etude_ecran_industriel.json` (QJR510). Tranché (D-CIQ-0) : un ENDPOINT DÉDIÉ (calcul, AUCUNE écriture), pas une extension de `etude-horaire/preview` — `etude_horaire.json` est résidentiel de bout en bout, D-CIQ-1 garde le modèle résidentiel intouché, et c'est le patron de `etude-pompage/preview` (AGR2). Ce fichier fige : le `corps` (entrées), la réponse (`exemple` = commercial BT hôtel, 12 factures + horaires déclarés), quatre exemples annexes, les clés `etude_params` C&I v2 et leur propriétaire (`cles_etude_params_ci_v2`), et la forme des archétypes vendorisés par CIQ107 (`donnees_archetypes`) — dans le MÊME fichier, car un fichier de `contract_samples/` sans route rougit `check_api_shapes`. Formes RÉFÉRENCÉES, jamais recopiées : `tarif` = `tarifs_ci.json` (CIQ11) ; `economie_ci` = `economie_ci.json` (CIQ3) ; `toit.type_pose` et `composition.lignes[].role` = vocabulaires `type_pose` / `ROLES_CI` de `apps/stock/contract_samples/produit_ci.json` (CIQ7) ; `provenance` = la forme UNIQUE {origine, detail, date} d'`etude_pompage_preview.json` (AGR2). Les VALEURS sont ILLUSTRATIVES (aucun client réel ; production de forme PVGIS, prix de tranche `cout_ht` illustratif — QXG6 (b), la bande prix/kWc, reste au fondateur) mais cohérentes entre elles : le bilan est la somme de la matrice `horaire`, la taille s'arrête à la première tranche dont le retour marginal dépasse l'horizon C&I (`moteur_ci/taille.py HORIZON_MARGINAL_CI`, 10 ans ici — panneaux ET batteries depuis le 30/10/2026). Ce sont les clés, leurs natures et leurs règles d'omission qui font le contrat. JAMAIS `prix_achat` ni marge.",
   "provenance": {
     "forme": {
       "origine": "texte : saisie | lead | devis | reglage_societe | fiche | pvgis | calepinage | calculee | estimation",
@@ -1126,7 +1126,7 @@
       "retenue_kwc": 55,
       "nb_panneaux": 100,
       "pas_kwc": 5,
-      "horizon_marginal_annees": 7,
+      "horizon_marginal_annees": 10,
       "raison_arret": "horizon_marginal",
       "statut": "calculee",
       "inclinaison_retenue_deg": null,
@@ -2147,9 +2147,9 @@
       },
       {
         "cle": "horizon_marginal_annees",
-        "valeur": 7,
+        "valeur": 10,
         "statut": "source",
-        "source": "décision fondateur du 30/10/2026 — règle marginale des 7 ans, panneaux et batteries (moteur_ci/taille.py HORIZON_MARGINAL_CI ; remplace les 10 ans de la règle du 25/08)"
+        "source": "horizon marginal C&I unique, panneaux et batteries (moteur_ci/taille.py HORIZON_MARGINAL_CI — valeur D-CIQ-2 du 25/08, mécanique fondateur 30/10/2026)"
       },
       {
         "cle": "tarif",
@@ -2170,7 +2170,7 @@
         "source": "PVGIS seriescalc 2014-2023, année type (mois représentatifs [2019, 2016, 2021, 2018, 2015, 2020, 2017, 2022, 2019, 2014, 2023, 2016]), montage « free » : 8 760 h croisées heure par heure avec le profil déclaré"
       }
     ],
-    "methode": "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 7 ans (D-CIQ-1, D-CIQ-2, D-ACI-18, fondateur 30/10/2026)",
+    "methode": "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2, D-ACI-18)",
     "version_moteur": "ci-1",
     "devis_auto": {
       "possible": true,
@@ -2376,7 +2376,7 @@
       "retenue_kwc": 55,
       "nb_panneaux": 100,
       "pas_kwc": 5,
-      "horizon_marginal_annees": 7,
+      "horizon_marginal_annees": 10,
       "raison_arret": "horizon_marginal",
       "statut": "calculee",
       "inclinaison_retenue_deg": null,
@@ -2763,9 +2763,9 @@
       },
       {
         "cle": "horizon_marginal_annees",
-        "valeur": 7,
+        "valeur": 10,
         "statut": "source",
-        "source": "décision fondateur du 30/10/2026 — règle marginale des 7 ans, panneaux et batteries (moteur_ci/taille.py HORIZON_MARGINAL_CI ; remplace les 10 ans de la règle du 25/08)"
+        "source": "horizon marginal C&I unique, panneaux et batteries (moteur_ci/taille.py HORIZON_MARGINAL_CI — valeur D-CIQ-2 du 25/08, mécanique fondateur 30/10/2026)"
       },
       {
         "cle": "tarif",
@@ -2786,7 +2786,7 @@
         "source": "série horaire PVGIS indisponible (coordonnées GPS absentes, PVGIS injoignable ou production figée sans série) : repli sur 12 journées moyennes PVGIS (30° plein sud) × types de jour"
       }
     ],
-    "methode": "autoconsommation horaire : production PVGIS du site × profil déclaré, 12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 7 ans (D-CIQ-1, D-CIQ-2, fondateur 30/10/2026)",
+    "methode": "autoconsommation horaire : production PVGIS du site × profil déclaré, 12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2)",
     "version_moteur": "ci-1"
   },
   "exemple_kwh_seulement": {
@@ -2890,7 +2890,7 @@
       "retenue_kwc": null,
       "nb_panneaux": null,
       "pas_kwc": 5,
-      "horizon_marginal_annees": 7,
+      "horizon_marginal_annees": 10,
       "raison_arret": "prix_manquants",
       "statut": null,
       "paliers": [],
@@ -2948,7 +2948,7 @@
       "retenue_kwc": 30.25,
       "nb_panneaux": 55,
       "pas_kwc": 5,
-      "horizon_marginal_annees": 7,
+      "horizon_marginal_annees": 10,
       "raison_arret": "toit",
       "statut": "calculee",
       "inclinaison_retenue_deg": 10,

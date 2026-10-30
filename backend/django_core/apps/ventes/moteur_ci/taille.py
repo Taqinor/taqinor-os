@@ -1,10 +1,9 @@
-"""CIQ116 — taille C&I par la règle marginale des 7 ans, sur l'autoconsommation HORAIRE.
+"""CIQ116 — taille C&I par la règle marginale (``HORIZON_MARGINAL_CI``), sur l'autoconsommation HORAIRE.
 
 La taille retenue est la plus grande dont chaque tranche de 5 kWc — ou, pour
 un palier cher seul (saut d'onduleur), le groupe qu'il forme avec les paliers
 suivants (fondateur 26/10/2026) — se rembourse encore en ≤
-``HORIZON_MARGINAL_CI`` (7 ans, fondateur 30/10/2026 — 10 ans auparavant,
-D-CIQ-2), bornée par le toit, la puissance
+``HORIZON_MARGINAL_CI`` (D-CIQ-2), bornée par le toit, la puissance
 souscrite DÉCLARÉE, la faisabilité de la combinaison d'onduleurs (CIQ111) et,
 revente choisie, le plafond 82-21 (traité dans le bilan, CIQ110). Fin de
 « facture d'hiver ÷ 900 × 5 » pour le C&I.
@@ -20,10 +19,10 @@ que si même la rasante ne suffit pas, et le devis le dit (hypothèse
 
 La doctrine est RÉUTILISÉE telle quelle depuis ``apps.ventes.dimensionnement``
 (``point_depart_meilleur_payback``, ``ratio_pas_marginal``) : aucune copie.
-L'HORIZON, lui, est celui du C&I (:data:`HORIZON_MARGINAL_CI`, 7 ans —
-décision fondateur du 30/10/2026, boulangerie lead 1637 : panneaux ET
-batteries suivent la même règle marginale) ; le résidentiel garde ses 10 ans
-(``dimensionnement.HORIZON_MARGINAL_PV``, D-CIQ-1 : modèle résidentiel intouché).
+L'HORIZON, lui, est celui du C&I (:data:`HORIZON_MARGINAL_CI` — UNE constante
+pour les panneaux ET les batteries, fondateur 30/10/2026, boulangerie lead
+1637) ; le résidentiel garde le sien (``dimensionnement.HORIZON_MARGINAL_PV``,
+D-CIQ-1 : modèle résidentiel intouché).
 
 Module PUR : aucun prix ici. L'orchestrateur (CIQ118) injecte
 
@@ -51,10 +50,14 @@ PAS_KWC = 5
 #: les panneaux ET les batteries : un ajout (une tranche de panneaux ; UNE
 #: batterie AVEC les panneaux qu'elle tire pour se remplir et, le cas échéant,
 #: l'hybride supplémentaire) n'est retenu que si l'investissement ajouté est
-#: remboursé en ≤ 7 ans par l'économie ajoutée. Remplace, pour le C&I
-#: seulement, les 10 ans de la règle du 25/08 (D-CIQ-2,
-#: ``dimensionnement.HORIZON_MARGINAL_PV``, que le résidentiel garde — D-CIQ-1).
-HORIZON_MARGINAL_CI = 7
+#: remboursé dans cet horizon par l'économie ajoutée. La MÉCANIQUE est tranchée
+#: (30/10) ; la VALEUR reste celle de D-CIQ-2 du 25/08 (10 ans, la même que
+#: ``dimensionnement.HORIZON_MARGINAL_PV`` du résidentiel) tant que le
+#: fondateur n'a pas tranché — il a évoqué 7 ans le 30/10 puis précisé « the
+#: 7 years was for residential, maybe for commercial the rule is 10 years
+#: internationally ». Changer l'horizon C&I = changer CE nombre (les tests
+#: sont paramétrés dessus) ; le résidentiel n'en dépend pas.
+HORIZON_MARGINAL_CI = 10
 #: Fondateur 26/10/2026 (boulangerie 30 → 40 kWc) : un palier cher SEUL (saut
 #: d'onduleur 25 → 50 kW) est gardé si, avec les paliers suivants, l'ensemble
 #: se rembourse dans l'horizon (C&I seulement ; le résidentiel garde la chaîne
@@ -90,9 +93,8 @@ SOURCE_RASANTE = 'décision fondateur du 28/10/2026 (R1 — pose rasante)'
 #: économique (repris trilingue par ``quote_engine.i18n_labels_ci``).
 TEXTE_TAILLE_LIMITEE_TOIT = 'taille limitée par le toit : %g m² déclarés → %g kWc en pose rasante'
 TEXTE_TAILLE_LIMITEE_TOIT_SANS_SURFACE = 'taille limitée par le toit : %g kWc en pose rasante'
-SOURCE_HORIZON = ('décision fondateur du 30/10/2026 — règle marginale des 7 ans, panneaux et '
-                  'batteries (moteur_ci/taille.py HORIZON_MARGINAL_CI ; remplace les 10 ans '
-                  'de la règle du 25/08)')
+SOURCE_HORIZON = ('horizon marginal C&I unique, panneaux et batteries (moteur_ci/taille.py '
+                  'HORIZON_MARGINAL_CI — valeur D-CIQ-2 du 25/08, mécanique fondateur 30/10/2026)')
 
 
 def _alerte(code, champ, message, niveau='alerte', interne=True):

@@ -2,8 +2,9 @@
 30/10/2026).
 
 Un devis commercial / industriel porte, comme le résidentiel, DEUX options :
-« sans batterie » (onduleurs string, la taille de la règle marginale des 7 ans,
-``taille.dimensionner_ci``) et « avec batterie », calculée ICI :
+« sans batterie » (onduleurs string, la taille de la règle marginale —
+``taille.HORIZON_MARGINAL_CI``, ``taille.dimensionner_ci``) et « avec
+batterie », calculée ICI :
 
 * onduleurs HYBRIDES basse tension triphasés (Deye SG05LP3) À LA PLACE des
   onduleurs string — la MÊME combinaison ``onduleurs.combiner_onduleurs``
@@ -11,8 +12,8 @@ Un devis commercial / industriel porte, comme le résidentiel, DEUX options :
   le vivier des hybrides ;
 * banque HOMOGÈNE de modules (jamais deux capacités mêlées) du modèle le
   moins cher par kWh UTILE (fiche ``kwh_usable``, prix de vente publié —
-  :func:`choisir_modele_banque`), dimensionnée par la RÈGLE MARGINALE DES
-  7 ANS (fondateur 30/10/2026, :func:`_monter_banque`) : pour n = 1, 2, 3…
+  :func:`choisir_modele_banque`), dimensionnée par la RÈGLE MARGINALE
+  (fondateur 30/10/2026, :func:`_monter_banque`) : pour n = 1, 2, 3…
   modules, l'option « avec » à n modules est composée EN ENTIER — champ
   porté jusqu'au remplissage de la banque chaque jour du mois le plus bas
   (règle QJR612 « batteries toujours pleines »), hybrides combinés, coût de
@@ -24,14 +25,15 @@ Un devis commercial / industriel porte, comme le résidentiel, DEUX options :
   fenêtre solaire d'un jour moyen (:func:`besoin_nocturne_kwh`, encore servi
   à titre d'information) — boulangerie : 15 modules et 144 panneaux, rejetés
   par le fondateur (« the battery should be full… both panels and batteries
-  should follow the 7 years rule ») ;
+  should follow the [same marginal] rule » — la VALEUR de l'horizon reste à
+  trancher, voir ``taille.HORIZON_MARGINAL_CI``) ;
 * panneaux AJOUTÉS (règle QJR612 « batteries toujours pleines ») tant que le
   surplus solaire du jour moyen de CHAQUE mois ne remplit pas la banque —
   bornés par le toit et les bornes de taille existantes ; au toit sans
   remplissage, la banque s'arrête au plus grand nombre de modules qui se
   remplit encore (repli QJR612, « banque réduite au toit ») ;
-* au-delà du champ qui remplit la banque retenue, la MÊME règle marginale des
-  7 ans que l'option « sans » (``taille.grimper_avec_regard`` : un palier de
+* au-delà du champ qui remplit la banque retenue, la MÊME règle marginale
+  que l'option « sans » (``taille.grimper_avec_regard`` : un palier de
   5 kWc, ou le groupe qu'un palier cher seul forme avec les suivants, se
   rembourse en ≤ ``HORIZON_MARGINAL_CI``), sur le coût et l'économie de
   l'option « avec » (:func:`monter_regle_marginale`) ;
@@ -58,12 +60,12 @@ from apps.ventes.moteur_ci.autoconso import HEURES, bilan_horaire, regime_inject
 TENSION_PORT_BT_MAX_V = 60.0
 SOURCE_DECISION = 'décision fondateur du 26/10/2026 — devis C&I à deux options'
 SOURCE_REMPLISSAGE = 'règle QJR612 « batteries toujours pleines » (fondateur 30/09/2026)'
-SOURCE_BANQUE = ('règle marginale des 7 ans sur la banque — module + panneaux tirés '
-                 '(fondateur 30/10/2026)')
-SOURCE_HORIZON_AVEC = ('règle marginale des 7 ans de la taille C&I (taille.grimper_avec_regard, '
+SOURCE_BANQUE = ('règle marginale sur la banque — module + panneaux tirés, horizon '
+                 'taille.HORIZON_MARGINAL_CI (fondateur 30/10/2026)')
+SOURCE_HORIZON_AVEC = ('règle marginale de la taille C&I (taille.grimper_avec_regard, '
                        'taille.HORIZON_MARGINAL_CI — fondateur 26/10 et 30/10/2026)')
 #: Garde de terminaison de la montée de la banque (modules), jamais une
-#: taille : la règle des 7 ans, le toit ou les hybrides l'arrêtent bien avant.
+#: taille : la règle marginale, le toit ou les hybrides l'arrêtent bien avant.
 MAX_MODULES_BALAYAGE = 500
 #: CMP3 (D-CMP-3) — hybrides basse tension en parallèle : borne de fiche.
 MAX_HYBRIDES_PARALLELE = 10
@@ -430,7 +432,7 @@ def _champ_rempli(initiale, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kv
 def monter_regle_marginale(n_depart, n_haut, pmax_wc, evaluer, horizon=None):
     """Au-delà du champ rempli, la règle marginale de l'option « sans »
     (``taille.grimper_avec_regard``, fondateur 26/10/2026 ; ``horizon`` =
-    ``taille.HORIZON_MARGINAL_CI``, 7 ans depuis le 30/10/2026) sur les paliers
+    ``taille.HORIZON_MARGINAL_CI``) sur les paliers
     de ``PAS_KWC`` de l'option « avec » : ``evaluer(n)`` rend l'évaluation à
     ``n`` panneaux, ``None`` hors bornes (combinaison, puissance souscrite).
     Balayage arrêté au premier pas sans gain ou après ``PALIERS_REGARDES``
@@ -466,7 +468,7 @@ def monter_regle_marginale(n_depart, n_haut, pmax_wc, evaluer, horizon=None):
 
 def _monter_banque(modele, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kva, evaluer,
                    cout_depart=None, economie_depart=None):
-    """RÈGLE MARGINALE DES 7 ANS SUR LA BANQUE (fondateur 30/10/2026) : pour
+    """RÈGLE MARGINALE SUR LA BANQUE (fondateur 30/10/2026) : pour
     q = 1, 2, 3… modules de ``modele``, l'option « avec » à q modules est
     composée en entier — champ porté jusqu'au remplissage de la banque
     (:func:`_champ_rempli`, QJR612), hybrides combinés, coût de vente HT et
@@ -550,7 +552,7 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
                              hybrides=(), kwc_max=None, ps_kva=None, taux_tva_pct=None,
                              production_de=None, cout_depart=None, economie_depart=None):
     """L'option « avec batterie » : banque montée module par module par la
-    règle marginale des 7 ans (:func:`_monter_banque`, fondateur 30/10/2026 —
+    règle marginale (:func:`_monter_banque`, fondateur 30/10/2026 —
     chaque module avec les panneaux qu'il tire pour se remplir, QJR612), puis,
     au-dessus du champ qui remplit la banque retenue, la montée des panneaux
     par la même règle (:func:`monter_regle_marginale`) dans les bornes,

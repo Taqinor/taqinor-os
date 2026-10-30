@@ -1,5 +1,5 @@
 """CIQ116 — taille C&I = plus grande taille dont chaque tranche de 5 kWc se
-rembourse en ≤ HORIZON_MARGINAL_CI (7 ans, fondateur 30/10/2026) sur l'autoconsommation HORAIRE.
+rembourse en ≤ HORIZON_MARGINAL_CI (horizon C&I unique, fondateur 30/10/2026) sur l'autoconsommation HORAIRE.
 
 Fixtures : charge = archétypes sourcés CIQ107 (bureau BDEW G1, hôtel NREL
 ComStock small hotel) ; production = PVGIS vendorisé (Casablanca) ; onduleurs
@@ -37,8 +37,10 @@ def _prix_seed(sku):
 PANNEAU_WC = 710
 #: Horizon EXPLICITE des tests du MÉCANISME ``grimper_avec_regard`` (saut
 #: d'onduleur, fenêtre de regard CLD8), calibrés sur 10 ans ; le moteur C&I
-#: lui passe ``HORIZON_MARGINAL_CI`` (7 ans, fondateur 30/10/2026).
+#: lui passe ``HORIZON_MARGINAL_CI`` (une constante, valeur à trancher).
 HORIZON_REGARD = 10
+#: Horizon C&I courant, lu — jamais recopié — par les tests ci-dessous.
+H = HORIZON_MARGINAL_CI
 PRIX_PANNEAU = _prix_seed('PAN-JK-710')
 PRIX_STRUCTURE = _prix_seed('STR-ACIER')
 
@@ -309,7 +311,7 @@ class TailleCITests(unittest.TestCase):
         r = self._taille('bureau', 6000)
         e = r['evaluation']
         self.assertLessEqual(e['cout'] / e['economie'], HORIZON_MARGINAL_CI)
-        self.assertEqual((HORIZON_MARGINAL_CI, r['taille']['horizon_marginal_annees']), (7, 7))
+        self.assertEqual(r['taille']['horizon_marginal_annees'], HORIZON_MARGINAL_CI)
         admis = [p for p in r['taille']['paliers'] if p['admis']]
         self.assertTrue(all(p['ratio_marginal_annees'] <= HORIZON_MARGINAL_CI for p in admis))
         # CLD9 — le dernier palier admis (clé ``kwc`` = palier) est celui dont
@@ -475,16 +477,18 @@ class BalayageBorneTests(unittest.TestCase):
         self.assertEqual(len(vus), 1 + 4)
 
     def test_garde_horizon_sur_le_payback_du_depart(self):
-        # CLD11 — meilleur payback 6,9 ans (5 kWc) mais départ départagé à
-        # 7,1 ans (10 kWc, meilleure couverture) : le départ ne tient pas
-        # dans l'horizon C&I de 7 ans ⇒ aucune montée (15 kWc à 7 ans
-        # marginal refusé), alerte citant 7,1.
+        # CLD11 — meilleur payback H − 0,1 an (5 kWc) mais départ départagé à
+        # H + 0,1 (10 kWc, meilleure couverture) : le départ ne tient pas
+        # dans l'horizon C&I ⇒ aucune montée (15 kWc à H ans marginal
+        # refusé), alerte citant H + 0,1.
         from unittest import mock
         from apps.ventes.moteur_ci import taille as T
-        table = {5: (69.0, 10.0, 0.3), 10: (142.0, 20.0, 0.5), 15: (177.0, 25.0, 0.4)}
+        c15 = 20 * (H + 0.1) + 5 * H
+        table = {5: (10 * (H - 0.1), 10.0, 0.3), 10: (20 * (H + 0.1), 20.0, 0.5),
+                 15: (c15, 25.0, 0.4)}
 
         def evaluer(kwc, **_kw):
-            cout, eco, couv = table.get(kwc, (177.0 + 1000.0 * (kwc - 15), 25.0 + kwc - 15, 0.4))
+            cout, eco, couv = table.get(kwc, (c15 + 1000.0 * (kwc - 15), 25.0 + kwc - 15, 0.4))
             return {'sans_panneau': False, 'kwc': kwc, 'composition': {'lignes': []},
                     'onduleurs': {'combinaison': [{'produit': 1, 'kw_ac': 10.0, 'quantite': 1}]},
                     'bilan': {'taux_couverture': couv, 'horaire': []}, 'alertes_bilan': [],
@@ -497,9 +501,9 @@ class BalayageBorneTests(unittest.TestCase):
                 combiner=None, composer=None, valoriser=None)
         self.assertEqual(r['taille']['retenue_kwc'], 10)
         alerte = next(a for a in r['alertes'] if a['code'] == 'depart_hors_horizon')
-        self.assertIn('7.1', alerte['message'])
-        self.assertIn('horizon de 7 ans', alerte['message'])
-        self.assertNotIn('6.9', alerte['message'])
+        self.assertIn('%.1f' % (H + 0.1), alerte['message'])
+        self.assertIn('horizon de %d ans' % H, alerte['message'])
+        self.assertNotIn('%.1f' % (H - 0.1), alerte['message'])
 
 
 def _hybrides_bt():
@@ -534,8 +538,8 @@ BATTERIES = [
 class OptionAvecBatterieTests(unittest.TestCase):
     """Fondateur 26/10 et 30/10/2026 — l'option « avec batterie » C&I :
     hybrides BT à la place des string, banque homogène montée module par
-    module par la règle marginale des 7 ans (chaque module avec les panneaux
-    qu'il tire pour se remplir, QJR612), puis les panneaux par la même règle."""
+    module par la règle marginale (chaque module avec les panneaux qu'il tire
+    pour se remplir, QJR612), puis les panneaux par la même règle."""
 
     @classmethod
     def setUpClass(cls):
@@ -623,11 +627,11 @@ class OptionAvecBatterieTests(unittest.TestCase):
         besoin = besoin_nocturne_kwh(self.charge, bilan_depart)
         self.assertAlmostEqual(bat['besoin_nocturne_kwh'], round(besoin, 2), places=2)
         # Fondateur 30/10/2026 : la banque ne couvre plus TOUTE la nuit — elle
-        # s'arrête au module dont le pas (module + panneaux tirés) dépasse 7 ans.
+        # s'arrête au module dont le pas (module + panneaux tirés) sort de l'horizon.
         self.assertGreaterEqual(bat['quantite'], 1)
         self.assertLess(bat['capacite_utile_kwh'] * bat['rendement'], besoin)
         self.assertTrue(bat['se_remplit_tous_les_jours'])
-        # Le pas marginal de l'option retenue depuis « sans » tient dans 7 ans.
+        # Le pas marginal de l'option retenue depuis « sans » tient dans l'horizon.
         from apps.ventes.dimensionnement import ratio_pas_marginal
         ratio = ratio_pas_marginal(self.sans['cout'], self.sans['economie'], e['cout'], e['economie'])
         self.assertLessEqual(ratio, HORIZON_MARGINAL_CI + 1e-9)
@@ -651,12 +655,15 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertIsNone(choisir_modele_banque([dict(b, prix=None) for b in BATTERIES]))
         self.assertIsNone(choisir_modele_banque([dict(b, kwh_utile=0) for b in BATTERIES]))
 
-    def test_banque_regle_marginale_7_ans_panneaux_tires_comptes(self):
+    def test_banque_regle_marginale_panneaux_tires_comptes(self):
         # Fondateur 30/10/2026 — 1 kWc par panneau, surplus du mois le plus bas
         # = 0,5 kWh par panneau : un module de 10 kWh utiles tire 20 panneaux.
         # Module 40 000 HT ; gains +10 000/an (1er), +10 000/an (2e),
         # +3 000/an (3e). « Sans » : 20 panneaux, 20 000 HT, 30 000 MAD/an.
+        # Tout est exprimé en H = HORIZON_MARGINAL_CI (changer la valeur ne
+        # change pas ce test).
         from apps.ventes.moteur_ci.batterie import _monter_banque
+        self.assertLess(H, 20)
         modele = {'produit': 7, 'nom': 'Module 10 kWh', 'kwh_utile': 10.0, 'rendement': 1.0,
                   'prix': Decimal('40000'), 'max_modules': None}
         gains = {1: 10000.0, 2: 20000.0, 3: 23000.0}
@@ -689,30 +696,32 @@ class OptionAvecBatterieTests(unittest.TestCase):
         (e, banque, reduite), vus = monter(1000.0)
         self.assertEqual((banque['quantite'], e['n'], reduite), (2, 40, False))
         self.assertEqual(vus, [(1, 20), (2, 40), (3, 60), (4, 80)])
-        # Panneaux à 3 000 HT : le module 2 seul vaut 4 ans mais, AVEC ses 20
-        # panneaux tirés, (40 000 + 60 000) / 10 000 = 10 ans ⇒ refusé : 1 module.
-        (e, banque, reduite), _vus = monter(3000.0)
+        # Panneaux plus chers : le module 2 seul vaut 4 ans mais, AVEC ses 20
+        # panneaux tirés, (40 000 + 20 × prix) / 10 000 = H + 1 an ⇒ refusé : 1 module.
+        prix_ko = (10000.0 * (H + 1) - 40000.0) / 20
+        (e, banque, reduite), _vus = monter(prix_ko)
         self.assertEqual((banque['quantite'], e['n'], reduite), (1, 20, False))
         # Toit à 30 panneaux : le 2e module ne se remplit pas ⇒ banque réduite à 1, nommée.
         (e, banque, reduite), _vus = monter(1000.0, n_haut=30)
         self.assertEqual((banque['quantite'], e['n'], reduite), (1, 20, True))
-        # Module à 100 000 : aucun module (ni groupe) ne tient en 7 ans ⇒
-        # aucune option « avec », motif nommé avec le retour du premier module.
-        r, _vus = monter(1000.0, prix_module=100000.0)
+        # Module à 10 000 × (H + 3) : aucun module (ni groupe) ne tient dans
+        # l'horizon ⇒ aucune option « avec », motif nommé avec le retour du premier.
+        r, _vus = monter(1000.0, prix_module=10000.0 * (H + 3))
         self.assertIsNone(r['evaluation'])
-        self.assertIn('7 ans', r['motif'])
-        self.assertIn('10.0 ans', r['motif'])
-        # Regard (fondateur 26/10) : le 1er module porte un coût fixe de
-        # 60 000 (passage aux hybrides) — 10 ans seul — mais 0 → 2 modules =
-        # (60 000 + 80 000 + 20 panneaux) / 20 000 = 8 ans (non), 0 → 3 =
-        # (60 000 + 120 000 + 40 000) / 23 000 ≈ 9,6 (non) ⇒ rien ; avec un
-        # 3e module à +12 000/an, 0 → 3 = 220 000 / 32 000 ≈ 6,9 ⇒ 3 modules.
-        gains_fixe = {1: 10000.0, 2: 20000.0, 3: 32000.0}
+        self.assertIn('%d ans' % H, r['motif'])
+        self.assertIn('%.1f ans' % (H + 3), r['motif'])
+        # Regard (fondateur 26/10) : le 1er module porte un coût FIXE de
+        # 10 000 × (H + 3) (passage aux hybrides) — H + 3 ans seul ; 0 → 2 =
+        # (fixe + 80 000 + 20 panneaux) / 20 000 = H/2 + 6,5 (non) ; 0 → 3 à
+        # +3 000/an = (fixe + 160 000) / 23 000 (non) ⇒ rien ; avec un 3e module
+        # dont le gain porte 0 → 3 à H − 0,5 an ⇒ 3 modules.
+        fixe = 10000.0 * (H + 3)
+        gains_fixe = {1: 10000.0, 2: 20000.0, 3: round((fixe + 160000.0) / (H - 0.5) + 1)}
 
         def monter_fixe(gains_q):
             def evaluer(n, banque):
                 q = int(banque['quantite'])
-                return {'n': n, 'cout': 1000.0 * n + 40000.0 * q + 60000.0,
+                return {'n': n, 'cout': 1000.0 * n + 40000.0 * q + fixe,
                         'economie': 30000.0 + gains_q.get(q, gains_q[max(gains_q)])}
             return _monter_banque(modele, n_bas=20, n_haut=100, pmax_wc=1000.0,
                                   bilan_de=bilan_de, combiner=combiner, ps_kva=None,
@@ -728,7 +737,7 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertIn('Batterie Dyness 10 kWh', r['prix_a_renseigner'])
 
     def test_toit_borne_banque_reduite_nommee(self):
-        # Modules Dyness 5 kWh à 1 MAD : chaque module passe la règle des 7 ans ;
+        # Modules Dyness 5 kWh à 1 MAD : chaque module passe la règle marginale ;
         # seul le toit (champ « sans » gardé) arrête la banque — réduite, nommée.
         gratuite = dict(BATTERIES[0], prix=Decimal('1'),
                         element=dict(BATTERIES[0]['element'], prix_vente_ht=Decimal('1')))
@@ -820,7 +829,7 @@ class OptionAvecBatterieTests(unittest.TestCase):
         r0 = self._avec(hybrides=hyb_libres)['evaluation']
         self.assertIsNone(r0['batterie']['puissance_decharge_kw'])
         # Port de décharge de 0,5 kW : la banque ne rend presque rien, aucun
-        # module ne tient en 7 ans — sans point n = 0, le premier est admis
+        # module ne tient dans l'horizon — sans point n = 0, le premier est admis
         # d'office, ce qui est ce que la borne CMP7 doit montrer.
         serres = [dict(h, bat_max_decharge_kw=0.5) for h in hyb_libres]
         r1 = self._avec(hybrides=serres, cout_depart=None, economie_depart=None,
@@ -831,7 +840,7 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertLess(r1['bilan']['batterie']['restitue_kwh_an'],
                         r0['bilan']['batterie']['restitue_kwh_an'])
 
-    def test_regle_marginale_7_ans_au_dela_du_remplissage(self):
+    def test_regle_marginale_au_dela_du_remplissage(self):
         from apps.ventes.moteur_ci.batterie import monter_regle_marginale
         # n → kWc = n × 710 Wc ; coût 1 000 MAD/kWc ; économie 300 MAD/kWc
         # (3,3 ans) jusqu'à 40 kWc, puis 50 MAD/kWc (20 ans par palier) : arrêt à 40.
@@ -843,14 +852,15 @@ class OptionAvecBatterieTests(unittest.TestCase):
         retenu = monter_regle_marginale(29, 200, PANNEAU_WC, evaluer)
         self.assertLessEqual(abs(retenu['kwc'] - 40), PANNEAU_WC / 1000.0)
         self.assertIsNone(monter_regle_marginale(29, 200, PANNEAU_WC, lambda n: None))
-        # Un palier à 8 ans : refusé à l'horizon C&I (7), gardé à un horizon explicite de 10.
+        # Un palier à H + 1 an : refusé à l'horizon C&I, gardé à un horizon explicite de H + 2.
 
-        def huit_ans(n):
+        def hors_horizon(n):
             kwc = n * PANNEAU_WC / 1000.0
-            return {'kwc': kwc, 'cout': 1000 * kwc, 'economie': 125 * kwc}
-        self.assertEqual(monter_regle_marginale(29, 60, PANNEAU_WC, huit_ans)['kwc'],
+            return {'kwc': kwc, 'cout': 1000 * kwc, 'economie': 1000 / (H + 1) * kwc}
+        self.assertEqual(monter_regle_marginale(29, 60, PANNEAU_WC, hors_horizon)['kwc'],
                          29 * PANNEAU_WC / 1000.0)
-        self.assertGreater(monter_regle_marginale(29, 60, PANNEAU_WC, huit_ans, horizon=10)['kwc'],
+        self.assertGreater(monter_regle_marginale(29, 60, PANNEAU_WC, hors_horizon,
+                                                  horizon=H + 2)['kwc'],
                            29 * PANNEAU_WC / 1000.0)
 
 

@@ -78,7 +78,7 @@ def _lead_de_la_societe(company, lead_id):
 @extend_schema(
     summary="Aperçu serveur de l'étude commercial / industriel (CIQ118, aucune écriture)",
     description=("Profil déclaré heure par heure, production PVGIS, taille par la "
-                 "règle marginale des 7 ans, bilan, économie, composition — forme du contrat "
+                 "règle marginale, bilan, économie, composition — forme du contrat "
                  "etude_ci_preview.json. Société = celle de l'appelant."),
     request=OpenApiTypes.OBJECT, responses={200: EtudeCiPreviewResponse},
 )
