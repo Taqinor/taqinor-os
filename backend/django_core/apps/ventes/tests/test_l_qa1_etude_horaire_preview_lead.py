@@ -363,3 +363,20 @@ class PreviewBatteriesDuCorpsTests(_LeadPreviewBase):
             'mode_installation': 'residentiel', 'facture_hiver': 1500,
             'batteries': 'Dyness'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_rhor9_elements_non_objets_400(self):
+        """CI #1176 api-fuzz (cas X7yfUo) — le schéma publie une liste
+        d'OBJETS : ``[[null, null]]`` répondait 200. Tout élément non objet
+        est un 400 nommant ``batteries`` ; une liste vide reste acceptée."""
+        for brut in ([[None, None]], [None], [1], ['Dyness'],
+                     [{'produit': 1}, []]):
+            with self.subTest(brut=brut):
+                resp = self.api.post(
+                    '/api/django/ventes/etude-horaire/preview/',
+                    {'facture_hiver': 1500, 'batteries': brut}, format='json')
+                self.assertEqual(resp.status_code, 400, resp.content)
+                self.assertIn('batteries', resp.json()['detail'])
+        resp = self.api.post('/api/django/ventes/etude-horaire/preview/',
+                             {'facture_hiver': 1500, 'batteries': []},
+                             format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)

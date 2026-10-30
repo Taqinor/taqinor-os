@@ -100,6 +100,21 @@ class TestReleveImport(_ReleveImportBase):
         r = self.api.post(self.DRY_URL)
         self.assertEqual(r.status_code, 400)
 
+    def test_fichier_du_fuzz_lisible_png_refuse(self):
+        """CI #1176 api-fuzz (cas aAVYqi) — le schéma ne dit que
+        ``format: binary`` : le crochet de fuzz envoie au cas positif un CSV
+        de relevé à en-têtes seuls, nommé « file » (sans extension). Il est
+        lisible (200, 0 ligne) ; un PNG reste « Lecture impossible » (400)."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        r = self.api.post(self.DRY_URL, {'file': SimpleUploadedFile(
+            'file', b'date,libelle,montant\r\n')}, format='multipart')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['total_rows'], 0)
+        png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x02'
+        r = self.api.post(self.DRY_URL, {'file': SimpleUploadedFile(
+            'file', png)}, format='multipart')
+        self.assertEqual(r.status_code, 400, r.content)
+
     # ── Dry-run ───────────────────────────────────────────────────────────────
 
     def test_dry_run_match_by_reference(self):

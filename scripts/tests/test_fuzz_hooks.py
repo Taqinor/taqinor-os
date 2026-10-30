@@ -234,6 +234,28 @@ class IdsCheminTests(unittest.TestCase):
         vals = self._valeurs('/api/django/docs/{id}/')
         self.assertTrue(all(isinstance(v, int) for v in vals))
 
+    def test_id_en_chaine_de_la_phase_coverage_substitue(self):
+        # CI #1176 — la phase coverage rend `{id}` déjà en chaîne (« 0 ») :
+        # l'id réel est posé sous la même forme (« 0 opérations avec id réel »
+        # sinon) ; une chaîne non entière (uuid, slug) garde sa valeur.
+        vals = [self._appel('/api/django/ventes/devis/{id}/', {'id': str(10**6 + i)})
+                .path_parameters['id'] for i in range(200)]
+        self.assertTrue(all(isinstance(v, str) for v in vals))
+        reels = [v for v in vals if v in ('11', '12', '13')]
+        self.assertTrue(0.6 < len(reels) / 200 < 0.9, len(reels))
+        cas = self._appel('/api/django/ventes/devis/{id}/', {'id': 'abc'})
+        self.assertEqual(cas.path_parameters['id'], 'abc')
+
+    def test_fuzz_admin_protege_aussi_en_chaine(self):
+        h = _charger_hooks(
+            {'user_id': 4, 'company_id': 2, 'role_id': 7, 'fk_ids': {}},
+            ids_chemin={'/api/django/users/': [4]})
+        for i in range(40):
+            cas = _cas(h, 'DELETE', '/api/django/users/{id}/',
+                       params={'id': str(10**6 + i)})
+            h.before_call(None, cas, {})
+            self.assertNotEqual(str(cas.path_parameters['id']), '4')
+
     def test_id_imbrique_second_parametre_intact(self):
         cas = self._appel('/api/django/ventes/devis/{id}/lignes/{ligne_id}/',
                           {'id': 10**6, 'ligne_id': 77})
@@ -691,6 +713,15 @@ class FichiersPdfTests(unittest.TestCase):
         negatif = self._corps('POST', '/api/django/uxviews/favoris/importer/',
                               {'fichier': b''}, mode='NEGATIVE')
         self.assertEqual(negatif['fichier'], b'')
+
+    def test_releve_bancaire_dry_run_recoit_un_csv_lisible(self):
+        # CI #1176 fuzz (aAVYqi) — un PNG est « Lecture du fichier
+        # impossible » (400) ; un positif porte un CSV de relevé à en-têtes.
+        chemin = '/api/django/ventes/paiements/import-releve/dry-run/'
+        corps = self._corps('POST', chemin, {'file': b'\x89PNG'})
+        self.assertEqual(corps['file'], b'date,libelle,montant\r\n')
+        negatif = self._corps('POST', chemin, {'file': b'\x89PNG'}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'\x89PNG')
 
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')

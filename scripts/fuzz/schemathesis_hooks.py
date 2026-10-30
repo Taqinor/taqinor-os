@@ -424,6 +424,7 @@ def _retyper_query(query, avant, typee, publies=None):
 # `{jeton}`, `{slug}`, `{key}`… et les ids imbriqués restent intacts.
 _PREMIER_ID = re.compile(r'^(.*?/)\{(id|pk)\}(?:/|$)')
 _COUVERTURE = {'reel': set(), 'aleatoire': set(), 'sans_inventaire': set()}
+_ENTIER_TEXTE = re.compile(r'^-?[0-9]+$')
 
 
 def _bucket(cle, ids):
@@ -450,6 +451,12 @@ def _ids_chemin_reels(case):
         _COUVERTURE['aleatoire'].add(ops)
         return
     choisi = _bucket(cle, ids)
+    # CI #1176 — la phase coverage (seule phase du job PR) rend les paramètres
+    # de chemin DÉJÀ en chaîne (Schemathesis 4.28 ``_stringify_value`` : un
+    # entier 0 arrive « 0 ») : sans cette forme, aucun id entier n'était
+    # jamais posé (« 0 opérations avec id réel »). L'id réel suit la forme.
+    if isinstance(choisi, int) and isinstance(valeur, str) and _ENTIER_TEXTE.match(valeur):
+        choisi = str(choisi)
     if isinstance(choisi, int) != isinstance(valeur, int):
         _COUVERTURE['aleatoire'].add(ops)
         return
@@ -552,6 +559,8 @@ _CSV_MINIMAL = b'nom,description\r\nFuzz,Import\r\n'
 # Fichier d'un import générique (dry-run/commit) : un CSV à en-têtes seuls, lisible
 # pour TOUTE cible ; des octets quelconques (NUL…) sont « Lecture impossible ».
 _CSV_IMPORT = b'nom,email\r\n'
+# Relevé bancaire (dry-run) : en-têtes de relevé seuls — lisible, 0 ligne.
+_CSV_RELEVE = b'date,libelle,montant\r\n'
 _GED = r'^/api/django/ged/documents/'
 _CALEPINAGE = r'^/api/django/calepinage/calepinages/\{[^}]+\}/'
 # (chemin, méthodes, {champ du corps: octets d'un fichier valide})
@@ -632,6 +641,11 @@ _FICHIERS_VALIDES = (
     # ne dit que ``format: binary``. Un CSV à en-têtes seuls est lisible.
     (re.compile(r'^/api/django/uxviews/(saved-views|favoris)/importer/$'), {'POST'},
      {'fichier': _CSV_IMPORT}),
+    # CI #1176 fuzz (aAVYqi) — aperçu d'un relevé bancaire : un PNG est
+    # « Lecture du fichier impossible » (400), le schéma ne dit que
+    # ``format: binary``. Un CSV de relevé à en-têtes seuls est lisible.
+    (re.compile(r'^/api/django/ventes/paiements/import-releve/dry-run/$'), {'POST'},
+     {'file': _CSV_RELEVE}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
