@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: c09a842bdc5832bddff9bc94de4a1037b97f22ed3e7bcfa95a576bb58ff47a75
-Plan fingerprint: c1d2836a18ea8ac040219abdfc7e9135bb4e83f70ca98ff7396c7c7bf71c1255
+Plan fingerprint: e30e623b4532fec1d65a46680667b8389ce5d7eb681364e471908af4ad1b4ce7
 
 
 
@@ -592,7 +592,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1295)**
+**Done (1298)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1201,6 +1201,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF14` — Exceptions permanentes signées
 - `ENF16` — Dette on_delete (573) à zéro
 - `ENF17` — (already present)
+- `ENF18` — Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro
 - `ENF20` — import-linter : `ignore_imports` (52) à zéro
 - `ENF21` — flake8 E501 bloquant
 - `ENF22` — [D-ENF22-BLE001 = (a), Reda 11/10/2026 : exception signée pour les except larges qui…
@@ -1215,6 +1216,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF32` — ENF15, tranche PC 2 « onglets calepinage testés » (14/10)
 - `ENF33` — ENF15 + ENF18, tranche 30/10
 - `ENF34` — ENF19, tranche 30/10
+- `ENF35` — ENF15, tranche 30/10 (2)
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1891,7 +1893,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (125)**
+**Open — to build (124)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1981,7 +1983,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQM25` — Écrire les surcharges commerciales après les premières mesures
 - `ENF11` — api-fuzz bloquant
 - `ENF15` — Dettes moyennes à zéro
-- `ENF18` — Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro
 - `ENF19` — Duplicats (1 181) à zéro
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
