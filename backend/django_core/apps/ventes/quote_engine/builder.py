@@ -1549,7 +1549,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
      factures_source, hypotheses_block, savings_method) = restituer_etude(
         _client_city=_client_city, _co_productible=_co_productible,
         _corrige=_corrige, _utility=_utility, etude=etude, _bareme_horaire=_regles_2710(devis),
-        puissance_kwc=puissance_kwc, roi=roi, savings_model=savings_model,
+        puissance_kwc=puissance_kwc, roi=roi, savings_model=savings_model, libelle_avec=libelle_avec,
         savings_model_avec=savings_model_avec,
         savings_model_sans=savings_model_sans, scenario=scenario, recommended=_regles_2710(devis) and recommended)
 

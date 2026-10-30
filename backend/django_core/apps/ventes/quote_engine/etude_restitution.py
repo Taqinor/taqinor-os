@@ -42,7 +42,8 @@ def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
 def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
                     _bareme_horaire=False,
                     etude, puissance_kwc, roi, savings_model,
-                    savings_model_avec, savings_model_sans, scenario, recommended=None):
+                    savings_model_avec, savings_model_sans, scenario, recommended=None,
+                    libelle_avec=None):
     # ── QF3 — bloc « Comment nous calculons vos économies » ──────────────────
     # Méthode + exemple chiffré compact, calculés UNE fois ici : le PDF premium
     # et la proposition web (/proposal) rendent EXACTEMENT le même bloc.
@@ -302,9 +303,16 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
     _ac_s = roi.get("autoconso_sans")
     _ac_a = roi.get("autoconso_avec")
     if _ac_s and _ac_a:
+        # ERR-AMOT21-BATDIFF-ETUDE-AVEC-BATTERIE — l'option 2 est nommée par le
+        # libellé SERVEUR (``libelle_avec``, AMOT21) : un devis BAT-DIFF lit
+        # « hybride, batterie plus tard », jamais « avec batterie ». Devis
+        # envoyé (règles d'origine) : la phrase d'hier, octet pour octet.
+        from .i18n_labels import nom_option
+        _opt_avec = (nom_option(libelle_avec, "fr", minuscule=True)
+                     if (_corrige and libelle_avec) else "avec batterie")
         hypotheses.append(
             f"Autoconsommation retenue : {int(round(_ac_s * 100))} % sans "
-            f"batterie · {int(round(_ac_a * 100))} % avec batterie.")
+            f"batterie · {int(round(_ac_a * 100))} % {_opt_avec}.")
     # QX39 — hypothèses du cashflow 25 ans (dégradation/escalade/batterie),
     # documentées et rendues sur le PDF/la proposition. Le payback vient
     # désormais du croisement du cumul à zéro, pas d'un ratio année-1.
