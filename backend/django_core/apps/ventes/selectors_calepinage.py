@@ -678,3 +678,15 @@ def contexte_conception_devis(devis, company):
     if cible_avec is not None:
         contexte['cible_avec'] = cible_avec
     return contexte
+
+def logo_entete_html(uri):
+    """ACHT112 — le logo société en en-tête d'un document hors devis (rapport
+    énergie du chantier) : MÊME module image que les devis (rognage, détourage,
+    bloc du rôle « entete »), par la porte cross-app de ventes — jamais un import
+    du moteur de devis depuis une autre app (CAL195). ``None`` si l'image n'est
+    pas un raster lisible (SVG, corrompu) : l'appelant garde son repli."""
+    from .quote_engine import logo
+    b64 = logo.societe_b64(uri, variante='clair') if uri else None
+    if not b64:
+        return None
+    return logo.img_html(logo.pour_role(b64, 'entete'), 'entete', alt='logo')

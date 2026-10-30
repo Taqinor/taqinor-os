@@ -37,7 +37,7 @@ __all__ = [
     'nombre_proprietes', 'paiements_des_factures', 'paiements_totaux_par_mode',
     'peremption_layout_devis', 'puissance_kwc_projet', 'references_avoirs', 'references_factures',
     'releve_client_pdf_bytes', 'releve_client_portail', 'resume_dossier_8221',
-    'resume_portail_client', 'schema_unifilaire_svg', 'signature_velocity_by_month_and_mode',
+    'resume_portail_client', 'schema_unifilaire_svg', 'logo_entete_html', 'signature_velocity_by_month_and_mode',
     'signed_clients_cross_sell_segments', 'totaux_multi_proprietes', 'tranche_facturee', 'tranches_facturees',
     'tva_buckets', 'verdict_batterie_onduleur', 'verdict_panneau_onduleur',
 ]
@@ -1739,7 +1739,7 @@ from .selectors_facturation import (  # noqa: E402 — ré-export (SPL143) (D-EN
 from .selectors_calepinage import (  # noqa: E402 — ré-export (SPL144) (D-ENF22)
     conception_pour_lead,
     calepinage_du_devis,
-    schema_unifilaire_svg,
+    schema_unifilaire_svg, logo_entete_html,
     lignes_produits_calepinage,
     peremption_layout_devis,
     devis_brouillon_pour_layout,
