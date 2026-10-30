@@ -720,7 +720,7 @@ export interface SerializedConsumption {
   /** Comment la courbe a été obtenue — DÉDUITE, jamais un choix par défaut. */
   methode: 'facture' | 'courbe' | 'appareils';
   /** Provenance déclarative du bloc (jamais un chiffre, D-CALX 7). */
-  source: { origine: string; saisi_le: string };
+  source: { origine: string; saisi_le: string; bareme?: string };
 }
 
 /**
@@ -759,7 +759,8 @@ export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsum
     // session), l'atelier signe le bloc.
     source:
       ctx.consSource && typeof ctx.consSource.origine === 'string' && typeof ctx.consSource.saisi_le === 'string'
-        ? { origine: ctx.consSource.origine, saisi_le: ctx.consSource.saisi_le }
+        ? { origine: ctx.consSource.origine, saisi_le: ctx.consSource.saisi_le,
+            ...(typeof ctx.consSource.bareme === 'string' ? { bareme: ctx.consSource.bareme } : {}) } // ACAL311
         : { origine: 'atelier', saisi_le: new Date().toISOString() },
   };
 
@@ -1701,6 +1702,7 @@ export function deserializeConsumptionFromLayout(json: unknown): ConsumptionHydr
 export interface SourceConsommation {
   origine: string;
   saisi_le: string;
+  bareme?: string; // ACAL311 — « societe » quand les kWh viennent du serveur
 }
 
 /** ACAL26 — les couches du document que le boot relit en plus des zones. */
@@ -1733,12 +1735,13 @@ export interface CouchesDocument {
 export function lireCouchesDocument(json: unknown): CouchesDocument {
   const doc = (json && typeof json === 'object' ? json : null) as Record<string, unknown> | null;
   const brutSource = (doc?.consumption as { source?: unknown } | null | undefined)?.source as
-    | { origine?: unknown; saisi_le?: unknown }
+    | { origine?: unknown; saisi_le?: unknown; bareme?: unknown }
     | null
     | undefined;
   const consSource =
     brutSource && typeof brutSource.origine === 'string' && typeof brutSource.saisi_le === 'string'
-      ? { origine: brutSource.origine, saisi_le: brutSource.saisi_le }
+      ? { origine: brutSource.origine, saisi_le: brutSource.saisi_le,
+          ...(typeof brutSource.bareme === 'string' ? { bareme: brutSource.bareme } : {}) } // ACAL311
       : null;
   let electrical: DocumentElectrique | null = null;
   if (doc && doc.electrical && typeof doc.electrical === 'object') {

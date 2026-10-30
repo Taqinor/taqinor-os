@@ -1172,7 +1172,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       evHoursEl,
       evKmEl,
       applNoteEl,
-      applListEl,
+      applListEl, billEl, billKwhEl, // ACAL311 — la facture et ses kWh/an
     },
     {
       renderActive: () => renderActive(),
@@ -2985,7 +2985,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   // — Facture —
   function updateBillKwh() {
-    const kwh = billToAnnualKwh(monthlyBill());
+    const kwh = consumption.kwhServi() ?? billToAnnualKwh(monthlyBill()); // ACAL311 — barème société servi d'abord
     if (billKwhEl) billKwhEl.textContent = kwh > 0 ? `${fmt(Math.round(kwh))} kWh` : '—';
   }
   // Le recalcul complet (balayage dense fineGridMatrixV6 + rafale de requêtes PVGIS)
@@ -4221,8 +4221,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     serializeLayout: (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
       serialiserDocumentAtelier(
         ctx,
-        // ACAL31 — sans facture saisie, le billKwh RELU (ou null), jamais un 0 inventé.
-        billKwh ?? (closed && vertices.length >= 3 && monthlyBill() > 0
+        // ACAL31 — sans facture saisie, le billKwh RELU (ou null) ; ACAL311 — les kWh SERVIS d'abord.
+        billKwh ?? consumption.kwhServi() ?? (closed && vertices.length >= 3 && monthlyBill() > 0
           ? billToAnnualKwh(monthlyBill())
           : typeof ctx.documentRelu?.billKwh === 'number' ? (ctx.documentRelu.billKwh as number) : null),
         {
