@@ -154,6 +154,34 @@ class CrochetsFuzzTests(unittest.TestCase):
         self.assertEqual(_charger_hooks.auth_kwargs,
                          {'refresh_interval': 600, 'retry_on': []})
 
+    def test_bearer_genere_recoit_le_jeton_valide(self):
+        # ENF11 — api-fuzz-full 40986772772 : 998 routes à cookie 401-seules.
+        # Schemathesis 4.28 génère l'alternative `bearerJWT` (« Bearer » +
+        # valeur d'en-tête quelconque) ; le serveur refuse un Authorization
+        # mal formé (d4ef375b4) même avec le cookie valide.
+        auth = self.hooks.FuzzAdminCookieAuth()
+        for cle, valeur in (('Authorization', 'Bearer '),
+                            ('Authorization', 'Bearer a b!#'),
+                            ('authorization', 'Bearer x=y')):
+            with self.subTest(cle=cle, valeur=valeur):
+                cas = types.SimpleNamespace(
+                    cookies={'access_token': 'genere'},
+                    headers={cle: valeur, 'X-Autre': 'garde'})
+                auth.set(cas, 'jwt.valide-1', None)
+                self.assertEqual(cas.cookies['access_token'], 'jwt.valide-1')
+                self.assertEqual(cas.headers,
+                                 {cle: 'Bearer jwt.valide-1',
+                                  'X-Autre': 'garde'})
+
+    def test_bearer_jamais_ajoute_quand_absent(self):
+        auth = self.hooks.FuzzAdminCookieAuth()
+        for entetes in (None, {}, {'X-Autre': 'v'}):
+            with self.subTest(entetes=entetes):
+                cas = types.SimpleNamespace(cookies=None, headers=entetes)
+                auth.set(cas, 'jwt', None)
+                self.assertEqual(cas.cookies, {'access_token': 'jwt'})
+                self.assertEqual(cas.headers, entetes)
+
 
 class IdsCheminTests(unittest.TestCase):
     """ENF11 — ids réels pour `{id}`/`{pk}` (1 273 opérations 404-seules)."""
@@ -1006,6 +1034,44 @@ class InventaireIdsTests(unittest.TestCase):
         table = self.inv.inventorier(
             doc, lambda p: {'results': [{'id': 9}]})
         self.assertEqual(table, {'/api/django/a/': [9]})
+
+    def test_lecture_parallele_meme_table(self):
+        doc = {'paths': {}}
+        for k in range(12):
+            doc['paths'][f'/api/django/r{k:02d}/'] = {'get': {}}
+            doc['paths'][f'/api/django/r{k:02d}/{{id}}/'] = {'get': {}}
+
+        def lire(prefixe):
+            rang = int(prefixe.rstrip('/')[-2:])
+            return None if rang % 5 == 0 else {'results': [{'id': rang}]}
+
+        seq = self.inv.inventorier(doc, lire)
+        self.assertEqual(len(seq), 9)
+        for fils in (2, 3, 8):
+            with self.subTest(fils=fils):
+                par = self.inv.inventorier(doc, lire, workers=fils)
+                self.assertEqual(par, seq)
+                self.assertEqual(list(par), list(seq))
+
+    def test_job_pr_inventorie_comme_le_nocturne(self):
+        # ENF11 — `api-fuzz-pr` ne posait jamais FUZZ_IDS_FILE : ses cas
+        # positifs gardaient des `{id}` aléatoires. Même script que
+        # api-fuzz-full, sur le schéma FUZZÉ, AVANT `schemathesis run`.
+        ci = (ROOT / '.github' / 'workflows' / 'ci.yml').read_text(
+            encoding='utf-8')
+        debut = ci.index('\n  api-fuzz-pr:\n')
+        fin = ci.index('\n  backend-tests:\n', debut)
+        job = ci[debut:fin]
+        etape = job.index('scripts/fuzz/inventorier_ids_chemin.py')
+        self.assertIn('--schema openapi-fuzz.json', job[etape:etape + 200])
+        self.assertLess(job.index('api_fuzz_scope.py schema'), etape)
+        self.assertLess(job.index('FUZZ_IDS_FILE=$FUZZ_IDS_FILE'), etape)
+        self.assertLess(etape, job.index('schemathesis run '))
+        plein = (ROOT / '.github' / 'workflows' / 'api-fuzz-full.yml'
+                 ).read_text(encoding='utf-8')
+        for texte in (job, plein):
+            self.assertIn('echo "FUZZ_IDS_FILE=$FUZZ_IDS_FILE" >> '
+                          '"$GITHUB_ENV"', texte)
 
 
 def _charger_portee():

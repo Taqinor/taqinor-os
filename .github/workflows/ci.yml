@@ -1450,6 +1450,23 @@ jobs:
             --out "$GITHUB_WORKSPACE/openapi-fuzz.json" \
             --shard "${{ matrix.shard }}/8" \
             --proprietaires ${{ needs.changes.outputs.fuzz_owners }}
+      - name: Ids réels pour les paramètres de chemin (ENF11 — même étape que api-fuzz-full)
+        # Sans elle, `FUZZ_IDS_FILE` n'était jamais posé ici : les cas positifs
+        # du job PR gardaient des `{id}` aléatoires (404 « Missing valid test
+        # data ») alors que le nocturne substitue des ids réels. Même script,
+        # même variable lue par `schemathesis_hooks.py` (before_call), sur le
+        # schéma FUZZÉ de la tranche. Coût mesuré au nocturne 40986772772 :
+        # 2,1 s par tranche, connexion comprise — mais pour 0-2 collections
+        # (découpage d'avant 5e961ca1c). Avec les familles, une tranche PR lit
+        # au plus ~160 listes (1 293 paires liste->détail / 8), sur 3 fils ;
+        # le script imprime sa durée (« en X s ») pour la suivre.
+        if: ${{ needs.changes.outputs.fuzz_owners != '' }}
+        run: |
+          set -euo pipefail
+          FUZZ_IDS_FILE="$RUNNER_TEMP/fuzz-ids-chemin.json"
+          echo "FUZZ_IDS_FILE=$FUZZ_IDS_FILE" >> "$GITHUB_ENV"
+          python scripts/fuzz/inventorier_ids_chemin.py \
+            --schema openapi-fuzz.json --out "$FUZZ_IDS_FILE"
       - name: schemathesis run (phase coverage, tous les checks — tranche entière)
         if: ${{ needs.changes.outputs.fuzz_owners != '' }}
         run: |
