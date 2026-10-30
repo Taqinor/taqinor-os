@@ -399,7 +399,7 @@ class TestFacturesReellesContract(TestCase):
         self.assertFalse(data['savings_estimated'])
         self.assertGreater(data['conso_annuelle_kwh'], 0)
         self.assertIn('Tarif électricité : barème national par tranche',
-                      data['hypotheses'])
+                      data['hypotheses']['items'])
 
     def test_rhor8_niveau4_garde_son_estimation(self):
         """Nouveaux rendus seulement : un devis de niveau 4 garde son PDF."""
