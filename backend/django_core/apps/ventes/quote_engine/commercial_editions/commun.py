@@ -211,6 +211,7 @@ def css_commune(j: dict, p: str) -> str:
 .{p}-tot-sp{{display:table-cell;width:52%;vertical-align:top;}}
 .{p}-tot-box{{display:table-cell;width:48%;vertical-align:top;}}
 .{p}-tot-tbl{{width:100%;border-collapse:collapse;font-size:8.6pt;}}
+.{p}-tot-titre{{font-family:{j['display']};font-weight:600;font-size:11pt;color:{j['hero_bg']};padding-bottom:3px;border-bottom:0.5pt solid {j['line']};margin-bottom:2px;}}
 .{p}-tot-tbl td{{padding:3px 0;color:{j['muted']};}}
 .{p}-tot-tbl td:last-child{{text-align:right;white-space:nowrap;color:{j['ink']};}}
 .{p}-tot-tbl tr.ttc td{{border-top:1pt solid {j['ink']};padding-top:7px;font-size:13pt;color:{j['ink']};font-weight:600;}}
@@ -336,25 +337,42 @@ def tableau_equipements(m: dict, p: str, j: dict, L, *, simple=False, resume=Fal
     return f'<table class="{p}-tbl c{ncols}">{head}<tr class="orr"><td colspan="{ncols}"></td></tr>{rows}</table>'
 
 
-def chaine_totaux(m: dict, p: str, L, *, ttc_marine=False, ttc_display=False) -> str:
-    t = m["totaux"]
+def chaine_totaux_de(t: dict, p: str, L, *, ttc_marine=False, ttc_display=False,
+                     titre: str = "", pleine: bool = False) -> str:
+    """La chaîne Sous-total → Remise/Arrondi → Total HT → TVA (par taux si
+    servie) → Total TTC d'UN dict de totaux formaté (``donnees.totaux`` ou
+    ``donnees.totaux_de``). ``pleine`` : sans le retrait de 52 % (carte
+    d'option à deux colonnes, page 2 à deux options)."""
+    tvas = t.get("tva_taux") or []
+    if tvas:
+        tva_rows = "".join(f'<tr><td>{L("tva", "TVA")} {taux}&#160;%</td><td>{mt}<span class="{p}-mad">MAD</span></td></tr>'
+                           for taux, mt in tvas) + t["ancre_tva"]
+    else:
+        tva_rows = f'<tr><td>{L("tva", "TVA")}{t["ancre_tva"]}</td><td>{t["tva"]}<span class="{p}-mad">MAD</span></td></tr>'
     remise = (f'<tr><td>{L("remise", "Remise")}{t["ancre_remise"]}</td>'
               f'<td>− {t["remise"]}<span class="{p}-mad">MAD</span></td></tr>' if t["remise"] else "")
     arrondi = (f'<tr><td>{L("arrondi", "Arrondi commercial")}{t["ancre_arrondi"]}</td>'
                f'<td>− {t["arrondi"]}<span class="{p}-mad">MAD</span></td></tr>' if t["arrondi"] else "")
     cls = "ttcm" if ttc_marine else "ttc"
-    montant = (f'<span style="font-family:{DISPLAY};font-weight:600;font-size:16pt;letter-spacing:-.01em;">{t["ttc"]}</span>'
+    montant = (f'<span style="font-family:{DISPLAY};font-weight:600;font-size:16pt;letter-spacing:-.01em;">{t["ttc"].replace(chr(0x202F), chr(0xA0))}</span>'
                if ttc_display else t["ttc"])
     mad = f'<span class="{p}-mad">MAD</span>'
-    return (f'<div class="{p}-tot"><div class="{p}-tot-sp"></div>'
-            f'<div class="{p}-tot-box"><table class="{p}-tot-tbl">'
-            f'<tr><td>{L("sous_total_ht", "Sous-total HT")}{t["ancre_ht_brut"]}</td><td>{t["ht_brut"]}{mad}</td></tr>'
-            f'{remise}{arrondi}'
-            f'<tr><td>{L("total_ht", "Total HT")}{t["ancre_ht_net"]}</td><td>{t["ht_net"]}{mad}</td></tr>'
-            f'<tr><td>{L("tva", "TVA")}{t["ancre_tva"]}</td><td>{t["tva"]}{mad}</td></tr>'
-            f'<tr class="{cls}"><td>{L("total_ttc", "Total TTC")}{t["ancre_ttc"]}</td>'
-            f'<td>{montant}{mad}</td></tr>'
-            f'</table></div></div>')
+    entete = f'<div class="{p}-tot-titre">{titre}</div>' if titre else ""
+    corps = (f'{entete}<table class="{p}-tot-tbl">'
+             f'<tr><td>{L("sous_total_ht", "Sous-total HT")}{t["ancre_ht_brut"]}</td><td>{t["ht_brut"]}{mad}</td></tr>'
+             f'{remise}{arrondi}'
+             f'<tr><td>{L("total_ht", "Total HT")}{t["ancre_ht_net"]}</td><td>{t["ht_net"]}{mad}</td></tr>'
+             f'{tva_rows}'
+             f'<tr class="{cls}"><td>{L("total_ttc", "Total TTC")}{t["ancre_ttc"]}</td>'
+             f'<td>{montant}{mad}</td></tr>'
+             f'</table>')
+    if pleine:
+        return corps
+    return f'<div class="{p}-tot"><div class="{p}-tot-sp"></div><div class="{p}-tot-box">{corps}</div></div>'
+
+
+def chaine_totaux(m: dict, p: str, L, *, ttc_marine=False, ttc_display=False) -> str:
+    return chaine_totaux_de(m["totaux"], p, L, ttc_marine=ttc_marine, ttc_display=ttc_display)
 
 
 def options_et_injection(m: dict, p: str, j: dict, L) -> str:

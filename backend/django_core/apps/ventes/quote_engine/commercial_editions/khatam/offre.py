@@ -31,7 +31,7 @@ def build(ctx, m, j):
                     f'<div class="kh2b-body">{puces}</div></div>')
     rangees = donnees.installation_en_bref(d, L, fmt)
     bref = ""
-    if rangees:
+    if rangees and not m["deux"]:  # à deux options, la fiche (mono-option) cède la place aux cartes
         lignes = "".join(
             f'<tr><td style="color:{j["muted"]};width:24%;padding:3px 8px;border-bottom:0.5pt solid {j["line_soft"]};vertical-align:top;">{lib}</td>'
             f'<td style="padding:3px 8px;border-bottom:0.5pt solid {j["line_soft"]};">{val}</td></tr>' for lib, val in rangees)
@@ -69,8 +69,75 @@ def build(ctx, m, j):
                        + f'</div><div class="kh-row" style="margin-top:3mm;"><div class="kh-col" style="width:108mm;">{svg}</div>'
                        f'<div class="kh-gap"></div><div class="kh-col">{indic}'
                        f'<table style="width:100%;border-collapse:collapse;font-size:8.2pt;margin-top:3mm;">{jalons}</table></div></div></div>')
+    deux = m["deux"]
+    corps_deux = ""
+    if deux:
+        # Fondateur 30/10 — la page 2 du résidentiel : équipement commun aux
+        # deux options, rôles divergents « sans · avec » sur une rangée, cartes
+        # « Spécifique à l'option N », deux chaînes de totaux côte à côte.
+        def deux_val(vs, va):
+            # colonnes étroites : la valeur « sans » au-dessus, « avec » dessous
+            return vs if vs == va else f'<span class="kh2-vs">{vs}</span><br><span class="kh2-va">{va}</span>'
+
+        def rangee(r):
+            marque = f'<span class="kh-mq">{commun.esc(r["marque"])}</span>' if r["marque"] else ""
+            return (f'<tr><td class="d">{r["designation"]}{marque}{r["sous_lignes"]}</td>'
+                    f'<td class="r">{r["qte"]}</td><td class="r">{r["pu_ht"]}</td>'
+                    f'<td class="r">{r["taux"]}</td><td class="r" style="font-weight:600;">{r["total"]}</td></tr>')
+
+        def rangee_paire(rs, ra):
+            marque = f'<span class="kh-mq">{commun.esc(rs["marque"] or ra["marque"])}</span>' if (rs["marque"] or ra["marque"]) else ""
+            if rs["sous_lignes"] == ra["sous_lignes"]:
+                sous = rs["sous_lignes"]
+            else:  # compositions différentes (coffrets, comptage) : les deux, nommées
+                sous = ((f'<div class="kh2-sl"><span class="kh2-vs">{deux["titre_sans"]} :</span>{rs["sous_lignes"]}</div>' if rs["sous_lignes"] else "")
+                        + (f'<div class="kh2-sl"><span class="kh2-va">{deux["titre_avec"]} :</span>{ra["sous_lignes"]}</div>' if ra["sous_lignes"] else ""))
+            return (f'<tr class="kh2-2v"><td class="d">{rs["designation"]}{marque}{sous}</td>'
+                    f'<td class="r">{deux_val(rs["qte"], ra["qte"])}</td><td class="r">{deux_val(rs["pu_ht"], ra["pu_ht"])}</td>'
+                    f'<td class="r">{deux_val(rs["taux"], ra["taux"])}</td><td class="r" style="font-weight:600;">{deux_val(rs["total"], ra["total"])}</td></tr>')
+        head = (f'<tr><th>{L("designation", "Désignation")}</th><th class="r">{L("qte", "Qté")}</th>'
+                f'<th class="r">{L("pu_ht", "P.U. HT")}</th><th class="r">{L("ci_tva_pct", "TVA %")}</th>'
+                f'<th class="r">{L("total_ht", "Total HT")}</th></tr>')
+        rows = "".join(rangee(r) for r in deux["communs"]) + "".join(rangee_paire(rs, ra) for rs, ra in deux["paires"])
+        legende_2v = (f'<div class="kh-cap" style="margin-top:3px;">{L("ci_deux_valeurs_legende", "Deux valeurs sur une ligne : {s} · {a}.", s=deux["titre_sans"].lower(), a=deux["titre_avec"].lower())}</div>'
+                      if deux["paires"] else "")
+        tableau_commun = (f'<div class="kh-h3" style="margin-top:3.5mm;">{L("ci_equipement_commun", "Équipement commun aux deux options")}</div>'
+                          f'<table class="kh-tbl c5" style="margin-top:1.5mm;">{head}<tr class="orr"><td colspan="5"></td></tr>{rows}</table>{legende_2v}')
+
+        def carte_spec(num, titre, rangees_, tete):
+            lis = "".join(f'<div class="kh2-sp-li"><span>{r["qte"]} × {r["designation"]}</span><span class="kh2-sp-t">{r["total"]} HT</span></div>' for r in rangees_)
+            if not lis:
+                lis = f'<div class="kh2-sp-li"><span>{L("ci_rien_de_specifique", "Aucun équipement propre à cette option")}</span></div>'
+            return (f'<div class="kh-col"><div class="kh2-sp"><div class="kh2-sp-h" style="{tete}">'
+                    f'{L("ci_specifique_option", "Spécifique à l’option {n} — {o}", n=num, o=titre)}</div><div class="kh2-sp-b">{lis}</div></div></div>')
+        specs = (f'<div class="kh-row" style="margin-top:4mm;">'
+                 + carte_spec(1, deux["titre_sans"], deux["seul_sans"], f'background:{j["hero_bg"]};color:{j["on_hero"]};')
+                 + '<div class="kh-gap" style="width:5mm;"></div>'
+                 + carte_spec(2, deux["titre_avec"], deux["seul_avec"], f'background:{j["or"]};color:{j["hero_bg"]};')
+                 + '</div>')
+        chaines = (f'<div class="kh-row" style="margin-top:4mm;"><div class="kh-col"><div class="kh2-tc">'
+                   + commun.chaine_totaux_de(deux["totaux_sans"], p, L, ttc_marine=True, ttc_display=True,
+                                             titre=L("ci_option_n_titre", "Option {n} — {o}", n=1, o=deux["titre_sans"]), pleine=True)
+                   + '</div></div><div class="kh-gap" style="width:5mm;"></div><div class="kh-col"><div class="kh2-tc">'
+                   + commun.chaine_totaux_de(deux["totaux_avec"], p, L, ttc_marine=True, ttc_display=True,
+                                             titre=L("ci_option_n_titre", "Option {n} — {o}", n=2, o=deux["titre_avec"]), pleine=True)
+                   + '</div></div></div>')
+        corps_deux = tableau_commun + specs + chaines
     css = f"""
 <style>
+.kh2-2v td{{white-space:normal;line-height:1.3;}}
+.kh2-sl{{margin-top:2px;}}
+.kh2-sl > span{{font-size:7pt;display:block;margin-top:2px;}}
+.kh2-vs{{color:{j['muted']};}}
+.kh2-va{{color:{j['hero_bg']};font-weight:600;}}
+.kh2-sp{{border:0.5pt solid {j['line']};border-radius:6px;overflow:hidden;background:#fff;}}
+.kh2-sp-h{{font-size:8.4pt;font-weight:600;padding:6px 10px;}}
+.kh2-sp-b{{padding:6px 10px;}}
+.kh2-sp-li{{display:table;width:100%;font-size:7.8pt;line-height:1.4;padding:2px 0;border-bottom:0.5pt solid {j['line_soft']};}}
+.kh2-sp-li > span{{display:table-cell;}}
+.kh2-sp-t{{text-align:right;white-space:nowrap;font-weight:600;color:{j['hero_bg']};padding-left:6px;}}
+.kh2-tc{{border:0.5pt solid {j['line']};border-top:3px solid {j['or']};border-radius:6px;padding:8px 10px;background:{j['wash']};}}
+.kh2-tc .kh-tot-tbl{{font-size:8pt;}}
 .kh2-ind{{margin-top:1mm;}}
 .kh2-indv{{font-family:{j['display']};font-weight:600;font-size:22pt;line-height:1;letter-spacing:-.01em;color:{j['accent']};}}
 .kh2-note{{margin-top:8px;font-size:8pt;line-height:1.35;white-space:pre-line;}}
@@ -87,8 +154,7 @@ def build(ctx, m, j):
   {entete}
   {commun.kicker(L("ci_votre_installation", "Votre installation"), j, p)}
   <div class="kh-h2" style="margin-top:1.5mm;">{L("ci_equipements_investissement", "Équipements &amp; investissement")}</div>
-  <div style="margin-top:3.5mm;">{tableau}</div>
-  {totaux}{note}{clauses}{option_avec}{extras}
+  {corps_deux if deux else f'<div style="margin-top:3.5mm;">{tableau}</div>{totaux}'}{note}{clauses}{"" if deux else option_avec}{extras}
   {bloc_cat}
   {bref}
   {retour_html}

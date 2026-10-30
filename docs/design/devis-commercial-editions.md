@@ -282,3 +282,17 @@ premier module (il porte le passage string → hybrides). Boulangerie sans limit
 ici sur cette branche (worktree de travail + édition copiée) : sans 77 panneaux / 55,06 kWc /
 294 100 TTC ; avec 13 PowerBrick 16 kWh (199 kWh), 131 panneaux / 93,67 kWc, 5 × Deye 15 kW,
 1 044 400 TTC, 171 670 HT/an (le 14e module : 12,4 ans, refusé).
+
+**30/10 — page 2 à deux options, à la manière du résidentiel** (Reda : « when I said copy the
+residential way of handling 2 options I meant page 2 »). `donnees.deux_options_detail` reprend
+la logique de `residential/options.py` (`_split_items` + `_pair_divergents`) sur les lignes
+servies (`sans_items` / `avec_items`, regroupées par `lignes_client` comme le tableau C&I) :
+équipement COMMUN (désignation, quantité, prix, taux identiques), rôles DIVERGENTS appariés en
+une rangée à deux valeurs (« sans » au-dessus en gris, « avec » dessous en marine ; compositions
+différentes — coffrets, comptage — nommées sous la ligne), cartes « Spécifique à l'option 1 —
+Sans batterie » (en-tête marine) / « option 2 — Avec batterie » (en-tête or) avec quantité et
+total HT, puis les deux chaînes de totaux côte à côte (`commun.chaine_totaux_de` : sous-total,
+arrondi, total HT, TVA par taux servie, Total TTC sur marine en Fraunces ; ancres `data-figure`
+étiquetées sans/avec), note TVA, options proposées ; la fiche « en bref » (mono-option) cède la
+place. Option « avec » sans lignes servies (fixture de test) ⇒ page 2 mono-option inchangée.
+Vérifié : boulangerie deux options 3 pages, 461 et fixtures inchangés, parité inchangée.

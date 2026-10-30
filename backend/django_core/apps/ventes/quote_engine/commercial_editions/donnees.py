@@ -98,6 +98,87 @@ def lignes(d, fmt_mad, muted="#6B7280"):
     return sortie
 
 
+def _rangee_item(it, fmt_mad, catalogue_seul):
+    """Une rangée d'équipement formatée + ses nombres bruts (pour comparer
+    les deux options) — la même remise ligne par ligne que ``lignes``."""
+    (_it, pu_cat, pu_ht, _tot_cat, total,
+     remisee) = lignes_remisees([it], catalogue_seul=catalogue_seul)[0]
+    taux = _num(it.get("taux_tva"), 0.0) or 0.0
+    qte = _num(it.get("quantite"), 0.0) or 0.0
+    return {"designation": it.get("designation") or "", "marque": _txt(it.get("marque")),
+            "qte": f"{qte:g}", "pu_cat": fmt_mad(pu_cat) if remisee else "", "pu_ht": fmt_mad(pu_ht),
+            "taux": f"{taux:g} %", "total": fmt_mad(total),
+            "sous_lignes": sous_lignes_html(it, 7.2, "#4A5263"),
+            "_id": (it.get("designation") or "", round(qte, 6), round(float(pu_ht or 0), 2), round(taux, 3))}
+
+
+def totaux_de(tot, fmt_mad, option):
+    """La chaîne de totaux d'UNE option (``totaux_sans`` / ``totaux_avec`` du
+    builder), formatée avec ses ancres étiquetées ``option`` ; TVA par taux
+    quand le builder la sert (``tva_par_taux``)."""
+    tot = tot or {}
+    out = {}
+    for cle, source in (("ht_brut", "sous_total_ht"), ("ht_net", "total_ht"), ("tva", "tva")):
+        v = fmt_mad(_num(tot.get(cle), 0.0) or 0.0)
+        out[cle] = v
+        out[f"ancre_{cle}"] = ancre(source, v, option)
+    v = fmt_mad(_num(tot.get("ttc"), 0.0) or 0.0)
+    out["ttc"], out["ancre_ttc"] = v, ancre("total_ttc", v, option)
+    remise = _num(tot.get("remise"), 0.0) or 0.0
+    arrondi = _num(tot.get("arrondi"), 0.0) or 0.0
+    out["remise"] = fmt_mad(remise) if remise > 0 else ""
+    out["ancre_remise"] = ancre("remise", out["remise"], option) if remise > 0 else ""
+    out["arrondi"] = fmt_mad(arrondi) if arrondi > 0 else ""
+    out["ancre_arrondi"] = ancre("arrondi", out["arrondi"], option) if arrondi > 0 else ""
+    out["tva_taux"] = [(f"{int(round(_num(t.get('taux'), 0.0) or 0))}", fmt_mad(_num(t.get("montant"), 0.0) or 0.0))
+                       for t in (tot.get("tva_par_taux") or []) if isinstance(t, dict)]
+    return out
+
+
+def deux_options_detail(d, fmt_mad):
+    """La page 2 à DEUX options, à la manière du résidentiel
+    (``residential/options.py`` : ``_split_items`` + ``_pair_divergents``) :
+    l'équipement COMMUN (même désignation, quantité, prix et taux des deux
+    côtés), les rôles DIVERGENTS appariés en une rangée à deux valeurs
+    « sans · avec », et ce qui n'existe que d'un côté — chaque côté regroupé
+    par ``lignes_client`` comme le tableau C&I ; les totaux de chaque option
+    sont ceux du builder. ``None`` sur un document mono-option."""
+    from ..ci.options_cote import deux_options as _deux
+    if not _deux(d, "com"):
+        return None
+    catalogue_seul = bool(d.get("regles_calcul_origine"))
+
+    def rangees(items):
+        its = [it for it in lignes_client(items or [], d) if (_num(it.get("quantite"), 0.0) or 0.0) > 0]
+        return [_rangee_item(it, fmt_mad, catalogue_seul) for it in its]
+    rs, ra = rangees(d.get("sans_items") or d.get("all_items")), rangees(d.get("avec_items"))
+    if not ra:  # option « avec » sans lignes servies : la page 2 mono-option + la case du moteur
+        return None
+    ids_s = {r["_id"] for r in rs}
+    ids_a = {r["_id"] for r in ra}
+    communs = [r for r in rs if r["_id"] in ids_a]
+    delta_s = [r for r in rs if r["_id"] not in ids_a]
+    delta_a = [r for r in ra if r["_id"] not in ids_s]
+    cnt_s, cnt_a = {}, {}
+    for r in delta_s:
+        cnt_s[r["designation"]] = cnt_s.get(r["designation"], 0) + 1
+    for r in delta_a:
+        cnt_a[r["designation"]] = cnt_a.get(r["designation"], 0) + 1
+    appariables = {n for n in (cnt_s.keys() & cnt_a.keys()) if cnt_s[n] == 1 and cnt_a[n] == 1}
+    par_avec = {r["designation"]: r for r in delta_a if r["designation"] in appariables}
+    paires = [(r, par_avec[r["designation"]]) for r in delta_s if r["designation"] in appariables]
+    seul_s = [r for r in delta_s if r["designation"] not in appariables]
+    seul_a = [r for r in delta_a if r["designation"] not in appariables]
+    synthese = d.get("com_synthese") or {}
+    option = synthese.get("option_batterie") if isinstance(synthese.get("option_batterie"), dict) else {}
+    tot_avec = d.get("totaux_avec") or (option.get("totaux") if isinstance(option.get("totaux"), dict) else {})
+    return {"communs": communs, "paires": paires, "seul_sans": seul_s, "seul_avec": seul_a,
+            "titre_sans": L(d, "ci_opt_sans_batterie", "Sans batterie"),
+            "titre_avec": _txt(d.get("libelle_avec")) or L(d, "ci_opt_avec_batterie", "Avec batterie"),
+            "totaux_sans": totaux_de(d.get("totaux_sans") or d.get("totaux_all"), fmt_mad, "sans"),
+            "totaux_avec": totaux_de(tot_avec, fmt_mad, "avec")}
+
+
 def postes_hors_total(d):
     """AMOT86 — les postes « à chiffrer après la visite » (nom, quantité),
     hors chaîne de totaux ; [] sans poste."""
@@ -655,6 +736,7 @@ def modele(d, ctx):
         "energie": energie_mensuelle(d), "facture": facture_avant_apres(d, fmt),
         "cumul": cumul_annees(d, fmt), "garanties": garanties(d),
         "changement": changement(d, fmt), "cartes": cartes_options(d, fmt, fmt_mad),
+        "deux": deux_options_detail(d, fmt_mad),
         "echeancier": echeancier(d, fmt_mad),
         "hypotheses": hypotheses(d, fmt, fmt_mad), "conditions": conditions(d),
         "acceptation": acceptation(d, fmt_mad), "etapes": etapes_suivantes(d),
