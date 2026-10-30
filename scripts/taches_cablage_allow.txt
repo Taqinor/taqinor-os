@@ -33,10 +33,4 @@
 # La signature est l'IDENTIFIANT DE TACHE (ou <Composant>|<fichier>), jamais
 # `fichier:ligne` : une tache qui se decale, ou un composant qui descend de
 # vingt lignes, ne doit pas invalider la base.
-clauses-absentes|SPL202
-contrat-absent|NTCPQ12
-contrat-absent|NTCPQ23
-contrat-absent|NTCPQ27
-ecran-sans-cablage|NTCPQ12
-ecran-sans-cablage|NTCPQ23
-ecran-sans-cablage|NTCPQ27
+
