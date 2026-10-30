@@ -36,6 +36,7 @@ import { appliquerHydratationAuCtx } from '@roofpro/hydratation'
 import { serializeConsumption } from '@roofpro/prefill'
 import { createProdWindow } from '@roofpro/prodWindow' // ERR-ACAL311 — vrai module, fenêtre absente
 import { fallbackPerKwc } from '@rooflib/productionEngine'
+import { MESSAGE_ENREGISTREMENT_ECHOUE } from '../../features/calepinage/BoutonDevis'
 
 stubberEmpreinteOsm()
 
@@ -312,10 +313,12 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
   })
 
   // CI vague 10 (e2e CAL221/CALX386) — sans clé carte, le boot s'arrête sur « Carte
-  // indisponible » et `onHydrationTerminee` n'arrive jamais : Générer / Resynchroniser
-  // restaient inactifs pour toujours. Sans scène, rien n'est écrit depuis l'écran (le
-  // document stocké, `consumption` compris, reste intact) et le geste devis part au serveur.
-  it('carte absente → Resynchroniser actif sans hydratation, aucune écriture de layout', async () => {
+  // indisponible » et `onHydrationTerminee` n'arrive jamais. Comme sur `main` avant la garde :
+  // le bouton est cliquable, l'enregistrement préalable refuse (aucun constructeur) et le
+  // refus se lit dans `cal-devis-refus` — ni écriture de layout, ni appel au pont devis.
+  // (Sans `enregistrerAvant`, le serveur répondait 409 `roof_layout` → `cal-devis-conflit`,
+  // que l'e2e n'attend pas : rouge CI run 41024909999.)
+  it('carte absente → Resynchroniser cliquable, refus `cal-devis-refus`, rien n’est écrit ni envoyé', async () => {
     const ctx = { ...CTX, carte: { available: false, maptilerKey: '', mapboxToken: null } }
     calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
     calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
@@ -327,7 +330,10 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
     expect(initRoofToolPro8).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: /Enregistrer le calepinage/ })).toBeDisabled()
     await userEvent.click(bouton)
-    await waitFor(() => expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalled())
+    const refus = await screen.findByTestId('cal-devis-refus')
+    expect(refus.textContent).toContain(MESSAGE_ENREGISTREMENT_ECHOUE)
+    expect(screen.queryByTestId('cal-devis-conflit')).toBeNull()
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
     expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).not.toHaveBeenCalled()
   })
 
