@@ -3,60 +3,48 @@
 # FORMAT : une cle par ligne, puis une colonne de raison humaine separee par
 # `|` (patron de scripts/read_modify_write_allow.txt). Les lignes vides et
 # celles commencant par `#` sont ignorees.
-#
 #   <chemin>::<qualname englobant>::<sha1(expression normalisee)[:12]> | raison
-#
 # La cle est une IDENTITE DE CONTENU, jamais un numero de ligne : inserer du
 # code en amont ne perime plus la base (l'ancienne base file:line a coute dix
 # recalages manuels sur le seul mois d'aout 2026, dont deux faux). Renommer la
 # fonction englobante ou changer l'expression change la cle -- c'est voulu :
 # ce sont les deux evenements qu'un humain doit relire.
-#
 # La garde est ADVISORY : le moteur de devis travaille en float de bout en
 # bout, `quantize_mad` est la convention des MODELES. Un site inscrit ici a
 # ete relu ; un site NOUVEAU fait echouer backend-lint, le temps qu'un humain
 # ecrive sa raison ici (ou corrige le calcul).
-#
 # AUD189 -- DEUX DETECTEURS alimentent cette base : `round(x)` sur une valeur
 # d'apparence monetaire, et `x.quantize(...)` SANS `rounding=` (arrondi
 # bancaire par defaut, contraire a la convention marocaine). Les entrees
 # « AUD189 reprise » sont l'existant capture le jour ou le second detecteur est
 # ne : la garde protege contre une REINTRODUCTION des aujourd'hui, la reprise
 # se fait fichier par fichier ensuite.
-#
 # Regenerer apres une revue : python scripts/check_money_rounding.py --regenerate
 
 # --- backend/django_core/apps/ventes/quote_engine/builder.py
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._scale_tot::9284748ed227 | Multi-villa : montant de TVA d'affichage multiplie par le nombre de villas.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::566a598356ce | Multi-villa : total d'affichage multiplie par le nombre de villas.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::f4b512886cc4 | QJR616 — total d'option ×N villas affiché par le PDF (moteur en float), jamais persisté
-
 # --- backend/django_core/apps/ventes/quote_engine/etude_chiffrage.py
 backend/django_core/apps/ventes/quote_engine/etude_chiffrage.py::chiffrer_etude::ff3b5101251f | Ratio d'AFFICHAGE : retour sur investissement en annees (total de reference / economie annuelle).
 backend/django_core/apps/ventes/quote_engine/etude_chiffrage.py::chiffrer_etude::cdfb2513215b | Ratio d'AFFICHAGE : prix au kWc (QJR160 -- total et kWc de la MEME branche).
-
 # --- backend/django_core/apps/ventes/quote_engine/conditions_commerciales.py
 backend/django_core/apps/ventes/quote_engine/conditions_commerciales.py::repartition_paiement::7799b0034dd5 | QJR623 — répartition AFFICHÉE des tranches de paiement au centime (ROUND_HALF_UP du Decimal par défaut du contexte), jamais persistée
-
 # --- backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::fdd393eb39d1 | Carte option "Sans batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() pour ne plus diverger du bloc totaux page 2 sur un TTC au centime -- affichage seul.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::4aa80d83238a | Carte option "Avec batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() -- affichage seul, jumeau du site ci-dessus.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::ede41a9a2000 | Prix barre (avant remise) de la carte "Sans batterie" -- QJR53 : doit suivre le meme arrondi que le total qu'il barre, affichage seul.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::e0078433f1a0 | Prix barre (avant remise) de la carte "Avec batterie" -- QJR53, affichage seul, jumeau du site ci-dessus.
-
 # --- backend/django_core/apps/ventes/quote_engine/legacy_onepage.py
 backend/django_core/apps/ventes/quote_engine/legacy_onepage.py::page_onepage::f144a6d881a6 | "Prix par kWc" affiche en case-resume du one-page (total/KWC) -- indicateur d'affichage, non persiste.
 backend/django_core/apps/ventes/quote_engine/legacy_onepage.py::page_onepage::1a21ab458ac6 | QJR616 — prix TTC d'option affiché par le one-page (moteur en float), jamais persisté
-
 # --- backend/django_core/apps/ventes/quote_engine/pricing.py
 backend/django_core/apps/ventes/quote_engine/pricing.py::kwh_from_bill::46412da316ea | Repli plat kWh<-facture quand aucune table tarifaire n'est resolue -- resultat marque "approximatif"/"estimation" (ESTIMATION_LABEL), jamais un chiffre precis non etiquete.
 backend/django_core/apps/ventes/quote_engine/pricing.py::cashflow_assumptions::cbb83e600cac | Montant REEL provisionne (MAD TTC) pour le remplacement onduleur, lu par la legende de la courbe cashflow 25 ans (None si aucun onduleur chiffre, jamais un montant fabrique).
 backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::ff5bcfe4895b | Economie annuelle "sans batterie" (production x autoconso x prix kWh) -- coeur du calcul d'economie affiche au client, loi 82-21 (autoconsommation seule valorisee).
 backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::f21f8e619aea | Economie annuelle "avec batterie" -- jumeau du site ci-dessus, meme formule sur le taux d'autoconso avec stockage.
-
 # --- backend/django_core/apps/ventes/quote_engine/bareme.py
 backend/django_core/apps/ventes/quote_engine/bareme.py::_tranche::28414c7ffdff | Prix MAD/kWh de la tranche tarifaire ONEE dans le descripteur JSON-serialisable _tranche -- constante de bareme reproduite au client, arrondie a 6 decimales (precision du tarif officiel).
-
 # --- backend/django_core/apps/ventes/offres_tailles.py
 backend/django_core/apps/ventes/offres_tailles.py::_prix_par_kwc::2f94df2fe5bd | ELARGISSEMENT QJR4 : reprend DELIBEREMMENT l'expression du moteur (round(total / kwc)) pour que la carte et le PDF ne puissent pas differer d'une unite -- la page ne cree pas une seconde surface d'arrondi.
 backend/django_core/apps/ventes/offres_tailles.py::_cumul_servi::a2780f854444 | ELARGISSEMENT QJR4 : cumul 25 ans d'AFFICHAGE lu sur la serie servie (dernier point + prix TTC) ; jamais persiste.
@@ -66,13 +54,9 @@ backend/django_core/apps/ventes/offres_tailles.py::_carte_moteur::9352ee4da552 |
 backend/django_core/apps/ventes/offres_tailles.py::_substituer::3d1d890448d1 | ELARGISSEMENT QJR4 : cout HT d'AFFICHAGE d'une vue apres substitution de composant.
 backend/django_core/apps/ventes/offres_tailles.py::_substituer::65a20b36c25d | ELARGISSEMENT QJR4 : cout TTC d'AFFICHAGE de la meme vue substituee.
 backend/django_core/apps/ventes/offres_tailles.py::_carte_du_devis::9352ee4da552 | ELARGISSEMENT QJR4 : prix TTC d'AFFICHAGE de la carte de taille (vue devis) ; meme expression que _carte_moteur, cle distincte par le qualname.
-
 # --- backend/django_core/apps/ventes/selectors.py
-
 # --- backend/django_core/apps/ventes/domain/dimensionnement_devis.py
-
 # --- backend/django_core/apps/ventes/domain/geometrie.py
-
 # --- backend/django_core/apps/ventes/domain/resynchronisation.py
-
 # --- backend/django_core/apps/ventes/public/payload_economie.py
+backend/django_core/apps/ventes/offres_tailles.py::_payback::aa407a28ffac | ELARGISSEMENT QJR4 : payback en ANNEES (cout / economie), un ratio, pas un montant.

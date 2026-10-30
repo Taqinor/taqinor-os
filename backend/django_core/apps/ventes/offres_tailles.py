@@ -188,11 +188,6 @@ def _pct(fraction):
     return round(_num(fraction) * 100.0, 1)
 
 
-def _duree_en_annees(numerateur, denominateur):
-    """Un ratio de DUREE (annees), 2 decimales : jamais un montant (ENF15)."""
-    return round(numerateur / denominateur, 2)
-
-
 def _payback(cout, economie):
     """Payback simple, ou ``None`` quand il n'est pas chiffrable.
 
@@ -202,7 +197,7 @@ def _payback(cout, economie):
     """
     if cout is None or economie is None or cout <= 0 or economie <= 0:
         return None
-    return _duree_en_annees(cout, economie)
+    return round(cout / economie, 2)
 
 
 def _payback_publie(cout, economie, *, stockage=False, part_batterie=None,
