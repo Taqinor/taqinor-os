@@ -1,0 +1,58 @@
+{
+  "sha": "66d5c86e570aadb5520c81d17a7b641c9027a3d2",
+  "date": "2026-10-30",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT21",
+    "AMOT51",
+    "AMOT59"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-AMOT-019",
+      "taches": [
+        "AMOT21",
+        "AMOT51"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-019-rejeu-correctif.txt"
+    },
+    {
+      "id": "C-AMOT-035",
+      "taches": [
+        "AMOT59",
+        "AMOT51"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-035-rejeu-correctif.txt"
+    }
+  ]
+}

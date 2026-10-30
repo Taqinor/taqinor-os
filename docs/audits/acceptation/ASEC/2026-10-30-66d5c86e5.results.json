@@ -1,0 +1,35 @@
+{
+  "sha": "66d5c86e570aadb5520c81d17a7b641c9027a3d2",
+  "date": "2026-10-30",
+  "groupe": "ASEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ASEC11",
+    "ASEC21"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-ASEC-004",
+      "taches": [
+        "ASEC11",
+        "ASEC21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-004-rejeu-correctif.txt"
+    }
+  ]
+}
