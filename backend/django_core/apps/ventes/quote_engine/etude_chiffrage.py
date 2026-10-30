@@ -212,6 +212,17 @@ def _regles_2710(devis):
     return regles_au_moins(devis, REGLES_CORRIGEES_2710)
 
 
+def _residentiel_niveau5_sans_horaire(devis, mode, etude):
+    """ERR-RHOR8 — devis résidentiel au niveau de règles 5, sans bloc horaire :
+    le seul périmètre où le serveur tarife une conso sans distributeur sur la
+    grille nationale, comme l'écran (``bareme_national_defaut``)."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_RETOURS_3010B, regles_au_moins)
+    return bool(not etude.get("etude_horaire")
+                and (mode or "").strip().lower() in ("", "residentiel")
+                and regles_au_moins(devis, REGLES_RETOURS_3010B))
+
+
 def _conso_hiver_ete_niveau5(devis, mode, etude, tranches, charges_fixes):
     """ERR-RHOR8-SANS-LOCALISATION-ECRAN-PDF — la conso annuelle d'un devis
     résidentiel (niveau 5) dont l'écran a enregistré ses deux factures
@@ -221,11 +232,8 @@ def _conso_hiver_ete_niveau5(devis, mode, etude, tranches, charges_fixes):
     ``calc/tarifs.consoAnnuelleDepuisFactures``. ``None`` hors de ce cas :
     tout autre devis garde exactement son chiffrage d'hier."""
     from apps.ventes.domain.etude_schema import factures_hiver_ete_saisies
-    from apps.ventes.domain.regles_calcul import (
-        REGLES_RETOURS_3010B, regles_au_moins)
-    if (etude.get("conso_annuelle") or etude.get("etude_horaire")
-            or (mode or "").strip().lower() not in ("", "residentiel")
-            or not regles_au_moins(devis, REGLES_RETOURS_3010B)):
+    if (etude.get("conso_annuelle")
+            or not _residentiel_niveau5_sans_horaire(devis, mode, etude)):
         return None
     bills = factures_hiver_ete_saisies(etude)
     if not bills:
@@ -433,9 +441,12 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         forme_mensuelle_ghi=_corrige,
         regles_2710=_regles_2710(devis),
         deux_options=bool(deux_options),  # RPDF : provision à deux montants seulement à deux options
-        # ERR-RHOR8 — conso dérivée ci-dessus (aucune conso stockée).
+        # ERR-RHOR8 — conso dérivée ci-dessus OU conso saisie stockée
+        # (ERR-RHOR8-CONSO-SAISIE-SANS-DISTRIBUTEUR), sans distributeur :
+        # grille nationale, résidentiel niveau 5 seulement.
         bareme_national_defaut=bool(
-            _conso_annuelle and not etude.get("conso_annuelle")),
+            _conso_annuelle
+            and _residentiel_niveau5_sans_horaire(devis, mode, etude)),
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
