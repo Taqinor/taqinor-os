@@ -17,7 +17,16 @@ def _client():
     from rest_framework.test import APIClient
     api = APIClient()
     # Société démo 2 (catalogue C&I aux 71 articles tarifés ; prix d'essai, jamais un fait).
-    api.force_authenticate(get_user_model().objects.get(username='demo_admin'))
+    u = get_user_model().objects.get(username='demo_admin')
+    api.force_authenticate(u)
+    # Rejeu 30/10 (règle marginale des 10 ans, afae583c4d/e1353d4278) : le catalogue démo porte des câbles « au mètre »
+    # à des prix fictifs (1 500 / 900 MAD/m) qui empêchent tout module de batterie de se rembourser — prix d'essai
+    # réalistes, DANS la transaction annulée, pour que l'option « avec batterie » existe et que CEC6 se vérifie.
+    from apps.stock.models import Produit
+    for p in Produit.objects.filter(company_id=u.company_id, nom__startswith='Câble'):
+        if 'mètre' in p.nom:
+            p.prix_vente = 15 if 'solaire' in p.nom else 40
+            p.save(update_fields=['prix_vente'])
     return api
 
 
