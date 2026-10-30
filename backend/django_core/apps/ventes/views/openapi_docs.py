@@ -1405,12 +1405,16 @@ CORPS_LIGNE_DEVIS_ECRITURE = corps_resserre({'allOf': [
 ]})
 
 
-def _ligne_corrective(nom):
+def _ligne_corrective(nom, produit_nul=False):
     """Une ligne saisie d'avoir / de note de débit — instance NEUVE à chaque
     appel (un sérialiseur n'est l'enfant que d'un seul ``ListField``), sous
-    un nom de composant propre (deux composants homonymes = avertissement)."""
+    un nom de composant propre (deux composants homonymes = avertissement).
+
+    ``produit_nul`` (avoir seulement, ERR-AVOIR-PARTIEL-ACOMPTE) : ``produit``
+    peut être nul — la vue ne l'accepte que sur une facture sans aucune ligne
+    produit (acompte), DC10 tient partout ailleurs."""
     return _ser(nom, {
-        'produit': EntierStrict(),
+        'produit': EntierStrict(allow_null=produit_nul),
         'designation': ChaineStricte(),
         'quantite': _QuantiteLigne(max_digits=12, decimal_places=2,
                                    min_value=Decimal('0.01'),
@@ -1428,7 +1432,8 @@ def _ligne_corrective(nom):
     })
 
 
-LigneAvoirCorrective = _ligne_corrective('FactureLigneAvoirCorrective')
+LigneAvoirCorrective = _ligne_corrective(
+    'FactureLigneAvoirCorrective', produit_nul=True)
 CreerAvoirRequest = _ser('FactureCreerAvoirRequest', {
     'mode': s.ChoiceField(choices=['correction', 'contre_passation'],
                           required=False),

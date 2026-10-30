@@ -1,0 +1,138 @@
+{
+  "sha": "5908d43bb4af99d2c94912a77b276e97c6c437a0",
+  "date": "2026-10-30",
+  "groupe": "CEC",
+  "verdict": "FAIL",
+  "couvre": [
+    "CEC6"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-CEC-101.sans",
+      "taches": [
+        "CEC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CEC/traces/2026-10-30/C-CEC-101.txt — boulangerie BT : économie an 1 HT 43 589,96 = economie_ci = bannière = mode_kpis = synthèse /proposition = PDF « 43 590 MAD HT » ; à la main 30 607 kWh × 1,4242 = 43 590,49 (arrondi du tarif) ; kWh évités = autoconsommé ; retour PDF 7,7 = mode_kpis /proposition 7,7 = bannière 7,7 = flux servi interpolé 7,7 = flux reconstruit à la main (332 151,52 HT, −0,5 %/an, onduleur 23 333,33 an 12) 7,7"
+    },
+    {
+      "id": "C-CEC-102.sans",
+      "taches": [
+        "CEC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CEC/traces/2026-10-30/C-CEC-102.txt — bureau BT lun-ven 8-18 : économie 43 031,61 partout = PDF « 43 032 MAD HT » ; à la main 30 215 × 1,4242 = 43 032,20 ; retour 7,9 partout = flux à la main 7,9"
+    },
+    {
+      "id": "C-CEC-103.sans",
+      "taches": [
+        "CEC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CEC/traces/2026-10-30/C-CEC-103.txt — usine MT Tarif Général : économie 196 617,93 partout = PDF ; à la main pointe 6 745 × 1,1798 + pleines 223 806 × 0,8417 + creuses 457 × 0,6165 = 196 617,00 ; retour 9,2 partout = flux à la main 9,2 (1 769 697,03 HT, onduleurs 102 500 an 12)"
+    },
+    {
+      "id": "C-CEC-101.avec",
+      "taches": [
+        "CEC6"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CEC/traces/2026-10-30/C-CEC-101.txt — option avec batterie : économie 102 190,10 = étude = /proposition = PDF, à la main 102 190,21 : OK ; RETOUR : aperçu du générateur 17,9 ans (= recalcul à la main sur l'investissement du devis 1 398 037,90 HT, batterie an 11, onduleurs an 12) mais `etude_ci.option_avec.retour_simple_ans` = null, `economie_flux` = null, `cout_vente_ht` = null sur le devis ⇒ aucun retour au PDF ni sur /proposition"
+    },
+    {
+      "id": "C-CEC-102.avec",
+      "taches": [
+        "CEC6"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CEC/traces/2026-10-30/C-CEC-102.txt — option avec : économie 64 713,75 cohérente partout (à la main 64 713,40) ; retour aperçu 13,6 ans = recalcul 13,6, devis/PDF/proposition : aucun"
+    },
+    {
+      "id": "C-CEC-103.avec",
+      "taches": [
+        "CEC6"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CEC/traces/2026-10-30/C-CEC-103.txt — option avec : économie 203 114,56 cohérente partout (à la main 203 114,08) ; retour aperçu 16,5 ans = recalcul 16,5, devis/PDF/proposition : aucun"
+    }
+  ]
+}

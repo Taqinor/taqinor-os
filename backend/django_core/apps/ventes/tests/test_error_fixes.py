@@ -456,6 +456,43 @@ class TestAvoirLineValidation(TestCase):
         self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
         self.assertEqual(Avoir.objects.count(), 0)
 
+    def test_dc10_produit_nul_refuse_sur_facture_a_produits(self):
+        # ERR-AVOIR-PARTIEL-ACOMPTE — DC10 tient dès qu'une ligne de la
+        # facture porte un produit : ``produit: null`` explicite → 400.
+        r = self._avoir([
+            {'produit': None, 'designation': 'Geste', 'quantite': '1',
+             'prix_unitaire': '100', 'taux_tva': '20'}])
+        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertIn('produit requis', r.data['detail'])
+        self.assertEqual(Avoir.objects.count(), 0)
+
+    def test_avoir_partiel_sur_acompte_sans_produit(self):
+        # ERR-AVOIR-PARTIEL-ACOMPTE (C-AMET-020) — facture d'acompte : aucune
+        # ligne ne porte de produit ; l'écran envoie ``produit: null`` pour un
+        # geste PARTIEL → 201, ligne d'avoir sans produit, aucun stock touché.
+        acompte = Facture.objects.create(
+            company=self.company, reference=f'FAC-{MONTH}-3402',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), montant_ht=Decimal('3000.00'),
+            montant_tva=Decimal('600.00'), montant_ttc=Decimal('3600.00'))
+        # Comme ``creer_facture_acompte_situation`` : montants portés par la
+        # facture, AUCUNE ligne (``LigneFacture.produit`` est non nul en base).
+        stock_avant = Produit.objects.get(pk=self.produit.pk).quantite_stock
+        r = self.api.post(
+            f'/api/django/ventes/factures/{acompte.id}/creer-avoir/',
+            {'type': 'geste_commercial', 'motif': 'Geste',
+             'lignes': [{'produit': None, 'designation': 'Geste commercial',
+                         'quantite': '1', 'prix_unitaire': '10.00',
+                         'taux_tva': '20'}]}, format='json')
+        self.assertEqual(r.status_code, 201, getattr(r, 'data', r))
+        avoir = Avoir.objects.get(facture=acompte)
+        ligne = avoir.lignes.get()
+        self.assertIsNone(ligne.produit_id)
+        self.assertEqual(ligne.prix_unitaire, Decimal('10.00'))
+        self.assertEqual(
+            Produit.objects.get(pk=self.produit.pk).quantite_stock,
+            stock_avant)
+
 
 class TestRelanceMultiLevel(TestCase):
     """ERR36 — relance_reminders avance niveau par niveau au lieu de tirer une

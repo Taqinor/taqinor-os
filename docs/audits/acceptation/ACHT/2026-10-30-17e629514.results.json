@@ -1,0 +1,33 @@
+{
+  "sha": "17e6295146ece4790c2ed27da79b158251e70bd4",
+  "date": "2026-10-30",
+  "groupe": "ACHT",
+  "verdict": "PASS",
+  "couvre": [
+    "ACHT112"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P4",
+      "taches": [
+        "ACHT112"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT112-P4.txt"
+    }
+  ]
+}

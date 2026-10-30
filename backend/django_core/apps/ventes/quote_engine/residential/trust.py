@@ -318,7 +318,11 @@ def hypothese_traduite(langue, phrase):
     for cle in _CLES_HYPOTHESES:
         trouve = _motif_hypothese(cle).fullmatch(phrase)
         if trouve:
-            valeurs = {nom: hypothese_traduite(langue, val)
+            # ERR-AMOT21-BATDIFF-ETUDE-AVEC-BATTERIE — ``{option}`` est un NOM
+            # d'option (« avec batterie » / « hybride, batterie plus tard ») :
+            # traduit par ``nom_option``, la fonction des cartes et en-têtes.
+            valeurs = {nom: (i18n_labels.nom_option(val[:1].upper() + val[1:], langue, minuscule=True)
+                             if nom == "option" else hypothese_traduite(langue, val))
                        for nom, val in trouve.groupdict().items()}
             return i18n_labels.libelle(cle, langue).format(**valeurs)
     return phrase

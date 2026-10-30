@@ -1550,6 +1550,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _client_city=_client_city, _co_productible=_co_productible,
         _corrige=_corrige, _utility=_utility, etude=etude, _bareme_horaire=_regles_2710(devis),
         puissance_kwc=puissance_kwc, roi=roi, savings_model=savings_model,
+        libelle_avec=libelle_avec if avec_batterie_differee else None,  # BAT-DIFF seul (ERR-AMOT21)
         savings_model_avec=savings_model_avec,
         savings_model_sans=savings_model_sans, scenario=scenario, recommended=_regles_2710(devis) and recommended)
 

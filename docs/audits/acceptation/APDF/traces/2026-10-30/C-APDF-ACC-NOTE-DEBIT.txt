@@ -1,0 +1,5 @@
+== C-APDF-ACC-NOTE-DEBIT (sha 5908d43bb)
+attendu : note de débit créée (POST creer-note-debit) sur la facture 8 puis telecharger-pdf en fr et ar : profil SOLAIRE EXEMPLE (ICE, IF, RC), bloc client entreprise ICE/IF/RC, arabe >= 50 caractères, aucun prix_achat
+observé : {"repro": true, "rendus": ["note_debit|fr|p=1|ar=0|img=0|PASS", "note_debit|ar|p=2|ar=257|img=0|PASS [note: police Noto Sans Arabic embarquée : ['GLZDRW+Noto-Sans-Arabic-Bold', 'UNUIUP+Noto-Sans-Arabic']]"], "note_debit": 12}
+verdict : REPRO
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0

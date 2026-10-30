@@ -71,3 +71,52 @@ class LibelleAvecResidentielTests(SimpleTestCase):
         html = render.build_html(renderer._augment(data))
         self.assertNotIn("l'option recommandée — avec batterie", html)
         self.assertNotIn('option avec batterie', html)
+
+
+class HypotheseAutoconsoBatDiffTests(TestCase):
+    """ERR-AMOT21-BATDIFF-ETUDE-AVEC-BATTERIE (sonde C-AMOT-019) — la phrase
+    « Autoconsommation retenue » de l'étude (``etude_restitution``) nomme
+    l'option 2 par ``libelle_avec`` : BAT-DIFF réel (aucune ligne batterie),
+    ``build_quote_data`` réel, aucune donnée retouchée. Test-du-test : remettre
+    « % avec batterie. » en dur ⇒ ``test_batdiff`` échoue."""
+
+    def _phrase(self, lignes, ref):
+        from apps.ventes.quote_engine.builder import (
+            build_quote_data, clean_pdf_options)
+        company = make_company(slug=f'amot21h-{ref}', nom=f'AMOT21H {ref}')
+        user = make_user(company)
+        devis = make_devis(company, user, make_client(company), lignes,
+                           reference=f'DEV-AMOT21H-{ref}',
+                           etude_params=dict(DEUX_OPTIONS))
+        data = build_quote_data(devis, clean_pdf_options(
+            {'include_etude': True, 'devis_final': True}))
+        items = (data.get('hypotheses') or {}).get('items') or []
+        phrases = [i for i in items if i.startswith('Autoconsommation retenue')]
+        self.assertEqual(len(phrases), 1, items)
+        return data, items, phrases[0]
+
+    def test_batdiff(self):
+        from apps.ventes.quote_engine.residential.trust import (
+            hypothese_traduite)
+        data, items, phrase = self._phrase([
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 5kW', '1', '24000')], 'bd')
+        self.assertEqual(data.get('libelle_avec'), LIBELLE)
+        self.assertTrue(phrase.endswith('% hybride, batterie plus tard.'), phrase)
+        self.assertFalse(any('avec batterie' in i.lower() for i in items))
+        self.assertTrue(hypothese_traduite('en', phrase).endswith(
+            '% hybrid, battery later.'))
+        self.assertIn('هجين، البطارية لاحقاً', hypothese_traduite('ar', phrase))
+
+    def test_batterie_reelle_inchangee(self):
+        from apps.ventes.quote_engine.residential.trust import (
+            hypothese_traduite)
+        _data, _items, phrase = self._phrase([
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 5kW', '1', '24000'),
+            ('Batterie 5 kWh', '1', '14000')], 'br')
+        self.assertTrue(phrase.endswith('% avec batterie.'), phrase)
+        self.assertTrue(hypothese_traduite('en', phrase).endswith(
+            '% with battery.'))

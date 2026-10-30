@@ -1,0 +1,72 @@
+Audit de cohérence — taqinor-demo, taqinor-anon, taqinor-demo-full — 223.117 s — contrôlés {'devis': 479, 'facture': 27}
+1785 violation(s), 1785 nouvelle(s), 0 résolue(s), 22 erreur(s) de règle (rien écrit : --no-persist)
+  NOUVEAU [avertissement] DOC_ACCEPTE_SANS_DATE devis DEV-DEMO-0003 (taqinor-demo) : Devis accepté sans date d'acceptation.
+  NOUVEAU [avertissement] DOC_VALIDITE_AVANT_CREATION devis DEV-DEMO-0005 (taqinor-demo) : Validité 2026-09-15 antérieure à la création 2026-09-30.
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0001 (taqinor-demo) : « page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0001 (taqinor-demo) : « methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).
+  NOUVEAU [avertissement] CAL_MODULES_DEVIS_VS_CALEPINAGE devis DEV-202610-0001 (taqinor-demo) : Le calepinage pose 302 modules, le devis en chiffre 30.
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0001 (taqinor-demo) : Le calepinage dessine 190.24 kWc, le devis en porte 16.50.
+  NOUVEAU [critique] ETU_I7_BLOC_HORAIRE_PERIME devis DEV-202610-0002 (taqinor-demo) : Bloc horaire calculé pour 11.0 kWc, devis à 8.8 kWc (doc) : écart 25.0%.
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0002 (taqinor-demo) : Le calepinage dessine 9.92 kWc, le devis en porte 8.80.
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0003 (taqinor-demo) : « page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0003 (taqinor-demo) : « methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0003 (taqinor-demo) : Le calepinage dessine 6.20 kWc, le devis en porte 5.50.
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0004 (taqinor-demo) : Le calepinage dessine 6.82 kWc, le devis en porte 6.05.
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0005 (taqinor-demo) : « page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0005 (taqinor-demo) : « methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0005 (taqinor-demo) : Le calepinage dessine 6.20 kWc, le devis en porte 5.50.
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0006 (taqinor-demo) : « page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0006 (taqinor-demo) : « methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [avertissement] CAL_MODULES_DEVIS_VS_CALEPINAGE devis DEV-202610-0006 (taqinor-demo) : Le calepinage pose 200 modules, le devis en chiffre 340.
+  NOUVEAU [avertissement] CAL_EMPREINTE_IMPRIMEE_PERIMEE devis DEV-202610-0006 (taqinor-demo) : La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0007 (taqinor-demo) : « page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0007 (taqinor-demo) : « methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [avertissement] CAL_MODULES_DEVIS_VS_CALEPINAGE devis DEV-202610-0007 (taqinor-demo) : Le calepinage pose 52 modules, le devis en chiffre 12.
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0007 (taqinor-demo) : Le calepinage dessine 7.44 kWc, le devis en porte 6.60.
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0008 (taqinor-demo) : « page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0008 (taqinor-demo) : « methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0008 (taqinor-demo) : Le calepinage dessine 6.20 kWc, le devis en porte 5.50.
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0009 (taqinor-demo) : « page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0009 (taqinor-demo) : « methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0009 (taqinor-demo) : Le calepinage dessine 8.68 kWc, le devis en porte 7.70.
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0010 (taqinor-demo) : « page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0010 (taqinor-demo) : « methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).
+  NOUVEAU [avertissement] CAL_MODULES_DEVIS_VS_CALEPINAGE devis DEV-202610-0010 (taqinor-demo) : Le calepinage pose 6 modules, le devis en chiffre 12.
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0010 (taqinor-demo) : Le calepinage dessine 4.26 kWc, le devis en porte 6.60.
+  NOUVEAU [avertissement] CAL_EMPREINTE_IMPRIMEE_PERIMEE devis DEV-202610-0010 (taqinor-demo) : La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0013 (taqinor-demo) : « page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0013 (taqinor-demo) : « methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0013 (taqinor-demo) : Le calepinage dessine 6.20 kWc, le devis en porte 5.50.
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0015 (taqinor-demo) : « page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).
+  NOUVEAU [critique] ETU_I5_FACTURE_ACTUELLE devis DEV-202610-0015 (taqinor-demo) : « methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0015 (taqinor-demo) : Le calepinage dessine 7.44 kWc, le devis en porte 6.60.
+  NOUVEAU [avertissement] CAL_MODULES_DEVIS_VS_CALEPINAGE devis DEV-202610-0016 (taqinor-demo) : Le calepinage pose 7 modules, le devis en chiffre 10.
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0016 (taqinor-demo) : Le calepinage dessine 6.20 kWc, le devis en porte 5.50.
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0017 (taqinor-demo) : Le calepinage dessine 6.20 kWc, le devis en porte 5.50.
+  NOUVEAU [avertissement] CAL_MODULES_DEVIS_VS_CALEPINAGE devis DEV-202610-0018 (taqinor-demo) : Le calepinage pose 16 modules, le devis en chiffre 0.
+  NOUVEAU [avertissement] DOC_ACCEPTE_SANS_DATE devis DEV-202610-0019 (taqinor-demo) : Devis accepté sans date d'acceptation.
+  NOUVEAU [avertissement] CAL_MODULES_DEVIS_VS_CALEPINAGE devis DEV-202610-0019 (taqinor-demo) : Le calepinage pose 14 modules, le devis en chiffre 8.
+  NOUVEAU [avertissement] CAL_KWC_DEVIS_VS_CALEPINAGE devis DEV-202610-0019 (taqinor-demo) : Le calepinage dessine 8.68 kWc, le devis en porte 4.40.
+  NOUVEAU [avertissement] CAL_EMPREINTE_IMPRIMEE_PERIMEE devis DEV-202610-0019 (taqinor-demo) : La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).
+  NOUVEAU [avertissement] DOC_ACCEPTE_SANS_DATE devis DEV-202610-0020 (taqinor-demo) : Devis accepté sans date d'acceptation.
+  NOUVEAU [avertissement] CAL_MODULES_DEVIS_VS_CALEPINAGE devis DEV-202610-0020 (taqinor-demo) : Le calepinage pose 16 modules, le devis en chiffre 8.
+  ERREUR QUOTE_BUILD devis DEV-DEMO-0004 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-DEMO-0004 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-DEMO-0005 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-DEMO-0005 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0004 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0004 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0018 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0018 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0021 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0021 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0035 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0035 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0068 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0068 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0069 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0069 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0070 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0070 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0079 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0079 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0080 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0080 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0081 (taqinor-demo) : ErreurRendu: ValueError: Devis DEV-202610-0081 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-DEMO-0004 (taqinor-anon) : ErreurRendu: ValueError: Devis DEV-DEMO-0004 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-DEMO-0005 (taqinor-anon) : ErreurRendu: ValueError: Devis DEV-DEMO-0005 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0003 (taqinor-demo-full) : ErreurRendu: ValueError: Devis DEV-202610-0003 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0006 (taqinor-demo-full) : ErreurRendu: ValueError: Devis DEV-202610-0006 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0009 (taqinor-demo-full) : ErreurRendu: ValueError: Devis DEV-202610-0009 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0012 (taqinor-demo-full) : ErreurRendu: ValueError: Devis DEV-202610-0012 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0015 (taqinor-demo-full) : ErreurRendu: ValueError: Devis DEV-202610-0015 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).
+  ERREUR QUOTE_BUILD devis DEV-202610-0018 (taqinor-demo-full) : ErreurRendu: ValueError: Devis DEV-202610-0018 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité).

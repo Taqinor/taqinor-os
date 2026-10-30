@@ -1,0 +1,5 @@
+== C-APDF-ACC-RAPPORT-SAV (sha 5908d43bb)
+attendu : rapport d'intervention SAV du ticket 11 (société 6, tickets/rapport-pdf) en fr et ar : profil SOLAIRE EXEMPLE, aucun username, aucun prix_achat, statut du ticket inchangé (langue arabe hors critère : notée)
+observé : {"repro": true, "rendus": ["rapport_sav|fr|p=1|ar=0|img=0|PASS", "rapport_sav|ar|p=1|ar=0|img=0|PASS [note: langue ar hors critère (arabe 0 car.)]"], "ok_statut_inchange": true, "statut": "resolu"}
+verdict : REPRO
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0

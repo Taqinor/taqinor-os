@@ -13,6 +13,7 @@ from .facture_lot import FactureLotActionsMixin
 from .facture_recouvrement import FactureRecouvrementActionsMixin
 from .facture_rectificatifs import FactureRectificatifsActionsMixin
 from .facture_portes import refuser_portes_fermees  # AFAC66 / VNT89
+from .facture_gardes import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -142,7 +143,8 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         if self.action in [
             'paiements', 'relances', 'emails', 'arrondi_caisse', 'kpis',
         ]:
-            return [IsAnyRole()]
+            # ERR-ASEC11-LISTE-FACTURES — lecture bornée au module Ventes.
+            return [LectureFactures()]
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',

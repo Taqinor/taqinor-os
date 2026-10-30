@@ -531,6 +531,15 @@ export async function ouvrirGenerateurDepuisLeadAgricole(page, request, prefixe)
  *  Paramètres › Devis › Prestations C&I et sur les fiches produit) :
  *  idempotent, valeurs d'essai, aucune ligne à 0. `partages` (tableau, opt-in) :
  *  tarife AUSSI les articles partagés au rôle C&I déduit (voir plus bas). */
+/** Prix d'essai d'un article C&I : 900 MAD l'unité, mais un câble vendu AU MÈTRE
+ *  prend un prix au mètre réaliste (solaire DC 15, cuivre AC 40) — un câble à
+ *  900 MAD/m (×120 m DC + 30 m AC par onduleur) empêchait tout module de batterie
+ *  de passer la règle marginale des 10 ans (aucune option « avec batterie »). */
+function prixEssaiCi(nom) {
+  if (!/au mètre/i.test(nom || '')) return '900'
+  return /solaire|H1Z2Z2|DC/i.test(nom) ? '15' : '40'
+}
+
 export async function tariferPostesCiDemo(request, { partages } = {}) {
   const forfaits = Object.fromEntries(['etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
     'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci']
@@ -545,7 +554,7 @@ export async function tariferPostesCiDemo(request, { partages } = {}) {
     const items = Array.isArray(page_) ? page_ : (page_.results || [])
     for (const p of items) {
       if (p.role_ci && !(parseFloat(p.prix_vente) > 0)) {
-        await lireJson(await request.patch(`${API_DJANGO}/stock/produits/${p.id}/`, { data: { prix_vente: '900' } }), `prix ${p.nom}`)
+        await lireJson(await request.patch(`${API_DJANGO}/stock/produits/${p.id}/`, { data: { prix_vente: prixEssaiCi(p.nom) } }), `prix ${p.nom}`)
         tarifes += 1
       }
     }
@@ -576,7 +585,7 @@ async function tariferPostesCiPartages(request, partages) {
     for (const article of poste.articles || []) {
       if (article.motif !== 'prix de vente non saisi' || partages.includes(article.id)) continue
       await lireJson(await request.patch(`${API_DJANGO}/stock/produits/${article.id}/`,
-        { data: { prix_vente: '900' } }), `prix ${article.nom}`)
+        { data: { prix_vente: prixEssaiCi(article.nom) } }), `prix ${article.nom}`)
       partages.push(article.id)
       tarifes += 1
     }

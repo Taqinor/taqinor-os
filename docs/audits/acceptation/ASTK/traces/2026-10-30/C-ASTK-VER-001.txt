@@ -1,0 +1,6 @@
+﻿== C-ASTK-VER-001 (sha 5ea32b58b)
+attendu : BC livré partiellement (4) puis facture directe du devis (10) puis « Installé » : Σ SORTIE = 10, stock 30 -> 20
+observé : livrer-partiel=200 sorties après livraison=4 après facture=10 après Installé=10 stock=20 (attendu 10 / 20)
+{"repro": false, "sorties": 10, "stock": 20}
+verdict : ÉCART
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

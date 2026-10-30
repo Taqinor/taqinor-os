@@ -12,15 +12,8 @@
  * the phase data already lives in realisations.ts, this page just never
  * rendered it.
  */
+import RealisationSlugBody from '../../../components/RealisationSlugBody.astro';
 import Layout from '../../../layouts/Layout.astro';
-import V2Enhance from '../../../components/V2Enhance.astro';
-import Article33Ribbon from '../../../components/Article33Ribbon.astro';
-import Breadcrumb from '../../../components/Breadcrumb.astro';
-import Picture from '../../../components/Picture.astro';
-import PhotoCaption from '../../../components/PhotoCaption.astro';
-import LiteVideo from '../../../components/LiteVideo.astro';
-import CtaBand from '../../../components/CtaBand.astro';
-import StickyCta from '../../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../../lib/realisations';
 import { caseStudyBySlug } from '../../../lib/caseStudies';
 import { NAP } from '../../../lib/nap';
@@ -94,485 +87,48 @@ const hasDiptych = phasedPhotos.length >= 2;
 
 // W309 — مكبّر الصور: كل صور المعرض (rest)، الفهرس يبدأ من 0
 const galleryPhotos = rest;
+import PhotoLightbox from '../../../components/PhotoLightbox.astro';
+import '../../../styles/realisations-hover-zoom.css';
+const t = {
+  ref: 'المرجع',
+  h1Kwc: `من التركيب الشمسي ${cityIntro}`,
+  h1NoKwc: `التركيب الشمسي ${cityIntro}`,
+  resume: cs.resume,
+  power: 'القدرة المُركَّبة',
+  productionEstimated: 'إنتاج مُقدَّر — عائد مقاس على أوراشنا',
+  productionMeasured: 'إنتاج مقيس — متابعة الإنتاج في الوقت الحقيقي',
+  panels: 'الألواح المُركَّبة',
+  storyKicker: 'الورش، مَرويّاً',
+  whyPre: 'لماذا ',
+  whyPost: '، على هذا السطح',
+  whatShows: 'ما الذي يُظهره هذا الورش',
+  videoKicker: 'الورش مُصوَّراً',
+  videoTitle: 'شاهدوا الورش بالفيديو',
+  videoPlay: 'تشغيل فيديو الورش',
+  phasesKicker: 'الورش على مراحل',
+  phasesTitle: 'قبل · أثناء · بعد',
+  enlarge: 'تكبير:',
+  equipmentKicker: 'العتاد المُركَّب',
+  equipmentTitle: 'ما هو فعلاً فوق السطح',
+  brands: 'علامات من الفئة الأولى مُورَّدة عبر موزّعين رسميين بالمغرب — ضمانات محلية قابلة للتفعيل.',
+  allEquipment: 'اطّلع على كل العتاد',
+  galleryKicker: 'من الملف',
+  galleryTitle: 'الورش، كما هو',
+  referKicker: 'الكلمة الطيبة تصل بعيداً',
+  referTitle: 'هل لأحد المقربين وضع مشابه؟ رشّحوا تاكينور',
+  referCta: 'اكتشفوا برنامج الإحالة',
+  segment: `طاقة شمسية ${segmentLabel}`,
+  latest: 'آخر إنجازاتنا',
+  monitoring: 'متابعة إنتاج هذا الورش',
+  ctaTitle: `دراسة كالتي في ${r.ville}، لسطحك.`,
+};
+
+const bodyProps = { r, cs, L, rtl: true, fr: false, t, altOf: (p: { name: string; alt: string }) => cs.alts[p.name] ?? p.alt, breadcrumbItems: [{ label: 'الرئيسية', href: L('/') }, { label: 'الإنجازات', href: L('/realisations') }, { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville }], cityLink, segmentHref, phasedPhotos, phaseLabels, hasDiptych, galleryPhotos, equipment, heroAlt };
 ---
 
 <Layout title={title} description={description} ogSlug={ogSlug}>
   <script type="application/ld+json" set:html={JSON.stringify(articleJsonLd)} />
-  <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
+  <RealisationSlugBody {...bodyProps} />
 
-    <Breadcrumb
-      items={[
-        { label: 'الرئيسية', href: L('/') },
-        { label: 'الإنجازات', href: L('/realisations') },
-        { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville },
-      ]}
-    />
-
-    <!-- المشهد الأول — صورة الورش هي الضوء -->
-    <section class="relative isolate mt-6 overflow-hidden text-white">
-      <div class="v2-hero-media absolute inset-0 -z-10">
-        <Picture name={hero.name} alt={heroAlt} widths={hero.widths} ratio={hero.ratio} sizes="100vw"
-          loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
-      </div>
-      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">المرجع <span dir="ltr">{r.ref} · {r.ville} · {r.date}</span></p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
-          {r.kwc
-            ? <><span dir="ltr">{r.kwc}</span> من التركيب الشمسي {cityIntro}</>
-            : <>التركيب الشمسي {cityIntro}</>}
-        </h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{cs.resume}</p>
-      </div>
-    </section>
-
-    <!-- الأرقام المفتاحية — فقط ما هو منشور -->
-    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
-      <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-        {r.kwc && (
-          <div class="v2-rise" style="--v2-i:0">
-            {/* W211 — whitespace-nowrap removed: wide production values can overflow at 320 px */}
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally dir="ltr">{r.kwc}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">القدرة المُركَّبة</dt>
-          </div>
-        )}
-        {r.production && (
-          <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally dir="ltr">{r.production}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">
-              {r.productionEstimated ? 'إنتاج مُقدَّر — عائد مقاس على أوراشنا' : 'إنتاج مقيس — متابعة الإنتاج في الوقت الحقيقي'}
-            </dt>
-          </div>
-        )}
-        {r.panneaux && (
-          <div class="v2-rise" style="--v2-i:2">
-            <dd class="font-display text-xl font-bold text-white" dir="ltr">{r.panneaux}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">الألواح المُركَّبة</dt>
-          </div>
-        )}
-        <div class="v2-rise" style="--v2-i:3">
-          <dd class="font-display text-xl font-bold text-white">{r.ville}</dd>
-          <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
-        </div>
-      </dl>
-    </section>
-
-    <!-- سرد الورش: الوضع، تحديد المقاس، النتيجة المقيسة -->
-    <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
-      <p class="tech-label v2-kicker rule-brass text-lune">الورش، مَرويّاً</p>
-      <h2 class="display v2-section-title mt-5 text-white">{r.kwc ? <>لماذا <span dir="ltr">{r.kwc}</span>، على هذا السطح</> : 'ما الذي يُظهره هذا الورش'}</h2>
-      <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
-      <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
-      <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
-    </section>
-
-    <!-- (2026-09) فيديو الورش الخاص بهذه الدراسة — غائب لأي إنجاز بدون
-         `video` (السلوك التاريخي دون تغيير). -->
-    {r.video && (
-      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-        <div class="mx-auto max-w-3xl">
-          <p class="tech-label v2-kicker rule-brass text-lune">الورش مُصوَّراً</p>
-          <h2 class="display v2-section-title mt-5 text-white">شاهدوا الورش بالفيديو</h2>
-          <div class="mt-8 border border-brass-400/40">
-            <LiteVideo
-              id={`realisation-video-${r.slug}`}
-              src={r.video.src}
-              poster={r.video.poster}
-              alt={r.video.alt}
-              playLabel="تشغيل فيديو الورش"
-              aspectRatio="16/9"
-              posterWidth={1600}
-              posterHeight={900}
-            />
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- W309 — ثنائية قبل/أثناء/بعد (حين تتوفر البيانات) -->
-    {hasDiptych && (
-      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-lune">الورش على مراحل</p>
-          <h2 class="display v2-section-title mt-5 text-white">قبل · أثناء · بعد</h2>
-          <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-            {phasedPhotos.map((p, i) => (
-              <figure
-                class="v2-rise phase-card cine-card group relative overflow-hidden"
-                style={`--v2-i:${i}`}
-                data-phase={p.phase}
-              >
-                <button
-                  type="button"
-                  class="phase-btn block w-full overflow-hidden text-left"
-                  data-lightbox-trigger-slug
-                  data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
-                  data-lightbox-alt={cs.alts[p.name] ?? p.alt}
-                  data-lightbox-label={`${phaseLabels[p.phase!] ?? p.phase} — ${cs.alts[p.name] ?? p.alt}`}
-                  aria-label={`تكبير: ${cs.alts[p.name] ?? p.alt}`}
-                >
-                  <Picture
-                    name={p.name}
-                    alt={cs.alts[p.name] ?? p.alt}
-                    widths={p.widths}
-                    ratio={p.ratio}
-                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                    style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
-                    class="slug-photo-img w-full object-cover"
-                  />
-                  <PhotoCaption caption={phaseLabels[p.phase!] ?? p.phase} />
-                </button>
-                <figcaption class="sr-only">{cs.alts[p.name] ?? p.alt}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- العتاد المُركَّب -->
-    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-      <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">العتاد المُركَّب</p>
-        <h2 class="display v2-section-title mt-5 text-white">ما هو فعلاً فوق السطح</h2>
-        <p class="v2-lead mt-5 text-lune-soft">{cs.install}</p>
-        <div class="mt-8 border-t-2 border-white/20" data-stagger>
-          {equipment.map((e, i) => (
-            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
-              <span class="tech-label text-lune-faint">{e.label}</span>
-              <span class="text-right font-display text-base font-bold text-white" dir="ltr">{e.value}</span>
-            </div>
-          ))}
-        </div>
-        <p class="mt-5 text-sm text-lune-soft">
-          علامات من الفئة الأولى مُورَّدة عبر موزّعين رسميين بالمغرب — ضمانات محلية قابلة للتفعيل.
-          <a href={L('/équipement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">اطّلع على كل العتاد <span class="inline-block rtl:-scale-x-100">→</span></a>
-        </p>
-      </div>
-    </section>
-
-    <!-- W309 — معرض الورش: مكبّر صور + PhotoCaption + تكبير موحّد عند التحويم -->
-    {galleryPhotos.length > 0 && (
-      <section class="px-4 py-20 sm:py-24">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-lune">من الملف</p>
-          <h2 class="display v2-section-title mt-5 text-white">الورش، كما هو</h2>
-          <div class="mt-10 grid gap-5 sm:grid-cols-2" data-stagger data-lightbox-gallery-slug>
-            {galleryPhotos.map((p, i) => (
-              <figure
-                class="v2-rise cine-card group relative overflow-hidden"
-                style={`--v2-i:${i}`}
-              >
-                <button
-                  type="button"
-                  class="slug-gallery-btn block w-full overflow-hidden text-left"
-                  data-lightbox-trigger-slug
-                  data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
-                  data-lightbox-alt={cs.alts[p.name] ?? p.alt}
-                  data-lightbox-label={cs.alts[p.name] ?? p.alt}
-                  aria-label={`تكبير: ${cs.alts[p.name] ?? p.alt}`}
-                >
-                  <Picture
-                    name={p.name}
-                    alt={cs.alts[p.name] ?? p.alt}
-                    widths={p.widths}
-                    ratio={p.ratio}
-                    sizes="(min-width: 640px) 50vw, 100vw"
-                    style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
-                    class="slug-photo-img w-full object-cover"
-                  />
-                </button>
-                <figcaption class="sr-only">{cs.alts[p.name] ?? p.alt}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- W344 — دعوة لطيفة نحو /parrainage : أقوى دليل بالموقع (دراسة حالة
-         حقيقية) لا ينبغي أن ينتهي في طريق مسدود. نبرة هادئة وغير تجارية — لا
-         يُعرض هنا أي مبلغ/مكافأة (انظر /parrainage للشروط، بوابة WG14).
-         WB18 — /parrainage مسجَّلة في سجل الترجمات (STATIC_TRANSLATED)، لذا
-         L('/parrainage') يُحيل إلى النسخة العربية الحقيقية، لا إلى الفرنسية. -->
-    <section class="border-t border-white/10 px-4 py-16">
-      <div class="mx-auto max-w-6xl">
-        <a
-          href={L('/parrainage')}
-          class="group flex flex-wrap items-center justify-between gap-4 border border-white/20 px-6 py-5 transition-colors hover:border-brass-400/60 hover:bg-white/[0.03]"
-        >
-          <span>
-            <span class="tech-label block text-lune-faint">الكلمة الطيبة تصل بعيداً</span>
-            <span class="mt-1 block font-display text-lg font-bold text-white">
-              هل لأحد المقربين وضع مشابه؟ رشّحوا تاكينور
-            </span>
-          </span>
-          <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 text-sm font-bold text-azur-200" aria-hidden="true">
-            اكتشفوا برنامج الإحالة <span class="inline-block rtl:-scale-x-100">→</span>
-          </span>
-        </a>
-      </div>
-    </section>
-
-    <!-- روابط سياقية -->
-    <section class="border-t border-white/10 px-4 py-16">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        {cityLink && (
-          <a href={L(cityLink.href)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-            {cityLink.label} <span class="inline-block rtl:-scale-x-100">→</span>
-          </a>
-        )}
-        <a href={L(segmentHref)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-          طاقة شمسية {segmentLabel} <span class="inline-block rtl:-scale-x-100">→</span>
-        </a>
-        <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-          آخر إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span>
-        </a>
-        {/* (2026-09) رابط متابعة الإنتاج الخاص بهذا الورش — فارغ إلى أن يُوفَّر. */}
-        {r.monitoringUrl && (
-          <a href={r.monitoringUrl} rel="noopener noreferrer" target="_blank" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-            متابعة إنتاج هذا الورش <span class="inline-block rtl:-scale-x-100">→</span>
-          </a>
-        )}
-      </div>
-    </section>
-
-    <CtaBand title={`دراسة كالتي في ${r.ville}، لسطحك.`} href={L('/devis/mon-toit')} />
-
-    <StickyCta />
-  </div>
-
-  <!-- W309 — مكبّر صور مع دعم الوصول لصور المعرض والثنائية -->
-  <div
-    id="tq-lightbox-slug"
-    role="dialog"
-    aria-modal="true"
-    aria-label="صورة مكبّرة"
-    class="slug-lightbox-overlay"
-    hidden
-  >
-    <button type="button" id="tq-lb-slug-close" class="slug-lightbox-close" aria-label="إغلاق (Échap)">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-        <path d="M18 6 6 18M6 6l12 12"/>
-      </svg>
-    </button>
-    <button type="button" id="tq-lb-slug-prev" class="slug-lightbox-arrow slug-lightbox-arrow--prev" aria-label="الصورة السابقة (←)">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-        <path d="m15 18-6-6 6-6"/>
-      </svg>
-    </button>
-    <div class="slug-lightbox-img-wrap">
-      <img id="tq-lb-slug-img" src="" alt="" class="slug-lightbox-img" />
-      <p id="tq-lb-slug-label" class="slug-lightbox-label"></p>
-    </div>
-    <button type="button" id="tq-lb-slug-next" class="slug-lightbox-arrow slug-lightbox-arrow--next" aria-label="الصورة التالية (→)">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-        <path d="m9 18 6-6-6-6"/>
-      </svg>
-    </button>
-  </div>
+  <PhotoLightbox locale="ar" trigger="[data-lightbox-trigger-slug]" />
 </Layout>
-
-<style>
-  /* W309 — تكبير عند التحويم موحّد 1.04، آمن مع تفضيل تقليل الحركة */
-  @media (prefers-reduced-motion: no-preference) {
-    .slug-photo-img {
-      transition: transform 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    }
-    .slug-gallery-btn:hover .slug-photo-img,
-    .slug-gallery-btn:focus-visible .slug-photo-img,
-    .phase-btn:hover .slug-photo-img,
-    .phase-btn:focus-visible .slug-photo-img {
-      transform: scale(1.04);
-    }
-  }
-
-  /* W309 — مكبّر الصور */
-  .slug-lightbox-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgb(7 11 29 / 0.94);
-    padding: 1rem;
-  }
-  .slug-lightbox-overlay[hidden] {
-    display: none;
-  }
-  .slug-lightbox-img-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    max-width: min(90vw, 1200px);
-    gap: 0.75rem;
-  }
-  .slug-lightbox-img {
-    display: block;
-    max-width: 100%;
-    max-height: 80vh;
-    object-fit: contain;
-    border: 1px solid rgb(255 255 255 / 0.12);
-    box-shadow: 0 32px 80px -20px rgb(0 0 0 / 0.8);
-  }
-  .slug-lightbox-label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--color-lune-soft);
-    text-align: center;
-  }
-  .slug-lightbox-close {
-    position: fixed;
-    top: 1.25rem;
-    right: 1.25rem;
-    z-index: 9001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.75rem;
-    height: 2.75rem;
-    color: var(--color-lune);
-    border: 1px solid rgb(255 255 255 / 0.2);
-    background: rgb(7 11 29 / 0.7);
-    cursor: pointer;
-    transition: color 200ms, border-color 200ms;
-  }
-  .slug-lightbox-close:hover,
-  .slug-lightbox-close:focus-visible {
-    color: var(--color-brass-300);
-    border-color: var(--color-brass-400);
-    outline: none;
-  }
-  .slug-lightbox-arrow {
-    position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 9001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.75rem;
-    height: 2.75rem;
-    color: var(--color-lune);
-    border: 1px solid rgb(255 255 255 / 0.2);
-    background: rgb(7 11 29 / 0.7);
-    cursor: pointer;
-    transition: color 200ms, border-color 200ms;
-  }
-  /* WC3 — RTL : même convention que ar/realisations/index.astro (WA23) :
-     « précédent » reste à droite visuellement (sens de lecture arabe),
-     « suivant » à gauche ; logical properties + chevrons SVG retournés
-     (dessinés pour la sémantique LTR à l'origine). Cette page est TOUJOURS en
-     RTL (locale AR) — sans ce fix les flèches restaient épinglées à gauche/
-     droite physiques, non miroirées. */
-  .slug-lightbox-arrow--prev {
-    inset-inline-start: max(1rem, env(safe-area-inset-left));
-    transform: translateY(-50%) scaleX(-1);
-  }
-  .slug-lightbox-arrow--next {
-    inset-inline-end: max(1rem, env(safe-area-inset-right));
-    transform: translateY(-50%) scaleX(-1);
-  }
-  .slug-lightbox-arrow:hover,
-  .slug-lightbox-arrow:focus-visible {
-    color: var(--color-brass-300);
-    border-color: var(--color-brass-400);
-    outline: none;
-  }
-</style>
-
-<script>
-  // W309 — مكبّر [slug].astro: المعرض + الثنائية، JS خالص، فخ تركيز
-  interface LbItem {
-    src: string;
-    alt: string;
-    label: string;
-  }
-
-  const overlay = document.getElementById('tq-lightbox-slug') as HTMLElement | null;
-  const imgEl = document.getElementById('tq-lb-slug-img') as HTMLImageElement | null;
-  const labelEl = document.getElementById('tq-lb-slug-label') as HTMLElement | null;
-  const closeBtn = document.getElementById('tq-lb-slug-close') as HTMLButtonElement | null;
-  const prevBtn = document.getElementById('tq-lb-slug-prev') as HTMLButtonElement | null;
-  const nextBtn = document.getElementById('tq-lb-slug-next') as HTMLButtonElement | null;
-
-  if (overlay && imgEl && labelEl && closeBtn && prevBtn && nextBtn) {
-    let items: LbItem[] = [];
-    let current = 0;
-    let lastFocus: HTMLElement | null = null;
-
-    function show(idx: number) {
-      if (!items.length) return;
-      current = ((idx % items.length) + items.length) % items.length;
-      imgEl!.src = items[current].src;
-      imgEl!.alt = items[current].alt;
-      labelEl!.textContent = items[current].label;
-      overlay!.hidden = false;
-      overlay!.removeAttribute('hidden');
-      const multi = items.length > 1;
-      prevBtn!.style.display = multi ? '' : 'none';
-      nextBtn!.style.display = multi ? '' : 'none';
-      closeBtn!.focus();
-      document.body.style.overflow = 'hidden';
-    }
-
-    function close() {
-      overlay!.hidden = true;
-      document.body.style.overflow = '';
-      lastFocus?.focus();
-    }
-
-    // Collect all triggers (gallery + diptych phases combined)
-    const triggers = document.querySelectorAll<HTMLElement>('[data-lightbox-trigger-slug]');
-    items = Array.from(triggers).map((t) => ({
-      src: t.dataset.lightboxSrc ?? '',
-      alt: t.dataset.lightboxAlt ?? '',
-      label: t.dataset.lightboxLabel ?? '',
-    }));
-
-    triggers.forEach((t, idx) => {
-      t.addEventListener('click', () => {
-        lastFocus = t;
-        show(idx);
-      });
-    });
-
-    closeBtn.addEventListener('click', close);
-    prevBtn.addEventListener('click', () => show(current - 1));
-    nextBtn.addEventListener('click', () => show(current + 1));
-
-    overlay.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
-      if (e.key === 'ArrowLeft') show(current - 1);
-      if (e.key === 'ArrowRight') show(current + 1);
-      if (e.key === 'Tab') {
-        const focusable = Array.from(
-          overlay!.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])')
-        ).filter((el) => !el.hidden && el.offsetParent !== null);
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey) {
-          if (document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-    });
-
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
-    });
-  }
-</script>

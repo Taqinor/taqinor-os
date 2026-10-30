@@ -1,0 +1,326 @@
+{
+  "sha": "673ec3f92c57d20d0fc68e2f3aec8b8393369236",
+  "date": "2026-10-30",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT8",
+    "AMOT10",
+    "AMOT15",
+    "AMOT17",
+    "AMOT18",
+    "AMOT19",
+    "AMOT29",
+    "AMOT33",
+    "AMOT35",
+    "AMOT36",
+    "AMOT37",
+    "AMOT43",
+    "AMOT49",
+    "AMOT58",
+    "AMOT60",
+    "AMOT68",
+    "AMOT70"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-AMOT-001",
+      "taches": [
+        "AMOT8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-001.txt — P2.4 mono-option réseau + batterie : batterie au tableau, total 46 800 = Devis.total_ttc (full 3 p., une-page 1 p., /proposal data), scénario « Avec batterie » conservé, avertissement « batterie sans onduleur hybride » ; re-rendu octet-identique, 0 ShareLink créé par le rendu ; prix d'achat témoin absent"
+    },
+    {
+      "id": "C-AMOT-005",
+      "taches": [
+        "AMOT10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-005.txt — P2.5 signé « sans » puis PDF public ?variante=avec : total imprimé 55 200 = totaux_avec = totaux_all (22 800 signé absent) ; sans variante 22 800 ; C&I démo 1043/1044 display_total = totaux_all"
+    },
+    {
+      "id": "C-AMOT-016",
+      "taches": [
+        "AMOT17",
+        "AMOT18"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-016.txt — P3.6 second locataire identifié sans RIB/contact (société créée dans la transaction ; la 43 n'existe pas sur cette base) : résidentiel final, legacy étude + final, une-page final -> 0 « taqinor », 0 RIB, 0 « Saham », 0 téléphone TAQINOR, 0 « Virement bancaire »"
+    },
+    {
+      "id": "C-AMOT-017",
+      "taches": [
+        "AMOT19",
+        "AMOT70"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-017.txt — P3.6 échéancier 50/50 : payment_terms 50/0/50, cases deux_cases ; PDF final et une-page « Acompte 50% · 50% après la mise en marche », aucun « réception du matériel » ni 60 % ; page publique (conditions) = mêmes puces"
+    },
+    {
+      "id": "C-AMOT-013",
+      "taches": [
+        "AMOT15"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-013.txt — P2.3 étude saisie 16 500 : roi_s 2,4 = croisement 2,39, roi_a 5,2 = 5,20, net_gain = fin de courbe, année 1 = −prix + économie ; page étude (4 p.) « Retour en 2,4 ans / 5,2 ans » ; 3 p. sans payback contradictoire ; production calepinage non recopiée"
+    },
+    {
+      "id": "C-AMOT-024",
+      "taches": [
+        "AMOT58"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-024.txt — P2.3 4 devis démo horaires avec batterie : cashflow_avec[0] + total_avec = eco_a_ann exactement, roi_a = croisement (± 0,1) ; eco_a imprimée au PDF"
+    },
+    {
+      "id": "C-AMOT-043",
+      "taches": [
+        "AMOT33"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-043.txt — P3.1 recommandé « Sans » : pastille unique sur l'option 1 avant OPTION 2, « Pourquoi… l'investissement le plus court », mini-pastille page 3 sur la case Sans ; témoin « Avec » inchangé"
+    },
+    {
+      "id": "C-AMOT-030",
+      "taches": [
+        "AMOT29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-030.txt — P2.4 8 cartes (1119, 1121) : Max sans/avec payback = croisement du cumul de la carte (6,6/6,64 ; 5,8/5,85 ; 2,8/2,79 ; 4,6/4,56), cumul final + prix = économies 25 ans ; Recommandé = roi_s/roi_a du document"
+    },
+    {
+      "id": "C-AMOT-036",
+      "taches": [
+        "AMOT60"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-036.txt — P3.7 retenue 500 : lettre niveau 3 réclame 96 400,00 (exigible) et non 96 900,00 ; = recouvrement.montant_exigible ; facture payée -> 409 « Aucune somme exigible », JSON sans PDF"
+    },
+    {
+      "id": "C-AMOT-045",
+      "taches": [
+        "AMOT35"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-045.txt — P3.3 industriel DEV-202610-0101 : simulation périmée -> 4 p., 987 654 absent ; simulation cohérente -> « P90 : 282 963 kWh/an » imprimée"
+    },
+    {
+      "id": "C-AMOT-054",
+      "taches": [
+        "AMOT43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-054.txt — P3.4 agricole (société anonymisée) : provenance mesure_visite portée par la synthèse (liste blanche, sans _empreinte), hors a_confirmer ; PDF « mesuré par TAQINOR Anonymisé (QA) le 20/10/2026 » ; 3 p., 4 avec note ; 0 onduleur, 0 batterie"
+    },
+    {
+      "id": "C-AMOT-HXH-PAGES",
+      "taches": [
+        "AMOT36",
+        "AMOT37",
+        "AMOT68"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-HXH-PAGES.txt — P3.5 pages : résidentiel 3 / une-page 1 / + étude 4 / + calepinage explicite 4 (=0 -> 3) ; commercial 3 / 1 ; industriel 4 / 1 ; agricole 3 / note 4 / 1 ; persistance texte identique, 0 ShareLink par rendu ; total /proposal data imprimé. Observation : 1121 (18 lignes) = 4 p. par la pagination variable documentée (QRES17, gabarit plus10)"
+    },
+    {
+      "id": "C-AMOT-HXH-ACHAT",
+      "taches": [
+        "AMOT49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-HXH-ACHAT.txt — charte D2 : prix d'achat témoin 7 313,17 absent des PDF (full + une-page) et de /proposal data sur 4 modes, aucune clé prix_achat/marge*/cout_achat ; ligne manuelle 3 × 1 234,56 rendue telle quelle (3 703,68) ; agricole 0 onduleur, 0 batterie"
+    },
+    {
+      "id": "C-AMOT-HXH-COHERENCE",
+      "taches": [
+        "AMOT49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-HXH-COHERENCE.txt — P4.1 audit_coherence --json --no-persist : 1 785 violations, 0 nouvelle vs la passe persistée du 30/10 04:15 ; 22 erreurs de règle = toutes le refus de sécurité « aucune option ne contient d'onduleur » (devis démo sans onduleur)"
+    }
+  ]
+}

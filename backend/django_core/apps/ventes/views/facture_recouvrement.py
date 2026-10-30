@@ -10,7 +10,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin
+from .facture_gardes import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from . import openapi_docs as D
 from ..models import RelanceLog
 from ..serializers import EmailLogSerializer
@@ -144,7 +145,7 @@ class FactureRecouvrementActionsMixin:
 
     @extend_schema(responses=RelanceLogSerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='relances',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureFactures])
     def relances(self, request, pk=None):
         """Historique des relances consignées sur cette facture."""
         facture = self.get_object()
@@ -153,7 +154,7 @@ class FactureRecouvrementActionsMixin:
 
     @extend_schema(responses=EmailLogSerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='emails',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureFactures])
     def emails(self, request, pk=None):
         """Fil des emails (envoyés/reçus) consignés sur cette facture (N87/N88)."""
         from ..serializers import EmailLogSerializer
@@ -163,7 +164,7 @@ class FactureRecouvrementActionsMixin:
 
     @extend_schema(responses=FactureActivitySerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='historique',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureFactures])
     def historique(self, request, pk=None):
         """Chatter de la facture : avoirs créés + paiements encaissés (qui,
         quand, montant). Lecture seule ; acteur et société posés côté serveur."""

@@ -1,0 +1,11 @@
+== C-APDF-ACC-DEVIS-741 (sha 5908d43bb)
+attendu : devis 741 (résidentiel, société 2) /proposal défaut, onepage, include_etude, devis_final en fr et ar (client langue_document) + ?langue=ar|en : pages 3 ou 4 / 1 / 4 ou 5 / = défaut, profil SOLAIRE EXEMPLE imprimé (ICE, RC, capital, forme), aucun libellé APDF46 en ar/en, >= 50 caractères arabes, aucun Saham/691213/003799642000067/TAQINOR, aucun prix_achat/marge, statut inchangé
+observé : WeasyPrint rendered: /tmp/tmp43nqgyny.pdf
+  Generating charts...
+WeasyPrint rendered: /tmp/tmps4a9890v.pdf
+WeasyPrint rendered: /tmp/tmperqwnzyg.pdf
+  Generating charts...
+WeasyPrint rendered: /tmp/tmprle87xsa.pdf
+{"repro": true, "rendus": ["devis741:defaut|fr|p=3|ar=0|img=15|PASS", "devis741:onepage|fr|p=1|ar=0|img=1|PASS", "devis741:include_etude|fr|p=4|ar=0|img=12|PASS", "devis741:devis_final|fr|p=3|ar=0|img=15|PASS", "devis741:defaut|ar|p=3|ar=1344|img=15|PASS [note: police Noto Sans Arabic embarquée : ['DVIHBP+Noto-Kufi-Arabic', 'GLZDRW+Noto-Sans-Arabic-Bold', 'OJJJLW+Noto-Kufi-Arabic-Bold', 'TJXMCU+Noto-Sans-Arabic-Oblique]", "devis741:onepage|ar|p=1|ar=327|img=1|PASS [note: police Noto Sans Arabic embarquée : ['GLZDRW+Noto-Sans-Arabic-Bold', 'TJXMCU+Noto-Sans-Arabic-Oblique', 'UNUIUP+Noto-Sans-Arabic']]", "devis741:include_etude|ar|p=4|ar=2089|img=12|PASS [note: police Noto Sans Arabic embarquée : ['GLZDRW+Noto-Sans-Arabic-Bold', 'TJXMCU+Noto-Sans-Arabic-Oblique', 'UNUIUP+Noto-Sans-Arabic']]", "devis741:devis_final|ar|p=3|ar=1324|img=15|PASS [note: police Noto Sans Arabic embarquée : ['DVIHBP+Noto-Kufi-Arabic', 'GLZDRW+Noto-Sans-Arabic-Bold', 'OJJJLW+Noto-Kufi-Arabic-Bold', 'TJXMCU+Noto-Sans-Arabic-Oblique]", "devis741:defaut?langue=ar|ar|p=3|ar=1344|img=15|PASS [note: police Noto Sans Arabic embarquée : ['DVIHBP+Noto-Kufi-Arabic', 'GLZDRW+Noto-Sans-Arabic-Bold', 'OJJJLW+Noto-Kufi-Arabic-Bold', 'TJXMCU+Noto-Sans-Arabic-Oblique]", "devis741:defaut?langue=en|en|p=3|ar=0|img=15|PASS"], "ok_statut_inchange": true, "statut": "brouillon", "marche": null}
+verdict : REPRO
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0

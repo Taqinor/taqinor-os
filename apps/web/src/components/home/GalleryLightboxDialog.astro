@@ -1,0 +1,26 @@
+---
+/**
+ * Lightbox de la galerie preuve-par-chantier de l'accueil (W271, ENF19 : une copie au lieu de
+ * trois). <dialog> natif : Échap + focus trap gratuits ; le contenu est rempli par
+ * GalleryFilterLightboxScript à l'ouverture. Libellés et taille de l'icône par langue.
+ */
+interface Props {
+  label: string;
+  closeLabel: string;
+  iconSize: number;
+}
+const { label, closeLabel, iconSize } = Astro.props;
+---
+
+<dialog id="gallery-lightbox" class="gallery-lightbox" aria-label={label}>
+  <button type="button" class="gallery-lightbox-close" data-lightbox-close aria-label={closeLabel}>
+    <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  </button>
+  <img data-lightbox-img src="" alt="" />
+  <figcaption>
+    <span data-lightbox-caption></span>
+    <span data-lightbox-type class="gallery-lightbox-type"></span>
+  </figcaption>
+</dialog>

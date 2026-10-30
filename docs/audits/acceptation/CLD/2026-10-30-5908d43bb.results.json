@@ -1,0 +1,127 @@
+{
+  "sha": "5908d43bb4af99d2c94912a77b276e97c6c437a0",
+  "date": "2026-10-30",
+  "groupe": "CLD",
+  "verdict": "PASS",
+  "couvre": [
+    "CLD1",
+    "CLD2",
+    "CLD5",
+    "CLD8",
+    "CLD9",
+    "CLD13"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P-CLD-1",
+      "taches": [
+        "CLD13",
+        "CLD2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CLD/traces/2026-10-30/C-CLD-101.txt — boulangerie 6 000 kWh/mois 7/7 6-22 h : devis auto 201 ; talon BDEW G5 estimation, rapport 0,7043 (F) = creux/niveau de la courbe ; 72 000 kWh conservés ; autoconso 0,749 = 30 607/40 876 ; 25,56 kWc = 36 × 710 Wc = dernier palier admis (règle des 10 ans recalculée : 30→45 jamais ≤ 10 ans) ; PDF 3 p. : 25,56 kWc, 40 876 kWh/an, 75 % ; même taille saisie 30,53 sur la pile : 48 824 kWh, autoconso 0,654 ; harnais R3 rejoué sur le code de la pile : 30,53 kWc, 48 824 kWh, 0,654"
+    },
+    {
+      "id": "P-CLD-2",
+      "taches": [
+        "CLD13",
+        "CLD1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CLD/traces/2026-10-30/C-CLD-102.txt — bureau lun-ven 4 000 kWh/mois sans heures, « beaucoup » : talon statut declare, niveau_jour_pct 50 ; chaque heure ≥ 0,5 × pic (janvier 4,6 / 9,2) ; 48 000 kWh conservés ; contre-épreuve « aucun » : talon 5 %, courbe différente (0,773 / 15,318), même énergie ; PDF = 10,65 kWc, 17 032 kWh/an, 96 %"
+    },
+    {
+      "id": "P-CLD-3",
+      "taches": [
+        "CLD13",
+        "CLD9"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CLD/traces/2026-10-30/C-CLD-103.txt — 5 leads : aperçu etude-ci/preview = étude du devis = réponse auto = etude_params.puissance_kwc = synthèse /proposition = PDF : boulangerie 25,56 kWc / 40 876 kWh (DC/AC 1,278), bureau 8-18 25,56 / 40 876 (1,278), hôtel 24/7 40,47 / 64 721 (0,809), supermarché 85,2 / 136 254 (0,852), usine MT 175,37 / 280 457 (1,169) ; kWc posé = panneaux entiers × 710 Wc partout"
+    },
+    {
+      "id": "P-CLD-4",
+      "taches": [
+        "CLD13",
+        "CLD8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CLD/traces/2026-10-30/C-CLD-104.txt — harnais R3 usine 90 000 kWh/mois rejoué sur le code de la pile : 400,44 kWc (564 × 710 Wc, palier 400 posé ; saut 340 à 33,7 ans amorti, 335 dépassé) ; devis auto de la même usine MT sur le catalogue démo : 230,04 kWc, règle des 10 ans recalculée sur les paliers servis (aucun groupe au-delà ≤ 10 ans, fenêtre ≥ 4 paliers), aperçu = étude = PDF, DC/AC 230,04 / 200 kW = 1,150"
+    },
+    {
+      "id": "P-CLD-5",
+      "taches": [
+        "CLD13",
+        "CLD5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CLD/traces/2026-10-30/C-CLD-105.txt — usine MT, registres 2 000/3 000/1 000 × 12, juillet fermé : méthode registres_mt, juillet 6 000 kWh, Σ 72 000, bilan 72 000, UNE alerte « Mois 7 : aucun jour ouvert » (code livré registre_hors_ouverture ; la tâche CLD5 écrivait registre_sans_jour_ouvert) ; PDF = 25,56 kWc, 40 876 kWh/an"
+    }
+  ]
+}
