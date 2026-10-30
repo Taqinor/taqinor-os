@@ -213,9 +213,11 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         hypotheses.append(
             f"Tarif électricité : barème {_util_name} par tranche"
             + " (barème national)")
-    elif savings_model == "horaire" and _bareme_horaire:
+    elif (savings_model == "horaire" and _bareme_horaire) or (
+            savings_model == "factures" and roi.get("bareme_national")):
         # CE2E5 — lead sans distributeur : le modèle horaire valorise sur la
         # grille nationale, jamais un tarif plat « saisi pour ce devis ».
+        # ERR-RHOR8 — idem du modèle « factures » d'un devis sans localisation.
         hypotheses.append("Tarif électricité : barème national par tranche")
     elif _tarif_txt:
         # QRES16 (fondateur, 2026-07-18) — ne JAMAIS présenter le défaut

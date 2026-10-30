@@ -383,3 +383,75 @@ class TestFacturesReellesContract(TestCase):
     def test_non_positive_values_est_traitee_comme_une_absence(self):
         self.assertIsNone(
             self._assert_repli_identique([0] * 12, 'DEV-QFREAL-0005'))
+
+    # ── ERR-RHOR8-SANS-LOCALISATION-ECRAN-PDF — devis sans localisation ─────
+    _HIVER_ETE = {'factures_hiver_ete': {'hiver_mad': 1000, 'ete_mad': None,
+                                         'ete_differente': False}}
+
+    def test_rhor8_hiver_ete_sans_conso_tarife_par_tranche_niveau5(self):
+        """Factures hiver/été saisies, ni conso ni distributeur ni bloc
+        horaire : le PDF tarife par tranche (grille nationale), comme l'écran,
+        et ne se dit plus « estimation »."""
+        from apps.ventes.quote_engine import build_quote_data
+        data = build_quote_data(self._devis(
+            etude_params=dict(self._HIVER_ETE), reference='DEV-RHOR8-0005'))
+        self.assertEqual(data['savings_model'], 'factures')
+        self.assertFalse(data['savings_estimated'])
+        self.assertGreater(data['conso_annuelle_kwh'], 0)
+        self.assertIn('Tarif électricité : barème national par tranche',
+                      data['hypotheses'])
+
+    def test_rhor8_niveau4_garde_son_estimation(self):
+        """Nouveaux rendus seulement : un devis de niveau 4 garde son PDF."""
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine import build_quote_data
+        devis = self._devis(etude_params=dict(self._HIVER_ETE),
+                            reference='DEV-RHOR8-0004')
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=4)
+        devis.refresh_from_db()
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'estimation')
+        self.assertTrue(data['savings_estimated'])
+
+
+class Rhor8SansLocalisationParite(SimpleTestCase):
+    """ERR-RHOR8 — parité écran / PDF du devis 2299 (5,68 kWc, facture
+    d'hiver 1 000 MAD, batterie 5 kWh, 44 500 / 56 500 MAD TTC). Mêmes
+    chiffres épinglés côté écran : ``calc/roi.test.mjs`` (ERR-RHOR8)."""
+
+    ETUDE = {'factures_hiver_ete': {'hiver_mad': 1000, 'ete_mad': None,
+                                    'ete_differente': False}}
+
+    def _conso(self, niveau=5, mode='residentiel', **etude):
+        from types import SimpleNamespace
+        from apps.ventes.quote_engine.etude_chiffrage import (
+            _conso_hiver_ete_niveau5)
+        return _conso_hiver_ete_niveau5(
+            SimpleNamespace(regles_calcul=niveau), mode,
+            {**self.ETUDE, **etude}, None, None)
+
+    def test_memes_chiffres_que_l_ecran(self):
+        conso = self._conso()
+        self.assertEqual(conso, 6419)   # = consoAnnuelleDepuisFactures(estimerMois(1000))
+        roi = calculate_savings_roi(
+            5.68, 44500, 56500, conso_annuelle_kwh=conso, battery_kwh=5,
+            productible=1651, stockage_present=True, regles_2710=True,
+            fallback_tarif_kwh=1.75, bareme_national_defaut=True)
+        self.assertEqual(roi['savings_model'], 'factures')
+        self.assertTrue(roi['bareme_national'])
+        self.assertEqual((roi['eco_s_ann'], roi['eco_a_ann']), (10316, 11308))
+
+    def test_avant_le_correctif_le_pdf_estimait(self):
+        """Témoin : le chemin d'hier (9 159 / 12 034, « estimation »)."""
+        roi = calculate_savings_roi(
+            5.68, 44500, 56500, battery_kwh=5, productible=1651,
+            stockage_present=True, regles_2710=True, fallback_tarif_kwh=1.75)
+        self.assertEqual(roi['savings_model'], 'estimation')
+        self.assertEqual((roi['eco_s_ann'], roi['eco_a_ann']), (9159, 12034))
+        self.assertFalse(roi['bareme_national'])
+
+    def test_hors_perimetre_rien_ne_change(self):
+        self.assertIsNone(self._conso(niveau=4))
+        self.assertIsNone(self._conso(mode='commercial'))
+        self.assertIsNone(self._conso(conso_annuelle=6000))
+        self.assertIsNone(self._conso(etude_horaire={'prod_kwh': 1}))
