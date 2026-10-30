@@ -45,8 +45,9 @@ User = get_user_model()
 #: Racine du dépôt — remontée depuis backend/django_core/apps/ventes/tests/.
 RACINE = os.path.abspath(os.path.join(
     os.path.dirname(__file__), '..', '..', '..', '..', '..'))
+#: SPL207 : les prédicats de classification vivent dans calc/classification.js.
 SOLAR_JS = os.path.join(RACINE, 'frontend', 'src', 'features', 'ventes',
-                        'solar.js')
+                        'calc', 'classification.js')
 
 #: Ancre géographique de la toiture d'essai (Casablanca).
 LAT0, LNG0 = 33.5731, -7.5898
