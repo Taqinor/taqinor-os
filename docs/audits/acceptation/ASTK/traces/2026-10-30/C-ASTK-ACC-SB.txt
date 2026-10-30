@@ -1,0 +1,7 @@
+﻿== C-ASTK-ACC-SB (sha 5908d43bb)
+attendu : S-B aller-retour : produit créé par l'API avec ses champs maîtres (ASTK214/230), rouvert (GET), ré-enregistré SANS RIEN TOUCHER (PUT du corps relu, quantite_stock périmée comprise) -> objet serveur identique et stock non réécrit ; kit (taux de perte) idem, aucune révision « identique » ; BCF ré-enregistré sans toucher -> lignes gardées (même id) ; tests rouges ASTK32/67/81/82/87/94/96/97/214/229 verts contre la base de la pile
+observé : scénario S-B : {'creation': 201, 'champs_non_relus': [], 'put_sans_toucher': 200, 'cles_changees': [], 'stock': 'lu à l ouverture 0, réel 5 -> après PUT 5', 'kit_creation': 201, 'kit_put': 200, 'kit_cles_changees_hors_id_composant': [], 'kit_ids_composants': '[98] -> [99]', 'kit_perte': '5.00 -> 5.00', 'kit_revisions': '1 -> 1', 'bcf_creation': 201, 'bcf_put': 200, 'bcf_lignes': '[1577] -> [1577]', 'bcf_cles_changees': []} -> OK
+tests rouges des tâches rejoués : 37 ; KO passe 1 : 0 ; ENV (base de démo non vide, verts sur base vierge émulée) : 0 ; DÉFAUTS : 0 ; sautés 0 ; écartés (TransactionTestCase, non rejouables en transaction annulée) : 0
+{"repro": true, "tests": 37}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

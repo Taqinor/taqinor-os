@@ -1,0 +1,48 @@
+ASTK239 — passage écran Playwright (MCP), demo_admin (Directeur, société 2), http://localhost (front reconstruit le 30/10, backend 5908d43bb), 2026-10-30 ~04:56.
+Méthode : connexion par le formulaire /login, puis goto de chaque route du menu Stock/Achats/Entrepôt/Négoce,
+networkidle + 1,5 s ; écoute des réponses /api/ >= 400, console.error, pageerror, dialogues natifs (window.confirm/alert),
+présence de « NaN » dans le DOM.
+
+Résultat : 25 écrans, 0 réponse API 4xx/5xx, 0 console.error, 0 pageerror, 0 dialogue natif, 0 « NaN ».
+
+| Route | titre h1 | API >= 400 | console.error | dialogue | NaN |
+|---|---|---|---|---|---|
+| /stock | Stock | 0 | 0 | 0 | non |
+| /stock/mouvements | (titre hors h1) | 0 | 0 | 0 | non |
+| /stock/categories | Catégories & marques | 0 | 0 | 0 | non |
+| /stock/fournisseurs | Fournisseurs | 0 | 0 | 0 | non |
+| /stock/bons-commande-fournisseur | Bons de commande fournisseur | 0 | 0 | 0 | non |
+| /stock/modeles-bcf | Modèles de bon de commande | 0 | 0 | 0 | non |
+| /stock/receptions-fournisseur | Réceptions fournisseur | 0 | 0 | 0 | non |
+| /stock/factures-fournisseur | Factures fournisseur | 0 | 0 | 0 | non |
+| /stock/retours-fournisseur | Retours fournisseur | 0 | 0 | 0 | non |
+| /stock/paiements-fournisseur | (titre hors h1) | 0 | 0 | 0 | non |
+| /stock/lots-entrepot | Lots en entrepôt (FEFO) | 0 | 0 | 0 | non |
+| /stock/inventaires-annuels | Inventaires annuels | 0 | 0 | 0 | non |
+| /stock/revalorisations | Revalorisations de stock | 0 | 0 | 0 | non |
+| /stock/conditionnements | Conditionnements produit | 0 | 0 | 0 | non |
+| /stock/kits | Nomenclatures de stock (kits) | 0 | 0 | 0 | non |
+| /stock/entrepot | Tableau de bord entrepôt | 0 | 0 | 0 | non |
+| /stock/entrepot/casiers | Casiers de l'entrepôt | 0 | 0 | 0 | non |
+| /stock/entrepot/scanner | Poste scanner | 0 | 0 | 0 | non |
+| /stock/entrepot/picking | Picking | 0 | 0 | 0 | non |
+| /stock/entrepot/quais | Quais et rendez-vous | 0 | 0 | 0 | non |
+| /stock/entrepot/expeditions | Expéditions | 0 | 0 | 0 | non |
+| /stock/entrepot/qualite | Qualité et rappels | 0 | 0 | 0 | non |
+| /stock/negoce/consignations | Consignation | 0 | 0 | 0 | non |
+| /stock/negoce/rfa | Remises arrière (RFA) | 0 | 0 | 0 | non |
+| /stock/negoce/portails-tiers | Dépôts tiers (3PL) | 0 | 0 | 0 | non |
+
+Limite déclarée : chargement des écrans seulement (atteignables, sans erreur). Les parcours P6 d'écran bout en bout
+(casier sous seuil -> tâche exécutée ; vague -> prélèvement -> unité scellée -> expédition étiquetée ; rappel -> lot
+bloqué -> absent du picking ; consignation -> déclaration -> facture brouillon ; RFA -> avoir ; kiosque -> arrivée)
+NE SONT PAS joués à l'écran dans cette session : leurs effets serveur sont prouvés par la sonde C-ASTK-ACC-P6 (tests
+rouges des tâches rejoués contre la base de la pile + lien fournisseur -> confirmation -> créneau -> planning).
+
+Constat d'environnement (lecture seule) : sur la pile locale, le rôle système « Directeur » des sociétés 2 et 6 ne
+porte AUCUN des codes achats_commander / achats_receptionner / achats_payer / catalogue_prix_modifier (requête
+Role.objects.filter(company_id__in=[2,6], nom='Directeur') -> []). Ces codes (ASTK16, migration roles 0006) sont posés
+sur les rôles existants par `manage.py init_roles`, joué à chaque déploiement (scripts/auto-deploy.sh:167,
+scripts/deploy-prod.ps1:273) mais pas rejoué sur cette pile locale. Conséquence locale : demo_admin ne voit pas les
+boutons d'achat (masqués par ASTK21) ; les gestes d'achat à l'écran ne sont donc pas jouables ici sans init_roles
+(écriture de base interdite à cette session). Pas une régression du code.

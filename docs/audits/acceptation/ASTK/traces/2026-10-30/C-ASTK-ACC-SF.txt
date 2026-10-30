@@ -1,0 +1,8 @@
+﻿== C-ASTK-ACC-SF (sha 5908d43bb)
+attendu : S-F correction après coup : ligne de BCF reçue réécrite sous la quantité reçue, montant d'une facture fournisseur payée, statut BCF forcé, session d'inventaire validée, emplacement non vide archivé, exercice en cours figé -> refus clair (400/409) et objet relu inchangé ; tests rouges ASTK22-31/47/48/50-52/84-86/202/203 verts contre la base de la pile
+observé : scénario S-F : {'reviser_sous_recu': {'ok': True, 'http': 409, 'quantite': '10', 'corps': '{"detail":"Ligne 1803 — la quantité (3) ne peut pas être inférieure à la quantité déjà reçue (10)."}'}, 'statut_bcf_force': {'ok': True, 'http': 409, 'statut': 'recu'}, 'facture_payee_figee': {'ok': True, 'http': 409, 'ttc': '1200.00', 'corps': '{"detail":"Facture réglée : montants verrouillés.","champs":["montant_ht","montant_ttc"],"error":{"code":"api_error","message":"Facture réglée : montants v'}, 'emplacement_non_vide': {'ok': True, 'http': 409}, 'exercice_en_cours': {'ok': True, 'http': 409, 'corps': '{"exercice":["L\'exercice 2026 n\'est pas clos (31/12/2026) : figez-le à partir du 01/01/2027."],"error":{"code":"api_error","message":"{\'exercice\': [ErrorDetail'}, 'inventaire_valide_fige': {'ok': True, 'valider': 200, 'patch': 409, 'revalider': 409}} -> OK
+tests rouges des tâches rejoués : 103 ; KO passe 1 : 1 ; ENV (base de démo non vide, verts sur base vierge émulée) : 1 ; DÉFAUTS : 0 ; sautés 0 ; écartés (TransactionTestCase, non rejouables en transaction annulée) : 0
+ENV apps.stock.test_astk_inventaire_fige.InventaireFigeTests.test_patch_session_validee_refuse
+{"repro": true, "tests": 103}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

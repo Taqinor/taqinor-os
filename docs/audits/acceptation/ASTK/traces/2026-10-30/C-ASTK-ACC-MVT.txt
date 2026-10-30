@@ -1,0 +1,9 @@
+﻿== C-ASTK-ACC-MVT (sha 5908d43bb)
+attendu : P3 mouvements, valorisation, inventaire, réservations : un mouvement manuel « ajustement/transfert/rebut » passe par le service (delta, jamais un niveau absolu), un comptage reste un écart à la saisie, une vente ne sort le matériel qu'une fois (facture puis « Installé »), valorisation unique ; tests rouges ASTK34-47/54-60/81-83/87/90-101/120-129/135/145/172/176/204-209 verts contre la base
+observé : scénario P3 mouvements : {'transfert 5': '400 stock -> 100 mvt None', 'rebut 3': '400 stock -> 100 mvt None', 'ajustement -4': '400 stock -> 100 mvt None', 'ajustement 80': '201 stock -> 80 mvt (20, 100, 80)', 'entree 10': '201 stock -> 90 mvt (10, 80, 90)'} -> OK
+tests rouges des tâches rejoués : 192 ; KO passe 1 : 2 ; ENV (base de démo non vide, verts sur base vierge émulée) : 2 ; DÉFAUTS : 0 ; sautés 0 ; écartés (TransactionTestCase, non rejouables en transaction annulée) : 0
+ENV apps.stock.test_astk_mouvement_via_service.MouvementViaServiceTests.test_ajustement_negatif_refuse
+ENV apps.stock.test_astk_mouvement_via_service.MouvementViaServiceTests.test_transfert_et_rebut_refuses
+{"repro": true, "tests": 192}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0
