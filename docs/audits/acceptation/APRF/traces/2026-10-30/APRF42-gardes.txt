@@ -1,0 +1,65 @@
+check_query_budgets: OK — 7 endpoint(s) gardé(s) ont un test de budget.
+rc_budgets=0
+Contrat(s) hors de portee de la comparaison (PACT10), nomme(s) ici pour qu'aucun ne dorme : 19.
+  - apps/adsengine/contract_samples/veille_annonceur.json : GET adsengine/veille/annonceurs/<id>/ — l'annonceur decouvert et son verdict motive : servie par VeilleAnnonceurViewSet (ModelViewSet, forme non lisible statiquement) — test_veille_api.py et VeilleAnnonceurs.test.jsx s'appuient sur CET exemple (VEIL3/VEIL17).
+  - apps/adsengine/contract_samples/veille_decouverte.json : GET adsengine/veille/decouvertes/<id>/ (le POST de lancement renvoie la meme forme) — la decouverte et son journal : servie par VeilleDecouverteViewSet (ModelViewSet, forme non lisible statiquement) — test_veille_api.py et VeilleDecouverte.test.jsx s'appuient sur CET exemple (VEIL2/VEIL17).
+  - apps/adsengine/contract_samples/veille_echantillon.json : POST adsengine/veille/decouvertes/<id>/echantillon/ — tirage gele de l'echantillon de mesure : servie par l'@action `echantillon` de VeilleDecouverteViewSet (forme non lisible statiquement) — test_veille_api.py et VeilleEtiquetage.test.jsx s'appuient sur CET exemple (VEIL5/VEIL17).
+  - apps/adsengine/contract_samples/veille_verdict.json : POST adsengine/veille/annonceurs/<id>/verdict/ — verdict humain, reponse = l'annonceur au format veille_annonceur.json : servie par l'@action `verdict` de VeilleAnnonceurViewSet (ModelViewSet, forme non lisible statiquement) — test_veille_api.py et VeilleAnnonceurs.test.jsx s'appuient sur CET exemple (VEIL5/VEIL17).
+  - apps/calepinage/contract_samples/calepinage_du_devis.json : cle ADDITIVE `calepinage` du detail d'un devis (GET ventes/devis/<pk>/) : la route est servie, mais par un ModelViewSet dont la forme n'est pas lisible statiquement — la garde s'abstient, les deux moities (DevisSerializer, BlocCalepinageDevis.jsx) s'appuient sur CET exemple (CALX45/CALX46).
+  - apps/calepinage/contract_samples/calepinage_incertitude.json : detail du bloc `resultat['incertitude']` (composantes de sigma en quadrature et quantiles) servi par GET calepinages/<pk>/resultat/ : la route existe mais sa forme n'est pas lisible statiquement, et le producteur services/incertitude.py arrive avec CALX185/CALX186 (CALX144).
+  - apps/calepinage/contract_samples/calepinage_meteo.json : detail du bloc `resultat['meteo']` (provenance de la source meteo) servi par GET calepinages/<pk>/resultat/ : la route existe mais sa forme n'est pas lisible statiquement, et l'assembleur du bloc arrive avec CALX150 (CALX143).
+  - apps/calepinage/contract_samples/calepinage_pertes_cascade.json : detail du bloc `resultat['cascade']` (la cascade SEQUENTIELLE de pertes) servi par GET calepinages/<pk>/resultat/ : la route existe mais sa forme n'est pas lisible statiquement, et le producteur services/chaine_pertes.py::appliquer_chaine arrive avec CALX147 (CALX141).
+  - apps/calepinage/contract_samples/calepinage_serie_horaire.json : forme PERSISTEE de `resultat['serie_horaire']`, dont le seul lecteur est GET calepinages/<pk>/export-csv/ : cette route sert un FICHIER CSV, il n'y a donc aucune forme JSON a comparer, et la serie est ecrite par CALX150 (CALX142).
+  - apps/calepinage/contract_samples/calepinage_simulation.json : POST calepinages/<pk>/simuler/, et les blocs ecrits par fusion dans Calepinage.resultat (simulation, production, pertes, cascade, meteo, incertitude, performance, ombrage, consommation, autoconsommation, batterie, hors_reseau, validation, serie_horaire) — vue et service livres par CALX5.
+  - apps/crm/contract_samples/demande_rdv_site.json : POST crm/webhooks/demande-rdv/ — la demande de rendez-vous du site YanBow (corps signe + reponse {id, statut}), posee SEULE et EN PREMIER (PACT10) : la vue arrive avec YBW51, le registre des champs du site et son jumeau avec YBW53 — tous deux s'appuient sur CET exemple (YBW50).
+  - apps/crm/contract_samples/lead_devis_ligne.json : GET crm/leads/<id>/ — cles ADDITIVES `solde` et `vente` de chaque element de `devis[]` : servie par un ModelViewSet (forme non lisible statiquement) ; DevisTab s'appuie sur CET exemple (VNT7).
+  - apps/crm/contract_samples/panneau_appel.json : GET crm/leads/<id>/panneau-appel/ — le contrat du PANNEAU D'APPEL GUIDE, pose SEUL et EN PREMIER (PACT10) : l'@action de LeadViewSet qui le sert arrive avec CAD148, et aucun ecran ne l'appelle encore, donc la garde n'a rien a comparer. Les deux moities (l'@action, puis l'ecran d'appel) s'appuient sur CET exemple (CAD147).
+  - apps/facturation/contract_samples/facture_situation_vente.json : GET /api/django/ventes/factures/<int:pk>/.
+  - apps/installations/contract_samples/installation_divergence_devis.json : cle ADDITIVE `divergence_devis` du detail d'un chantier (GET installations/chantiers/<pk>/), calculee par le serveur : servie par un ModelViewSet (forme non lisible statiquement) ; ACHT66 la produit (InstallationSerializer.divergence_devis) mais le detail n'est pas lisible statiquement — ACHT67 (ecran) s'appuie sur CET exemple (ACHT40).
+  - apps/sav/contract_samples/piece_retiree.json : POST sav/tickets/<pk>/pieces-retirees/ — corps `serie_neuve` optionnel et reponse `equipement_neuf` : servis par l'@action de TicketViewSet avec ASAV9, champ ecran avec ASAV10 — tous deux s'appuient sur CET exemple (ASAV1).
+  - apps/sav/contract_samples/ticket_detail.json : cles ADDITIVES `statuts_suivants`, `equipement_fin_garantie_effective` et `je_suis_abonne` du detail d'un ticket (GET sav/tickets/<pk>/) : servi par un ModelViewSet dont la forme n'est pas lisible statiquement ; les moities back (ASAV39/43/44) et front (ASAV42/45) s'appuient sur CET exemple (ASAV1).
+  - apps/sav/contract_samples/ticket_suivi_public.json : GET public/sav/ticket/<token>/ — `annule`, `fusionne_dans_reference`, `statut_display` « Annule » : la vue publique les sert avec ASAV30, la page /suivi/:token avec ASAV31 — toutes deux s'appuient sur CET exemple (ASAV1).
+  - apps/ventes/contract_samples/vente_etat.json : GET ventes/devis/<pk>/ — cle ADDITIVE `vente` (etat de la vente dit par le serveur) : servie par un ModelViewSet (forme non lisible statiquement) ; le producteur et l'ecran s'appuient sur CET exemple (VNT7).
+OK : 333 endpoint(s) agrege(s) + 460 ressource(s) a serialiseur sous contrat, aucun mock de test ne contredit le serveur (0 dette(s) historique(s)).
+rc_shapes=0
+check_exports_bornes : OK — 37 export(s) listé(s) en exception datée, aucun nouveau non borné.
+rc_exports=0
+check_query_budgets: OK — 1 endpoint(s) gardé(s) ont un test de budget.
+check_query_budgets: OK — 1 endpoint(s) gardé(s) ont un test de budget.
+check_query_budgets: OK — 0 endpoint(s) gardé(s) ont un test de budget.
+check_query_budgets: budget(s) 'enforced' dont le test est SAUTÉ (un test sauté ne garde rien) :
+  - budget sauté : /api/django/crm/leads/ — C:\dev\taqinor-os\.claude\worktrees\agent-a499cce615eb81d6b\scripts\tests\tmpzgqkwwmj\backend\django_core\test_leads_budget.py:3
+...check_query_budgets: budget(s) 'enforced' dont le test est SAUTÉ (un test sauté ne garde rien) :
+  - budget sauté : /api/django/crm/leads/ — C:\dev\taqinor-os\.claude\worktrees\agent-a499cce615eb81d6b\scripts\tests\tmpwvk3rkdb\backend\django_core\test_leads_budget.py:3
+..check_query_budgets: budget(s) 'enforced' dont le test est SAUTÉ (un test sauté ne garde rien) :
+  - budget sauté : /api/django/crm/leads/ — C:\dev\taqinor-os\.claude\worktrees\agent-a499cce615eb81d6b\scripts\tests\tmpm2_qyblo\backend\django_core\test_leads_budget.py:5
+.check_query_budgets: 'endpoints' doit être une liste.
+.check_query_budgets: entrée 'enforced' sans 'path'.
+.check_query_budgets: entrée non-dict ignorée.
+.check_query_budgets: manifeste illisible: while parsing a flow sequence
+  in "<unicode string>", line 1, column 12:
+    endpoints: [unterminated
+               ^
+expected ',' or ']', but got '<stream end>'
+  in "<unicode string>", line 2, column 1:
+    
+    ^
+..check_query_budgets: PyYAML absent — impossible de valider le manifeste (dépendance requise une fois ce garde branché en CI ; jamais un faux-vert silencieux).
+..check_query_budgets: endpoints 'enforced' SANS test de budget :
+  - /api/django/crm/leads/
+Écrire un test avec assertMaxQueries/assertNumQueries qui référence l'URL, ou passer l'entrée à enforced: false.
+..check_query_budgets: endpoints 'enforced' SANS test de budget :
+  - /api/django/crm/leads/
+Écrire un test avec assertMaxQueries/assertNumQueries qui référence l'URL, ou passer l'entrée à enforced: false.
+..
+----------------------------------------------------------------------
+Ran 17 tests in 0.096s
+
+OK
+check_query_budgets: OK — 1 endpoint(s) gardé(s) ont un test de budget.
+check_query_budgets: OK — 1 endpoint(s) gardé(s) ont un test de budget.
+check_query_budgets: docs/query-budgets.yml absent — skip.
+check_query_budgets: OK — 1 endpoint(s) gardé(s) ont un test de budget.
+check_query_budgets: OK — 1 endpoint(s) gardé(s) ont un test de budget.
+check_query_budgets: OK — 1 endpoint(s) gardé(s) ont un test de budget.
+check_query_budgets: OK — 0 endpoint(s) gardé(s) ont un test de budget.
