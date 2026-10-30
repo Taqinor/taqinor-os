@@ -1,0 +1,33 @@
+{
+  "sha": "d4c0e3b5d619a116a607f93959a0d1bc3d49077b",
+  "date": "2026-10-30",
+  "groupe": "APDF",
+  "verdict": "PASS",
+  "couvre": [
+    "APDF31"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-APDF-ACC-RELANCE",
+      "taches": [
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-RELANCE-rejeu-correctif.txt"
+    }
+  ]
+}
