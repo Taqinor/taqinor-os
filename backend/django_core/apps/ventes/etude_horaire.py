@@ -1498,7 +1498,7 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
                              batterie_rendement_source=None,
                              tranches=None, charges_fixes_mad=None,
                              tppan=True, millesime=bareme.MILLESIME_COURANT,
-                             jour_reference=None, productible_kwh_kwc=None):
+                             jour_reference=None, productible_kwh_kwc=None, perte_ombrage_pct=None):
     """DIM2 — plusieurs capacités de stockage évaluées sur UNE taille de champ.
 
     UN SEUL parcours des douze jours types (:func:`jours_types_annee`) sert
@@ -1560,7 +1560,7 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
         kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
         ville=ville, lat=lat, lon=lon,
         occupation=occupation, equipements=equipements,
-        jour_reference=jour_reference, productible_kwh_kwc=productible_kwh_kwc)
+        jour_reference=jour_reference, productible_kwh_kwc=productible_kwh_kwc, perte_ombrage_pct=perte_ombrage_pct)
     if not jours_types or len(jours_types) != 12:
         return None
 

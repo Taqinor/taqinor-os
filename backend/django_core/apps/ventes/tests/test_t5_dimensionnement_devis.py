@@ -267,3 +267,14 @@ class BornesEtOmbrageRsizTests(SimpleTestCase):
         self.assertEqual(kwargs_ombrage(5.0, avec),
                          {'perte_ombrage_pct': 5.0})
         self.assertEqual(kwargs_ombrage(5.0, avec, sans), {})
+
+    def test_err_rhor8_kwargs_moteur_ombre_porte_l_ombrage_au_balayage(self):
+        """ERR-RHOR8-TAILLES-PRODUCTION-SANS-OMBRAGE — le balayage du stockage
+        accepte la perte : les cartes de tailles (``offres_tailles``) et
+        l'échelle reçoivent l'ombrage du calepinage ; ``None`` ⇒ rien."""
+        from apps.ventes.domain.entrees import kwargs_moteur_ombre
+        base = {'conso_kwh_mensuelles': [300.0] * 12, 'ville': 'Casablanca'}
+        self.assertEqual(kwargs_moteur_ombre(
+            dict(base, perte_ombrage_pct=6.717))['perte_ombrage_pct'], 6.717)
+        self.assertNotIn('perte_ombrage_pct', kwargs_moteur_ombre(
+            dict(base, perte_ombrage_pct=None)))
