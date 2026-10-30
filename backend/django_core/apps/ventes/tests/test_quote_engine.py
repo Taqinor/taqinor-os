@@ -27,7 +27,7 @@ import base64
 import io
 import time
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS,
@@ -178,6 +178,7 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
         self.assertEqual(G.PAGES_TOTAL, 4)
         self.assertIn(G._L('lg_etude_pied').format(ref=G.REF), html)
 
+    @tag('pdf')  # rendu WeasyPrint réel (WOW5)
     def test_rhor8_la_langue_n_ajoute_aucune_page_avec_l_etude(self):
         """ERR-RHOR8-PDF-AR-PAGES-ETUDE (devis 2007 / 2300 du rejeu RHOR8) :
         en arabe, l'interligne ``normal`` de « Noto Sans Arabic » gonflait les
