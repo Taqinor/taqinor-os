@@ -1093,7 +1093,7 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
         return None
 
 
-def payback_servi(data, variante, *, repli):
+def _payback_servi(data, variante, *, repli):
     """ERR-RHOR8-TAILLES-JAMAIS-RENTABILISE — le payback SERVI d'une option
     (``roi_s``/``roi_a`` de ``build_quote_data``) pour la carte Recommandé de
     ``offres_tailles``, ou ``None``.

@@ -1304,10 +1304,10 @@ def _carte_du_devis(contexte, data, variante):
         carte['economie_annuelle_mad'] = round(economie, 2)
     # Le payback SERVI d'abord (``roi_s``/``roi_a``) ; « jamais remboursé » ⇒ OMIS
     # (ERR-RHOR8, comme RHOR5) ; repli QUE s'il n'est pas servi.
-    from apps.ventes.domain.dimensionnement_devis import payback_servi
+    from apps.ventes.domain.dimensionnement_devis import _payback_servi
     # AMOT29 — repli : la définition du document, jamais le ratio simple
     # (règles d'origine : le ratio simple d'hier).
-    paye = payback_servi(data, variante, repli=lambda: (
+    paye = _payback_servi(data, variante, repli=lambda: (
         _payback_publie(prix, economie) if getattr(contexte, 'corrige', True)
         else _payback(prix, economie)))
     if paye is not None:
