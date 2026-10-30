@@ -1547,7 +1547,8 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
         cle_base = 'ttc' if flux['base'] == BASE_TTC else 'ht'
         sensibilites, omis = sensibilites_ci(
             collecteur.get(cle_base), apercu, tarif, reglages,
-            tarif_declare=tarif_declare, cle_base=cle_base, regles_origine=reglages.get('regles_origine'))
+            tarif_declare=tarif_declare, cle_base=cle_base,
+            regles_origine=reglages.get('sensibilites_origine', reglages.get('regles_origine')))
         if omis is not None:
             omissions.append(omis)
     if mode == 'industriel':
@@ -1966,10 +1967,13 @@ def economie_ci_pour_devis(devis, company):
     if not isinstance(tarif_declare, dict):
         tarif_declare = params.get('tarif') if isinstance(
             params.get('tarif'), dict) else None
-    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, calcul_corrige, regles_au_moins
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, REGLES_SENSIBILITES_3010, calcul_corrige, regles_au_moins)
     totaux = option_totaux(devis)
     reglages = reglages_economie_ci(company)
     reglages['regles_origine'] = not regles_au_moins(devis, REGLES_CORRIGEES_2710)  # CEC (27/10)
+    # D-CI-SENSIB-ENVOYES (30/10) — un devis envoyé garde son tableau de sensibilités.
+    reglages['sensibilites_origine'] = not regles_au_moins(devis, REGLES_SENSIBILITES_3010)
     if not calcul_corrige(devis):
         # AMOT96/97 — un devis envoyé garde ce que le client a reçu : ni
         # entretien minimum, ni scénarios seedés, ni sensibilités commerciales.

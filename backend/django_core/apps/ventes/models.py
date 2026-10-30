@@ -214,9 +214,9 @@ class Devis(models.Model):
     # (révision V2 comprise) naît en 2 (règles corrigées). Lu UNIQUEMENT par
     # ``domain/regles_calcul.calcul_corrige`` — jamais un statut (règle #4).
     # 27/10/2026 : niveau 3 (corrections résidentielles D-RES-2710) — la
-    # migration 0142 laisse à 2 les devis envoyés ; un devis neuf naît en 3,
-    # lu par ``domain/regles_calcul.regles_au_moins(devis, 3)``.
-    regles_calcul = models.PositiveSmallIntegerField(default=3)
+    # migration 0142 laisse à 2 les devis envoyés ; 30/10/2026 : niveau 4 (0143,
+    # sensibilités C&I) — un devis neuf naît en 4 (``regles_au_moins``).
+    regles_calcul = models.PositiveSmallIntegerField(default=4)
     version = models.PositiveIntegerField(default=1)
     version_parent = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,

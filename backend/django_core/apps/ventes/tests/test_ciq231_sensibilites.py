@@ -137,6 +137,10 @@ SCENARIOS_P90 = [
     {'cle': 'production', 'variation_pct': 5, 'source': 'P10 (test)'}]
 
 
+#: Une ligne panneau au devis : l'investissement d'un devis lu est chiffré (ADEV81).
+LIGNES_DEVIS = [{'designation': 'Panneau', 'panneau': True, 'ht': 300000.0, 'ttc': 360000.0}]
+
+
 class SensibiliteMonotoneTest(SimpleTestCase):
     """ERR-CI-SENSIBILITE-P90-INVERSEE (CEC6 P1.4) — moins de production ou un
     tarif plus bas ne rapporte JAMAIS plus que le central (et l'inverse)."""
@@ -179,6 +183,41 @@ class SensibiliteMonotoneTest(SimpleTestCase):
             apercu, 0.923, eco._apercu_production, origine=False, motif_sans_charge='x')
         self.assertIsNone(modifie)
         self.assertEqual(motif, eco._options.MOTIF_SENSIBILITE_NON_REPRODUCTIBLE)
+
+    def _bloc_du_devis(self, regles_calcul, statut):
+        from types import SimpleNamespace
+        from unittest import mock
+        devis = SimpleNamespace(
+            etude_params={'etude_ci': _apercu_profil('usine'), 'tarif_declare': TARIF_MT_DECLARE},
+            mode_installation='industriel', regles_calcul=regles_calcul, statut=statut)
+        with mock.patch.object(eco, 'reglages_economie_ci',
+                               return_value={'sensibilites_ci': SCENARIOS_P90[:1]}), \
+                mock.patch.object(eco, 'lignes_pour_economie_ci', return_value=LIGNES_DEVIS), \
+                mock.patch('apps.ventes.utils.options.option_totaux', return_value=INVESTISSEMENT), \
+                mock.patch('apps.ventes.domain.etude_ci.courbe_degradation_du_devis', return_value=None):
+            return eco.economie_ci_pour_devis(devis, company=None)
+
+    def test_devis_envoye_garde_son_tableau_brouillon_corrige(self):
+        """D-CI-SENSIB-ENVOYES (fondateur 30/10/2026) — un devis envoyé au niveau
+        3 garde le tableau d'avant le correctif ; un brouillon (niveau 4) le
+        prend corrigé."""
+        from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, REGLES_SENSIBILITES_3010
+        apercu = _apercu_profil('usine')
+        reglages = {'sensibilites_ci': SCENARIOS_P90[:1]}
+        # Le tableau d'avant le correctif = calcul cellule par cellule (origine).
+        ancien = eco.assembler_economie_ci(
+            apercu, tarif_declare=TARIF_MT_DECLARE, investissement=INVESTISSEMENT,
+            mode_installation='industriel', reglages=dict(reglages, sensibilites_origine=True),
+            lignes=LIGNES_DEVIS)
+        neuf = eco.assembler_economie_ci(
+            apercu, tarif_declare=TARIF_MT_DECLARE, investissement=INVESTISSEMENT,
+            mode_installation='industriel', reglages=reglages, lignes=LIGNES_DEVIS)
+        self.assertNotEqual(ancien['sensibilites'], neuf['sensibilites'])
+        envoye = self._bloc_du_devis(REGLES_CORRIGEES_2710, 'envoye')
+        brouillon = self._bloc_du_devis(REGLES_SENSIBILITES_3010, 'brouillon')
+        self.assertEqual(envoye['sensibilites'], ancien['sensibilites'])
+        self.assertEqual(brouillon['sensibilites'], neuf['sensibilites'])
+        self.assertEqual(envoye['economie_annee1'], brouillon['economie_annee1'])
 
     def test_regles_origine_gardent_le_calcul_envoye(self):
         """Fondateur 08/10 : un devis envoyé garde ce que le client a reçu."""
