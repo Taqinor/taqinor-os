@@ -2806,3 +2806,14 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; lane w9-spl202)"
     taches: [SPL202]
+  - id: D-CI-BATTERIE-NON-RENTABLE
+    question: "Devis C&I : quand aucun module de batterie ne tient la règle marginale des 10 ans (usine MT : premier module 31,8 ans, meilleur groupe ≈ 13,6 ans), l'option « avec batterie » est aujourd'hui CACHÉE (alerte OPTION_BATTERIE_NON_COMPOSEE) : que faire ?"
+    options:
+      - cle: a
+        texte: "faire comme les meilleurs outils de stockage C&I : la MONTRER honnêtement au groupe de modules aux meilleures économies (retour le plus court remplacement batterie compris ; égalité ⇒ moins de modules), marquée côté serveur `batterie_rentable: false` avec le retour du supplément face à l'horizon de 10 ans, badge sobre « non rentable sur les seuls critères financiers » (fr/en/ar) et une ligne de raison sous ses chiffres réels ; l'option solaire seule reste recommandée ; aucune valeur de secours dans le retour (aucun coût de coupure déclaré) ; la règle marginale reste la définition d'une batterie RECOMMANDÉE ; devis au niveau de règles 5 (REGLES_RETOURS_3010B) seulement, les niveaux antérieurs inchangés"
+      - cle: b
+        texte: "garder l'option cachée"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (en chat : « search what the best in the world do and do it »)"
+    taches: []

@@ -35,7 +35,11 @@ REGLES_SENSIBILITES_3010 = 4
 #: (ERR-CEC6-RETOUR-AVEC-BATTERIE-PERDU) et curseur de stockage ancré sur le TTC
 #: du devis (ERR-AMOT59-CURSEUR-STOCKAGE-PRIX). Le niveau 4 est en production
 #: depuis le matin : un devis envoyé au niveau 4 garde ses chiffres. La
-#: migration 0144 laisse à 4 tout devis non brouillon.
+#: migration 0144 laisse à 4 tout devis non brouillon. Porte aussi
+#: D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026) : une option C&I « avec
+#: batterie » hors de la règle marginale des 10 ans est MONTRÉE (meilleur
+#: groupe de modules, ``batterie_rentable: false``, l'offre réseau reste
+#: recommandée) au lieu d'être cachée — un devis de niveau ≤ 4 la cache encore.
 REGLES_RETOURS_3010B = 5
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_RETOURS_3010B

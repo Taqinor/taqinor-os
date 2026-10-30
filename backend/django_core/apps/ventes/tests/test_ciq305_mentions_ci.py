@@ -157,6 +157,62 @@ class TestTableMentions(SimpleTestCase):
         del data["etude"]["etude_ci"]["option_avec"]["retour_simple_ans"]
         self.assertIsNone(valeur_option_avec(data)["retour_simple_ans"])
 
+    def test_d_ci_batterie_non_rentable_badge_ligne_fr_en_ar(self):
+        """D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026) — l'option
+        marquée non rentable par l'étude (niveau 5) garde ses chiffres réels
+        et reçoit le badge et la raison dans les trois langues, au PDF
+        (bloc de l'option, carte de couverture) comme à /proposition."""
+        from apps.ventes.quote_engine.ci.blocs import bloc_option_avec
+        from apps.ventes.quote_engine.ci.options_cote import _badge_non_rentable
+        data = self._deux_options(31000)
+        avec = data["etude"]["etude_ci"]["option_avec"]
+        avec["retour_simple_ans"] = 6.4
+        self.assertNotIn("batterie_rentable", valeur_option_avec(data))
+        avec.update(batterie_rentable=False, motif_non_rentable={
+            "retour_marginal_ans": 13.6, "horizon_annees": 10,
+            "code": "retour_au_dela_horizon"})
+        valeur = valeur_option_avec(data)
+        self.assertIs(valeur["batterie_rentable"], False)
+        self.assertEqual((valeur["retour_marginal_ans"], valeur["horizon_annees"]),
+                         (13.6, 10))
+        self.assertEqual((valeur["economie_annuelle_mad"], valeur["retour_simple_ans"]),
+                         (95767.0, 6.4))
+        self.assertEqual(valeur["textes_badge"], {
+            "fr": "non rentable sur les seuls critères financiers",
+            "en": "not cost-effective on financial criteria alone",
+            "ar": "غير مربح وفق المعايير المالية وحدها"})
+        self.assertEqual(valeur["textes_non_rentable"]["fr"], (
+            "Retour estimé 13,6 ans (remplacement batterie inclus), au-delà de "
+            "l'horizon de 10 ans retenu : l'option solaire seule est recommandée."))
+        self.assertEqual(valeur["textes_non_rentable"]["en"], (
+            "Estimated payback 13.6 years (battery replacement included), beyond "
+            "the 10-year horizon used: the solar-only option is recommended."))
+        self.assertIn("13,6", valeur["textes_non_rentable"]["ar"])
+        self.assertIn("10", valeur["textes_non_rentable"]["ar"])
+        # PDF — bloc de l'option : titre + badge, chiffres réels, raison.
+        data["option_batterie"] = {"totaux": {"ht_net": 394250, "tva": 78850,
+                                              "ttc": 473100}, "lignes": []}
+        for lg, badge, mot in (("fr", "non rentable", "remplacement batterie inclus"),
+                               ("en", "not cost-effective", "battery replacement included"),
+                               ("ar", "غير مربح", "استبدال البطارية")):
+            data["langue_sortie"] = lg
+            html = bloc_option_avec(data, lambda cle, fr: fr, lambda x: f"{x:,.0f}",
+                                    ("#000", "#111", "#222", "#333"))
+            self.assertIn(badge, html)
+            self.assertIn(mot, html)
+            self.assertIn("473,100", html)
+            synthese = {"option_batterie": {"valeur_chiffree": valeur_option_avec(data)}}
+            self.assertIn(badge, _badge_non_rentable({"com_synthese": synthese,
+                                                      "langue_sortie": lg}, "com"))
+        # Rentable : rien ne change.
+        avec.pop("batterie_rentable")
+        data["langue_sortie"] = "fr"
+        html = bloc_option_avec(data, lambda cle, fr: fr, lambda x: f"{x:,.0f}",
+                                ("#000", "#111", "#222", "#333"))
+        self.assertNotIn("non rentable", html)
+        self.assertEqual(_badge_non_rentable({"com_synthese": {"option_batterie": {
+            "valeur_chiffree": valeur_option_avec(data)}}}, "com"), "")
+
     def test_tarif_utilise_et_sa_source(self):
         tarif = {"origine": "grille_officielle", "contrat": "bt_patente",
                  "mention": "Grille ONEE, repli",

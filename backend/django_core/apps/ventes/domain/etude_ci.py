@@ -36,7 +36,7 @@ from decimal import Decimal
 from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, option_avec_de_l_etude
-from .regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+from .regles_calcul import REGLES_CORRIGEES_2710, REGLES_RETOURS_3010B, regles_au_moins
 from .etude_ci_visite import _couche_visite
 
 logger = logging.getLogger(__name__)
@@ -1467,7 +1467,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         revente_choisie=revente, valoriser=valoriser, taux_tva_pct=getattr(reglages, 'tva_standard', None),
         phase=phase, ps_kva=_num(res.valeur('puissance_souscrite_kva')), composer=composer,
         borne_toit=borne_toit, production_rasante=rasante['lire'], imposee=option_avec_imposee,
-        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
+        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), reference_sans=evaluation,
+        regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B))  # D-CI-BATTERIE-NON-RENTABLE
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
 
