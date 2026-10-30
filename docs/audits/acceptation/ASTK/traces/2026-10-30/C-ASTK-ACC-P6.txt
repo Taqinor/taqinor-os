@@ -1,0 +1,10 @@
+﻿== C-ASTK-ACC-P6 (sha 5908d43bb)
+attendu : P4.5/P6 fournisseur + WMS par l'API : lien fournisseur à jeton -> documents sans BCF brouillon -> confirmation du BCF envoyé (date + n°) acceptée, confirmation d'un brouillon refusée -> créneau proposé réservé (201) puis visible au planning des quais de la société ; créneau hors grille refusé ; jeton révoqué -> 404 ; tests rouges WMS/fournisseurs (ASTK160-168, 178-201, 213, 226, 240, 241) verts contre la base de la pile
+observé : scénario P6 fournisseur : {'documents': {'ok': True, 'http': 200}, 'confirmer_brouillon_refuse': {'ok': True, 'http': 409}, 'confirmer_envoye': {'ok': True, 'http': 200, 'date': '2026-11-09'}, 'creneaux_proposes': {'ok': True, 'http': 200, 'nb': 10}, 'reserver_creneau': {'ok': True, 'http': 201}, 'planning_quais': {'ok': True, 'http': 200, 'rdv': 244}, 'hors_grille_refuse': {'ok': True, 'http': 400}, 'jeton_revoque_404': {'ok': True, 'http': 404}} -> OK
+tests rouges des tâches rejoués : 233 ; KO passe 1 : 3 ; ENV (base de démo non vide, verts sur base vierge émulée) : 3 ; DÉFAUTS : 0 ; sautés 0 ; écartés (TransactionTestCase, non rejouables en transaction annulée) : 0
+ENV apps.stock.test_astk_tache_reappro.ExecuterTests.test_statut_non_editable
+ENV apps.facturation.tests.test_astk_facture_consignation.FactureConsignationTests.test_autre_societe_refusee
+ENV apps.stock.test_astk_creneaux.GrilleTests.test_creneau_propose_201
+{"repro": true, "tests": 233}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

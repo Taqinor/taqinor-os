@@ -1,0 +1,53 @@
+﻿== C-ASTK-ACC-SE (sha 5908d43bb)
+attendu : S-E étanchéité : depuis la société de démo 2, chaque id de la société 6 (ou d'une autre) sur les endpoints stock/achats/WMS répond comme un id absent (404 en lecture, 400 « objet inexistant » en écriture), jamais 403 ni donnée ; paires TEN-11 (id de B / id 99999999) octet-identiques ; jeton fournisseur révoqué -> 404 ; tests rouges des tâches C5 (ASTK1-9, ASTK179, ASTK212) verts contre la base de la pile
+observé : balayage détail inter-sociétés : 25 routes avec objet étranger rejouées, 0 KO ; sans objet en base (non rejouées) : transferts, retours-fournisseur, documents-conformite-fournisseur, achats-parametres, tolerances-rapprochement-categorie, categories-fournisseur, avoirs-fournisseur, lots-entrepot, inventaires-annuels, revalorisations-stock, conditionnements, modeles-bcf, nomenclatures-code-barres, regles-code-barres (sans company), budgets-departement, engagements-budget, dossiers-onboarding-fournisseur, documents-fournisseur, vagues-picking, unites-logistiques, expeditions, plans-comptage-tournant, alertes-rappel, retours-client, mouvements-rebut, plans-chargement, blocages-qualite, plans-echantillonnage, casiers-hazmat, seuils-reappro-casier, taches-reappro-interne, incidents-qualite-fournisseur, consignations, accords-rfa-fournisseur, profils-saisonniers, retours-fournisseur
+ROUTE /api/django/stock/produits/<id 9478 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/categories/<id 56 soc 6> 404 vs absent 404
+ROUTE /api/django/stock/fournisseurs/<id 2908 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/mouvements/<id 5278 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/marques/<id 22 soc 6> 404 vs absent 404
+ROUTE /api/django/stock/bons-commande-fournisseur/<id 2088 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/emplacements/<id 2306 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/prix-fournisseurs/<id 464 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/receptions-fournisseur/<id 799 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/factures-fournisseur/<id 1011 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/paiements-fournisseur/<id 307 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/inventaire-sessions/<id 67 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/kits/<id 209 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/fiches-techniques/<id 39 soc 6> 404 vs absent 404
+ROUTE /api/django/stock/contacts-fournisseur/<id 2 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/acomptes-fournisseur/<id 229 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/catalogue-achat/<id 9478 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/quais/<id 199 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/rendez-vous-transporteur/<id 171 soc 4988> 404 vs absent 404
+ROUTE /api/django/stock/portails-tiers/<id 6 soc 4988> 404 vs absent 404
+ROUTE /api/django/achats/bons-commande-fournisseur/<id 2088 soc 4988> 404 vs absent 404
+ROUTE /api/django/achats/receptions-fournisseur/<id 799 soc 4988> 404 vs absent 404
+ROUTE /api/django/achats/factures-fournisseur/<id 1011 soc 4988> 404 vs absent 404
+ROUTE /api/django/achats/paiements-fournisseur/<id 307 soc 4988> 404 vs absent 404
+ROUTE /api/django/achats/prix-fournisseurs/<id 464 soc 4988> 404 vs absent 404
+tests rouges des tâches rejoués : 122 ; KO passe 1 : 21 ; ENV (base de démo non vide, verts sur base vierge émulée) : 21 ; DÉFAUTS : 0 ; sautés 0 ; écartés (TransactionTestCase, non rejouables en transaction annulée) : 0
+ENV apps.stock.test_astk_fk_achats.FkAchatsTests.test_acompte_bcf_etranger
+ENV apps.stock.test_astk_fk_achats.FkAchatsTests.test_contact_fournisseur_etranger
+ENV apps.stock.test_astk_fk_achats.FkAchatsTests.test_paiement_facture_autre_societe
+ENV apps.stock.test_astk_fk_achats.FkAchatsTests.test_prix_fournisseur_produit_etranger
+ENV apps.stock.test_astk_fk_achats.FkAchatsTests.test_reception_ligne_commande_inconnue_404
+ENV apps.stock.test_astk_fk_achats.FkAchatsTests.test_reception_recu_par_autre_societe
+ENV apps.stock.test_astk_fk_catalogue_mouvements.FkCatalogueMouvementsTests.test_kit_composant_produit_etranger
+ENV apps.stock.test_astk_fk_catalogue_mouvements.FkCatalogueMouvementsTests.test_kit_sous_kit_etranger
+ENV apps.stock.test_astk_fk_catalogue_mouvements.FkCatalogueMouvementsTests.test_mouvement_casier_etranger
+ENV apps.stock.test_astk_fk_catalogue_mouvements.FkCatalogueMouvementsTests.test_mouvement_produit_etranger
+ENV apps.stock.test_astk_fk_inventaire_revalo.FkInventaireRevaloTests.test_ligne_inventaire_produit_etranger_refuse
+ENV apps.stock.test_astk_fk_inventaire_revalo.FkInventaireRevaloTests.test_revalo_patch_produit_etranger_refuse
+ENV apps.stock.test_astk_fk_inventaire_revalo.FkInventaireRevaloTests.test_validation_relit_le_produit_dans_la_societe
+ENV apps.stock.test_astk_oracle_existence.OracleExistenceTests.test_aucun_message_hors_entreprise_dans_le_code
+ENV apps.stock.test_astk_fk_retour_modele_bcf.FkRetourModeleBcfTests.test_chaine_modele_recevoir_ne_touche_pas_B
+ENV apps.stock.test_astk_fk_views_serializers.CorpsFuzzTests.test_fuzz_ci997_corps_types_declares
+ENV apps.stock.test_astk_fk_views_serializers.CorpsFuzzTests.test_fuzz_ci997_filtres_requete_stricts
+ENV apps.stock.test_astk_fk_views_serializers.CorpsFuzzTests.test_fuzz_ci997_refus_d_etat_409_et_reference_inconnue_404
+ENV apps.stock.test_astk_fk_views_serializers.CorpsFuzzTests.test_fuzz_corps_non_objet_400
+ENV apps.stock.test_astk_fk_views_serializers.CorpsFuzzTests.test_fuzz_fournisseur_et_inventaire_stricts
+ENV apps.stock.test_astk_fk_views_serializers.CorpsFuzzTests.test_fuzz_ids_non_entiers_400
+{"repro": true, "tests": 122, "defauts": [], "routes_balayees": 25, "ko_balayage": 0}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

@@ -1,0 +1,6 @@
+﻿== C-ASTK-VER-002 (sha 5ea32b58b)
+attendu : BCF 10 x 100, réception 12 (10 appliqués) : une facture fournisseur de 1 200 HT passe le rapprochement 3 voies en 'exception' (attendu 1 000)
+observé : stock=10 quantite_appliquee=10 retour=FactureFournisseur.StatutControle.EXCEPTION statut_controle='exception' (facture 1200 HT, 10 x 100 entrés ; attendu exception)
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

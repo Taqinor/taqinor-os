@@ -1,0 +1,20 @@
+﻿  /api/django/achats/bons-commande-fournisseur
+      backend/django_core/apps/achats/urls.py:27 — miroir API achats (ODX20), aucun client ne l'appelle
+  /api/django/achats/receptions-fournisseur
+      backend/django_core/apps/achats/urls.py:30 — miroir API achats (ODX20), aucun client ne l'appelle
+  /api/django/achats/factures-fournisseur
+      backend/django_core/apps/achats/urls.py:33 — miroir API achats (ODX20), aucun client ne l'appelle
+  /api/django/achats/paiements-fournisseur
+      backend/django_core/apps/achats/urls.py:36 — miroir API achats (ODX20), aucun client ne l'appelle
+  /api/django/achats/retours-fournisseur
+      backend/django_core/apps/achats/urls.py:39 — miroir API achats (ODX20), aucun client ne l'appelle
+  /api/django/achats/prix-fournisseurs
+      backend/django_core/apps/achats/urls.py:42 — miroir API achats (ODX20), aucun client ne l'appelle
+  /api/django/stock/catalogue-b2b
+      backend/django_core/apps/stock/urls.py:151 — donnee du futur portail client B2B, aucun ecran ERP en face
+  /api/django/installations/categories-stockage   (backend/django_core/apps/installations/urls.py:117)
+  /api/public/v1/achats/demandes-achat   (backend/django_core/apps/publicapi/public_urls.py:65)
+  /api/public/v1/achats/rfq   (backend/django_core/apps/publicapi/public_urls.py:68)
+  /api/django/stock/tableau-bord-achats   (backend/django_core/apps/stock/urls.py:171)
+  /api/django/stock/tolerances-rapprochement-categorie   (backend/django_core/apps/stock/urls.py:63)
+  /api/django/stock/engagements-budget   (backend/django_core/apps/stock/urls.py:83)
