@@ -419,10 +419,36 @@ def valeur_option_avec(data):
                                  rest=_nombre_langue(rest, lg),
                                  eco=_nombre_langue(eco, lg))
               for lg, gabarit in TEXTES_OPTION_AVEC.items()}
-    return {"economie_annuelle_mad": round(eco, 2),
-            "retour_simple_ans": retour if retour and retour > 0 else None,
-            "capacite_utile_kwh": cap, "restitue_kwh_an": rest,
-            "textes": textes}
+    valeur = {"economie_annuelle_mad": round(eco, 2),
+              "retour_simple_ans": retour if retour and retour > 0 else None,
+              "capacite_utile_kwh": cap, "restitue_kwh_an": rest,
+              "textes": textes}
+    valeur.update(non_rentable_option_avec(avec))
+    return valeur
+
+
+def non_rentable_option_avec(avec):
+    """D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026) — clés ADDITIVES
+    de la valeur chiffrée quand l'étude (niveau 5) marque l'option « avec »
+    ``batterie_rentable: false`` : ``{batterie_rentable, retour_marginal_ans,
+    horizon_annees, textes_badge{fr,en,ar}, textes_non_rentable{fr,en,ar}}``
+    (le retour du supplément, remplacement batterie inclus, tel que l'étude
+    le sert) ; ``{}`` sinon (batterie rentable ou devis d'un niveau
+    antérieur : rien ne change)."""
+    from ..i18n_labels_ci import LIBELLES_CI
+    avec = _dict(avec)
+    motif = _dict(avec.get("motif_non_rentable"))
+    n = nombre_normalise(motif.get("retour_marginal_ans"))
+    h = nombre_normalise(motif.get("horizon_annees"))
+    if avec.get("batterie_rentable") is not False or not n or not h:
+        return {}
+    ligne = LIBELLES_CI["ci_opt_non_rentable_ligne"]
+    return {"batterie_rentable": False, "retour_marginal_ans": n,
+            "horizon_annees": int(h),
+            "textes_badge": dict(LIBELLES_CI["ci_opt_non_rentable"]),
+            "textes_non_rentable": {
+                lg: gabarit.format(n=_nombre_langue(n, lg, 1), h=int(h))
+                for lg, gabarit in ligne.items()}}
 
 
 def part_soir_option_avec(data):

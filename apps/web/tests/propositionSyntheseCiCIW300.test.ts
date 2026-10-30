@@ -533,6 +533,27 @@ describe('CPRW18 — comparaison sans / avec batterie', () => {
     expect(comparaisonBatterieCi(ob(undefined), 78000, 114000)).toBeNull();
     expect(comparaisonBatterieCi(null, 1, 1)).toBeNull();
   });
+  it('D-CI-BATTERIE-NON-RENTABLE : badge servi au titre « avec », raison servie sous les chiffres, chiffres inchangés', () => {
+    const NR = {
+      ...PLEIN,
+      valeur_chiffree: {
+        ...PLEIN.valeur_chiffree, batterie_rentable: false, retour_marginal_ans: 13.6, horizon_annees: 10,
+        textes_badge: { fr: 'non rentable sur les seuls critères financiers', en: 'not cost-effective on financial criteria alone', ar: 'AR' },
+        textes_non_rentable: { fr: 'Retour estimé 13,6 ans (remplacement batterie inclus)…', en: 'Estimated payback 13.6 years…', ar: 'AR2' },
+      },
+    };
+    const c = comparaisonBatterieCi(ob(NR), 78000, 114000)!;
+    const avec = c.colonnes[1]!;
+    expect(avec.lignes.map((l) => l.cle)).toEqual(['total_ttc', 'valeur', 'retour', 'non_rentable']);
+    expect(avec.lignes.find((l) => l.cle === 'retour')!.valeur).toContain('4,8');
+    expect(avec.titre.fr).toBe(`${LBL_COMPARAISON_CI.titre.fr} — non rentable sur les seuls critères financiers`);
+    expect(avec.titre.en).toContain('not cost-effective on financial criteria alone');
+    expect(avec.lignes.at(-1)!.textes!.fr).toContain('13,6');
+    // Rentable (ou drapeau absent) : rien ne change.
+    const plein = comparaisonBatterieCi(ob(PLEIN), 78000, 114000)!;
+    expect(plein.colonnes[1]!.titre).toEqual(LBL_COMPARAISON_CI.titre);
+    expect(plein.colonnes[1]!.lignes.map((l) => l.cle)).toEqual(['total_ttc', 'valeur', 'retour']);
+  });
   it('libellés = ceux du PDF (blocs.py LIBELLES_OPTION_AVEC, i18n_labels total_ttc)', () => {
     const py = readFileSync(fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/ci/blocs.py', import.meta.url)), 'utf-8');
     const enc = (t: string) => t.replace(/É/g, '&Eacute;').replace(/à/g, '&agrave;');

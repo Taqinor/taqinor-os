@@ -514,6 +514,25 @@ class OptionBatterieCITests(_Base):
     def _ids(self, devis, variante):
         return set(devis.lignes.filter(variante=variante).values_list('produit_id', flat=True))
 
+    def test_d_ci_batterie_non_rentable_montree_recommandee_sans(self):
+        """D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026, niveau 5) — des
+        modules hors de prix : aucun ne tient la règle marginale ; l'option
+        « avec » est quand même COMPOSÉE, marquée non rentable, et l'offre
+        réseau reste recommandée."""
+        from apps.stock.models import Produit
+        Produit.objects.filter(pk__in=[self.b5.id, self.b10.id, self.b16.id]).update(
+            prix_vente=Decimal('900000'))
+        devis = self._auto(self._boulangerie())
+        self.assertEqual(devis.etude_params.get('scenario'), 'Les deux (Sans + Avec)')
+        self.assertEqual(devis.etude_params.get('recommended_option'), 'Sans batterie')
+        self.assertTrue(self._ids(devis, 'avec') & {self.b5.id, self.b10.id, self.b16.id})
+        avec = devis.etude_params['etude_ci']['option_avec']
+        self.assertIs(avec['batterie_rentable'], False)
+        motif = avec['motif_non_rentable']
+        self.assertEqual(motif['horizon_annees'], 10)
+        self.assertGreater(motif['retour_marginal_ans'], 10)
+        self.assertTrue(avec['cout_vente_ht'] and avec['economie_annuelle_mad'])
+
     def test_boulangerie_deux_options_hybrides_bt_et_banque_dyness(self):
         devis = self._auto(self._boulangerie())
         self.assertEqual(devis.etude_params.get('scenario'), 'Les deux (Sans + Avec)')
@@ -988,6 +1007,107 @@ class OptionAvecDomineeTests(SimpleTestCase):
             self.assertIsNotNone(self._lancer(avec)['bloc'])
         from apps.ventes.domain.etude_ci_batterie import _option_dominee
         self.assertFalse(_option_dominee({'cout': None, 'economie': 1.0}, self._avec(2e6, 0.5)))
+
+
+class OptionAvecNonRentableTests(SimpleTestCase):
+    """D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026) — au niveau de règles
+    5, une option « avec » hors de la règle marginale (supplément sur « sans »
+    remboursé en plus de 10 ans) est SERVIE, marquée ``batterie_rentable:
+    false`` avec le retour du supplément (remplacement batterie compris) ; un
+    devis d'un niveau antérieur ne change pas."""
+
+    SANS = {'kwc': 260, 'cout': 928317.0, 'economie': 233192.0}
+    #: 4 modules à 30 000 HT, garantie 120 mois ⇒ remplacement en année 11.
+    LIGNES = [{'role': 'batterie_ci', 'quantite': 4, 'prix_unitaire_ht': '30000',
+               'prix_connu': True}]
+
+    def _avec(self, cout, economie):
+        return {'kwc': 199, 'cout': cout, 'economie': economie, 'batterie': {'produit': 1},
+                'bilan': {}, 'composition': {'lignes': list(self.LIGNES)},
+                'onduleurs': {'combinaison': []}}
+
+    def _lancer(self, avec, regles_3010b=True):
+        from apps.ventes.domain import etude_ci_batterie as m
+        resultat = {'evaluation': avec, 'prix_a_renseigner': [], 'hypotheses': [],
+                    'alertes': [], 'motif': None}
+        catalogue = {'batterie': {'hybrides': [1],
+                                  'batteries': [{'produit': 1, 'garantie_mois': 120}]}}
+        bloc = {'kwc': 199, 'cout_vente_ht': avec['cout'],
+                'economie_annuelle_mad': avec['economie'], 'retour_simple_ans': 6.4}
+        with mock.patch.object(m, 'batteries_compatibles', return_value=[1]), \
+                mock.patch.object(m, '_dimensionner', return_value=resultat) as dim, \
+                mock.patch.object(m, '_bloc', return_value=dict(bloc)):
+            sortie = m.option_avec_de_l_etude(catalogue, dict(self.SANS), choix='les_deux',
+                                              lead=None, regles_3010b=regles_3010b,
+                                              tva_recuperable={'valeur': 'inconnu'})
+        self.assertEqual(dim.call_args.kwargs['regles_3010b'], regles_3010b)
+        return sortie
+
+    def test_niveau_5_option_servie_marquee_chiffres_intacts(self):
+        # Supplément 371 683 / gain 26 808 = 13,9 ans > 10 ; 13,9 > 11 − 1 ⇒
+        # remplacement (4 × 30 000) compté : (371 683 + 120 000) / 26 808.
+        sortie = self._lancer(self._avec(1300000.0, 260000.0))
+        bloc = sortie['bloc']
+        self.assertIs(bloc['batterie_rentable'], False)
+        attendu = round((1300000.0 - 928317.0 + 120000.0) / (260000.0 - 233192.0), 1)
+        self.assertEqual(bloc['motif_non_rentable'],
+                         {'retour_marginal_ans': attendu, 'horizon_annees': 10,
+                          'code': 'retour_au_dela_horizon'})
+        self.assertEqual((bloc['cout_vente_ht'], bloc['economie_annuelle_mad'],
+                          bloc['retour_simple_ans']), (1300000.0, 260000.0, 6.4))
+        alerte = next(a for a in sortie['alertes'] if a['code'] == 'OPTION_BATTERIE_NON_COMPOSEE')
+        self.assertEqual(alerte['niveau'], 'info')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('%.1f ans' % attendu, alerte['message'])
+
+    def test_niveau_5_batterie_rentable_inchangee(self):
+        sortie = self._lancer(self._avec(1140483.0, 260000.0))      # 7,9 ans ≤ 10
+        self.assertNotIn('batterie_rentable', sortie['bloc'])
+        self.assertNotIn('motif_non_rentable', sortie['bloc'])
+        self.assertFalse([a for a in sortie['alertes']
+                          if a['code'] == 'OPTION_BATTERIE_NON_COMPOSEE'])
+
+    def test_niveau_4_aucun_marquage(self):
+        sortie = self._lancer(self._avec(1300000.0, 260000.0), regles_3010b=False)
+        self.assertNotIn('batterie_rentable', sortie['bloc'])
+        self.assertFalse(sortie['alertes'])
+
+    def test_dimensionner_meilleur_groupe_seulement_au_niveau_5(self):
+        from apps.ventes.domain import etude_ci_batterie as m
+        vus = []
+        with mock.patch('apps.ventes.moteur_ci.batterie.dimensionner_option_avec',
+                        lambda **kw: vus.append(kw) or {'evaluation': None}):
+            for niveau in (False, True):
+                m._dimensionner({'module': {'pmax_wc': 500}}, {'hybrides': []}, [],
+                                {'kwc': 10, 'cout': 1.0, 'economie': 1.0}, phase='tri',
+                                ps_kva=None, composer=lambda *a: {}, borne_toit=None,
+                                regles_3010b=niveau, production=[], taux_tva_pct=20)
+        self.assertIsNone(vus[0]['remplacement'])
+        ht, annee = vus[1]['remplacement']({'composition': {'lignes': list(self.LIGNES)}},
+                                           {'garantie_mois': 120})
+        self.assertEqual((ht, annee), (120000.0, 11))
+
+    def test_option_des_lignes_meme_verdict(self):
+        """Le rafraîchisseur (option des LIGNES, que lisent le PDF et
+        /proposition) porte le même verdict, sur l'option « sans » de
+        référence même quand l'étude ne la passe pas (onduleurs imposés)."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        imposee = {'kwc': 199, 'banque': {'produit': 1, 'garantie_mois': 120},
+                   'composition': {'lignes': list(self.LIGNES)}}
+        bloc = {'kwc': 199, 'cout_vente_ht': 1300000.0, 'economie_annuelle_mad': 260000.0,
+                'economie_flux': {'remplacements': [
+                    {'composant': 'batterie', 'annee': 11, 'montant_ht_mad': 120000.0}]}}
+        sorties = {}
+        for niveau in (True, False):
+            with mock.patch.object(m, '_option_imposee', return_value=dict(bloc)):
+                sorties[niveau] = m.option_avec_de_l_etude(
+                    {}, None, choix=None, lead=None, imposee=dict(imposee),
+                    reference_sans=dict(self.SANS), regles_3010b=niveau,
+                    tva_recuperable={'valeur': 'inconnu'})
+        self.assertIs(sorties[True]['bloc']['batterie_rentable'], False)
+        self.assertEqual(sorties[True]['bloc']['motif_non_rentable']['retour_marginal_ans'],
+                         round(491683.0 / 26808.0, 1))
+        self.assertNotIn('batterie_rentable', sorties[False]['bloc'])
 
 
 class RevisionApresVisiteCorc2Tests(_Base):

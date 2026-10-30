@@ -466,8 +466,63 @@ def monter_regle_marginale(n_depart, n_haut, pmax_wc, evaluer, horizon=None):
                                lambda e: e['cout'] or 0.0, lambda e: e['economie'] or 0.0)
 
 
+def retour_marginal_batterie(cout_sans, economie_sans, cout_avec, economie_avec,
+                             remplacement_ht=0.0, annee_remplacement=None):
+    """D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026) — années pour
+    rembourser le SUPPLÉMENT de l'option « avec » sur l'option « sans » :
+    (coût avec − coût sans) ÷ (économie avec − économie sans), le
+    remplacement de la batterie (``remplacement_ht`` l'année
+    ``annee_remplacement``, celui que le flux 25 ans modélise) compté dès que
+    le supplément n'est pas remboursé avant cette année-là. ``None`` sans gain
+    annuel. Aucune valeur de secours (aucun coût de coupure déclaré) n'entre
+    dans ce retour."""
+    gain = (_f(economie_avec) or 0.0) - (_f(economie_sans) or 0.0)
+    if gain <= 0:
+        return None
+    supplement = max(0.0, (_f(cout_avec) or 0.0) - (_f(cout_sans) or 0.0))
+    retour = supplement / gain
+    remplacement = _f(remplacement_ht) or 0.0
+    if remplacement > 0 and annee_remplacement and retour > float(annee_remplacement) - 1:
+        retour = (supplement + remplacement) / gain
+    return retour
+
+
+def cout_batterie_ht(composition, taux_tva_pct=None):
+    """HT des lignes ``batterie_ci`` d'une composition (prix de palier HT,
+    sinon prix unitaire HT) — le montant de SON remplacement dans le flux
+    (``economie_ci_options.flux_option_avec``). 0 sans ligne chiffrée."""
+    from apps.ventes.moteur_ci.composition import prix_palier_ht
+    total = 0.0
+    for ligne in (composition or {}).get('lignes') or []:
+        if ligne.get('role') != 'batterie_ci' or not ligne.get('prix_connu', True):
+            continue
+        unitaire = prix_palier_ht(ligne, taux_tva_pct)
+        unitaire = _f(ligne.get('prix_unitaire_ht')) if unitaire is None else float(unitaire)
+        total += (_f(ligne.get('quantite')) or 0.0) * (unitaire or 0.0)
+    return total
+
+
+def _meilleur_groupe(depart, evals, banques, remplacement):
+    """D-CI-BATTERIE-NON-RENTABLE — aucun groupe ne tient dans l'horizon :
+    parmi les groupes DÉJÀ évalués par la montée, celui au plus court retour
+    du supplément sur l'option « sans », remplacement de la batterie compris
+    (``remplacement(evaluation, banque)`` → ``(HT, année)``) ; égalité ⇒ le
+    moins de modules. ``None`` si aucun n'apporte de gain."""
+    candidats = []
+    for e in evals:
+        banque = banques[id(e)]
+        ht, annee = remplacement(e, banque)
+        retour = retour_marginal_batterie(depart['cout'], depart['economie'], e['cout'],
+                                          e['economie'], ht, annee)
+        if retour is not None:
+            candidats.append((round(retour, 6), int(banque['quantite']), e))
+    if not candidats:
+        return None
+    return min(candidats, key=lambda c: (c[0], c[1]))[2]
+
+
 def _monter_banque(modele, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kva, evaluer,
-                   cout_depart=None, economie_depart=None):
+                   cout_depart=None, economie_depart=None, remplacement=None):
     """RÈGLE MARGINALE SUR LA BANQUE (fondateur 30/10/2026) : pour
     q = 1, 2, 3… modules de ``modele``, l'option « avec » à q modules est
     composée en entier — champ porté jusqu'au remplissage de la banque
@@ -491,7 +546,12 @@ def _monter_banque(modele, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kva
     refus de suite, au toit (la banque s'arrête au plus grand nombre de
     modules que le champ maximal remplit encore : ``reduite``), à la fiche
     (``max_modules``) ou à la combinaison d'hybrides. Rend ``(evaluation,
-    banque, reduite)`` ou ``_sans_option`` nommé."""
+    banque, reduite)`` ou ``_sans_option`` nommé.
+
+    D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026, niveau de règles 5) :
+    ``remplacement`` fourni et aucun groupe dans l'horizon ⇒ le groupe au
+    meilleur retour (:func:`_meilleur_groupe`) au lieu d'aucune option — la
+    batterie est MONTRÉE, jamais recommandée ; ``None`` ⇒ l'ancien refus."""
     from apps.ventes.dimensionnement import ratio_pas_marginal
     from apps.ventes.moteur_ci.taille import (
         HORIZON_MARGINAL_CI, PALIERS_REGARDES, grimper_avec_regard,
@@ -536,6 +596,10 @@ def _monter_banque(modele, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kva
         depart, evals = evals[0], evals[1:]
     retenu = grimper_avec_regard(depart, evals, HORIZON_MARGINAL_CI,
                                  lambda x: x['cout'] or 0.0, lambda x: x['economie'] or 0.0)
+    if id(retenu) not in banques and remplacement is not None:
+        meilleur = _meilleur_groupe(depart, evals, banques, remplacement)
+        if meilleur is not None:
+            return meilleur, banques[id(meilleur)], reduite and meilleur is evals[-1]
     if id(retenu) not in banques:              # aucun module ne tient dans l'horizon
         premier = ratio_pas_marginal(depart['cout'] or 0.0, depart['economie'] or 0.0,
                                      evals[0]['cout'] or 0.0, evals[0]['economie'] or 0.0)
@@ -550,7 +614,8 @@ def _monter_banque(modele, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kva
 def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension,
                              revente_choisie, combiner, composer, valoriser, batteries, simuler,
                              hybrides=(), kwc_max=None, ps_kva=None, taux_tva_pct=None,
-                             production_de=None, cout_depart=None, economie_depart=None):
+                             production_de=None, cout_depart=None, economie_depart=None,
+                             remplacement=None):
     """L'option « avec batterie » : banque montée module par module par la
     règle marginale (:func:`_monter_banque`, fondateur 30/10/2026 —
     chaque module avec les panneaux qu'il tire pour se remplir, QJR612), puis,
@@ -560,7 +625,8 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     ``economie_depart`` : coût de vente HT et économie annuelle de l'option
     « sans » (le point n = 0 de la règle). Rend ``{evaluation, motif,
     prix_a_renseigner, alertes, hypotheses}`` — ``evaluation`` ``None`` ⇒
-    ``motif`` nommé (aucune option « avec »)."""
+    ``motif`` nommé (aucune option « avec »). ``remplacement`` : voir
+    :func:`_monter_banque` (D-CI-BATTERIE-NON-RENTABLE, niveau 5)."""
     if not pmax_wc or not kwc_depart:
         return _sans_option('module sans puissance publiée : option batterie non calculée')
     # R1 (P2) — ``production_de(kwc)`` : la production de la pose qui loge
@@ -597,7 +663,7 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     montee = _monter_banque(modele, n_bas=n_bas, n_haut=n_haut, pmax_wc=pmax_wc,
                             bilan_de=bilan_de, combiner=combiner, ps_kva=ps_kva,
                             evaluer=evaluer, cout_depart=cout_depart,
-                            economie_depart=economie_depart)
+                            economie_depart=economie_depart, remplacement=remplacement)
     if isinstance(montee, dict):
         return montee
     depart, banque, reduite = montee

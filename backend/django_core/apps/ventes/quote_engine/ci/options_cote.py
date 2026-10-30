@@ -147,6 +147,17 @@ def _titre_avec(d):
     return libelle(d, "ci_opt_avec_batterie", "Avec batterie")
 
 
+def _badge_non_rentable(d, cle):
+    """D-CI-BATTERIE-NON-RENTABLE — le badge sobre sous le titre de la carte
+    « Avec batterie » quand la valeur chiffrée la marque non rentable ; ''
+    sinon (rien ne change)."""
+    from .blocs import langue, textes_non_rentable
+    option = (d.get(f"{cle}_synthese") or {}).get("option_batterie") or {}
+    badge, _ligne = textes_non_rentable(option.get("valeur_chiffree"), langue(d))
+    return (f'<div style="font-weight:400;font-size:7pt;">{badge}</div>'
+            if badge else "")
+
+
 def cartes_options(d, cle, prefixe, fmt, fmt_mad, invest_ttc):
     """``<table>`` des deux cartes, ou '' sur un document mono-option."""
     if not deux_options(d, cle):
@@ -154,7 +165,8 @@ def cartes_options(d, cle, prefixe, fmt, fmt_mad, invest_ttc):
     cartes = (
         (libelle(d, "ci_opt_sans_batterie", "Sans batterie"),
          lignes_sans(d, cle, fmt, fmt_mad, invest_ttc)),
-        (_titre_avec(d), lignes_avec(d, cle, fmt, fmt_mad)))
+        (_titre_avec(d) + _badge_non_rentable(d, cle),
+         lignes_avec(d, cle, fmt, fmt_mad)))
     cellules = []
     for titre, lignes in cartes:
         rangees = "".join(

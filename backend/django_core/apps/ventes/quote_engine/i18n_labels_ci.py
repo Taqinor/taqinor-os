@@ -62,4 +62,18 @@ LIBELLES_CI = {
     'ci_fin_retour': {
         'fr': "Retour sur l'offre", 'en': 'Payback with the offer',
         'ar': 'مدة الاسترداد مع العرض'},
+    # D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026) — option « avec
+    # batterie » hors de la règle marginale : montrée, marquée, jamais
+    # recommandée. Texte brut (servi aussi à /proposition) : aucune entité.
+    'ci_opt_non_rentable': {
+        'fr': 'non rentable sur les seuls critères financiers',
+        'en': 'not cost-effective on financial criteria alone',
+        'ar': 'غير مربح وفق المعايير المالية وحدها'},
+    'ci_opt_non_rentable_ligne': {
+        'fr': 'Retour estimé {n} ans (remplacement batterie inclus), au-delà de '
+              "l'horizon de {h} ans retenu : l'option solaire seule est recommandée.",
+        'en': 'Estimated payback {n} years (battery replacement included), beyond '
+              'the {h}-year horizon used: the solar-only option is recommended.',
+        'ar': 'مدة استرداد تقديرية {n} سنوات (مع احتساب استبدال البطارية)، تتجاوز '
+              'أفق {h} سنوات المعتمد: يوصى بخيار الطاقة الشمسية وحدها.'},
 }

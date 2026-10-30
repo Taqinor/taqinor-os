@@ -352,8 +352,80 @@ def _alerte_dominee(sans, avec, alertes, choix):
         niveau='bloquant' if choix == 'avec' else 'alerte')
 
 
+def _annee_remplacement(fiche):
+    """L'année du remplacement de la batterie du flux 25 ans
+    (``economie_ci_options.annee_remplacement_batterie``), ``None`` au-delà de
+    l'horizon du flux (aucun remplacement compté)."""
+    from apps.ventes.economie_ci import HORIZON_CI_ANS
+    from apps.ventes.economie_ci_options import annee_remplacement_batterie
+    fiche = fiche or {}
+    annee = annee_remplacement_batterie(fiche.get('garantie_mois'),
+                                        fiche.get('cycles_publies'))['annee']
+    return annee if annee <= HORIZON_CI_ANS else None
+
+
+def _remplacement_moteur(taux_tva_pct):
+    """``remplacement(evaluation, banque)`` → ``(HT, année)`` pour le choix du
+    meilleur groupe (``moteur_ci.batterie._meilleur_groupe``)."""
+    from apps.ventes.moteur_ci.batterie import cout_batterie_ht
+    return lambda e, banque: (cout_batterie_ht(e.get('composition'), taux_tva_pct),
+                              _annee_remplacement(banque))
+
+
+def _remplacement_du_bloc(evaluation, bloc, fiche, taux_tva_pct):
+    """``(HT, année)`` du remplacement de la batterie : celui du flux 25 ans
+    servi (``economie_flux.remplacements``), sinon celui de la composition et
+    de la fiche."""
+    flux = (bloc or {}).get('economie_flux')
+    if isinstance(flux, dict):
+        r = next((r for r in flux.get('remplacements') or []
+                  if isinstance(r, dict) and r.get('composant') == 'batterie'), None)
+        return (_num(r.get('montant_ht_mad')) or 0.0, r.get('annee')) if r else (0.0, None)
+    from apps.ventes.moteur_ci.batterie import cout_batterie_ht
+    return (cout_batterie_ht((evaluation or {}).get('composition'), taux_tva_pct),
+            _annee_remplacement(fiche))
+
+
+def verdict_rentabilite(sans, evaluation, bloc, fiche=None, taux_tva_pct=None):
+    """D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026) — ``None`` quand
+    l'option « avec » tient la règle marginale (supplément sur « sans »
+    remboursé en ≤ ``taille.HORIZON_MARGINAL_CI``, la définition d'une
+    batterie RECOMMANDÉE) ou quand un chiffre manque ; sinon
+    ``{retour_marginal_ans, horizon_annees}`` — le retour du supplément,
+    remplacement de la batterie compris. Aucune valeur de secours."""
+    from apps.ventes.moteur_ci.batterie import retour_marginal_batterie
+    from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
+    bloc, evaluation = bloc or {}, evaluation or {}
+    cout_s, eco_s = _num((sans or {}).get('cout')), _num((sans or {}).get('economie'))
+    cout_a = _num(bloc.get('cout_vente_ht'))
+    cout_a = _num(evaluation.get('cout')) if cout_a is None else cout_a
+    eco_a = _num(bloc.get('economie_annuelle_mad'))
+    eco_a = _num(evaluation.get('economie')) if eco_a is None else eco_a
+    if None in (cout_s, eco_s, cout_a, eco_a):
+        return None
+    simple = retour_marginal_batterie(cout_s, eco_s, cout_a, eco_a)
+    if simple is None or simple <= HORIZON_MARGINAL_CI + 1e-9:
+        return None
+    ht, annee = _remplacement_du_bloc(evaluation, bloc, fiche, taux_tva_pct)
+    retour = retour_marginal_batterie(cout_s, eco_s, cout_a, eco_a, ht, annee)
+    return {'retour_marginal_ans': round(retour, 1), 'horizon_annees': HORIZON_MARGINAL_CI}
+
+
+def _marquer_non_rentable(sortie, verdict):
+    """Pose le verdict sur le bloc servi (clés ADDITIVES, absentes quand la
+    batterie est rentable) et l'alerte interne, informative."""
+    sortie['bloc'].update(batterie_rentable=False, motif_non_rentable=dict(
+        verdict, code='retour_au_dela_horizon'))
+    sortie['alertes'].append(_alerte('OPTION_BATTERIE_NON_COMPOSEE', (
+        'Option « avec batterie » montrée mais NON RENTABLE sur les seuls critères financiers : '
+        "supplément remboursé en %.1f ans (remplacement batterie inclus), au-delà de l'horizon "
+        "de %d ans ; l'option solaire seule reste recommandée (D-CI-BATTERIE-NON-RENTABLE)."
+        % (verdict['retour_marginal_ans'], verdict['horizon_annees'])), niveau='info'))
+    return sortie
+
+
 def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, composer,
-                  borne_toit, production_rasante=None, **noyau):
+                  borne_toit, production_rasante=None, regles_3010b=False, **noyau):
     from apps.ventes.etude_horaire import simuler_batterie_jour
     from apps.ventes.moteur_ci.batterie import (
         MAX_HYBRIDES_PARALLELE, dimensionner_option_avec,
@@ -378,6 +450,9 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
         # Fondateur 30/10/2026 — l'option « sans » est le point n = 0 de la
         # règle marginale des 7 ans sur la banque (coût de vente HT, économie).
         cout_depart=evaluation.get('cout'), economie_depart=evaluation.get('economie'),
+        # D-CI-BATTERIE-NON-RENTABLE (niveau 5) : aucun groupe dans l'horizon ⇒
+        # le groupe au meilleur retour, remplacement de la batterie compris.
+        remplacement=_remplacement_moteur(noyau.get('taux_tva_pct')) if regles_3010b else None,
         **noyau)
     if resultat.get('evaluation'):
         resultat['evaluation']['inclinaison_retenue_deg'] = inclinaison_pose(
@@ -590,6 +665,12 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     flux = {cle: contexte.pop(cle, None) for cle in ('tva_recuperable', 'flux_options')}
     flux['taux_tva_pct'] = contexte.get('taux_tva_pct')
     flux['regles_2710'] = contexte.pop('regles_2710', True)
+    # D-CI-BATTERIE-NON-RENTABLE — niveau 5 (``REGLES_RETOURS_3010B``) : une
+    # batterie hors de la règle marginale est montrée et marquée, jamais
+    # cachée ; ``reference_sans`` : l'option « sans » même quand
+    # ``evaluation`` n'est pas passée (onduleurs imposés par les lignes).
+    regles_3010b = contexte.pop('regles_3010b', True)
+    reference_sans = contexte.pop('reference_sans', None) or evaluation
     production_rasante = contexte.pop('production_rasante', None)
     flux['production_rasante'] = production_rasante
     if flux['tva_recuperable'] is None:
@@ -600,10 +681,13 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
             getattr(lead, 'tva_recuperable', None))
     if imposee is not None and imposee.get('recomposer'):
         imposee = _recomposer(catalogue, imposee, contexte)
-        return dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux)),
-                    prix_a_renseigner=list(imposee['composition'].get('prix_a_renseigner') or []))
+        return _imposee_verdict(dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux)),
+                                     prix_a_renseigner=list(
+                                         imposee['composition'].get('prix_a_renseigner') or [])),
+                                imposee, reference_sans, regles_3010b, flux['taux_tva_pct'])
     if imposee is not None:
-        return dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux)))
+        return _imposee_verdict(dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux))),
+                                imposee, reference_sans, regles_3010b, flux['taux_tva_pct'])
     choix = choix_batterie(choix, lead)
     if evaluation is None or choix == 'sans':
         return vide
@@ -611,7 +695,8 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     batteries = batteries_compatibles(bat.get('batteries'), bat.get('hybrides'))
     if bat.get('hybrides') and batteries:
         resultat = _dimensionner(catalogue, bat, batteries, evaluation,
-                                 production_rasante=production_rasante, **contexte)
+                                 production_rasante=production_rasante,
+                                 regles_3010b=regles_3010b, **contexte)
     else:
         resultat = {'evaluation': None, 'prix_a_renseigner': [], 'alertes': [], 'hypotheses': [],
                     'motif': 'aucun onduleur hybride basse tension ni batterie basse tension '
@@ -646,4 +731,16 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         # R1 (P2) — clé ADDITIVE : l'inclinaison de la pose qui loge CE champ
         # (30° / rasante 10°), seulement quand le toit plat sans pente la donne.
         sortie['bloc']['inclinaison_retenue_deg'] = evalue['inclinaison_retenue_deg']
-    return sortie
+    verdict = verdict_rentabilite(evaluation, evalue, sortie['bloc'], fiche,
+                                  flux['taux_tva_pct']) if regles_3010b else None
+    return _marquer_non_rentable(sortie, verdict) if verdict else sortie
+
+
+def _imposee_verdict(sortie, imposee, sans, regles_3010b, taux_tva_pct):
+    """L'option des LIGNES (rafraîchisseur) porte le MÊME verdict que l'étude
+    (niveau 5) : c'est elle que le PDF et ``/proposition`` lisent."""
+    if not regles_3010b or not sortie.get('bloc'):
+        return sortie
+    verdict = verdict_rentabilite(sans, imposee, sortie['bloc'], imposee.get('banque'),
+                                  taux_tva_pct)
+    return _marquer_non_rentable(sortie, verdict) if verdict else sortie
