@@ -28,7 +28,9 @@ test('VX55 : l\'instance axios porte un timeout de 20 s', () => {
 
 test('VX55 : ECONNABORTED déclenche un toast FR distinct — jamais le message générique', () => {
   const start = AXIOS_SRC.indexOf("if (!originalRequest.suppressErrorToast")
-  const block = AXIOS_SRC.slice(start, start + 900)
+  // ERR-AGNR40-IDEMPOTENCE-EN-VOL a ajouté l'exception 409 « idempotency_en_cours »
+  // avant le toast générique : la fenêtre couvre tout le bloc du pont de toasts.
+  const block = AXIOS_SRC.slice(start, start + 1500)
   assert.match(block, /error\.code === 'ECONNABORTED'/)
   assert.match(block, /La connexion a expiré/)
   // La branche ECONNABORTED doit sortir AVANT le toast générique (return).

@@ -310,4 +310,41 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
     await act(async () => { options.onHydrationTerminee?.() })
     await waitFor(() => expect(screen.getByRole('button', { name: /Enregistrer le calepinage/ })).toBeEnabled())
   })
+
+  // CI vague 10 (e2e CAL221/CALX386) — sans clé carte, le boot s'arrête sur « Carte
+  // indisponible » et `onHydrationTerminee` n'arrive jamais : Générer / Resynchroniser
+  // restaient inactifs pour toujours. Sans scène, rien n'est écrit depuis l'écran (le
+  // document stocké, `consumption` compris, reste intact) et le geste devis part au serveur.
+  it('carte absente → Resynchroniser actif sans hydratation, aucune écriture de layout', async () => {
+    const ctx = { ...CTX, carte: { available: false, maptilerKey: '', mapboxToken: null } }
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
+    api.get.mockResolvedValue({ data: [] }) // champs personnalisés de la fiche (indépendant de l'ordre)
+    calepinageApi.calepinages.syncDevis.mockResolvedValue({ data: { devis: 1 } })
+    rendreCalepinage(CTX.calepinage.id)
+    const bouton = await screen.findByTestId('cal-resynchroniser-devis')
+    await waitFor(() => expect(bouton).toBeEnabled())
+    expect(initRoofToolPro8).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /Enregistrer le calepinage/ })).toBeDisabled()
+    await userEvent.click(bouton)
+    await waitFor(() => expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).not.toHaveBeenCalled()
+  })
+
+  it('carte présente → Resynchroniser inactif jusqu’à `onHydrationTerminee` (la garde tient)', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
+    api.get.mockResolvedValue({ data: [] }) // champs personnalisés de la fiche (indépendant de l'ordre)
+    let options = null
+    initRoofToolPro8.mockImplementation((o) => {
+      options = o
+      o.onApiReady?.({ serializeLayout: vi.fn(() => ({ version: 2, zones: [] })), snapshot: vi.fn(() => null) })
+    })
+    rendreCalepinage(CTX.calepinage.id)
+    const bouton = await screen.findByTestId('cal-resynchroniser-devis')
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(bouton).toBeDisabled()
+    await act(async () => { options.onHydrationTerminee?.() })
+    await waitFor(() => expect(screen.getByTestId('cal-resynchroniser-devis')).toBeEnabled())
+  })
 })
