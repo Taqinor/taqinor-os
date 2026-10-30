@@ -172,3 +172,18 @@ ancrée au bas de la page 2 (`commercial/equip.py`), déborde d'une ligne depuis
 regroupement R3 (28/10) a ajouté la ligne « Supervision & comptage » ; `document_adaptatif`
 monte alors de palier jusqu'à céder ces cinq blocs. Correction à faire au moteur (la fiche doit
 suivre le tableau), pas dans l'édition — qui, elle, garde les cinq blocs en 3 pages.
+
+**Vérification du 30/10 (Workflow, 4 lentilles × opus + 2 contre-vérificateurs par constat, 32
+agents)** : 20 constats confirmés, 2 réfutés. Corrigés dans l'édition : légende « Réalisation »
+sous une photo du site (texte inventé, retiré), clés de graphique du catalogue (`ci_gr_*`) à la
+place de clés nouvelles, en-tête « Total HT » comme le moteur, Total TTC de la page 2 en Fraunces,
+trame posée sur la rangée (plus de raccord), bandeau des pages 2-3 réduit au logo (surtitre et
+référence imprimés une fois), icône de catégorie en or sur le marine, pied centré, titre sur une
+ligne, numéros d'étapes alignés, adresse de la proposition insécable, mentions ≥ 6,8 pt, titre
+« Garanties » au style des titres de page, restes de code arabe retirés (police, `ar()`,
+paramètres). Diagnostic du moteur affiné par la lentille « moteur » (reproduit deux fois en
+conteneur neuf) : au palier 0 le div vide `.c2-tot-sp` (vertical-align baseline) gonfle la rangée
+des totaux de ≈ 295 pt ; le document fait 4 pages ; `document_adaptatif` ne monte pas de palier
+mais passe directement à `_sans_graphiques` et cède les cédables de la page 1 aussi. Correction
+minimale au moteur : `vertical-align:top` sur `.c2-tot-sp` / `.c2-tot-box` dans
+`commercial/equip.py` (vérifié : 3 pages au palier 0, les cinq blocs rendus).

@@ -14,8 +14,7 @@ def build(ctx, m, j):
     d, p = m["d"], "kh"
     fmt, fmt_mad = m["fmt"], m["fmt_mad"]
     L = lambda cle, fr, **v: donnees.L(d, cle, fr, **v)
-    entete = commun.bande_entete(ctx, j, p, L("ci_kicker_etapes", "Votre projet, étape par étape"),
-                                 f'{L("ci_ref_devis", "Réf. devis")} {m["ref"]}')
+    entete = commun.bande_entete(ctx, j, p)
     steps = [(L("ci_etape_etude_t", "Étude &amp; validation"),
               L("ci_etape_etude_s", "Dimensionnement, visite technique et validation du projet.")),
              (L("ci_etape_installation_t", "Installation"),
@@ -35,7 +34,7 @@ def build(ctx, m, j):
             cel += (f'<div class="kh3-warr-c" style="{sep}"><div class="kh3-warr-v">{n}'
                     f'<span class="kh3-warr-u"> {u}</span></div><div class="kh3-warr-l">{lib}</div></div>')
         from ...ci.blocs import legende_garanties
-        garanties = (f'<div class="kh3-h2">{L("ci_garanties", "Garanties")}'
+        garanties = (f'<div class="kh-h2" style="margin-top:5mm;">{L("ci_garanties", "Garanties")}'
                      + f'</div><div class="kh3-warr"><div class="kh3-warr-row">{cel}</div>'
                      f'<div class="kh3-warr-l" style="margin-top:6px;">{legende_garanties(d)}</div></div>')
     echeancier = ""
@@ -63,10 +62,7 @@ def build(ctx, m, j):
 .kh3-sgap{{display:table-cell;width:9px;}}
 .kh3-step-t{{font-size:8.6pt;font-weight:600;color:{j['hero_bg']};margin-top:4px;}}
 .kh3-step-s{{font-size:7.2pt;color:{j['muted']};margin-top:3px;line-height:1.35;}}
-.kh3-h2{{font-family:{j['display']};font-weight:600;font-size:13pt;color:{j['hero_bg']};margin-top:5mm;}}
-.kh3-h2ar{{font-size:10.5pt;color:{j['muted']};margin-left:9px;font-weight:400;}}
 .kh3-h3{{font-size:9pt;font-weight:600;color:{j['hero_bg']};margin-top:4.5mm;}}
-.kh3-h3ar{{font-size:8.5pt;color:{j['muted']};margin-left:8px;font-weight:400;}}
 .kh3-warr{{margin-top:2.5mm;border:0.5pt solid {j['line']};border-radius:6px;background:{j['wash']};padding:9px 12px;}}
 .kh3-warr-row{{display:table;width:100%;border-spacing:0;table-layout:fixed;}}
 .kh3-warr-c{{display:table-cell;vertical-align:top;text-align:center;padding:0 6px;}}

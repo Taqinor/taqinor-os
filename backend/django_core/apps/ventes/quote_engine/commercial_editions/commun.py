@@ -31,15 +31,12 @@ POLICES = {
     "EdSans": [("IBMPlexSans-400.ttf", 400, "normal"),
                ("IBMPlexSans-500.ttf", 500, "normal"),
                ("IBMPlexSans-600.ttf", 600, "normal")],
-    "EdArabe": [("IBMPlexSansArabic-400.ttf", 400, "normal"),
-                ("IBMPlexSansArabic-600.ttf", 600, "normal")],
 }
 
 #: Plex Sans suit toujours Fraunces et Plex Arabic : il porte U+202F, le
 #: séparateur de milliers du moteur, qu'elles n'ont pas (mesuré fontTools).
 SANS = "'EdSans','IBM Plex Sans','DM Sans',system-ui,sans-serif"
 DISPLAY = "'EdDisplay','EdSans',Georgia,serif"
-ARABE = "'EdArabe','EdSans','Noto Sans Arabic',sans-serif"
 
 
 def fonts_css() -> str:
@@ -70,8 +67,7 @@ KHATAM = dict(_KHATAM, nom="khatam", paper="#FFFFFF", line="#D9DCE3",
 
 def jeton(palette: dict) -> dict:
     j = dict(palette)
-    j.update({"fonts_css": fonts_css(), "sans": SANS, "display": DISPLAY,
-              "arabe": ARABE})
+    j.update({"fonts_css": fonts_css(), "sans": SANS, "display": DISPLAY})
     return j
 
 
@@ -170,11 +166,8 @@ def css_commune(j: dict, p: str) -> str:
   color:{j['ink']};font-size:9pt;line-height:1.4;
   font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum" 1,"lnum" 1;}}
 .{p}-root *{{box-sizing:border-box;}}
-.{p}-ar{{font-family:{j['arabe']};direction:rtl;unicode-bidi:isolate;letter-spacing:0;line-height:1.55;}}
 .{p}-kicker{{font-size:7pt;letter-spacing:.14em;text-transform:uppercase;color:{j['muted']};font-weight:500;}}
-.{p}-kicker .{p}-ar{{text-transform:none;letter-spacing:0;font-size:8pt;margin-left:7px;font-weight:400;}}
 .{p}-h2{{font-family:{j['display']};font-weight:400;font-size:15pt;line-height:1.2;color:{j['ink']};}}
-.{p}-h2 .{p}-ar{{font-size:11.5pt;color:{j['muted']};margin-left:9px;}}
 .{p}-h3{{font-size:8.6pt;font-weight:600;color:{j['ink']};}}
 .{p}-cap{{font-size:7.2pt;color:{j['muted']};line-height:1.4;}}
 .{p}-lab{{font-size:7.6pt;color:{j['muted']};margin-top:3px;line-height:1.35;}}
@@ -223,12 +216,11 @@ def css_commune(j: dict, p: str) -> str:
 .{p}-tot-tbl tr.ttc td{{border-top:1pt solid {j['ink']};padding-top:7px;font-size:13pt;color:{j['ink']};font-weight:600;}}
 .{p}-tot-tbl tr.ttc td .{p}-mad{{color:{j['ink']};}}
 .{p}-tot-tbl tr.ttc td:first-child{{font-size:8.6pt;font-weight:500;padding-top:10px;}}
-.{p}-tot-tbl tr.ttc td .{p}-ar{{font-size:8pt;font-weight:400;color:{j['muted']};margin-left:6px;}}
 /* Rangée Total TTC sur bande marine tramée (Signature) */
-.{p}-tot-tbl tr.ttcm td{{background-color:{j['hero_bg']};{css_motif(j['motif_8'], 10)}color:{j['on_hero']};padding:8px 8px;font-size:13pt;font-weight:600;border-top:0.8pt solid {j['or']};}}
+.{p}-tot-tbl tr.ttcm{{background-color:{j['hero_bg']};{css_motif(j['motif_8'], 10)}}}
+.{p}-tot-tbl tr.ttcm td{{color:{j['on_hero']};padding:8px 8px;font-size:13pt;font-weight:600;border-top:0.8pt solid {j['or']};}}
 .{p}-tot-tbl tr.ttcm td:first-child{{font-size:8.6pt;font-weight:500;padding-top:11px;color:{j['on_hero']};}}
 .{p}-tot-tbl tr.ttcm td:last-child{{color:{j['on_hero']};}}
-.{p}-tot-tbl tr.ttcm td .{p}-ar{{font-size:8pt;font-weight:400;color:{j['on_hero_2']};margin-left:6px;}}
 .{p}-tot-tbl tr.ttcm td .{p}-mad{{color:{j['or_texte']};}}
 .{p}-mad{{display:inline-block;width:8mm;text-align:left;margin-left:3px;font-size:7.5pt;font-weight:500;color:{j['muted']};}}
 .{p}-big{{font-family:{j['display']};font-weight:300;letter-spacing:-.01em;line-height:1;color:{j['ink']};}}
@@ -285,18 +277,17 @@ def esc(v) -> str:
     return html.escape(str(v or ""), quote=True)
 
 
-def kicker(texte: str, j: dict, p: str, ar_txt: str = "") -> str:
-    """Capitale de section ouverte par le losange or (+ arabe du catalogue)."""
-    ar_html = f'<span class="{p}-ar">{ar_txt}</span>' if ar_txt else ""
-    return f'<div class="{p}-kicker">{losange(j["or"])}{texte}{ar_html}</div>'
+def kicker(texte: str, j: dict, p: str) -> str:
+    """Capitale de section ouverte par l'étoile or."""
+    return f'<div class="{p}-kicker">{losange(j["or"])}{texte}</div>'
 
 
-def bande_entete(ctx, j: dict, p: str, rubrique: str, ref: str, hauteur_mm: float = 16,
-                 logo_mm: float = 22) -> str:
-    """Le bandeau d'en-tête des pages intérieures."""
+def bande_entete(ctx, j: dict, p: str, hauteur_mm: float = 16) -> str:
+    """Le bandeau d'en-tête des pages intérieures : le logo seul (le surtitre
+    et la référence ne sont imprimés qu'une fois, comme sur le devis actuel)."""
     return (f'<div class="{p}-bande" style="height:{hauteur_mm:g}mm;"><div class="{p}-bande-in" style="height:{hauteur_mm:g}mm;">'
             f'<div class="{p}-bande-l">{logo(ctx, "entete", sombre=True)}</div>'
-            f'<div class="{p}-bande-r"><b>{rubrique}</b>&nbsp;&nbsp;·&nbsp;&nbsp;{ref}</div></div></div>')
+            f'<div class="{p}-bande-r"></div></div></div>')
 
 
 # ── Fragments ───────────────────────────────────────────────────────────────
@@ -337,24 +328,22 @@ def tableau_equipements(m: dict, p: str, j: dict, L, *, simple=False, resume=Fal
                      f'color:{j["muted"]};">{mention}</td></tr>')
     if simple:
         head = (f'<tr><th>{L("designation", "Désignation")}</th><th class="r">{L("qte", "Qté")}</th>'
-                f'<th class="r">{L("total_ht", "Total HT")} (MAD)</th></tr>')
+                f'<th class="r">{L("total_ht", "Total HT")}</th></tr>')
     else:
         head = (f'<tr><th>{L("designation", "Désignation")}</th><th class="r">{L("qte", "Qté")}</th>'
                 f'<th class="r">{L("pu_ht", "P.U. HT")}</th><th class="r">{L("ci_tva_pct", "TVA %")}</th>'
-                f'<th class="r">{L("total_ht", "Total HT")} (MAD)</th></tr>')
+                f'<th class="r">{L("total_ht", "Total HT")}</th></tr>')
     return f'<table class="{p}-tbl c{ncols}">{head}<tr class="orr"><td colspan="{ncols}"></td></tr>{rows}</table>'
 
 
-def chaine_totaux(m: dict, p: str, L, *, ttc_marine=False, ar_ttc="",
-                  ttc_display=False) -> str:
+def chaine_totaux(m: dict, p: str, L, *, ttc_marine=False, ttc_display=False) -> str:
     t = m["totaux"]
     remise = (f'<tr><td>{L("remise", "Remise")}{t["ancre_remise"]}</td>'
               f'<td>− {t["remise"]}<span class="{p}-mad">MAD</span></td></tr>' if t["remise"] else "")
     arrondi = (f'<tr><td>{L("arrondi", "Arrondi commercial")}{t["ancre_arrondi"]}</td>'
                f'<td>− {t["arrondi"]}<span class="{p}-mad">MAD</span></td></tr>' if t["arrondi"] else "")
-    ar_html = f'<span class="{p}-ar">{ar_ttc}</span>' if ar_ttc else ""
     cls = "ttcm" if ttc_marine else "ttc"
-    montant = (f'<span style="font-family:{DISPLAY};font-weight:400;font-size:18pt;letter-spacing:-.01em;">{t["ttc"]}</span>'
+    montant = (f'<span style="font-family:{DISPLAY};font-weight:600;font-size:16pt;letter-spacing:-.01em;">{t["ttc"]}</span>'
                if ttc_display else t["ttc"])
     mad = f'<span class="{p}-mad">MAD</span>'
     return (f'<div class="{p}-tot"><div class="{p}-tot-sp"></div>'
@@ -363,7 +352,7 @@ def chaine_totaux(m: dict, p: str, L, *, ttc_marine=False, ar_ttc="",
             f'{remise}{arrondi}'
             f'<tr><td>{L("total_ht", "Total HT")}{t["ancre_ht_net"]}</td><td>{t["ht_net"]}{mad}</td></tr>'
             f'<tr><td>{L("tva", "TVA")}{t["ancre_tva"]}</td><td>{t["tva"]}{mad}</td></tr>'
-            f'<tr class="{cls}"><td>{L("total_ttc", "Total TTC")}{ar_html}{t["ancre_ttc"]}</td>'
+            f'<tr class="{cls}"><td>{L("total_ttc", "Total TTC")}{t["ancre_ttc"]}</td>'
             f'<td>{montant}{mad}</td></tr>'
             f'</table></div></div>')
 
@@ -473,8 +462,7 @@ def conditions_bloc(m: dict, p: str, j: dict) -> str:
             f'<ul class="{p}-cap" style="margin:3px 0 0 0;padding-left:11px;color:{j["ink"]};font-size:7.4pt;">{items}</ul>')
 
 
-def bon_pour_accord(m: dict, p: str, j: dict, L, haut_mm=22, cartouche=False,
-                    ar_titre="", ar_signature="", ar_cachet="") -> str:
+def bon_pour_accord(m: dict, p: str, j: dict, L, haut_mm=22, cartouche=False) -> str:
     """Le bloc d'acceptation (CIQ320) : filet maître, ou cartouche à double
     filet (Signature). Aucun emblème : jamais un faux cachet."""
     a = m["acceptation"]
@@ -490,19 +478,15 @@ def bon_pour_accord(m: dict, p: str, j: dict, L, haut_mm=22, cartouche=False,
     cadre = (f'display:table-cell;width:50%;vertical-align:top;border:0.5pt solid {j["line"]};'
              f'padding:3px 5px;font-size:6.5pt;color:{j["muted"]};')
 
-    def _ar(t):
-        return f' <span class="{p}-ar" style="font-size:7pt;">{t}</span>' if t else ""
     cadres = (f'<div style="display:table;width:100%;border-spacing:3mm 0;margin:6px -3mm 0 -3mm;">'
-              f'<div class="{p}-sig" style="{cadre}">{a["signature"]}{_ar(ar_signature)}</div>'
-              f'<div class="{p}-sig" style="{cadre}">{a["cachet"]}{_ar(ar_cachet)}</div></div>'
+              f'<div class="{p}-sig" style="{cadre}">{a["signature"]}</div>'
+              f'<div class="{p}-sig" style="{cadre}">{a["cachet"]}</div></div>'
               f'<style>.{p}-sig{{height:{haut_mm}mm;}}</style>')
     signe = ""
     if a["accepte_nom"] and a["date_acceptation"]:
         signe = (f'<div style="margin-top:6px;font-size:10pt;font-weight:600;">{a["accepte_nom"]}</div>'
                  f'<div class="{p}-cap">{L("ci_le_date", "Le {date}", date=a["date_acceptation"])}</div>')
-    titre_ar = (f'<span class="{p}-ar" style="text-transform:none;letter-spacing:0;font-size:8.5pt;'
-                f'font-weight:600;margin-left:7px;">{ar_titre}</span>' if ar_titre else "")
-    gauche = (f'<div class="{p}-kicker">{a["titre"]} — {a["pour"]}{titre_ar}</div>'
+    gauche = (f'<div class="{p}-kicker">{a["titre"]} — {a["pour"]}</div>'
               f'<div style="font-size:7.4pt;line-height:1.35;">{cases}{lignes}{cadres}'
               f'<div style="margin-top:4px;font-style:italic;color:{j["muted"]};">{a["mention"]}</div>{signe}</div>')
     droite = (f'<div class="{p}-kicker">{L("ci_pour", "Pour {marque}", marque=m["brand"])}</div>'

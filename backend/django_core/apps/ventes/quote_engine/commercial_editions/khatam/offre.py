@@ -15,10 +15,9 @@ def build(ctx, m, j):
     d, p = m["d"], "kh"
     fmt, fmt_mad = m["fmt"], m["fmt_mad"]
     L = lambda cle, fr, **v: donnees.L(d, cle, fr, **v)
-    entete = commun.bande_entete(ctx, j, p, L("ci_votre_installation", "Votre installation"),
-                                 f'{L("ci_ref_devis", "Réf. devis")} {m["ref"]}')
+    entete = commun.bande_entete(ctx, j, p)
     tableau = commun.tableau_equipements(m, p, j, L)
-    totaux = commun.chaine_totaux(m, p, L, ttc_marine=True)
+    totaux = commun.chaine_totaux(m, p, L, ttc_marine=True, ttc_display=True)
     note = (f'<div class="kh2-note"><b>{L("ci_note", "Note")}</b>{m["note_client"]}</div>' if m["note_client"] else "")
     from ...clauses_cgv import bloc_clauses_html
     clauses = bloc_clauses_html(d.get("clauses_cgv"), couleur_titre=j["hero_bg"], couleur_texte=j["ink"], langue=m["langue"])

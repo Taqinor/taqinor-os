@@ -79,7 +79,7 @@ html, body {{ font-family:{j['sans']}; color:{j['ink']}; -weasy-hyphens:none; fo
 .page:last-child {{ page-break-after:auto; }}
 .foot.ed-foot {{ position:absolute; left:0; right:0; bottom:0; display:table; width:100%;
   padding:0 {j.get('marge', '20mm')} 0 {j.get('marge_g', '20mm')}; font-size:7pt; }}
-.foot.ed-foot > div {{ display:table-cell; vertical-align:middle; }}
+.foot.ed-foot > div {{ display:table-cell; vertical-align:middle; height:12mm; }}
 .foot.ed-foot > div + div {{ text-align:right; }}
 .foot.ed-foot-plein {{ height:12mm; background:{j['hero_bg']}; {css_motif(j['motif_8'], 14)} color:{j['on_hero']};
   border-top:0.6pt solid {j['or']}; }}
