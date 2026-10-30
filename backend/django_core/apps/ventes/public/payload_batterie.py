@@ -160,7 +160,7 @@ def _residuel_falaise_publiable(dimensionnement, devis) -> bool:
         _config_vendue(devis))
 
 
-def _balayage_stockage_publique(dimensionnement, devis=None):
+def _balayage_stockage_publique(dimensionnement, devis=None, ttc_offert=None):
     """ORDRE FONDATEUR (24/08/2026, soir) — sous-ensemble PUBLIC, client-safe,
     du mini-balayage de stockage (``apps.ventes.dimensionnement`` DIM2) :
     ``dimensionnement.recommandation_avec.balayage_stockage`` (les paliers de
@@ -219,6 +219,7 @@ def _balayage_stockage_publique(dimensionnement, devis=None):
         return valeur
 
     paliers_public = []
+    bruts = []
     for palier in reco.get('balayage_stockage') or []:
         if not isinstance(palier, dict):
             continue
@@ -243,6 +244,9 @@ def _balayage_stockage_publique(dimensionnement, devis=None):
             payback = payback_publiable(
                 cout_ttc, _nombre_positif_ou_none(palier.get('economie_mad')),
                 stockage=True)['payback_years']
+        brut = palier.get('cout_ttc')
+        bruts.append(float(brut) if isinstance(brut, (int, float))
+                     and not isinstance(brut, bool) and brut > 0 else None)
         paliers_public.append({
             'nb_packs': nb_packs,
             'capacite_kwh': capacite,
@@ -251,6 +255,12 @@ def _balayage_stockage_publique(dimensionnement, devis=None):
             'payback_annees': payback,
             'economie_mad': _nombre_positif_ou_none(palier.get('economie_mad')),
         })
+
+    if devis is not None and ttc_offert is not None:
+        from apps.ventes.domain.regles_calcul import calcul_corrige
+        if calcul_corrige(devis):
+            _ancrer_paliers_sur_le_devis(paliers_public, bruts, devis,
+                                         ttc_offert)
 
     refuse_public = None
     refuse = reco.get('stockage_refuse')
@@ -267,6 +277,61 @@ def _balayage_stockage_publique(dimensionnement, devis=None):
     if not paliers_public and refuse_public is None:
         return None
     return {'paliers': paliers_public, 'refuse': refuse_public}
+
+
+def _ancrer_paliers_sur_le_devis(paliers, bruts, devis, ttc_offert):
+    """ERR-AMOT59-CURSEUR-STOCKAGE-PRIX (sonde C-AMOT-035) — le palier de la
+    quantité OFFERTE publie le TTC du devis, les autres en sont dérivés par
+    différence.
+
+    POURQUOI. Chaque palier du balayage est chiffré sur une composition
+    CATALOGUE ; × remise et arrondi-100 (``prix_client_composition``), le
+    palier des packs réellement au devis ne retombait pas sur
+    ``totaux_avec.ttc`` (démo 1119 : 50 800 contre 50 700) — le client lisait
+    deux prix pour le même kit. Désormais :
+
+    * palier dont ``nb_packs`` = packs batterie de l'option « avec » du devis
+      (``banque_batterie_du_devis``, la lecture du curseur COUVBAT) →
+      ``ttc_offert`` tel quel ;
+    * tout autre palier → ``ttc_offert + facteur × (coût catalogue du palier −
+      coût catalogue du palier offert)``, arrondi au dirham : seul l'ÉCART de
+      composition est chiffré au catalogue, remisé par le facteur RÉEL du
+      devis (``facteur_remise_du_devis``) — jamais un second arrondi-100 qui
+      décalerait la référence ;
+    * payback republié sur ce prix (``payback_publiable``, AMOT29).
+
+    Aucun palier offert identifiable (option sans batterie, packs absents du
+    balayage, coût illisible) ⇒ paliers inchangés (prix AMOT59). Modifie
+    ``paliers`` en place ; ne lève jamais."""
+    try:
+        total = float(ttc_offert)
+    except (TypeError, ValueError):
+        return
+    if not math.isfinite(total) or total <= 0 or not paliers:
+        return
+    from ..horaire.batterie_lignes import banque_batterie_du_devis
+    banque = banque_batterie_du_devis(devis, option='avec')
+    if not banque:
+        return
+    offerts = [i for i, p in enumerate(paliers)
+               if p.get('nb_packs') == banque.get('nb_packs')]
+    if len(offerts) != 1 or bruts[offerts[0]] is None:
+        return
+    from apps.ventes.domain.dimensionnement_devis import (
+        facteur_remise_du_devis)
+    from apps.ventes.quote_engine.pricing import payback_publiable
+    facteur = facteur_remise_du_devis(devis)
+    brut_offert = bruts[offerts[0]]
+    for i, (palier, brut) in enumerate(zip(paliers, bruts)):
+        if brut is None:
+            continue
+        cout = (total if i == offerts[0]
+                else float(round(total + facteur * (brut - brut_offert))))
+        if cout <= 0:
+            continue
+        palier['cout_ttc'] = cout
+        palier['payback_annees'] = payback_publiable(
+            cout, palier.get('economie_mad'), stockage=True)['payback_years']
 
 
 def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
