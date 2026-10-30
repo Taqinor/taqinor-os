@@ -1,0 +1,8 @@
+== C-AMOT-016 (sha 673ec3f92)
+attendu : P3.6 — devis final d'un SECOND locataire identifié (profil nom + ICE, rib/banque/e-mail/téléphone vides ; la société 43 de la charte n'existe pas sur cette base : société neuve créée dans la transaction, utilisateur Directeur de cette société) : /proposal résidentiel 3 p. devis_final, legacy include_etude + devis_final, une-page devis_final -> 0 occurrence (insensible à la casse) de « taqinor », du RIB 0002720029379418, « Saham », « 61 85 04 10 », « Virement bancaire » ; témoin : la société démo garde son propre bloc
+observé : Generating charts...
+WeasyPrint rendered: /tmp/tmpheachg25.pdf
+WeasyPrint rendered: /tmp/tmpx5m79v8y.pdf
+{"residentiel_3p_final": {"http": 200, "pages": 3, "interdits_trouves": {}, "nom_societe_imprime": true}, "legacy_etude_final": {"http": 200, "pages": 3, "interdits_trouves": {}, "nom_societe_imprime": true}, "onepage_final": {"http": 200, "pages": 1, "interdits_trouves": {}, "nom_societe_imprime": true}, "temoin_demo": {"http": 200, "pages": 3, "nom_profil": "TAQINOR Démo", "nom_profil_imprime": true, "rib_profil_imprime": false}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

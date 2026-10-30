@@ -1,0 +1,6 @@
+== C-AMOT-017 (sha 673ec3f92)
+attendu : P3.6 — échéancier 50/50 typé (acompte 50 / solde 50) : payment_terms = {acompte 50, materiel 0, solde 50} (somme 100) ; cases du « Devis final » (montants_tranches) = 50/50 ; PDF résidentiel 3 p. devis_final et une-page devis_final : « 50% » imprimé, aucune « réception du matériel » ni « 60% » ; page publique (/proposal data, conditions) = mêmes puces que le PDF, sans créneau matériel
+observé : WeasyPrint rendered: /tmp/tmpovsjyf6k.pdf
+{"payment_terms": {"acompte": 50, "materiel": 0, "solde": 50}, "cases": {"deux_cases": true, "pct_a": 50}, "residentiel_final": {"http": 200, "pages": 3, "cinquante": true, "reception_materiel": false, "soixante": false, "lignes_paiement": ["commande : 50% · 50% après la mise en marche · TVA 20 %", "+ acompte 50%"]}, "onepage_final": {"http": 200, "pages": 1, "cinquante": true, "reception_materiel": false, "soixante": false, "lignes_paiement": ["· Acompte à la commande : 50%", "· 50% après la mise en marche"]}, "page_publique": {"http": 200, "conditions": ["Validité de l’offre : jusqu’au 29/11/2026", "Acompte à la commande : 50%", "50% après la mise en marche", "TVA 20 % appliquée sur l'ensemble des équipements et travaux.", "Tarifs de référence : barème ONEE/SRM"]}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

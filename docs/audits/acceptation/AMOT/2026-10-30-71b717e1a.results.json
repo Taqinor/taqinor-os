@@ -1,0 +1,55 @@
+{
+  "sha": "71b717e1afc6309baaaca751457829f7bca76929",
+  "date": "2026-10-30",
+  "groupe": "AMOT",
+  "verdict": "FAIL",
+  "couvre": [
+    "AMOT21",
+    "AMOT59"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-AMOT-019",
+      "taches": [
+        "AMOT21"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-019.txt — ÉCART P3.1 BAT-DIFF : libelle_avec « Hybride, batterie plus tard » imprimé sur les 3 surfaces, 0 « Stockage », MAIS le legacy étude + devis final imprime « Autoconsommation retenue : 60 % sans batterie · 60 % avec batterie. » (etude_restitution.py:306 / i18n_labels res 2481, littéral non branché sur libelle_avec) contre la clause « 0 occurrence de « avec batterie » pour l'option 2 » -> ERR-AMOT21-HYPOTHESE-AVEC-BATTERIE"
+    },
+    {
+      "id": "C-AMOT-035",
+      "taches": [
+        "AMOT59"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-035.txt — ÉCART P2.4 curseur remisé : la remise s'applique (×0,9, arrondi 100) et le payback = payback_publiable sur ce prix, MAIS à la quantité offerte le palier ≠ totaux_avec.ttc : 1119 50 800 vs 50 700 (+100), 1121 335 700 vs 336 200 (−500) (prix catalogue × remise ≠ prix des lignes du devis) ; l'échelle (paliers_batterie) recompose un autre champ (7 vs 8 panneaux), non comparable -> ERR-AMOT59-PALIER-OFFERT"
+    }
+  ]
+}

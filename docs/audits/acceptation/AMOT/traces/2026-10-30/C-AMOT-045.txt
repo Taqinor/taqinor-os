@@ -1,0 +1,5 @@
+== C-AMOT-045 (sha 673ec3f92)
+attendu : P3.3 — devis INDUSTRIEL démo portant une simulation PÉRIMÉE (etude_params.simulation : champ 120 kWc, P50 990 000, P90 987 654, posée dans la transaction) : /proposal industriel 4 p. sans « 987 654 » (P90 omise) ; la même simulation rendue cohérente (kWc du devis, P50 = production imprimée) -> P90 imprimée
+observé : {"devis": {"reference": "DEV-202610-0101", "kwc": 205.19, "production_imprimee": 314403, "pages_sans_simulation": 4}, "perimee": {"http": 200, "pages": 4, "p90_987654_imprimee": false, "lignes_p90": []}, "coherente": {"http": 200, "pages": 4, "p90_attendue": 282963, "p90_imprimee": true, "lignes_p90": ["Production à 90 % de probabilité (P90) : 282 963 kWh/an"]}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

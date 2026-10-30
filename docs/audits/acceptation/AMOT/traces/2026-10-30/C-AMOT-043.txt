@@ -1,0 +1,5 @@
+== C-AMOT-043 (sha 673ec3f92)
+attendu : P3.1 — devis deux options ancré sur 12 factures, recommended_option = « Sans batterie » : data.recommended = Sans ; PDF résidentiel 3 p. : la pastille « Recommandé » est sur l'option 1 (avant « OPTION 2 »), « Pourquoi nous la recommandons : l'investissement… », pas « vos soirées et les coupures », la mini-pastille page 3 suit la case « Sans batterie » ; témoin « Avec » : pastille après « OPTION 2 »
+observé : {"Sans batterie": {"recommended_serveur": "Sans batterie", "http": 200, "pages": 3, "pastille_avant_option2": true, "nb_pastilles_p1": 1, "pourquoi": ["Pourquoi nous la recommandons : l'investissement le plus court à"], "soirees_coupures": false, "mini_p3_apres_sans_avant_avec": true}, "Avec batterie": {"recommended_serveur": "Avec batterie", "http": 200, "pages": 3, "pastille_avant_option2": false, "nb_pastilles_p1": 1, "pourquoi": ["Pourquoi nous la recommandons : vos soirées et les coupures"], "soirees_coupures": true, "mini_p3_apres_sans_avant_avec": false}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

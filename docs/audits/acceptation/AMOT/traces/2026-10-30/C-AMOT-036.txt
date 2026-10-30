@@ -1,0 +1,5 @@
+== C-AMOT-036 (sha 673ec3f92)
+attendu : P3.7 — facture émise de la société démo avec une retenue de garantie de 500 non libérée (posée dans la transaction) : GET /factures/<id>/lettre-relance-premium/?niveau=3 -> 200, le PDF réclame l'EXIGIBLE (reste dû − 500, au centime) et non le reste dû ; même montant que recouvrement.montant_exigible (e-mail / rappel planifié) ; une facture payée -> 409 « Aucune somme exigible », sans PDF
+observé : {"facture": {"reference": "FAC-202610-0001", "statut": "emise", "montant_du": "96900.00", "montant_exigible_propriete": "96400.00", "montant_exigible_recouvrement": "96400.00"}, "lettre": {"http": 200, "exigible_imprime": true, "reste_du_imprime": false, "lignes_montant": ["96 400,00 MAD"]}, "facture_payee": {"reference": "FAC-DEMO-0001", "http": 409, "detail": "Aucune somme exigible sur cette facture.", "content_type": "application/json"}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0
