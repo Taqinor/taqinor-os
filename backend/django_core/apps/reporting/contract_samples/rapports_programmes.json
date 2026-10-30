@@ -1,0 +1,42 @@
+{
+  "endpoint": "GET /api/django/reporting/saved-reports/",
+  "pourquoi": "AANA45 / D-AANA-036-BRANCHER (C-AANA-036, PACT10) — contrat PARTAGE de l'ecran « Envois programmes » (/reporting/envois-programmes), moitie « rapports programmes ». Un envoi programme est un SavedReport (SavedReportSerializer) : `exemple` est UNE ligne de la liste paginee (les champs `schedule`, `heure_envoi`, `jour_du_mois`, `canal`, `recipients`, `destinataires_whatsapp` pilotent l'envoi automatique) ; le meme corps sert la creation/modification (POST/PATCH, champs en lecture seule ignores). `choix` reprend les enumerations du modele : le test backend les egale aux choix du modele, le test front les egale a ses listes deroulantes. Les erreurs de validation arrivent par champ ({champ: [message]}). Pendant : envois_rapports.json (historique de diffusion, lecture seule).",
+  "choix": {
+    "target_kind": [
+      ["sales", "Ventes"],
+      ["stock", "Stock"],
+      ["service", "Service"],
+      ["dashboard", "Tableau de bord"],
+      ["query", "Requête sauvegardée"]
+    ],
+    "schedule": [
+      ["none", "Aucune"],
+      ["daily", "Quotidien"],
+      ["weekly", "Hebdomadaire"],
+      ["monthly", "Mensuel"]
+    ],
+    "canal": [
+      ["email", "Email"],
+      ["whatsapp", "WhatsApp"]
+    ]
+  },
+  "exemple": {
+    "id": 7,
+    "name": "Ventes du lundi",
+    "definition": {},
+    "target_kind": "sales",
+    "target_kind_label": "Ventes",
+    "cible_id": null,
+    "schedule": "weekly",
+    "schedule_label": "Hebdomadaire",
+    "heure_envoi": 8,
+    "jour_du_mois": 1,
+    "canal": "email",
+    "recipients": "direction@exemple.ma",
+    "destinataires_whatsapp": "",
+    "pinned": false,
+    "last_sent_at": "2026-10-26T07:00:00Z",
+    "created_at": "2026-10-01T09:00:00Z",
+    "updated_at": "2026-10-26T07:00:00Z"
+  }
+}

@@ -406,6 +406,8 @@
     badges:inconnu, count:nombre, tuiles:inconnu
 - frontend/src/api/reportingApi.js :: kpiFederes -> /api/django/reporting/reports/kpi-federes
     badges:inconnu, count:nombre, tuiles:inconnu
+- frontend/src/api/reportingApi.js :: kpiP2p -> /api/django/reporting/p2p/kpi
+    budgets_departement:inconnu, conformite_fournisseur_moyenne:inconnu, debut:inconnu, delai_demande_bcf_jours:inconnu, fin:inconnu, taux_conversion_pct:inconnu
 - frontend/src/api/reportingApi.js :: rafraichirClasseur -> /api/django/reporting/classeurs/<>/rafraichir
     cellules:inconnu
 - frontend/src/api/reportingApi.js :: savTauxAttache -> /api/django/reporting/insights/sav-taux-attache
@@ -1479,6 +1481,10 @@
     champs: cellules, created_at, id, liens, partage, titre, updated_at
 - frontend/src/api/reportingApi.js :: listDashboardConfigs -> /api/django/reporting/dashboard-config  [DashboardConfigSerializer]
     champs: cards, created_at, id, menu_tier, updated_at, user
+- frontend/src/api/reportingApi.js :: listEnvoisRapports -> /api/django/reporting/envois-rapports  [EnvoiRapportSerializer]
+    champs: canal, canal_label, destinataires, envoye_le, erreur, id, rapport_nom, saved_report, statut, statut_label
+    canal ∈ {email, whatsapp}
+    statut ∈ {echec, envoye, non_configure, sans_destinataire}
 - frontend/src/api/reportingApi.js :: listKpiAlertes -> /api/django/reporting/kpi-alertes  [KpiAlerteSerializer]
     champs: actif, created_at, deja_notifie, derniere_evaluation_le, derniere_valeur, destinataire_role, destinataires_utilisateurs, id, kpi, kpi_label, metric_cle, metric_definition, mode_detection, mode_detection_label, nom, operateur, operateur_label, seuil, source, updated_at
     kpi ∈ {couverture_i18n_pct, documents_non_fr_pct, encours_echu_total, jours_depuis_dernier_drill_reussi, quota_le_plus_charge_pct, uptime_moyen_12_mois, valeur_stock_totale}

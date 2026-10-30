@@ -26,6 +26,25 @@ describe('reporting — module.config (WIR17 Cohortes)', () => {
   })
 })
 
+/* AANA45 / D-AANA-036-BRANCHER — « Envois programmés » : route ET entrée de
+   menu ANALYSE, gatées responsable/admin comme l'endpoint (IsResponsableOrAdmin). */
+describe('reporting — module.config (AANA45 Envois programmés)', () => {
+  it('déclare /reporting/envois-programmes en route ET en entrée du menu ANALYSE', async () => {
+    const { default: config } = await import('./module.config.jsx')
+
+    const route = config.routes.find((r) => r.path === '/reporting/envois-programmes')
+    expect(route).toBeTruthy()
+    expect(route.roles).toEqual(['responsable', 'admin'])
+
+    const navItem = config.nav.items.find((i) => i.to === '/reporting/envois-programmes')
+    expect(navItem).toBeTruthy()
+    expect(navItem.label).toBe('Envois programmés')
+    expect(navItem.k).toBe('nav.envois_programmes')
+    expect(navItem.roles).toEqual(['responsable', 'admin'])
+    expect(navItem.icon).toBeTruthy()
+  })
+})
+
 /* ODY23 — « Reporting/Rapports/Journal → app Rapports ». Le Journal
    d'activité gagne une entrée dans le menu ANALYSE ; sa ROUTE reste déclarée
    dans features/parametres/module.config.jsx (inchangée) — on vérifie donc
