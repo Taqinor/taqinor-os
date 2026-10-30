@@ -6,9 +6,11 @@ import { economieAvecNette } from '../quote/economieAvecNette.js'
 import { prixKwhEstimation } from '../quote/prixKwhEstimation.js'
 import { ONEE_TRANCHES, monthlyBillFromKwh, FALLBACK_KWH_PRICE, twoBillsSavings } from './tarifs.js'
 import {
-  CHART_MONTHS, EFFICIENCY, GHI, KWH_PRICE, PRODUCTIBLE_NET_FACTOR, appartientAuPanierAvec,
-  appartientAuPanierSans, inverterCostFromLines,
+  CHART_MONTHS, EFFICIENCY, GHI, KWH_PRICE, PRODUCTIBLE_NET_FACTOR,
 } from '../solar.js'
+import {
+  appartientAuPanierAvec, appartientAuPanierSans, inverterCostFromLines,
+} from './classification.js'
 
 // Taux d'autoconsommation par option — miroir pricing.py AUTOCONSO_SANS/AVEC.
 // Utilisés UNIQUEMENT par le modèle « deux factures » (QF5) ; l'estimation

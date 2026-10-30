@@ -19,10 +19,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  isOffgridInverter, isReseauInverter, isHybridInverter, classifyProduct,
-  appartientAuPanierSans, appartientAuPanierAvec,
   PRODUCT_CATEGORIES,
 } from './solar.js'
+import {
+  isOffgridInverter, isReseauInverter, isHybridInverter, classifyProduct, appartientAuPanierSans,
+  appartientAuPanierAvec,
+} from './calc/classification.js'
 
 // Même convention que solar.test.mjs / solar.marques.test.mjs : prix HT =
 // TTC simulateur / 1.2, `quantite_stock` par défaut 500 (BATHOMO/F4 — le

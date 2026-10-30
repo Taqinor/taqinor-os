@@ -10,10 +10,11 @@ import crmApi from '../../../../api/crmApi'
 import { toast } from '../../../../ui/confirm'
 import {
   CHART_MONTHS,
-  inverterCostFromLines, appartientAuPanierSans,
-  appartientAuPanierAvec, isBattery, texteClassement,
   batteryKwhFromLines, batteryCapaciteInconnue,
   productibleForCity} from '../../../../features/ventes/solar'
+import {
+  inverterCostFromLines, appartientAuPanierSans, appartientAuPanierAvec, isBattery, texteClassement,
+} from '../../../../features/ventes/calc/classification.js'
 import { computeROI, paybackMoteurHoraire } from '../../../../features/ventes/calc/roi.js'
 import { consoAnnuelleDepuisFactures } from '../../../../features/ventes/calc/tarifs.js'
 import {

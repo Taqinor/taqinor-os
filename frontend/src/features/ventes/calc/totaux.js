@@ -12,10 +12,13 @@ import {
 } from '../remise.js'
 import { SCENARIOS_VALIDES } from '../quote/scenarios.js'
 import {
-  TVA_STANDARD_DEFAUT, _norm, appartientAuPanierAvec, appartientAuPanierSans, htFromTtc,
-  isAnyInverter, isBattery, isHybridInverter, isOffgridInverter, isReseauInverter, parseKw,
-  tauxTvaOf, texteClassement,
+  TVA_STANDARD_DEFAUT, htFromTtc,
+  tauxTvaOf,
 } from '../solar.js'
+import {
+  _norm, appartientAuPanierAvec, appartientAuPanierSans, isAnyInverter, isBattery, isHybridInverter,
+  isOffgridInverter, isReseauInverter, parseKw, texteClassement,
+} from './classification.js'
 
 // ── QJR402 — QF9 (Smart Meter / clé Wi-Fi Huawei-only) MIROIR DU NOYAU ──────
 // Miroir exact de `apps/ventes/utils/options.py` `_panier_sert_huawei` /

@@ -8,9 +8,11 @@ import {
   ClipboardList, Package,
 } from 'lucide-react'
 import {
-  parseWatt, parseKw, parseKwh, parsePhaseIsTri, tauxTvaOf, ttcFromHt, _norm,
-  isPompe,
+  tauxTvaOf, ttcFromHt,
 } from '../ventes/solar.js'
+import {
+  parseWatt, parseKw, parseKwh, parsePhaseIsTri, _norm, isPompe,
+} from '../ventes/calc/classification.js'
 
 export const MARQUE_GENERIQUE = 'Génériques'
 

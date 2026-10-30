@@ -30,9 +30,11 @@ import {
   sizingReducer, ETAT_INITIAL, SCENARIO_LES_DEUX, SCENARIO_AVEC, SCENARIO_SANS,
 } from '../../features/ventes/quote/sizingReducer.js'
 import {
-  appartientAuPanierSans, appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
 } from '../../features/ventes/solar.js'
+import {
+  appartientAuPanierSans, appartientAuPanierAvec,
+} from '../../features/ventes/calc/classification.js'
 import { optionTotalsTTC, totauxCanoniquesTtc } from '../../features/ventes/calc/totaux.js'
 import { PAS_ARRONDI_DEVIS } from '../../features/ventes/remise.js'
 

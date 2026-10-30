@@ -2,7 +2,9 @@
 // (appliquerRecomposition, fusionnerRecomposition, fusionnerVariantes).
 // DÉPLACEMENT PUR depuis features/ventes/solar.js (aucune logique changée).
 
-import { isBattery, isHybridInverter, isOffgridInverter, isReseauInverter } from '../solar.js'
+import {
+  isBattery, isHybridInverter, isOffgridInverter, isReseauInverter,
+} from './classification.js'
 
 // ── L-2OPT — deux optimiseurs indépendants (fondateur 24/08) ─────────────────
 // Un devis résidentiel « Les deux (Sans + Avec) » ne dimensionne plus les

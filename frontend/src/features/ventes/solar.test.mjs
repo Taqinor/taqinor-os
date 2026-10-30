@@ -13,16 +13,17 @@ import {
 import {
   DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
   ttcFromHt, htFromTtc, GHI,
-  appartientAuPanierSans, appartientAuPanierAvec,
   groupProduitsByCategory,
   KWH_PRICE,
   productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
-  isReseauInverter, batterieCompatible, plageBatterieOnduleur,
   PRODUCTIBLE_NET_FACTOR,
-  isBattery, isHybridInverter, isAnyInverter, inverterCostFromLines,
   batteryKwhFromLines,
   // STKCAT10 — sélecteur de structures piloté par le catalogue.,
   structureRoleForName, structureChoisie} from './solar.js'
+import {
+  appartientAuPanierSans, appartientAuPanierAvec, isReseauInverter, batterieCompatible,
+  plageBatterieOnduleur, isBattery, isHybridInverter, isAnyInverter, inverterCostFromLines,
+} from './calc/classification.js'
 import {
   computeROI, AUTOCONSO_SANS, AUTOCONSO_AVEC, computeCashflowPayback, DAYS_IN_MONTH,
   TARIFF_ESCALATION, INVERTER_REPLACE_YEAR, BATTERY_ROUNDTRIP,
@@ -425,7 +426,7 @@ import {
 import { prixParKwc, discountForTarget, computeBuyCost } from './calc/totaux.js'
 
 // ══ Classification pompe (le moteur pompage JS est retiré, AGR132) ═══════════
-import { isPompe } from './solar.js'
+import { isPompe } from './calc/classification.js'
 
 test('QX20 — isPompe classe une pompe, pas un panneau/onduleur', () => {
   assert.equal(isPompe('Pompe immergée OSP 30/8'), true)
