@@ -31,14 +31,13 @@ from .serializers import (
 )
 from .actions_crud import READ_ACTIONS, WRITE_ACTIONS, _PorteeEnfantsMixin
 from .leads_views import LeadIntakeActionsMixin
-from .lead_devis_payload import PREFETCH_DEVIS_LISTE_LEADS
 from .clients_views import LeadClientsActionsMixin
 from .visites_views import LeadVisitesActionsMixin
 from .devis_views import LeadDevisActionsMixin
 from .cadence_views import (
     DateRappelPubliee, LeadCadenceActionsMixin, MOTIF_HEURE_RAPPEL, _best_effort,
     _geste_atomique, _parse_rappel, rappel_saisi)
-from . import activity, stages
+from . import activity, lead_devis_payload, stages
 from .fiche_bulk import BULK_ACTIONS  # SPL3 (main) : déplacé de services ; ENF6 l'expose au schéma
 from .leads_attribution import default_responsable_for
 from . import schema_docs as sd
@@ -163,7 +162,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     # requête PAR LIGNE). ERR-PERF-CRM-N1 — les devis et TOUT ce que lit
     # ``lignes_devis_du_lead`` (lignes AVEC produit, successeur) : une seule
     # définition, ``PREFETCH_DEVIS_LISTE_LEADS`` (chemins en chaînes).
-    queryset = Lead.objects.select_related('owner', 'client').prefetch_related(*PREFETCH_DEVIS_LISTE_LEADS).all()
+    queryset = Lead.objects.select_related('owner', 'client').prefetch_related(
+        *lead_devis_payload.PREFETCH_DEVIS_LISTE_LEADS).all()
     serializer_class = LeadSerializer
     # VTA4 (12/09/2026) — la frontière « pas d'accès CRM » est SERVEUR : la
     # liste/lecture des leads exige désormais le code fin `crm_voir`. Sans
