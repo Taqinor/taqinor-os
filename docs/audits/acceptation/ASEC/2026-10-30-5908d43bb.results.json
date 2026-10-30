@@ -1,0 +1,618 @@
+{
+  "sha": "5908d43bb",
+  "date": "2026-10-30",
+  "groupe": "ASEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ASEC21",
+    "ASEC2",
+    "ASEC3",
+    "ASEC4",
+    "ASEC5",
+    "ASEC6",
+    "ASEC7",
+    "ASEC8",
+    "ASEC9",
+    "ASEC10",
+    "ASEC11",
+    "ASEC12",
+    "ASEC13",
+    "ASEC14",
+    "ASEC15",
+    "ASEC17",
+    "ASEC22",
+    "ASEC23",
+    "ASEC24",
+    "ASEC26",
+    "ASEC27",
+    "ASEC28",
+    "ASEC29",
+    "ASEC30",
+    "ASEC31",
+    "ASEC32",
+    "ASEC33",
+    "ASEC34",
+    "ASEC35",
+    "ASEC36",
+    "ASEC37",
+    "ASEC38",
+    "ASEC39",
+    "ASEC40",
+    "ASEC41",
+    "ASEC43",
+    "ASEC44",
+    "ASEC45",
+    "ASEC49"
+  ],
+  "couvre_avec_ecart": [
+    "ASEC11"
+  ],
+  "etapes": [
+    {
+      "id": "ASEC21.statique",
+      "taches": [
+        "ASEC21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-007-gardes.txt ; docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-011-pytest.txt ; docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-021.txt ; docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-029.txt — constats STATIQUES relus : C-ASEC-007 (check_fk_scoping OK 462 FK, --list voit 6 FK de FactureWriteSerializer, machine d états OK, balai étape écriture présent), C-ASEC-011 (3 tests ASEC42 OK par unittest contre la base de la pile), C-ASEC-021 (marqueurs est_demo et is_secure tenus), C-ASEC-029 (settings/prod.py durci ; bascule prod = geste fondateur, non vérifiée)"
+    },
+    {
+      "id": "C-ASEC-001",
+      "taches": [
+        "ASEC2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-001.txt — les 3 paliers responsable -> 403 rang_cible sur le Directeur protégé (email, is_active, role, must_change_password, avatar), role_plus_large 403, cible autre société 404, Directeur relu inchangé ; Directeur sur Commercial 200"
+    },
+    {
+      "id": "C-ASEC-002",
+      "taches": [
+        "ASEC3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-002.txt — PATCH/PUT password -> 400 password_via_reinitialisation ; POST /users/ sans mot de passe 400 ; reinitialiser-mot-de-passe : faible 400, conforme 200, sessions de la cible révoquées (/auth/me 401), 1 SettingsAuditLog sans valeur"
+    },
+    {
+      "id": "C-ASEC-003",
+      "taches": [
+        "ASEC4",
+        "ASEC5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-003.txt — /token/ réel : 3 faux mots de passe -> verrou société ; inconnu = faux (401 identique) ; 3 OTP faux -> verrou ; même code TOTP 2 fois -> 401 otp_deja_utilise ; succès remet à 0 (plancher plateforme et 429 2FA/mot de passe non rejoués)"
+    },
+    {
+      "id": "C-ASEC-004.a",
+      "taches": [
+        "ASEC9",
+        "ASEC11",
+        "ASEC29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-004.txt — Commercial terrain et Admin RH : abandonner-solde, enregistrer-paiement, export xlsx clients, création de lead -> 403, facture emise sans Paiement ; octroi de encaisser à Commercial terrain 400 ; Directeur et Commercial enregistrer-paiement 201"
+    },
+    {
+      "id": "C-ASEC-004.b",
+      "taches": [
+        "ASEC11"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-004.txt — ÉCART : GET /api/django/ventes/factures/ -> 200 pour Commercial terrain (2 lignes) et Admin RH (4 lignes = toutes celles de la société) ; la clause ASEC11 « liste des factures -> 403 » n est pas tenue (FactureViewSet.get_permissions : list en IsAnyRole) ; base_verdict FAIL = reproduction V6 SROLE-1 du dossier à 51f22174f (non rejouée ce jour) : défaut préexistant non corrigé"
+    },
+    {
+      "id": "C-ASEC-005",
+      "taches": [
+        "ASEC6",
+        "ASEC7",
+        "ASEC22",
+        "ASEC26",
+        "ASEC27",
+        "ASEC28",
+        "ASEC30",
+        "ASEC32",
+        "ASEC34"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-005.txt — 54 gestes : FK de la société B (activité, entité, ligne de devis, règle de prix, dossier réglementaire, 6 FK facture + lignes, BC, relance, remise, webhook rule, request_type, délégation, intervention, chantier, ticket) -> 400/404 sur le champ, ligne relue inchangée ; contre-épreuves A 200/201 (MandatPaiement parqué AFAC19 : non rejoué)"
+    },
+    {
+      "id": "C-ASEC-006",
+      "taches": [
+        "ASEC6",
+        "ASEC33",
+        "ASEC35"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-006.txt — kitting terminer emplacement B ou inexistant -> 400, 0 MouvementStock ; activité done type B -> 400 ; SAV creer-devis produit B ou inexistant -> 400, 0 Devis ; contre-épreuves A 200/201 (démontage non rejoué)"
+    },
+    {
+      "id": "C-ASEC-008",
+      "taches": [
+        "ASEC22",
+        "ASEC24",
+        "ASEC37"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-008.txt — PATCH roof_image roofs/<B>/ ignoré (base inchangée) ; version GED file_key de B -> 400 ; aperçu clé étrangère 404 ; moteur : clé B non téléchargée, clé A téléchargée (multipart MinIO, classer-apres-vente, scan-lot non rejoués)"
+    },
+    {
+      "id": "C-ASEC-009",
+      "taches": [
+        "ASEC27",
+        "ASEC30",
+        "ASEC32",
+        "ASEC34",
+        "ASEC41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-009.txt — PATCH génériques statut/revue facture, signature intervention, non_facturable/est_recidive/cout ticket, FlightPlan status -> valeurs relues inchangées ; demande décidée 400 (MandatPaiement : route parquée)"
+    },
+    {
+      "id": "C-ASEC-010",
+      "taches": [
+        "ASEC40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-010.txt — ODOO_COMPANY_ID=A : utilisateur adsengine_view de B -> 200 sans donnée Odoo, 0 appel ; A servi ; sans la variable : connecteur inactif (Odoo simulé par _rpc)"
+    },
+    {
+      "id": "C-ASEC-012",
+      "taches": [
+        "ASEC36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-012.txt — webhook WhatsApp SAV : non signé 401, signature fausse 401, sans secret 503, numéro inconnu 200 neutre, 0 ticket ; expéditeur connu/inconnu réponse identique ; signé -> ticket dans la société du numéro"
+    },
+    {
+      "id": "C-ASEC-013",
+      "taches": [
+        "ASEC44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-013.txt — Directeur tenant : publier-postmortem incident plateforme 403, PATCH plan de quotas 403, inchangés ; superuser 200 ; incident propre 200 (throttle OpenAPI non rejoué)"
+    },
+    {
+      "id": "C-ASEC-014",
+      "taches": [
+        "ASEC38"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-014.txt — lecteur ACL : purger, restaurer, lien, fusionner 403 sans effet, lot 1 erreur ; écrivain ACL 201/200/204"
+    },
+    {
+      "id": "C-ASEC-015",
+      "taches": [
+        "ASEC10",
+        "ASEC31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-015.txt — Admin RH et Technicien responsable PATCH RIB/ICE 403 inchangé, Directeur 200 ; rôle sans users_gerer POST/PATCH/DELETE /users/ 403, lecture 200 ; export clients sans crm_export 403, avec 200"
+    },
+    {
+      "id": "C-ASEC-016",
+      "taches": [
+        "ASEC8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-016.txt — 2FA setup/enable + change-password réels : AuditLog totp_secret/password/codes = ***, aucune valeur ; as-of rend *** (migration de caviardage non rejouée)"
+    },
+    {
+      "id": "C-ASEC-017",
+      "taches": [
+        "ASEC43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-017.txt — Viewer et compte portail POST automation-draft 403, 0 règle ; admin 201"
+    },
+    {
+      "id": "C-ASEC-018",
+      "taches": [
+        "ASEC12"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-018.txt — admin Django : superuser 2FA sans code ou code faux -> formulaire en erreur, compteur +1, 0 UserSession ; is_staff non superuser refusé ; bon code -> accès + UserSession"
+    },
+    {
+      "id": "C-ASEC-019",
+      "taches": [
+        "ASEC15"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-019.txt — NUM_PROXIES=1 : ip_de_requete = dernier saut = get_ident DRF ; allowlist enforce non contournée par XFF forgé (403) ; UserSession.ip = visiteur"
+    },
+    {
+      "id": "C-ASEC-020",
+      "taches": [
+        "ASEC49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-020.txt — refresh cookie tourne ; ancien refresh rejoué 401 (cookie et corps) ; route corps sur session de 2 h (absolu 1 h) 401"
+    },
+    {
+      "id": "C-ASEC-022",
+      "taches": [
+        "ASEC13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-022.txt — TENANT_SIGNUP_ENABLED=False : POST anonyme register-company 404, 0 société et 0 utilisateur créés"
+    },
+    {
+      "id": "C-ASEC-023",
+      "taches": [
+        "ASEC14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-023.txt — mauvais mot de passe : verrouillé, SSO, normal, inconnu -> 4 x 401 identiques ; bannière username autre société -> bannière neutre"
+    },
+    {
+      "id": "C-ASEC-024",
+      "taches": [
+        "ASEC17"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-024.txt — 40 POST anonymes de bannière : 30 x 200 puis 429, 1 seule SECURITY_ALERT ; vues publiques sécurité toutes throttlées (cache PDF trust-center et inventaire 500 non rejoués)"
+    },
+    {
+      "id": "C-ASEC-025",
+      "taches": [
+        "ASEC23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-025.txt — API : N2 sans preuve -> 403 otp_required sur données, suivi, accept, activer-option, 0 DevisSignature ; preuve d un autre jeton 403 ; N1 avec en-tête lit et signe (écran : enregistrement 2026-10-29-f9ef5544f)"
+    },
+    {
+      "id": "C-ASEC-026",
+      "taches": [
+        "ASEC39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-026.txt — ?password= -> 400 mot_de_passe_en_en_tete ; 10 échecs multi-IP -> partage gelé, bon mot de passe refusé ; POST corps sur un autre partage 200 (dégel non rejoué)"
+    },
+    {
+      "id": "C-ASEC-027",
+      "taches": [
+        "ASEC45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-027.txt — jeton iCal de -400 j -> 404 ; après régénération ancien 404, nouveau 200 ; jeton de B intact (rafale 429 non rejouée)"
+    }
+  ]
+}

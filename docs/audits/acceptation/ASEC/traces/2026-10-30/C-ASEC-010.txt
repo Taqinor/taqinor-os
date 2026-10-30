@@ -1,0 +1,6 @@
+﻿== C-ASEC-010 (sha 5908d43bb)
+attendu : refusé / inchangé : ODOO_COMPANY_ID = A ; un titulaire adsengine_view de B appelle MetricsLeadsView -> 200 sans aucun deal source=odoo et AUCUN appel au client Odoo ; l'utilisateur de A reçoit le deal Odoo (contre-épreuve) ; sans ODOO_COMPANY_ID -> inactif pour tous (aucun appel)
+observé : {"b_adsengine_view": {"http": 200, "deals_odoo": 0, "appels_odoo": []}, "a_proprietaire": {"http": 200, "deals_odoo": ["Client Odoo Signé"], "appels_odoo": ["authenticate", "execute_kw", "execute_kw", "execute_kw", "execute_kw"]}, "sans_company_id": {"is_configured": [false, false], "from_env": "None", "http_a": 200, "deals_odoo": 0, "appels_odoo": []}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0
+

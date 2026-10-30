@@ -1,0 +1,6 @@
+﻿== C-ASEC-019 (sha 5908d43bb)
+attendu : refusé / inchangé : NUM_PROXIES=1, X-Forwarded-For '<forgée>, <visiteur>' -> ip_de_requete rend <visiteur> (= get_ident DRF) ; allowlist NetworkPolicy enforce de A (10.0.0.0/8) -> 403 malgré <forgée> 10.9.9.9 dans la plage ; connexion /api/django/token/ -> UserSession.ip_address = <visiteur> ; dernier saut réellement dans la plage -> 200
+observé : {"primitive": [["10.9.9.9, 203.0.113.19", "203.0.113.19", "203.0.113.19"], ["203.0.113.19", "203.0.113.19", "203.0.113.19"], ["1.1.1.1, 10.9.9.9, 203.0.113.19", "203.0.113.19", "203.0.113.19"]], "allowlist": {"forgee_dans_plage": 403, "dernier_saut_dans_plage": 200}, "connexion": {"http": 200, "user_session_ip": ["203.0.113.19"]}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0
+

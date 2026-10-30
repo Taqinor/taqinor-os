@@ -1,0 +1,6 @@
+﻿== C-ASEC-026 (sha 5908d43bb)
+attendu : refusé / inchangé : partage GED protégé de A ; ?password=<bon> -> 400 mot_de_passe_en_en_tete sans téléchargement compté ; 10 mauvais mots de passe en en-tête depuis 10 IP différentes -> 403 puis partage gelé (gele_jusqua posé) ; le BON mot de passe depuis une IP neuve -> 403 « Trop d'essais » ; le partage de B intact ; contre-épreuve : POST corps avec le bon mot de passe sur le partage de B -> 200 PDF
+observé : {"gestes": {"query_string": [400, "mot_de_passe_en_en_tete"], "apres_query_string": {"telechargements": 0, "echecs_mdp": 0, "gele": false}, "dix_echecs_multi_ip": [403, 403, 403, 403, 403, 403, 403, 403, 403, 403], "apres_echecs": {"telechargements": 0, "echecs_mdp": 0, "gele": true}, "bon_mdp_pendant_gel": [403, "Trop d'essais, réessayez plus tard."], "apres_bon_mdp": {"telechargements": 0, "echecs_mdp": 0, "gele": true}}, "partage_b_avant": {"telechargements": 0, "echecs_mdp": 0, "gele": false}, "legitime_b_post_corps": [200, "%PDF-1.4"], "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0
+

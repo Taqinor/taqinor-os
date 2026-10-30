@@ -1,0 +1,6 @@
+﻿== C-ASEC-027 (sha 5908d43bb)
+attendu : refusé / inchangé : jeton iCal signé il y a 400 jours -> 404 (récent -> 200) ; après « régénérer le lien », l'ancien jeton -> 404 neutre (même corps qu'un jeton inexistant), le nouveau -> 200 VCALENDAR ; la régénération de A ne touche pas le jeton de B (toujours 200)
+observé : {"gestes": {"vieux_400j": 404, "recent": 200, "ancien_avant_regeneration": 200, "regenerer": 200, "nouveau_different": true, "ancien_apres_regeneration": 404, "faux": 404, "ancien_neutre_comme_faux": true, "nouveau": 200, "nouveau_vcalendar": true, "recent_avant_regeneration_apres": 404, "jeton_b_apres_regeneration_a": 200}, "persistance": {"version_a": 1, "version_b": null}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0
+

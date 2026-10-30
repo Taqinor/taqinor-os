@@ -1,0 +1,6 @@
+﻿== C-ASEC-012 (sha 5908d43bb)
+attendu : refusé / inchangé : webhook WhatsApp SAV (AllowAny) -> POST non signé 401, signature fausse 401, secret absent 503, numéro destinataire inconnu 200 neutre — aucun ticket ni activité créé ; réponse identique expéditeur connu/inconnu ; message signé et rattaché -> ticket dans LA société du numéro (B), rien chez A
+observé : {"gestes": {"non_signe": 401, "signature_fausse": 401, "sans_secret": 503, "numero_inconnu": 200, "connu_vs_inconnu": [200, 200, true]}, "compteurs_avant": [0, 0], "compteurs_apres_refus": [0, 0], "inchange_apres_refus": true, "legitime": {"tickets_b": 1, "ticket_client_b": true, "tickets_a": 0}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0
+
