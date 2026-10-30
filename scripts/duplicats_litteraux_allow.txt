@@ -25,7 +25,6 @@
 03b888485ae9|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 053ef256acae|apps/web/src/components/FounderPortrait.astro,apps/web/src/components/GarantiesTeaser.astro
 0572915e05c1|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
-066871c51477|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 07295b4bda60|apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 0746f2198898|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/production-mesuree.astro
 086980b0d865|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/professionnel.astro
@@ -190,7 +189,6 @@
 6a2b513d2891|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 6aab50ceb413|apps/web/src/scripts/roof-tool-pro11.ts,apps/web/src/scripts/roofPro11/optimizer.ts
 6c4dae34640b|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
-6c8230ed8fe7|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 6d6661ff6d06|apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 6d79b39d56bf|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts
 6dba33974010|apps/web/src/scripts/roof-tool-pro11.ts,apps/web/src/scripts/roofPro11/captureBoot.ts
@@ -209,7 +207,6 @@
 77fb64557f19|apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/marocains-du-monde.astro,apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/marocains-du-monde.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 783f2df9e8cb|apps/web/src/pages/ar/marocains-du-monde.astro,apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/marocains-du-monde.astro
 78dc85877a38|apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/index.astro
-791e6367ba40|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 79b71e43bdd7|apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/parrainage.astro
 7af3b1537198|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 7b61294f491b|apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
@@ -246,7 +243,6 @@
 8e022af54fa3|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
 8e741b38fa9f|apps/web/src/components/Header.astro,apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 8e8745299bf3|apps/web/src/scripts/roofPro11/entreeMoteur.test.ts,apps/web/src/scripts/roofPro11/mapDraw.ts,frontend/src/features/calepinage/__tests__/panneau_calques.test.jsx
-8ec89c205103|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 8f82ae4a8f38|apps/web/src/pages/guides/loi-82-21-expliquee.astro,apps/web/src/pages/loi-82-21.astro,apps/web/src/pages/regularization-article-33.astro
 8f9a97cdb08e|apps/web/src/pages/en/guides/loi-82-21-expliquee.astro,apps/web/src/pages/en/loi-82-21.astro,apps/web/src/pages/en/regularization-article-33.astro
 8fe2e48f4123|apps/web/src/lib/batterySim.ts,apps/web/src/lib/proposalChart.ts
@@ -342,7 +338,6 @@ c78d68e6dc6d|apps/web/src/scripts/roofPro11/edges.ts,apps/web/src/scripts/roofPr
 c811d395d418|apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/nos-solutions.astro
 c858d2869d87|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 c8f67f0bd069|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-c8fea06ca250|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 c9b07d76de19|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
 c9ccbef75f4c|frontend/src/pages/crm/ClientForm.jsx,frontend/src/pages/stock/FournisseursStock.jsx
 c9d780e02d48|apps/web/src/pages/api/capture-lead.ts,apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts

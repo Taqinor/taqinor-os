@@ -65,6 +65,7 @@ et douze champs par étape. ``resultat['pertes']`` n'est pas touché : il reste
 la LISTE PLATE des postes saisis (D-CALX 11).
 """
 from __future__ import annotations
+import logging
 
 import datetime
 
@@ -2000,6 +2001,7 @@ def _part_saisonniere_minutes(fuseau, moment):
 
         saison = moment.replace(tzinfo=ZoneInfo(fuseau)).dst()
     except Exception:       # pragma: no cover - dépend de la base installée
+        logging.getLogger(__name__).warning("chaine_pertes._part_saisonniere_minutes : ignorée", exc_info=True)
         return None
     if saison is None:
         return None

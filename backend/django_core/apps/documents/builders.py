@@ -195,7 +195,30 @@ def _ligne_composant(designation, quantite, produit, marque=''):
     }
 
 
-def _est_service(produit, nature=None):
+#: Les trois rôles de PRESTATION du vocabulaire de devis : ceux que la famille
+#: de catégorie « service » regroupe (``core.product_roles``, arbitrage
+#: ``FAMILLE_VERS_ROLE['service']``).
+ROLES_PRESTATION = ('installation', 'transport', 'suivi')
+
+
+def _role_de_ligne(produit, designation):
+    """Rôle de composition d'une ligne, par la chaîne CANONIQUE
+    ``core.product_roles.role_effectif`` (rôle déclaré sur la fiche → famille
+    de la catégorie → mots-clés du nom par le classifieur ventes
+    ``apps.ventes.selectors.classer_produit_nom``) — jamais une règle locale.
+    Le nom lu est la désignation de la ligne, à défaut celui du produit."""
+    from apps.ventes.selectors import classer_produit_nom
+    from core.product_roles import role_effectif
+    categorie = getattr(produit, 'categorie', None) if produit else None
+    role, _source = role_effectif(
+        role_devis=getattr(produit, 'role_devis', None) if produit else None,
+        type_equipement=getattr(categorie, 'type_equipement', None),
+        nom=designation or (getattr(produit, 'nom', '') if produit else ''),
+        classer_nom=classer_produit_nom)
+    return role
+
+
+def _est_service(produit, nature=None, designation=''):
     """APDF33 — une ligne est une prestation (Installation, Transport…) si sa
     nature gelée (``Installation.bom[].nature``, APDF40) vaut ``service`` ; à
     défaut de nature (nomenclature ancienne), lue sur la catégorie du produit.
@@ -204,13 +227,17 @@ def _est_service(produit, nature=None):
     ligne dont le produit est aujourd'hui de catégorie « service » est une
     prestation même si la nomenclature figée la dit ``materiel`` (gelée avant
     la recatégorisation : « Installation »/« Transport » sur le BL, le PV et
-    les garanties du dossier de remise). Lecture seule, aucune donnée réécrite."""
+    les garanties du dossier de remise). Repli quand ni la catégorie ni la
+    nature ne disent « service » (produit supprimé ou illisible, ligne libre) :
+    le rôle canonique de la ligne (:func:`_role_de_ligne`) — une ligne dont le
+    rôle est une prestation n'est pas du matériel. Lecture seule, aucune
+    donnée réécrite."""
     categorie = getattr(produit, 'categorie', None) if produit else None
     if getattr(categorie, 'type_equipement', None) == 'service':
         return True
-    if nature:
-        return nature == 'service'
-    return False
+    if nature == 'service':
+        return True
+    return _role_de_ligne(produit, designation) in ROLES_PRESTATION
 
 
 def _composants(chantier, services=False):
@@ -258,7 +285,8 @@ def _composants(chantier, services=False):
                     except (TypeError, ValueError):
                         cache[produit_id] = None
                 produit = cache[produit_id]
-            if _est_service(produit, row.get('nature')) != services:
+            if _est_service(produit, row.get('nature'),
+                            row.get('designation') or '') != services:
                 continue
             items.append(_ligne_composant(
                 row.get('designation'), quantite, produit,
@@ -286,7 +314,8 @@ def _composants(chantier, services=False):
         quantite = _quantite_affichee(brute)
         if quantite is None:
             continue
-        if _est_service(getattr(ligne, 'produit', None)) != services:
+        if _est_service(getattr(ligne, 'produit', None), None,
+                        getattr(ligne, 'designation', '') or '') != services:
             continue
         items.append(_ligne_composant(
             ligne.designation, quantite, getattr(ligne, 'produit', None)))

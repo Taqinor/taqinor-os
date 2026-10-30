@@ -124,10 +124,11 @@ class TariffSettings(models.Model):
         max_digits=7, decimal_places=2, null=True, blank=True,
         verbose_name='Charges fixes abonnement (MAD TTC/mois)',
         help_text="Total TTC des lignes fixes de votre facture (location du "
-                  "compteur + entretien du branchement). Laisser VIDE pour "
-                  "appliquer le défaut relevé sur facture réelle "
-                  "(39,94 MAD TTC/mois en 2026) ; renseigner pour le "
-                  "remplacer par vos propres montants.")
+                  "compteur + entretien du branchement). Sert à retirer "
+                  "l'abonnement d'un montant de facture avant de le convertir "
+                  "en kWh. Aucun défaut n'est appliqué à la conversion : "
+                  "VIDE = conversion refusée ; saisir 0 si votre facture "
+                  "n'en porte pas.")
 
     # ── N64 — classe « force motrice / agricole » (séparée, moins chère) ──
     # Tarif unique MAD/kWh TTC pour pompage/force motrice : ~0.90–0.95, JAMAIS

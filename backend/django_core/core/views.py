@@ -17,6 +17,7 @@ Découplage : aucune importation d'app domaine ici — seulement l'infra Celery
 via ``core.jobs`` (qui fait ``from celery import current_app``). ``core`` reste
 une couche de base (import-linter).
 """
+import logging
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_serializer,
@@ -1219,6 +1220,7 @@ class BulkEditViewSet(viewsets.ViewSet):
         try:
             target = (self.request.data or {}).get('target')
         except Exception:  # noqa: BLE001 — corps illisible → palier par défaut (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("core.get_permissions : exception ignorée", exc_info=True)
             target = None
         # ERR-ENF11-FUZZ-CORE — une cible non texte (liste…) levait TypeError
         # ici (500) : seule une chaîne est cherchée dans le registre.
@@ -1955,6 +1957,7 @@ def metrics_view(request):
         try:
             auth_result = CookieJWTAuthentication().authenticate(request)
         except Exception:  # noqa: BLE001 — jeton absent/invalide → non-admin (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("core.metrics_view : exception ignorée", exc_info=True)
             auth_result = None
         if auth_result is not None:
             user, _token = auth_result

@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 
@@ -1197,6 +1198,7 @@ class MatriceApprobation(TenantModel):
         try:
             montant = Decimal(str(montant))
         except Exception:
+            logging.getLogger(__name__).warning("core.couvre : exception ignorée", exc_info=True)
             return False
         if self.montant_min is not None and montant < self.montant_min:
             return False
@@ -3203,14 +3205,17 @@ class MaintenanceMode(TimestampedModel):
             if cached is not None:
                 return bool(cached)
         except Exception:  # noqa: BLE001 — cache KO → lit la DB (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("core.is_active : exception ignorée", exc_info=True)
             cached = None
         try:
             actif = cls.get_solo().actif
         except Exception:  # noqa: BLE001 — DB KO → service ouvert (fail-open) (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("core.is_active : exception ignorée", exc_info=True)
             return False
         try:
             cache.set(cls.CACHE_KEY, actif, cls.CACHE_TTL)
         except Exception:  # noqa: BLE001 — cache KO → tant pis (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("core.is_active : exception ignorée", exc_info=True)
             pass
         return bool(actif)
 
@@ -3226,6 +3231,7 @@ class MaintenanceMode(TimestampedModel):
         try:
             cache.set(cls.CACHE_KEY, obj.actif, cls.CACHE_TTL)
         except Exception:  # noqa: BLE001 — cache KO → prochaine lecture relit DB (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("core.set_active : exception ignorée", exc_info=True)
             pass
         return obj
 

@@ -61,6 +61,7 @@ class TariffSettingsSerializer(TypageStrictReglages, serializers.ModelSerializer
             'productible_manuel_kwh_kwc',
             'inclinaison_defaut_deg',
             'azimut_defaut_deg',
+            'redevance_compteur_mad_mois',
             'version',
             'date_modification',
         ] + CHAMPS_LOT5 + CHAMPS_POMPAGE + CHAMPS_CI
@@ -70,6 +71,10 @@ class TariffSettingsSerializer(TypageStrictReglages, serializers.ModelSerializer
         # ci-dessous le convertissent ; sans allow_null DRF le refusait avant.
         extra_kwargs = {champ: {'allow_null': True} for champ in (
             'charges_pompage_solaire', 'regle_fda_pompage', 'sensibilites_ci')}
+        # ERR-PARAM-REDEVANCE-COMPTEUR — charges fixes d'abonnement : décimal
+        # >= 0 ; null = non déclarées (la conversion MAD→kWh refuse alors).
+        extra_kwargs['redevance_compteur_mad_mois'] = {
+            'allow_null': True, 'required': False, 'min_value': Decimal('0')}
 
     @regle_metier
     def validate(self, attrs):
