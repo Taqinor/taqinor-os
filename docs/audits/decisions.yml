@@ -2764,3 +2764,25 @@ decisions:
     date: "2026-10-29"
     source: "Reda, decision fondateur du 29/10/2026 (lane RWEB17-M19, question interactive) ; couvre cette seule entree"
     taches: [RWEB17-M19]
+  - id: D-VNT83-SOLDE
+    question: "VNT83 : apres un prix negocie, le texte attend un solde de 34 000, alors que l'echeancier par defaut 30/60/10 donne 29 400 puis 4 600 ; corriger le texte ou l'echeancier ?"
+    options:
+      - cle: a
+        texte: "l'echeancier par defaut est le bon : corriger le texte de VNT83 (tranches reelles ; 34 000 seulement apres edition de l'echeancier)"
+      - cle: b
+        texte: "changer l'echeancier par defaut apres prix negocie : acompte + un solde du reste"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, decision fondateur du 30/10/2026 (question interactive, rejeu VNT du 30/10)"
+    taches: [VNT83]
+  - id: D-ASTK239-PORTAIL-MONTANTS
+    question: "ASTK239 : la page du lien prive fournisseur affiche montant_ttc et solde_du des factures du fournisseur lui-meme ; la tache dit qu'aucun montant d'achat ne doit apparaitre cote fournisseur : garder ou masquer ?"
+    options:
+      - cle: a
+        texte: "garder les totaux de SES factures (normal pour un fournisseur) ; le prix d'achat unitaire reste masque ; le texte de la tache est a ajuster"
+      - cle: b
+        texte: "masquer montant_ttc et solde_du de la page fournisseur"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, decision fondateur du 30/10/2026 (question interactive, rejeu ASTK239 du 30/10)"
+    taches: [ASTK239]
