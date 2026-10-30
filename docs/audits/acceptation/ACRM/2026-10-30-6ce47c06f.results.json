@@ -564,7 +564,8 @@
     {
       "id": "P6",
       "taches": [
-        "ACRM3"
+        "ACRM3",
+        "ACRM60"
       ],
       "verdict": "PASS",
       "base_verdict": null,

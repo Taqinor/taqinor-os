@@ -1440,7 +1440,7 @@ EquipeCommerciale.objects.filter(pk=${eq}).delete(); sortie('ok')`)
 // Geste réel : le compte acc60_b (société 43) lit les listes déjà utilisées plus haut et tente le détail / une
 // écriture sur des ids de la société 1. Shell : un lead témoin de la société 43 (preuve que le compte lit bien
 // SES données, donc que le silence n'est pas un faux vert) et un RDV de la société 1.
-etape('P6', ['ACRM3'], async ({ testInfo }) => {
+etape('P6', ['ACRM3', 'ACRM60'], async ({ testInfo }) => {
   const m = await monter()
   const b = await api(testInfo, 'acc60_b')
   const dir = await api(testInfo, 'acc60_dir')
