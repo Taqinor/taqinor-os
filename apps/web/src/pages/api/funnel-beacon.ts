@@ -15,28 +15,17 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import { forwardBeacon, redactBeaconForLog, validateBeaconEvent, type FunnelEnv } from '../../lib/funnelBeacon';
-import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { preludeBalise } from '../../lib/apiPreludeJeton';
 import { jsonResponse as json } from '../../lib/apiJson';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
   // traitement (même garde-fou que les autres proxies same-origin).
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
-
   // Bucket distinct + limite plus généreuse : un parcours normal envoie
   // plusieurs événements (un par étape), jamais une seule requête.
-  const rl = rateLimit(`funnel-beacon:${clientIpFromRequest(request)}`, { limit: 40, windowMs: 60_000 });
-  if (!rl.allowed) {
-    return json({ ok: false }, 429, { 'retry-after': String(rl.retryAfterSec) });
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ ok: false }, 400);
-  }
+  const pre = await preludeBalise(request, { scope: 'funnel-beacon', limit: 40 });
+  if ('response' in pre) return pre.response;
+  const body = pre.body;
 
   const validation = validateBeaconEvent(body);
   if (!validation.ok) return json({ ok: false }, 400);
