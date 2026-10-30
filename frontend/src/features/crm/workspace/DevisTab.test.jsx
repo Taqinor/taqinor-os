@@ -1822,7 +1822,19 @@ describe('ALEA55 — formats du PDF sur la carte, relance J+3 dans la boîte d�
     await user.click(screen.getByRole('button', { name: /Format du PDF de DEV-1/ }))
     await user.click(screen.getByRole('menuitem', { name: /Premium/ }))
     expect(onAction).toHaveBeenCalledWith('view-devis', { id: 1, pdf: 'full' })
+    // Devis final (30/10/2026) — le Premium + modalités de paiement + RIB.
+    await user.click(screen.getByRole('button', { name: /Format du PDF de DEV-1/ }))
+    await user.click(screen.getByRole('menuitem', { name: /Devis final/ }))
+    expect(onAction).toHaveBeenCalledWith('view-devis', { id: 1, pdf: 'final' })
     expect(onAction).not.toHaveBeenCalledWith('open-devis', expect.anything())
+  })
+
+  it('« Devis final » n’est pas proposé sur un devis C&I ou agricole (leur échéancier est toujours imprimé)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [{ ...devis1, mode_installation: 'industriel' }] }) })
+    await user.click(screen.getByRole('button', { name: /Format du PDF de DEV-1/ }))
+    expect(screen.getByRole('menuitem', { name: '1 page' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /Devis final/ })).toBeNull()
   })
 
   it('dateRelanceJ3 : J+3 à Casablanca, passage de mois compris', () => {

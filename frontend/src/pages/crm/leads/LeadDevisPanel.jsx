@@ -182,6 +182,12 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const [pdfMode, setPdfMode] = useState(
     mode === 'onepage' || pdfInitial === 'onepage' ? 'onepage' : 'full')
   const [includeEtude, setIncludeEtude] = useState(false)
+  // « Devis final » (fondateur, 30/10/2026) — l'option du dialogue PDF de la
+  // liste, enfin ici aussi : modalités de paiement (acompte · matériel ·
+  // solde, montants au centime de `builder.repartition_paiement`) + ligne RIB
+  // sur la page 3 du Premium. `pdfInitial === 'final'` : choix fait sur la
+  // carte du lead (menu « PDF ▾ »). Rendu seul — aucun statut touché.
+  const [devisFinal, setDevisFinal] = useState(pdfInitial === 'final')
   const [downloading, setDownloading] = useState(false)
   const startedRef = useRef(false)
   const cleIdempotenceRef = useRef(null) // AGQ23 — une clé par ouverture
@@ -191,9 +197,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // en vol (APXTMO : les rendus à froid ~26 s ne s'empilent pas sur gunicorn).
   const fetchPreviewBlob = useCallback(
     (signal) => ventesApi.getProposalPdf(
-      devisId, proposalParams(pdfMode, includeEtude), { signal })
+      devisId, proposalParams(pdfMode, includeEtude, { devisFinal }), { signal })
       .then((res) => pdfBlob(res.data)),
-    [devisId, pdfMode, includeEtude])
+    [devisId, pdfMode, includeEtude, devisFinal])
   const preview = usePdfPreview(fetchPreviewBlob, {
     enabled: phase === 'preview' && !!devisId,
   })
@@ -434,7 +440,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     const pending = downloadBlobInGesture()
     try {
       const res = await ventesApi.getProposalPdf(
-        devisId, proposalParams(pdfMode, includeEtude))
+        devisId, proposalParams(pdfMode, includeEtude, { devisFinal }))
       // QD2 — nom cohérent posé par le serveur (repli sur la référence).
       pending.deliver(res.data, filenameFromResponse(res, `${devisRef || 'Devis'}.pdf`))
     } catch {
@@ -457,7 +463,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
       let blob = previewBlob
       if (!blob) {
         const res = await ventesApi.getProposalPdf(
-          devisId, proposalParams(pdfMode, includeEtude))
+          devisId, proposalParams(pdfMode, includeEtude, { devisFinal }))
         blob = pdfBlob(res.data)
       }
       if (!pending.deliver(blob, `${devisRef || 'Devis'}.pdf`)) {
@@ -620,13 +626,26 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                     ]}
                   />
                   {pdfMode === 'full' && !marcheHorsResidentiel && (
-                    <label className="ldp-etude-toggle">
-                      <Checkbox
-                        checked={includeEtude}
-                        onCheckedChange={v => setIncludeEtude(v === true)}
-                      />
-                      <span>Inclure l'étude</span>
-                    </label>
+                    <>
+                      <label className="ldp-etude-toggle">
+                        <Checkbox
+                          checked={includeEtude}
+                          onCheckedChange={v => setIncludeEtude(v === true)}
+                        />
+                        <span>Inclure l'étude</span>
+                      </label>
+                      {/* Devis final — paiement + RIB, page 3 du Premium
+                          résidentiel (le C&I et l'agricole impriment toujours
+                          leur échéancier ; le 1 page n'a pas ce bloc). */}
+                      <label className="ldp-etude-toggle">
+                        <Checkbox
+                          checked={devisFinal}
+                          onCheckedChange={v => setDevisFinal(v === true)}
+                          aria-label="Devis final (modalités de paiement + RIB)"
+                        />
+                        <span>Devis final <span className="text-muted-foreground">(paiement + RIB)</span></span>
+                      </label>
+                    </>
                   )}
                 </div>
                 <div className="ldp-toolbar-actions">

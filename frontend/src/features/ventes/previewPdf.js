@@ -12,12 +12,19 @@ export const PDF_MIME = 'application/pdf'
 
 // Params attendus par GET /ventes/devis/<id>/proposal/ (whitelist serveur).
 // include_etude n'est pertinent qu'en Premium ; en 1 page on l'omet (0).
-export function proposalParams(pdfMode, includeEtude) {
+// « Devis final » (fondateur, 30/10/2026) : les modalités de paiement
+// (acompte · matériel · solde, au centime) + la ligne RIB sur la page 3 du
+// Premium — la même option `devis_final` que le dialogue PDF de la liste.
+// La clé n'est envoyée QUE cochée et en Premium (le 1 page n'a pas ce bloc) :
+// tout appelant existant garde des paramètres byte-identiques.
+export function proposalParams(pdfMode, includeEtude, { devisFinal = false } = {}) {
   const mode = pdfMode === 'onepage' ? 'onepage' : 'full'
-  return {
+  const params = {
     pdf_mode: mode,
     include_etude: mode === 'full' && includeEtude ? 1 : 0,
   }
+  if (mode === 'full' && devisFinal) params.devis_final = 1
+  return params
 }
 
 // Emballe les octets bruts (ArrayBuffer / Blob / typed array renvoyé par axios

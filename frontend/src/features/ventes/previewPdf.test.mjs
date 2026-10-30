@@ -37,6 +37,34 @@ test('proposalParams : 1 page = onepage, et n’envoie JAMAIS l’étude', () =>
   })
 })
 
+test('proposalParams : « Devis final » n’envoie devis_final=1 qu’en Premium, et seulement coché', () => {
+  assert.deepEqual(proposalParams('full', false, { devisFinal: true }), {
+    pdf_mode: 'full', include_etude: 0, devis_final: 1,
+  })
+  assert.deepEqual(proposalParams('full', true, { devisFinal: true }), {
+    pdf_mode: 'full', include_etude: 1, devis_final: 1,
+  })
+  // Non coché : AUCUNE clé (les appelants existants restent byte-identiques).
+  assert.deepEqual(proposalParams('full', false, { devisFinal: false }), {
+    pdf_mode: 'full', include_etude: 0,
+  })
+  assert.deepEqual(proposalParams('full', false), { pdf_mode: 'full', include_etude: 0 })
+  // 1 page : ce format n’a pas de bloc paiement + RIB → jamais envoyé.
+  assert.deepEqual(proposalParams('onepage', false, { devisFinal: true }), {
+    pdf_mode: 'onepage', include_etude: 0,
+  })
+})
+
+test('le panneau devis du lead offre « Devis final » et le transmet à /proposal', () => {
+  assert.match(PANEL, /Devis final/, 'la bascule « Devis final » existe dans la barre de format')
+  assert.match(PANEL, /setDevisFinal\(/, 'elle pilote un état devisFinal')
+  // Aperçu, téléchargement et « ouvrir dans un onglet » : les TROIS appels
+  // passent l’option (même source, donc aperçu et PDF téléchargé concordent).
+  const appels = PANEL.match(/proposalParams\(pdfMode, includeEtude, \{ devisFinal \}\)/g) || []
+  assert.equal(appels.length, 3, 'les trois appels /proposal du panneau portent devisFinal')
+  assert.doesNotMatch(PANEL, /proposalParams\(pdfMode, includeEtude\)/, 'aucun appel sans l’option')
+})
+
 test('proposalParams : tout mode inconnu retombe sur Premium (full)', () => {
   assert.equal(proposalParams(undefined, false).pdf_mode, 'full')
   assert.equal(proposalParams('', true).pdf_mode, 'full')
