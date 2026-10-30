@@ -84,6 +84,10 @@ def validate_new_password(password, company, user=None):
 
     if not password:
         return ['Le mot de passe est requis.']
+    if not isinstance(password, str):
+        # api-fuzz-pr 30/10 — une liste JSON atteignait ``password.lower()``
+        # des validateurs Django (AttributeError, 500) : « ne lève jamais ».
+        return ['Le mot de passe doit être une chaîne de caractères.']
     errors = []
     try:
         validate_password(password, user=user)

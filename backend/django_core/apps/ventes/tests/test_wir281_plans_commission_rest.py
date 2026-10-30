@@ -127,6 +127,39 @@ class TestCrud(TestCase):
         self.assertEqual(r.status_code, 400, r.content)
         self.assertIn('taux_pct', r.data)
 
+    def test_bareme_selon_base_put_patch(self):
+        """api-fuzz-pr 30/10 (ENF11) — PATCH : un barème NUL envoyé avec la
+        base qui l'exige est une erreur du corps (publiée : 400) ; ce qui ne
+        vient que du plan stocké = 409 d'état. PUT remplace le plan : sans
+        ``taux_pct`` (publié requis) il ne s'appuie plus sur l'ancien taux."""
+        from apps.ventes.views.plan_commission import (
+            _BAREME_SELON_BASE_PATCH)
+        self.assertEqual(len(_BAREME_SELON_BASE_PATCH['x-corps-resserre']['anyOf']), 2)
+        plan = PlanCommission.objects.create(
+            company=self.company, base='ca_devis_signe', taux_pct='0')
+        url = f'{BASE}/{plan.id}/'
+        # Corps du fuzz (base + taux nul dans le MÊME corps) → 400.
+        r = self.api.patch(url, {
+            'base': 'ca_devis_signe', 'taux_pct': None,
+            'montant_par_kwc': '0', 'paliers': [], 'actif': False,
+        }, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('taux_pct', r.data)
+        # Taux nul SANS base dans le corps : la base vient du plan → 409.
+        r = self.api.patch(url, {'taux_pct': None}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('taux_pct', r.data)
+        # Bascule d'activation (le seul PATCH du frontend) : inchangée.
+        r = self.api.patch(url, {'actif': False}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        # PUT sans taux_pct → 400 (il réussissait avec l'ancien taux).
+        r = self.api.put(url, {'base': 'ca_devis_signe'}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('taux_pct', r.data)
+        r = self.api.put(url, {'base': 'ca_devis_signe', 'taux_pct': '4'},
+                         format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+
     def test_paliers_doivent_etre_une_liste_dobjets(self):
         r = self.api.post(f'{BASE}/', {
             'base': 'ca_devis_signe', 'taux_pct': '3',

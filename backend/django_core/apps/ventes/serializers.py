@@ -1724,23 +1724,36 @@ class PlanCommissionSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
     def validate(self, attrs):
         """Le bareme doit correspondre a la base choisie : un plan ``par_kwc``
         sans ``montant_par_kwc`` (ou un plan au pourcentage sans ``taux_pct``)
-        produirait une commission nulle silencieuse."""
+        produirait une commission nulle silencieuse.
+
+        api-fuzz-pr 30/10 (ENF11) — création et PUT remplacent le plan
+        ENTIER : le barème absent du corps vaut nul (le schéma le publie
+        requis, un PUT sans ``taux_pct`` passait grâce à l'ancienne valeur).
+        Seul le PATCH complète par le plan stocké — et un refus qui ne vient
+        que de ce plan stocké (base ou barème absents du corps) est un refus
+        d'ÉTAT : 409 ``ConflitEtat``, même corps par champ."""
+        partiel = self.instance is not None and self.partial
+
         def _valeur(cle):
             if cle in attrs:
                 return attrs[cle]
-            return getattr(self.instance, cle, None)
+            return getattr(self.instance, cle, None) if partiel else None
+
+        def _refus(cle, message):
+            if partiel and ('base' not in attrs or cle not in attrs):
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat({cle: message})
+            raise serializers.ValidationError({cle: message})
 
         base = _valeur('base')
         if base == PlanCommission.Base.PAR_KWC:
             if _valeur('montant_par_kwc') is None:
-                raise serializers.ValidationError({
-                    'montant_par_kwc':
-                        'Requis pour un plan « MAD par kWc installe ».'})
+                _refus('montant_par_kwc',
+                       'Requis pour un plan « MAD par kWc installe ».')
         elif base in (PlanCommission.Base.CA_DEVIS_SIGNE,
                       PlanCommission.Base.MARGE_INTERNE):
             if _valeur('taux_pct') is None:
-                raise serializers.ValidationError({
-                    'taux_pct': 'Requis pour un plan au pourcentage.'})
+                _refus('taux_pct', 'Requis pour un plan au pourcentage.')
         return attrs
 
 
