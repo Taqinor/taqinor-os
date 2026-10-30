@@ -9,7 +9,7 @@
 from django.db import migrations, models
 
 
-#: Mise à jour par lots de clés primaires (comme 0142, YOPSB4).
+#: YOPSB4 — mise à jour par lots (batch) de clés primaires, comme 0142.
 TAILLE_LOT = 500
 
 
