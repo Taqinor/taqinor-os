@@ -456,6 +456,7 @@ def classer_ia(texte):  # pragma: no cover - dépend d'un provider externe non c
     try:
         return provider.classify(texte) or ''
     except Exception:
+        logger.warning("ged.classer_ia : exception ignorée", exc_info=True)
         return ''
 
 
@@ -475,6 +476,7 @@ def classer_document(document, *, fusionner=True):
     try:
         categorie = classer_ia(texte)
     except Exception:  # pragma: no cover - robustesse.
+        logger.warning("ged.classer_document : exception ignorée", exc_info=True)
         categorie = ''
     if not categorie:
         categorie = classer_heuristique(texte)
@@ -535,6 +537,7 @@ def index_embedding(document):
     try:
         vec = compute_embedding(text)
     except Exception:  # pragma: no cover - robustesse : jamais bloquer l'écriture.
+        logger.warning("ged.index_embedding : exception ignorée", exc_info=True)
         vec = None
     if vec is None:
         return False
@@ -573,6 +576,7 @@ def chunk_text(text, *, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
             chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         chunks = splitter.split_text(text)
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        logger.warning("ged.chunk_text : exception ignorée", exc_info=True)
         # Repli pur Python : fenêtre glissante avec chevauchement.
         chunks = []
         step = max(1, chunk_size - chunk_overlap)
@@ -612,6 +616,7 @@ def index_document_chunks(document):
         try:
             vec = compute_embedding(piece)
         except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+            logger.warning("ged.index_document_chunks : exception ignorée", exc_info=True)
             vec = None
         if vec is None:
             continue
@@ -1486,6 +1491,7 @@ def importer_en_masse(*, company, folder, lignes, zip_bytes=None,
             try:
                 custom_data = valider_custom(custom_data)
             except Exception as exc:  # validation customfields → erreur de ligne.
+                logger.warning("ged.importer_en_masse : exception ignorée", exc_info=True)
                 erreurs.append({'ligne': idx,
                                 'detail': f'Métadonnées invalides : {exc}'})
                 continue
@@ -2045,6 +2051,7 @@ def _watermark_pdf(file_bytes, text):
     try:  # Dépendance optionnelle — import paresseux (no-op-safe sans la lib).
         import fitz  # PyMuPDF
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        logger.warning("ged._watermark_pdf : exception ignorée", exc_info=True)
         return file_bytes, False
     try:
         doc = fitz.open(stream=file_bytes, filetype='pdf')
@@ -2077,6 +2084,7 @@ def _watermark_pdf(file_bytes, text):
             doc.close()
         return out, True
     except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+        logger.warning("ged._watermark_pdf : exception ignorée", exc_info=True)
         return file_bytes, False
 
 
@@ -2092,6 +2100,7 @@ def _watermark_image(file_bytes, text):
     try:  # Import paresseux et gardé — Pillow présent, mais on reste robuste.
         from PIL import Image, ImageDraw, ImageFont
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        logger.warning("ged._watermark_image : exception ignorée", exc_info=True)
         return file_bytes, False
     try:
         import io
@@ -2101,6 +2110,7 @@ def _watermark_image(file_bytes, text):
         try:
             font = ImageFont.load_default()
         except Exception:  # pragma: no cover - police par défaut indisponible.
+            logger.warning("ged._watermark_image : exception ignorée", exc_info=True)
             font = None
         # Tuile le texte en diagonale sur toute la surface (gris translucide).
         step_x = max(160, src.width // 3)
@@ -2115,6 +2125,7 @@ def _watermark_image(file_bytes, text):
         watermarked.save(out, format='PNG')
         return out.getvalue(), True
     except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+        logger.warning("ged._watermark_image : exception ignorée", exc_info=True)
         return file_bytes, False
 
 
@@ -2239,6 +2250,7 @@ def _try_set_object_lock(version, retain_until):
         )
         return True
     except Exception:
+        logger.warning("ged._try_set_object_lock : exception ignorée", exc_info=True)
         # Object-lock non supporté / indisponible → on dégrade en silence.
         return False
 
@@ -3328,6 +3340,7 @@ def lire_pdf_signe(demande):
             data, err = fetch_attachment(demande.version_signee.file_key)
             return None if err else data
         except Exception:  # pragma: no cover - défensif.
+            logger.warning("ged.lire_pdf_signe : exception ignorée", exc_info=True)
             return None
     pdf_bytes, _aplati = rendre_pdf_signe_avec_champs(demande)
     return pdf_bytes
@@ -3348,6 +3361,7 @@ def _hash_version_contenu(version):
             return ''
         return hashlib.sha256(data).hexdigest()
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning("ged._hash_version_contenu : exception ignorée", exc_info=True)
         return ''
 
 
@@ -3749,6 +3763,7 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
                 'signature', f'Votre code : {code}',
                 from_email, [email], fail_silently=False)
         except Exception as exc:  # noqa: BLE001 — dégrade, jamais bloquant. (D-ENF22-BLE001)
+            logger.warning("ged.envoyer_code_otp_signataire : exception ignorée", exc_info=True)
             return _degrader_otp(
                 signataire, f"Envoi email échoué ({exc}) : authentification "
                             "dégradée, signature sans OTP.")
@@ -4105,6 +4120,7 @@ def _flatten_champs_pdf(file_bytes, champs, *, signature_texte='',
     try:
         import fitz  # PyMuPDF
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        logger.warning("ged._flatten_champs_pdf : exception ignorée", exc_info=True)
         return _annexe_texte_champs(file_bytes, champs, signature_texte), False
     try:
         from .models import CHAMP_TYPE_CASE, CHAMP_TYPE_SIGNATURE
@@ -4137,6 +4153,7 @@ def _flatten_champs_pdf(file_bytes, champs, *, signature_texte='',
             doc.close()
         return out, True
     except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+        logger.warning("ged._flatten_champs_pdf : exception ignorée", exc_info=True)
         return _annexe_texte_champs(file_bytes, champs, signature_texte), False
 
 
@@ -4191,6 +4208,7 @@ def rendre_pdf_signe_avec_champs(demande):
         if err or data is None:
             return None, False
     except Exception:  # pragma: no cover - défensif.
+        logger.warning("ged.rendre_pdf_signe_avec_champs : exception ignorée", exc_info=True)
         return None, False
     champs = list(demande.champs.all())
     if not champs:
@@ -4291,6 +4309,7 @@ def qr_verification_certificat(empreinte):
     try:
         import qrcode
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        logger.warning("ged.qr_verification_certificat : exception ignorée", exc_info=True)
         return None
     import io
     try:
@@ -4303,6 +4322,7 @@ def qr_verification_certificat(empreinte):
         qr.make_image().save(tampon, 'PNG')
         return tampon.getvalue()
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning("ged.qr_verification_certificat : exception ignorée", exc_info=True)
         return None
 
 
@@ -4495,6 +4515,7 @@ def classer_signature_completee(demande, *, created_by=None):
             data, err = fetch_attachment(version.file_key)
             contenu = data if not err else None
         except Exception:  # pragma: no cover - défensif.
+            logger.warning("ged.classer_signature_completee : exception ignorée", exc_info=True)
             contenu = None
 
     # XGED5 — Scellement cryptographique best-effort AVANT dépôt (no-op sans
@@ -4531,6 +4552,7 @@ def classer_signature_completee(demande, *, created_by=None):
             created_by=created_by,
         )
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning("ged.classer_signature_completee : exception ignorée", exc_info=True)
         certificat_document = None
 
     # 3) Lien vers l'objet métier d'origine, s'il existe déjà sur le document
@@ -4569,6 +4591,7 @@ def _pades_signer_disponible():
         __import__('pyhanko')  # sonde de disponibilité de la lib
         return True
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        logger.warning("ged._pades_signer_disponible : exception ignorée", exc_info=True)
         return False
 
 
@@ -4644,6 +4667,7 @@ def _certificat_societe_pour_scellement(company):
         return signers.SimpleSigner.load(
             key_file=key_path, cert_file=cert_path, ca_chain_files=())
     except Exception:  # pragma: no cover - défensif.
+        logger.warning("ged._certificat_societe_pour_scellement : exception ignorée", exc_info=True)
         return None
 
 
@@ -4702,6 +4726,7 @@ def sceller_pdf(pdf_bytes, *, company=None):
     try:
         signataire = _certificat_societe_pour_scellement(company)
     except Exception:  # pragma: no cover - défensif.
+        logger.warning("ged.sceller_pdf : exception ignorée", exc_info=True)
         signataire = None
     if signataire is None:
         return pdf_bytes, False
@@ -4722,6 +4747,7 @@ def sceller_pdf(pdf_bytes, *, company=None):
     try:
         return _sceller_avec_timestamper(pdf_bytes, signataire, None), True
     except Exception:  # pragma: no cover - robustesse : jamais bloquer XGED4.
+        logger.warning("ged.sceller_pdf : exception ignorée", exc_info=True)
         return pdf_bytes, False
 
 
@@ -4740,6 +4766,7 @@ def _hash_constate_pour_archivage(archivage):
             return None
         return compute_checksum(data)
     except Exception:  # pragma: no cover - défensif.
+        logger.warning("ged._hash_constate_pour_archivage : exception ignorée", exc_info=True)
         return None
 
 
@@ -4812,6 +4839,7 @@ def _notifier_alteration_archives(company, archivages_alteres):
                     send_mail(sujet, corps, from_email, [admin.email],
                               fail_silently=True)
             except Exception:  # pragma: no cover - best-effort.
+                logger.warning("ged._notifier_alteration_archives : exception ignorée", exc_info=True)
                 continue
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
         logger.warning('%s : échec ignoré (dégradé)', '_notifier_alteration_archives', exc_info=True)
@@ -4873,6 +4901,7 @@ def journaliser_acces(document, *, utilisateur=None, type_acces=None,
             source_ref=(source_ref or '')[:64],
         )
     except Exception:  # robustesse : l'audit ne bloque jamais une lecture.
+        logger.warning("ged.journaliser_acces : exception ignorée", exc_info=True)
         return None
 
 
@@ -5335,6 +5364,7 @@ def poll_mail_intake(company):
     try:
         import imaplib
     except Exception:  # pragma: no cover - stdlib toujours présente en prod.
+        logger.warning("ged.poll_mail_intake : exception ignorée", exc_info=True)
         return {'fetched': 0, 'imported': 0}
     fetched = 0
     imported = 0
@@ -5352,6 +5382,7 @@ def poll_mail_intake(company):
                     imported += len(created)
         conn.logout()
     except Exception:  # pragma: no cover - réseau/auth : dégrade proprement.
+        logger.warning("ged.poll_mail_intake : exception ignorée", exc_info=True)
         return {'fetched': fetched, 'imported': imported}
     return {'fetched': fetched, 'imported': imported}
 
@@ -5536,6 +5567,7 @@ def _page_est_blanche(image, *, seuil=_PAGE_BLANCHE_RATIO):
         clairs = sum(1 for p in pixels if p > 250)
         return (clairs / len(pixels)) >= seuil
     except Exception:  # pragma: no cover - défensif.
+        logger.warning("ged._page_est_blanche : exception ignorée", exc_info=True)
         return False
 
 
@@ -5546,12 +5578,14 @@ def _decoder_barcode(image):
     try:
         from pyzbar.pyzbar import decode as _zbar_decode
     except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        logger.warning("ged._decoder_barcode : exception ignorée", exc_info=True)
         return ''
     try:
         results = _zbar_decode(image)
         if results:
             return results[0].data.decode('utf-8', 'replace')
     except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+        logger.warning("ged._decoder_barcode : exception ignorée", exc_info=True)
         return ''
     return ''
 
@@ -5561,6 +5595,7 @@ def barcode_lib_disponible():
     try:
         __import__('pyzbar.pyzbar')  # sonde de disponibilité de la lib
     except Exception:
+        logger.warning("ged.barcode_lib_disponible : exception ignorée", exc_info=True)
         return False
     return True
 
@@ -5750,6 +5785,7 @@ def journaliser_evenement(document, *, type_evenement, message='', utilisateur=N
             type_evenement=type_evenement, message=message or '',
             utilisateur=utilisateur)
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning("ged.journaliser_evenement : exception ignorée", exc_info=True)
         return None
 
 
@@ -5977,6 +6013,7 @@ def appliquer_regles_dossier(document, *, user=None):
         try:
             declenchee = evaluate_condition_group(regle.condition_group, contexte)
         except Exception:  # pragma: no cover - défensif, jamais bloquant.
+            logger.warning("ged.appliquer_regles_dossier : exception ignorée", exc_info=True)
             declenchee = False
         resultats = []
         if declenchee:
@@ -5985,6 +6022,7 @@ def appliquer_regles_dossier(document, *, user=None):
                     resultats.append(
                         _executer_action_regle(document, step, user=user))
                 except Exception as exc:  # noqa: BLE001 — best-effort, journalisé. (D-ENF22-BLE001)
+                    logger.warning("ged.appliquer_regles_dossier : exception ignorée", exc_info=True)
                     resultats.append({
                         'type': (step or {}).get('type'),
                         'ok': False, 'erreur': str(exc),
@@ -6015,6 +6053,7 @@ def resoudre_regle_approbation_ged(document):
             if evaluate_condition_group(regle.condition_group, contexte):
                 return regle
         except Exception:  # pragma: no cover - défensif.
+            logger.warning("ged.resoudre_regle_approbation_ged : exception ignorée", exc_info=True)
             continue
     return None
 
@@ -6067,6 +6106,7 @@ def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
     try:
         chaine = demande.chaine_approbation
     except Exception:
+        logger.warning("ged.avancer_chaine_approbation_ged : exception ignorée", exc_info=True)
         chaine = None
     if chaine is None:
         return approve_demande(demande, user=user, commentaire=commentaire)
@@ -6289,6 +6329,7 @@ def executer_demande_disposition(demande, *, user):
                 from . import selectors
                 politique = selectors.politique_applicable(document)
             except Exception:  # pragma: no cover - défensif.
+                logger.warning("ged.executer_demande_disposition : exception ignorée", exc_info=True)
                 politique = None
             nom_doc = document.nom
             doc_pk = document.pk
@@ -6482,6 +6523,7 @@ def creer_lot_envoi_signature(*, company, modele, destinataires, libelle='',
                 'document_id': new_doc.pk, 'demande_id': demande.pk,
             })
         except Exception as exc:  # noqa: BLE001 — rapporté par ligne, jamais bloquant. (D-ENF22-BLE001)
+            logger.warning("ged.creer_lot_envoi_signature : exception ignorée", exc_info=True)
             nb_erreurs += 1
             resultats.append({
                 'ligne': index, 'nom': ligne.get('nom'),
@@ -6771,6 +6813,7 @@ def signature_publique_verrouillee(token):
         from django.core.cache import cache
         return bool(cache.get(_cle_verrou_signature(str(token))))
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning("ged.signature_publique_verrouillee : exception ignorée", exc_info=True)
         return False
 
 
@@ -6823,6 +6866,7 @@ def enregistrer_echec_signature_publique(token, *, document=None,
                       SIGNATURE_ABUS_VERROU_SECONDES)
         return echecs, verrouille
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning("ged.enregistrer_echec_signature_publique : exception ignorée", exc_info=True)
         return 0, False
 
 
@@ -6838,6 +6882,7 @@ def _administrateurs_societe(company):
                 models.Q(role_legacy='admin') | models.Q(is_superuser=True)
         ).distinct()
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning("ged._administrateurs_societe : exception ignorée", exc_info=True)
         return CustomUser.objects.none()
 
 
@@ -6867,6 +6912,7 @@ def surveiller_reutilisation_suspecte(adresse_ip, company):
             return True
         cache.set(cle_alerte, True, SIGNATURE_ABUS_FENETRE_SECONDES)
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning("ged.surveiller_reutilisation_suspecte : exception ignorée", exc_info=True)
         return False
 
     try:

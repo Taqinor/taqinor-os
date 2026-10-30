@@ -149,6 +149,81 @@ class ComposantsTests(TestCase):
             'Transport',
             [c['designation'] for c in builders._composants(chantier)])
 
+    def _assert_documents_sans_prestations(self, chantier):
+        """BL et PV sans « Installation »/« Transport » ; dossier de remise :
+        section « Prestations », aucune garantie constructeur par défaut."""
+        from apps.documents import builders
+        self.assertEqual(
+            [c['designation'] for c in builders._composants(chantier)],
+            ['Panneau 550W'])
+        self.assertEqual(
+            [c['designation']
+             for c in builders._composants(chantier, services=True)],
+            ['Installation', 'Transport'])
+        for route in ('bon-livraison', 'pv-reception'):
+            with self.subTest(route=route):
+                lignes = {ln.strip() for ln in
+                          self._get(chantier, route).splitlines()}
+                # La cellule imprime « désignation — marque ».
+                self.assertTrue(
+                    any(ln.startswith('Panneau 550W') for ln in lignes),
+                    lignes)
+                self.assertNotIn('Installation', lignes)
+                self.assertNotIn('Transport', lignes)
+        remise = self._get(chantier, 'dossier-remise')
+        self.assertIn('25 ans linéaire', remise)
+        self.assertIn('Prestations', remise)
+        self.assertNotIn('Garantie selon conditions constructeur', remise)
+
+    def test_produit_absent_repli_role_de_la_designation(self):
+        """ERR-APDF-BL-PV-PRESTATIONS-COMPOSANTS (chantier 17, société 4) — la
+        nomenclature figée dit ``materiel`` et ses produits n'existent plus :
+        le rôle canonique de la désignation (``role_effectif`` + classifieur
+        ventes) range « Installation »/« Transport » en prestations."""
+        chantier = self._chantier_nature_figee_materiel()
+        absent = Produit.objects.order_by('-id').values_list(
+            'id', flat=True).first() + 1000
+        chantier.bom = [
+            r if r['designation'] == 'Panneau 550W'
+            else dict(r, produit_id=absent + i)
+            for i, r in enumerate(chantier.bom)]
+        chantier.save(update_fields=['bom'])
+        self._assert_documents_sans_prestations(chantier)
+
+    def test_devis_installation_transport_lignes_libres(self):
+        """Un devis accepté avec des lignes « Installation » et « Transport »
+        (lignes libres, sans produit catalogue) : le chantier créé du devis
+        émet BL, PV et dossier de remise sans ces prestations comme
+        composants, et sans « Garantie selon conditions constructeur »."""
+        from apps.installations.services import create_installation_from_devis
+        from apps.ventes.models import Devis, LigneDevis
+        client = Client.objects.create(
+            company=self.company, nom='Bennani', prenom='Omar',
+            telephone='+212600000034')
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-APDF33-{next(_seq)}',
+            client=client, statut='accepte', taux_tva=Decimal('20.00'),
+            remise_globale=Decimal('0'))
+        for designation, quantite, produit in (
+                ('Panneau 550W', Decimal('8'), self.panneau),
+                ('Installation', Decimal('1'), None),
+                ('Transport', Decimal('1'), None)):
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=designation,
+                quantite=quantite, prix_unitaire=Decimal('1000.00'),
+                remise=Decimal('0'))
+        chantier, _ = create_installation_from_devis(
+            devis, self.user, self.company)
+        self.assertIsNotNone(chantier)
+        Installation.objects.filter(pk=chantier.pk).update(
+            statut=Installation.Statut.INSTALLE)
+        chantier.refresh_from_db()
+        self._assert_documents_sans_prestations(chantier)
+        # Même règle sur le repli sans nomenclature (lignes du devis).
+        Installation.objects.filter(pk=chantier.pk).update(bom=[])
+        chantier.refresh_from_db()
+        self._assert_documents_sans_prestations(chantier)
+
     def test_bom_ancienne(self):
         """Nomenclature sans nature : filtrée par lecture du produit."""
         chantier = self._chantier(avec_nature=False)

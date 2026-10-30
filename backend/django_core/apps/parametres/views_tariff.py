@@ -53,6 +53,7 @@ _TARIFF_AUDIT_FIELDS = {
     'productible_manuel_kwh_kwc': "Productible manuel (kWh/kWc/an)",
     'inclinaison_defaut_deg': "Inclinaison par défaut (°)",
     'azimut_defaut_deg': "Azimut par défaut (°)",
+    'redevance_compteur_mad_mois': "Redevance compteur (MAD/mois)",
 }
 
 # CALX72/CALX284 — les réglages du lot 5 (TOU, compensation, structure, taxes,

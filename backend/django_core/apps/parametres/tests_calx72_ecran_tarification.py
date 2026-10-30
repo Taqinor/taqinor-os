@@ -141,5 +141,37 @@ class ValidationNommeLeChampTest(unittest.TestCase):
         self.assertTrue(valide, erreurs)
 
 
+class RedevanceCompteurSaisissableTest(unittest.TestCase):
+    """ERR-PARAM-REDEVANCE-COMPTEUR — les charges fixes d'abonnement sont
+    saisissables (écriture, relecture) et jamais négatives."""
+
+    def test_champ_servi_et_vide_par_defaut(self):
+        self.assertIn('redevance_compteur_mad_mois',
+                      TariffSettingsSerializer.Meta.fields)
+        data = TariffSettingsSerializer(TariffSettings()).data
+        self.assertIsNone(data['redevance_compteur_mad_mois'])
+
+    def test_ecriture_puis_relecture(self):
+        instance = TariffSettings()
+        serializer = TariffSettingsSerializer(
+            instance, data={'redevance_compteur_mad_mois': '39.94'},
+            partial=True)
+        serializer.is_valid(raise_exception=True)
+        for champ, valeur in serializer.validated_data.items():
+            setattr(instance, champ, valeur)
+        relu = TariffSettingsSerializer(instance).data
+        self.assertEqual(relu['redevance_compteur_mad_mois'], '39.94')
+
+    def test_zero_et_vide_acceptes(self):
+        for valeur in ('0', None):
+            valide, erreurs = erreurs_de({'redevance_compteur_mad_mois': valeur})
+            self.assertTrue(valide, erreurs)
+
+    def test_negatif_refuse_sous_le_champ(self):
+        valide, erreurs = erreurs_de({'redevance_compteur_mad_mois': '-1'})
+        self.assertFalse(valide)
+        self.assertIn('redevance_compteur_mad_mois', erreurs)
+
+
 if __name__ == '__main__':
     unittest.main()
