@@ -169,10 +169,27 @@ def deux_options_detail(d, fmt_mad):
     paires = [(r, par_avec[r["designation"]]) for r in delta_s if r["designation"] in appariables]
     seul_s = [r for r in delta_s if r["designation"] not in appariables]
     seul_a = [r for r in delta_a if r["designation"] not in appariables]
+    # Fondateur 30/10 (« still too complicated ») : UNE table, les deux options
+    # côte à côte en colonnes nommées — chaque ligne des deux offres, dans
+    # l'ordre de l'offre « sans », puis ce qui n'existe qu'« avec ».
+    par_avec_toutes = {}
+    for r in ra:
+        par_avec_toutes.setdefault(r["designation"], []).append(r)
+    cote_a_cote, vus = [], set()
+    for r in rs:
+        if r["_id"] in ids_a:
+            cote_a_cote.append((r, r)); vus.add(r["_id"])
+        elif r["designation"] in appariables:
+            ra_ = par_avec[r["designation"]]; cote_a_cote.append((r, ra_)); vus.add(ra_["_id"])
+        else:
+            cote_a_cote.append((r, None))
+    for r in ra:
+        if r["_id"] not in vus:
+            cote_a_cote.append((None, r))
     synthese = d.get("com_synthese") or {}
     option = synthese.get("option_batterie") if isinstance(synthese.get("option_batterie"), dict) else {}
     tot_avec = d.get("totaux_avec") or (option.get("totaux") if isinstance(option.get("totaux"), dict) else {})
-    return {"communs": communs, "paires": paires, "seul_sans": seul_s, "seul_avec": seul_a,
+    return {"communs": communs, "paires": paires, "seul_sans": seul_s, "seul_avec": seul_a, "cote_a_cote": cote_a_cote,
             "titre_sans": L(d, "ci_opt_sans_batterie", "Sans batterie"),
             "titre_avec": _txt(d.get("libelle_avec")) or L(d, "ci_opt_avec_batterie", "Avec batterie"),
             "totaux_sans": totaux_de(d.get("totaux_sans") or d.get("totaux_all"), fmt_mad, "sans"),

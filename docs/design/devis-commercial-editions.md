@@ -296,3 +296,12 @@ arrondi, total HT, TVA par taux servie, Total TTC sur marine en Fraunces ; ancre
 étiquetées sans/avec), note TVA, options proposées ; la fiche « en bref » (mono-option) cède la
 place. Option « avec » sans lignes servies (fixture de test) ⇒ page 2 mono-option inchangée.
 Vérifié : boulangerie deux options 3 pages, 461 et fixtures inchangés, parité inchangée.
+
+**30/10 — page 2 à deux options simplifiée** (Reda : « still too complicated… one beside the other
+and the table says which is which »). Les cartes « Spécifique » et les valeurs empilées sont
+retirées : UNE table, en-tête de groupe « Sans batterie » (marine) / « Avec batterie » (or),
+colonnes Désignation · P.U. HT · TVA % · Qté · Total HT (sans) · Qté · Total HT (avec), une
+ligne par article de l'une ou l'autre offre dans l'ordre de l'offre « sans » puis les articles
+propres à « avec », « — » quand l'article n'existe pas d'un côté ; prix unitaire ou taux
+différents sur deux lignes dans leur colonne ; puis les deux chaînes de totaux côte à côte et la
+position nette (option 1, nommée). `deux_options_detail.cote_a_cote`. Boulangerie : 3 pages.
