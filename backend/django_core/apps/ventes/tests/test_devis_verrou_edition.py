@@ -153,6 +153,38 @@ class TestDevisVerrouEdition(TestCase):
             'expected_updated_at': timezone.now().isoformat()})
         self.assertEqual(r.status_code, 404, r.content)
 
+    def test_f_devis_neuf_reenvoi_apres_reponse_perdue_rejoue(self):
+        # ERR-AGNR-VERROU-DEVIS-NEUF — créé par /atomic/ (chemin de l'écran),
+        # enregistré avec le jeton de la création ; la réponse se perd (délai
+        # de 20 s de l'écran), l'écran renvoie le MÊME corps : réponse rejouée,
+        # jamais 409 « modifié par un autre » contre soi-même.
+        api = self._api(self.user_a)
+        r = api.post('/api/django/ventes/devis/atomic/', {
+            'client': self.client_obj.id, 'statut': 'brouillon',
+            'taux_tva': '20.00', 'lignes': self._lignes(8)}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        devis = Devis.objects.get(pk=r.data['id'])
+        corps = {'lignes': self._lignes(10), 'entete': {'note': 'neuf'},
+                 'expected_updated_at': r.data['updated_at']}
+        premier = self._replace(api, devis, corps)
+        self.assertEqual(premier.status_code, 200, premier.content)
+        ids = sorted(devis.lignes.values_list('id', flat=True))
+        reenvoi = self._replace(api, devis, corps)
+        self.assertEqual(reenvoi.status_code, 200, reenvoi.content)
+        self.assertEqual(reenvoi.data['updated_at'], premier.data['updated_at'])
+        # Rejoué, pas ré-exécuté : les lignes recréées par le 1er envoi restent.
+        self.assertEqual(sorted(devis.lignes.values_list('id', flat=True)), ids)
+        # Un AUTRE utilisateur au même jeton, même corps : le verrou tient.
+        r = self._replace(self._api(self.user_b), devis, corps)
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.json()['code'], 'devis_modifie')
+        # Le même utilisateur, autre contenu sur le jeton périmé : 409.
+        r = self._replace(api, devis, {**corps, 'lignes': self._lignes(4)})
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.json()['code'], 'devis_modifie')
+        self.assertEqual(devis.lignes.get(produit=self.panneau).quantite,
+                         Decimal('10'))
+
     def test_patch_entete_jeton_perime_409(self):
         devis = self._devis(6)
         api = self._api(self.user_a)

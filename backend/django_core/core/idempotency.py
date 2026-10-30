@@ -231,15 +231,17 @@ class IdempotentCreateMixin:
             request, lambda: super(IdempotentCreateMixin, self).create(
                 request, *args, **kwargs))
 
-    def _avec_idempotence(self, request, creer, suffixe=''):
+    def _avec_idempotence(self, request, creer, suffixe='', cle=None):
         """Le contrat ``Idempotency-Key`` autour d'un geste de création
         ``creer()`` (sans argument, rend la ``Response``) : ``create`` l'emploie,
         et une action de création dédiée aussi (AGNR40 — ``POST
         /ventes/devis/atomic/``, le VRAI chemin de création du générateur).
         ``suffixe`` sépare l'espace de clés d'une action de celui de ``create``
         (même endpoint de vue, deux gestes distincts). Sans en-tête : ``creer()``
-        tel quel, aucune requête supplémentaire."""
-        idem_key = self._idempotency_key(request)
+        tel quel, aucune requête supplémentaire. ``cle`` : une clé dérivée par
+        le serveur (ERR-AGNR-VERROU-DEVIS-NEUF, ``replace-lines``), à la place
+        de l'en-tête."""
+        idem_key = cle or self._idempotency_key(request)
         if not idem_key:
             return creer()
 

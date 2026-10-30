@@ -293,6 +293,19 @@ export function choixDeEtat(etat, { recommended } = {}) {
   return choix
 }
 
+/** ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — l'`etude_params` du corps
+ *  de CRÉATION (`POST /devis/atomic/`). Commercial / industriel : les CHOIX +
+ *  les ENTRÉES de l'étude C&I (`etudeMarche`, la projection envoyée ensuite
+ *  par le PATCH de fusion), pour que l'étape 7 de la création calcule déjà
+ *  `etude_ci` / `production_figee` — le devis créé n'attend plus un
+ *  ré-enregistrement. Autres marchés : les choix seuls (inchangé). */
+export function etudeDeCreation(mode, choix, etudeMarche) {
+  if ((mode === 'industriel' || mode === 'commercial') && etudeMarche) {
+    return { ...choix, ...etudeMarche }
+  }
+  return choix
+}
+
 /** Les ENTRÉES réelles relues du devis (factures, conso, distributeur) : la
  *  conso saisie repart telle quelle ; une conso qui descend des factures est
  *  re-dérivée au barème (COUV-HOR). */

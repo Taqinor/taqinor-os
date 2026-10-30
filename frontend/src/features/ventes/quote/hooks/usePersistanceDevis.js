@@ -10,7 +10,7 @@ import {
 } from '../../calc/classification.js'
 import { controlerFacturesSaisies, consoAnnuelleDepuisFactures, controlerKwhDeclare, MESSAGE_KWH_INCOHERENT } from '../../calc/tarifs.js'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
-import { etatVersEcritures, baremePourDerivation, facturesHiverEte } from '../etatDevis'
+import { etatVersEcritures, baremePourDerivation, facturesHiverEte, etudeDeCreation } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
 import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
@@ -437,10 +437,15 @@ export function usePersistanceDevis(ctx) {
   // création tourne encore côté serveur (clé réservée). On réessaie avec la
   // MÊME clé jusqu'à recevoir le devis rejoué — jamais un second devis, jamais
   // une erreur affichée tant que le serveur travaille.
-  const creerAtomiqueAvecReprise = async (corps, idempotencyKey) => {
+  // ERR-AGNR-VERROU-DEVIS-NEUF — même reprise pour `replace-lines` : un
+  // re-clic après une réponse perdue renvoie le MÊME corps (même jeton), que
+  // le serveur reconnaît (clé dérivée) et rejoue dès que le 1er a fini.
+  const creerAtomiqueAvecReprise = (corps, idempotencyKey) => avecRepriseEnCours(
+    () => ventesApi.createDevisAtomic(corps, { idempotencyKey }))
+  const avecRepriseEnCours = async (appel) => {
     for (let essai = 0; ; essai += 1) {
       try {
-        return await ventesApi.createDevisAtomic(corps, { idempotencyKey })
+        return await appel()
       } catch (err) {
         const enCours = err?.response?.status === 409
           && err.response.data?.code === 'idempotency_en_cours'
@@ -496,8 +501,8 @@ export function usePersistanceDevis(ctx) {
           extra.expected_updated_at = jetonRef.current
         }
         forcerSansJetonRef.current = false
-        const reponse = await ventesApi.replaceLignesDevis(
-          editDevis.id, surcharge?.lignes ?? lignesPayload, extra)
+        const reponse = await avecRepriseEnCours(() => ventesApi.replaceLignesDevis(
+          editDevis.id, surcharge?.lignes ?? lignesPayload, extra))
         armerJeton(reponse?.data?.updated_at)
         setConflitVerrou(null)
         devisId = editDevis.id
@@ -517,8 +522,12 @@ export function usePersistanceDevis(ctx) {
         // onduleurs compris — et l'écran « Devis enregistré » affichait un prix
         // qu'aucun document ne porte. Le PATCH qui suit reste inchangé (il
         // repose les mêmes choix + les entrées réelles, sans bouger le total).
+        // ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — C&I : les ENTRÉES
+        // de l'étude partent aussi AVEC la création (`etudeDeCreation`).
         const { data } = await creerAtomiqueAvecReprise({
-          ...payload, etude_params: choixEcran(), lignes: lignesPayload,
+          ...payload,
+          etude_params: etudeDeCreation(modeInstallation, choixEcran(), blocEtudeMarche()),
+          lignes: lignesPayload,
         }, cleCreation())
         cleCreationRef.current = null
         devisId = data.id
@@ -634,6 +643,9 @@ export function usePersistanceDevis(ctx) {
         // champ et le bandeau le NOMME (jamais la phrase générique).
         const parChamp = champsEntete(err)
         setErreursChamps(parChamp)
+        // Une étude C&I refusée à la création : le tarif fautif sous son champ.
+        const tarif = erreursTarifDeclare(parChamp.etude_params)
+        if (Object.keys(tarif).length) setErrors(prev => ({ ...prev, tarifDeclare: tarif }))
         // AGNR37 — le refus `echeancier` (AGNR12) s'affiche aussi sous la carte.
         if (parChamp.echeancier) setErrors(prev => ({ ...prev, echeancier: parChamp.echeancier }))
         msg = Object.entries(parChamp)
