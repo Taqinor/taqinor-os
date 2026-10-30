@@ -18,8 +18,10 @@ import {
   productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
   PRODUCTIBLE_NET_FACTOR,
   batteryKwhFromLines,
+} from './solar.js'
+import {
   // STKCAT10 — sélecteur de structures piloté par le catalogue.,
-  structureRoleForName, structureChoisie} from './solar.js'
+  structureRoleForName, structureChoisie} from './calc/autoFill.js'
 import {
   isReseauInverter, batterieCompatible,
   plageBatterieOnduleur, isBattery, isHybridInverter, isAnyInverter, inverterCostFromLines,

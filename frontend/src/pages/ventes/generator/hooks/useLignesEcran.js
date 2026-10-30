@@ -7,7 +7,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ecrireLastTva } from '../../../../features/ventes/quote/ecranDefauts.js'
 import ventesApi from '../../../../api/ventesApi'
-import { _hasPrix, deriveRoleOrderFromLines, tauxTvaOf, ttcExactFromHt } from '../../../../features/ventes/solar'
+import { tauxTvaOf, ttcExactFromHt } from '../../../../features/ventes/solar'
+import { _hasPrix, deriveRoleOrderFromLines } from '../../../../features/ventes/calc/autoFill.js'
 import {
   appliquerRecomposition, lignesManuellesEnConflitPossible,
 } from '../../../../features/ventes/calc/recomposition.js'
