@@ -1,5 +1,5 @@
 (pile 127.0.0.1:5191 → :8010, anon_admin / taqinor-anon ; page /proposition non lancée : charge publique lue)
-# CEC6 — boulangerie : devis DEV-202610-0120 (id 1685), lead 2659
+# CEC6 — boulangerie : devis DEV-202610-0120 (id 1904), lead 2901
 Économie an 1 HT — recalcul : tranche_2 30198 kWh × 1.4242 = 43007.99 = 43007.99 MAD
   economie_ci.economie_annee1.total_mad = 43007.29 ; PDF = 43007 ; mode_kpis.economies_annuelles = 43007.29 ; synthese_ci.argent.economie_annee1.total_mad = 43007.29 ; devis/auto.economie_an_1_ht = 43007.29
 Investissement sans batterie : PDF 134700 TTC ; option_totals 134700 TTC / 115750 HT ; devis/auto.total_ttc 134700

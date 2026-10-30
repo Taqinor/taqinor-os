@@ -303,3 +303,4 @@ Contre-visite de clôture du groupe (dossier `docs/audits/2026-10-10-stock-verif
 - 2026-10-28 — ACHT99 — parcours chantier J3 P99.1-P99.9 rejoué en direct PASS (docs/audits/acceptation/ACHT/2026-10-29-5f102e3f2)
 
 - 2026-10-30 — ACHT112 — rapport énergie : logo détouré par quote_engine.logo via la porte apps.ventes.selectors.logo_entete_html (e43d53ef08, 8c79e94103, 0dd6a045fe) ; tests RapportEnergieLogoTests ; preuve en direct P4 due à l orchestrateur.
+- 2026-10-30 — ACHT112 — acceptation en direct (rejeu complet 30/10, SHA e9e8593e5, 18/18) : logo à masque alpha en en-tête de la page 1 du rapport-energie — docs/audits/acceptation/ACHT/2026-10-30-e9e8593e5.md

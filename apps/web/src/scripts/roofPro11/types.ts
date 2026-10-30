@@ -120,6 +120,11 @@ export interface InitOptions {
    *  (barème indicatif) ») ; absente = pages publiques, comportement inchangé. */
   proposerConsommation?: ((corps: import('./consumption').CorpsPropositionConsommation) =>
     Promise<import('./consumption').PropositionConsommation>) | null;
+  /** ERR-ACAL311-PANNEAU-ABSENT-ERP — production PAR 1 kWc du plan courant, fournie par une
+   *  page hôte SANS fenêtre de production ni `/api/roof-production` (l'ERP) : sans elle,
+   *  « Affiner ma consommation » reste masqué faute de plan. Absente = pages publiques,
+   *  comportement inchangé (la fenêtre de production interroge sa route). */
+  productionAtelier?: ((cfg: ProdConfig) => import('../../lib/productionEngine').PerKwcProduction | null) | null;
 
   // CALX104/CALX403 — les deux sections des réglages société que l'ATELIER consomme
   // (`zones_types` pour les gabarits d'obstacle, `degagements` pour la largeur d'allée

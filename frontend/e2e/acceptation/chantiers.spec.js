@@ -314,8 +314,15 @@ etape('P1.2', ['ACHT104', 'ACHT105', 'ACHT106'], async ({ page }) => {
     await expect(bouton).toBeVisible()
     await bouton.click()
     await expect(page.getByText(/bon de commande créé/i).first()).toBeVisible()
+    // Course : attendre que le dialogue ait fini de relire le chantier (et son appro) avant
+    // d'asserter et de nettoyer, sinon ses GET partent après le DELETE du nettoyage.
+    const dialogueRelu = Promise.all([
+      page.waitForResponse((r) => r.request().method() === 'GET' && /\/chantiers\/\d+\/$/.test(r.url().split('?')[0])),
+      page.waitForResponse((r) => r.request().method() === 'GET' && /\/chantiers\/\d+\/approvisionnement\/$/.test(r.url().split('?')[0])),
+    ])
     await page.reload()
-    await expect(page.getByText(/Matériel commandé/).first()).toBeVisible()
+    await dialogueRelu
+    await expect(page.getByRole('dialog').getByText(/Matériel commandé/).first()).toBeVisible()
     const relu = await lireJson(await page.request.get(`${API}/chantiers/${t.chantier}/`), 'chantier relu')
     expect(relu.statut).toBe('materiel_commande')
     const appro = await lireJson(
@@ -324,6 +331,7 @@ etape('P1.2', ['ACHT104', 'ACHT105', 'ACHT106'], async ({ page }) => {
     const bcf = await lireJson(await page.request.get(
       `${API_DJANGO}/stock/bons-commande-fournisseur/${appro.bons_commande[0].id}/`), 'BCF du chantier')
     expect(bcf.chantier_origine_reference, 'chantier d’origine lisible sur le BCF').toBeTruthy()
+    await page.goto('about:blank') // plus aucun GET en vol quand le nettoyage supprime le chantier
   })
 })
 

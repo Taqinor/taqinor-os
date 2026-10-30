@@ -622,6 +622,26 @@ etape('P5.5', ['ACAL311'], async ({ page }) => {
   // roof_layout.consumption identique, source.bareme = 'societe'.
   const cfg = await lireJson(await page.request.get(`${API_DJANGO}/ventes/roof-config/`, T), 'roof-config')
   if (!cfg.available) nonJouable('aucune clé carte servie : le constructeur 3D ne boote pas')
+  // Prérequis du barème société (parametres/tariff.py) : sans charges fixes d'abonnement
+  // DÉCLARÉES, le serveur refuse la conversion MAD → kWh (`consumption: null` + avertissement,
+  // constaté au rejeu du 30/10 : réglage vide sur la pile). AUCUNE route ne l'écrit
+  // (`TariffSettingsSerializer` ne l'expose pas) : `manage.py shell`, comme les autres écritures
+  // sans route. Relu AVANT, posé au montant relevé sur facture réelle (39,94 MAD TTC/mois)
+  // s'il est vide, RESTAURÉ à vide en `finally`.
+  const reglage = (corps) => shell('from django.contrib.auth import get_user_model; '
+    + 'from apps.parametres.models_tariff import TariffSettings; '
+    + "t = TariffSettings.get(company=get_user_model().objects.get(username='demo_admin').company); "
+    + corps)
+  const vide = /REDEVANCE=None/.test(reglage("print('REDEVANCE=%s' % t.redevance_compteur_mad_mois)"))
+  if (vide) reglage("from decimal import Decimal; t.redevance_compteur_mad_mois = Decimal('39.94'); t.save()")
+  try {
+    await parcoursConsommation(page)
+  } finally {
+    if (vide) reglage('t.redevance_compteur_mad_mois = None; t.save()')
+  }
+})
+
+async function parcoursConsommation(page) {
   const lead = await creerLead(page.request, 'ACC CAL Conso', { facture_hiver: '900', facture_ete: '700' })
   const cal = await creerCalepinage(page.request, lead.id)
   await ecrireLayout(page.request, cal.id, {
@@ -637,8 +657,9 @@ etape('P5.5', ['ACAL311'], async ({ page }) => {
     const ids = await page.locator('[id^="rp9-cons"], [data-cons-bareme]').count()
     const texte = await page.getByText('Affiner ma consommation').count()
     throw new Error(`« Affiner ma consommation » absent de l'atelier /calepinage/${cal.id} (éléments rp9-cons* / data-cons-bareme dans le DOM : ${ids} ; texte « Affiner ma consommation » : ${texte}). `
-      + 'Observé : le panneau n’est jamais monté — consumption.ts::monterProposition exige `rp9-cons-panel`, gabarit présent dans '
-      + 'apps/web/src/pages/preview/toiture-3d-pro-11.astro seulement, absent de frontend/src/pages/ventes/ToitureDesign.jsx. '
+      + 'Condition : consumption.ts::renderConsumption ne montre `#rp9-cons-window` qu’avec un plan de production '
+      + '(ctx.prodScaled et ctx.prodPanels > 0) — dans l’ERP, posé par prodWindow.ts::syncProductionSansFenetre via '
+      + 'l’option `productionAtelier` (useAtelierBoot.js) ; 0 élément rp9-cons* = gabarit CONS_WINDOW_HTML absent de ToitureDesign.jsx. '
       + `Attendu : panneau « estimation (barème indicatif) » puis « Reprendre du lead ». (${String(e.message).split('\n')[0]})`)
   }
   if ((await bascule.getAttribute('aria-expanded')) !== 'true') await bascule.click()
@@ -673,4 +694,4 @@ etape('P5.5', ['ACAL311'], async ({ page }) => {
   const c2 = await enregistrer()
   expect(c2, 'consumption identique après F5 + enregistrer sans toucher').toEqual(c1)
   console.log(`[P5.5] kwh_annuel ${servi.kwh_annuel} ; consumption.source ${JSON.stringify(c1?.source)}`)
-})
+}

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import timedelta
 
 from django.db import IntegrityError, models, transaction
 from rest_framework import status
@@ -137,6 +138,15 @@ class IdempotencyRecord(models.Model):
     request_fingerprint = models.CharField('Empreinte requête', max_length=64)
     response_status = models.IntegerField('Statut réponse')
     response_body = models.JSONField('Corps réponse', default=dict, blank=True)
+
+    class Etat(models.TextChoices):
+        # ERR-AGNR40-IDEMPOTENCE-EN-VOL — la clé est RÉSERVÉE avant la
+        # création (« en cours »), puis la réponse y est posée (« terminé »).
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+
+    etat = models.CharField(
+        'État', max_length=10, choices=Etat.choices, default=Etat.TERMINE)
     created_at = models.DateTimeField('Créé le', auto_now_add=True)
 
     class Meta:
@@ -161,6 +171,27 @@ class IdempotencyConflict(APIException):
         "requête différent."
     )
     default_code = 'idempotency_conflict'
+
+
+class IdempotencyEnCours(APIException):
+    """ERR-AGNR40-IDEMPOTENCE-EN-VOL — la MÊME requête (même clé, même corps)
+    est encore en train de s'exécuter : rien n'est créé, l'écran réessaie avec
+    la même clé et reçoit la réponse mémorisée dès que la première a fini."""
+    status_code = status.HTTP_409_CONFLICT
+    # Corps dict : ``code`` est servi À LA RACINE (l'enveloppe ``error`` du
+    # handler global ne porte que ``api_error`` pour une APIException maison),
+    # pour que l'écran distingue « en cours » d'un vrai conflit.
+    default_detail = {
+        'detail': ("Une requête identique est déjà en cours de traitement — "
+                   "réessayez dans quelques secondes."),
+        'code': 'idempotency_en_cours',
+    }
+    default_code = 'idempotency_en_cours'
+
+
+# Une réservation « en cours » plus vieille que ce délai est abandonnée (le
+# processus qui la tenait est mort) : la clé est reprise, jamais bloquée à vie.
+RESERVATION_EXPIREE = timedelta(minutes=15)
 
 
 def _fingerprint(body) -> str:
@@ -220,29 +251,77 @@ class IdempotentCreateMixin:
             endpoint = f'{endpoint}.{suffixe}'
         fingerprint = _fingerprint(request.data)
 
-        existing = IdempotencyRecord.objects.filter(
-            company=company, endpoint=endpoint, key=idem_key).first()
-        if existing is not None:
-            if existing.request_fingerprint != fingerprint:
-                raise IdempotencyConflict()
-            return Response(
-                existing.response_body, status=existing.response_status)
+        if company is None:
+            return creer()
 
-        response = creer()
+        reservation = _reserver(company, endpoint, idem_key, fingerprint)
+        if isinstance(reservation, Response):
+            return reservation
+        try:
+            response = creer()
+        except BaseException:
+            _liberer(reservation)
+            raise
         if response.status_code >= 400:
             # Un refus n'est pas mémorisé : corriger puis renvoyer la même
             # clé doit pouvoir créer (le rejeu ne vaut que pour un succès).
+            _liberer(reservation)
             return response
         try:
-            IdempotencyRecord.objects.get_or_create(
-                company=company, endpoint=endpoint, key=idem_key,
-                defaults={
-                    'request_fingerprint': fingerprint,
-                    'response_status': response.status_code,
-                    'response_body': response.data,
-                },
-            )
+            reservation.etat = IdempotencyRecord.Etat.TERMINE
+            reservation.response_status = response.status_code
+            reservation.response_body = response.data
+            with transaction.atomic():
+                reservation.save(update_fields=['etat', 'response_status', 'response_body'])
         except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT, ne (D-ENF22-BLE001)
             # doit jamais faire échouer une création qui a déjà réussi.
             logger.warning("avec idempotence : échec ignoré, comportement dégradé", exc_info=True)
+            _liberer(reservation)
         return response
+
+
+def _reserver(company, endpoint, key, fingerprint):
+    """ERR-AGNR40-IDEMPOTENCE-EN-VOL — réserve la clé AVANT la création : la
+    ligne « en cours » est insérée sous la contrainte unique
+    ``(company, endpoint, key)``, donc deux arrivées concurrentes ne peuvent
+    jamais toutes deux créer. Rend la ligne réservée, ou une ``Response`` à
+    rejouer (requête déjà terminée) ; lève ``IdempotencyConflict`` (corps
+    différent) ou ``IdempotencyEnCours`` (même requête encore en vol)."""
+    from django.utils import timezone
+    from rest_framework.response import Response
+
+    for _essai in range(3):
+        try:
+            with transaction.atomic():
+                return IdempotencyRecord.objects.create(
+                    company=company, endpoint=endpoint, key=key,
+                    request_fingerprint=fingerprint, response_status=0,
+                    response_body={}, etat=IdempotencyRecord.Etat.EN_COURS)
+        except IntegrityError:
+            existing = IdempotencyRecord.objects.filter(
+                company=company, endpoint=endpoint, key=key).first()
+            if existing is None:
+                continue  # réservation libérée entre-temps : on retente
+            if existing.request_fingerprint != fingerprint:
+                raise IdempotencyConflict()
+            if existing.etat == IdempotencyRecord.Etat.TERMINE:
+                return Response(
+                    existing.response_body, status=existing.response_status)
+            if existing.created_at < timezone.now() - RESERVATION_EXPIREE:
+                # Réservation abandonnée (processus mort) : reprise.
+                IdempotencyRecord.objects.filter(
+                    pk=existing.pk, etat=IdempotencyRecord.Etat.EN_COURS,
+                    created_at=existing.created_at).delete()
+                continue
+            raise IdempotencyEnCours()
+    raise IdempotencyEnCours()
+
+
+def _liberer(reservation):
+    """Rend la clé (création refusée ou en échec) : jamais une clé bloquée."""
+    try:
+        IdempotencyRecord.objects.filter(
+            pk=reservation.pk, etat=IdempotencyRecord.Etat.EN_COURS).delete()
+    except Exception:  # noqa: BLE001 — libération best-effort (D-ENF22-BLE001)
+        # la réservation expire seule (RESERVATION_EXPIREE).
+        logger.warning("avec idempotence : libération ignorée", exc_info=True)

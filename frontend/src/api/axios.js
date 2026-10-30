@@ -120,7 +120,10 @@ api.interceptors.response.use(
       const status = error.response?.status
       // On NE toaste PAS les 401 (gérés ci-dessus) ni les 404 (souvent attendus,
       // ex. recherche/feature parquée) — ils restent gérés localement.
-      if (status !== 401 && status !== 404) {
+      // ERR-AGNR40-IDEMPOTENCE-EN-VOL — un 409 « idempotency_en_cours » n'est
+      // pas une erreur : l'écran réessaie seul avec la même clé.
+      const enCours = status === 409 && error.response?.data?.code === 'idempotency_en_cours'
+      if (status !== 401 && status !== 404 && !enCours) {
         toastError(errorMessageFrom(error))
       }
     }

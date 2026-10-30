@@ -3,6 +3,7 @@
     {
       "rendementPvgis": null,
       "proposerConsommation": "[fn]",
+      "productionAtelier": "[fn]",
       "maptilerKey": "cle-d-essai",
       "reducedMotion": false,
       "hydrate": {
@@ -65,6 +66,14 @@
     }
   ],
   "api_builder_appels": [
+    {
+      "appel": "serializeLayout",
+      "args": []
+    },
+    {
+      "appel": "serializeLayout",
+      "args": []
+    },
     {
       "appel": "setReferenceContourVisible",
       "args": [
