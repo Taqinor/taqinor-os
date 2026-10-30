@@ -1093,6 +1093,28 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
         return None
 
 
+def payback_servi(data, variante, *, repli):
+    """ERR-RHOR8-TAILLES-JAMAIS-RENTABILISE — le payback SERVI d'une option
+    (``roi_s``/``roi_a`` de ``build_quote_data``) pour la carte Recommandé de
+    ``offres_tailles``, ou ``None``.
+
+    « Jamais remboursé » (``roi_*_jamais``, sentinelle 25,0 de
+    ``pricing.compute_cashflow_payback``) ⇒ ``None`` : la clé est OMISE, comme
+    sur les cartes Éco/Max (AMOT29) et le bandeau des périodes (RHOR5) —
+    jamais « Rentabilisé en 25 ans ». ``repli()`` n'est appelé QUE si aucun
+    payback strictement positif n'a été servi (jamais en concurrence).
+    """
+    cle = 'roi_s' if variante == 'sans' else 'roi_a'
+    data = data or {}
+    if data.get(cle + '_jamais'):
+        return None
+    try:
+        servi = float(data.get(cle))
+    except (TypeError, ValueError):
+        servi = 0.0
+    return servi if servi > 0 else repli()
+
+
 # ── LES OUTILS PURS DU BALAYAGE ─────────────────────────────────────────────
 # EN BAS À DESSEIN (voir la docstring du module) : cet import et le bloc de
 # ré-exports de ``dimensionnement.py`` ferment un cycle que seule cette
