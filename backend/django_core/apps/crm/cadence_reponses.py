@@ -1705,13 +1705,6 @@ def refus_proprietaire(donnees):
                for champ in ('nom', 'prenom', 'telephone', 'whatsapp')
                if donnees.get(champ) not in (None, '') and (
                    not isinstance(donnees[champ], str) or chr(0) in donnees[champ])}
-    # api-fuzz PR #1176 — au-delà de la colonne de ``crm.Lead`` (nom/prénom
-    # 255, téléphone/WhatsApp 50, bornes publiées par ``LOCATAIRE_SUITE``),
-    # Postgres refusait l'écriture (DataError : 500) : refus NOMMÉ.
-    for champ in ('nom', 'prenom', 'telephone', 'whatsapp'):
-        limite = Lead._meta.get_field(champ).max_length
-        if len(donnees.get(champ) or '') > limite:
-            erreurs[champ] = [f'{limite} caractères au maximum.']
     if erreurs:
         return erreurs
     if not (donnees.get('nom') or '').strip():
@@ -1720,6 +1713,20 @@ def refus_proprietaire(donnees):
     if not normalize_phone(numero):
         erreurs['telephone'] = ['« Téléphone du propriétaire » : un numéro '
                                 'joignable est obligatoire.']
+    return erreurs or None
+
+
+def refus_longueur_proprietaire(donnees):
+    """api-fuzz PR #1176 — ``{champ: [message]}`` si une coordonnée (déjà
+    vérifiée TEXTE par ``refus_proprietaire``) dépasse sa colonne de
+    ``crm.Lead`` (nom/prénom 255, téléphone/WhatsApp 50 — les bornes publiées
+    par ``schema_docs.LOCATAIRE_SUITE``), sinon ``None``. Avant : Postgres
+    refusait l'écriture (DataError, 500)."""
+    erreurs = {}
+    for champ in ('nom', 'prenom', 'telephone', 'whatsapp'):
+        limite = Lead._meta.get_field(champ).max_length
+        if len(donnees.get(champ) or '') > limite:
+            erreurs[champ] = [f'{limite} caractères au maximum.']
     return erreurs or None
 
 

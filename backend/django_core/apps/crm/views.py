@@ -1320,6 +1320,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             clore_locataire_sans_proprietaire,
             creer_lead_proprietaire,
             proposition_locataire,
+            refus_longueur_proprietaire,
             refus_proprietaire,
         )
 
@@ -1347,7 +1348,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                                   '« propriétaire inconnu » pour clore la '
                                   'fiche avec le motif « Locataire ».']},
                 status=status.HTTP_400_BAD_REQUEST)
-        if refus := refus_proprietaire(donnees):
+        if refus := refus_proprietaire(donnees) or refus_longueur_proprietaire(donnees):
             # Les erreurs de CHAMP vivent sous `proprietaire` (même forme que
             # le corps) ; une charge illisible est refusée sur `proprietaire`.
             corps = refus if 'proprietaire' in refus else {'proprietaire': refus}
