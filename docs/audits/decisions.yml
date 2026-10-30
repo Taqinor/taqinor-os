@@ -2817,3 +2817,14 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (en chat : « search what the best in the world do and do it »)"
     taches: []
+  - id: D-AGNR-CI-ETUDE-CREATION
+    question: "Devis commercial ou industriel : si l'étude C&I est refusée à la création (ex. champ de tarif manquant), « Créer le devis » bloque-t-il, ou crée-t-il le devis sans son étude (« étude non attachée ») ?"
+    options:
+      - cle: a
+        texte: "bloquer : aucun devis C&I créé sans son étude, l'erreur s'affiche sous le champ à corriger ; un devis créé porte toujours ses chiffres énergétiques, PDF compris"
+      - cle: b
+        texte: "créer sans étude (comportement d'avant) : l'étude s'attache plus tard, à un enregistrement ; le PDF n'a pas d'étude entre-temps"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT)"
+    taches: [ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT]

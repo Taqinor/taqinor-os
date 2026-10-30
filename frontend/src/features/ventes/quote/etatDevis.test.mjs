@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat } from './etatDevis.js'
+import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat, etudeDeCreation } from './etatDevis.js'
 import { consoAnnuelleDepuisFactures } from '../calc/tarifs.js'
 import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
@@ -359,4 +359,24 @@ test('AGNR34 — factures_hiver_ete : aller-retour sans série fabriquée', () =
   assert.deepEqual(entrees.factures_hiver_ete, deux)
   assert.equal('factures_mensuelles_reelles' in entrees, false)
   assert.equal('conso_annuelle' in entrees, false)
+})
+
+// ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — la CRÉATION atomique d'un
+// devis C&I porte déjà les entrées de son étude (le serveur calcule alors
+// `etude_ci` / `production_figee` dès la création) ; les autres marchés
+// gardent les seuls choix d'écran.
+test('ERR-AGNR-CI-ETUDE — création C&I : choix + entrées de l’étude dans le corps atomique', () => {
+  const choix = { scenario: 'Sans batterie', recommended_option: 'Sans batterie', nombre_proprietes: null }
+  const etat = devisVersEtat(FIXTURES['industriel MT'])
+  const { etude } = etatVersEcritures(etat)
+  const corps = etudeDeCreation('industriel', choix, etude)
+  for (const cle of ['mode', 'site', 'tension', 'consommation', 'rythme']) {
+    assert.deepEqual(corps[cle], etude[cle], cle)
+  }
+  assert.equal(corps.scenario, 'Sans batterie')
+  for (const cle of Object.keys(corps)) assert.ok(CLES_SCHEMA.has(cle), `${cle} hors schéma`)
+  assert.deepEqual(etudeDeCreation('commercial', choix, { mode: 'commercial' }), { ...choix, mode: 'commercial' })
+  assert.deepEqual(etudeDeCreation('residentiel', choix, { distributeur: 'onee' }), choix)
+  assert.deepEqual(etudeDeCreation('agricole', choix, { mode_pompe: 'neuve' }), choix)
+  assert.deepEqual(etudeDeCreation('industriel', choix, null), choix)
 })

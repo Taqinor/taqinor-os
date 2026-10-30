@@ -238,6 +238,55 @@ class RafraichisseurTests(_Base):
         self.assertEqual(devis.statut, 'brouillon')
 
 
+class CreationAtomiqueCompleteTests(_Base):
+    """ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — le geste de l'écran
+    générateur : ``POST /devis/atomic/`` (choix + entrées C&I dans le corps,
+    ``etudeDeCreation``) puis le PATCH de fusion des mêmes entrées. Le devis
+    créé porte DÉJÀ ``etude_ci`` / ``production_figee`` (le PDF les lit
+    stockées) ; un « Enregistrer » sans rien toucher (``replace-lines`` aux
+    choix seuls, puis le même PATCH) laisse ``etude_params`` identique."""
+
+    CHOIX = {'scenario': 'Sans batterie', 'recommended_option': 'Sans batterie',
+             'nombre_proprietes': None}
+
+    def _lignes(self):
+        return [
+            {'produit': self.panneau.id, 'designation': 'Panneau 710W', 'quantite': '70',
+             'prix_unitaire': '1272.73', 'remise': '0', 'taux_tva': '20.00',
+             'type_ligne': 'produit', 'ordre': 0},
+            {'produit': self.ond50.id, 'designation': 'Onduleur 50 kW', 'quantite': '1',
+             'prix_unitaire': '40000', 'remise': '0', 'taux_tva': '20.00',
+             'type_ligne': 'produit', 'ordre': 1},
+        ]
+
+    def _patch_etude(self, devis):
+        rep = self.api.patch(f'/api/django/ventes/devis/{devis.id}/etude-params/',
+                             dict(self.CHOIX, **ENTREES), format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+
+    def test_creation_porte_l_etude_et_reenregistrement_a_vide_identique(self):
+        rep = self.api.post('/api/django/ventes/devis/atomic/', {
+            'client': self.client_obj.id, 'statut': 'brouillon', 'taux_tva': '20.00',
+            'mode_installation': 'industriel', 'lignes': self._lignes(),
+            'etude_params': dict(self.CHOIX, **ENTREES)}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertIsNotNone(devis.etude_params.get('etude_ci', {}).get('bilan'))
+        self.assertIn('production_figee', devis.etude_params)
+        self._patch_etude(devis)
+        devis.refresh_from_db()
+        apres_creation = devis.etude_params
+        self.assertIn('etude_ci', apres_creation)
+        self.assertIn('production_figee', apres_creation)
+
+        rep = self.api.post(f'/api/django/ventes/devis/{devis.id}/replace-lines/', {
+            'lignes': self._lignes(), 'etude_params': self.CHOIX}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self._patch_etude(devis)
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params, apres_creation)
+
+
 class PreseanceVisiteSurDevisTests(TestCase):
     """CORC4 (27/10/2026, constat CSV) — une mesure de visite VALIDÉE passe
     devant la valeur STOCKÉE d'un devis brouillon (copie d'une déclaration
