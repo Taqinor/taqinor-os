@@ -95,7 +95,7 @@ describe('estimateur — capture du lead RÉUTILISÉE, plomberie intacte', () =>
   });
 
   it('le pré-remplissage passe par les champs du formulaire (jamais par un lead bis)', () => {
-    const tool = read('../src/scripts/roof-tool.ts');
+    const tool = read('../src/scripts/roof-tool.ts') + read('../src/scripts/roofToolShared.ts');
     // Écrit dans les champs existants du diagnostic enrichi…
     expect(tool).toContain("'lf-area'");
     expect(tool).toContain("'lf-orient'");
@@ -186,7 +186,7 @@ describe('estimateur 3D — variante privée, parallèle, sans toucher la 2D', (
   });
 
   it('la 3D RÉUTILISE le même calcul et le même lead (jamais de fork)', () => {
-    const tool = read(tool3d);
+    const tool = read(tool3d) + read('../src/scripts/roofToolShared.ts');
     // Calcul partagé : importe la géométrie testée, n'en réimplémente pas.
     expect(tool).toContain("from '../lib/roof'");
     expect(tool).toContain('layoutPanels');
@@ -215,7 +215,7 @@ describe('estimateur 3D — variante privée, parallèle, sans toucher la 2D', (
   });
 
   it('repli gracieux : WebGL absent → l’outil lève (la page bascule sur le repli)', () => {
-    const tool = read(tool3d);
+    const tool = read(tool3d) + read('../src/scripts/roofToolShared.ts');
     expect(tool).toContain('webgl');
     expect(tool).toMatch(/throw new Error/);
     const page = read(page3d);
@@ -309,7 +309,7 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
   });
 
   it('la pro RÉUTILISE le calepinage espacé et le même lead (jamais de fork)', () => {
-    const tool = read(toolPro);
+    const tool = read(toolPro) + read('../src/scripts/roofToolShared.ts');
     // Calepinage « pro » testé, réutilise roof.ts (non modifié).
     expect(tool).toContain("from '../lib/roofPro'");
     expect(tool).toContain('layoutProRows');
@@ -347,7 +347,7 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
   });
 
   it('repli gracieux : WebGL absent → l’outil lève (la page bascule sur le repli)', () => {
-    const tool = read(toolPro);
+    const tool = read(toolPro) + read('../src/scripts/roofToolShared.ts');
     expect(tool).toContain('webgl');
     expect(tool).toMatch(/throw new Error/);
     const page = read(pagePro);

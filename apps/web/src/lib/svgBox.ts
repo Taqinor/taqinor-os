@@ -21,3 +21,15 @@ export interface SvgBox {
   padTop: number;
   padBottom: number;
 }
+
+/** Normalise un tableau mensuel : exactement 12 valeurs finies ≥ 0, sinon `null`. */
+export function monthlySeries(arr: unknown): number[] | null {
+  if (!Array.isArray(arr) || arr.length !== 12) return null;
+  let any = false;
+  const out = arr.map((v) => {
+    const n = typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
+    if (n > 0) any = true;
+    return n;
+  });
+  return any ? out : null;
+}

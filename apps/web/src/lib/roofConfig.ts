@@ -160,6 +160,15 @@ export function roofVertexUV(
  * retirés de l'image (l'attribution Mapbox/Maxar reste visible sur la carte). La
  * netteté plafonne à celle de l'imagerie (~0,3–0,6 m sur Casablanca).
  */
+/** Paramètres bornés d'une image statique satellite (zoom 0–22, côtés 1–1280 px). */
+export function staticImageParams(center: [number, number], zoom: number, w: number, h: number) {
+  const [lng, lat] = center;
+  const z = Math.max(0, Math.min(22, zoom));
+  const W = Math.max(1, Math.min(1280, Math.round(w)));
+  const H = Math.max(1, Math.min(1280, Math.round(h)));
+  return { lng, lat, z, W, H };
+}
+
 export function mapboxStaticRoofImageUrl(
   token: string,
   center: [number, number],
@@ -167,10 +176,7 @@ export function mapboxStaticRoofImageUrl(
   w: number,
   h: number,
 ): string {
-  const [lng, lat] = center;
-  const z = Math.max(0, Math.min(22, zoom));
-  const W = Math.max(1, Math.min(1280, Math.round(w)));
-  const H = Math.max(1, Math.min(1280, Math.round(h)));
+  const { lng, lat, z, W, H } = staticImageParams(center, zoom, w, h);
   const pos = `${lng},${lat},${z.toFixed(4)},0`;
   return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${pos}/${W}x${H}@2x?access_token=${encodeURIComponent(token)}&attribution=false&logo=false`;
 }

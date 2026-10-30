@@ -16,7 +16,7 @@ import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
 import { champsFormeObstacle, type AreaRecord, type CardData, type LeadPayload, type TiltMode, type OrientMode, type AzimuthMode, type MarginMode } from './types';
-import { type LngLat } from '../../lib/roof';
+import { type LngLat, geodesicAreaM2 } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
@@ -92,15 +92,7 @@ export function roofTypeIdForBuilder(t: 'flat' | 'pitched'): string {
 export function createPrefill(ctx: Ctx): Prefill {
   function geodesicArea(): number {
     // surface tracée (m²) pour pré-remplir le champ « surface toit »
-    const ring = ctx.vertices;
-    if (ring.length < 3) return 0;
-    let total = 0;
-    for (let i = 0; i < ring.length; i++) {
-      const [lng1, lat1] = ring[i];
-      const [lng2, lat2] = ring[(i + 1) % ring.length];
-      total += (lng2 - lng1) * DEG2RAD * (2 + Math.sin(lat1 * DEG2RAD) + Math.sin(lat2 * DEG2RAD));
-    }
-    return Math.abs((total * WGS84_RADIUS * WGS84_RADIUS) / 2);
+    return geodesicAreaM2(ctx.vertices);
   }
 
   /** W85 — Orientation `enrichment.ORIENTATIONS` déduite de la config GAGNANTE,
