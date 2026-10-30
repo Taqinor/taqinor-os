@@ -1,0 +1,34 @@
+{
+  "sha": "f1f711dc7",
+  "date": "2026-10-30",
+  "groupe": "ACAL",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACAL311"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P5.5",
+      "taches": [
+        "ACAL311"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL-P5.5-rejeu2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "FAIL au premier geste : #rp9-cons-toggle rendu (correctif 68b4e9d53e effectif) mais #rp9-cons-window reste hidden. consumption.ts::renderConsumption exige ctx.prodScaled && prodPanels>0 ; prodScaled n'est écrit que par prodWindow.ts::updateProductionWindow, qui sort sur `if (!dom.prodWindowEl) return;` car #rp9-prod-window n'existe que dans apps/web/src/pages/preview/toiture-3d-pro-11.astro (DOM ERP : rp9-prod* = 0 ; aucune requête /api/roof-production). Attendu : fenêtre visible, « estimation (barème indicatif) », puis « Reprendre du lead ». Serveur (curl) : POST calepinages/161/consommation/proposer/ {source:lead} -> 200 mais consumption null, kwh_annuel null (redevance_compteur_mad_mois non déclarée dans la société démo). Environnement : roof-config available:false (PUBLIC_MAPTILER_KEY absente) ; design-context complété côté navigateur par une clé factice pour booter le constructeur ; le FAIL n'en dépend pas."
+    }
+  ]
+}
