@@ -1,0 +1,5 @@
+== C-APDF-ACC-RELANCE (sha 5908d43bb)
+attendu : lettre de relance (lettre-relance-pdf) et lettre premium niveau 1 (lettre-relance-premium) de la facture 301 (société 2) en fr et ar : profil SOLAIRE EXEMPLE, arabe >= 50 caractères (D-APDF-3 a), aucun prix_achat
+observé : {"repro": false, "rendus": ["lettre_relance|fr|p=1|ar=0|img=0|PASS", "lettre_relance_premium|fr|p=1|ar=0|img=0|PASS", "lettre_relance|ar|p=1|ar=212|img=0|PASS [note: police Noto Sans Arabic embarquée : ['GLZDRW+Noto-Sans-Arabic-Bold', 'UNUIUP+Noto-Sans-Arabic']]", "lettre_relance_premium|ar|p=1|ar=0|img=0|FAIL arabe 0 caractères < 50 (document non traduit)"], "ok_statut_inchange": true, "statut": "emise"}
+verdict : ÉCART
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0

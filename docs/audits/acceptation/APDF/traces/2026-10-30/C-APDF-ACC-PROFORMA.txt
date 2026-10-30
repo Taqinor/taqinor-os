@@ -1,0 +1,5 @@
+== C-APDF-ACC-PROFORMA (sha 5908d43bb)
+attendu : pro-forma (POST devis/741/proforma-pdf) en fr et ar : profil SOLAIRE EXEMPLE (ICE), RIB, banque du profil et « Valable jusqu'au » (APDF29), en ar mention de repli FR+AR (D-APDF-3 a), aucun prix_achat, statut du devis inchangé
+observé : {"repro": true, "rendus": ["proforma|fr|p=2|ar=0|img=0|PASS", "proforma|ar|p=2|ar=33|img=0|PASS [note: police Noto Sans Arabic embarquée : ['DVIHBP+Noto-Kufi-Arabic']]"], "ok_statut_inchange": true, "statut": "brouillon"}
+verdict : REPRO
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0

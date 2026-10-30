@@ -1,0 +1,5 @@
+== C-APDF-ACC-RELEVE (sha 5908d43bb)
+attendu : relevé de compte du client de la facture 8 (releve-pdf) en fr et ar : profil SOLAIRE EXEMPLE, en ar mention de repli FR+AR (D-APDF-3 a, APDF106), aucun prix_achat
+observé : {"repro": true, "rendus": ["releve|fr|p=1|ar=0|img=0|PASS", "releve|ar|p=1|ar=33|img=0|PASS [note: police Noto Sans Arabic embarquée : ['DVIHBP+Noto-Kufi-Arabic']]"]}
+verdict : REPRO
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0

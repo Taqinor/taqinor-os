@@ -1,0 +1,5 @@
+== C-APDF-ACC-FACTURE (sha 5908d43bb)
+attendu : facture FAC-DEMO-0001 (id 8, société 2) telecharger-pdf en fr et ar : profil SOLAIRE EXEMPLE (ICE, IF, RC), ICE client entreprise, date de livraison 15/10/2026 imprimée, pagination « 1 / N », >= 50 caractères arabes en ar, aucun prix_achat ni identité TAQINOR, statut inchangé
+observé : {"repro": true, "rendus": ["facture|fr|p=2|ar=0|img=0|PASS", "facture|ar|p=2|ar=310|img=0|PASS [note: police Noto Sans Arabic embarquée : ['DVIHBP+Noto-Kufi-Arabic', 'GLZDRW+Noto-Sans-Arabic-Bold', 'UNUIUP+Noto-Sans-Arabic']]"], "ok_statut_inchange": true, "statut": "emise"}
+verdict : REPRO
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0
