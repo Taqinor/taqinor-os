@@ -164,3 +164,26 @@ test('QF5 — computeROI : sans consommation réelle, comportement HISTORIQUE in
   assert.equal(roi.savings_model, 'estimation')
   assert.equal(roi.facture_sans, null)
 })
+
+// ── ERR-RHOR8-SANS-LOCALISATION-ECRAN-PDF — parité écran / PDF (devis 2299) ──
+// Devis résidentiel sans ville ni GPS, facture d'hiver 1 000 MAD, 5,68 kWc,
+// batterie 5 kWh, 44 500 / 56 500 MAD TTC. L'écran (règle maison : facture
+// connue ⇒ barème par tranche, grille nationale par défaut) rend 10 316 /
+// 11 308 MAD/an ; le serveur rend les MÊMES chiffres au niveau 5
+// (test_qf2_two_bills::Rhor8SansLocalisationParite) — chiffres épinglés des
+// deux côtés.
+test('ERR-RHOR8 — sans localisation : conso des marches hiver/été + barème national = chiffres du PDF', async () => {
+  const { consoAnnuelleDepuisFactures } = await import('./tarifs.js')
+  const { estimerMois, productibleForCity } = await import('../solar.js')
+  const factures = estimerMois(1000, 0)
+  const conso = consoAnnuelleDepuisFactures(factures, 'onee')
+  assert.equal(conso, 6419)
+  const roi = computeROI({
+    kwp: 5.68, factures, dayUsagePct: 60, totalSans: 44500, totalAvec: 56500,
+    batteryKwh: 5, consoAnnuelleKwh: conso, utility: 'onee',
+    productible: productibleForCity('', null), reglesCalcul: 5,
+  })
+  assert.equal(roi.savings_model, 'factures')
+  assert.equal(Math.round(roi.eco_annuelle_sans), 10316)
+  assert.equal(Math.round(roi.eco_annuelle_avec), 11308)
+})
