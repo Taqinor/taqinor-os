@@ -164,6 +164,12 @@ class FactureRectificatifsActionsMixin:
         clean_lignes = None
         if isinstance(lignes, list) and lignes:
             clean_lignes = []
+            # ERR-AVOIR-PARTIEL-ACOMPTE — une facture SANS AUCUNE ligne
+            # produit (acompte, tranche figée) ne crédite que des lignes sans
+            # produit : aucun mouvement de stock possible, DC10 ne s'y applique
+            # pas. Dès qu'une ligne de la facture porte un produit, DC10 tient.
+            facture_sans_produit = not facture.lignes.exclude(
+                produit=None).exists()
             for i, ligne in enumerate(lignes, start=1):
                 designation = (ligne.get('designation') or '').strip()
                 if not designation:
@@ -179,14 +185,16 @@ class FactureRectificatifsActionsMixin:
                 # DC10 — produit REQUIS sur une nouvelle ligne d'avoir (lien
                 # snapshot fort). Le FK reste nullable en base pour l'historique,
                 # mais toute ligne saisie ici doit désigner un produit de la
-                # société.
+                # société — sauf sur une facture sans aucune ligne produit
+                # (ERR-AVOIR-PARTIEL-ACOMPTE : geste partiel sur un acompte).
                 produit_id = ligne.get('produit') or None
-                if produit_id is None:
+                if produit_id is None and not facture_sans_produit:
                     return Response(
                         {'detail': f'Ligne {i} : produit requis.'},
                         status=status.HTTP_400_BAD_REQUEST)
                 from apps.stock.selectors import get_produit_scoped
-                if get_produit_scoped(company, produit_id) is None:
+                if (produit_id is not None
+                        and get_produit_scoped(company, produit_id) is None):
                     return Response(
                         {'detail': f'Ligne {i} : produit inconnu.'},
                         status=status.HTTP_400_BAD_REQUEST)
