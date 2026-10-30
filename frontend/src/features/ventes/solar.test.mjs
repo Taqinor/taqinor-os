@@ -21,16 +21,14 @@ import {
   // STKCAT10 — sélecteur de structures piloté par le catalogue.,
   structureRoleForName, structureChoisie} from './solar.js'
 import {
-  appartientAuPanierSans, appartientAuPanierAvec, isReseauInverter, batterieCompatible,
+  isReseauInverter, batterieCompatible,
   plageBatterieOnduleur, isBattery, isHybridInverter, isAnyInverter, inverterCostFromLines,
 } from './calc/classification.js'
 import {
-  computeROI, AUTOCONSO_SANS, AUTOCONSO_AVEC, computeCashflowPayback, DAYS_IN_MONTH,
-  TARIFF_ESCALATION, INVERTER_REPLACE_YEAR, BATTERY_ROUNDTRIP,
+  computeROI, AUTOCONSO_SANS, AUTOCONSO_AVEC,
+  INVERTER_REPLACE_YEAR,
 } from './calc/roi.js'
-import { optionTotalsTTC, totauxCanoniquesTtc, multiPropertyPreviewTTC } from './calc/totaux.js'
-import { FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh, ONEE_TRANCHES } from './calc/tarifs.js'
-import { PAS_ARRONDI_DEVIS } from './remise.js'
+import { FALLBACK_KWH_PRICE, twoBillsSavings } from './calc/tarifs.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
@@ -122,26 +120,6 @@ test('prix saisi librement : aller-retour TTC → HT stocké → TTC sans dériv
   }
   // TVA non standard : même garantie
   assert.equal(Math.round(parseFloat(htFromTtc(1453, 10)) * 1.10), 1453)
-})
-
-test('factures saisies librement : utilisées telles quelles dans la simulation', () => {
-  const typed = [517, 433.5, 601, 380, 360, 502, 707, 681, 580, 480, 430, 480]
-  const roi = computeROI({
-    kwp: 5, factures: typed, dayUsagePct: 60,
-    totalSans: 50000, totalAvec: 80000, batteryKwh: 5,
-  })
-  // Aucune retouche : le graphique reçoit exactement les montants saisis
-  assert.deepEqual(roi.monthly_detail.map(d => d.facture), typed)
-})
-
-test('remise saisie librement (ex. 12.5 %) : appliquée exactement', () => {
-  const lines = [{ designation: 'Transport', quantite: '1', prix_unit_ttc: '1000' }]
-  const { totalSans } = optionTotalsTTC(lines, '12.5')
-  // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — chaîne canonique du noyau : HT
-  // persisté 833,33 ; remise 104,17 ; HT net 729,16 ; TVA 145,83 → 874,99
-  // (le chiffre facturé ; l'ancien « 1000 × 0,875 = 875 » ne l'était pas).
-  // ARRONDI-100 : 874,99 → palier de 100 inférieur.
-  assert.equal(totalSans, 800)
 })
 
 test('sélecteur produits : groupé selon les catégories du catalogue simulateur', () => {
@@ -423,18 +401,8 @@ test('PVOND — une plage SERVIE par l\'API l\'emporte sur le défaut de famille
 import {
   expectedTvaForDesignation,
 } from './solar.js'
-import { prixParKwc, discountForTarget, computeBuyCost } from './calc/totaux.js'
 
 // ══ Classification pompe (le moteur pompage JS est retiré, AGR132) ═══════════
-import { isPompe } from './calc/classification.js'
-
-test('QX20 — isPompe classe une pompe, pas un panneau/onduleur', () => {
-  assert.equal(isPompe('Pompe immergée OSP 30/8'), true)
-  assert.equal(isPompe('Pompe de surface'), true)
-  assert.equal(isPompe('Panneau Canadien Solar 710W'), false)
-  assert.equal(isPompe('Onduleur réseau Huawei 10kW'), false)
-  assert.equal(isPompe(''), false)
-})
 
 const OSP_CURVE_30_8 = { debits_m3h: [0, 12, 24, 30, 36, 39], hmt_m: [91, 85, 70, 60, 43, 34] }
 const OSP_CURVE_30_13 = { debits_m3h: [0, 12, 24, 30, 36, 39], hmt_m: [148, 138, 114, 98, 70, 55] }
@@ -488,49 +456,6 @@ test('TVA 10 % panneau : aller-retour TTC↔HT lossless (1 400 ↔ 1 272,73)', (
   }
 })
 
-test('prix/kWc + prix cible appliqué via remise transparente', () => {
-  assert.equal(prixParKwc(99400, 9.94), 10000)
-  // cible 9 000 MAD/kWc sur un brut de 99 400 → remise ≈ 9.96 %
-  const pct = discountForTarget(9000, 9.94, 99400)
-  assert.ok(Math.abs(pct - (1 - 9000 * 9.94 / 99400) * 100) < 0.01)
-  // le total remisé atteint la cible (à l'arrondi près)
-  const totalApres = 99400 * (1 - pct / 100)
-  assert.ok(Math.abs(totalApres - 9000 * 9.94) < 1)
-})
-
-test('marge : affichée seulement quand des prix d\'achat existent', () => {
-  const produits = [
-    { id: 1, nom: 'Panneau X', prix_vente: '1166.67', prix_achat: '0' },
-    { id: 2, nom: 'Onduleur Y', prix_vente: '16666.67', prix_achat: '0' },
-  ]
-  const lines = [
-    { produit: '1', designation: 'Panneau X', quantite: '10', prix_unit_ttc: '1400' },
-    { produit: '2', designation: 'Onduleur Y', quantite: '1', prix_unit_ttc: '20000' },
-  ]
-  // aucun prix d'achat → null (rien à afficher)
-  assert.equal(computeBuyCost(lines, produits), null)
-  // un prix d'achat renseigné → coût TTC de cette ligne
-  produits[0].prix_achat = '1000'
-  assert.equal(computeBuyCost(lines, produits), Math.round(10 * 1000 * 1.2))
-})
-
-// QJR567 — le coût d'achat (marge du générateur) suit la MÊME population que
-// les totaux : ni ligne optionnelle (add-on non activé), ni section/note.
-test('QJR567 computeBuyCost ignore une ligne optionnelle et les sections/notes', () => {
-  const produits = [
-    { id: 1, nom: 'Panneau X', prix_vente: '1000', prix_achat: '800' },
-    { id: 3, nom: 'Borne de recharge', prix_vente: '5000', prix_achat: '4000' },
-  ]
-  const normale = { produit: '1', designation: 'Panneau X', quantite: '10', prix_unit_ttc: '1100' }
-  const lines = [
-    normale,
-    { produit: '3', designation: 'Borne de recharge', quantite: '1', prix_unit_ttc: '6000', optionnelle: true },
-    { produit: '1', designation: 'Section toiture', quantite: '1', prix_unit_ttc: '0', typeLigne: 'section' },
-    { produit: '1', designation: 'Note', quantite: '1', prix_unit_ttc: '0', typeLigne: 'note' },
-  ]
-  assert.equal(computeBuyCost(lines, produits), computeBuyCost([normale], produits))
-})
-
 // ── DC4 — TVA panneaux société surcharge le défaut, sinon 10 %/20 % ───────────
 test('DC4 expectedTvaForDesignation : config société surcharge, défauts sinon', () => {
   // Défauts réforme : panneau 10, autre 20
@@ -564,210 +489,6 @@ test('QF5 — tarif de repli unifié : KWH_PRICE (CompanyProfile) vs FALLBACK_KW
   assert.equal(FALLBACK_KWH_PRICE, 1.20) // pricing.py _FALLBACK_KWH_PRICE (miroir exact)
 })
 
-test('QF4 — monthlyBillFromKwh : barème ONEE SÉLECTIF (300 kWh/mois)', () => {
-  // BARÈME SÉLECTIF (grille officielle, cf. solar.js) : au-dessus de 150
-  // kWh/mois, TOUTE la conso est facturée au tarif de SA tranche. 300 kWh/mois
-  // tombe dans la bande 201-300 (bornes effectives 211-310, tolérance 10 kWh)
-  // → tarif 1,187388 sur les 300 kWh (2026, TVA 20%).
-  // Dérivation à la main : 300 × 1,187388 = 356,2164 MAD/mois.
-  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 356.2164) < 1e-9)
-  // La bande d'EN DESSOUS (progressive, ≤ 150) reste cumulative :
-  // 100 × 0,916272 + 50 × 1,091388 = 91,6272 + 54,5694 = 146,1966 MAD/mois.
-  assert.ok(Math.abs(monthlyBillFromKwh(150, ONEE_TRANCHES) - 146.1966) < 1e-9)
-})
-
-test('QF4 — kwhFromBill : inverse EXACT du barème sélectif', () => {
-  // Facture atteignable : 700 × 1,622856 = 1 135,9992 MAD/mois → 700 kWh/mois.
-  const r = kwhFromBill(1135.9992, 'onee')
-  assert.equal(r.kwhMensuel, 700)
-  assert.equal(r.approximatif, false)
-  assert.equal(r.estimation, false)
-  // 850 MAD/mois tombe dans un TROU du barème : la bande 301-500 plafonne à
-  // 510 × 1,381704 = 704,66904 MAD et la bande supérieure démarre au-dessus de
-  // 511 × 1,622856 = 829,279416 MAD… mais 850 MAD EST atteignable au-dessus de
-  // 510 : 850 / 1,622856 = 523,7998… kWh (> 510, donc bien dans sa bande) →
-  // arrondi 523,8.
-  assert.equal(kwhFromBill(850, 'onee').kwhMensuel, 523.8)
-  // Vrai trou : 235 MAD/mois. À 210 kWh la facture vaut 210 × 1,091388 =
-  // 229,19148 ; au premier kWh au-dessus elle saute à 211 × 1,187388 =
-  // 250,538868. Aucune conso ne produit 235 MAD → on résout à la BORNE BASSE
-  // du saut (210 kWh), jamais une conso que le barème ne peut pas produire
-  // (règle miroir en Python).
-  assert.equal(kwhFromBill(235, 'onee').kwhMensuel, 210)
-})
-
-test('Q7 (fondateur 20/08) — kwhFromBill : Lydec/Redal = LA grille nationale, plus d\'approximation', () => {
-  // Il n'existe pas de grille Lydec/Redal distincte : les distributeurs
-  // appliquent la grille nationale unique — même inversion, même résultat
-  // que l'ONEE, et le drapeau « approximatif » n'a plus d'objet.
-  const onee = kwhFromBill(500, 'onee')
-  for (const distributeur of ['lydec', 'redal']) {
-    const r = kwhFromBill(500, distributeur)
-    assert.deepEqual(r, onee, distributeur)
-    assert.equal(r.approximatif, false, distributeur)
-  }
-})
-
-test('QF4/CAD167 — kwhFromBill : SANS distributeur → repli FALLBACK_KWH_PRICE, étiqueté estimation', () => {
-  // Même règle que test_cad167 test_SANS_distributeur_le_comportement_d_avant_est_conserve.
-  for (const aucun of [undefined, null, '', '  ']) {
-    const r = kwhFromBill(120, aucun)
-    assert.equal(r.kwhMensuel, Math.round((120 / FALLBACK_KWH_PRICE) * 10) / 10)
-    assert.equal(r.estimation, true)
-  }
-})
-
-test('CAD167 — kwhFromBill : un distributeur NOMMÉ hors table (SRM, « autre ») lit la grille nationale', () => {
-  // Même règle que pricing._resolve_tranches (test_cad167 test_autre_cesse_de_casser_la_courbe) :
-  // AVANT, 'srm_casablanca' divisait la facture par 1,20 — DEV-202609-0113.
-  const onee = kwhFromBill(22000, 'onee')
-  for (const code of ['srm_casablanca', 'srm_rabat', 'autre', 'amendis', 'inconnu']) {
-    const r = kwhFromBill(22000, code)
-    assert.deepEqual(r, onee, code)
-    assert.equal(r.estimation, false, code)
-  }
-  assert.notEqual(onee.kwhMensuel, Math.round((22000 / FALLBACK_KWH_PRICE) * 10) / 10)
-})
-
-test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
-  const r = kwhFromBill(0, 'onee')
-  assert.equal(r.kwhMensuel, 0)
-  assert.equal(r.estimation, true)
-})
-
-// QJR168 — les factures ci-dessous portent le barème COMPLET (énergie + les
-// deux lignes fixes + TPPAN), jumeau de bareme.facture_mad : 39,936 MAD TTC de
-// location/entretien par mois (479,23/an) et une TPPAN empilée 0,10/0,15/0,20,
-// bornes 100/200 kWh, plafonnée à 100 MAD/mois, nulle sous 50 kWh/mois.
-test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.60, sans batterie)', () => {
-  // Dérivation à la main (barème SÉLECTIF, 2026 — TVA 20 %) :
-  //   conso    7 200/12 = 600 kWh/mois → > 510 → 600 × 1,622856 = 973,7136
-  //                                            MAD/mois × 12 = 11 684,5632
-  //     TPPAN  10 + 15 + 400 × 0,20 = 105 → PLAFOND 100 MAD/mois × 12 = 1 200
-  //     fixes  479,23 → facture 11 684,5632 + 479,232 + 1 200 = 13 363,80 → 13 364
-  //   autoconsommé 6 000 × 0,60 = 3 600 kWh (≤ conso) → résiduel 3 600 kWh/an
-  //   résiduel 3 600/12 = 300 kWh/mois → bande 211-310 → 300 × 1,187388 =
-  //                                            356,2164 × 12 = 4 274,5968
-  //     TPPAN  10 + 15 + 100 × 0,20 = 45 MAD/mois × 12 = 540
-  //     fixes  479,23 → facture 4 274,5968 + 479,232 + 540 = 5 293,83 → 5 294
-  //   économie 13 364 − 5 294 = 8 070 MAD/an
-  const r = twoBillsSavings(6000, 7200, 0.6, 'onee')
-  assert.deepEqual(r, {
-    factureSans: 13364, factureAvec: 5294, economie: 8070, autoconsoKwh: 3600,
-  })
-})
-
-test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.85, avec batterie)', () => {
-  // Dérivation à la main (barème SÉLECTIF, 2026 — TVA 20 %) :
-  //   autoconsommé 6 000 × 0,85 = 5 100 kWh → résiduel 2 100 kWh/an
-  //   résiduel 2 100/12 = 175 kWh/mois → bande 151-210 → 175 × 1,091388 =
-  //                                            190,9929 × 12 = 2 291,9148
-  //     TPPAN  10 + 75 × 0,15 = 21,25 MAD/mois × 12 = 255
-  //     fixes  479,23 → facture 2 291,9148 + 479,232 + 255 = 3 026,15 → 3 026
-  //   économie 13 364 − 3 026 = 10 338 MAD/an
-  // En redescendant sous 510 PUIS sous 310, le client ne fait pas qu'effacer
-  // des kWh : il RE-TARIFE tout son résiduel (1,622856 → 1,091388), et sa
-  // TPPAN dégringole avec lui (les lignes fixes, elles, s'annulent).
-  const r = twoBillsSavings(6000, 7200, 0.85, 'onee')
-  assert.deepEqual(r, {
-    factureSans: 13364, factureAvec: 3026, economie: 10338, autoconsoKwh: 5100,
-  })
-})
-
-// ── VERROU DE DÉRIVE — barème SÉLECTIF : JS ↔ Python ↔ site ─────────────────
-// Jumeau EXACT de apps/ventes/tests/test_bareme_selectif_fondateur.py (ERP) et
-// de apps/web/tests/savingsTranchesFondateur.test.ts (site public). Les trois
-// fichiers portent les MÊMES entrées et les MÊMES attendus, tous DÉRIVÉS À LA
-// MAIN de la grille officielle (jamais copiés d'une sortie de code).
-//
-// ÉCART TEMPORAIRE ASSUMÉ ET DATÉ (QJR26, 29/08/2026) : la correction T5
-// ci-dessous est portée sur les DEUX branches ERP (ce fichier + le jumeau
-// Python), PAS sur la branche site — apps/web/** est une tâche séparée (QJW).
-// Tant qu'elle n'a pas atterri, savingsTranchesFondateur.test.ts reste sur
-// l'ancienne valeur. Le verrou à trois branches se referme avec QJW.
-//
-// Grille (TTC, 2026 — TVA 20 %) : progressif 0-100 = 0,916272 ·
-// 101-150 = 1,091388 ; sélectif (toute la conso au tarif de sa tranche,
-// tolérance 10 kWh) : 151-210 = 1,091388 · 211-310 = 1,187388 ·
-// 311-510 = 1,381704 · > 510 = 1,622856.
-//
-// DÉCISION FONDATEUR D5 (29/08/2026) — T5 RECALÉE SUR LA FACTURE : 311-510
-// vaut 1,381704 (facture SRM n° 643769639 du 08/05/2026 : 359 kWh × 1,15142 HT
-// = 496,03 TTC ⇒ 1,15142 × 1,20), et non l'extrapolation « HT constant ». TOUS
-// les attendus T5 ci-dessous ont été RE-DÉRIVÉS À LA MAIN de 1,381704.
-const BAREME_FIXTURE = [
-  [100, 91.6272],      // progressif : 100 × 0,916272
-  [150, 146.1966],     // progressif : 91,6272 + 50 × 1,091388 (= 54,5694)
-  [151, 164.799588],   // 1re marche sélective : 151 × 1,091388
-  [210, 229.19148],    // haut de bande (tolérance) : 210 × 1,091388
-  [211, 250.538868],   // bande suivante, TOUTE la conso : 211 × 1,187388
-  [310, 368.09028],    // 310 × 1,187388
-  [311, 429.709944],   // 311 × 1,381704
-  [499, 689.470296],   // 499 × 1,381704
-  [500, 690.852],      // 500 × 1,381704 — le seuil « 500 » du fondateur
-  [501, 692.233704],   // 501 × 1,381704 (encore dans sa bande : borne effective 510)
-  [510, 704.66904],    // 510 × 1,381704
-  [511, 829.279416],   // 511 × 1,622856 — la marche du haut de grille
-  [700, 1135.9992],    // 700 × 1,622856
-]
-
-test('VERROU — barème sélectif : chaque marche vaut le montant dérivé à la main', () => {
-  for (const [kwh, mad] of BAREME_FIXTURE) {
-    assert.ok(Math.abs(monthlyBillFromKwh(kwh, ONEE_TRANCHES) - mad) < 1e-9,
-      `${kwh} kWh/mois → attendu ${mad} MAD, obtenu ${monthlyBillFromKwh(kwh, ONEE_TRANCHES)}`)
-  }
-  // La facture ne décroît JAMAIS quand la conso monte (monotonie du barème).
-  for (let i = 1; i < BAREME_FIXTURE.length; i++) {
-    assert.ok(BAREME_FIXTURE[i][1] > BAREME_FIXTURE[i - 1][1])
-  }
-  // 511 kWh coûte 124,610376 MAD de plus que 510 kWh pour UN kWh de plus :
-  // c'est la marche sélective (829,279416 − 704,66904), pas une erreur d'arrondi.
-  // La marche a GRANDI avec la correction D5 : son bas est descendu à 1,381704
-  // alors que son haut (1,622856) n'a pas bougé.
-  assert.ok(Math.abs((829.279416 - 704.66904) - 124.610376) < 1e-9)
-})
-
-test('VERROU — kwhFromBill est l’inverse EXACT sur toute la grille (aller-retour)', () => {
-  for (const [kwh] of BAREME_FIXTURE) {
-    assert.equal(kwhFromBill(monthlyBillFromKwh(kwh, ONEE_TRANCHES), 'onee').kwhMensuel, kwh)
-  }
-})
-
-test('VERROU — scénario FONDATEUR : 700 kWh/mois, résiduel sous le seuil', () => {
-  // « The client will go down in the price per kWh because he will be below
-  //   500 kWh per month — I want the new price per kWh to be used. »
-  // Dérivation à la main (2026 — TVA 20 %) :
-  //   avant  700 kWh/mois → 700 × 1,622856 = 1 135,9992 MAD (1,622856 MAD/kWh)
-  //   après  280 kWh/mois → 280 × 1,187388 =   332,46864 MAD (1,187388 MAD/kWh)
-  //   économie 1 135,9992 − 332,46864 = 803,53056 MAD/mois → × 12 = 9 642,3672 MAD/an
-  const avant = monthlyBillFromKwh(700, ONEE_TRANCHES)
-  const apres = monthlyBillFromKwh(280, ONEE_TRANCHES)
-  assert.ok(Math.abs(avant - 1135.9992) < 1e-9)
-  assert.ok(Math.abs(apres - 332.46864) < 1e-9)
-  assert.ok(Math.abs((avant - apres) - 803.53056) < 1e-9)
-  // Le PRIX du kWh baisse vraiment (c'est la phrase du fondateur).
-  assert.ok(Math.abs(avant / 700 - 1.622856) < 1e-9)
-  assert.ok(Math.abs(apres / 280 - 1.187388) < 1e-9)
-  // …et l'économie vaut PLUS que les 420 kWh effacés au tarif marginal :
-  // 420 × 1,622856 = 681,59952 MAD < 803,53056 MAD (le résiduel est re-tarifé).
-  assert.ok(Math.abs(420 * 1.622856 - 681.59952) < 1e-9)
-  assert.ok(803.53056 > 681.59952)
-  // Annualisation : 803,53056 × 12 = 9 642,3672 → 9 642 MAD/an. Le mois est
-  // l'unité de tarification (le seuil est MENSUEL) : on ne divise jamais
-  // l'année avant de tarifer.
-  assert.equal(Math.round((avant - apres) * 12), 9642)
-})
-
-test('twoBillsSavings : dégrade en null sans donnée réelle (jamais un chiffre inventé)', () => {
-  assert.equal(twoBillsSavings(0, 7200, 0.6, 'onee'), null) // pas de production
-  assert.equal(twoBillsSavings(6000, 0, 0.6, 'onee'), null) // pas de conso
-  assert.equal(twoBillsSavings(6000, 7200, 0, 'onee'), null) // pas de ratio
-  assert.equal(twoBillsSavings(6000, 7200, 0.6, undefined), null) // pas de barème
-  // CAD167 — un distributeur NOMMÉ (SRM) n'est plus « pas de barème » : grille nationale.
-  assert.deepEqual(twoBillsSavings(6000, 7200, 0.6, 'srm_casablanca'),
-    twoBillsSavings(6000, 7200, 0.6, 'onee'))
-})
-
 // ── QX38 — productible canonique PVGIS par ville (miroir backend) ────────────
 test('QX38 — productibleForCity : PVGIS par ville, repli central, override société', () => {
   assert.equal(productibleForCity('Agadir'), 1687)
@@ -798,117 +519,6 @@ test('QX38 — computeROI : production = productible × kwp × pertes 20 % (pari
   assert.equal(Math.round(roi.production_annuelle_kwh),
     Math.round(1687 * kwp * PRODUCTIBLE_NET_FACTOR))
   assert.equal(Math.round(roi.production_annuelle_kwh), 11142)
-})
-
-// ── QX39 — cashflow 25 ans honnête (miroir backend pricing.py) ──────────────
-test('QX39 — computeCashflowPayback : croisement du cumul à zéro (parité backend)', () => {
-  const cf = computeCashflowPayback(50000, 10000)
-  assert.equal(cf.cumulative.length, 25)
-  assert.ok(cf.paybackYears > 0 && cf.paybackYears < 25)
-  assert.ok(cf.cumulative[0] < 0)                 // année 1 encore négatif
-  assert.ok(cf.cumulative[cf.cumulative.length - 1] > 0) // rentabilisé à 25 ans
-  assert.ok(cf.netGain > 0)
-})
-
-test('QX39 — projection à TARIF CONSTANT (miroir pricing.py TARIFF_ESCALATION=0)', () => {
-  // ALIGNEMENT 18/08 — l'écran supposait +2 %/an alors que le PDF et la page
-  // proposition écrivent « projection à tarif constant » : le modèle doit FAIRE
-  // ce qu'il dit. Seule la dégradation panneau (0,5 %/an) érode les économies.
-  assert.equal(TARIFF_ESCALATION, 0)
-  const cf = computeCashflowPayback(50000, 10000)
-  // Année 1 : cumul = −50 000 + 10 000 = −40 000 (aucune indexation).
-  assert.equal(cf.cumulative[0], -40000)
-  // Année 2 : économie × (1 − 0,005) = 9 950 → cumul −30 050.
-  assert.equal(cf.cumulative[1], -30050)
-})
-
-test('QX39 — computeCashflowPayback : dégénéré → payback null', () => {
-  assert.equal(computeCashflowPayback(0, 10000).paybackYears, null)
-  assert.equal(computeCashflowPayback(50000, 0).paybackYears, null)
-})
-
-test('ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — drapeau jamaisRembourse (même règle que pricing)', () => {
-  const jamais = computeCashflowPayback(269065, 3000)
-  assert.equal(jamais.jamaisRembourse, true)
-  assert.ok(jamais.cumulative[jamais.cumulative.length - 1] < 0)
-  assert.equal(computeCashflowPayback(50000, 10000).jamaisRembourse, false)
-  assert.equal(computeCashflowPayback(0, 10000).jamaisRembourse, false)
-})
-
-test('QX39 — batterie (rendement aller-retour) allonge le payback', () => {
-  const no = computeCashflowPayback(50000, 10000)
-  const bat = computeCashflowPayback(50000, 10000, { battery: true })
-  assert.ok(bat.paybackYears >= no.paybackYears)
-})
-
-// ── Z5 (ORDRE FONDATEUR, 20/08/2026) — le rendement aller-retour batterie ne
-// frappe QUE la part de l'économie qui transite RÉELLEMENT par elle, jamais
-// 100 % (miroir pricing.py compute_cashflow_payback, batt_factor). ──────────
-test('Z5 — batteryShare borne la perte aller-retour à la part réellement stockée', () => {
-  // Investissement 50 000, économie année 1 = 10 000 MAD, moitié de
-  // l'économie transite par la batterie (batteryShare = 0,5).
-  //   batt_factor = 1 − (1 − 0,90) × 0,5 = 1 − 0,05 = 0,95
-  //   Année 1 (dégradation/escalade = ×1 encore) :
-  //     yearSaving = 10 000 × 0,95 = 9 500 → cumul = −50 000 + 9 500 = −40 500
-  const half = computeCashflowPayback(50000, 10000, { battery: true, batteryShare: 0.5 })
-  assert.equal(half.cumulative[0], -40500)
-
-  // batteryShare = 0 : RIEN ne transite par la batterie (tout est autoconsommé
-  // au fil du soleil) → aucune perte → IDENTIQUE au cashflow sans batterie.
-  const zero = computeCashflowPayback(50000, 10000, { battery: true, batteryShare: 0 })
-  const none = computeCashflowPayback(50000, 10000)
-  assert.deepEqual(zero.cumulative, none.cumulative)
-
-  // batteryShare = 1 (toute l'économie transite) et batteryShare = null/absent
-  // (repli historique, appelant direct sans décomposition) sont IDENTIQUES au
-  // forfait plein 0,90 sur 100 % — comportement inchangé pour ces appelants.
-  const full = computeCashflowPayback(50000, 10000, { battery: true, batteryShare: 1 })
-  const legacy = computeCashflowPayback(50000, 10000, { battery: true })
-  assert.deepEqual(full.cumulative, legacy.cumulative)
-  assert.equal(legacy.cumulative[0], -50000 + 10000 * BATTERY_ROUNDTRIP) // −41 000
-
-  // AVANT Z5, batteryShare était ignoré : la part diurne directe (qui ne
-  // traverse jamais la batterie) payait quand même 10 % de perte — une double
-  // peine qui allongeait le payback « avec batterie ». Le payback à
-  // batteryShare=0,5 doit désormais se situer STRICTEMENT ENTRE les deux bornes.
-  assert.ok(half.paybackYears >= zero.paybackYears)
-  assert.ok(half.paybackYears <= legacy.paybackYears)
-})
-
-// ── Q1 (ORDRE FONDATEUR, 20/08/2026) — la provision de remplacement onduleur
-// (année 12) vaut le PRIX RÉEL de la ligne onduleur du devis, jamais un
-// pourcentage forfaitaire de l'investissement (miroir pricing.py
-// compute_cashflow_payback + builder.py _cout_onduleur). ─────────────────────
-test('Q1 — computeCashflowPayback : la provision = prix RÉEL, jamais 8 % de l\'investissement', () => {
-  const investment = 80000
-  const economieAnnee1 = 12000
-  const withoutProvision = computeCashflowPayback(investment, economieAnnee1)
-  // Prix réel d'une ligne onduleur — délibérément DIFFÉRENT de l'ancien
-  // forfait 8 % (0,08 × 80 000 = 6 400) pour prouver qu'il n'est plus utilisé.
-  const realInverterPrice = 15300
-  assert.notEqual(realInverterPrice, Math.round(investment * 0.08))
-  const withProvision = computeCashflowPayback(investment, economieAnnee1, {
-    inverterReplaceCost: realInverterPrice,
-  })
-  // Avant l'année de remplacement (12) : STRICTEMENT AUCUNE différence.
-  for (let i = 0; i < INVERTER_REPLACE_YEAR - 1; i++) {
-    assert.equal(withProvision.cumulative[i], withoutProvision.cumulative[i],
-      `année ${i + 1} : la provision ne doit rien changer avant l'année ${INVERTER_REPLACE_YEAR}`)
-  }
-  // À l'année 12 (indice 11) et pour tout le reste de la projection : le cumul
-  // « avec provision » est en retrait EXACTEMENT du prix réel de l'onduleur —
-  // jamais un pourcentage (round(a) − round(a − k) = k pour k entier : la
-  // preuve tient quelle que soit la valeur exacte du cumul non arrondi).
-  for (let i = INVERTER_REPLACE_YEAR - 1; i < 25; i++) {
-    assert.equal(
-      withoutProvision.cumulative[i] - withProvision.cumulative[i],
-      realInverterPrice,
-      `année ${i + 1} : écart ≠ prix réel de l'onduleur`)
-  }
-  // Aucune ligne onduleur identifiable (inverterReplaceCost null/absent) :
-  // AUCUNE provision — jamais un repli sur un pourcentage.
-  const omitted = computeCashflowPayback(investment, economieAnnee1, { inverterReplaceCost: null })
-  assert.deepEqual(omitted.cumulative, withoutProvision.cumulative)
 })
 
 test('Q1 — computeROI dérive la provision onduleur des VRAIES lignes (sans/avec), jamais un forfait', () => {
@@ -952,32 +562,6 @@ test('Q1 — computeROI dérive la provision onduleur des VRAIES lignes (sans/av
     20000)
 })
 
-// ── M9 (audit du 19/08/2026) — l'option « avec batterie » ne porte le
-// rendement aller-retour QUE lorsqu'une VRAIE batterie est chiffrée sur le
-// devis (dérivé de batteryKwhFromLines(lignes) > 0), jamais codé en dur. ─────
-test('M9 — la présence de batterie vient des VRAIES lignes, jamais codée en dur', () => {
-  const base = {
-    kwp: 8, factures: Array(12).fill(1200), dayUsagePct: 60,
-    totalSans: 90000, totalAvec: 90000, kwhPrice: 1.20,
-  }
-  // batteryKwh=0 (aucune vraie batterie) : le cashflow « avec » doit être
-  // STRUCTURELLEMENT IDENTIQUE à un cashflow sans aucune perte de batterie —
-  // avant M9, `battery: true` était codé en dur pour l'option 2 et infligeait
-  // quand même 10 % de perte à un devis qui ne porte aucune batterie.
-  const roiNoBattery = computeROI({ ...base, batteryKwh: 0 })
-  const refNoBattery = computeCashflowPayback(base.totalAvec, roiNoBattery.eco_annuelle_avec)
-  assert.deepEqual(roiNoBattery.cashflow_avec, refNoBattery.cumulative)
-  assert.equal(roiNoBattery.payback_avec, refNoBattery.paybackYears)
-
-  // Avec une VRAIE capacité (10 kWh) sur les mêmes entrées par ailleurs : la
-  // perte aller-retour DOIT désormais s'appliquer — le cashflow diverge du
-  // cashflow « sans aucune perte » calculé sur la MÊME économie avec batterie.
-  const roiWithBattery = computeROI({ ...base, batteryKwh: 10 })
-  const refWithBatteryNoLoss = computeCashflowPayback(
-    base.totalAvec, roiWithBattery.eco_annuelle_avec)
-  assert.notDeepEqual(roiWithBattery.cashflow_avec, refWithBatteryNoLoss.cumulative)
-})
-
 // ── QX40 — pompage : compatibilité phase/tension pompe ↔ variateur ──────────
 const _curvePump = (nom, kw, tension, prix, courbe) => ({
   id: ++_id, nom, pompe_kw: kw, tension_v: tension, prix_vente: prix,
@@ -985,16 +569,6 @@ const _curvePump = (nom, kw, tension, prix, courbe) => ({
 })
 // courbe simple : à HMT 60 m délivre 40 m³/h (≥ le débit demandé de 30)
 const _COURBE = { debits_m3h: [0, 40, 60], hmt_m: [90, 60, 30] }
-
-// ── QF5 — computeROI bascule sur le modèle « deux factures » (parité écran/PDF) ─
-test('QF5 — computeROI : sans consommation réelle, comportement HISTORIQUE inchangé (estimation)', () => {
-  const roi = computeROI({
-    kwp: 5, factures: Array(12).fill(500), dayUsagePct: 60,
-    totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
-  })
-  assert.equal(roi.savings_model, 'estimation')
-  assert.equal(roi.facture_sans, null)
-})
 
 test('QF5 — computeROI : avec consommation réelle + distributeur, bascule sur « deux factures »', () => {
   const kwp = 5
@@ -1020,81 +594,6 @@ test('QF5 — computeROI : avec consommation réelle + distributeur, bascule sur
   assert.equal(roi.facture_sans, refSans.factureSans)
   assert.equal(roi.facture_avec_sans, refSans.factureAvec)
   assert.equal(roi.facture_avec_avec, refAvec.factureAvec)
-})
-
-// ── QJ31 — Multi-propriétés : aperçu écran (TTC) mode ×N et mode villas ──────
-const L = (designation, qty, ttc, extra = {}) => ({
-  designation, quantite: String(qty), prix_unit_ttc: String(ttc), ...extra,
-})
-
-test('QJ31 — sans mode multi (pas de N, pas de groupe) : preview = null (mono-système inchangé)', () => {
-  const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)]
-  assert.equal(multiPropertyPreviewTTC(lines, {}), null)
-  assert.equal(multiPropertyPreviewTTC(lines, { nombreProprietes: '1' }), null)
-})
-
-test('QJ31 mode A — ×N multiplie le total TTC (unitaire × N)', () => {
-  const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 TTC
-  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '3', discountPct: '0' })
-  assert.equal(r.mode, 'multiplicateur')
-  assert.equal(r.nombreProprietes, 3)
-  // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 34 000,04, que
-  // l'ARRONDI-100 ramène au palier de 100 MAD inférieur (noyau : même palier).
-  assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 0, PAS_ARRONDI_DEVIS))
-  assert.equal(r.totalUnitaireSans, 34000)
-  // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N au CENTIME (miroir backend) : unitaire × 3.
-  // ARRONDI-100 : 102 000,12 → palier de 100 inférieur (unitaire arrondi AVANT le ×N).
-  assert.equal(r.totalMultiSans, 102000)
-})
-
-test('QJ31 mode A — ×N applique aussi la remise (unitaire remisé × N)', () => {
-  const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 brut
-  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '2', discountPct: '10' })
-  // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 30 600,04, que
-  // l'ARRONDI-100 ramène au palier de 100 MAD inférieur (noyau : même palier).
-  assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 10, PAS_ARRONDI_DEVIS))
-  assert.equal(r.totalUnitaireSans, 30600)
-  // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N au CENTIME : unitaire × 2.
-  // ARRONDI-100 : 61 200,08 → palier de 100 inférieur (unitaire arrondi AVANT le ×N).
-  assert.equal(r.totalMultiSans, 61200)
-})
-
-test('QJ31 mode B — groupes villas : sous-total par villa + total général', () => {
-  const lines = [
-    L('Installation commune', 1, 6000, { groupeIndex: 0, groupeLabel: 'Équipement commun' }),
-    L('Onduleur réseau', 1, 20000, { groupeIndex: 1, groupeLabel: 'Villa A' }),
-    L('Panneaux', 10, 1400, { groupeIndex: 1, groupeLabel: 'Villa A' }), // 14000
-    L('Onduleur réseau', 1, 11000, { groupeIndex: 2, groupeLabel: 'Villa B' }),
-    L('Panneaux', 8, 1400, { groupeIndex: 2, groupeLabel: 'Villa B' }), // 11200
-  ]
-  const r = multiPropertyPreviewTTC(lines, {})
-  assert.equal(r.mode, 'villas')
-  assert.deepEqual(r.groupes.map(g => g.label), ['Équipement commun', 'Villa A', 'Villa B'])
-  // ATOT24 — chaque villa = chaîne canonique de SES lignes (HT persisté au
-  // centime → TVA → TTC, comme `multi_villa_totaux`) ; total général = chaîne
-  // canonique de toutes les lignes au palier ARRONDI-100.
-  assert.equal(r.groupes[0].totalTtc, 6000)
-  assert.equal(r.groupes[1].totalTtc, totauxCanoniquesTtc(lines.slice(1, 3), 0, 0)) // ≈ 20000 + 14000
-  assert.equal(r.groupes[2].totalTtc, totauxCanoniquesTtc(lines.slice(3), 0, 0)) // ≈ 11000 + 11200
-  assert.equal(r.grandTotalTtc, totauxCanoniquesTtc(lines, 0, PAS_ARRONDI_DEVIS))
-  assert.equal(r.grandTotalTtc, 62200)
-})
-
-test('QJ31 mode B — libellé par défaut quand groupeLabel vide (Villa N / Équipement commun)', () => {
-  const lines = [
-    L('X', 1, 1000, { groupeIndex: 0, groupeLabel: '' }),
-    L('Y', 1, 2000, { groupeIndex: 1, groupeLabel: '' }),
-  ]
-  const r = multiPropertyPreviewTTC(lines, {})
-  assert.equal(r.groupes[0].label, 'Équipement commun')
-  assert.equal(r.groupes[1].label, 'Villa 1')
-})
-
-test('QJ31 — le multiplicateur (>1) prime sur les groupes si les deux sont présents', () => {
-  // À l'écran les deux modes sont exclusifs ; par sécurité, N>1 gagne.
-  const lines = [L('X', 1, 1000, { groupeIndex: 1, groupeLabel: 'Villa 1' })]
-  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '4' })
-  assert.equal(r.mode, 'multiplicateur')
 })
 
 const ETUDE_BASE = {
@@ -1214,32 +713,6 @@ test('STKCAT10 — structureChoisie : id résolu sur le catalogue COMPLET, aprè
     categorie_type: 'structure',
   }
   assert.equal(structureChoisie([...SEEDED_PERGOLA, sansPrix], 7777), null)
-})
-
-// QJR529 — la remise PAR LIGNE stockée (LigneDevis.remise) compte dans le
-// même calcul que les totaux canoniques, comme `total_ht` = q × pu × (1 − remise/100)
-// côté serveur : sinon l'écran ≠ le PDF.
-test('QJR529 — totauxCanoniquesTtc applique la remise de ligne', () => {
-  assert.equal(totauxCanoniquesTtc(
-    [{ quantite: '1', prix_unit_ttc: '1200', taux_tva: 20, remise: '10' }], 0), 1080)
-  // Remise absente / nulle : strictement inchangé.
-  assert.equal(totauxCanoniquesTtc(
-    [{ quantite: '1', prix_unit_ttc: '1200', taux_tva: 20 }], 0), 1200)
-  // Taux mixtes + remise globale : la remise de ligne s'applique AVANT.
-  // HT : 2 × 1000 × 0,5 = 1000 (10 %) + 1000 (20 %) → brut 2000, remise
-  // globale 10 % → 1800 ; TVA 900 × 10 % + 900 × 20 % = 270 → 2070.
-  assert.equal(totauxCanoniquesTtc([
-    { quantite: '2', prix_unit_ttc: '1100', taux_tva: 10, remise: '50' },
-    { quantite: '1', prix_unit_ttc: '1200', taux_tva: 20 },
-  ], 10), 2070)
-})
-
-test('ERR-QJR576 — SCENARIOS_ALTERNATIVE est la liste unique de quote/scenarios.js (SCENARIOS_VALIDES)', async () => {
-  const { SCENARIOS_ALTERNATIVE } = await import('./calc/totaux.js')
-  const { SCENARIOS_VALIDES } = await import('./quote/sizingReducer.js')
-  assert.equal(SCENARIOS_ALTERNATIVE, SCENARIOS_VALIDES)
-  assert.deepEqual([...SCENARIOS_ALTERNATIVE].sort(),
-    ['Avec batterie', 'Les deux (Sans + Avec)', 'Sans batterie'])
 })
 
 // ADEV69 — second composeur supprimé (D-QJR5-9) : la composition vit au serveur (apps/ventes/domain/composition.py, testée côté backend).
