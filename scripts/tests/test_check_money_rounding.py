@@ -185,8 +185,9 @@ class TestBaseDeReference(unittest.TestCase):
             {site.key for site in sites})
 
     def test_la_base_livree_porte_une_raison_pour_chaque_cle(self):
+        # D-ENF-ARRONDI-PDF (30/10/2026) : la dette est soldee, une base VIDE
+        # est l'etat vise -- chaque cle restante doit porter sa raison.
         entrees = cmr.load_allowlist()
-        self.assertTrue(entrees, "scripts/money_rounding_allow.txt est vide")
         sans_raison = [k for k, raison in entrees.items() if not raison]
         self.assertEqual(sans_raison, [])
         a_relire = [k for k, raison in entrees.items()

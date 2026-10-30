@@ -191,3 +191,16 @@ class PlafondTPPANTests(SimpleTestCase):
 
     def test_la_taxe_de_reference_est_inchangee(self):
         self.assertAlmostEqual(B.tppan_mad(359, jours=30), 56.80, places=2)
+
+
+class ArrondiPrixTrancheTests(SimpleTestCase):
+    """D-ENF-ARRONDI-PDF — le prix de tranche servi (6 décimales) arrondit
+    moitié vers le haut ; un tarif officiel (≤ 4 décimales) ne bouge jamais."""
+
+    def test_moitie_vers_le_haut_a_six_decimales(self):
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False)
+        self.addCleanup(poser_regles_origine, False)
+        self.assertEqual(B._tranche(1, 0, 100, 0.1234565, 'progressif')['prix_mad_kwh'],
+                         0.123457)  # round : 0.123456
+        self.assertEqual(B._tranche(1, 0, 100, 1.0732, 'progressif')['prix_mad_kwh'], 1.0732)

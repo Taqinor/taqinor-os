@@ -2850,3 +2850,14 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, passif de scripts/symboles_moteur_allow.txt)"
     taches: [AMOT47]
+  - id: D-ENF-ARRONDI-PDF
+    question: "Le moteur du PDF de devis arrondit encore l'argent affiché par round() (arrondi bancaire : 12,5 → 12, 51 232,50 → 51 232) sur 27 sites gelés dans scripts/money_rounding_allow.txt, contre la règle maison « moitié vers le haut » de core.money.quantize_mad (docs/money-convention.md) : basculer ?"
+    options:
+      - cle: a
+        texte: "basculer l'argent affiché sur moitié vers le haut (core.money.quantize_mad, même précision qu'aujourd'hui), nouveaux rendus seulement : un devis non brouillon garde l'arrondi que le client a reçu (niveau de règles 6, migration ventes 0145) ; aucune réparation ni re-rendu des devis envoyés ; seules les valeurs exactement à moitié bougent d'une unité"
+      - cle: b
+        texte: "garder round() et la dette gelée"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (relayée par l'orchestrateur, lane w15-arrondi)"
+    taches: []

@@ -137,6 +137,7 @@ def _monthly_consumption(devis) -> list:
     bills = lead_bills_for_devis(devis)
     if not bills:
         return []
+    from ..quote_engine.montants import arrondi_affichage  # D-ENF-ARRONDI-PDF
     from ..quote_engine.pricing import kwh_from_bill
     utility = bills.get('distributeur')
     hiver_mad = bills['facture_hiver']
@@ -171,7 +172,7 @@ def _monthly_consumption(devis) -> list:
 
     def _kwh(mad):
         if mad not in _cache:
-            _cache[mad] = round(
+            _cache[mad] = arrondi_affichage(
                 kwh_from_bill(mad, utility=utility, facture_totale=True)
                 .get('kwh_mensuel') or 0)
         return _cache[mad]

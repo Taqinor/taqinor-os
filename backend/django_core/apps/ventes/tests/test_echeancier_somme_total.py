@@ -109,6 +109,13 @@ class RepartitionPaiementTest(SimpleTestCase):
         self.assertEqual(_somme(rep['acompte'], rep['materiel'], rep['solde']),
                          Decimal('87654.32'))
 
+    def test_total_au_centime_moitie_vers_le_haut(self):
+        """D-ENF-ARRONDI-PDF — le total d'entrée est quantifié ROUND_HALF_UP
+        (jamais l'arrondi bancaire par défaut de ``Decimal``)."""
+        from apps.ventes.quote_engine.builder import repartition_paiement
+        rep = repartition_paiement(Decimal('1000.125'), TERMES)
+        self.assertEqual(rep['total'], 1000.13)  # défaut de Decimal : 1000.12
+
     def test_le_moteur_legacy_n_arrondit_plus_rien(self):
         from apps.ventes.quote_engine import generate_devis_premium as G
         self.assertFalse(hasattr(G, '_repartir_paiement'))
