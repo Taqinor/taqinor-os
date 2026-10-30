@@ -14,15 +14,19 @@
 // « Non couvert » : une étape dont la donnée ne peut pas être montée lève
 // `nonCouvert(...)` : FAIL avec la raison en notes, elle ne couvre RIEN (jamais
 // un PASS creux).
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test, request as pwRequest } from '@playwright/test'
 import { groupe } from './_oracles.js'
-import { aujourdHui } from './_enregistrement.js'
+import { RACINE, aujourdHui } from './_enregistrement.js'
 import {
   API_DJANGO, PNG_1PX, assurerSessionPage, connexionApi, lireJson, listeDe, textePdf, uniq, telephoneMobileUnique,
 } from '../helpers.js'
 
 const etape = groupe('ACHT', [
-  'ACHT104', 'ACHT105', 'ACHT106', 'ACHT107', 'ACHT108', 'ACHT109', 'ACHT110', 'ACHT99',
+  'ACHT104', 'ACHT105', 'ACHT106', 'ACHT107', 'ACHT108', 'ACHT109', 'ACHT110', 'ACHT99', 'ACHT112',
 ])
 const API = `${API_DJANGO}/installations`
 const TECH = { username: 'demo_tech', password: 'Demo@2026!' }
@@ -753,4 +757,56 @@ etape('P99.9', ['ACHT99'], async ({ page, suivi, testInfo }) => {
       await expect(pub.getByText(/introuvable ou a expiré/)).toBeVisible({ timeout: 30_000 })
     } finally { await prive.close() }
   })
+})
+
+// ── ACHT112 — rapport énergie : logo société détouré en en-tête (P4) ─────────
+etape('P4-ACHT112', ['ACHT112'], async ({ page }) => {
+  // Chantier démo 55 (CHT-202610-0001, comme APDF99 P5) ; société démo. Sans logo
+  // téléversé, l'étape en téléverse un (PNG à fond blanc, marges blanches) puis le RETIRE.
+  const CONTENEUR = (process.env.E2E_DJANGO_EXEC || 'docker exec -i accept-replay-django').trim().split(/\s+/).pop()
+  const py = (code, args = []) => execFileSync('docker', ['exec', '-i', CONTENEUR, 'python', '-c', code, ...args],
+    { stdio: 'pipe', timeout: 300_000, maxBuffer: 64 * 1024 * 1024 }).toString()
+  const C55 = 55
+  const ch = await page.request.get(`${API}/chantiers/${C55}/`)
+  if (!ch.ok()) nonCouvert(`chantier démo ${C55} absent (${ch.status()})`)
+  const avant = await lireJson(await page.request.get(`${API_DJANGO}/parametres/`), 'profil')
+  const avaitLogo = Boolean(avant.logo_key || avant.logo_url || avant.logo)
+  let televerse = false
+  try {
+    if (!avaitLogo) {
+      // PNG 400×200 fond BLANC opaque, bloc bleu 200×80 au centre (aucune transparence).
+      const png = Buffer.from(py("import io,base64\nfrom PIL import Image, ImageDraw\nim=Image.new('RGB',(400,200),'white')\n"
+        + "ImageDraw.Draw(im).rectangle([100,60,300,140],fill=(20,60,140))\nb=io.BytesIO(); im.save(b,'PNG'); print(base64.b64encode(b.getvalue()).decode())").trim(), 'base64')
+      const up = await page.request.post(`${API_DJANGO}/parametres/upload-logo/`, {
+        multipart: { file: { name: 'acht112-logo.png', mimeType: 'image/png', buffer: png } },
+      })
+      if (!up.ok()) nonCouvert(`téléversement du logo refusé (${up.status()} ${(await up.text()).slice(0, 200)})`)
+      televerse = true
+    }
+    const rep = await page.request.get(`${API}/chantiers/${C55}/rapport-energie/`)
+    expect(rep.status(), 'rapport-energie 200').toBe(200)
+    const pdf = await rep.body()
+    // PyMuPDF dans le conteneur : images de la page 1 (xref, smask, l, h) + rastérisation.
+    const local = mkdtempSync(join(tmpdir(), 'acht112-'))
+    writeFileSync(join(local, 'r.pdf'), pdf)
+    const distant = `/tmp/${local.split(/[\\/]/).pop()}`
+    execFileSync('docker', ['cp', local, `${CONTENEUR}:${distant}`], { stdio: 'pipe', timeout: 120_000 })
+    const res = JSON.parse(py("import fitz,sys,json\nd=fitz.open(sys.argv[1]+'/r.pdf'); p=d[0]\n"
+      + "imgs=[]\nfor i in p.get_images(full=True):\n  r=p.get_image_rects(i[0]); imgs.append({'xref':i[0],'smask':i[1],'w':i[2],'h':i[3],'y':(r[0].y0 if r else None)})\n"
+      + "p.get_pixmap(dpi=150).save(sys.argv[1]+'/p1.png')\nprint(json.dumps({'images':imgs,'h':p.rect.height,'texte':p.get_text()[:400]}))", [distant]))
+    const dossier = join(RACINE, 'docs', 'qa-explorer', 'captures', aujourdHui())
+    mkdirSync(dossier, { recursive: true })
+    execFileSync('docker', ['cp', `${CONTENEUR}:${distant}/p1.png`, join(dossier, 'ACCEPTATION-ACHT-P4-ACHT112-rapport-energie.png')], { stdio: 'pipe' })
+    execFileSync('docker', ['exec', CONTENEUR, 'rm', '-rf', distant], { stdio: 'pipe' })
+    rmSync(local, { recursive: true, force: true })
+    console.log(`[P4-ACHT112] logo avant ${avaitLogo} ; téléversé ${televerse} ; images p.1 ${JSON.stringify(res.images)}`)
+    const entete = res.images.filter((i) => i.y != null && i.y < res.h * 0.25)
+    expect(entete.length, 'une image (le logo) dans l’en-tête du rapport').toBeGreaterThan(0)
+    // Détouré : le fond blanc devient transparent ⇒ un masque alpha (smask) ; l'URI brute
+    // d'un PNG opaque n'en a pas.
+    expect(entete.some((i) => i.smask > 0), 'logo d’en-tête détouré (masque alpha)').toBeTruthy()
+    if (televerse) expect(entete.every((i) => !(i.w === 400 && i.h === 200)), 'logo rogné (jamais le canevas 400×200 brut)').toBeTruthy()
+  } finally {
+    if (televerse) await page.request.post(`${API_DJANGO}/parametres/delete-logo/`, { data: {} }).catch(() => undefined)
+  }
 })

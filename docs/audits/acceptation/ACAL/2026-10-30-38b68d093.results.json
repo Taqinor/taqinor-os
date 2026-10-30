@@ -1,0 +1,34 @@
+{
+  "sha": "38b68d093",
+  "date": "2026-10-30",
+  "groupe": "ACAL",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACAL311"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P5.5",
+      "taches": [
+        "ACAL311"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL-P5.5.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : « Affiner ma consommation » absent de l'atelier /calepinage/149 (éléments rp9-cons* / data-cons-bareme dans le DOM : 0 ; texte « Affiner ma consommation » : 0). Observé : le panneau n’est jamais monté — consumption.ts::monterProposition exige `rp9-cons-panel`, gabarit présent dans apps/web/src/pages/preview/toiture-3d-pro-11.astro seulement, absent de frontend/src/pages/ventes/ToitureDesign.jsx. Attendu : panneau « estimation (barème indicatif) » puis « Reprendre du lead ». (bouton « Affiner ma consommation » à l’écran)"
+    }
+  ]
+}
