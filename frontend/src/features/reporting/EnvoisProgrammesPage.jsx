@@ -407,14 +407,7 @@ export default function EnvoisProgrammesPage() {
                               >
                                 <Pencil />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => supprimer(r)}
-                                aria-label={`Supprimer ${r.name}`}
-                              >
-                                <Trash2 />
-                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => supprimer(r)} aria-label={`Supprimer ${r.name}`}><Trash2 /></Button>
                             </div>
                           </td>
                         </tr>
