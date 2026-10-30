@@ -1,0 +1,12 @@
+# AANA50 — écran /reporting rejoué en direct, 2026-10-30, sha 5908d43bb (backend monté, front de la pile locale)
+# Navigateur : Playwright MCP, http://localhost, connexion demo_admin (identifiants du jeu de démo : frontend/e2e/helpers.js).
+
+navigation : http://localhost/login -> connexion demo_admin -> http://localhost/reporting
+titre de page : "(99+) TAQINOR — ERP Agentique" ; titre h2 : "Reporting & Analytics"
+sections rendues : Valeur du pipeline, CA mensuel, Top 5 produits vendus (quantité), Répartition des factures,
+                   Tunnel de conversion, Stock sous seuil d'alerte, KPI fédérés, Créances clients (factures impayées)
+AANA29 / C-AANA-022 : le tunnel affiche « Devis acceptés / créés : 13 % » (taux servi par le backend, jamais factures ÷ devis)
+
+console (niveau error) : 0 message
+console (niveau warning) : 1 message — "No `HydrateFallback` element provided to render during initial hydration" (react-router, non bloquant)
+oracle 2 (console.error / pageerror) : PASS

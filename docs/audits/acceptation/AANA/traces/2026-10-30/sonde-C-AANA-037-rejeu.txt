@@ -1,0 +1,6 @@
+== C-AANA-037 (sha 5908d43bb)
+attendu : défaut absent : l'e-mail de confirmation d'abonnement à la page de statut porte un lien ABSOLU (http(s)://…/confirmer/<jeton>/)
+observé : abonner=202 mails=1 lien=http://localhost/api/django/statuspage/public/confirmer/ED5BWAqqZ-Xl34mndwrwSV8p-iVO8qGWoCpz-lJfkig/
+{"repro": true, "statut": 202, "lien": "http://localhost/api/django/statuspage/public/confirmer/ED5BWAqqZ-Xl34mndwrwSV8p-iVO8qGWoCpz-lJfkig/"}
+verdict : REPRO
+base inchangée : oui (avant 26513, après 26513) ; mails 1 ; tâches Celery bloquées 0
