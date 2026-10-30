@@ -58,6 +58,28 @@ class PaybackPubliableTests(SimpleTestCase):
             90000, 6500)['payback_years'])
         self.assertNotEqual(carte['payback_annees'], round(90000 / 6500, 2))
 
+    def test_err_rhor8_carte_recommande_jamais_rembourse_omise(self):
+        """ERR-RHOR8-TAILLES-JAMAIS-RENTABILISE (devis 2300) — ``roi_*`` servi
+        à la sentinelle 25,0 avec ``roi_*_jamais`` : la carte Recommandé OMET
+        ``payback_annees`` (comme les cartes Éco/Max et le bandeau RHOR5),
+        jamais « Rentabilisé en 25 ans » ; sans le drapeau, 21,7 reste 21,7.
+        Test-du-test : retirer la lecture de ``_jamais`` ⇒ 25.0 publié, rouge."""
+        from apps.ventes.tests.test_offres_tailles import _contexte_factice
+        contexte = _contexte_factice(SimpleNamespace(
+            etude_params={}, reference='DEV-RHOR8'))
+        base = {'nb_panneaux_sans': 8, 'puissance_kwc_sans': 5.68,
+                'nb_panneaux_avec': 8, 'puissance_kwc_avec': 5.68,
+                'totaux_sans': {'ttc': 120000.0}, 'eco_s_ann': 4000.0,
+                'totaux_avec': {'ttc': 160000.0}, 'eco_a_ann': 4500.0}
+        for variante, cle in (('sans', 'roi_s'), ('avec', 'roi_a')):
+            with self.subTest(variante=variante):
+                data = dict(base, **{cle: 25.0, cle + '_jamais': True})
+                carte = ot._carte_du_devis(contexte, data, variante)
+                self.assertNotIn('payback_annees', carte)
+                carte = ot._carte_du_devis(
+                    contexte, dict(base, **{cle: 21.7, cle + '_jamais': False}), variante)
+                self.assertEqual(carte['payback_annees'], 21.7)
+
     def test_echelle_paliers(self):
         lignes = [{'role': 'onduleur_hybride', 'quantite': 1,
                    'prix_unitaire_ht': 12500.0},

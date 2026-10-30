@@ -1,0 +1,77 @@
+{
+  "sha": "c58d67cd0c691c59315d98df0a6f92a691c789ef",
+  "date": "2026-10-30",
+  "groupe": "RHOR",
+  "verdict": "FAIL",
+  "couvre": [
+    "RHOR8"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "RHOR1.tailles",
+      "taches": [
+        "RHOR1",
+        "RHOR8"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § RHOR1.tailles ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RHOR-proposition-tailles-desktop.jpg — même champ 5,68 kWc : carte officielle 8 473 kWh, carte Max 9 084 kWh (offres_tailles._carte_moteur sans ombrage, kwargs_moteur_ombre rend un dict vide)"
+    },
+    {
+      "id": "RHOR5.tailles",
+      "taches": [
+        "RHOR5",
+        "RHOR8"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § RHOR5.tailles ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RHOR-proposition-jamais-25ans.jpg — devis 2300 jamais remboursé : « Rentabilisé en 25 ans » (offres_tailles._carte_du_devis recopie roi_* = 25,0 sans roi_*_jamais)"
+    },
+    {
+      "id": "RHOR8.pdf-ar",
+      "taches": [
+        "RHOR8"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/RHOR/traces/2026-10-30/RHOR8-rejeu.txt § RHOR8.pdf-ar ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RHOR-pdf-ar.png — include_etude=1 : AR 5 pages (page 2 vide) contre FR/EN 3 (devis 2007) et 4 (devis 2300)"
+    }
+  ]
+}

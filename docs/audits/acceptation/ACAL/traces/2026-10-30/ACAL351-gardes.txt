@@ -1,0 +1,16 @@
+OK : 269 @action lue(s), aucune NOUVELLE sans consommateur (22 dette(s) historique(s) gelee(s), dont 0 desormais branchee(s)).
+rc_actions=0
+OK : 591 fonction(s) publique(s) de service lue(s) dans 162 module(s), aucune NOUVELLE sans appelant (0 dette(s) historique(s) gelee(s), dont 0 desormais branchee(s)).
+rc_services=0
+OK : 333 endpoint(s) agrege(s) + 460 ressource(s) a serialiseur sous contrat, aucun mock de test ne contredit le serveur (0 dette(s) historique(s)).
+rc_shapes=0
+✔ tout import hors frontend/ est copie dans l'image Docker (Dockerfile.prod) (2161.0027ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2168.4688
+rc_dockerctx=0

@@ -1,0 +1,60 @@
+RHOR8 — rejeu en direct du 2026-10-30 (orchestrateur, Playwright MCP + sondes API/shell)
+Pile : http://localhost — front reconstruit sur origin/main 665a4ce53, backend erp-agentique-django_core-1 (origin/main, migré), base démo locale, demo_admin (société 2).
+Page /proposition : apps/web en `astro dev` :4321 depuis le worktree à 665a4ce53, PUBLIC_API_BASE=http://localhost (jamais la prod), jeton INTERNE (`share-link` → token_interne : un brouillon n'est jamais servi au jeton client, ADEV11).
+PDF : GET /api/django/ventes/devis/<id>/proposal/?include_etude=1[&langue=en|ar], texte extrait par PyMuPDF (hôte, même octets que le serveur).
+Données créées (base démo locale seulement) : leads 3293 « RHOR8 rejeu A » (hiver 800 / été 1 600, GPS Casablanca), 3294 « RHOR8 rejeu VE » (VE 300 km/sem, statut possede, facture 1 200), 3400 « RHOR8 rejeu sans horaire » (facture 1 000, ni ville ni GPS), 3541 « RHOR8 rejeu jamais rembourse » (facture 300) ; devis 2007 (DEV-202610-0111), 2118 (0112), 2299 (0113), 2300 (0114) ; calepinage 162 « RHOR8 rejeu — calepinage simulé ».
+Oracles (toutes étapes) : 0 réponse 4xx/5xx sur les gestes rejoués, 0 console.error, aucune boîte native hors `beforeunload` (garde de sortie voulue), liste/relecture après création OK, PDF 200, aucun « prix d'achat »/« marge » dans les PDF FR/EN/AR ni dans les charges /proposition.
+
+## RHOR1.officiel — PASS
+Générateur ?lead=3293 → Auto-remplir → Créer : devis 2007 (6 × 710 W sans · 8 × 710 W + 2 × Dyness 5 kWh avec), écran 6 813 kWh/an (sans), PDF « 6 813 · 9 084 kWh ».
+Calepinage 162 créé par le service (2 pans E/O 4 + 2 modules, accès solaire 0,9), lié au devis 2007 (`lier_devis`), simulé par la VRAIE chaîne `simuler_calepinage` (PVGIS réel, pas de client rejoué) : ombrage_servi = {perime: false, par_pan: {PAN-1: 6,711, PAN-2: 6,729}, global: 6,717}.
+Rouvrir le devis (?edit=2007) + Enregistrer sans toucher (replace-lines 200, etude-params 200) puis :
+  écran (aperçu moteur horaire) : production sans 6 355 / avec 8 473 kWh, économies 7 461 / 12 663 MAD/an, ROI 5,5 / 5,6 ans ;
+  PDF FR : « 6 355 · 8 473 kWh », « 7 461 MAD – 12 663 MAD », « Retour en 5,5 ans » ; EN identique ;
+  page /proposition (desktop 1366 et mobile 390, scrollWidth 390) : « Production / an 8 473 kWh », « Économie calculée ≈ 7 461 / 12 663 MAD/an », charge `dimensionnement_options.sans/avec.production_annuelle_kwh` = 6 355 / 8 473.
+  6 813 × (1 − 0,06717) = 6 355,4 : la perte servie est bien retirée, une seule fois.
+Observation (non jugée, chemin service et non écran) : entre la simulation et le ré-enregistrement, le PDF servait encore 6 813 (bloc horaire rangé non rafraîchi) alors que l'aperçu déplié affichait déjà 6 355.
+
+## RHOR2 — PASS
+Générateur ?lead=3294 → Auto-remplir → Créer : devis 2118 ; aperçu « facture ≈ 14 400 MAD/an » (= 1 200 × 12, rien d'ajouté).
+Shell (lecture) : regles_calcul 5 ; equipements_du_devis(2118) = [] ; etude_horaire.equipements_actifs = [] ; contre-épreuves EN MÉMOIRE sans écriture : statut « prevu » → ['ve'] ; niveau 2 + possede → ['ve'].
+PDF 2118 : 0 occurrence « voiture/véhicule » ; charge /proposition : aucune clé VE.
+
+## RHOR4 — PASS
+Charge /proposition du devis 2007 : production_par_option sans 15,0 / 17,5 / 19,5 kWh/j, avec 20,1 / 23,4 / 26,0 kWh/j (hiver déc-fév 90 j, mi-saison 182 j, été 92 j).
+Σ jours × kWh/j : sans 6 329 vs 6 355 (−0,41 %), avec 8 460 vs 8 473 (−0,16 %) — dans ± 1 % (arrondi au dixième).
+
+## RHOR5.pdf-bandeau — PASS
+Devis 2300 (Installation saisie à 300 000 MAD → 343 500 TTC, retour impossible) : quote.roi_s = roi_a = 25,0, roi_s_jamais = roi_a_jamais = true.
+PDF FR « Non rentabilisé sur 25 ans » ×2, EN « Not paid back within 25 years » ×2 ; charge `economies_periodes` : AUCUNE clé `retour_investissement_ans` (sans ni avec) ; cartes d'option de la page « Non rentabilisé sur 25 ans ».
+
+## RHOR6 — PASS
+Devis 2299 (lead sans ville ni GPS ⇒ aucun bloc horaire, modèle « estimation », batterie Dyness 5 kWh) — build_quote_data (lecture) :
+  eco_a_ann 12 034 ; cashflow_avec[0] = −44 466 ⇒ −44 466 + 56 500 = 12 034 ; Σ eco_a_monthly = 12 034 ; eco_s_ann 9 159 = −35 341 + 44 500 ; PDF « Économie estimée : 12 034 MAD/an ».
+  Contre-épreuve niveau 2 EN MÉMOIRE (regles_calcul = 2, sans écriture) : eco_a_ann 12 353 (brut) pour le même cashflow 12 034 ⇒ le niveau 2 rend ses chiffres d'origine.
+
+## RHOR7 — PASS
+PDF 2007 (modèle horaire, lead ONEE sans distributeur saisi) : « Tarif électricité : barème national par tranche » ; 0 occurrence « saisi pour ce devis » (FR) ; PDF 2300 idem.
+
+## AMOT64 — PASS (constat d'appoint, tâche non cochée)
+CompanyProfile.productible_kwh_kwc = None (société 2) ⇒ PDF « ≈ 1 599 kWh par kWc et par an à Casablanca (donnée PVGIS) » avant ombrage.
+
+## RHOR1.tailles — FAIL (défaut D1)
+Même devis 2007, après ombrage : bloc « Explorer d'autres tailles » de la page /proposition — carte officielle « 8 panneaux · 5,68 kWc … Production / an 8 473 kWh » et carte « Max » « 8 panneaux · 5,68 kWc … Production / an 9 084 kWh » (même champ, production NON ombrée) ; charge `offres_tailles.offres[max].sans|avec.production_annuelle_kwh = 9083.61` contre `recommande` 6 355 / 8 473. Générateur (?edit=2007, cartes « Tailles ») : « Production annuelle 6 355 kWh » et « 9 084 kWh » côte à côte.
+Cause lue : `apps/ventes/offres_tailles.py::_carte_moteur` compose via `contexte.etude_kwargs` = `domain/entrees.py::kwargs_moteur_ombre`, qui rend {} (aucun ombrage) parce que `kwargs_ombrage` exige que `etude_horaire.balayer_stockage_horaire` accepte `perte_ombrage_pct` (non branché, RSIZ7) ; la carte du devis (`_carte_du_devis`) lit, elle, le bloc ombré. Shell : entrees.perte_ombrage_pct = 6,717, ctx.etude_kwargs sans clé d'ombrage.
+Attendu (C-RHOR-001 / D-RES-2710-1 « deux productions dans une même offre ») : une seule production pour un même champ sur la page et l'écran.
+Captures : docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RHOR-proposition-tailles-desktop.jpg
+
+## RHOR5.tailles — FAIL (défaut D2)
+Devis 2300 (jamais remboursé), page /proposition, bloc « Explorer d'autres tailles » : carte officielle « Rentabilisé en 25 ans » et tableau « Ce qui change » « Rentabilisé en | 25 ans | 21,7 ans », alors que les cartes d'option de la même page disent « Non rentabilisé sur 25 ans ». Charge : `offres_tailles.offres[recommande].sans|avec.payback_annees = 25.0`, `payback_jamais` absent.
+Cause lue : `apps/ventes/offres_tailles.py::_carte_du_devis` recopie `data['roi_s'|'roi_a']` (sentinelle 25,0) sans lire `roi_*_jamais` (RHOR5 n'a corrigé que `economies_periodes._ans_rembourse`).
+Captures : ACCEPTATION-RHOR-proposition-jamais-25ans.jpg, ACCEPTATION-RHOR-proposition-jamais-desktop.jpg / -mobile.jpg
+
+## RHOR8.pdf-ar — FAIL (défaut D3)
+PDF AR du devis 2007 avec `include_etude=1` : 5 pages (FR 3, EN 3) ; page 2 = en-tête « تفاصيل المعدات والتحليل المالي » seul, tableaux repoussés en page 3, graphes en page 4, confiance en page 5. Devis 2300 avec `include_etude=1` : FR 4 / EN 4 / AR 5. Sans le paramètre, les mêmes devis rendent FR 4 / EN 4 / AR 4 (balayage de 13 devis du rejeu, 0 écart de langue). La langue ajoute des pages quand l'étude est demandée (QJR666 : « langue never add a page »).
+Remarque annexe (non jugée) : pour le devis 2007, `include_etude=1` rend MOINS de pages (3) que sans paramètre (4) — à comparer avec la règle CLAUDE.md « résidentiel + include_etude = 4 ».
+Capture : ACCEPTATION-RHOR-pdf-ar.png (planche des 5 pages).
+Suspect : gabarit AR du moteur premium `apps/ventes/quote_engine/generate_devis_premium.py` (saut de page avant le tableau des équipements en RTL).
+
+## Non rejoué
+Devis à `regles_calcul = 2` réellement enregistré (seule la contre-épreuve en mémoire), page /proposition en EN/AR, calepinage simulé par l'écran 3D (le service a été appelé directement : MapTiler absent n'a donc pas été contourné).

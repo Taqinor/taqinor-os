@@ -214,6 +214,34 @@ def _regles_2710(devis):
     return regles_au_moins(devis, REGLES_CORRIGEES_2710)
 
 
+def _conso_hiver_ete_niveau5(devis, mode, etude, tranches, charges_fixes):
+    """ERR-RHOR8-SANS-LOCALISATION-ECRAN-PDF — la conso annuelle d'un devis
+    résidentiel (niveau 5) dont l'écran a enregistré ses deux factures
+    (``factures_hiver_ete``) sans ``conso_annuelle`` ni bloc horaire (aucune
+    localisation) : inversées au barème sur les mêmes marches que l'écran
+    (``solar.estimerMois`` = ``horaire/conso.serie_mad_mensuelle``), comme
+    ``calc/tarifs.consoAnnuelleDepuisFactures``. ``None`` hors de ce cas :
+    tout autre devis garde exactement son chiffrage d'hier."""
+    from apps.ventes.domain.etude_schema import factures_hiver_ete_saisies
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_RETOURS_3010B, regles_au_moins)
+    if (etude.get("conso_annuelle") or etude.get("etude_horaire")
+            or (mode or "").strip().lower() not in ("", "residentiel")
+            or not regles_au_moins(devis, REGLES_RETOURS_3010B)):
+        return None
+    bills = factures_hiver_ete_saisies(etude)
+    if not bills:
+        return None
+    from apps.ventes.horaire.conso import profil_depuis_factures
+    kwh, _source, _detail = profil_depuis_factures(
+        facture_hiver_mad=bills["facture_hiver"],
+        facture_ete_mad=bills["facture_ete"],
+        ete_differente=bills["ete_differente"],
+        tranches=tranches, charges_fixes_mad=charges_fixes)
+    total = round(sum(kwh)) if kwh else 0
+    return total if total > 0 else None
+
+
 def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
                    avec_items, avec_ok, avertissements_internes, deux_options,
                    devis, devis_etude_override, has_batterie, mode,
@@ -288,7 +316,12 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
     # (grille codée en dur, 1,6229 au lieu du 1,5958 de la société).
     if _co_tranches and not _tranches_override:
         _tranches_override = _co_tranches
-    _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
+    # from industrial étude if available — ERR-RHOR8 : sinon (devis résidentiel
+    # sans localisation, factures hiver/été saisies, niveau 5) la conso que
+    # l'écran en dérive, tarifée sur la même grille nationale (plus bas).
+    _conso_annuelle = (_conso_hiver_ete_niveau5(
+        devis, mode, etude, _co_tranches, _co_charges_fixes)
+        or etude.get("conso_annuelle"))
     # Autoconsommation overrides (seller/study can refine these)
     _autoconso_sans = float(etude.get("autoconso_sans") or 0) or None
     _autoconso_avec = float(etude.get("autoconso_avec") or 0) or None
@@ -402,6 +435,9 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         forme_mensuelle_ghi=_corrige,
         regles_2710=_regles_2710(devis),
         deux_options=bool(deux_options),  # RPDF : provision à deux montants seulement à deux options
+        # ERR-RHOR8 — conso dérivée ci-dessus (aucune conso stockée).
+        bareme_national_defaut=bool(
+            _conso_annuelle and not etude.get("conso_annuelle")),
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le

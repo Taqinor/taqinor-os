@@ -5,7 +5,6 @@
 groupe: ACAL
 amorce: 3a7c3b882
 ids:
-  - ACAL22
   - ACAL23
   - ACAL24
   - ACAL25
@@ -22,7 +21,6 @@ ids:
   - ACAL36
   - ACAL37
   - ACAL38
-  - ACAL39
   - ACAL40
   - ACAL41
   - ACAL42
@@ -103,7 +101,6 @@ ids:
   - ACAL117
   - ACAL118
   - ACAL119
-  - ACAL120
   - ACAL121
   - ACAL123
   - ACAL124
@@ -164,7 +161,6 @@ ids:
   - ACAL179
   - ACAL180
   - ACAL181
-  - ACAL182
   - ACAL183
   - ACAL184
   - ACAL185
@@ -280,7 +276,6 @@ ids:
   - ACAL312
   - ACAL313
   - ACAL314
-  - ACAL316
   - ACAL320
   - ACAL324
   - ACAL325

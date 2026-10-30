@@ -2232,8 +2232,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # au client, D-AGR-6). Agricole seulement, et posée SEULEMENT quand elle
     # est saisie : sinon le module retombe sur son repli daté (Guide FDA 2024)
     # et tout autre devis reste octet-identique. Ne casse jamais un rendu.
-    if mode == "agricole":
-        # AGR306 + D-AGQ-13 — règle FDA et délai SAV saisis par la société.
+    if mode == "agricole" and not _totaux_seuls:
+        # ERR-PERF-DEVIS-LISTE-AGRICOLE-N1 : sauté en liste (aucune clé lue).
         from .reglages_societe import poser_fda_et_sav
         poser_fda_et_sav(data, devis)
         # ── AGR307 — le bloc PUBLIC ``economie_pompage`` (AGR3, calculé à la

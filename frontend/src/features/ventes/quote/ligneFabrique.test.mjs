@@ -40,6 +40,12 @@ test('withKeys : texte d’écran, verrous et rôle conservés, défauts honnêt
     ['', '20', 'produit', '0', '', null])
 })
 
+test('withKeys : la base légale d’une ligne à 0 % est conservée (ERR-AGNR42)', () => {
+  const [l] = withKeys([{ produit: 5, quantite: 1, prix_unit_ttc: 10, taux_tva: 0, tvaBaseLegale: 'Art. 92-I-6' }])
+  assert.equal(l.tvaBaseLegale, 'Art. 92-I-6')
+  assert.equal(withKeys([{ quantite: 1, prix_unit_ttc: 0 }])[0].tvaBaseLegale, '')
+})
+
 test('emptyLine : quantité 0, TVA suggérée (20 % sans stockage), aucun verrou', () => {
   const l = emptyLine()
   assert.equal(l.quantite, '0')

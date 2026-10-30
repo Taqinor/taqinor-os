@@ -1,0 +1,255 @@
+{
+  "sha": "665a4ce5340e13c97a85bf50922dbf0fd76ef252",
+  "date": "2026-10-30",
+  "groupe": "APRF",
+  "verdict": "PASS",
+  "couvre": [
+    "APRF1",
+    "APRF6",
+    "APRF7",
+    "APRF9",
+    "APRF10",
+    "APRF11",
+    "APRF12",
+    "APRF13",
+    "APRF14",
+    "APRF15",
+    "APRF16",
+    "APRF17",
+    "APRF18",
+    "APRF19",
+    "APRF20",
+    "APRF21",
+    "APRF22",
+    "APRF24",
+    "APRF27",
+    "APRF28",
+    "APRF30",
+    "APRF31",
+    "APRF32",
+    "APRF33",
+    "APRF34",
+    "APRF35",
+    "APRF36",
+    "APRF37",
+    "APRF38",
+    "APRF39",
+    "APRF40",
+    "APRF41"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-APRF-ACC-VENTES.action-requise",
+      "taches": [
+        "APRF1",
+        "APRF9"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-VENTES.txt — société 4 (334 devis réels) puis +20 devis clonés dont 10 refusés sans motif et 10 envoyés expirant à J+3 : GET ventes/devis/action-requise/ 10 → 10 requêtes, 200, refuses_sans_motif 2 → 12 et expirant_bientot 0 → 10 (exactement les clones) ; octets 3 606 → 7 459 (lignes d affichage des paniers, 12 et 10 par panier : la borne de 20 n est pas éprouvée) ; contrat devis_action_requise.json vert (check_api_shapes)"
+    },
+    {
+      "id": "C-APRF-ACC-VENTES.export-devis",
+      "taches": [
+        "APRF15"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-VENTES.txt — POST imports/export/devis/ (30 ids) : 3 → 3 requêtes avant / après +20 devis, 200 (refus « sélection requise » non rejoué)"
+    },
+    {
+      "id": "C-APRF-ACC-VENTES.liste-sans-conception",
+      "taches": [
+        "APRF6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-VENTES.txt — GET ventes/devis/ page_size 5/25/50 aux deux tailles : electrical_design jamais servi en liste ; total_ttc de liste = Devis.total_ttc relu sans préchargement (0 écart) ; /proposal DEV-202610-0024 : 3 pages et mêmes montants avant / après (clause CLIENT)"
+    },
+    {
+      "id": "C-APRF-ACC-CRM",
+      "taches": [
+        "APRF16",
+        "APRF17",
+        "APRF18",
+        "APRF19",
+        "APRF20",
+        "APRF21",
+        "APRF22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-CRM.txt — société 2, trois tailles (+10 / +10 clients cockpit, leads en retard à devis, leads signés par campagne, activités dues, touches WhatsApp) : clients 7→7→7 (@25 = @50), leads 11 @25 = 11 @50 et aucune croissance, relance-etapes 23→23→23 (53→63→73 touches), dormants 1→1→1 (10 servis = 10 oracle unitaire d avant APRF22), mon-portefeuille 5→5→5, relances overdue 25→25→25 (+20 leads), sla-breach 28→28→28 (+20), roi-sources 6→6→6, Ma file 26→28→28 ; portée client forcée à self : 4 EXISTS, aucun DISTINCT, liste 9 req @25 = @50 ; 0 réponse 503"
+    },
+    {
+      "id": "C-APRF-ACC-SAV",
+      "taches": [
+        "APRF30",
+        "APRF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-SAV.txt — société 6 : équipements 2→2→2 req (15→45→75 lignes), tickets sous contrat à clients distincts 7→7→7 (29→69→100 lignes) ; compteurs = EquipementSerializer unitaire, couverture de 12 tickets = fiche détail"
+    },
+    {
+      "id": "C-APRF-ACC-INST",
+      "taches": [
+        "APRF24",
+        "APRF37",
+        "APRF38",
+        "APRF39",
+        "APRF40",
+        "APRF41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-INST.txt — société 2 : chantiers 12→12→12 req (13→18→23), blocs de détail nuls en liste et servis au détail ; ordres d assemblage 9→9→9 (2→8→14), coût et temps = calcul à la main ; interventions 8→8→8 (60→80→100) ; replanification simulée 7→7→7 (2→6→10 propositions), lot = suggerer_creneau unitaire ; à facturer 11→11→11 (3→9→15), 15 tranches dues = tranche_facturee unitaire ; 11 listes à lignes : préchargements déclarés, GET 200, kits 4→4 req"
+    },
+    {
+      "id": "C-APRF-ACC-STOCK",
+      "taches": [
+        "APRF32",
+        "APRF33",
+        "APRF34",
+        "APRF35",
+        "APRF36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-STOCK.txt — société 2 : produits 18→18→18 req et 18 @25 = 18 @100 ; BCF 6→6→6 (4→14→24) ; GED 4→4→4 (5→19→33), versions = relecture unitaire ; valorisation écran 14→14→14 et xlsx 14→14→14 ; export mouvements 200 sous le seuil, 202 + job au-delà (seuil abaissé à 104 / 208 lignes, tâche Celery bloquée par la sonde)"
+    },
+    {
+      "id": "C-APRF-ACC-REPORTING",
+      "taches": [
+        "APRF7",
+        "APRF10",
+        "APRF11",
+        "APRF12",
+        "APRF13",
+        "APRF14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-REPORTING.txt — société 4 (anonymisée) : dashboard 25→25→25 req, pipeline 8→8→8, commercial/dashboard 12→12→12, velocity 2→2→2, intégrité 7→7→7, recyclage SLA 13→13→13, rappels 20→20→20, CA par client 10→10→10 ; ca_paye 16 500 = relu facture par facture, 12 anomalies = relues, 22 vendeurs = option_totaux, CA devis = total_ttc relu ; 0 réponse 503"
+    },
+    {
+      "id": "APRF42.gardes",
+      "taches": [
+        "APRF27",
+        "APRF28"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/APRF42-gardes.txt — check_query_budgets.py exit 0 (7 endpoints gardés) et ses 17 tests OK (skip détecté), check_exports_bornes.py OK, check_api_shapes.py OK"
+    }
+  ]
+}

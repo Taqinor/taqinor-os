@@ -1304,15 +1304,14 @@ def _carte_du_devis(contexte, data, variante):
         'eco_s_ann' if variante == 'sans' else 'eco_a_ann'))
     if economie is not None:
         carte['economie_annuelle_mad'] = round(economie, 2)
-    # Le payback SERVI d'abord (``roi_s``/``roi_a``, ce que la page affiche) ;
-    # il n'est recalculé QUE s'il n'a pas été servi — jamais en concurrence.
-    paye = _positif((data or {}).get(
-        'roi_s' if variante == 'sans' else 'roi_a'))
-    if paye is None:
-        # AMOT29 — repli : la définition du document, jamais le ratio simple
-        # (règles d'origine : le ratio simple d'hier).
-        paye = (_payback_publie(prix, economie) if getattr(contexte, 'corrige', True)
-                else _payback(prix, economie))
+    # Le payback SERVI d'abord (``roi_s``/``roi_a``) ; « jamais remboursé » ⇒ OMIS
+    # (ERR-RHOR8, comme RHOR5) ; repli QUE s'il n'est pas servi.
+    from apps.ventes.domain.dimensionnement_devis import _payback_servi
+    # AMOT29 — repli : la définition du document, jamais le ratio simple
+    # (règles d'origine : le ratio simple d'hier).
+    paye = _payback_servi(data, variante, repli=lambda: (
+        _payback_publie(prix, economie) if getattr(contexte, 'corrige', True)
+        else _payback(prix, economie)))
     if paye is not None:
         carte['payback_annees'] = round(paye, 2)
     production = _positif((data or {}).get('prod_kwh_%s' % suffixe))

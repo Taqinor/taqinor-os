@@ -27,7 +27,7 @@ import base64
 import io
 import time
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS,
@@ -177,6 +177,41 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
                                     'production_annuelle': 25415})
         self.assertEqual(G.PAGES_TOTAL, 4)
         self.assertIn(G._L('lg_etude_pied').format(ref=G.REF), html)
+
+    @tag('pdf')  # rendu WeasyPrint réel (WOW5)
+    def test_rhor8_la_langue_n_ajoute_aucune_page_avec_l_etude(self):
+        """ERR-RHOR8-PDF-AR-PAGES-ETUDE (devis 2007 / 2300 du rejeu RHOR8) :
+        en arabe, l'interligne ``normal`` de « Noto Sans Arabic » gonflait les
+        tableaux de la page 2 et WeasyPrint la fragmentait (AR 5 pages contre
+        FR/EN 3 ou 4). Compte RÉEL des feuilles, par langue, sans et avec une
+        étude à contenu : identique en fr/en/ar et égal à ``PAGES_TOTAL``.
+        Fixture rouge avant le correctif (AR 4 et 5)."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import i18n_labels
+        from apps.ventes.tests import _moteur_fixtures as F
+        gar = '12 ans produit · 30 ans performance linéaire (87,4 %)'
+        desc = ('Module N-type TOPCon, rendement ≈ 22,9 %\n'
+                'Certifié IEC 61215 / IEC 61730, fabricant Tier 1')
+        for etude, attendu in ((None, 3), ({'production_annuelle': 25415}, 4)):
+            for langue in ('fr', 'en', 'ar'):
+                with self.subTest(etude=bool(etude), langue=langue):
+                    d = F.donnees_legacy(
+                        pdf_mode='full', include_etude=True, langue_sortie=langue,
+                        libelles_document=i18n_labels.libelles(langue))
+                    if etude:
+                        d['etude'] = etude
+                    # 12 lignes par option, une sur trois décrite (devis 2007).
+                    for cle in ('sans_items', 'avec_items'):
+                        base = d[cle]
+                        d[cle] = [dict(base[i % len(base)],
+                                       description=desc if i % 3 == 0 else '',
+                                       garantie=gar if i % 3 == 0 else '')
+                                  for i in range(12)]
+                    html = G.render_html_for(d)
+                    self.assertEqual(G.PAGES_TOTAL, attendu)
+                    self.assertEqual(len(HTML(string=html).render().pages),
+                                     attendu)
 
     @staticmethod
     def _page2(html):

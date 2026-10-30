@@ -240,6 +240,60 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
             resp = self.api.get(DEVIS_URL)
         self.assertEqual(resp.status_code, 200)
 
+    def _seed_agricoles(self, count, start=0):
+        """ERR-PERF-DEVIS-LISTE-AGRICOLE-N1 — devis AGRICOLES avec lead et
+        saisies d'économie de pompage (le chemin qui coûtait ≈ 11 requêtes
+        par ligne : règle FDA, délai SAV, économie de pompage)."""
+        import json
+        from pathlib import Path
+        from apps.crm.models import Lead
+        saisies = json.loads(
+            (Path(__file__).resolve().parent.parent / 'contract_samples'
+             / 'economie_pompage.json').read_text(encoding='utf-8')
+        )['saisies_economie_pompage']['exemple']
+        for i in range(start, start + count):
+            lead = Lead.objects.create(
+                company=self.company, nom='Agri', prenom=f'Lead {i}',
+                telephone=f'+2126110{i:05d}', ville='Taroudant')
+            devis = Devis.objects.create(
+                company=self.company, reference=f'DEV-{MONTH}-A{i:03d}',
+                client=self.client_obj, lead=lead, created_by=self.user,
+                taux_tva=Decimal('20'), statut=Devis.Statut.BROUILLON,
+                mode_installation='agricole',
+                etude_params={'saisies_economie_pompage': saisies})
+            for j, (desig, qte, pu) in enumerate(
+                    [('Pompe immergée 4 kW', '1', '18000'),
+                     ('Panneau mono 550W', '10', '1100')]):
+                produit = Produit.objects.create(
+                    company=self.company, nom=desig, sku=f'A{i}-{j}',
+                    prix_vente=Decimal(pu), prix_achat=Decimal('1'),
+                    quantite_stock=100)
+                LigneDevis.objects.create(
+                    devis=devis, produit=produit, designation=desig,
+                    quantite=Decimal(qte), prix_unitaire=Decimal(pu),
+                    remise=Decimal('0'))
+
+    def test_devis_agricoles_pente_nulle(self):
+        """ERR-PERF-DEVIS-LISTE-AGRICOLE-N1 — la liste ne calcule ni
+        l'économie de pompage ni les réglages FDA / SAV (aucune clé de la
+        liste ne les lit) : 5 puis 20 devis agricoles, pente 0 ± 1 ; le
+        total affiché reste celui du moteur complet (règle #4)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        self._seed_agricoles(5)
+        resp_5, ctx_5 = self._get_liste()
+        self._seed_agricoles(15, start=5)
+        resp_20, ctx_20 = self._get_liste()
+        self.assertEqual(len(self._lignes(resp_20)), 20)
+        self.assertLessEqual(
+            abs(len(ctx_20.captured_queries) - len(ctx_5.captured_queries)),
+            1, 'Devis agricoles : le nombre de requêtes a grandi avec le '
+               'nombre de lignes (économie de pompage calculée en liste ?).')
+        self.assertEqual(_ecritures(ctx_20), [])
+        for ligne in self._lignes(resp_20)[:3]:
+            complet = build_quote_data(Devis.objects.get(pk=ligne['id']),
+                                       {'pdf_mode': 'onepage'})
+            self.assertEqual(ligne['total_affiche'], complet['display_total'])
+
     def test_carte_ab_en_liste(self):
         """La carte A/B reste servie EN LISTE, mêmes valeurs qu'au détail."""
         self._seed_devis(6)

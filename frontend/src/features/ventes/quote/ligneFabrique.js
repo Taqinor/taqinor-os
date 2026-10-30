@@ -53,6 +53,9 @@ export const withKeys = (rows) => rows.map(r => ({
   // envoyé au serveur) : une recomposition retire une ligne composée hier et
   // absente aujourd'hui, mais garde une ligne ajoutée à la main.
   compose: !!r.compose,
+  // ERR-AGNR42 — base légale d'une ligne à TVA 0 % : sans elle, toute
+  // recomposition (Auto-remplir) la vidait alors que le 0 % survivait.
+  tvaBaseLegale: r.tvaBaseLegale ?? '',
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur

@@ -1,0 +1,56 @@
+{
+  "sha": "c58d67cd0c691c59315d98df0a6f92a691c789ef",
+  "date": "2026-10-30",
+  "groupe": "AGNR",
+  "verdict": "FAIL",
+  "couvre": [
+    "AGNR42"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P3.4.tva0",
+      "taches": [
+        "AGNR20",
+        "AGNR42"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-30/AGNR42-rejeu.txt § P3.4.tva0 ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-P3.4-tva0.jpg — pompe à 0 % + base légale ; Auto-remplir garde 0 % mais vide la base légale (ligne ré-clefée base-legale-16 → 24)"
+    },
+    {
+      "id": "P5.1.sans-localisation",
+      "taches": [
+        "AGNR24",
+        "AGNR42"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-30/AGNR42-rejeu.txt § P5.1.sans-localisation ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-ecran-vs-pdf-sans-localisation.jpg — devis 2299 : écran « factures » 10 316 / 11 308, PDF « estimation » 9 159 / 12 034"
+    }
+  ]
+}

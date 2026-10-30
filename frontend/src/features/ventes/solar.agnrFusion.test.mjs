@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 
 import { fusionnerRecomposition, appliquerRecomposition } from './calc/recomposition.js'
 import { lignesServeurVersEcran } from './quote/lignesEcran.js'
+import { withKeys } from './quote/ligneFabrique.js'
 
 const ANCIENNE = {
   produit: '5', designation: 'Pompe perso', quantite: '1', prix_unit_ttc: '3000',
@@ -65,4 +66,14 @@ test('AGNR20 — le mode « recalcule » (choix explicite) reste un remplacement
   const lignes = appliquerRecomposition([ANCIENNE], [GENEREE], 'recalcule')
   const l = lignes.lignes[0]
   assert.equal(l.designation, 'Pompe OSP')
+})
+
+test('ERR-AGNR42 — Auto-remplir (fusion puis withKeys) garde la base légale d’une ligne à 0 %', () => {
+  const [ancienne] = withKeys([{ ...ANCIENNE, quantite: 1 }])
+  const { lignes } = fusionnerRecomposition([ancienne], [GENEREE])
+  const [l] = withKeys(lignes)
+  assert.equal(l.taux_tva, '0')
+  assert.equal(l.tvaBaseLegale, 'Art. 92-I-6')
+  // La clé d'écran de la ligne appariée est celle de l'ancienne (id des champs stable).
+  assert.equal(lignes[0]._key, ancienne._key)
 })

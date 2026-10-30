@@ -1474,6 +1474,21 @@ def _economie_avec_nette(economie, facture_avec, part_stockee, *,
     return nette, facture_avec, 0.0
 
 
+def _grille_nationale_par_defaut(actif, conso_annuelle_kwh, utility,
+                                 tarif_kwh_override, tranches_override):
+    """ERR-RHOR8 — ``(bareme_national, tranches_override)``. Le barème est
+    NATIONAL et unique (Q7) : sans distributeur saisi, une consommation connue
+    se tarife par tranche sur la grille nationale (l'écran le fait avec son
+    défaut ONEE), jamais au forfait plat. La grille société (déjà en
+    ``tranches_override``) reste prioritaire. ``actif`` faux ⇒ inchangé."""
+    national = bool(
+        actif and (conso_annuelle_kwh or 0) > 0 and not utility
+        and not (tarif_kwh_override is not None and tarif_kwh_override > 0))
+    if national and _table_tarifaire(utility, tranches_override) is None:
+        tranches_override = UTILITY_TABLES["onee"]
+    return national, tranches_override
+
+
 def calculate_savings_roi(
     puissance_kwc: float,
     total_sans: float,
@@ -1536,6 +1551,9 @@ def calculate_savings_roi(
     # l'économie « avec » BRUTE jusqu'à l'alignement de l'écran (RGEN5).
     regles_2710: bool = False,
     deux_options: bool = True,
+    # ERR-RHOR8 — niveau 5, résidentiel : conso connue sans distributeur ni
+    # barème société ⇒ grille nationale (Q7), comme l'écran. Faux ⇒ inchangé.
+    bareme_national_defaut: bool = False,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1587,6 +1605,10 @@ def calculate_savings_roi(
         else _DEFAULT_PRODUCTIBLE
     production_annuelle = round(
         puissance_kwc * prod_factor * PRODUCTION_DERATE)
+
+    bareme_national, tranches_override = _grille_nationale_par_defaut(
+        bareme_national_defaut, conso_annuelle_kwh, utility,
+        tarif_kwh_override, tranches_override)
 
     # Tariff resolution
     if tarif_kwh_override is not None and tarif_kwh_override > 0:
@@ -1865,6 +1887,7 @@ def calculate_savings_roi(
         "couverture_avec":  couverture_avec_h,
         "tarif_kwh":        prix_kwh,
         "utility":          utility,
+        "bareme_national":  bareme_national,   # ERR-RHOR8 (ligne d'hypothèse)
         # Modèle d'économie effectivement employé, du plus fort au plus faible :
         #   'horaire'    — CJ2a : intégration heure par heure de la production
         #                  PVGIS réelle contre la courbe de consommation réelle
