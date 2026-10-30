@@ -451,6 +451,52 @@ class RelanceSansDelaiNiInteretsTests(SimpleTestCase):
             3, message='Texte société.', reglages=reglages))
 
 
+class RelancePremiumLangueTests(SimpleTestCase):
+    """ERR-APDF-RELANCE-PREMIUM-AR (D-APDF-3 a) — la lettre premium suit la
+    langue du client comme la lettre simple : arabe traduit (RTL), autre
+    langue en français AVEC la mention de repli, français inchangé."""
+
+    def _html(self, niveau=2, **kw):
+        from apps.ventes.quote_engine.extra_docs import build_lettre_relance_html
+        return build_lettre_relance_html(
+            _CTX_AMOT55, _CLIENT_AMOT55, _RESUME_AMOT55, niveau, **kw)
+
+    def test_arabe_traduit_et_rtl(self):
+        ar = _re.compile('[؀-ۿ]')
+        for niveau in (1, 2, 3):
+            with self.subTest(niveau=niveau):
+                html = self._html(niveau, langue='ar')
+                self.assertIn('<html lang="ar" dir="rtl">', html)
+                self.assertGreaterEqual(len(ar.findall(html)), 50)
+                for fr in ('Montant restant dû', 'Destinataire', 'Veuillez agréer',
+                           'Relance amiable', 'Mise en demeure', 'Le service'):
+                    self.assertNotIn(fr, html)
+        reglages = {'delai_jours': 15, 'taux_interet_annuel': Decimal('10.00'),
+                    'frais_fixes': Decimal('0')}
+        corps = _corps_amot55(3, reglages=reglages, langue='ar')
+        self.assertIn('15 يوما', corps)
+        self.assertIn('10 %', corps)
+
+    def test_francais_inchange_et_repli_imprime(self):
+        self.assertEqual(self._html(langue='fr'), self._html())
+        self.assertIn('<html lang="fr">', self._html())
+        repli = 'Document disponible en français uniquement — This document is available in French only.'
+        html = self._html(mention_repli=repli)
+        self.assertIn(escape(repli), html)
+        self.assertIn('Relance ferme', html)
+
+    def test_langue_resolue_comme_la_lettre_simple(self):
+        from types import SimpleNamespace
+        from apps.ventes.quote_engine.extra_docs import langue_relance
+        from apps.ventes.utils.libelles_ar import mention_repli
+        for demandee, rendue in (('ar', 'ar'), ('fr', 'fr'), ('en', 'fr')):
+            with self.subTest(langue=demandee):
+                f = SimpleNamespace(client=SimpleNamespace(langue_document=demandee),
+                                    company=None)
+                self.assertEqual(langue_relance(f),
+                                 (rendue, mention_repli(demandee, rendue)))
+
+
 class RelanceReglagesSocieteTests(_Base):
 
     def test_reglages_lus_sur_les_niveaux_de_la_societe(self):

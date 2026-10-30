@@ -1037,11 +1037,19 @@ def cloture(ctx):
         f'<div class="ag-sig-z"></div><div class="ag-sig-h">'
         f'{_t(lg, "bpa_date")}</div></td>'
         f'{qr_html}</tr></table>')
+    # ERR-APDF-AGRICOLE-BANDE-LEGALE (D-APDF-1) — la bande légale du vendeur
+    # (raison sociale, forme, capital, RC, ICE) : LA composition partagée des
+    # autres familles (``premium_base.bande_legale``), sous la signature.
+    from ..premium_base import bande_legale
+    legal = bande_legale(d, ctx["ident"])
+    legal_html = (f'<div class="ag-legal" style="margin-top:6px;font-size:6.8pt;'
+                  f'line-height:1.35;color:{ctx["C"]["muted"]};">{legal}</div>'
+                  if legal else "")
     return (f'<div class="ag-accord"><div class="ag-accord-hd">'
             f'<span class="ag-accord-t">{_t(lg, "bon_pour_accord")}</span>'
             f'<span class="ag-accord-v">{validite}</span></div>'
             f'{_options_a_cocher(synthese, lg)}{_echeancier(d, lg)}{sig}'
-            f'</div>')
+            f'{legal_html}</div>')
 
 
 # ── AGR319 — annexe « Note de calcul du kit de pompage » (dossier FDA) ─────
