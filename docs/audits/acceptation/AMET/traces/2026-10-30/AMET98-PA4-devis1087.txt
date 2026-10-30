@@ -1,0 +1,34 @@
+PA4.01 : POST /api/django/ventes/devis/1087/convertir-bc/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'PASS'} ; refus_409 : action rejouée -> 409; règles aval à observer : reference
+PA4.02 : POST /api/django/ventes/bons-commande/49/confirmer/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'PASS'} ; refus_409 : action rejouée -> 409; règles aval à observer : choix_explicite
+PA4.03 : POST /api/django/ventes/bons-commande/49/livrer-partiel/ -> 400 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : recalcul
+PA4.04 : POST /api/django/ventes/bons-commande/49/creer-facture/ -> 409 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : reference
+PA4.05 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune route API pour la fonction d'entrée ni le déclencheur : non jouée
+PA4.06 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune route API pour la fonction d'entrée ni le déclencheur : non jouée
+PA4.07 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune route API pour la fonction d'entrée ni le déclencheur : non jouée
+PA4.08 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune route API pour la fonction d'entrée ni le déclencheur : non jouée
+PA4.09 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune route API pour la fonction d'entrée ni le déclencheur : non jouée
+PA4.10 : POST /api/django/ventes/factures/301/creer-note-debit/ -> 400 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : reference
+PA4.11 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune route API pour la fonction d'entrée ni le déclencheur : non jouée
+PA4.12 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune route API pour la fonction d'entrée ni le déclencheur : non jouée
+PA4.13 : POST /api/django/ventes/devis/1087/proforma-pdf/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : reference
+PA4.14 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune route API pour la fonction d'entrée ni le déclencheur : non jouée
+PA4.15 : auto (beat) : artefact RelanceLog ; parcours {'auto': 'FAIL', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : recalcul ; choix_explicite
+PA4.16 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune route API pour la fonction d'entrée ni le déclencheur : non jouée
+Hors enregistrement : PA4.01 : jouée, sans tâche à couvrir (POST /api/django/ventes/devis/1087/convertir-bc/ -> 201)
+Hors enregistrement : PA4.02 : jouée, sans tâche à couvrir (POST /api/django/ventes/bons-commande/49/confirmer/ -> 200)
+Hors enregistrement : PA4.03 : jouée, sans tâche à couvrir (POST /api/django/ventes/bons-commande/49/livrer-partiel/ -> 400)
+Hors enregistrement : PA4.04 : jouée, sans tâche à couvrir (POST /api/django/ventes/bons-commande/49/creer-facture/ -> 409)
+Hors enregistrement : PA4.05 : non jouée (aucune route API pour la fonction d'entrée ni le déclencheur : non jouée)
+Hors enregistrement : PA4.06 : non jouée (aucune route API pour la fonction d'entrée ni le déclencheur : non jouée)
+Hors enregistrement : PA4.07 : non jouée (aucune route API pour la fonction d'entrée ni le déclencheur : non jouée)
+Hors enregistrement : PA4.08 : non jouée (aucune route API pour la fonction d'entrée ni le déclencheur : non jouée)
+Hors enregistrement : PA4.09 : non jouée (aucune route API pour la fonction d'entrée ni le déclencheur : non jouée)
+Hors enregistrement : PA4.10 : jouée, sans tâche à couvrir (POST /api/django/ventes/factures/301/creer-note-debit/ -> 400)
+Hors enregistrement : PA4.11 : non jouée (aucune route API pour la fonction d'entrée ni le déclencheur : non jouée)
+Hors enregistrement : PA4.12 : non jouée (aucune route API pour la fonction d'entrée ni le déclencheur : non jouée)
+Hors enregistrement : PA4.13 : jouée, sans tâche à couvrir (POST /api/django/ventes/devis/1087/proforma-pdf/ -> 200)
+Hors enregistrement : PA4.14 : non jouée (aucune route API pour la fonction d'entrée ni le déclencheur : non jouée)
+Hors enregistrement : PA4.15 : jouée, sans tâche à couvrir (auto (beat) : artefact RelanceLog)
+Hors enregistrement : PA4.16 : non jouée (aucune route API pour la fonction d'entrée ni le déclencheur : non jouée)
+Base inchangée (transaction annulée) : 26488 lignes avant et après.
+Aucun enregistrement écrit (aucune étape jouée ne porte de tâche).
