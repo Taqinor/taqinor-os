@@ -1,0 +1,5 @@
+== C-ACHT-ACC-112 (sha 673ec3f92)
+attendu : rapport-energie 200 application/pdf ; en-tête = <img data:image/png détouré> (hdr-logo), pas l'URI du profil
+observé : {"installation": 239, "status": 200, "content_type": "application/pdf", "pdf": true, "entete": "<div class=\"hdr-logo\"><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAIAAABM5OhcAAABHElEQVR4nO3SQQ3AIADAwIEhxODfCybWkJA7BX10zLU/+Nu8HcCbjEXCWC", "logo_data_png": true, "uri_brute_absente": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0
