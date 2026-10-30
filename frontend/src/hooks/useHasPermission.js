@@ -106,4 +106,19 @@ export function useCanListAssignableUsers() {
   return permissions.some((c) => typeof c === 'string' && c.startsWith('crm_'))
 }
 
+// ERR-ASEC11-LECTURE-FACTURES — `GET /ventes/factures/` (liste/fiche) exige
+// `ventes_voir` pour un rôle fin (apps/ventes/views/facture.py::get_permissions) :
+// Commercial terrain et Admin RH → 403. Palier admin et compte hérité sans rôle
+// fin (aucun role_nom, aucune permission) passent, comme côté serveur.
+export const FACTURES_LECTURE_PERMISSION = 'ventes_voir'
+
+export function useCanListFactures() {
+  const role = useSelector((s) => s.auth.role)
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const permissions = useSelector((s) => s.auth.permissions) || []
+  if (role === 'admin') return true
+  if (!roleNom && permissions.length === 0) return true
+  return permissions.includes(FACTURES_LECTURE_PERMISSION)
+}
+
 export default useHasPermission

@@ -5,7 +5,6 @@
 groupe: AACQ
 amorce: 3a7c3b882
 ids:
-  - AACQ1
   - AACQ2
   - AACQ3
   - AACQ4
@@ -27,7 +26,6 @@ ids:
   - AACQ24
   - AACQ25
   - AACQ26
-  - AACQ30
   - AACQ31
   - AACQ32
   - AACQ33
@@ -39,19 +37,10 @@ ids:
   - AACQ40
   - AACQ60
   - AACQ61
-  - AACQ62
-  - AACQ63
-  - AACQ64
-  - AACQ65
-  - AACQ66
   - AACQ67
   - AACQ68
   - AACQ69
-  - AACQ70
   - AACQ71
   - AACQ72
   - AACQ73
-  - AACQ74
   - AACQ75
-  - AACQ76
-  - AACQ79

@@ -95,7 +95,11 @@ MATRIX: tuple[MatrixEntry, ...] = (
     MatrixEntry(
         app="ventes", label="Liste des factures",
         method="GET", path="/api/django/ventes/factures/",
-        verdicts=_all(ALLOW),
+        # D-ASEC11-LECTURE-FACTURES (30/10/2026) : la lecture exige
+        # ``ventes_voir`` pour un rôle fin — les rôles techniciens canoniques
+        # ne le portent pas (registre CANONICAL_SYSTEM_ROLES) → 403.
+        verdicts=_only("Directeur", "Administrateur", "Commercial responsable",
+                       "Commercial", "Viewer"),
     ),
     # ─ STOCK ─
     MatrixEntry(

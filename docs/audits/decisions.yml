@@ -2764,3 +2764,45 @@ decisions:
     date: "2026-10-29"
     source: "Reda, decision fondateur du 29/10/2026 (lane RWEB17-M19, question interactive) ; couvre cette seule entree"
     taches: [RWEB17-M19]
+  - id: D-VNT83-SOLDE
+    question: "VNT83 : apres un prix negocie, le texte attend un solde de 34 000, alors que l'echeancier par defaut 30/60/10 donne 29 400 puis 4 600 ; corriger le texte ou l'echeancier ?"
+    options:
+      - cle: a
+        texte: "l'echeancier par defaut est le bon : corriger le texte de VNT83 (tranches reelles ; 34 000 seulement apres edition de l'echeancier)"
+      - cle: b
+        texte: "changer l'echeancier par defaut apres prix negocie : acompte + un solde du reste"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, decision fondateur du 30/10/2026 (question interactive, rejeu VNT du 30/10)"
+    taches: [VNT83]
+  - id: D-ASTK239-PORTAIL-MONTANTS
+    question: "ASTK239 : la page du lien prive fournisseur affiche montant_ttc et solde_du des factures du fournisseur lui-meme ; la tache dit qu'aucun montant d'achat ne doit apparaitre cote fournisseur : garder ou masquer ?"
+    options:
+      - cle: a
+        texte: "garder les totaux de SES factures (normal pour un fournisseur) ; le prix d'achat unitaire reste masque ; le texte de la tache est a ajuster"
+      - cle: b
+        texte: "masquer montant_ttc et solde_du de la page fournisseur"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, decision fondateur du 30/10/2026 (question interactive, rejeu ASTK239 du 30/10)"
+    taches: [ASTK239]
+  - id: D-ASEC11-LECTURE-FACTURES
+    question: "ASEC21 P2.3 : `GET /api/django/ventes/factures/` répond 200 à Commercial terrain et Admin RH (seules les écritures sont refusées) : la LECTURE des factures doit-elle leur être refusée comme ASEC11 le dit ?"
+    options:
+      - cle: a
+        texte: "oui : liste ET fiche facture refusées (403) à Commercial terrain et Admin RH ; la lecture exige le droit `ventes_voir` du registre pour un rôle fin ; admin, Directeur et rôles commerciaux qui portent `ventes_voir` gardent 200 ; compte hérité sans rôle fin inchangé"
+      - cle: b
+        texte: "non : la lecture reste ouverte, amender la clause ASEC11"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; rejeu ASEC21 P2.3)"
+    taches: [ERR-ASEC11-LISTE-FACTURES, ASEC11]
+  - id: D-SPL202-RESTE
+    question: "SPL202 devait déplacer autoFillLines de solar.js vers calc/autoFill.js, mais ADEV69 (8ff41d2bc) l'a déjà supprimé : que faire du reste de la région ?"
+    options:
+      - cle: a
+        texte: "déplacer tel quel (move only, comportement inchangé, appelants repointés) l'ordre des lignes, defaultProductLines, les structures et _hasPrix vers un module calc/ nommé d'après son rôle, et supprimer le code mort laissé par ADEV69 (_filtrerParMarque sans appelant, _marqueEpinglee/_marqueCorrespond qu'il était seul à lire)"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; lane w9-spl202)"
+    taches: [SPL202]

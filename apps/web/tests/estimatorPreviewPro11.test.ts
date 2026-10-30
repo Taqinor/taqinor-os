@@ -528,7 +528,10 @@ describe('pro-11 — l\'existant est strictement préservé', () => {
 });
 
 describe('pro-11 — W68 : mode VARIABILITÉ de consommation (« Affiner ma consommation »)', () => {
-  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+  // ERR-ACAL311-PANNEAU-ABSENT-ERP — la fenêtre de consommation vit dans le balisage PARTAGÉ
+  // (`consumptionMarkup.ts`, rendu par `set:html` dans la page ET dans l'atelier ERP) : la page
+  // effective = source .astro + ce module.
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro') + read('../src/scripts/roofPro11/consumptionMarkup.ts');
 
   it('la page expose un contrôle « Affiner ma consommation » + le panneau d\'affinage', () => {
     expect(page).toContain('Affiner ma consommation');
@@ -595,7 +598,10 @@ describe('pro-11 — W68 : mode VARIABILITÉ de consommation (« Affiner ma cons
 });
 
 describe('pro-11 — W82/W83/W84/W95/W96 : consommation honnête (intégrale annuelle + ROI)', () => {
-  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+  // ERR-ACAL311-PANNEAU-ABSENT-ERP — la fenêtre de consommation vit dans le balisage PARTAGÉ
+  // (`consumptionMarkup.ts`, rendu par `set:html` dans la page ET dans l'atelier ERP) : la page
+  // effective = source .astro + ce module.
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro') + read('../src/scripts/roofPro11/consumptionMarkup.ts');
   const all = pro11Sources();
 
   it('W82 — la synthèse de tête passe par l\'intégrale annuelle 12 mois (invariante au mois)', () => {
@@ -631,8 +637,10 @@ describe('pro-11 — W82/W83/W84/W95/W96 : consommation honnête (intégrale ann
     expect(all).toContain('seasonalConsumptionByMonth(');
     expect(all).toContain('annualSelfConsumptionSeasonalKwh(');
     // hauteur réservée (zéro CLS) + mouvement réduit pour le mini-graphe mensuel.
-    expect(page).toContain('.rp9-cons-month-wrap');
-    expect(page).toContain('.rp9-cons-month-chart * { transition: none !important');
+    // ERR-ACAL311 : la hauteur réservée est portée en style en ligne par le balisage partagé
+    // (set:html, hors portée du <style> scopé) ; le mouvement réduit passe par :global().
+    expect(page).toMatch(/class="rp9-cons-month-wrap[^"]*" style="[^"]*height:130px/);
+    expect(page).toContain(':global(.rp9-cons-month-chart *) { transition: none !important');
   });
 
   it('W96 — retour sur investissement batterie INDICATIF, jamais un devis', () => {

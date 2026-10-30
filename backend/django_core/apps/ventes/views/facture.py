@@ -131,7 +131,15 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
-        if self.action in READ_ACTIONS + [
+        # ERR-ASEC11-LECTURE-FACTURES (D-ASEC11-LECTURE-FACTURES) — la liste
+        # et la fiche exigent ``ventes_voir`` pour un rôle fin (Commercial
+        # terrain, Admin RH → 403) ; compte hérité sans rôle fin inchangé.
+        if self.action in READ_ACTIONS:
+            requete = getattr(self, 'request', None)
+            if requete is not None and getattr(requete.user, 'role_id', None):
+                return [IsAnyRole(), DroitDeLaGrille('ventes_voir')()]
+            return [IsAnyRole()]
+        if self.action in [
             'paiements', 'relances', 'emails', 'arrondi_caisse', 'kpis',
         ]:
             return [IsAnyRole()]

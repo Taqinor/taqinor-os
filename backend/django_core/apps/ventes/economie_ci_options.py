@@ -461,6 +461,29 @@ def _bilan_du_moteur(apercu, facteur):
     return None
 
 
+def apercu_du_devis(params):
+    """ERR-CI-SENSIBILITE-NON-CHIFFREE (CEC6 P1.4) — l'aperçu ``etude_ci`` d'un
+    devis, sa série 8 760 h remise. Le rafraîchisseur la retire du bloc stocké
+    (``etude_ci.bloc_etude_ci_stocke``, AMOT99) et la garde dans
+    ``production_figee`` : sans elle, le scénario production relançait le moteur
+    sur les 12 journées moyennes, qui ne reproduisent jamais le central — tout
+    devis neuf restait « non chiffré ». Remise seulement quand le reste de la
+    série figée est celui de l'étude ; le contrôle de reproductibilité
+    (:func:`_bilan_du_moteur`) tranche ensuite."""
+    from apps.ventes.domain.etude_ci import CLE_PRODUCTION_FIGEE
+    apercu = (params or {}).get('etude_ci')
+    if not isinstance(apercu, dict):
+        return {}
+    production, figee = apercu.get('production'), (params or {}).get(CLE_PRODUCTION_FIGEE)
+    serie = (production or {}).get('serie_horaire') if isinstance(production, dict) else None
+    serie_figee = (figee or {}).get('serie_horaire') if isinstance(figee, dict) else None
+    if not isinstance(serie, dict) or 'kwh_kwc' in serie or not isinstance(serie_figee, dict) \
+            or not serie_figee.get('kwh_kwc') \
+            or {k: v for k, v in serie_figee.items() if k != 'kwh_kwc'} != serie:
+        return apercu
+    return dict(apercu, production=dict(production, serie_horaire=dict(serie, kwh_kwc=serie_figee['kwh_kwc'])))
+
+
 def apercu_production_comparable(apercu, facteur, par_cellule, *, origine, motif_sans_charge):
     """``(aperçu du scénario | None, motif | None)`` — production × ``facteur``
     par LE calcul du central. ``par_cellule`` : le recalcul cellule par cellule

@@ -18,6 +18,7 @@ import {
   useIsAdminOrResponsable,
   useCanCreateProduit,
   useCanValiderVente,
+  useCanListFactures,
   PRODUIT_CREATE_ROLES,
   VENTES_VALIDER_PERMISSION,
 } from './useHasPermission'
@@ -149,5 +150,20 @@ describe('useHasRole (ARC47)', () => {
     const norm = renderWithAuth({ role: 'normal' })
     expect(renderHook(() => useIsAdmin(), { wrapper: norm }).result.current).toBe(false)
     expect(renderHook(() => useIsAdminOrResponsable(), { wrapper: norm }).result.current).toBe(false)
+  })
+})
+
+describe('useCanListFactures (ERR-ASEC11-LECTURE-FACTURES)', () => {
+  const peut = (auth) => renderHook(() => useCanListFactures(), { wrapper: renderWithAuth(auth) }).result.current
+
+  it('refuse Commercial terrain et Admin RH (aucun ventes_voir)', () => {
+    expect(peut({ role_nom: 'Commercial terrain', permissions: ['visites_voir', 'visites_creer'] })).toBe(false)
+    expect(peut({ role: 'responsable', role_nom: 'Admin RH', permissions: ['rh_voir', 'paie_gerer'] })).toBe(false)
+  })
+
+  it('autorise un rôle portant ventes_voir, le palier admin et le compte hérité', () => {
+    expect(peut({ role_nom: 'Commercial', permissions: ['ventes_voir'] })).toBe(true)
+    expect(peut({ role: 'admin', role_nom: 'Directeur', permissions: [] })).toBe(true)
+    expect(peut({ role: 'responsable', role_nom: null, permissions: [] })).toBe(true)
   })
 })

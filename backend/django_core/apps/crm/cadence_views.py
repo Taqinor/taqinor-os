@@ -340,8 +340,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         if lead_id is not None:
             # APRF21 — ``traite_par`` chargé (``traite_par_nom`` par touche).
             qs = (self.get_queryset().filter(lead_id=lead_id)
-                  .select_related('lead', 'lead__owner', 'devis',
-                                  'traite_par')
+                  .select_related('lead', 'lead__owner', 'lead__client',  # ERR-PERF-CRM-N1
+                                  'lead__company', 'devis', 'traite_par')
                   .order_by('cadence', 'ordre', 'due_date'))
         else:
             from .selectors import relance_etapes_dues

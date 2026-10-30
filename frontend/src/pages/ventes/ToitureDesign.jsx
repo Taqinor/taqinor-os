@@ -88,6 +88,7 @@ import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
+import { CONS_WINDOW_HTML } from '@roofpro/consumptionMarkup' // ERR-ACAL311-PANNEAU-ABSENT-ERP
 
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
@@ -1374,6 +1375,15 @@ function AtelierToiture({
             les totaux ci-dessus restent la somme de toutes les zones. Chiffres indicatifs, pas un devis.
           </p>
         </div>
+
+        {/* ERR-ACAL311-PANNEAU-ABSENT-ERP — « Affiner ma consommation » (`#rp9-cons-window`) :
+            balisage UNIQUE partagé avec la preview publique (`@roofpro/consumptionMarkup`),
+            sans lequel `consumption.ts monterProposition` ne montait rien ici (« Reprendre du
+            lead », CSV, Ramadan, classe tarifaire). Chaîne constante : React ne la réécrit pas. */}
+        <div
+          // check-no-danger-allow: CONS_WINDOW_HTML est une chaîne CONSTANTE du dépôt (@roofpro/consumptionMarkup), aucune donnée utilisateur
+          dangerouslySetInnerHTML={{ __html: CONS_WINDOW_HTML }}
+        />
 
         {/* CALX65 — sous la carte du constructeur, en mode calepinage
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
