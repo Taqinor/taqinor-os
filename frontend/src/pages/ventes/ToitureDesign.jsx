@@ -90,6 +90,12 @@ import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepi
 import '../../styles/roofbuilder.css'
 import { CONS_WINDOW_HTML } from '@roofpro/consumptionMarkup' // ERR-ACAL311-PANNEAU-ABSENT-ERP
 
+// ERR-ACAL311-PANNEAU-ABSENT-ERP (vague 10, rejeu P5.5) — objet `__html` UNIQUE au module :
+// React 19 compare la prop `dangerouslySetInnerHTML` par IDENTITÉ et réécrivait `innerHTML` à
+// chaque rendu d'un objet littéral neuf. Le constructeur saisit `#rp9-cons-window` à son boot :
+// le nœud qu'il démasquait était remplacé (détaché), la fenêtre affichée restait `hidden`.
+const CONS_WINDOW_INNER = { __html: CONS_WINDOW_HTML }
+
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
 const messageResyncRefusee = (raison) => (
@@ -1379,10 +1385,10 @@ function AtelierToiture({
         {/* ERR-ACAL311-PANNEAU-ABSENT-ERP — « Affiner ma consommation » (`#rp9-cons-window`) :
             balisage UNIQUE partagé avec la preview publique (`@roofpro/consumptionMarkup`),
             sans lequel `consumption.ts monterProposition` ne montait rien ici (« Reprendre du
-            lead », CSV, Ramadan, classe tarifaire). Chaîne constante : React ne la réécrit pas. */}
+            lead », CSV, Ramadan, classe tarifaire). Objet constant (CONS_WINDOW_INNER) : React ne la réécrit pas. */}
         <div
           // check-no-danger-allow: CONS_WINDOW_HTML est une chaîne CONSTANTE du dépôt (@roofpro/consumptionMarkup), aucune donnée utilisateur
-          dangerouslySetInnerHTML={{ __html: CONS_WINDOW_HTML }}
+          dangerouslySetInnerHTML={CONS_WINDOW_INNER}
         />
 
         {/* CALX65 — sous la carte du constructeur, en mode calepinage

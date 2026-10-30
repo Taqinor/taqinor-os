@@ -241,12 +241,26 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
   // `hidden` : sans `#rp9-prod-window` ni `/api/roof-production`, aucun plan de production.
   it('`productionAtelier` transmis : sans fenêtre de production, « Affiner ma consommation » devient visible', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(reponseContrat('calepinage', 'calepinage_design_context'))
+    // Vague 10 (rejeu P5.5) — comme le VRAI constructeur (`roof-tool-pro11.ts` : `$('rp9-cons-window')`
+    // au boot), l'élément est saisi PENDANT `initRoofToolPro8`, AVANT les re-rendus React
+    // déclenchés par `onApiReady`/`onHydrationTerminee`. En direct, React 19 réécrivait
+    // `innerHTML` à chaque rendu (objet `__html` neuf) : le module montrait un nœud DÉTACHÉ.
+    const bootMinimal = initRoofToolPro8.getMockImplementation()
+    let saisiAuBoot = null
+    initRoofToolPro8.mockImplementation((options) => {
+      saisiAuBoot = document.getElementById('rp9-cons-window')
+      return bootMinimal(options)
+    })
     rendreCalepinage(CTX.calepinage.id)
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
     const { productionAtelier } = initRoofToolPro8.mock.calls[0][0]
     expect(typeof productionAtelier).toBe('function')
     expect(productionAtelier({ panels: 10 })).toEqual(fallbackPerKwc())
-    const fenetre = document.getElementById('rp9-cons-window')
+    const fenetre = saisiAuBoot
+    expect(fenetre, 'saisi au boot').not.toBeNull()
+    expect(fenetre.isConnected, 'le nœud saisi au boot survit aux re-rendus React').toBe(true)
+    expect(document.getElementById('rp9-cons-window')).toBe(fenetre)
     expect(fenetre.hidden).toBe(true)
     // Les VRAIS modules de l'atelier sur le DOM servi par l'ERP (aucun `#rp9-prod-window`).
     const ctx = {
@@ -263,7 +277,7 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
       snapshotActiveAreaResult: () => undefined, renderAreasPanel: () => undefined,
     }).syncProductionWindow()
     expect(ctx.prodPanels).toBe(10)
-    expect(fenetre.hidden).toBe(false)
+    expect(document.getElementById('rp9-cons-window').hidden, 'visible À L’ÉCRAN (nœud connecté)').toBe(false)
     expect(document.getElementById('rp9-cons-toggle')).not.toBeNull()
 
     cleanup()
