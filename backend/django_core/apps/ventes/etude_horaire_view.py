@@ -152,7 +152,10 @@ def _champ_hors_forme(corps):
                and non_blanc(v)),
               (('occupation',), lambda v: isinstance(v, str)),
               (('equipements',), lambda v: isinstance(v, dict)),
-              (('batteries',), lambda v: isinstance(v, list)),
+              # CI #1176 fuzz (X7yfUo) — liste d'OBJETS publiée
+              # (``[{produit, quantite}]``) : ``[[null, null]]`` passait (200).
+              (('batteries',), lambda v: isinstance(v, list)
+               and all(isinstance(x, dict) for x in v)),
               (('critere',), lambda v: v in CRITERES)]
     for noms, valide in regles:
         for nom in noms:
