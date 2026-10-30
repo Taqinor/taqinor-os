@@ -38,7 +38,7 @@ const SKU = { pan: 'ADEV43-PAN', ond: 'ADEV43-OND', forfait: 'ADEV43-FOR' }
 
 let _n = 0
 const uniqueTag = () => { _n += 1; return `${Date.now().toString(36)}${_n}` }
-const plat = (s) => String(s).replace(/[\s  ]+/g, '')
+const plat = (s) => String(s).replace(/[\s\u00a0\u202f]+/g, '')
 const aujourdhuiMaroc = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date())
@@ -275,7 +275,7 @@ etape('P2.2', ['ADEV43'], async ({ page, context, testInfo }) => {
     expect(Math.round(ligneClient.prix_unit_ttc * 100), 'page publique : prix TTC du forfait').toBe(2666640)
     const texteP22 = await pdfTexte(api, devis.id)
     // Le PDF imprime le P.U. et le total HT de la ligne (22 222,00) et le Total TTC du devis.
-    expect(/22[\s  ]?222,00/.test(texteP22), '/proposal : la ligne forfait à 22 222,00 HT').toBe(true)
+    expect(/22[\s\u00a0\u202f]?222,00/.test(texteP22), '/proposal : la ligne forfait à 22 222,00 HT').toBe(true)
     const ttcDevis = Number((await lire(api, devis.id)).total_ttc).toFixed(2).replace('.', ',')
     expect(plat(texteP22).includes(plat(ttcDevis)), `/proposal : Total TTC du devis ${ttcDevis}`).toBe(true)
     await voirListe(page, context, devis.reference)
