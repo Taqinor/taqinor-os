@@ -709,3 +709,63 @@ class VisiteMesuresHorsLigneTests(TestCase):
         self.assertEqual(resp.data['applied'], 1)
         self.visite.refresh_from_db()
         self.assertEqual(self.visite.mesures['toiture']['longueur_m'], 12.5)
+
+    # ── AANA40 — conflit sur `visite.mesures` (C-AANA-023) ─────────────────
+    def _visite_corrigee_au_bureau(self):
+        """La visite telle que lue par le terminal, PUIS corrigée au bureau."""
+        from apps.visites.models import VisiteTerrain
+
+        VisiteTerrain.objects.filter(pk=self.visite.pk).update(
+            mesures={'toiture': {'longueur_m': 20}})
+        self.visite.refresh_from_db()
+        return self.visite.updated_at.isoformat()
+
+    def test_mesure_bureau_non_ecrasee(self):
+        """L'op porte une base ANTÉRIEURE à la correction bureau : `conflict`,
+        et la valeur bureau (20) reste intacte."""
+        self._visite_corrigee_au_bureau()
+        lot = self._op('cle-mes-conflit', valeurs={'longueur_m': 9},
+                       base_updated_at='2020-01-01T00:00:00Z')
+        resp = self.api.post(BATCH, lot, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resultat = resp.data['results'][0]
+        self.assertEqual(resultat['status'], 'conflict')
+        self.assertEqual(resultat['conflit']['champ'], 'updated_at')
+        self.assertEqual(resp.data['conflicts'], 1)
+        self.assertEqual(resp.data['applied'], 0)
+        self.visite.refresh_from_db()
+        self.assertEqual(self.visite.mesures['toiture']['longueur_m'], 20)
+        self.assertEqual(OfflineOperation.objects.get(
+            client_op_id='cle-mes-conflit').statut,
+            OfflineOperation.Statut.CONFLIT)
+
+    def test_base_a_jour_applique_et_rafraichit_la_version(self):
+        base = self._visite_corrigee_au_bureau()
+        lot = self._op('cle-mes-base-ok', valeurs={'longueur_m': 9},
+                       base_updated_at=base)
+        resp = self.api.post(BATCH, lot, format='json')
+        self.assertEqual(resp.data['results'][0]['status'], 'applied')
+        self.visite.refresh_from_db()
+        self.assertEqual(self.visite.mesures['toiture']['longueur_m'], 9)
+        self.assertGreater(self.visite.updated_at.isoformat(), base)
+
+    def test_sans_base_comportement_inchange(self):
+        """Garde opt-in : un client sans `base_updated_at` n'a aucun conflit."""
+        self._visite_corrigee_au_bureau()
+        resp = self.api.post(
+            BATCH, self._op('cle-mes-sans-base', valeurs={'longueur_m': 9}),
+            format='json')
+        self.assertEqual(resp.data['results'][0]['status'], 'applied')
+
+    def test_selecteur_version_borne_par_societe(self):
+        """Une visite d'une autre société est indiscernable d'un id inconnu :
+        le sélecteur ne la lit pas, le handler refuse comme avant."""
+        from apps.visites import selectors as visites_selectors
+
+        self.assertIsNone(visites_selectors.get_company_visite_version(
+            self.co_b, self.visite.id))
+        self.assertIsNone(visites_selectors.get_company_visite_version(
+            self.co_a, 'pas-un-id'))
+        version = visites_selectors.get_company_visite_version(
+            self.co_a, self.visite.id)
+        self.assertEqual(version.updated_at, self.visite.updated_at)

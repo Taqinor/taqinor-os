@@ -115,4 +115,19 @@ def h_visite_mesures(company, user, payload):
     return resultat
 
 
-register('visite.mesures', 'visites', h_visite_mesures)
+def _visite_ou_none(company, payload):
+    """La version de la visite visée, BORNÉE SOCIÉTÉ, ou ``None`` — lecture pure.
+
+    AANA40 — résolveur NTMOB2 de ``visite.mesures`` : le moteur compare son
+    ``updated_at`` à ``base_updated_at`` (la version lue par le terminal) et
+    met l'op en ``conflit`` au lieu d'écraser une mesure corrigée au bureau
+    entre-temps. Passe par le selector de ``apps.visites`` (jamais ses
+    modèles) ; sans ``base_updated_at`` dans le payload, aucune garde."""
+    from apps.visites import selectors as visites_selectors
+
+    return visites_selectors.get_company_visite_version(
+        company, payload.get('visite'))
+
+
+register('visite.mesures', 'visites', h_visite_mesures,
+         resolveur=_visite_ou_none)
