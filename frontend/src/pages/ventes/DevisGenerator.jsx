@@ -86,8 +86,7 @@ import {
   // supprimée : le moteur serveur C&I est la seule source.
   DEFAULT_MONTHLY_BILLS,
   formatMoney, estimerMois, htFromTtc, comptePanneauxOption,
-  kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux,
-  KWH_PRICE, EFFICIENCY,
+  kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux, KWH_PRICE, EFFICIENCY,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   // QJR66 — `buildEtudeParamsChoice` n'est PLUS importé ici : l'écran n'écrit
   // plus `scenario` / `recommended_option` / `distributeur` / `conso_annuelle`
@@ -99,14 +98,12 @@ import {
   // sans elle le modèle d'économie ne sature pas et l'ascension marginale
   // sur-vend jusqu'au plafond du balayage.
 } from '../../features/ventes/solar'
-import {
-  defaultProductLines,
-  // PVORD (fondateur 19/08/2026) — ordre par défaut des lignes de devis :
-  // dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
-  // ordre »), appliquée par la composition SERVEUR (`ordre_lignes`) ;
-  // ADEV69 — l'ancien composeur JS `autoFillLines` est supprimé.
-  // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
-  _hasPrix} from '../../features/ventes/calc/autoFill.js'
+// PVORD (fondateur 19/08/2026) — ordre par défaut des lignes de devis :
+// dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
+// ordre »), appliquée par la composition SERVEUR (`ordre_lignes`) ;
+// ADEV69 — l'ancien composeur JS `autoFillLines` est supprimé.
+// QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
+import { defaultProductLines, _hasPrix } from '../../features/ventes/calc/autoFill.js'
 import {
   optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCostDetail, avecBatterieAvailability,
   multiPropertyPreviewTTC, lignesRemiseesParPanier,
