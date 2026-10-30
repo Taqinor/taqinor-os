@@ -14,7 +14,5 @@
     "pay_page_inconnu": "535407466c8611fc30780ef7bd85b57d4d98f0369ce86283cc215bfc94a1944c",
     "pay_webhook_inconnu": "535407466c8611fc30780ef7bd85b57d4d98f0369ce86283cc215bfc94a1944c"
   },
-  "sites_arrondi": [
-    "round::_monthly_consumption._kwh::016f23b2fff9"
-  ]
+  "sites_arrondi": []
 }

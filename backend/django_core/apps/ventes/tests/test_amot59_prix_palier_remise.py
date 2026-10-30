@@ -75,7 +75,7 @@ class PrixPalierRemiseTests(TestCase):
         } for n in packs]}}
 
     def test_ancre_sur_le_devis(self):
-        self.assertEqual(self.devis.regles_calcul, 5)  # devis neuf : niveau 5
+        self.assertGreaterEqual(self.devis.regles_calcul, 5)  # devis neuf : niveau 5 ou plus récent
         paliers = _balayage_stockage_publique(
             self._deux_paliers(), self.devis, ttc_offert=50700.0)['paliers']
         self.assertEqual([p['cout_ttc'] for p in paliers], [50700.0, 68700.0])

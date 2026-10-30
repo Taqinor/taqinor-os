@@ -69,3 +69,31 @@ class PaybackPubliableTests(SimpleTestCase):
             inverter_replace_cost=round(12500 * 1.2 * 0.9, 2))
         self.assertEqual(publie, round(attendu['payback_years'], 2))
         self.assertIsNone(_payback_publie_palier(120000.0, 4000.0, [], 1.0))
+
+
+class ArrondiAffichageCartesTests(SimpleTestCase):
+    """D-ENF-ARRONDI-PDF (fondateur 30/10/2026) — les cartes de tailles
+    arrondissent COMME le moteur de rendu : moitié vers le haut au niveau 6,
+    ``round`` d'hier pour un devis envoyé avant (la carte et le PDF ne
+    divergent jamais d'une unité)."""
+
+    def setUp(self):
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False)
+        self.addCleanup(poser_regles_origine, False)
+
+    def test_cas_moitie(self):
+        self.assertEqual(ot._payback(1.0, 8.0), 0.13)              # round : 0.12
+        self.assertEqual(ot._prix_par_kwc(30100.0, 8.0), 3763.0)    # round : 3762
+        data = {'cashflow_sans': [-100000.0, -99999.875]}
+        self.assertEqual(ot._cumul_servi(data, 'sans', 100000.0), 0.13)  # round : 0.12
+
+    def test_hors_moitie_inchange(self):
+        self.assertEqual(ot._payback(90000.0, 6500.0), round(90000 / 6500, 2))
+        self.assertEqual(ot._prix_par_kwc(34400.0, 7.1), float(round(34400 / 7.1)))
+
+    def test_devis_envoye_garde_round(self):
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False, arrondi_historique=True)
+        self.assertEqual(ot._payback(1.0, 8.0), 0.12)
+        self.assertEqual(ot._prix_par_kwc(30100.0, 8.0), 3762.0)

@@ -29,6 +29,8 @@ from __future__ import annotations
 # pur, sans aucun import : aucun cycle possible). ``pricing`` en portait un
 # second, plus bas de 25 %.
 from .productible import DEFAULT_PRODUCTIBLE as _PRODUCTIBLE_DEFAUT_CANONIQUE
+# D-ENF-ARRONDI-PDF (30/10/2026) — l'arrondi AFFICHÉ, moitié vers le haut (niveau 6).
+from .montants import arrondi_affichage
 
 # ── Utility tranche tables ─────────────────────────────────────────────────────
 # Tarifs TTC (MAD/kWh, TVA incluse) au 2026 — grille NATIONALE vérifiée (Q7).
@@ -543,7 +545,7 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None, *,
     table, approx = _resolve_tranches(utility, tranches_override)
     if table is None:
         # Aucune donnée tarifaire → repli plat, étiqueté « estimation ».
-        return {"kwh_mensuel": round(bill / _FALLBACK_KWH_PRICE, 1),
+        return {"kwh_mensuel": arrondi_affichage(bill / _FALLBACK_KWH_PRICE, 1),
                 "approximatif": True, "estimation": True,
                 "label": ESTIMATION_LABEL}
 
@@ -1188,7 +1190,7 @@ def cashflow_assumptions(inverter_replace_cost=None,
         "inverter_replace_year": inverter_replace_year,
         # Montant RÉEL provisionné (MAD TTC) ou None — lu par la légende de la
         # courbe 25 ans, qui affiche le chiffre plutôt qu'un pourcentage.
-        "inverter_replace_cost": (round(float(inverter_replace_cost))
+        "inverter_replace_cost": (arrondi_affichage(float(inverter_replace_cost))
                                   if inverter_replace_cost else None),
         "notes": notes,
     }
@@ -1643,8 +1645,8 @@ def calculate_savings_roi(
     autoconso_avec = max(autoconso_avec, autoconso_sans_eff)
 
     # Self-consumption-first savings (loi 82-21: only self-consumed kWh valued)
-    economie_opt1 = round(production_annuelle * autoconso_sans_eff * prix_kwh)
-    economie_opt2 = round(production_annuelle * autoconso_avec * prix_kwh)
+    economie_opt1 = arrondi_affichage(production_annuelle * autoconso_sans_eff * prix_kwh)
+    economie_opt2 = arrondi_affichage(production_annuelle * autoconso_avec * prix_kwh)
 
     # QF2 — modèle « deux factures » (réel, par tranche) : quand une VRAIE
     # consommation ET une table tarifaire existent (et qu'aucun prix plat

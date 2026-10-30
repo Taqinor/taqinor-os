@@ -254,7 +254,7 @@ def page_onepage(items, tronquees=0):
                      + (_g._L("op_estimation") if _g.SAVINGS_ESTIMATED else ""),
                      _g._ancre_figure("economie_annuelle", _g.fnum(_eco_branche),
                                    _g.ONEPAGE_BRANCHE)))
-        _pkwc_txt = _g.fnum(round(total / _g.KWC))
+        _pkwc_txt = _g.fnum(_g.arrondi_affichage(total / _g.KWC))
         # AMOT86 (D-ACI-2=a) — postes « à chiffrer après la visite » hors
         # total : aucun « Prix par kWc » sur un prix incomplet.
         _sum_cells += [] if (_g.CHIFFRES_CI or {}).get("postes_hors_total") else [
@@ -470,7 +470,7 @@ def page_onepage(items, tronquees=0):
                 f'<td style="padding:4px 10px;text-align:right;color:{_g.CN};font-weight:600;">'
                 # QJR616 — le supplément canonique du builder (remise globale
                 # comprise), plus un P.U. × qté recalculé ici.
-                f'{_g.fmt(round(float(_o.get("total_ttc", 0) or 0)))}</td>'
+                f'{_g.fmt(_g.arrondi_affichage(float(_o.get("total_ttc", 0) or 0)))}</td>'
                 f'</tr>')
         options_html = (
             f'<div style="padding:8px 24px 0;">'

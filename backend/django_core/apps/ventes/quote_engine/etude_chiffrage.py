@@ -21,6 +21,8 @@ import logging
 
 from core.money import quantize_mad
 
+from .montants import arrondi_affichage  # D-ENF-ARRONDI-PDF — moitié vers le haut (niveau 6)
+
 from .lignes_classement import _battery_kwh_from_items, _cout_onduleur
 
 logger = logging.getLogger(__name__)
@@ -515,7 +517,7 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
             roi["eco_s_ann"] = eco
             roi["eco_a_ann"] = eco
             roi["eco_a_cumul"] = eco
-            roi["roi_s"] = round(_ref_total / eco, 1) if eco > 0 else 0.0
+            roi["roi_s"] = arrondi_affichage(_ref_total / eco, 1) if eco > 0 else 0.0
             roi["roi_a"] = roi["roi_s"]
             roi["roi_s_jamais"] = roi["roi_a_jamais"] = False
             from .pricing import CLE_SOLAIRE_MENSUELLE_HISTORIQUE as _sf
@@ -558,7 +560,7 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         if deux_options and panneaux_divergents:
             etude.pop("prix_kwc", None)
         elif (_kwc_ref or 0) > 0:
-            etude["prix_kwc"] = round(_ref_total / _kwc_ref)
+            etude["prix_kwc"] = arrondi_affichage(_ref_total / _kwc_ref)
 
     # ── QXMT — UN DOSSIER MT NE PORTE JAMAIS UN CHIFFRE BT ───────────────────
     #
