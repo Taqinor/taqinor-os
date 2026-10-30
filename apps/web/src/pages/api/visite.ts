@@ -23,8 +23,8 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import { validateVisiteBody } from '../../lib/visite';
-import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { preludeBalise } from '../../lib/apiPreludeJeton';
+import { clientIpFromRequest } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
 import { entetesIpVisiteur, resolveApiBase } from './_apiBase';
 
@@ -35,21 +35,11 @@ function visiteEndpoint(apiBase: string): string {
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : même garde-fou que les autres proxies
   // same-origin (funnel-beacon, proposition-track, questionnaire-repondre).
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
-
   // Bucket dédié, généreux : un battement ~20 s + un envoi final par page —
   // un visiteur multi-onglets normal reste largement sous ce plafond.
-  const rl = rateLimit(`visite:${clientIpFromRequest(request)}`, { limit: 60, windowMs: 60_000 });
-  if (!rl.allowed) {
-    return json({ ok: false }, 429, { 'retry-after': String(rl.retryAfterSec) });
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ ok: false }, 400);
-  }
+  const pre = await preludeBalise(request, { scope: 'visite', limit: 60 });
+  if ('response' in pre) return pre.response;
+  const body = pre.body;
 
   const validated = validateVisiteBody(body);
   if (!validated) return json({ ok: false }, 400);

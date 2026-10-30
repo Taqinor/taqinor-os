@@ -28,9 +28,9 @@ import {
   type OptionKey,
   type SignFormState,
 } from '../../lib/proposition';
-import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
+import { appelAmontJson, preludeJeton } from '../../lib/apiPreludeJeton';
 import { lirePaiementAcceptation } from '../../lib/paiementAcceptation';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { clientIpFromRequest } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
 import { entetesJsonPreuve, resolveApiBase } from './_apiBase';
 
@@ -38,24 +38,9 @@ export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : le chemin d'e-signature est le plus
   // sensible des endpoints proxifiés ici — refuse un POST cross-site forgé
   // avant tout traitement.
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
-
-  const rl = rateLimit(`proposition-accept:${clientIpFromRequest(request)}`, { limit: 10, windowMs: 60_000 });
-  if (!rl.allowed) {
-    return json({ ok: false, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
-      'retry-after': String(rl.retryAfterSec),
-    });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return json({ ok: false, detail: 'Requête invalide.' }, 400);
-  }
-
-  const token = typeof body.token === 'string' ? body.token.trim() : '';
-  if (!token) return json({ ok: false, detail: 'Lien de proposition manquant.' }, 400);
+  const pre = await preludeJeton(request, { scope: 'proposition-accept', limit: 10, jetonManquant: 'Lien de proposition manquant.' });
+  if ('response' in pre) return pre.response;
+  const { body, token } = pre;
 
   const optRaw = body.option;
   const option: OptionKey | null =
@@ -133,25 +118,17 @@ export const POST: APIRoute = async ({ request }) => {
   const clientIp = clientIpFromRequest(request);
   const signerIp = clientIp && clientIp !== 'unknown' ? clientIp : '';
 
-  let upstreamStatus = 502;
-  let upstreamPayload: unknown = null;
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      // ASEC53 — seul le navigateur vérifié signe un lien `otp_lecture` (contrat ASEC1).
-      headers: { ...entetesJsonPreuve(request), ...entetesIpVisiteur(signerIp) },
-      body: JSON.stringify(upstream),
-    });
-    upstreamStatus = res.status;
-    try {
-      upstreamPayload = await res.json();
-    } catch {
-      upstreamPayload = null;
-    }
-  } catch {
+  const amont = await appelAmontJson(url, {
+    method: 'POST',
+    // ASEC53 — seul le navigateur vérifié signe un lien `otp_lecture` (contrat ASEC1).
+    headers: { ...entetesJsonPreuve(request), ...entetesIpVisiteur(signerIp) },
+    body: JSON.stringify(upstream),
+  });
+  if (!amont) {
     // Backend injoignable : on renvoie une erreur réseau propre, sans détail PII.
     return json({ ok: false, detail: 'Service momentanément indisponible. Veuillez réessayer.' }, 502);
   }
+  const { status: upstreamStatus, payload: upstreamPayload } = amont;
 
   const result = normalizeAcceptResponse(upstreamStatus, upstreamPayload);
   // ADEV53 — le succès relaie `paiement` (contrat `proposal_accept.json`) : acompte, RIB et
