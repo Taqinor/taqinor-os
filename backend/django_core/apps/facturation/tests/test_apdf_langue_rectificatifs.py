@@ -115,6 +115,32 @@ class LangueRectificatifsTests(TestCase):
         self.assertIn('Avoir au profit de', html)
         self.assertNotIn('uniquement', html)
 
+    def test_avoir_ar_ordre_bidi_et_libelles(self):
+        """ERR-PDF-AR-AVOIR-BIDI — avoir arabe : téléphone, références, dates
+        et adresse en isolat bidi (le numéro garde son ordre), « Page i / N »
+        et « à » traduits ; avoir français inchangé (aucun <bdi>)."""
+        from django.test import override_settings
+        from apps.ventes.utils.pdf import generate_avoir_pdf
+        tel = '+212 522 00 00 00'
+        with override_settings(ENTREPRISE_TELEPHONE=tel,
+                               ENTREPRISE_ADRESSE='12 Rue Foo, Casablanca'):
+            avoir = self._avoir(self.client_ar)
+            generate_avoir_pdf(avoir.id)
+            html = self.html[-1]
+            self.assertIn(f'<bdi class="ltr">{tel}</bdi>', html)
+            self.assertIn('<bdi class="ltr">12 Rue Foo, Casablanca</bdi>',
+                          html)
+            self.assertIn(f'<bdi class="ltr">{avoir.reference}</bdi>', html)
+            self.assertIn('content: "صفحة " counter(page)', html)
+            self.assertIn(' في <bdi class="ltr">', html)
+            self.assertNotRegex(html, r'</bdi> à <bdi')
+            self.assertNotIn('"Page "', html)
+            generate_avoir_pdf(self._avoir(self.client_fr).id)
+            fr = self.html[-1]
+            self.assertNotIn('<bdi', fr)
+            self.assertIn('content: "Page " counter(page)', fr)
+            self.assertRegex(fr, r'\d{2}/\d{2}/\d{4} à \d{2}:\d{2}')
+
     def test_nd_ar(self):
         from apps.ventes.utils.pdf import generate_note_debit_pdf
         generate_note_debit_pdf(self._nd(self.client_ar).id)
