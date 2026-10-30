@@ -1043,7 +1043,7 @@ def cloture(ctx):
     from ..premium_base import bande_legale
     legal = bande_legale(d, ctx["ident"])
     legal_html = (f'<div class="ag-legal" style="margin-top:6px;font-size:6.8pt;'
-                  f'line-height:1.35;color:{ctx["C"]["muted"]};">{legal}</div>'
+                  f'line-height:1.35;color:{ctx.get("C", theme.C)["muted"]};">{legal}</div>'
                   if legal else "")
     return (f'<div class="ag-accord"><div class="ag-accord-hd">'
             f'<span class="ag-accord-t">{_t(lg, "bon_pour_accord")}</span>'
