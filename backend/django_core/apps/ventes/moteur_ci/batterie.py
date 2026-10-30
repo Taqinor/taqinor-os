@@ -25,8 +25,8 @@ batterie », calculée ICI :
   fenêtre solaire d'un jour moyen (:func:`besoin_nocturne_kwh`, encore servi
   à titre d'information) — boulangerie : 15 modules et 144 panneaux, rejetés
   par le fondateur (« the battery should be full… both panels and batteries
-  should follow the [same marginal] rule » — la VALEUR de l'horizon reste à
-  trancher, voir ``taille.HORIZON_MARGINAL_CI``) ;
+  should follow the [same marginal] rule » — horizon C&I tranché à 10 ans le
+  30/10, ``taille.HORIZON_MARGINAL_CI``) ;
 * panneaux AJOUTÉS (règle QJR612 « batteries toujours pleines ») tant que le
   surplus solaire du jour moyen de CHAQUE mois ne remplit pas la banque —
   bornés par le toit et les bornes de taille existantes ; au toit sans

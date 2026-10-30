@@ -50,13 +50,12 @@ PAS_KWC = 5
 #: les panneaux ET les batteries : un ajout (une tranche de panneaux ; UNE
 #: batterie AVEC les panneaux qu'elle tire pour se remplir et, le cas échéant,
 #: l'hybride supplémentaire) n'est retenu que si l'investissement ajouté est
-#: remboursé dans cet horizon par l'économie ajoutée. La MÉCANIQUE est tranchée
-#: (30/10) ; la VALEUR reste celle de D-CIQ-2 du 25/08 (10 ans, la même que
-#: ``dimensionnement.HORIZON_MARGINAL_PV`` du résidentiel) tant que le
-#: fondateur n'a pas tranché — il a évoqué 7 ans le 30/10 puis précisé « the
-#: 7 years was for residential, maybe for commercial the rule is 10 years
-#: internationally ». Changer l'horizon C&I = changer CE nombre (les tests
-#: sont paramétrés dessus) ; le résidentiel n'en dépend pas.
+#: remboursé dans cet horizon par l'économie ajoutée. VALEUR TRANCHÉE le
+#: 30/10/2026 : 10 ans (« the 7 years was for residential, maybe for
+#: commercial the rule is 10 years internationally » — les 7 ans restent au
+#: stockage résidentiel, ``dimensionnement.HORIZON_MARGINAL_BATTERIE``), la
+#: même valeur que D-CIQ-2 du 25/08. Changer l'horizon C&I = changer CE
+#: nombre (les tests sont paramétrés dessus) ; le résidentiel n'en dépend pas.
 HORIZON_MARGINAL_CI = 10
 #: Fondateur 26/10/2026 (boulangerie 30 → 40 kWc) : un palier cher SEUL (saut
 #: d'onduleur 25 → 50 kW) est gardé si, avec les paliers suivants, l'ensemble
@@ -93,8 +92,8 @@ SOURCE_RASANTE = 'décision fondateur du 28/10/2026 (R1 — pose rasante)'
 #: économique (repris trilingue par ``quote_engine.i18n_labels_ci``).
 TEXTE_TAILLE_LIMITEE_TOIT = 'taille limitée par le toit : %g m² déclarés → %g kWc en pose rasante'
 TEXTE_TAILLE_LIMITEE_TOIT_SANS_SURFACE = 'taille limitée par le toit : %g kWc en pose rasante'
-SOURCE_HORIZON = ('horizon marginal C&I unique, panneaux et batteries (moteur_ci/taille.py '
-                  'HORIZON_MARGINAL_CI — valeur D-CIQ-2 du 25/08, mécanique fondateur 30/10/2026)')
+SOURCE_HORIZON = ('horizon marginal C&I unique, panneaux et batteries — 10 ans (moteur_ci/taille.py '
+                  'HORIZON_MARGINAL_CI ; D-CIQ-2 du 25/08, confirmé par le fondateur le 30/10/2026)')
 
 
 def _alerte(code, champ, message, niveau='alerte', interne=True):

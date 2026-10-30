@@ -2149,7 +2149,7 @@
         "cle": "horizon_marginal_annees",
         "valeur": 10,
         "statut": "source",
-        "source": "horizon marginal C&I unique, panneaux et batteries (moteur_ci/taille.py HORIZON_MARGINAL_CI — valeur D-CIQ-2 du 25/08, mécanique fondateur 30/10/2026)"
+        "source": "horizon marginal C&I unique, panneaux et batteries — 10 ans (moteur_ci/taille.py HORIZON_MARGINAL_CI ; D-CIQ-2 du 25/08, confirmé par le fondateur le 30/10/2026)"
       },
       {
         "cle": "tarif",
@@ -2765,7 +2765,7 @@
         "cle": "horizon_marginal_annees",
         "valeur": 10,
         "statut": "source",
-        "source": "horizon marginal C&I unique, panneaux et batteries (moteur_ci/taille.py HORIZON_MARGINAL_CI — valeur D-CIQ-2 du 25/08, mécanique fondateur 30/10/2026)"
+        "source": "horizon marginal C&I unique, panneaux et batteries — 10 ans (moteur_ci/taille.py HORIZON_MARGINAL_CI ; D-CIQ-2 du 25/08, confirmé par le fondateur le 30/10/2026)"
       },
       {
         "cle": "tarif",
