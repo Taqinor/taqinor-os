@@ -2731,3 +2731,14 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 29-30/10/2026 (lane w7-enf, question interactive)"
     taches: [ENF11]
+  - id: D-CI-SENSIB-ENVOYES
+    question: "ERR-CI-SENSIBILITE-P90-INVERSEE : le correctif du scénario production des sensibilités C&I s'applique-t-il aux devis déjà envoyés ?"
+    options:
+      - cle: a
+        texte: "nouveaux rendus seulement : un devis non brouillon (envoyé, accepté, refusé, expiré — même au niveau 3 envoyé depuis le 27/10) garde exactement son ancien tableau ; brouillons et devis envoyés après le merge prennent le calcul corrigé (niveau de règles 4, migration ventes 0143)"
+      - cle: b
+        texte: "appliquer le correctif à tous les devis, envoyés compris"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; rejeu CEC6 P1.4)"
+    taches: [ERR-CI-SENSIBILITE-P90-INVERSEE]

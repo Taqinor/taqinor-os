@@ -1547,7 +1547,8 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
         cle_base = 'ttc' if flux['base'] == BASE_TTC else 'ht'
         sensibilites, omis = sensibilites_ci(
             collecteur.get(cle_base), apercu, tarif, reglages,
-            tarif_declare=tarif_declare, cle_base=cle_base)
+            tarif_declare=tarif_declare, cle_base=cle_base,
+            regles_origine=reglages.get('sensibilites_origine', reglages.get('regles_origine')))
         if omis is not None:
             omissions.append(omis)
     if mode == 'industriel':
@@ -1602,10 +1603,10 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
 #   indexation_tarif ⇒ ``indexation_pct`` = variation (%/an ; base 0, QX39) ;
 #   degradation      ⇒ ``degradation_pct`` = variation (%/an) ;
 #   tarif_kwh        ⇒ prix de chaque poste × (1 + v), puis :func:`valoriser` ;
-#   production       ⇒ production de chaque cellule horaire × (1 + v),
-#                      autoconsommé = min(production, charge déclarée) cellule
-#                      par cellule, puis :func:`valoriser` (jamais une économie
-#                      mise à l'échelle linéairement).
+#   production       ⇒ LE bilan du central (``moteur_ci.autoconso``, série 8 760 h
+#                      comprise) à la puissance × (1 + v), puis :func:`valoriser`
+#                      (``economie_ci_options.apercu_production_comparable`` ;
+#                      jamais une économie mise à l'échelle linéairement).
 # AMOT97 (D-ACI-15=a) — les scénarios par défaut sont SEEDÉS dans Paramètres
 # avec leur source (``parametres.tariff.SENSIBILITES_CI_DEFAUT``), modifiables ;
 # ce module ne lit que ce que le réglage porte.
@@ -1676,7 +1677,7 @@ def _ecart(valeur, reference):
 
 
 def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
-                    tarif_declare=None, cle_base='ht'):
+                    tarif_declare=None, cle_base='ht', regles_origine=False):
     """``(sensibilites, omission|None)`` — la liste du contrat
     ``economie_ci.json`` [{cle, variation_pct, source, economie_annee1_mad,
     retour_ans, tri_pct, ecart_retour_ans, ecart_tri_pct, cumul_25_ans_mad}]
@@ -1712,10 +1713,12 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
                 tarif_declare, cle_base)
             entrees['economie_annee1_mad'] = {'valeur': eco, 'source': libelle}
         else:
-            modifie = _apercu_production(apercu, 1.0 + v / 100.0)
-            if modifie is None:
-                motif = MOTIF_SENSIBILITE_SANS_CHARGE
-            else:
+            modifie, motif = _options.apercu_production_comparable(  # ERR-CI-SENSIBILITE-P90-INVERSEE
+                apercu, 1.0 + v / 100.0, _apercu_production, origine=regles_origine,
+                motif_sans_charge=MOTIF_SENSIBILITE_SANS_CHARGE)
+            if modifie is None and not regles_origine:
+                entrees['economie_annee1_mad'] = None  # aucun chiffre sous un motif
+            elif modifie is not None:
                 eco = _economie_valorisee(modifie, tarif, tarif_declare,
                                           cle_base)
                 entrees['economie_annee1_mad'] = {'valeur': eco,
@@ -1964,10 +1967,13 @@ def economie_ci_pour_devis(devis, company):
     if not isinstance(tarif_declare, dict):
         tarif_declare = params.get('tarif') if isinstance(
             params.get('tarif'), dict) else None
-    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, calcul_corrige, regles_au_moins
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, REGLES_SENSIBILITES_3010, calcul_corrige, regles_au_moins)
     totaux = option_totaux(devis)
     reglages = reglages_economie_ci(company)
     reglages['regles_origine'] = not regles_au_moins(devis, REGLES_CORRIGEES_2710)  # CEC (27/10)
+    # D-CI-SENSIB-ENVOYES (30/10) — un devis envoyé garde son tableau de sensibilités.
+    reglages['sensibilites_origine'] = not regles_au_moins(devis, REGLES_SENSIBILITES_3010)
     if not calcul_corrige(devis):
         # AMOT96/97 — un devis envoyé garde ce que le client a reçu : ni
         # entretien minimum, ni scénarios seedés, ni sensibilités commerciales.
