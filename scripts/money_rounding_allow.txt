@@ -77,4 +77,3 @@ backend/django_core/apps/ventes/offres_tailles.py::_carte_du_devis::9352ee4da552
 # --- backend/django_core/apps/ventes/domain/resynchronisation.py
 
 # --- backend/django_core/apps/ventes/public/payload_economie.py
-backend/django_core/apps/ventes/public/payload_batterie.py::_ancrer_paliers_sur_le_devis::2ee8ea2c2f84 | AFFICHAGE : prix TTC d'un palier du curseur de stockage de la proposition publique, arrondi au dirham comme les autres paliers (ERR-AMOT59-CURSEUR-STOCKAGE-PRIX) ; jamais persisté, l'argent du devis reste totaux_avec.

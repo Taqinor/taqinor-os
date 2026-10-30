@@ -326,13 +326,14 @@ def _ancrer_paliers_sur_le_devis(paliers, bruts, devis, ttc_offert):
     from apps.ventes.domain.dimensionnement_devis import (
         facteur_remise_du_devis)
     from apps.ventes.quote_engine.pricing import payback_publiable
+    from decimal import ROUND_HALF_UP, Decimal
     facteur = facteur_remise_du_devis(devis)
     brut_offert = bruts[offerts[0]]
     for i, (palier, brut) in enumerate(zip(paliers, bruts)):
         if brut is None:
             continue
-        cout = (total if i == offerts[0]
-                else float(round(total + facteur * (brut - brut_offert))))
+        cout = (total if i == offerts[0] else float(  # dirham, moitié-vers-le-haut (core.money)
+            Decimal(str(total + facteur * (brut - brut_offert))).quantize(Decimal('1'), ROUND_HALF_UP)))
         if cout <= 0:
             continue
         palier['cout_ttc'] = cout
