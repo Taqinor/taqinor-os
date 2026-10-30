@@ -1,0 +1,140 @@
+{
+  "sha": "db8ca9670424f43ae123c55c801a6a76e733063a",
+  "date": "2026-10-30",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL22",
+    "ACAL351"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "S-A.idempotence",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/ACAL351-rejeu-ecran.txt § S-A.idempotence ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL351-rejeu-S-A-second-enregistrer.jpg — calepinage déjà normalisé, Enregistrer sans geste : « Conception inchangée », diff document et resultat vides, layout_hash et empreinte identiques, versions 2 → 2 (404 plan-importe = pièce 512 fictive de l exemple)"
+    },
+    {
+      "id": "S-B.409",
+      "taches": [
+        "ACAL351",
+        "ACAL22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/ACAL351-rejeu-ecran.txt § S-B.409 ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL351-rejeu-S-B-409.jpg ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL351-rejeu-S-B-recharge.jpg — écriture ailleurs puis Enregistrer : 409 VOULU, « La conception a été modifiée ailleurs … rechargez avant d enregistrer », bouton Recharger, serveur inchangé ; Recharger puis Enregistrer : « Conception inchangée », modification d ailleurs gardée"
+    },
+    {
+      "id": "S-B.lecture-bloquee",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/ACAL351-rejeu-ecran.txt § S-B.lecture-bloquee ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL351-rejeu-S-B-lecture-bloquee.jpg — GET design-context/ et layout/ coupés (page.route) : « Impossible de charger le calepinage — réessayez. », Enregistrer désactivé, aucun POST layout/, layout_hash et versions inchangés"
+    },
+    {
+      "id": "S-G.meme-message",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/ACAL351-rejeu-ecran.txt § S-G.meme-message ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL351-rejeu-S-G-autre-societe.jpg ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL351-rejeu-S-G-absent.jpg — /calepinage/19 (autre société) et /calepinage/999999999 : mêmes 404 VOULUS et même message « Calepinage introuvable (erreur 404). », aucune donnée étrangère affichée"
+    },
+    {
+      "id": "S-G.lead-deja-ouvert",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/ACAL351-rejeu-ecran.txt § S-G.lead-deja-ouvert ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL351-rejeu-S-G-lead-deja-ouvert.jpg — Nouveau calepinage sur un lead déjà ouvert : « Ce lead a déjà un calepinage ouvert … », « Ouvrir l existant » ⇒ /calepinage/172, aucun POST, un seul calepinage pour le lead"
+    },
+    {
+      "id": "P6.2.restaurer",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/ACAL351-rejeu-ecran.txt § P6.2.restaurer — onglet Versions : Restaurer la version 172 puis Confirmer ⇒ versions « Avant restauration de #172 » et « Restauration de la version #172 », document v1 relu par GET layout/"
+    }
+  ]
+}

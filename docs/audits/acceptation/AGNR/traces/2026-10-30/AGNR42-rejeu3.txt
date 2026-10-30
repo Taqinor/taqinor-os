@@ -1,0 +1,45 @@
+AGNR42 — troisième rejeu en direct du 2026-10-30 (nuit) : les deux restes du second rejeu (P2.2 sur un navigateur francophone ; CLAUSE CLIENT page publique des devis 2465-2468).
+Pile : http://localhost sur origin/main db8ca9670 (migrée, front reconstruit, nginx redémarré), base démo locale, demo_admin (identifiants de frontend/e2e/helpers.js).
+Navigateur francophone : script Node Playwright 1.61 hors dépôt (Chromium 149.0.7827.55, headless shell), `chromium.launch({ args: ['--lang=fr-FR'] })` + `newContext({ locale: 'fr-FR' })` ; relu dans la page : navigator.language "fr-FR", navigator.languages ["fr-FR"], Intl "fr-FR", (1234.5).toLocaleString() = "1 234,5". (Le binaire Chromium complet — channel "chromium" — refuse de se lancer sur ce poste : `spawn UNKNOWN` ; le headless shell est le même moteur Blink.) Frappe touche par touche (pressSequentially).
+Page /proposition : `astro dev` de apps/web sur 127.0.0.1:4329, PUBLIC_API_BASE=http://localhost, jeton INTERNE (POST share-link/ sans `envoi` : aucun statut modifié) — le jeton public d'un brouillon répond 404 (attendu).
+Données créées : lead 3746 « AGNR42 rejeu 3 » (copie hiver 800 / été 1 600 / été différent du lead 3649) ; devis 2490-2495 sur ce lead (2490-2494 : artefacts du script — navigateur fermé avant le PATCH etude-params qui suit le POST atomic, 2493 sur le lead 3649 ; non jugés) ; devis jugé : 2495 (DEV-202610-0130).
+
+## P2.2.fr — PASS (AGNR42)
+Générateur /ventes/devis/nouveau?lead=3746, guide fermé, « Auto-remplir depuis le stock ».
+Frappe (valeur du champ PENDANT la frappe, puis après Tab ; validity.badInput) :
+  Facture Hiver (#gen-hiver, type=number, step=any, form noValidate=true) « 1234,567 » ⇒ value "1234.567", badInput false, puis "1234.567"
+  Facture Été (#gen-ete) « 0,5 » ⇒ "0.5", badInput false ; « 1600,5 » ⇒ "1600.5"
+  Ligne « Onduleur réseau Huawei 5kW Monophasé » quantité « 0,5 » ⇒ "0.5" ; prix unitaire TTC « 1234,567 » ⇒ "1234.567" (affiché « 1234,567 », total ligne 617 MAD, HT 1 029 MAD)
+  Ligne « Smart Meter » prix « 99,125 » ⇒ "99.125" (affiché « 99,125 »)
+  Jamais refusé, jamais arrondi dans le champ. (Le matin, sans --lang, Chromium écartait la virgule : « 0,5 » → « 05 ».)
+Enregistrement : avec été 0,5, « Créer » est bloqué par la garde métier nommée « Facture(s) mensuelle(s) inférieure(s) aux lignes fixes du compteur (39.94 MAD TTC/mois) — mois 5…10 … corrigez la saisie » (le champ garde 0,5 : ce n'est pas un refus du nombre tapé). Rejoué avec été « 1600,5 » : avertissement « La facture d'hiver enregistrée (1235 MAD) s'écarte de celle du lead (800 MAD). Vérifiez la saisie, puis cliquez à nouveau pour confirmer. » ⇒ second clic ⇒ 201 POST atomic/ (devis 2495) puis 200 PATCH 2495/etude-params/.
+Corps envoyés : ligne Onduleur `quantite "0.5"`, `prix_unitaire "1028.81"` (HT de 1234,567 TTC à 2 décimales) ; Smart Meter `prix_unitaire "82.60"` ; etude-params `factures_hiver_ete {"hiver_mad":1234.567,"ete_mad":1600.5,"ete_differente":true}`.
+Serveur (GET devis 2495) : lignes 0.50 / 1028.81, 1.00 / 82.60 ; etude_params.factures_hiver_ete {hiver_mad 1234.567, ete_mad 1600.5} ; total_ttc 70 400.00 = bandeau écran 70 400 MAD.
+Réouverture ?edit=2495 dans le même navigateur francophone (persistance) : Hiver 1234.567, Été 1600.5, quantité 0.5 ; prix ligne 1234.57 et 99.12 (HT 2 décimales × 1,2 : normalisation du prix de LIGNE à 2 décimales HT, non signalée — OPTIONNEL LGEN2 O1, noté, pas un échec) ; bandeau 70 400 MAD.
+Oracles : 0 réponse 4xx/5xx, 0 console.error, 0 pageerror ; /proposal de 2495 servi (200, 4 p. ; avec étude 3 p.) ; 0 « prix d'achat »/« marge » dans les PDF et la page ; oracle 10 jugé à l'étape CLIENT.2495 (enregistrement FAIL).
+Captures : docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu3-P2.2-saisie-fr.jpg, ACCEPTATION-AGNR-rejeu3-P2.2-reouverture.jpg
+
+## CLIENT.2465-2468 — PASS (AGNR42, clause CLIENT)
+Pour chaque devis : jeton interne (share-link/, statut inchangé « brouillon »), charge GET /api/django/ventes/proposal/<jeton>/ (200), page /proposition rendue par astro dev (HTTP 200, 0 console.error, 0 réponse ≥ 400), /proposal PDF extrait par PyMuPDF, écran ?edit=<id> (navigateur francophone, panneaux et <details> dépliés).
+  2465 commercial DEV-202610-0120 : serveur total_ttc 149 200 ; page TOTAL TTC 149 200, ÉCONOMIE / AN 41 402 MAD (HT) / 49 681 TTC, 3,1 ans, 25,56 kWc, 39 164 kWh/an, autoconsommation 74,2 %, couverture 40,4 % ; PDF 3 p. 149 200,00 TTC, 41 402 MAD HT « soit 49 681 MAD TTC », 3,1 ans, 39 164 kWh/an, 74 % / 40 % (même valeur arrondie à l'unité) ; écran bandeau 149 200, « Économie estimée / an (HT) 41 402 MAD », 74,2 %, 40,4 %, 25,56 kWc, tableau 41 402 / 49 681 (le retour et la production ne sont pas affichés à l'écran : rien à contredire).
+  2466 industriel DEV-202610-0121 : serveur 1 360 300 ; page 1 360 300, 302 215 HT / 362 678 TTC, 3,9 ans, TRI 24,8 %, 315,24 kWc, 483 028 kWh/an, 73,7 % / 49,5 % ; PDF 4 p. 1 360 300,00, 302 215 / 362 678, 3,9 ans, TRI 24,8 %, 483 028 kWh/an, 74 % / 50 % ; écran 1 360 300, 302 215, 362 678, 3,9, 73,7, 49,5, 24,8, 315,24.
+  2467 agricole DEV-202610-0122 : serveur 32 600 ; page 32 600, pompe 5,5 CV / 4 kW, champ 5,68 kWc, HMT 50 m, « Volume … non calculé » (m³/jour omis, pompe sans courbe), déclarations datées ; PDF 3 p. 32 600,00 TTC, mêmes déclarations ; écran 32 600, 5,68, 5,5, 50.
+  2468 résidentiel DEV-202610-0123 : serveur 52 500 (sans 40 200 / avec 52 500) ; page 52 500 et 40 200, 4,26 kWc, 6 543 kWh/an, aucune économie chiffrée (devis sans facture du client) ; PDF 3 p. Sans 40 200,00 / Avec 52 500,00, 6 543 kWh/an, aucune économie en MAD (« Estimation : … Fournissez une facture réelle ») ; écran 52 500 et 40 200, 4,26 kWc.
+Oracle 10 (audit_coherence --company taqinor-demo --json --no-persist, 154 violations société) : 0 violation sur DEV-202610-0120…0123.
+Oracle 7 : 0 « prix d'achat »/« marge »/prix_achat dans les 4 charges, les 4 pages et les 4 PDF.
+Captures : docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu3-page-2465.jpg … -page-2468.jpg
+
+## CLIENT.2495 — FAIL (AGNR42, clause CLIENT) — défaut D6
+Devis 2495 (P2.2, factures DÉCIMALES 1 234,567 hiver / 1 600,5 été, déclarées et confirmées à l'écran) :
+  écran ?edit=2495 (simulation dépliée, texte rendu cherché) : 17 010, 2 135 et 14 875 présents (et 8 853 sans batterie) ; 17 016, 2 141 et 1 418 absents ;
+  PDF /proposal?include_etude=1 (3 p.) : « Facture actuelle ≈ 17 010 MAD/an → avec solaire ≈ 2 135 MAD/an → économie ≈ 14 875 MAD/an » ;
+  PDF /proposal (4 p.) : « ≈ 1 418 MAD/mois aujourd'hui, soit 17 016 MAD/an → ≈ 2 141 MAD/an », « Facture actuelle ≈ 17 016 MAD/an → avec solaire ≈ 2 141 MAD/an → économie ≈ 14 875 MAD/an » ;
+  page /proposition : « 1 418 MAD », « Soit 17 016 MAD par an aujourd'hui, contre 2 141 MAD par an avec votre installation », économie 14 875 ; charge annual_before 17016.
+  ⇒ la facture « avant / après » diffère de 6 MAD/an entre écran (+ PDF avec étude) et page publique (+ PDF 4 p.) ; l'économie (14 875) est identique partout.
+  Calcul : 6 × 1 234,567 + 6 × 1 600,5 = 17 010,4 (exact) ; 17 016 = 12 × 1 418 = 6 × 1 235 + 6 × 1 601 (arrondi au MAD avant somme). Suspect : la série mensuelle de la synthèse page 1 (`apps/ventes/quote_engine/residential/renderer.py`, `annual_before = sum(before)` sur `factures_mensuelles`, servie à la page publique via `apps/ventes/public_views.py` « annual_before ») arrondie mois par mois, alors que l'écran et la page étude somment les montants exacts. N'apparaît qu'avec des factures non entières (le cas même de P2.2).
+  Oracle 10 : audit_coherence remonte sur DEV-202610-0130 la règle ETU_I5_FACTURE_ACTUELLE (critique) « page1_facture_avant imprime 17016 MAD pour des factures réelles de 14400 MAD (×1.18) » et « methode_facture_actuelle imprime 17010 MAD … » : la référence 14 400 = 6 × 800 + 6 × 1 600 est celle du LEAD, pas les factures corrigées et confirmées sur le devis (1 234,567 / 1 600,5) — la règle de l'auditeur lit la mauvaise source (faux positif sur la valeur de référence) ; l'écart réel est celui de 6 MAD ci-dessus.
+Aucun code produit modifié (consigne).
+Captures : docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu3-ecran-2495.jpg, ACCEPTATION-AGNR-rejeu3-page-2495.jpg
+
+## Reste pour cocher AGNR42
+CLIENT.2495 (D6 ci-dessus) ; AGNR18/AGNR45, AGNR11/AGNR35, AGNR24/AGNR25 (scénarios exacts), AGNR38 restent dans la dette gelée du groupe (non rejoués ici).
