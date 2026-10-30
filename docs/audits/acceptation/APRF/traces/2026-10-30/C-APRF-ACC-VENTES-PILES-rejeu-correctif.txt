@@ -1,0 +1,9 @@
+== C-APRF-ACC-VENTES-PILES (sha 665a4ce53)
+attendu : Diagnostic de C-APRF-ACC-VENTES : piles d appel (execute_wrapper) des requêtes répétées par ligne sur GET ventes/devis/?page_size=5 de la société 4 ; attendu (pente nulle) : aucune pile répétée par ligne
+observé : cwd=/app
+PREFETCH_DEVIS_LISTE_LEADS present=True
+  1 ventes_lignedevis :: /usr/local/lib/python3.11/site-packages/django/core/paginator.py:191:__len__ < core/pagination.py:88:paginate_queryset < /usr/local/lib/python3.11/site-packages/django/core/handlers/base.py:197:_get_response < /usr/local/lib/python3.11/site-packages/django/core/handlers/exception.py:55:inner < core/observability.py:102:__call__ < /usr/local/lib/python3.11/site-packages/django/core/handlers/except
+  1 parametres_companyprofile :: apps/parametres/models_company.py:1156:_load < core/request_cache.py:77:memoize < apps/parametres/models_company.py:1164:get < apps/parametres/i18n_resolver.py:126:resolve_langue_sortie < apps/ventes/quote_engine/builder.py:772:build_quote_data < apps/ventes/quote_engine/builder.py:2618:display_totals
+  1 parametres_tariffsettings :: apps/parametres/models_tariff.py:189:_charger < apps/parametres/models_tariff.py:211:<lambda> < core/request_cache.py:77:memoize < apps/parametres/models_tariff.py:209:get < apps/parametres/selectors.py:253:residential_tranches_for < apps/ventes/etude_horaire.py:1774:_reglages_tarifaires
+verdict : REPRO
+base inchangée : oui (avant 499, après 499) ; mails 0 ; tâches Celery bloquées 0

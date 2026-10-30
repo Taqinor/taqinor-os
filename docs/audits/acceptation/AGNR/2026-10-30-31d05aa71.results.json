@@ -1,0 +1,60 @@
+{
+  "sha": "31d05aa713868edb79dd05b9dd0bdfae6d3d9c26",
+  "date": "2026-10-30",
+  "groupe": "AGNR",
+  "verdict": "PASS",
+  "couvre": [
+    "AGNR20",
+    "AGNR42",
+    "ERR-AGNR42-AUTOREMPLIR-BASE-LEGALE",
+    "ERR-RHOR8-SANS-LOCALISATION-ECRAN-PDF"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P3.4.tva0",
+      "taches": [
+        "AGNR20",
+        "AGNR42",
+        "ERR-AGNR42-AUTOREMPLIR-BASE-LEGALE"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-30/AGNR42-rejeu2.txt § P3.4.tva0 ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu2-P3.4-tva0-avant.jpg ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu2-P3.4-tva0-apres.jpg — pompe à 0 % + base légale ; Auto-remplir (sans dialogue, puis « Recomposer en les gardant ») ⇒ 0 % ET base légale gardés, clé base-legale-16 inchangée"
+    },
+    {
+      "id": "P5.1.sans-localisation",
+      "taches": [
+        "AGNR42",
+        "ERR-RHOR8-SANS-LOCALISATION-ECRAN-PDF"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-30/AGNR42-rejeu2.txt § P5.1.sans-localisation ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu2-sans-localisation-ecran.jpg ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu2-sans-localisation-page.jpg — devis 2299 (niveau 5) : écran = PDF FR/EN/AR = page 10 316 / 11 308 MAD/an, 4,4 / 5 ans, « barème national par tranche »"
+    }
+  ]
+}

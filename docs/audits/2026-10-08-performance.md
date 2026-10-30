@@ -162,6 +162,49 @@ QPERF1 n'atterrit pas » : c'est C-APRF-001.
 | C-APRF-033 | P1.* | C14 | S3 | REPRO | P2 | `check_query_budgets.py` aveugle au skip : un budget `enforced: true` dont le test est sauté passe (exit 0) | APRF27 (DEPLOY, garde M3) |
 | — | P1–P4 | — | — | — | — | Acceptation live unique du groupe | APRF42 (DEVIS) |
 
+## Avant / après (APRF42, rejeu serveur du 30/10/2026)
+Pile locale à origin/main `665a4ce53`, sondes `docs/audits/sondes/APRF/C-APRF-ACC-*.py` (APIClient réel,
+`CaptureQueriesContext`, tailles de données créées dans une transaction annulée, base relue inchangée). « Après » =
+requêtes SQL aux tailles 1 → 2 → 3 (pente lue entre 2 et 3) ou à deux tailles de page. Traces :
+`docs/audits/acceptation/APRF/traces/2026-10-30/`. Enregistrements : `acceptation/APRF/2026-10-30-665a4ce53` (PASS) et
+`2026-10-30-165299672` (FAIL). Écran (Playwright) non joué dans ce rejeu.
+
+| ID | avant (dossier, V_VA / V_VB) | après (30/10) | verdict |
+|---|---|---|---|
+| C-APRF-001 | 205 req / 15 devis, +9,8 req/ligne | société 4 : 109 @5, 437 @25 ; +20 devis : 813 @50 — ≈ 16 req par devis AGRICOLE (moteur pompage rejoué en liste), 0 par devis résidentiel | **ÉCART** |
+| C-APRF-002 | 1 req/ligne (updated_by, company, affectations) | non isolé par table ce jour | non mesuré |
+| C-APRF-003 | electrical_design = 55 % des octets | absent de la liste à toutes les tailles | PASS |
+| C-APRF-004 | 1-2 req/devis (total_ttc sans lignes__produit) | pipeline 8→8→8, commercial 12→12→12, action-requise 10→10, export 3→3, CA par client 10→10→10 ; montants = relecture sans préchargement | PASS (hors liste devis : 001) |
+| C-APRF-005 | paniers sans borne, +199 o/devis refusé | 10→10 req ; compteurs +10/+10 exacts ; borne de 20 non éprouvée (12 et 10 par panier) | PASS (requêtes) |
+| C-APRF-006 | 4 + 3·F req/client | 7→7→7, 7 @25 = 7 @50 | PASS |
+| C-APRF-007 | 14 / 19 / 18 req/client | dormants 1→1→1 (= oracle unitaire), portefeuille 5→5→5 ; engagement-bulk non rejoué | PASS |
+| C-APRF-008 | 1 req/touche | 23→23→23 (53→63→73 touches) | PASS |
+| C-APRF-009 | 10 et 5 req/lead | relances overdue 25→25→25, sla-breach 28→28→28 (+20 leads chacun) | PASS |
+| C-APRF-010 | +60 req pour +10 campagnes/+10 signés | 6→6→6 | PASS |
+| C-APRF-011 | 2 req/devis listé | « Ma file » 26→28→28, sans devis expirant ajouté | non joué (devis expirant) |
+| C-APRF-012 | 4 jointures + DISTINCT | 4 EXISTS, aucun DISTINCT ; 9 req @25 = @50 | PASS |
+| C-APRF-013 | Count distinct sur tout le chatter | liste des leads sans croissance (11 @25 = 11 @50) ; durée non mesurée | PASS (requêtes) |
+| C-APRF-014 | 2,2 req/ligne | 2→2→2 (15→45→75) | PASS |
+| C-APRF-015 | +4 req/ticket sous contrat | 7→7→7 (29→69→100), couverture = détail | PASS |
+| C-APRF-016 | 25,95 req/chantier | 12→12→12 (13→18→23) | PASS |
+| C-APRF-017 | 2,98 req/produit | 18→18→18, 18 @25 = 18 @100 | PASS |
+| C-APRF-018 | +1 req par ligne (11 listes) | préchargements déclarés ; GET 200 ; kits 4→4 | PASS (mesure vive : kits) |
+| C-APRF-019 | 12 req/ordre | 9→9→9 (2→8→14), coût/temps = main | PASS |
+| C-APRF-020 | 1,9 req/BCF | 6→6→6 (4→14→24) | PASS |
+| C-APRF-021 | 3,96 req/document | 4→4→4 (5→19→33) | PASS |
+| C-APRF-022 | 1 req/intervention | 8→8→8 (60→80→100) | PASS |
+| C-APRF-023 | 101 req/intervention | 7→7→7 (2→6→10 propositions), lot = unitaire | PASS |
+| C-APRF-024 | 1 exists() par jalon | 11→11→11 (3→9→15), tranches = unitaire | PASS |
+| C-APRF-025 | +15 req/facture payée ; intégrité +6 | dashboard 25→25→25, intégrité 7→7→7, chiffres = relecture | PASS |
+| C-APRF-026 | 1 req LeadActivity/lead | velocity 2→2→2, commercial 12→12→12 | PASS |
+| C-APRF-027 | 1 exists()/lead dormant | recyclage 13→13→13, rappels 20→20→20 | PASS |
+| C-APRF-028 | 15 137 lignes en synchrone | 200 sous le seuil, 202 + job au-delà ; check_exports_bornes OK | PASS |
+| C-APRF-029 | 7 req/produit | écran 14→14→14, xlsx 14→14→14 | PASS |
+| C-APRF-030 | 210 appels au lieu de 60 | APRF25 / APRF29 encore ouvertes | non joué |
+| C-APRF-031 | 503 sans reprise | aucun 503 servi par les endpoints rejoués ; reprise front (APRF26) non jouée | non joué (écran) |
+| C-APRF-032 | 40 appels à 2 000 devis | 1 relecture (enregistrement 2026-10-24-e45ab8aa4, P4.3) | PASS (24/10) |
+| C-APRF-033 | skip non vu | check_query_budgets exit 0, 17 tests OK | PASS |
+
 ## RÉFUTÉS (avec argument)
 
 - **LQCRM-7 en S3** : la lane exigeait > 0,5 s à 500 étapes ; mesuré 0,199 s (44 911 appels `couvre()`, 21 requêtes) — pas O(n²),

@@ -1,0 +1,5 @@
+== C-APRF-ACC-SAV (sha 665a4ce53)
+attendu : APRF42 (C-APRF-014, C-APRF-015) : parc d'équipements SAV et tickets sous contrat, société démo 6, mesurés à TROIS tailles (démo + 5, +15, +25 équipements à 4 tickets et clients distincts sous contrat à 2 tickets, dans la transaction annulée) : requêtes identiques entre les tailles 2 et 3 (pente 0 ± 1), 0 réponse 503, compteurs nb_tickets_ouverts / nb_tickets_12m = EquipementSerializer unitaire, couverture de contrat de la liste = fiche détail (chemin non préchargé).
+observé : {"repro": true, "ko": [], "mesures": {"equipements": "2→2→2 req (st 200/200/200, lignes 15→45→75)", "tickets": "7→7→7 req (st 200/200/200, lignes 29→69→100)", "couverture": "12 tickets comparés, écarts []", "compteurs": "écarts []"}}
+verdict : REPRO
+base inchangée : oui (avant 326, après 326) ; mails 0 ; tâches Celery bloquées 0
