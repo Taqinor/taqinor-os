@@ -172,7 +172,7 @@ const TITRE_SANS_CI: TextesCi = {
 };
 
 export interface LigneComparaisonCi {
-  cle: 'total_ttc' | 'valeur' | 'economie' | 'retour';
+  cle: 'total_ttc' | 'valeur' | 'economie' | 'retour' | 'non_rentable';
   libelle: TextesCi | null;
   /** Valeur déjà formatée (nombres) ; vide pour la phrase servie. */
   valeur: string;
@@ -207,11 +207,17 @@ export function comparaisonBatterieCi(
   // La phrase servie porte déjà l'économie annuelle : la ligne chiffrée ne sort que sans phrase (jamais deux fois le même chiffre).
   if (positif(v?.economieAnnuelleMad) && !avec.some((l) => l.cle === 'valeur')) avec.push({ cle: 'economie', libelle: LBL_COMPARAISON_CI.economie, valeur: formatMAD(v.economieAnnuelleMad) });
   if (positif(v?.retourSimpleAns)) avec.push({ cle: 'retour', libelle: LBL_COMPARAISON_CI.retour, valeur: formatNumber(v.retourSimpleAns, 1) });
+  // D-CI-BATTERIE-NON-RENTABLE — option montrée, marquée (badge servi au titre), raison servie sous les chiffres.
+  const nr = ob.nonRentable;
+  if (nr) avec.push({ cle: 'non_rentable', libelle: null, valeur: '', textes: nr.ligne });
+  const titreAvec: TextesCi = nr
+    ? { fr: `${LBL_COMPARAISON_CI.titre.fr} — ${nr.badge.fr}`, en: `${LBL_COMPARAISON_CI.titre.en} — ${nr.badge.en}`, ar: `${LBL_COMPARAISON_CI.titre.ar} — ${nr.badge.ar}` }
+    : LBL_COMPARAISON_CI.titre;
   return {
     titre: LBL_COMPARAISON_CI.titre,
     colonnes: [
       { cle: 'sans', titre: TITRE_SANS_CI, lignes: sans },
-      { cle: 'avec', titre: LBL_COMPARAISON_CI.titre, lignes: avec },
+      { cle: 'avec', titre: titreAvec, lignes: avec },
     ],
   };
 }

@@ -154,6 +154,11 @@ export interface SyntheseCiOptionBatterie {
     capaciteUtileKwh: number | null;
     restitueKwhAn: number | null;
   } | null;
+  /**
+   * D-CI-BATTERIE-NON-RENTABLE (30/10/2026) — badge et raison SERVIS (`valeur_chiffree.textes_badge` /
+   * `textes_non_rentable`) quand le moteur marque l'option `batterie_rentable: false` ; `null` sinon.
+   */
+  nonRentable: { badge: TextesCi; ligne: TextesCi } | null;
 }
 
 /**
@@ -180,6 +185,13 @@ function lireTextesCi(v: unknown): TextesCi | null {
   const fr = texteServi(v.fr);
   if (fr === null) return null;
   return { fr, en: texteServi(v.en) ?? fr, ar: texteServi(v.ar) ?? fr };
+}
+
+function lireNonRentableCi(v: unknown): { badge: TextesCi; ligne: TextesCi } | null {
+  if (!estRecord(v) || v.batterie_rentable !== false) return null;
+  const badge = lireTextesCi(v.textes_badge);
+  const ligne = lireTextesCi(v.textes_non_rentable);
+  return badge && ligne ? { badge, ligne } : null;
 }
 
 function lireCategorieCi(v: unknown): SyntheseCiCategorie | null {
@@ -436,6 +448,7 @@ export function syntheseCi(
                 restitueKwhAn: nombreServi(brut.option_batterie.valeur_chiffree.restitue_kwh_an),
               }
             : null,
+          nonRentable: lireNonRentableCi(brut.option_batterie.valeur_chiffree),
         }
       : null,
     services: estRecord(brut.services)

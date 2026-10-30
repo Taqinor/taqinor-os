@@ -730,6 +730,86 @@ class OptionAvecBatterieTests(unittest.TestCase):
         e, banque, reduite = monter_fixe(gains_fixe)
         self.assertEqual((banque['quantite'], e['n'], reduite), (3, 60, False))
 
+    def test_d_ci_batterie_non_rentable_meilleur_groupe_montre(self):
+        # D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026, niveau 5) : aucun
+        # groupe ne tient dans l'horizon ⇒ le groupe au MEILLEUR retour du
+        # supplément (remplacement de la batterie compris) parmi ceux que la
+        # montée évalue, au lieu d'aucune option ; sans ``remplacement``
+        # (niveaux ≤ 4) : l'ancien refus, octet pour octet.
+        from apps.ventes.moteur_ci.batterie import _meilleur_groupe, _monter_banque
+        self.assertEqual(H, 10)
+        modele = {'produit': 7, 'nom': 'Module 10 kWh', 'kwh_utile': 10.0, 'rendement': 1.0,
+                  'prix': Decimal('40000'), 'max_modules': None}
+
+        def bilan_de(n):
+            return {'horaire': [{'mois': 1, 'type_jour': 'semaine', 'nb_jours': 30,
+                                 'surplus_kwh': [0.5 * n] + [0.0] * 23,
+                                 'autoconso_kwh': [0.0] * 24}]}
+
+        def combiner(_kwc):
+            return {'combinaison': [{'produit': 9, 'quantite': 1, 'kw_ac': 100.0}]}
+        # Coût FIXE 130 000 (passage aux hybrides), module 40 000, panneau
+        # 1 000 ; gains +10 000 / +20 000 / +23 000 / +23 000. Supplément sur
+        # « sans » (20 panneaux, 20 000, 30 000/an) : 1 module 17 ans,
+        # 2 modules 11,5 ans, 3 modules 12,6 ans, 4 modules 15,2 ans — aucun ≤ 10.
+        gains = {1: 10000.0, 2: 20000.0, 3: 23000.0}
+
+        def monter(remplacement):
+            def evaluer(n, banque):
+                q = int(banque['quantite'])
+                return {'n': n, 'cout': 1000.0 * n + 40000.0 * q + 130000.0,
+                        'economie': 30000.0 + gains.get(q, 23000.0)}
+            return _monter_banque(modele, n_bas=20, n_haut=100, pmax_wc=1000.0,
+                                  bilan_de=bilan_de, combiner=combiner, ps_kva=None,
+                                  evaluer=evaluer, cout_depart=20000.0,
+                                  economie_depart=30000.0, remplacement=remplacement)
+        ancien = monter(None)
+        self.assertIsNone(ancien['evaluation'])
+        self.assertIn('%d ans' % H, ancien['motif'])
+        e, banque, reduite = monter(lambda e, b: (0.0, None))
+        self.assertEqual((banque['quantite'], e['n'], reduite), (2, 40, False))
+        # Remplacement des modules en année 2 (40 000 × q) : 1 module 21 ans,
+        # 2 modules 15,5 ans, 3 modules 17,8 ans ⇒ toujours 2 modules.
+        e, banque, _r = monter(lambda e, b: (40000.0 * int(b['quantite']), 2))
+        self.assertEqual(banque['quantite'], 2)
+        # Égalité de retour ⇒ le moins de modules.
+        e1, e2 = {'cout': 100.0, 'economie': 10.0}, {'cout': 200.0, 'economie': 20.0}
+        banques = {id(e1): {'quantite': 1}, id(e2): {'quantite': 2}}
+        depart = {'cout': 0.0, 'economie': 0.0}
+        self.assertIs(_meilleur_groupe(depart, [e2, e1], banques, lambda e, b: (0.0, None)), e1)
+        # Aucun gain ⇒ aucun groupe.
+        self.assertIsNone(_meilleur_groupe({'cout': 0.0, 'economie': 50.0}, [e1, e2], banques,
+                                           lambda e, b: (0.0, None)))
+
+    def test_d_ci_batterie_non_rentable_boulangerie_niveau_4_vs_5(self):
+        # Boulangerie, modules hors de prix : niveau ≤ 4 (aucun ``remplacement``)
+        # ⇒ aucune option « avec », motif nommé ; niveau 5 ⇒ option composée
+        # au meilleur groupe, son supplément hors de l'horizon.
+        from apps.ventes.moteur_ci.batterie import cout_batterie_ht, retour_marginal_batterie
+        chere = [dict(b, prix=Decimal('900000'),
+                      element=dict(b['element'], prix_vente_ht=Decimal('900000')))
+                 for b in BATTERIES]
+        ancien = self._avec(batteries=chere)
+        self.assertIsNone(ancien['evaluation'])
+        self.assertIn('%d ans' % H, ancien['motif'])
+        r = self._avec(batteries=chere, remplacement=lambda e, b: (
+            cout_batterie_ht(e.get('composition'), 20), 11))
+        e = r['evaluation']
+        self.assertIsNotNone(e)
+        self.assertGreaterEqual(e['batterie']['quantite'], 1)
+        self.assertGreater(retour_marginal_batterie(self.sans['cout'], self.sans['economie'],
+                                                    e['cout'], e['economie']), H)
+
+    def test_retour_marginal_batterie_remplacement_compte_apres_son_annee(self):
+        from apps.ventes.moteur_ci.batterie import retour_marginal_batterie
+        # Supplément 100 000, gain 10 000/an : 10 ans ; remplacement 50 000 en
+        # année 11 ⇒ remboursé avant (10 ≤ 11 − 1) : non compté.
+        self.assertEqual(retour_marginal_batterie(0, 0, 100000, 10000, 50000, 11), 10.0)
+        # Supplément 136 000 : 13,6 ans > 11 − 1 ⇒ (136 000 + 50 000) / 10 000.
+        self.assertEqual(retour_marginal_batterie(0, 0, 136000, 10000, 50000, 11), 18.6)
+        self.assertEqual(retour_marginal_batterie(0, 0, 136000, 10000, 50000, None), 13.6)
+        self.assertIsNone(retour_marginal_batterie(0, 10000, 100000, 10000))
+
     def test_aucune_batterie_tarifee_motif_et_prix_nommes(self):
         sans_prix = [dict(b, prix=None) for b in BATTERIES]
         r = self._avec(batteries=sans_prix)

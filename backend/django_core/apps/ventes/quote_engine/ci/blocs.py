@@ -518,6 +518,22 @@ def _num_bloc(valeur):
         return 0.0
 
 
+def textes_non_rentable(valeur, lg):
+    """D-CI-BATTERIE-NON-RENTABLE — ``(badge, ligne)`` échappés dans la
+    langue ``lg`` quand la valeur chiffrée marque l'option « avec »
+    ``batterie_rentable: false`` (``mentions.non_rentable_option_avec``) ;
+    ``('', '')`` sinon."""
+    import html
+    valeur = valeur if isinstance(valeur, dict) else {}
+    if valeur.get("batterie_rentable") is not False:
+        return "", ""
+
+    def dans(cle):
+        textes = valeur.get(cle) if isinstance(valeur.get(cle), dict) else {}
+        return html.escape(str(textes.get(lg) or textes.get("fr") or ""), quote=False)
+    return dans("textes_badge"), dans("textes_non_rentable")
+
+
 def bloc_option_avec(d, L, fmt_mad, couleurs):
     """Fondateur 26/10/2026 — un C&I à DEUX options imprime, sous le tableau
     de l'offre réseau, l'option « avec batterie » comme le résidentiel : ses
@@ -555,9 +571,16 @@ def bloc_option_avec(d, L, fmt_mad, couleurs):
     if valeur.get("retour_simple_ans"):
         lignes_valeur += (f'<tr><td>{t("retour")}</td><td>'
                           f'{decimale(str(valeur["retour_simple_ans"]))} {t("ans")}</td></tr>')
+    badge, ligne_nr = textes_non_rentable(valeur, lg)
+    if ligne_nr:
+        # D-CI-BATTERIE-NON-RENTABLE — la raison, sous les chiffres réels.
+        lignes_valeur += (f'<tr><td colspan="2" style="font-weight:400;font-size:7.5pt;'
+                          f'color:{muted};white-space:normal;">{ligne_nr}</td></tr>')
+    titre = t("titre") + (f' &mdash; <span style="font-weight:400;">{badge}</span>'
+                          if badge else "")
     return (
         f'<div style="margin-top:12px;border:1px solid {line_soft};border-radius:12px;'
-        f'background:{wash};padding:9px 12px;"><div class="c2-kicker">{t("titre")}</div>'
+        f'background:{wash};padding:9px 12px;"><div class="c2-kicker">{titre}</div>'
         + (f'<table class="c2-tbl"><tr><th>{t("equipements")}</th>'
            f'<th class="c2-rr">{L("qte", "Qté")}</th></tr>{rows}</table>' if rows else "")
         + '<table class="c2-tot-tbl" style="margin-top:6px;">'
