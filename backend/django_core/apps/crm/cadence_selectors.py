@@ -632,10 +632,13 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     from .suite_touche import q_tache
 
     today = today or aujourd_hui_local()
+    # ERR-PERF-CRM-N1 — ``canal_adapte`` d'une touche convertie (fixe) lit la
+    # langue du lead : ``lead.client`` et ``lead.company``, joints ici.
     qs = RelanceEtape.objects.filter(
         company=company, statut=RelanceEtape.Statut.A_FAIRE,
         lead__is_archived=False,
-    ).select_related('lead', 'lead__owner', 'devis')
+    ).select_related('lead', 'lead__owner', 'lead__client', 'lead__company',
+                     'devis')
     if scope == 'overdue':
         # ALEA32 — « en retard » = au moins un jour COMPTÉ depuis l'échéance
         # (le seuil unique, ``controle_suivi.seuil_retard``).
