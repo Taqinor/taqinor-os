@@ -168,13 +168,17 @@ def _cec(api, nom, **champs):
     ok['kwh_evites_bilan'] = abs(kwh_ev - b['autoconso_kwh']) <= 1
     ok['eco_partout'] = (o['auto'].get('economie_an_1_ht') == e1['total_mad'] == kp.get('economies_annuelles')
                          == f['economie']['synthese'])
-    ok['eco_pdf'] = _dans_pdf(pdf, r'conomie annuelle\s*\n%s MAD HT' % _fr(e1['total_mad']))
+    # Mise en page à deux options (« Économie annuelle ») OU mono-option (« Économies estimées / an (HT) »,
+    # « Économie de l'année 1 (HT) ») — rejeu 30/10 : même chiffre, libellé selon la mise en page.
+    ok['eco_pdf'] = (_dans_pdf(pdf, r'conomie annuelle\s*\n%s MAD HT' % _fr(e1['total_mad']))
+                     or _dans_pdf(pdf, r'%s MAD\s*\n[ÉE]conomie' % _fr(e1['total_mad'])))
     flux = eco['flux_ht']['flux']
     invest = -flux[0]['flux_mad']
     remp = [(r['annee'], r['montant_ht_mad']) for r in eco.get('remplacements') or []]
     main_flux = _flux_main(invest, e1['total_mad'], remp)
     r_main, r_serv = _retour_flux(main_flux), _retour_flux(flux)
-    m = __import__('re').search(r'Retour sur investissement\s*\n([\d,]+) ans', pdf)
+    m = (__import__('re').search(r'Retour sur investissement\s*\n([\d,]+) ans', pdf)
+         or __import__('re').search(r'([\d,]+) ans\s*\n(?:Retour estimé|Délai de retour)', pdf))
     r_pdf = float(m.group(1).replace(',', '.')) if m else None
     f['retour'] = {'pdf': r_pdf, 'mode_kpis_proposition': kp.get('payback'), 'banniere': o['auto'].get('retour_ans'),
                    'flux_servi_interpole': r_serv, 'main': r_main, 'simple_invest_sur_eco': round(invest / e1['total_mad'], 2),
