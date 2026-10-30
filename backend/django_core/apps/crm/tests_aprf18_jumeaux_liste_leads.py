@@ -54,12 +54,25 @@ class JumeauxListeLeadsTests(TestCase):
                 relance_date=timezone.localdate() - datetime.timedelta(days=2),
                 date_creation=ancien, first_contacted_at=None,
                 stage=stages.NEW)
-            Devis.objects.create(
+            devis = Devis.objects.create(
                 company=self.company, reference=f'DEV-APRF18-{self.n:04d}',
                 lead=lead, client=Client.objects.create(
                     company=self.company, nom=f'Client {self.n}'),
                 statut='brouillon', taux_tva=Decimal('20.00'),
                 remise_globale=Decimal('0'), created_by=self.user)
+            # ERR-PERF-CRM-N1 — une ligne PORTANT un produit (toute ligne
+            # réelle) : sans ``devis__lignes__produit``, ``total_ttc``
+            # relisait les lignes de CHAQUE devis (rejeu APRF42, relances
+            # overdue 20 vs 30 requêtes).
+            from apps.stock.models import Produit
+            from apps.ventes.models import LigneDevis
+            produit = Produit.objects.create(
+                company=self.company, nom='Panneau', sku=f'APRF18-{self.n}',
+                prix_vente=Decimal('1000'), quantite_stock=10)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation='Panneau',
+                quantite=Decimal('2'), prix_unitaire=Decimal('1000'),
+                remise=Decimal('0'))
 
     def _compter(self, url):
         with CaptureQueriesContext(connection) as ctx:
@@ -89,3 +102,10 @@ class JumeauxListeLeadsTests(TestCase):
         liste = self.api.get('/api/django/crm/leads/').data
         ligne = (liste['results'] if isinstance(liste, dict) else liste)[0]
         self.assertEqual(set(data_r13['results'][0]), set(ligne))
+        # ERR-PERF-CRM-N1 — devis (total compris) identiques au chemin
+        # unitaire d'avant (lead relu sans préchargement, sans cartes).
+        from apps.crm.lead_devis_payload import lignes_devis_du_lead
+        for carte in data_r13['results'] + data_s13['results']:
+            self.assertEqual(
+                carte['devis'],
+                lignes_devis_du_lead(Lead.objects.get(pk=carte['id']), {}))

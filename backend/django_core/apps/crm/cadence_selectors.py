@@ -585,9 +585,11 @@ def relances_du_jour(company, user, scope='today', today=None):
         qs = qs.filter(relance_date=today)
     # APRF18 — préchargement de ce que la sérialisation lit par lead
     # (responsable, client, devis et leurs lignes) : la file « Relances »
-    # et « Ma file » ne paient plus une requête par carte.
+    # et « Ma file » ne paient plus une requête par carte. ERR-PERF-CRM-N1 —
+    # la MÊME liste que ``LeadViewSet.queryset`` (lignes AVEC produit).
+    from .lead_devis_payload import PREFETCH_DEVIS_LISTE_LEADS
     return (qs.select_related('owner', 'client')
-            .prefetch_related('devis', 'devis__lignes')
+            .prefetch_related(*PREFETCH_DEVIS_LISTE_LEADS)
             .order_by('relance_date', 'nom'))
 
 

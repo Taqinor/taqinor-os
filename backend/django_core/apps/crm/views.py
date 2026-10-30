@@ -31,6 +31,7 @@ from .serializers import (
 )
 from .actions_crud import READ_ACTIONS, WRITE_ACTIONS, _PorteeEnfantsMixin
 from .leads_views import LeadIntakeActionsMixin
+from .lead_devis_payload import PREFETCH_DEVIS_LISTE_LEADS
 from .clients_views import LeadClientsActionsMixin
 from .visites_views import LeadVisitesActionsMixin
 from .devis_views import LeadDevisActionsMixin
@@ -158,17 +159,12 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     # ENF6 (D2) — aucun upload sur cette vue ; api-fuzz-full 27/10 (ENF17) — l'entité
     # inconnue/étrangère répond 404 comme les autres FK (``IdInconnu404Mixin``).
     parser_classes, entite_inconnue_404 = [JSONParser], True
-    # YOPSB13 — LeadSerializer expose owner_nom/owner_poste/owner_avatar
-    # (SerializerMethodField sur obj.owner), client_nom (obj.client) et devis
-    # (obj.devis, reverse FK) : sans select_related/prefetch_related, la
-    # liste des leads exécute 1 requête PAR LIGNE pour chacune (N+1 réel,
-    # capturé par core.tests.test_utils.AssertQueryBudgetMixin dans
-    # apps/crm/tests/test_lead_query_budget.py).
+    # YOPSB13 — owner/client en jointure (owner_nom, client_nom : sinon 1
+    # requête PAR LIGNE). ERR-PERF-CRM-N1 — les devis et TOUT ce que lit
+    # ``lignes_devis_du_lead`` (lignes AVEC produit, successeur) : une seule
+    # définition, ``PREFETCH_DEVIS_LISTE_LEADS`` (chemins en chaînes).
     queryset = Lead.objects.select_related('owner', 'client').prefetch_related(
-        # 'devis__lignes' — get_devis expose d.total_ttc (propriété qui somme
-        # les LIGNES du devis) : sans ce prefetch imbriqué, chaque devis
-        # requêtait ses lignes (N+1, ~2 requêtes/devis). String-FK cross-app.
-        'devis', 'devis__lignes').all()
+        *PREFETCH_DEVIS_LISTE_LEADS).all()
     serializer_class = LeadSerializer
     # VTA4 (12/09/2026) — la frontière « pas d'accès CRM » est SERVEUR : la
     # liste/lecture des leads exige désormais le code fin `crm_voir`. Sans
