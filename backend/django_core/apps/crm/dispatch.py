@@ -14,7 +14,9 @@ chaque lead » coché (``EquipeCommerciale.confirmation_responsable``) :
 
 Point CENTRAL : toutes les portes d'entrée (saisie, site, Meta, CTWA, OCR,
 événements) passent déjà par ``default_responsable_for`` — aucune n'est
-retouchée. Décoché (défaut) : rien de ce module ne s'exécute.
+retouchée. Décoché (défaut) : la même attente ne s'applique qu'aux leads
+arrivés HORS HEURES ouvrées (fondateur 30/10/2026), échéance à l'ouverture ;
+en journée, rotation directe.
 """
 import datetime
 import logging
@@ -59,12 +61,28 @@ def _plafond(company_id):
     return profil.round_robin_plafond_leads_ouverts if profil else PLAFOND_DEFAUT
 
 
-def confirmation_active(equipe):
-    """Vrai si les leads de ``equipe`` attendent la décision de son responsable."""
+def _chef_actif(equipe):
     chef = equipe.responsable if equipe is not None else None
-    return bool(equipe is not None and equipe.confirmation_responsable
-                and chef is not None and chef.is_active
+    return bool(chef is not None and chef.is_active
                 and chef.company_id == equipe.company_id)
+
+
+def hors_heures(company, instant=None):
+    """Vrai hors de la fenêtre ouvrée de la société (canal message : 8 h 30
+    par défaut ; soir, nuit, jours non ouvrés et fériés)."""
+    return not horaires.est_dans_fenetre(
+        instant or timezone.now(), company, canal='whatsapp')
+
+
+def confirmation_active(equipe, instant=None):
+    """Vrai si les leads de ``equipe`` attendent la décision de son
+    responsable : interrupteur coché, OU lead arrivé hors heures ouvrées
+    (fondateur 30/10/2026 — le soir rien n'est attribué ; le lead attend le
+    responsable et ne part tout seul qu'à l'ouverture)."""
+    if equipe is None or not _chef_actif(equipe):
+        return False
+    return bool(equipe.confirmation_responsable
+                or hors_heures(equipe.company, instant))
 
 
 def marquer_en_attente(equipe):
@@ -172,7 +190,12 @@ def proposer(equipe, lead):
 
 def echeance_pour(equipe, depuis):
     """L'instant où le délai de l'équipe, compté en minutes OUVRÉES (horaires
-    de la société), est écoulé depuis ``depuis``."""
+    de la société), est écoulé depuis ``depuis``. Lead arrivé hors heures :
+    l'OUVERTURE suivante (fondateur 30/10/2026 — « à 8 h 30 si le
+    responsable ne l'a pas attribué »)."""
+    if hors_heures(equipe.company, depuis):
+        return horaires.prochain_creneau_appel(
+            depuis, equipe.company, canal='whatsapp')
     return horaires.echeance_en_temps_ouvre(
         depuis, datetime.timedelta(minutes=equipe.delai_attribution_minutes),
         equipe.company, canal='whatsapp')
