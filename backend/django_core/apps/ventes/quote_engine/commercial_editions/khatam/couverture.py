@@ -22,13 +22,15 @@ from ... import installations
 def _photo_plus_grande_realisation(d: dict) -> str:
     """Le base64 de la photo de la photothèque dont la puissance nommée est
     la plus grande (hors repli ``default``), '' si la photothèque est vide.
-    ``d['_photo_realisation']`` (étude) : un fragment du nom de fichier qui
-    désigne une autre photo de la photothèque."""
+    Fondateur 30/10 : par défaut la photo « reflet » d'El Jadida (17,04 kWc,
+    réf. 468, la plus grande installation) ; ``d['_photo_realisation']`` (un
+    fragment du nom de fichier) en désigne une autre ; sans correspondance, la
+    puissance nommée la plus grande."""
     import base64
     ents = [e for e in installations._entries() if e.get("kwc")]
     if not ents:
         return ""
-    voulu = str(d.get("_photo_realisation") or "").lower()
+    voulu = str(d.get("_photo_realisation") or "reflet").lower()
     choix = [e for e in ents if voulu and voulu in e["path"].stem.lower()]
     best = choix[0] if choix else max(ents, key=lambda e: e["kwc"])
     try:
