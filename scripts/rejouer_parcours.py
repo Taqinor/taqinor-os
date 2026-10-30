@@ -5,7 +5,7 @@
         [--utilisateur demo_admin] [--corps etapes.json] [--dry-run] [--sans-enregistrement]
 
 1. La table est d'abord validée par `parcours_tables.verifier_table` (refus si ÉCHEC) — les mêmes
-   fonctions que `check_acceptation.py --parcours`.
+   fonctions que `check_parcours.py`.
 2. Chaque étape est jouée par l'API réelle (`APIClient`, route DRF retrouvée depuis la fonction
    d'entrée ou le déclencheur), DANS le conteneur Django, par le programme de `sonde.py` (AMET93) :
    transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué, comptes avant / après
@@ -324,7 +324,7 @@ def main(argv=None, executer=sonde.executer_docker, ecrire=ecrire_enregistrement
         print(f"ÉCHEC {e}")
     modele = a.modele or MODELES_PAR_DEFAUT.get(pa)
     if echecs or not modele:
-        motif = "table invalide (check_acceptation.py --parcours)" if echecs else f"--modele requis pour {pa}"
+        motif = "table invalide (check_parcours.py)" if echecs else f"--modele requis pour {pa}"
         print(f"ÉCHEC : {motif}")
         return 1
     corps = json.loads(Path(a.corps).read_text(encoding="utf-8")) if a.corps else {}

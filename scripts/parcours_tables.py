@@ -1,7 +1,7 @@
 """AMET98 (C-AMET-025) — validation statique de TOUTES les tables de parcours (module partagé).
 
-Pas une garde de plus (C20 GARDE_NEUVE) : la garde d'acceptation l'exécute
-(`python scripts/check_acceptation.py --parcours`, job stage-names) — un rejeu de parcours n'écrit
+Exécuté par `python scripts/check_parcours.py` (garde citée par AMET98, job stage-names ; alias
+`check_acceptation.py --parcours`) — un rejeu de parcours n'écrit
 un enregistrement d'acceptation que sur une table valide — et `rejouer_parcours.py` refuse de jouer
 une table invalide avec les MÊMES fonctions.
 
