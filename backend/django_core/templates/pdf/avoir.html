@@ -1,4 +1,5 @@
 {# APDF31 (C-APDF-018, D-APDF-3 a) — _L : le texte FRANÇAIS sert de clé ; traduit en arabe par libelles_ar.libelle (TEXTES_AR) ; sans `L` dans le contexte, le texte français tel quel. #}{% macro _L(cle) %}{% if L is defined %}{{ L(cle) }}{% else %}{{ cle }}{% endif %}{% endmacro %}
+{# ERR-PDF-AR-AVOIR-BIDI — en arabe, téléphone, codes (ICE/IF/RC…), e-mail, références, dates et adresses sont isolés (unicode-bidi: isolate) : LTR si le texte est ASCII, sinon sens propre. Hors arabe : valeur nue, HTML inchangé. #}{% macro _iso(v) %}{% if langue_document == 'ar' and v %}<bdi{% if v is string and v.isascii() %} class="ltr"{% endif %}>{{ v }}</bdi>{% else %}{{ v }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
 <html lang="{{ langue_document or 'fr' }}"{% if langue_document == 'ar' %} dir="rtl"{% endif %}>
@@ -35,6 +36,8 @@
     tbody tr:nth-child(even) { background: #f9fafb; }
     tbody td { padding: 9px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
     .text-right { text-align: right; }
+    bdi { unicode-bidi: isolate; }
+    bdi.ltr { direction: ltr; }
 
     .totaux { margin-left: auto; width: 300px; margin-bottom: 30px; }
     .totaux-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
@@ -65,7 +68,7 @@
         font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8px; color: #64748b;
       }
       @bottom-right {
-        content: "Page " counter(page) " / " counter(pages);
+        content: "{{ _L('Page') }} " counter(page) " / " counter(pages);
         font-size: 8px; color: #64748b;
       }
     }
@@ -95,15 +98,15 @@
       <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
       {% endif %}
       <div class="doc-title">{{ _L("AVOIR") }}</div>
-      <div class="doc-ref">{{ avoir.reference }}</div>
-      <div class="doc-link">{{ _L("Note de crédit — sur facture") }} {{ avoir.facture.reference }}</div>
+      <div class="doc-ref">{{ _iso(avoir.reference) }}</div>
+      <div class="doc-link">{{ _L("Note de crédit — sur facture") }} {{ _iso(avoir.facture.reference) }}</div>
     </div>
     <div class="company-info">
       <strong>{{ entreprise_nom }}</strong><br />
-      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
-      {% if entreprise_telephone %}{{ _L("Tél") }} : {{ entreprise_telephone }}<br />{% endif %}
-      {% if entreprise_email %}{{ entreprise_email }}<br />{% endif %}
-      {% if entreprise_tva_intra %}TVA : {{ entreprise_tva_intra }}{% endif %}
+      {% if entreprise_adresse %}{{ _iso(entreprise_adresse) }}<br />{% endif %}
+      {% if entreprise_telephone %}{{ _L("Tél") }} : {{ _iso(entreprise_telephone) }}<br />{% endif %}
+      {% if entreprise_email %}{{ _iso(entreprise_email) }}<br />{% endif %}
+      {% if entreprise_tva_intra %}TVA : {{ _iso(entreprise_tva_intra) }}{% endif %}
     </div>
   </div>
 
@@ -112,8 +115,8 @@
       <div class="partie-label">{{ _L("Émetteur") }}</div>
       <div class="partie-nom">{{ entreprise_nom }}</div>
       <div class="partie-detail">
-        {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
-        {% if entreprise_siret %}SIRET : {{ entreprise_siret }}{% endif %}
+        {% if entreprise_adresse %}{{ _iso(entreprise_adresse) }}<br />{% endif %}
+        {% if entreprise_siret %}SIRET : {{ _iso(entreprise_siret) }}{% endif %}
       </div>
     </div>
     <div class="partie-block">
@@ -127,15 +130,15 @@
          (CIQ217 / AFAC56) : ICE, IF, RC chacun omis s'il est vide. #}
       {% if avoir.client.type_client == 'entreprise' or avoir.client.ice or avoir.client.if_fiscal or avoir.client.rc %}
       <div class="partie-detail">
-        {% if avoir.client.ice %}ICE : {{ avoir.client.ice }}<br />{% endif %}
-        {% if avoir.client.if_fiscal %}IF : {{ avoir.client.if_fiscal }}<br />{% endif %}
-        {% if avoir.client.rc %}RC : {{ avoir.client.rc }}<br />{% endif %}
+        {% if avoir.client.ice %}ICE : {{ _iso(avoir.client.ice) }}<br />{% endif %}
+        {% if avoir.client.if_fiscal %}IF : {{ _iso(avoir.client.if_fiscal) }}<br />{% endif %}
+        {% if avoir.client.rc %}RC : {{ _iso(avoir.client.rc) }}<br />{% endif %}
       </div>
       {% endif %}
       <div class="partie-detail">
-        {% if avoir.client.email %}{{ avoir.client.email }}<br />{% endif %}
-        {% if avoir.client.telephone %}{{ avoir.client.telephone }}<br />{% endif %}
-        {% if avoir.client.adresse %}{{ avoir.client.adresse }}{% endif %}
+        {% if avoir.client.email %}{{ _iso(avoir.client.email) }}<br />{% endif %}
+        {% if avoir.client.telephone %}{{ _iso(avoir.client.telephone) }}<br />{% endif %}
+        {% if avoir.client.adresse %}{{ _iso(avoir.client.adresse) }}{% endif %}
       </div>
     </div>
   </div>
@@ -143,11 +146,11 @@
   <div class="meta-row">
     <div class="meta-item">
       <strong>{{ _L("Date d'émission") }}</strong>
-      <span>{{ avoir.date_emission.strftime('%d/%m/%Y') }}</span>
+      <span>{{ _iso(avoir.date_emission.strftime('%d/%m/%Y')) }}</span>
     </div>
     <div class="meta-item">
       <strong>{{ _L("Facture d'origine") }}</strong>
-      <span>{{ avoir.facture.reference }}</span>
+      <span>{{ _iso(avoir.facture.reference) }}</span>
     </div>
     <div class="meta-item">
       <strong>{{ _L("Statut") }}</strong>
@@ -180,7 +183,7 @@
       {% if not avoir.lignes.all() %}
       <tr>
         <td>1</td>
-        <td>{{ _L("Avoir sur facture") }} {{ avoir.facture.reference }}</td>
+        <td>{{ _L("Avoir sur facture") }} {{ _iso(avoir.facture.reference) }}</td>
         <td class="text-right">1</td>
         <td class="text-right">{{ "%.2f"|format(avoir.total_ht) }} MAD</td>
         <td class="text-right">—</td>
@@ -223,16 +226,16 @@
 
   <div class="footer">
     <strong>{{ entreprise_nom }}</strong>
-    {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
-    {% if entreprise_email %} — {{ entreprise_email }}{% endif %}
-    {% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}
+    {% if entreprise_adresse %} — {{ _iso(entreprise_adresse) }}{% endif %}
+    {% if entreprise_email %} — {{ _iso(entreprise_email) }}{% endif %}
+    {% if entreprise_telephone %} — {{ _iso(entreprise_telephone) }}{% endif %}
     <div class="footer-legal">
-      {% if entreprise_ice %}ICE : {{ entreprise_ice }}{% endif %}
-      {% if entreprise_if %} | IF : {{ entreprise_if }}{% endif %}
-      {% if entreprise_rc %} | RC : {{ entreprise_rc }}{% endif %}
-      {% if entreprise_patente %} | Patente : {{ entreprise_patente }}{% endif %}
-      {% if entreprise_cnss %} | CNSS : {{ entreprise_cnss }}{% endif %}
-      <br />{{ _L("Avoir (note de crédit) lié à la facture") }} {{ avoir.facture.reference }} — {{ _L("généré le") }} {{ now.strftime('%d/%m/%Y à %H:%M') }}
+      {% if entreprise_ice %}ICE : {{ _iso(entreprise_ice) }}{% endif %}
+      {% if entreprise_if %} | IF : {{ _iso(entreprise_if) }}{% endif %}
+      {% if entreprise_rc %} | RC : {{ _iso(entreprise_rc) }}{% endif %}
+      {% if entreprise_patente %} | Patente : {{ _iso(entreprise_patente) }}{% endif %}
+      {% if entreprise_cnss %} | CNSS : {{ _iso(entreprise_cnss) }}{% endif %}
+      <br />{{ _L("Avoir (note de crédit) lié à la facture") }} {{ _iso(avoir.facture.reference) }} — {{ _L("généré le") }} {{ _iso(now.strftime('%d/%m/%Y')) }} {{ _L("à") }} {{ _iso(now.strftime('%H:%M')) }}
     </div>
   </div>
 
