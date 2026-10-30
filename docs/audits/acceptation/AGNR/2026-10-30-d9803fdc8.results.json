@@ -1,0 +1,33 @@
+{
+  "sha": "d9803fdc83c0e96051fa9c5cc658817f1db22d80",
+  "date": "2026-10-30",
+  "groupe": "AGNR",
+  "verdict": "FAIL",
+  "couvre": [
+    "AGNR42"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "CLIENT.2495",
+      "taches": [
+        "AGNR42"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-30/AGNR42-rejeu3.txt § CLIENT.2495 ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu3-ecran-2495.jpg ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu3-page-2495.jpg — D6 : factures 1 234,567 / 1 600,5 ; écran et PDF avec étude 17 010 → 2 135 MAD/an, page publique et PDF 4 p. 1 418 MAD/mois soit 17 016 → 2 141 MAD/an (arrondi au MAD par mois avant somme, suspect quote_engine/residential/renderer.py annual_before), économie 14 875 partout ; audit_coherence ETU_I5_FACTURE_ACTUELLE sur DEV-202610-0130 (référence 14 400 lue sur le lead, pas sur les factures confirmées du devis)"
+    }
+  ]
+}
