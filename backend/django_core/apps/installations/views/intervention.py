@@ -1452,17 +1452,16 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if not field_capture.consommation_modifiable(cons):  # ACHT30
             return Response(
                 {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
-                status=status.HTTP_400_BAD_REQUEST)
-        # Pré-contrôle des justifications manquantes : on construit le message
-        # utilisateur (libellés des lignes en écart) à partir des DONNÉES, sans
-        # le faire transiter par un objet exception (évite toute fuite
-        # d'information via une exception).
+                status=status.HTTP_409_CONFLICT)
+        # Sans corps (request=None) : tout refus est d'ÉTAT → 409 (api-fuzz #1176).
+        # Message bâti à partir des DONNÉES (libellés des lignes en écart),
+        # jamais d'un objet exception (aucune fuite d'information).
         missing = field_capture.consommation_missing_justifications(cons)
         if missing:
             return Response(
                 {'detail': 'Justification requise sur les lignes en écart : '
                  + ', '.join(li.designation for li in missing) + '.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         try:
             nb = field_capture.validate_consommation(cons, request.user)
         except ValueError:
@@ -1471,7 +1470,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             return Response(
                 {'detail': 'Validation impossible : vérifiez les lignes de '
                  'consommation.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         intervention_activity.log_note(
             interv, request.user,
             f"Matériel consommé validé — {nb} référence(s) sortie(s) du stock.")
