@@ -1,0 +1,5 @@
+﻿== C-ASEC-013 (sha 5908d43bb)
+attendu : refusé / inchangé : Directeur d'un tenant -> 403 sur publier-postmortem d'un incident plateforme (company=None) et sur PATCH/PUT du plan de quotas de sa société ; postmortem_publie_le et plan relus inchangés ; superuser -> 200 ; incident de SA société publiable (200), incident d'une autre société 404
+observé : {"directeur_incident_plateforme": {"post": 403, "publie_le_relu": null}, "directeur_plan_quotas": {"get": 200, "patch": 403, "put": 405, "plan_avant": ["gratuit", 300000], "plan_relu": ["gratuit", 300000]}, "legitimes": {"superuser_publie_incident_plateforme": 200, "directeur_publie_incident_de_sa_societe": 200, "directeur_incident_autre_societe": 404, "superuser_patch_plan": 200}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0
