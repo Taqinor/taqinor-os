@@ -163,8 +163,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     # requête PAR LIGNE). ERR-PERF-CRM-N1 — les devis et TOUT ce que lit
     # ``lignes_devis_du_lead`` (lignes AVEC produit, successeur) : une seule
     # définition, ``PREFETCH_DEVIS_LISTE_LEADS`` (chemins en chaînes).
-    queryset = Lead.objects.select_related('owner', 'client').prefetch_related(
-        *PREFETCH_DEVIS_LISTE_LEADS).all()
+    queryset = Lead.objects.select_related('owner', 'client').prefetch_related(*PREFETCH_DEVIS_LISTE_LEADS).all()
     serializer_class = LeadSerializer
     # VTA4 (12/09/2026) — la frontière « pas d'accès CRM » est SERVEUR : la
     # liste/lecture des leads exige désormais le code fin `crm_voir`. Sans
