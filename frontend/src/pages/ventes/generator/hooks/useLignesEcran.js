@@ -350,7 +350,12 @@ export function useLignesEcran(ctx) {
     const mode = modeRecomposition.current
     modeRecomposition.current = 'garder'
     const { conflits } = appliquerRecomposition(lines, generated, mode)
-    setLines(ls => withKeys(appliquerRecomposition(ls, generated, mode).lignes))
+    // ERR-AGNR42 — une ligne appariée garde sa clé d'écran (donc l'id de ses
+    // champs et le focus) ; seules les lignes neuves reçoivent une clé.
+    setLines(ls => {
+      const lignes = appliquerRecomposition(ls, generated, mode).lignes
+      return withKeys(lignes).map((l, i) => (lignes[i]._key != null ? { ...l, _key: lignes[i]._key } : l))
+    })
     if (conflits.length) {
       toast.warning('Quantités figées gardées : ' + conflits.slice(0, 5)
         .map(c => `${c.designation} ${c.figee} (recalculé : ${c.recalculee})`).join(', ')
