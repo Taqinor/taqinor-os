@@ -160,10 +160,15 @@ def commercial_dashboard(request):
 
     # ── Vélocité de vente : délai moyen lead→devis accepté ───────────────────
     # AANA19 — devis signés = acceptés ACTIFS (helper unique du reporting).
+    # ERR-PERF-SAV-REPORTING-N1 — ``build_leaderboard`` lit ``lead.owner``,
+    # ``created_by`` et ``option_totaux`` (lignes + produit) PAR devis signé :
+    # sans préchargement, 863 requêtes sur 486 devis (APRF42).
     from apps.reporting.pipeline import _devis_signes
-    signed_devis = (_devis_signes(co)
-                    .exclude(lead__isnull=True)
-                    .select_related('lead'))
+    from apps.ventes.selectors import devis_avec_totaux
+    signed_devis = devis_avec_totaux(
+        _devis_signes(co)
+        .exclude(lead__isnull=True)
+        .select_related('lead', 'lead__owner', 'created_by', 'company'))
     if start:
         signed_devis = signed_devis.filter(date_acceptation__gte=start)
     if end:

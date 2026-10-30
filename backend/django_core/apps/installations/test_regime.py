@@ -466,3 +466,24 @@ class ChantiersListeBlocsDetailTests(TestCase):
         self._requetes_liste()
         table = Attachment._meta.db_table
         self.assertEqual(sum(1 for s in self.sql if table in s), 0)
+
+    def test_liste_pente_nulle_chantiers_complets_5_et_25(self):
+        """ERR-PERF-SAV-REPORTING-N1 — APRF42 mesure 9 → 17 sur la liste des
+        chantiers : garde de pente sur des chantiers COMPLETS (client, lead,
+        devis accepté, nomenclature, une intervention chacun). Les niveaux de
+        préchargement ne tirent leur requête que s'ils ont des lignes (marche
+        constante) ; une requête PAR chantier ferait échouer ce test."""
+        def lot(nb):
+            for _ in range(nb):
+                Intervention.objects.create(
+                    company=self.company, installation=self._chantier(),
+                    type_intervention=Intervention.Type.POSE,
+                    statut=Intervention.Statut.PRETE, technicien=self.user)
+        lot(5)
+        self._requetes_liste()  # échauffement (caches de session, société)
+        cinq, _ = self._requetes_liste()
+        lot(20)
+        vingt_cinq, r = self._requetes_liste()
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        self.assertEqual(len(rows), 25)
+        self.assertLessEqual(abs(vingt_cinq - cinq), 1, (cinq, vingt_cinq))
