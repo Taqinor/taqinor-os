@@ -135,7 +135,8 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         # et la fiche exigent ``ventes_voir`` pour un rôle fin (Commercial
         # terrain, Admin RH → 403) ; compte hérité sans rôle fin inchangé.
         if self.action in READ_ACTIONS:
-            if getattr(self.request.user, 'role_id', None):
+            requete = getattr(self, 'request', None)
+            if requete is not None and getattr(requete.user, 'role_id', None):
                 return [IsAnyRole(), DroitDeLaGrille('ventes_voir')()]
             return [IsAnyRole()]
         if self.action in [
