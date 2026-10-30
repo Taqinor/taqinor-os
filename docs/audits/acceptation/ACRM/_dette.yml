@@ -5,17 +5,10 @@
 groupe: ACRM
 amorce: 3a7c3b882
 ids:
-  - ACRM3
-  - ACRM4
-  - ACRM5
-  - ACRM6
-  - ACRM7
-  - ACRM8
   - ACRM9
   - ACRM10
   - ACRM11
   - ACRM12
-  - ACRM13
   - ACRM14
   - ACRM15
   - ACRM16
@@ -25,14 +18,9 @@ ids:
   - ACRM20
   - ACRM21
   - ACRM22
-  - ACRM23
-  - ACRM24
-  - ACRM25
-  - ACRM26
   - ACRM27
   - ACRM28
   - ACRM29
-  - ACRM30
   - ACRM31
   - ACRM32
   - ACRM33
@@ -42,12 +30,10 @@ ids:
   - ACRM37
   - ACRM38
   - ACRM39
-  - ACRM40
   - ACRM41
   - ACRM42
   - ACRM43
   - ACRM44
-  - ACRM45
   - ACRM46
   - ACRM47
   - ACRM58
