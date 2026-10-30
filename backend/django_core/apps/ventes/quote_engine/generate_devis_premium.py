@@ -3097,7 +3097,7 @@ def page_calepinage():
 
 
 def build_html():
-    from .legacy_etude import page_etude, etude_rendue  # SPL169 — import local (cycle)
+    from .legacy_etude import page_etude, etude_rendue, css_document_arabe  # SPL169 — import local (cycle)
     print("  Generating charts...")
     # M5 — la GARDE MOYENNE TENSION s'étend à la page 2. Un dossier MT n'a
     # aucun chiffre d'économies légitime (ceux disponibles sortent du barème
@@ -3130,7 +3130,7 @@ def build_html():
     return f"""<!DOCTYPE html>
 <html {_attributs_langue_html()} style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
 <title>Devis {ENT_NOM_MARQUE} N\u00b0 {REF}</title>
-<style>{CSS}{_css_arabe() if i18n_labels.est_rtl(LANGUE_SORTIE) else ""}</style></head>
+<style>{CSS}{css_document_arabe() if i18n_labels.est_rtl(LANGUE_SORTIE) else ""}</style></head>
 <body style="background:#FFFFFF !important;">
 {page1()}
 {page2(SANS_ITEMS, img_roi, img_mon)}
