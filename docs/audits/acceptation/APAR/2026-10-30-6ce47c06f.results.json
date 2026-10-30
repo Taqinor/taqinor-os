@@ -1,0 +1,430 @@
+{
+  "sha": "6ce47c06f",
+  "date": "2026-10-30",
+  "groupe": "APAR",
+  "verdict": "PASS",
+  "couvre": [
+    "APAR45"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P1.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P1.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.3",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P1.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.5",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P1.5.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P2.1",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P2.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P2.3",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P2.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.1",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P3.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.2",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P3.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.2b",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P3.2b.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.3",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P3.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.4",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P3.4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P4.1",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P4.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P4.2",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P4.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P4.2b",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P4.2b.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P4.3",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P4.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.1",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P5.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P6",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P6.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P7",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-P7.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "H×H",
+      "taches": [
+        "APAR45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APAR-H×H.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
