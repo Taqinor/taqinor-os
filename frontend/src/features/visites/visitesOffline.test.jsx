@@ -70,6 +70,30 @@ describe('VTA10 — branchement de l’app Visites sur la primitive offline', ()
     expect(ops[0].target).toBe(7)
   })
 
+  it('mesures — porte_base_updated_at : la version lue part avec l’op en file', async () => {
+    visitesApi.patchVisiteMesures.mockRejectedValue(erreurReseau())
+    await enregistrerMesures(7, 'toiture', { pente_deg: 15 }, '2026-10-01T08:00:00.000Z')
+    const ops = await getModuleOutbox(MODULE_VISITES).pending()
+    expect(ops[0].payload.base_updated_at).toBe('2026-10-01T08:00:00.000Z')
+  })
+
+  it('mesures — seule la 1re op en file d’une visite porte la base (pas de faux conflit sur ses propres ops)', async () => {
+    visitesApi.patchVisiteMesures.mockRejectedValue(erreurReseau())
+    await enregistrerMesures(7, 'toiture', { pente_deg: 15 }, '2026-10-01T08:00:00.000Z')
+    await enregistrerMesures(7, 'tableau', { type_alimentation: 'mono' }, '2026-10-01T08:00:00.000Z')
+    const ops = await getModuleOutbox(MODULE_VISITES).pending()
+    expect(ops).toHaveLength(2)
+    expect(ops[0].payload.base_updated_at).toBe('2026-10-01T08:00:00.000Z')
+    expect(ops[1].payload).not.toHaveProperty('base_updated_at')
+  })
+
+  it('mesures — sans version lue : aucune clé base_updated_at (garde opt-in)', async () => {
+    visitesApi.patchVisiteMesures.mockRejectedValue(erreurReseau())
+    await enregistrerMesures(7, 'toiture', { pente_deg: 15 })
+    const ops = await getModuleOutbox(MODULE_VISITES).pending()
+    expect(ops[0].payload).not.toHaveProperty('base_updated_at')
+  })
+
   it('mesures — refus applicatif 400 : relancé, jamais mis en file', async () => {
     visitesApi.patchVisiteMesures.mockRejectedValue(erreur400())
     await expect(enregistrerMesures(7, 'local_onduleur', {})).rejects.toBeTruthy()

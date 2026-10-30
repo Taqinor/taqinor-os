@@ -14,7 +14,9 @@
 // Dans les deux cas : on tente D'ABORD en ligne ; seule une panne RÉSEAU
 // (aucune réponse serveur) met en file. Une erreur applicative 4xx est
 // relancée — l'utilisateur doit la voir, jamais l'enterrer dans une file.
-import { queueIfOffline, notifyOfflineOutboxChange } from '../../lib/offlineOutbox'
+import {
+  getModuleOutbox, queueIfOffline, notifyOfflineOutboxChange,
+} from '../../lib/offlineOutbox'
 import {
   BINARY_OPS, binaryOutbox, OutboxQuotaError, requestBackgroundSync,
 } from '../installations/offline/fieldOutbox'
@@ -32,17 +34,38 @@ export const VISITE_OPS = {
 export { OutboxQuotaError }
 
 /**
+ * AANA42 — la VERSION de la visite que le terminal a lue (`updated_at` de
+ * l'agrégat) est la base de la garde de conflit (NTMOB2, résolveur AANA40) :
+ * le serveur refuse d'écraser une mesure corrigée au bureau depuis cette
+ * lecture. Seule la PREMIÈRE op en file d'une visite la porte : dès qu'elle
+ * s'applique elle rafraîchit `updated_at`, donc les suivantes (même visite,
+ * même hors-ligne, même technicien) verraient un faux conflit sur leur propre
+ * travail — elles dépendent de la décision prise sur la première.
+ */
+async function baseDeLaFile(visiteId, baseUpdatedAt) {
+  if (!baseUpdatedAt) return {}
+  try {
+    const deja = (await getModuleOutbox(MODULE_VISITES).pending()).some(
+      (op) => op.op_type === VISITE_OPS.MESURES && String(op.target) === String(visiteId))
+    return deja ? {} : { base_updated_at: baseUpdatedAt }
+  } catch {
+    return { base_updated_at: baseUpdatedAt } // doute : on garde la garde
+  }
+}
+
+/**
  * Enregistre les mesures d'une catégorie. En ligne : `PATCH .../mesures/` et
  * on renvoie l'agrégat serveur. Hors ligne : l'op part en file et on renvoie
  * `{ queued: true }` — l'écran le DIT, il ne fait pas semblant d'avoir
- * enregistré.
+ * enregistré. `baseUpdatedAt` = `visite.updated_at` tel que lu par l'écran.
  */
-export function enregistrerMesures(visiteId, categorie, valeurs) {
+export async function enregistrerMesures(visiteId, categorie, valeurs, baseUpdatedAt) {
+  const base = await baseDeLaFile(visiteId, baseUpdatedAt)
   return queueIfOffline(
     MODULE_VISITES,
     () => visitesApi.patchVisiteMesures(visiteId, categorie, valeurs),
     VISITE_OPS.MESURES,
-    { visite: Number(visiteId), categorie, valeurs },
+    { visite: Number(visiteId), categorie, valeurs, ...base },
     { target: visiteId },
   )
 }

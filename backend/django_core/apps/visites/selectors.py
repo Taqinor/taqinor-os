@@ -17,6 +17,7 @@ en import PARESSEUX (fonction-local) — jamais par un import de leurs modèles.
 """
 
 import re
+from typing import NamedTuple
 
 # Ré-export M3 (revue Fable 15/09) — le VOCABULAIRE de qualification (module
 # pur, zéro modèle) fait partie de la surface de LECTURE de l'app : les
@@ -297,6 +298,39 @@ def visite_terrain_manquants(visite):
                              contexte_checklist(visite))
 
 
+class VersionVisite(NamedTuple):
+    """Ce que la garde de conflit hors-ligne lit d'une visite (AANA40)."""
+
+    id: int
+    mesures: dict
+    updated_at: object
+
+
+def get_company_visite_version(company, visite_id):
+    """Version courante d'une visite BORNÉE SOCIÉTÉ, ou ``None`` — lecture pure.
+
+    AANA40 : ``apps.offlinesync`` s'en sert pour comparer le ``updated_at`` de
+    la visite à la ``base_updated_at`` portée par l'op ``visite.mesures``. Un id
+    inconnu, mal formé ou d'une autre société donne ``None`` (indiscernables) ;
+    la décision reste au handler, qui a le bon message.
+    """
+    from .models import VisiteTerrain
+
+    try:
+        pk = int(visite_id)
+    except (TypeError, ValueError):
+        return None
+    visite = (VisiteTerrain.objects.filter(company=company, pk=pk)
+              .only('id', 'mesures', 'updated_at').first())
+    if visite is None:
+        return None
+    return VersionVisite(
+        id=visite.id,
+        mesures=visite.mesures if isinstance(visite.mesures, dict) else {},
+        updated_at=visite.updated_at,
+    )
+
+
 def contexte_visite_terrain(visite):
     """L'agrégat COMPLET d'une visite technique terrain (contrat VT0)."""
     medias = list(visite.medias.select_related('attachment').all())
@@ -350,6 +384,9 @@ def contexte_visite_terrain(visite):
         # été saisie. ``None`` tant que le terrain n'a rien rempli : l'écran
         # affiche alors le wizard vierge, il ne devine pas des valeurs.
         'qualification': visite.qualification,
+        # AANA42 — la version lue de la visite : l'écran la renvoie comme
+        # ``base_updated_at`` quand il met des mesures en file hors-ligne.
+        'updated_at': _visite_horodatage(visite.updated_at),
     }
     if _gabarit(visite) == 'ci':
         # CIQ601 — les mesures « non relevées » et leur motif (contrat

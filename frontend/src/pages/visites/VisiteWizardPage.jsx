@@ -244,6 +244,7 @@ export default function VisiteWizardPage() {
               gabarit={visite.gabarit}
               nonReleves={visite._non_releves}
               declare={visite.declare?.[c.categorie]}
+              baseUpdatedAt={visite.updated_at}
               lectureSeule={lectureSeule}
               onSaved={recharger}
             />
