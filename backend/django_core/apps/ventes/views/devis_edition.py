@@ -90,6 +90,52 @@ def _valider_etude_ecran(etude_in):
         raise ValidationError({'etude_params': str(exc)})
 
 
+def _lire_corps_replace_lines(devis, request):
+    """Valide le corps de ``replace-lines`` AVANT toute écriture : renvoie
+    ``(entrees, None)`` — ``entrees`` = (lignes, en-tête validé ou None,
+    choix d'écran) — ou ``(None, réponse 400)``."""
+    # api-fuzz — ``null``, une liste ou un nombre en corps : 400, pas
+    # ``AttributeError`` (500) sur ``request.data.get``.
+    if not isinstance(request.data, dict):
+        return None, Response({'detail': 'Corps JSON objet attendu.'},
+                              status=status.HTTP_400_BAD_REQUEST)
+    lignes_in = request.data.get('lignes')
+    if not isinstance(lignes_in, list):
+        return None, Response({'detail': 'Champ « lignes » requis (liste).'},
+                              status=status.HTTP_400_BAD_REQUEST)
+    # QJR204 — ALIGNÉ SUR ``/atomic``, QUI REFUSE DÉJÀ L'ENSEMBLE VIDE.
+    # Cet endpoint SUPPRIME puis recrée : une liste VIDE effaçait toutes
+    # les lignes d'un devis brouillon/envoyé et répondait 200. Vérifié
+    # avant d'en faire un refus : aucun flux légitime de « tout vider »
+    # n'existe (``ventesApi.replaceLignesDevis`` est l'unique appelant de
+    # production et l'écran n'offre aucun geste de ce genre). L'écrivain
+    # unique du domaine porte la même garde, pour les chemins non-HTTP.
+    if not lignes_in:
+        from ..domain.lignes import MSG_REMPLACEMENT_VIDE
+        return None, Response({'detail': MSG_REMPLACEMENT_VIDE},
+                              status=status.HTTP_400_BAD_REQUEST)
+    # QJR544 (contrat QJR504, devis_replace_lines_entete.json) — UNE
+    # transaction pour l'édition entière : en-tête + lignes + choix
+    # d'écran. ``entete`` et ``etude_params`` sont OPTIONNELS : sans eux,
+    # comportement identique à l'octet. ``statut`` dans l'en-tête est
+    # IGNORÉ (QJR541). Tout est VALIDÉ avant la première écriture.
+    entete_in = request.data.get('entete')
+    etude_in = request.data.get('etude_params')
+    entete_ser = None
+    if entete_in is not None:
+        if not isinstance(entete_in, dict):
+            return None, Response({'detail': 'Champ « entete » : objet attendu.'},
+                                  status=status.HTTP_400_BAD_REQUEST)
+        entete = {k: v for k, v in entete_in.items()
+                  if k not in ('statut', 'company')}
+        entete_ser = DevisWriteSerializer(devis, data=entete, partial=True)
+        entete_ser.is_valid(raise_exception=True)
+        _gardes_mise_a_jour(devis, entete_ser.validated_data,
+                            request.user, t17=False)
+    _valider_etude_ecran(etude_in)
+    return (lignes_in, entete_ser, etude_in), None
+
+
 def _cle_reprise_verrou(request, pk):
     """ERR-AGNR-VERROU-DEVIS-NEUF — clé d'idempotence DÉRIVÉE d'un
     ``replace-lines`` porteur du jeton QJR545 : même utilisateur, même devis,
@@ -480,47 +526,12 @@ class DevisEditionActionsMixin:
         refus = _refus_verrou(devis, request)
         if refus is not None:
             return refus
-        # api-fuzz — ``null``, une liste ou un nombre en corps : 400, pas
-        # ``AttributeError`` (500) sur ``request.data.get``.
-        if not isinstance(request.data, dict):
-            return Response({'detail': 'Corps JSON objet attendu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        lignes_in = request.data.get('lignes')
-        if not isinstance(lignes_in, list):
-            return Response({'detail': 'Champ « lignes » requis (liste).'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        # QJR204 — ALIGNÉ SUR ``/atomic``, QUI REFUSE DÉJÀ L'ENSEMBLE VIDE.
-        # Cet endpoint SUPPRIME puis recrée : une liste VIDE effaçait toutes
-        # les lignes d'un devis brouillon/envoyé et répondait 200. Vérifié
-        # avant d'en faire un refus : aucun flux légitime de « tout vider »
-        # n'existe (``ventesApi.replaceLignesDevis`` est l'unique appelant de
-        # production et l'écran n'offre aucun geste de ce genre). L'écrivain
-        # unique du domaine porte la même garde, pour les chemins non-HTTP.
-        if not lignes_in:
-            from ..domain.lignes import MSG_REMPLACEMENT_VIDE
-            return Response({'detail': MSG_REMPLACEMENT_VIDE},
-                            status=status.HTTP_400_BAD_REQUEST)
-        # QJR544 (contrat QJR504, devis_replace_lines_entete.json) — UNE
-        # transaction pour l'édition entière : en-tête + lignes + choix
-        # d'écran. ``entete`` et ``etude_params`` sont OPTIONNELS : sans eux,
-        # comportement identique à l'octet. ``statut`` dans l'en-tête est
-        # IGNORÉ (QJR541). Tout est VALIDÉ avant la première écriture.
         from rest_framework.exceptions import ValidationError
         from core.conflit_etat import ConflitEtat
-        entete_in = request.data.get('entete')
-        etude_in = request.data.get('etude_params')
-        entete_ser = None
-        if entete_in is not None:
-            if not isinstance(entete_in, dict):
-                return Response({'detail': 'Champ « entete » : objet attendu.'},
-                                status=status.HTTP_400_BAD_REQUEST)
-            entete = {k: v for k, v in entete_in.items()
-                      if k not in ('statut', 'company')}
-            entete_ser = DevisWriteSerializer(devis, data=entete, partial=True)
-            entete_ser.is_valid(raise_exception=True)
-            _gardes_mise_a_jour(devis, entete_ser.validated_data,
-                                request.user, t17=False)
-        _valider_etude_ecran(etude_in)
+        entrees, refus = _lire_corps_replace_lines(devis, request)
+        if refus is not None:
+            return refus
+        lignes_in, entete_ser, etude_in = entrees
         # ADEV27 (C-ADEV-038) — la garde kWh n'est PLUS jugée ici, sur l'état
         # d'AVANT : elle l'est dans la transaction, APRÈS l'écriture de
         # l'en-tête et des choix d'écran entrants (comme ``/atomic``). Même
