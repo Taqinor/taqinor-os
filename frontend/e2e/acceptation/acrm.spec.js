@@ -12,7 +12,7 @@ import { spawn } from 'node:child_process'
 import { groupe } from './_oracles.js'
 import { API_DJANGO, textePdf, telephoneMobileUnique, lireJson, listeDe } from '../helpers.js'
 
-const etape = groupe('ACRM', ['ACRM3', 'ACRM4', 'ACRM5', 'ACRM6', 'ACRM7', 'ACRM8', 'ACRM13', 'ACRM23', 'ACRM24', 'ACRM25', 'ACRM26', 'ACRM30', 'ACRM40', 'ACRM45', 'ACRM12', 'ACRM15', 'ACRM17', 'ACRM20', 'ACRM22', 'ACRM32', 'ACRM35', 'ACRM37', 'ACRM38', 'ACRM46', 'ACRM55', 'ACRM21', 'ACRM42', 'ACRM11', 'ACRM41', 'ACRM14', 'ACRM19', 'ACRM59', 'ACRM10', 'ACRM27', 'ACRM34'])
+const etape = groupe('ACRM', ['ACRM3', 'ACRM4', 'ACRM5', 'ACRM6', 'ACRM7', 'ACRM8', 'ACRM13', 'ACRM23', 'ACRM24', 'ACRM25', 'ACRM26', 'ACRM30', 'ACRM40', 'ACRM45', 'ACRM12', 'ACRM15', 'ACRM17', 'ACRM20', 'ACRM22', 'ACRM32', 'ACRM35', 'ACRM37', 'ACRM38', 'ACRM46', 'ACRM55', 'ACRM21', 'ACRM42', 'ACRM11', 'ACRM41', 'ACRM14', 'ACRM19', 'ACRM59', 'ACRM10', 'ACRM27', 'ACRM34', 'ACRM60'])
 test.describe.configure({ timeout: 600_000 })
 
 const PW = 'Acc60-essai-local-2026!'

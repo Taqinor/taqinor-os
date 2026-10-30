@@ -75,7 +75,7 @@ async function creerAvecReprise(page, { essais = 3 } = {}) {
     if (!/connexion|expir|interrompu/i.test(issue.refus) || essai === essais) throw new Error(`« Créer le devis » refusé à l'écran : ${issue.refus}`)
     reprises.push(`essai ${essai} : ${issue.refus.trim().slice(0, 120)}`)
     test.info().annotations.push({ type: 'reprise après délai dépassé', description: issue.refus.trim().slice(0, 200) })
-    await page.waitForTimeout(30_000) // laisse le premier envoi aboutir côté serveur avant le rejeu idempotent
+    await page.waitForLoadState('networkidle') // laisse le premier envoi aboutir côté serveur avant le rejeu idempotent
   }
   throw new Error('inatteignable')
 }
@@ -153,7 +153,7 @@ async function reenregistrerSansToucher(page, id) {
     if (essai >= 3) throw new Error(`« Enregistrer les modifications » refusé : ${issue.refus}`)
     reprises.push(`ré-enregistrement essai ${essai} : ${issue.refus.trim().slice(0, 120)}`)
     test.info().annotations.push({ type: 'reprise après délai dépassé', description: issue.refus.trim().slice(0, 200) })
-    await page.waitForTimeout(30_000)
+    await page.waitForLoadState('networkidle')
   }
   await expect(page.getByTestId('erreur-enregistrement')).toHaveCount(0, { timeout: 30_000 })
   page.off('request', surRequete)
