@@ -119,3 +119,68 @@ class RelanceEtapesRequetesTests(TestCase):
         self.assertEqual(len(lignes), 20)
         self.assertTrue(all(r['traite_par_nom'] == 'aprf21-admin'
                             for r in lignes))
+
+    # ── ERR-PERF-CRM-N1 — touches converties d'un numéro FIXE ───────────────
+    # Rejeu APRF42 : relance-etapes 18 vs 32 requêtes selon la société. Une
+    # touche née WhatsApp au protocole puis convertie en e-mail (fixe + adresse,
+    # CIQ505) calcule ``canal_adapte`` avec la langue du lead, qui lit
+    # ``lead.client`` puis ``lead.company`` — non joints : 2 requêtes PAR
+    # touche. Test-du-test : retirer ``lead__client``/``lead__company`` du
+    # ``select_related`` ⇒ +2 requêtes par touche, l'égalité tombe.
+
+    def _lead_fixe(self):
+        from apps.crm.models import Client
+        self.n += 1
+        return Lead.objects.create(
+            company=self.company, nom=f'Fixe {self.n}', owner=self.user,
+            stage=stages.CONTACTED, telephone='0522123456',
+            email=f'fixe{self.n}@example.invalid',
+            client=Client.objects.create(
+                company=self.company, nom=f'Client fixe {self.n}'))
+
+    def _touche_convertie(self, lead, ordre):
+        from apps.parametres.models_relance import CadenceRelanceEtape
+        CadenceRelanceEtape.objects.get_or_create(
+            company=self.company, cadence='contact', ordre=ordre,
+            defaults={'delai_jours': 0, 'canal': 'whatsapp',
+                      'libelle': f'Message {ordre}', 'template_cle': 'j1_pdf'})
+        maintenant = timezone.now()
+        return RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=ordre,
+            canal=RelanceEtape.Canal.EMAIL, template_cle='j1_pdf',
+            libelle=f'Message {ordre}', due_at=maintenant,
+            due_date=maintenant.date())
+
+    def _verifier_canal_adapte(self, lignes):
+        from apps.crm import cadence_temps
+        self.assertTrue(lignes)
+        # Valeur d'avant : la MÊME fonction pure que le moteur (CIQ505).
+        self.assertTrue(all(r['canal_adapte'] == cadence_temps.CAUSE_FIXE_EMAIL
+                            for r in lignes), [r['canal_adapte'] for r in lignes])
+
+    def test_file_touches_converties_plate(self):
+        for _ in range(5):
+            self._touche_convertie(self._lead_fixe(), 1)
+        self._requetes({'scope': 'all'})  # échauffement
+        a_5, lignes_5 = self._requetes({'scope': 'all'})
+        self.assertEqual(len(lignes_5), 5)
+        for _ in range(20):
+            self._touche_convertie(self._lead_fixe(), 1)
+        a_25, lignes_25 = self._requetes({'scope': 'all'})
+        self.assertEqual(len(lignes_25), 25)
+        self.assertLessEqual(abs(a_25 - a_5), 1, (a_5, a_25))
+        self._verifier_canal_adapte(lignes_25)
+
+    def test_frise_touches_converties_plate(self):
+        lead = self._lead_fixe()
+        for ordre in range(1, 6):
+            self._touche_convertie(lead, ordre)
+        self._requetes({'lead': lead.pk})
+        a_5, lignes_5 = self._requetes({'lead': lead.pk})
+        self.assertEqual(len(lignes_5), 5)
+        for ordre in range(6, 26):
+            self._touche_convertie(lead, ordre)
+        a_25, lignes_25 = self._requetes({'lead': lead.pk})
+        self.assertEqual(len(lignes_25), 25)
+        self.assertLessEqual(abs(a_25 - a_5), 1, (a_5, a_25))
+        self._verifier_canal_adapte(lignes_25)

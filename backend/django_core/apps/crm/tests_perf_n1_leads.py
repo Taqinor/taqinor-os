@@ -115,3 +115,90 @@ class TestLeadViewSetNPlusOne(TestCase):
             f"(missing select_related('owner','client')/"
             f"prefetch_related('devis'))."
         )
+
+
+class TestLeadListeLignesProduitNPlusOne(TestCase):
+    """ERR-PERF-CRM-N1 — rejeu APRF42 : la liste des leads montait 18 → 35 →
+    72 requêtes à 5/25/50 lignes, une requête ``ventes_lignedevis`` PAR devis.
+    Cause : ``prefetch_related('devis__lignes')`` sans le produit ;
+    ``total_ttc`` → ``deux_options_declarees`` → ``lignes_avec_produit``
+    retombait sur ``select_related('produit')`` dès qu'une ligne porte un
+    produit (toute ligne réelle — le fixture de la classe d'au-dessus n'en
+    avait aucune). Une V1 remplacée lisait en plus ``superseded_by.reference``.
+
+    Test-du-test : remettre ``'devis__lignes'`` dans
+    ``PREFETCH_DEVIS_LISTE_LEADS`` ⇒ +1 requête par lead, l'égalité tombe.
+    """
+    BASE = '/api/django/crm/leads/?page_size=50'
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='perf-n1-lignes-co', defaults={'nom': 'Perf N1 Lignes Co'})
+        self.admin = User.objects.create_user(
+            username='perf_n1_lignes_admin', password='x',
+            role_legacy='admin', company=self.company)
+        self.api = _auth(self.admin)
+        self.n = 0
+
+    def _leads(self, nombre):
+        from apps.stock.models import Produit
+        from apps.ventes.models import LigneDevis
+        for _ in range(nombre):
+            self.n += 1
+            client_obj = Client.objects.create(
+                company=self.company, nom=f'C{self.n}',
+                email=f'perf-n1-lignes-{self.n}@example.invalid')
+            lead = Lead.objects.create(
+                company=self.company, nom=f'L{self.n}', stage='NEW',
+                owner=self.admin, client=client_obj)
+            v2 = Devis.objects.create(
+                company=self.company, reference=f'DEV-N1L-{self.n:04d}-2',
+                client=client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+                taux_tva=Decimal('20'), version=2)
+            Devis.objects.create(
+                company=self.company, reference=f'DEV-N1L-{self.n:04d}-1',
+                client=client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+                taux_tva=Decimal('20'), version=1, is_active=False,
+                superseded_by=v2)
+            for nom, prix in (('Panneau 550 W', Decimal('1200')),
+                              ('Onduleur réseau 5 kW', Decimal('9000'))):
+                produit = Produit.objects.create(
+                    company=self.company, nom=nom,
+                    sku=f'N1L-{self.n}-{int(prix)}',
+                    prix_vente=prix, quantite_stock=10)
+                LigneDevis.objects.create(
+                    devis=v2, produit=produit, designation=nom,
+                    quantite=Decimal('2'), prix_unitaire=prix,
+                    remise=Decimal('0'))
+
+    def _mesure(self):
+        with CaptureQueriesContext(connection) as ctx:
+            resp = self.api.get(self.BASE)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.data
+        lignes = data['results'] if isinstance(data, dict) else data
+        return len(ctx.captured_queries), lignes
+
+    def test_requetes_plates_et_devis_identiques(self):
+        from apps.crm.lead_devis_payload import lignes_devis_du_lead
+        self._leads(5)
+        self._mesure()  # échauffement des caches de processus
+        a_5, lignes_5 = self._mesure()
+        self.assertEqual(len(lignes_5), 5)
+        self._leads(20)
+        a_25, lignes_25 = self._mesure()
+        self.assertEqual(len(lignes_25), 25)
+        self.assertLessEqual(
+            abs(a_25 - a_5), 1,
+            f'liste des leads : {a_5} requêtes à 5 lignes, {a_25} à 25')
+        # JSON identique à AVANT : l'oracle est le chemin unitaire d'origine
+        # (lead relu SANS préchargement, contexte sans cartes).
+        for ligne in lignes_25:
+            lead = Lead.objects.get(pk=ligne['id'])
+            self.assertEqual(ligne['devis'], lignes_devis_du_lead(lead, {}))
+        remplaces = [d for ligne in lignes_25 for d in ligne['devis']
+                     if d['superseded_by']]
+        self.assertEqual(len(remplaces), 25)
+        self.assertTrue(all(
+            d['raison_non_modifiable'].startswith('Remplacé par')
+            for d in remplaces))

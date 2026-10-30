@@ -598,6 +598,75 @@ class TestMaFile(TestCase):
                   if it['kind'] == 'activite']
         self.assertIn('Ma tâche perso', titres)
 
+    def test_ma_file_activites_requetes_plates(self):
+        """ERR-PERF-CRM-N1 — rejeu APRF42 : « Ma file » 42 vs ~270 requêtes
+        selon la société. Chaque activité payait l'assigné, sa cible (GFK) et
+        le téléphone de la cible (``crm.selectors``) : 2 à 3 requêtes PAR
+        activité. Chargés en lot, 5 puis 25 activités (leads ET clients)
+        coûtent le même nombre de requêtes (±1), items identiques au chemin
+        unitaire d'avant. Test-du-test : retirer ``target_phone_map`` du
+        contexte ⇒ +1 requête par activité, l'égalité tombe."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.crm.models import Client
+        from apps.records.serializers import ActivitySerializer
+        from apps.records.views import _ma_file_activity_link
+
+        ct_client = ContentType.objects.get_for_model(Client)
+        self.n = 0
+
+        def activites(nombre):
+            for _ in range(nombre):
+                self.n += 1
+                if self.n % 2:
+                    cible = Lead.objects.create(
+                        company=self.company, nom=f'Cible {self.n}',
+                        telephone=f'06120000{self.n:02d}')
+                    ct = _ct_lead()
+                else:
+                    cible = Client.objects.create(
+                        company=self.company, nom=f'Client {self.n}',
+                        telephone=f'06130000{self.n:02d}')
+                    ct = ct_client
+                Activity.objects.create(
+                    company=self.company, content_type=ct, object_id=cible.id,
+                    activity_type=self.type_appel, summary=f'Appel {self.n}',
+                    due_date=date.today() - timedelta(days=1),
+                    assigned_to=self.user, created_by=self.user)
+
+        def mesure():
+            with CaptureQueriesContext(connection) as ctx:
+                resp = self.api.get('/api/django/records/activities/ma-file/')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            return len(ctx.captured_queries), [
+                it for it in resp.data['items'] if it['kind'] == 'activite']
+
+        activites(5)
+        mesure()  # échauffement des caches de processus
+        a_5, items_5 = mesure()
+        self.assertEqual(len(items_5), 5)
+        activites(20)
+        a_25, items_25 = mesure()
+        self.assertEqual(len(items_25), 25)
+        self.assertLessEqual(abs(a_25 - a_5), 1, (a_5, a_25))
+        # Items identiques au chemin unitaire (activité relue, sans carte).
+        from apps.records.views import _telephones_cibles
+        requete = SimpleNamespace(user=self.user)
+        acts = list(Activity.objects.filter(
+            pk__in=[it['activity_id'] for it in items_25]))
+        carte = _telephones_cibles(acts, self.company)
+        for it in items_25:
+            act = Activity.objects.get(pk=it['activity_id'])
+            data = ActivitySerializer(act, context={'request': requete}).data
+            self.assertEqual(it['title'], data['summary'])
+            self.assertEqual(it['link'], _ma_file_activity_link(data))
+            self.assertIsNotNone(data['target_phone'])
+            self.assertIsNotNone(data['target_label'])
+            en_lot = ActivitySerializer(act, context={
+                'request': requete, 'target_phone_map': carte}).data
+            self.assertEqual(en_lot, data)
+
 
 class TestResolveTargetErrors(TestCase):
     """ERR56 — un `model` valide + `id` inexistant ou de mauvais type doit

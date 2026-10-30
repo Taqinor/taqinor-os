@@ -7,6 +7,18 @@ cross-app par ``apps.ventes.selectors`` / ``apps.installations.selectors``
 seulement (jamais leurs modèles).
 """
 
+#: ERR-PERF-CRM-N1 — LE préchargement d'une LISTE de leads sérialisés par
+#: ``lignes_devis_du_lead`` (``LeadViewSet.queryset`` et ``relances_du_jour``) :
+#: ``total_ttc`` → ``deux_options_declarees`` → ``lignes_avec_produit`` ne sert
+#: le cache que si chaque ligne porte DÉJÀ son produit (``devis_avec_totaux``,
+#: APRF7) — avec ``devis__lignes`` seul, une requête ``ventes_lignedevis`` PAR
+#: DEVIS (mesuré APRF42 : 18 → 35 → 72 requêtes à 5/25/50 leads) ; et
+#: ``devis_modifiabilite`` d'une V1 remplacée lit ``superseded_by.reference``
+#: (une requête ``ventes_devis`` par version remplacée). Chemins en chaînes :
+#: aucun import de ``apps.ventes.models``.
+PREFETCH_DEVIS_LISTE_LEADS = (
+    'devis', 'devis__lignes__produit', 'devis__superseded_by')
+
 
 def lignes_devis_du_lead(obj, context):
     # Devis « empilés » sur le lead, du plus récent au plus ancien.
