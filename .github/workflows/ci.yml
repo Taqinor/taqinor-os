@@ -1330,8 +1330,9 @@ jobs:
     # pour 1-3 constats ALÉATOIRES par run (une PR touchant toutes les apps
     # tirait, sous `--max-time 300`, une tranche différente des ~7 500
     # opérations à chaque push). Le job est découpé en 8 tranches
-    # DÉTERMINISTES (`api_fuzz_scope.py schema --shard i/8` : chemin de rang k
-    # → tranche k % 8) : chaque tranche fuzze TOUT son lot, l'union = toute la
+    # DÉTERMINISTES (`api_fuzz_scope.py schema --shard i/8` : par ressource,
+    # `/x/` et `/x/{pk}/…` dans la même tranche, réparties par nombre
+    # d'opérations — ENF11) : chaque tranche fuzze TOUT son lot, l'union = toute la
     # surface, à chaque run, en parallèle — même patron que
     # `backend-tests-shard`.
     strategy:

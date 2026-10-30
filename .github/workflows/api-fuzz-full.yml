@@ -3,8 +3,10 @@
 # `--max-time 1800`, un ÉCHANTILLON différent chaque nuit (~113 000 cas, ~42 000
 # sautés sur ~7 500 opérations) — une traîne qu'aucune nuit ne vidait. Ici :
 # toutes les phases, graine fixe (`--seed 1`, rejouable), 16 tranches
-# DÉTERMINISTES de chemins (`api_fuzz_scope.py schema --shard i/16`, même rang que
-# `api-fuzz-pr`), chacune sans plafond utile (4 200 s), HEBDOMADAIRE (dimanche
+# DÉTERMINISTES de chemins (`api_fuzz_scope.py schema --shard i/16`, même découpage
+# que `api-fuzz-pr` : PAR RESSOURCE — `/x/` et `/x/{pk}/…` dans la même tranche,
+# sinon les liens stateful déclarés et l'inventaire d'ids de chemin se perdent
+# entre tranches, ENF11, run 40986772772), chacune sans plafond utile (4 200 s), HEBDOMADAIRE (dimanche
 # 03:00 UTC) + à la demande (dispatch ; `paquets` = passe ciblée sur des paquets
 # propriétaires, `max_time` = plafond par tranche).
 # Le verdict par tranche (constats hors dette gelée) est dans l'artefact

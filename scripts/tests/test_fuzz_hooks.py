@@ -1454,3 +1454,31 @@ class PartageChemins(unittest.TestCase):
             self.assertEqual(stats["chemins"], 2)
             total += stats["operations"]
         self.assertEqual(total, 6)
+
+    def test_collection_et_elements_dans_la_meme_tranche(self):
+        """ENF11 — api-fuzz-full 40986772772 : le découpage par rang séparait
+        `/x/` de `/x/{id}/` (liens stateful déclarés et ids de chemin perdus)."""
+        chemins = sorted(_doc_crud()["paths"])
+        for n in (2, 3, 8, 16):
+            tranches = [self.scope.partager_chemins(chemins, f"{i}/{n}") for i in range(n)]
+            self.assertEqual(set().union(*tranches), set(chemins))
+            for tranche in tranches:
+                if "/api/django/stock/produits/" in tranche:
+                    self.assertTrue({"/api/django/stock/produits/{id}/",
+                                     "/api/django/stock/produits/{id}/archiver/"} <= tranche)
+                if "/api/django/ventes/devis/" in tranche:
+                    self.assertIn("/api/django/ventes/devis/{id}/", tranche)
+
+    def test_liens_declares_survivent_au_decoupage(self):
+        _, complet = self.scope.preparer_schema(_doc_crud(), None, None)
+        for n in (2, 4, 16):
+            liens = sum(self.scope.preparer_schema(_doc_crud(), None, None, shard=f"{i}/{n}")[1]["liens"]
+                        for i in range(n))
+            self.assertEqual(liens, complet["liens"], n)
+        self.assertEqual(complet["liens"], 3)
+
+    def test_familles_equilibrees_par_poids(self):
+        poids = {"/a/": 5, "/a/{id}/": 5, "/b/": 4, "/c/": 3, "/d/": 3}
+        tranches = [self.scope.partager_chemins(poids, f"{i}/2", poids) for i in range(2)]
+        charges = sorted(sum(poids[c] for c in t) for t in tranches)
+        self.assertEqual(charges, [10, 10])
