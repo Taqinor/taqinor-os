@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 
 import {
   fusionnerRecomposition, lignesQuantiteFigee, appliquerRecomposition,
-  lignesManuellesEnConflitPossible,
+  lignesManuellesEnConflitPossible, phrasesTvaBaseLegaleRemplacee,
 } from './calc/recomposition.js'
 import { lignesServeurVersEcran } from './quote/lignesEcran.js'
 
@@ -190,4 +190,20 @@ test('ERR-QJR570 provenance — null / absente : règle de repli de main inchang
   // Repli : une saisie humaine (prix tapé) garde la ligne, provenance inconnue.
   const [l] = lignesServeurVersEcran([{ ...ondulRelu(null), prix_manuel: true }], '20.00')
   assert.equal(l.compose, false)
+})
+
+test('AGNR20 — la confirmation nomme la TVA 0 % + base légale que « Prendre N (recalculé) » remplace', () => {
+  const lignes = [
+    L(5, 'Pompe immergée', 1, 3000, { taux_tva: '0', tvaBaseLegale: 'Art. 92-I-6' }),
+    L(6, 'Socles', 24, 50, { quantiteManuelle: true }),
+    L(7, 'Câble', 1, 100, { taux_tva: '0', tvaBaseLegale: '  ' }),
+  ]
+  assert.deepEqual(phrasesTvaBaseLegaleRemplacee(lignes), [
+    'Pompe immergée : TVA 0 % et base légale « Art. 92-I-6 » remplacées par la TVA par défaut',
+  ])
+  assert.deepEqual(phrasesTvaBaseLegaleRemplacee([L(8, 'Panneau', 1, 1)]), [])
+  // le mode « recalculé » perd bien la base légale, « garder » la conserve
+  const gen = [L(5, 'Pompe immergée', 1, 3000)]
+  assert.equal(appliquerRecomposition(lignes, gen, 'recalcule').lignes[0].tvaBaseLegale, undefined)
+  assert.equal(appliquerRecomposition(lignes, gen, 'garder').lignes[0].tvaBaseLegale, 'Art. 92-I-6')
 })
