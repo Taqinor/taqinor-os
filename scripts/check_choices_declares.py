@@ -702,16 +702,18 @@ REFUS = {
         ("Miroir de `builder._annoter_remise`", "COMPORTEMENT"),
         ("par `repartirRemiseParLigne` (miroir de", "COMPORTEMENT"),
         ("`parLigne` est ALIGNÉ sur `lines`", "COMPORTEMENT")],
+    # SPL200 — la recomposition des lignes (et sa promesse L-2OPT) a quitté solar.js.
+    "frontend/src/features/ventes/calc/recomposition.js": [
+        # L-2OPT (25/08) — la fusion role-aware decrit un COMPORTEMENT aligne
+        # sur services.fusionner_kits (batterie/hybride=avec, reseau=sans),
+        # pas un vocabulaire de choix.
+        ("ligne de RÔLE (correctif orchestrateur", "COMPORTEMENT")],
     "frontend/src/features/ventes/solar.js": [
         # STKCAT10 : regle d'emission du role structure portee de composition.py (comportement)
         ("miroir de `composition.py`", "COMPORTEMENT"),
         # PVOND (2026-08-18) — le commentaire decrit l'avertissement « vivier
         # batterie vide », un comportement, pas une liste de valeurs.
         ("livrer un kit silencieusement sans stockage", "COMPORTEMENT"),
-        # L-2OPT (25/08) — la fusion role-aware decrit un COMPORTEMENT aligne
-        # sur services.fusionner_kits (batterie/hybride=avec, reseau=sans),
-        # pas un vocabulaire de choix.
-        ("ligne de RÔLE (correctif orchestrateur", "COMPORTEMENT"),
         # Doctrine 25/08 — la garde miroir de `depart_dans_horizon` est un
         # COMPORTEMENT (choix pur payback hors horizon), pas une liste.
         ("GARDE DÉPART-HORS-HORIZON", "COMPORTEMENT"),
