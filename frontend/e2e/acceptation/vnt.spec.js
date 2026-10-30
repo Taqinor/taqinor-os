@@ -704,6 +704,35 @@ etape('P2.4', ['VNT75', 'VNT77'], async ({ page, suivi, testInfo }) => {
   }, { remise: '0' })
 })
 
+etape('P2.8', ['VNT66', 'VNT75'], async ({ page, testInfo }) => {
+  // Échéancier PAR DÉFAUT 30/60/10 après « Prix négocié » 49 000 (D-VNT83-SOLDE) : « Facturer la tranche suivante »
+  // ⇒ 29 400 (émise) ; puis la suivante 4 600 (brouillon) ; Σ des tranches du plan = 49 000.
+  await avecReplique(page, testInfo, async (r0) => {
+    await acompteParApi(page.request, r0.devisId)
+    const neg = await prixNegocieParApi(page.request, r0.devisId, '49000')
+    const id = neg.devis_v2.id
+    const r = { leadId: r0.leadId, devisId: id, reference: neg.devis_v2.reference }
+    const ap0 = await apercu(page.request, id)
+    expect([ap0.prochaine.libelle, f2(ap0.prochaine.montant_ttc)]).toEqual(['Livraison du matériel', '29400.00'])
+    expect(f2(ap0.plan.reduce((t, x) => t + Number(x.montant_ttc), 0)), 'Σ plan = 49 000').toBe('49000.00')
+    await page.goto(`/crm/leads/${r.leadId}`)
+    await ongletDevis(page).click()
+    await expect(panneauVente(page, r).getByRole('button', { name: 'Facturer la tranche suivante' })).toBeVisible({ timeout: 30_000 })
+    const poser = async (cle, emettre, nature = 'intermediaire') => lireJson(await page.request.post(`${API}/ventes/devis/${id}/facturer/`, { timeout: 120_000,
+      data: { nature, cle_attendue: cle, emettre } }), 'tranche par API')
+    // Une tranche en brouillon bloque la suivante (409 tranche_en_brouillon) : la 1re est émise.
+    const t1 = await poser(ap0.prochaine.cle, true)
+    expect(f2(t1.facture.total_ttc)).toBe('29400.00')
+    const ap1 = await apercu(page.request, id)
+    expect(f2(ap1.prochaine.montant_ttc), 'tranche suivante').toBe('4600.00')
+    expect(ap1.prochaine.cle, 'la dernière tranche du plan par défaut est le solde').toBe('solde')
+    const t2 = await poser(ap1.prochaine.cle, false, 'solde')
+    expect([t2.facture.statut, f2(t2.facture.total_ttc)]).toEqual(['brouillon', '4600.00'])
+    const v = await venteDe(page.request, id)
+    expect([f2(v.brouillons_ttc), f2(v.emis_ttc)]).toEqual(['4600.00', '44400.00'])
+  }, { remise: '0' })
+})
+
 etape('P2.5', ['VNT54'], async ({ page, testInfo, suivi }) => {
   // Une 2e vente sur le MÊME lead : accepter un 2e devis ⇒ 409 vente_active_existante nommant la vente en vigueur.
   await avecReplique(page, testInfo, async (r) => {
