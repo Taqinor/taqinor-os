@@ -1,0 +1,5 @@
+== C-APDF-ACC-REMISE (sha 5908d43bb)
+attendu : dossier de remise (documents/dossier-remise) et fiche de remise premium du chantier 17 (mise en service, société 4) en fr et ar : profil SOLAIRE EXEMPLE (ICE/IF/RC/patente sur le dossier, D-APDF-2), aucune prestation suivie d'une garantie (D-APDF-4), aucun username, aucun prix_achat, statut inchangé (langue arabe hors critère : notée)
+observé : {"repro": false, "rendus": ["dossier_remise|fr|p=2|ar=0|img=0|FAIL prestation 'Installation' suivie d'une garantie ; prestation 'Transport' suivie d'une garantie", "fiche_remise_premium|fr|p=1|ar=0|img=0|PASS", "dossier_remise|ar|p=2|ar=0|img=0|FAIL prestation 'Installation' suivie d'une garantie ; prestation 'Transport' suivie d'une garantie [note: langue ar hors critère (arabe 0 car.)]", "fiche_remise_premium|ar|p=1|ar=0|img=0|PASS [note: langue ar hors critère (arabe 0 car.)]"], "ok_statut_inchange": true, "prestations": ["Installation", "Transport"]}
+verdict : ÉCART
+base inchangée : oui (avant 26609, après 26609) ; mails 0 ; tâches Celery bloquées 0

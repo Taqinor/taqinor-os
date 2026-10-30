@@ -1,0 +1,152 @@
+{
+  "sha": "bf7db31184c8e18ded474af111a70d5e834787d0",
+  "date": "2026-10-30",
+  "groupe": "APDF",
+  "verdict": "FAIL",
+  "couvre": [
+    "APDF99",
+    "APDF31",
+    "APDF33",
+    "APDF40",
+    "APDF44"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-APDF-ACC-DEVIS-445.bande",
+      "taches": [
+        "APDF99"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-DEVIS-445.txt — devis 445 agricole (document dédié quote_engine/agricole/) : ICE 001122334455667, RC778899 et capital 250 000,00 MAD du profil ABSENTS des formats défaut, include_etude, devis_final, note_calcul, en fr, ar et en (le une-page les porte) ; attendu la bande légale du profil (D-APDF-1). Cause : aucun appel à premium_base.bande_legale sous apps/ventes/quote_engine/agricole/ (pages.py / render.py)"
+    },
+    {
+      "id": "C-APDF-ACC-RELANCE.premium",
+      "taches": [
+        "APDF31",
+        "APDF99"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-RELANCE.txt — lettre-relance-premium?niveau=1 de la facture 301, client langue_document=ar : 0 caractère arabe, aucune mention de repli ; attendu D-APDF-3 (a) lettre de relance traduite. Servie par RelancesPage.jsx. Cause : apps/ventes/quote_engine/extra_docs.py::render_lettre_relance_pdf ne lit pas la langue du client"
+    },
+    {
+      "id": "C-APDF-ACC-BL.prestations",
+      "taches": [
+        "APDF33",
+        "APDF40",
+        "APDF44",
+        "APDF99"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-BL.txt — BL du chantier 17 fr et ar : lignes « Installation » et « Transport » listées comme composants livrés ; attendu exclues (D-APDF-4). Cause : nomenclature gelée nature=materiel pour ces lignes (produits 251/252 désormais de type service, mais la migration installations 0129 rattraper_nature ne remplit que la nature ABSENTE) ; société 2 : produits 142/143 encore en catégorie Accessoires (seed APDF44 non appliqué)"
+    },
+    {
+      "id": "C-APDF-ACC-PV.prestations",
+      "taches": [
+        "APDF33",
+        "APDF40",
+        "APDF44",
+        "APDF99"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-PV.txt — PV de réception du chantier 17 fr et ar : « Installation » et « Transport » listés comme composants installés (même cause : nature gelée materiel, apps/documents/builders.py::_composants lit la nature gelée)"
+    },
+    {
+      "id": "C-APDF-ACC-REMISE.prestations",
+      "taches": [
+        "APDF33",
+        "APDF40",
+        "APDF44",
+        "APDF99"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-REMISE.txt — dossier de remise du chantier 17 fr et ar : « Installation — 1 — Garantie selon conditions constructeur » et « Transport — 1 — Garantie selon conditions constructeur » (symptôme C-APDF-014 intact) ; attendu section Prestations sans garantie"
+    },
+    {
+      "id": "audit_coherence",
+      "taches": [
+        "APDF99"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/audit_coherence.txt — manage.py audit_coherence --no-persist (lecture seule) : 1 785 violations, 22 erreurs de règle (QUOTE_BUILD sans onduleur, calepinage vs devis…), toutes sociétés ; aucune ne cite les devis 741/461/524/445 ni la facture 8 dans la sortie ; oracle 10 « sans violation » non tenu (comme P8 de 2026-10-30-b0a961567)"
+    }
+  ]
+}
