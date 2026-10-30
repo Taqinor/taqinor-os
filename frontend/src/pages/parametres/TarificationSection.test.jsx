@@ -188,6 +188,48 @@ describe('CALX72 — refus avant envoi et refus du serveur sous le bon champ', (
   })
 })
 
+describe('ERR-PARAM-REDEVANCE-COMPTEUR — redevance compteur saisissable', () => {
+  it('champ vide servi, envoyé en nombre texte, null si vidé', async () => {
+    const user = userEvent.setup()
+    updateTariffSettings.mockResolvedValue({ data: { ...VIERGE } })
+    await rendreVierge()
+    expect(screen.getByText('Redevance compteur (MAD/mois)')).toBeInTheDocument()
+    expect(champ('redevance_compteur_mad_mois').value).toBe('')
+    await user.type(champ('redevance_compteur_mad_mois'), '39.94')
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    await waitFor(() => expect(updateTariffSettings).toHaveBeenCalledTimes(1))
+    expect(updateTariffSettings.mock.calls[0][0].redevance_compteur_mad_mois)
+      .toBe('39.94')
+    await user.clear(champ('redevance_compteur_mad_mois'))
+    await user.click(screen.getByRole('button', { name: /Enregistr/ }))
+    await waitFor(() => expect(updateTariffSettings).toHaveBeenCalledTimes(2))
+    expect(updateTariffSettings.mock.calls[1][0].redevance_compteur_mad_mois)
+      .toBeNull()
+  })
+
+  it('un montant négatif est refusé avant envoi, sous le champ', async () => {
+    const user = userEvent.setup()
+    await rendreVierge()
+    await user.type(champ('redevance_compteur_mad_mois'), '-3')
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    expect(updateTariffSettings).not.toHaveBeenCalled()
+    expect(screen.getByTestId('erreur-redevance_compteur_mad_mois'))
+      .toHaveTextContent('supérieur ou égal à 0')
+  })
+
+  it('le refus 400 du serveur atterrit sous le champ', async () => {
+    const user = userEvent.setup()
+    updateTariffSettings.mockRejectedValue({ response: { status: 400, data: {
+      redevance_compteur_mad_mois: ['Valeur supérieure ou égale à 0 attendue.'],
+    } } })
+    await rendreVierge()
+    await user.type(champ('redevance_compteur_mad_mois'), '5')
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    expect(await screen.findByTestId('erreur-redevance_compteur_mad_mois'))
+      .toHaveTextContent('supérieure ou égale à 0')
+  })
+})
+
 /* AGR210 — section « Pompage agricole » : barème des charges solaires de la
    société + règle FDA datée (calcul INTERNE). La réponse vient du contrat
    partagé `ventes/contract_samples/economie_pompage.json` (`reglages_lus`),

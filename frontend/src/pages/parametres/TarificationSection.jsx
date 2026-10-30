@@ -80,6 +80,8 @@ export default function TarificationSection() {
           productible_manuel_kwh_kwc: d.productible_manuel_kwh_kwc ?? '1500.0',
           inclinaison_defaut_deg: d.inclinaison_defaut_deg ?? 30,
           azimut_defaut_deg: d.azimut_defaut_deg ?? 0,
+          // Charges fixes d'abonnement : vide = non déclarées (jamais 0 inventé).
+          redevance_compteur_mad_mois: d.redevance_compteur_mad_mois ?? '',
         })
         // Paliers : on travaille sur des chaînes éditables. La liste renvoyée
         // par le serveur (ou vide) sera celle des défauts ONEE.
@@ -200,6 +202,7 @@ export default function TarificationSection() {
       ...(lot5 ? erreursAvantEnvoi(lot5) : {}),
       ...(pompage ? erreursPompageAvantEnvoi(pompage) : {}),
       ...(ci ? erreursCiAvantEnvoi(ci) : {}),
+      ...erreursRedevance(form.redevance_compteur_mad_mois),
     }
     if (Object.keys(refus).length) {
       setErreurs(refus)
@@ -224,6 +227,9 @@ export default function TarificationSection() {
         selective_threshold_kwh: Number(form.selective_threshold_kwh) || 150,
         inclinaison_defaut_deg: Number(form.inclinaison_defaut_deg) || 0,
         azimut_defaut_deg: Number(form.azimut_defaut_deg) || 0,
+        redevance_compteur_mad_mois:
+          String(form.redevance_compteur_mad_mois ?? '').trim() === ''
+            ? null : String(form.redevance_compteur_mad_mois).trim(),
         residential_tiers: cleanedTiers.length ? cleanedTiers : null,
       }
       const res = await parametresApi.updateTariffSettings(payload)
@@ -317,6 +323,19 @@ export default function TarificationSection() {
             <NumField label="Tolérance" value={form.tolerance_kwh}
               onChange={v => set('tolerance_kwh', v)} suffix="kWh"
               hint="Décale les bornes opératoires (200/300/500 → 210/310/510)." />
+            <ChampLot5 champ="redevance_compteur_mad_mois"
+              label="Redevance compteur (MAD/mois)" suffix="MAD TTC/mois"
+              erreurs={erreurs} min="0"
+              value={form.redevance_compteur_mad_mois}
+              onChange={v => {
+                set('redevance_compteur_mad_mois', v)
+                setErreurs(e => {
+                  const reste = { ...e }
+                  delete reste.redevance_compteur_mad_mois
+                  return reste
+                })
+              }}
+              hint="Charges fixes TTC de la facture (location du compteur + entretien du branchement), retirées avant de convertir un montant en kWh. Vide = conversion refusée ; saisir 0 si votre facture n'en porte pas." />
           </div>
         </CardContent>
       </Card>
@@ -727,6 +746,18 @@ function erreursAvantEnvoi(l) {
       + 'et de l’amortissement est obligatoire (texte de loi, avis fiscal).'
   }
   return refus
+}
+
+/** Charges fixes d'abonnement : vide (non déclarées) ou nombre >= 0. */
+function erreursRedevance(valeur) {
+  const brut = String(valeur ?? '').trim()
+  if (brut === '') return {}
+  const n = Number(brut)
+  if (!Number.isFinite(n) || n < 0) {
+    return { redevance_compteur_mad_mois:
+      'Redevance compteur : saisissez un montant supérieur ou égal à 0.' }
+  }
+  return {}
 }
 
 /** 400 DRF `{champ: [message]}` → `{champ: message}` (clé = nom du champ). */
