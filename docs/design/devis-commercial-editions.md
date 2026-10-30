@@ -273,3 +273,12 @@ Transposé à Khatam (`donnees.changement`, `donnees.cartes_options`, `khatam/co
   mensuel cède dès le palier 1 (étapes sur une ligne + QR réduit), comme le rendu adaptatif du
   moteur. Vérifié : 461 (3 pages, palier 0), variante avec batterie (3 pages), 5 fixtures ;
   parité : seuls les nouveaux dérivés (÷ 12) et les factures annuelles arrondies s'ajoutent.
+
+**30/10, décision : horizon marginal C&I = 10 ans, panneaux et batteries** (Reda : « 10 ans »).
+Mécanique dans la PR #1163 (branche `claude/festive-matsumoto-f94dfa`, session à part) : banque
+montée module par module, chaque module composé avec les panneaux qu'il tire et l'hybride
+éventuel, gardé si l'investissement ajouté se rembourse en ≤ 10 ans ; regard du 26/10 appliqué au
+premier module (il porte le passage string → hybrides). Boulangerie sans limite de toit, rendue
+ici sur cette branche (worktree de travail + édition copiée) : sans 77 panneaux / 55,06 kWc /
+294 100 TTC ; avec 13 PowerBrick 16 kWh (199 kWh), 131 panneaux / 93,67 kWc, 5 × Deye 15 kW,
+1 044 400 TTC, 171 670 HT/an (le 14e module : 12,4 ans, refusé).
