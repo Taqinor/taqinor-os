@@ -187,3 +187,21 @@ des totaux de ≈ 295 pt ; le document fait 4 pages ; `document_adaptatif` ne mo
 mais passe directement à `_sans_graphiques` et cède les cédables de la page 1 aussi. Correction
 minimale au moteur : `vertical-align:top` sur `.c2-tot-sp` / `.c2-tot-box` dans
 `commercial/equip.py` (vérifié : 3 pages au palier 0, les cinq blocs rendus).
+
+## Révision du 30/10 (suite) — photo et courbe de retour rétablies
+
+Fondateur : la photo de l'installation dans la fenêtre marocaine et la courbe des retours sur
+25 ans devaient rester. Rétablies : la fenêtre en arc montre la photo du site servie par le
+devis (`roof_photo`) ou, sinon, **la plus grande installation réelle de la photothèque**
+(`quote_engine/assets/installations/`), légendée « Réalisation {société} » ; la page 2 porte
+« Votre retour » — position nette cumulée servie (`flux.cumul_mad`), jalons, TRI — cédée aux
+paliers denses (≥ 2).
+
+**Photothèque (à corriger côté moteur, décision fondateur)** : il n'y a aucune photo
+« commercial », et le repli universel `default.jpg` est la petite installation résidentielle
+(≈ 5 kW) — c'est elle que le moteur sert à tout devis C&I. Deux fichiers portent une puissance
+fausse : `industriel-45-couchant.jpg` et `residentiel-18-reflet.jpg` sont deux vues du même
+site, El Jadida 17,04 kWc (réf. 468, `apps/web/src/lib/caseStudies.ts`). Renommer en
+`residentiel-17-couchant.jpg` / `residentiel-17-reflet.jpg` corrige aussi le choix « puissance
+la plus proche » des couvertures résidentielles. L'édition accepte `_photo_realisation`
+(fragment de nom) pour l'étude.

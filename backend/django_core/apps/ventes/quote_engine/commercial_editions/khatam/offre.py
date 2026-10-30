@@ -3,12 +3,12 @@
 """Édition Khatam — PAGE 2 : la page équipements ACTUELLE
 (``commercial/equip.py``) : tableau, chaîne de totaux, note, clauses, option
 batterie, options proposées, surplus injecté, case d'activité, installation
-en bref — avec un bandeau d'en-tête tramé, un en-tête de tableau doublé
+en bref, puis le retour (position nette cumulée servie, jalons, TRI) — avec un bandeau d'en-tête tramé, un en-tête de tableau doublé
 encre + or, la rangée Total TTC sur marine, des puces en étoile khatam ;
 aucun arabe (fondateur 30/10).
 Classes ``kh2-``.
 """
-from .. import commun, donnees
+from .. import commun, donnees, graphiques
 
 
 def build(ctx, m, j):
@@ -37,8 +37,42 @@ def build(ctx, m, j):
             f'<td style="padding:3px 8px;border-bottom:0.5pt solid {j["line_soft"]};">{val}</td></tr>' for lib, val in rangees)
         bref = (f'<div class="kh2v"><div class="kh2v-h">{L("ci_inst_titre", "Votre installation en bref")}</div>'
                 f'<table style="width:100%;border-collapse:collapse;font-size:7.8pt;">{lignes}</table></div>')
+    # Le retour : position nette cumulée servie (``flux.cumul_mad``), jalons et
+    # TRI du moteur — rien de recalculé ; cédé aux paliers denses (≥ 2).
+    c = m["chiffres"]
+    cu = m["cumul"]
+    retour_html = ""
+    if cu and m["palier"] < 2:
+        fin = cu["serie"][-1]
+        lib_retour = L("ci_retour_en", "Retour en {ans} ans", ans=c["payback"]) if c["payback"] else ""
+        # Le SVG est composé dans la police du graphique : l'insécable ordinaire
+        # (U+00A0) y rend le séparateur de milliers visible.
+        lib_fin = (f'{"+" if fin[1] >= 0 else "−"}{fmt(round(abs(fin[1])))} MAD · {fin[0]} {L("ci_ans", "ans")}'
+                   .replace(" ", " "))
+        origine = cu["serie"][0][1]
+        origine_txt = f'{"−" if origine < 0 else ""}{fmt(round(abs(origine)))} MAD'.replace(" ", " ")
+        svg = graphiques.frise_cumul(
+            cu["serie"], cu["jalons"], c["payback_num"], (lib_retour, lib_fin, "0 MAD"),
+            (j["sable"], j["accent"], j["line"], j["muted"], j["or"]), "IBM Plex Sans", 106, 50,
+            origine_txt=origine_txt, lib_annees=L("ci_annees", "années"))
+        jalons = "".join(
+            f'<tr><td style="color:{j["muted"]};padding:2px 0;border-bottom:0.5pt solid {j["line_soft"]};">{L("ci_apres_n_ans", "Après {n} ans", n=a)}</td>'
+            f'<td style="text-align:right;padding:2px 0;border-bottom:0.5pt solid {j["line_soft"]};white-space:nowrap;">{lib} MAD</td></tr>'
+            for a, lib in cu["jalons"])
+        indic = ""
+        if c["tri_pct"]:
+            indic = (f'<div class="kh2-ind"><span class="kh2-indv">{c["tri_pct"]}</span><span class="kh-ru"> %</span>'
+                     f'<div class="kh-lab">{L("ci_tri_horizon", "TRI sur {n} ans", n=c["horizon"] or cu["horizon"])}</div></div>')
+        retour_html = (f'<div class="kh-sec">' + commun.kicker(L("ci_votre_retour", "Votre retour"), j, p)
+                       + f'<div class="kh-h2" style="margin-top:1.5mm;">'
+                       + L("ci_position_nette_titre", "Position nette cumulée sur {n} ans ({base})", n=cu["horizon"] or fin[0], base=cu["base"])
+                       + f'</div><div class="kh-row" style="margin-top:3mm;"><div class="kh-col" style="width:108mm;">{svg}</div>'
+                       f'<div class="kh-gap"></div><div class="kh-col">{indic}'
+                       f'<table style="width:100%;border-collapse:collapse;font-size:8.2pt;margin-top:3mm;">{jalons}</table></div></div></div>')
     css = f"""
 <style>
+.kh2-ind{{margin-top:1mm;}}
+.kh2-indv{{font-family:{j['display']};font-weight:600;font-size:22pt;line-height:1;letter-spacing:-.01em;color:{j['accent']};}}
 .kh2-note{{margin-top:8px;font-size:8pt;line-height:1.35;white-space:pre-line;}}
 .kh2-note b{{text-transform:uppercase;letter-spacing:.08em;font-size:7pt;margin-right:6px;}}
 .kh2b{{margin-top:5mm;border:0.5pt solid {j['line']};border-left:3px solid {j['or']};border-radius:6px;background:{j['wash']};padding:9px 12px;}}
@@ -57,4 +91,5 @@ def build(ctx, m, j):
   {totaux}{note}{clauses}{option_avec}{extras}
   {bloc_cat}
   {bref}
+  {retour_html}
 </div>"""

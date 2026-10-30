@@ -5,9 +5,9 @@ dans le même ordre et la même grammaire (héros marine, tuiles, note
 autoconsommation, investissement, énergie mois par mois, prochaines étapes),
 avec la touche marocaine et le style d'écriture :
 
-* héros marine tramé d'une étoile khatam, filet et frise or ; la fenêtre en
-  arc outrepassé n'apparaît qu'avec une photo DU SITE servie (``roof_photo``),
-  jamais une photo de stock ;
+* héros marine tramé d'une étoile khatam, filet et frise or ; dans la fenêtre
+  en arc outrepassé, la photo du site servie (``roof_photo``) ou, sinon, une
+  installation réelle de TAQINOR (photothèque du moteur), légendée ;
 * titre et chiffres en Fraunces 600, texte en IBM Plex Sans, chiffres
   tabulaires ; aucun arabe (fondateur 30/10) ;
 * tuiles à filet or (rayon 6 px, plus de pastilles), économie en vert
@@ -16,6 +16,25 @@ Classes ``kh1-``.
 """
 from .. import commun, donnees, graphiques
 from ...figures import ancre
+from ... import installations
+
+
+def _photo_plus_grande_realisation(d: dict) -> str:
+    """Le base64 de la photo de la photothèque dont la puissance nommée est
+    la plus grande (hors repli ``default``), '' si la photothèque est vide.
+    ``d['_photo_realisation']`` (étude) : un fragment du nom de fichier qui
+    désigne une autre photo de la photothèque."""
+    import base64
+    ents = [e for e in installations._entries() if e.get("kwc")]
+    if not ents:
+        return ""
+    voulu = str(d.get("_photo_realisation") or "").lower()
+    choix = [e for e in ents if voulu and voulu in e["path"].stem.lower()]
+    best = choix[0] if choix else max(ents, key=lambda e: e["kwc"])
+    try:
+        return base64.b64encode(best["path"].read_bytes()).decode()
+    except OSError:
+        return ""
 
 
 def _txt_b64(v) -> str:
@@ -31,9 +50,12 @@ def build(ctx, m, j):
     fmt = m["fmt"]
     L = lambda cle, fr, **v: donnees.L(d, cle, fr, **v)
     c, inv, cl, cat = m["chiffres"], m["invest"], m["client"], m["categorie"]
-    # Fondateur 30/10 : aucune information étrangère au dossier — la photo
-    # n'est que celle du site quand le devis la sert, jamais la photothèque.
-    photo = _txt_b64(d.get("roof_photo"))
+    # La photo du SITE quand le devis la sert (``roof_photo``) ; sinon LA PLUS
+    # GRANDE installation réelle de la photothèque (fondateur 30/10 : la
+    # photothèque n'a pas de photo « commercial » et son repli universel est
+    # la petite installation résidentielle — jamais elle sur un devis C&I).
+    photo_site = _txt_b64(d.get("roof_photo"))
+    photo = photo_site or _photo_plus_grande_realisation(d)
 
     # ── Héros ─────────────────────────────────────────────────────────────
     validite = (L("ci_valable_jusqu", "Valable jusqu&#8217;au {date}", date=m["valid_until"])
@@ -48,6 +70,10 @@ def build(ctx, m, j):
     if photo:
         arc = commun.fenetre_arc(photo, j["hero_bg"], j["or"], left_mm=20 if m["rtl"] else 138, top_mm=9,
                                  largeur_mm=50, hauteur_mm=70)
+        if not photo_site:
+            arc += (f'<div style="position:absolute;left:{20 if m["rtl"] else 138}mm;top:80.5mm;width:50mm;'
+                    f'font-size:6.6pt;color:{j["on_hero_2"]};text-align:center;">'
+                    + L("ci_realisation", "Réalisation {marque}", marque=commun.esc(m["brand"])) + '</div>')
 
     # ── Tuiles (la même sélection que le devis actuel) ─────────────────────
     def tuile(val, unite, lib, a="", sous="", vert=False):
