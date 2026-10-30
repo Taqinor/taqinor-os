@@ -153,27 +153,6 @@
       "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-004.txt — Commercial terrain et Admin RH : abandonner-solde, enregistrer-paiement, export xlsx clients, création de lead -> 403, facture emise sans Paiement ; octroi de encaisser à Commercial terrain 400 ; Directeur et Commercial enregistrer-paiement 201"
     },
     {
-      "id": "C-ASEC-004.b",
-      "taches": [
-        "ASEC11"
-      ],
-      "verdict": "FAIL",
-      "base_verdict": "FAIL",
-      "oracles": {
-        "1": "PASS",
-        "2": "PASS",
-        "3": "NA",
-        "4": "NA",
-        "5": "NA",
-        "6": "NA",
-        "7": "NA",
-        "8": "NA",
-        "9": "NA",
-        "10": "NA"
-      },
-      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-30/C-ASEC-004.txt — ÉCART : GET /api/django/ventes/factures/ -> 200 pour Commercial terrain (2 lignes) et Admin RH (4 lignes = toutes celles de la société) ; la clause ASEC11 « liste des factures -> 403 » n est pas tenue (FactureViewSet.get_permissions : list en IsAnyRole) ; base_verdict FAIL = reproduction V6 SROLE-1 du dossier à 51f22174f (non rejouée ce jour) : défaut préexistant non corrigé"
-    },
-    {
       "id": "C-ASEC-005",
       "taches": [
         "ASEC6",
