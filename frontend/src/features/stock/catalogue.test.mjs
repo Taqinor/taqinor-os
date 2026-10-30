@@ -11,7 +11,7 @@ import {
 import { champCibleMotif } from './libellesProduitCi.js'
 import {
   classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
-} from '../ventes/solar.js'
+} from '../ventes/calc/classification.js'
 import { Sun, Zap, Cpu, Droplets, ClipboardList } from 'lucide-react'
 
 const CAT = {

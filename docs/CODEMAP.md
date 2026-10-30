@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 349fac5f02f9f31ba5eddd98914c930f87a35f5cf71c156eb40169f23c7b3432
+Structure fingerprint: 7702eeb5f4921eaa8a91dfe8d916fc369b7b4610d9a1801ab6cf56391cbb2059
 Plan fingerprint: b40444dc4bf389c1b8079f8611d56a35af1141c979ab5cf79b1c6eb2c09b2c43
 
 
@@ -456,7 +456,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 
 - **auth** — session/JWT (`authSlice.js`).
 - **crm** — leads/clients state; `crmSlice.js`, `bulk.js`, `stages.js` (mirrors STAGES.py, CI-checked); **`workspace/`** = the lead cockpit (`LeadWorkspace.jsx` over the pure autosave engine `draftCore.js` via `useLeadDraft.js`, with `IdentityRail`/`SectionsPane`/`ContextRail`, `TimelineTab`, `DevisTab`, `ArbreHistorique.jsx`, `StageControl`); `traceToit.js` (pure: `Lead.roof_outline` -> SVG polygon + area, via `features/calepinage`'s roof-marker helper), `leadPrefetch.js`, `rotting.js`.
-- **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill: GHI/ONEE/ROI, panel/inverter/battery sizing, pompage HMT+débit -> pump + VEICHI variateur, all TTC), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
+- **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill: GHI/ONEE/ROI, panel/inverter/battery sizing, all TTC; split by pure moves into `calc/` — `tarifs.js` tariff model, `totaux.js` canonical totals/multi-property/prix-kWc/margin, `roi.js` savings/ROI/25-year cashflow, `recomposition.js` line recomposition/variant merge, `classification.js` product/line classification keywords, rule #4; their tests in `calc/*.test.mjs`), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
 - **calepinage** — the roof-design studio (module.config-registered): library, sources, variantes, plan/pente/terrain/ombrière/schéma/production tabs, `repere.js` roof-marker helper (repatriated from `ao` by SOLMVP15).
 - **visites** — field technical visits (module.config-registered).
 - **installations** — chantiers; `installationsSlice.js`, `statuses.js`, offline field capture.
@@ -592,7 +592,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1292)**
+**Done (1290)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -775,8 +775,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGR624` — Aller-retour EN DIRECT du parcours chantier pompage (pile locale, Playwright)
 - `AGR625` — Chantier pompage (2/2, l'« AGR602b » de la critique) : gate 82-21 consultatif, étape…
 - `AIC50` — Skill `assistant-manuel` : Claude Code génère sur l'abonnement de Reda (jamais une clé…
-- `AIC51` — Skill `assistant-tri` + `docs/assistant-tri.md` + interrupteur…
-- `AICM1` — Réclamer les crédits API et créer le workspace de l'assistant
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -1887,7 +1885,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (127)**
+**Open — to build (129)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1933,7 +1931,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGRM41` — Engagement SAV affichable
 - `AGRM42` — Assurance vol des panneaux
 - `AGRM43` — Consignes de remise au fermier (FR + darija)
+- `AIC51` — Skill `assistant-tri` + `docs/assistant-tri.md` + interrupteur…
 - `AIC52` — [GATED: secret `CLAUDE_CODE_OAUTH_TOKEN` GitHub (`claude setup-token`, valable un an…
+- `AICM1` — Réclamer les crédits API et créer le workspace de l'assistant
 - `AICM2` — Réglage de confidentialité du compte claude.ai
 - `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]

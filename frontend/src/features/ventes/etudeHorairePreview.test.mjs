@@ -11,7 +11,7 @@ import {
   libelleTranche, falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
   estimationConsoAffichable,
 } from './etudeHorairePreviewPur.js'
-import { isBattery, texteClassement, appartientAuPanierAvec } from './solar.js'
+import { isBattery, texteClassement, appartientAuPanierAvec } from './calc/classification.js'
 
 test('construireCorpsPreview : null hors résidentiel, même avec facture', () => {
   assert.equal(construireCorpsPreview({

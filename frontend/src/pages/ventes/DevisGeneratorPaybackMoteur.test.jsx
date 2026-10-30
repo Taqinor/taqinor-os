@@ -13,7 +13,7 @@ import { render, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
-import { paybackMoteurHoraire } from '../../features/ventes/solar'
+import { paybackMoteurHoraire } from '../../features/ventes/calc/roi.js'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock({
