@@ -30,6 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import audit_tache as at  # noqa: E402 — après sys.path/setup() (D-ENF22)
 import check_ancres_taches as cat  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 _SPEC = importlib.util.spec_from_file_location(
@@ -42,6 +43,8 @@ TYPES_DECLENCHEUR = set(parcours.TYPES_DECLENCHEUR) | {"http", "signal", "tache"
 TYPES_AUTO = {"evenement", "beat", "signal", "tache"}
 # Dette gelée (26/10/2026, AMET98) : tables sans `portes` sur main ; ne fait que rétrécir.
 SANS_PORTES_GELEES = {"PA5", "PA7"}
+_CLASSE_VUE = re.compile(r"(?:View|ViewSet|APIView|Mixin)$")
+_FICHIER_VUE = re.compile(r"/apps/\w+/(?:.+/)?(?:views?|viewsets?)(?:/|\.py$)")
 _RESOLUTION_CORE = re.compile(r"^\S+ : (?:declencheur\.source|fonction_entree|checkpoint\.persistance) — ")
 
 
@@ -102,6 +105,26 @@ def resoudre(ref: str, racine: Path) -> str:
         return motif
     chemin = next((c for c in (fichier, f"backend/django_core/{fichier}") if (racine / c).is_file()), fichier)
     return motif if cat.verifier_ancre(chemin, symbole, racine) else ""
+
+
+def actions_appelantes(ref: str, racine=ROOT) -> list:
+    """Fonction d'entrée DOMAINE (pas une action de vue) : les actions de vue (`fichier::Classe.methode`,
+    ou vue-fonction `fichier::nom`) dont le corps l'APPELLE, lues par la clause Appelants d'AMET80
+    (`audit_tache.appelants`, index AST) — aucune seconde implémentation. [] pour une entrée déjà vue
+    ou introuvable. Même app seulement s'il y en a (les autres : repli) ; ordre déterministe : le plus de
+    mots partagés entre le nom de l'action et celui de la fonction (`emettre` ↔ `emettre_facture`), puis l'ancre."""
+    fichier, _, sym = ref.partition("::")
+    if not sym or ("." in sym and _CLASSE_VUE.search(sym.split(".")[0])):
+        return []
+    try:
+        r = at.appelants(ref, racine)
+    except (SystemExit, RuntimeError, OSError):
+        return []
+    app, mots = re.search(r"apps/\w+/", fichier), set(sym.split(".")[-1].split("_"))
+    sites = [(p["symbole"],) + tuple(p["symbole"].split("::")) for p in r["python"] if not p["test"]]
+    vues = {a for a, f, q in sites if _FICHIER_VUE.search("/" + f) and q != "<module>" and q.count(".") <= 1}
+    meme_app = {a for a in vues if app and app.group(0) in a.split("::")[0]}  # homonymes d'autres apps : repli
+    return sorted(meme_app or vues, key=lambda a: (-len(mots & set(a.split("::")[1].split(".")[-1].split("_"))), a))
 
 
 @contextlib.contextmanager

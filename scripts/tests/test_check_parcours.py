@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -21,6 +22,7 @@ import check_parcours  # noqa: E402 — après sys.path/setup() (D-ENF22)
 import parcours_tables as cp  # noqa: E402 — après sys.path/setup() (D-ENF22)
 import rejouer_parcours as rp  # noqa: E402 — après sys.path/setup() (D-ENF22)
 import sonde  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from scripts.tests.test_audit_tache import DepotActif, DepotJetable  # noqa: E402 — dépôt jetable AMET80
 
 
 VUES = ("class FactureViewSet:\n    def payer(self):\n        return 1\n\n\n"
@@ -252,13 +254,13 @@ class RejeuTests(unittest.TestCase):
         d.ecrire(_table(ETAPE_B))
         argv = ["PA9", "--enregistrement", "1", "--modele", "fac.Facture", "--racine", str(d.racine)]
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(rp.main(argv + ["--dry-run"], executer=executer), 0)
+            self.assertEqual(rp.main(argv + ["--dry-run"], executer=executer, appelants=lambda *a: []), 0)
         self.assertEqual(appels, [])
         sans = copy.deepcopy(ETAPE_B)
         del sans["checkpoint"]
         d.ecrire(_table(sans))
         with contextlib.redirect_stdout(io.StringIO()) as out:
-            self.assertEqual(rp.main(argv, executer=executer), 1)
+            self.assertEqual(rp.main(argv, executer=executer, appelants=lambda *a: []), 1)
         self.assertEqual(appels, [])
         self.assertIn("ÉCHEC", out.getvalue())
 
@@ -271,7 +273,7 @@ class RejeuTests(unittest.TestCase):
         ecrits = []
         argv = ["PA9", "--enregistrement", "1", "--modele", "fac.Facture", "--racine", str(d.racine)]
         with contextlib.redirect_stdout(io.StringIO()) as out:
-            code = rp.main(argv, executer=lambda *a: (0, sortie, ""),
+            code = rp.main(argv, executer=lambda *a: (0, sortie, ""), appelants=lambda *a: [],
                            ecrire=lambda g, charge: ecrits.append((g, charge)) or 0)
         self.assertEqual(code, 0, out.getvalue())
         self.assertEqual(ecrits[0][0], "PA9")
@@ -280,9 +282,62 @@ class RejeuTests(unittest.TestCase):
         sale = sortie.replace('"base_inchangee": true', '"base_inchangee": false')
         ecrits.clear()
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(rp.main(argv, executer=lambda *a: (1, sale, ""),
+            self.assertEqual(rp.main(argv, executer=lambda *a: (1, sale, ""), appelants=lambda *a: [],
                                      ecrire=lambda g, c: ecrits.append(g) or 0), 1)
         self.assertEqual(ecrits, [])
+
+
+DJ = "backend/django_core/apps"
+APPEL = "from rest_framework import viewsets\nfrom apps.fac.domain.ops import emettre_facture\n\n\n"
+
+
+class EntreeDomaineTests(unittest.TestCase):
+    """Fonction d'entrée DOMAINE (PA4.05-09) : jouée par l'action de vue qui l'APPELLE (index AST AMET80)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.depot = DepotJetable({
+            f"{DJ}/fac/domain/ops.py": "def emettre_facture(f):\n    return f\n",
+            f"{DJ}/fac/views.py": APPEL + "class FactureViewSet(viewsets.ModelViewSet):\n"
+            "    def bulk(self, request):\n        return emettre_facture(2)\n\n"
+            "    def emettre(self, request, pk=None):\n        return emettre_facture(1)\n",
+            f"{DJ}/fac/services.py": APPEL + "def lot():\n    return emettre_facture(3)\n",       # pas une vue
+            f"{DJ}/fac/tests/test_ops.py": APPEL + "def test_e():\n    emettre_facture(0)\n",  # un test
+            f"{DJ}/autre/views.py": APPEL + "class AutreViewSet(viewsets.ModelViewSet):\n"
+            "    def emettre(self, request):\n        return emettre_facture(4)\n",            # autre app : repli
+        })
+        cls.actif = DepotActif(cls.depot)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.actif.restaurer()
+        cls.depot.fermer()
+
+    def test_entree_domaine_resolue_vers_l_action_de_vue_appelante(self):
+        ancres = cp.actions_appelantes(f"{DJ}/fac/domain/ops.py::emettre_facture", self.depot.racine)
+        self.assertEqual(ancres, [f"{DJ}/fac/views.py::FactureViewSet.emettre",   # nom proche d'abord
+                                  f"{DJ}/fac/views.py::FactureViewSet.bulk"])
+        self.assertEqual(cp.actions_appelantes(f"{DJ}/fac/views.py::FactureViewSet.emettre", self.depot.racine), [])
+        table = _table(dict(ETAPE_B, fonction_entree=f"{DJ}/fac/domain/ops.py::emettre_facture"), MANQUANTE)
+        self.assertEqual(rp.appelants_des_etapes(table, self.depot.racine), {"payer": ancres})
+
+    def test_conteneur_prefere_le_modele_du_checkpoint_et_dit_lequel(self):
+        def modele(label):
+            return type(label.split(".")[1], (), {"_meta": SimpleNamespace(label=label)})
+        Facture, Lot = modele("fac.Facture"), modele("fac.Lot")
+        vues = {n: type(n, (), {"queryset": SimpleNamespace(model=M)}) for n, M in
+                (("LotViewSet", Lot), ("FactureViewSet", Facture))}
+        ancres = [f"{DJ}/fac/views.py::LotViewSet.emettre", f"{DJ}/fac/views.py::FactureViewSet.emettre"]
+        C = {"objets": {}, "P": {"appelants": {"e": ancres}},
+             "routes": [(f"api/{n}/(?P<pk>[^/.]+)/emettre/$", SimpleNamespace(cls=v, actions={"post": "emettre"}))
+                        for n, v in vues.items()]}
+        notes = []
+        self.assertIs(rp._c_par_appelant(C, {"id": "e"}, Facture, notes)[2], vues["FactureViewSet"])
+        self.assertIn("via backend/django_core/apps/fac/views.py::FactureViewSet.emettre", notes[0])
+        self.assertIs(rp._c_par_appelant(C, {"id": "e"}, None, [])[2], vues["LotViewSet"])  # ordre de l'hôte
+        notes = []
+        self.assertIsNone(rp._c_par_appelant(C, {"id": "autre"}, Facture, notes))
+        self.assertIn("aucune action de vue n'appelle", notes[0])
 
 
 if __name__ == "__main__":
