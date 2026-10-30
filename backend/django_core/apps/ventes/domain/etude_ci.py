@@ -1737,6 +1737,21 @@ def _onduleurs_des_lignes(devis, catalogue):
     return [dict(par_id[pid], quantite=q) for pid, q in sorted(quantites.items()) if q > 0]
 
 
+def cles_hors_empreinte():
+    """ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — les clés d'``etude_params``
+    qui n'entrent JAMAIS dans l'empreinte : les dérivées non copiées, les clés
+    v1 retirées (CIQ129) et TOUTE dérivée du schéma (``puissance_kwc`` que
+    ``finaliser_caches`` pose APRÈS l'étude à la création, ``production_figee_rasante``
+    écrite par ce rafraîchisseur…) — sinon un cache posé après le premier calcul
+    déplaçait l'empreinte au ré-enregistrement à vide. Seule exception :
+    ``taille_creation_ci``, relue comme entrée (``verdict_creation``)."""
+    from .etude_schema import CLES_RETIREES_CI_V1, DERIVEE, SCHEMA
+    from .etudes import CLES_DERIVEES_NON_COPIEES
+    derivees = {cle for cle, regle in SCHEMA.items() if regle['nature'] == DERIVEE}
+    return (derivees | set(CLES_DERIVEES_NON_COPIEES)
+            | set(CLES_RETIREES_CI_V1)) - {CLE_TAILLE_CREATION}
+
+
 def _empreinte(entrees_stockees, kwc, onduleurs, option_avec=None):
     import hashlib
     import json
@@ -1834,8 +1849,8 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
     aucune écriture. Plus aucun panneau ⇒ dérivées RETIRÉES, jamais périmées.
     Ne lève jamais : une étude n'empêche pas d'enregistrer un devis.
     """
-    from .etude_schema import CLES_RETIREES_CI_V1, MOTEUR_CI, ecrire
-    from .etudes import CLES_DERIVEES_NON_COPIEES, puissances_etude_horaire
+    from .etude_schema import MOTEUR_CI, ecrire
+    from .etudes import puissances_etude_horaire
     try:
         mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
         if mode not in MODES:
@@ -1853,11 +1868,10 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         onduleurs = _onduleurs_des_lignes(devis, catalogue)
         # Fondateur 26/10/2026 — l'option « avec batterie » des lignes.
         imposee, mono = _option_avec_du_devis(devis, catalogue, *puissances_etude_horaire(devis))
-        # CIQ129 — une clé v1 retirée (jamais une entrée du moteur) n'entre
-        # pas dans l'empreinte.
-        stockees = {k: v for k, v in params.items()
-                    if k not in CLES_DERIVEES_NON_COPIEES
-                    and k not in CLES_RETIREES_CI_V1}
+        # CIQ129 + ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — seules
+        # les ENTRÉES entrent dans l'empreinte (``cles_hors_empreinte``).
+        hors = cles_hors_empreinte()
+        stockees = {k: v for k, v in params.items() if k not in hors}
         empreinte = _empreinte(stockees, kwc, onduleurs, imposee)
         existant = params.get(CLE_ETUDE_CI) or {}
         if not force and existant.get('empreinte') == empreinte:

@@ -146,6 +146,26 @@ class RafraichisseurTests(_Base):
                      if q['sql'].lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))]
         self.assertEqual(ecritures, [])
 
+    def test_derivee_posee_apres_l_etude_ne_deplace_pas_l_empreinte(self):
+        # ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — une DÉRIVÉE écrite
+        # après l'étude (``puissance_kwc`` de ``finaliser_caches``) n'est pas
+        # une entrée : l'empreinte ne bouge pas ; une ENTRÉE la bouge.
+        from apps.ventes.domain.etude_schema import CALEPINAGE, ECRAN, ecrire
+        devis = self._devis()
+        rafraichir_etudes_du_devis(devis)
+        devis.refresh_from_db()
+        empreinte = devis.etude_params['etude_ci']['empreinte']
+        self.assertIn('puissance_kwc', etude_ci.cles_hors_empreinte())
+        self.assertIn('production_figee_rasante', etude_ci.cles_hors_empreinte())
+        self.assertNotIn(etude_ci.CLE_TAILLE_CREATION, etude_ci.cles_hors_empreinte())
+        ecrire(devis, proprietaire=CALEPINAGE, puissance_kwc=49.7)
+        devis.refresh_from_db()
+        self.assertEqual(etude_ci.rafraichir_etude_ci_devis(devis, force=True)['empreinte'],
+                         empreinte)
+        ecrire(devis, proprietaire=ECRAN, consommation={'kwh_mensuels': [25000] * 12})
+        devis.refresh_from_db()
+        self.assertNotEqual(etude_ci.rafraichir_etude_ci_devis(devis)['empreinte'], empreinte)
+
     def test_cad177_production_figee_garde_ses_hypotheses_et_alertes(self):
         # CAD177 (CIQ334/CIQ346, nocturne 37803204581) — un recalcul qui
         # REPREND `production_figee` (empreinte changée, ex. provenance
@@ -273,15 +293,23 @@ class CreationAtomiqueCompleteTests(_Base):
         devis = Devis.objects.get(pk=rep.data['id'])
         self.assertIsNotNone(devis.etude_params.get('etude_ci', {}).get('bilan'))
         self.assertIn('production_figee', devis.etude_params)
+        # Le cache ``puissance_kwc`` est posé par ``finaliser_caches`` APRÈS
+        # l'étude : hachée au ré-enregistrement seulement, elle déplaçait
+        # l'empreinte (rejeu AGNR42 P5.1, devis 2006 : 70cc… → 0ea4…).
+        self.assertIn('puissance_kwc', devis.etude_params)
+        empreinte = devis.etude_params['etude_ci']['empreinte']
         self._patch_etude(devis)
         devis.refresh_from_db()
         apres_creation = devis.etude_params
         self.assertIn('etude_ci', apres_creation)
         self.assertIn('production_figee', apres_creation)
+        self.assertEqual(apres_creation['etude_ci']['empreinte'], empreinte)
 
         rep = self.api.post(f'/api/django/ventes/devis/{devis.id}/replace-lines/', {
             'lignes': self._lignes(), 'etude_params': self.CHOIX}, format='json')
         self.assertEqual(rep.status_code, 200, rep.content)
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['etude_ci']['empreinte'], empreinte)
         self._patch_etude(devis)
         devis.refresh_from_db()
         self.assertEqual(devis.etude_params, apres_creation)
