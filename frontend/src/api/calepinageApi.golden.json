@@ -741,6 +741,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.proposerConsommation": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/consommation/proposer/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.raccordement": [
     {
       "config": null,
