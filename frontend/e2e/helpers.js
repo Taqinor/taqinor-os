@@ -636,6 +636,8 @@ export async function creerDevisCommercialDepuisLead(page, leadId) {
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
   await page.getByTestId('btn-auto-remplir').click()
   await auto
+  // Le POST etude-ci/preview de l'aperçu en direct peut répondre AVANT celui d'Auto-remplir : attendre la fin d'Auto-remplir (lignes posées).
+  await expect(page.getByTestId('btn-auto-remplir')).not.toHaveAttribute('aria-busy', 'true', { timeout: 180_000 })
   await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
@@ -795,6 +797,8 @@ export async function creerDevisIndustrielDepuisLead(page, leadId, { tension = '
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
   await page.getByTestId('btn-auto-remplir').click()
   await auto
+  // Le POST etude-ci/preview de l'aperçu en direct peut répondre AVANT celui d'Auto-remplir : attendre la fin d'Auto-remplir (lignes posées).
+  await expect(page.getByTestId('btn-auto-remplir')).not.toHaveAttribute('aria-busy', 'true', { timeout: 180_000 })
   await retirerLignesPrixARenseigner(page)
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
