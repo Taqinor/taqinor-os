@@ -205,3 +205,23 @@ site, El Jadida 17,04 kWc (réf. 468, `apps/web/src/lib/caseStudies.ts`). Renomm
 `residentiel-17-couchant.jpg` / `residentiel-17-reflet.jpg` corrige aussi le choix « puissance
 la plus proche » des couvertures résidentielles. L'édition accepte `_photo_realisation`
 (fragment de nom) pour l'étude.
+
+## 30/10 — variante « sans limite de toit, avec batterie » (moteur de l'ERP)
+
+Fondateur : « make the version with battery (if you take out the size of the roof it will
+increase the number of panels and offer the battery as well) ». Construite avec LE moteur de
+l'ERP (`creation_auto.build_devis_auto` → `_build_devis_auto_ci`, composition
+`moteur_ci`), jamais à la main, sur une base locale isolée `erp_khatam` (clone de la base
+locale) où le contexte de prod a été chargé en lecture seule sous des pk décalés de 100 000 :
+société 1 + profil, 224 produits + 93 fiches techniques, lead 1637, client 189, tiers.
+Témoin (surface 200 m² gardée) : 49 panneaux, 35,035 kWc, 21 lignes, offre « sans » seule —
+identique au devis 461 de prod (reproduction vérifiée). Sans surface déclarée
+(`surface_toiture_m2 = None` sur la copie locale du lead, `batterie_souhaitee = les_deux`) :
+**77 panneaux, 55,055 kWc** (arrêt « horizon marginal » de la règle des 10 ans), **deux
+options** — sans batterie 294 100 MAD TTC (économie 73 842 MAD HT/an, retour 3,4 ans, 41 %
+couverts) ; avec batterie 144 panneaux / 102,96 kWc, 6 × Deye 15 kW hybrides, 15 × Dyness
+PowerBrick 16 kWh, 1 195 400 MAD TTC (économie 177 180 MAD HT/an, 98 % couverts) — c'est la
+règle « panneaux ajoutés jusqu'à batterie pleine » (26/10) appliquée au talon de nuit d'une
+boulangerie ; alerte interne du moteur : 4 batteries écartées (fiche sans capacité utile ni
+tension nominale). Les deux rendus (moteur actuel et Khatam) tiennent en 3 pages ; le logo et le
+QR viennent de la charge utile de prod (pièces jointes hors du contexte local).
