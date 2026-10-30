@@ -679,6 +679,7 @@ def contexte_conception_devis(devis, company):
         contexte['cible_avec'] = cible_avec
     return contexte
 
+
 def logo_entete_html(uri):
     """ACHT112 — le logo société en en-tête d'un document hors devis (rapport
     énergie du chantier) : MÊME module image que les devis (rognage, détourage,
