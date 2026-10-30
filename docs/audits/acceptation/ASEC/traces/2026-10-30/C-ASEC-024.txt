@@ -1,0 +1,6 @@
+﻿== C-ASEC-024 (sha 5908d43bb)
+attendu : refusé / inchangé : 40 POST anonymes de la bannière de connexion depuis la même IP -> premier 200, puis 429 ; au plus 1 AuditLog SECURITY_ALERT agrégée pour la rafale ; une autre société (B) ne reçoit aucune alerte ; les 12 vues publiques « sécurité » sont vues par le scanner et throttlées (exemptions = sondes de santé seulement)
+observé : {"ip": "198.51.100.248", "codes_premier": 200, "nb_200": 30, "nb_429": 10, "premier_429_a": 31, "alertes_ajoutees_total": 1, "alertes_a": 1, "alertes_b": 0, "alerte_par_societe": true, "scanner": {"vues_securite_invisibles": [], "vues_securite_non_throttlees": [], "publiques_sans_throttle": ["core/views.py::health_live", "core/views.py::health_ready", "notifications/views.py::vapid_public_key"]}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0
+

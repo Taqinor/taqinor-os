@@ -1,0 +1,5 @@
+﻿== C-ASEC-014 (sha 5908d43bb)
+attendu : refusé / inchangé : l'utilisateur dont l'ACL du document est en lecture seule -> 403 sur purger, restaurer-corbeille, création de lien, fusionner ; opération par lot sans effet ; document toujours en corbeille / non purgé / non lié ; le rédacteur ACL -> 201/200/204
+observé : {"lecteur_acl_lecture": {"purger": [403, "toujours_en_corbeille=True"], "restaurer_corbeille": [403, "toujours_en_corbeille=True"], "creer_lien": [403, "lien_cree=False"], "fusionner": [403, "versions=0"], "operations_lot": [200, "resultats=[]", "erreurs=1", "supprime_le=None"]}, "redacteur_acl_ecriture": {"lien": 201, "restaurer": 200, "purger": 204, "document_purge": true}, "refus_ok": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0

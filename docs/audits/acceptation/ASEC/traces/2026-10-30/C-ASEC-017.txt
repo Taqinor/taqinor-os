@@ -1,0 +1,5 @@
+﻿== C-ASEC-017 (sha 5908d43bb)
+attendu : refusé / inchangé : Viewer et compte portail client POST automation-draft -> 403, aucune AutomationRule créée ; vues agent actions/logs fermées au portail (403) ; administrateur -> 201 (règle de sa société, enabled=False)
+observé : {"viewer": {"post": 403, "regles_avant_apres": [0, 0]}, "portail": {"post": 403, "regles_avant_apres": [0, 0]}, "portail_autres_vues_agent": [403, 403, 403], "admin": {"post": 201, "societe_ok": true, "enabled": false}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0

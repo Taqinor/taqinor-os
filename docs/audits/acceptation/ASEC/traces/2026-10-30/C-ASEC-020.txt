@@ -1,0 +1,5 @@
+﻿== C-ASEC-020 (sha 5908d43bb)
+attendu : refusé / inchangé : après connexion réelle (/api/django/token/) et un refresh par la route cookie /api/django/auth/token/refresh/ (200, NOUVEAU refresh, ancien en liste noire), l'ANCIEN refresh rejoué -> 401 par la route cookie et par la route corps /api/django/token/refresh/ ; la route corps sur une session de 2 h d'une société session_absolute_hours=1 -> 401 (ou 404 si retirée) et UserSession révoquée ; légitime : le NOUVEAU refresh continue de servir (200)
+observé : {"throttles": "LoginRateThrottle et CookieRefreshThrottle neutralisés par mock dans la sonde", "rotation": {"login": 200, "refresh_cookie": 200, "nouveau_different": true, "ancien_en_liste_noire": true, "rejeu_ancien_cookie": 401, "rejeu_ancien_corps": 401, "cookies_poses_au_rejeu": false, "nouveau_continue": 200}, "duree_absolue_route_corps": {"login": 200, "status": 401, "session_revoquee": true, "jeton_rendu": false}, "verdicts": {"rotation_et_rejeu": true, "duree_absolue_corps": true}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0

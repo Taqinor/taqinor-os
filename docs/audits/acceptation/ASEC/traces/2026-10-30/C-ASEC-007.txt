@@ -1,0 +1,5 @@
+﻿== C-ASEC-007 (sha 5908d43bb)
+attendu : STATIQUE : les gardes de dépôt voient les FK écrites — check_fk_scoping.py vert et --list voit FactureWriteSerializer (sérialiseurs exclude=) ; balai multi-société doté d'une étape écriture
+observé : STATIQUE — garde de classe, rien à rejouer en HTTP. Balai tests/test_tenant_sweep.py : étape écriture `test_ecriture_fk_voisine_refusee` présente=True. Gardes hôte (check_fk_scoping.py, --list, check_machine_etats_statut_readonly.py) : voir la trace C-ASEC-007-gardes.txt.
+verdict : STATIQUE
+base inchangée : oui (avant 26501, après 26501) ; mails 0 ; tâches Celery bloquées 0
