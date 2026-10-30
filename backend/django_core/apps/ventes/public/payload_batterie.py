@@ -333,7 +333,7 @@ def _ancrer_paliers_sur_le_devis(paliers, bruts, devis, ttc_offert):
         if brut is None:
             continue
         cout = (total if i == offerts[0] else float(  # dirham, moitié-vers-le-haut (core.money)
-            Decimal(str(total + facteur * (brut - brut_offert))).quantize(Decimal('1'), ROUND_HALF_UP)))
+            Decimal(str(total + facteur * (brut - brut_offert))).quantize(Decimal('1'), rounding=ROUND_HALF_UP)))
         if cout <= 0:
             continue
         palier['cout_ttc'] = cout
