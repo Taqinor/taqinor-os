@@ -624,19 +624,20 @@ etape('P5.5', ['ACAL311'], async ({ page }) => {
   if (!cfg.available) nonJouable('aucune clé carte servie : le constructeur 3D ne boote pas')
   // Prérequis du barème société (parametres/tariff.py) : sans charges fixes d'abonnement
   // DÉCLARÉES, le serveur refuse la conversion MAD → kWh (`consumption: null` + avertissement,
-  // constaté au rejeu du 30/10 : réglage vide sur la pile). Réglage société relu AVANT,
-  // déclaré au montant relevé sur facture réelle (39,94 MAD TTC/mois) s'il est vide, RESTAURÉ.
-  const tarifAvant = await lireJson(await page.request.get(`${API_DJANGO}/parametres/tarification/`, T), 'tarification')
-  const redevanceAvant = tarifAvant.redevance_compteur_mad_mois ?? null
-  const poserRedevance = async (v) => {
-    const r = await page.request.patch(`${API_DJANGO}/parametres/tarification/update/`, { ...T, data: { redevance_compteur_mad_mois: v } })
-    expect(r.status(), `redevance_compteur_mad_mois ← ${v} : ${(await r.text()).slice(0, 300)}`).toBe(200)
-  }
-  if (redevanceAvant == null) await poserRedevance('39.94')
+  // constaté au rejeu du 30/10 : réglage vide sur la pile). AUCUNE route ne l'écrit
+  // (`TariffSettingsSerializer` ne l'expose pas) : `manage.py shell`, comme les autres écritures
+  // sans route. Relu AVANT, posé au montant relevé sur facture réelle (39,94 MAD TTC/mois)
+  // s'il est vide, RESTAURÉ à vide en `finally`.
+  const reglage = (corps) => shell('from django.contrib.auth import get_user_model; '
+    + 'from apps.parametres.models_tariff import TariffSettings; '
+    + "t = TariffSettings.get(company=get_user_model().objects.get(username='demo_admin').company); "
+    + corps)
+  const vide = /REDEVANCE=None/.test(reglage("print('REDEVANCE=%s' % t.redevance_compteur_mad_mois)"))
+  if (vide) reglage("from decimal import Decimal; t.redevance_compteur_mad_mois = Decimal('39.94'); t.save()")
   try {
     await parcoursConsommation(page)
   } finally {
-    if (redevanceAvant == null) await poserRedevance(null)
+    if (vide) reglage('t.redevance_compteur_mad_mois = None; t.save()')
   }
 })
 
