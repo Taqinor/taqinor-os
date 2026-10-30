@@ -16,7 +16,6 @@ test.describe.configure({ timeout: 900_000 })
 
 const PW = 'Acc239-essai-local-2026!'
 const T = { timeout: 120_000 }
-const nonJouable = (raison) => { throw new Error(`NON JOUABLE : ${raison}`) }
 const ESPACES = new RegExp(String.raw`[\s` + String.fromCharCode(160, 0x202f) + ']+', 'g')
 const plat = (s) => String(s).replace(ESPACES, '')
 
