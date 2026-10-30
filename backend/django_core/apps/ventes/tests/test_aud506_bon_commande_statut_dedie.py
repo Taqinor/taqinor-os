@@ -180,3 +180,32 @@ class ConvertirEnBcTests(TestCase):
         self.assertEqual(BonCommande.objects.filter(devis=self.devis).count(),
                          1)
         self.assertEqual(recus, [bc.pk])
+
+    def test_put_patch_vers_un_devis_deja_converti_409(self):
+        """api-fuzz #1176 — PUT/PATCH conforme re-pointant un AUTRE BC sur un
+        devis qui a déjà le sien : refus d'ÉTAT 409 (message de la porte
+        unique AMET5), plus le 400 du validateur d'unicité ; le BC garde son
+        devis. Re-poser son PROPRE devis reste un 200."""
+        from apps.ventes.domain import facturation_ops
+        BonCommande.objects.create(
+            company=self.company, reference='BC-AMET6-0001',
+            client=self.client_obj, devis=self.devis,
+            statut=BonCommande.Statut.EN_ATTENTE)
+        autre = BonCommande.objects.create(
+            company=self.company, reference='BC-AMET6-0002',
+            client=self.client_obj, statut=BonCommande.Statut.EN_ATTENTE)
+        url = f'/api/django/ventes/bons-commande/{autre.id}/'
+        corps = {'client': self.client_obj.id, 'devis': self.devis.id,
+                 'note': '', 'signe_au_domicile': False}
+        for methode in ('patch', 'put'):
+            with self.subTest(methode=methode):
+                r = getattr(self.api, methode)(url, corps, format='json')
+                self.assertEqual(r.status_code, 409, r.data)
+                self.assertIn(facturation_ops.MESSAGE_BC_EXISTANT, str(r.data))
+        autre.refresh_from_db()
+        self.assertIsNone(autre.devis_id)
+        bc = BonCommande.objects.get(devis=self.devis)
+        r = self.api.patch(f'/api/django/ventes/bons-commande/{bc.id}/',
+                           {'devis': self.devis.id, 'note': 'ok'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
