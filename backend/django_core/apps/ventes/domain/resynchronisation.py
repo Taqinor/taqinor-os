@@ -31,6 +31,11 @@ import logging
 logger = logging.getLogger("apps.ventes.services")
 
 
+def _kwc_des_panneaux(nb_panneaux, watt):
+    """kWc = panneaux x Wc / 1000, 3 decimales : une PUISSANCE, jamais un montant (ENF15)."""
+    return round(nb_panneaux * watt / 1000.0, 3)
+
+
 # ── PV18 — RESYNCHRONISER un devis existant sur un nouveau calepinage ───────
 #
 # `build_devis_from_layout` CRÉE un devis. Ici on en MET À JOUR un qui existe
@@ -441,7 +446,7 @@ def reconcilier(devis, intention):
             return {
                 'inchange': True,
                 'panneaux': total_panneaux,
-                'kwc': round(total_panneaux * watt / 1000.0, 3),
+                'kwc': _kwc_des_panneaux(total_panneaux, watt),
                 # L-2OPT — un devis à deux options le DIT, même quand il n'y a
                 # rien eu à écrire : l'écran ne doit jamais lire « réseau » sur
                 # un document qui propose les deux.
@@ -661,7 +666,7 @@ def reconcilier(devis, intention):
         result = dict(layout.get('result') or {})
         kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
         if not kwc and total_panneaux:
-            kwc = round(total_panneaux * watt / 1000.0, 3)
+            kwc = _kwc_des_panneaux(total_panneaux, watt)
 
         # ── PVCBL — LES CÂBLES SUIVENT LA TAILLE DU CALEPINAGE (F8, fondateur
         # 18/08/2026) ──
