@@ -21,6 +21,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
+from apps.notifications.models import Holiday
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -93,3 +94,44 @@ class PatchAtomiqueTests(TestCase):
         self.assertEqual(self.lead.relance_date, relance_avant)
         self.assertEqual(self._etat_touche(), touche_avant)
         self.assertEqual(self._nb_chatter(), chatter_avant)
+
+
+class ReportJourNonOuvreTests(TestCase):
+    """ERR-ALEA-RELANCE-DIMANCHE (ALEA26, P2.2) — une date de relance saisie un
+    jour NON ouvré (dimanche, férié de la société) glisse au MÊME jour ouvré
+    que sa touche : lead et touche ne divergent jamais (vu en direct : lead
+    15/11 dimanche, touche 16/11)."""
+
+    setUp = PatchAtomiqueTests.setUp
+
+    def _patcher(self, jour):
+        resp = self.api.patch(self.url, {'relance_date': jour.isoformat()},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', None))
+        self.lead.refresh_from_db()
+        touche = RelanceEtape.objects.get(pk=self.etape.pk)
+        return resp, touche
+
+    def test_dimanche_lead_et_touche_au_lundi(self):
+        dimanche = datetime.date(2026, 10, 11)
+        self.assertEqual(dimanche.weekday(), 6)
+        resp, touche = self._patcher(dimanche)
+        lundi = datetime.date(2026, 10, 12)
+        self.assertEqual(touche.due_date, lundi)
+        self.assertEqual(self.lead.relance_date, touche.due_date)
+        self.assertEqual(resp.data['relance_date'], lundi.isoformat())
+
+    def test_jour_ouvre_inchange(self):
+        mardi = datetime.date(2026, 10, 13)
+        _resp, touche = self._patcher(mardi)
+        self.assertEqual(touche.due_date, mardi)
+        self.assertEqual(self.lead.relance_date, mardi)
+
+    def test_ferie_societe_comme_dimanche(self):
+        jeudi = datetime.date(2026, 10, 15)
+        Holiday.objects.create(company=self.company, nom='Férié société',
+                               date=jeudi)
+        _resp, touche = self._patcher(jeudi)
+        vendredi = datetime.date(2026, 10, 16)
+        self.assertEqual(touche.due_date, vendredi)
+        self.assertEqual(self.lead.relance_date, touche.due_date)
