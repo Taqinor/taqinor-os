@@ -152,3 +152,15 @@ class TestAppliquerPlanAPIScoping(TestCase):
             f'/api/django/crm/leads/{self.lead.id}/appliquer-plan/',
             {'plan_id': plan.id}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+    def test_fuzz_1176_plan_id_ou_corps_mal_formes_400(self):
+        """api-fuzz PR #1176 — ``{"plan_id": [null, null]}`` (500 :
+        « Field 'id' expected a number ») et un corps tableau : 400 nommé."""
+        url = f'/api/django/crm/leads/{self.lead.id}/appliquer-plan/'
+        resp = self.api.post(
+            url + '?ordering=&page=1&page_size=0&search=',
+            {'plan_id': [None, None]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('plan_id', resp.data)
+        resp = self.api.post(url, [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)

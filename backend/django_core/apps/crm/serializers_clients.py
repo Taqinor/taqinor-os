@@ -602,16 +602,15 @@ class ObjectifCommercialSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
 
     def validate(self, attrs):
         pt = attrs.get('period_type', getattr(self.instance, 'period_type', None))
-        if pt == 'month' and not attrs.get(
-                'period_month', getattr(self.instance, 'period_month', None)):
-            raise serializers.ValidationError(
-                {'period_month': 'Requis pour un objectif mensuel.'}
-            )
-        if pt == 'quarter' and not attrs.get(
-                'period_quarter', getattr(self.instance, 'period_quarter', None)):
-            raise serializers.ValidationError(
-                {'period_quarter': 'Requis pour un objectif trimestriel.'}
-            )
+        for type_periode, champ, message in (
+                ('month', 'period_month', 'Requis pour un objectif mensuel.'),
+                ('quarter', 'period_quarter', 'Requis pour un objectif trimestriel.')):
+            if pt == type_periode and not attrs.get(champ, getattr(self.instance, champ, None)):
+                # api-fuzz PR #1176 — PATCH : quand le type OU sa période vient
+                # de la LIGNE (absent du corps), le refus dépend de l'état de
+                # l'objectif, pas du corps (publié par OBJECTIF_PERIODE_PARTIEL) : 409.
+                du_corps = not self.partial or ('period_type' in attrs and champ in attrs)
+                raise (serializers.ValidationError if du_corps else ConflitEtat)({champ: [message]})
         month = attrs.get('period_month', getattr(self.instance, 'period_month', None))
         if month is not None and not (1 <= month <= 12):
             raise serializers.ValidationError(

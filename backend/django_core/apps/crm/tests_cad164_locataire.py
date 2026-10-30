@@ -159,3 +159,17 @@ class LocataireApiTests(TestCase):
                          avant)
         self.assertFalse(LeadActivity.objects.filter(
             body__startswith=cadence_messages.PREFIXE_LIEN_LOCATAIRE).exists())
+
+    def test_fuzz_1176_coordonnees_trop_longues_400_nomme(self):
+        """api-fuzz PR #1176 — un prénom de 256 caractères (colonne 255)
+        faisait lever Postgres (DataError, 500) : 400 nommant le champ."""
+        avant = Lead.objects.filter(company=self.company).count()
+        resp = self.api.post(self._url(), {'proprietaire': {
+            'nom': '0', 'prenom': '0' * 256, 'telephone': '3'}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('prenom', resp.data['proprietaire'])
+        resp = self.api.post(self._url(), {'proprietaire': {
+            'nom': 'Tazi', 'telephone': '06' * 26}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('telephone', resp.data['proprietaire'])
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), avant)

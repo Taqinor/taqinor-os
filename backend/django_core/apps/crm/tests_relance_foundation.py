@@ -460,6 +460,16 @@ class TestRelanceEtapeAPI(TestCase):
             f'/api/django/crm/leads/{other_lead.id}/relance/initialiser/')
         self.assertEqual(resp.status_code, 404)
 
+    def test_fuzz_1176_corps_tableau_400(self):
+        """api-fuzz PR #1176 — un corps tableau ``[null, null]`` levait
+        ``'list' object has no attribute 'get'`` (500) : 400, rien d'écrit."""
+        lead2 = Lead.objects.create(company=self.company, nom='Lead fuzz', owner=self.owner)
+        resp = self.api_resp.post(
+            f'/api/django/crm/leads/{lead2.id}/relance/initialiser/?ordering=&search=',
+            [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertFalse(RelanceEtape.objects.filter(lead=lead2).exists())
+
 
 @frozen(DEPART_FIXE)
 class TestMaterialiserToucheSuivante(TestCase):

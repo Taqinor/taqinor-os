@@ -132,6 +132,20 @@ class ResumeAssocieTests(TestCase):
             {'devis_id': self.devis.pk, 'accord_client': True}, format='json')
         self.assertEqual(resp.status_code, 403)
 
+    def test_fuzz_1176_corps_tableau_ou_langue_non_texte_400(self):
+        """api-fuzz PR #1176 — corps ``[null, null]`` (``.get`` levait : 500)
+        puis ``langue`` non texte (``.strip()`` levait) : 400, rien journalisé."""
+        self._envoyer()
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/resume-associe/',
+            [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self._post(langue=[None, None])
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('langue', resp.data)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, body__startswith='Résumé transmis').exists())
+
     def test_textes_sans_chiffre_ni_prenom_code_en_dur(self):
         for texte in (MESSAGE_TEMPLATE_DEFAULTS['resume_associe'],
                       MESSAGE_TEMPLATE_DEFAULTS_DARIJA['resume_associe']):

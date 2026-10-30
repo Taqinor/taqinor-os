@@ -1716,6 +1716,20 @@ def refus_proprietaire(donnees):
     return erreurs or None
 
 
+def refus_longueur_proprietaire(donnees):
+    """api-fuzz PR #1176 — ``{champ: [message]}`` si une coordonnée (déjà
+    vérifiée TEXTE par ``refus_proprietaire``) dépasse sa colonne de
+    ``crm.Lead`` (nom/prénom 255, téléphone/WhatsApp 50 — les bornes publiées
+    par ``schema_docs.LOCATAIRE_SUITE``), sinon ``None``. Avant : Postgres
+    refusait l'écriture (DataError, 500)."""
+    erreurs = {}
+    for champ in ('nom', 'prenom', 'telephone', 'whatsapp'):
+        limite = Lead._meta.get_field(champ).max_length
+        if len(donnees.get(champ) or '') > limite:
+            erreurs[champ] = [f'{limite} caractères au maximum.']
+    return erreurs or None
+
+
 def _marquer_locataire(lead, user):
     """La réponse « locataire » est posée sur la fiche (journalisée) si elle
     ne l'était pas déjà."""
