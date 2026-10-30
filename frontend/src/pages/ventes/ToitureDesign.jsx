@@ -683,6 +683,14 @@ function AtelierToiture({
       setGenError('Outil non prêt — ajustez la conception puis réessayez.')
       return false
     }
+    // ACAL311 (rejeu P5.5, vague 10) — `onApiReady` précède l'hydratation (faite au `load` de
+    // la carte) : sérialiser AVANT réécrivait le document sans ses blocs relus (la
+    // consommation au barème société disparaissait après F5 + Enregistrer). Rien n'est écrit
+    // tant que la scène n'est pas hydratée.
+    if (!sceneHydratee) {
+      setGenError('Conception en cours de chargement : rien n’est enregistré, réessayez dans un instant.')
+      return false
+    }
     if (catalogueIndisponible) {
       setGenError('Catalogue des modules indisponible : rien n’est enregistré, rechargez la page.')
       return false
@@ -1477,7 +1485,7 @@ function AtelierToiture({
             lecture seule, comme dans les deux autres modes. */}
         {estCalepinage && !lectureSeule && (
         <div className="cine-card mt-6 p-6" data-testid="cal-enregistrer-calepinage">
-          <button type="button" onClick={enregistrerCalepinage} disabled={sending}
+          <button type="button" onClick={enregistrerCalepinage} disabled={sending || !sceneHydratee}
             className="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
             style={{ background: 'var(--rp-ok-600)' }}>
             {sending && (

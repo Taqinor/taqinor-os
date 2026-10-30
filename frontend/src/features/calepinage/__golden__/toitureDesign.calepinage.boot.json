@@ -67,6 +67,14 @@
   ],
   "api_builder_appels": [
     {
+      "appel": "serializeLayout",
+      "args": []
+    },
+    {
+      "appel": "serializeLayout",
+      "args": []
+    },
+    {
       "appel": "setReferenceContourVisible",
       "args": [
         true

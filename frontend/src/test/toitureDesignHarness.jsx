@@ -67,10 +67,12 @@ export function apiBuilder(extra = {}) {
   }
 }
 
-/** Le builder simulé appelle `onApiReady(apiBuilder(extra))` au boot. */
+/** Le builder simulé appelle `onApiReady(apiBuilder(extra))` au boot, puis — comme le
+ *  constructeur réel (ACAL68) — `onHydrationTerminee` : sans elle, rien ne s'enregistre. */
 export function brancherBoot(extra = {}) {
   initRoofToolPro8.mockImplementation((options) => {
     options?.onApiReady?.(apiBuilder(extra))
+    options?.onHydrationTerminee?.()
   })
 }
 

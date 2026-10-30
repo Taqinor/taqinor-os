@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor } from '@testing-library/react'
+import { act, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -287,5 +287,27 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
     rendreLead()
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(typeof initRoofToolPro8.mock.calls[0][0].productionAtelier).toBe('function')
+  })
+
+  // Rejeu P5.5 (vague 10) — F5 puis « Enregistrer » AVANT l'hydratation (faite au `load` de
+  // la carte, APRÈS `onApiReady`) réécrivait le document sans sa consommation relue.
+  it('rien ne s’enregistre entre `onApiReady` et `onHydrationTerminee` (le document relu survit)', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(reponseContrat('calepinage', 'calepinage_design_context'))
+    const serializeLayout = vi.fn(() => ({ version: 2, zones: [] })) // scène NON hydratée : sans `consumption`
+    let options = null
+    initRoofToolPro8.mockImplementation((o) => {
+      options = o
+      o.onApiReady?.({ serializeLayout, snapshot: vi.fn(() => null) }) // la carte n'a pas encore fini de charger
+    })
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const bouton = await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
+    expect(bouton).toBeDisabled()
+    await userEvent.click(bouton)
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).not.toHaveBeenCalled()
+    expect(serializeLayout).not.toHaveBeenCalled()
+
+    await act(async () => { options.onHydrationTerminee?.() })
+    await waitFor(() => expect(screen.getByRole('button', { name: /Enregistrer le calepinage/ })).toBeEnabled())
   })
 })
