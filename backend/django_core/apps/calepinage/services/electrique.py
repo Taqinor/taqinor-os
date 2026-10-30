@@ -39,6 +39,7 @@ sur ce repli ne l'est pas. ``TemperaturesSite.mention`` est ce qui interdit de
 présenter -5 °C comme une donnée du site.
 """
 from __future__ import annotations
+import logging
 
 from dataclasses import dataclass
 from typing import Optional
@@ -231,6 +232,7 @@ def _depuis_fournisseur(pin, fournisseur):
     try:
         reponse = fournisseur(lat, lon)
     except Exception:  # cf. docstring
+        logging.getLogger(__name__).warning("electrique._depuis_fournisseur : exception ignorée", exc_info=True)
         return None
     if not isinstance(reponse, dict):
         return None
@@ -551,6 +553,7 @@ def _nom_auteur(user):
         try:
             nom = (obtenir() or '').strip()
         except Exception:  # un utilisateur exotique ne casse
+            logging.getLogger(__name__).warning("electrique._nom_auteur : exception ignorée", exc_info=True)
             nom = ''        # pas un enregistrement ; le repli suit.
         if nom:
             return nom
@@ -3108,6 +3111,7 @@ def parametres_societe(calepinage):
 
         return parametres_de_societe(company) or {}
     except Exception:  # un réglage illisible ne casse pas un
+        logging.getLogger(__name__).warning("electrique.parametres_societe : exception ignorée", exc_info=True)
         # calcul de tension ; il le laisse simplement sans borne société.
         return {}
 

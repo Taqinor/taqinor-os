@@ -4,14 +4,7 @@
 # Un site liste ici est CONSTATE, pas approuve : ajouter un log nomme l'operation (ou resserrer
 # l'exception) puis retirer sa ligne. REGLE ABSOLUE : cette liste ne peut que DECROITRE ;
 # une cle morte fait echouer la garde.
-backend/django_core/apps/calepinage/services/chaine_pertes.py::_part_saisonniere_minutes
-backend/django_core/apps/calepinage/services/electrique.py::_depuis_fournisseur
-backend/django_core/apps/calepinage/services/electrique.py::_nom_auteur
-backend/django_core/apps/calepinage/services/electrique.py::parametres_societe
 backend/django_core/apps/crm/views.py::LeadViewSet._a_un_changement
-backend/django_core/apps/ged/views.py::DocumentVersionViewSet.pages
-backend/django_core/apps/ged/views.py::DocumentViewSet.deposer_lot_scans_separe_action
-backend/django_core/apps/ged/views.py::LotEnvoiViewSet.envoi_masse
 backend/django_core/apps/installations/selectors.py::_bin_cible_regle
 backend/django_core/apps/installations/selectors.py::_devis_totaux_programme
 backend/django_core/apps/installations/selectors.py::_factures_revenu_programme
@@ -37,11 +30,6 @@ backend/django_core/apps/sav/views.py::EquipementViewSet.etiquettes
 backend/django_core/apps/sav/views.py::TicketViewSet.creer_devis
 backend/django_core/apps/sav/views.py::WarrantyClaimViewSet._resolve_fournisseur
 backend/django_core/apps/sav/views.py::_qr_data_uri
-backend/django_core/core/models.py::MaintenanceMode.is_active
-backend/django_core/core/models.py::MaintenanceMode.set_active
-backend/django_core/core/models.py::MatriceApprobation.couvre
-backend/django_core/core/views.py::BulkEditViewSet.get_permissions
-backend/django_core/core/views.py::metrics_view
 backend/django_core/apps/ventes/public_views.py::proposal_pdf
 backend/django_core/apps/ventes/public_views.py::proposal_taille_detail
 backend/django_core/apps/ventes/public_views.py::public_bcf_document

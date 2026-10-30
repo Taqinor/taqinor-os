@@ -5,6 +5,7 @@ TOUJOURS posée côté serveur (TenantMixin) — jamais lue du corps de requête
 Les dossiers (Folder) ont un chemin matérialisé recalculé côté serveur, et les
 versions de document sont numérotées + déduppées via `services`.
 """
+import logging
 from collections.abc import Mapping
 
 from django.db import models
@@ -999,6 +1000,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         try:
             images = [Image.open(f) for f in files]
         except Exception:
+            logging.getLogger(__name__).warning("ged.deposer_lot_scans : exception ignorée", exc_info=True)
             return Response(
                 {'files': 'Un des fichiers fournis n\'est pas une image valide.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -2355,6 +2357,7 @@ class DocumentVersionViewSet(CorpsObjetMixin, ParsersParActionMixin, TenantMixin
             import fitz  # PyMuPDF
             doc = fitz.open(stream=data, filetype='pdf')
         except Exception:
+            logging.getLogger(__name__).warning("ged.pages : exception ignorée", exc_info=True)
             return Response(
                 {'detail': "Ce fichier n'est pas un PDF lisible."},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -4470,6 +4473,7 @@ class LotEnvoiViewSet(CorpsObjetMixin, TenantMixin,
             try:
                 csv_text = csv_file.read().decode('utf-8-sig')
             except Exception:
+                logging.getLogger(__name__).warning("ged.envoi_masse : exception ignorée", exc_info=True)
                 return Response(
                     {'csv': 'CSV illisible (encodage attendu : UTF-8).'},
                     status=status.HTTP_400_BAD_REQUEST)
