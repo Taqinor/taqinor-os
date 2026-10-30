@@ -536,7 +536,7 @@ export default function BlocEtudeReseau({
                 value={p.tailleExplicite}
                 onChange={(v) => setChamp('tailleExplicite', v)} />
         <p className="text-xs text-muted-foreground" data-testid="ci-taille-aide">
-          vide = taille calculée par la règle des 10 ans
+          vide = taille calculée par la règle de l'horizon marginal
         </p>
       </div>
     </div>

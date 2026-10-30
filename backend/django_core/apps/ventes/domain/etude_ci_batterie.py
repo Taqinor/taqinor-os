@@ -370,7 +370,11 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
             ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True),
         composer=lambda kwc, onduleurs: composer(kwc, onduleurs, bat.get('elements')),
         batteries=batteries, hybrides=bat['hybrides'], kwc_max=(borne_toit or {}).get('kwc'),
-        ps_kva=ps_kva, production_de=production_de, **noyau)
+        ps_kva=ps_kva, production_de=production_de,
+        # Fondateur 30/10/2026 — l'option « sans » est le point n = 0 de la
+        # règle marginale des 7 ans sur la banque (coût de vente HT, économie).
+        cout_depart=evaluation.get('cout'), economie_depart=evaluation.get('economie'),
+        **noyau)
     if resultat.get('evaluation'):
         resultat['evaluation']['inclinaison_retenue_deg'] = inclinaison_pose(
             resultat['evaluation']['kwc'], bornes_pub)

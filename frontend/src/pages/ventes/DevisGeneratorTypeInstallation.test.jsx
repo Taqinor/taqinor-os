@@ -80,7 +80,7 @@ describe('QJR641 — plus de « Type d’installation » : le Marché pilote la 
       expect(document.getElementById('gen-ci-taille')).not.toBeNull()
       expect(screen.getByLabelText(/Taille explicite \(kWc\)/)).toBe(document.getElementById('gen-ci-taille'))
       expect(screen.getByTestId('ci-taille-aide'))
-        .toHaveTextContent('vide = taille calculée par la règle des 10 ans')
+        .toHaveTextContent("vide = taille calculée par la règle de l'horizon marginal")
     }
   })
 })
