@@ -75,6 +75,28 @@ class Agr311ClotureTests(SimpleTestCase):
         for mot in ('31-08', 'rétractation', 'Rétractation'):
             self.assertNotIn(mot, html)
 
+    def test_bande_legale_du_profil_societe(self):
+        """ERR-APDF-AGRICOLE-BANDE-LEGALE — la clôture imprime LA bande légale
+        partagée (``premium_base.bande_legale``) : forme, capital, RC, ICE du
+        profil, en français comme en arabe."""
+        from apps.ventes.quote_engine.premium_base import bande_legale
+        from apps.ventes.quote_engine.residential import theme
+        for langue in ('fr', 'ar', 'en'):
+            with self.subTest(langue=langue):
+                d = _data()
+                d['langue_sortie'] = langue
+                d['entreprise'] = {
+                    'nom': 'Soleil Agri', 'forme_juridique': 'SARL',
+                    'capital_social': '250 000,00 MAD', 'rc': 'RC778899',
+                    'ice': '001122334455667'}
+                aug = renderer._augment(d)
+                p3 = _p3(d)
+                for v in ('SARL', '250 000,00 MAD', 'RC778899',
+                          '001122334455667'):
+                    self.assertIn(v, p3)
+                self.assertIn(bande_legale(aug, theme.company_identity(aug)),
+                              p3)
+
     def test_aucun_statut_ni_none(self):
         html = pages.build_html(renderer._augment(_data(nb_options=8)))
         self.assertNotIn('None', html)
