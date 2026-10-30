@@ -1,0 +1,84 @@
+{
+  "sha": "38b68d093",
+  "date": "2026-10-30",
+  "groupe": "APDF",
+  "verdict": "FAIL",
+  "couvre": [
+    "APDF99",
+    "APDF46",
+    "APDF49",
+    "APDF31"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "APDF99",
+        "APDF46",
+        "APDF49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APDF-P1.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P4",
+      "taches": [
+        "APDF99",
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APDF-P4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P8",
+      "taches": [
+        "APDF99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-APDF-P8.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "notes": ""
+    }
+  ]
+}

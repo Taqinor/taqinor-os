@@ -708,9 +708,11 @@ REFUS = {
         # sur services.fusionner_kits (batterie/hybride=avec, reseau=sans),
         # pas un vocabulaire de choix.
         ("ligne de RÔLE (correctif orchestrateur", "COMPORTEMENT")],
-    "frontend/src/features/ventes/solar.js": [
+    # SPL202 — la règle d'émission du rôle structure (STKCAT10) a quitté solar.js.
+    "frontend/src/features/ventes/calc/lignesDefaut.js": [
         # STKCAT10 : regle d'emission du role structure portee de composition.py (comportement)
-        ("miroir de `composition.py`", "COMPORTEMENT"),
+        ("miroir de `composition.py`", "COMPORTEMENT")],
+    "frontend/src/features/ventes/solar.js": [
         # PVOND (2026-08-18) — le commentaire decrit l'avertissement « vivier
         # batterie vide », un comportement, pas une liste de valeurs.
         ("livrer un kit silencieusement sans stockage", "COMPORTEMENT"),

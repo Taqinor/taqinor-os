@@ -465,16 +465,21 @@ class ActivityViewSet(viewsets.ModelViewSet):
         items = []
 
         # ── 1) Activités de l'utilisateur (les 3 buckets) ──────────────────
+        # ERR-PERF-CRM-N1 — assigné, cible (GFK) et téléphone des cibles
+        # chargés EN LOT : avant, 2 à 3 requêtes PAR activité.
         acts = _scoped(Activity.objects.select_related(
-            'activity_type', 'content_type'), request.user).filter(
-            assigned_to=request.user, done=False)
+            'activity_type', 'content_type', 'assigned_to'),
+            request.user).filter(assigned_to=request.user, done=False)
         # VX85(a) — même exclusion snooze que `mine` : une file cohérente.
-        acts = acts.filter(
+        acts = list(acts.filter(
             models.Q(snoozed_until__isnull=True)
             | models.Q(snoozed_until__lte=timezone.now().date()))
+            .prefetch_related('content_object'))
+        contexte = {'request': request,
+                    'target_phone_map': _telephones_cibles(acts, company)}
         nb_retard = nb_aujourdhui = 0
         for act in acts:
-            data = ActivitySerializer(act, context={'request': request}).data
+            data = ActivitySerializer(act, context=contexte).data
             st = activity_state(act.due_date, act.done)
             if st == 'overdue':
                 urgency = 'overdue'
@@ -783,6 +788,27 @@ def _deep_link(content_type, object_id):
     if label == 'sav.ticket':
         return '/sav'
     return None
+
+
+def _telephones_cibles(acts, company):
+    """ERR-PERF-CRM-N1 — ``target_phone`` de toutes les activités de la file
+    en UNE lecture crm (``crm.selectors.telephones_cibles_activites``, jamais
+    ses modèles). ``None`` (repli unitaire du sérialiseur) sans société ou si
+    la lecture échoue — jamais une erreur de file."""
+    if company is None:
+        return None
+    ids = {'lead': set(), 'client': set()}
+    for act in acts:
+        ct = act.content_type
+        if ct is not None and ct.app_label == 'crm' and ct.model in ids:
+            ids[ct.model].add(act.object_id)
+    try:
+        from apps.crm import selectors as crm_selectors
+        return crm_selectors.telephones_cibles_activites(
+            company, ids['lead'], ids['client'])
+    except Exception:  # noqa: BLE001 — best-effort, repli unitaire (D-ENF22-BLE001)
+        logger.warning("views._telephones_cibles : erreur ignorée (mode dégradé)", exc_info=True)
+        return None
 
 
 def _ma_file_activity_link(data):

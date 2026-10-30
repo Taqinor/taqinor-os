@@ -1,0 +1,166 @@
+{
+  "sha": "317467d5f",
+  "date": "2026-10-30",
+  "groupe": "AACQ",
+  "verdict": "PASS",
+  "couvre": [
+    "AACQ89",
+    "AACQ79",
+    "AACQ30",
+    "AACQ70",
+    "AACQ74",
+    "AACQ1",
+    "AACQ62",
+    "AACQ63",
+    "AACQ64",
+    "AACQ76",
+    "AACQ65",
+    "AACQ66"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "AACQ79",
+        "AACQ89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AACQ-P1.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.5",
+      "taches": [
+        "AACQ30",
+        "AACQ89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AACQ-P1.5.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.1",
+      "taches": [
+        "AACQ70",
+        "AACQ89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AACQ-P3.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.2",
+      "taches": [
+        "AACQ74",
+        "AACQ89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AACQ-P3.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.3",
+      "taches": [
+        "AACQ1",
+        "AACQ62",
+        "AACQ63",
+        "AACQ64",
+        "AACQ76",
+        "AACQ89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AACQ-P3.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.3b",
+      "taches": [
+        "AACQ65",
+        "AACQ66",
+        "AACQ89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AACQ-P3.3b.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

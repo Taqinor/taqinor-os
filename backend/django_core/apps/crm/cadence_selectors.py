@@ -585,9 +585,11 @@ def relances_du_jour(company, user, scope='today', today=None):
         qs = qs.filter(relance_date=today)
     # APRF18 — préchargement de ce que la sérialisation lit par lead
     # (responsable, client, devis et leurs lignes) : la file « Relances »
-    # et « Ma file » ne paient plus une requête par carte.
+    # et « Ma file » ne paient plus une requête par carte. ERR-PERF-CRM-N1 —
+    # la MÊME liste que ``LeadViewSet.queryset`` (lignes AVEC produit).
+    from .lead_devis_payload import PREFETCH_DEVIS_LISTE_LEADS
     return (qs.select_related('owner', 'client')
-            .prefetch_related('devis', 'devis__lignes')
+            .prefetch_related(*PREFETCH_DEVIS_LISTE_LEADS)
             .order_by('relance_date', 'nom'))
 
 
@@ -630,10 +632,13 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     from .suite_touche import q_tache
 
     today = today or aujourd_hui_local()
+    # ERR-PERF-CRM-N1 — ``canal_adapte`` d'une touche convertie (fixe) lit la
+    # langue du lead : ``lead.client`` et ``lead.company``, joints ici.
     qs = RelanceEtape.objects.filter(
         company=company, statut=RelanceEtape.Statut.A_FAIRE,
         lead__is_archived=False,
-    ).select_related('lead', 'lead__owner', 'devis')
+    ).select_related('lead', 'lead__owner', 'lead__client', 'lead__company',
+                     'devis')
     if scope == 'overdue':
         # ALEA32 — « en retard » = au moins un jour COMPTÉ depuis l'échéance
         # (le seuil unique, ``controle_suivi.seuil_retard``).

@@ -182,6 +182,11 @@ class ActivitySerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         company = getattr(getattr(request, 'user', None), 'company', None)
         if company is None:
             return None
+        # ERR-PERF-CRM-N1 — carte EN LOT posée par une liste (« Ma file ») :
+        # mêmes valeurs que l'appel unitaire ci-dessous, sans requête par ligne.
+        carte = self.context.get('target_phone_map')
+        if carte is not None:
+            return carte.get((ct.model, obj.object_id))
         try:
             from apps.crm import selectors as crm_selectors
             model = ct.model

@@ -1,8 +1,10 @@
-// SPL202 — auto-remplissage du catalogue (ordre des lignes PVORD, marques
-// épinglées PVMRQ, table par défaut, rôle/produit de structure STKCAT10,
-// _hasPrix) déplacé tel quel de solar.js (move only : aucune ligne de logique
-// modifiée). Feuille : lit la classification dans calc/classification.js et
-// ligneProduitCatalogue/tauxTvaOf dans solar.js ; solar.js n'en lit rien.
+// SPL202 — Table par défaut des lignes du générateur et son ordre
+// (orderLinesByRolePreference, deriveRoleOrderFromLines, defaultProductLines,
+// structureRoleForName, structureChoisie, _hasPrix).
+// DÉPLACEMENT PUR depuis features/ventes/solar.js (aucune logique changée).
+// D-SPL202-RESTE : `autoFillLines` déjà supprimé par ADEV69 ; son code mort
+// PVMRQ (_filtrerParMarque, _marqueEpinglee, _marqueCorrespond) supprimé.
+
 import { _norm, classifyProduct } from './classification.js'
 import { ligneProduitCatalogue, tauxTvaOf } from '../solar.js'
 
@@ -59,55 +61,6 @@ export function deriveRoleOrderFromLines(lines) {
     order.push(role)
   }
   return order
-}
-
-// ── PVMRQ — marque préférée par gamme/rôle (fondateur 18/08/2026) ────────────
-// Frontend de `ParametresGammes.marques` (backend, ROLES_AUTO_COMPOSITION —
-// MIROIR EXACT des clés `PRODUCT_CATEGORIES` ci-dessus) : quand une marque est
-// épinglée pour un rôle, elle GAGNE TOUJOURS — le vivier de candidats de ce
-// rôle est restreint À ELLE SEULE avant toute autre logique (wattage/prix/
-// compatibilité). Sans marque réglée pour ce rôle (clé absente ou vide),
-// comportement byte-identique à l'historique.
-
-// Marque épinglée pour ce rôle dans la carte `marques` ({role: marque}) de la
-// gamme active, ou '' si aucune préférence — ne lève jamais.
-function _marqueEpinglee(marques, role) {
-  const carte = marques && typeof marques === 'object' ? marques : null
-  const m = carte ? carte[role] : null
-  return typeof m === 'string' ? m.trim() : ''
-}
-
-// Le produit porte-t-il la marque épinglée ? MIROIR EXACT de
-// `_marque_correspond` (apps/ventes/services.py) : `produit.marque` (champ
-// structuré) prioritaire, égalité EXACTE une fois normalisée ; à défaut (marque
-// non renseignée sur la fiche), son `nom` DOIT seulement CONTENIR la marque,
-// jamais l'égaler. Réutilise `_norm` (accents/casse) — le backend ne compare
-// que la casse (`casefold`), mais un accent divergent ne doit pas non plus
-// faire manquer une marque bien réelle côté écran.
-function _marqueCorrespond(produit, marque) {
-  const cible = _norm(marque)
-  if (!cible) return false
-  const marqueProduit = _norm(produit?.marque)
-  if (marqueProduit) return marqueProduit === cible
-  return _norm(produit?.nom).includes(cible)
-}
-
-// Restreint un vivier de candidats à la marque épinglée pour `role` (carte
-// `marques` de la gamme active). Sans préférence réglée : vivier RENVOYÉ TEL
-// QUEL (comportement historique). Marque réglée mais AUCUN candidat ne la
-// porte : vivier VIDE — JAMAIS un repli silencieux sur une autre marque — et
-// l'entrée `{ role, marque }` est consignée dans `manquantes` (dédupliquée par
-// rôle, même patron que `onduleursIncomplets`).
-function _filtrerParMarque(pool, role, marques, manquantes, vusRoles) {
-  const source = pool ?? []
-  const marque = _marqueEpinglee(marques, role)
-  if (!marque) return source
-  const filtres = source.filter(p => _marqueCorrespond(p, marque))
-  if (!filtres.length && vusRoles && !vusRoles.has(role)) {
-    vusRoles.add(role)
-    manquantes.push({ role, marque })
-  }
-  return filtres
 }
 
 // ── Indexation par type des produits du stock ─────────────────────────────────
@@ -216,12 +169,6 @@ export function structureChoisie(produits, structureProduitId) {
   return (produits ?? []).find(
     (p) => String(p?.id) === cible && _hasPrix(p)) ?? null
 }
-
-// ADEV69 — `autoFillLines`, le second composeur résidentiel (sans appelant de
-// production depuis CIQ126/CIQ128), est SUPPRIMÉ : D-QJR5-9 « un seul
-// composeur, côté serveur » — le survivant est `apps/ventes/domain/composition.py`
-// (dry-run `POST /ventes/devis/composition/`, appliqué par useCompositionEcran).
-// Son absence est épinglée par `solar.codeMortAdev69.test.mjs`.
 
 // QJR546 — exporté : le générateur saute (et nomme) les lignes d'un modèle
 // dont le produit n'a plus de prix, avec la MÊME garde que l'auto-remplissage.

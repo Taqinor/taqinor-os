@@ -114,3 +114,61 @@ class TicketListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
                 self.assertEqual(
                     couvertures_10[r['reference']],
                     (r['equipement_couvert'], r['couverture_proposee']))
+
+    def _seed_clients_sous_contrat(self, count, start=0):
+        """ERR-PERF-SAV-REPORTING-N1 — données réalistes (APRF42) : un CLIENT
+        distinct par paire de tickets, chacun sous SON contrat (registre
+        partiel, quota de 1 déplacement), dates d'ouverture différentes."""
+        from datetime import timedelta
+        from django.utils import timezone
+
+        today = timezone.localdate()
+        for i in range(start, start + count):
+            client = Client.objects.create(
+                company=self.company, nom=f'Client{i}', prenom='Contrat',
+                email=f'contrat-{i}@example.com',
+                telephone=f'+2126{i:08d}')
+            contrat = ContratMaintenance.objects.create(
+                company=self.company, client=client, actif=True,
+                date_debut=today - timedelta(days=400),
+                deplacements_inclus_an=1, visites_incluses_an=2,
+                sla_resolution_days=(3 if i % 2 else None))
+            for j in range(2):
+                eq = Equipement.objects.create(
+                    company=self.company, produit=self.produit,
+                    numero_serie=f'SNC-{i}-{j}')
+                if j == 0 or i % 3 == 0:
+                    contrat.equipements.add(eq)
+                Ticket.objects.create(
+                    company=self.company, reference=f'TCC-{i:04d}-{j}',
+                    client=client, equipement=eq,
+                    date_ouverture=today - timedelta(days=i * 2 + j))
+
+    def test_query_count_flat_distinct_clients_under_contract(self):
+        """ERR-PERF-SAV-REPORTING-N1 — clients et dates distincts : 10 puis
+        50 tickets coûtent le même nombre de requêtes (pente 0 ± 1), et la
+        couverture servie par la liste est celle de la fiche détail (chemin
+        non préchargé)."""
+        self._seed_clients_sous_contrat(5)
+        with CaptureQueriesContext(connection) as ctx_10:
+            resp = self.api.get(TICKETS_URL)
+        self.assertEqual(resp.status_code, 200)
+
+        self._seed_clients_sous_contrat(20, start=5)  # total 50 tickets
+        with CaptureQueriesContext(connection) as ctx_50:
+            resp = self.api.get(TICKETS_URL)
+        self.assertEqual(resp.status_code, 200)
+        rows = (resp.data['results'] if isinstance(resp.data, dict)
+                else resp.data)
+        self.assertEqual(len(rows), 50)
+        self.assertLessEqual(
+            abs(len(ctx_50.captured_queries) - len(ctx_10.captured_queries)),
+            1, 'N+1 sav_contratmaintenance sur la liste des tickets SAV.')
+        champs = ('equipement_couvert', 'couverture_proposee',
+                  'sla_due_at_effectif')
+        for r in rows[:12]:
+            detail = self.api.get(f"{TICKETS_URL}{r['id']}/")
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(
+                {k: r[k] for k in champs},
+                {k: detail.data[k] for k in champs}, r['reference'])

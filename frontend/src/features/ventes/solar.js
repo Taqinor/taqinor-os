@@ -544,6 +544,12 @@ export function roleLabel(role) {
   return brut.charAt(0).toUpperCase() + brut.slice(1)
 }
 
+// ADEV69 — `autoFillLines`, le second composeur résidentiel (sans appelant de
+// production depuis CIQ126/CIQ128), est SUPPRIMÉ : D-QJR5-9 « un seul
+// composeur, côté serveur » — le survivant est `apps/ventes/domain/composition.py`
+// (dry-run `POST /ventes/devis/composition/`, appliqué par useCompositionEcran).
+// Son absence est épinglée par `solar.codeMortAdev69.test.mjs`.
+
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════
 
 // CIQ228 — la valorisation C&I écran (rachat 82-21 net, injection) est

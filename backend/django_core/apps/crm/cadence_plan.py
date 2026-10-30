@@ -1413,6 +1413,16 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     ancien = cible.due_at
     delta = (nouveau - ancien) if ancien else None
     deplacer_echeance_etape(cible, nouveau, report_humain=compter_report)
+    # ERR-ALEA-RELANCE-DIMANCHE — la date de relance SAISIE pour ce report
+    # (AMET20 la protège de ``_recaler_file``) suit le recalage de SA touche :
+    # un dimanche ou un férié visé glisse au même jour ouvré que la touche
+    # (``nouveau`` ci-dessus, seul calcul du décalage). Sinon lead et touche
+    # divergeaient (lead 15/11 dimanche, touche 16/11 — ALEA30, P2.2).
+    if ('relance_date' in (lead.saisies_humaines or [])
+            and lead.relance_date == quand.astimezone(horaires.CASABLANCA).date()
+            and lead.relance_date != cible.due_date):
+        lead.relance_date = cible.due_date
+        lead.save(update_fields=['relance_date'])
 
     if delta:
         # CAD22 — le jeu des touches à décaler est CHRONOLOGIQUE, pas

@@ -25,7 +25,7 @@ import {
 
 test.describe.configure({ timeout: 900_000 })
 test.use({ viewport: { width: 1600, height: 1000 }, actionTimeout: 60_000 })
-const etape = groupe('ACAL', ['ACAL250', 'ACAL251', 'ACAL279', 'ACAL280', 'ACAL282', 'ACAL284', 'ACAL289'])
+const etape = groupe('ACAL', ['ACAL250', 'ACAL251', 'ACAL279', 'ACAL280', 'ACAL282', 'ACAL284', 'ACAL289', 'ACAL311'])
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
 
 const CAL = `${API_DJANGO}/calepinage`
@@ -608,4 +608,69 @@ etape('P5.1+P6.2+P8.1', ['ACAL289'], async ({ page }) => {
   } finally {
     await ecrireParametres(page.request, { presets: presetsAvant, documents: documentsAvant })
   }
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// ACAL311 — « Affiner ma consommation » : kWh au barème société (P5.5, S-E)
+// ════════════════════════════════════════════════════════════════════════════
+
+etape('P5.5', ['ACAL311'], async ({ page }) => {
+  // Lead démo à factures → calepinage (mode `/calepinage/<pk>`), toit dessiné : le panneau
+  // « Affiner ma consommation » lit « estimation (barème indicatif) » ; « Reprendre du lead »
+  // → POST consommation/proposer/ {source:'lead'} → 200, le panneau affiche « N kWh/an —
+  // barème société » (N = kwh_annuel servi) ; Enregistrer, F5, Enregistrer sans toucher →
+  // roof_layout.consumption identique, source.bareme = 'societe'.
+  const cfg = await lireJson(await page.request.get(`${API_DJANGO}/ventes/roof-config/`, T), 'roof-config')
+  if (!cfg.available) nonJouable('aucune clé carte servie : le constructeur 3D ne boote pas')
+  const lead = await creerLead(page.request, 'ACC CAL Conso', { facture_hiver: '900', facture_ete: '700' })
+  const cal = await creerCalepinage(page.request, lead.id)
+  await ecrireLayout(page.request, cal.id, {
+    pin: A, version: 2, zones: [{ id: 'z1', label: 'Sud', vertices: R.map((p) => [p.lng, p.lat]), result: { count: 10 }, facingAzimuthDeg: 180.0, pitchDeg: 15.0 }],
+  })
+  await page.goto(`/calepinage/${cal.id}`)
+  await expect(page.locator('#rp9-map')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('cal-enregistrer-calepinage')).toBeVisible({ timeout: 120_000 })
+  const bascule = page.locator('#rp9-cons-toggle')
+  try {
+    await expect(bascule, 'bouton « Affiner ma consommation » à l’écran').toBeVisible({ timeout: 90_000 })
+  } catch (e) {
+    const ids = await page.locator('[id^="rp9-cons"], [data-cons-bareme]').count()
+    const texte = await page.getByText('Affiner ma consommation').count()
+    throw new Error(`« Affiner ma consommation » absent de l'atelier /calepinage/${cal.id} (éléments rp9-cons* / data-cons-bareme dans le DOM : ${ids} ; texte « Affiner ma consommation » : ${texte}). `
+      + 'Observé : le panneau n’est jamais monté — consumption.ts::monterProposition exige `rp9-cons-panel`, gabarit présent dans '
+      + 'apps/web/src/pages/preview/toiture-3d-pro-11.astro seulement, absent de frontend/src/pages/ventes/ToitureDesign.jsx. '
+      + `Attendu : panneau « estimation (barème indicatif) » puis « Reprendre du lead ». (${String(e.message).split('\n')[0]})`)
+  }
+  if ((await bascule.getAttribute('aria-expanded')) !== 'true') await bascule.click()
+  const note = page.locator('[data-cons-bareme]')
+  await expect(note).toHaveText('estimation (barème indicatif)', { timeout: 30_000 })
+  const rep = page.waitForResponse((r) => r.url().includes(`/consommation/proposer/`) && r.request().method() === 'POST', T)
+  await page.locator('[data-cons-action="lead"]').click()
+  const r = await rep
+  expect(r.request().postDataJSON(), 'corps envoyé').toEqual({ source: 'lead' })
+  expect(r.status(), `proposer → ${(await r.text()).slice(0, 300)}`).toBe(200)
+  const servi = await r.json()
+  const n = Math.round(servi.kwh_annuel)
+  const chiffres = (s) => Number(String(s).replace(/[^\d]/g, ''))
+  await expect(note).toContainText('kWh/an — barème société', { timeout: 30_000 })
+  expect(chiffres(await note.innerText()), 'N affiché = kwh_annuel servi').toBe(n)
+  await expect(note).toHaveAttribute('data-bareme', 'societe')
+  const kwhAn = page.locator('#rp9-bill-kwh')
+  if (await kwhAn.count()) expect(chiffres(await kwhAn.innerText()), '« ≈ N kWh par an »').toBe(n)
+
+  const enregistrer = async () => {
+    const ecrit = page.waitForResponse((x) => x.url().includes(`/calepinages/${cal.id}/`) && x.request().method() !== 'GET'
+      && x.status() < 300, T)
+    await page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ }).click()
+    await ecrit
+    const d = await lireJson(await page.request.get(`${CAL}/calepinages/${cal.id}/`, T), 'calepinage relu')
+    return (d.roof_layout ?? (await lireJson(await page.request.get(`${CAL}/calepinages/${cal.id}/layout/`, T), 'layout')).roof_layout)?.consumption
+  }
+  const c1 = await enregistrer()
+  expect(c1?.source?.bareme, 'source.bareme persisté').toBe('societe')
+  await page.reload()
+  await expect(page.getByTestId('cal-enregistrer-calepinage')).toBeVisible({ timeout: 120_000 })
+  const c2 = await enregistrer()
+  expect(c2, 'consumption identique après F5 + enregistrer sans toucher').toEqual(c1)
+  console.log(`[P5.5] kwh_annuel ${servi.kwh_annuel} ; consumption.source ${JSON.stringify(c1?.source)}`)
 })

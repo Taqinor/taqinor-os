@@ -298,7 +298,7 @@ async function main() {
     ...(await import('../src/features/ventes/solar.js')),
     ...(await import('../src/features/ventes/calc/totaux.js')),
     ...(await import('../src/features/ventes/calc/recomposition.js')),
-    ...(await import('../src/features/ventes/calc/autoFill.js')),
+    ...(await import('../src/features/ventes/calc/lignesDefaut.js')),
   }
   const cat = chargerCatalogues()
   // Aller-retour JSON AVANT le calcul : l'attendu est calculé sur l'entrée

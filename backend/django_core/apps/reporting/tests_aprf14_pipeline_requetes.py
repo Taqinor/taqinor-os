@@ -108,6 +108,45 @@ class PipelineRequetesConstantesTests(TestCase):
             self._devis()
         self.assertEqual(self._comptes(), base, '+200 devis actifs')
 
+    def _devis_signes(self, nombre):
+        """ERR-PERF-SAV-REPORTING-N1 — devis ACCEPTÉS (classement + vélocité)
+        de commerciaux distincts (propriétaire du lead) et de créateurs
+        distincts : le cas de la société 1 (486 devis, 863 requêtes)."""
+        for _ in range(nombre):
+            self.n += 1
+            vendeur = User.objects.create_user(
+                username=f'aprf14_vendeur_{self.n}', password='x',
+                role_legacy='commercial', company=self.company)
+            lead = Lead.objects.create(
+                company=self.company, nom=f'Lead signé {self.n}',
+                stage=stages.SIGNED, owner=vendeur)
+            devis = self._devis(lead)
+            Devis.objects.filter(pk=devis.pk).update(
+                statut=Devis.Statut.ACCEPTE, created_by=vendeur,
+                date_acceptation=timezone.localdate())
+
+    def test_dashboard_constant_avec_devis_signes(self):
+        """ERR-PERF-SAV-REPORTING-N1 — même nombre de requêtes du tableau de
+        bord commercial à 5 et à 50 devis signés, et CA HT par commercial égal
+        à ``option_totaux`` relu devis par devis."""
+        from apps.ventes.utils.options import option_totaux
+
+        self._devis_signes(5)
+        base = self._compter('commercial/dashboard/')
+        self._devis_signes(45)
+        self.assertEqual(self._compter('commercial/dashboard/'), base,
+                         '5 → 50 devis signés')
+        attendu = {
+            d.lead.owner.username: str(Decimal(str(option_totaux(d)['ht'])))
+            for d in Devis.objects.filter(
+                company=self.company, statut=Devis.Statut.ACCEPTE)
+            .select_related('lead__owner')}
+        classement = self.api.get(
+            f'{BASE}/commercial/dashboard/').data['leaderboard']
+        self.assertEqual(len(classement), 50)
+        self.assertEqual(
+            {r['commercial']: r['ca_ht'] for r in classement}, attendu)
+
     def test_valeurs_inchangees(self):
         self._ajouter_leads(5)
         attendu = sum(

@@ -98,6 +98,45 @@ class ResponsableParModuleTests(TestCase):
             api.post('/api/django/ventes/factures/', {}, format='json')
             .status_code, 403)
 
+    def _facture(self, auteur):
+        from decimal import Decimal
+        from apps.crm.models import Client
+        from apps.ventes.models import Facture
+        cli = Client.objects.create(company=self.company, nom='Lecture',
+                                    prenom='ASEC11',
+                                    email='lecture-asec11@test.invalid')
+        return Facture.objects.create(
+            company=self.company, reference='ASEC11-LECT-1', client=cli,
+            statut=Facture.Statut.EMISE, taux_tva=Decimal('20.00'),
+            created_by=auteur)
+
+    def test_lecture_factures_refusee_sans_ventes_voir(self):
+        # ERR-ASEC11-LECTURE-FACTURES (D-ASEC11-LECTURE-FACTURES) — liste ET
+        # fiche : 403 pour Commercial terrain et Admin RH (aucun code ventes).
+        facture = self._facture(None)
+        for nom_role in ('Commercial terrain', 'Admin RH'):
+            api = self._api(nom_role)
+            with self.subTest(role=nom_role):
+                self.assertEqual(
+                    api.get('/api/django/ventes/factures/').status_code, 403)
+                self.assertEqual(
+                    api.get(f'/api/django/ventes/factures/{facture.id}/')
+                    .status_code, 403)
+
+    def test_lecture_factures_ok_avec_ventes_voir(self):
+        user = self._user('Commercial')
+        facture = self._facture(user)
+        api = APIClient()
+        api.force_authenticate(user)
+        self.assertEqual(
+            api.get('/api/django/ventes/factures/').status_code, 200)
+        self.assertEqual(
+            api.get(f'/api/django/ventes/factures/{facture.id}/').status_code,
+            200)
+        directeur = self._api('Directeur')
+        self.assertEqual(
+            directeur.get('/api/django/ventes/factures/').status_code, 200)
+
     def test_commercial_resp_crm_ok(self):
         api = self._api('Commercial responsable')
         resp = api.post('/api/django/crm/clients/', {'nom': 'Client ASEC11'},

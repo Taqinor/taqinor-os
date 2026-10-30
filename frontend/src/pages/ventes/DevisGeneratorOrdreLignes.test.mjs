@@ -38,7 +38,7 @@ import { dirname, join } from 'node:path'
 // composeur utilisent réellement (voir la section en fin de fichier).
 import {
   deriveRoleOrderFromLines, orderLinesByRolePreference,
-} from '../../features/ventes/calc/autoFill.js'
+} from '../../features/ventes/calc/lignesDefaut.js'
 import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -51,14 +51,14 @@ const AQ = read('../../features/ventes/autoQuote.js')
 // eux, restent dans l'écran. Les épingles suivent chaque moitié chez elle.
 const LT = read('generator/LigneTable.jsx')
 
-test('DevisGenerator : importe deriveRoleOrderFromLines de calc/autoFill.js', () => {
+test('DevisGenerator : importe deriveRoleOrderFromLines de calc/lignesDefaut.js', () => {
   // QJR546 a ajouté `_hasPrix` APRÈS lui dans le même import : la garde lit
-  // le bloc d'import de solar.js entier au lieu d'exiger la dernière place.
-  // SPL47 — le générateur est réparti (lecteur unique) : un des imports de
-  // solar.js, quelle que soit la profondeur du fichier, porte le nom.
-  // SPL202 — la fonction a quitté solar.js pour calc/autoFill.js.
-  const blocs = [...DG.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(?:\.\.\/)+features\/ventes\/calc\/autoFill\.js'/g)]
-  assert.ok(blocs.length, 'import depuis features/ventes/calc/autoFill.js introuvable')
+  // le bloc d'import entier au lieu d'exiger la dernière place.
+  // SPL47 — le générateur est réparti (lecteur unique) : un des imports du
+  // module, quelle que soit la profondeur du fichier, porte le nom.
+  // SPL202 — la fonction a quitté solar.js pour calc/lignesDefaut.js.
+  const blocs = [...DG.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(?:\.\.\/)+features\/ventes\/calc\/lignesDefaut\.js'/g)]
+  assert.ok(blocs.length, 'import depuis features/ventes/calc/lignesDefaut.js introuvable')
   assert.ok(blocs.some((b) => /\bderiveRoleOrderFromLines\b/.test(b[1])), 'deriveRoleOrderFromLines non importé')
 })
 

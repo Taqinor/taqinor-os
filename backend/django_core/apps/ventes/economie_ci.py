@@ -1962,7 +1962,7 @@ def economie_ci_pour_devis(devis, company):
     from apps.ventes.utils.options import option_totaux
     params = getattr(devis, 'etude_params', None)
     params = params if isinstance(params, dict) else {}
-    apercu = params.get('etude_ci')
+    apercu = _options.apercu_du_devis(params)  # ERR-CI-SENSIBILITE-NON-CHIFFREE
     tarif_declare = params.get('tarif_declare')
     if not isinstance(tarif_declare, dict):
         tarif_declare = params.get('tarif') if isinstance(
@@ -1987,7 +1987,7 @@ def economie_ci_pour_devis(devis, company):
         from apps.ventes.domain.etude_ci import courbe_degradation_du_devis
         reglages['degradation_module'] = courbe_degradation_du_devis(devis)
     return _options.sans_saisie_invalide(  # CEC14
-        assembler_economie_ci, apercu if isinstance(apercu, dict) else {},
+        assembler_economie_ci, apercu,
         saisies=params.get('saisies_economie_ci'),
         tarif_declare=tarif_declare,
         investissement={'ht': totaux.get('ht'), 'ttc': totaux.get('ttc')},

@@ -10,7 +10,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { defaultProductLines } from './calc/autoFill.js'
+import { defaultProductLines } from './calc/lignesDefaut.js'
 
 const P = (id, nom, prix_vente, extra = {}) => ({ id, nom, prix_vente: String(prix_vente), tva: '20.00', ...extra })
 const CATALOGUE = [

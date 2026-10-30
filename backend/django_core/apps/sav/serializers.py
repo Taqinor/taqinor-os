@@ -338,6 +338,103 @@ class TicketChecklistItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['cle', 'libelle', 'ordre', 'coche_par_nom', 'date_coche']
 
 
+class TicketListSerializer(serializers.ListSerializer):
+    """ERR-PERF-SAV-REPORTING-N1 — précharge la couverture de contrat de TOUTE
+    la page en requêtes constantes. Les caches APRF31 de ``TicketSerializer``
+    sont clés par client (contrat actif) et par (client, date d'ouverture)
+    (contrat couvrant) : sur des tickets de clients/dates distincts, chaque
+    ligne relisait ``sav_contratmaintenance`` (APRF42 : 13 → 36 → 61
+    requêtes à 5/25/50 lignes). Ici : contrats actifs des clients de la page
+    (1 requête) + leurs registres (1) + tickets de l'année des contrats
+    retenus (1), puis les caches de l'enfant sont remplis avec EXACTEMENT les
+    sélections de ``Ticket._contrat_couvrant``,
+    ``ContratMaintenance.actif_pour_client``/``valide_pour_client`` et
+    ``droits_restants`` — JSON inchangé."""
+
+    def to_representation(self, data):
+        lignes = list(data.all() if isinstance(data, models.manager.BaseManager)
+                      else data)
+        if lignes:
+            self._precharger_contrats(lignes)
+        return super().to_representation(lignes)
+
+    def _precharger_contrats(self, tickets):
+        from django.db.models import Prefetch
+        from .models import ContratMaintenance
+        enfant = self.child
+        clients = {t.client_id for t in tickets if t.client_id}
+        if not clients:
+            return
+        par_client = {}
+        for c in (ContratMaintenance.objects
+                  .filter(client_id__in=clients, actif=True)
+                  .order_by('-date_creation')
+                  .prefetch_related(Prefetch(
+                      'equipements', queryset=Equipement.objects.only('pk')))):
+            par_client.setdefault(c.client_id, []).append(c)
+            ids = {e.pk for e in c.equipements.all()}
+            enfant._registre_cache.setdefault(c.pk, (bool(ids), ids))
+
+        def premier(cid, test):
+            return next((c for c in par_client.get(cid, ()) if test(c)), None)
+
+        def avec_override(c):
+            return c.est_actif() and not (
+                c.sla_response_days is None and c.sla_resolution_days is None)
+
+        retenus = {}
+        for t in tickets:
+            if not t.client_id:
+                continue
+            if t.client_id not in enfant._contrat_actif_cache:
+                enfant._contrat_actif_cache[t.client_id] = (
+                    premier(t.client_id, avec_override)
+                    or premier(t.client_id, lambda c: c.est_actif()))
+            ref = t.date_reference_couverture
+            cle = (t.client_id, ref)
+            if cle not in enfant._contrat_recent_cache:
+                enfant._contrat_recent_cache[cle] = premier(
+                    t.client_id, lambda c, r=ref: c.est_actif(r))
+            contrat = enfant._contrat_recent_cache[cle]
+            if contrat is not None:
+                retenus.setdefault(contrat.pk, (contrat, set()))[1].add(ref.year)
+        self._precharger_droits(retenus.values(), enfant._droits_cache)
+
+    @staticmethod
+    def _precharger_droits(retenus, droits_cache):
+        """Même lecture que ``droits_restants`` (tickets non annulés de
+        l'année, rattachés au chantier du contrat, sinon à son client), pour
+        tous les contrats retenus en UNE requête."""
+        from django.db.models import Q
+        a_lire = [(c, a) for c, annees in retenus for a in annees
+                  if (c.pk, a) not in droits_cache
+                  and (c.installation_id or c.client_id)]
+        if not a_lire:
+            return
+        portee = Q()
+        for c, _a in a_lire:
+            if c.installation_id:
+                portee |= Q(company_id=c.company_id,
+                            installation_id=c.installation_id)
+            else:
+                portee |= Q(company_id=c.company_id, client_id=c.client_id)
+        annees = {a for _c, a in a_lire}
+        lus = list(Ticket.objects.filter(
+            portee, annule=False,
+            date_ouverture__gte=datetime.date(min(annees), 1, 1),
+            date_ouverture__lte=datetime.date(max(annees), 12, 31),
+        ).values_list('type', 'date_ouverture', 'pk', 'company_id',
+                      'installation_id', 'client_id'))
+        for c, a in a_lire:
+            if c.installation_id:
+                col, val = 4, c.installation_id
+            else:
+                col, val = 5, c.client_id
+            droits_cache[(c.pk, a)] = [
+                (r[0], r[1], r[2]) for r in lus
+                if r[3] == c.company_id and r[1].year == a and r[col] == val]
+
+
 class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                        serializers.ModelSerializer):
     # api-fuzz-full 24/10 — textes de modèle STRICTS (chaîne JSON seulement) :
@@ -455,6 +552,7 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     class Meta:
         model = Ticket
         fields = '__all__'
+        list_serializer_class = TicketListSerializer
         # company / reference / created_by posés côté serveur — jamais du corps.
         read_only_fields = [
             'company', 'reference', 'created_by',

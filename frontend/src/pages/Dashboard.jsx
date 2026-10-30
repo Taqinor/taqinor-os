@@ -44,6 +44,7 @@ import { ModuleHero } from '../ui/module/ModuleHero.jsx'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients, fetchLeads } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
+import { useCanListFactures } from '../hooks/useHasPermission'
 import { fetchInstallations } from '../features/installations/store/installationsSlice'
 // VX27 — cockpit du matin par rôle : le SAV réutilise les helpers de statut/SLA
 // existants (aucune logique de ticket dupliquée ici) et les tickets déjà en
@@ -465,6 +466,7 @@ export function Component() {
   const user = useSelector((s) => s.auth.user)
   const roleNom = useSelector((s) => s.auth.role_nom)
   const roleTier = useSelector((s) => s.auth.role)
+  const peutListerFactures = useCanListFactures()
   const profile = cockpitProfile({ roleNom, roleTier })
 
   // NTMOB6 — sélecteur de démarrage par rôle. `mobile_home_route` (NULL tant
@@ -516,11 +518,12 @@ export function Component() {
     dispatch(fetchProduits())
     dispatch(fetchClients())
     dispatch(fetchDevis())
-    dispatch(fetchFactures())
+    // ERR-ASEC11-LECTURE-FACTURES — jamais d'appel voué au 403 (console).
+    if (peutListerFactures) dispatch(fetchFactures())
     dispatch(fetchInstallations())
     dispatch(fetchLeads())
     dispatch(fetchTickets())
-  }, [dispatch])
+  }, [dispatch, peutListerFactures])
   useEffect(() => {
     reload()
   }, [reload])

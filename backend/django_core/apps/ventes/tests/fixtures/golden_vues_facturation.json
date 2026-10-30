@@ -194,7 +194,7 @@
    "IsResponsableOrAdmin"
   ],
   "list": [
-   "LectureFactures"
+   "IsAnyRole"
   ],
   "marquer_payee": [
    "IsAdminRole"
@@ -228,7 +228,7 @@
    "IsResponsableOrAdmin"
   ],
   "retrieve": [
-   "LectureFactures"
+   "IsAnyRole"
   ],
   "revoquer_lien_paiement": [
    "IsResponsableOrAdmin"
