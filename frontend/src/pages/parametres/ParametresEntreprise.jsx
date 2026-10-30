@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
-import { useIsAdmin } from '../../hooks/useHasPermission'
+import { useIsAdmin, useCanListAssignableUsers } from '../../hooks/useHasPermission'
 import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import { isDirty } from '../../ui/form-utils'
@@ -138,6 +138,7 @@ export default function ParametresEntreprise() {
   // (IsAdminOrResponsableTier) ; ce contrôle UI empêche un rôle non autorisé
   // de voir/modifier les champs sensibles.
   const canManageSensitive = useIsAdmin()
+  const canListAssignables = useCanListAssignableUsers()
   // APAR38 — droit d'écrire les réglages : palier admin/responsable + permission
   // `parametres_modifier` (calcul dans useCanModifierParametres).
   const canModifier = useCanModifierParametres()
@@ -364,8 +365,10 @@ export default function ParametresEntreprise() {
     dispatch(fetchProfile())
     dispatch(fetchCategories())
     dispatch(fetchFournisseurs())
-    crmApi.getAssignableUsers()
-      .then(r => setAssignables(r.data)).catch(() => {})
+    if (canListAssignables) {
+      crmApi.getAssignableUsers()
+        .then(r => setAssignables(r.data)).catch(() => {})
+    }
     loadNiveaux()
     loadTags()
     loadMotifs()

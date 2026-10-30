@@ -20,12 +20,13 @@
 // gaté ici.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
 import { construireCorps } from '../src/lib/tunnel/corps';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
-const read = (rel: string) => readFileSync(root(rel), 'utf-8');
+const read = (rel: string) => lireSourceTunnel(root(rel));
 
 const PAGES = {
   FR: read('../src/pages/devis/mon-toit.astro'),
@@ -68,13 +69,11 @@ describe.each(Object.entries(PAGES))('WJ125 — %s mon-toit.astro : rendu public
     const start = src.indexOf('function showEstimateTeaser(');
     expect(start).toBeGreaterThan(-1);
     const fn = src.slice(start, start + 900);
-    expect(fn).toContain("$('mt-doc')");
-    expect(fn).toContain("$('mt-nearest-install')");
-    expect(fn).toContain("$('mt-cost-of-waiting')");
-    expect(fn).toContain("$('mt-print-estimate')");
-    expect(fn).toContain("$('mt-teaser')");
+    // RWEB17-M16 — lib/tunnel/estimationResidentielle.ts masque les zones d'une boucle `cacher(id, true)`
+    // puis révèle le teaser par `cacher('mt-teaser', false)`.
+    expect(fn).toContain("for (const id of ['mt-doc', 'mt-print-estimate', 'mt-nearest-install', 'mt-cost-of-waiting']) cacher(id, true);");
     // révèle le teaser, masque le reste.
-    expect(fn).toContain('teaser.hidden = false');
+    expect(fn).toContain("cacher('mt-teaser', false)");
   });
 
   it('l\'aperçu 3D est re-masquable d\'un drapeau et le point de contrôle unique tient (PUBLIC_3D_PREVIEW)', () => {
@@ -87,7 +86,9 @@ describe.each(Object.entries(PAGES))('WJ125 — %s mon-toit.astro : rendu public
     const start = src.indexOf('function updatePanels3dVisibility(');
     expect(start).toBeGreaterThan(-1);
     const fn = src.slice(start, start + 700);
-    expect(fn).toContain('if (PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW) { panels3dBlock.hidden = true; return; }');
+    // RWEB17-M14 — le point de contrôle vit dans lib/tunnel/carte.ts ; la page lui passe ses deux drapeaux.
+    expect(fn).toContain('if (config.estimationGatee && !config.apercu3dPublic) { panels3dBlock.hidden = true; return; }');
+    expect(src).toContain('estimationGatee: PUBLIC_ESTIMATE_GATED, apercu3dPublic: PUBLIC_3D_PREVIEW');
     // Le drapeau est déclaré à côté du gate (réversibilité en un mot).
     expect(src).toContain('const PUBLIC_3D_PREVIEW: boolean');
     // Et le bloc part `hidden` dans le markup statique (aucun flash avant JS).
@@ -99,11 +100,14 @@ describe.each(Object.entries(PAGES))('WJ125 — %s mon-toit.astro : rendu public
     // combiné PUBLIC_ESTIMATE_GATED && !PUBLIC_3D_PREVIEW — voir le test
     // ci-dessus). Le VRAI compte des retours succès reste 3 — vérifié par les
     // 3 GATED_ANNOUNCE ci-dessous.
-    const gatedBlocks = (src.match(/if \(PUBLIC_ESTIMATE_GATED\) \{/g) ?? []).length;
+    // RWEB17-M15/M16 — les chemins pro/agricole puis résidentiel vivent dans lib/tunnel/estimation*.ts :
+    // `GATED` (= config.estimationGatee = PUBLIC_ESTIMATE_GATED de la page), annonce `config.annonceGatee`
+    // (= GATED_ANNOUNCE de la page) ou `T.annonceGatee` (même texte, table de locale).
+    const gatedBlocks = (src.match(/if \((?:PUBLIC_ESTIMATE_GATED|GATED)\) \{/g) ?? []).length;
     expect(gatedBlocks).toBe(3);
     // Chaque retour gaté annonce un message SANS chiffre (GATED_ANNOUNCE), jamais
     // l'ancienne annonce « Votre estimation : X kWc … ».
-    const gatedAnnounce = (src.match(/announceEstimate\(GATED_ANNOUNCE\)/g) ?? []).length;
+    const gatedAnnounce = (src.match(/announceEstimate\((?:GATED_ANNOUNCE|config\.annonceGatee|T\.annonceGatee)\)/g) ?? []).length;
     expect(gatedAnnounce).toBe(3);
   });
 
@@ -165,11 +169,15 @@ describe('WJ125 — la promesse « étude complète et personnalisée » est pr�
 });
 
 describe('WJ125 — le message aria-live gaté ne divulgue aucun chiffre (parité voyant/lecteur d\'écran)', () => {
-  it.each(Object.entries(PAGES))('%s : GATED_ANNOUNCE est figure-free', (_label, src) => {
-    const m = /const GATED_ANNOUNCE = '([^']*)';/.exec(src);
-    expect(m).not.toBeNull();
-    if (!m) return;
-    expect(m[1]).not.toMatch(FIGURE_LEAK);
+  // RWEB17-M19 — GATED_ANNOUNCE de chaque page vit dans TEXTES_RESIDENTIEL[<locale>].annonceGatee
+  // (lib/tunnel/estimationResidentielle.ts), passé aussi à la section pro par lib/tunnel/config.ts.
+  it.each(Object.entries(PAGES))('%s : GATED_ANNOUNCE est figure-free', async (label, src) => {
+    const { TEXTES_RESIDENTIEL } = await import('../src/lib/tunnel/estimationResidentielle');
+    const locale = label.toLowerCase() as 'fr' | 'en' | 'ar';
+    const message = TEXTES_RESIDENTIEL[locale].annonceGatee;
+    expect(message.length).toBeGreaterThan(0);
+    expect(message).not.toMatch(FIGURE_LEAK);
+    expect(src).toContain(`annonceGatee: TEXTES_RESIDENTIEL.${locale}.annonceGatee,`);
   });
 });
 

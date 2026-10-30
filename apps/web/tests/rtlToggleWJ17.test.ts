@@ -9,11 +9,12 @@
 // on prouve donc les invariants de câblage.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { lirePageProposition } from './astroBlocsHelper';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
-const read = (rel: string) => readFileSync(root(rel), 'utf-8');
+const read = (rel: string) => lireSourceTunnel(root(rel));
 
 const MON_TOIT = read('../src/pages/devis/mon-toit.astro');
 const PROPOSITION = lirePageProposition();

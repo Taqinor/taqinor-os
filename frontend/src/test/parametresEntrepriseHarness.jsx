@@ -18,8 +18,14 @@ const h = vi.hoisted(() => {
   const etat = { profil: {} }
   const updateProfile = vi.fn()
   const vide = () => Promise.resolve({ data: [] })
+  // Un `vi.fn` par méthode, mémorisé : les tests peuvent espionner un appel.
   const apiProxy = (overrides = {}) => new Proxy(overrides, {
-    get: (t, k) => (k in t ? t[k] : (k === 'then' ? undefined : vi.fn(vide))),
+    get: (t, k) => {
+      if (k in t) return t[k]
+      if (k === 'then') return undefined
+      if (typeof k === 'string') t[k] = vi.fn(vide)
+      return t[k]
+    },
   })
   return { etat, updateProfile, apiProxy }
 })

@@ -50,12 +50,12 @@ import { validateLead } from '../src/lib/lead';
 import { CHAMPS_DOM_TUNNEL, lireChampsDomTunnel, type ChampDomTunnel } from '../src/lib/tunnel/lecture';
 import { construireCorps, type LocaleTunnel } from '../src/lib/tunnel/corps';
 import { ERREURS } from '../src/lib/tunnel/i18n';
-import { lireAstroAvecBlocs } from './astroBlocsHelper';
+import { lireAstroAvecBlocs, lireAstroAvecModulesTunnel } from './astroBlocsHelper';
 
 // ENF19 — blocs partagés (components/blocs) déroulés dans la source de la page.
 const read = (rel: string) => {
   const chemin = fileURLToPath(new URL(rel, import.meta.url));
-  return rel.endsWith('.astro') ? lireAstroAvecBlocs(chemin) : readFileSync(chemin, 'utf-8');
+  return rel.endsWith('.astro') ? lireAstroAvecModulesTunnel(chemin) : readFileSync(chemin, 'utf-8');
 };
 
 const SOURCES: Array<[LocaleTunnel, string]> = [
@@ -295,7 +295,8 @@ describe('QJW21 (1) — égalité d’ENSEMBLES des clés, chaque locale lue dep
 
 describe('QJW21 — les trois pages passent par LE MÊME lecteur de DOM', () => {
   it.each(SOURCES)('%s — appelle lireChampsDomTunnel(document) dans son lireEtatTunnel', (locale, src) => {
-    expect(src, `${locale} : n'importe pas le lecteur partagé`).toContain("lib/tunnel/lecture'");
+    // RWEB17-M19 — via lib/tunnel/tunnel.ts -> validation.ts, qui importe le lecteur partagé.
+    expect(src, `${locale} : n'importe pas le lecteur partagé`).toContain("import { lireChampsDomTunnel } from './lecture';");
     expect(src, `${locale} : ne l'applique pas à son propre DOM`).toContain('lireChampsDomTunnel(document)');
 
     // …et n'a pas GARDÉ une lecture recopiée à côté (le défaut d'origine).
@@ -383,8 +384,9 @@ describe('QJW6 — plus aucune page ne construit son propre corps', () => {
     expect(src, `${locale} : un buildBody local subsiste`).not.toContain('function buildBody(');
     expect(src, `${locale} : dérivation de payload recopiée`).not.toContain('function resolveRoofType(');
     expect(src, `${locale} : dérivation de payload recopiée`).not.toContain('function resolveProBillRange(');
+    // RWEB17-M19 — la page importe lib/tunnel/tunnel.ts, dont la section validation importe le constructeur.
     expect(src, `${locale} : n'importe pas le constructeur partagé`)
-      .toContain("lib/tunnel/corps'");
+      .toContain("import { construireCorps, type MessagesErreurs } from './corps';");
     expect(src).toContain('construireCorps(lireEtatTunnel()');
   });
 });
@@ -427,13 +429,17 @@ describe('QJR664 — graphe « Une journée type » : parité FR / EN / AR', () 
     for (const [loc, src] of SOURCES) {
       expect(src, loc).toContain('<div id="mt-jourtype-wrap" hidden class="mt-doc-section">');
       expect(src, loc).toContain('<div id="mt-jourtype-grid"');
-      expect(src, loc).toContain(`renderJourType('${loc}')`);
+      // RWEB17-M13 — le rendu est appelé par lib/tunnel/selections.ts avec la locale de la page (CONFIG_<LOCALE>).
+      expect(src, loc).toContain(`locale: '${loc}',`);
+      expect(src, loc).toContain('renderJourType(ctx.locale, document)');
       expect(src, loc).toContain("scripts/tunnel/jourType'");
     }
   });
 
   it('plus aucune copie inline du rendu dans les pages', () => {
-    for (const [loc, src] of SOURCES) {
+    // La page SEULE (sans ses modules : le rendu partagé vit justement dans l'un d'eux).
+    for (const [loc, rel] of [['fr', '../src/pages/devis/mon-toit.astro'], ['en', '../src/pages/en/devis/mon-toit.astro'], ['ar', '../src/pages/ar/devis/mon-toit.astro']]) {
+      const src = lireAstroAvecBlocs(fileURLToPath(new URL(rel, import.meta.url)));
       expect(src, loc).not.toContain('function jourTypeChartSvg');
       expect(src, loc).not.toContain('function renderJourType');
     }
@@ -488,11 +494,13 @@ describe('CIW410 — tension / activité touchées : parité des 3 locales', () 
     it(`${locale} — la page marque le clic (setter du groupe de cartes) et le transmet à l'état`, () => {
       expect(src).toContain("tension = v || 'bt'; tensionTouched = true;");
       expect(src).toContain("activity = v || 'day'; activityTouched = true;");
-      expect(src).toContain('tensionTouchee: tensionTouched,');
-      expect(src).toContain('activiteTouchee: activityTouched,');
+      // RWEB17-M17 — lireEtatTunnel vit dans lib/tunnel/validation.ts, où `e` = ctx.etat.
+      expect(src).toContain('tensionTouchee: e.tensionTouched,');
+      expect(src).toContain('activiteTouchee: e.activityTouched,');
       // persisté dans l'instantané : une reprise de session ne perd pas le clic
       expect(src).toContain("tensionTouched: tensionTouched ? '1' : ''");
-      expect(src).toContain("tensionTouched = savedSel.tensionTouched === '1'");
+      // RWEB17-M10 — l'état initial vit dans `lib/tunnel/etat.ts::creerEtat` (lu à la suite de la page).
+      expect(src).toContain("tensionTouched: savedSel.tensionTouched === '1',");
     });
   }
 });
