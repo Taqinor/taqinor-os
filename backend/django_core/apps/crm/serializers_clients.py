@@ -340,6 +340,31 @@ class ClientSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
     # ``client_pii_voir``. Source unique des champs PII partagée avec le Lead.
     PII_FIELDS = ('telephone', 'email', 'adresse')
 
+    def get_validators(self):
+        # ENF15 — l'unicité (société, code_parrainage) est contrôlée par
+        # ``validate_code_parrainage`` : le validateur DRF auto-généré de la
+        # contrainte rendait le code OBLIGATOIRE à la création (400).
+        from rest_framework.validators import UniqueTogetherValidator
+        return [v for v in super().get_validators()
+                if not (isinstance(v, UniqueTogetherValidator)
+                        and 'code_parrainage' in v.fields)]
+
+    def validate_code_parrainage(self, valeur):
+        """Doublon dans la MÊME société → code ``unique`` (409 par
+        ``UniciteEn409Mixin``) ; le code d'une autre société n'est jamais
+        révélé (ENF15)."""
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if valeur and company is not None:
+            autres = Client.objects.filter(company=company,
+                                           code_parrainage=valeur)
+            if self.instance is not None:
+                autres = autres.exclude(pk=self.instance.pk)
+            if autres.exists():
+                raise serializers.ValidationError(
+                    'Ce code de parrainage est déjà utilisé.', code='unique')
+        return valeur
+
     def validate(self, attrs):
         # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
         # client contre les définitions du module « client », même chemin que
@@ -424,7 +449,10 @@ class ClientSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
         fields = '__all__'
         read_only_fields = ['date_modification']
         # CI #997 (fuzz) — motif d'ICE publié (validation : ``validate_ice``).
-        extra_kwargs = {'ice': {'validators': [IcePublie()]}}
+        # ENF15 : la contrainte (société, code_parrainage) ne rend pas le
+        # code obligatoire — il est dérivé du pk à la première sauvegarde.
+        extra_kwargs = {'ice': {'validators': [IcePublie()]},
+                        'code_parrainage': {'required': False}}
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_created_by_nom(self, obj):
