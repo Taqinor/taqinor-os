@@ -35,6 +35,7 @@ def default_installer_for(company):
         prof = CompanyProfile.get(company)
         return prof.default_installer if prof else None
     except Exception:
+        logger.warning("installations.default_installer_for : exception ignorée", exc_info=True)
         return None
 
 
@@ -58,6 +59,7 @@ def methode_reservation_stock(company):
         return getattr(prof, 'methode_reservation_stock', 'confirmation') \
             if prof else 'confirmation'
     except Exception:  # pragma: no cover - défensif
+        logger.warning("installations.methode_reservation_stock : exception ignorée", exc_info=True)
         return 'confirmation'
 
 
@@ -461,6 +463,7 @@ def _devis_bon_commande(devis):
     try:
         return devis.bon_commande
     except Exception:
+        logger.debug("installations._devis_bon_commande : exception ignorée", exc_info=True)
         return None
 
 
@@ -565,6 +568,7 @@ def _freeze_bom(devis):
         from apps.ventes.utils.options import option_lines
         lignes = option_lines(devis)
     except Exception:
+        logger.warning("installations._freeze_bom : exception ignorée", exc_info=True)
         return bom
     # ERR-QAC-MULTIVILLA-MATERIEL-XN — devis ×N villas : les lignes décrivent
     # UNE villa, le chantier en installe N (N=1 → inchangé).
@@ -1913,6 +1917,7 @@ def compute_chantier_cout(installation, tarif_jour=None):
             total_ht = _dec(devis.total_ht)
             total_ttc = _dec(devis.total_ttc)
         except Exception:  # pragma: no cover - défensif
+            logger.warning("installations.compute_chantier_cout : exception ignorée", exc_info=True)
             total_ht = None
 
     marge = None
@@ -3326,6 +3331,7 @@ def _reglage_recette(company, champ):
         from apps.parametres.models import CompanyProfile
         return getattr(CompanyProfile.get(company), champ, None)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("installations._reglage_recette : exception ignorée", exc_info=True)
         return None
 
 
@@ -4008,6 +4014,7 @@ def alerter_penurie_assemblage(ordre):
         from apps.notifications.services import notify_many, resolve_recipients
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.warning("installations.alerter_penurie_assemblage : exception ignorée", exc_info=True)
         return
     manquants = [d for d in disponibilite_par_ligne(ordre)
                  if d['statut'] != 'disponible']
@@ -4823,6 +4830,7 @@ def _notifier_intervention_assignee(interv, user):
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.warning("installations._notifier_intervention_assignee : exception ignorée", exc_info=True)
         return
     if not interv.technicien_id:
         return
@@ -4863,6 +4871,7 @@ def _notifier_reassignation(interv, user):
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.warning("installations._notifier_reassignation : exception ignorée", exc_info=True)
         return
     if not interv.technicien_id:
         return
@@ -5407,6 +5416,7 @@ def verifier_gate_acompte_planification(installation):
         from apps.parametres.models import CompanyProfile
         profil = CompanyProfile.get(company)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("installations.verifier_gate_acompte_planification : exception ignorée", exc_info=True)
         return None
     if not getattr(profil, 'exiger_acompte_avant_planification', False):
         return None
@@ -5923,6 +5933,7 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
             effets['rappel_solde'] = notifier_reception_solde_a_facturer(
                 installation, user)
         except Exception:  # pragma: no cover - défensif
+            logger.warning("installations.changer_statut_chantier : exception ignorée", exc_info=True)
             effets['rappel_solde'] = None
     effets['stock'] = _apply_stock_statut_effects(
         installation, canon_old, canon_new, user)
@@ -6050,6 +6061,7 @@ def verifier_securite_avant_demarrage(intervention, nouveau_statut):
         from apps.parametres.models import CompanyProfile
         profil = CompanyProfile.get(company)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("installations.verifier_securite_avant_demarrage : exception ignorée", exc_info=True)
         return None
     if not getattr(profil, 'securite_obligatoire_avant_demarrage', False):
         return None
@@ -6228,6 +6240,7 @@ def _notifier_intervention_annulee(interv, user):
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.warning("installations._notifier_intervention_annulee : exception ignorée", exc_info=True)
         return
     destinataires = set()
     if interv.technicien_id:
@@ -6588,6 +6601,7 @@ def _quantite_emplacement(produit, emplacement_id):
             if ligne.get('emplacement_id') == emplacement_id:
                 return ligne.get('quantite')
     except Exception:  # pragma: no cover - défensif, lecture d'appoint
+        logger.warning("installations._quantite_emplacement : exception ignorée", exc_info=True)
         return None
     return 0
 

@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import timedelta
 from decimal import Decimal
@@ -105,6 +106,7 @@ def _qr_data_uri(target):
         return 'data:image/png;base64,' + base64.b64encode(
             buf.getvalue()).decode()
     except Exception:  # pragma: no cover - défensif
+        logging.getLogger(__name__).warning("sav._qr_data_uri : exception ignorée", exc_info=True)
         return None
 
 
@@ -605,6 +607,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 profil = CompanyProfile.get(company=request.user.company)
                 telephone = (getattr(profil, 'telephone', '') or '').strip()
             except Exception:
+                logging.getLogger(__name__).warning("sav.etiquettes : exception ignorée", exc_info=True)
                 telephone = ''
 
         items = []
@@ -2831,6 +2834,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 client_id=client_id, lignes=lignes,
                 note=f'Devis de réparation SAV — ticket {ticket.reference}')
         except Exception:
+            logging.getLogger(__name__).warning("sav.creer_devis : exception ignorée", exc_info=True)
             return Response(
                 {'detail': 'Client introuvable pour votre société.'},
                 status=status.HTTP_404_NOT_FOUND)
@@ -2991,6 +2995,7 @@ class WarrantyClaimViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 if f:
                     serializer.validated_data['fournisseur_nom_cache'] = f.nom
             except Exception:
+                logging.getLogger(__name__).warning("sav._resolve_fournisseur : exception ignorée", exc_info=True)
                 pass
 
     @staticmethod

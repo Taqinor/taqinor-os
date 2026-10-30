@@ -262,6 +262,7 @@ def public_document(request, token):
         else:
             return _not_found()
     except Exception:
+        logger.warning("ventes.public_document : exception ignorée", exc_info=True)
         return _noindex(Response(
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND,
@@ -311,6 +312,7 @@ def public_bcf_document(request, token):
         if pdf_bytes is None:
             return _not_found()
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical (D-ENF22-BLE001)
+        logger.warning("ventes.public_bcf_document : exception ignorée", exc_info=True)
         return _noindex(Response(
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))
@@ -2008,6 +2010,7 @@ def proposal_taille_detail(request, token, cle):
         if depuis_cache is not None:
             return _noindex(Response(depuis_cache))
     except Exception:  # noqa: BLE001 — cache du détail de taille : l'échec = recalcul (D-ENF22-BLE001)
+        logger.warning("ventes.proposal_taille_detail : exception ignorée", exc_info=True)
         memo = None
 
     try:
@@ -2163,6 +2166,7 @@ def proposal_pdf(request, token):
             pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical (D-ENF22-BLE001)
+        logger.warning("ventes.proposal_pdf : exception ignorée", exc_info=True)
         return _noindex(Response(
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))
