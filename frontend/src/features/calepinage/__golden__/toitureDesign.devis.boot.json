@@ -3,6 +3,7 @@
     {
       "rendementPvgis": null,
       "proposerConsommation": "[fn]",
+      "productionAtelier": "[fn]",
       "maptilerKey": "cle-d-essai",
       "reducedMotion": false,
       "hydrate": {

@@ -34,6 +34,8 @@ import { createConsumption, hydratationDeProposition } from '@roofpro/consumptio
 import { ctxAtelierNeuf } from '@roofpro/harnaisDocument' // ERR-ACAL311-PANNEAU-ABSENT-ERP
 import { appliquerHydratationAuCtx } from '@roofpro/hydratation'
 import { serializeConsumption } from '@roofpro/prefill'
+import { createProdWindow } from '@roofpro/prodWindow' // ERR-ACAL311 — vrai module, fenêtre absente
+import { fallbackPerKwc } from '@rooflib/productionEngine'
 
 stubberEmpreinteOsm()
 
@@ -233,5 +235,43 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
     rendreLead()
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(initRoofToolPro8.mock.calls[0][0].proposerConsommation).toBeNull()
+  })
+
+  // ERR-ACAL311-PANNEAU-ABSENT-ERP (vague 9) — le panneau était dans le DOM mais restait
+  // `hidden` : sans `#rp9-prod-window` ni `/api/roof-production`, aucun plan de production.
+  it('`productionAtelier` transmis : sans fenêtre de production, « Affiner ma consommation » devient visible', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const { productionAtelier } = initRoofToolPro8.mock.calls[0][0]
+    expect(typeof productionAtelier).toBe('function')
+    expect(productionAtelier({ panels: 10 })).toEqual(fallbackPerKwc())
+    const fenetre = document.getElementById('rp9-cons-window')
+    expect(fenetre.hidden).toBe(true)
+    // Les VRAIS modules de l'atelier sur le DOM servi par l'ERP (aucun `#rp9-prod-window`).
+    const ctx = {
+      ...ctxAtelierNeuf(), opts: { productionAtelier }, closed: true, centroid: [-7.6, 33.5],
+      vertices: [[-7.6, 33.5], [-7.59, 33.5], [-7.59, 33.51]], prodMonth: 0, prodPanels: 0,
+      liveResult: { target: 6000, winner: { placedCount: 10, tiltDeg: 10, aspect: 0 } },
+    }
+    const domConso = new Proxy({ consWindowEl: fenetre }, { get: (t, k) => t[k] ?? null })
+    const conso = createConsumption(ctx, domConso, {
+      renderActive: () => undefined, clampNeeded: (n) => n, monthlyBill: () => 0, fmt1: (n) => String(n),
+    })
+    createProdWindow(ctx, new Proxy({}, { get: () => null }), {
+      graphs: {}, renderConsumption: conso.renderConsumption, renderLayoutPanel: () => undefined,
+      snapshotActiveAreaResult: () => undefined, renderAreasPanel: () => undefined,
+    }).syncProductionWindow()
+    expect(ctx.prodPanels).toBe(10)
+    expect(fenetre.hidden).toBe(false)
+    expect(document.getElementById('rp9-cons-toggle')).not.toBeNull()
+
+    cleanup()
+    initRoofToolPro8.mockClear()
+    delete window.__taqinorRoofBooted
+    simulerApiLead(api)
+    rendreLead()
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(typeof initRoofToolPro8.mock.calls[0][0].productionAtelier).toBe('function')
   })
 })
