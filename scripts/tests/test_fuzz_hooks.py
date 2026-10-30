@@ -257,8 +257,9 @@ class IdsCheminTests(unittest.TestCase):
         # sinon) ; une chaîne non entière (uuid, slug) garde sa valeur.
         vals = [self._appel('/api/django/ventes/devis/{id}/', {'id': str(10**6 + i)})
                 .path_parameters['id'] for i in range(200)]
-        self.assertTrue(all(isinstance(v, str) for v in vals))
-        reels = [v for v in vals if v in ('11', '12', '13')]
+        reels = [v for v in vals if v in (11, 12, 13)]
+        # Posé ENTIER (revalidé contre ``type: integer``) ; le reste garde sa chaîne.
+        self.assertTrue(all(isinstance(v, int) for v in reels))
         self.assertTrue(0.6 < len(reels) / 200 < 0.9, len(reels))
         cas = self._appel('/api/django/ventes/devis/{id}/', {'id': 'abc'})
         self.assertEqual(cas.path_parameters['id'], 'abc')

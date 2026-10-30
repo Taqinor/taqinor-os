@@ -460,9 +460,12 @@ def _ids_chemin_reels(case):
     # CI #1176 — la phase coverage (seule phase du job PR) rend les paramètres
     # de chemin DÉJÀ en chaîne (Schemathesis 4.28 ``_stringify_value`` : un
     # entier 0 arrive « 0 ») : sans cette forme, aucun id entier n'était
-    # jamais posé (« 0 opérations avec id réel »). L'id réel suit la forme.
+    # jamais posé (« 0 opérations avec id réel »). L'id réel est posé ENTIER :
+    # Schemathesis revalide le conteneur modifié contre ``type: integer`` — une
+    # chaîne « 2 » y rendait le cas négatif (CI #1176, ~200 faux « accepted
+    # schema-violating request ») ; l'URL envoyée est identique.
     if isinstance(choisi, int) and isinstance(valeur, str) and _ENTIER_TEXTE.match(valeur):
-        choisi = str(choisi)
+        valeur = int(valeur)
     if isinstance(choisi, int) != isinstance(valeur, int):
         _COUVERTURE['aleatoire'].add(ops)
         return
