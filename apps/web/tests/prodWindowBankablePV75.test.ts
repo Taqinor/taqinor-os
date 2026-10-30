@@ -194,3 +194,80 @@ describe('graphs — PV75 renderLossCascade (pure, FR)', () => {
     expect(svg).toContain('&lt;script&gt;');
   });
 });
+
+// ERR-ACAL311-PANNEAU-ABSENT-ERP — l'atelier ERP n'a NI `#rp9-prod-window` NI la route
+// `/api/roof-production` : la production du plan vient de l'option injectée
+// `productionAtelier`, sans quoi « Affiner ma consommation » reste masqué (prodScaled null).
+describe('prodWindow — page hôte sans fenêtre de production (option productionAtelier)', () => {
+  function makeCtxSansFenetre(productionAtelier?: unknown): Ctx {
+    return {
+      opts: { reducedMotion: true, maptilerKey: 'k', ...(productionAtelier ? { productionAtelier } : {}) },
+      closed: true,
+      vertices: [[-7.6, 33.5], [-7.59, 33.5], [-7.59, 33.51]],
+      centroid: [-7.595, 33.505],
+      roofType: 'flat',
+      liveResult: { target: 6000, winner: { placedCount: 10, tiltDeg: 10, aspect: 0 } },
+      pitchedLiveResult: null,
+      prodScaled: null,
+      prodPerKwc: null,
+      prodPanels: 0,
+      prodTarget: 0,
+      prodSource: 'pvgis',
+      layoutMode: false,
+      layoutState: null,
+    } as unknown as Ctx;
+  }
+
+  function sync(ctx: Ctx) {
+    let rendus = 0;
+    const dom = { ...makeDom(), prodWindowEl: null };
+    const pw = createProdWindow(ctx, dom, {
+      graphs: createGraphs(ctx),
+      renderConsumption: () => { rendus += 1; },
+      renderLayoutPanel: () => {},
+      snapshotActiveAreaResult: () => {},
+      renderAreasPanel: () => {},
+    });
+    pw.syncProductionWindow();
+    return rendus;
+  }
+
+  it('option fournie : plan de production posé (10 panneaux) et fenêtre de conso re-rendue, sans requête', async () => {
+    document.body.innerHTML = '';
+    const { fallbackPerKwc, PANEL_KWC } = await import('../src/lib/productionEngine');
+    const appels: unknown[] = [];
+    const ctx = makeCtxSansFenetre((cfg: unknown) => { appels.push(cfg); return fallbackPerKwc(); });
+    const fetchAvant = globalThis.fetch;
+    let requetes = 0;
+    globalThis.fetch = (() => { requetes += 1; return Promise.reject(new Error('aucune requête')); }) as typeof fetch;
+    try {
+      expect(sync(ctx)).toBe(1);
+    } finally {
+      globalThis.fetch = fetchAvant;
+    }
+    expect(requetes).toBe(0);
+    expect(appels).toHaveLength(1);
+    expect(appels[0]).toMatchObject({ panels: 10, tiltDeg: 10, aspect: 0, target: 6000 });
+    expect(ctx.prodPanels).toBe(10);
+    expect(ctx.prodTarget).toBe(6000);
+    expect(ctx.prodSource).toBe('estimate');
+    expect(ctx.prodScaled?.annualKwh).toBeCloseTo(fallbackPerKwc().annualKwh * 10 * PANEL_KWC, 6);
+  });
+
+  it('option absente (pages publiques) : aucun plan posé, aucun rendu de conso — comportement inchangé', () => {
+    document.body.innerHTML = '';
+    const ctx = makeCtxSansFenetre();
+    expect(sync(ctx)).toBe(0);
+    expect(ctx.prodScaled).toBeNull();
+    expect(ctx.prodPanels).toBe(0);
+  });
+
+  it('aucun panneau posé : plan retiré (prodScaled null) et la conso est re-rendue (masquée)', () => {
+    document.body.innerHTML = '';
+    const ctx = makeCtxSansFenetre(() => { throw new Error('jamais appelée sans panneau'); });
+    (ctx as unknown as { liveResult: unknown }).liveResult = { target: 6000, winner: { placedCount: 0, tiltDeg: 10, aspect: 0 } };
+    expect(sync(ctx)).toBe(1);
+    expect(ctx.prodScaled).toBeNull();
+    expect(ctx.prodPanels).toBe(0);
+  });
+});

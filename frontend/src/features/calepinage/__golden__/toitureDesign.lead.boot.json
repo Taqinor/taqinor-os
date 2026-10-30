@@ -3,6 +3,7 @@
     {
       "rendementPvgis": null,
       "proposerConsommation": null,
+      "productionAtelier": "[fn]",
       "maptilerKey": "k-lead",
       "reducedMotion": false,
       "hydrate": {

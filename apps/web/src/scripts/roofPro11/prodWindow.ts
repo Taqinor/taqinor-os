@@ -310,9 +310,32 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
     };
   }
 
+  /**
+   * ERR-ACAL311-PANNEAU-ABSENT-ERP — page hôte SANS fenêtre de production ni route
+   * /api/roof-production (l'atelier ERP) : la production du plan courant vient de l'option
+   * INJECTÉE `ctx.opts.productionAtelier(cfg)` (production PAR 1 kWc, aucune requête), puis
+   * est rescalée au nombre posé — c'est ce plan qui fait apparaître « Affiner ma
+   * consommation ». Option absente (pages publiques) ⇒ no-op, comportement inchangé.
+   */
+  function syncProductionSansFenetre() {
+    const fournir = ctx.opts?.productionAtelier;
+    if (typeof fournir !== 'function') return;
+    const cfg = prodConfigFromState();
+    // W69 — même règle que la fenêtre : en disposition personnalisée, le nombre posé édité.
+    const panels = !cfg ? 0 : ctx.layoutMode && ctx.layoutState ? occupiedCount(ctx.layoutState) : cfg.panels;
+    const perKwc = cfg && panels > 0 ? fournir(cfg) : null;
+    ctx.prodPanels = perKwc ? Math.max(0, Math.round(panels)) : 0;
+    ctx.prodTarget = cfg ? Math.max(0, cfg.target) : 0;
+    ctx.prodPerKwc = perKwc;
+    ctx.prodScaled = perKwc ? rescaleByPanels(perKwc, ctx.prodPanels, PANEL_KWC) : null;
+    if (perKwc) ctx.prodSource = perKwc.source;
+    renderConsumption();
+  }
+
   /** Synchronise la fenêtre de production avec l'état courant (appelée après chaque rendu). */
   function syncProductionWindow() {
     if (!dom.prodWindowEl) {
+      syncProductionSansFenetre();
       // Même sans la fenêtre de production, on garde l'instantané de zone + le total à jour.
       snapshotActiveAreaResult();
       renderAreasPanel();

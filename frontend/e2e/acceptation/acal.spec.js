@@ -637,8 +637,9 @@ etape('P5.5', ['ACAL311'], async ({ page }) => {
     const ids = await page.locator('[id^="rp9-cons"], [data-cons-bareme]').count()
     const texte = await page.getByText('Affiner ma consommation').count()
     throw new Error(`« Affiner ma consommation » absent de l'atelier /calepinage/${cal.id} (éléments rp9-cons* / data-cons-bareme dans le DOM : ${ids} ; texte « Affiner ma consommation » : ${texte}). `
-      + 'Observé : le panneau n’est jamais monté — consumption.ts::monterProposition exige `rp9-cons-panel`, gabarit présent dans '
-      + 'apps/web/src/pages/preview/toiture-3d-pro-11.astro seulement, absent de frontend/src/pages/ventes/ToitureDesign.jsx. '
+      + 'Condition : consumption.ts::renderConsumption ne montre `#rp9-cons-window` qu’avec un plan de production '
+      + '(ctx.prodScaled et ctx.prodPanels > 0) — dans l’ERP, posé par prodWindow.ts::syncProductionSansFenetre via '
+      + 'l’option `productionAtelier` (useAtelierBoot.js) ; 0 élément rp9-cons* = gabarit CONS_WINDOW_HTML absent de ToitureDesign.jsx. '
       + `Attendu : panneau « estimation (barème indicatif) » puis « Reprendre du lead ». (${String(e.message).split('\n')[0]})`)
   }
   if ((await bascule.getAttribute('aria-expanded')) !== 'true') await bascule.click()
