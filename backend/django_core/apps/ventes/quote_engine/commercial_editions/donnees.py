@@ -296,17 +296,17 @@ def lignes_methode(d):
     leur ``<div>`` : ``[(classe, html)]``."""
     import re
     sortie = []
+    from ..ci.mentions import ligne_tarif_grille
+    grille = ligne_tarif_grille(
+        ((d.get("com_synthese") or {}).get("argent") or {}).get("tarif"),
+        ci_couverture.langue(d))
+    if grille:  # même ordre que ``commercial.cover`` : la grille d'abord
+        sortie.append(grille)
     for html in (ci_couverture.ligne_methode(d, "com", "x"),
                  ci_couverture.ligne_surplus(d, "com", "x")):
         texte = re.sub(r"^<div[^>]*>|</div>$", "", _txt(html))
         if texte:
             sortie.append(texte)
-    from ..ci.mentions import ligne_tarif_grille
-    grille = ligne_tarif_grille(
-        ((d.get("com_synthese") or {}).get("argent") or {}).get("tarif"),
-        ci_couverture.langue(d))
-    if grille:
-        sortie.append(grille)
     if d.get("com_masquer_economies") or (
             d.get("com_motif_argent") and d.get("com_economies") is None):
         texte = re.sub(r"^<div[^>]*>|</div>$", "",

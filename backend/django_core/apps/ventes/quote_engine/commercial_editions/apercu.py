@@ -78,6 +78,10 @@ def fixture_complexe():
         {"designation": "Extension de garantie onduleur, +5 ans",
          "quantite": 1, "taux_tva": 20, "total_ht": 8000.0, "total_ttc": 9600.0},
     ]
+    tot = ((data.get("option_batterie") or {}).get("totaux") or {})
+    ht = tot.get("ht_net") or tot.get("ht") or 0
+    if tot.get("ttc") and ht and not tot.get("tva"):
+        tot["tva"] = round(float(tot["ttc"]) - float(ht), 2)
     data["note_client"] = ("Accès toiture par l'escalier de service ; "
                            "intervention en dehors des heures de fournée.")
     data["seller"] = {"nom": "Yassine Cherkaoui", "telephone": "0612345678",

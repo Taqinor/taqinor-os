@@ -123,3 +123,30 @@ moteur ou dans la fixture : « Gérant : … » dans la bande légale (D-APDF), 
 incohérente (Σ lignes ≠ sous-total, TVA, retour, remplacement onduleur repris du 461),
 raison sociale et précision du kWc servies, deux listes d'étapes héritées, photo unique
 pour tous les clients (décision : n'afficher l'arc qu'avec une photo du site).
+
+## Révision du 29/10 (soir) — UNE édition, « Khatam », sur le devis actuel
+
+Décision du fondateur (29/10) : garder une seule version, **celle que nous avions**, et y
+ajouter la touche marocaine de la Signature et une part de son écriture — « le style actuel,
+en mieux ». Signature et Basique sont retirées (`git rm`), Normale devient **Khatam**
+(`commercial_editions/khatam/`), reconstruite sur la grammaire exacte des trois pages du moteur
+(`commercial/cover.py`, `equip.py`, `trust.py`) : même contenu, même ordre, mêmes marges
+(14 mm), mêmes blocs (héros, tuiles, note autoconsommation, investissement, énergie mois par
+mois, prochaines étapes et QR ; tableau, chaîne de totaux, note, clauses, option batterie,
+options proposées, surplus, case d'activité, installation en bref ; étapes, garanties,
+échéancier, financement, services, bases du calcul, conditions, bon pour accord, bande légale).
+
+**Ce qui change, et seulement cela** : héros marine tramé khatam avec filet et frise or et la
+photo dans une fenêtre en arc outrepassé (colonne de titre 116 mm) ; bandeaux intérieurs de
+16 mm tramés ; tuiles à filet or (plus de pastilles orange), économie en vert zellige ;
+investissement sur bloc marine à double filet ; rangée Total TTC sur marine ; puces en étoile,
+numéros d'étapes dans l'octogone, garanties Fraunces 600 séparées par des filets or, bon pour
+accord en cartouche à double filet ; Fraunces 600 pour titres et chiffres, IBM Plex Sans
+(chiffres tabulaires) pour le texte ; arabe du catalogue à côté de la référence, de l'économie,
+de l'investissement, du Total TTC, des titres de page 3 et du bon pour accord (désactivé hors
+document français). Le logo suit désormais `quote_engine.logo.css_boite` (R3 de `main`).
+
+**Vérifié le 29/10 au soir** : 5 fixtures + devis réel DEV-202610-0119 + arabe, 3 pages
+exactes au palier 0 ; parité des ancres de chiffres avec le moteur actuel (hôtel, boulangerie,
+café, sans étude : aucune différence, aucun nombre hors base). Toujours non branchée (règle #4) :
+rendue par `apercu.rendre` seulement.

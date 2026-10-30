@@ -63,15 +63,9 @@ _KHATAM = {
     "motif_11": "#3C5280", "motif_8": "#2F4470", "galon": "#D4A853",
 }
 
-SIGNATURE = dict(_KHATAM, nom="signature", paper="#FFFFFF", line="#D9DCE3",
-                 line_soft="#E8EAEF", wash="#F3F4F7", pied="plein",
-                 marge="20mm", marge_g="20mm", haut="22mm")
 KHATAM = dict(_KHATAM, nom="khatam", paper="#FFFFFF", line="#D9DCE3",
                line_soft="#E8EAEF", wash="#F3F4F7", pied="plein",
-               marge="20mm", marge_g="20mm", haut="18mm")
-BASIQUE = dict(_KHATAM, nom="basique", paper="#FFFFFF", line="#D9DCE3",
-               line_soft="#E8EAEF", wash="#F3F4F7", pied="filet",
-               marge="20mm", marge_g="20mm", haut="18mm")
+               marge="14mm", marge_g="14mm", haut="22mm")
 
 
 def jeton(palette: dict) -> dict:
@@ -301,7 +295,7 @@ def bande_entete(ctx, j: dict, p: str, rubrique: str, ref: str, hauteur_mm: floa
                  logo_mm: float = 22) -> str:
     """Le bandeau d'en-tête des pages intérieures."""
     return (f'<div class="{p}-bande" style="height:{hauteur_mm:g}mm;"><div class="{p}-bande-in" style="height:{hauteur_mm:g}mm;">'
-            f'<div class="{p}-bande-l">{logo(ctx, logo_mm, sombre=True, hauteur_mm=max(6.0, hauteur_mm * 0.45))}</div>'
+            f'<div class="{p}-bande-l">{logo(ctx, "entete", sombre=True)}</div>'
             f'<div class="{p}-bande-r"><b>{rubrique}</b>&nbsp;&nbsp;·&nbsp;&nbsp;{ref}</div></div></div>')
 
 
@@ -331,7 +325,7 @@ def tableau_equipements(m: dict, p: str, j: dict, L, *, simple=False, resume=Fal
         else:
             rows += (f'<tr><td class="d">{it["designation"]}{marque}{it["sous_lignes"]}</td>'
                      f'<td class="r">{it["qte"]}</td><td class="r">{pu}</td>'
-                     f'<td class="r">{it["taux"]}</td><td class="r">{it["total"]}</td></tr>')
+                     f'<td class="r">{it["taux"]}</td><td class="r" style="font-weight:600;">{it["total"]}</td></tr>')
     if m["hors_total"]:
         rows += (f'<tr class="sec"><td colspan="{ncols}">'
                  + L("ci_postes_hors_total", "Postes à chiffrer après la visite technique (hors total)")
@@ -451,11 +445,13 @@ def hypotheses_tableau(m: dict, p: str, j: dict, L, colonnes=2) -> str:
         return ""
     taille = "7pt" if colonnes < 3 else "6.8pt"
 
+    bidi = "unicode-bidi:plaintext;" if m.get("rtl") else ""
+
     def _tbl(rs):
         cells = "".join(
             f'<tr><td style="color:{j["muted"]};width:38%;padding:2px 6px 2px 0;'
             f'border-bottom:0.5pt solid {j["line_soft"]};vertical-align:top;">{lib or ""}</td>'
-            f'<td style="padding:2px 0;border-bottom:0.5pt solid {j["line_soft"]};">{val}</td></tr>'
+            f'<td style="padding:2px 0;border-bottom:0.5pt solid {j["line_soft"]};{bidi}">{val}</td></tr>'
             for lib, val in rs)
         return f'<table style="width:100%;border-collapse:collapse;font-size:{taille};line-height:1.35;">{cells}</table>'
     if colonnes == 1:
@@ -485,7 +481,7 @@ def bon_pour_accord(m: dict, p: str, j: dict, L, haut_mm=22, cartouche=False,
     lignes = "".join(
         f'<div style="margin-top:4px;">{lib}&#160;: '
         + (f'<b>{val}</b>' if val else
-           f'<span style="display:inline-block;width:48mm;border-bottom:0.5pt dotted {j["line"]};">&#160;</span>')
+           f'<span style="display:inline-block;width:48mm;border-bottom:0.5pt solid {j["bar_sans"]};">&#160;</span>')
         + '</div>' for lib, val in a["lignes"])
     cases = "".join(
         f'<div style="margin-top:4px;"><span style="display:inline-block;width:3mm;height:3mm;'
@@ -520,29 +516,29 @@ def bon_pour_accord(m: dict, p: str, j: dict, L, haut_mm=22, cartouche=False,
 
 
 def bande_legale(m: dict, p: str, j: dict) -> str:
-    return (f'<div class="{p}-cap" style="margin-top:7px;font-size:6.6pt;color:{j["muted"]};">'
+    # Document arabe : la bande (texte français servi) est isolée du bidi.
+    bidi = "direction:ltr;text-align:left;unicode-bidi:isolate;" if m.get("rtl") else ""
+    return (f'<div class="{p}-cap" style="margin-top:7px;font-size:6.6pt;color:{j["muted"]};{bidi}">'
             f'{m["bande_legale"]}</div>')
 
 
-def logo(ctx, largeur_mm=30, sombre=True, hauteur_mm=0) -> str:
-    """Le logo dimensionné par sa LARGEUR (le PNG a du vide autour : en
-    hauteur il rendait minuscule), ou par sa hauteur dans un bandeau."""
+def logo(ctx, role: str = "couverture", sombre: bool = True, largeur_mm=0, hauteur_mm=0) -> str:
+    """Le logo servi par ``theme.logo_imprime_b64`` (R3 : rogné au trait,
+    détouré, variante du fond), dimensionné par la capitale du RÔLE
+    (``quote_engine.logo.css_boite`` : « couverture », « entete ») — la même
+    règle que le devis actuel. Société identifiée sans logo (PNG 1×1, APDF4) :
+    la marque servie en lettres, jamais le logo d'une autre société."""
+    from .. import logo as _logo
     b64 = ctx["logo_dark"] if sombre else ctx["logo_color"]
-    # APDF4 — société sans logo (PNG vide de 1×1 servi par ``theme``) : la
-    # marque servie en lettres (jamais le logo d'une autre société).
     if not b64 or len(b64) < 200:
         marque = esc((ctx.get("ident") or {}).get("brand_name") or "")
         if not marque:
             return ""
         couleur = "#FFFFFF" if sombre else "#14213D"
-        taille = max(9.0, min(16.0, largeur_mm * 0.42))
-        return (f'<div style="font-family:{DISPLAY};font-weight:400;font-size:{taille:g}pt;'
+        taille = 15 if role == "couverture" else 11
+        return (f'<div style="font-family:{DISPLAY};font-weight:600;font-size:{taille}pt;'
                 f'letter-spacing:.02em;color:{couleur};line-height:1;white-space:nowrap;">{marque}</div>')
-    if hauteur_mm:
-        return (f'<img src="data:image/png;base64,{b64}" alt="" '
-                f'style="height:{hauteur_mm:g}mm;width:auto;display:block;">')
-    return (f'<img src="data:image/png;base64,{b64}" alt="" '
-            f'style="width:{largeur_mm:g}mm;height:auto;display:block;">')
+    return _logo.img_html(b64, role)
 
 
 def titre_scinde(titre: str, langue: str, couleur_1: str, pt_avant: float = 0,
