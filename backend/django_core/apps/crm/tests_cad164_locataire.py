@@ -173,3 +173,18 @@ class LocataireApiTests(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertIn('telephone', resp.data['proprietaire'])
         self.assertEqual(Lead.objects.filter(company=self.company).count(), avant)
+
+    def test_fuzz_1176_numero_de_plus_de_20_chiffres_jamais_500(self):
+        """api-fuzz PR #1176 — un téléphone CONFORME (49 caractères ≤ 50
+        publiés) mais de 48 chiffres utiles débordait ``phone_normalise``
+        (varchar 20) dans ``Lead.save`` : DataError, 500. La clé de dédup
+        est tronquée comme la colonne (comme ``whatsapp_normalise``)."""
+        telephone = '03' + '0' * 47
+        resp = self.api.post(self._url(), {
+            'proprietaire': {'nom': '0', 'prenom': '', 'telephone': telephone,
+                             'whatsapp': ''},
+            'proprietaire_inconnu': False}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        proprietaire = Lead.objects.get(pk=resp.data['lead_proprietaire']['id'])
+        self.assertEqual(proprietaire.telephone, telephone)
+        self.assertEqual(len(proprietaire.phone_normalise), 20)

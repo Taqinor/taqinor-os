@@ -1932,11 +1932,11 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
                   'montant.')
 
     def save(self, *args, **kwargs):
-        # QW10 — maintient les colonnes de dédup normalisées à chaque save,
-        # quelle que soit la voie d'écriture (webhook, admin, API, import) —
-        # source unique de vérité : `apps.crm.services` (jamais dupliquée ici).
+        # QW10 — colonnes de dédup normalisées maintenues à chaque save (toute
+        # voie d'écriture), tronquées comme leur colonne varchar(20) : un numéro
+        # de > 20 chiffres (≤ 50 caractères publiés) cassait l'insert (fuzz #1176).
         from . import leads_doublons as _crm_doublons
-        self.phone_normalise = _crm_doublons.normalize_phone(self.telephone) or ''
+        self.phone_normalise = (_crm_doublons.normalize_phone(self.telephone) or '')[:20]
         self.email_normalise = _crm_doublons.normalize_email(self.email) or ''
         # ACRM32 — idem pour le WhatsApp (tronqué comme la colonne).
         self.whatsapp_normalise = (
