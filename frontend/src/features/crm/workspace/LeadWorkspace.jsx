@@ -442,7 +442,8 @@ export default function LeadWorkspace({
         setDevisKwc(intent.targetKwc || null)
         return setDevisPanel(intent.mode || 'auto')
       }
-      // ALEA55 — `payload` = id du devis, ou { id, pdf: 'onepage' } (format choisi).
+      // ALEA55 — `payload` = id du devis, ou { id, pdf: 'onepage' | 'full' | 'final' }
+      // (format choisi ; 'final' = Premium + modalités de paiement + RIB).
       case 'view-devis': {
         const cible = (payload && typeof payload === 'object') ? payload : { id: payload }
         setPanelDevisId(cible.id)

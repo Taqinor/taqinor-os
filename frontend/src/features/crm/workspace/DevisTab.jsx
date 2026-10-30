@@ -428,6 +428,15 @@ export default function DevisTab({
                     <DropdownMenuItem onSelect={() => onAction?.('view-devis', { id: d.id, pdf: 'onepage' })}>
                       1 page
                     </DropdownMenuItem>
+                    {/* Devis final (fondateur, 30/10/2026) — le Premium avec les
+                        modalités de paiement (acompte · matériel · solde) + le
+                        RIB : résidentiel seul (le C&I et l'agricole impriment
+                        toujours leur échéancier). Même devis, jamais un second. */}
+                    {(d.mode_installation ?? state.server?.type_installation ?? 'residentiel') === 'residentiel' && (
+                      <DropdownMenuItem onSelect={() => onAction?.('view-devis', { id: d.id, pdf: 'final' })}>
+                        Devis final (paiement + RIB)
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
                 {/* QJR534 (D-QJR5-1/2) — l'UNIQUE porteur de « Modifier » et de
