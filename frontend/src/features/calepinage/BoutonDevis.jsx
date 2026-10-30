@@ -85,6 +85,9 @@ export const MESSAGE_RETOUCHES_NON_ENREGISTREES = 'Retouches non enregistrées :
 export default function BoutonDevis({
   calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
   enregistrerAvant = null, aDesRetouches = null, revisionPossible = false,
+  // ACAL311 (rejeu P5.5) — faux tant que la scène de l'atelier n'est pas hydratée :
+  // `enregistrerAvant` refuserait (rien n'est écrit avant l'hydratation).
+  atelierPret = true,
 }) {
   const navigate = useNavigate()
   // ACAL171 — le droit SERVI par l'agrégat (`permissions.peut_deroger`,
@@ -120,7 +123,7 @@ export default function BoutonDevis({
   // elle-même que le serveur chiffre (`services/devis.py::_exiger_layout`) —
   // il n'y a alors rien à choisir, et bloquer là ferait un bouton mort.
   const varianteManquante = totalVariantes > 0 && !variantes.retenue_id
-  const desactive = enCours || varianteManquante
+  const desactive = enCours || varianteManquante || !atelierPret
 
   const executer = async (appel) => {
     if (enCours) return

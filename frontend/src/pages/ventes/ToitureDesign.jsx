@@ -1475,6 +1475,7 @@ function AtelierToiture({
             // des retouches non enregistrées.
             enregistrerAvant={enregistrerCalepinage}
             aDesRetouches={() => sceneHydratee && sceneEstModifiee()}
+            atelierPret={sceneHydratee}
           />
         )}
 

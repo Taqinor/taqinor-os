@@ -95,7 +95,7 @@ function BandeauVerrou({ raison }) {
 
 export default function AtelierPanneaux({
   calepinageId, contexte, builderApi, lectureSeule = false,
-  onRecharger, documentVivant = null, enregistrerAvant = null, aDesRetouches = null,
+  onRecharger, documentVivant = null, enregistrerAvant = null, aDesRetouches = null, atelierPret = true,
   children,
 }) {
   const cible = contexte?.cible ?? null
@@ -261,6 +261,7 @@ export default function AtelierPanneaux({
           onRelire={relire}
           enregistrerAvant={enregistrerAvant}
           aDesRetouches={aDesRetouches}
+          atelierPret={atelierPret}
           // ACAL93 — le verdict SERVEUR (design-context, ACAL36).
           revisionPossible={!!contexte?.revision_possible}
         />

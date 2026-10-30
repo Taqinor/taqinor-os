@@ -260,6 +260,23 @@ describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
     expect(ordre).toEqual(['enregistrer', 'sync-devis', 'recharger'])
   })
 
+  // ACAL311 (rejeu P5.5) — avant l'hydratation de la scène, l'enregistrement refuserait :
+  // le geste attend (bouton inactif) au lieu d'échouer sur « n'a pas pu être enregistrée ».
+  it('atelier pas encore hydraté : bouton inactif, rien n’est enregistré', async () => {
+    const enregistrerAvant = vi.fn(async () => true)
+    const { rerender } = rendre({ enregistrerAvant, atelierPret: false })
+    const bouton = await screen.findByTestId('cal-resynchroniser-devis')
+    expect(bouton).toBeDisabled()
+    await userEvent.click(bouton)
+    expect(enregistrerAvant).not.toHaveBeenCalled()
+    rerender(
+      <MemoryRouter>
+        <BoutonDevis calepinageId={DETAIL.id} detail={DETAIL} enregistrerAvant={enregistrerAvant} atelierPret />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('cal-resynchroniser-devis')).toBeEnabled()
+  })
+
   it('échec d’enregistrement : ni sync-devis ni rechargement', async () => {
     const enregistrerAvant = vi.fn(async () => false)
     const onRecharger = vi.fn()
