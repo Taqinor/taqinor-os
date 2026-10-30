@@ -42,23 +42,32 @@ plt.rcParams.update({
 })
 
 def _langue_image(data) -> str:
-    """Langue des TEXTES DESSINÉS dans les images matplotlib. Matplotlib ne
-    met pas l'arabe en forme (lettres non liées, sens inversé) : un document
-    arabe garde donc l'anglais DANS l'image ; fr/en suivent le document."""
+    """Langue des TEXTES DESSINÉS dans les images matplotlib : celle du
+    document. Matplotlib ne met pas l'arabe en forme (lettres non liées, sens
+    inversé) : ``_t`` / ``_mois`` passent le texte arabe par
+    ``arabe_image.mettre_en_forme`` (ERR-PDF-AR-RESIDENTIEL-ANGLAIS)."""
     from . import theme
-    from .. import i18n_labels
-    langue = theme.langue_doc(data)
-    return "en" if i18n_labels.est_rtl(langue) else langue
+    return theme.langue_doc(data)
+
+
+def _ar(txt: str, langue: str = "fr") -> str:
+    """Texte prêt à dessiner : mis en forme si la langue est l'arabe."""
+    if langue != "ar":
+        return txt
+    from . import arabe_image
+    return arabe_image.mettre_en_forme(txt)
 
 
 def _t(cle: str, langue: str = "fr", **valeurs) -> str:
     from .. import i18n_labels
     txt = i18n_labels.libelle(cle, langue)
-    return txt.format(**valeurs) if valeurs else txt
+    return _ar(txt.format(**valeurs) if valeurs else txt, langue)
 
 
 def _mois(langue: str = "fr") -> list:
-    return _t("rpdf_ch_mois", langue).split(",")
+    from .. import i18n_labels
+    return [_ar(m, langue)
+            for m in i18n_labels.libelle("rpdf_ch_mois", langue).split(",")]
 
 
 def _milliers(v, langue: str = "fr") -> str:
@@ -97,8 +106,8 @@ def note_variation_mensuelle(data: dict):
     libellé client ``res_estimation_deux_factures`` du catalogue, via
     ``theme.libelle_doc`` — jamais « réelles ». Autre source estimée (facture
     d'hiver seule) : :data:`VARIATION_ESTIMEE`, inchangé. L'image matplotlib
-    ne met pas l'arabe en forme : un document RTL prend le libellé anglais,
-    comme le reste de ce graphe (mois, unité)."""
+    ne met pas l'arabe en forme : un document RTL passe par ``_ar``
+    (mise en forme maison), comme le reste de ce graphe."""
     if not data.get("factures_mensuelles_estimation"):
         return None
     if data.get("source_consommation") != "facture_hiver_ete":
@@ -107,7 +116,8 @@ def note_variation_mensuelle(data: dict):
     from .. import i18n_labels
     fr = i18n_labels.libelle("res_estimation_deux_factures", "fr")
     if i18n_labels.est_rtl(theme.langue_doc(data)):
-        return i18n_labels.libelle("res_estimation_deux_factures", "en")
+        return _ar(i18n_labels.libelle("res_estimation_deux_factures", "ar"),
+                   "ar")
     return theme.libelle_doc(data, "res_estimation_deux_factures", fr)
 
 
@@ -170,9 +180,12 @@ def bill_before_after(bills_before, bills_after, economies=None,
             # la variation d'un mois à l'autre est une hypothèse tant que le
             # client n'a pas donné douze points. On le dit, on ne le tait pas.
             # AGNR6 — un texte (``note_variation_mensuelle``) nomme la source.
-            note += "  ·  " + (variation_estimee
-                               if isinstance(variation_estimee, str)
-                               else _t("rpdf_ch_variation_estimee", langue))
+            suite = (variation_estimee if isinstance(variation_estimee, str)
+                     else _t("rpdf_ch_variation_estimee", langue))
+            # Arabe : textes déjà en ordre visuel, la note se lit de droite
+            # à gauche — la suite se place donc à GAUCHE de la note.
+            note = (suite + "  ·  " + note if langue == "ar"
+                    else note + "  ·  " + suite)
         ax.text(1.0, 1.03, note, transform=ax.transAxes, fontsize=7,
                 color=ECO_INK, ha="right", va="bottom", fontweight="bold")
     else:
@@ -283,7 +296,7 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     # étiquette « rentabilisé » qui se chevauchent sur un devis réseau seul.
     if deux:
         series = [(cs, NAVY, _t("rpdf_ch_sans_batterie", langue), roi_s, 13),
-                  (ca, GOLD, libelle_avec, roi_a, -24)]
+                  (ca, GOLD, _ar(libelle_avec, langue), roi_a, -24)]
         fill_curve = ca
     else:
         one = (ca, GOLD, None, roi_a, 13) if avec_ok else (cs, NAVY, None, roi_s, 13)

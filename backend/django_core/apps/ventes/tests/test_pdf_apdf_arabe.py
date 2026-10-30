@@ -613,11 +613,12 @@ class ResidentielLibellesHtmlTests(SimpleTestCase):
         en = dict(deux, langue_sortie="en", libelles_document=L.libelles("en"))
         self.assertEqual(charts.note_variation_mensuelle(en),
                          L.libelle("res_estimation_deux_factures", "en"))
-        # Image matplotlib : pas de mise en forme arabe → l'anglais (jamais
-        # du français dans un document arabe).
-        self.assertEqual(charts.note_variation_mensuelle(
-            dict(deux, langue_sortie="ar")),
-            L.libelle("res_estimation_deux_factures", "en"))
+        # Image matplotlib : l'arabe est mis en forme (ERR-PDF-AR-RESIDENTIEL-
+        # ANGLAIS) — ni anglais ni français dans un document arabe.
+        note_ar = charts.note_variation_mensuelle(dict(deux, langue_sortie="ar"))
+        self.assertEqual(note_ar, charts._ar(
+            L.libelle("res_estimation_deux_factures", "ar"), "ar"))
+        self.assertNotRegex(note_ar, r"[A-Za-z]")
         self.assertEqual(charts.note_variation_mensuelle(
             dict(deux, source_consommation="facture_hiver")),
             "variation mensuelle estimée")
@@ -657,8 +658,38 @@ class ResidentielLibellesHtmlTests(SimpleTestCase):
                 for mot in francais:
                     self.assertNotIn(mot, txt, (cle, langue))
         self.assertEqual(charts._milliers(12345, "en"), "12,345")
-        self.assertEqual(charts._langue_image({"langue_sortie": "ar"}), "en")
+        self.assertEqual(charts._langue_image({"langue_sortie": "ar"}), "ar")
         self.assertEqual(charts._langue_image({}), "fr")
+
+    def test_graphiques_arabes_sans_anglais_mois_en_arabe(self):
+        """ERR-PDF-AR-RESIDENTIEL-ANGLAIS — page 1 du résidentiel arabe : la
+        légende « coverage », « monthly saving, in MAD » et les mois du graphe
+        (images matplotlib) sont en arabe mis en forme, jamais en anglais."""
+        from apps.ventes.quote_engine import i18n_labels as L
+        from apps.ventes.quote_engine.residential import arabe_image, charts
+        for cle in ("rpdf_ch_couverture", "rpdf_ch_eco_mois",
+                    "rpdf_ch_variation_estimee", "rpdf_ch_prod_titre",
+                    "rpdf_ch_sans_batterie", "rpdf_ch_seuil", "rpdf_ch_annees",
+                    "rpdf_ch_rentab_un", "rpdf_ch_rentab_deux"):
+            brut = L.libelle(cle, "ar")
+            self.assertNotRegex(re.sub(r"\{\w+\}", "", brut), r"[A-Za-z]", cle)
+            self.assertNotEqual(brut, L.libelle(cle, "en"), cle)
+            self.assertNotRegex(charts._t(cle, "ar", a="3", b="4"),
+                                r"[A-Za-z]", cle)
+        mois = charts._mois("ar")
+        self.assertEqual(len(mois), 12)
+        for m in mois:
+            self.assertNotRegex(m, r"[A-Za-z]")
+            self.assertTrue(all("\ufe70" <= c <= "\ufefc" for c in m), m)
+        self.assertEqual(mois, [arabe_image.mettre_en_forme(L.libelle(
+            f"agr_moisc_{i}", "ar")) for i in range(1, 13)])
+        # Mise en forme : « تغطية » = ta initiale, ghayn/ta/ya médianes, ta
+        # marbuta finale, rangées de gauche à droite.
+        self.assertEqual(arabe_image.mettre_en_forme("تغطية"),
+                         "\ufe94\ufef4\ufec4\ufed0\ufe97")
+        # Latin / chiffres intacts ; texte sans arabe inchangé.
+        self.assertEqual(arabe_image.mettre_en_forme("Jan 3,5"), "Jan 3,5")
+        self.assertIn("3,5", charts._t("rpdf_ch_rentab_un", "ar", a="3,5"))
 
     def test_titre_clauses_residentiel_et_ci_par_langue(self):
         """APDF105 — le titre du bloc « Clauses particulières » du résidentiel
