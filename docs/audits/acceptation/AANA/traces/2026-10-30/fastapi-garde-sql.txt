@@ -1,0 +1,42 @@
+﻿# AANA50 - sonde du garde SQL et de FastAPI, conteneur erp-agentique-fastapi_ia-1, 2026-10-30, sha 5908d43bb
+# Lecture seule : _validate_and_secure / _references_forbidden_column en memoire ; SELECT sur la base locale ; jeton JWT de demo_admin mint en memoire (jamais affiche).
+# Source du script : rejeu des 8 requetes hostiles du dossier 2026-10-05-analyse.md section 5 + controles AANA3/4/5/6/7/8/52.
+
+== AANA2/3/4 _validate_and_secure(sql, 7)
+NOT             REECRITE -> SELECT nom, email FROM (SELECT * FROM crm_client WHERE company_id = 7) AS crm_client WHERE NOT (company_id = 7)
+IS NOT NULL     REECRITE -> SELECT nom, email FROM (SELECT * FROM crm_client WHERE company_id = 7) AS crm_client WHERE (company_id = 7) IS NOT NULL
+arithmetique    REECRITE -> SELECT nom, email FROM (SELECT * FROM crm_client WHERE company_id = 7) AS crm_client WHERE company_id = 7 - 1
+projection      REECRITE -> SELECT company_id = 7 AS mine, nom, email FROM (SELECT * FROM crm_client WHERE company_id = 7) AS crm_client
+litteral        REECRITE -> SELECT c.nom FROM (SELECT * FROM crm_client WHERE company_id = 7) AS c, (SELECT * FROM ventes_devis WHERE company_id = 7) AS d WHERE c.company_id = 7 AND 'company_id = 7' <> ''
+query_to_xml    REJETEE (Fonction non autorisee : query_to_xml.)
+pg_read_file    REJETEE (Fonction non autorisee : pg_read_file.)
+row_to_json(u)  REJETEE (Colonne confidentielle de compte (mot de passe / 2FA / privileges) — lecture refusee.)
+lo_export       REJETEE (Fonction non autorisee : lo_export.)
+set_config      REJETEE (Fonction non autorisee : set_config.)
+pg_sleep        REJETEE (Fonction non autorisee : pg_sleep.)
+p.*             REJETEE (Colonne confidentielle (prix d'achat / marge) — lecture refusee.)
+_references_forbidden_column('SELECT p.* FROM stock_produit p ...') = True
+temoin legitime (count/date_trunc) REECRIT -> SELECT COUNT(*), DATE_TRUNC('MONTH', date_creation) FROM (SELECT * FROM ventes_devis WHERE company_id = 7) AS ventes_devis GROUP BY 2
+== AANA6/AANA30 role DB de l'agent
+SQL_AGENT_DB_USER defini = False ; raison desactivation = ''
+current_user, rolsuper, rolbypassrls = ('erp_user', True, True)
+statement_timeout = 15s
+SELECT count(*) FROM authentication_customuser -> AUTORISE 8
+== AANA2 execution des requetes reecrites (societe 2, base locale multi-societes, lecture seule)
+societes ayant des clients = 3
+SELECT company_id, nom FROM crm_client WHERE NOT (company_id = 2)                                    lignes=0 dont autre societe=0
+SELECT company_id, nom FROM crm_client WHERE company_id = 2 - 1                                      lignes=0 dont autre societe=0
+SELECT c.company_id FROM crm_client c, ventes_devis d WHERE c.company_id = 2 AND 'company_id = 2' <> lignes=18923 dont autre societe=0
+SELECT company_id FROM crm_client WHERE (company_id = 2) IS NOT NULL                                 lignes=149 dont autre societe=0
+== AANA6 configuration simulee DJANGO_DEBUG=False sans SQL_AGENT_DB_USER (sous-processus)
+raison desactivation, url agent = "Agent SQL desactive : la variable d'environnement SQL_AGENT_DB_USER n'est pas definie (role Postgres dedie en lecture seule obligatoire en production)." False
+== AANA7 societe active
+require_company_id({company_id:1, active_company_id:2}) = 2
+require_company_id({company_id:1}) = 1
+== AANA5 bornes
+SQL_AGENT_QUESTION_MAX_LENGTH = 2000
+question de 1 Mo -> REFUSEE (422) string_too_long
+statement_timeout agent (ms) = 15000 ; limiteur Redis present = True
+== AANA8/AANA52 permissions lues a /auth/me/ (demo_admin)
+demo_admin (non superutilisateur, role admin) : permissions lues = 135 ; prix_achat_voir = True ; allow_price attendu = True
+jeton invalide (fail-closed) : permissions lues = 0 ; prix_achat_voir = False
