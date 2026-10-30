@@ -80,6 +80,24 @@ class XFAC13AbandonCreanceTests(TestCase):
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.statut, Facture.Statut.EMISE)
 
+    def test_reprendre_abandon_motif_avec_nul_400(self):
+        # api-fuzz-pr 30/10 — un motif portant « \x00 » (publié SANS NUL)
+        # atteignait l'écriture PostgreSQL (ValueError, 500) : 400 nommé,
+        # l'abandon reste actif.
+        base = f'/api/django/ventes/factures/{self.facture.id}'
+        r = self.api.post(f'{base}/abandonner-solde/',
+                          {'motif': 'irrecouvrable'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.post(f'{base}/reprendre-abandon/',
+                          {'motif': 'ok\x00m', 'abandon': 1}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['champ'], 'motif')
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.statut, Facture.Statut.PAYEE)
+        r = self.api.post(f'{base}/reprendre-abandon/',
+                          {'motif': 'erreur de saisie'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_manual_abandon_with_motif_soldes_facture(self):
         r = self.api.post(
             f'/api/django/ventes/factures/{self.facture.id}/'

@@ -191,6 +191,10 @@ class FactureEncaissementActionsMixin:
         motif = corps.get('motif')
         if motif is not None and not isinstance(motif, str):
             erreur = {'detail': 'motif : texte attendu.', 'champ': 'motif'}
+        elif motif is not None and '\x00' in motif:
+            # api-fuzz-pr 30/10 — le schéma publie le motif SANS NUL ; PostgreSQL
+            # refuse le caractère nul à l'écriture (ValueError → 500).
+            erreur = {'detail': 'motif : caractère nul interdit.', 'champ': 'motif'}
         abandon_id = corps.get('abandon')
         if abandon_id in ('', None):
             abandon_id = None
