@@ -622,6 +622,25 @@ etape('P5.5', ['ACAL311'], async ({ page }) => {
   // roof_layout.consumption identique, source.bareme = 'societe'.
   const cfg = await lireJson(await page.request.get(`${API_DJANGO}/ventes/roof-config/`, T), 'roof-config')
   if (!cfg.available) nonJouable('aucune clé carte servie : le constructeur 3D ne boote pas')
+  // Prérequis du barème société (parametres/tariff.py) : sans charges fixes d'abonnement
+  // DÉCLARÉES, le serveur refuse la conversion MAD → kWh (`consumption: null` + avertissement,
+  // constaté au rejeu du 30/10 : réglage vide sur la pile). Réglage société relu AVANT,
+  // déclaré au montant relevé sur facture réelle (39,94 MAD TTC/mois) s'il est vide, RESTAURÉ.
+  const tarifAvant = await lireJson(await page.request.get(`${API_DJANGO}/parametres/tarification/`, T), 'tarification')
+  const redevanceAvant = tarifAvant.redevance_compteur_mad_mois ?? null
+  const poserRedevance = async (v) => {
+    const r = await page.request.patch(`${API_DJANGO}/parametres/tarification/update/`, { ...T, data: { redevance_compteur_mad_mois: v } })
+    expect(r.status(), `redevance_compteur_mad_mois ← ${v} : ${(await r.text()).slice(0, 300)}`).toBe(200)
+  }
+  if (redevanceAvant == null) await poserRedevance('39.94')
+  try {
+    await parcoursConsommation(page)
+  } finally {
+    if (redevanceAvant == null) await poserRedevance(null)
+  }
+})
+
+async function parcoursConsommation(page) {
   const lead = await creerLead(page.request, 'ACC CAL Conso', { facture_hiver: '900', facture_ete: '700' })
   const cal = await creerCalepinage(page.request, lead.id)
   await ecrireLayout(page.request, cal.id, {
@@ -674,4 +693,4 @@ etape('P5.5', ['ACAL311'], async ({ page }) => {
   const c2 = await enregistrer()
   expect(c2, 'consumption identique après F5 + enregistrer sans toucher').toEqual(c1)
   console.log(`[P5.5] kwh_annuel ${servi.kwh_annuel} ; consumption.source ${JSON.stringify(c1?.source)}`)
-})
+}
