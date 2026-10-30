@@ -270,13 +270,47 @@ class AttributionParResponsableTests(TestCase):
             company=self.company, equipe=self.equipe, membre=membre,
             ordre=ordre, **criteres)
 
+    def _a(self, jour, h, mi=0):
+        import datetime
+        from apps.crm import horaires
+        return datetime.datetime(2026, 10, jour, h, mi,
+                                 tzinfo=horaires.CASABLANCA)
+
+    def _nouveau_a(self, instant, **champs):
+        from unittest import mock
+        with mock.patch('django.utils.timezone.now', return_value=instant):
+            return self._nouveau(**champs)
+
     def test_off_comportement_inchange_aucune_attente(self):
+        # En journée (jeudi 29/10/2026, 10 h) : rotation directe.
         from apps.crm.models_clients import AttributionEnAttente
         self.equipe.confirmation_responsable = False
         self.equipe.save(update_fields=['confirmation_responsable'])
-        lead = self._nouveau()
+        lead = self._nouveau_a(self._a(29, 10))
         self.assertIn(lead.owner, (self.a, self.b))
         self.assertFalse(AttributionEnAttente.objects.filter(lead=lead).exists())
+
+    def test_off_le_soir_attend_le_responsable_jusqu_a_l_ouverture(self):
+        # Fondateur 30/10/2026 : le soir rien n'est attribué — le lead attend
+        # le responsable et ne part tout seul qu'à 8 h 30 le lendemain.
+        self.equipe.confirmation_responsable = False
+        self.equipe.save(update_fields=['confirmation_responsable'])
+        lead = self._nouveau_a(self._a(29, 22))
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.chef)
+        attente = lead.attribution_en_attente
+        self.assertIn(attente.proposee, (self.a, self.b))
+        self.assertEqual(attente.echeance, self._a(30, 8, 30))
+
+    def test_on_la_nuit_echeance_a_l_ouverture_pile(self):
+        lead = self._nouveau_a(self._a(30, 4, 35))
+        self.assertEqual(lead.attribution_en_attente.echeance,
+                         self._a(30, 8, 30))
+
+    def test_on_en_journee_echeance_apres_le_delai(self):
+        lead = self._nouveau_a(self._a(29, 10))
+        self.assertEqual(lead.attribution_en_attente.echeance,
+                         self._a(29, 10, 5))
 
     def test_on_lead_au_responsable_en_attente_avec_proposition(self):
         lead = self._nouveau()
