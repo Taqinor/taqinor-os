@@ -150,3 +150,25 @@ document français). Le logo suit désormais `quote_engine.logo.css_boite` (R3 d
 exactes au palier 0 ; parité des ancres de chiffres avec le moteur actuel (hôtel, boulangerie,
 café, sans étude : aucune différence, aucun nombre hors base). Toujours non branchée (règle #4) :
 rendue par `apercu.rendre` seulement.
+
+## Révision du 30/10 — cas de référence unique, sans arabe, sans photo de stock
+
+Fondateur (30/10) : pas d'arabe ; aucune information étrangère au dossier ; le devis de la
+boulangerie (DEV-202610-0119, lead 1637) est LE cas de référence, toujours rendu à partir de ce
+que l'ERP sert ; comparer avec le PDF que l'ERP rend réellement, pas avec un rendu local.
+
+**Fait** : l'édition n'imprime plus d'arabe (libellés du catalogue retirés de la couverture, de
+la page 2 et de la page 3) ; la fenêtre en arc n'apparaît qu'avec une photo DU SITE servie par le
+devis (`roof_photo`), jamais la photothèque — la boulangerie n'en a pas, le héros est plein. La
+charge utile et le PDF de référence sont lus sur le serveur de production (lecture seule, même
+chemin que `/proposal` : `build_quote_data` + `echapper_textes_client` + renderer commercial,
+sans dépôt MinIO) ; depuis le 29/10 seul le logo de la société a changé dans l'ERP (139 Ko).
+L'édition est rendue sur la charge utile ÉCHAPPÉE, comme le moteur.
+
+**Écart constaté dans le moteur actuel (hors édition)** : pour ce devis, le PDF rendu par l'ERP
+tient en 3 pages mais SANS énergie mois par mois, prochaines étapes, QR, « Votre installation en
+bref » ni « Bases du calcul ». Au palier 0 le document fait 4 pages : la fiche « en bref »,
+ancrée au bas de la page 2 (`commercial/equip.py`), déborde d'une ligne depuis que le
+regroupement R3 (28/10) a ajouté la ligne « Supervision & comptage » ; `document_adaptatif`
+monte alors de palier jusqu'à céder ces cinq blocs. Correction à faire au moteur (la fiche doit
+suivre le tableau), pas dans l'édition — qui, elle, garde les cinq blocs en 3 pages.

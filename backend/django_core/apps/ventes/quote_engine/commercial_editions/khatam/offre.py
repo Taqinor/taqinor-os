@@ -4,7 +4,8 @@
 (``commercial/equip.py``) : tableau, chaîne de totaux, note, clauses, option
 batterie, options proposées, surplus injecté, case d'activité, installation
 en bref — avec un bandeau d'en-tête tramé, un en-tête de tableau doublé
-encre + or, la rangée Total TTC sur marine, des puces en étoile khatam.
+encre + or, la rangée Total TTC sur marine, des puces en étoile khatam ;
+aucun arabe (fondateur 30/10).
 Classes ``kh2-``.
 """
 from .. import commun, donnees
@@ -14,11 +15,10 @@ def build(ctx, m, j):
     d, p = m["d"], "kh"
     fmt, fmt_mad = m["fmt"], m["fmt_mad"]
     L = lambda cle, fr, **v: donnees.L(d, cle, fr, **v)
-    ar = donnees.ar
     entete = commun.bande_entete(ctx, j, p, L("ci_votre_installation", "Votre installation"),
                                  f'{L("ci_ref_devis", "Réf. devis")} {m["ref"]}')
     tableau = commun.tableau_equipements(m, p, j, L)
-    totaux = commun.chaine_totaux(m, p, L, ttc_marine=True, ar_ttc=ar("total_ttc"))
+    totaux = commun.chaine_totaux(m, p, L, ttc_marine=True)
     note = (f'<div class="kh2-note"><b>{L("ci_note", "Note")}</b>{m["note_client"]}</div>' if m["note_client"] else "")
     from ...clauses_cgv import bloc_clauses_html
     clauses = bloc_clauses_html(d.get("clauses_cgv"), couleur_titre=j["hero_bg"], couleur_texte=j["ink"], langue=m["langue"])
@@ -52,7 +52,7 @@ def build(ctx, m, j):
     return f"""{css}
 <div class="kh-root" style="padding-top:22mm;padding-left:14mm;padding-right:14mm;">
   {entete}
-  {commun.kicker(L("ci_votre_installation", "Votre installation"), j, p, ar("ci_votre_installation"))}
+  {commun.kicker(L("ci_votre_installation", "Votre installation"), j, p)}
   <div class="kh-h2" style="margin-top:1.5mm;">{L("ci_equipements_investissement", "Équipements &amp; investissement")}</div>
   <div style="margin-top:3.5mm;">{tableau}</div>
   {totaux}{note}{clauses}{option_avec}{extras}

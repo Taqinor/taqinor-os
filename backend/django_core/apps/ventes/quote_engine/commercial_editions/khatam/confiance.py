@@ -5,7 +5,7 @@ dans le même ordre : trois étapes, garanties, échéancier, financement,
 services, bases du calcul, conditions, bon pour accord, bande légale — avec
 les numéros d'étapes dans l'octogone khatam, les garanties en Fraunces 600
 vert zellige séparées par des filets or, le bon pour accord en cartouche à
-double filet. Classes ``kh3-``.
+double filet ; aucun arabe (fondateur 30/10). Classes ``kh3-``.
 """
 from .. import commun, donnees
 
@@ -14,7 +14,6 @@ def build(ctx, m, j):
     d, p = m["d"], "kh"
     fmt, fmt_mad = m["fmt"], m["fmt_mad"]
     L = lambda cle, fr, **v: donnees.L(d, cle, fr, **v)
-    ar = donnees.ar
     entete = commun.bande_entete(ctx, j, p, L("ci_kicker_etapes", "Votre projet, étape par étape"),
                                  f'{L("ci_ref_devis", "Réf. devis")} {m["ref"]}')
     steps = [(L("ci_etape_etude_t", "Étude &amp; validation"),
@@ -37,7 +36,6 @@ def build(ctx, m, j):
                     f'<span class="kh3-warr-u"> {u}</span></div><div class="kh3-warr-l">{lib}</div></div>')
         from ...ci.blocs import legende_garanties
         garanties = (f'<div class="kh3-h2">{L("ci_garanties", "Garanties")}'
-                     + (f'<span class="kh-ar kh3-h2ar">{ar("ci_garanties")}</span>' if ar("ci_garanties") else "")
                      + f'</div><div class="kh3-warr"><div class="kh3-warr-row">{cel}</div>'
                      f'<div class="kh3-warr-l" style="margin-top:6px;">{legende_garanties(d)}</div></div>')
     echeancier = ""
@@ -48,7 +46,6 @@ def build(ctx, m, j):
             cel += (f'<td class="kh3-ech-c"><div class="kh3-ech-p">{pct}&nbsp;%</div><div>{lib}</div>'
                     + (f'<div class="kh3-ech-m">{mt}&#160;MAD {ttc}</div>' if mt else "") + '</td>')
         echeancier = (f'<div class="kh3-h3">{L("ci_cpdf_echeancier", "Échéancier de paiement")}'
-                      + (f'<span class="kh-ar kh3-h3ar">{ar("ci_cpdf_echeancier")}</span>' if ar("ci_cpdf_echeancier") else "")
                       + f'</div><table class="kh3-ech"><tr>{cel}</tr></table>')
     financement = donnees.financement_html(d, "kh3", j["hero_bg"], j["ink"])
     services = donnees.services_html(d, "kh3", j["hero_bg"], j["ink"])
@@ -56,8 +53,7 @@ def build(ctx, m, j):
     hyp_html = (f'<div class="kh3-h3">{L("ci_bases_calcul", "Bases du calcul")}</div>'
                 f'<div style="margin-top:2mm;">{hyp}</div>') if hyp else ""
     conditions = commun.conditions_bloc(m, p, j)
-    accord = commun.bon_pour_accord(m, p, j, L, haut_mm=18, cartouche=True, ar_titre=ar("bon_pour_accord"),
-                                    ar_signature=ar("ci_signature"), ar_cachet=ar("ci_cachet"))
+    accord = commun.bon_pour_accord(m, p, j, L, haut_mm=18, cartouche=True)
     legale = commun.bande_legale(m, p, j)
     css = f"""
 <style>
@@ -87,8 +83,7 @@ def build(ctx, m, j):
 <div class="kh-root" style="padding-top:22mm;padding-left:14mm;padding-right:14mm;">
   {entete}
   {commun.kicker(L("ci_kicker_etapes", "Votre projet, étape par étape"), j, p)}
-  <div class="kh-h2" style="margin-top:1.5mm;">{L("ci_comment_nous_procedons", "Comment nous procédons")}
-    {f'<span class="kh-ar">{ar("ci_comment_nous_procedons")}</span>' if ar("ci_comment_nous_procedons") else ''}</div>
+  <div class="kh-h2" style="margin-top:1.5mm;">{L("ci_comment_nous_procedons", "Comment nous procédons")}</div>
   <table class="kh3-steprow"><tr>{cells}</tr></table>
   {garanties}
   {echeancier}{financement}

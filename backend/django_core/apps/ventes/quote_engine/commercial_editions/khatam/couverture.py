@@ -5,40 +5,49 @@ dans le même ordre et la même grammaire (héros marine, tuiles, note
 autoconsommation, investissement, énergie mois par mois, prochaines étapes),
 avec la touche marocaine et le style d'écriture :
 
-* héros marine tramé d'une étoile khatam, filet et frise or, photo réelle
-  dans une fenêtre en arc outrepassé ;
+* héros marine tramé d'une étoile khatam, filet et frise or ; la fenêtre en
+  arc outrepassé n'apparaît qu'avec une photo DU SITE servie (``roof_photo``),
+  jamais une photo de stock ;
 * titre et chiffres en Fraunces 600, texte en IBM Plex Sans, chiffres
-  tabulaires ; arabe du catalogue sur la référence et l'économie ;
+  tabulaires ; aucun arabe (fondateur 30/10) ;
 * tuiles à filet or (rayon 6 px, plus de pastilles), économie en vert
   zellige ; investissement sur bloc marine tramé à double filet or.
 Classes ``kh1-``.
 """
 from .. import commun, donnees, graphiques
 from ...figures import ancre
-from ...residential import theme
+
+
+def _txt_b64(v) -> str:
+    """Le base64 d'une photo servie (data-URI ou brut), '' sinon."""
+    s = str(v or "").strip()
+    if "," in s[:40] and s.startswith("data:"):
+        s = s.split(",", 1)[1]
+    return s if len(s) > 200 else ""
 
 
 def build(ctx, m, j):
     d, p = m["d"], "kh"
     fmt = m["fmt"]
     L = lambda cle, fr, **v: donnees.L(d, cle, fr, **v)
-    ar = donnees.ar
     c, inv, cl, cat = m["chiffres"], m["invest"], m["client"], m["categorie"]
-    photo = theme.hero_image_b64(d.get("com_kwc"), "commercial")
+    # Fondateur 30/10 : aucune information étrangère au dossier — la photo
+    # n'est que celle du site quand le devis la sert, jamais la photothèque.
+    photo = _txt_b64(d.get("roof_photo"))
 
     # ── Héros ─────────────────────────────────────────────────────────────
     validite = (L("ci_valable_jusqu", "Valable jusqu&#8217;au {date}", date=m["valid_until"])
                 if m["valid_until"] else "")
     corrections = "".join(f'<div class="kh1-hd">{x}</div>' for x in m["marques_correction"])
     pill = f'<div class="kh1-pill">{validite}</div>' if validite else ""
-    ar_ref = ar("ci_ref_devis")
     kicker = (f'{cat["label"]} &nbsp;·&nbsp; ' if cat["label"] else "") + \
         L("ci_kicker_autoconso_commerciale", "Autoconsommation solaire commerciale")
     titre = donnees.ci_couverture.titre_projet(d, "com", c["kwc"], cl["nom"])
     ligne_client = donnees.ci_couverture.ligne_client(d, "com", cl["nom"], cl["meta"], "kh1")
-    arc = commun.fenetre_arc(photo, j["hero_bg"], j["or"], left_mm=20 if m["rtl"] else 138, top_mm=9,
-                             largeur_mm=50, hauteur_mm=70)
+    arc = ""
     if photo:
+        arc = commun.fenetre_arc(photo, j["hero_bg"], j["or"], left_mm=20 if m["rtl"] else 138, top_mm=9,
+                                 largeur_mm=50, hauteur_mm=70)
         arc += (f'<div style="position:absolute;left:{20 if m["rtl"] else 138}mm;top:80.5mm;width:50mm;'
                 f'font-size:6.6pt;color:{j["on_hero_2"]};text-align:center;">'
                 + L("ci_realisation", "Réalisation {marque}", marque=commun.esc(m["brand"])) + '</div>')
@@ -76,9 +85,6 @@ def build(ctx, m, j):
                 sous = L("ci_retour_prix_complet", "retour calculé sur le prix complet, après la visite") + (f" · {sous}" if sous else "")
             lib = (L("ci_economies_estimees", "Économies estimées / an")
                    + (f' ({c["economies_base"]})' if c["economies_base"] else ""))
-            ar_eco = ar("ci_economies_estimees")
-            if ar_eco:
-                lib += f'<span class="kh-ar" style="margin-left:6px;">{ar_eco}</span>'
             argent.append(tuile(c["economies"], "&nbsp;MAD", lib, ancre("economie_annuelle", c["economies"]), sous, vert=True))
         if c["payback"]:
             argent.append(tuile(c["payback"], c["payback_unite"],
@@ -107,11 +113,9 @@ def build(ctx, m, j):
                     + options_cote.cartes_options(d, "com", "kh1", fmt, m["fmt_mad"], d.get("_invest_ttc") or 0)
                     + '</div>')
     else:
-        ar_inv = ar(inv.get("cle_titre") or "")
         inv_html = (f'<div class="kh1-inv"><div class="kh1-inv-in"><div class="kh-row">'
                     f'<div class="kh-col" style="vertical-align:middle;">'
                     f'<div class="kh1-invl">{inv["titre"]}</div>'
-                    + (f'<div class="kh-ar kh1-invar">{ar_inv}</div>' if ar_inv else "")
                     + (f'<div class="kh1-invn">{inv["secondaire"]}' + (f' · {inv["note"]}' if inv["note"] else "") + '</div>'
                        if inv["secondaire"] else "")
                     + f'</div><div class="kh-col" style="text-align:right;vertical-align:middle;white-space:nowrap;width:46%;">'
@@ -148,16 +152,15 @@ def build(ctx, m, j):
 .kh1-hero{{position:relative;min-height:86mm;background:{j['hero_bg']};{commun.css_motif(j['motif_11'], 14)}
   padding:9mm 14mm 7mm 14mm;color:{j['on_hero']};border-bottom:1pt solid {j['or']};}}
 .kh1-galon{{height:5mm;{commun.css_motif(j['galon'], 5, '1.1', 'repeat-x')}border-bottom:0.4pt solid {j['or']};}}
-.kh1-htop{{display:table;{'margin-left:60mm;width:122mm' if m['rtl'] else 'width:116mm'};}}
+.kh1-htop{{display:table;{('margin-left:60mm;width:122mm' if m['rtl'] else 'width:116mm') if photo else 'width:100%'};}}
 .kh1-hlogo{{display:table-cell;vertical-align:middle;}}
 .kh1-hmeta{{display:table-cell;vertical-align:middle;text-align:right;}}
 .kh1-rl{{font-size:6.5pt;letter-spacing:.14em;text-transform:uppercase;color:{j['or_texte']};font-weight:500;}}
-.kh1-rl .kh-ar{{font-size:7.6pt;color:{j['on_hero_2']};text-transform:none;letter-spacing:0;margin-left:6px;}}
 .kh1-rv{{font-size:12pt;font-weight:600;letter-spacing:.02em;}}
 .kh1-hd{{font-size:7.6pt;color:{j['on_hero_2']};margin-top:2px;}}
 .kh1-pill{{display:inline-block;margin-top:5px;background:{j['or']};color:{j['hero_bg']};
   border-radius:20px;padding:3px 11px;font-size:7pt;font-weight:600;}}
-.kh1-hbody{{margin-top:6mm;{'margin-left:60mm' if m['rtl'] else 'max-width:116mm'};}}
+.kh1-hbody{{margin-top:6mm;{('margin-left:60mm' if m['rtl'] else 'max-width:116mm') if photo else 'max-width:150mm'};}}
 .kh1-kicker{{font-size:7.2pt;letter-spacing:.12em;text-transform:uppercase;color:{j['or_texte']};font-weight:600;line-height:1.5;}}
 .kh1-catrow{{display:table;margin-top:2mm;}}
 .kh1-caticon{{display:table-cell;vertical-align:top;padding-{autre}:3.5mm;padding-top:1mm;color:{j['or']};}}
@@ -204,7 +207,7 @@ def build(ctx, m, j):
     <div class="kh1-htop">
       <div class="kh1-hlogo">{commun.logo(ctx, "couverture", sombre=True)}</div>
       <div class="kh1-hmeta">
-        <div class="kh1-rl">{L("ci_ref_devis", "Réf. devis")}{f'<span class="kh-ar">{ar_ref}</span>' if ar_ref else ''}</div>
+        <div class="kh1-rl">{L("ci_ref_devis", "Réf. devis")}</div>
         <div class="kh1-rv">{m["ref"]}</div>
         <div class="kh1-hd">{m["date"]}</div>
         {corrections}{pill}
