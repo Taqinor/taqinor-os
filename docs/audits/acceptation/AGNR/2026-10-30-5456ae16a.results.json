@@ -1,0 +1,34 @@
+{
+  "sha": "5456ae16a",
+  "date": "2026-10-30",
+  "groupe": "AGNR",
+  "verdict": "FAIL",
+  "couvre": [
+    "AGNR42"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P5.1",
+      "taches": [
+        "AGNR42"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-P5.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "FAIL",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : page.goto: net::ERR_ABORTED at http://127.0.0.1:5191/ventes/devis/nouveau?lead=3114 ; oracle 4 — dialogue natif beforeunload : "
+    }
+  ]
+}
