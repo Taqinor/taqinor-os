@@ -10,7 +10,7 @@ import {
 } from '../../calc/classification.js'
 import { controlerFacturesSaisies, consoAnnuelleDepuisFactures, controlerKwhDeclare, MESSAGE_KWH_INCOHERENT } from '../../calc/tarifs.js'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
-import { etatVersEcritures, baremePourDerivation, facturesHiverEte } from '../etatDevis'
+import { etatVersEcritures, baremePourDerivation, facturesHiverEte, etudeDeCreation } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
 import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
@@ -522,8 +522,12 @@ export function usePersistanceDevis(ctx) {
         // onduleurs compris — et l'écran « Devis enregistré » affichait un prix
         // qu'aucun document ne porte. Le PATCH qui suit reste inchangé (il
         // repose les mêmes choix + les entrées réelles, sans bouger le total).
+        // ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — C&I : les ENTRÉES
+        // de l'étude partent aussi AVEC la création (`etudeDeCreation`).
         const { data } = await creerAtomiqueAvecReprise({
-          ...payload, etude_params: choixEcran(), lignes: lignesPayload,
+          ...payload,
+          etude_params: etudeDeCreation(modeInstallation, choixEcran(), blocEtudeMarche()),
+          lignes: lignesPayload,
         }, cleCreation())
         cleCreationRef.current = null
         devisId = data.id
@@ -639,6 +643,9 @@ export function usePersistanceDevis(ctx) {
         // champ et le bandeau le NOMME (jamais la phrase générique).
         const parChamp = champsEntete(err)
         setErreursChamps(parChamp)
+        // Une étude C&I refusée à la création : le tarif fautif sous son champ.
+        const tarif = erreursTarifDeclare(parChamp.etude_params)
+        if (Object.keys(tarif).length) setErrors(prev => ({ ...prev, tarifDeclare: tarif }))
         // AGNR37 — le refus `echeancier` (AGNR12) s'affiche aussi sous la carte.
         if (parChamp.echeancier) setErrors(prev => ({ ...prev, echeancier: parChamp.echeancier }))
         msg = Object.entries(parChamp)
