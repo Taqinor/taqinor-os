@@ -11,6 +11,7 @@
 //    WhatsApp, reste silencieuse en échec.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { resetRateLimit } from '../src/lib/rateLimit';
 
@@ -139,7 +140,7 @@ describe('GET /api/lead-ref-lookup — rate-limit dédié (20/min)', () => {
 // ———————————————————————————————————————————————————————————————————————————
 // Source des trois variantes de mon-toit.astro — même méthode que
 // monToitTunnel.test.ts : script Astro inline, non montable en unité.
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const read = (rel: string) => lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
 
 const LOCALES: Array<[string, string]> = [
   ['FR', '../src/pages/devis/mon-toit.astro'],

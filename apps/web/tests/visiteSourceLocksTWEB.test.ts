@@ -8,12 +8,13 @@
 // test comportemental unitaire.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { etatVide } from '../src/lib/tunnel/champs';
 import { construireCorps } from '../src/lib/tunnel/corps';
 import { lirePageProposition, lireLibProposition } from './astroBlocsHelper';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const read = (rel: string) => lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
 
 describe('Layout.astro — balise de visite branchée sitewide', () => {
   const layout = read('../src/layouts/Layout.astro');
@@ -122,7 +123,8 @@ describe('devis/mon-toit.astro (FR) — appareil_id additif au payload lead du t
   const src = read('../src/pages/devis/mon-toit.astro');
 
   it("importe appareilId et le joint au corps du lead, jamais bloquant", () => {
-    expect(src).toContain("import { appareilId } from '../../lib/visite';");
+    // RWEB17-M19 — la page passe par lib/tunnel/tunnel.ts ; la section validation importe l'empreinte.
+    expect(src).toContain("import { appareilId } from '../visite';");
     // QJW5 — la page LIT l'empreinte dans son état ; c'est le registre partagé
     // qui décide de l'émettre (et l'OMET quand le stockage est indisponible).
     expect(src).toContain('appareilId: appareilId(),');

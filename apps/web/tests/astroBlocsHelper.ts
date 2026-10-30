@@ -6,7 +6,7 @@
  * Les props ne sont pas substituées : les tests de source ne cherchent que le balisage et les
  * chaînes littérales.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 // CPRW (27/10/2026) — même déroulé pour les blocs C&I / agricoles déplacés hors de /proposition
@@ -52,4 +52,59 @@ export function lireLibProposition(): string {
   return ['src/lib/proposition.ts', 'src/components/proposition/agricole/syntheseAgricole.ts', 'src/components/proposition/ci/syntheseCi.ts']
     .map((rel) => readFileSync(resolve(process.cwd(), rel), 'utf-8'))
     .join('\n');
+}
+
+/**
+ * RWEB17-M9 — page du tunnel (`pages/**\/devis/mon-toit.astro`) avec ses blocs déroulés PUIS le texte de tous
+ * les modules du tunnel (`src/lib/tunnel/*` et `src/scripts/tunnel/*`) qu'elle importe, récursivement
+ * (un module qui en importe un autre le fait suivre), chaque module lu UNE seule fois. Les sections
+ * extraites hors de la page restent ainsi trouvables par les tests de source, pages actuelles ou fusionnées.
+ */
+/**
+ * RWEB17-M10 — les pages câblées lisent leur état dans `ctx.etat.<x>` et appellent les autres sections par
+ * `ctx.crochets.appeler('<f>', …)` : pour les tests de source, ces deux indirections se relisent dans la
+ * forme d'origine (`<x>`, `<f>(…)`). Rien n'est ajouté au texte : un compte de littéraux reste juste.
+ * RWEB17-M11 — même relecture pour les modules `lib/tunnel/*` (`etat.<x>`, `crochets.appeler('<f>'`, et
+ * leurs alias locaux `appeler('<f>'`, `h('<f>'`, `appelerCrochet(ctx, '<f>'`).
+ * RWEB17-M12 — le `Document` injecté des modules (`doc.`, `ctx.dom.doc.`, et `doc` passé en dernier
+ * argument, RWEB17-M17) se relit `document`.
+ * RWEB17-M16 — l'alias `GATED` des sections d'estimation (= `config.estimationGatee`, le
+ * `PUBLIC_ESTIMATE_GATED` de la page) se relit `PUBLIC_ESTIMATE_GATED`.
+ */
+export function normaliserIndirectionsTunnel(src: string): string {
+  return src
+    .replace(/\bGATED\b/g, 'PUBLIC_ESTIMATE_GATED')
+    .replace(/\b(?:ctx\.)?(?:dom\.)?doc\./g, 'document.')
+    .replace(/([(,]\s*)doc\)/g, '$1document)')
+    .replace(/\b(?:ctx\.)?etat\./g, '')
+    .replace(/(?:\b(?:ctx\.)?crochets\.appeler|\bappeler|\bh)\('(\w+)'(?:, )?/g, '$1(')
+    .replace(/\bappelerCrochet\(ctx, '(\w+)'(?:, )?/g, '$1(');
+}
+
+export function lireAstroAvecModulesTunnel(chemin: string): string {
+  const base = normaliserIndirectionsTunnel(lireAstroAvecBlocs(chemin));
+  const vus = new Set<string>();
+  let suite = '';
+  const suivre = (fichier: string, texte: string): void => {
+    for (const [, rel] of texte.matchAll(/(?:from|import)\s*\(?\s*'(\.[^']*)'/g)) {
+      const cible = resolve(dirname(fichier), rel).replace(/\\/g, '/');
+      if (!/\/src\/(?:lib|scripts)\/tunnel\//.test(cible)) continue;
+      const abs = [`${cible}.ts`, `${cible}/index.ts`].find((c) => existsSync(c));
+      if (!abs || vus.has(abs)) continue;
+      vus.add(abs);
+      const contenu = readFileSync(abs, 'utf-8');
+      suite += `\n${contenu}`;
+      suivre(abs, contenu);
+    }
+  };
+  suivre(chemin, readFileSync(chemin, 'utf-8'));
+  return base + normaliserIndirectionsTunnel(suite);
+}
+
+/**
+ * RWEB17-M9 — lecture d'un fichier de source pour un test : une page `devis/mon-toit.astro` passe par
+ * `lireAstroAvecModulesTunnel`, tout autre fichier est lu tel quel (comportement d'avant).
+ */
+export function lireSourceTunnel(chemin: string): string {
+  return /[\\/]devis[\\/]mon-toit\.astro$/.test(chemin) ? lireAstroAvecModulesTunnel(chemin) : readFileSync(chemin, 'utf-8');
 }
