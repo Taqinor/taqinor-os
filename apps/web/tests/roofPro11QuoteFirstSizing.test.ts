@@ -25,6 +25,7 @@ import { appliquerHydratationAuCtx } from '../src/scripts/roofPro11/hydratation'
 import { lireCouchesDocument, deserializeConsumptionFromLayout } from '../src/scripts/roofPro11/prefill';
 import { ctxAtelierNeuf, enregistrerAtelier } from '../src/scripts/roofPro11/harnaisDocument';
 import { racineDepot } from '../src/scripts/roofPro11/harnaisAtelier';
+import { CONS_WINDOW_HTML } from '../src/scripts/roofPro11/consumptionMarkup'; // ERR-ACAL311-PANNEAU-ABSENT-ERP
 
 /** DOM minimal : consumption.ts garde chaque accès DOM derrière `if (el)` / `?.`, donc
  *  `null` partout est un état légitime (panneau jamais ouvert dans ces tests). */
@@ -301,5 +302,43 @@ describe('ACAL311 — la consommation proposée par le serveur', () => {
   it('pages publiques (option absente) : le panneau ne change pas', () => {
     const { panel } = monter(undefined);
     expect(panel.innerHTML).toBe('');
+  });
+});
+
+/* ERR-ACAL311-PANNEAU-ABSENT-ERP — le balisage PARTAGÉ (`consumptionMarkup.ts`, rendu par la
+   preview publique ET par l'atelier ERP) porte bien `#rp9-cons-panel` : `monterProposition`
+   y monte « Reprendre du lead » et le clic appelle l'option injectée. */
+describe('ERR-ACAL311-PANNEAU-ABSENT-ERP — balisage partagé du panneau', () => {
+  function monterPartage(proposer: unknown) {
+    document.body.innerHTML = `<input id="rp9-bill" /><span id="rp9-bill-kwh"></span>${CONS_WINDOW_HTML}`;
+    const $ = (id: string) => document.getElementById(id);
+    const dom = new Proxy({
+      consWindowEl: $('rp9-cons-window'), consPanelEl: $('rp9-cons-panel'), consToggleEl: $('rp9-cons-toggle'),
+      billEl: $('rp9-bill'), billKwhEl: $('rp9-bill-kwh'),
+    } as Partial<ConsumptionDom>, { get: (t, k) => (t as Record<string | symbol, unknown>)[k] ?? null }) as ConsumptionDom;
+    const ctx = { ...ctxAtelierNeuf(), opts: { proposerConsommation: proposer } } as unknown as Ctx;
+    createConsumption(ctx, dom, {
+      renderActive: () => undefined, clampNeeded: (n) => n, monthlyBill: () => 0, fmt1: (n) => String(n),
+    }).wire();
+    return { ctx, panel: dom.consPanelEl as HTMLElement };
+  }
+
+  it('« Affiner ma consommation » + « Reprendre du lead » montés ; le clic appelle proposerConsommation', async () => {
+    const proposer = vi.fn(async () => reponse('exemple'));
+    const { ctx, panel } = monterPartage(proposer);
+    expect(panel).not.toBeNull();
+    expect(document.getElementById('rp9-cons-window')?.textContent).toContain('Affiner ma consommation');
+    const bouton = panel.querySelector('[data-cons-action="lead"]') as HTMLButtonElement;
+    expect(bouton.textContent).toBe('Reprendre du lead');
+    bouton.click();
+    await attendre();
+    expect(proposer).toHaveBeenCalledWith(CONTRAT.corps_lead);
+    expect(ctx.consSource?.bareme).toBe('societe');
+  });
+
+  it('mode lead (`proposerConsommation: null`) : « estimation (barème indicatif) », aucune commande', () => {
+    const { panel } = monterPartage(null);
+    expect(panel.querySelector('[data-cons-bareme]')?.textContent).toBe('estimation (barème indicatif)');
+    expect(panel.querySelector('[data-cons-proposer]')).toBeNull();
   });
 });

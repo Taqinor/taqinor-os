@@ -30,7 +30,8 @@ import {
 import api from '../../api/axios'
 import calepinageApi from '../../api/calepinageApi'
 // ACAL311 — la VRAIE application et le VRAI sérialiseur de la consommation de l'atelier.
-import { hydratationDeProposition } from '@roofpro/consumption'
+import { createConsumption, hydratationDeProposition } from '@roofpro/consumption'
+import { ctxAtelierNeuf } from '@roofpro/harnaisDocument' // ERR-ACAL311-PANNEAU-ABSENT-ERP
 import { appliquerHydratationAuCtx } from '@roofpro/hydratation'
 import { serializeConsumption } from '@roofpro/prefill'
 
@@ -202,6 +203,29 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
     const { proposerConsommation } = initRoofToolPro8.mock.calls[0][0]
     await expect(proposerConsommation(exempleContrat('calepinage', NOM, 'corps_factures')))
       .rejects.toEqual({ message: refus['factures.hiver_mad'], champs: refus })
+  })
+
+  // ERR-ACAL311-PANNEAU-ABSENT-ERP — preuve en direct P5.5 : 0 `rp9-cons*` dans l'atelier ERP.
+  it("l'atelier CALEPINAGE rend le panneau ; « Reprendre du lead » appelle proposerConsommation", async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.proposerConsommation.mockResolvedValue(reponseContrat('calepinage', NOM))
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const panneau = document.getElementById('rp9-cons-panel')
+    expect(panneau).not.toBeNull()
+    expect(document.getElementById('rp9-cons-window').textContent).toContain('Affiner ma consommation')
+    // Le VRAI module de l'atelier, monté sur le DOM servi par l'ERP, avec l'option du boot.
+    const dom = new Proxy({ consPanelEl: panneau }, { get: (t, k) => t[k] ?? null })
+    const ctx = { ...ctxAtelierNeuf(), opts: { proposerConsommation: initRoofToolPro8.mock.calls[0][0].proposerConsommation } }
+    createConsumption(ctx, dom, {
+      renderActive: () => undefined, clampNeeded: (n) => n, monthlyBill: () => 0, fmt1: (n) => String(n),
+    }).wire()
+    const bouton = panneau.querySelector('[data-cons-action="lead"]')
+    expect(bouton.textContent).toBe('Reprendre du lead')
+    bouton.click()
+    await waitFor(() => expect(calepinageApi.calepinages.proposerConsommation)
+      .toHaveBeenCalledWith(String(CTX.calepinage.id), { source: 'lead' }))
+    await waitFor(() => expect(ctx.consSource?.bareme).toBe('societe'))
   })
 
   it('mode LEAD (aucun calepinage) : `proposerConsommation: null` — estimation affichée', async () => {
