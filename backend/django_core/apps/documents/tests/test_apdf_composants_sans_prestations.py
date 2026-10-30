@@ -164,7 +164,10 @@ class ComposantsTests(TestCase):
             with self.subTest(route=route):
                 lignes = {ln.strip() for ln in
                           self._get(chantier, route).splitlines()}
-                self.assertIn('Panneau 550W', lignes)
+                # La cellule imprime « désignation — marque ».
+                self.assertTrue(
+                    any(ln.startswith('Panneau 550W') for ln in lignes),
+                    lignes)
                 self.assertNotIn('Installation', lignes)
                 self.assertNotIn('Transport', lignes)
         remise = self._get(chantier, 'dossier-remise')
