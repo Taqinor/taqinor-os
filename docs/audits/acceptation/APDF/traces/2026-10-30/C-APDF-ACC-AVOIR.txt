@@ -1,0 +1,5 @@
+== C-APDF-ACC-AVOIR (sha 5908d43bb)
+attendu : avoir créé (POST creer-avoir) sur la facture 8 puis telecharger-pdf en fr et ar : profil SOLAIRE EXEMPLE (ICE, IF, RC), bloc client entreprise ICE/IF/RC (APDF27), arabe >= 50 caractères (D-APDF-3 a), aucun prix_achat ni TAQINOR
+observé : {"repro": true, "rendus": ["avoir|fr|p=1|ar=0|img=0|PASS", "avoir|ar|p=2|ar=237|img=0|PASS [note: police Noto Sans Arabic embarquée : ['GLZDRW+Noto-Sans-Arabic-Bold', 'UNUIUP+Noto-Sans-Arabic']]"], "avoir": 35}
+verdict : REPRO
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0

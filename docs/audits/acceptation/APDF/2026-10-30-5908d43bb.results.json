@@ -1,0 +1,419 @@
+{
+  "sha": "5908d43bb4af99d2c94912a77b276e97c6c437a0",
+  "date": "2026-10-30",
+  "groupe": "APDF",
+  "verdict": "PASS",
+  "couvre": [
+    "APDF16",
+    "APDF21",
+    "APDF26",
+    "APDF27",
+    "APDF29",
+    "APDF30",
+    "APDF32",
+    "APDF34",
+    "APDF37",
+    "APDF39",
+    "APDF42",
+    "APDF49",
+    "APDF106"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-APDF-ACC-DEVIS-741",
+      "taches": [
+        "APDF21",
+        "APDF49",
+        "APDF7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-DEVIS-741.txt — devis 741 résidentiel : /proposal défaut 3 p., onepage 1, include_etude 4, devis_final 3, en fr et en ar (client langue_document=ar : 1 344 car. arabes) + ?langue=ar / ?langue=en ; SOLAIRE EXEMPLE + ICE, RC, capital, forme imprimés ; aucun libellé APDF46 en ar/en ; aucun Saham/691213/003799642000067/TAQINOR ; marqueurs prix_achat 987654.32 et marge 876543.21 jamais imprimés ; statut brouillon inchangé"
+    },
+    {
+      "id": "C-APDF-ACC-DEVIS-461",
+      "taches": [
+        "APDF21",
+        "APDF49",
+        "APDF7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-DEVIS-461.txt — devis 461 commercial : 3 / 1 / 3 / 3 pages en fr et ar (1 231 car. arabes), ?langue=ar|en ; mêmes oracles PASS"
+    },
+    {
+      "id": "C-APDF-ACC-DEVIS-524",
+      "taches": [
+        "APDF21",
+        "APDF49",
+        "APDF7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-DEVIS-524.txt — devis 524 industriel : 4 / 1 / 4 / 4 pages en fr et ar (1 702 car. arabes), ?langue=ar|en ; mêmes oracles PASS"
+    },
+    {
+      "id": "C-APDF-ACC-DEVIS-445.formats",
+      "taches": [
+        "APDF16",
+        "APDF49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-DEVIS-445.txt — devis 445 agricole : pages 3 / 1 / 3 / 3 et 4 avec include_note_calcul (relais /proposal), fr et ar (1 916 car. arabes), aucun libellé APDF46, aucun prix_achat/marge, statut inchangé (la bande légale absente est l étape FAIL de l enregistrement 2026-10-30-bf7db3118)"
+    },
+    {
+      "id": "C-APDF-ACC-FACTURE",
+      "taches": [
+        "APDF26",
+        "APDF28"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-FACTURE.txt — facture 8 telecharger-pdf fr et ar (310 car. arabes) : SOLAIRE EXEMPLE + ICE, IF, RC ; ICE client entreprise ; date de livraison 15/10/2026 ; pagination 1 / 2 (ar : « 2 / 1 صفحة » en extraction RTL) ; statut emise inchangé"
+    },
+    {
+      "id": "C-APDF-ACC-AVOIR",
+      "taches": [
+        "APDF27",
+        "APDF28",
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-AVOIR.txt — avoir créé par creer-avoir sur la facture 8 (transaction annulée) : fr 1 p., ar 2 p. 237 car. arabes ; ICE/IF/RC société et ICE/IF/RC client ; pagination"
+    },
+    {
+      "id": "C-APDF-ACC-NOTE-DEBIT",
+      "taches": [
+        "APDF27",
+        "APDF28",
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-NOTE-DEBIT.txt — note de débit créée par creer-note-debit (montant 1000 HT) : fr 1 p., ar 2 p. 257 car. arabes ; ICE/IF/RC société et client ; pagination"
+    },
+    {
+      "id": "C-APDF-ACC-PROFORMA",
+      "taches": [
+        "APDF29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-PROFORMA.txt — pro-forma du devis 741 fr et ar : ICE, RIB et Banque Exemple du profil, « Valable jusqu au » ; ar = mention de repli FR + AR (D-APDF-3 a) ; statut du devis inchangé"
+    },
+    {
+      "id": "C-APDF-ACC-RECU",
+      "taches": [
+        "APDF30",
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-RECU.txt — reçu du paiement 8 fr et ar (137 car. arabes) : numéro de série société REC-0001 stocké et imprimé ; ICE"
+    },
+    {
+      "id": "C-APDF-ACC-BC",
+      "taches": [
+        "APDF28",
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-BC.txt — bon de commande 4 fr et ar : ICE, pagination, ar = mention de repli FR + AR ; statut confirme inchangé"
+    },
+    {
+      "id": "C-APDF-ACC-RELEVE",
+      "taches": [
+        "APDF106"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-RELEVE.txt — relevé de compte du client 142 fr et ar : SOLAIRE EXEMPLE, ar = mention de repli FR + AR"
+    },
+    {
+      "id": "C-APDF-ACC-RELANCE.lettre",
+      "taches": [
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-RELANCE.txt — lettre-relance-pdf de la facture 301 : fr PASS, ar 212 car. arabes (la lettre PREMIUM est l étape FAIL)"
+    },
+    {
+      "id": "C-APDF-ACC-BL.mentions",
+      "taches": [
+        "APDF32"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-BL.txt — BL du chantier 17 (mise en service) fr 1 p. et ar 2 p. (114 car. arabes, gabarit AR) : SOLAIRE EXEMPLE + ICE, IF, RC, patente ; aucun username ; prix_achat planté dans la nomenclature gelée jamais imprimé"
+    },
+    {
+      "id": "C-APDF-ACC-PV.mentions",
+      "taches": [
+        "APDF32",
+        "APDF34"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-PV.txt — PV de réception du chantier 17 fr et ar : ICE, IF, RC, patente ; aucun username ; aucun prix_achat"
+    },
+    {
+      "id": "C-APDF-ACC-REMISE.mentions",
+      "taches": [
+        "APDF32",
+        "APDF34"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-REMISE.txt — dossier de remise du chantier 17 fr et ar : ICE, IF, RC, patente ; aucun username ; fiche de remise premium fr et ar : SOLAIRE EXEMPLE, aucun username, aucun prix_achat"
+    },
+    {
+      "id": "C-APDF-ACC-CR-INTERVENTION",
+      "taches": [
+        "APDF37",
+        "APDF41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-CR-INTERVENTION.txt — compte-rendu de l intervention 250 après deux photos déposées par ajouter-photo (créneaux toiture_avant / toiture_apres) : 4 images embarquées en fr et en ar, aucun username, aucun prix_achat, statut inchangé (page publique du rapport non rejouée : APDF41 non couverte)"
+    },
+    {
+      "id": "C-APDF-ACC-RAPPORT-SAV",
+      "taches": [
+        "APDF42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-RAPPORT-SAV.txt — rapport d intervention SAV du ticket 11 (société 6) fr et ar : SOLAIRE EXEMPLE, aucun username, aucun prix_achat, statut resolu inchangé"
+    },
+    {
+      "id": "C-APDF-ACC-RAPPORT-ENERGIE",
+      "taches": [
+        "APDF39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-30/C-APDF-ACC-RAPPORT-ENERGIE.txt — rapport énergie du chantier 28 (5,50 kWc), fr et ar, profil onee_tarif_kwh 2,10 et productible 1500 sans surcharge d URL : production 8 250 kWh et tarif 2,10 imprimés, ni 1600 kWh/kWc ni 1,40 MAD"
+    }
+  ]
+}

@@ -1,0 +1,321 @@
+---
+/**
+ * Corps commun des études de cas `realisations/[slug]` FR / EN / AR (ENF19) :
+ * le balisage était recopié trois fois. Chaque page garde ses libellés (`t`), son
+ * JSON-LD, le `<Layout>` (OG) et la lightbox ; ici : structure, classes, logique.
+ * Différences portées par des props — `rtl` (chiffres en `dir="ltr"`, flèches
+ * retournées) et `fr` (éléments propres à la variante française : transition de vue
+ * de la photo héro, citation client, « kWc le plus proche », bouton WhatsApp).
+ */
+import Picture from './Picture.astro';
+import PhotoCaption from './PhotoCaption.astro';
+import LiteVideo from './LiteVideo.astro';
+import CtaBand from './CtaBand.astro';
+import V2Page from './V2Page.astro';
+
+interface Props {
+  r: any;
+  cs: any;
+  L: (href: string) => string;
+  rtl?: boolean;
+  fr?: boolean;
+  t: Record<string, any>;
+  /** Alt d'une photo (FR : le texte brut ; EN/AR : celui de l'étude traduite). */
+  altOf: (p: any) => string;
+  breadcrumbItems: { label: string; href?: string }[];
+  cityLink?: { href: string; label: string } | null;
+  segmentHref: string;
+  phasedPhotos: any[];
+  phaseLabels: Record<string, string>;
+  hasDiptych: boolean;
+  galleryPhotos: any[];
+  equipment: { label: string; value: string | null }[];
+  heroAlt: string;
+  nearestCase?: any;
+  waCaseStudy?: string;
+}
+const {
+  r, cs, L, rtl = false, fr = false, t, altOf, breadcrumbItems, cityLink, segmentHref, phasedPhotos,
+  phaseLabels, hasDiptych, galleryPhotos, equipment, heroAlt, nearestCase, waCaseStudy,
+} = Astro.props;
+const hero = r.photos[0];
+const dir = rtl ? 'ltr' : undefined;
+const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10';
+---
+
+<V2Page breadcrumbItems={breadcrumbItems}>
+<section class="relative isolate mt-6 overflow-hidden text-white">
+    <div class="v2-hero-media absolute inset-0 -z-10">
+      {fr ? (
+        <Picture
+          name={hero.name}
+          alt={heroAlt}
+          widths={hero.widths}
+          ratio={hero.ratio}
+          sizes="100vw"
+          loading="eager"
+          fetchpriority="high"
+          position={hero.objectPosition}
+          portraitPosition="center 25%"
+          class="h-full w-full object-cover"
+          style={`view-transition-name: vt-photo-${hero.name}`}
+        />
+      ) : (
+        <Picture name={hero.name} alt={heroAlt} widths={hero.widths} ratio={hero.ratio} sizes="100vw"
+          loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
+      )}
+      <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
+    </div>
+    <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
+      <p class="tech-label v2-kicker rule-brass cine-in text-lune">{t.ref} {rtl ? <span dir="ltr">{r.ref} · {r.ville} · {r.date}</span> : <>{r.ref} · {r.ville} · {r.date}</>}</p>
+      <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
+        {r.kwc
+          ? <>{rtl ? <span dir="ltr">{r.kwc}</span> : r.kwc}{' '}{t.h1Kwc}</>
+          : <>{t.h1NoKwc}</>}
+      </h1>
+      <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{t.resume}</p>
+    </div>
+  </section>
+
+  <section class="border-y border-white/10 px-4 py-14 sm:py-16">
+    <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+      {r.kwc && (
+        <div class="v2-rise" style="--v2-i:0">
+          <dd class="fig lum text-3xl sm:text-4xl" data-tally dir={dir}>{r.kwc}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">{t.power}</dt>
+        </div>
+      )}
+      {r.production && (
+        <div class="v2-rise" style="--v2-i:1">
+          <dd class="fig lum text-3xl sm:text-4xl" data-tally dir={dir}>{r.production}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">
+            {r.productionEstimated ? t.productionEstimated : t.productionMeasured}
+          </dt>
+        </div>
+      )}
+      {r.panneaux && (
+        <div class="v2-rise" style="--v2-i:2">
+          <dd class="font-display text-xl font-bold text-white" dir={dir}>{r.panneaux}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">{t.panels}</dt>
+        </div>
+      )}
+      <div class="v2-rise" style="--v2-i:3">
+        <dd class="font-display text-xl font-bold text-white">{r.ville}</dd>
+        <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
+      </div>
+    </dl>
+  </section>
+
+  <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
+    <p class="tech-label v2-kicker rule-brass text-lune">{t.storyKicker}</p>
+    <h2 class="display v2-section-title mt-5 text-white">{r.kwc ? <>{t.whyPre}{rtl ? <span dir="ltr">{r.kwc}</span> : r.kwc}{t.whyPost}</> : t.whatShows}</h2>
+    <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
+    <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
+    <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
+    {fr && cs.clientQuote && (
+      <blockquote class="mt-8 border-l-2 border-brass-400 pl-5">
+        <p class="v2-lead text-white">« {cs.clientQuote.text} »</p>
+        <cite class="tech-label mt-3 block not-italic text-lune-faint">— {cs.clientQuote.author}</cite>
+      </blockquote>
+    )}
+  </section>
+
+  {r.video && (
+    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">{t.videoKicker}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{t.videoTitle}</h2>
+        <div class="mt-8 border border-brass-400/40">
+          <LiteVideo
+            id={`realisation-video-${r.slug}`}
+            src={r.video.src}
+            poster={r.video.poster}
+            alt={r.video.alt}
+            playLabel={t.videoPlay}
+            aspectRatio="16/9"
+            posterWidth={1600}
+            posterHeight={900}
+          />
+        </div>
+      </div>
+    </section>
+  )}
+
+  {hasDiptych && (
+    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">{t.phasesKicker}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{t.phasesTitle}</h2>
+        <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {phasedPhotos.map((p, i) => (
+            <figure
+              class="v2-rise phase-card cine-card group relative overflow-hidden"
+              style={`--v2-i:${i}`}
+              data-phase={p.phase}
+            >
+              <button
+                type="button"
+                class="phase-btn block w-full overflow-hidden text-left"
+                data-lightbox-trigger-slug
+                data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
+                data-lightbox-alt={altOf(p)}
+                data-lightbox-label={`${phaseLabels[p.phase!] ?? p.phase} — ${altOf(p)}`}
+                aria-label={`${t.enlarge} ${altOf(p)}`}
+              >
+                <Picture
+                  name={p.name}
+                  alt={altOf(p)}
+                  widths={p.widths}
+                  ratio={p.ratio}
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                  style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
+                  class="slug-photo-img w-full object-cover"
+                />
+                <PhotoCaption caption={phaseLabels[p.phase!] ?? p.phase} />
+              </button>
+              <figcaption class="sr-only">{altOf(p)}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+    <div class="mx-auto max-w-3xl">
+      <p class="tech-label v2-kicker rule-brass text-lune">{t.equipmentKicker}</p>
+      <h2 class="display v2-section-title mt-5 text-white">{t.equipmentTitle}</h2>
+      <p class="v2-lead mt-5 text-lune-soft">{cs.install}</p>
+      <div class="mt-8 border-t-2 border-white/20" data-stagger>
+        {equipment.map((e, i) => (
+          <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
+            <span class="tech-label text-lune-faint">{e.label}</span>
+            <span class="text-right font-display text-base font-bold text-white" dir={dir}>{e.value}</span>
+          </div>
+        ))}
+      </div>
+      <p class="mt-5 text-sm text-lune-soft">
+        {t.brands} <a href={L('/équipement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">{t.allEquipment} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}</a>
+      </p>
+    </div>
+  </section>
+
+  {galleryPhotos.length > 0 && (
+    <section class="px-4 py-20 sm:py-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">{t.galleryKicker}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{t.galleryTitle}</h2>
+        <div class="mt-10 grid gap-5 sm:grid-cols-2" data-stagger data-lightbox-gallery-slug>
+          {galleryPhotos.map((p, i) => (
+            <figure
+              class="v2-rise cine-card group relative overflow-hidden"
+              style={`--v2-i:${i}`}
+            >
+              <button
+                type="button"
+                class="slug-gallery-btn block w-full overflow-hidden text-left"
+                data-lightbox-trigger-slug
+                data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
+                data-lightbox-alt={altOf(p)}
+                data-lightbox-label={altOf(p)}
+                aria-label={`${t.enlarge} ${altOf(p)}`}
+              >
+                <Picture
+                  name={p.name}
+                  alt={altOf(p)}
+                  widths={p.widths}
+                  ratio={p.ratio}
+                  sizes="(min-width: 640px) 50vw, 100vw"
+                  style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
+                  class="slug-photo-img w-full object-cover"
+                />
+              </button>
+              <figcaption class="sr-only">{altOf(p)}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  {fr && nearestCase && (
+    <section class="border-t border-white/10 px-4 py-16">
+      <div class="mx-auto max-w-6xl">
+        <a
+          href={`/realisations/${nearestCase.slug}`}
+          class="group flex flex-wrap items-center justify-between gap-4 border border-brass-400/40 bg-white/[0.03] px-6 py-5 transition-colors hover:border-brass-400 hover:bg-white/[0.06]"
+        >
+          <span>
+            <span class="tech-label block text-brass-300">{t.nearestKicker}</span>
+            <span class="mt-1 block font-display text-lg font-bold text-white">
+              {nearestCase.kwc} à {nearestCase.ville}{nearestCase.production ? ` · ${nearestCase.production}` : ''}
+            </span>
+          </span>
+          <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 text-sm font-bold text-azur-200" aria-hidden="true">
+            {t.nearestCta}
+          </span>
+        </a>
+      </div>
+    </section>
+  )}
+
+  <section class="border-t border-white/10 px-4 py-16">
+    <div class="mx-auto max-w-6xl">
+      <a
+        href={L('/parrainage')}
+        class="group flex flex-wrap items-center justify-between gap-4 border border-white/20 px-6 py-5 transition-colors hover:border-brass-400/60 hover:bg-white/[0.03]"
+      >
+        <span>
+          <span class="tech-label block text-lune-faint">{t.referKicker}</span>
+          <span class="mt-1 block font-display text-lg font-bold text-white">
+            {t.referTitle}
+          </span>
+        </span>
+        <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 text-sm font-bold text-azur-200" aria-hidden="true">
+          {t.referCta} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+        </span>
+      </a>
+    </div>
+  </section>
+
+  <section class="border-t border-white/10 px-4 py-16">
+    <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
+      {cityLink && (
+        <a href={L(cityLink.href)} class={linkClass}>
+          {cityLink.label} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+        </a>
+      )}
+      <a href={L(segmentHref)} class={linkClass}>
+        {t.segment} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+      </a>
+      <a href={L('/realisations')} class={linkClass}>
+        {t.latest} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+      </a>
+      {r.monitoringUrl && (
+        <a href={r.monitoringUrl} rel="noopener noreferrer" target="_blank" class={linkClass}>
+          {t.monitoring} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+        </a>
+      )}
+    </div>
+  </section>
+
+  <CtaBand title={t.ctaTitle} href={L('/devis/mon-toit')} />
+
+  {fr && (
+    <section class="border-t border-white/10 bg-blanc-azur px-4 py-10 text-center text-encre">
+      <p class="mx-auto max-w-xl text-sm text-encre-soft">
+        {t.waQuestion}
+      </p>
+      <a
+        href={waCaseStudy}
+        rel="noopener noreferrer"
+        target="_blank"
+        class="mt-4 inline-flex items-center gap-2 border border-azur-600 px-5 py-2.5 text-sm font-bold text-azur-600 transition-colors hover:bg-azur-600 hover:text-white"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+        {t.waCta}
+      </a>
+    </section>
+  )}
+
+</V2Page>

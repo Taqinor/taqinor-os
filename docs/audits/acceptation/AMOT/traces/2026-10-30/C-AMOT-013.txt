@@ -1,0 +1,7 @@
+== C-AMOT-013 (sha 673ec3f92)
+attendu : P2.3 — devis deux options à étude SAISIE (economies_annuelles 16 500, production_annuelle 12 000, société démo) : roi_s / roi_a = premier croisement de cashflow_sans / cashflow_avec (± 0,1 an), net_gain_* = fin de courbe, année 1 = −prix de l'option + économie ; le PDF résidentiel (+ étude) imprime ces paybacks ; une production « calepinage » n'est pas recopiée (prod_kwh = moteur)
+observé : Generating charts...
+WeasyPrint rendered: /tmp/tmp3pxhhbr6.pdf
+{"sans": {"roi": 2.4, "croisement_courbe": 2.39, "net_gain": 330173, "fin_courbe": 330173, "annee1": -22800, "annee1_attendue": -22800.0, "ok": true}, "avec": {"roi": 5.2, "croisement_courbe": 5.2, "net_gain": 274973, "fin_courbe": 274973, "annee1": -68400, "annee1_attendue": -68400.0, "ok": true}, "eco_ann": [16500, 16500], "residentiel_3p": {"http": 200, "pages": 3, "payback_sans_imprime": false, "payback_avec_imprime": false, "eco_16500_imprimee": false, "lignes_retour": [], "retour_en_autre_valeur": []}, "residentiel_etude": {"http": 200, "pages": 4, "payback_sans_imprime": true, "payback_avec_imprime": true, "eco_16500_imprimee": true, "lignes_retour": ["Retour en 2,4 ans", "Retour en 5,2 ans"], "retour_en_autre_valeur": []}, "calepinage": {"prod_temoin": 15266, "prod_calepinage_devis": 15266}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

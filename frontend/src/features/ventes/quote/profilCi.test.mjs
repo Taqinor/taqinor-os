@@ -207,6 +207,27 @@ test('ADEV92 — une prestation C&I porte le forfait société servi, pas le pri
   assert.equal(rows[1].prix_unit_ttc, 12000)
 })
 
+// ── R3 — la désignation calculée par le moteur prime le nom catalogue ──
+test('R3 — une protection nommée par le moteur garde SA désignation (produit et prix de l’article)', () => {
+  const composition = { lignes: [
+    { role: 'protection_ac', produit: 31, designation: 'Disjoncteur AC 32 A 4P — sortie Onduleur 20kW',
+      quantite: 1, prix_connu: true },
+    { role: 'onduleur_string_tri', produit: 48, designation: 'Onduleur 50kW', quantite: 1, prix_connu: true },
+    { role: 'smart_meter', produit: 49, quantite: 1, prix_connu: true },
+  ], prix_a_renseigner: [], a_chiffrer_visite: [] }
+  const produits = [
+    { id: 31, nom: 'Disjoncteur AC', prix_vente: '500', tva: 20 },
+    { id: 48, nom: 'Onduleur 50kW', prix_vente: '10000', tva: 20 },
+    { id: 49, nom: 'Smart Meter', prix_vente: '800', tva: 20 },
+  ]
+  const rows = lignesDepuisCompositionCi(composition, produits, 20)
+  assert.equal(rows[0].designation, 'Disjoncteur AC 32 A 4P — sortie Onduleur 20kW')
+  assert.equal(rows[0].produit, '31')
+  assert.equal(rows[0].prixHtOrigine, '500.00')
+  assert.equal(rows[1].designation, 'Onduleur 50kW')
+  assert.equal(rows[2].designation, 'Smart Meter', 'sans désignation servie : le nom catalogue')
+})
+
 // ── ADEV100 — le générateur s'ouvre pré-rempli depuis la fiche lead ──
 const LEAD_PRO = documentContrat('crm', 'lead_pro').exemple
 const LEAD_HOTEL = {

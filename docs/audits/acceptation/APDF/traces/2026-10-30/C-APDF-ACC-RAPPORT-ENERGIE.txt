@@ -1,0 +1,5 @@
+== C-APDF-ACC-RAPPORT-ENERGIE (sha 5908d43bb)
+attendu : rapport de production énergétique du chantier 28 (chantiers/rapport-energie, sans surcharge d'URL) en fr et ar avec le profil à onee_tarif_kwh=2,10 et productible 1500 : production = kWc x 1500 et tarif 2,10 imprimés, jamais 1600 ni 1,40 (APDF39), profil SOLAIRE EXEMPLE, aucun prix_achat (langue arabe hors critère : notée)
+observé : {"repro": true, "rendus": ["rapport_energie|fr|p=1|ar=0|img=0|PASS", "rapport_energie|ar|p=1|ar=0|img=0|PASS [note: langue ar hors critère (arabe 0 car.)]"], "kwc": 5.5, "production_attendue": "8 250"}
+verdict : REPRO
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0

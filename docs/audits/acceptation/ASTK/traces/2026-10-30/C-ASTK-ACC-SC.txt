@@ -1,0 +1,8 @@
+﻿== C-ASTK-ACC-SC (sha 5908d43bb)
+attendu : S-C prix d'achat (D-ASTK-2) : aucun JSON servi au Commercial ni au Technicien (toutes les listes des routeurs stock + achats, détails produit/BCF/réception/facture/fournisseur/catalogue d'achat) ne contient la clé prix_achat ni le coût d'achat ou le prix BCF ; la page fournisseur à jeton, le kiosque quai et le solde 3PL ne portent ni prix_achat ni marge ; le PDF client /proposal n'imprime pas le coût ; le Directeur, lui, les voit ; tests rouges ASTK10-15/243/246/247 verts
+observé : WeasyPrint rendered: /tmp/tmpgn0wyzev.pdf
+scénario S-C : {'Commercial_routes': 69, 'Commercial_statuts': {200: 57, 403: 11, 404: 1}, 'Commercial_fuites': [], 'Technicien_routes': 69, 'Technicien_statuts': {200: 57, 403: 11, 404: 1}, 'Technicien_fuites': [], 'directeur_voit': [True, True], 'page_fournisseur': '200 cout_interne=False cles=[]', 'solde_3pl': '200 valeurs=[] cles=[]', 'kiosque': "200 cles=['heure_rendez_vous', 'horodatage_arrivee', 'message', 'quai', 'type_quai']", 'pdf_client': '200 cout_imprime=False'} -> OK
+tests rouges des tâches rejoués : 36 ; KO passe 1 : 0 ; ENV (base de démo non vide, verts sur base vierge émulée) : 0 ; DÉFAUTS : 0 ; sautés 0 ; écartés (TransactionTestCase, non rejouables en transaction annulée) : 0
+{"repro": true, "tests": 36}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

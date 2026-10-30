@@ -872,8 +872,28 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
         bloc = _bloc(evaluation, self._Valoriseur(), self._ctx(), investissement=invest)
         self.assertGreater(bloc['retour_simple_ans'], 486000.0 / self.ECONOMIE_AN1)
         # l'argent du devis suit l'option « sans » (accepté) : pas de retour de l'option « avec »
-        with mock.patch('apps.ventes.utils.options.option_effective', return_value='sans_batterie'):
-            self.assertIsNone(_investissement_des_lignes([], devis))
+        self.assertIsNone(_investissement_des_lignes([], SimpleNamespace(option_acceptee='sans_batterie')))
+        # ERR-CEC6-RETOUR-AVEC-BATTERIE-PERDU — C&I à deux options NON accepté (CIQ302 : l'offre
+        # réseau est mise en avant) : l'option « avec » garde le retour de SON investissement,
+        # lu sur les totaux et les lignes de l'option « avec » ; un devis envoyé avant le niveau 5
+        # (niveau 4 compris, en production le 30/10) garde l'option que suit son argent
+        # (nouveaux rendus seulement).
+        cibles['apps.ventes.utils.options.option_effective'] = {'return_value': 'sans_batterie'}
+        with contextlib.ExitStack() as pile:
+            mocks = {c: pile.enter_context(mock.patch(c, **o)) for c, o in cibles.items()}
+            neuf = _investissement_des_lignes([], SimpleNamespace(regles_calcul=5, option_acceptee=''))
+            envoye_4 = _investissement_des_lignes([], SimpleNamespace(regles_calcul=4, option_acceptee=''))
+            envoye_3 = _investissement_des_lignes([], SimpleNamespace(regles_calcul=3, option_acceptee=''))
+        self.assertEqual((neuf['ht'], neuf['cout_vente_ht']), (486000.0, 488000.0))
+        self.assertEqual(mocks['apps.ventes.utils.options.option_totaux'].call_args.args[1], 'avec_batterie')
+        self.assertEqual(mocks['apps.ventes.economie_ci.lignes_pour_economie_ci'].call_args.args[1],
+                         'avec_batterie')
+        self.assertIsNone(envoye_4)
+        self.assertIsNone(envoye_3)
+        bloc = _bloc(evaluation, self._Valoriseur(), self._ctx(), investissement=neuf)
+        self.assertIsNotNone(bloc['retour_simple_ans'])
+        self.assertIsNotNone(bloc['economie_flux'])
+        self.assertEqual(bloc['cout_vente_ht'], 488000.0)
         # sans devis (ni ``ligne.devis``) : rien
         self.assertIsNone(_investissement_des_lignes([], None))
 

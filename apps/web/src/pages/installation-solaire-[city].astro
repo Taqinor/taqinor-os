@@ -28,17 +28,10 @@
  * trois archétypes et ne pas dériver. Pour ajouter un archétype, noter ici et
  * documenter dans DESIGN_RATIONALE.md.
  */
+import CityPageBody from '../components/CityPageBody.astro';
 import Layout from '../layouts/Layout.astro';
-import V2Enhance from '../components/V2Enhance.astro';
-import Article33Ribbon from '../components/Article33Ribbon.astro';
-import Breadcrumb from '../components/Breadcrumb.astro';
-import Picture from '../components/Picture.astro';
-import CtaBand from '../components/CtaBand.astro';
-import StickyCta from '../components/StickyCta.astro';
-import { CITIES, REALISATIONS, realisationByRef } from '../lib/realisations';
-import { cityContentBySlug } from '../lib/cityContent';
-import { NAP } from '../lib/nap';
-import { YIELD_TABLE } from '../lib/yieldTable';
+import { CITIES } from '../lib/realisations';
+import { cityPageBase, cityServiceJsonLd, NEUTRAL_CITY_HERO } from '../lib/cityPageData';
 import { PRODUCTION_NET_FACTOR } from '../lib/systemLoss';
 
 export function getStaticPaths() {
@@ -46,254 +39,62 @@ export function getStaticPaths() {
 }
 
 const { c } = Astro.props;
+const L = (href: string) => href; // FR : liens racine tels quels
 
-const featured = c.featuredRefs.map((ref) => realisationByRef(ref)).filter(Boolean);
-const inCity = featured.filter((r) => r!.ville === c.name);
-const nearby = featured.filter((r) => r!.ville !== c.name);
-// Pour une ville sans chantier local : on montre les chantiers réels les plus
-// proches (région Casablanca-Settat), clairement étiquetés comme tels.
-const closest = c.hasLocalInstall ? [] : REALISATIONS.slice(0, 3);
-
-// WJ73 — L'écart estimation-vs-preuve, expliqué honnêtement. Les chantiers
-// réellement affichés sur cette page (locaux si présents, sinon les plus
-// proches) mesurent en moyenne un rendement kWh/kWc/an souvent inférieur au
-// repère MODÉLISÉ de l'estimateur — depuis l'ordre fondateur du 18/08, ce
-// repère est le plein sud 29° de la table PVGIS RAMENÉ aux 20 % de pertes
-// totales (≈1 650 × 0,9302 ≈ 1 535 kWh/kWc/an pour Casablanca), c'est-à-dire
-// exactement le chiffre que l'estimateur et le devis ERP utilisent. Plutôt que de laisser cet écart sans
-// explication pour un visiteur qui ferait la division lui-même, on le nomme.
-// AUCUN chiffre inventé : dérivé de REALISATIONS + YIELD_TABLE, jamais
-// recopié à la main. `undefined` si aucun chantier affiché n'a de production
-// mesurée publiée (ex. réf. sans compteur) — la ligne ne s'affiche pas.
-const shownInstalls = inCity.length > 0 ? inCity : closest;
-const yieldSamples = shownInstalls
-  .filter((r) => r!.productionNum && r!.kwcNum)
-  .map((r) => r!.productionNum! / r!.kwcNum!);
-const avgYieldPerKwc = yieldSamples.length
-  ? Math.round(yieldSamples.reduce((sum, y) => sum + y, 0) / yieldSamples.length)
-  : null;
-// Pertes système 20 % au TOTAL (ordre fondateur 18/08) : la phrase rendue plus
-// bas nomme « le tableau modélisé utilisé pour les estimations » — c'est donc le
-// chiffre RÉELLEMENT utilisé par l'estimateur (base 20 %) qu'il faut afficher,
-// pas la donnée PVGIS brute (base 14 %) que l'estimateur rebase.
-const cityYieldTable = YIELD_TABLE[c.slug];
+// ENF19 — calcul commun FR/EN/AR (listes de chantiers, rendement mesuré, prose, alt des cartes) : lib/cityPageData.ts
+const city = cityPageBase(c, c.intro);
+const { inCity, avgYieldPerKwc, cityYieldTable, title, description, nearestInstallNote } = city;
 const southOptimalYield = cityYieldTable
   ? Math.round(cityYieldTable.grid['0']['29'] * PRODUCTION_NET_FACTOR)
   : undefined;
 
-// Prose propre à la ville (W37) — déportée dans lib/cityContent.ts pour que les
-// cinq pages ne partagent plus un seul paragraphe. Le repli résout {intro}.
-const cc = cityContentBySlug(c.slug);
-const fillIntro = (s: string) => s.replaceAll('{intro}', c.intro);
-const heroLead = fillIntro(cc.heroLead);
-const sunshineContext = fillIntro(cc.sunshineContext);
-const closer = fillIntro(cc.closer);
-const pillarStudy = { heading: fillIntro(cc.pillars.study.heading), body: fillIntro(cc.pillars.study.body) };
-const pillarMeasure = { heading: fillIntro(cc.pillars.measure.heading), body: fillIntro(cc.pillars.measure.body) };
-const pillarCompliance = { heading: fillIntro(cc.pillars.compliance.heading), body: fillIntro(cc.pillars.compliance.body) };
-// W328 — nuance ROI par ville (dérivée de l'ensoleillement déjà committé,
-// jamais un nouveau chiffre) + ligne de prudence tarifaire pour les 3 villes
-// à délégataire (Lydec/Redal/Amendis) ; `undefined` ailleurs (régie non nommée).
-const roiNuance = fillIntro(cc.roiNuance);
-const delegataireNote = cc.delegataireNote ? fillIntro(cc.delegataireNote) : undefined;
-// W296 — positionnement géographique honnête (région, jamais un km inventé)
-// pour les villes sans chantier local.
-const nearestInstallNote = cc.nearestInstallNote ? fillIntro(cc.nearestInstallNote) : undefined;
-
-const title = fillIntro(cc.title);
-const description = fillIntro(cc.description);
-
-const serviceJsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'Service',
-  serviceType: 'Installation solaire photovoltaïque',
-  name: `Installation solaire ${c.intro}`,
-  areaServed: { '@type': 'City', name: c.name },
-  provider: {
-    '@type': 'LocalBusiness',
-    name: NAP.name,
-    url: NAP.url,
-    telephone: NAP.phone,
-    email: NAP.email,
-    areaServed: NAP.serviceArea.map((n) => (n === 'Maroc' ? { '@type': 'Country', name: n } : { '@type': 'City', name: n })),
-  },
-};
-
 // Hero : la 1re photo d'un chantier en ville si elle existe ; sinon une photo
 // de marque neutre (crépuscule résidentiel, sans ville identifiable) — jamais
 // une photo qui laisserait croire à un chantier local là où il n'y en a pas.
-const neutralHero = { name: 'crepuscule-penthouse', widths: [1600, 1024, 640], ratio: 4 / 3 };
-const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
-import InstallationSolaireCityMxAuto6B9C from '../components/blocs/InstallationSolaireCityMxAuto6B9C.astro';
+const heroPhoto = inCity[0]?.photos[0] ?? NEUTRAL_CITY_HERO;
+
+const serviceJsonLd = cityServiceJsonLd('Installation solaire photovoltaïque', `Installation solaire ${c.intro}`, c.name);
+const t = {
+  kicker: `Zone d'intervention · ${c.name}`,
+  h1: `Installation solaire ${c.intro}`,
+  potential: 'Potentiel solaire',
+  hoursUnit: 'h/an',
+  sunshineLabel: `Ensoleillement annuel indicatif · ${c.name}`,
+  publicData: 'Donnée météo publique, à titre indicatif.',
+  statBill: 'De la facture couverte',
+  statRoiValue: '3–7 ans',
+  statRoi: 'Retour sur investissement',
+  statWarrantyValue: '25 ans',
+  statWarranty: 'Garantie de performance',
+  stat8221: 'Simple déclaration loi 82-21',
+  projectsKicker: `Nos chantiers · ${c.name}`,
+  projectsH2: `Des installations réelles ${c.intro}`,
+  caseStudy: "Voir l'étude de cas",
+  nearbyKicker: 'Dans la région',
+  nearbyH2: `D'autres chantiers en région de ${c.name}`,
+  coveredKicker: 'Votre ville est couverte',
+  coveredH2: `Nous intervenons ${c.intro} — et nos chantiers parlent pour nous`,
+  closestLead: 'Voici nos chantiers les plus proches :',
+  latest: 'Nos dernières réalisations',
+  residential: 'Solaire résidentiel',
+  business: 'Solaire professionnel',
+};
+const bodyProps = { c, rtl: false, L, cardAlt: (r: { photos: { alt: string }[] }) => r.photos[0].alt, t, breadcrumbItems: [{ label: 'Accueil', href: '/' }, { label: `Installation solaire ${c.intro}` }], heroPhoto, showYieldNote: !!(avgYieldPerKwc && southOptimalYield && avgYieldPerKwc < southOptimalYield), city };
 ---
 
 <Layout title={title} description={description} ogSlug="accueil">
   <script type="application/ld+json" set:html={JSON.stringify(serviceJsonLd)} />
-  <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
-
-    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: `Installation solaire ${c.intro}` }]} />
-
-    <!-- ACTE I -->
-    <section class="relative isolate mt-6 overflow-hidden text-white">
-      <div class="v2-hero-media absolute inset-0 -z-10">
-        <Picture name={heroPhoto.name} alt="" widths={heroPhoto.widths} ratio={heroPhoto.ratio} sizes="100vw"
-          loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/25"></div>
-      </div>
-      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Zone d'intervention · {c.name}</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">Installation solaire {c.intro}</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{heroLead}</p>
-      </div>
-    </section>
-
-    <!-- Ensoleillement + cadre service -->
-    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
-      <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-        <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">Potentiel solaire</p>
-          <p class="fig lum mt-4 text-5xl sm:text-6xl">{c.sunshineHours} <span class="text-2xl">h/an</span></p>
-          <p class="tech-label mt-2 text-lune-faint">Ensoleillement annuel indicatif · {c.name}</p>
-          <p class="mt-4 max-w-md text-sm leading-relaxed text-lune-soft">
-            Donnée météo publique, à titre indicatif. {sunshineContext}
-          </p>
-        </div>
-        <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
-          <div class="v2-rise" style="--v2-i:0">
-            {/* W211 — whitespace-nowrap retiré : peut déborder à 320 px dans grid-cols-2 */}
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>50–100 %</dd>
-            <dt class="tech-label mt-2 text-lune-faint">De la facture couverte</dt>
-          </div>
-          <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>3–7 ans</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Retour sur investissement</dt>
-          </div>
-          <div class="v2-rise" style="--v2-i:2">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>25 ans</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Garantie de performance</dt>
-          </div>
-          <div class="v2-rise" style="--v2-i:3">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Simple déclaration loi 82-21</dt>
-          </div>
-        </dl>
-      </div>
-      {/* W328 — la bande 3–7 ans reste le chiffre site-wide (résidentiel.astro/
-          billRange.ts) ; on la nuance ici par ville via l'ensoleillement déjà
-          committé, sans jamais lui substituer un nouveau chiffre inventé. */}
-      <InstallationSolaireCityMxAuto6B9C delegataireNote={delegataireNote} roiNuance={roiNuance} />
-    </section>
-
-    <!-- Chantiers : réels en ville, sinon les plus proches -->
-    {inCity.length > 0 && (
-      <section class="px-4 py-20 sm:py-28">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">Nos chantiers · {c.name}</p>
-          <h2 class="display v2-section-title mt-5 text-white">Des installations réelles {c.intro}</h2>
-          <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
-            {/* W180 — ratio=3/2 aligné sur l'aspect-[3/2] CSS (anti-CLS). */}
-            {inCity.map((r, i) => (
-              <a href={`/realisations/${r!.slug}`} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
-                <Picture name={r!.photos[0].name} alt={r!.photos[0].alt} widths={r!.photos[0].widths} ratio={3 / 2}
-                  sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
-                  {r!.kwc && <span class="fig block text-2xl text-white">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>}
-                  {r!.panneaux && <span class="mt-1 block text-xs text-lune">{r!.panneaux}</span>}
-                  <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Voir l'étude de cas →</span>
-                </div>
-              </a>
-            ))}
-          </div>
-          {/* WJ73 — écart estimation-vs-preuve, expliqué honnêtement : un
-              visiteur qui divise les deux chiffres affichés ci-dessus
-              (production mesurée / kWc) tombe sur un rendement souvent
-              inférieur au tableau modélisé des estimations — on le nomme
-              plutôt que de laisser le delta sans explication. */}
-          {/* La phrase AFFIRME « en dessous » : on ne la rend que si c'est
-              VÉRIFIÉ. Le repère modélisé ayant baissé (base 20 %), une moyenne
-              mesurée pourrait désormais le dépasser — dans ce cas on n'écrit
-              rien plutôt qu'une comparaison fausse. */}
-          {avgYieldPerKwc && southOptimalYield && avgYieldPerKwc < southOptimalYield && (
-            <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
-              À noter : ces installations mesurent en moyenne ≈{avgYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/an,
-              en dessous des ≈{southOptimalYield.toLocaleString('fr-FR')} kWh/kWc/an du tableau modélisé utilisé
-              pour les estimations — les installations réelles ne sont pas toutes plein sud à 29°,
-              contrairement à l'hypothèse du modèle. L'étude affine ce chiffre sur votre toit réel.
-            </p>
-          )}
-        </div>
-      </section>
-    )}
-
-    {nearby.length > 0 && (
-      <section class="border-t border-white/10 px-4 py-16 sm:py-20">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">Dans la région</p>
-          <h2 class="display v2-section-title mt-5 text-white">D'autres chantiers en région de {c.name}</h2>
-          <div class="mt-8 flex flex-wrap gap-3">
-            {nearby.map((r) => (
-              <a href={`/realisations/${r!.slug}`} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r!.kwc ? <>{r!.ville} · {r!.kwc}</> : r!.ville} →
-              </a>
-            ))}
-          </div>
-        </div>
-      </section>
-    )}
-
-    {!c.hasLocalInstall && (
-      <section class="px-4 py-20 sm:py-28">
-        <div class="mx-auto max-w-3xl">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">Votre ville est couverte</p>
-          <h2 class="display v2-section-title mt-5 text-white">Nous intervenons {c.intro} — et nos chantiers parlent pour nous</h2>
-          <p class="v2-lead mt-5 text-lune-soft">
-            {/* W296 — positionnement géographique propre à la ville (région,
-                jamais un km inventé) au lieu d'une phrase générique « région de
-                Casablanca » identique sur les 4 pages sans chantier local. */}
-            {nearestInstallNote ?? `${c.name} fait partie de notre zone d'intervention. Nos installations déjà en service ` +
-              'les plus proches se trouvent en région de Casablanca — mêmes méthodes d\'étude, même ' +
-              'matériel tier-1, même suivi de production en temps réel.'} Voici nos chantiers les plus proches :
-          </p>
-          <div class="mt-8 flex flex-wrap gap-3">
-            {closest.map((r) => (
-              <a href={`/realisations/${r.slug}`} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r.kwc ? <>{r.ville} · {r.kwc}</> : r.ville} →
-              </a>
-            ))}
-            <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-              Nos dernières réalisations →
-            </a>
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- Cadre service -->
-    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-      <div class="mx-auto grid max-w-6xl gap-8 md:grid-cols-3" data-stagger>
-        <div class="v2-rise" style="--v2-i:0">
-          <h3 class="display text-xl text-white">{pillarStudy.heading}</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={pillarStudy.body}></p>
-        </div>
-        <div class="v2-rise" style="--v2-i:1">
-          <h3 class="display text-xl text-white">{pillarMeasure.heading}</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={pillarMeasure.body}></p>
-        </div>
-        <div class="v2-rise" style="--v2-i:2">
-          <h3 class="display text-xl text-white">{pillarCompliance.heading}</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={pillarCompliance.body}></p>
-        </div>
-      </div>
-      <div class="mx-auto mt-10 flex max-w-6xl flex-wrap gap-3">
-        <a href="/résidentiel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire résidentiel →</a>
-        <a href="/professionnel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire professionnel →</a>
-      </div>
-    </section>
-
-    <CtaBand title={closer} href="/devis/mon-toit" />
-
-    <StickyCta />
-  </div>
+  <CityPageBody {...bodyProps}>
+    <Fragment slot="yieldNote">
+      À noter : ces installations mesurent en moyenne ≈{avgYieldPerKwc?.toLocaleString('fr-FR')} kWh/kWc/an,
+      en dessous des ≈{southOptimalYield?.toLocaleString('fr-FR')} kWh/kWc/an du tableau modélisé utilisé
+      pour les estimations — les installations réelles ne sont pas toutes plein sud à 29°,
+      contrairement à l'hypothèse du modèle. L'étude affine ce chiffre sur votre toit réel.
+    </Fragment>
+    <Fragment slot="coveredNote">
+      {nearestInstallNote ?? `${c.name} fait partie de notre zone d'intervention. Nos installations déjà en service ` +
+        'les plus proches se trouvent en région de Casablanca — mêmes méthodes d\'étude, même ' +
+        'matériel tier-1, même suivi de production en temps réel.'}
+    </Fragment>
+  </CityPageBody>
 </Layout>

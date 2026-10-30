@@ -12,7 +12,15 @@ import { cityContentBySlug } from '../src/lib/cityContent';
 import { caseStudyBySlug } from '../src/lib/caseStudies';
 import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+// ENF19 — le corps des pages ville et études de cas (V2Enhance, class="v2", JSON-LD Service) vit dans
+// components/{CityPageBody,RealisationSlugBody,V2Page}.astro + lib/cityPageData.ts : ces pages se lisent avec eux.
+const read = (rel: string) =>
+  rel.includes('installation-solaire-[city]')
+    ? [rel, '../src/components/CityPageBody.astro', '../src/components/V2Page.astro', '../src/lib/cityPageData.ts'].map(readSrc).join('\n')
+    : rel.includes('realisations/[slug]')
+      ? [rel, '../src/components/RealisationSlugBody.astro', '../src/components/V2Page.astro'].map(readSrc).join('\n')
+      : readSrc(rel);
 
 describe('cityContentBySlug — locale-aware, additif', () => {
   it('FR par défaut = inchangé ; EN et AR distincts et non vides', () => {

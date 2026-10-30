@@ -1,0 +1,27 @@
+---
+/**
+ * Coquille commune des pages publiques « v2 » à fil d'Ariane (ENF19) : wrapper `.v2`, moteur
+ * d'élévation, ruban art. 33, fil d'Ariane, contenu (slot), puis CTA collant. Partagée par les
+ * corps de pages ville et d'études de cas (fr/en/ar) au lieu d'être recopiée dans chacun.
+ */
+import V2Enhance from './V2Enhance.astro';
+import Article33Ribbon from './Article33Ribbon.astro';
+import Breadcrumb from './Breadcrumb.astro';
+import StickyCta from './StickyCta.astro';
+
+interface Props {
+  breadcrumbItems: { label: string; href?: string }[];
+}
+const { breadcrumbItems } = Astro.props;
+---
+
+<div class="v2">
+  <V2Enhance />
+  <Article33Ribbon />
+
+  <Breadcrumb items={breadcrumbItems} />
+
+  <slot />
+
+  <StickyCta />
+</div>

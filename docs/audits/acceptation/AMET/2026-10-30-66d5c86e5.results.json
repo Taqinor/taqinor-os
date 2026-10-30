@@ -1,0 +1,33 @@
+{
+  "sha": "66d5c86e570aadb5520c81d17a7b641c9027a3d2",
+  "date": "2026-10-30",
+  "groupe": "AMET",
+  "verdict": "PASS",
+  "couvre": [
+    "AMET102"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-AMET-020",
+      "taches": [
+        "AMET102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-30/C-AMET-020-rejeu-correctif.txt"
+    }
+  ]
+}

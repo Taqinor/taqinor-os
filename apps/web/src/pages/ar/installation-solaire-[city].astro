@@ -8,20 +8,12 @@
  * The Layout auto-sets lang=ar + dir=rtl; only text changes, classes intact.
  * Internal links via localizeNavHref. FR untouched.
  */
+import CityPageBody from '../../components/CityPageBody.astro';
 import Layout from '../../layouts/Layout.astro';
-import V2Enhance from '../../components/V2Enhance.astro';
-import Article33Ribbon from '../../components/Article33Ribbon.astro';
-import Breadcrumb from '../../components/Breadcrumb.astro';
-import Picture from '../../components/Picture.astro';
-import CtaBand from '../../components/CtaBand.astro';
-import StickyCta from '../../components/StickyCta.astro';
-import { CITIES, REALISATIONS, realisationByRef } from '../../lib/realisations';
-import { cityContentBySlug } from '../../lib/cityContent';
-import { caseStudyBySlug } from '../../lib/caseStudies';
-import { NAP } from '../../lib/nap';
+import { CITIES } from '../../lib/realisations';
+import { cityPageBase, cityServiceJsonLd, NEUTRAL_CITY_HERO } from '../../lib/cityPageData';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { YIELD_TABLE } from '../../lib/yieldTable';
 
 export function getStaticPaths() {
   return CITIES.map((c) => ({ params: { city: c.slug }, props: { c } }));
@@ -42,226 +34,53 @@ const AR_CITY_NAME: Record<string, string> = {
 const cityNameAr = AR_CITY_NAME[c.slug] ?? c.name;
 const intro = `في ${cityNameAr}`;
 
-const featured = c.featuredRefs.map((ref) => realisationByRef(ref)).filter(Boolean);
-const inCity = featured.filter((r) => r!.ville === c.name);
-const nearby = featured.filter((r) => r!.ville !== c.name);
-const closest = c.hasLocalInstall ? [] : REALISATIONS.slice(0, 3);
+// ENF19 — calcul commun FR/EN/AR (listes de chantiers, rendement mesuré, prose, alt des cartes) : lib/cityPageData.ts
+const city = cityPageBase(c, intro, locale);
+const { inCity, avgYieldPerKwc, cardAlt, southOptimalYield, title, description, nearestInstallNote } = city;
 
-// WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق (انظر الملف الفرنسي للتبرير
-// الكامل). مُشتقّة من REALISATIONS + YIELD_TABLE، غير منسوخة يدوياً.
-const shownInstalls = inCity.length > 0 ? inCity : closest;
-const yieldSamples = shownInstalls
-  .filter((r) => r!.productionNum && r!.kwcNum)
-  .map((r) => r!.productionNum! / r!.kwcNum!);
-const avgYieldPerKwc = yieldSamples.length
-  ? Math.round(yieldSamples.reduce((sum, y) => sum + y, 0) / yieldSamples.length)
-  : null;
-const cityYieldTable = YIELD_TABLE[c.slug];
-const southOptimalYield = cityYieldTable ? cityYieldTable.grid['0']['29'] : undefined;
+const heroPhoto = inCity[0]?.photos[0] ?? NEUTRAL_CITY_HERO;
 
-const cc = cityContentBySlug(c.slug, locale);
-const fillIntro = (s: string) => s.replaceAll('{intro}', intro);
-const heroLead = fillIntro(cc.heroLead);
-const sunshineContext = fillIntro(cc.sunshineContext);
-const closer = fillIntro(cc.closer);
-const pillarStudy = { heading: fillIntro(cc.pillars.study.heading), body: fillIntro(cc.pillars.study.body) };
-const pillarMeasure = { heading: fillIntro(cc.pillars.measure.heading), body: fillIntro(cc.pillars.measure.body) };
-const pillarCompliance = { heading: fillIntro(cc.pillars.compliance.heading), body: fillIntro(cc.pillars.compliance.body) };
-// W328 — نفس نصوص FR: نُظهر تدرّج عائد الاستثمار وملاحظة المُوزِّع (بدون رقم
-// جديد)، وموقع المدينة الجغرافي الصادق للمدن بلا ورش محلي.
-const roiNuance = fillIntro(cc.roiNuance);
-const delegataireNote = cc.delegataireNote ? fillIntro(cc.delegataireNote) : undefined;
-const nearestInstallNote = cc.nearestInstallNote ? fillIntro(cc.nearestInstallNote) : undefined;
-
-const title = fillIntro(cc.title);
-const description = fillIntro(cc.description);
-
-const cardAlt = (r: NonNullable<typeof featured[number]>) => {
-  const cs = caseStudyBySlug(r.slug, locale);
-  return cs.alts[r.photos[0].name] ?? r.photos[0].alt;
+const serviceJsonLd = cityServiceJsonLd('تركيب شمسي فوتوضوئي', `تركيب شمسي ${intro}`, c.name);
+const t = {
+  kicker: `منطقة التدخّل · ${cityNameAr}`,
+  h1: `تركيب شمسي ${intro}`,
+  potential: 'الإمكان الشمسي',
+  hoursUnit: 'ساعة/سنة',
+  sunshineLabel: `إشعاع سنوي إرشادي · ${cityNameAr}`,
+  publicData: 'معطى مناخي عمومي، على سبيل الإرشاد.',
+  statBill: 'من الفاتورة مُغطّاة',
+  statRoiValue: '3–7 سنوات',
+  statRoi: 'عائد الاستثمار',
+  statWarrantyValue: '25 سنة',
+  statWarranty: 'ضمان الأداء',
+  stat8221: 'تصريح بسيط للقانون 82-21',
+  projectsKicker: `أوراشنا · ${cityNameAr}`,
+  projectsH2: `تركيبات حقيقية ${intro}`,
+  caseStudy: 'شاهد دراسة الحالة',
+  nearbyKicker: 'في الجهة',
+  nearbyH2: `أوراش أخرى في جهة ${cityNameAr}`,
+  coveredKicker: 'مدينتك مُغطّاة',
+  coveredH2: `نتدخّل ${intro} — وأوراشنا تتحدّث عنّا`,
+  closestLead: 'إليك أقرب أوراشنا:',
+  latest: 'آخر إنجازاتنا',
+  residential: 'طاقة شمسية سكنية',
+  business: 'طاقة شمسية مهنية',
 };
-
-const serviceJsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'Service',
-  serviceType: 'تركيب شمسي فوتوضوئي',
-  name: `تركيب شمسي ${intro}`,
-  areaServed: { '@type': 'City', name: c.name },
-  provider: {
-    '@type': 'LocalBusiness',
-    name: NAP.name,
-    url: NAP.url,
-    telephone: NAP.phone,
-    email: NAP.email,
-    areaServed: NAP.serviceArea.map((n) => (n === 'Maroc' ? { '@type': 'Country', name: n } : { '@type': 'City', name: n })),
-  },
-};
-
-const neutralHero = { name: 'crepuscule-penthouse', widths: [1600, 1024, 640], ratio: 4 / 3 };
-const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
+const bodyProps = { c, rtl: true, L, cardAlt: cardAlt, t, breadcrumbItems: [{ label: 'الرئيسية', href: L('/') }, { label: `تركيب شمسي ${intro}` }], heroPhoto, showYieldNote: !!(avgYieldPerKwc && southOptimalYield), city };
 ---
 
 <Layout title={title} description={description} ogSlug="accueil">
   <script type="application/ld+json" set:html={JSON.stringify(serviceJsonLd)} />
-  <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
-
-    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: `تركيب شمسي ${intro}` }]} />
-
-    <!-- المشهد الأول -->
-    <section class="relative isolate mt-6 overflow-hidden text-white">
-      <div class="v2-hero-media absolute inset-0 -z-10">
-        <Picture name={heroPhoto.name} alt="" widths={heroPhoto.widths} ratio={heroPhoto.ratio} sizes="100vw"
-          loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/25"></div>
-      </div>
-      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">منطقة التدخّل · {cityNameAr}</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">تركيب شمسي {intro}</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{heroLead}</p>
-      </div>
-    </section>
-
-    <!-- الإشعاع الشمسي + إطار الخدمة -->
-    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
-      <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-        <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">الإمكان الشمسي</p>
-          <p class="fig lum mt-4 text-5xl sm:text-6xl" dir="ltr">{c.sunshineHours} <span class="text-2xl">ساعة/سنة</span></p>
-          <p class="tech-label mt-2 text-lune-faint">إشعاع سنوي إرشادي · {cityNameAr}</p>
-          <p class="mt-4 max-w-md text-sm leading-relaxed text-lune-soft">
-            معطى مناخي عمومي، على سبيل الإرشاد. {sunshineContext}
-          </p>
-        </div>
-        <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
-          <div class="v2-rise" style="--v2-i:0">
-            {/* W211 — whitespace-nowrap removed: can overflow at 320 px in grid-cols-2 */}
-            <dd class="fig lum text-3xl sm:text-4xl" dir="ltr" data-tally>50–100 %</dd>
-            <dt class="tech-label mt-2 text-lune-faint">من الفاتورة مُغطّاة</dt>
-          </div>
-          <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum text-3xl sm:text-4xl" dir="ltr" data-tally>3–7 سنوات</dd>
-            <dt class="tech-label mt-2 text-lune-faint">عائد الاستثمار</dt>
-          </div>
-          <div class="v2-rise" style="--v2-i:2">
-            <dd class="fig lum text-3xl sm:text-4xl" dir="ltr" data-tally>25 سنة</dd>
-            <dt class="tech-label mt-2 text-lune-faint">ضمان الأداء</dt>
-          </div>
-          <div class="v2-rise" style="--v2-i:3">
-            <dd class="fig lum text-3xl sm:text-4xl" dir="ltr" data-tally>&lt; 11 kW</dd>
-            <dt class="tech-label mt-2 text-lune-faint">تصريح بسيط للقانون 82-21</dt>
-          </div>
-        </dl>
-      </div>
-      {/* W328 — بند 3–7 سنوات يبقى الرقم الموحّد عبر الموقع، ونُنسّبه هنا حسب
-          مدينة عبر الإشعاع الشمسي المُثبَّت سلفاً، دون أي رقم جديد مُخترَع. */}
-      <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
-      {delegataireNote && (
-        <p class="mx-auto mt-4 max-w-3xl border-e-2 border-brass-400/60 pe-4 text-sm leading-relaxed text-lune-soft">
-          {delegataireNote}
-        </p>
-      )}
-    </section>
-
-    <!-- الأوراش: الحقيقية في المدينة، وإلا الأقرب -->
-    {inCity.length > 0 && (
-      <section class="px-4 py-20 sm:py-28">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">أوراشنا · {cityNameAr}</p>
-          <h2 class="display v2-section-title mt-5 text-white">تركيبات حقيقية {intro}</h2>
-          <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
-            {inCity.map((r, i) => (
-              <a href={L(`/realisations/${r!.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
-                {/* W180 — ratio=3/2 aligné sur l'aspect-[3/2] CSS (anti-CLS). */}
-                <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={3 / 2}
-                  sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
-                  {r!.kwc && <span class="fig block text-2xl text-white" dir="ltr">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>}
-                  {r!.panneaux && <span class="mt-1 block text-xs text-lune">{r!.panneaux}</span>}
-                  <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة <span class="inline-block rtl:-scale-x-100">→</span></span>
-                </div>
-              </a>
-            ))}
-          </div>
-          {/* WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق. */}
-          {avgYieldPerKwc && southOptimalYield && (
-            <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
-              للإشارة: هذه التركيبات تقيس في المتوسط <span dir="ltr">≈{avgYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/سنة</span>، وهو
-              أقل من <span dir="ltr">≈{southOptimalYield.toLocaleString('fr-FR')} kWh/kWc/سنة</span> التي يفترضها جدول الإنتاجية
-              المُنمذَج المُستخدَم للتقديرات — التركيبات الحقيقية ليست كلها متّجهة جنوباً بميل <span dir="ltr">29°</span>، خلافاً
-              لافتراض النموذج. الدراسة تُدقّق هذا الرقم على سطحك الحقيقي.
-            </p>
-          )}
-        </div>
-      </section>
-    )}
-
-    {nearby.length > 0 && (
-      <section class="border-t border-white/10 px-4 py-16 sm:py-20">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">في الجهة</p>
-          <h2 class="display v2-section-title mt-5 text-white">أوراش أخرى في جهة {cityNameAr}</h2>
-          <div class="mt-8 flex flex-wrap gap-3">
-            {nearby.map((r) => (
-              <a href={L(`/realisations/${r!.slug}`)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r!.kwc ? <>{r!.ville} · <span dir="ltr">{r!.kwc}</span></> : r!.ville} <span class="inline-block rtl:-scale-x-100">→</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      </section>
-    )}
-
-    {!c.hasLocalInstall && (
-      <section class="px-4 py-20 sm:py-28">
-        <div class="mx-auto max-w-3xl">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">مدينتك مُغطّاة</p>
-          <h2 class="display v2-section-title mt-5 text-white">نتدخّل {intro} — وأوراشنا تتحدّث عنّا</h2>
-          <p class="v2-lead mt-5 text-lune-soft">
-            {/* W296 — موقع جغرافي خاص بالمدينة (جهة، لا كلم مُخترَع) بدل جملة
-                عامة مطابقة عبر المدن الأربع بلا ورش محلي. */}
-            {nearestInstallNote ?? `${cityNameAr} ضمن منطقة تدخّلنا. أقرب تركيباتنا التي هي قيد الخدمة توجد في جهة الدار البيضاء — ` +
-              'نفس مناهج الدراسة، نفس العتاد من الفئة الأولى، نفس متابعة الإنتاج في الوقت الحقيقي.'} إليك أقرب أوراشنا:
-          </p>
-          <div class="mt-8 flex flex-wrap gap-3">
-            {closest.map((r) => (
-              <a href={L(`/realisations/${r.slug}`)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r.kwc ? <>{r.ville} · <span dir="ltr">{r.kwc}</span></> : r.ville} <span class="inline-block rtl:-scale-x-100">→</span>
-              </a>
-            ))}
-            <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-              آخر إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span>
-            </a>
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- إطار الخدمة -->
-    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-      <div class="mx-auto grid max-w-6xl gap-8 md:grid-cols-3" data-stagger>
-        <div class="v2-rise" style="--v2-i:0">
-          <h3 class="display text-xl text-white">{pillarStudy.heading}</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={pillarStudy.body}></p>
-        </div>
-        <div class="v2-rise" style="--v2-i:1">
-          <h3 class="display text-xl text-white">{pillarMeasure.heading}</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={pillarMeasure.body}></p>
-        </div>
-        <div class="v2-rise" style="--v2-i:2">
-          <h3 class="display text-xl text-white">{pillarCompliance.heading}</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={pillarCompliance.body}></p>
-        </div>
-      </div>
-      <div class="mx-auto mt-10 flex max-w-6xl flex-wrap gap-3">
-        <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">طاقة شمسية سكنية <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">طاقة شمسية مهنية <span class="inline-block rtl:-scale-x-100">→</span></a>
-      </div>
-    </section>
-
-    <CtaBand title={closer} href={L('/devis/mon-toit')} />
-
-    <StickyCta />
-  </div>
+  <CityPageBody {...bodyProps}>
+    <Fragment slot="yieldNote">
+      للإشارة: هذه التركيبات تقيس في المتوسط <span dir="ltr">≈{avgYieldPerKwc?.toLocaleString('fr-FR')} kWh/kWc/سنة</span>، وهو
+      أقل من <span dir="ltr">≈{southOptimalYield?.toLocaleString('fr-FR')} kWh/kWc/سنة</span> التي يفترضها جدول الإنتاجية
+      المُنمذَج المُستخدَم للتقديرات — التركيبات الحقيقية ليست كلها متّجهة جنوباً بميل <span dir="ltr">29°</span>، خلافاً
+      لافتراض النموذج. الدراسة تُدقّق هذا الرقم على سطحك الحقيقي.
+    </Fragment>
+    <Fragment slot="coveredNote">
+      {nearestInstallNote ?? `${cityNameAr} ضمن منطقة تدخّلنا. أقرب تركيباتنا التي هي قيد الخدمة توجد في جهة الدار البيضاء — ` +
+        'نفس مناهج الدراسة، نفس العتاد من الفئة الأولى، نفس متابعة الإنتاج في الوقت الحقيقي.'}
+    </Fragment>
+  </CityPageBody>
 </Layout>

@@ -372,6 +372,14 @@ export function lignesDepuisCompositionCi(composition, produits, tvaStandard) {
     // prestation, D-ACI-4=a ; prix catalogue pour un article) : l'écran le
     // porte tel quel, comme le devis automatique — un même site ne sort plus
     // à deux totaux selon le chemin (108 100 vs 123 500 MAD mesurés).
+    // R3 (fondateur, 28/10/2026 — moteur_ci/composition._ligne designation_moteur) : la
+    // désignation SERVIE prime le nom catalogue (« Disjoncteur AC 32 A 4P — sortie … »,
+    // « Protection DC par chaîne ») — produit, prix et stock restent ceux de l'article,
+    // comme le devis automatique (lignes_du_devis_ci) ; une ligne serveur sans désignation
+    // garde le nom catalogue (nocturne 40851091184, CIQ126).
+    if (p && typeof it.designation === 'string' && it.designation.trim()) {
+      row.designation = it.designation
+    }
     const htServeur = Number(it.prix_unitaire_ht)
     if (p && Number.isFinite(htServeur) && htServeur > 0) {
       row.prix_unit_ttc = ttcExactFromHt(htServeur, row.taux_tva)

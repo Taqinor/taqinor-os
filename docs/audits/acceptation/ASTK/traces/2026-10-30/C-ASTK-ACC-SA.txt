@@ -1,0 +1,8 @@
+﻿== C-ASTK-ACC-SA (sha 5908d43bb)
+attendu : S-A prix : un Administrateur corrige le prix de vente d'un produit (PATCH API) -> produit_modifie émis et resynchronisation planifiée après commit ; la tâche jouée recale le devis BROUILLON au nouveau prix, laisse le devis ENVOYÉ figé avec une note « devis envoyé conservé » ; un Commercial ne peut pas modifier prix_vente (403) ; /proposal du brouillon rendu (200 PDF) ; tests rouges ASTK20/88/89/92/93/110/140/141/142 verts contre la base de la pile
+observé : WeasyPrint rendered: /tmp/tmpc5ubp97g.pdf
+scénario S-A : {'commercial_patch_prix': 403, 'admin_patch_prix': 200, 'evenements': 1, 'rappels_apres_commit': 1, 'brouillon_pu': '1200.00', 'envoye_pu': '1000.00', 'note_envoye': 1, 'proposal': '200 application/pdf 16932 o ', 'pdf_4800': True, 'pdf_4000': False} -> OK
+tests rouges des tâches rejoués : 67 ; KO passe 1 : 0 ; ENV (base de démo non vide, verts sur base vierge émulée) : 0 ; DÉFAUTS : 0 ; sautés 0 ; écartés (TransactionTestCase, non rejouables en transaction annulée) : 0
+{"repro": true, "tests": 67}
+verdict : REPRO
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

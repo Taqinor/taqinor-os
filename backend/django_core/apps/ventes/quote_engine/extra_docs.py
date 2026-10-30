@@ -199,7 +199,7 @@ def _footer(ctx):
     )
 
 
-def _party_block(ctx, client):
+def _party_block(ctx, client, langue="fr"):
     """Bloc « émetteur » (société) ↔ « destinataire » (client)."""
     cl_nom = escape(f"{client.get('nom', '')} "
                     f"{client.get('prenom', '') or ''}".strip())
@@ -213,23 +213,33 @@ def _party_block(ctx, client):
     cl_html = "<br>".join(cl_lines)
     return (
         f'<div class="party">'
-        f'<div class="blk"><div class="lbl">Émetteur</div>'
+        f'<div class="blk"><div class="lbl">{_tr("Émetteur", langue)}</div>'
         f'<strong>{escape(str(ctx.get("entreprise_nom", "")))}</strong><br>'
         f'{_company_lines(ctx)}</div>'
         f'<div class="blk" style="text-align:right;">'
-        f'<div class="lbl">Destinataire</div>'
+        f'<div class="lbl">{_tr("Destinataire", langue)}</div>'
         f'<strong>{cl_nom}</strong>'
         f'{("<br>" + cl_html) if cl_html else ""}</div>'
         f'</div>'
     )
 
 
-def _shell(ctx, doc_kind, ref_line, body_html, title):
+def _shell(ctx, doc_kind, ref_line, body_html, title, langue="fr"):
     head = _header(ctx, doc_kind, ref_line)
     ftr = _footer(ctx)
+    racine, css = '<html lang="fr">', _PAGE_CSS
+    if langue == "ar":
+        # ERR-APDF-RELANCE-PREMIUM-AR — LA CSS arabe partagée (APDF6 : police
+        # système, aucun espacement de lettres) + miroir des blocs alignés.
+        from .premium_base import css_arabe
+        racine = '<html lang="ar" dir="rtl">'
+        css += (css_arabe(document=True)
+                + ".hdr-meta{text-align:left;}"
+                ".party .blk+.blk,.sign .box+.box{text-align:left !important;}"
+                ".callout .row .v{direction:ltr;unicode-bidi:embed;}")
     return (
-        f'<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
-        f'<title>{escape(title)}</title><style>{_PAGE_CSS}</style></head>'
+        f'<!DOCTYPE html>{racine}<head><meta charset="UTF-8">'
+        f'<title>{escape(title)}</title><style>{css}</style></head>'
         f'<body><div class="page">{head}'
         f'<div class="body">{body_html}</div>{ftr}</div></body></html>'
     )
@@ -317,20 +327,118 @@ PHRASE_FRAIS = ("Conformément à nos conditions de relance, des frais de "
                 "recouvrement de {frais} s'appliquent à la somme due.")
 
 
-def _paras_reglages(niveau, reglages):
+# ERR-APDF-RELANCE-PREMIUM-AR (D-APDF-3 a : la lettre de relance est un
+# document TRADUIT) — la lettre premium suit la langue du client comme la
+# lettre simple (``utils.pdf._contexte_langue``) : arabe traduit, toute autre
+# langue en français avec la mention de repli. Le français reste à l'octet.
+RELANCE_TONES_AR = {
+    1: {
+        "marker": "تذكير ودي",
+        "title": "تذكير أول — أداء الفاتورة",
+        "paras": [
+            "عميلنا العزيز، ما لم يكن هناك خطأ أو سهو من جانبنا، فإن الفاتورة "
+            "المشار إليها أعلاه لا تزال غير مؤداة إلى حدود اليوم. ولعل الأمر "
+            "مجرد سهو.",
+            "نكون ممتنين لكم إن تفضلتم بأدائها في أقرب الآجال. وإن كان الأداء "
+            "قد تم بالفعل، فالمرجو عدم الاعتداد بهذا التذكير.",
+            "نبقى رهن إشارتكم لأي استفسار يتعلق بهذه الفاتورة، ونشكركم على "
+            "ثقتكم.",
+        ],
+    },
+    2: {
+        "marker": "تذكير صارم",
+        "title": "تذكير ثان — فاتورة حل أجلها",
+        "paras": [
+            "رغم تذكيرنا السابق، نلاحظ أن الفاتورة المشار إليها أعلاه لا تزال "
+            "غير مؤداة إلى حدود اليوم. وقد تم تجاوز أجل الأداء المتفق عليه.",
+            "نطلب منكم تسوية هذه الوضعية دون تأخير. وفي حال عدم الأداء، سنضطر "
+            "إلى مباشرة إجراءات التحصيل المقررة.",
+            "ندعوكم إلى الاتصال بنا في أقرب وقت إن كان هناك نزاع أو صعوبة تبرر "
+            "هذا التأخير، لنجد معا حلا مناسبا.",
+        ],
+    },
+    3: {
+        "marker": "إنذار بالأداء",
+        "title": "إنذار بالأداء",
+        "paras": [
+            "رغم تذكيراتنا المتتالية التي بقيت دون جدوى، لا تزال الفاتورة "
+            "المشار إليها أعلاه غير مؤداة بالكامل. وبموجب هذه الرسالة، ننذركم "
+            "رسميا بأدائها.",
+            "نطلب منكم أداء المبلغ المستحق فور توصلكم بهذه الرسالة. وفي حال "
+            "عدم الأداء، نحتفظ بحقنا في مباشرة أي مسطرة تحصيل قضائية، دون "
+            "إشعار جديد، على نفقتكم ومسؤوليتكم.",
+            "يعتبر هذا الإنذار مطالبة بالأداء بمفهوم القانون. ندعوكم إلى "
+            "إيلاء هذا الأمر كل العناية التي يستحقها.",
+        ],
+    },
+}
+PHRASES_AR = {
+    PHRASE_DELAI: ("الأجل الممنوح لهذا الأداء: {jours} يوما ابتداء من تاريخ "
+                   "التوصل بهذه الرسالة."),
+    PHRASE_INTERETS: ("وفقا لشروط التذكير لدينا، تطبق على المبلغ المستحق "
+                      "فوائد تأخير بنسبة سنوية قدرها {taux} %."),
+    PHRASE_FRAIS: ("وفقا لشروط التذكير لدينا، تطبق على المبلغ المستحق مصاريف "
+                   "تحصيل قدرها {frais}."),
+}
+LIBELLES_RELANCE_AR = {
+    "Émetteur": "المُصدر",
+    "Destinataire": "المرسل إليه",
+    "Facture": "الفاتورة",
+    "Le": "بتاريخ",
+    "Date d'échéance": "تاريخ الاستحقاق",
+    "Retard": "التأخير",
+    "jour(s)": "يوم (أيام)",
+    "Montant restant dû": "المبلغ المتبقي المستحق",
+    ("Veuillez agréer, cher client, l'expression de nos salutations "
+     "distinguées."): "وتفضلوا، عميلنا العزيز، بقبول فائق عبارات التقدير والاحترام.",
+    "Le client": "العميل",
+    "Signature": "التوقيع",
+    "Le service recouvrement": "مصلحة التحصيل",
+}
+
+
+_ECHEANCE = "Date d'échéance"
+_SALUTATION = ("Veuillez agréer, cher client, l'expression de nos salutations "
+               "distinguées.")
+
+
+def _tr(texte, langue):
+    """Le libellé ``texte`` (français) dans ``langue`` — français sinon."""
+    return LIBELLES_RELANCE_AR.get(texte, texte) if langue == "ar" else texte
+
+
+def langue_relance(facture):
+    """``(langue rendue, mention de repli)`` de la lettre premium : la MÊME
+    résolution que la lettre simple (``libelles_ar.document_langue`` puis
+    ``mention_repli``) ; arabe traduit, sinon français (mention si le client
+    demandait une autre langue). Jamais d'erreur bloquante."""
+    from apps.ventes.utils.libelles_ar import document_langue, mention_repli
+    try:
+        demandee = document_langue(facture.client, company=facture.company) or "fr"
+    except Exception:  # noqa: BLE001 — jamais de crash PDF sur la langue (D-ENF22-BLE001)
+        logger.warning("extra_docs.langue_relance : erreur ignorée (mode dégradé)", exc_info=True)
+        demandee = "fr"
+    rendue = "ar" if demandee == "ar" else "fr"
+    return rendue, mention_repli(demandee, rendue)
+
+
+def _paras_reglages(niveau, reglages, langue="fr"):
     """Phrases tirées des réglages de relance du niveau (vide sans réglage)."""
     if int(niveau) < 2 or not reglages:
         return []
+
+    def _p(phrase):
+        return PHRASES_AR[phrase] if langue == "ar" else phrase
     paras = []
     jours = reglages.get("delai_jours")
     if isinstance(jours, int) and jours > 0:
-        paras.append(PHRASE_DELAI.format(jours=jours))
+        paras.append(_p(PHRASE_DELAI).format(jours=jours))
     taux = reglages.get("taux_interet_annuel") or 0
     if taux > 0:
-        paras.append(PHRASE_INTERETS.format(taux=pct_fr(taux)))
+        paras.append(_p(PHRASE_INTERETS).format(taux=pct_fr(taux)))
     frais = reglages.get("frais_fixes") or 0
     if frais > 0:
-        paras.append(PHRASE_FRAIS.format(frais=fmt_centimes_mad(frais)))
+        paras.append(_p(PHRASE_FRAIS).format(frais=fmt_centimes_mad(frais)))
     return paras
 
 
@@ -372,7 +480,7 @@ def _custom_message_paras(message, resume):
 
 
 def build_lettre_relance_html(ctx, client, resume, niveau, message=None,
-                              reglages=None):
+                              reglages=None, langue="fr", mention_repli=""):
     """HTML de la lettre de relance de niveau ``niveau`` (1/2/3).
 
     Si ``message`` (texte du ``FollowupLevel`` du niveau) est fourni et non vide,
@@ -383,15 +491,24 @@ def build_lettre_relance_html(ctx, client, resume, niveau, message=None,
 
     AMOT55 — ``reglages`` (``_reglages_niveau``) : délai / intérêts / frais
     RÉGLÉS du niveau, ajoutés au seul corps par défaut.
+
+    ERR-APDF-RELANCE-PREMIUM-AR — ``langue`` (« ar » : lettre traduite, RTL ;
+    sinon français, octet pour octet) et ``mention_repli`` (imprimée en tête
+    quand la langue du client n'a pas de traduction, D-APDF-3 a). Un message
+    saisi par la société s'imprime tel quel, comme sur la lettre simple.
     """
     niveau = int(niveau)
-    tone = RELANCE_TONES.get(niveau, RELANCE_TONES[1])
-    ref_line = (f"Facture {escape(str(resume['reference']))}<br>"
-                f"Le {escape(_fr_date(date.today()))}")
+    tones = RELANCE_TONES_AR if langue == "ar" else RELANCE_TONES
+    tone = tones.get(niveau, tones[1])
+    ref_line = (f"{_tr('Facture', langue)} {escape(str(resume['reference']))}<br>"
+                f"{_tr('Le', langue)} {escape(_fr_date(date.today()))}")
     custom_paras = _custom_message_paras(message, resume)
     body_paras = (custom_paras if custom_paras
-                  else tone["paras"] + _paras_reglages(niveau, reglages))
+                  else tone["paras"] + _paras_reglages(niveau, reglages, langue))
     paras = "".join(f"<p>{escape(p)}</p>" for p in body_paras)
+    repli_html = (f'<div class="callout"><div class="row"><span>'
+                  f'{escape(mention_repli)}</span></div></div>'
+                  if mention_repli else "")
     # QJR146 (d) — ON N'AFFIRME PAS UN RETARD QU'ON NE SAIT PAS CHIFFRER.
     # ``jours_retard`` à 0 ou ``None`` produisait la ligne « Retard : échéance
     # dépassée » — c'est-à-dire l'affirmation d'un dépassement sur une facture
@@ -403,37 +520,38 @@ def build_lettre_relance_html(ctx, client, resume, niveau, message=None,
     except (TypeError, ValueError):
         jr = 0
     retard_row = (
-        f'<div class="row"><span>Retard</span>'
-        f'<span class="v">{escape(f"{jr} jour(s)")}</span></div>'
+        f'<div class="row"><span>{_tr("Retard", langue)}</span>'
+        f'<span class="v">{escape(f"{jr} " + _tr("jour(s)", langue))}</span></div>'
     ) if jr > 0 else ""
     callout = (
         f'<div class="callout">'
-        f'<div class="row"><span>Facture</span>'
+        f'<div class="row"><span>{_tr("Facture", langue)}</span>'
         f'<span class="v">{escape(str(resume["reference"]))}</span></div>'
-        f'<div class="row"><span>Date d\'échéance</span>'
+        f'<div class="row"><span>{_tr(_ECHEANCE, langue)}</span>'
         f'<span class="v">{escape(resume["date_echeance"] or "—")}</span></div>'
         f'{retard_row}'
-        f'<div class="row due"><span>Montant restant dû</span>'
+        f'<div class="row due"><span>{_tr("Montant restant dû", langue)}</span>'
         # AMOT26 — le montant RÉCLAMÉ s'imprime au centime.
         f'<span class="v">{escape(fmt_centimes_mad(resume["montant_du"]))}'
         f'</span></div>'
         f'</div>'
     )
     body = (
-        _party_block(ctx, client)
+        repli_html
+        + _party_block(ctx, client, langue)
         + f'<div class="title serif">{escape(tone["title"])}</div>'
         + f'<div class="lead">{paras}</div>'
         + callout
-        + '<div class="lead"><p>Veuillez agréer, cher client, l\'expression '
-          'de nos salutations distinguées.</p></div>'
-        + '<div class="sign"><div class="box">Le client<div class="line">'
-          'Signature</div></div>'
+        + f'<div class="lead"><p>{_tr(_SALUTATION, langue)}</p></div>'
+        + f'<div class="sign"><div class="box">{_tr("Le client", langue)}'
+          f'<div class="line">{_tr("Signature", langue)}</div></div>'
           f'<div class="box" style="text-align:right;">'
           f'{escape(str(ctx.get("entreprise_nom", "")))}'
-          '<div class="line">Le service recouvrement</div></div></div>'
+          f'<div class="line">{_tr("Le service recouvrement", langue)}'
+          '</div></div></div>'
     )
     title = f"Relance {resume['reference']} — niveau {niveau}"
-    return _shell(ctx, tone["marker"], ref_line, body, title)
+    return _shell(ctx, tone["marker"], ref_line, body, title, langue=langue)
 
 
 def _niveaux_configures(facture):
@@ -509,8 +627,10 @@ def render_lettre_relance_pdf(facture, niveau, message=None):
     if message:
         from apps.ventes.recouvrement import rendre_message_relance
         message = rendre_message_relance(message, facture)
+    langue, repli = langue_relance(facture)
     html = build_lettre_relance_html(ctx, client_block, resume, niveau, message,
-                                     reglages=_reglages_niveau(facture, niveau))
+                                     reglages=_reglages_niveau(facture, niveau),
+                                     langue=langue, mention_repli=repli)
     return _render_pdf(html)
 
 

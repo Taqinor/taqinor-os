@@ -1,0 +1,5 @@
+== C-APDF-ACC-CR-INTERVENTION (sha 5908d43bb)
+attendu : compte-rendu de l'intervention 250 (chantier 28) avec deux photos déposées par ajouter-photo (créneaux toiture_avant / toiture_apres, comme l'écran), en fr et ar : profil SOLAIRE EXEMPLE, >= 2 images embarquées (APDF37), aucun username (APDF41), aucun prix_achat, statut inchangé (langue arabe hors critère : notée)
+observé : {"repro": true, "rendus": ["compte_rendu_intervention|fr|p=2|ar=0|img=4|PASS", "compte_rendu_intervention|ar|p=2|ar=0|img=4|PASS [note: langue ar hors critère (arabe 0 car.)]"], "ok_statut_inchange": true, "ok_photos_deposees": true, "depots": [201, 201]}
+verdict : REPRO
+base inchangée : oui (avant 26609, après 26609) ; mails 0 ; tâches Celery bloquées 0

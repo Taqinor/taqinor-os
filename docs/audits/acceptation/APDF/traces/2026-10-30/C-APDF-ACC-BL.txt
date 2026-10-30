@@ -1,0 +1,5 @@
+== C-APDF-ACC-BL (sha 5908d43bb)
+attendu : BL chantier CHT-202606-0004 (id 17, société 4, mise en service) documents/bon-livraison en fr et ar : profil SOLAIRE EXEMPLE avec ICE/IF/RC/patente (D-APDF-2), prestations exclues (D-APDF-4), aucun username, arabe >= 50 caractères (gabarit AR), aucun prix_achat (planté dans la nomenclature gelée), statut inchangé
+observé : {"repro": false, "rendus": ["bl_chantier|fr|p=1|ar=0|img=0|FAIL prestation listée comme composant : 'Installation' ; prestation listée comme composant : 'Transport'", "bl_chantier|ar|p=2|ar=114|img=0|FAIL prestation listée comme composant : 'Installation' ; prestation listée comme composant : 'Transport' [note: police Noto Sans Arabic embarquée : ['GLZDRW+Noto-Sans-Arabic-Bold', 'UNUIUP+Noto-Sans-Arabic']]"], "ok_statut_inchange": true, "prestations": ["Installation", "Transport"]}
+verdict : ÉCART
+base inchangée : oui (avant 26609, après 26609) ; mails 0 ; tâches Celery bloquées 0

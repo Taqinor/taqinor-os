@@ -198,11 +198,19 @@ def _ligne_composant(designation, quantite, produit, marque=''):
 def _est_service(produit, nature=None):
     """APDF33 — une ligne est une prestation (Installation, Transport…) si sa
     nature gelée (``Installation.bom[].nature``, APDF40) vaut ``service`` ; à
-    défaut de nature (nomenclature ancienne), lue sur la catégorie du produit."""
+    défaut de nature (nomenclature ancienne), lue sur la catégorie du produit.
+
+    ERR-APDF-BL-PV-PRESTATIONS-COMPOSANTS — le produit VIVANT prime : une
+    ligne dont le produit est aujourd'hui de catégorie « service » est une
+    prestation même si la nomenclature figée la dit ``materiel`` (gelée avant
+    la recatégorisation : « Installation »/« Transport » sur le BL, le PV et
+    les garanties du dossier de remise). Lecture seule, aucune donnée réécrite."""
+    categorie = getattr(produit, 'categorie', None) if produit else None
+    if getattr(categorie, 'type_equipement', None) == 'service':
+        return True
     if nature:
         return nature == 'service'
-    categorie = getattr(produit, 'categorie', None) if produit else None
-    return getattr(categorie, 'type_equipement', None) == 'service'
+    return False
 
 
 def _composants(chantier, services=False):

@@ -1,0 +1,6 @@
+﻿== C-ASTK-VER-004 (sha 5ea32b58b)
+attendu : produit 15 en stock dont 10 rappelés (quarantaine) : une sortie scannée de 12 au poste scanner est refusée (400 nommé), stock inchangé
+observé : rappel 201 quarantaine=10 ; scanner sortie 12 -> 409 {'detail': 'Sortie refusée pour « Batterie sonde » : 10 unité(s) en quarantaine, 5 disponible(s) hors quarantaine.'} ; stock 15 (attendu 400, stock 15)
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

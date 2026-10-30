@@ -60,3 +60,52 @@ class PrixPalierRemiseTests(TestCase):
         palier = _balayage_stockage_publique(dimensionnement)['paliers'][0]
         self.assertEqual(palier['cout_ttc'], 49322.08)
         self.assertEqual(palier['payback_annees'], 6.32)
+
+    # ERR-AMOT59-CURSEUR-STOCKAGE-PRIX (sonde C-AMOT-035) — le palier des packs
+    # RÉELLEMENT au devis (1 batterie ici) publie ``totaux_avec.ttc`` ; les
+    # autres = ce TTC + écart catalogue × remise. Test-du-test : retirer
+    # l'appel à ``_ancrer_paliers_sur_le_devis`` ⇒ ``test_ancre_sur_le_devis``
+    # échoue (44 300 au lieu de 50 700).
+    @staticmethod
+    def _deux_paliers(packs=(1, 2)):
+        return {'recommandation_avec': {'balayage_stockage': [{
+            'capacite_kwh': 5.0 * n, 'cout_ttc': 49322.08 + 20000 * (n - 1),
+            'lignes_batterie': [{'quantite': n}],
+            'payback_annees': 6.32, 'economie_mad': 7936.0 + 1000 * (n - 1),
+        } for n in packs]}}
+
+    def test_ancre_sur_le_devis(self):
+        self.assertEqual(self.devis.regles_calcul, 5)  # devis neuf : niveau 5
+        paliers = _balayage_stockage_publique(
+            self._deux_paliers(), self.devis, ttc_offert=50700.0)['paliers']
+        self.assertEqual([p['cout_ttc'] for p in paliers], [50700.0, 68700.0])
+        self.assertEqual(paliers[1]['payback_annees'], payback_publiable(
+            68700.0, 8936.0, stockage=True)['payback_years'])
+
+    def test_quantite_offerte_absente_prix_amot59(self):
+        paliers = _balayage_stockage_publique(
+            self._deux_paliers((2, 3)), self.devis,
+            ttc_offert=50700.0)['paliers']
+        self.assertEqual([p['cout_ttc'] for p in paliers], [
+            prix_client_composition(69322.08, self.devis),
+            prix_client_composition(89322.08, self.devis)])
+
+    def test_niveau_4_envoye_garde_prix_amot59(self):
+        """Nouveaux rendus seulement (D-CI-SENSIB-ENVOYES) : un devis envoyé
+        au niveau 4 garde les prix AMOT59 qu'il a reçus — pas d'ancre."""
+        from apps.ventes.models import Devis
+        Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=4)
+        self.devis.refresh_from_db()
+        paliers = _balayage_stockage_publique(
+            self._deux_paliers(), self.devis, ttc_offert=50700.0)['paliers']
+        self.assertEqual([p['cout_ttc'] for p in paliers], [
+            prix_client_composition(49322.08, self.devis),
+            prix_client_composition(69322.08, self.devis)])
+
+    def test_regles_origine_sans_ancre(self):
+        from apps.ventes.models import Devis
+        Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=1)
+        self.devis.refresh_from_db()
+        palier = _balayage_stockage_publique(
+            self._deux_paliers(), self.devis, ttc_offert=50700.0)['paliers'][0]
+        self.assertEqual(palier['cout_ttc'], 49322.08)

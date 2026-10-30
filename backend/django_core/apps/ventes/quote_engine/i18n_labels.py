@@ -2478,9 +2478,9 @@ LIBELLES = {
         'en': 'Estimated production: ≈ {kwh} kWh per kWc per year, system losses of {pertes} % deducted.',
         'ar': 'الإنتاج المقدر: ≈ {kwh} kWh لكل kWc سنويًا، بعد خصم خسائر النظام البالغة {pertes} %.'},
     'res_hyp_autoconso': {
-        'fr': 'Autoconsommation retenue : {sans} % sans batterie · {avec} % avec batterie.',
-        'en': 'Self-consumption used: {sans} % without battery · {avec} % with battery.',
-        'ar': 'الاستهلاك الذاتي المعتمد: {sans} % بدون بطارية · {avec} % مع بطارية.'},
+        'fr': 'Autoconsommation retenue : {sans} % sans batterie · {avec} % {option}.',
+        'en': 'Self-consumption used: {sans} % without battery · {avec} % {option}.',
+        'ar': 'الاستهلاك الذاتي المعتمد: {sans} % بدون بطارية · {avec} % {option}.'},
     'res_hyp_degradation': {
         'fr': ("Dégradation panneau {pct} %/an intégrée ; {tarif} ; coûts d'exploitation (nettoyage, "
                "maintenance, assurance) non déduits de ce résultat."),

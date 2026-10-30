@@ -1,0 +1,5 @@
+== C-APDF-ACC-PV (sha 5908d43bb)
+attendu : PV de réception du chantier 17 (mise en service, société 4) (documents/pv-reception) en fr et ar : profil SOLAIRE EXEMPLE avec ICE/IF/RC/patente (D-APDF-2), prestations exclues (D-APDF-4), aucun username (APDF34), aucun prix_achat, statut inchangé (langue arabe hors critère : noté)
+observé : {"repro": false, "rendus": ["pv_reception|fr|p=2|ar=0|img=0|FAIL prestation listée comme composant : 'Installation' ; prestation listée comme composant : 'Transport'", "pv_reception|ar|p=2|ar=0|img=0|FAIL prestation listée comme composant : 'Installation' ; prestation listée comme composant : 'Transport' [note: langue ar hors critère (arabe 0 car.)]"], "ok_statut_inchange": true, "prestations": ["Installation", "Transport"]}
+verdict : ÉCART
+base inchangée : oui (avant 26609, après 26609) ; mails 0 ; tâches Celery bloquées 0

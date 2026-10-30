@@ -1,0 +1,7 @@
+﻿== C-ASTK-VER-003 (sha 5ea32b58b)
+attendu : un rôle Commercial (sans prix_achat_voir) ne reçoit aucune clé montant sur /stock/acomptes-fournisseur/ et /ouverts/
+observé : /api/django/stock/acomptes-fournisseur/ status 403 can_view_buy_prices=False montant={'detail': 'Permission « achats_payer » ou « prix_achat_voir » requise (règlements fournisseur).', 'error': {'code': 'permission_denied', 'message': 'Permission « achats_payer » ou « prix_achat_voir » requise (règlements fournisseur).', 'fields': None, 'request_id': '4ae01c478ee14b9db664ff7137dfb9f7'}}
+/api/django/stock/acomptes-fournisseur/ouverts/ status 403 can_view_buy_prices=False montant={'detail': 'Permission « achats_payer » ou « prix_achat_voir » requise (règlements fournisseur).', 'error': {'code': 'permission_denied', 'message': 'Permission « achats_payer » ou « prix_achat_voir » requise (règlements fournisseur).', 'fields': None, 'request_id': 'f182594a65944ebbb22db6eb4d395f46'}}
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 26506, après 26506) ; mails 0 ; tâches Celery bloquées 0

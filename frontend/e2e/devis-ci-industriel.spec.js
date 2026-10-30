@@ -39,6 +39,12 @@ const ENTREPRISE = {
   // ICE FACTICE de 15 chiffres (le même que l'exemple du contrat).
   ice: '000000000000000',
 }
+// ADEV95 (24/10, D-CIQ-11) — sur le LIEN PUBLIC, le signataire C&I est aussi nommé (= le nom
+// tapé), joignable, et atteste son pouvoir d'engager la société (contrat
+// acceptation_entreprise.json) ; jumeau de devis-ci-commercial.spec.js (réaligné le 24/10).
+const SIGNATAIRE = {
+  signataire_nom: 'Nadia E2E', signataire_email: 'nadia@usine-e2e.test', pouvoir_engager: true,
+}
 const devisIds = []
 // CAD177 — articles PARTAGÉS (câble solaire DC…) tarifés pour la passe, remis à 0 ensuite.
 const prixPartages = []
@@ -218,12 +224,15 @@ test('CIQ346 — signature entreprise (raison sociale, qualité, ICE) → copie 
   const accepte = await lireJson(await request.post(`${API}/ventes/proposal/${etat.token}/accept/`, {
     data: {
       nom: 'Nadia E2E', option: '', consent_esign: true,
-      signed_at_client: new Date().toISOString(), on_behalf_of: '', entreprise: ENTREPRISE,
+      signed_at_client: new Date().toISOString(), on_behalf_of: '',
+      entreprise: { ...ENTREPRISE, ...SIGNATAIRE },
       empreinte_contenu: lu.empreinte_contenu,
     },
+    // L'acceptation rend et scelle l'exemplaire signé (PDF) : plus que les 15 s par défaut.
+    timeout: 90_000,
   }), 'acceptation entreprise')
   expect(accepte.statut).toBe('accepte')
-  expect(accepte.entreprise).toEqual(ENTREPRISE)
+  expect(accepte.entreprise).toEqual({ ...ENTREPRISE, ...SIGNATAIRE })
   const signe = await request.get(`${API}/ventes/devis/${etat.devisId}/proposal/?pdf_mode=full`)
   expect(signe.status(), 'PDF signé').toBe(200)
   const texte = await textePdf(await signe.body())

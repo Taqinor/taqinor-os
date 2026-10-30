@@ -1,0 +1,8 @@
+== C-AMOT-019 (sha 673ec3f92)
+attendu : P3.1 — devis BAT-DIFF (deux options, option 2 = onduleur hybride SANS batterie chiffrée) : libelle_avec serveur = « Hybride, batterie plus tard » ; PDF résidentiel 3 p., legacy étude + devis final et une-page : 0 « avec batterie » (insensible à la casse), 0 « Stockage », libellé serveur imprimé ; témoin : un devis à batterie réelle garde « Avec batterie »
+observé : Generating charts...
+WeasyPrint rendered: /tmp/tmpjezgpkw1.pdf
+WeasyPrint rendered: /tmp/tmpxzeig5ez.pdf
+{"serveur": {"libelle_avec": "Hybride, batterie plus tard", "nb_options": 2}, "residentiel_3p": {"http": 200, "pages": 3, "avec_batterie": 0, "stockage": 0, "libelle_imprime": true, "contexte": []}, "legacy_etude_final": {"http": 200, "pages": 3, "avec_batterie": 0, "stockage": 0, "libelle_imprime": true, "contexte": []}, "onepage": {"http": 200, "pages": 1, "avec_batterie": 0, "stockage": 0, "libelle_imprime": true, "contexte": []}, "temoin_batterie_reelle": {"http": 200, "avec_batterie": true}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 26610, après 26610) ; mails 0 ; tâches Celery bloquées 0

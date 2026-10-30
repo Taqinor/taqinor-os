@@ -585,4 +585,6 @@ Contre-visite de clôture du groupe ACAL (dossier `docs/audits/2026-10-10-calepi
 - 2026-10-28 — ACAL289 — Historique et Rapport d'étude dans les réglages ; rejeu en direct PASS (docs/audits/acceptation/ACAL/2026-10-29-03ea7d23c)
 - 2026-10-28 — ACAL347 — dette services calepinage déjà drainée (0 sans appelant) ; gardes « base ≤ 5 » et PUT des jeux ajoutées (90dab518d)
 - 2026-10-28 — SPL209 — garde bascule calepinage lit calc/classification.js (82eca1d1a)
+
+- 2026-10-30 — ACAL311 — atelier « Affiner ma consommation » : proposerConsommation injecté, kWh au barème société, appliquerHydratationAuCtx (bf260be1b8, 3edcdfaf23, 2070fa7dee) ; vitest/eslint non rejoués ici (pas de node_modules), node --test des gardes calepinageApi 43/43 ; preuve en direct P5.5 due à l orchestrateur. — DÉCOCHÉE par l'orchestrateur : code complet, mais la preuve en direct P5.5 (écran atelier, Playwright) n'est pas encore jouée ; à cocher avec son enregistrement d'acceptation.
 - 2026-10-30 — ACAL311 — acceptation en direct (rejeu complet 30/10, SHA 82bdcf541, 16/16) : « Affiner ma consommation » visible dans l'atelier ERP, « Reprendre du lead » → barème société 6 360 kWh/an, F5 + Enregistrer sans toucher garde `consumption` — docs/audits/acceptation/ACAL/2026-10-30-82bdcf541.md
