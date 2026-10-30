@@ -1,0 +1,878 @@
+{
+  "sha": "5908d43bb4af99d2c94912a77b276e97c6c437a0",
+  "date": "2026-10-30",
+  "groupe": "AANA",
+  "verdict": "PASS",
+  "couvre": [
+    "AANA1",
+    "AANA2",
+    "AANA3",
+    "AANA4",
+    "AANA5",
+    "AANA6",
+    "AANA7",
+    "AANA8",
+    "AANA9",
+    "AANA10",
+    "AANA11",
+    "AANA12",
+    "AANA13",
+    "AANA14",
+    "AANA15",
+    "AANA16",
+    "AANA17",
+    "AANA18",
+    "AANA19",
+    "AANA20",
+    "AANA21",
+    "AANA22",
+    "AANA23",
+    "AANA24",
+    "AANA25",
+    "AANA26",
+    "AANA27",
+    "AANA28",
+    "AANA29",
+    "AANA31",
+    "AANA32",
+    "AANA33",
+    "AANA34",
+    "AANA35",
+    "AANA36",
+    "AANA37",
+    "AANA38",
+    "AANA39",
+    "AANA41",
+    "AANA43",
+    "AANA49",
+    "AANA51",
+    "AANA52"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P5.1/C-AANA-001",
+      "taches": [
+        "AANA2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt"
+    },
+    {
+      "id": "P5.1/C-AANA-002",
+      "taches": [
+        "AANA3",
+        "AANA6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt"
+    },
+    {
+      "id": "P5.1/C-AANA-003",
+      "taches": [
+        "AANA4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt"
+    },
+    {
+      "id": "P3.1/C-AANA-004",
+      "taches": [
+        "AANA9"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P6/C-AANA-005",
+      "taches": [
+        "AANA15"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P6/C-AANA-006",
+      "taches": [
+        "AANA16"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P6/C-AANA-007",
+      "taches": [
+        "AANA17"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P5.3/C-AANA-008",
+      "taches": [
+        "AANA18",
+        "AANA49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P1.4/C-AANA-009",
+      "taches": [
+        "AANA27"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2.5/C-AANA-010",
+      "taches": [
+        "AANA33"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2.2/C-AANA-011",
+      "taches": [
+        "AANA38"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2.1/C-AANA-012",
+      "taches": [
+        "AANA36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2.1/C-AANA-013",
+      "taches": [
+        "AANA37"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P4.1/C-AANA-014",
+      "taches": [
+        "AANA41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P5.1/C-AANA-015",
+      "taches": [
+        "AANA7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt"
+    },
+    {
+      "id": "P1.4/C-AANA-016",
+      "taches": [
+        "AANA25"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P1.1/C-AANA-017",
+      "taches": [
+        "AANA26"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P3.2/C-AANA-018",
+      "taches": [
+        "AANA14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P1.2/C-AANA-019",
+      "taches": [
+        "AANA19"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P1.1/C-AANA-020",
+      "taches": [
+        "AANA20"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P1.2/C-AANA-021",
+      "taches": [
+        "AANA21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P1.1/C-AANA-022",
+      "taches": [
+        "AANA1",
+        "AANA28",
+        "AANA29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2.4/C-AANA-024",
+      "taches": [
+        "AANA31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P1.3/C-AANA-025",
+      "taches": [
+        "AANA24"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2.4/C-AANA-026",
+      "taches": [
+        "AANA32"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2.3/C-AANA-027",
+      "taches": [
+        "AANA34"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2.5/C-AANA-028",
+      "taches": [
+        "AANA35"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P3.1/C-AANA-029",
+      "taches": [
+        "AANA10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P3.1/C-AANA-030",
+      "taches": [
+        "AANA11"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P3.1/C-AANA-031",
+      "taches": [
+        "AANA12"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P5.1/C-AANA-033",
+      "taches": [
+        "AANA8",
+        "AANA52"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt"
+    },
+    {
+      "id": "P5.1/C-AANA-034",
+      "taches": [
+        "AANA5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt"
+    },
+    {
+      "id": "P6/C-AANA-037",
+      "taches": [
+        "AANA43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sonde-C-AANA-037-rejeu.txt"
+    },
+    {
+      "id": "P1.2/C-AANA-038",
+      "taches": [
+        "AANA22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P1.2/C-AANA-039",
+      "taches": [
+        "AANA23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2/C-AANA-040",
+      "taches": [
+        "AANA51"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P2.3/C-AANA-041",
+      "taches": [
+        "AANA39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P3.1/C-AANA-042",
+      "taches": [
+        "AANA13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/sondes-toutes-AANA.txt"
+    },
+    {
+      "id": "P1.1/ecran-reporting",
+      "taches": [
+        "AANA29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AANA/traces/2026-10-30/reporting-ecran.txt"
+    }
+  ]
+}
