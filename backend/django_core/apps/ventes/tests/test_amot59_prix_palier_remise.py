@@ -75,6 +75,7 @@ class PrixPalierRemiseTests(TestCase):
         } for n in packs]}}
 
     def test_ancre_sur_le_devis(self):
+        self.assertEqual(self.devis.regles_calcul, 5)  # devis neuf : niveau 5
         paliers = _balayage_stockage_publique(
             self._deux_paliers(), self.devis, ttc_offert=50700.0)['paliers']
         self.assertEqual([p['cout_ttc'] for p in paliers], [50700.0, 68700.0])
@@ -88,6 +89,18 @@ class PrixPalierRemiseTests(TestCase):
         self.assertEqual([p['cout_ttc'] for p in paliers], [
             prix_client_composition(69322.08, self.devis),
             prix_client_composition(89322.08, self.devis)])
+
+    def test_niveau_4_envoye_garde_prix_amot59(self):
+        """Nouveaux rendus seulement (D-CI-SENSIB-ENVOYES) : un devis envoyé
+        au niveau 4 garde les prix AMOT59 qu'il a reçus — pas d'ancre."""
+        from apps.ventes.models import Devis
+        Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=4)
+        self.devis.refresh_from_db()
+        paliers = _balayage_stockage_publique(
+            self._deux_paliers(), self.devis, ttc_offert=50700.0)['paliers']
+        self.assertEqual([p['cout_ttc'] for p in paliers], [
+            prix_client_composition(49322.08, self.devis),
+            prix_client_composition(69322.08, self.devis)])
 
     def test_regles_origine_sans_ancre(self):
         from apps.ventes.models import Devis

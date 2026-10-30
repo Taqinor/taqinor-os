@@ -30,8 +30,15 @@ REGLES_CORRIGEES_2710 = 3
 #: scénario production par le moteur du central (ERR-CI-SENSIBILITE-P90-INVERSEE).
 #: La migration 0143 laisse à 3 tout devis non brouillon : il garde son tableau.
 REGLES_SENSIBILITES_3010 = 4
+#: Niveau 5 (D-CI-SENSIB-ENVOYES, « nouveaux rendus seulement », 30/10/2026) :
+#: retour de l'option « avec batterie » d'un devis C&I non accepté
+#: (ERR-CEC6-RETOUR-AVEC-BATTERIE-PERDU) et curseur de stockage ancré sur le TTC
+#: du devis (ERR-AMOT59-CURSEUR-STOCKAGE-PRIX). Le niveau 4 est en production
+#: depuis le matin : un devis envoyé au niveau 4 garde ses chiffres. La
+#: migration 0144 laisse à 4 tout devis non brouillon.
+REGLES_RETOURS_3010B = 5
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_SENSIBILITES_3010
+REGLES_COURANTES = REGLES_RETOURS_3010B
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

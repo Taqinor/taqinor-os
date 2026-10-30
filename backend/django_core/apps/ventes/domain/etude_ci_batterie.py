@@ -453,11 +453,11 @@ def _investissement_des_lignes(lignes, devis=None):
     accepté met en avant l'offre réseau (CIQ302 : ``option_effective`` =
     « sans ») ; l'option « avec » y est pourtant chiffrée et son retour est
     celui de SON investissement, comme à l'aperçu. Nouveaux rendus seulement :
-    un devis envoyé avant le niveau 4 (``REGLES_SENSIBILITES_3010``) garde
+    un devis envoyé avant le niveau 5 (``REGLES_RETOURS_3010B``) garde
     l'option que suit son argent, donc le retour absent qu'il a reçu."""
     from apps.ventes import economie_ci as eco
     from apps.ventes.domain.regles_calcul import (
-        REGLES_CORRIGEES_2710, REGLES_SENSIBILITES_3010, regles_au_moins,
+        REGLES_CORRIGEES_2710, REGLES_RETOURS_3010B, regles_au_moins,
     )
     from apps.ventes.economie_ci_options import investissement_hors_om
     from apps.ventes.utils.options import AVEC_BATTERIE, option_effective, option_totaux
@@ -466,7 +466,7 @@ def _investissement_des_lignes(lignes, devis=None):
     if devis is None:
         return None
     acceptee = getattr(devis, 'option_acceptee', '') or ''
-    suivie = acceptee or (AVEC_BATTERIE if regles_au_moins(devis, REGLES_SENSIBILITES_3010)
+    suivie = acceptee or (AVEC_BATTERIE if regles_au_moins(devis, REGLES_RETOURS_3010B)
                           else option_effective(devis))
     if suivie not in ('', AVEC_BATTERIE):
         return None
