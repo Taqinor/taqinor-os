@@ -1,0 +1,70 @@
+AGNR42 — rejeu en direct du 2026-10-30 (orchestrateur, Playwright MCP, demo_admin, viewport 1366 sauf mention)
+Pile : http://localhost — front reconstruit sur origin/main 665a4ce53, backend erp-agentique-django_core-1 (origin/main, migré), base démo locale (182 leads, > 50).
+Comparaisons serveur : GET /ventes/devis/<id>/ avant et après « rouvrir → Enregistrer sans toucher » (clés volatiles retirées : updated_at, _empreinte*, jour_reference, ids de lignes recréées par replace-lines) ; PDF /proposal extrait par PyMuPDF.
+Données créées (base démo locale) : leads 3649 « AGNR42 rejeu ete different » (800/1 600), 3650 « AGNR42 rejeu coupure », 3743 commercial, 3744 industriel, 3745 agricole (copies des champs des leads de recette CE2E, renommées) ; clients 2651 « AGNR42 rejeu client liste » (liste 5 « AGNR42 rejeu Revendeur », Smart Meter 1 350 HT puis 1 300 HT), 2652 « AGNR42 rejeu client profil » (profil de site 900/1 300) ; produit cloné « Accessoires AGNR42 rejeu clone » ; devis 2400-2402, 2463-2468.
+Oracles : 0 réponse 4xx/5xx et 0 console.error sur les gestes jugés, hors (a) le 400 etude-params VOULU de P4.3 (page.route), (b) l'ERR_CONNECTION_RESET VOULU de P4.1 (page.route abort), (c) 4 × 401 GET de fond (notifications/jobs-status) à l'expiration du jeton d'accès pendant une navigation, rafraîchi sans perte (environnement) ; seule boîte native : `beforeunload` (garde de sortie voulue) ; aucun prix d'achat ni « marge » dans les PDF FR/EN/AR des 13 devis du rejeu ni dans les charges /proposition (la « marge indicative (interne) » n'apparaît qu'au générateur).
+
+## P1.1 — PASS (AGNR19, AGNR17, AGNR47)
+?lead=1023 (le plus ancien, hors des 50 derniers) ⇒ « Idrissi Mehdi (Idrissi Toitures) » appliqué. ?lead=3293 (800/1 600) puis lead B « Bouazza Hamid » (sans facture) ⇒ Hiver/Été vides, « aucune facture enregistrée sur ce lead ». Créer (devis 2400) : corps atomic sans aucune clé de facture ; ?edit=2400 ⇒ Hiver/Été vides.
+
+## P1.2 — PASS (AGNR16, AGNR30)
+Devis 2401 (client à liste) créé à 1 350,00 HT ; liste passée à 1 300 (prix-applicable rend 1 300) ; ?edit=2401 → Enregistrer sans toucher : replace-lines envoie Smart Meter `prix_unitaire 1350.00`. Rouvrir, ne modifier QUE l'échéancier (30/60/10 → 40/50/10) ⇒ « Modifications non enregistrées » + brouillon local, quitter ⇒ `beforeunload` levé.
+
+## P1.3 — PASS (AGNR17)
+Sans lead : Hiver 700 / Été 1 100 tapés, puis client « AGNR42 rejeu client profil » (profil 900/1 300, prefill-site 200) ⇒ 700 / 1 100 gardés, avis « Profil de site non appliqué aux factures déjà saisies. ».
+Annexe (non jugée) : le sélecteur client affiche « Aucun client dans vos données » tant que rien n'est tapé ; prefill-site appelé 2 fois.
+
+## P2.1 — PASS (AGNR15, AGNR10, AGNR28, AGNR32)
+?client=2651 : ligne Smart Meter « 1620 » TTC, « HT : 1 350 MAD », badge « Tarif : AGNR42 rejeu Revendeur » ; Rail « TVA : PAR LIGNE (VOIR LA TABLE) », aucun champ TVA. Listes de prix › Ajouter un prix : « Prix unitaire HT* », « Le générateur le convertit au taux de chaque ligne. ». Ligne Accessoires prix tapé 2345.5, désignation retouchée ⇒ dialogue « Désignation modifiée » ⇒ « Créer un nouveau produit … dans le stock » (POST /stock/produits/140/dupliquer/ 201) ⇒ ligne « Accessoires AGNR42 rejeu clone | 1 | 2345.5 | 20 ».
+
+## P2.3 — PASS (AGNR42)
+Devis 2402 : « + Section » (« AGNR42 SECTION REJEU », remontée avant les câbles) et « + Note » (« AGNR42 NOTE REJEU », avant le tableau de protection) ; Enregistrer (replace-lines 200, etude-params 200) ; ?edit=2402 ⇒ même ordre des 18 lignes.
+
+## P2.4 — PASS (AGNR29)
+Devis 2402 à 1 700 px : deux rails (x 860 et x 1401) « MARGE INDICATIVE (INTERNE) … marge partielle : 2 lignes sans prix d'achat » (data-testid marge-partielle ×2).
+
+## P3.1 — PASS (AGNR14)
+« Facture réelle (MAD/mois) » 150 (ONEE) ⇒ « Consommation annuelle dérivée 1 282 kWh/an » ; Créer (devis 2463) ⇒ corps `"conso_annuelle":1282`.
+
+## P3.3 — PASS (AGNR26) ; AGNR38 partiel
+Lead agricole 3745 : aucun champ « Heures de pompage » (seul le texte d'aide « débit souhaité × les heures de pompage du site »). Butane, 3 bouteilles/jour d'irrigation, 50 DH : `saisies_economie_pompage.consommation.saisi_le` et `depense_unitaire_payee.saisi_le` posés séparément ; champ « Date de déclaration » vide (pas d'« aujourd'hui » affiché). Le volet « corriger le prix un autre jour garde la date de la quantité » n'est pas rejouable le même jour : AGNR38 non couverte.
+
+## P3.4 — PASS (AGNR31, AGNR27)
+Agricole, Auto-remplir : ligne « Structure au sol pompage — prix à renseigner | 8 | 0 » ⇒ Créer bloqué (aucune requête), message « 1 ligne « prix à renseigner » ne sera pas enregistrée : Structure au sol pompage ». Ligne acier : résidentiel « Structures acier » 450 TTC, commercial « Structure bac acier C&I » 1 080 TTC (prix connus). (Le volet TVA 0 % est en FAIL, voir plus bas.)
+
+## P3.5 — PASS (AGNR23, AGNR44)
+Devis 2007 (horaire), aperçu déplié : 12 points survolés — sans 403+284+427+452+837+848+857+856+830+823+442+402 = 7 461 = carte 7 461 ; avec Σ 12 665 vs carte 12 663 (arrondi des 12 points affichés). Factures en marches 800 (nov.-avr.) / 1 600 (mai-oct.). Curseur « Consommation diurne » absent : « Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis) ».
+
+## P4.1 — PASS (AGNR12, AGNR37, AGNR31, AGNR40)
+Devis 2401 : échéancier 70/60/10 ⇒ « Total des tranches : 140 % — il doit faire 100 %. » sous la carte + bandeau, aucune requête. Ligne ajoutée à la main (Wifi Dongle) à quantité 0 ⇒ « 1 ligne à quantité 0 ne sera pas enregistrée : Wifi Dongle ». Création coupée (lead 3650) : page.route laisse passer POST atomic (201, Idempotency-Key 657e9979-…) puis coupe la réponse ⇒ « La connexion a été interrompue — vérifiez la liste des devis avant de recréer. », formulaire gardé ; « Créer » à nouveau ⇒ même clé, 201 rejoué ; base : 1 seul devis pour le lead 3650 (2402).
+
+## P4.2 — PASS (AGNR7, AGNR9, AGNR22)
+Commercial 2465 et industriel 2466 (moteur C&I) : rouvrir → Enregistrer sans toucher ⇒ 0 différence serveur (etude_params site/toit/contraintes/options/rythme compris). Devis 2464 : V1 70 400 → « × N identiques » 4 ⇒ 281 600 (nombre_proprietes 4) → « Revenir à cette version » (17:03) ⇒ total 70 400, nombre_proprietes retiré, factures_hiver_ete gardé.
+
+## P4.3 — PASS (AGNR21, AGNR33, AGNR8)
+Devis 2464 : Réduction tapée 12.345 ⇒ « 12,345 → 12,35 » sous le champ, corps `remise_globale "12.35"` ; PATCH etude-params forcé en 400 par page.route ⇒ formulaire conservé en édition, bandeau « Devis enregistré, mais l'étude n'a pas pu être attachée. » + message du refus. Ré-enregistré ensuite normalement (200/200).
+
+## P5.1 — PASS (AGNR13, AGNR6, AGNR34)
+Quatre marchés, créer → enregistrer → rouvrir → enregistrer sans toucher ⇒ 0 différence serveur et TTC écran = serveur = PDF :
+  résidentiel 2464 (lead « été différent ») 70 400 = 70 400 = 70 400 (PDF 4 p.) ; corps `factures_hiver_ete {hiver_mad 800, ete_mad 1600, ete_differente true}`, grille « estimé », source moteur `facture_hiver_ete`, page : « Estimation — deux factures (hiver/été) : … » ; à la réouverture Hiver/Été 800/1 600 ;
+  commercial 2465 149 200 = 149 200 = 149 200 (3 p.) ; industriel 2466 1 360 300 ×3 (4 p.) ; agricole 2467 32 600 ×3 (3 p.), saisies agricoles relues 3 / 50.
+  AGNR13 : sans lead, Janvier seul tapé (900) ⇒ « Mois non saisis (valeurs d'exemple, non enregistrées) : Fév … Déc » ; Créer (devis 2468) ⇒ aucune clé `factures_mensuelles_reelles` dans les corps.
+
+## P5.2 — PASS (AGNR36)
+Désignations retouchées « Onduleur réseau Huawei 5kW Monophasé » → « Convertisseur principal AGNR42 », « Batterie Dyness 5 kWh » → « Stockage AGNR42 » (renommer ici seulement) ⇒ Rail « TOTAL SANS BATTERIE 38 700 MAD / AVEC 54 700 MAD » inchangé.
+
+## P3.4.tva0 — FAIL (AGNR20) — défaut D4
+Agricole 3745, Auto-remplir, ligne « Pompe immergée solaire 5.5 CV Triphasé » : TVA 0 ⇒ champ « Base légale de l'exonération » (id base-legale-16) rempli « Article 92-I-5° CGI — matériel agricole (rejeu AGNR42) » ; « Auto-remplir depuis le stock » à nouveau ⇒ TVA 0 gardée MAIS base légale vide (champ base-legale-24 = '', « Base légale obligatoire pour une ligne à 0 %. »). (« Recalculer le dimensionnement » est désactivé en agricole.) Attendu AGNR20 : 0 % ET sa base légale survivent à Auto-remplir / Recalculer.
+Suspect : chemin de recomposition pompage — `frontend/src/pages/ventes/generator/hooks/useLignesEcran.js::recomposerLignes` (withKeys sur `appliquerRecomposition`) / `frontend/src/features/ventes/calc/recomposition.js::fusionnerRecomposition` : la ligne est ré-clefée (16 → 24) et `tvaBaseLegale` n'y est pas reportée.
+Capture : docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-P3.4-tva0.jpg
+
+## P5.1.sans-localisation — FAIL (AGNR24) — défaut D5
+Devis résidentiel 2299 (lead « RHOR8 rejeu sans horaire » : facture 1 000 MAD, ni ville ni GPS, 8 × 710 W, batterie 5 kWh). Écran (création ET réouverture ?edit=2299) : « Facture réelle ONEE ≈ 12 000 MAD/an … économie calculée par tranche (barème ONEE), pas une estimation », économies 10 316 (sans) / 11 308 (avec), ROI 4,4 / 5 ans. PDF /proposal : « Économie estimée : 9 159 MAD/an » / « 12 034 MAD/an », « Retour en 4,9 / 4,7 ans », « Économies estimées (approximatif) — à confirmer sur vos factures », savings_model `estimation`. Écran ≠ PDF (et « pas une estimation » contre « estimation »), clause CLIENT d'AGNR42.
+Suspect : sans localisation PVGIS, le serveur (`apps/ventes/quote_engine/pricing.py::calculate_savings_roi`, via `etude_chiffrage.chiffrer_etude`) retombe au modèle « estimation » alors que l'aperçu (`frontend/src/features/ventes/solar.js::computeROI` alimenté par `consoEcran`) chiffre au modèle « factures ».
+Capture : ACCEPTATION-AGNR-ecran-vs-pdf-sans-localisation.jpg
+
+## Non concluant
+P2.2 (charte H×H) : dans un champ number, « 0,5 » devient « 05 » et « 1234,567 » devient « 1234567 » (virgule écartée par Chromium à la frappe), en contexte en-GB ET en contexte fr-FR émulé (locale Playwright) ; « 99.125 » (point) est gardé tel quel, jamais arrondi ni refusé. La saisie à virgule d'un navigateur réellement francophone (--lang fr) n'a pas pu être reproduite ici : à rejouer sur un Chrome FR avant de conclure.
+
+## Non rejoué
+AGNR18 / AGNR45 (modèle 10 × 550 W, prix/kWc écran = PDF, réouverture à 20 panneaux), AGNR11 / AGNR35 (barème société réglé dans Paramètres), AGNR24 / AGNR25 sur leur scénario exact (12 × 800 MAD ; devis sans facture, batterie 7,5 kWh), AGNR38 (dates de saisie distinctes), page publique de chaque devis touché (seul le résidentiel 2464 a été relu).
