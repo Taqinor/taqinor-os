@@ -15,6 +15,7 @@
  * puissance crête) — roof.ts n'est PAS modifié. JAMAIS un devis : une fourchette.
  */
 import {
+  distToBoundary,
   geodesicAreaM2,
   pointInPolygon,
   kwcFromPanelCount,
@@ -88,23 +89,6 @@ function facingVector(orientation: string): [number, number] {
     default:
       return [0, -1]; // Sud (meilleur cas) par défaut
   }
-}
-
-function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const len2 = dx * dx + dy * dy;
-  let t = len2 === 0 ? 0 : ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
-}
-
-function distToBoundary(p: [number, number], ring: [number, number][]): number {
-  let min = Infinity;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    min = Math.min(min, distToSegment(p, ring[j], ring[i]));
-  }
-  return min;
 }
 
 /**

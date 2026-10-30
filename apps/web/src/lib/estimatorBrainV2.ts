@@ -33,7 +33,7 @@
  * vrai panneau Canadian Solar 720 W de roofPro2.ts, et la table PVGIS committée
  * (yieldTable.ts). JAMAIS un devis. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
  */
-import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
+import { distToBoundary, geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
 import { PANEL2_WATT, PERIMETER_SETBACK_M, cotesDePavage, resolveSetbacks, extremityTotalM, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import { YIELD_TABLE } from './yieldTable';
 import { PRODUCTION_NET_FACTOR } from './systemLoss';
@@ -995,23 +995,6 @@ export interface PackResult {
    * uniforme (repli explicite). Absent sur les packs adaptés depuis la pose affleurante.
    */
   mixed?: PanelGrid;
-}
-
-function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const len2 = dx * dx + dy * dy;
-  let t = len2 === 0 ? 0 : ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
-}
-
-function distToBoundary(p: [number, number], ring: [number, number][]): number {
-  let min = Infinity;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    min = Math.min(min, distToSegment(p, ring[j], ring[i]));
-  }
-  return min;
 }
 
 /** Azimut de visée (degrés, 0=N, 90=E, 180=S, 270=O) pour l'empilement des rangées. */
