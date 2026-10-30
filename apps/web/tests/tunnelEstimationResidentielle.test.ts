@@ -66,6 +66,8 @@ describe('estimation résidentielle — montant exact et tranche × 3 locales', 
       const T = TEXTES_RESIDENTIEL[loc];
       expect(etat.lastKwcLabel).toBe('9,5 kWc');
       expect(etat.lastSavingsLabel.endsWith(T.parMois)).toBe(true);
+      // RWEB17-M22 — non gaté, la page AR écrivait « /شهر » (base ar/devis/mon-toit.astro l. 3685).
+      if (loc === 'ar') expect(etat.lastSavingsLabel).toBe('1\u202f500 – 1\u202f800 MAD/شهر');
       expect(txt('mt-est-kwc')).toBe('9,5');
       // RWEB17-M21 / WEBERR-TUNNEL-PAYBACK-ECRAN-FR — le libellé AFFICHÉ suit la langue de l'écran.
       const retour = { fr: '4 à 6 ans', en: '4 – 6 years', ar: '4 – 6 سنة' }[loc];
@@ -84,6 +86,9 @@ describe('estimation résidentielle — montant exact et tranche × 3 locales', 
       const { ctx, etat, appels } = monter(loc, true, 2250);
       expect(ctx.crochets.appeler('computeEstimate')).toBe(true);
       expect(etat.estimateShown).toEqual({ kwc: 12, prodKwh: 18430, ecoMadMonthLow: 1800, ecoMadMonthHigh: 2200, paybackLabel: '4 à 6 ans' });
+      // RWEB17-M22 — libellé du lien WhatsApp en parcours gaté : la page AR écrivait « MAD/mois »
+      // (base ar/devis/mon-toit.astro l. 3643) ; FR et EN inchangés.
+      expect(etat.lastSavingsLabel).toBe({ fr: '1\u202f800 – 2\u202f200 MAD/mois', en: '1\u202f800 – 2\u202f200 MAD/month', ar: '1\u202f800 – 2\u202f200 MAD/mois' }[loc]);
       expect(txt('mt-estimate-announce')).toBe(TEXTES_RESIDENTIEL[loc].annonceGatee);
       expect(hid('mt-teaser')).toBe(false);
       expect(hid('mt-doc')).toBe(true);

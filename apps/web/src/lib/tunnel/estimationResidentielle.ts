@@ -45,6 +45,9 @@ export interface TextesResidentiel {
   indispoMontant: string;
   indispoFacture: string;
   parMois: string;
+  /** Unité du libellé d'économie écrit AVANT le gate (lien WhatsApp / CRM) : la page AR
+   *  écrivait « /mois » ici et « /شهر » seulement après le rendu (base l. 3643 / 3685). */
+  parMoisAvantGate: string;
   proche: (ville: string, kwc: string, km: number) => string;
   lienRealisation: (slug: string) => string;
   annonceOk: (kwc: string, monthly: string, payback: string) => string;
@@ -61,6 +64,7 @@ const fr: TextesResidentiel = {
   indispoMontant: 'Estimation indisponible — vérifiez le montant saisi.',
   indispoFacture: 'Estimation indisponible : indiquez votre facture mensuelle pour la calculer.',
   parMois: '/mois',
+  parMoisAvantGate: '/mois',
   proche: (v, k, km) => `${v} — ${k} — à environ ${km} km de vous`,
   lienRealisation: (s) => `/realisations/${s}`,
   annonceOk: (k, m, p) => `Votre estimation : ${k} kWc, économies estimées ${m}/mois, amortissement ${p}.`,
@@ -77,6 +81,7 @@ const ar: TextesResidentiel = {
   indispoMontant: 'التقدير غير متوفر — تحققوا من المبلغ المُدخَل.',
   indispoFacture: 'التقدير غير متوفر: أدخلوا فاتورتكم الشهرية لحسابه.',
   parMois: '/شهر',
+  parMoisAvantGate: '/mois',
   proche: (v, k, km) => `${v} — ${k} — على بعد حوالي ${km} كلم منكم`,
   lienRealisation: (s) => `/realisations/${s}`,
   annonceOk: (k, m, p) => `تقديركم: ${k} kWc، توفير مقدَّر ${m}/شهر، استرداد التكلفة ${p}.`,
@@ -93,6 +98,7 @@ const en: TextesResidentiel = {
   indispoMontant: 'Estimate unavailable — please check the amount entered.',
   indispoFacture: 'Estimate unavailable: enter your monthly bill to calculate it.',
   parMois: '/month',
+  parMoisAvantGate: '/month',
   proche: (v, k, km) => `${v} — ${k} — about ${km} km from you`,
   lienRealisation: (s) => `/en/realisations/${s}`,
   annonceOk: (k, m, p) => `Your estimate: ${k} kWc, estimated savings ${m}/month, payback ${p}.`,
@@ -334,7 +340,7 @@ function construireResidentiel(ctx: ContexteEstimationResidentielle) {
     // construits AVANT tout rendu.
     etat.lastKwc = est.kwc;
     etat.lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
-    etat.lastSavingsLabel = `${formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh)}${T.parMois}`;
+    etat.lastSavingsLabel = `${formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh)}${T.parMoisAvantGate}`;
     etat.estimateShown = chiffresResidentiel(est);
     // WJ129 (finding 6) — DÉCALAGE SÉMANTIQUE ASSUMÉ : en parcours gaté,
     // « estimation/viewed » part alors qu'aucun chiffre n'est rendu, puis
