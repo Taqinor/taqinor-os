@@ -94,6 +94,7 @@ def creer_equipement_import(company, champs, *, produit, installation,
         # continue — le savepoint annule cette ligne seule.
         return 'doublon', None
     except Exception as exc:  # pragma: no cover - défensif
+        logger.warning("sav.creer_equipement_import : exception ignorée", exc_info=True)
         return 'erreur', str(exc)
 
     return 'cree', None
@@ -1395,6 +1396,7 @@ def suggerer_triage_ticket(*, company, description):
         contenu = _appeler_groq(_TRIAGE_SYSTEM_PROMPT, user_prompt)
         suggestion = json.loads(contenu)
     except Exception as exc:  # pragma: no cover - dépend d'un service externe
+        logger.warning("sav.suggerer_triage_ticket : exception ignorée", exc_info=True)
         return {'disponible': True, 'suggestion': None, 'erreur': str(exc)}
 
     return {'disponible': True, 'suggestion': suggestion,
@@ -2465,6 +2467,7 @@ def _notifier_demande_contrat_maintenance(contrat, titre):
     try:
         from apps.notifications.services import notify_many, resolve_recipients
     except Exception:  # pragma: no cover - app notifications absente
+        logger.warning("sav._notifier_demande_contrat_maintenance : exception ignorée", exc_info=True)
         return
     client_nom = str(contrat.client) if contrat.client_id else 'Un client'
     body = (f'{client_nom} a demandé « {titre.lower()} » sur son contrat de '

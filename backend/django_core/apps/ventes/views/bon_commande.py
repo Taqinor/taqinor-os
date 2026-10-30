@@ -204,10 +204,12 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
 
     def get_serializer(self, *args, **kwargs):
         serializer = super().get_serializer(*args, **kwargs)
-        if self.action == 'create' and 'devis' in serializer.fields:
+        if (self.action in ('create', 'update', 'partial_update')
+                and 'devis' in serializer.fields):
             # AMET5 — « un BC par devis » est jugé par LA porte unique
             # (`creer_bon_commande`, même message que `convertir_en_bc`),
-            # pas par le validateur d'unicité générique du OneToOne.
+            # pas par le validateur d'unicité générique du OneToOne (400) ;
+            # en PUT/PATCH par `perform_update` (409, api-fuzz #1176).
             from rest_framework.validators import UniqueValidator
             champ = serializer.fields['devis']
             champ.validators = [v for v in champ.validators
@@ -253,6 +255,22 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
             # CI #997 (2) — corps conforme, c'est l'ÉTAT (BC déjà né) : 409.
             from core.conflit_etat import ConflitEtat
             raise ConflitEtat(exc.message)
+
+    def perform_update(self, serializer):
+        """api-fuzz #1176 — PUT/PATCH qui re-pointe le BC sur un devis portant
+        DÉJÀ un autre BC : corps conforme, c'est l'ÉTAT qui refuse → 409 avec
+        le message de la porte unique (AMET5), jamais le 400 d'unicité."""
+        from ..domain.facturation_ops import MESSAGE_BC_EXISTANT
+        from ..models import Devis
+        devis = serializer.validated_data.get('devis')
+        with transaction.atomic():
+            if devis is not None and devis.pk != serializer.instance.devis_id:
+                Devis.objects.select_for_update().filter(pk=devis.pk).first()
+                if (BonCommande.objects.filter(devis=devis)
+                        .exclude(pk=serializer.instance.pk).exists()):
+                    from core.conflit_etat import ConflitEtat
+                    raise ConflitEtat(MESSAGE_BC_EXISTANT)
+            super().perform_update(serializer)  # TenantMixin : société serveur
 
     @extend_schema(request=None, responses=BonCommandeSerializer)
     @action(detail=True, methods=['post'], url_path='confirmer',

@@ -988,3 +988,31 @@ class TestCockpitEquipe(TestCase):
             r = self.api.post('/api/django/crm/objectifs/', corps,
                               format='json')
             self.assertEqual(r.status_code, 400, r.content)
+
+    def test_fuzz_1176_patch_periode_corps_400_etat_409_publie(self):
+        """api-fuzz PR #1176 — ``PATCH`` mensuel avec ``period_month: null``
+        était « conforme » (règle publiée en création/PUT seulement) puis
+        refusé 400 : la règle du corps est publiée pour le PATCH ; le refus
+        qui dépend de la LIGNE (période absente du corps) est un 409."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.crm import urls as crm_urls
+        url = f'/api/django/crm/objectifs/{self.obj_leads.pk}/'
+        self.auth_as(self.admin)
+        r = self.api.patch(url, {
+            'owner': self.m1.pk, 'metric': 'nb_leads', 'period_type': 'month',
+            'period_year': 2000, 'period_month': None, 'period_quarter': 1,
+            'cible': '0', 'notes': ''}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('period_month', r.json())
+        r = self.api.patch(url, {'period_type': 'quarter'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(self.api.patch(url, {'cible': '5'}, format='json').status_code, 200)
+        chemins = SchemaGenerator(patterns=[
+            path('api/django/crm/', include(crm_urls)),
+        ]).get_schema(request=None, public=True)['paths']
+        corps = chemins['/api/django/crm/objectifs/{id}/']['patch']['requestBody']
+        self.assertFalse(corps.get('required', False))  # {} reste un PATCH conforme
+        regle = corps['content']['application/json']['schema']['allOf'][1]
+        self.assertIn('anyOf', regle['allOf'][0])

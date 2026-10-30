@@ -458,11 +458,12 @@ class TestAvoirLineValidation(TestCase):
 
     def test_dc10_produit_nul_refuse_sur_facture_a_produits(self):
         # ERR-AVOIR-PARTIEL-ACOMPTE — DC10 tient dès qu'une ligne de la
-        # facture porte un produit : ``produit: null`` explicite → 400.
+        # facture porte un produit : ``produit: null`` explicite (publié
+        # nullable pour l'acompte) → refus d'ÉTAT 409 (api-fuzz #1176).
         r = self._avoir([
             {'produit': None, 'designation': 'Geste', 'quantite': '1',
              'prix_unitaire': '100', 'taux_tva': '20'}])
-        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', r))
         self.assertIn('produit requis', r.data['detail'])
         self.assertEqual(Avoir.objects.count(), 0)
 

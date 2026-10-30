@@ -65,6 +65,7 @@ import {
   roofImageRequest,
   roofVertexUV,
   mapboxStaticRoofImageUrl,
+  staticImageParams,
   type RoofImageRequest,
 } from '../../lib/roofConfig';
 
@@ -209,17 +210,8 @@ export function expandRoofBBox(
  *  peint SUR le toit) ; l'attribution reste affichée par la visionneuse. Bornes
  *  miroir de mapboxStaticRoofImageUrl (1–1280 px, zoom ≤ 22 — sous-ensemble sûr
  *  des limites MapTiler). Exportée pour test. */
-export function maptilerStaticRoofImageUrl(
-  key: string,
-  center: [number, number],
-  zoom: number,
-  w: number,
-  h: number,
-): string {
-  const [lng, lat] = center;
-  const z = Math.max(0, Math.min(22, zoom));
-  const W = Math.max(1, Math.min(1280, Math.round(w)));
-  const H = Math.max(1, Math.min(1280, Math.round(h)));
+export function maptilerStaticRoofImageUrl(key: string, center: [number, number], zoom: number, w: number, h: number): string {
+  const { lng, lat, z, W, H } = staticImageParams(center, zoom, w, h);
   return `https://api.maptiler.com/maps/satellite/static/${lng},${lat},${z.toFixed(4)}/${W}x${H}@2x.jpg?key=${encodeURIComponent(key)}&attribution=false`;
 }
 

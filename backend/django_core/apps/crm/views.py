@@ -955,7 +955,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                            'coordonnées du client.'},
                 status=status.HTTP_403_FORBIDDEN)
         lead = self.get_object()
-        accord = request.data.get('accord_client')
+        accord = corps_objet(request).get('accord_client')  # fuzz #1176 : [null, null] → 400
         if not (accord is True or str(accord).strip().lower() == 'true'):
             return Response(
                 {'accord_client': [
@@ -982,8 +982,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                         else status.HTTP_409_CONFLICT if devis
                         else status.HTTP_404_NOT_FOUND))
         devis = devis[0]
-        langue = (request.data.get('langue') or lead.langue_preferee
-                  or 'fr').strip()
+        langue = ((brut if isinstance(brut := request.data.get('langue'), str) else texte_verifie(request, 'langue'))
+                  or lead.langue_preferee or 'fr').strip()  # fuzz #1176 : non texte → 400 nommé
         if langue not in ('fr', 'darija'):
             langue = 'fr'
         corps = MessageTemplate.get_corps(
@@ -1320,6 +1320,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             clore_locataire_sans_proprietaire,
             creer_lead_proprietaire,
             proposition_locataire,
+            refus_longueur_proprietaire,
             refus_proprietaire,
         )
 
@@ -1347,7 +1348,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                                   '« propriétaire inconnu » pour clore la '
                                   'fiche avec le motif « Locataire ».']},
                 status=status.HTTP_400_BAD_REQUEST)
-        if refus := refus_proprietaire(donnees):
+        if refus := refus_proprietaire(donnees) or refus_longueur_proprietaire(donnees):
             # Les erreurs de CHAMP vivent sous `proprietaire` (même forme que
             # le corps) ; une charge illisible est refusée sur `proprietaire`.
             corps = refus if 'proprietaire' in refus else {'proprietaire': refus}

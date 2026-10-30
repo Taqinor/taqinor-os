@@ -14,7 +14,7 @@
  * roof.ts (aire géodésique, point-dans-polygone) — roof.ts n'est PAS modifié.
  * Voir apps/web/SOLAR_3D_PRO2_NOTES.md. JAMAIS un devis : une fourchette.
  */
-import { geodesicAreaM2, pointInPolygon, type LngLat } from './roof';
+import { distToBoundary, geodesicAreaM2, pointInPolygon, type LngLat } from './roof';
 // CALX95 — retrait propre à une arête physique du contour (géométrie pure, en mètres).
 import { rognerParArete } from './roofSetbackEdge';
 
@@ -351,23 +351,6 @@ export function sunDirection(latDeg: number, dayOfYear: number, hour: number): S
   let az = Math.acos(Math.max(-1, Math.min(1, cosAz))); // 0..π depuis le Nord
   if (hourAngle > 0) az = 2 * Math.PI - az; // après-midi → côté Ouest (>180°)
   return { elevationDeg: elev / DEG2RAD, azimuthDeg: (az / DEG2RAD + 360) % 360 };
-}
-
-function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const len2 = dx * dx + dy * dy;
-  let t = len2 === 0 ? 0 : ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
-}
-
-function distToBoundary(p: [number, number], ring: [number, number][]): number {
-  let min = Infinity;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    min = Math.min(min, distToSegment(p, ring[j], ring[i]));
-  }
-  return min;
 }
 
 export interface ProLayout2Options {

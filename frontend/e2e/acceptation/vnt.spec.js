@@ -24,7 +24,7 @@ import { uniq, lireJson, listeDe, textePdf, telephoneMobileUnique, STAGE_LABELS 
 const plage = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => `VNT${a + i}`)
 const etape = groupe('VNT', [
   ...plage(10, 23), ...plage(25, 31), ...plage(33, 42), 'VNT44', 'VNT45', 'VNT46',
-  'VNT58', 'VNT59', 'VNT60', 'VNT61', 'VNT62', 'VNT64', 'VNT73', 'VNT74', 'VNT75', 'VNT78',
+  'VNT58', 'VNT59', 'VNT60', 'VNT61', 'VNT62', 'VNT64', 'VNT72', 'VNT73', 'VNT74', 'VNT75', 'VNT78',
   'VNT53', 'VNT54', 'VNT55', 'VNT67', 'VNT77', 'VNT84', 'VNT85', 'VNT86', 'VNT88', 'VNT89', 'VNT91', 'VNT92', 'VNT93',
   'VNT97', 'VNT98', 'VNT100', 'VNT102', 'VNT103', 'VNT104', 'VNT105', 'VNT106',
 ])
@@ -73,9 +73,9 @@ const ECHEANCIER_2 = [
  *  - POST ventes/devis/<id>/share-link/ {envoi:true} : views/devis_envoi.py:101 (brouillon → envoyé via
  *    mark_devis_sent, sans e-mail) ; statut en lecture seule (serializers.py:1129) ;
  *  - POST ventes/devis/<id>/accepter/ : views/devis_cycle.py:560 (mono-option : pas d'`option`). */
-async function creerReplique(request, { remise = '10', accepter = true, echeancier = ECHEANCIER } = {}) {
+async function creerReplique(request, { remise = '10', accepter = true, echeancier = ECHEANCIER, email = null } = {}) {
   const lead = await lireJson(await request.post(`${API}/crm/leads/`, { timeout: 120_000, 
-    data: { nom: uniq('VNT Kharbachi'), ville: 'Casablanca', telephone: telephoneMobileUnique() },
+    data: { nom: uniq('VNT Kharbachi'), ville: 'Casablanca', telephone: telephoneMobileUnique(), ...(email ? { email } : {}) },
   }), 'lead réplique')
   const lignes = []
   for (const [i, l] of LIGNES.entries()) {
@@ -519,11 +519,34 @@ etape('P2.1', ['VNT62', 'VNT74', 'VNT75'], async ({ page, suivi, testInfo }) => 
   }, { remise: '0' })
 })
 
+
+/** « 0 mail » (VNT59/VNT83) : en local le backend d'envoi est la console (rien n'est livré) mais TOUT envoi applicatif
+ *  (`email_service.send_document_email`) écrit une ligne `ventes.EmailLog` ; on compte ces lignes (toutes sociétés) ET les
+ *  messages que le processus web a imprimés sur la console (`docker logs`, lignes « Subject: »). */
+function compterMails() {
+  const sortie = shellDjango("from apps.ventes.models import EmailLog; print('NB_EMAILLOG=%d' % EmailLog.objects.count())")
+  const m = /NB_EMAILLOG=(\d+)/.exec(sortie)
+  if (!m) throw new Error(`compteur EmailLog illisible : ${sortie.slice(-200)}`)
+  const conteneur = String(process.env.E2E_DJANGO_EXEC || '').trim().split(/\s+/).pop()
+  const journaux = execFileSync('docker', ['logs', conteneur], { stdio: 'pipe', maxBuffer: 256 * 1024 * 1024 })
+  const messages = (`${journaux.toString()}`.match(/^Subject: /gm) || []).length
+  return { emailLog: Number(m[1]), consoleMessages: messages }
+}
+
 etape('P2.2', ['VNT58', 'VNT59', 'VNT60', 'VNT64', 'VNT73', 'VNT78'], async ({ page, suivi, testInfo }) => {
   // « Prix négocié » 49 000 depuis le panneau : aperçu serveur (remise 10,00 %), application ⇒ V2 acceptée,
   // V1 remplacée, acompte payé repris, reste à facturer 34 000 ; le lien d'avenant s'affiche.
+  const mailsAvantReplique = compterMails()
   await avecReplique(page, testInfo, async (r) => {
     const acompte = await acompteParApi(page.request, r.devisId)
+    // Témoin positif : un envoi RÉEL par le même processus web (facture d'acompte → client) fait bouger les deux compteurs ;
+    // sans cela « 0 mail » ne prouverait rien (compteur muet). L'acceptation interne ne mail pas (pas de signature).
+    const envoi = await page.request.post(`${API}/ventes/factures/${acompte.id}/envoyer-email/`, { timeout: 120_000,
+      data: { to_email: 'client-vnt83@acceptation.test', attach_pdf: false } })
+    expect(envoi.status(), await envoi.text()).toBe(202)
+    const mailsAvantGeste = compterMails()
+    expect(mailsAvantGeste.emailLog, "témoin : EmailLog +1 après un envoi réel").toBe(mailsAvantReplique.emailLog + 1)
+    expect(mailsAvantGeste.consoleMessages, "témoin : un message console de plus après un envoi réel").toBeGreaterThan(mailsAvantReplique.consoleMessages)
     await page.goto(`/crm/leads/${r.leadId}`)
     await page.getByTestId('lw-context-rail').getByRole('tab', { name: /devis/i }).click()
     await panneauVente(page, r).getByRole('button', { name: 'Prix négocié' }).click()
@@ -544,6 +567,9 @@ etape('P2.2', ['VNT58', 'VNT59', 'VNT60', 'VNT64', 'VNT73', 'VNT78'], async ({ p
     expect(f2(corps.remise_pct)).toBe('10.00')
     expect(f2(corps.total_ttc)).toBe('49000.00')
     await expect(dlg).toContainText(`Version 2 créée : ${corps.devis_v2.reference}`)
+    // « 0 mail » : le geste Prix négocié (V2 créée + acceptée en canal `avenant_negocie`) n'a produit AUCUN envoi.
+    const mailsApresGeste = compterMails()
+    expect(mailsApresGeste, '0 mail : aucun EmailLog neuf, aucun message console neuf').toEqual(mailsAvantGeste)
 
     const v2 = await devisDetail(page.request, corps.devis_v2.id)
     expect([v2.statut, v2.is_active, f2(v2.total_ttc)]).toEqual(['accepte', true, '49000.00'])
@@ -564,7 +590,7 @@ etape('P2.2', ['VNT58', 'VNT59', 'VNT60', 'VNT64', 'VNT73', 'VNT78'], async ({ p
     await expect(pV1.getByRole('button', { name: /Facturer|Prix négocié/ })).toHaveCount(0)
     await expect(page.getByRole('region', { name: `Vente du devis ${v2.reference}` })).toBeVisible()
     suivi.verifie(5)
-  }, { remise: '0' })
+  }, { remise: '0', email: 'client-vnt83@acceptation.test' })
 })
 
 /** POST devis/<id>/prix-negocie/ (contrat devis_prix_negocie.json) — SETUP des étapes dont le geste testé vient après. */
@@ -704,6 +730,35 @@ etape('P2.4', ['VNT75', 'VNT77'], async ({ page, suivi, testInfo }) => {
   }, { remise: '0' })
 })
 
+etape('P2.8', ['VNT66', 'VNT75'], async ({ page, testInfo }) => {
+  // Échéancier PAR DÉFAUT 30/60/10 après « Prix négocié » 49 000 (D-VNT83-SOLDE) : « Facturer la tranche suivante »
+  // ⇒ 29 400 (émise) ; puis la suivante 4 600 (brouillon) ; Σ des tranches du plan = 49 000.
+  await avecReplique(page, testInfo, async (r0) => {
+    await acompteParApi(page.request, r0.devisId)
+    const neg = await prixNegocieParApi(page.request, r0.devisId, '49000')
+    const id = neg.devis_v2.id
+    const r = { leadId: r0.leadId, devisId: id, reference: neg.devis_v2.reference }
+    const ap0 = await apercu(page.request, id)
+    expect([ap0.prochaine.libelle, f2(ap0.prochaine.montant_ttc)]).toEqual(['Livraison du matériel', '29400.00'])
+    expect(f2(ap0.plan.reduce((t, x) => t + Number(x.montant_ttc), 0)), 'Σ plan = 49 000').toBe('49000.00')
+    await page.goto(`/crm/leads/${r.leadId}`)
+    await ongletDevis(page).click()
+    await expect(panneauVente(page, r).getByRole('button', { name: 'Facturer la tranche suivante' })).toBeVisible({ timeout: 30_000 })
+    const poser = async (cle, emettre, nature = 'intermediaire') => lireJson(await page.request.post(`${API}/ventes/devis/${id}/facturer/`, { timeout: 120_000,
+      data: { nature, cle_attendue: cle, emettre } }), 'tranche par API')
+    // Une tranche en brouillon bloque la suivante (409 tranche_en_brouillon) : la 1re est émise.
+    const t1 = await poser(ap0.prochaine.cle, true)
+    expect(f2(t1.facture.total_ttc)).toBe('29400.00')
+    const ap1 = await apercu(page.request, id)
+    expect(f2(ap1.prochaine.montant_ttc), 'tranche suivante').toBe('4600.00')
+    expect(ap1.prochaine.cle, 'la dernière tranche du plan par défaut est le solde').toBe('solde')
+    const t2 = await poser(ap1.prochaine.cle, false, 'solde')
+    expect([t2.facture.statut, f2(t2.facture.total_ttc)]).toEqual(['brouillon', '4600.00'])
+    const v = await venteDe(page.request, id)
+    expect([f2(v.brouillons_ttc), f2(v.emis_ttc)]).toEqual(['4600.00', '44400.00'])
+  }, { remise: '0' })
+})
+
 etape('P2.5', ['VNT54'], async ({ page, testInfo, suivi }) => {
   // Une 2e vente sur le MÊME lead : accepter un 2e devis ⇒ 409 vente_active_existante nommant la vente en vigueur.
   await avecReplique(page, testInfo, async (r) => {
@@ -725,8 +780,8 @@ etape('P2.5', ['VNT54'], async ({ page, testInfo, suivi }) => {
 
 etape('P2.6', ['VNT60', 'VNT61'], async ({ page, testInfo }) => {
   // Avenant : « Faire signer l'avenant » = lien public + UNE tâche (idempotent) ; le client signe par le lien :
-  // confirmation, statut inchangé (accepté). La PAGE publique (apps/web, bandeau) n'est pas servie par cette pile :
-  // seule l'API publique qu'elle appelle est rejouée ici.
+  // confirmation, statut inchangé (accepté). La PAGE publique (apps/web, bandeau) est jouée à part par P2.9 ;
+  // ici l'API publique qu'elle appelle.
   await avecReplique(page, testInfo, async (r) => {
     const neg = await prixNegocieParApi(page.request, r.devisId, '49000')
     const v2Id = neg.devis_v2.id
@@ -758,6 +813,41 @@ etape('P2.6', ['VNT60', 'VNT61'], async ({ page, testInfo }) => {
     expect(relue.avenant.signe_le).toBeTruthy()
     const v2 = await devisDetail(page.request, v2Id)
     expect([v2.statut, v2.is_active]).toEqual(['accepte', true])
+  }, { remise: '0' })
+})
+
+// VNT72 : la PAGE PUBLIQUE de l'avenant (apps/web, Astro) n'est pas servie par la pile ERP — elle est servie à part
+// (`E2E_WEB_BASE`, ex. `astro dev --port 4321` avec PUBLIC_API_BASE=http://127.0.0.1:8010 : le frontmatter SSR de
+// `pages/proposition/[...token].astro` lit l'API publique de CETTE pile). Sans `E2E_WEB_BASE` l'étape ÉCHOUE, nommée.
+etape('P2.9', ['VNT72'], async ({ page, testInfo }) => {
+  const web = process.env.E2E_WEB_BASE
+  expect(web, 'E2E_WEB_BASE absent : apps/web non servie (NON JOUABLE sans elle)').toBeTruthy()
+  await avecReplique(page, testInfo, async (r) => {
+    const neg = await prixNegocieParApi(page.request, r.devisId, '49000')
+    const a = await lireJson(await page.request.post(`${API}/ventes/devis/${neg.devis_v2.id}/avenant/demander-signature/`,
+      { timeout: 120_000 }), 'demande de signature')
+    const jeton = a.share_link.split('/').pop()
+    const lien = `${web.replace(/\/$/, '')}/proposition/${jeton}`
+    const rep = await page.goto(lien, { waitUntil: 'domcontentloaded', timeout: 120_000 })
+    expect(rep.status(), `page publique ${lien}`).toBe(200)
+    // À signer : bandeau « Avenant à <V1> — nouveau prix » + phrase d'explication (BandeauAvenant.astro).
+    const bandeau = page.locator('section[data-avenant="a_signer"]')
+    await expect(bandeau).toBeVisible({ timeout: 60_000 })
+    await expect(bandeau).toContainText(`Avenant à ${r.reference} — nouveau prix`)
+    await expect(bandeau).toContainText('Le prix a été renégocié : signez cet avenant pour valider la nouvelle version.')
+    // Signature par le lien (API publique, même corps que P2.6) ⇒ la page relue montre la confirmation « Avenant signé le … ✓ ».
+    const lue = await lireJson(await page.request.get(`${API}/ventes/proposal/${jeton}/`, { timeout: 120_000 }), 'proposition publique')
+    const sign = await page.request.post(`${API}/ventes/proposal/${jeton}/accept/`, { timeout: 120_000, data: {
+      nom: 'Tijani Kharbachi', consent_esign: true, empreinte_contenu: lue.empreinte_contenu,
+      signature_data_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      signed_at_client: new Date().toISOString(), langue: 'fr',
+    } })
+    expect(sign.status(), await sign.text()).toBe(200)
+    await page.goto(lien, { waitUntil: 'domcontentloaded', timeout: 120_000 })
+    const confirme = page.locator('[data-avenant="signe"]')
+    await expect(confirme).toBeVisible({ timeout: 60_000 })
+    await expect(confirme).toContainText(/Avenant signé le .+ ✓/)
+    await expect(page.locator('section[data-avenant="a_signer"]')).toHaveCount(0)
   }, { remise: '0' })
 })
 

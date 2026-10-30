@@ -46,7 +46,7 @@ import { type LngLat } from './roof';
 import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
 import { PANEL2_WATT, type ConfigFamily, type PackResult, type PanelGrid, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import { type YieldFn, type YieldSource } from './estimatorBrainV4';
-import type { EvalProductionSourced } from './estimatorBrainCommun';
+import { departageAspect, departageBase, productionFields, type EvalProductionSourced } from './estimatorBrainCommun';
 
 export { PANEL2_WATT };
 export type { YieldFn, YieldSource };
@@ -430,12 +430,7 @@ function evalMatrixConfig(
     fitCount,
     placedCount,
     kwc,
-    annualKwh: prod.kwh,
-    pctOfTarget: target > 0 ? (prod.kwh / target) * 100 : 0,
-    savingsLow: savings.low,
-    savingsHigh: savings.high,
-    perPanelYield: prod.perPanelYield,
-    yieldSource: prod.source,
+    ...productionFields(prod, target, savings),
     orientationLabel,
     layoutLabel: ORIENT_FR[cfg.orientation],
     label: `${cfg.tiltDeg}° · ${orientationLabel} · ${ORIENT_FR[cfg.orientation]}`,
@@ -660,16 +655,10 @@ export function betterMatrixV6(
     const primaire = comparerCible(a, b, cible);
     if (primaire !== 0) return primaire > 0;
   }
-  if (a.annualKwh > b.annualKwh + EVAL_EPS) return true;
-  if (a.annualKwh < b.annualKwh - EVAL_EPS) return false;
-  if (a.perPanelYield !== b.perPanelYield) return a.perPanelYield > b.perPanelYield;
-  if (a.placedCount !== b.placedCount) return a.placedCount < b.placedCount;
-  if (a.margin !== b.margin) return a.margin === 'keep';
-  if (a.family !== b.family) return a.family === 'south';
-  const sa = Math.abs(a.aspect);
-  const sb = Math.abs(b.aspect);
-  if (Math.abs(sa - sb) > EVAL_EPS) return sa < sb;
-  if (a.tiltDeg !== b.tiltDeg) return a.tiltDeg > b.tiltDeg;
+  const d = departageBase(a, b);
+  if (d !== undefined) return d;
+  const t = departageAspect(a, b);
+  if (t !== undefined) return t;
   return a.orientation === 'portrait' && b.orientation !== 'portrait';
 }
 

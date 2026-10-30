@@ -189,6 +189,20 @@ OBJECTIF_PERIODE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
                     'period_quarter': {'type': 'integer'}}},
 ]}}
 
+#: api-fuzz PR #1176 — PATCH : le corps ne contredit pas LUI-MÊME sa période
+#: (``period_type: month`` avec ``period_month: null``, refusé 400). Un champ
+#: absent se replie sur la ligne : ce refus-là dépend de l'état (409). Sous
+#: ``allOf`` : la règle n'exige rien, ``{}`` reste un PATCH conforme.
+OBJECTIF_PERIODE_PARTIEL = {EXTENSION_CORPS_RESSERRE: {'allOf': [{'anyOf': [
+    {'properties': {'period_type': {'enum': ['year']}}},
+    {'required': ['period_type'],
+     'properties': {'period_type': {'enum': ['month']},
+                    'period_month': {'type': 'integer'}}},
+    {'required': ['period_type'],
+     'properties': {'period_type': {'enum': ['quarter']},
+                    'period_quarter': {'type': 'integer'}}},
+]}]}}
+
 #: ERR-ENF11-FUZZ-CRM — conversion lead → client : le mode « lier » exige
 #: ``client_id`` (``clients_identite.convertir_lead_en_client``).
 CONVERSION_LIER_CLIENT = {EXTENSION_CORPS_RESSERRE: {'anyOf': [

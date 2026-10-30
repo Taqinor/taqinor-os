@@ -35,7 +35,7 @@ import { type LngLat } from './roof';
 import { PERIMETER_SETBACK_M } from './roofPro2';
 import { PANEL2_WATT, type ConfigFamily, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import type { AxisAzimuth, AxisOrient, AxisMargin, FlatConfig } from './estimatorBrainV3';
-import type { EvalProductionSourced, YieldFn, YieldSource } from './estimatorBrainCommun';
+import { departageBase, packFlat, productionFields, type EvalProductionSourced, type YieldFn, type YieldSource } from './estimatorBrainCommun';
 
 export type { AxisAzimuth, AxisOrient, AxisMargin, FlatConfig } from './estimatorBrainV3';
 export { PANEL2_WATT };
@@ -87,11 +87,6 @@ export function fineTiltGrid(latitudeDeg: number): number[] {
 
 /** Inclinaisons Est-Ouest candidates (l'E-O joue déjà la densité). */
 const EW_TILTS = [10, 12, 15] as const;
-
-function resolveAzimuthDeg(family: ConfigFamily, axis: AxisAzimuth, roofAz: number): number {
-  if (axis === 'south') return family === 'eastwest' ? 90 : 180;
-  return family === 'eastwest' ? (roofAz - 90 + 360) % 360 : roofAz;
-}
 
 /**
  * Couples (tilt°, aspect PVGIS) que l'optimiseur va RÉELLEMENT interroger sur ce
@@ -175,39 +170,13 @@ export function evalFlatConfigV4(
   yieldFn: YieldFn | undefined,
   cache?: Map<string, ReturnType<typeof packConfig>>,
 ): FlatEvalV4 {
-  const azimuthDeg = resolveAzimuthDeg(cfg.family, cfg.azimuth, roofAz);
-  const setbackM = cfg.margin === 'keep' ? defaultSetbackM : 0;
-  const key = cache ? `${cfg.family}|${cfg.tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}` : '';
-  let pack = cache?.get(key);
-  if (!pack) {
-    pack = packConfig(ring, latitudeDeg, {
-      family: cfg.family,
-      tiltDeg: cfg.tiltDeg,
-      azimuthDeg,
-      obstructions,
-      setbackM,
-    });
-    cache?.set(key, pack);
-  }
-  const grid = cfg.orientation === 'portrait' ? pack.portrait : pack.landscape;
-  const fitCount = grid.count;
-  const placedCount = needed > 0 ? Math.min(needed, fitCount) : fitCount;
-  const kwc = (placedCount * PANEL2_WATT) / 1000;
+  const { pack, kwc, head } = packFlat(ring, latitudeDeg, cfg, needed, roofAz, defaultSetbackM, obstructions, cache);
   const prod = configProduction(cfg.family, cfg.tiltDeg, pack.azimuthDeg, kwc, yieldFn, latitudeDeg);
   const savings = annualSavingsMad(prod.kwh, target, tariff);
   return {
     ...cfg,
-    azimuthDeg: pack.azimuthDeg,
-    setbackM,
-    fitCount,
-    placedCount,
-    kwc,
-    annualKwh: prod.kwh,
-    pctOfTarget: target > 0 ? (prod.kwh / target) * 100 : 0,
-    savingsLow: savings.low,
-    savingsHigh: savings.high,
-    perPanelYield: prod.perPanelYield,
-    yieldSource: prod.source,
+    ...head,
+    ...productionFields(prod, target, savings),
   };
 }
 
@@ -215,12 +184,8 @@ export function evalFlatConfigV4(
  *  plafonné au besoin), puis rendement/panneau, puis moins de matériel, garder la
  *  marge, Sud avant E-O, inclinaison plus raide, portrait. Départages déterministes. */
 export function betterFlatV4(a: FlatEvalV4, b: FlatEvalV4): boolean {
-  if (a.annualKwh > b.annualKwh + EVAL_EPS) return true;
-  if (a.annualKwh < b.annualKwh - EVAL_EPS) return false;
-  if (a.perPanelYield !== b.perPanelYield) return a.perPanelYield > b.perPanelYield;
-  if (a.placedCount !== b.placedCount) return a.placedCount < b.placedCount;
-  if (a.margin !== b.margin) return a.margin === 'keep';
-  if (a.family !== b.family) return a.family === 'south';
+  const d = departageBase(a, b);
+  if (d !== undefined) return d;
   if (a.tiltDeg !== b.tiltDeg) return a.tiltDeg > b.tiltDeg;
   return a.orientation === 'portrait' && b.orientation !== 'portrait';
 }

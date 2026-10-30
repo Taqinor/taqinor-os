@@ -154,6 +154,51 @@ class CrochetsFuzzTests(unittest.TestCase):
         self.assertEqual(_charger_hooks.auth_kwargs,
                          {'refresh_interval': 600, 'retry_on': []})
 
+    def test_bearer_genere_recoit_le_jeton_valide(self):
+        # ENF11 — api-fuzz-full 40986772772 : 998 routes à cookie 401-seules.
+        # Schemathesis 4.28 génère l'alternative `bearerJWT` (« Bearer » +
+        # valeur d'en-tête quelconque) ; le serveur refuse un Authorization
+        # mal formé (d4ef375b4) même avec le cookie valide.
+        auth = self.hooks.FuzzAdminCookieAuth()
+        for cle, valeur in (('Authorization', 'Bearer '),
+                            ('Authorization', 'Bearer a b!#'),
+                            ('authorization', 'Bearer x=y')):
+            with self.subTest(cle=cle, valeur=valeur):
+                cas = types.SimpleNamespace(
+                    cookies={'access_token': 'genere'},
+                    headers={cle: valeur, 'X-Autre': 'garde'})
+                auth.set(cas, 'jwt.valide-1', None)
+                self.assertEqual(cas.cookies['access_token'], 'jwt.valide-1')
+                self.assertEqual(cas.headers,
+                                 {cle: 'Bearer jwt.valide-1',
+                                  'X-Autre': 'garde'})
+
+    def test_bearer_jamais_ajoute_quand_absent(self):
+        auth = self.hooks.FuzzAdminCookieAuth()
+        for entetes in (None, {}, {'X-Autre': 'v'}):
+            with self.subTest(entetes=entetes):
+                cas = types.SimpleNamespace(cookies=None, headers=entetes)
+                auth.set(cas, 'jwt', None)
+                self.assertEqual(cas.cookies, {'access_token': 'jwt'})
+                self.assertEqual(cas.headers, entetes)
+
+    def test_bearer_laisse_intact_sur_cas_negatif(self):
+        # CI #1176 — 300+ « accepted schema-violating request » : le cas
+        # négatif de la phase coverage invalide l'Authorization ; l'aligner
+        # rendait la requête valide (200 sur /devis/{id}/…).
+        GenerationMode = self.hooks.GenerationMode
+        auth = self.hooks.FuzzAdminCookieAuth()
+        meta = types.SimpleNamespace(generation=types.SimpleNamespace(
+            mode=GenerationMode.NEGATIVE))
+        cas = types.SimpleNamespace(cookies=None, meta=meta,
+                                    headers={'Authorization': 'Bearer a b!#'})
+        auth.set(cas, 'jwt', None)
+        self.assertEqual(cas.headers, {'Authorization': 'Bearer a b!#'})
+        cas.meta = types.SimpleNamespace(generation=types.SimpleNamespace(
+            mode=GenerationMode.POSITIVE))
+        auth.set(cas, 'jwt', None)
+        self.assertEqual(cas.headers, {'Authorization': 'Bearer jwt'})
+
 
 class IdsCheminTests(unittest.TestCase):
     """ENF11 — ids réels pour `{id}`/`{pk}` (1 273 opérations 404-seules)."""
@@ -205,6 +250,53 @@ class IdsCheminTests(unittest.TestCase):
         # ids str (uuid) : jamais posés à la place d'un entier généré.
         vals = self._valeurs('/api/django/docs/{id}/')
         self.assertTrue(all(isinstance(v, int) for v in vals))
+
+    def test_id_en_chaine_de_la_phase_coverage_substitue(self):
+        # CI #1176 — la phase coverage rend `{id}` déjà en chaîne (« 0 ») :
+        # l'id réel est posé sous la même forme (« 0 opérations avec id réel »
+        # sinon) ; une chaîne non entière (uuid, slug) garde sa valeur.
+        vals = [self._appel('/api/django/ventes/devis/{id}/', {'id': str(10**6 + i)})
+                .path_parameters['id'] for i in range(200)]
+        reels = [v for v in vals if v in (11, 12, 13)]
+        # Posé ENTIER (revalidé contre ``type: integer``) ; le reste garde sa chaîne.
+        self.assertTrue(all(isinstance(v, int) for v in reels))
+        self.assertTrue(0.6 < len(reels) / 200 < 0.9, len(reels))
+        cas = self._appel('/api/django/ventes/devis/{id}/', {'id': 'abc'})
+        self.assertEqual(cas.path_parameters['id'], 'abc')
+
+    def test_id_publie_texte_lookup_value_regex_pose_en_texte(self):
+        # CI #1176 — GET/PATCH crm/clients/{id}/ : ``lookup_value_regex``
+        # publie ``{id}`` en ``type: string`` + ``pattern: ^[0-9]+$`` ; l'id
+        # réel posé ENTIER y était revalidé contre ``string`` → cas négatif,
+        # 200 légitime signalé « accepted schema-violating request ».
+        def operation(methode, type_):
+            return types.SimpleNamespace(
+                method=methode, path='/api/django/ventes/devis/{id}/',
+                path_parameters=[types.SimpleNamespace(name='id', definition={
+                    'in': 'path', 'name': 'id',
+                    'schema': {'type': type_, 'pattern': '^[0-9]+$'}})])
+        for type_, attendu in (('string', str), ('integer', int)):
+            reels = []
+            for i in range(200):
+                cas = _cas(self.hooks, 'PATCH', '/api/django/ventes/devis/{id}/',
+                           corps={}, params={'id': str(10**6 + i)})
+                cas.operation = operation('PATCH', type_)
+                self.hooks.before_call(None, cas, {})
+                if str(cas.path_parameters['id']) in ('11', '12', '13'):
+                    reels.append(cas.path_parameters['id'])
+            with self.subTest(type_=type_):
+                self.assertTrue(reels)
+                self.assertTrue(all(isinstance(v, attendu) for v in reels), reels)
+
+    def test_fuzz_admin_protege_aussi_en_chaine(self):
+        h = _charger_hooks(
+            {'user_id': 4, 'company_id': 2, 'role_id': 7, 'fk_ids': {}},
+            ids_chemin={'/api/django/users/': [4]})
+        for i in range(40):
+            cas = _cas(h, 'DELETE', '/api/django/users/{id}/',
+                       params={'id': str(10**6 + i)})
+            h.before_call(None, cas, {})
+            self.assertNotEqual(str(cas.path_parameters['id']), '4')
 
     def test_id_imbrique_second_parametre_intact(self):
         cas = self._appel('/api/django/ventes/devis/{id}/lignes/{ligne_id}/',
@@ -664,6 +756,15 @@ class FichiersPdfTests(unittest.TestCase):
                               {'fichier': b''}, mode='NEGATIVE')
         self.assertEqual(negatif['fichier'], b'')
 
+    def test_releve_bancaire_dry_run_recoit_un_csv_lisible(self):
+        # CI #1176 fuzz (aAVYqi) — un PNG est « Lecture du fichier
+        # impossible » (400) ; un positif porte un CSV de relevé à en-têtes.
+        chemin = '/api/django/ventes/paiements/import-releve/dry-run/'
+        corps = self._corps('POST', chemin, {'file': b'\x89PNG'})
+        self.assertEqual(corps['file'], b'date,libelle,montant\r\n')
+        negatif = self._corps('POST', chemin, {'file': b'\x89PNG'}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'\x89PNG')
+
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')
         self.assertEqual(
@@ -1006,6 +1107,44 @@ class InventaireIdsTests(unittest.TestCase):
         table = self.inv.inventorier(
             doc, lambda p: {'results': [{'id': 9}]})
         self.assertEqual(table, {'/api/django/a/': [9]})
+
+    def test_lecture_parallele_meme_table(self):
+        doc = {'paths': {}}
+        for k in range(12):
+            doc['paths'][f'/api/django/r{k:02d}/'] = {'get': {}}
+            doc['paths'][f'/api/django/r{k:02d}/{{id}}/'] = {'get': {}}
+
+        def lire(prefixe):
+            rang = int(prefixe.rstrip('/')[-2:])
+            return None if rang % 5 == 0 else {'results': [{'id': rang}]}
+
+        seq = self.inv.inventorier(doc, lire)
+        self.assertEqual(len(seq), 9)
+        for fils in (2, 3, 8):
+            with self.subTest(fils=fils):
+                par = self.inv.inventorier(doc, lire, workers=fils)
+                self.assertEqual(par, seq)
+                self.assertEqual(list(par), list(seq))
+
+    def test_job_pr_inventorie_comme_le_nocturne(self):
+        # ENF11 — `api-fuzz-pr` ne posait jamais FUZZ_IDS_FILE : ses cas
+        # positifs gardaient des `{id}` aléatoires. Même script que
+        # api-fuzz-full, sur le schéma FUZZÉ, AVANT `schemathesis run`.
+        ci = (ROOT / '.github' / 'workflows' / 'ci.yml').read_text(
+            encoding='utf-8')
+        debut = ci.index('\n  api-fuzz-pr:\n')
+        fin = ci.index('\n  backend-tests:\n', debut)
+        job = ci[debut:fin]
+        etape = job.index('scripts/fuzz/inventorier_ids_chemin.py')
+        self.assertIn('--schema openapi-fuzz.json', job[etape:etape + 200])
+        self.assertLess(job.index('api_fuzz_scope.py schema'), etape)
+        self.assertLess(job.index('FUZZ_IDS_FILE=$FUZZ_IDS_FILE'), etape)
+        self.assertLess(etape, job.index('schemathesis run '))
+        plein = (ROOT / '.github' / 'workflows' / 'api-fuzz-full.yml'
+                 ).read_text(encoding='utf-8')
+        for texte in (job, plein):
+            self.assertIn('echo "FUZZ_IDS_FILE=$FUZZ_IDS_FILE" >> '
+                          '"$GITHUB_ENV"', texte)
 
 
 def _charger_portee():
@@ -1388,3 +1527,31 @@ class PartageChemins(unittest.TestCase):
             self.assertEqual(stats["chemins"], 2)
             total += stats["operations"]
         self.assertEqual(total, 6)
+
+    def test_collection_et_elements_dans_la_meme_tranche(self):
+        """ENF11 — api-fuzz-full 40986772772 : le découpage par rang séparait
+        `/x/` de `/x/{id}/` (liens stateful déclarés et ids de chemin perdus)."""
+        chemins = sorted(_doc_crud()["paths"])
+        for n in (2, 3, 8, 16):
+            tranches = [self.scope.partager_chemins(chemins, f"{i}/{n}") for i in range(n)]
+            self.assertEqual(set().union(*tranches), set(chemins))
+            for tranche in tranches:
+                if "/api/django/stock/produits/" in tranche:
+                    self.assertTrue({"/api/django/stock/produits/{id}/",
+                                     "/api/django/stock/produits/{id}/archiver/"} <= tranche)
+                if "/api/django/ventes/devis/" in tranche:
+                    self.assertIn("/api/django/ventes/devis/{id}/", tranche)
+
+    def test_liens_declares_survivent_au_decoupage(self):
+        _, complet = self.scope.preparer_schema(_doc_crud(), None, None)
+        for n in (2, 4, 16):
+            liens = sum(self.scope.preparer_schema(_doc_crud(), None, None, shard=f"{i}/{n}")[1]["liens"]
+                        for i in range(n))
+            self.assertEqual(liens, complet["liens"], n)
+        self.assertEqual(complet["liens"], 3)
+
+    def test_familles_equilibrees_par_poids(self):
+        poids = {"/a/": 5, "/a/{id}/": 5, "/b/": 4, "/c/": 3, "/d/": 3}
+        tranches = [self.scope.partager_chemins(poids, f"{i}/2", poids) for i in range(2)]
+        charges = sorted(sum(poids[c] for c in t) for t in tranches)
+        self.assertEqual(charges, [10, 10])

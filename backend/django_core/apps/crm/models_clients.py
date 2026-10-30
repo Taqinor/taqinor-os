@@ -951,10 +951,10 @@ class Client(models.Model):
     # Dérivé du pk (ex. « TQ-1042 ») dès la première sauvegarde — jamais un
     # UUID aléatoire : un code stable, lisible, copiable dans un lien
     # `?utm_source=parrainage&utm_campaign=<code>` (parrainage.astro). Unique
-    # par construction (dérivé du pk) ; nullable pour les lignes existantes
-    # tant qu'elles ne sont pas resauvegardées (comportement inchangé).
+    # PAR SOCIÉTÉ (ENF15, contrainte ``crm_client_code_parrainage_societe``) ;
+    # nullable pour les lignes existantes tant qu'elles ne sont pas resauvegardées.
     code_parrainage = models.CharField(
-        max_length=20, blank=True, null=True, unique=True,
+        max_length=20, blank=True, null=True,
         verbose_name='Code de parrainage',
         help_text="Code stable partagé par ce client pour parrainer un "
                   "prospect (lien /devis/mon-toit?utm_source=parrainage&"
@@ -1024,6 +1024,12 @@ class Client(models.Model):
                     "Un client de cette société porte déjà cet e-mail "
                     "(la casse ne compte pas)."),
             ),
+            # ENF15 — le code de parrainage était unique sur TOUTES les sociétés :
+            # le validateur DRF répondait « déjà utilisé » sur le code d'un client
+            # d'une autre société (oracle d'existence). Unicité bornée à la société.
+            models.UniqueConstraint(
+                fields=['company', 'code_parrainage'],
+                name='crm_client_code_parrainage_societe'),
         ]
 
     def __str__(self):

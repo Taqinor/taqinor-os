@@ -60,6 +60,16 @@ _BAREME_SELON_BASE = D.corps_resserre({'anyOf': [
                     'taux_pct': {'type': 'string', 'minLength': 1}},
      'required': ['taux_pct']},
 ]})
+#: api-fuzz-pr 30/10 (ENF11) — PATCH : le barème ENVOYÉ suit la base ENVOYÉE
+#: (``{"base": "ca_devis_signe", "taux_pct": null}`` était « conforme » puis
+#: refusé 400) ; chaque clé reste facultative. Ce que le corps ne dit pas est
+#: complété par le plan stocké — un refus qui en vient est un 409 d'état.
+_BAREME_SELON_BASE_PATCH = D.corps_resserre({'anyOf': [
+    {'properties': {'base': {'enum': ['par_kwc']},
+                    'montant_par_kwc': {'type': 'string', 'minLength': 1}}},
+    {'properties': {'base': {'enum': ['ca_devis_signe', 'marge_interne']},
+                    'taux_pct': {'type': 'string', 'minLength': 1}}},
+]})
 
 
 #: Vide (plans par défaut) ou identifiant entier (9 chiffres au plus, comme MOTIF_IDS du stock).
@@ -73,7 +83,8 @@ MOTIF_OWNER = r'^(|[1-9][0-9]{0,8})$'
                                  description='id du commercial ; vide = plans par défaut.'),
                 qstr('actif', desc='1/0.')]),
     create=extend_schema(extensions=_BAREME_SELON_BASE),
-    update=extend_schema(extensions=_BAREME_SELON_BASE))
+    update=extend_schema(extensions=_BAREME_SELON_BASE),
+    partial_update=extend_schema(extensions=_BAREME_SELON_BASE_PATCH))
 class PlanCommissionViewSet(CompanyScopedModelViewSet):
     """XSAL6 — CRUD des plans de commission de la société.
 

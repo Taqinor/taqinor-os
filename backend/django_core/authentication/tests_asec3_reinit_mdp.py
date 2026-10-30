@@ -107,6 +107,17 @@ class ReinitialisationMotDePasseTests(TestCase):
             self.assertEqual(resp.status_code, attendu, (mdp, resp.data))
             self.assertIn('password', resp.data)
 
+    def test_password_non_texte_400(self):
+        # api-fuzz-pr 30/10 : `{"password": [null, null]}` atteignait
+        # `password.lower()` des validateurs Django (AttributeError, 500).
+        for mdp in ([None, None], {'a': 1}, 12345678):
+            resp = self.api.post(
+                _URL.format(self.cible.id), {'password': mdp}, format='json')
+            self.assertEqual(resp.status_code, 400, (mdp, resp.data))
+            self.assertIn('password', resp.data)
+        self.cible.refresh_from_db()
+        self.assertTrue(self.cible.check_password('Ancien-mdp-123!'))
+
     def test_password_refuse_dans_patch(self):
         for methode in ('patch', 'put'):
             with self.subTest(methode=methode):

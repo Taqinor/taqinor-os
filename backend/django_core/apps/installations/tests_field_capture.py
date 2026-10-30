@@ -262,13 +262,17 @@ class TestConsommation(_Base):
         self.api.post(f'{self.url}/modifier-ligne-consommation/', {
             'ligne': ligne.id, 'quantite_utilisee': '14'}, format='json')
         r = self.api.post(f'{self.url}/valider-consommation/', {}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # Refus d'ÉTAT sans corps → 409 (api-fuzz #1176), jamais 400.
+        self.assertEqual(r.status_code, 409, r.data)
         # Avec justification → validation OK.
         self.api.post(f'{self.url}/modifier-ligne-consommation/', {
             'ligne': ligne.id, 'justification': 'Casse sur site'},
             format='json')
         r = self.api.post(f'{self.url}/valider-consommation/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+        # Déjà validée → refus d'ÉTAT 409.
+        r = self.api.post(f'{self.url}/valider-consommation/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_real_consumption_moves_stock(self):
         from apps.stock.models import MouvementStock

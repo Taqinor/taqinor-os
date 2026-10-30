@@ -1592,12 +1592,15 @@ class LeadCadenceActionsMixin:
         une activité par étape, échéance = aujourd'hui + délai. Idempotent :
         ré-appliquer le même plan ne duplique rien."""
         lead = self.get_object()
-        plan_id = request.data.get('plan_id')
+        # api-fuzz PR #1176 — corps non objet / ``plan_id`` non entier
+        # (``[null, null]`` levait dans le filtre : 500) : 400 nommé.
+        plan_id = corps_objet(request).get('plan_id')
         if not plan_id:
             return Response({'plan_id': 'Requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         plan = PlanActivite.objects.filter(
-            id=plan_id, company=request.user.company).first()
+            id=entier_ou_400(plan_id, 'plan_id'),
+            company=request.user.company).first()
         if plan is None:
             return Response({'detail': 'Plan introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1654,7 +1657,8 @@ class LeadCadenceActionsMixin:
         from apps.parametres.models_relance import CADENCES_MOTEUR, Cadence
 
         lead = self.get_object()
-        cadence = (request.data.get('cadence') or Cadence.CONTACT)
+        # api-fuzz PR #1176 — un corps tableau levait ``.get`` (500) : 400.
+        cadence = (corps_objet(request).get('cadence') or Cadence.CONTACT)
         # PARAM-CADENCE (25/09/2026) — « Après l'appel » et « Visite
         # technique » sont les gabarits des étapes que le MOTEUR pose, jamais
         # un plan qu'on démarre sur un lead.

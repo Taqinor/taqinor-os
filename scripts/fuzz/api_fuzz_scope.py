@@ -276,17 +276,48 @@ def declarer_liens(doc: dict) -> int:
     return ajoutes
 
 
-def partager_chemins(chemins, shard: str | None):
-    """Partition DÉTERMINISTE des chemins en N tranches (« i/N ») : le chemin de
-    rang k (ordre trié) va à la tranche k % N. Chaque tranche fuzze TOUT son
-    lot ; l'union des N tranches = toute la surface, à chaque run — plus
-    d'échantillon aléatoire tronqué par `--max-time` (CI #997, 14/10/2026)."""
+def famille_du_chemin(gabarit: str) -> str:
+    """Ressource d'un chemin : le gabarit tronqué avant son premier paramètre
+    (``/x/``, ``/x/{pk}/``, ``/x/{pk}/action/`` -> ``/x/``)."""
+    return gabarit.split("{", 1)[0]
+
+
+def partager_chemins(chemins, shard: str | None, poids=None):
+    """Partition DÉTERMINISTE des chemins en N tranches (« i/N ») PAR RESSOURCE.
+
+    Chaque tranche fuzze TOUT son lot ; l'union des N tranches = toute la
+    surface, à chaque run — plus d'échantillon aléatoire tronqué par
+    `--max-time` (CI #997, 14/10/2026). La collection ``/x/`` et ses éléments
+    ``/x/{pk}/…`` (même ``famille_du_chemin``) vont TOUJOURS dans la même
+    tranche : l'ancien découpage par rang (chemin k -> tranche k % N)
+    séparait presque toujours une collection de son détail, ce qui retirait
+    les liens stateful déclarés (``declarer_liens`` ne voit que sa tranche :
+    33 paires sur 1 179 gardées en 16 tranches) ET l'inventaire d'ids de
+    chemin (``inventorier_ids_chemin.py`` lit la liste dans la même tranche :
+    32 sur 1 293 — « 1 opérations avec id réel, 122 sans inventaire »,
+    api-fuzz-full 40986772772, tranche 0). Familles réparties par LPT sur
+    ``poids`` (opérations par chemin, 1 par défaut), ordre stable."""
     if not shard:
         return set(chemins)
     i, n = (int(x) for x in shard.split("/", 1))
     if n < 1 or not 0 <= i < n:
         raise ValueError(f"tranche invalide : {shard!r} (attendu i/N avec 0 <= i < N)")
-    return {chemin for k, chemin in enumerate(sorted(chemins)) if k % n == i}
+    familles: dict = {}
+    for chemin in sorted(set(chemins)):
+        familles.setdefault(famille_du_chemin(chemin), []).append(chemin)
+    poids = poids or {}
+
+    def charge(membres):
+        return sum(poids.get(c, 1) for c in membres)
+
+    charges = [0] * n
+    retenus = set()
+    for cle in sorted(familles, key=lambda k: (-charge(familles[k]), k)):
+        cible = min(range(n), key=lambda j: (charges[j], j))
+        charges[cible] += charge(familles[cle])
+        if cible == i:
+            retenus.update(familles[cle])
+    return retenus
 
 
 def preparer_schema(doc: dict, proprietaires=None, resoudre=None,
@@ -305,7 +336,9 @@ def preparer_schema(doc: dict, proprietaires=None, resoudre=None,
 
     sortie = copy.deepcopy(filtrer_schema(doc, garder))
     if shard:
-        retenus = partager_chemins(sortie["paths"].keys(), shard)
+        poids = {c: sum(1 for m in _METHODES if m in (item or {}))
+                 for c, item in sortie["paths"].items()}
+        retenus = partager_chemins(sortie["paths"].keys(), shard, poids)
         sortie["paths"] = {c: v for c, v in sortie["paths"].items() if c in retenus}
     liens = declarer_liens(sortie)
     operations = sum(

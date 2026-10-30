@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
-import { formatDate, formatNumber } from '../../../lib/format'
+import { formatDate, formatNumber, formatPercent } from '../../../lib/format'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 
@@ -156,6 +156,95 @@ export function ReglagesUtilises({ simulation }) {
           ))}
         </tbody>
       </table>
+    </details>
+  )
+}
+
+/* ============================================================================
+   ENF15 — LA SOURCE MÉTÉO ET L'INCERTITUDE, TELLES QUE SERVIES.
+   ----------------------------------------------------------------------------
+   `GET resultat/` publie `meteo` (contrat `calepinage_meteo.json`, CALX143) et
+   `incertitude` (contrat `calepinage_incertitude.json`, CALX144) depuis CALX70,
+   mais aucun écran ne les lisait : le P90 s'affichait sans dire de quoi son σ
+   est fait ni de quelle base météo il sort. AUCUN CALCUL ICI : chaque valeur
+   est affichée telle que servie ; `null` ⇒ « non publié », jamais un zéro.
+   ========================================================================== */
+const nonPublie = (v) => (v === null || v === undefined || v === '' ? 'non publié' : String(v))
+
+/** Le bloc `meteo` : service, bases, fenêtre, horizon, fuseau, date d'obtention. */
+export function SourceMeteo({ meteo }) {
+  if (!meteo?.service) return null
+  const horizon = meteo.horizon?.origine
+    ? `${meteo.horizon.origine}${meteo.horizon.base_horizon ? ` (${meteo.horizon.base_horizon})` : ''}`
+    : null
+  const obtenue = meteo.obtenue_le
+    ? `${formatDate(meteo.obtenue_le)}${meteo.depuis_cache ? ' (depuis le cache)' : ''}`
+    : null
+  const lignes = [
+    ['Service PVGIS', meteo.service],
+    ['Base de rayonnement', meteo.base_rayonnement],
+    ['Base météo', meteo.base_meteo],
+    ['Mode', meteo.mode],
+    ['Fenêtre', meteo.fenetre_annees],
+    ['Horizon', horizon],
+    ['Fuseau du site', meteo.heure?.fuseau_site],
+    ['Obtenue le', obtenue],
+  ]
+  return (
+    <details className="text-sm" data-testid="enf15-source-meteo">
+      <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Source météo</summary>
+      <dl className="mt-1 grid grid-cols-2 gap-x-3 text-xs">
+        {lignes.map(([libelle, valeur]) => (
+          <div key={libelle} className="contents">
+            <dt className="text-muted-foreground">{libelle}</dt>
+            <dd data-testid="enf15-meteo-valeur">{nonPublie(valeur)}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  )
+}
+
+/** Le bloc `incertitude` : composantes sourcées, σ composé, ou le refus nommé. */
+export function IncertitudeSigma({ incertitude }) {
+  if (!incertitude) return null
+  const composantes = Array.isArray(incertitude.composantes) ? incertitude.composantes : []
+  const sigma = incertitude.sigma_total
+  return (
+    <details className="text-sm" data-testid="enf15-incertitude">
+      <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+        {'Incertitude (σ) : '}
+        {sigma === null || sigma === undefined ? 'non composée' : formatPercent(sigma * 100, { decimals: 2 })}
+        {incertitude.methode ? ` · ${incertitude.methode}` : ''}
+        {incertitude.portee ? ` · portée ${incertitude.portee}` : ''}
+      </summary>
+      {incertitude.motif_refus && (
+        <p className="mt-1 text-xs text-warning" data-testid="enf15-incertitude-refus">{incertitude.motif_refus}</p>
+      )}
+      {composantes.length > 0 && (
+        <table className="mt-1 w-full text-xs">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th className="py-1 font-normal">Composante</th>
+              <th className="py-1 text-right font-normal">σ</th>
+              <th className="py-1 font-normal">Source</th>
+              <th className="py-1 font-normal">Référence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {composantes.map((c) => (
+              <tr key={c.nom} className="border-t border-border/60" data-testid="enf15-composante">
+                <td className="py-1">{c.nom}</td>
+                <td className="py-1 text-right tabular-nums">
+                  {formatPercent(c.sigma_relatif * 100, { decimals: 1 })}
+                </td>
+                <td className="py-1">{nonPublie(c.source)}</td>
+                <td className="py-1">{nonPublie(c.reference)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </details>
   )
 }

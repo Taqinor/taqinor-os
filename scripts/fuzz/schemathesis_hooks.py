@@ -12,7 +12,9 @@ fichier). Trois responsabilités, toutes du HARNAIS (aucun code produit) :
    repartait avec le Bearer et passait. Ici un fournisseur
    ``@schemathesis.auth`` se connecte avec le compte dédié ``fuzz_admin`` et
    pose le jeton dans le cookie DÉCLARÉ ; il se reconnecte toutes les 10 min
-   (ENF11 : plus de rejeu sur 401 — voir ``_REJOUER_SUR``).
+   (ENF11 : plus de rejeu sur 401 — voir ``_REJOUER_SUR``). Un en-tête
+   ``Authorization`` GÉNÉRÉ (alternative ``bearerJWT``) reçoit le même jeton
+   (ENF11 — voir ``aligner_bearer``).
 
 2. **Désérialiseurs** ``text/csv``, ``text/html`` et binaires : sans eux,
    Schemathesis sautait la validation de ces réponses (avertissement
@@ -149,6 +151,40 @@ class FuzzAdminCookieAuth:
     def set(self, case, data, ctx):
         case.cookies = dict(case.cookies or {})
         case.cookies['access_token'] = data
+        aligner_bearer(case, data)
+
+
+# ENF11 — « Missing authentication: 67 operations returned only 401/403 »
+# (api-fuzz-full 40986772772 : 1 121 opérations 401-seules sur 16 tranches,
+# dont 998 routes ordinaires à cookie ; le nocturne du 23/10, 39924022026, n'en
+# avait que 38, toutes SCIM / API publique / refresh). Le schéma déclare deux
+# alternatives d'authentification (`[{cookieJWT}, {bearerJWT}]`) : Schemathesis
+# 4.28 génère donc, sur les cas POSITIFS, un en-tête `Authorization` OPTIONNEL
+# au format `_bearer_auth` = « Bearer » + une valeur d'en-tête QUELCONQUE
+# (espaces, ponctuation, chaîne vide). Depuis d4ef375b4 (24/10) le serveur
+# refuse, à raison (RFC 6750 token68), tout `Authorization` présent mais mal
+# formé par un 401 — même avec un cookie valide. ~71 % des réponses non-2xx de
+# la tranche 0 étaient ces 401 : la logique des routes n'était jamais atteinte.
+# Le fournisseur pose donc le MÊME jeton valide dans l'alternative Bearer
+# quand le cas en porte une — exactement ce que fait l'HttpBearerAuthProvider
+# de Schemathesis. Il ne l'AJOUTE jamais (un cas « cookie seul » reste tel
+# quel) et ne touche aucun cas négatif visant l'authentification :
+# Schemathesis n'appelle pas `set` quand le paramètre muté est un paramètre de
+# sécurité (`is_security_param_negated`), et le check `ignored_auth` retire
+# toujours lui-même l'authentification déclarée.
+def aligner_bearer(case, jeton):
+    # CI #1176 — un cas NÉGATIF (phase coverage) porte un Authorization
+    # volontairement invalide : le « réparer » rendait la requête valide et le
+    # 200 obtenu devenait « API accepted schema-violating request ».
+    meta = getattr(case, 'meta', None)
+    if meta is not None and meta.generation.mode != GenerationMode.POSITIVE:
+        return
+    entetes = getattr(case, 'headers', None)
+    if not entetes:
+        return
+    for cle in list(entetes):
+        if isinstance(cle, str) and cle.lower() == 'authorization':
+            entetes[cle] = f'Bearer {jeton}'
 
 
 # ── 2. Désérialiseurs ──────────────────────────────────────────────────
@@ -325,10 +361,11 @@ def _ids_fk_connus(case):
                        _types_query_publies(case.operation))
 
 
-def _types_query_publies(operation):
-    """{nom: type} des paramètres de query PUBLIÉS (``schema.type``)."""
+def _types_query_publies(operation, lieu='query'):
+    """{nom: type} des paramètres PUBLIÉS (``schema.type``) de ``lieu``
+    (``query`` ou ``path_parameters`` de l'``APIOperation``)."""
     publies = {}
-    for parametre in getattr(operation, 'query', None) or ():
+    for parametre in getattr(operation, lieu, None) or ():
         definition = getattr(parametre, 'definition', None) or {}
         schema = definition.get('schema') if isinstance(
             definition, dict) else None
@@ -394,6 +431,7 @@ def _retyper_query(query, avant, typee, publies=None):
 # `{jeton}`, `{slug}`, `{key}`… et les ids imbriqués restent intacts.
 _PREMIER_ID = re.compile(r'^(.*?/)\{(id|pk)\}(?:/|$)')
 _COUVERTURE = {'reel': set(), 'aleatoire': set(), 'sans_inventaire': set()}
+_ENTIER_TEXTE = re.compile(r'^-?[0-9]+$')
 
 
 def _bucket(cle, ids):
@@ -420,9 +458,26 @@ def _ids_chemin_reels(case):
         _COUVERTURE['aleatoire'].add(ops)
         return
     choisi = _bucket(cle, ids)
+    # CI #1176 — la phase coverage (seule phase du job PR) rend les paramètres
+    # de chemin DÉJÀ en chaîne (Schemathesis 4.28 ``_stringify_value`` : un
+    # entier 0 arrive « 0 ») : sans cette forme, aucun id entier n'était
+    # jamais posé (« 0 opérations avec id réel »). L'id réel est posé ENTIER :
+    # Schemathesis revalide le conteneur modifié contre ``type: integer`` — une
+    # chaîne « 2 » y rendait le cas négatif (CI #1176, ~200 faux « accepted
+    # schema-violating request ») ; l'URL envoyée est identique.
+    if isinstance(choisi, int) and isinstance(valeur, str) and _ENTIER_TEXTE.match(valeur):
+        valeur = int(valeur)
     if isinstance(choisi, int) != isinstance(valeur, int):
         _COUVERTURE['aleatoire'].add(ops)
         return
+    # CI #1176 (GET/PATCH crm/clients/{id}/) — un ``lookup_value_regex`` publie
+    # le paramètre ``type: string`` + ``pattern: ^[0-9]+$`` (drf-spectacular,
+    # ``resolve_regex_path_parameter``) : l'id ENTIER y était revalidé contre
+    # ``string``, le cas positif basculait négatif et le 200 légitime devenait
+    # « API accepted schema-violating request ». Publié texte → posé en texte.
+    publie = _types_query_publies(case.operation, 'path_parameters').get(nom)
+    if publie == 'string' and isinstance(choisi, int):
+        choisi = str(choisi)
     case.path_parameters[nom] = choisi
     _COUVERTURE['reel'].add(ops)
 
@@ -522,6 +577,8 @@ _CSV_MINIMAL = b'nom,description\r\nFuzz,Import\r\n'
 # Fichier d'un import générique (dry-run/commit) : un CSV à en-têtes seuls, lisible
 # pour TOUTE cible ; des octets quelconques (NUL…) sont « Lecture impossible ».
 _CSV_IMPORT = b'nom,email\r\n'
+# Relevé bancaire (dry-run) : en-têtes de relevé seuls — lisible, 0 ligne.
+_CSV_RELEVE = b'date,libelle,montant\r\n'
 _GED = r'^/api/django/ged/documents/'
 _CALEPINAGE = r'^/api/django/calepinage/calepinages/\{[^}]+\}/'
 # (chemin, méthodes, {champ du corps: octets d'un fichier valide})
@@ -602,6 +659,11 @@ _FICHIERS_VALIDES = (
     # ne dit que ``format: binary``. Un CSV à en-têtes seuls est lisible.
     (re.compile(r'^/api/django/uxviews/(saved-views|favoris)/importer/$'), {'POST'},
      {'fichier': _CSV_IMPORT}),
+    # CI #1176 fuzz (aAVYqi) — aperçu d'un relevé bancaire : un PNG est
+    # « Lecture du fichier impossible » (400), le schéma ne dit que
+    # ``format: binary``. Un CSV de relevé à en-têtes seuls est lisible.
+    (re.compile(r'^/api/django/ventes/paiements/import-releve/dry-run/$'), {'POST'},
+     {'file': _CSV_RELEVE}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},

@@ -24,6 +24,7 @@
  */
 import * as maplibregl from 'maplibre-gl';
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
+import { GOLD, MOROCCO_CENTER, $, assertWebGL, addTraceLayers, estimateAndShow, geocodeAndFly, injectMaplibreCss, makeSetStatus, mapErrorWarner, maptilerStyleUrl, renderRoofResults, traceGeoJson, wireSearchForm, wireVertexClicks, createRoofMap, wireOrientReestimate, type RoofResults } from './roofToolShared';
 import * as THREE from 'three';
 import { layoutProRows, type ProLayout } from '../lib/roofPro';
 import type { LngLat } from '../lib/roof';
@@ -35,8 +36,6 @@ interface InitOptions {
   onReady?: () => void;
 }
 
-const GOLD = '#f3cc66';
-const MOROCCO_CENTER: [number, number] = [-7.09, 31.79];
 const FLOOR_HEIGHT_M = 3;
 const PITCH_VIEW = 58; // inclinaison caméra en vue 3D
 const DECK_THK = 0.06; // épaisseur de la dalle de toit (toit plat)
@@ -44,8 +43,6 @@ const ROOF_PITCH_DEG = 18; // pente du toit « villa » (pose affleurante)
 
 let booted = false;
 
-const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
-const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(n);
 
 // — Texture procédurale de panneau (cellules + cadre), créée une seule fois —
 function makePanelTexture(): THREE.Texture {
@@ -93,15 +90,9 @@ export function initRoofToolPro(opts: InitOptions): void {
   booted = true;
 
   // Repli immédiat si WebGL est indisponible : on lève, la page bascule au repli.
-  const probe = document.createElement('canvas');
-  if (!(probe.getContext('webgl2') || probe.getContext('webgl'))) {
-    throw new Error('WebGL indisponible');
-  }
+  assertWebGL();
 
-  const cssLink = document.createElement('link');
-  cssLink.rel = 'stylesheet';
-  cssLink.href = maplibreCssUrl;
-  document.head.appendChild(cssLink);
+  injectMaplibreCss(maplibreCssUrl);
 
   const mapEl = $('rp-map');
   const statusEl = $('rp-status');
@@ -115,34 +106,19 @@ export function initRoofToolPro(opts: InitOptions): void {
   const buildPanel = $('rp-build-controls');
   if (!mapEl) return;
 
-  const setStatus = (msg: string) => {
-    if (statusEl) statusEl.textContent = msg;
-  };
+  const setStatus = makeSetStatus(statusEl);
 
-  const map = new maplibregl.Map({
-    container: mapEl,
-    style: `https://api.maptiler.com/maps/hybrid/style.json?key=${encodeURIComponent(opts.maptilerKey)}`,
-    center: MOROCCO_CENTER,
-    zoom: 5,
-    pitch: 0,
-    maxPitch: 75,
-    attributionControl: { compact: true },
-    fadeDuration: opts.reducedMotion ? 0 : 300,
-  });
+  const map = createRoofMap(maplibregl, mapEl, opts, { pitch: 0, maxPitch: 75 });
 
   opts.onReady?.();
 
-  map.on('error', (e: unknown) => {
-    const msg = (e as { error?: { message?: string } } | undefined)?.error?.message ?? e;
-    console.warn('[roof-tool-pro] erreur carte (non bloquante) :', msg);
-  });
+  map.on('error', mapErrorWarner('roof-tool-pro'));
 
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
   map.doubleClickZoom.disable();
 
   let vertices: LngLat[] = [];
   let closed = false;
-  let clickTimer: ReturnType<typeof setTimeout> | null = null;
   let lastLayout: ProLayout | null = null;
 
   // — État Three.js (couche personnalisée) —
@@ -411,23 +387,7 @@ export function initRoofToolPro(opts: InitOptions): void {
   map.on('load', () => {
     map.addSource('rp-line', { type: 'geojson', data: empty as never });
     map.addSource('rp-pts', { type: 'geojson', data: empty as never });
-    map.addLayer({
-      id: 'rp-line',
-      type: 'line',
-      source: 'rp-line',
-      paint: { 'line-color': GOLD, 'line-width': 2.5, 'line-dasharray': [2, 1.5] },
-    });
-    map.addLayer({
-      id: 'rp-pts',
-      type: 'circle',
-      source: 'rp-pts',
-      paint: {
-        'circle-radius': 5,
-        'circle-color': GOLD,
-        'circle-stroke-color': '#070b1d',
-        'circle-stroke-width': 1.5,
-      },
-    });
+    addTraceLayers(map, 'rp');
     map.addLayer(customLayer);
 
     if (opts.initialQuery) void geocode(opts.initialQuery);
@@ -437,15 +397,9 @@ export function initRoofToolPro(opts: InitOptions): void {
   const src = (id: string) => map.getSource(id) as maplibregl.GeoJSONSource | undefined;
 
   function redrawTrace() {
-    src('rp-line')?.setData({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: vertices },
-      properties: {},
-    } as never);
-    src('rp-pts')?.setData({
-      type: 'FeatureCollection',
-      features: vertices.map((v) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: v }, properties: {} })),
-    } as never);
+    const trace = traceGeoJson(vertices);
+    src('rp-line')?.setData(trace.line as never);
+    src('rp-pts')?.setData(trace.points as never);
     if (finishBtn) finishBtn.disabled = vertices.length < 3 || closed;
   }
 
@@ -509,23 +463,8 @@ export function initRoofToolPro(opts: InitOptions): void {
     void estimate(ring, layout);
   }
 
-  map.on('click', (e) => {
-    if (closed) return;
-    if (clickTimer) return;
-    const lngLat: LngLat = [e.lngLat.lng, e.lngLat.lat];
-    clickTimer = setTimeout(() => {
-      clickTimer = null;
-      addVertex(lngLat);
-    }, 240);
-  });
-  map.on('dblclick', (e) => {
-    e.preventDefault();
-    if (clickTimer) {
-      clearTimeout(clickTimer);
-      clickTimer = null;
-    }
-    close();
-  });
+  // Clic = ajoute un sommet (différé pour distinguer du double-clic). Double-clic = ferme.
+  wireVertexClicks(map, () => closed, addVertex, close);
 
   finishBtn?.addEventListener('click', close);
   clearBtn?.addEventListener('click', reset);
@@ -549,126 +488,22 @@ export function initRoofToolPro(opts: InitOptions): void {
   pitchEl?.addEventListener('change', relayout);
   orientEl?.addEventListener('change', relayout);
 
-  searchForm?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const q = addressEl?.value.trim();
-    if (q) void geocode(q);
-  });
+  wireSearchForm(searchForm, addressEl, (q) => geocode(q));
 
-  async function geocode(query: string) {
-    setStatus('Recherche de l’adresse…');
-    try {
-      const url =
-        `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json` +
-        `?key=${encodeURIComponent(opts.maptilerKey)}&country=ma&limit=1&language=fr`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('geocode');
-      const data = (await res.json()) as { features?: Array<{ center?: [number, number] }> };
-      const center = data.features?.[0]?.center;
-      if (!center) {
-        setStatus('Adresse introuvable. Précisez la ville ou déplacez la carte à la main.');
-        return;
-      }
-      const target = { center, zoom: 19, pitch: 0 } as const;
-      if (opts.reducedMotion) map.jumpTo(target);
-      else map.flyTo({ ...target, essential: true });
-      setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer et voir la 3D.');
-    } catch {
-      setStatus('Recherche indisponible. Déplacez la carte à la main pour trouver votre toit.');
-    }
-  }
+  const geocode = (query: string) =>
+    geocodeAndFly(query, opts.maptilerKey, map, opts.reducedMotion, setStatus,
+      'Cliquez les coins de votre toit. Double-cliquez pour fermer et voir la 3D.', true);
 
   // — Production via le proxy serveur PVGIS (jamais d'appel PVGIS direct) —
-  async function estimate(ring: LngLat[], layout: ProLayout) {
-    let lng = 0;
-    let lat = 0;
-    for (const [x, y] of ring) {
-      lng += x;
-      lat += y;
-    }
-    lng /= ring.length;
-    lat /= ring.length;
-    const orientation = orientEl?.value || 'sud';
-    try {
-      const res = await fetch('/api/roof-estimate', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lat, lon: lng, kwc: layout.kwc, orientation }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        showResults({ ...layout, annualKwh: data.annualKwh, savings: data.savings, source: data.source });
-        setStatus('Estimation prête. Faites pivoter l’installation, puis recevez l’étude sur WhatsApp.');
-        return;
-      }
-    } catch {
-      /* repli ci-dessous */
-    }
-    showResults({ ...layout, annualKwh: null, savings: null });
-    setStatus('Production momentanément indisponible — la taille du système reste indicative.');
-  }
+  const estimate = (ring: LngLat[], layout: ProLayout) =>
+    estimateAndShow(ring, layout, orientEl, showResults, setStatus,
+      'Estimation prête. Faites pivoter l’installation, puis recevez l’étude sur WhatsApp.');
 
   // — Rendu du panneau de résultats (espace réservé → aucun saut de page) —
-  interface Results {
-    count: number;
-    kwc: number;
-    areaM2: number;
-    annualKwh: number | null;
-    savings: { low: number; high: number } | null;
-    source?: string;
-  }
-  function showResults(r: Results | null) {
-    const panel = $('rp-results');
-    const cta = $<HTMLButtonElement>('rp-cta');
-    const set = (id: string, v: string) => {
-      const el = $(id);
-      if (el) el.textContent = v;
-    };
-    if (!r || r.count === 0) {
-      set('rp-res-kwc', '—');
-      set('rp-res-panels', '—');
-      set('rp-res-area', '—');
-      set('rp-res-prod', '—');
-      set('rp-res-savings', '—');
-      set('rp-res-note', r && r.count === 0 ? 'Tracé trop petit pour une rangée de panneaux.' : 'Tracez votre toit pour découvrir votre potentiel solaire.');
-      if (cta) cta.hidden = true;
-      panel?.classList.remove('rp-results--ready');
-      return;
-    }
-    set('rp-res-kwc', `${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc`);
-    set('rp-res-panels', `${fmt(r.count)} panneaux`);
-    set('rp-res-area', `${fmt(Math.round(r.areaM2))} m²`);
-    set('rp-res-prod', r.annualKwh != null ? `${fmt(r.annualKwh)} kWh/an` : 'estimation en cours…');
-    set('rp-res-savings', r.savings ? `${fmt(r.savings.low)} – ${fmt(r.savings.high)} MAD/an` : '—');
-    set(
-      'rp-res-note',
-      r.source === 'pvgis'
-        ? 'Production PVGIS (Commission européenne) — rangées espacées réelles, fourchette indicative, pas un devis.'
-        : r.annualKwh != null
-          ? 'Production estimée (productible moyen Maroc) — fourchette indicative, pas un devis.'
-          : 'Taille du système estimée — la production sera précisée par l’étude.',
-    );
-    panel?.classList.add('rp-results--ready');
-
-    // Pré-remplit le diagnostic enrichi — RÉUTILISE EXACTEMENT le même formulaire
-    // et toute sa plomberie (seuil 1 000 MAD, consentement, webhook, CAPI) que les
-    // versions 2D/3D : on n'écrit que dans ses champs, on ne poste aucun lead ici.
-    if (cta) {
-      cta.hidden = false;
-      cta.onclick = () => {
-        const area = $<HTMLInputElement>('lf-area');
-        const orient = $<HTMLSelectElement>('lf-orient');
-        const kwc = $<HTMLInputElement>('lf-kwc-est');
-        if (area) area.value = String(Math.round(r.areaM2));
-        if (orient) orient.value = orientEl?.value || 'sud';
-        if (kwc) kwc.value = String(Math.round(r.kwc * 100) / 100);
-        const details = (area?.closest('details') as HTMLDetailsElement | null) ?? null;
-        if (details) details.open = true;
-        document.getElementById('simulateur')?.scrollIntoView({
-          behavior: opts.reducedMotion ? 'auto' : 'smooth',
-          block: 'start',
-        });
-      };
-    }
-  }
+  const showResults = (r: RoofResults | null) =>
+    renderRoofResults('rp', r, orientEl, opts.reducedMotion, {
+      tooSmall: 'Tracé trop petit pour une rangée de panneaux.',
+      pvgis:
+        'Production PVGIS (Commission européenne) — rangées espacées réelles, fourchette indicative, pas un devis.',
+    });
 }

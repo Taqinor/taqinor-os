@@ -258,7 +258,7 @@ export function pointInPolygon(pt: [number, number], ring: [number, number][]): 
 }
 
 /** Distance d'un point au segment [a,b] (coordonnées planes). */
-function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
+export function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
   const [px, py] = p;
   const [ax, ay] = a;
   const [bx, by] = b;
@@ -273,7 +273,7 @@ function distToSegment(p: [number, number], a: [number, number], b: [number, num
 }
 
 /** Distance minimale d'un point à la frontière du polygone (toutes les arêtes). */
-function distToBoundary(p: [number, number], ring: [number, number][]): number {
+export function distToBoundary(p: [number, number], ring: [number, number][]): number {
   let min = Infinity;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     min = Math.min(min, distToSegment(p, ring[j], ring[i]));

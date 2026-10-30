@@ -187,11 +187,13 @@ class FactureRectificatifsActionsMixin:
                 # mais toute ligne saisie ici doit désigner un produit de la
                 # société — sauf sur une facture sans aucune ligne produit
                 # (ERR-AVOIR-PARTIEL-ACOMPTE : geste partiel sur un acompte).
+                # ``produit: null`` est PUBLIÉ (acompte) : le refus dépend de
+                # l'ÉTAT de la facture (lignes produit) → 409 (api-fuzz #1176).
                 produit_id = ligne.get('produit') or None
                 if produit_id is None and not facture_sans_produit:
                     return Response(
                         {'detail': f'Ligne {i} : produit requis.'},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
                 from apps.stock.selectors import get_produit_scoped
                 if (produit_id is not None
                         and get_produit_scoped(company, produit_id) is None):

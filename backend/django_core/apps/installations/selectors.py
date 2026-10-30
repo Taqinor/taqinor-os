@@ -5,6 +5,7 @@ réservations de stock à travers ces fonctions plutôt qu'en important
 `apps.installations.models` directement (voir CLAUDE.md, règle de modularité).
 Comportement strictement identique aux requêtes inline d'origine.
 """
+import logging
 from django.db.models import Sum
 
 
@@ -471,6 +472,8 @@ def _devis_totaux_programme(projet):
             total_ht += _dec(devis.total_ht)
             total_ttc += _dec(devis.total_ttc)
         except Exception:  # pragma: no cover - défensif
+            logging.getLogger(__name__).warning(
+                "installations._devis_totaux_programme : exception ignorée", exc_info=True)
             continue
     return total_ht, total_ttc
 
@@ -640,6 +643,8 @@ def _factures_revenu_programme(projet, company):
             revenu_ht += _dec(facture.total_ht)
             revenu_ttc += _dec(facture.total_ttc)
         except Exception:  # pragma: no cover - défensif
+            logging.getLogger(__name__).warning(
+                "installations._factures_revenu_programme : exception ignorée", exc_info=True)
             continue
     return revenu_ht, revenu_ttc
 
@@ -1549,6 +1554,7 @@ def chantier_card(chantier_id, company):
     try:
         parts.append(chantier.get_statut_display())
     except Exception:  # pragma: no cover - défensif
+        logging.getLogger(__name__).warning("installations.chantier_card : exception ignorée", exc_info=True)
         pass
     client = getattr(chantier, 'client', None)
     if client is not None:
@@ -1918,6 +1924,7 @@ def _bin_cible_regle(company, produit_id, emplacement_id=None):
         from apps.stock.selectors import get_produit_scoped
         produit = get_produit_scoped(company, produit_id)
     except Exception:  # pragma: no cover - defensif
+        logging.getLogger(__name__).warning("installations._bin_cible_regle : exception ignorée", exc_info=True)
         produit = None
     categorie_nom = (
         getattr(produit.categorie, 'nom', None)

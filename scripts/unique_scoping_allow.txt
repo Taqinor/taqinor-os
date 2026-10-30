@@ -4,14 +4,16 @@
 # ENF15 — les modèles globaux PAR CONCEPTION signés par le fondateur
 # (`tenant_exempt_models` de scripts/exceptions_permanentes.yml : ExtensionPackage,
 # PlanLicence, StatusSubscriber…) et la table tenant `authentication.Company`
-# n'ont plus de ligne ici : la garde les lit à la source. Restent 3 sites à
-# trancher (portée société ou signature fondateur) :
-#
-# (a) business unique=True fields judged legitimately global for now:
-backend/django_core/apps/crm/models.py::Client.code_parrainage
+# n'ont plus de ligne ici : la garde les lit à la source. Restent 2 sites,
+# globaux par conception (clé de catalogue posée par le code, clé qui encode
+# elle-même sa portée) — signature fondateur à obtenir pour les sortir d'ici.
+# ENF15 (30/10/2026) : crm Client.code_parrainage SORTI — unicité bornée à la
+# société (contrainte crm_client_code_parrainage_societe, migration crm 0147).
 #
 # NTDMO11 — onboarding.OnboardingChecklistItem : catalogue « Premiers pas »
 # (company FK nullable ; company=None = item partagé, seedé via migration).
+# La clé est un identifiant de CODE (lue par services.marquer_item_complete,
+# receivers d'événements) ; aucune API ne crée d'item, aucun item société.
 backend/django_core/apps/onboarding/models.py::OnboardingChecklistItem.key
 #
 # core.IdempotencyKey.cle : repli DB du décorateur idempotent_task — la clé

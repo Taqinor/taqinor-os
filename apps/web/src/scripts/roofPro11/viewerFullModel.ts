@@ -23,6 +23,7 @@
  * module viennent de `lib/roofPro2.ts` (les constantes que scene3d dessine).
  */
 import { type LngLat } from '../../lib/roof';
+import { meanVertex } from '../../lib/geo';
 import { type Obstacle } from '../../lib/obstacles';
 import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT } from '../../lib/roofPro2';
 import {
@@ -310,19 +311,9 @@ export function buildViewerFullPlan(layout: RoofLayout | null | undefined): View
   if (activeIndex < 0) return null;
 
   // Centre = centroïde de TOUS les sommets (même règle que buildViewerModel).
-  let lng0 = 0;
-  let lat0 = 0;
-  let n = 0;
-  for (const z of zones) {
-    for (const [lng, lat] of z.vertices) {
-      lng0 += lng;
-      lat0 += lat;
-      n++;
-    }
-  }
-  if (n === 0) return null;
-  lng0 /= n;
-  lat0 /= n;
+  const c0 = meanVertex(zones.map((z) => z.vertices));
+  if (!c0) return null;
+  const [lng0, lat0] = c0;
 
   // Emprise (m) autour de ce centre : la plus grande des deux étendues.
   const cosLat = Math.cos(lat0 * DEG2RAD);

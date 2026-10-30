@@ -24,6 +24,7 @@ from .actions_crud import READ_ACTIONS
 from .cadence_messages import (
     CLES_MESSAGE_DOSSIER, CLES_MESSAGE_VISITE, LANGUES_MESSAGE_VISITE)
 from .cadence_views import _prochaine_touche_publique
+from .params_requete import texte_verifie, verifier_corps_texte
 from . import activity
 from . import schema_docs as sd
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy
@@ -298,6 +299,9 @@ class LeadVisitesActionsMixin:
         from .cadence_plan import _prochaine_touche_a_faire
 
         lead = self.get_object()
+        # api-fuzz PR #1176 — corps non objet, ``notes``/``note_etape`` non
+        # texte : 400 nommé (jamais un 500 plus loin).
+        verifier_corps_texte(request, ('notes', 'note_etape'))
         # ENF11 (nocturne 15/10) — publiée ``format: date`` (« 0 » était un
         # texte « conforme » refusé) ; un non-texte est refusé, jamais un 500.
         brut = request.data.get('date_prevue') if hasattr(request.data, 'get') else None
@@ -316,10 +320,14 @@ class LeadVisitesActionsMixin:
         brut_commercial = request.data.get('commercial')
         if brut_commercial not in (None, '', 0):
             from django.contrib.auth import get_user_model
+
+            from core.champs_stricts import entier_ou_400
             # Borné à la SOCIÉTÉ de l'appelant : un id d'un autre locataire est
             # indiscernable d'un id inconnu (on ne confirme pas son existence).
+            # api-fuzz PR #1176 — un identifiant non entier (``{}`` levait
+            # dans le filtre : 500) est un 400 nommant ``commercial``.
             commercial = (get_user_model().objects
-                          .filter(pk=brut_commercial,
+                          .filter(pk=entier_ou_400(brut_commercial, 'commercial'),
                                   company=request.user.company)
                           .first())
             if commercial is None:
@@ -444,7 +452,9 @@ class LeadVisitesActionsMixin:
             journaliser_message_visite_ouvert,
         )
         lead = self.get_object()
-        cle = (request.data.get('cle') or '').strip()
+        # api-fuzz PR #1176 — ``cle``/``langue`` non texte (``[null, null]``
+        # levait ``.strip()`` : 500) ou corps non objet : 400 nommé.
+        cle = texte_verifie(request, 'cle', 'langue')
         # AGR526 — mêmes clés que la lecture `message-visite` pour CE lead.
         # ERR-ENF11-FUZZ-CRM : une clé PUBLIÉE que CE lead n'ouvre pas (dossier
         # FDA/82-21 hors profil) est un refus d'ÉTAT, 409 ; hors liste, 400.

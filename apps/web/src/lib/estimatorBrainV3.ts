@@ -39,7 +39,7 @@
  *
  * JAMAIS un devis : une fourchette indicative. Voir apps/web/BRAIN_V3_NOTES.md.
  */
-import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
+import { distToBoundary, geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
 import { PERIMETER_SETBACK_M, cotesDePavage, resolveSetbacks, extremityTotalM, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
@@ -67,7 +67,7 @@ export { PANEL2_WATT };
 
 const DEG2RAD = Math.PI / 180;
 import { WGS84_RADIUS } from './geo';
-import type { EvalProduction } from './estimatorBrainCommun';
+import { departageBase, packFlat, type EvalProduction } from './estimatorBrainCommun';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000;
 const PANEL_SIDE_GAP_M = 0.02;
@@ -141,19 +141,6 @@ export interface ReoptimizeResult {
   neededPanels: number;
 }
 
-/** Azimut de visée résolu pour un axe + famille, sur ce toit. Jamais inventé :
- *  ∈ {canonique famille, aligné arêtes}. Sud aligné = roofAz ; E-O aligné = roofAz−90. */
-function resolveAzimuthDeg(family: ConfigFamily, axis: AxisAzimuth, roofAz: number): number {
-  if (axis === 'south') return family === 'eastwest' ? 90 : 180;
-  return family === 'eastwest' ? (roofAz - 90 + 360) % 360 : roofAz;
-}
-
-/** Cache de pavage par (famille|tilt|azimut|setback) — réutilisé entre la recherche
- *  pleine et la recherche contrainte d'un même appel `reoptimize`. */
-function packCacheKey(family: ConfigFamily, tiltDeg: number, azimuthDeg: number, setbackM: number): string {
-  return `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}`;
-}
-
 /**
  * Évalue UNE config toit-plat, plafonnée au besoin, en réutilisant EXACTEMENT la
  * physique de pavage de V2 (`packConfig`). Aucune fork : le chemin toit plat reste
@@ -171,24 +158,7 @@ export function evalFlatConfig(
   tariff: TariffGrid,
   cache?: Map<string, ReturnType<typeof packConfig>>,
 ): FlatConfigEval {
-  const azimuthDeg = resolveAzimuthDeg(cfg.family, cfg.azimuth, roofAz);
-  const setbackM = cfg.margin === 'keep' ? defaultSetbackM : 0;
-  const key = cache ? packCacheKey(cfg.family, cfg.tiltDeg, azimuthDeg, setbackM) : '';
-  let pack = cache?.get(key);
-  if (!pack) {
-    pack = packConfig(ring, latitudeDeg, {
-      family: cfg.family,
-      tiltDeg: cfg.tiltDeg,
-      azimuthDeg,
-      obstructions,
-      setbackM,
-    });
-    cache?.set(key, pack);
-  }
-  const grid = cfg.orientation === 'portrait' ? pack.portrait : pack.landscape;
-  const fitCount = grid.count;
-  const placedCount = needed > 0 ? Math.min(needed, fitCount) : fitCount;
-  const kwc = (placedCount * PANEL2_WATT) / 1000;
+  const { pack, kwc, head } = packFlat(ring, latitudeDeg, cfg, needed, roofAz, defaultSetbackM, obstructions, cache);
   const aspect = aspectForAzimuth(cfg.family, pack.azimuthDeg);
   const annualKwh = productionKwh(latitudeDeg, cfg.family, cfg.tiltDeg, kwc, aspect);
   const perPanelYield =
@@ -198,11 +168,7 @@ export function evalFlatConfig(
   const savings = annualSavingsMad(annualKwh, target, tariff);
   return {
     ...cfg,
-    azimuthDeg: pack.azimuthDeg,
-    setbackM,
-    fitCount,
-    placedCount,
-    kwc,
+    ...head,
     annualKwh,
     pctOfTarget: target > 0 ? (annualKwh / target) * 100 : 0,
     savingsLow: savings.low,
@@ -219,12 +185,8 @@ export function evalFlatConfig(
  * Sud avant Est-Ouest (mono-MPPT), puis inclinaison plus raide, puis portrait.
  */
 export function betterFlat(a: FlatConfigEval, b: FlatConfigEval): boolean {
-  if (a.annualKwh > b.annualKwh + EVAL_EPS) return true;
-  if (a.annualKwh < b.annualKwh - EVAL_EPS) return false;
-  if (a.perPanelYield !== b.perPanelYield) return a.perPanelYield > b.perPanelYield;
-  if (a.placedCount !== b.placedCount) return a.placedCount < b.placedCount;
-  if (a.margin !== b.margin) return a.margin === 'keep';
-  if (a.family !== b.family) return a.family === 'south';
+  const d = departageBase(a, b);
+  if (d !== undefined) return d;
   if (a.tiltDeg !== b.tiltDeg) return a.tiltDeg > b.tiltDeg;
   return a.orientation === 'portrait' && b.orientation !== 'portrait';
 }
@@ -484,23 +446,6 @@ export function slopeAreaM2(projectedAreaM2: number, pitchDeg: number): number {
   const cos = Math.cos(pitchDeg * DEG2RAD);
   if (!Number.isFinite(cos) || cos <= 0) return projectedAreaM2;
   return projectedAreaM2 / cos;
-}
-
-function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const len2 = dx * dx + dy * dy;
-  let t = len2 === 0 ? 0 : ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
-}
-
-function distToBoundary(p: [number, number], ring: [number, number][]): number {
-  let min = Infinity;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    min = Math.min(min, distToSegment(p, ring[j], ring[i]));
-  }
-  return min;
 }
 
 /** Écart signé au sud (deg) d'un azimut de face : 180=plein sud → 0. */
