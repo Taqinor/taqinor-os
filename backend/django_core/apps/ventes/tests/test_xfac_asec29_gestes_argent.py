@@ -156,3 +156,37 @@ class GestesArgentTests(TestCase):
                 vue.request = Request(fabrique.post('/'))
                 gardes = vue.get_permissions()
                 self.assertEqual([type(p) for p in gardes], [PeutEncaisser])
+
+    def test_lecture_factures_bornee_au_module_ventes(self):
+        """ERR-ASEC11-LISTE-FACTURES (C-ASEC-004, clause ASEC11) — liste,
+        fiche et lectures annexes d'une facture : 403 pour un rôle sans aucun
+        code du module ventes (Commercial terrain, Technicien, Admin RH) ;
+        Directeur, Commercial et Viewer (``ventes_voir``) lisent toujours."""
+        from apps.roles.models import Role
+        viewer = User.objects.create_user(
+            username=f'asec29-{_nxt()}', password='x', role_legacy='normal',
+            role=Role.objects.get(company=self.company, nom='Viewer'),
+            company=self.company)
+        lecteurs = {nom: self.users[nom] for nom in AUTORISES}
+        lecteurs['Viewer'] = viewer
+        facture = self._facture(self.users['Directeur'])
+        base = '/api/django/ventes/factures/'
+        urls = (base, base + 'kpis/', f'{base}{facture.id}/',
+                f'{base}{facture.id}/paiements/',
+                f'{base}{facture.id}/historique/')
+        for nom in ('Commercial terrain', 'Technicien', 'Admin RH'):
+            api = self._api(self.users[nom])
+            for url in urls:
+                with self.subTest(role=nom, url=url):
+                    r = api.get(url)
+                    self.assertEqual(r.status_code, 403,
+                                     getattr(r, 'data', None))
+        for nom, user in lecteurs.items():
+            api = self._api(user)
+            r = api.get(base)
+            with self.subTest(role=nom, url=base):
+                self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+            mienne = self._facture(user)
+            r = api.get(f'{base}{mienne.id}/')
+            with self.subTest(role=nom, url='fiche'):
+                self.assertEqual(r.status_code, 200, getattr(r, 'data', None))

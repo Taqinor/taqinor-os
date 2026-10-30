@@ -13,7 +13,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin
+from .facture_gardes import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from . import openapi_docs as D
 from ..models import Facture
 from ..serializers_facturation import FactureListeSerializer, FactureSerializer
@@ -52,7 +53,7 @@ class FactureLotActionsMixin:
         'total_a_echoir_7j': drf_serializers.CharField(),
     }))
     @action(detail=False, methods=['get'], url_path='kpis',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureFactures])
     def kpis(self, request):
         """AUD157 (FAC-13) — LES KPI MONÉTAIRES DE L'ÉCRAN FACTURES, calculés
         par le serveur.

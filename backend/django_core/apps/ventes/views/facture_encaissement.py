@@ -13,10 +13,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    IsAnyRole, IsResponsableOrAdmin,
+    IsResponsableOrAdmin,
 )
 from . import openapi_docs as D
-from .facture_gardes import PeutEncaisser
+from .facture_gardes import LectureFactures, PeutEncaisser
 from ..domain.encaissements import proposer_arrondi_caisse
 from ..models import Facture, Paiement
 from ..openapi_params import qstr
@@ -33,7 +33,7 @@ class FactureEncaissementActionsMixin:
 
     @extend_schema(responses=PaiementSerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='paiements',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureFactures])
     def paiements(self, request, pk=None):
         """Liste les paiements enregistrés sur cette facture."""
         facture = self.get_object()
@@ -46,7 +46,7 @@ class FactureEncaissementActionsMixin:
     @extend_schema(parameters=[qstr('mode')],
                    responses=D.ArrondiCaisseResponse)
     @action(detail=True, methods=['get'], url_path='arrondi-caisse',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureFactures])
     def arrondi_caisse(self, request, pk=None):
         """ZFAC11 — propose le reste à payer ARRONDI au pas de caisse société
         pour un règlement EN ESPÈCES (``?mode=especes``, défaut espèces).

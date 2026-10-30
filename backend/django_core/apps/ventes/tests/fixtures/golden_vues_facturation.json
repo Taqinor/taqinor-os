@@ -125,7 +125,7 @@
    "IsResponsableOrAdmin"
   ],
   "arrondi_caisse": [
-   "IsAnyRole"
+   "LectureFactures"
   ],
   "bulk": [
    "IsResponsableOrAdmin"
@@ -158,7 +158,7 @@
    "IsResponsableOrAdmin"
   ],
   "emails": [
-   "IsAnyRole"
+   "LectureFactures"
   ],
   "emettre": [
    "IsResponsableOrAdmin"
@@ -182,10 +182,10 @@
    "IsResponsableOrAdmin"
   ],
   "historique": [
-   "IsAnyRole"
+   "LectureFactures"
   ],
   "kpis": [
-   "IsAnyRole"
+   "LectureFactures"
   ],
   "liberer_retenue": [
    "IsResponsableOrAdmin"
@@ -194,7 +194,7 @@
    "IsResponsableOrAdmin"
   ],
   "list": [
-   "IsAnyRole"
+   "LectureFactures"
   ],
   "marquer_payee": [
    "IsAdminRole"
@@ -204,7 +204,7 @@
    "IsResponsableOrAdmin"
   ],
   "paiements": [
-   "IsAnyRole"
+   "LectureFactures"
   ],
   "partial_update": [
    "IsResponsableOrAdmin"
@@ -216,7 +216,7 @@
    "IsResponsableOrAdmin"
   ],
   "relances": [
-   "IsAnyRole"
+   "LectureFactures"
   ],
   "remettre_brouillon": [
    "IsResponsableOrAdmin"
@@ -228,7 +228,7 @@
    "IsResponsableOrAdmin"
   ],
   "retrieve": [
-   "IsAnyRole"
+   "LectureFactures"
   ],
   "revoquer_lien_paiement": [
    "IsResponsableOrAdmin"
