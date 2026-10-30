@@ -196,7 +196,11 @@ etape('P1.5', ['ALEA17', 'ALEA18', 'ALEA29'], async ({ page }) => {
   await lat.fill('33.5731104')
   await page.locator('#lf-gps-lng').fill('-7.5898434')
   await expect(page.getByText('✓ Enregistré').first()).toBeVisible({ timeout: 30_000 })
-  await page.waitForTimeout(6000)
+  // Attente sur condition (jamais un sommeil fixe) : réseau au repos ET le chip reste « Enregistré »
+  // — une ré-édition du brouillon le ferait retomber (draftCore : saved → idle) avant un 2e PATCH.
+  await page.waitForLoadState('networkidle', { timeout: 30_000 })
+  await expect(page.getByText('✓ Enregistré').first()).toBeVisible()
+  await expect(page.getByText('Enregistrement…')).toHaveCount(0)
   expect(patchs.length, `un seul PATCH (vu : ${patchs.join(' | ')})`).toBe(1)
   expect(statuts, 'PATCH 200').toEqual([200])
   await expect(page.locator('#lf-gps-lat')).toHaveValue(/^33\.57311/)
@@ -210,7 +214,9 @@ etape('P1.5', ['ALEA17', 'ALEA18', 'ALEA29'], async ({ page }) => {
   await ouvrirFicheContact(page, id)
   await expect(page.locator('#lf-gps-lat')).toHaveValue(/^33\.57311/)
   await expect(page.locator('#lf-gps-lng')).toHaveValue(/^-7\.58984/)
-  await page.waitForTimeout(4000)
+  // Fiche relue et réseau au repos : aucune sauvegarde en cours ni brouillon en attente.
+  await page.waitForLoadState('networkidle', { timeout: 30_000 })
+  await expect(page.getByText('Enregistrement…')).toHaveCount(0)
   expect(patchs.length, 'aucune écriture sans modification').toBe(0)
   // ALEA29 : un PATCH {} n'avance ni date_modification ni updated_by.
   const avant = await lireJson(await page.request.get(`${API_DJANGO}/crm/leads/${id}/`), 'avant PATCH {}')
