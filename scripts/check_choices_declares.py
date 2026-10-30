@@ -681,29 +681,14 @@ REFUS = {
         ("/sav/action-requise", "COMPORTEMENT")],
     # SPL195 — le modèle tarifaire (et sa promesse QF5) a quitté solar.js.
     "frontend/src/features/ventes/calc/tarifs.js": [("computeROI", "NOMBRES")],
-    "frontend/src/features/ventes/solar.js": [
+    # SPL198 — les totaux canoniques (et leurs promesses) ont quitté solar.js.
+    "frontend/src/features/ventes/calc/totaux.js": [
         # ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION (28/09) — deux promesses
         # decrivent le MIROIR de fonctions (familles_servables /
         # deux_options_declarees), un comportement ; la liste
         # SCENARIOS_ALTERNATIVE, elle, est CONVERTIE (source-choix:).
         ("familles_des_lignes", "COMPORTEMENT"),
         ("miroir de `deux_options_declarees`", "COMPORTEMENT"),
-        # STKCAT10 : regle d'emission du role structure portee de composition.py (comportement)
-        ("miroir de `composition.py`", "COMPORTEMENT"),
-        # PVOND (2026-08-18) — le commentaire decrit l'avertissement « vivier
-        # batterie vide », un comportement, pas une liste de valeurs.
-        ("livrer un kit silencieusement sans stockage", "COMPORTEMENT"),
-        # L-2OPT (25/08) — la fusion role-aware decrit un COMPORTEMENT aligne
-        # sur services.fusionner_kits (batterie/hybride=avec, reseau=sans),
-        # pas un vocabulaire de choix.
-        ("ligne de RÔLE (correctif orchestrateur", "COMPORTEMENT"),
-        # Doctrine 25/08 — la garde miroir de `depart_dans_horizon` est un
-        # COMPORTEMENT (choix pur payback hors horizon), pas une liste.
-        ("GARDE DÉPART-HORS-HORIZON", "COMPORTEMENT"),
-        ("MIROIR de la source Python", "NOMBRES"),
-        ("plafonds cumulatifs", "NOMBRES"),
-        ("constants_82_21.py", "NOMBRES"),
-        ("injection_annuelle", "COMPORTEMENT"),
         # QJR402 (02/09/2026) — la phrase ne precede AUCUNE liste : elle donne
         # la CONDITION d'application de QF9 (« seulement sur un devis dont
         # l'alternative est DECLAREE »), miroir des predicats de bord
@@ -711,20 +696,43 @@ REFUS = {
         # ('sans'/'avec') vient de `DevisLigne.Variante` et est lu ligne a
         # ligne dans un `if`, pas rendu comme un choix a l'ecran.
         ("deux_options`/`alternative_declaree", "COMPORTEMENT"),
-        # PR #752 (30/09/2026) — deux miroirs de FONCTIONS serveur, aucune
-        # liste de valeurs : le drapeau « jamais remboursé » de
-        # `pricing.compute_cashflow_payback` (ERR-QAC-PAYBACK-JAMAIS-
-        # REMBOURSE-25-ANS) et le plancher à 0 du HT net de
-        # `_canonical_totaux` (ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF).
-        ("PAYBACK-JAMAIS-REMBOURSE-25-ANS — miroir de `pricing`",
-         "COMPORTEMENT"),
-        ("REMISE-100-NEGATIF — HT net borné à 0 (miroir de", "COMPORTEMENT"),
         # ATOT25 (08/10/2026) — miroirs de FONCTIONS serveur (répartition de
         # la remise par panier, plus fort reste) et alignement d'INDICES d'un
         # tableau rendu : aucune liste de valeurs.
         ("Miroir de `builder._annoter_remise`", "COMPORTEMENT"),
         ("par `repartirRemiseParLigne` (miroir de", "COMPORTEMENT"),
         ("`parLigne` est ALIGNÉ sur `lines`", "COMPORTEMENT")],
+    # SPL200 — la recomposition des lignes (et sa promesse L-2OPT) a quitté solar.js.
+    "frontend/src/features/ventes/calc/recomposition.js": [
+        # L-2OPT (25/08) — la fusion role-aware decrit un COMPORTEMENT aligne
+        # sur services.fusionner_kits (batterie/hybride=avec, reseau=sans),
+        # pas un vocabulaire de choix.
+        ("ligne de RÔLE (correctif orchestrateur", "COMPORTEMENT")],
+    "frontend/src/features/ventes/solar.js": [
+        # STKCAT10 : regle d'emission du role structure portee de composition.py (comportement)
+        ("miroir de `composition.py`", "COMPORTEMENT"),
+        # PVOND (2026-08-18) — le commentaire decrit l'avertissement « vivier
+        # batterie vide », un comportement, pas une liste de valeurs.
+        ("livrer un kit silencieusement sans stockage", "COMPORTEMENT"),
+        # Doctrine 25/08 — la garde miroir de `depart_dans_horizon` est un
+        # COMPORTEMENT (choix pur payback hors horizon), pas une liste.
+        ("GARDE DÉPART-HORS-HORIZON", "COMPORTEMENT"),
+        ("MIROIR de la source Python", "NOMBRES"),
+        ("plafonds cumulatifs", "NOMBRES"),
+        ("constants_82_21.py", "NOMBRES"),
+        ("injection_annuelle", "COMPORTEMENT"),
+        # PR #752 (30/09/2026) — miroir d'une FONCTION serveur, aucune liste
+        # de valeurs : le plancher à 0 du HT net de `_canonical_totaux`
+        # (ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF).
+        ("REMISE-100-NEGATIF — HT net borné à 0 (miroir de", "COMPORTEMENT")],
+    # SPL199 — computeROI (et sa promesse PR #752) a quitté solar.js.
+    "frontend/src/features/ventes/calc/roi.js": [
+        # PR #752 (30/09/2026) — miroir d'une FONCTION serveur, aucune liste
+        # de valeurs : le drapeau « jamais remboursé » de
+        # `pricing.compute_cashflow_payback` (ERR-QAC-PAYBACK-JAMAIS-
+        # REMBOURSE-25-ANS).
+        ("PAYBACK-JAMAIS-REMBOURSE-25-ANS — miroir de `pricing`",
+         "COMPORTEMENT")],
     # AGNR36 (08/10/2026) — classement d'une ligne : miroir d'une FONCTION
     # serveur (`utils/options.texte_classement`), pas un vocabulaire.
     "frontend/src/features/ventes/quote/reouverture.js": [

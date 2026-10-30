@@ -2,6 +2,7 @@
   "initRoofToolPro8_appels": [
     {
       "rendementPvgis": null,
+      "proposerConsommation": "[fn]",
       "maptilerKey": "cle-d-essai",
       "reducedMotion": false,
       "hydrate": {

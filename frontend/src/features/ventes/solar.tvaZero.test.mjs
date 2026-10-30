@@ -5,8 +5,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ttcFromHt, ttcExactFromHt, htFromTtc, tauxTvaOf, tauxTvaOuDefaut,
-  totauxCanoniquesTtc, TVA_STANDARD_DEFAUT,
+  TVA_STANDARD_DEFAUT,
 } from './solar.js'
+import { totauxCanoniquesTtc } from './calc/totaux.js'
 import { lignesServeurVersEcran } from './quote/lignesEcran.js'
 
 test('null / vide / NaN ⇒ défaut ; 0 ⇒ 0', () => {

@@ -27,7 +27,7 @@ import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 // PVOND (fondateur 18/08) — la classification produit reste UNE seule
 // source : la même que le générateur de devis, jamais réimplémentée ici.
-import { classifyProduct, isPompe } from '../../features/ventes/solar.js'
+import { classifyProduct, isPompe } from '../../features/ventes/calc/classification.js'
 import { libellesTarifForfaitaire, libelleRoleDevis, aideRoleDevis, useChampInitial } from '../../features/stock/libellesProduitCi.js'
 // STKCAT20 — la même source que le sélecteur de structures (STKCAT11) : la
 // famille RÉELLE d'un produit vient de sa catégorie TYPÉE, jamais du seul nom.

@@ -23,7 +23,7 @@ import {
 // PVOND (fondateur 18/08) — même verrou de complétude que la bannière
 // « Onduleur(s) non chiffrable(s) » du générateur de devis : visible ICI,
 // avant qu'un onduleur incomplet ne surprenne un devis.
-import { onduleurSpecsManquantes } from '../../features/ventes/solar.js'
+import { onduleurSpecsManquantes } from '../../features/ventes/calc/classification.js'
 
 /* ============================================================================
    J142 — Stock refonte : le catalogue produits passe au moteur DataTable

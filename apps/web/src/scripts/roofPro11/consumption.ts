@@ -41,6 +41,51 @@ import { annualSavingsMad, billToAnnualKwh, neededPanelsForTarget, tariffForCity
 import { fmtSavings } from '../../lib/productionWindow';
 import { fmt as fmtInt, esc } from './dom';
 import { type Ctx } from './context';
+import { appliquerHydratationAuCtx, type HydratationAtelier } from './hydratation'; // ACAL311
+import { deserializeConsumptionFromLayout, lireCouchesDocument } from './prefill'; // ACAL311
+
+/** ACAL311 — corps de `POST calepinages/<pk>/consommation/proposer/` (contrat
+ *  `calepinage_consommation_proposee.json` : `corps_lead`/`corps_factures`/`corps_csv`/
+ *  `corps_ramadan`). L'atelier n'envoie que ce que l'utilisateur a SAISI. */
+export interface CorpsPropositionConsommation {
+  source: 'lead' | 'factures' | 'appareils' | 'csv';
+  classe?: string;
+  factures?: { hiver_mad: number; ete_mad?: number; ete_differente?: boolean; classe?: string };
+  csv?: { contenu: string; colonne?: string; unite?: string };
+  /** `jour` = une DATE ISO (AAAA-MM-JJ) — le service refuse un rang (409 `ramadan.jour`). */
+  ramadan?: { actif: boolean; jour: string };
+}
+
+/** ACAL311 — la réponse 200 (contrat, clé `exemple`). */
+export interface PropositionConsommation {
+  consumption: Record<string, unknown> | null;
+  kwh_annuel: number | null;
+  courbe24: number[] | null;
+  saisons: { ete?: number; hiver?: number };
+  avertissements: string[];
+}
+
+/** ACAL311 — le refus DÉCODÉ par la page hôte (`refusServeur` de l'ERP). */
+export interface RefusPropositionConsommation {
+  message?: string;
+  champs?: Record<string, string>;
+}
+
+/** ACAL311 — les classes tarifaires SAISISSABLES (`serializers_conso.classes_tarifaires`,
+ *  `apps/parametres/tariff.py::CLASSES_INVERSION`) : jamais supposée, l'option vide reste
+ *  le défaut et le serveur nomme le champ quand elle manque. */
+const CLASSES_TARIFAIRES: ReadonlyArray<[string, string]> = [
+  ['residentiel', 'Résidentiel'], ['force_motrice', 'Force motrice'], ['agricole', 'Agricole'],
+];
+
+/** ACAL311 — traduit la réponse servie en hydratation, par les MÊMES lecteurs que le boot
+ *  (`deserializeConsumptionFromLayout` + la provenance de `lireCouchesDocument`). `null`
+ *  quand le serveur n'a rien pu convertir (`consumption: null`). PURE. */
+export function hydratationDeProposition(rep: PropositionConsommation | null | undefined): HydratationAtelier | null {
+  if (!rep || !rep.consumption || typeof rep.consumption !== 'object') return null;
+  const bloc = { consumption: rep.consumption };
+  return { ...deserializeConsumptionFromLayout(bloc), consSource: lireCouchesDocument(bloc).consSource };
+}
 
 /** Références DOM du panneau « Affiner ma consommation ». */
 export interface ConsumptionDom {
@@ -81,6 +126,9 @@ export interface ConsumptionDom {
   evKmEl: HTMLInputElement | null;
   applNoteEl: HTMLElement | null;
   applListEl: HTMLElement | null;
+  /** ACAL311 — la facture saisie (`rp9-bill`) et son équivalent annuel (`rp9-bill-kwh`). */
+  billEl?: HTMLInputElement | null;
+  billKwhEl?: HTMLElement | null;
 }
 
 /** Dépendances injectées (optimiseur + facture + formatage). */
@@ -107,14 +155,29 @@ export interface Consumption {
   renderConsumptionSummaryOnly: () => void;
   /** Attache tous les écouteurs d'événements du panneau de consommation. */
   wire: () => void;
+  /** ACAL311 — kWh/an SERVIS (barème société) : ceux de la dernière proposition de la
+   *  session, sinon ceux du document relu quand il porte `source.bareme` ; `null` sinon
+   *  (l'appelant retombe sur `billToAnnualKwh`, l'estimation indicative). */
+  kwhServi: () => number | null;
+  /** ACAL311 — demande une proposition au serveur (sans option : `false`, rien n'est fait). */
+  proposer: (corps: CorpsPropositionConsommation) => Promise<boolean>;
 }
 
 export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: ConsumptionDeps): Consumption {
   const { renderActive, clampNeeded, monthlyBill, fmt1 } = deps;
 
-  /** kWh/jour dérivé de la facture (le socle). billToAnnualKwh ÷ 365. */
+  // ACAL311 — kWh/an de la dernière proposition SERVIE dans la session (barème société).
+  let kwhPropose: number | null = null;
+  function kwhServi(): number | null {
+    if (kwhPropose != null) return kwhPropose;
+    const relu = ctx.documentRelu?.billKwh;
+    return ctx.consSource?.bareme === 'societe' && !ctx.consGesteSession && typeof relu === 'number' ? relu : null;
+  }
+
+  /** kWh/jour du socle : les kWh SERVIS (barème société, ACAL311), sinon l'estimation
+   *  indicative de la facture (billToAnnualKwh ÷ 365). */
   function billDailyKwh(): number {
-    const annual = billToAnnualKwh(monthlyBill());
+    const annual = kwhServi() ?? billToAnnualKwh(monthlyBill());
     return annual > 0 ? annual / 365 : 0;
   }
 
@@ -540,7 +603,174 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     }
   }
 
+  // ═══════════ ACAL311 — la consommation PROPOSÉE par le serveur ═══════════
+  // Le constructeur appelle l'option injectée `proposerConsommation(corps)` (patron de
+  // `rendementPvgis`) ; la réponse est posée dans le ctx par `appliquerHydratationAuCtx`, la
+  // MÊME fonction qu'à l'hydratation, et `serializeConsumption` la réémet telle quelle.
+  const proposerOpt = ctx.opts?.proposerConsommation;
+  let dernierCorps: CorpsPropositionConsommation | null = null;
+  let jeton = 0;
+  let noteEl: HTMLElement | null = null;
+  const refusEls = new Map<string, HTMLElement>();
+  let refusGeneralEl: HTMLElement | null = null;
+  let avisEl: HTMLElement | null = null;
+
+  /** Le nom du champ refusé ramené à sa saisie (`factures.hiver_mad` → `factures`). */
+  function racineChamp(champ: string): string {
+    const r = champ.split(/[.[]/)[0];
+    return refusEls.has(r) ? r : '';
+  }
+  function effacerRefus() {
+    for (const el of refusEls.values()) { el.textContent = ''; el.hidden = true; }
+    if (refusGeneralEl) { refusGeneralEl.textContent = ''; refusGeneralEl.hidden = true; }
+  }
+  /** Le refus (décodé par la page hôte, `refusServeur`) affiché SOUS le champ qu'il nomme. */
+  function afficherRefus(refus: RefusPropositionConsommation | null | undefined) {
+    effacerRefus();
+    const champs = refus && typeof refus === 'object' && refus.champs ? refus.champs : {};
+    let place = false;
+    for (const [champ, motif] of Object.entries(champs)) {
+      const el = refusEls.get(racineChamp(champ));
+      if (!el || typeof motif !== 'string') continue;
+      el.textContent = motif;
+      el.hidden = false;
+      place = true;
+    }
+    if (!place && refusGeneralEl) {
+      const msg = refus && typeof refus.message === 'string' && refus.message ? refus.message : '';
+      refusGeneralEl.textContent = msg || 'Proposition du serveur indisponible : estimation (barème indicatif) conservée.';
+      refusGeneralEl.hidden = false;
+    }
+  }
+  /** La provenance des kWh affichés : barème société (servis) ou estimation indicative. */
+  function renderNoteBareme() {
+    if (!noteEl) return;
+    const servi = kwhServi();
+    noteEl.textContent = servi != null
+      ? `${fmtInt(Math.round(servi))} kWh/an — barème société`
+      : 'estimation (barème indicatif)';
+    noteEl.dataset.bareme = servi != null ? 'societe' : 'estimation';
+    if (servi != null && dom.billKwhEl) dom.billKwhEl.textContent = `${fmtInt(Math.round(servi))} kWh`;
+  }
+
+  /** Applique une proposition servie : UNE écriture du ctx, celle de l'hydratation. */
+  function appliquerProposition(rep: PropositionConsommation): boolean {
+    const h = hydratationDeProposition(rep);
+    if (avisEl) avisEl.textContent = Array.isArray(rep?.avertissements) ? rep.avertissements.join(' ') : '';
+    if (!h) return false;
+    appliquerHydratationAuCtx(ctx, h);
+    // La courbe servie se lit comme une courbe RELUE : aucun geste depuis, jamais recomposée.
+    ctx.consGesteSession = false;
+    cibleRelue = undefined;
+    kwhPropose = typeof rep.kwh_annuel === 'number' && Number.isFinite(rep.kwh_annuel) ? rep.kwh_annuel : null;
+    renderNoteBareme();
+    renderConsumption();
+    return true;
+  }
+
+  async function proposer(corps: CorpsPropositionConsommation): Promise<boolean> {
+    if (typeof proposerOpt !== 'function') return false;
+    const n = ++jeton;
+    effacerRefus();
+    try {
+      const rep = await proposerOpt(corps);
+      if (n !== jeton) return false; // une saisie plus récente a pris la main
+      return appliquerProposition(rep);
+    } catch (refus) {
+      if (n !== jeton) return false;
+      afficherRefus(refus as RefusPropositionConsommation);
+      return false;
+    }
+  }
+
+  /** Le corps de base (sans Ramadan) augmenté du Ramadan coché. */
+  function avecRamadan(base: CorpsPropositionConsommation, actif: boolean, jour: string): CorpsPropositionConsommation {
+    return actif ? { ...base, ramadan: { actif: true, jour } } : base;
+  }
+
+  /** Monte les commandes du panneau. Option absente (pages publiques) : rien ne change. */
+  function monterProposition() {
+    const { consPanelEl, billEl } = dom;
+    if (proposerOpt === undefined || !consPanelEl) return;
+    noteEl = document.createElement('p');
+    noteEl.className = 'text-xs text-lune-faint';
+    noteEl.setAttribute('data-cons-bareme', '');
+    consPanelEl.prepend(noteEl);
+    renderNoteBareme();
+    if (typeof proposerOpt !== 'function') return; // `null` : estimation seule
+    const bloc = document.createElement('div');
+    bloc.setAttribute('data-cons-proposer', '');
+    bloc.className = 'space-y-2';
+    const refus = (cle: string) =>
+      `<p data-refus-champ="${cle}" hidden role="alert" class="text-xs text-red-300"></p>`;
+    bloc.innerHTML = `
+      <label class="block text-xs text-lune-faint">Classe tarifaire
+        <select data-cons-classe class="ml-2"><option value="">— à saisir —</option>${CLASSES_TARIFAIRES
+          .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select></label>
+      ${refus('classe')}
+      <button type="button" data-cons-action="lead" class="btn-ghost text-xs">Reprendre du lead</button>
+      <label class="block text-xs text-lune-faint">Importer une courbe CSV
+        <input type="file" accept=".csv,text/csv,text/plain" data-cons-csv class="ml-2" /></label>
+      ${refus('csv')}
+      <label class="block text-xs text-lune-faint"><input type="checkbox" data-cons-ramadan /> Ramadan
+        <input type="date" data-cons-ramadan-jour aria-label="Jour du Ramadan" class="ml-2" /></label>
+      ${refus('ramadan')}
+      <p data-cons-refus hidden role="alert" class="text-xs text-red-300"></p>
+      <p data-cons-avertissements class="text-xs text-lune-faint"></p>`;
+    consPanelEl.insertBefore(bloc, noteEl.nextSibling);
+    for (const cle of ['classe', 'csv', 'ramadan']) {
+      const el = bloc.querySelector<HTMLElement>(`[data-refus-champ="${cle}"]`);
+      if (el) refusEls.set(cle, el);
+    }
+    // Le refus d'une facture s'affiche sous la facture elle-même.
+    if (billEl) {
+      const el = document.createElement('p');
+      el.setAttribute('data-refus-champ', 'factures');
+      el.setAttribute('role', 'alert');
+      el.className = 'text-xs text-red-300';
+      el.hidden = true;
+      billEl.insertAdjacentElement('afterend', el);
+      refusEls.set('factures', el);
+    }
+    refusGeneralEl = bloc.querySelector<HTMLElement>('[data-cons-refus]');
+    avisEl = bloc.querySelector<HTMLElement>('[data-cons-avertissements]');
+    const classeEl = bloc.querySelector<HTMLSelectElement>('[data-cons-classe]');
+    const ramadanEl = bloc.querySelector<HTMLInputElement>('[data-cons-ramadan]');
+    const jourEl = bloc.querySelector<HTMLInputElement>('[data-cons-ramadan-jour]');
+    const classe = () => (classeEl?.value ? { classe: classeEl.value } : {});
+    const lancer = (base: CorpsPropositionConsommation) => {
+      dernierCorps = base;
+      void proposer(avecRamadan(base, Boolean(ramadanEl?.checked), jourEl?.value ?? ''));
+    };
+    bloc.querySelector('[data-cons-action="lead"]')?.addEventListener('click', () =>
+      lancer({ source: 'lead', ...classe() }));
+    bloc.querySelector<HTMLInputElement>('[data-cons-csv]')?.addEventListener('change', async (e) => {
+      const fichier = (e.target as HTMLInputElement).files?.[0];
+      if (!fichier) return;
+      lancer({ source: 'csv', csv: { contenu: await fichier.text() } });
+    });
+    const surRamadan = () => lancer(dernierCorps ?? { source: 'lead', ...classe() });
+    ramadanEl?.addEventListener('change', surRamadan);
+    jourEl?.addEventListener('change', () => { if (ramadanEl?.checked) surRamadan(); });
+    // Une facture saisie : les kWh viennent du serveur (barème société) — débouncé.
+    let minuterie: ReturnType<typeof setTimeout> | null = null;
+    billEl?.addEventListener('input', () => {
+      kwhPropose = null; // l'estimation reprend tant que le serveur n'a pas répondu
+      ++jeton;
+      renderNoteBareme();
+      if (minuterie != null) clearTimeout(minuterie);
+      minuterie = setTimeout(() => {
+        minuterie = null;
+        const mad = monthlyBill();
+        if (mad <= 0) return;
+        const cl = classeEl?.value;
+        lancer({ source: 'factures', factures: { hiver_mad: mad, ...(cl ? { classe: cl } : {}) } });
+      }, 600);
+    });
+  }
+
   function wire() {
+    monterProposition(); // ACAL311
     const {
       consToggleEl, consPanelEl, applKindEl, applAcEl, applEvEl, acBtuEl, acEerEl, acHoursEl,
       acWattsEl, applAddEl, evKmEl, evKwEl, evHoursEl, applNoteEl, applListEl, consRecalEl,
@@ -789,5 +1019,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     renderApplianceList,
     renderConsumptionSummaryOnly,
     wire,
+    kwhServi, // ACAL311
+    proposer, // ACAL311
   };
 }

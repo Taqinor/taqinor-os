@@ -156,9 +156,9 @@ def extract_roof_config(layout):
         return {}
 
     pans = []
-    total_surface = 0.0
+    surface_cumulee_m2 = 0.0
     total_panels = 0
-    total_kwc = 0.0
+    kwc_cumule = 0.0
     best = None  # pan le plus puissant → orientation principale
     for a in areas:
         if not isinstance(a, dict):
@@ -233,9 +233,9 @@ def extract_roof_config(layout):
             'source_orientation': orientation['source_orientation'],
         }
         pans.append(pan)
-        total_surface += surface
+        surface_cumulee_m2 += surface
         total_panels += count
-        total_kwc += kwc
+        kwc_cumule += kwc
         if best is None or kwc > best['kwc']:
             best = pan
 
@@ -243,10 +243,10 @@ def extract_roof_config(layout):
         return {}
 
     cfg = {
-        'surface_m2': round(total_surface, 2),
+        'surface_m2': round(surface_cumulee_m2, 2),
         'nb_pans': len(pans),
         'nb_panneaux': total_panels,
-        'kwc': round(total_kwc, 3),
+        'kwc': round(kwc_cumule, 3),
         'pans': pans,
     }
     if best is not None:

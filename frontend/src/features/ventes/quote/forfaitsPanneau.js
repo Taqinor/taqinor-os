@@ -11,7 +11,8 @@
 // du catalogue, le compte vient des lignes.
 //
 // Module PUR (aucun React) : exécuté par `node --test` / vitest.
-import { isPanel, ttcExactFromHt, tauxTvaOf } from '../solar.js'
+import { ttcExactFromHt, tauxTvaOf } from '../solar.js'
+import { isPanel } from '../calc/classification.js'
 
 const TYPES_STRUCTURE = new Set(['section', 'note'])
 const MICRO = 1000000n

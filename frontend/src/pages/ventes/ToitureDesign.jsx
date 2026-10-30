@@ -305,6 +305,8 @@ function AtelierToiture({
     setRepereErreur,
     setStatus,
     utilisateurCourantId,
+    // ACAL311 — la consommation proposée par le serveur (barème société), pour l'atelier.
+    proposerConsommation: calepinageApi.calepinages.proposerConsommation,
   })
 
   // ── ACAL85 — GARDE DE SORTIE (les trois modes) ─────────────────────────────

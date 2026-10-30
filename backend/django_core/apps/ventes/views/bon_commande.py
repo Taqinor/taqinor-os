@@ -694,6 +694,16 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         # légal à l'émission) ; facture + lignes recopiées restent atomiques.
         from ..utils.company_settings import create_provisoire
         with transaction.atomic():
+            # ERR-FACT-ACOMPTE-PLUS-BC-DOUBLE — la facture de BC est une
+            # facture COMPLÈTE (même panier) : comme ``facturer-complet``
+            # (VNT65), les brouillons de la vente (acompte auto VNT62) sont
+            # ANNULÉS, jamais additionnés au prix convenu.
+            if bc.devis_id:
+                from ..domain.annulation_facture import (
+                    retirer_brouillons_de_la_vente)
+                retirer_brouillons_de_la_vente(
+                    bc.devis, user=request.user,
+                    motif='Remplacé par la facture du bon de commande')
             facture = create_provisoire(_create_facture)
         data = FactureSerializer(facture).data
         # FG51 — avertissement DOUX (jamais bloquant) : on facture la livraison

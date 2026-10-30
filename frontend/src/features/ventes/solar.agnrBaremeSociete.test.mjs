@@ -9,7 +9,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { computeROI, ttcExactFromHt, htFromTtc} from './solar.js'
+import { ttcExactFromHt, htFromTtc} from './solar.js'
+import { computeROI } from './calc/roi.js'
 import { baremeDepuisProfil, consoAnnuelleDepuisFactures, controlerFacturesSaisies, controlerKwhDeclare, consoDescendDesFactures, chargesFixesTtc } from './calc/tarifs.js'
 import { exempleContrat } from '../../test/fixtures/contractSamples.js'
 

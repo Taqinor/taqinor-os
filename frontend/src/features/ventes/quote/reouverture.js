@@ -10,9 +10,12 @@
 //
 // Fonction PURE (node --test) ; mêmes prédicats que l'écran (solar.js).
 import {
-  parseWatt, structureRoleForName, classifyProduct,
-  isPanel, isOffgridInverter, isReseauInverter, isHybridInverter, isPompe, texteClassement,
+  structureRoleForName,
 } from '../solar.js'
+import {
+  parseWatt, classifyProduct, isPanel, isOffgridInverter, isReseauInverter, isHybridInverter,
+  isPompe, texteClassement,
+} from '../calc/classification.js'
 
 const quantite = (l) => parseFloat(l?.quantite) || 0
 const typeLigne = (l) => l?.typeLigne ?? l?.type_ligne ?? 'produit'

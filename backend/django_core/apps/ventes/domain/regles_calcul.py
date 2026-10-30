@@ -26,8 +26,12 @@ où le calcul diverge ; c'est le même moteur, jamais un second.
 REGLES_ORIGINE = 1
 REGLES_CORRIGEES = 2
 REGLES_CORRIGEES_2710 = 3
+#: Niveau 4 (D-CI-SENSIB-ENVOYES, fondateur 30/10/2026) : sensibilités C&I du
+#: scénario production par le moteur du central (ERR-CI-SENSIBILITE-P90-INVERSEE).
+#: La migration 0143 laisse à 3 tout devis non brouillon : il garde son tableau.
+REGLES_SENSIBILITES_3010 = 4
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_CORRIGEES_2710
+REGLES_COURANTES = REGLES_SENSIBILITES_3010
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

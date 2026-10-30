@@ -309,6 +309,13 @@ table td.v{text-align:right;font-weight:700;color:#0f172a;}
 def _logo_html(ctx):
     uri = ctx.get('logo_uri')
     if uri:
+        # ACHT112 — même module image que les devis, par la porte cross-app
+        # de ventes (selectors) ; le rapport n'est pas un devis (règle #4).
+        from apps.ventes.selectors import logo_entete_html
+        img = logo_entete_html(uri)
+        if img:
+            return f'<div class="hdr-logo">{img}</div>'
+        # Non raster (SVG, corrompu) : l'URI telle quelle, comme avant.
         return (f'<div class="hdr-logo"><img src="{escape(uri, quote=True)}" '
                 f'alt="logo"></div>')
     nom = escape(str(ctx.get('entreprise_nom') or 'TAQINOR'))

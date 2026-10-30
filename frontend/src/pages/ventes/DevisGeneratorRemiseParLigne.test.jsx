@@ -12,7 +12,7 @@
 // vitest comme eux — voir DevisLineRowRemise.test.jsx pour l'AFFICHAGE.
 import { describe, it, expect } from 'vitest'
 import { repartirRemiseParLigne, PAS_ARRONDI_DEVIS } from '../../features/ventes/remise'
-import { optionTotalsTTC, totauxCanoniquesTtc } from '../../features/ventes/solar'
+import { optionTotalsTTC, totauxCanoniquesTtc } from '../../features/ventes/calc/totaux.js'
 
 // Même formule que DevisGenerator.jsx (`lignesRemiseesTtc`) et DevisLineRow.jsx
 // (`lineTtc`) : cet écran est 100 % TTC, jamais une conversion HT.

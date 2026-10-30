@@ -6,7 +6,7 @@ import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
   typeOfProduit, familleAttendue,
 } from '../features/stock/catalogue'
-import { classifyProduct } from '../features/ventes/solar'
+import { classifyProduct } from '../features/ventes/calc/classification.js'
 import { useCanCreateProduit } from '../hooks/useHasPermission'
 import { useActiveDescendant } from '../hooks/useActiveDescendant'
 import { formatMAD } from '../lib/format'

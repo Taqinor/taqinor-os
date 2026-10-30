@@ -19,8 +19,10 @@ from apps.ventes.quote_engine import builder
 # Racine du dépôt : .../backend/django_core/apps/ventes/tests → remonter de 5.
 _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..'))
+# SPL207 : la classification des produits vit dans calc/classification.js.
 SOLAR_JS = os.path.join(
-    _REPO_ROOT, 'frontend', 'src', 'features', 'ventes', 'solar.js')
+    _REPO_ROOT, 'frontend', 'src', 'features', 'ventes', 'calc',
+    'classification.js')
 # Miroir backend de l'auto-remplissage écran (mêmes mots-clés, deux langages).
 # QJR71/QJR74 — ON SCANNE LE DOMAINE, PLUS UN FICHIER. La garde visait
 # `services.py` ; la vague M3 y a vidé tout corps métier (c'est désormais une

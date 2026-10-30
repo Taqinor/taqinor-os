@@ -12,9 +12,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  autoconsoAvecRatio, computeROI, batteryKwhFromLines,
-  AUTOCONSO_SANS, AUTOCONSO_AVEC, DAYS_PER_YEAR, DAYS_IN_MONTH, GHI,
+  batteryKwhFromLines,
+  GHI,
   PRODUCTIBLE_NET_FACTOR, SYSTEM_LOSS_TOTAL} from './solar.js'
+import {
+  autoconsoAvecRatio, computeROI, AUTOCONSO_SANS, AUTOCONSO_AVEC, DAYS_PER_YEAR, DAYS_IN_MONTH,
+} from './calc/roi.js'
 import { twoBillsSavings } from './calc/tarifs.js'
 
 // ── Fixture MIROIR (identique côté Python) ───────────────────────────────────

@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import * as solar from '../solar.js'
+import * as classification from '../calc/classification.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 
@@ -26,7 +27,7 @@ test('solar.js n’exporte plus les fonctions sans appelant', () => {
   }
   // Les survivants restent (aucun dégât collatéral).
   assert.equal(typeof solar.metreCableDcParPaires, 'function')
-  assert.equal(typeof solar.onduleurSpecsManquantes, 'function')
+  assert.equal(typeof classification.onduleurSpecsManquantes, 'function')
 })
 
 // AGR131 — le jumeau JS du besoin en eau (`agronomy.js`) est SUPPRIMÉ :

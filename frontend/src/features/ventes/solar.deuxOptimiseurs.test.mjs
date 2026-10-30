@@ -15,10 +15,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  fusionnerVariantes, optionTotalsTTC, batteryKwhFromLines, computeROI,
-  INVERTER_REPLACE_YEAR, comptePanneauxOption,
-  batteryCapaciteInconnue, totauxCanoniquesTtc,
+  batteryKwhFromLines,
+  comptePanneauxOption,
+  batteryCapaciteInconnue,
 } from './solar.js'
+import { fusionnerVariantes } from './calc/recomposition.js'
+import { computeROI, INVERTER_REPLACE_YEAR } from './calc/roi.js'
+import { optionTotalsTTC, totauxCanoniquesTtc } from './calc/totaux.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
 import { lignesFusionSansAvec } from './solarLignesFusionFixture.mjs'
 

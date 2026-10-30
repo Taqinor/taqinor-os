@@ -556,12 +556,12 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None, *,
             bill, millesime=(millesime if millesime is not None
                              else _bareme.MILLESIME_COURANT),
             tranches=table, charges_fixes_mad=charges_fixes_mad)
-        kwh_total = sortie['kwh_mensuel']
-        if kwh_total is None:
+        kwh_du_mois = sortie['kwh_mensuel']
+        if kwh_du_mois is None:
             # Hors plage inversable (QJR142) : on ne fabrique pas un chiffre.
             return {"kwh_mensuel": 0.0, "approximatif": approx,
                     "estimation": True, "label": ESTIMATION_LABEL}
-        return {"kwh_mensuel": round(kwh_total, 1), "approximatif": approx,
+        return {"kwh_mensuel": round(kwh_du_mois, 1), "approximatif": approx,
                 "estimation": False,
                 "label": "approximatif" if approx else ""}
 

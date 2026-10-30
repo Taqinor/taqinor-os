@@ -60,3 +60,32 @@ class RapportEnergieReperesTests(TestCase):
         b = self._chantier('apdf39-d', '1.20', '1700')
         self.assertNotEqual(_texte(render_energy_report_pdf(a, {})),
                             _texte(render_energy_report_pdf(b, {})))
+
+
+class RapportEnergieLogoTests(TestCase):
+    """ACHT112 — l'en-tête imprime le logo détouré du module image pur."""
+
+    @staticmethod
+    def _uri_fond_blanc():
+        import base64
+        import io
+        from PIL import Image, ImageDraw
+        img = Image.new('RGB', (200, 120), 'white')
+        ImageDraw.Draw(img).rectangle((60, 40, 140, 80), fill=(200, 30, 30))
+        buf = io.BytesIO()
+        img.save(buf, 'PNG')
+        return 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
+
+    def test_logo_detoure_jamais_uri_brute(self):
+        from apps.ventes.quote_engine import logo
+        from apps.installations.energy_report import _logo_html
+        uri = self._uri_fond_blanc()
+        html = _logo_html({'logo_uri': uri})
+        self.assertNotIn(uri, html)
+        attendu = logo.pour_role(logo.societe_b64(uri, 'clair'), 'entete')
+        self.assertTrue(attendu)
+        self.assertIn(attendu, html)
+
+    def test_sans_logo_nom_de_societe(self):
+        from apps.installations.energy_report import _logo_html
+        self.assertIn('Acme', _logo_html({'entreprise_nom': 'Acme'}))

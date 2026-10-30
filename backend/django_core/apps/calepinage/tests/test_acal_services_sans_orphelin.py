@@ -101,3 +101,46 @@ class ServicesSansOrphelinTest(unittest.TestCase):
             if not importe:
                 orphelins.append(nom)
         self.assertEqual(orphelins, [])
+
+
+# --- ACAL347 : le passif ``services_appeles`` du module est drainé ----------
+RACINE = BACKEND.parents[1]
+BASE_SERVICES = RACINE / 'scripts' / 'services_appeles_allow.txt'
+#: Plafond nommé (ACAL347 d) : fonctions réelles sans écran encore ouvertes.
+BASE_MAX = 5
+#: Jumeaux prouvés sans valeur, supprimés (ACAL347 c) : module -> symboles.
+JUMEAUX_SUPPRIMES = {
+    'presets.py': ('enregistrer_jeu', 'retirer_jeu'),
+    'batterie.py': ('tranches_horaires',),
+    'commentaires.py': ('commentaires_du_calepinage', 'deposer_commentaire'),
+}
+
+
+class ServicesAppelesDraineTest(unittest.TestCase):
+
+    def test_aucune_fonction_publique_de_service_sans_appelant_hors_module(
+            self):
+        import subprocess
+        import sys
+        lignes = [ligne.strip() for ligne in
+                  BASE_SERVICES.read_text(encoding='utf-8').splitlines()
+                  if ligne.strip() and not ligne.lstrip().startswith('#')
+                  and 'apps/calepinage/' in ligne]
+        self.assertLessEqual(len(lignes), BASE_MAX, lignes)
+        resultat = subprocess.run(
+            [sys.executable,
+             str(RACINE / 'scripts' / 'check_services_appeles.py'),
+             '--app', 'calepinage'],
+            capture_output=True, text=True, cwd=str(RACINE))
+        self.assertEqual(resultat.returncode, 0,
+                         resultat.stdout + resultat.stderr)
+
+    def test_les_jumeaux_supprimes_ne_reviennent_pas(self):
+        for module, symboles in JUMEAUX_SUPPRIMES.items():
+            chemin = SERVICES / module
+            if not chemin.exists():
+                continue
+            presents = _definitions(chemin)
+            for nom in symboles:
+                with self.subTest(module=module, nom=nom):
+                    self.assertNotIn(nom, presents)

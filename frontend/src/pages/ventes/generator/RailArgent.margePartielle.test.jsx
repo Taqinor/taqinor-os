@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
 import RailArgent from './RailArgent'
-import { computeBuyCostDetail, computeBuyCost } from '../../../features/ventes/solar'
+import { computeBuyCostDetail, computeBuyCost } from '../../../features/ventes/calc/totaux.js'
 
 const PRODUITS = [
   { id: 1, nom: 'Panneau 710W', prix_achat: '800', prix_vente: '1000', taux_tva: 20 },

@@ -32,11 +32,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  isPanel, isBattery, isHybridInverter, isReseauInverter, isAnyInverter, isOffgridInverter,
-  parseKwh, batteryKwhFromLines, classifyProduct,
-  texteClassement, appartientAuPanierSans, appartientAuPanierAvec, inverterCostFromLines,
-  optionTotalsTTC, avecBatterieAvailability,
+  batteryKwhFromLines,
 } from './solar.js'
+import {
+  isPanel, isBattery, isHybridInverter, isReseauInverter, isAnyInverter, isOffgridInverter,
+  parseKwh, classifyProduct, texteClassement, appartientAuPanierSans, appartientAuPanierAvec,
+  inverterCostFromLines,
+} from './calc/classification.js'
+import { optionTotalsTTC, avecBatterieAvailability } from './calc/totaux.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const CONTRAT = join(
