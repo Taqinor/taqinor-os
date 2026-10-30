@@ -1,0 +1,56 @@
+{
+  "sha": "6ce47c06f",
+  "date": "2026-10-30",
+  "groupe": "AGNR",
+  "verdict": "FAIL",
+  "couvre": [
+    "AGNR42"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P5.1",
+      "taches": [
+        "AGNR42"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-P5.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : « Créer le devis » refusé à l'écran : La connexion a été interrompue — vérifiez la liste des devis avant de recréer."
+    },
+    {
+      "id": "P2.3",
+      "taches": [
+        "AGNR42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-P2.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
