@@ -230,7 +230,7 @@ def promesse_production_devis(devis_id, company):
     ``pr_modelise`` = 1 − pertes système du moteur (hypothèse ``pertes_pct``
     de l'étude, PVGIS) ; ``None`` si l'hypothèse est absente. Scopé société.
     Aucune garantie annoncée."""
-    from decimal import Decimal, InvalidOperation
+    from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
     from .models import Devis
     devis = (Devis.objects.filter(pk=devis_id, company=company)
@@ -255,7 +255,10 @@ def promesse_production_devis(devis_id, company):
             except (InvalidOperation, ValueError, TypeError):
                 break
             if 0 <= pertes < 100:
-                pr = float((1 - pertes / 100).quantize(Decimal('0.001')))
+                # ENF15 — moitié-vers-le-haut, la politique du dépôt
+                # (docs/money-convention.md), jamais l'arrondi bancaire.
+                pr = float((1 - pertes / 100).quantize(
+                    Decimal('0.001'), rounding=ROUND_HALF_UP))
             break
     return {'production_annuelle_kwh': float(production),
             'pr_modelise': pr, 'source': 'estimation moteur'}

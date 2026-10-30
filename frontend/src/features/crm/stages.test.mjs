@@ -2,6 +2,7 @@
 // Exécutés en CI : node --test src/features/crm/stages.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   PIPELINE_STAGES,
@@ -82,18 +83,30 @@ test('« tri » est un ORDRE, pas un filtre : défaut « recent », ignoré par 
   assert.equal(filterLeads(leads, { ...EMPTY_FILTERS, tri: 'ancien' }).length, 2)
 })
 
+// ENF19 — la vérité des libellés est STAGES.py (règle n°2) : le miroir est
+// comparé au fichier racine au lieu d'en recopier les libellés ici.
+function libellesDeStagesPy() {
+  const texte = readFileSync(new URL('../../../../STAGES.py', import.meta.url), 'utf8')
+  const debut = texte.indexOf('STAGE_LABELS')
+  const bloc = texte.slice(debut, texte.indexOf('}', debut))
+  const paires = {}
+  for (const ligne of bloc.split('\n').slice(1)) {
+    const sep = ligne.indexOf(':')
+    if (sep < 0) continue
+    const cle = ligne.slice(0, sep).trim()
+    const valeur = ligne.slice(sep + 1).trim().replace(/,$/, '')
+    paires[cle] = JSON.parse(valeur)
+  }
+  return paires
+}
+
 test('les 6 étapes canoniques, dans l’ordre de l’entonnoir (STAGES.py)', () => {
   assert.deepEqual(PIPELINE_STAGES, [
     'NEW', 'CONTACTED', 'QUOTE_SENT', 'FOLLOW_UP', 'SIGNED', 'COLD',
   ])
-  assert.deepEqual(STAGE_LABELS, {
-    NEW: 'Nouveau',
-    CONTACTED: 'Contacté',
-    QUOTE_SENT: 'Devis envoyé',
-    FOLLOW_UP: 'Relance',
-    SIGNED: 'Signé',
-    COLD: 'Froid',
-  })
+  const attendus = libellesDeStagesPy()
+  assert.equal(Object.keys(attendus).length, 6)
+  assert.deepEqual(STAGE_LABELS, attendus)
   for (const key of PIPELINE_STAGES) {
     assert.ok(STAGE_COLORS[key], `couleur manquante pour ${key}`)
   }

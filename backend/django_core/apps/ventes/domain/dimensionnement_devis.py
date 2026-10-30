@@ -555,7 +555,7 @@ def capacite_batterie_des_lignes(devis, lignes=None):
     try:
         from apps.ventes.domain.catalogue import _is_battery
 
-        total = 0.0
+        capacite_kwh = 0.0
         source = (_lignes_produit_du_devis(devis) if lignes is None
                   else [li for li in lignes
                         if getattr(li, 'est_ligne_produit', True)
@@ -567,13 +567,13 @@ def capacite_batterie_des_lignes(devis, lignes=None):
             quantite = _num(ligne.quantite)
             if quantite <= 0:
                 continue
-            total += _num(capacite_utile_batterie(
+            capacite_kwh += _num(capacite_utile_batterie(
                 getattr(ligne, 'produit', None), designation)) * quantite
     except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran (D-ENF22-BLE001)
         logger.warning('capacité batterie des lignes illisible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None
-    return round(total, 2) if total > 0 else None
+    return round(capacite_kwh, 2) if capacite_kwh > 0 else None
 
 
 def module_batterie_du_devis(devis):

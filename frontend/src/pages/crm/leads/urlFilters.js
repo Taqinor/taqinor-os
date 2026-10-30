@@ -66,12 +66,3 @@ export function writeFiltersToParams(params, filters, view) {
   else next.set('view', view)
   return next
 }
-
-export default {
-  DEFAULT_VIEW,
-  VALID_VIEWS,
-  hasUrlFilterState,
-  readFiltersFromParams,
-  readViewFromParams,
-  writeFiltersToParams,
-}
