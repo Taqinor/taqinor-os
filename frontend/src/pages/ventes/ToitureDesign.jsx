@@ -269,10 +269,10 @@ function AtelierToiture({
   // « non modifiée » (garde de sortie, amorce du brouillon) se prend APRÈS.
   const [sceneHydratee, setSceneHydratee] = useState(false)
   // ACAL311 (CI vague 10) — sans clé carte servie (`contexte.carte`), le boot s'arrête sur
-  // « Carte indisponible » : AUCUNE scène n'est construite, donc rien à hydrater ni à
-  // enregistrer. Générer / Resynchroniser chiffrent alors la conception STOCKÉE côté serveur
-  // (aucune écriture de layout depuis l'écran : le document, `consumption` compris, reste
-  // intact) au lieu de rester inactifs pour toujours.
+  // « Carte indisponible » : AUCUNE scène n'est construite, `onHydrationTerminee` n'arrive
+  // jamais. Générer / Resynchroniser restent alors CLIQUABLES (comme avant la garde) et
+  // gardent `enregistrerAvant` : sans constructeur, l'enregistrement refuse (« Outil non
+  // prêt ») et le bandeau `cal-devis-refus` le dit — rien n'est écrit ni envoyé au devis.
   const atelierSansCarte = !!contexte && !(contexte.carte?.available && contexte.carte?.maptilerKey)
   // ACAL85 — empreinte de la scène au boot (après hydratation) puis à chaque
   // enregistrement réussi ; `sceneModifiee` arme `useDirtyGuard`.
@@ -1479,7 +1479,7 @@ function AtelierToiture({
             // ACAL94 — Générer / Resynchroniser rangent d'abord l'écran (une
             // seule fonction d'enregistrement), et Réviser sait s'il reste
             // des retouches non enregistrées.
-            enregistrerAvant={atelierSansCarte ? null : enregistrerCalepinage}
+            enregistrerAvant={enregistrerCalepinage}
             aDesRetouches={() => sceneHydratee && sceneEstModifiee()}
             atelierPret={sceneHydratee || atelierSansCarte}
           />
