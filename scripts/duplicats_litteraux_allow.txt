@@ -37,7 +37,6 @@
 0cf451320fb5|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
 0d87c4336d22|apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/preview/toiture-3d-pro-11.astro
 0e8986c314d4|apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/équipement.astro
-0f7ab942b78c|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 0fbe84dffc80|apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/parrainage.astro
 101496c563d0|apps/web/src/pages/ar/blog/rentabilite-solaire-par-ville-maroc.astro,apps/web/src/pages/en/blog/rentabilite-solaire-par-ville-maroc.astro
 10c3f1a14e0d|apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/nos-solutions.astro
@@ -58,11 +57,9 @@
 18473cd3c776|apps/web/src/pages/ar/marocains-du-monde.astro,apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/marocains-du-monde.astro
 1a1d90dc8fda|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 1a99ab96df4b|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-1b09f6cb82e1|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 1beebc4cc062|apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 1c5fef599324|apps/web/src/pages/en/mentions-legales.astro,apps/web/src/pages/mentions-legales.astro
 1d0f8efae56b|apps/web/src/pages/ar/contact.astro,apps/web/src/pages/en/contact.astro
-1d26c66648ed|apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 1ecd3d1998e5|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 1eee6fd2ed15|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro
 20d84888bbca|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
@@ -157,7 +154,6 @@
 5e9d47d6d2fe|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 5feee454c152|apps/web/src/pages/ar/blog/prix-installation-solaire-maroc-2026.astro,apps/web/src/pages/en/blog/prix-installation-solaire-maroc-2026.astro
 63321961b90f|apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro
-63448a6794a6|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 6387c6ea434f|apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro
 639af207a83e|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 63fc9d206e0d|apps/web/src/pages/ar/politique-de-confidentialite.astro,apps/web/src/pages/en/politique-de-confidentialite.astro,apps/web/src/pages/politique-de-confidentialite.astro
@@ -171,7 +167,6 @@
 66bbe2c99a04|apps/web/src/pages/ar/garanties.astro,apps/web/src/pages/en/garanties.astro,apps/web/src/pages/garanties.astro
 67bce3e9855b|apps/web/src/pages/api/roof-estimate.ts,apps/web/src/pages/api/roof-production.ts,apps/web/src/pages/api/roof-yield.ts
 683fa558740e|apps/web/src/pages/api/capture-lead.ts,apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts
-69a59ea11c8a|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 6a2b513d2891|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 6aab50ceb413|apps/web/src/scripts/roof-tool-pro11.ts,apps/web/src/scripts/roofPro11/optimizer.ts
 6c4dae34640b|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
@@ -195,7 +190,6 @@
 78dc85877a38|apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/index.astro
 79b71e43bdd7|apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/parrainage.astro
 7af3b1537198|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-7b61294f491b|apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 7bb0c5d5bda0|apps/web/src/pages/ar/garanties.astro,apps/web/src/pages/en/garanties.astro,apps/web/src/pages/garanties.astro
 7c1581743b64|frontend/src/pages/crm/leads/LeadExpressModal.jsx,frontend/src/pages/ventes/ClientQuickCreateModal.jsx
 7c5879a81aa1|apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
@@ -218,7 +212,6 @@
 86ba301a0301|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 89ed9d73d588|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 8a8685a34d61|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
-8a8d7a157144|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 8af266a38623|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 8b050979dd1d|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 8b658ce7298b|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
@@ -299,14 +292,12 @@ be6e29df17b1|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/en/im
 beef6229c061|apps/web/src/pages/ar/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/ar/guides/faut-il-des-batteries.astro,apps/web/src/pages/ar/guides/mon-toit-peut-il-supporter-des-panneaux.astro,apps/web/src/pages/ar/guides/monocristallin-ou-polycristallin.astro,apps/web/src/pages/ar/guides/onduleur-hybride-ou-reseau.astro,apps/web/src/pages/ar/guides/quelle-taille-de-batterie.astro,apps/web/src/pages/en/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/en/guides/faut-il-des-batteries.astro,apps/web/src/pages/en/guides/mon-toit-peut-il-supporter-des-panneaux.astro,apps/web/src/pages/en/guides/monocristallin-ou-polycristallin.astro,apps/web/src/pages/en/guides/onduleur-hybride-ou-reseau.astro,apps/web/src/pages/en/guides/quelle-taille-de-batterie.astro
 c0293accccc4|apps/web/src/pages/ar/blog/rentabilite-solaire-par-ville-maroc.astro,apps/web/src/pages/en/blog/rentabilite-solaire-par-ville-maroc.astro
 c047498afb5a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
-c0874e8d8422|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 c09e7f7cf650|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts
 c0bc219e8b57|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro,apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 c1c5e6a555e3|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 c1e6f05c7cd0|apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/équipement.astro
 c20be32dbef8|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 c319e20ac149|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-c3479bb72245|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 c3c0e3ad8019|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
 c44ac5221077|apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 c596a4e0f891|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
@@ -378,7 +369,6 @@ eed87c6f7816|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 f01a55744eb4|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 f2a1c93bf253|apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 f36a44861ff7|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts
-f45d0d304a8d|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 f4c2e075ca96|apps/web/src/pages/api/lead-ref-lookup.ts,apps/web/src/pages/api/proposition-accept.ts,apps/web/src/pages/api/proposition-otp.ts
 f580f4a17fe9|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
 f63bbd705a74|apps/web/src/pages/ar/guides/loi-82-21-expliquee.astro,apps/web/src/pages/ar/regularization-article-33.astro

@@ -32,6 +32,7 @@ export const PANEL_SIDE_GAP_M = 0.02; // jeu entre panneaux d'une même rangée
 export const FRONT_STRUT_M = 0.08; // hauteur du montant avant (bas) du châssis
 
 import { WGS84_RADIUS } from './geo';
+import { paverRangees, projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000; // garde-fou anti-calepinage pathologique
@@ -127,21 +128,8 @@ export function layoutProRows(ring: LngLat[], orientation = 'sud', opts: ProLayo
   };
   if (!Array.isArray(ring) || ring.length < 3) return empty;
 
-  // Projection equirectangulaire locale, origine = centroïde du tracé.
-  let olng = 0;
-  let olat = 0;
-  for (const [lng, lat] of ring) {
-    olng += lng;
-    olat += lat;
-  }
-  olng /= ring.length;
-  olat /= ring.length;
-  const cosLat = Math.cos(olat * DEG2RAD);
-  const toENU = ([lng, lat]: LngLat): [number, number] => [
-    (lng - olng) * DEG2M * cosLat,
-    (lat - olat) * DEG2M,
-  ];
-  const ringENU = ring.map(toENU);
+  // Projection équirectangulaire locale, origine = centroïde du tracé.
+  const { olng, olat, ringENU } = projectRingENU(ring);
 
   // Repère des rangées : s = axe de pente (vers l'orientation) ; u = axe des rangées.
   const f = facingVector(orientation);
@@ -150,17 +138,7 @@ export function layoutProRows(ring: LngLat[], orientation = 'sud', opts: ProLayo
   const rowAngleRad = Math.atan2(u[1], u[0]);
 
   // Coordonnées (u,v) du tracé.
-  const ringUV = ringENU.map(([x, y]) => [x * u[0] + y * u[1], x * s[0] + y * s[1]] as [number, number]);
-  let uMin = Infinity;
-  let uMax = -Infinity;
-  let vMin = Infinity;
-  let vMax = -Infinity;
-  for (const [uu, vv] of ringUV) {
-    if (uu < uMin) uMin = uu;
-    if (uu > uMax) uMax = uu;
-    if (vv < vMin) vMin = vv;
-    if (vv > vMax) vMax = vv;
-  }
+  const { uMin, uMax, vMin, vMax } = ringUVBounds(ringENU, u, s);
 
   const rowPitch = depthFootprint + rowGapFactor * rise;
   const colPitch = alongRow + PANEL_SIDE_GAP_M;
@@ -170,32 +148,14 @@ export function layoutProRows(ring: LngLat[], orientation = 'sud', opts: ProLayo
     return { ...empty, origin: [olng, olat], ringENU };
   }
 
-  const toENUfromUV = (uu: number, vv: number): [number, number] => [
-    uu * u[0] + vv * s[0],
-    uu * u[1] + vv * s[1],
-  ];
+  const toENUfromUV = uvToENU(u, s);
   const ok = (corners: [number, number][]): boolean =>
     corners.every((c) => pointInPolygon(c, ringENU) && distToBoundary(c, ringENU) >= PERIMETER_SETBACK_M);
 
-  const panels: ProPanel[] = [];
-  for (let r = 0; r < rows; r++) {
-    const v0 = vMin + PERIMETER_SETBACK_M + r * rowPitch;
-    const v1 = v0 + depthFootprint;
-    if (v1 > vMax - PERIMETER_SETBACK_M + 1e-6) break;
-    for (let c = 0; c < cols; c++) {
-      const u0 = uMin + PERIMETER_SETBACK_M + c * colPitch;
-      const u1 = u0 + alongRow;
-      const corners: [number, number][] = [
-        toENUfromUV(u0, v0),
-        toENUfromUV(u1, v0),
-        toENUfromUV(u1, v1),
-        toENUfromUV(u0, v1),
-      ];
-      if (!ok(corners)) continue;
-      const center = toENUfromUV(u0 + alongRow / 2, v0 + depthFootprint / 2);
-      panels.push({ cx: center[0], cy: center[1] });
-    }
-  }
+  const panels: ProPanel[] = paverRangees({
+    rows, cols, uMin, vMin, vMax, setbackM: PERIMETER_SETBACK_M, rowPitch, colPitch,
+    alongRow, depthFootprint, toENUfromUV, ok,
+  });
 
   return {
     origin: [olng, olat],
