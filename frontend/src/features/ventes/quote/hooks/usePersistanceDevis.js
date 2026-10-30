@@ -437,10 +437,15 @@ export function usePersistanceDevis(ctx) {
   // création tourne encore côté serveur (clé réservée). On réessaie avec la
   // MÊME clé jusqu'à recevoir le devis rejoué — jamais un second devis, jamais
   // une erreur affichée tant que le serveur travaille.
-  const creerAtomiqueAvecReprise = async (corps, idempotencyKey) => {
+  // ERR-AGNR-VERROU-DEVIS-NEUF — même reprise pour `replace-lines` : un
+  // re-clic après une réponse perdue renvoie le MÊME corps (même jeton), que
+  // le serveur reconnaît (clé dérivée) et rejoue dès que le 1er a fini.
+  const creerAtomiqueAvecReprise = (corps, idempotencyKey) => avecRepriseEnCours(
+    () => ventesApi.createDevisAtomic(corps, { idempotencyKey }))
+  const avecRepriseEnCours = async (appel) => {
     for (let essai = 0; ; essai += 1) {
       try {
-        return await ventesApi.createDevisAtomic(corps, { idempotencyKey })
+        return await appel()
       } catch (err) {
         const enCours = err?.response?.status === 409
           && err.response.data?.code === 'idempotency_en_cours'
@@ -496,8 +501,8 @@ export function usePersistanceDevis(ctx) {
           extra.expected_updated_at = jetonRef.current
         }
         forcerSansJetonRef.current = false
-        const reponse = await ventesApi.replaceLignesDevis(
-          editDevis.id, surcharge?.lignes ?? lignesPayload, extra)
+        const reponse = await avecRepriseEnCours(() => ventesApi.replaceLignesDevis(
+          editDevis.id, surcharge?.lignes ?? lignesPayload, extra))
         armerJeton(reponse?.data?.updated_at)
         setConflitVerrou(null)
         devisId = editDevis.id
