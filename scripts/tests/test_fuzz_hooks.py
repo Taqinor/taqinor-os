@@ -264,6 +264,30 @@ class IdsCheminTests(unittest.TestCase):
         cas = self._appel('/api/django/ventes/devis/{id}/', {'id': 'abc'})
         self.assertEqual(cas.path_parameters['id'], 'abc')
 
+    def test_id_publie_texte_lookup_value_regex_pose_en_texte(self):
+        # CI #1176 — GET/PATCH crm/clients/{id}/ : ``lookup_value_regex``
+        # publie ``{id}`` en ``type: string`` + ``pattern: ^[0-9]+$`` ; l'id
+        # réel posé ENTIER y était revalidé contre ``string`` → cas négatif,
+        # 200 légitime signalé « accepted schema-violating request ».
+        def operation(methode, type_):
+            return types.SimpleNamespace(
+                method=methode, path='/api/django/ventes/devis/{id}/',
+                path_parameters=[types.SimpleNamespace(name='id', definition={
+                    'in': 'path', 'name': 'id',
+                    'schema': {'type': type_, 'pattern': '^[0-9]+$'}})])
+        for type_, attendu in (('string', str), ('integer', int)):
+            reels = []
+            for i in range(200):
+                cas = _cas(self.hooks, 'PATCH', '/api/django/ventes/devis/{id}/',
+                           corps={}, params={'id': str(10**6 + i)})
+                cas.operation = operation('PATCH', type_)
+                self.hooks.before_call(None, cas, {})
+                if str(cas.path_parameters['id']) in ('11', '12', '13'):
+                    reels.append(cas.path_parameters['id'])
+            with self.subTest(type_=type_):
+                self.assertTrue(reels)
+                self.assertTrue(all(isinstance(v, attendu) for v in reels), reels)
+
     def test_fuzz_admin_protege_aussi_en_chaine(self):
         h = _charger_hooks(
             {'user_id': 4, 'company_id': 2, 'role_id': 7, 'fk_ids': {}},

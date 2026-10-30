@@ -361,10 +361,11 @@ def _ids_fk_connus(case):
                        _types_query_publies(case.operation))
 
 
-def _types_query_publies(operation):
-    """{nom: type} des paramètres de query PUBLIÉS (``schema.type``)."""
+def _types_query_publies(operation, lieu='query'):
+    """{nom: type} des paramètres PUBLIÉS (``schema.type``) de ``lieu``
+    (``query`` ou ``path_parameters`` de l'``APIOperation``)."""
     publies = {}
-    for parametre in getattr(operation, 'query', None) or ():
+    for parametre in getattr(operation, lieu, None) or ():
         definition = getattr(parametre, 'definition', None) or {}
         schema = definition.get('schema') if isinstance(
             definition, dict) else None
@@ -469,6 +470,14 @@ def _ids_chemin_reels(case):
     if isinstance(choisi, int) != isinstance(valeur, int):
         _COUVERTURE['aleatoire'].add(ops)
         return
+    # CI #1176 (GET/PATCH crm/clients/{id}/) — un ``lookup_value_regex`` publie
+    # le paramètre ``type: string`` + ``pattern: ^[0-9]+$`` (drf-spectacular,
+    # ``resolve_regex_path_parameter``) : l'id ENTIER y était revalidé contre
+    # ``string``, le cas positif basculait négatif et le 200 légitime devenait
+    # « API accepted schema-violating request ». Publié texte → posé en texte.
+    publie = _types_query_publies(case.operation, 'path_parameters').get(nom)
+    if publie == 'string' and isinstance(choisi, int):
+        choisi = str(choisi)
     case.path_parameters[nom] = choisi
     _COUVERTURE['reel'].add(ops)
 
