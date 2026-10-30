@@ -13,3 +13,19 @@ export const DEG2M_GEO = DEG2RAD_GEO * WGS84_RADIUS;
 export function metresParDegre(latDeg: number): { lat: number; lng: number } {
   return { lat: DEG2M_GEO, lng: DEG2M_GEO * Math.cos(latDeg * DEG2RAD_GEO) };
 }
+
+/** Centroïde (moyenne de tous les sommets confondus) d'un ensemble de contours ; null si vide. */
+export function meanVertex(rings: Iterable<Iterable<[number, number]>>): [number, number] | null {
+  let lng0 = 0;
+  let lat0 = 0;
+  let n = 0;
+  for (const ring of rings) {
+    for (const [lng, lat] of ring) {
+      lng0 += lng;
+      lat0 += lat;
+      n++;
+    }
+  }
+  if (n === 0) return null;
+  return [lng0 / n, lat0 / n];
+}

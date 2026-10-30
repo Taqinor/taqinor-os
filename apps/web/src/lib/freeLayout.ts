@@ -178,7 +178,7 @@ function distToRing(p: Vec2, ring: Vec2[]): number {
 }
 
 /** Les segments [p1,p2] et [p3,p4] se croisent-ils vraiment ? */
-function segmentsCross(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
+export function segmentsCross(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
   const d = (a: Vec2, b: Vec2, c: Vec2) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
   const d1 = d(p3, p4, p1);
   const d2 = d(p3, p4, p2);

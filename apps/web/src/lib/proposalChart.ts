@@ -18,7 +18,7 @@
  * dans la page de proposition : la géométrie de barres et le format kWh sont
  * triviaux et reproduits ici à l'identique du langage pro-11.
  */
-import { esc, type SvgBox } from './svgBox';
+import { esc, monthlySeries, type SvgBox } from './svgBox';
 
 /** Étiquettes mensuelles courtes FR (index 0 = janvier) — alignées sur pro-11. */
 export const MONTH_LABELS_FR = [
@@ -74,18 +74,6 @@ export const DEFAULT_CHART_BOX: ChartBox = {
   padBottom: 20,
 };
 
-/** Normalise un tableau mensuel : exactement 12 valeurs finies ≥ 0, sinon `null`. */
-function sanitizeMonthly(arr: unknown): number[] | null {
-  if (!Array.isArray(arr) || arr.length !== 12) return null;
-  let any = false;
-  const out = arr.map((v) => {
-    const n = typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
-    if (n > 0) any = true;
-    return n;
-  });
-  return any ? out : null;
-}
-
 /** Quelle(s) série(s) présenter, après nettoyage défensif. */
 export interface ChartSeries {
   production: number[] | null;
@@ -105,8 +93,8 @@ export function resolveSeries(
   monthlyProduction: unknown,
   monthlyConsumption: unknown,
 ): ChartSeries {
-  const production = sanitizeMonthly(monthlyProduction);
-  const consumption = sanitizeMonthly(monthlyConsumption);
+  const production = monthlySeries(monthlyProduction);
+  const consumption = monthlySeries(monthlyConsumption);
   if (!production) return { production: null, consumption: null, mode: 'none' };
   if (consumption) return { production, consumption, mode: 'comparison' };
   return { production, consumption: null, mode: 'production' };

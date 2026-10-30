@@ -34,7 +34,7 @@ import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSe
 import { rognerParArete } from './roofSetbackEdge'; // CALX95 câblage
 import { PANEL2_WATT, type ConfigFamily, type PackResult, type EastWestGeometry, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import { matrixTiltGrid, type YieldFn, type YieldSource } from './estimatorBrainV6';
-import type { EvalProductionSourced } from './estimatorBrainCommun';
+import { departageAspect, departageBase, type EvalProductionSourced } from './estimatorBrainCommun';
 
 export { PANEL2_WATT };
 export type { YieldFn, YieldSource };
@@ -198,16 +198,10 @@ function resolveYield(
  * plus proche du plein sud, inclinaison plus raide, portrait. Départages déterministes —
  * JAMAIS de hasard (calque de `betterMatrixV6`). */
 export function betterLive(a: LiveConfigEval, b: LiveConfigEval): boolean {
-  if (a.annualKwh > b.annualKwh + EVAL_EPS) return true;
-  if (a.annualKwh < b.annualKwh - EVAL_EPS) return false;
-  if (a.perPanelYield !== b.perPanelYield) return a.perPanelYield > b.perPanelYield;
-  if (a.placedCount !== b.placedCount) return a.placedCount < b.placedCount;
-  if (a.margin !== b.margin) return a.margin === 'keep';
-  if (a.family !== b.family) return a.family === 'south';
-  const sa = Math.abs(a.aspect);
-  const sb = Math.abs(b.aspect);
-  if (Math.abs(sa - sb) > EVAL_EPS) return sa < sb;
-  if (a.tiltDeg !== b.tiltDeg) return a.tiltDeg > b.tiltDeg;
+  const d = departageBase(a, b);
+  if (d !== undefined) return d;
+  const t = departageAspect(a, b);
+  if (t !== undefined) return t;
   return a.layout === 'portrait' && b.layout !== 'portrait';
 }
 

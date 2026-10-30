@@ -30,6 +30,7 @@
  * valeur inventée). Le prix batterie est lu du devis par la page, jamais ici.
  */
 import type { ProposalItem } from './proposition';
+import { DEFAULT_CHART_BOX } from './proposalChart';
 import { esc, type SvgBox } from './svgBox';
 
 /** 24 heures dans une journée — taille de toutes les courbes horaires. */
@@ -543,14 +544,7 @@ export type SplitChartLang = 'fr' | 'en' | 'ar';
 
 export type SplitChartBox = SvgBox;
 
-export const DEFAULT_SPLIT_BOX: SplitChartBox = {
-  width: 360,
-  height: 150,
-  padLeft: 8,
-  padRight: 8,
-  padTop: 10,
-  padBottom: 20,
-};
+export const DEFAULT_SPLIT_BOX: SplitChartBox = { ...DEFAULT_CHART_BOX };
 
 const SPLIT_COLORS = {
   direct: 'var(--color-brass-400, #e8b54a)', // solaire direct

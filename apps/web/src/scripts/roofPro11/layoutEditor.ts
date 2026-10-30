@@ -84,6 +84,7 @@ import {
   type FreeMargins,
   type RectUV,
   type Vec2,
+  segmentsCross,
 } from '../../lib/freeLayout';
 import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
 
@@ -337,15 +338,6 @@ function panelCornersFor(g: FreeGeom, p: Pick<FreePanel, 'cx' | 'cy' | 'angleDeg
 
 /** Deux segments [p1,p2] / [p3,p4] se croisent-ils vraiment ? (copie locale de la primitive
  *  privée `segmentsCross` de la lib — même algèbre, aucune règle neuve). */
-function segCross(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
-  const d = (a: Vec2, b: Vec2, c: Vec2) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-  const d1 = d(p3, p4, p1);
-  const d2 = d(p3, p4, p2);
-  const d3 = d(p1, p2, p3);
-  const d4 = d(p1, p2, p4);
-  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
-}
-
 /** Un coin du panneau est hors contour, OU une arête du contour traverse le panneau (le cas
  *  du toit CONCAVE : 4 coins dedans et une encoche qui coupe quand même le rectangle). */
 function panelOutsideOutline(corners: readonly Vec2[], ringUV: readonly Vec2[]): boolean {
@@ -354,7 +346,7 @@ function panelOutsideOutline(corners: readonly Vec2[], ringUV: readonly Vec2[]):
     const a = corners[i];
     const b = corners[(i + 1) % corners.length];
     for (let j = 0, k = ringUV.length - 1; j < ringUV.length; k = j++) {
-      if (segCross(ringUV[k], ringUV[j], a, b)) return true;
+      if (segmentsCross(ringUV[k], ringUV[j], a, b)) return true;
     }
   }
   return false;

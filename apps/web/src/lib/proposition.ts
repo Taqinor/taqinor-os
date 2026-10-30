@@ -1417,16 +1417,8 @@ export function normalizeContactResponse(status: number, networkError: boolean =
  * Le graphe (proposalChart) refait ce nettoyage, mais l'exposer ici permet à la
  * page de décider d'AFFICHER ou non le bloc graphe sans dupliquer la règle.
  */
-export function monthlySeries(arr: number[] | undefined | null): number[] | null {
-  if (!Array.isArray(arr) || arr.length !== 12) return null;
-  let any = false;
-  const out = arr.map((v) => {
-    const n = typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
-    if (n > 0) any = true;
-    return n;
-  });
-  return any ? out : null;
-}
+import { monthlySeries } from './svgBox';
+export { monthlySeries };
 
 /**
  * Vrai si la proposition porte AU MOINS une série de production exploitable —
@@ -3195,7 +3187,7 @@ export const VIEWER_FLAT_TILT_DEG = 15;
 export const VIEWER_MAX_PANELS = 600;
 
 const VIEWER_DEG2RAD = Math.PI / 180;
-import { DEG2M_GEO as VIEWER_DEG2M } from './geo';
+import { DEG2M_GEO as VIEWER_DEG2M, meanVertex } from './geo';
 import type { JourTypeMonth } from './jourTypeData';
 import {
   dateJjMmAaaa,
@@ -3495,17 +3487,9 @@ export function realZonePanels(
 export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null {
   if (!layout || layout.zones.length === 0) return null;
   // Centroïde global (tous sommets confondus) = origine de la scène.
-  let lng0 = 0, lat0 = 0, n = 0;
-  for (const z of layout.zones) {
-    for (const [lng, lat] of z.vertices) {
-      lng0 += lng;
-      lat0 += lat;
-      n++;
-    }
-  }
-  if (n === 0) return null;
-  lng0 /= n;
-  lat0 /= n;
+  const c0 = meanVertex(layout.zones.map((z) => z.vertices));
+  if (!c0) return null;
+  const [lng0, lat0] = c0;
   const cosLat = Math.cos(lat0 * VIEWER_DEG2RAD);
   const toENU = ([lng, lat]: [number, number]): [number, number] => [
     (lng - lng0) * VIEWER_DEG2M * cosLat,
