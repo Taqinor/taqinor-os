@@ -8,7 +8,9 @@ Couvre :
   * la company est posée côté serveur, l'historique est borné à la société ;
   * l'API est en LECTURE seule et filtrable par rapport et par statut.
 """
+import json
 from datetime import datetime
+from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -22,6 +24,11 @@ from .models import EnvoiRapport, SavedReport
 from .scheduled_reports import email_saved_reports
 
 User = get_user_model()
+
+# AANA45 (PACT10) — contrat partagé avec le vitest de l'écran « Envois
+# programmés » : chargé, jamais recopié.
+CONTRAT_ENVOIS = (Path(__file__).resolve().parent / 'contract_samples'
+                  / 'envois_rapports.json')
 
 try:  # pragma: no cover
     from zoneinfo import ZoneInfo
@@ -185,3 +192,18 @@ class EnvoiRapportApiTests(TestCase):
             'saved_report': self.rapport.pk, 'canal': 'email',
             'statut': 'envoye'}, format='json')
         self.assertEqual(res.status_code, 405)
+
+    def test_ligne_servie_egale_l_echantillon_partage(self):
+        """AANA45 — la ligne d'historique servie à l'écran « Envois
+        programmés » a exactement les clés/types du contrat partagé."""
+        contrat = json.loads(CONTRAT_ENVOIS.read_text(encoding='utf-8'))
+        res = self.api.get(
+            '/api/django/reporting/envois-rapports/?statut=echec')
+        ligne = self._lignes(res)[0]
+        attendu = contrat['exemple']
+        self.assertEqual(set(ligne), set(attendu))
+        for cle, valeur in attendu.items():
+            self.assertIsInstance(ligne[cle], type(valeur), cle)
+        self.assertEqual(
+            contrat['choix']['statut'],
+            [list(c) for c in EnvoiRapport.Statut.choices])

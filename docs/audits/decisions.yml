@@ -2861,3 +2861,14 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (relayée par l'orchestrateur, lane w15-arrondi)"
     taches: []
+  - id: D-AANA-036-BRANCHER
+    question: "AANA45 (C-AANA-036) : les deux routes backend sans écran, `reporting/p2p/kpi` (KPI achats → paiement) et `envois-rapports` (historique des envois de rapports programmés), doivent-elles être branchées à un écran ou supprimées ?"
+    options:
+      - cle: brancher
+        texte: "brancher : bloc « Achats → paiement » sur le tableau de bord /reporting (valeurs servies seulement) et écran « Envois programmés » (/reporting/envois-programmes : rapports programmés en création/modification/suppression par les méthodes existantes de saved-reports + historique des envois en lecture seule) ; contrats kpi_p2p.json et envois_programmes.json"
+      - cle: supprimer
+        texte: "supprimer les deux routes et leurs tests (zéro appelant)"
+    reponse: brancher
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; lane w15-reporting)"
+    taches: [AANA45]
