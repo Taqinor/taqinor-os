@@ -39,6 +39,27 @@ def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
             "un calcul par tranches sur facture réelle reste possible.")
 
 
+def factures_mensuelles_exactes(etude, factures_source, devis=None):
+    """ERR-AGNR42 — les 12 factures du lead NON arrondies (ou None).
+
+    ``factures_mensuelles`` reste arrondie au dirham (affichage des barres) ;
+    la somme annuelle se fait sur cette série exacte puis s'arrondit UNE fois
+    (``residential.renderer.synthese_economies``). Servie
+    qu'au niveau de règles >= 5 (``REGLES_RETOURS_3010B``, testé ici).
+    """
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_RETOURS_3010B, regles_au_moins)
+    if factures_source != "lead_12_mois" or not regles_au_moins(
+            devis, REGLES_RETOURS_3010B):
+        return None
+    brut = (etude or {}).get("factures_mensuelles_reelles")
+    try:
+        serie = [float(v) for v in brut]
+    except (TypeError, ValueError):
+        return None
+    return serie if len(serie) == 12 else None
+
+
 def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
                     _bareme_horaire=False,
                     etude, puissance_kwc, roi, savings_model,
