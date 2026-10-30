@@ -424,7 +424,7 @@ class TestFacturesReellesContract(TestCase):
         self.assertEqual(data['savings_model'], 'factures')
         self.assertFalse(data['savings_estimated'])
         self.assertIn('Tarif électricité : barème national par tranche',
-                      data['hypotheses'])
+                      data['hypotheses']['items'])
 
     def test_rhor8_conso_saisie_niveau4_garde_son_estimation(self):
         from apps.ventes.models import Devis
