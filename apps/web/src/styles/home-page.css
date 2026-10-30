@@ -1,0 +1,161 @@
+/* Styles de l'accueil (fr/en/ar) — ENF19 : une seule copie, auparavant recopiée dans les trois
+   `index.astro` (seuls des commentaires et la croix de la lightbox EN différaient ; l'override EN
+   reste dans `en/index.astro`). Noms de classe propres à l'accueil. */
+/* W155 — Portrait-crop héro : recadrage en haut sur téléphones verticaux.
+   Les mêmes images sont servies ; on décale l'object-position vers le haut
+   pour que les panneaux (haut de l'image) restent visibles sur un écran 9:19. */
+@media (orientation: portrait) {
+  .hero-portrait-img {
+    object-position: center 20%;
+  }
+}
+
+/* Scrim héro RELEVÉ : compense la chaleur du grade « heure dorée » et
+   garantit le contraste AA du headline blanc sur la photo. */
+.hero-scrim-v3 {
+  --hero-scrim-strength: 0.52;
+}
+
+/* ── W373 — Plan de profondeur du héros ───────────────────────────────
+   Voile de lumière statique (dégradés radiaux seuls, aucune image) posé
+   au repos ; le script (V2Enhance) n'anime que sa `transform` au scroll,
+   à un facteur plus LENT que le sur-cadrage de l'affiche (couche plus
+   profonde = déplacement plus faible, illusion de profondeur classique).
+   `opacity` de base très faible pour rester un « souffle », jamais un
+   voile qui dégraderait la lisibilité du headline (le scrim reste
+   au-dessus en z-index via l'ordre du DOM + la même pile isolate). */
+.hero-depth-layer {
+  background:
+    radial-gradient(38% 32% at 82% 22%, rgb(232 181 74 / 0.16), transparent 70%),
+    radial-gradient(30% 26% at 14% 78%, rgb(232 181 74 / 0.08), transparent 72%);
+  opacity: 0.9;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @media (min-width: 1024px) {
+    .hero-depth-layer {
+      will-change: transform;
+    }
+  }
+}
+
+/* ── W368 — CTA magnétique ───────────────────────────────────────────
+   Le script (ci-dessous) pose uniquement `transform: translate(x, y)`
+   (±8 px max) au pointermove ; cette règle ajoute juste le retour doux à
+   l'origine quand le pointeur quitte le bouton (pointerleave retire
+   l'inline style, la transition ci-dessous anime le retour). Transform
+   seul : jamais de reflow, jamais de CLS. Gated (pointer:fine) +
+   reduced-motion dans le script — cette transition CSS elle-même est
+   inoffensive sans mouvement (elle ne s'active que si `transform` change,
+   ce qui n'arrive que si le script l'anime). */
+@media (prefers-reduced-motion: no-preference) and (pointer: fine) {
+  .magnetic-cta {
+    transition: transform var(--dur-hover) var(--ease-cine), background-color var(--dur-hover) ease;
+    will-change: transform;
+  }
+}
+
+/* ── W271 — Lightbox galerie ────────────────────────────────────────── */
+.gallery-lightbox {
+  max-width: min(92vw, 1100px);
+  max-height: 90vh;
+  border: none;
+  background: var(--color-nuit);
+  padding: 0;
+  color: white;
+}
+.gallery-lightbox::backdrop {
+  background: rgb(6 10 30 / 0.86);
+}
+.gallery-lightbox img {
+  display: block;
+  width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+  background: black;
+}
+.gallery-lightbox figcaption {
+  padding: 0.9rem 1.25rem 1.1rem;
+  font-size: 0.9rem;
+}
+.gallery-lightbox figcaption span[data-lightbox-caption] {
+  display: block;
+  font-weight: 700;
+  color: var(--color-brass-300);
+}
+.gallery-lightbox-type {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--color-lune-soft);
+  font-size: 0.8rem;
+}
+.gallery-lightbox-close {
+  position: absolute;
+  top: max(0.6rem, env(safe-area-inset-top));
+  inset-inline-end: max(0.6rem, env(safe-area-inset-right));
+  z-index: 1;
+  display: flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgb(6 10 30 / 0.7);
+  color: white;
+}
+.gallery-lightbox-close:hover {
+  background: rgb(6 10 30 / 0.9);
+}
+/* Transition d'ouverture — gated reduced-motion : le dialogue apparaît
+   instantanément sans préférence de mouvement réduit. */
+@media (prefers-reduced-motion: no-preference) {
+  .gallery-lightbox {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .gallery-lightbox:not([open]) {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* ── W271 — Chips de filtre ville : masque les cartes hors filtre via une
+   classe posée par le script, jamais via [hidden] pour laisser data-stagger
+   rejouer proprement l'apparition au premier rendu. */
+[data-gallery-card].gallery-card-hidden {
+  display: none;
+}
+
+/* ── W371 — Scrollytelling épinglé de « Comment ça se passe » ─────────────
+   Repos = la grille plate d'origine (aucune règle ci-dessous ne s'applique
+   tant que le script n'a pas posé `.journey-pinned` sur la section, ce qui
+   n'arrive que desktop + motion ok). Zéro CLS : le sticky ne change ni la
+   largeur ni la hauteur du flux, seule sa `position` change à l'ancrage. */
+@media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+  .journey-pinned .journey-sticky-col {
+    position: sticky;
+    top: 6rem;
+    align-self: start;
+  }
+
+  /* Le corps de chaque étape est présent au repos (progressive enhancement :
+     lisible sans JS/hors media match) ; une fois épinglé, seule l'étape
+     active « s'allume », les autres s'estompent doucement — jamais masquées
+     (aucun CLS, aucune perte de contenu pour un lecteur d'écran). */
+  .journey-pinned .journey-step {
+    opacity: 0.42;
+    transition: opacity 0.35s ease, border-color 0.35s ease;
+  }
+  .journey-pinned .journey-step[data-journey-active] {
+    opacity: 1;
+  }
+  .journey-pinned .journey-step[data-journey-active] .journey-step-rule {
+    background-color: var(--color-brass-300, #e8b54a);
+  }
+
+  /* Copie appariée dans la colonne épinglée : ne s'affiche que lorsque le
+     pinning est armé, jamais avant (repli intégral vers la description
+     statique existante quand JS/desktop/motion ne sont pas tous réunis). */
+  .journey-pinned .journey-active-caption {
+    display: block;
+  }
+}
