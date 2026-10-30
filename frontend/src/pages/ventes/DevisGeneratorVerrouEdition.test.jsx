@@ -73,6 +73,30 @@ describe('QJR549 — verrou optimiste de l’Édition complète', () => {
     expect(extra).not.toHaveProperty('expected_updated_at')
   })
 
+  // ERR-AGNR-VERROU-DEVIS-NEUF — le re-envoi d'un enregistrement dont la
+  // réponse s'est perdue tombe sur le 1er encore en cours (409 « en cours ») :
+  // l'écran réessaie SEUL le MÊME corps (même jeton) et reçoit la réponse
+  // rejouée — ni bannière « Modifié par », ni erreur.
+  it('409 « en cours » sur replace-lines : reprise du même corps, aucune bannière', async () => {
+    const rouvert = devisRouvert('exemple_brouillon')
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    const EN_COURS = Object.assign(new Error('Request failed with status code 409'), {
+      response: { status: 409, data: { code: 'idempotency_en_cours', detail: 'Une requête identique est déjà en cours de traitement.' } },
+    })
+    ventesApi.replaceLignesDevis
+      .mockRejectedValueOnce(EN_COURS)
+      .mockResolvedValueOnce({ data: { updated_at: '2026-09-30T10:00:00+01:00' } })
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalledTimes(2), { timeout: 10000 })
+    const [premier, second] = ventesApi.replaceLignesDevis.mock.calls
+    expect(second).toEqual(premier)
+    expect(second[2].expected_updated_at).toBe(JETON_CHARGEMENT)
+    expect(screen.queryByTestId('devis-verrou-banner')).toBeNull()
+    expect(screen.queryByTestId('erreur-enregistrement')).toBeNull()
+  }, 20000)
+
   it('après une écriture de l’écran (taille appliquée), la sauvegarde envoie le NOUVEAU jeton', async () => {
     const rouvert = devisRouvert('exemple_brouillon')
     ventesApi.getDevisById.mockResolvedValue(rouvert)

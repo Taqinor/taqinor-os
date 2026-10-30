@@ -90,6 +90,22 @@ def _valider_etude_ecran(etude_in):
         raise ValidationError({'etude_params': str(exc)})
 
 
+def _cle_reprise_verrou(request, pk):
+    """ERR-AGNR-VERROU-DEVIS-NEUF — clé d'idempotence DÉRIVÉE d'un
+    ``replace-lines`` porteur du jeton QJR545 : même utilisateur, même devis,
+    même corps (jeton compris) = le même geste renvoyé. Un autre utilisateur,
+    ou un autre contenu, n'a jamais cette clé : il passe par le verrou (409).
+    ``None`` sans jeton (« Enregistrer quand même », Copilote)."""
+    import hashlib
+    import json
+    donnees = request.data
+    if not isinstance(donnees, dict) or not donnees.get('expected_updated_at'):
+        return None
+    empreinte = json.dumps([getattr(request.user, 'pk', None), str(pk), donnees],
+                           default=str, sort_keys=True)
+    return 'verrou-' + hashlib.sha256(empreinte.encode('utf-8')).hexdigest()
+
+
 def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
     """QJR544 — les gardes d'une mise à jour d'en-tête, en UN point (PATCH
     ``perform_update`` et ``replace-lines`` avec ``entete``) :
@@ -438,6 +454,18 @@ class DevisEditionActionsMixin:
         modifiables ; au-delà, 409 avec le statut NOMMÉ (le bon geste est
         « Réviser », qui crée une nouvelle version). Cette garde ne CHANGE
         jamais le statut — elle le LIT (règle #4)."""
+        # ERR-AGNR-VERROU-DEVIS-NEUF — le RE-ENVOI d'un enregistrement déjà
+        # appliqué (réponse perdue : délai de 20 s de l'écran, re-clic) rejoue
+        # sa réponse au lieu d'un 409 « modifié par un autre » contre soi-même.
+        cle = _cle_reprise_verrou(request, pk)
+        rejouer = getattr(self, '_avec_idempotence', None)
+        if cle is None or rejouer is None:
+            return self._remplacer_lignes(request, pk)
+        return rejouer(request, lambda: self._remplacer_lignes(request, pk),
+                       suffixe='replace-lines', cle=cle)
+
+    def _remplacer_lignes(self, request, pk=None):
+        """Le corps de ``replace-lines`` (voir ``replace_lines``)."""
         from django.db import transaction
         devis = self.get_object()  # borné société par get_queryset
         # QJR516 — le prédicat UNIQUE (geste LIGNES) ; texte et code 409
