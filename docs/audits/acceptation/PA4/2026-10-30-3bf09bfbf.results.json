@@ -1,0 +1,39 @@
+{
+  "sha": "3bf09bfbf0c92a4395375ae69e534d8a8efa84c3",
+  "date": "2026-10-30",
+  "groupe": "PA4",
+  "verdict": "PASS",
+  "couvre": [
+    "VNT11"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA4.09",
+      "taches": [
+        "VNT11"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/factures/301/creer-avoir/ -> 201 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "notes": "via backend/django_core/apps/ventes/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.creer_avoir (appelle la fonction d'entrée ; 2 candidate(s) : FactureRectificatifsActionsMixin.creer_avoir, FactureRectificatifsActionsMixin.retour_client); refus_409 : action rejouée -> 409; règles aval à observer : fige ; fige; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"PASS\"}"
+    }
+  ]
+}
