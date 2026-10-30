@@ -8,6 +8,7 @@
 //    activé que pour commercial/industriel et n'est jamais demandé avant l'envoi.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { resetRateLimit } from '../src/lib/rateLimit';
 
@@ -129,7 +130,7 @@ const LOCALES: Array<[string, string]> = [
   ['EN', '../src/pages/en/devis/mon-toit.astro'],
   ['AR', '../src/pages/ar/devis/mon-toit.astro'],
 ];
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const read = (rel: string) => lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
 const affiner = read('../src/scripts/tunnel/affiner.ts');
 
 describe.each(LOCALES)('tunnel %s — bouton « Affiner »', (_l, rel) => {
@@ -169,7 +170,8 @@ describe.each(LOCALES)('tunnel %s — bouton « Affiner »', (_l, rel) => {
   });
 
   it("n'appelle setupAffiner qu'après un succès (pas avant l'envoi)", () => {
-    const calls = src.match(/setupAffiner\(/g) ?? [];
+    // RWEB17-M18 — lib/tunnel/envoi.ts déclare aussi la signature dans son interface : elle ne compte pas.
+    const calls = src.match(/setupAffiner\((?!idempotencyKey: string\): void;)/g) ?? [];
     expect(calls.length).toBe(2); // définition + UN appel
     expect(src.indexOf('setupAffiner(getOrCreateDedupTokens')).toBeGreaterThan(src.indexOf("fetch('/api/capture-lead'"));
   });

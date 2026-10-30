@@ -1,0 +1,12 @@
+(pile 127.0.0.1:5191 → :8010, anon_admin / taqinor-anon ; page /proposition non lancée : charge publique lue)
+# CEC6 — boulangerie : devis DEV-202610-0120 (id 1685), lead 2659
+Économie an 1 HT — recalcul : tranche_2 30198 kWh × 1.4242 = 43007.99 = 43007.99 MAD
+  economie_ci.economie_annee1.total_mad = 43007.29 ; PDF = 43007 ; mode_kpis.economies_annuelles = 43007.29 ; synthese_ci.argent.economie_annee1.total_mad = 43007.29 ; devis/auto.economie_an_1_ht = 43007.29
+Investissement sans batterie : PDF 134700 TTC ; option_totals 134700 TTC / 115750 HT ; devis/auto.total_ttc 134700
+Retour — recalcul (base deux, investissement 115750) : cumul refait an 1 -72742.71 (servi -72742.71) ; an 2 -29950.46 (servi -29950.46) ; an 3 12627.83 (servi 12627.84)
+  passage à zéro an 3 : 3 − 1 + 29950.46 / 42578.29 = 2.7 ans ; simple 115750 / 43007.29 = 2.69 ans
+  PDF 2.7 ; mode_kpis.payback 2.7 → page /proposition « Rentabilisé en » 2.7 ; devis/auto.retour_ans 2.7 ; bannière 2,7 ; economie_ci.indicateurs.retour_ans (entier) 3
+Bannière écran : « Devis créé : DEV-202610-0120 · 25 kWc · 134 700 MAD TTC · économie ≈ 43 000 MAD/an · retour ≈ 2,7 ans »
+Avec batterie : PDF synthèse {"kwc":75.79,"ttc":821700,"eco":118111,"retour":null,"retourImprime":false} ; page d'option « Total TTC 821 700,00 — Économie annuelle HT 118 110,86 » ; option_batterie.valeur_chiffree.economie_annuelle_mad 118110.86 ; option_totals.avec_batterie.ttc 821700 ; retour_simple_ans null
+  recalcul avec : couverture 98.3 % × 84468 kWh/an × 1.4242 = 118254 MAD (servi 118110.86, écart 0.12 %) ; retour simple main 695350 / 118110.86 = 5.9 ans (non servi, non imprimé)
+PDF (texte, extrait) : Sans batterie Puissance 25,02 kWc Investissement TTC 134 700,00 MAD Économie annuelle 43 007 MAD HT Retour sur investissement 2,7 ans Part de votre consommation couverte 36 % Avec batterie Puissance 75,79 kWc Investissement TTC 821 700,00 MAD Économie annuelle 118 111 MAD HT Part de votre consommation couverte 98 % Votre énergie mois par mois Votre consommation Production autoconsommée Surplus non consommé sur place kWh par mois : votre co

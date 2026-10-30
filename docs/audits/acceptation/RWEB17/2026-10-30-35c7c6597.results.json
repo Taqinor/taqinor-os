@@ -1,0 +1,716 @@
+{
+  "sha": "35c7c6597aa5fe584b2f9bbce1e7825794259f0e",
+  "date": "2026-10-30",
+  "groupe": "RWEB17",
+  "verdict": "PASS",
+  "couvre": [
+    "RWEB17-M22"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /devis/mon-toit · parcours residentiel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /en/devis/mon-toit · parcours residentiel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P1.3",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "REJOUÉE le 2026-10-30 après le correctif c68f907bf (RWEB17-M6 suite, « MAD/mois » restauré dans le lien WhatsApp AR gaté) : fusion 32939351a contre la même base da0b238d1 ; 1er rejeu à 35c7c6597 = FAIL (« MAD/mois » → « MAD/شهر » dans #mt-success-wa et #mt-exit-wa) | ordinateur 1366×900 · /ar/devis/mon-toit · parcours residentiel | pixels base/fusion = 0 sur 8 captures (départ, estimation, impression, rechargement, modale, envoi, bascule FR, bascule AR) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok, bascule=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href, mt-success-wa.href, mt-success-wa.href)"
+    },
+    {
+      "id": "P1.4",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /devis/mon-toit · parcours residentiel_tranche | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P1.5",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.5.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /en/devis/mon-toit · parcours residentiel_tranche | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P1.6",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.6.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "REJOUÉE le 2026-10-30 après le correctif c68f907bf (RWEB17-M6 suite, « MAD/mois » restauré dans le lien WhatsApp AR gaté) : fusion 32939351a contre la même base da0b238d1 ; 1er rejeu à 35c7c6597 = FAIL (« MAD/mois » → « MAD/شهر » dans #mt-success-wa et #mt-exit-wa) | ordinateur 1366×900 · /ar/devis/mon-toit · parcours residentiel_tranche | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P1.7",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.7.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /devis/mon-toit · parcours industriel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P1.8",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.8.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /en/devis/mon-toit · parcours industriel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P1.9",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.9.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /ar/devis/mon-toit · parcours industriel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P1.10",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.10.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /devis/mon-toit · parcours commercial | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P1.11",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.11.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /en/devis/mon-toit · parcours commercial | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P1.12",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.12.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /ar/devis/mon-toit · parcours commercial | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P1.13",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.13.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /devis/mon-toit · parcours agricole | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P1.14",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.14.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /en/devis/mon-toit · parcours agricole | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P1.15",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P1.15.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ordinateur 1366×900 · /ar/devis/mon-toit · parcours agricole | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P2.1",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /devis/mon-toit · parcours residentiel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P2.2",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /en/devis/mon-toit · parcours residentiel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P2.3",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "REJOUÉE le 2026-10-30 après le correctif c68f907bf (RWEB17-M6 suite, « MAD/mois » restauré dans le lien WhatsApp AR gaté) : fusion 32939351a contre la même base da0b238d1 ; 1er rejeu à 35c7c6597 = FAIL (« MAD/mois » → « MAD/شهر » dans #mt-success-wa et #mt-exit-wa) | mobile 375×812 · /ar/devis/mon-toit · parcours residentiel | pixels base/fusion = 0 sur 8 captures (départ, estimation, impression, rechargement, modale, envoi, bascule FR, bascule AR) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok, bascule=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href, mt-success-wa.href, mt-success-wa.href)"
+    },
+    {
+      "id": "P2.4",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /devis/mon-toit · parcours residentiel_tranche | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P2.5",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.5.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /en/devis/mon-toit · parcours residentiel_tranche | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P2.6",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.6.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "REJOUÉE le 2026-10-30 après le correctif c68f907bf (RWEB17-M6 suite, « MAD/mois » restauré dans le lien WhatsApp AR gaté) : fusion 32939351a contre la même base da0b238d1 ; 1er rejeu à 35c7c6597 = FAIL (« MAD/mois » → « MAD/شهر » dans #mt-success-wa et #mt-exit-wa) | mobile 375×812 · /ar/devis/mon-toit · parcours residentiel_tranche | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P2.7",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.7.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /devis/mon-toit · parcours industriel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P2.8",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.8.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /en/devis/mon-toit · parcours industriel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P2.9",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.9.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /ar/devis/mon-toit · parcours industriel | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P2.10",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.10.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /devis/mon-toit · parcours commercial | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P2.11",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.11.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /en/devis/mon-toit · parcours commercial | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P2.12",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.12.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /ar/devis/mon-toit · parcours commercial | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P2.13",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.13.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /devis/mon-toit · parcours agricole | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok"
+    },
+    {
+      "id": "P2.14",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.14.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /en/devis/mon-toit · parcours agricole | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P2.15",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P2.15.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "mobile 375×812 · /ar/devis/mon-toit · parcours agricole | pixels base/fusion = 0 sur 6 captures (départ, estimation, impression, rechargement, modale, envoi) | contrôles : depart_repli_carte=ok, etape1_estimation=ok, carte_mode_pressee=ok, teaser_gate=ok, rtl=ok, rehydratation=ok, sortie_clavier=ok, envoi=ok, console=ok, http=ok, dialogues=ok, journal=ok | écart VOULU (D-RWEB17-WA-REF) : « Ma référence : <code> » ajouté au message WhatsApp (mt-success-wa.href)"
+    },
+    {
+      "id": "P3.1",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P3.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "REJOUÉE après le correctif c68f907bf (fusion 32939351a, base da0b238d1) ; 1er rejeu à 35c7c6597 = FAIL (liens WhatsApp « MAD/شهر ») | desktop · /ar/devis/mon-toit après envoi : clic « FR » → html lang=fr dir=ltr, aria-pressed FR=true ; clic « عربي » → lang=ar dir=rtl ; pixels base/fusion = 0 et 0"
+    },
+    {
+      "id": "P3.2",
+      "taches": [
+        "RWEB17-M22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-RWEB17-P3.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "REJOUÉE après le correctif c68f907bf (fusion 32939351a, base da0b238d1) ; 1er rejeu à 35c7c6597 = FAIL (liens WhatsApp « MAD/شهر ») | mobile · /ar/devis/mon-toit après envoi : clic « FR » → html lang=fr dir=ltr, aria-pressed FR=true ; clic « عربي » → lang=ar dir=rtl ; pixels base/fusion = 0 et 0"
+    }
+  ]
+}

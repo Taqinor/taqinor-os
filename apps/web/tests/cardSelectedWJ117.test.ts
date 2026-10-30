@@ -22,10 +22,11 @@
 
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 
 const read = (rel: string) =>
-  readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+  lireSourceTunnel(fileURLToPath(new URL(rel, import.meta.url)));
 
 const css = read('../src/styles/global.css');
 

@@ -15,13 +15,14 @@
 // propositionFoldWJ114.test.ts) — pas de montage DOM d'un .astro ici.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { validateLead } from '../src/lib/lead';
 import { etatVide } from '../src/lib/tunnel/champs';
 import { construireCorps } from '../src/lib/tunnel/corps';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
-const read = (rel: string) => readFileSync(root(rel), 'utf-8');
+const read = (rel: string) => lireSourceTunnel(root(rel));
 
 const PARRAINAGE_FR = read('../src/pages/parrainage.astro');
 const PARRAINAGE_EN = read('../src/pages/en/parrainage.astro');

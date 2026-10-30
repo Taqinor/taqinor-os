@@ -28,6 +28,7 @@ vi.mock('cloudflare:workers', () => ({
   waitUntil: undefined,
 }));
 import { resetRateLimit } from '../src/lib/rateLimit';
+import { lireAstroAvecModulesTunnel } from './astroBlocsHelper';
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -163,7 +164,9 @@ describe('WJ121 — capture-lead : le CRM reçoit mode=commercial / mode=industr
 });
 
 describe.each(LOCALES)('WJ121 — 4 cartes de mode dans mon-toit.astro (%s)', (_locale, rel) => {
-  const src = read(rel);
+  // RWEB17-M12 — la section « parcours » a quitté la page : page + modules du tunnel qu'elle importe,
+  // indirections `ctx.etat` / `ctx.crochets` relues dans leur forme d'origine (RWEB17-M10).
+  const src = lireAstroAvecModulesTunnel(fileURLToPath(new URL(rel, import.meta.url)));
 
   it('le sélecteur propose EXACTEMENT les 4 modes émis (residentiel/industriel/commercial/agricole)', () => {
     for (const id of ['residentiel', 'industriel', 'commercial', 'agricole']) {
@@ -198,7 +201,10 @@ describe.each(LOCALES)('WJ121 — 4 cartes de mode dans mon-toit.astro (%s)', (_
     const proLiteral = src.match(/mode === 'professionnel'/g) ?? [];
     const aliasGuards = src.match(/mode === 'industriel' \|\| mode === 'professionnel'/g) ?? [];
     const migration = src.match(/if \(mode === 'professionnel'\) mode = 'industriel'/g) ?? [];
-    expect(proLiteral.length).toBe(aliasGuards.length + migration.length);
+    // RWEB17-M12 — la page se lit avec ses modules, dont `lib/tunnel/champs.ts` (corps du lead) : sa garde
+    // « mode pro » (industriel || commercial || professionnel, la forme d'isProMode) compte comme alias.
+    const proGuards = src.match(/mode === 'industriel' \|\| (?:\w+\.)?mode === 'commercial' \|\| (?:\w+\.)?mode === 'professionnel'/g) ?? [];
+    expect(proLiteral.length).toBe(aliasGuards.length + proGuards.length + migration.length);
     expect(migration).toHaveLength(1); // la migration existe toujours
   });
 

@@ -13,6 +13,7 @@
 // (survol, sélection, repli) reste couvert par la suite Playwright E1-16.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { validateLead } from '../src/lib/lead';
 import { etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
@@ -20,10 +21,7 @@ import { construireCorps } from '../src/lib/tunnel/corps';
 
 // mon-toit.astro is CRLF (Windows-authored) — normalize before pinning
 // source snippets so this test is line-ending-agnostic.
-const PAGE = readFileSync(
-  fileURLToPath(new URL('../src/pages/devis/mon-toit.astro', import.meta.url)),
-  'utf-8',
-).replace(/\r\n/g, '\n');
+const PAGE = lireSourceTunnel(fileURLToPath(new URL('../src/pages/devis/mon-toit.astro', import.meta.url))).replace(/\r\n/g, '\n');
 
 const validBody = {
   fullName: 'Karim Benali',
