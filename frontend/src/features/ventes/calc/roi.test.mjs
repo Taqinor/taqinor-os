@@ -187,3 +187,22 @@ test('ERR-RHOR8 — sans localisation : conso des marches hiver/été + barème 
   assert.equal(Math.round(roi.eco_annuelle_sans), 10316)
   assert.equal(Math.round(roi.eco_annuelle_avec), 11308)
 })
+
+// ── ERR-RHOR8-CONSO-SAISIE-SANS-DISTRIBUTEUR — kWh saisis, sans distributeur ──
+// Même devis (5,68 kWc, batterie 5 kWh, 44 500 / 56 500 MAD TTC), conso SAISIE
+// 6 000 kWh/an, aucun distributeur choisi : l'écran tarife sur l'ONEE par
+// défaut (barème national par tranche) et le serveur, au niveau 5, rend les
+// MÊMES chiffres (test_qf2_two_bills::Rhor8SansLocalisationParite::
+// test_conso_saisie_memes_chiffres_que_l_ecran).
+test('ERR-RHOR8-CONSO-SAISIE — kWh saisis sans distributeur : barème national = chiffres du PDF', async () => {
+  const { productibleForCity } = await import('../solar.js')
+  const roi = computeROI({
+    kwp: 5.68, factures: [], dayUsagePct: 60, totalSans: 44500, totalAvec: 56500,
+    batteryKwh: 5, consoAnnuelleKwh: 6000, utility: 'onee',
+    productible: productibleForCity('', null), reglesCalcul: 5,
+  })
+  assert.equal(roi.savings_model, 'factures')
+  assert.equal(Math.round(roi.eco_annuelle_sans), 8531)
+  assert.equal(Math.round(roi.eco_annuelle_avec), 9191)
+  assert.equal(Math.round(roi.facture_sans), 9789)
+})
