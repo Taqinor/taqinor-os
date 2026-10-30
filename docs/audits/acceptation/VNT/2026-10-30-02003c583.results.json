@@ -18,7 +18,8 @@
     "VNT54",
     "VNT55",
     "VNT67",
-    "VNT77"
+    "VNT77",
+    "VNT72"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -32,33 +33,6 @@
       "verdict": "PASS",
       "base_verdict": null,
       "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-VNT-P2.1.jpg",
-      "oracles": {
-        "1": "PASS",
-        "2": "PASS",
-        "3": "PASS",
-        "4": "PASS",
-        "5": "PASS",
-        "6": "NA",
-        "7": "NA",
-        "8": "PASS",
-        "9": "NA",
-        "10": "NA"
-      },
-      "notes": ""
-    },
-    {
-      "id": "P2.2",
-      "taches": [
-        "VNT58",
-        "VNT59",
-        "VNT60",
-        "VNT64",
-        "VNT73",
-        "VNT78"
-      ],
-      "verdict": "PASS",
-      "base_verdict": null,
-      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-VNT-P2.2.jpg",
       "oracles": {
         "1": "PASS",
         "2": "PASS",
@@ -203,6 +177,55 @@
         "3": "PASS",
         "4": "PASS",
         "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P2.9",
+      "taches": [
+        "VNT72"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-VNT-P2.9.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P2.2",
+      "taches": [
+        "VNT58",
+        "VNT59",
+        "VNT60",
+        "VNT64",
+        "VNT73",
+        "VNT78"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-30/ACCEPTATION-VNT-P2.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
         "6": "NA",
         "7": "NA",
         "8": "PASS",
