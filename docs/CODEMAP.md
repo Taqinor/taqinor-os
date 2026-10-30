@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 242284ffee968734488119e61117d4774ba30505e585d4045f63b7da514afde7
+Structure fingerprint: f57fd30fc1fec75c3ab125d6b19c6972407d424012b1c350750b7b5f88055f62
 Plan fingerprint: 097fdd1d0d6b030b9914b5f45b8d7713d4b17fe9d1befe8ef5b993505c41aec8
 
 
@@ -440,7 +440,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 | `installations` | `/chantiers`, `/chantiers/demandes-achat`, `/chantiers/approvisionnement`, `/chantiers/import`, `/interventions`, `/planification`, `/planification/suivi-gps`, `/ma-journee`, `/parc`, `/atelier`, `/atelier/kits`, `/production` (+`/parc`, `/analytique`, `/garanties`, `/co2`, `/nettoyages`, `/rapports`, `/portail-client`), `/outillage` |
 | `sav` | `/sav/cockpit`, `/sav`, `/equipements`, `/sav/contrats`, `/sav/warranty-claims`, `/sav/parametres`, `/sav/sla-rapport`, `/sav/alarmes`, `/sav/action-requise`, `/sav/kb`, `/sav/problemes` |
 | `ged` | `/ged/numeriser`, `/ged/checklist`, `/ged/approbation`, `/ged/retention`, `/ged/tags`, `/ged/corbeille`, `/ged/coffres`, `/ged/regles-dossier`, `/ged/regles-acl`, `/ged/routages`, `/ged/planifications` |
-| `reporting` | `/reporting`, `/rapports`, `/reporting/balance-agee`, `/reporting/commercial`, `/reporting/quote-to-cash`, `/reporting/cohortes`, `/reporting/dashboards` (+`/partage`), `/reporting/rapport-builder`, `/reporting/archive/client|chantier/:id`, `/approbations`, `/reporting/classeurs` (+`/:id`), `/reporting/sav-sla`, `/reporting/field-service`, `/reporting/scorecard-technicien`, `/reporting/pilotage-chantiers` |
+| `reporting` | `/reporting`, `/rapports`, `/reporting/balance-agee`, `/reporting/commercial`, `/reporting/quote-to-cash`, `/reporting/cohortes`, `/reporting/dashboards` (+`/partage`), `/reporting/rapport-builder`, `/reporting/archive/client|chantier/:id`, `/approbations`, `/reporting/classeurs` (+`/:id`), `/reporting/sav-sla`, `/reporting/field-service`, `/reporting/scorecard-technicien`, `/reporting/pilotage-chantiers`, `/reporting/envois-programmes` |
 | `adsengine` | `/publicite` + 25 screens (tableau-de-bord, cockpit, ad/:id, approbations, campagnes, creatifs, commentaires, instagram, experimentations, plan-de-vol, backlog, regles, simulation, reporting, brief, journal, connexion, arbre, table-des-faits, comparateur, consentements, kit-marque, veille, import-chantier, tests-terrain) |
 | `parametres` | `/parametres` + 24 tabs/screens (export, notifications, alertes-kpi, vues, playbooks, achats(+cloture), gammes, tiers-doublons, ia, objets-personnalises, pieces-jointes, plans-commission, corbeille, ux, sauvegardes, export-reversibilite, limites-usage, etat-dependances, sla, maintenance, messages-accueil, historique-statut), `/objets/:code`, `/journal` |
 | `admin` | `/admin/users`, `/admin/roles`, `/admin/tenants`, `/admin/securite-identite`, `/admin/gouvernance-acces`, `/admin/impersonation` (+`/demander`), `/admin/demo/nouveau` |
