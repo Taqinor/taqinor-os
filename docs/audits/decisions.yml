@@ -2828,3 +2828,25 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT)"
     taches: [ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT]
+  - id: D-ENF-SEUILS-DEFAUT
+    question: "Les quatre défauts électriques de core/electrique/types.py (SpecModule.temp_coeff_voc_pct_c = -0,27 ; temp_coeff_pmax_pct_c = -0,35 ; TEMP_FROID_DEFAUT_C = -5 ; TEMP_CHAUD_DEFAUT_C = 70) n'ont pas de source citée : les garder tels quels (et enregistrer la décision comme source) ou les remplacer ?"
+    options:
+      - cle: a
+        texte: "garder les valeurs exactement ; leur source est cette décision fondateur datée ; utilisées seulement quand la fiche produit ou la météo du site manque"
+      - cle: b
+        texte: "les remplacer par des valeurs issues d'une fiche ou d'une norme, ou les rendre obligatoires"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, dette de scripts/seuils_electriques_exceptions.txt)"
+    taches: []
+  - id: D-ENF-SYMBOLES-8221
+    question: "Les constantes TSS_C_KWH, TURD_C_KWH et TURT_C_KWH de quote_engine/constants_82_21.py n'ont aucun lecteur (documentaires, jamais soustraites) : les garder pour affichage ou les supprimer ?"
+    options:
+      - cle: a
+        texte: "supprimer les trois constantes (et leurs entrées dans la liste des symboles sans lecteur) ; aucun chiffre client ne change"
+      - cle: b
+        texte: "les garder comme documentation de la décision ANRE"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, passif de scripts/symboles_moteur_allow.txt)"
+    taches: [AMOT47]

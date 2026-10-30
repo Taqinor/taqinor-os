@@ -344,26 +344,16 @@ class DepotReelTests(unittest.TestCase):
                  + self.stats["defauts_dataclass"])
         self.assertGreater(total, 0)
 
-    def test_les_deux_coefficients_de_types_py_sont_geles(self):
-        """Le Done explicite de CALX250 : les deux coefficients de
-        ``types.py`` figurent dans la base avec leur motif dedie."""
+    def test_les_quatre_defauts_de_types_py_sont_sources(self):
+        """D-ENF-SEUILS-DEFAUT (decision fondateur 30/10/2026) : les quatre
+        defauts de ``types.py`` citent la decision et ne sont plus geles."""
         base = g.charger_base()
-        # Les cles sont fichier:ligne — un commit voisin decale les lignes
-        # (lane K, 21/09) ; on retrouve donc chaque coefficient par son NOM.
-
-        def _cle(nom):
-            trouvees = [cle for cle, motif in base.items()
-                        if cle.endswith("core/electrique/types.py")
-                        or "core/electrique/types.py::" in cle
-                        if motif.startswith(nom + " :")]
-            self.assertEqual(len(trouvees), 1, (nom, trouvees))
-            return trouvees[0]
-
-        cle_voc = _cle("SpecModule.temp_coeff_voc_pct_c")
-        cle_pmax = _cle("SpecModule.temp_coeff_pmax_pct_c")
-        motif = "défaut non sourcé, à remplacer par une fiche"
-        self.assertIn(motif, base[cle_voc])
-        self.assertIn(motif, base[cle_pmax])
+        for nom in ("SpecModule.temp_coeff_voc_pct_c",
+                    "SpecModule.temp_coeff_pmax_pct_c",
+                    "TEMP_FROID_DEFAUT_C", "TEMP_CHAUD_DEFAUT_C"):
+            self.assertNotIn("backend/django_core/core/electrique/types.py::" + nom, base)
+        texte = (g.ROOT / "backend/django_core/core/electrique/types.py").read_text(encoding="utf-8")
+        self.assertEqual(texte.count("D-ENF-SEUILS-DEFAUT"), 4)
 
     def test_la_base_committee_ne_gele_que_le_perimetre(self):
         for cle in g.charger_base():

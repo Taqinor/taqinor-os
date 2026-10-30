@@ -2,8 +2,5 @@
 # bareme.py) sans AUCUN lecteur de production (jumeaux Python restes apres la suppression du
 # miroir JS). Format `fichier::symbole`. NE PEUT QUE DECROITRE : une cle dont le symbole est
 # supprime ou desormais lu FAIT ECHOUER la garde (retirez la ligne). Tache qui les retire :
-# AMOT47 (code mort du moteur tarifaire). TSS/TURD/TURT sont DOCUMENTAIRES (jamais soustraits,
-# decision ANRE 02/25 art. 8) : conserves tant que le fondateur veut les afficher.
-backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TSS_C_KWH
-backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TURD_C_KWH
-backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TURT_C_KWH
+# AMOT47 (code mort du moteur tarifaire). TSS/TURD/TURT supprimes le 30/10/2026
+# (D-ENF-SYMBOLES-8221, decision fondateur).
