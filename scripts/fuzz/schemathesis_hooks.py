@@ -12,7 +12,9 @@ fichier). Trois responsabilités, toutes du HARNAIS (aucun code produit) :
    repartait avec le Bearer et passait. Ici un fournisseur
    ``@schemathesis.auth`` se connecte avec le compte dédié ``fuzz_admin`` et
    pose le jeton dans le cookie DÉCLARÉ ; il se reconnecte toutes les 10 min
-   (ENF11 : plus de rejeu sur 401 — voir ``_REJOUER_SUR``).
+   (ENF11 : plus de rejeu sur 401 — voir ``_REJOUER_SUR``). Un en-tête
+   ``Authorization`` GÉNÉRÉ (alternative ``bearerJWT``) reçoit le même jeton
+   (ENF11 — voir ``aligner_bearer``).
 
 2. **Désérialiseurs** ``text/csv``, ``text/html`` et binaires : sans eux,
    Schemathesis sautait la validation de ces réponses (avertissement
@@ -149,6 +151,34 @@ class FuzzAdminCookieAuth:
     def set(self, case, data, ctx):
         case.cookies = dict(case.cookies or {})
         case.cookies['access_token'] = data
+        aligner_bearer(case, data)
+
+
+# ENF11 — « Missing authentication: 67 operations returned only 401/403 »
+# (api-fuzz-full 40986772772 : 1 121 opérations 401-seules sur 16 tranches,
+# dont 998 routes ordinaires à cookie ; le nocturne du 23/10, 39924022026, n'en
+# avait que 38, toutes SCIM / API publique / refresh). Le schéma déclare deux
+# alternatives d'authentification (`[{cookieJWT}, {bearerJWT}]`) : Schemathesis
+# 4.28 génère donc, sur les cas POSITIFS, un en-tête `Authorization` OPTIONNEL
+# au format `_bearer_auth` = « Bearer » + une valeur d'en-tête QUELCONQUE
+# (espaces, ponctuation, chaîne vide). Depuis d4ef375b4 (24/10) le serveur
+# refuse, à raison (RFC 6750 token68), tout `Authorization` présent mais mal
+# formé par un 401 — même avec un cookie valide. ~71 % des réponses non-2xx de
+# la tranche 0 étaient ces 401 : la logique des routes n'était jamais atteinte.
+# Le fournisseur pose donc le MÊME jeton valide dans l'alternative Bearer
+# quand le cas en porte une — exactement ce que fait l'HttpBearerAuthProvider
+# de Schemathesis. Il ne l'AJOUTE jamais (un cas « cookie seul » reste tel
+# quel) et ne touche aucun cas négatif visant l'authentification :
+# Schemathesis n'appelle pas `set` quand le paramètre muté est un paramètre de
+# sécurité (`is_security_param_negated`), et le check `ignored_auth` retire
+# toujours lui-même l'authentification déclarée.
+def aligner_bearer(case, jeton):
+    entetes = getattr(case, 'headers', None)
+    if not entetes:
+        return
+    for cle in list(entetes):
+        if isinstance(cle, str) and cle.lower() == 'authorization':
+            entetes[cle] = f'Bearer {jeton}'
 
 
 # ── 2. Désérialiseurs ──────────────────────────────────────────────────
