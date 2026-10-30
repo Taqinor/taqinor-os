@@ -1,0 +1,9 @@
+---
+---
+            <span data-i18n data-fr="Adresse / ville" data-ar="العنوان / المدينة">Adresse / ville</span>
+            <!-- ORDRE FONDATEUR (24/08/2026) — quand la position GPS est déjà posée
+                 (repère carte), l'adresse devient SECONDAIRE : elle reste visible (elle
+                 sert au courrier) mais n'est plus obligatoire. `required`/`aria-required`
+                 sont mis à jour dynamiquement par syncCityRequirement() (jamais retirés
+                 en dur ici — un visiteur SANS repère doit toujours voir le champ requis). -->
+            <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
