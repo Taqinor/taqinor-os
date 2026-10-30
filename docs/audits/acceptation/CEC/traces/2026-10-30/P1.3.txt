@@ -1,5 +1,5 @@
 (pile 127.0.0.1:5191 → :8010, anon_admin / taqinor-anon ; page /proposition non lancée : charge publique lue)
-# CEC6 — usine : devis DEV-202610-0120 (id 1688), lead 2661
+# CEC6 — usine : devis DEV-202610-0120 (id 1906), lead 2903
 Économie an 1 HT — recalcul : pointe 2809 kWh × 1.1798 = 3314.06 + pleines 148015 kWh × 0.8417 = 124584.23 + creuses 206 kWh × 0.6165 = 127.00 = 128025.28 MAD
   economie_ci.economie_annee1.total_mad = 128025.17 ; PDF = 128025 ; mode_kpis.economies_annuelles = 128025.17 ; synthese_ci.argent.economie_annee1.total_mad = 128025.17 ; devis/auto.economie_an_1_ht = 128025.17
 Investissement sans batterie : PDF 541800 TTC ; option_totals 541800 TTC / 469700 HT ; devis/auto.total_ttc 541800

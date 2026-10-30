@@ -5,6 +5,7 @@ import crmApi from '../../../api/crmApi'
 import calepinageApi from '../../../api/calepinageApi'
 import { urlFichierCalepinage } from '../../../lib/calage/fichierCalepinage'
 import { refusServeur } from '../commun/refusServeur'
+import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
@@ -17,6 +18,13 @@ import {
 // initialisation du builder), déplacé VERBATIM depuis pages/ventes/ToitureDesign.jsx
 // (move only : le corps de l'effet est inchangé ; seuls les imports et la
 // déstructuration de `ctx` en tête sont ajoutés).
+
+// ERR-ACAL311-PANNEAU-ABSENT-ERP — l'ERP n'a ni fenêtre de production ni la route
+// `/api/roof-production` d'apps/web : sans plan de production, « Affiner ma consommation »
+// restait masqué. La production PAR 1 kWc vient du repli PARTAGÉ `fallbackPerKwc` (productible
+// du devis, même calcul que quote_engine/productible.py), étiqueté « estimation » — aucune requête.
+const productionAtelierErp = () => fallbackPerKwc()
+
 /**
  * ACAL286 — pousse au builder la table d'affectation SERVIE (`electrique.affectation[]`, avec
  * `couleur_chaine` / `couleur_mppt`) pour teinter les modules du pan actif. Best-effort : un
@@ -241,6 +249,7 @@ export function useAtelierBoot(ctx) {
         rendementPvgis: null,
         // ACAL311 — mode lead : aucun calepinage, kWh affichés « estimation (barème indicatif) ».
         proposerConsommation: null,
+        productionAtelier: productionAtelierErp,
         maptilerKey,
         mapboxToken,
         reducedMotion: !!reducedMotion,
@@ -377,6 +386,7 @@ export function useAtelierBoot(ctx) {
           rendementPvgis: null,
           // ACAL311 — kWh au barème société (null hors calepinage : « estimation »).
           proposerConsommation: proposerPourAtelier,
+          productionAtelier: productionAtelierErp,
           maptilerKey: carte.maptilerKey,
           mapboxToken: carte.mapboxToken || undefined,
           reducedMotion: !!reducedMotion,

@@ -90,6 +90,12 @@ import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepi
 import '../../styles/roofbuilder.css'
 import { CONS_WINDOW_HTML } from '@roofpro/consumptionMarkup' // ERR-ACAL311-PANNEAU-ABSENT-ERP
 
+// ERR-ACAL311-PANNEAU-ABSENT-ERP (vague 10, rejeu P5.5) — objet `__html` UNIQUE au module :
+// React 19 compare la prop `dangerouslySetInnerHTML` par IDENTITÉ et réécrivait `innerHTML` à
+// chaque rendu d'un objet littéral neuf. Le constructeur saisit `#rp9-cons-window` à son boot :
+// le nœud qu'il démasquait était remplacé (détaché), la fenêtre affichée restait `hidden`.
+const CONS_WINDOW_INNER = { __html: CONS_WINDOW_HTML }
+
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
 const messageResyncRefusee = (raison) => (
@@ -262,6 +268,12 @@ function AtelierToiture({
   // les trois modes). `onApiReady` arrive avant l'hydratation : toute référence
   // « non modifiée » (garde de sortie, amorce du brouillon) se prend APRÈS.
   const [sceneHydratee, setSceneHydratee] = useState(false)
+  // ACAL311 (CI vague 10) — sans clé carte servie (`contexte.carte`), le boot s'arrête sur
+  // « Carte indisponible » : AUCUNE scène n'est construite, `onHydrationTerminee` n'arrive
+  // jamais. Générer / Resynchroniser restent alors CLIQUABLES (comme avant la garde) et
+  // gardent `enregistrerAvant` : sans constructeur, l'enregistrement refuse (« Outil non
+  // prêt ») et le bandeau `cal-devis-refus` le dit — rien n'est écrit ni envoyé au devis.
+  const atelierSansCarte = !!contexte && !(contexte.carte?.available && contexte.carte?.maptilerKey)
   // ACAL85 — empreinte de la scène au boot (après hydratation) puis à chaque
   // enregistrement réussi ; `sceneModifiee` arme `useDirtyGuard`.
   const hashSceneReferenceRef = useRef(null)
@@ -675,6 +687,14 @@ function AtelierToiture({
     const apiTool = builderApi.current
     if (!apiTool) {
       setGenError('Outil non prêt — ajustez la conception puis réessayez.')
+      return false
+    }
+    // ACAL311 (rejeu P5.5, vague 10) — `onApiReady` précède l'hydratation (faite au `load` de
+    // la carte) : sérialiser AVANT réécrivait le document sans ses blocs relus (la
+    // consommation au barème société disparaissait après F5 + Enregistrer). Rien n'est écrit
+    // tant que la scène n'est pas hydratée.
+    if (!sceneHydratee) {
+      setGenError('Conception en cours de chargement : rien n’est enregistré, réessayez dans un instant.')
       return false
     }
     if (catalogueIndisponible) {
@@ -1379,10 +1399,10 @@ function AtelierToiture({
         {/* ERR-ACAL311-PANNEAU-ABSENT-ERP — « Affiner ma consommation » (`#rp9-cons-window`) :
             balisage UNIQUE partagé avec la preview publique (`@roofpro/consumptionMarkup`),
             sans lequel `consumption.ts monterProposition` ne montait rien ici (« Reprendre du
-            lead », CSV, Ramadan, classe tarifaire). Chaîne constante : React ne la réécrit pas. */}
+            lead », CSV, Ramadan, classe tarifaire). Objet constant (CONS_WINDOW_INNER) : React ne la réécrit pas. */}
         <div
           // check-no-danger-allow: CONS_WINDOW_HTML est une chaîne CONSTANTE du dépôt (@roofpro/consumptionMarkup), aucune donnée utilisateur
-          dangerouslySetInnerHTML={{ __html: CONS_WINDOW_HTML }}
+          dangerouslySetInnerHTML={CONS_WINDOW_INNER}
         />
 
         {/* CALX65 — sous la carte du constructeur, en mode calepinage
@@ -1461,6 +1481,7 @@ function AtelierToiture({
             // des retouches non enregistrées.
             enregistrerAvant={enregistrerCalepinage}
             aDesRetouches={() => sceneHydratee && sceneEstModifiee()}
+            atelierPret={sceneHydratee || atelierSansCarte}
           />
         )}
 
@@ -1471,7 +1492,7 @@ function AtelierToiture({
             lecture seule, comme dans les deux autres modes. */}
         {estCalepinage && !lectureSeule && (
         <div className="cine-card mt-6 p-6" data-testid="cal-enregistrer-calepinage">
-          <button type="button" onClick={enregistrerCalepinage} disabled={sending}
+          <button type="button" onClick={enregistrerCalepinage} disabled={sending || !sceneHydratee}
             className="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
             style={{ background: 'var(--rp-ok-600)' }}>
             {sending && (

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor } from '@testing-library/react'
+import { act, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -34,6 +34,9 @@ import { createConsumption, hydratationDeProposition } from '@roofpro/consumptio
 import { ctxAtelierNeuf } from '@roofpro/harnaisDocument' // ERR-ACAL311-PANNEAU-ABSENT-ERP
 import { appliquerHydratationAuCtx } from '@roofpro/hydratation'
 import { serializeConsumption } from '@roofpro/prefill'
+import { createProdWindow } from '@roofpro/prodWindow' // ERR-ACAL311 — vrai module, fenêtre absente
+import { fallbackPerKwc } from '@rooflib/productionEngine'
+import { MESSAGE_ENREGISTREMENT_ECHOUE } from '../../features/calepinage/BoutonDevis'
 
 stubberEmpreinteOsm()
 
@@ -233,5 +236,121 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
     rendreLead()
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(initRoofToolPro8.mock.calls[0][0].proposerConsommation).toBeNull()
+  })
+
+  // ERR-ACAL311-PANNEAU-ABSENT-ERP (vague 9) — le panneau était dans le DOM mais restait
+  // `hidden` : sans `#rp9-prod-window` ni `/api/roof-production`, aucun plan de production.
+  it('`productionAtelier` transmis : sans fenêtre de production, « Affiner ma consommation » devient visible', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(reponseContrat('calepinage', 'calepinage_design_context'))
+    // Vague 10 (rejeu P5.5) — comme le VRAI constructeur (`roof-tool-pro11.ts` : `$('rp9-cons-window')`
+    // au boot), l'élément est saisi PENDANT `initRoofToolPro8`, AVANT les re-rendus React
+    // déclenchés par `onApiReady`/`onHydrationTerminee`. En direct, React 19 réécrivait
+    // `innerHTML` à chaque rendu (objet `__html` neuf) : le module montrait un nœud DÉTACHÉ.
+    const bootMinimal = initRoofToolPro8.getMockImplementation()
+    let saisiAuBoot = null
+    initRoofToolPro8.mockImplementation((options) => {
+      saisiAuBoot = document.getElementById('rp9-cons-window')
+      return bootMinimal(options)
+    })
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
+    const { productionAtelier } = initRoofToolPro8.mock.calls[0][0]
+    expect(typeof productionAtelier).toBe('function')
+    expect(productionAtelier({ panels: 10 })).toEqual(fallbackPerKwc())
+    const fenetre = saisiAuBoot
+    expect(fenetre, 'saisi au boot').not.toBeNull()
+    expect(fenetre.isConnected, 'le nœud saisi au boot survit aux re-rendus React').toBe(true)
+    expect(document.getElementById('rp9-cons-window')).toBe(fenetre)
+    expect(fenetre.hidden).toBe(true)
+    // Les VRAIS modules de l'atelier sur le DOM servi par l'ERP (aucun `#rp9-prod-window`).
+    const ctx = {
+      ...ctxAtelierNeuf(), opts: { productionAtelier }, closed: true, centroid: [-7.6, 33.5],
+      vertices: [[-7.6, 33.5], [-7.59, 33.5], [-7.59, 33.51]], prodMonth: 0, prodPanels: 0,
+      liveResult: { target: 6000, winner: { placedCount: 10, tiltDeg: 10, aspect: 0 } },
+    }
+    const domConso = new Proxy({ consWindowEl: fenetre }, { get: (t, k) => t[k] ?? null })
+    const conso = createConsumption(ctx, domConso, {
+      renderActive: () => undefined, clampNeeded: (n) => n, monthlyBill: () => 0, fmt1: (n) => String(n),
+    })
+    createProdWindow(ctx, new Proxy({}, { get: () => null }), {
+      graphs: {}, renderConsumption: conso.renderConsumption, renderLayoutPanel: () => undefined,
+      snapshotActiveAreaResult: () => undefined, renderAreasPanel: () => undefined,
+    }).syncProductionWindow()
+    expect(ctx.prodPanels).toBe(10)
+    expect(document.getElementById('rp9-cons-window').hidden, 'visible À L’ÉCRAN (nœud connecté)').toBe(false)
+    expect(document.getElementById('rp9-cons-toggle')).not.toBeNull()
+
+    cleanup()
+    initRoofToolPro8.mockClear()
+    delete window.__taqinorRoofBooted
+    simulerApiLead(api)
+    rendreLead()
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(typeof initRoofToolPro8.mock.calls[0][0].productionAtelier).toBe('function')
+  })
+
+  // Rejeu P5.5 (vague 10) — F5 puis « Enregistrer » AVANT l'hydratation (faite au `load` de
+  // la carte, APRÈS `onApiReady`) réécrivait le document sans sa consommation relue.
+  it('rien ne s’enregistre entre `onApiReady` et `onHydrationTerminee` (le document relu survit)', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(reponseContrat('calepinage', 'calepinage_design_context'))
+    const serializeLayout = vi.fn(() => ({ version: 2, zones: [] })) // scène NON hydratée : sans `consumption`
+    let options = null
+    initRoofToolPro8.mockImplementation((o) => {
+      options = o
+      o.onApiReady?.({ serializeLayout, snapshot: vi.fn(() => null) }) // la carte n'a pas encore fini de charger
+    })
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const bouton = await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
+    expect(bouton).toBeDisabled()
+    await userEvent.click(bouton)
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).not.toHaveBeenCalled()
+    expect(serializeLayout).not.toHaveBeenCalled()
+
+    await act(async () => { options.onHydrationTerminee?.() })
+    await waitFor(() => expect(screen.getByRole('button', { name: /Enregistrer le calepinage/ })).toBeEnabled())
+  })
+
+  // CI vague 10 (e2e CAL221/CALX386) — sans clé carte, le boot s'arrête sur « Carte
+  // indisponible » et `onHydrationTerminee` n'arrive jamais. Comme sur `main` avant la garde :
+  // le bouton est cliquable, l'enregistrement préalable refuse (aucun constructeur) et le
+  // refus se lit dans `cal-devis-refus` — ni écriture de layout, ni appel au pont devis.
+  // (Sans `enregistrerAvant`, le serveur répondait 409 `roof_layout` → `cal-devis-conflit`,
+  // que l'e2e n'attend pas : rouge CI run 41024909999.)
+  it('carte absente → Resynchroniser cliquable, refus `cal-devis-refus`, rien n’est écrit ni envoyé', async () => {
+    const ctx = { ...CTX, carte: { available: false, maptilerKey: '', mapboxToken: null } }
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
+    api.get.mockResolvedValue({ data: [] }) // champs personnalisés de la fiche (indépendant de l'ordre)
+    calepinageApi.calepinages.syncDevis.mockResolvedValue({ data: { devis: 1 } })
+    rendreCalepinage(CTX.calepinage.id)
+    const bouton = await screen.findByTestId('cal-resynchroniser-devis')
+    await waitFor(() => expect(bouton).toBeEnabled())
+    expect(initRoofToolPro8).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /Enregistrer le calepinage/ })).toBeDisabled()
+    await userEvent.click(bouton)
+    const refus = await screen.findByTestId('cal-devis-refus')
+    expect(refus.textContent).toContain(MESSAGE_ENREGISTREMENT_ECHOUE)
+    expect(screen.queryByTestId('cal-devis-conflit')).toBeNull()
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).not.toHaveBeenCalled()
+  })
+
+  it('carte présente → Resynchroniser inactif jusqu’à `onHydrationTerminee` (la garde tient)', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
+    api.get.mockResolvedValue({ data: [] }) // champs personnalisés de la fiche (indépendant de l'ordre)
+    let options = null
+    initRoofToolPro8.mockImplementation((o) => {
+      options = o
+      o.onApiReady?.({ serializeLayout: vi.fn(() => ({ version: 2, zones: [] })), snapshot: vi.fn(() => null) })
+    })
+    rendreCalepinage(CTX.calepinage.id)
+    const bouton = await screen.findByTestId('cal-resynchroniser-devis')
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(bouton).toBeDisabled()
+    await act(async () => { options.onHydrationTerminee?.() })
+    await waitFor(() => expect(screen.getByTestId('cal-resynchroniser-devis')).toBeEnabled())
   })
 })

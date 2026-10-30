@@ -3,6 +3,7 @@
     {
       "rendementPvgis": null,
       "proposerConsommation": null,
+      "productionAtelier": "[fn]",
       "maptilerKey": "k-lead",
       "reducedMotion": false,
       "hydrate": {
@@ -31,6 +32,10 @@
     }
   ],
   "api_builder_appels": [
+    {
+      "appel": "serializeLayout",
+      "args": []
+    },
     {
       "appel": "setReferenceContourVisible",
       "args": [

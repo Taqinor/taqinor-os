@@ -14,6 +14,7 @@ Run :
         -Modules "apps.ventes.tests.test_agnr40_atomic_idempotent"
 """
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -97,3 +98,115 @@ class AtomicIdempotentTests(TestCase):
         ok = self.api.post(URL, self._corps(), format='json', **cle)
         self.assertIn(ok.status_code, (200, 201), ok.content)
         self.assertEqual(self._nb(), 1)
+
+    # ── ERR-AGNR40-IDEMPOTENCE-EN-VOL (preuve en direct : AGNR42 P5.1) ──
+    # Trois clics « Créer le devis » avec la MÊME clé pendant que le premier
+    # POST tournait encore (~100 s) avaient créé trois devis : la clé n'était
+    # enregistrée qu'APRÈS ``creer()``. Elle est désormais RÉSERVÉE avant.
+
+    def _endpoint(self):
+        from apps.ventes.views.devis import DevisViewSet
+        return f'{DevisViewSet()._idempotency_endpoint()}.atomic'
+
+    def _reservation(self, cle):
+        from core.idempotency import IdempotencyRecord, _fingerprint
+        return IdempotencyRecord.objects.create(
+            company=self.company, endpoint=self._endpoint(), key=cle,
+            request_fingerprint=_fingerprint(self._corps()), response_status=0,
+            response_body={}, etat=IdempotencyRecord.Etat.EN_COURS)
+
+    def test_doublon_pendant_la_creation_ne_cree_rien(self):
+        """Simulation déterministe de la course : PENDANT ``creer()`` du 1er
+        POST, un 2ᵉ POST identique arrive -> 409 « en cours », jamais un
+        second devis ; après coup, la même clé rejoue le premier."""
+        from apps.ventes.views.devis_edition import DevisEditionActionsMixin
+        from core.idempotency import IdempotencyRecord
+
+        cle = {'HTTP_IDEMPOTENCY_KEY': '13172b31-en-vol'}
+        original = DevisEditionActionsMixin._creer_atomique
+        doublons = []
+
+        def pendant(vue, request):
+            if not doublons:
+                doublons.append(self.api.post(URL, self._corps(), format='json', **cle))
+            return original(vue, request)
+
+        with patch.object(DevisEditionActionsMixin, '_creer_atomique',
+                          autospec=True, side_effect=pendant):
+            premier = self.api.post(URL, self._corps(), format='json', **cle)
+        self.assertIn(premier.status_code, (200, 201), premier.content)
+        self.assertEqual(len(doublons), 1)
+        self.assertEqual(doublons[0].status_code, 409, doublons[0].content)
+        self.assertEqual(doublons[0].json()['code'], 'idempotency_en_cours')
+        self.assertEqual(self._nb(), 1)
+
+        record = IdempotencyRecord.objects.get(company=self.company, key='13172b31-en-vol')
+        self.assertEqual(record.etat, IdempotencyRecord.Etat.TERMINE)
+        rejeu = self.api.post(URL, self._corps(), format='json', **cle)
+        self.assertEqual(rejeu.status_code, premier.status_code)
+        self.assertEqual(rejeu.json()['id'], premier.json()['id'])
+        self.assertEqual(self._nb(), 1)
+
+    def test_reservation_en_cours_bloque_un_second_post(self):
+        """Réservation présente et non terminée -> ``creer()`` ne s'exécute pas."""
+        from apps.ventes.views.devis_edition import DevisEditionActionsMixin
+
+        self._reservation('agnr40-en-cours')
+        with patch.object(DevisEditionActionsMixin, '_creer_atomique') as creer:
+            r = self.api.post(URL, self._corps(), format='json',
+                              HTTP_IDEMPOTENCY_KEY='agnr40-en-cours')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.json()['code'], 'idempotency_en_cours')
+        creer.assert_not_called()
+        self.assertEqual(self._nb(), 0)
+
+    def test_corps_different_pendant_reservation_409_conflit(self):
+        self._reservation('agnr40-en-cours-autre')
+        r = self.api.post(URL, self._corps(quantite='2'), format='json',
+                          HTTP_IDEMPOTENCY_KEY='agnr40-en-cours-autre')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertNotEqual(r.json().get('code'), 'idempotency_en_cours')
+        self.assertEqual(self._nb(), 0)
+
+    def test_echec_de_creer_libere_la_cle(self):
+        from apps.ventes.views.devis_edition import DevisEditionActionsMixin
+        from core.idempotency import IdempotencyRecord
+
+        cle = {'HTTP_IDEMPOTENCY_KEY': 'agnr40-echec'}
+        with patch.object(DevisEditionActionsMixin, '_creer_atomique',
+                          side_effect=RuntimeError('panne')):
+            try:
+                r = self.api.post(URL, self._corps(), format='json', **cle)
+                self.assertGreaterEqual(r.status_code, 500)
+            except RuntimeError:
+                pass
+        self.assertFalse(IdempotencyRecord.objects.filter(
+            company=self.company, key='agnr40-echec').exists())
+        ok = self.api.post(URL, self._corps(), format='json', **cle)
+        self.assertIn(ok.status_code, (200, 201), ok.content)
+        self.assertEqual(self._nb(), 1)
+
+    def test_refus_libere_la_reservation(self):
+        from core.idempotency import IdempotencyRecord
+        refus = self.api.post(URL, dict(self._corps(), lignes=[]), format='json',
+                              HTTP_IDEMPOTENCY_KEY='agnr40-refus')
+        self.assertEqual(refus.status_code, 400)
+        self.assertFalse(IdempotencyRecord.objects.filter(
+            company=self.company, key='agnr40-refus').exists())
+
+    def test_reservation_abandonnee_reprise(self):
+        """Processus mort en pleine création : la réservation expirée est
+        reprise, la clé n'est jamais bloquée à vie."""
+        from django.utils import timezone
+        from core.idempotency import RESERVATION_EXPIREE, IdempotencyRecord
+
+        res = self._reservation('agnr40-abandon')
+        IdempotencyRecord.objects.filter(pk=res.pk).update(
+            created_at=timezone.now() - RESERVATION_EXPIREE * 2)
+        r = self.api.post(URL, self._corps(), format='json',
+                          HTTP_IDEMPOTENCY_KEY='agnr40-abandon')
+        self.assertIn(r.status_code, (200, 201), r.content)
+        self.assertEqual(self._nb(), 1)
+        record = IdempotencyRecord.objects.get(company=self.company, key='agnr40-abandon')
+        self.assertEqual(record.etat, IdempotencyRecord.Etat.TERMINE)
+        self.assertEqual(record.response_body.get('id'), r.json()['id'])
