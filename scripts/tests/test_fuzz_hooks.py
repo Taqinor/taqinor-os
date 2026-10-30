@@ -182,6 +182,23 @@ class CrochetsFuzzTests(unittest.TestCase):
                 self.assertEqual(cas.cookies, {'access_token': 'jwt'})
                 self.assertEqual(cas.headers, entetes)
 
+    def test_bearer_laisse_intact_sur_cas_negatif(self):
+        # CI #1176 — 300+ « accepted schema-violating request » : le cas
+        # négatif de la phase coverage invalide l'Authorization ; l'aligner
+        # rendait la requête valide (200 sur /devis/{id}/…).
+        GenerationMode = self.hooks.GenerationMode
+        auth = self.hooks.FuzzAdminCookieAuth()
+        meta = types.SimpleNamespace(generation=types.SimpleNamespace(
+            mode=GenerationMode.NEGATIVE))
+        cas = types.SimpleNamespace(cookies=None, meta=meta,
+                                    headers={'Authorization': 'Bearer a b!#'})
+        auth.set(cas, 'jwt', None)
+        self.assertEqual(cas.headers, {'Authorization': 'Bearer a b!#'})
+        cas.meta = types.SimpleNamespace(generation=types.SimpleNamespace(
+            mode=GenerationMode.POSITIVE))
+        auth.set(cas, 'jwt', None)
+        self.assertEqual(cas.headers, {'Authorization': 'Bearer jwt'})
+
 
 class IdsCheminTests(unittest.TestCase):
     """ENF11 — ids réels pour `{id}`/`{pk}` (1 273 opérations 404-seules)."""

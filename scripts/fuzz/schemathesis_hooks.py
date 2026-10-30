@@ -173,6 +173,12 @@ class FuzzAdminCookieAuth:
 # sécurité (`is_security_param_negated`), et le check `ignored_auth` retire
 # toujours lui-même l'authentification déclarée.
 def aligner_bearer(case, jeton):
+    # CI #1176 — un cas NÉGATIF (phase coverage) porte un Authorization
+    # volontairement invalide : le « réparer » rendait la requête valide et le
+    # 200 obtenu devenait « API accepted schema-violating request ».
+    meta = getattr(case, 'meta', None)
+    if meta is not None and meta.generation.mode != GenerationMode.POSITIVE:
+        return
     entetes = getattr(case, 'headers', None)
     if not entetes:
         return
