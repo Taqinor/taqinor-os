@@ -91,7 +91,7 @@ async function creerReplique(request, { remise = '10', accepter = true, echeanci
   }
   // À CONFIRMER : le corps `atomic` (produit requis par ligne, echeancier en en-tête) n'a pas été exécuté ici
   const devis = await lireJson(await request.post(`${API}/ventes/devis/atomic/`, { timeout: 120_000, 
-    data: { lead: lead.id, taux_tva: '20.00', remise_globale: remise, echeancier: ECHEANCIER, lignes },
+    data: { lead: lead.id, taux_tva: '20.00', remise_globale: remise, echeancier, lignes },
   }), 'devis réplique')
   await lireJson(await request.post(`${API}/ventes/devis/${devis.id}/share-link/`, { timeout: 120_000,  data: { envoi: true } }), 'envoi du devis')
   if (accepter) await lireJson(await request.post(`${API}/ventes/devis/${devis.id}/accepter/`, { timeout: 120_000,  data: { nom: 'Tijani Kharbachi' } }), 'acceptation du devis')
