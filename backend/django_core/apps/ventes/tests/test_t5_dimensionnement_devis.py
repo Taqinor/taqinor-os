@@ -270,11 +270,21 @@ class BornesEtOmbrageRsizTests(SimpleTestCase):
 
     def test_err_rhor8_kwargs_moteur_ombre_porte_l_ombrage_au_balayage(self):
         """ERR-RHOR8-TAILLES-PRODUCTION-SANS-OMBRAGE — le balayage du stockage
-        accepte la perte : les cartes de tailles (``offres_tailles``) et
-        l'échelle reçoivent l'ombrage du calepinage ; ``None`` ⇒ rien."""
-        from apps.ventes.domain.entrees import kwargs_moteur_ombre
+        accepte la perte ; elle n'entre dans les arguments des cartes de
+        tailles et de l'échelle qu'au niveau de règles 5 (``ombrage_balayage``) ;
+        niveau 4 ou perte ``None`` ⇒ arguments d'hier, sans ombrage."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.entrees import (
+            _ombrage_balayage, kwargs_moteur_ombre)
         base = {'conso_kwh_mensuelles': [300.0] * 12, 'ville': 'Casablanca'}
-        self.assertEqual(kwargs_moteur_ombre(
-            dict(base, perte_ombrage_pct=6.717))['perte_ombrage_pct'], 6.717)
-        self.assertNotIn('perte_ombrage_pct', kwargs_moteur_ombre(
-            dict(base, perte_ombrage_pct=None)))
+        self.assertEqual(kwargs_moteur_ombre(dict(
+            base, perte_ombrage_pct=6.717, ombrage_balayage=True)
+        )['perte_ombrage_pct'], 6.717)
+        for entrees in (dict(base, perte_ombrage_pct=6.717, ombrage_balayage=False),
+                        dict(base, perte_ombrage_pct=6.717),
+                        dict(base, perte_ombrage_pct=None, ombrage_balayage=True)):
+            self.assertNotIn('perte_ombrage_pct', kwargs_moteur_ombre(entrees))
+        self.assertTrue(_ombrage_balayage(SimpleNamespace(regles_calcul=5)))
+        self.assertFalse(_ombrage_balayage(SimpleNamespace(regles_calcul=4)))
+        self.assertFalse(_ombrage_balayage(SimpleNamespace(regles_calcul=3)))

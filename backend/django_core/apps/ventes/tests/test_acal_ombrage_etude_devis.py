@@ -180,29 +180,44 @@ class OmbrageEtudeDevisTest(BaseApiCalepinage):
         self.assertAlmostEqual(
             facteur, PRODUCTION_DERATE * (1.0 - perte / 100.0), places=9)
 
-    def test_err_rhor8_balayage_du_stockage_ombre_comme_l_etude(self, *_m):
+    def test_err_rhor8_balayage_du_stockage_ombre_au_niveau_5(self, *_m):
         """ERR-RHOR8-TAILLES-PRODUCTION-SANS-OMBRAGE (devis 2007 : carte Max
         9 084 kWh non ombrée vs 8 473 officiels) — ``balayer_stockage_horaire``
-        accepte ``perte_ombrage_pct`` : ``kwargs_ombrage`` ne rend plus ``{}``,
-        et le balayage (cartes de tailles, échelle de paliers) produit ce que
-        produit l'étude ombrée à kWc égal. Test-du-test : retirer le paramètre
-        du balayage ⇒ ``kwargs_ombrage`` rend ``{}``, rouge."""
-        from apps.ventes.domain.entrees import kwargs_ombrage
+        accepte ``perte_ombrage_pct`` ; au niveau de règles 5 les arguments du
+        balayage (``kwargs_moteur_ombre``) portent la perte et le balayage
+        produit ce que produit l'étude ombrée à kWc égal ; au niveau 4 (devis
+        envoyé) : arguments d'hier, sans ombrage. Test-du-test : retirer le
+        paramètre du balayage ⇒ ``kwargs_ombrage`` rend ``{}``, rouge."""
+        from apps.ventes.domain.entrees import (
+            EntreesMoteur, _ombrage_balayage, kwargs_moteur_ombre)
         from apps.ventes.etude_horaire import (
             balayer_stockage_horaire, calculer_etude_horaire)
         from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
-        with patch_materiel():
-            perte = perte_ombrage_du_devis(self.devis)
-        self.assertGreater(perte, 0.0)
-        ombre = kwargs_ombrage(perte, calculer_etude_horaire,
-                               balayer_stockage_horaire)
-        self.assertEqual(ombre, {'perte_ombrage_pct': perte})
         kwargs = self._kwargs_horaire()
-        brut = balayer_stockage_horaire(capacites_kwh=[5.0], **kwargs)
-        balaye = balayer_stockage_horaire(capacites_kwh=[5.0], **ombre, **kwargs)
-        etude = calculer_etude_horaire(**ombre, **kwargs)
-        self.assertAlmostEqual(
-            balaye['production_annuelle_kwh'] / brut['production_annuelle_kwh'],
-            1.0 - perte / 100.0, places=3)
-        self.assertAlmostEqual(balaye['production_annuelle_kwh'],
-                               etude['annuel']['production_kwh'], delta=1.0)
+        for niveau, ombre_attendu in ((5, True), (4, False)):
+            with self.subTest(niveau=niveau):
+                Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=niveau)
+                self.devis.refresh_from_db()
+                with patch_materiel():
+                    perte = perte_ombrage_du_devis(self.devis)
+                self.assertGreater(perte, 0.0)  # RHOR1 (niveau ≥ 3) inchangé
+                self.assertIs(_ombrage_balayage(self.devis), ombre_attendu)
+                entrees = EntreesMoteur(
+                    conso_kwh_mensuelles=kwargs['conso_kwh_mensuelles'],
+                    ville='Casablanca', perte_ombrage_pct=perte,
+                    ombrage_balayage=_ombrage_balayage(self.devis))
+                arguments = kwargs_moteur_ombre(entrees)
+                if not ombre_attendu:
+                    self.assertNotIn('perte_ombrage_pct', arguments)
+                    continue
+                self.assertEqual(arguments['perte_ombrage_pct'], perte)
+                ombre = {'perte_ombrage_pct': perte}
+                brut = balayer_stockage_horaire(capacites_kwh=[5.0], **kwargs)
+                balaye = balayer_stockage_horaire(
+                    capacites_kwh=[5.0], **ombre, **kwargs)
+                etude = calculer_etude_horaire(**ombre, **kwargs)
+                self.assertAlmostEqual(
+                    balaye['production_annuelle_kwh'] / brut['production_annuelle_kwh'],
+                    1.0 - perte / 100.0, places=3)
+                self.assertAlmostEqual(balaye['production_annuelle_kwh'],
+                                       etude['annuel']['production_kwh'], delta=1.0)

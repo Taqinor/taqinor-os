@@ -111,6 +111,10 @@ class EntreesMoteur:
     # pas de calepinage lisible (lead, règles d'avant le niveau 3) : le moteur
     # horaire ne reçoit rien et l'empreinte reste celle d'avant.
     perte_ombrage_pct: object = None
+    # ERR-RHOR8 — la perte n'entre dans le BALAYAGE (cartes de tailles, échelle
+    # de paliers) qu'au niveau de règles 5 (``REGLES_RETOURS_3010B``) : un devis
+    # 3/4 envoyé garde les cartes que le client a reçues. Hors empreinte.
+    ombrage_balayage: bool = False
     # CE2E6 (AMOT64 a) — productible SAISI par la société (kWh/kWc/an),
     # ``horaire.productible_societe`` ; ``None`` = vide ou règles < 3 : le
     # moteur horaire garde la série PVGIS et l'empreinte reste celle d'avant.
@@ -362,7 +366,15 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
         hors_reseau=est_site_isole(raccordement),
         mppt_paires=_mppt_paires_du_devis(devis),
         perte_ombrage_pct=_perte_ombrage_du_devis(devis),
+        ombrage_balayage=_ombrage_balayage(devis),
         productible_kwh_kwc=_productible_du_devis(devis))
+
+
+def _ombrage_balayage(devis):
+    """ERR-RHOR8 — vrai si le balayage reçoit l'ombrage (niveau de règles ≥ 5)."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_RETOURS_3010B, regles_au_moins)
+    return regles_au_moins(devis, REGLES_RETOURS_3010B)
 
 
 def _productible_du_devis(devis):
@@ -409,9 +421,12 @@ def kwargs_moteur_ombre(entrees):
     from apps.ventes.etude_horaire import (
         balayer_stockage_horaire, calculer_etude_horaire,
         kwargs_moteur_horaire)
+    # ERR-RHOR8 — niveau ≥ 5 seulement (``ombrage_balayage``) : en dessous, les
+    # arguments d'hier à l'octet (le chemin officiel RHOR1 ne passe pas ici).
+    perte = (entrees.get('perte_ombrage_pct')
+             if entrees.get('ombrage_balayage') else None)
     kwargs = dict(kwargs_moteur_horaire(entrees), **kwargs_ombrage(
-        entrees.get('perte_ombrage_pct'),
-        calculer_etude_horaire, balayer_stockage_horaire))
+        perte, calculer_etude_horaire, balayer_stockage_horaire))
     # CE2E6 — le productible société (niveau 3) : l'étude ET le balayage du
     # stockage l'acceptent, même base de production dans tout le tableau.
     if entrees.get('productible_kwh_kwc') is not None:
