@@ -1,0 +1,37 @@
+{
+  "sha": "1652996722852859fcb6087943e114de7bbf07c6",
+  "date": "2026-10-30",
+  "groupe": "APRF",
+  "verdict": "FAIL",
+  "couvre": [
+    "APRF2",
+    "APRF3",
+    "APRF5"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-APRF-ACC-VENTES.liste",
+      "taches": [
+        "APRF2",
+        "APRF3",
+        "APRF5"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-VENTES.txt ; docs/audits/acceptation/APRF/traces/2026-10-30/C-APRF-ACC-VENTES-PILES.txt — GET ventes/devis/ société 4 : 109 req @5, 437 @25 ; après +20 devis clonés 107 @5, 483 @25, 813 @50 (≈ 16 req par devis AGRICOLE ; les 25 devis résidentiels 26-50 n ajoutent 0 requête : 437 @25 = 437 @50 à la taille 1). Piles : quote_engine/builder.py::build_quote_data (l. 2252) appelle ventes/selectors.py::economie_pompage_publique_pour_devis sur le chemin de LISTE (serializers.py::_display → display_totals) : par devis 3 TariffSettings (parametres/selectors.py::_reglages_tarif_existants, hors mémo APRF2), 2 CompanyProfile (domain/pompage.py::_profil_societe, reglages_societe.py::delai_intervention_societe), lignes relues 4× (economie_pompage.py::lignes_pour_economie, domain/pompage.py::facture_du_devis, utils/options.py::lignes_avec_produit, domain/argent.py::_lignes_du_devis), LeadActivity (crm/devis_selectors.py::entrees_pompage_du_lead), VisiteTerrain (visites/selectors.py::visite_point_eau_validee_du_lead). base_verdict FAIL = mesure du dossier (205 requêtes pour 15 devis à 8a2bfcffd, V_VB) : défaut toujours présent, déplacé sur les devis agricoles (moteur agricole postérieur à l audit)"
+    }
+  ]
+}

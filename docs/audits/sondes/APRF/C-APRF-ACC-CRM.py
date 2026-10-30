@@ -2,7 +2,7 @@ SONDE = {"constat": "C-APRF-ACC-CRM", "sha": "665a4ce53",
          "attendu": "APRF42 (C-APRF-006…013) : CRM clients, cockpit (dormants, mon-portefeuille), relance-etapes, "
                     "leads (liste, relances overdue, sla-breach), roi-sources et « Ma file », société démo 2, mesurés à "
                     "DEUX tailles (données démo, puis +10 clients cockpit, +10 leads en retard avec devis, +10 leads "
-                    "signés par campagne, +10 activités dues, dans la transaction annulée) : requêtes identiques "
+                    "signés par campagne, +10 activités dues, +10 touches WhatsApp, dans la transaction annulée) : requêtes identiques "
                     "(pente 0 ± 1), 0 réponse 503, dormants = oracle unitaire d'avant APRF22, compteurs relances / "
                     "SLA augmentés exactement des leads ajoutés ; portée client (APRF16) sans DISTINCT.",
          "modeles": ["crm.Lead", "crm.Client", "ventes.Devis", "records.Activity"]}
@@ -132,6 +132,18 @@ def sonde(ctx):
                                     due_date=timezone.localdate() - datetime.timedelta(days=1),
                                     assigned_to=u, created_by=u)
 
+    def touches_whatsapp(k):  # patron tests_aprf21 : touche WhatsApp à faire + message ouvert
+        from apps.crm.cadence_reperes import prefixe_activite_message_ouvert
+        from apps.crm.models import RelanceEtape
+        for _ in range(k):
+            n[0] += 1
+            lead = Lead.objects.create(company=co, nom='Sonde touche %d' % n[0], owner=u, stage=stages.CONTACTED)
+            t = RelanceEtape.objects.create(company=co, lead=lead, cadence='contact', ordre=n[0],
+                                            canal=RelanceEtape.Canal.WHATSAPP, libelle='Message %d' % n[0],
+                                            due_at=now, due_date=now.date(), statut=RelanceEtape.Statut.A_FAIRE)
+            LeadActivity.objects.create(company=co, lead=lead, user=u, kind=LeadActivity.Kind.WHATSAPP,
+                                        body=prefixe_activite_message_ouvert(t) + ' (sonde)')
+
     paginees = {'clients': B + 'clients/', 'leads': B + 'leads/', 'relance_etapes': B + 'relance-etapes/'}
     globales = {'dormants': B + 'clients/dormants/', 'portefeuille': B + 'clients/mon-portefeuille/',
                 'relances_overdue': B + 'leads/relances/?scope=overdue', 'sla_breach': B + 'leads/sla-breach/',
@@ -166,6 +178,7 @@ def sonde(ctx):
     clients_cockpit(10)
     leads_signes(10)
     activites(10)
+    touches_whatsapp(10)
     b = tour()
     # Taille 3 (+10 de chaque encore) : la pente se lit entre les tailles 2 et 3, une fois tous les
     # niveaux de préchargement amorcés (un niveau vide ne tire pas sa requête à la taille 1).
@@ -173,6 +186,7 @@ def sonde(ctx):
     clients_cockpit(10)
     leads_signes(10)
     activites(10)
+    touches_whatsapp(10)
     c = tour()
     ok, mes = {}, {}
     for k in a:

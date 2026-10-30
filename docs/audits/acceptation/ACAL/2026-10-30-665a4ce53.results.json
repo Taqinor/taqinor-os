@@ -1,0 +1,164 @@
+{
+  "sha": "665a4ce5340e13c97a85bf50922dbf0fd76ef252",
+  "date": "2026-10-30",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL22",
+    "ACAL39",
+    "ACAL120",
+    "ACAL182",
+    "ACAL316"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "C-ACAL-ACC-API.S-A",
+      "taches": [
+        "ACAL39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/C-ACAL-ACC-API.txt — `exemple` de roof_layout_v2.schema.json semé par POST layout/ (200, aucune clé perdue), relu puis renvoyé à l identique : « inchangé », diff clé par clé vide, empreinte et layout_hash identiques, resultat identique, aucune version créée (1 → 1)"
+    },
+    {
+      "id": "C-ACAL-ACC-API.S-B",
+      "taches": [
+        "ACAL22",
+        "ACAL316"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/C-ACAL-ACC-API.txt — POST layout/ jeton périmé → 409 code document_modifie, sans jeton → 428 nommé, rien écrit ; POST layout/section/ base_empreinte périmée → 409 document_modifie sans écriture, jeton courant → 200 écrit"
+    },
+    {
+      "id": "C-ACAL-ACC-API.P6.5-delete",
+      "taches": [
+        "ACAL120"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/C-ACAL-ACC-API.txt — DELETE calepinages/<id>/ → 405"
+    },
+    {
+      "id": "C-ACAL-ACC-API.depuis-lead",
+      "taches": [
+        "ACAL182"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/C-ACAL-ACC-API.txt — POST depuis-lead/ deux fois pour le même lead : 201 puis 200, un seul calepinage pour le lead (API seulement ; double clic écran non joué)"
+    },
+    {
+      "id": "C-ACAL-ACC-API.S-G",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/C-ACAL-ACC-API.txt — GET calepinages/<id d une autre société>/ et /999999999/ : 404 et même corps (hors request_id de traçage)"
+    },
+    {
+      "id": "C-ACAL-ACC-API.P6.2",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/C-ACAL-ACC-API.txt — v1, v2 puis restaurer v1 : 200, document v1 relu, versions « Avant restauration de #… » et « Restauration de la version #… » posées (saisie électrique non rejouée)"
+    },
+    {
+      "id": "ACAL351.gardes",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/ACAL351-gardes.txt — check_calepinage_actions_consommees.py, check_services_appeles.py, check_api_shapes.py et frontend/scripts/check_dockerfile_context.mjs : exit 0"
+    }
+  ]
+}
