@@ -194,6 +194,29 @@ class TestDuplicationInstallations(KitRevisionBase):
             api.post(url, {'facteur_echelle': 'NaN'}, format='json').status_code, 400)
         self.assertEqual(api.post(url, [1], format='json').status_code, 400)
 
+    def test_dupliquer_facteur_publie_comme_applique(self):
+        # api-fuzz-pr 30/10 — `{"facteur_echelle": "-0"}` était CONFORME au
+        # schéma (décimal signé) et refusé 400 : le schéma publie désormais
+        # ]0 ; 1000] (motif + bornes) et la vue applique le même motif.
+        import re
+        from apps.installations.views import _openapi as oa
+        api = self.client_as(role='responsable')
+        url = f'{BASE}/kits/{self.kit.id}/dupliquer/'
+        motif = oa.FACTEUR_ECHELLE['oneOf'][1]['pattern']
+        for refuse in ('-0', '0', '0.0', '-1', '1001', '1e3'):
+            self.assertIsNone(re.fullmatch(motif, refuse), refuse)
+            r = api.post(url, {'facteur_echelle': refuse}, format='json')
+            self.assertEqual(r.status_code, 400, (refuse, r.content))
+            self.assertIn('facteur_echelle', r.json())
+        for accepte in ('0.5', '1.67', '1000', 3):
+            if isinstance(accepte, str):
+                self.assertIsNotNone(re.fullmatch(motif, accepte), accepte)
+            r = api.post(url, {'facteur_echelle': accepte}, format='json')
+            self.assertEqual(r.status_code, 201, (accepte, r.content))
+        for refuse in (0, -1, 1000.5):
+            r = api.post(url, {'facteur_echelle': refuse}, format='json')
+            self.assertEqual(r.status_code, 400, (refuse, r.content))
+
     def test_cross_tenant_cannot_dupliquer(self):
         resp = self.client_as(user=self.other_user).post(
             f'{BASE}/kits/{self.kit.id}/dupliquer/', {}, format='json')

@@ -149,7 +149,10 @@ class TestFicheReleveMaterialisation(TestCase):
             type_intervention='pose', created_by=self.user)
         r = self.api.get(f'{BASE}/interventions/{interv2.id}/fiche/')
         self.assertEqual(r.status_code, 200)
-        self.assertIsNone(r.data)
+        # api-fuzz-pr 30/10 : corps JSON `null` typé (il était VIDE, sans
+        # Content-Type — « JSON deserialization error » de Schemathesis).
+        self.assertEqual(r['Content-Type'], 'application/json')
+        self.assertIsNone(r.json())
 
     def test_renseigner_fiche_sets_value(self):
         r0 = self.api.get(f'{BASE}/interventions/{self.interv.id}/fiche/')

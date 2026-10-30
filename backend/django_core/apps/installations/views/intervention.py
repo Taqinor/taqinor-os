@@ -756,7 +756,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         inst = interv.installation
         company = request.user.company
         fournisseur = resolve_fournisseur(
-            company, request.data.get('fournisseur'), inst)
+            company, oa.id_corps(request, 'fournisseur'), inst)  # liste → 400
         if fournisseur is None:
             # api-fuzz-full 27/10 (ENF11) : un fournisseur CITÉ qui ne désigne
             # rien = 404 ; aucun fournisseur par défaut sur les manques = refus
@@ -1646,7 +1646,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         return Response(data)
 
     # ── ZFSM1 — gabarit de fiche d'intervention (relevé matérialisé) ─────────
-    @oa.extend_schema(responses=oa.OBJ)
+    @oa.extend_schema(responses=oa.OBJ_OU_NULL)
     @action(detail=True, methods=['get'], url_path='fiche',
             permission_classes=[IsAnyRole])
     def fiche(self, request, pk=None):
@@ -1656,7 +1656,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         interv = self.get_object()
         releve = field_services.ensure_fiche_releve(interv)
         if releve is None:
-            return Response(None)
+            return oa.reponse_null()
         return Response(FicheInterventionReleveSerializer(
             releve, context={'request': request}).data)
 

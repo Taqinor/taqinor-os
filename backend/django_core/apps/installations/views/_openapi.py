@@ -282,6 +282,48 @@ def qte(required=False, null=False, **kw):
         required=required, allow_null=null, allow_blank=False, **kw)
 
 
+#: api-fuzz-pr 30/10 (ENF11) — facteur d'échelle de ``kits/{id}/dupliquer`` :
+#: strictement positif (``dupliquer_kit`` refuse ≤ 0) et borné à 1000 (un
+#: facteur sans borne débordait ``KitComposant.quantite``, entier 32 bits).
+#: Le schéma annonçait un décimal SIGNÉ : ``-0`` « conforme » était refusé 400.
+#: Publié et appliqué à l'identique (``facteur_echelle``).
+FACTEUR_MAX = 1000
+MOTIF_FACTEUR = r'^([1-9]\d{0,2}(\.\d+)?|1000(\.0+)?|0\.\d*[1-9]\d*)$'
+FACTEUR_ECHELLE = {'oneOf': [
+    {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True, 'maximum': FACTEUR_MAX},
+    {'type': 'string', 'pattern': MOTIF_FACTEUR}]}
+
+
+@extend_schema_field(FACTEUR_ECHELLE)
+class FacteurEchelle(serializers.CharField):
+    """Champ de DÉCLARATION : facteur d'échelle ]0 ; 1000]."""
+
+
+def facteur(required=False, null=False, **kw):
+    return FacteurEchelle(
+        required=required, allow_null=null, allow_blank=False, **kw)
+
+
+def facteur_echelle(request, nom):
+    """``Decimal`` du facteur ``nom`` (``None`` si absent ou nul), accepté
+    EXACTEMENT comme ``FACTEUR_ECHELLE`` le publie ; sinon 400 nommant le
+    champ."""
+    from decimal import Decimal
+    valeur = corps_objet(request).get(nom)
+    if valeur is None:
+        return None
+    resultat = None
+    if isinstance(valeur, (int, float)) and not isinstance(valeur, bool):
+        resultat = Decimal(str(valeur))
+    elif isinstance(valeur, str) and re.fullmatch(MOTIF_FACTEUR, valeur):
+        resultat = Decimal(valeur)
+    if (resultat is None or not resultat.is_finite()
+            or not 0 < resultat <= FACTEUR_MAX):
+        raise ValidationError(
+            {nom: f"Facteur décimal strictement positif attendu (au plus {FACTEUR_MAX})."})
+    return resultat
+
+
 def quantite_bornee(request, nom, defaut='0'):
     """``Decimal`` du champ de corps ``nom`` (``defaut`` si absent ou nul),
     accepté EXACTEMENT comme ``QUANTITE_BORNEE`` le publie ; sinon 400 nommant
@@ -404,6 +446,16 @@ NO_CONTENT = {204: None}
 #: Lecture sur fenêtre ``debut``/``fin`` : 409 si la fin précède le début
 #: (``fenetre_semaine`` — règle d'ensemble, pas un 400).
 OBJ_FENETRE = {200: OBJ, 409: OBJ}
+#: Lecture « objet ou ``null`` » (ex. ``fiche`` sans gabarit) : publiée nullable.
+OBJ_OU_NULL = {200: {'type': 'object', 'nullable': True, 'additionalProperties': {}}}
+
+
+def reponse_null():
+    """api-fuzz-pr 30/10 (ENF11) — ``Response(None)`` rend un corps VIDE sans
+    Content-Type (JSONRenderer) : le contrat « ``null`` » exige le JSON
+    ``null`` typé ``application/json``."""
+    from django.http import HttpResponse
+    return HttpResponse('null', content_type='application/json')
 
 
 LIST = type(inline_serializer('ObjetLibre', fields={}))(many=True)
