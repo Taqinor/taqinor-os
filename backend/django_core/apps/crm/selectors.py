@@ -33,7 +33,7 @@ from .leads_selectors import (
     _objectif_premier_contact, lead_merge_fields, lead_contact_identifiers,
     existing_lead_emails, _PROGRESSIVE_PROFILING_STANDARD_FIELDS,
     lead_known_field_codes, lead_ids_by_contact, lead_ids_par_identifiant,
-    doublons_foyer_probables,
+    doublons_foyer_probables, telephones_cibles_activites,
 )
 from .clients_selectors import (
     client_base_qs, find_client_by_email, clients_pour_controle_ice,
@@ -166,5 +166,5 @@ __all__ = [
     'salle_vente_analytics', 'salle_vente_summary_for_lead', 'signed_lead_phone_keys',
     'signed_leads_for_campaigns', 'site_du_client', 'site_location_for_devis', 'site_profile_for_client',
     'soumissions_partenaire_portail', 'specialites_partenaire_cles', 'stats_equipe',
-    'trier_file_du_jour', 'ville_effective', 'visite_point_eau_du_lead',
+    'telephones_cibles_activites', 'trier_file_du_jour', 'ville_effective', 'visite_point_eau_du_lead',
 ]

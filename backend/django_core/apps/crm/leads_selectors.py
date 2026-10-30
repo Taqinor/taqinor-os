@@ -416,6 +416,28 @@ def lead_contact_identifiers(company, lead_ids):
     ]
 
 
+def telephones_cibles_activites(company, lead_ids=(), client_ids=()):
+    """ERR-PERF-CRM-N1 — ``{('lead', id) | ('client', id): téléphone}`` EN LOT,
+    pour ``records.ActivitySerializer.target_phone`` sur une liste (« Ma
+    file ») : DEUX requêtes au plus au lieu d'une par activité. MÊMES règles
+    que l'appel unitaire : lead = ``lead_contact_identifiers`` (société, jamais
+    un lead opposé, ``telephone`` sinon ``whatsapp``), client =
+    ``get_company_client`` (société) ; absent de la carte ⇔ ``None``."""
+    from .clients_selectors import client_base_qs
+    from .models import Lead
+    out = {}
+    if lead_ids:
+        for r in Lead.objects.filter(
+                company=company, id__in=list(lead_ids),
+                ne_plus_contacter=False).values('id', 'telephone', 'whatsapp'):
+            out[('lead', r['id'])] = r['telephone'] or r['whatsapp'] or None
+    if client_ids:
+        for cid, tel in client_base_qs(company).filter(
+                pk__in=list(client_ids)).values_list('id', 'telephone'):
+            out[('client', cid)] = tel or None
+    return out
+
+
 def existing_lead_emails(company, emails):
     """NTAPI27 — sous-ensemble de ``emails`` déjà présent comme
     ``Lead.email`` pour ``company``. Sélecteur de LECTURE pour
