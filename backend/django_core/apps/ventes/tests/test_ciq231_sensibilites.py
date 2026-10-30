@@ -227,6 +227,86 @@ class SensibiliteMonotoneTest(SimpleTestCase):
         self.assertEqual(modifie, eco._apercu_production(apercu, 0.923))
 
 
+def _etude_auto_devis(option_avec=True):
+    """ERR-CI-SENSIBILITE-NON-CHIFFREE (CEC6 P1.4) — l'étude d'un devis auto
+    usine MT par les services réels : bloc production à la série 8 760 h
+    (``bloc_production_ci``), bilan central au kWc posé (``bilan_horaire`` sur
+    ``production_pour_bilan``, comme ``taille._evaluer``), option « avec » à
+    côté (``batterie_souhaitee=les_deux``), stockée par
+    ``etude_ci.bloc_etude_ci_stocke`` (série retirée, gardée dans
+    ``production_figee``)."""
+    from apps.parametres.pvgis_profils import MOIS_PAR_SAISON
+    from apps.ventes.domain.etude_ci import CLE_OPTION_AVEC, bloc_etude_ci_stocke
+    from apps.ventes.moteur_ci.autoconso import bilan_horaire
+    from apps.ventes.moteur_ci.production import bloc_production_ci, plan_de_production, production_pour_bilan
+    from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
+    serie = _serie_8760()
+    cloche = [max(0.0, math.sin(math.pi * (h - 6 + 0.5) / 12.0)) if 6 <= h < 18 else 0.0 for h in range(24)]
+    forme = [v / sum(cloche) for v in cloche]
+    production, _h, _a = bloc_production_ci(
+        productible_mensuel=[150.0] * 12, formes_saison={s: forme for s in MOIS_PAR_SAISON},
+        derate=PRODUCTION_DERATE, coordonnees_figees={'lat': 33.5, 'lon': -7.6, 'date_appel': '2026-10-30'},
+        serie={'kwh_kwc': serie, 'annees': [2015]}, plan=plan_de_production({}))
+    ouvre = [120.0 if 5 <= h < 21 else 30.0 for h in range(24)]
+    jours, kwc = _profil(ouvre, [30.0] * 24, 1), 400.14  # 582 × 687,5 Wc posés
+    bilan, _al = bilan_horaire(jours, production_pour_bilan(production), kwc, tension='mt')
+    etude = {'entrees_resolues': {'tension': {'valeur': 'mt'}, 'revente_choisie': {'valeur': False},
+                                  'tva_recuperable': {'valeur': 'oui'}},
+             'profil_charge': {'jours_types': jours}, 'production': production,
+             'taille': {'retenue_kwc': kwc}, 'bilan': bilan, 'alertes': [], 'hypotheses': []}
+    if option_avec:
+        etude[CLE_OPTION_AVEC] = {'kwc': kwc, 'bilan': dict(bilan, batterie={'capacite_kwh': 100.0}),
+                                  'economie_ci': {'total_mad': 1.0}}
+    return bloc_etude_ci_stocke(etude), production
+
+
+class SensibiliteDevisNeufTest(SimpleTestCase):
+    """ERR-CI-SENSIBILITE-NON-CHIFFREE — un devis NEUF (brouillon, niveau 4) a
+    sa ligne « Production −7,7 % » CHIFFRÉE, au plus le central."""
+
+    def _bloc(self, stocke, production_figee, *, regles=None, statut='brouillon'):
+        from types import SimpleNamespace
+        from unittest import mock
+        from apps.ventes.domain.regles_calcul import REGLES_SENSIBILITES_3010
+        params = {'etude_ci': stocke, 'tarif_declare': TARIF_MT_DECLARE}
+        if production_figee is not None:
+            params['production_figee'] = production_figee
+        devis = SimpleNamespace(etude_params=params, mode_installation='industriel', statut=statut,
+                                regles_calcul=REGLES_SENSIBILITES_3010 if regles is None else regles)
+        with mock.patch.object(eco, 'reglages_economie_ci',
+                               return_value={'sensibilites_ci': SCENARIOS_P90[:1]}), \
+                mock.patch.object(eco, 'lignes_pour_economie_ci', return_value=LIGNES_DEVIS), \
+                mock.patch('apps.ventes.utils.options.option_totaux', return_value=INVESTISSEMENT), \
+                mock.patch('apps.ventes.domain.etude_ci.courbe_degradation_du_devis', return_value=None):
+            return eco.economie_ci_pour_devis(devis, company=None)
+
+    def test_devis_auto_neuf_production_chiffree_sous_le_central(self):
+        for avec in (True, False):
+            with self.subTest(option_avec=avec):
+                stocke, figee = _etude_auto_devis(option_avec=avec)
+                self.assertNotIn('kwh_kwc', stocke['production']['serie_horaire'])  # forme stockée
+                bloc = self._bloc(stocke, figee)
+                sc = bloc['sensibilites'][0]
+                self.assertNotIn('motif', sc)
+                self.assertLess(sc['economie_annee1_mad'], bloc['economie_annee1']['total_mad'])
+                self.assertLess(sc['cumul_25_ans_mad'], bloc['flux_ht']['flux'][-1]['cumul_mad'])
+                self.assertLess(sc['tri_pct'], bloc['indicateurs']['tri_pct'])
+
+    def test_production_figee_absente_reste_non_chiffree(self):
+        """Série introuvable (étude d'avant AMOT99 retirée) : jamais devinée."""
+        stocke, _figee = _etude_auto_devis()
+        sc = self._bloc(stocke, None)['sensibilites'][0]
+        self.assertEqual(sc['motif'], eco._options.MOTIF_SENSIBILITE_NON_REPRODUCTIBLE)
+        self.assertIsNone(sc['economie_annee1_mad'])
+
+    def test_production_figee_d_une_autre_etude_non_chiffree(self):
+        stocke, figee = _etude_auto_devis()
+        autre = copy.deepcopy(figee)
+        autre['serie_horaire']['kwh_kwc'] = [v * 0.9 for v in autre['serie_horaire']['kwh_kwc']]
+        sc = self._bloc(stocke, autre)['sensibilites'][0]
+        self.assertEqual(sc['motif'], eco._options.MOTIF_SENSIBILITE_NON_REPRODUCTIBLE)
+
+
 class SensibilitesTest(SimpleTestCase):
     def test_reglage_vide_liste_vide_et_motif(self):
         bloc = _bloc(_apercu_contrat(), [])

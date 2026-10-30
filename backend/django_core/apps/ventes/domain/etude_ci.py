@@ -1788,6 +1788,25 @@ def _servir_option_avec_seule(bloc, avec):
     return dict(bloc, bilan=bilan, economie_ci=avec['economie_ci'], taille=taille)
 
 
+def bloc_etude_ci_stocke(etude, *, mono=False):
+    """La forme STOCKÉE de ``etude_params.etude_ci`` (rafraîchisseur CIQ119).
+    Option « avec » : clé ADDITIVE (absente sans elle aux lignes) ; seule
+    (``mono``), l'étude décrit l'option « avec ». AMOT99 — les 8 760 h vivent
+    dans ``production_figee`` seule (``economie_ci_options.apercu_du_devis``)."""
+    bloc = {cle: etude.get(cle) for cle in (
+        'entrees_resolues', 'profil_charge', 'production', 'taille', 'bilan',
+        'composition', 'economie_ci', 'alertes', 'hypotheses')}
+    if etude.get(CLE_OPTION_AVEC):
+        bloc[CLE_OPTION_AVEC] = etude[CLE_OPTION_AVEC]
+        if mono:
+            bloc = _servir_option_avec_seule(bloc, etude[CLE_OPTION_AVEC])
+    serie = (bloc.get('production') or {}).get('serie_horaire')
+    if serie:
+        bloc['production'] = dict(bloc['production'], serie_horaire={
+            k: v for k, v in serie.items() if k != 'kwh_kwc'})
+    return bloc
+
+
 def _source_production(etude):
     """CAD177 — le libellé PVGIS (hypothèse ``source_production``) d'une
     étude C&I déjà posée, ou ``None``."""
@@ -1852,21 +1871,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
                        **{CLE_ETUDE_CI: None, CLE_PRODUCTION_FIGEE: None,
                           CLE_PRODUCTION_FIGEE_RASANTE: None})
             return None
-        bloc = {cle: etude.get(cle) for cle in (
-            'entrees_resolues', 'profil_charge', 'production', 'taille', 'bilan',
-            'composition', 'economie_ci', 'alertes', 'hypotheses')}
-        if etude.get(CLE_OPTION_AVEC):
-            # Clé ADDITIVE : absente sans option « avec » aux lignes.
-            bloc[CLE_OPTION_AVEC] = etude[CLE_OPTION_AVEC]
-            if mono:
-                bloc = _servir_option_avec_seule(bloc, etude[CLE_OPTION_AVEC])
-        bloc['version'] = VERSION_MOTEUR
-        bloc['empreinte'] = empreinte
-        serie = (bloc.get('production') or {}).get('serie_horaire')
-        if serie:
-            # AMOT99 — les 8 760 h vivent dans ``production_figee`` seule.
-            bloc['production'] = dict(bloc['production'], serie_horaire={
-                k: v for k, v in serie.items() if k != 'kwh_kwc'})
+        bloc = dict(bloc_etude_ci_stocke(etude, mono=mono), version=VERSION_MOTEUR, empreinte=empreinte)
         ecrire(devis, proprietaire=MOTEUR_CI,
                **{CLE_ETUDE_CI: bloc, CLE_PRODUCTION_FIGEE: etude.get('production'),
                   CLE_PRODUCTION_FIGEE_RASANTE: etude.get('production_rasante')})
