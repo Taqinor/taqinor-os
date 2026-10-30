@@ -25,7 +25,7 @@
 import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, lireJson, posterWebhookSite, telephoneMobileUnique,
-  creerDevisCommercialDepuisLead, uniq,
+  creerDevisCommercialDepuisLead, uniq, tariferPostesCiDemo,
 } from './helpers.js'
 
 const CLE_REPLI = 'taqinor.lw.collapsed'
@@ -155,6 +155,18 @@ test.describe('CIQ424 — lead pro, du site au générateur', () => {
 
   test('4. devis auto prêt ; devis créé → client ENTREPRISE au nom de la société, ICE recopié', async ({ page, request }, testInfo) => {
     test.skip(webhookFerme, 'webhook fermé : voir le temps 1')
+    // ALEA47 (D-ACI-5=a, f3d4ce6b9) + ADEV89 (7fd2b6e25), 23/10/2026 — « prêt » C&I exige
+    // aussi le CONTRAT d'électricité (une facture en MAD ne compte qu'avec un contrat BT
+    // déclaré), la PHASE du site et le RYTHME (jours + heures, ou catégorie) : la
+    // commerciale les pose pendant l'appel (le site ne les donne pas). Même lead pro que
+    // CIQ127 (devis-ci-serveur.spec.js). Postes fixes C&I tarifés (ALEA50, bouton actif).
+    await lireJson(await request.patch(`${API}/crm/leads/${lead.id}/`, {
+      data: {
+        contrat_electricite: 'bt_patente', raccordement: 'triphase',
+        jours_ouverture: [1, 2, 3, 4, 5, 6], heure_debut: 8, heure_fin: 18,
+      },
+    }), 'appel : contrat, phase et horaires du lead pro')
+    await tariferPostesCiDemo(request)
     const detail = await leadDetail(request, lead.id)
     expect(detail.devis_auto?.pret, `devis auto prêt (manque : ${JSON.stringify(detail.devis_auto?.manquants)})`).toBe(true)
     await page.goto(`/crm/leads/${lead.id}`)
