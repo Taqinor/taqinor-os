@@ -254,3 +254,22 @@ ajoutée à la main tire ses panneaux) ; (B) règle marginale des 10 ans sur les
 (≈ 10-12) ; (C) l'actuelle, toute la nuit (15). Décision fondateur attendue ; changement à
 faire dans le moteur (`moteur_ci/batterie.py::besoin_nocturne_kwh` / `choisir_banque`), pas
 dans l'édition.
+
+## 30/10 — couverture inspirée du résidentiel (fondateur : économies par mois, deux options dans la même section)
+
+Le devis résidentiel (`residential/cover.py`) cadre l'argent PAR MOIS (« ≈ 1 783 MAD/mois
+aujourd'hui → 784 MAD/mois », dérivé du servi annuel ÷ 12, « never invented ») et montre les deux
+options côte à côte dans une même section (Option 1 / Option 2 : prix TTC en grand, prix au kWc,
+« Rentabilisé en N ans », économie, puces d'équipement, « Détail & équipement en page 2 »).
+Transposé à Khatam (`donnees.changement`, `donnees.cartes_options`, `khatam/couverture.py`) :
+- bloc « Ce que le solaire change pour vous » à la place des deux tuiles d'argent : −N % (servi,
+  `economie_annee1.part_facture_energie_pct`), facture d'énergie par mois avant → après
+  (`facture_avant/apres` servies, un poste, ÷ 12 arrondi comme le résidentiel), « soit A → B
+  MAD/an », économie annuelle et pilule « Retour en N ans » (document mono-option) ;
+- à deux options : cartes Option 1 « Sans batterie » / Option 2 « Avec batterie » dans la même
+  section — prix TTC servi (`_invest_ttc`, `option_batterie.totaux.ttc`), prix au kWc (quotient
+  des deux servis, comme au résidentiel), retour (servi, omis sinon), économie, part couverte,
+  puces panneaux / onduleurs / batteries depuis `sans_items` / `avec_items` ; le graphique
+  mensuel cède dès le palier 1 (étapes sur une ligne + QR réduit), comme le rendu adaptatif du
+  moteur. Vérifié : 461 (3 pages, palier 0), variante avec batterie (3 pages), 5 fixtures ;
+  parité : seuls les nouveaux dérivés (÷ 12) et les factures annuelles arrondies s'ajoutent.

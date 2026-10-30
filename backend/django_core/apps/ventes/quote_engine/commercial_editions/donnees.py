@@ -345,6 +345,79 @@ def facture_avant_apres(d, fmt):
     return {"avant_num": va, "apres_num": vp, "unite": unite}
 
 
+def changement(d, fmt):
+    """Le cadrage « ce que le solaire change pour vous » du résidentiel,
+    transposé : part de la facture d'énergie économisée (servie,
+    ``economie_annee1.part_facture_energie_pct``), facture d'énergie de
+    l'année 1 avant / après (servie, un poste, sans prime fixe) et leur
+    lecture PAR MOIS — dérivée du servi exactement comme la couverture
+    résidentielle (``round(annuel / 12)``, jamais un autre calcul) ; ``None``
+    sans facture servie."""
+    f = facture_avant_apres(d, fmt)
+    if not f:
+        return None
+    c = chiffres(d, fmt)
+    return {"pct": c["part_facture_pct"], "unite": f["unite"],
+            "avant_an": fmt(round(f["avant_num"])), "apres_an": fmt(round(f["apres_num"])),
+            "avant_mois": fmt(round(f["avant_num"] / 12)), "apres_mois": fmt(round(f["apres_num"] / 12)),
+            "economie": c["economies"], "economie_base": c["economies_base"],
+            "retour": c["payback"], "retour_unite": c["payback_unite"],
+            "deux_options": bool(d.get("deux_options"))}
+
+
+def _puces_equipement(items, fmt):
+    """Les trois puces d'une carte d'option, comme le résidentiel : panneaux,
+    onduleur(s), batterie(s) — désignations et quantités servies."""
+    puces = []
+    for motif in ("panneau", "onduleur", "batterie", "installation"):
+        for it in items or []:
+            des = str(it.get("designation") or "")
+            if des.lower().startswith(motif):  # la désignation elle-même, pas un accessoire qui la cite
+                q = _num(it.get("quantite"), 0.0) or 0.0
+                puces.append(f"{fmt(q) if q != 1 else ''}{' × ' if q != 1 else ''}{des}".strip())
+    return puces[:4]
+
+
+def cartes_options(d, fmt, fmt_mad):
+    """Les deux cartes d'option de la couverture, à la manière du résidentiel
+    (prix TTC en grand, prix par kWc, retour, économie, part couverte,
+    puces d'équipement) — chaque nombre vient de la charge utile servie :
+    « sans » = l'offre servie (``_invest_ttc``, ``com_*``), « avec » =
+    ``com_synthese.option_batterie`` (totaux et valeur chiffrée du moteur) ;
+    le prix par kWc est le quotient des deux servis, comme au résidentiel.
+    ``[]`` sur un document mono-option."""
+    from ..ci.options_cote import deux_options as _deux
+    if not _deux(d, "com"):
+        return []
+    synthese = d.get("com_synthese") or {}
+    option = synthese.get("option_batterie") or {}
+    totaux = option.get("totaux") if isinstance(option.get("totaux"), dict) else (d.get("totaux_avec") or {})
+    valeur = option.get("valeur_chiffree") if isinstance(option.get("valeur_chiffree"), dict) else {}
+    masque = bool(d.get("com_masquer_economies"))
+
+    def carte(num, titre, kwc, ttc, economie, base, retour, couverture, items):
+        kwc_n, ttc_n = _num(kwc), _num(ttc)
+        return {"num": num, "titre": titre, "kwc": decimale(f"{kwc_n:g}") if kwc_n else None,
+                "ttc": fmt_mad(ttc_n) if ttc_n else None,
+                "par_kwc": fmt(round(ttc_n / kwc_n)) if (ttc_n and kwc_n) else None,
+                "economie": (fmt(round(_num(economie))) if (not masque and _num(economie)) else None),
+                "economie_base": base, "retour": retour,
+                "couverture": (f"{round(_num(couverture))}" if _num(couverture) is not None else None),
+                "puces": _puces_equipement(items, fmt)}
+    retour_sans = ci_couverture.retour_affiche(d, "com")
+    retour_avec = _num(valeur.get("retour_simple_ans"))
+    return [
+        carte(1, L(d, "ci_opt_sans_batterie", "Sans batterie"), d.get("com_kwc"), d.get("_invest_ttc"),
+              d.get("com_economies"), d.get("com_economie_base") or "",
+              (ci_couverture.ans(retour_sans) if retour_sans is not None else None), d.get("com_couverture"),
+              d.get("sans_items") or d.get("all_items")),
+        carte(2, _txt(d.get("libelle_avec")) or L(d, "ci_opt_avec_batterie", "Avec batterie"),
+              d.get("puissance_kwc_avec"), totaux.get("ttc"), valeur.get("economie_annuelle_mad"), "HT",
+              (decimale(str(retour_avec)) if retour_avec else None), valeur.get("taux_couverture_pct"),
+              d.get("avec_items")),
+    ]
+
+
 def cumul_annees(d, fmt):
     """La série du cumul net servie (``flux_*.flux[].cumul_mad``) pour la
     frise des 25 ans, ses jalons (``argent.jalons``) et le retour ; ou
@@ -581,6 +654,7 @@ def modele(d, ctx):
         "options": options_proposees(d, fmt_mad), "injection": injection(d, fmt),
         "energie": energie_mensuelle(d), "facture": facture_avant_apres(d, fmt),
         "cumul": cumul_annees(d, fmt), "garanties": garanties(d),
+        "changement": changement(d, fmt), "cartes": cartes_options(d, fmt, fmt_mad),
         "echeancier": echeancier(d, fmt_mad),
         "hypotheses": hypotheses(d, fmt, fmt_mad), "conditions": conditions(d),
         "acceptation": acceptation(d, fmt_mad), "etapes": etapes_suivantes(d),

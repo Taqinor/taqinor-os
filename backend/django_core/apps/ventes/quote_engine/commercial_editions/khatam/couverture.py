@@ -121,6 +121,29 @@ def build(ctx, m, j):
     kpis = f'<table class="kh1-kpirow"><tr>{gap.join(cellules)}</tr></table>' if cellules else ""
     kpis_argent = (f'<table class="kh1-kpirow" style="margin-top:3mm;"><tr>{gap.join(argent)}</tr></table>'
                    if argent else "")
+    # Fondateur 30/10 — le cadrage du résidentiel : « ce que le solaire change
+    # pour vous », la facture par mois, avant / après ; il remplace les deux
+    # tuiles d'argent (mêmes chiffres servis, lus par mois).
+    ch = m["changement"]
+    if ch:
+        unite = ch["unite"]
+        pill_retour = (f'<span class="kh1-pillv">{L("ci_retour_en", "Retour en {ans} ans", ans=ch["retour"])}</span>'
+                       if ch["retour"] else "")
+        # deux options : l'économie et le retour sont sur les cartes, pas ici
+        eco = (f'<div class="kh1-chg-eco">{L("ci_economie_approx", "Économie ≈ {v} MAD/an", v=ch["economie"])}'
+               + (f' ({ch["economie_base"]})' if ch["economie_base"] else "") + f' {pill_retour}</div>'
+               if (ch["economie"] and not ch["deux_options"]) else "")
+        cap = (f'<div class="kh-cap" style="margin-top:4px;">{L("ci_chiffres_option_sans", "Chiffres calculés pour l’option sans batterie.")}</div>'
+               if ch["deux_options"] else "")
+        kpis_argent = (f'<div class="kh1-chg"><div class="kh-row"><div class="kh-col" style="width:36%;vertical-align:middle;">'
+                       f'<div class="kh-kicker">{L("ci_ce_que_change", "Ce que le solaire change pour vous")}</div>'
+                       f'<div class="kh1-chg-pct">−{ch["pct"]}<span class="kh1-chg-pcu">%</span></div>'
+                       f'<div class="kh-lab">{L("ci_sur_facture_energie", "sur votre facture d’énergie ({u})", u=unite)}</div></div>'
+                       f'<div class="kh-col" style="vertical-align:middle;padding-left:6mm;border-left:0.5pt solid {j["or"]};">'
+                       f'<div class="kh1-chg-l">{L("ci_aujourdhui_mois", "≈ {v} MAD/mois aujourd’hui", v=ch["avant_mois"])}</div>'
+                       f'<div class="kh1-chg-v">{ch["apres_mois"]}<span class="kh1-chg-u"> MAD/{L("ci_mois", "mois")}</span></div>'
+                       f'<div class="kh1-chg-l">{L("ci_soit_an", "soit {a} MAD/an → ≈ {b} MAD/an", a=ch["avant_an"], b=ch["apres_an"])}</div>'
+                       f'{eco}{cap}</div></div></div>')
     methode = "".join(f'<div>{t}</div>' for t in m["methode"])
     if c["motif_non_chiffre"]:
         methode += f'<div>{c["motif_non_chiffre"]}</div>'
@@ -132,7 +155,28 @@ def build(ctx, m, j):
               "établissement.") + " " + (c["note_pointe"] or ""))
 
     # ── Investissement : bloc marine tramé à double filet (touche Signature) ─
-    if m["deux_options"]:
+    if m["deux_options"] and m["cartes"]:
+        cartes = ""
+        for k, ca in enumerate(m["cartes"]):
+            puces = "".join(f'<div class="kh1-oc-li">{commun.losange(j["or"], 2.0)}{commun.esc(pu)}</div>' for pu in ca["puces"])
+            lignes = ""
+            if ca["economie"]:
+                lignes += (f'<div class="kh1-oc-eco">{L("ci_economie_approx", "Économie ≈ {v} MAD/an", v=ca["economie"])}'
+                           + (f' ({ca["economie_base"]})' if ca["economie_base"] else "") + '</div>')
+            if ca["couverture"]:
+                lignes += f'<div class="kh-lab">{L("ci_opt_couverture_courte", "{p} % de votre consommation couverte", p=ca["couverture"])}</div>'
+            pill = f'<span class="kh1-pillv">{L("ci_retour_en", "Retour en {ans} ans", ans=ca["retour"])}</span>' if ca["retour"] else ""
+            cartes += (f'<td class="kh1-oc">'
+                       f'<div class="kh-kicker">{L("ci_option_n", "Option {n}", n=ca["num"])}</div>'
+                       f'<div class="kh1-oc-t">{ca["titre"]}</div>'
+                       f'<div class="kh1-oc-prix">{(ca["ttc"] or "—").replace(chr(0x202F), chr(0xA0))}<span class="kh1-oc-u"> MAD {L("ci_ttc", "TTC")}</span></div>'
+                       + (f'<div class="kh-lab">{L("ci_soit_kwc", "soit {v} MAD/kWc · {k} kWc", v=ca["par_kwc"], k=ca["kwc"])}</div>' if ca["par_kwc"] else "")
+                       + f'<div style="margin-top:4px;">{pill}</div>{lignes}'
+                       f'<div class="kh1-oc-puces">{puces}</div>'
+                       f'<div class="kh-cap" style="margin-top:4px;">{L("ci_detail_page2", "Détail & équipement en page 2")}</div></td>'
+                       + ('<td class="kh1-kgap"></td>' if k == 0 else ""))
+        inv_html = f'<table class="kh1-kpirow" style="margin-top:4mm;"><tr>{cartes}</tr></table>'
+    elif m["deux_options"]:
         from ...ci import options_cote
         inv_html = ('<div class="kh1-opts">'
                     + options_cote.cartes_options(d, "com", "kh1", fmt, m["fmt_mad"], d.get("_invest_ttc") or 0)
@@ -150,7 +194,7 @@ def build(ctx, m, j):
 
     # ── Énergie mois par mois + prochaines étapes (comme aujourd'hui) ──────
     chart = ""
-    if m["energie"]:
+    if m["energie"] and not (m["deux_options"] and m["palier"] >= 1):
         plafond = max(max(x["consommation_kwh"], x["production_kwh"]) for x in m["energie"])
         svg = graphiques.barres_mensuelles(
             m["energie"], (j["bar_conso"], j["accent"], j["or"], j["line"], j["muted"]), "IBM Plex Sans",
@@ -166,9 +210,20 @@ def build(ctx, m, j):
                      for i, t in enumerate(m["etapes"], 1))
     qr_html = (f'<div style="margin-top:3.5mm;"><img src="{uri}" style="width:18mm;height:18mm;display:block;" alt="QR">'
                f'<div class="kh-cap">{L("ci_proposition_en_ligne", "Votre proposition en ligne")}<br><span style="white-space:nowrap;">{commun.esc(lien)}</span></div></div>' if uri else "")
-    bas = (f'<table class="kh1-bas"><tr><td style="width:120mm;vertical-align:top;">{chart}</td>'
-           f'<td class="kh1-bas-d"><div class="kh-h3">{L("ci_prochaines_etapes", "Prochaines étapes")}</div>'
-           f'<div style="margin-top:1.5mm;font-size:8.2pt;">{etapes}</div>{qr_html}</td></tr></table>')
+    if not chart:
+        # Sans graphique (deux options aux paliers denses) : étapes sur une
+        # ligne et QR réduit, côte à côte — rien d'autre ne change.
+        etapes_ligne = " &nbsp;·&nbsp; ".join(f'<span class="kh1-n" style="width:auto;margin-right:1mm;">{i}</span>{t}'
+                                           for i, t in enumerate(m["etapes"], 1))
+        qr_petit = (f'<td style="width:40mm;vertical-align:top;padding-left:6mm;"><img src="{uri}" style="width:14mm;height:14mm;display:block;" alt="QR">'
+                    f'<div class="kh-cap">{L("ci_proposition_en_ligne", "Votre proposition en ligne")}<br><span style="white-space:nowrap;">{commun.esc(lien)}</span></div></td>' if uri else "")
+        bas = (f'<table class="kh1-bas" style="margin-top:3mm;"><tr><td style="vertical-align:top;">'
+               f'<div class="kh-h3">{L("ci_prochaines_etapes", "Prochaines étapes")}</div>'
+               f'<div style="margin-top:1.5mm;font-size:8.2pt;">{etapes_ligne}</div></td>{qr_petit}</tr></table>')
+    else:
+        bas = (f'<table class="kh1-bas"><tr><td style="width:120mm;vertical-align:top;">{chart}</td>'
+               f'<td class="kh1-bas-d"><div class="kh-h3">{L("ci_prochaines_etapes", "Prochaines étapes")}</div>'
+               f'<div style="margin-top:1.5mm;font-size:8.2pt;">{etapes}</div>{qr_html}</td></tr></table>')
 
     cote, autre = ("right", "left") if m["rtl"] else ("left", "right")
     css = f"""
@@ -208,6 +263,21 @@ def build(ctx, m, j):
 .kh1-kl{{font-size:7.2pt;color:{j['muted']};margin-top:3px;letter-spacing:.2px;line-height:1.35;}}
 .kh1-ks{{font-size:6.8pt;color:{j['muted']};margin-top:1px;line-height:1.3;}}
 .kh1-mtsrc{{margin-top:5px;font-size:6.9pt;color:{j['muted']};line-height:1.4;}}
+.kh1-chg{{margin-top:3mm;border:0.5pt solid {j['line']};border-{cote}:3px solid {j['or']};border-radius:6px;background:#fff;padding:9px 12px;}}
+.kh1-chg-pct{{font-family:{j['display']};font-weight:600;font-size:30pt;line-height:1;color:{j['accent']};letter-spacing:-.02em;margin-top:2px;}}
+.kh1-chg-pcu{{font-size:15pt;margin-left:2px;}}
+.kh1-chg-l{{font-size:7.6pt;color:{j['muted']};}}
+.kh1-chg-v{{font-family:{j['display']};font-weight:600;font-size:22pt;line-height:1.05;color:{j['hero_bg']};letter-spacing:-.01em;}}
+.kh1-chg-u{{font-family:{j['sans']};font-size:9pt;font-weight:500;color:{j['muted']};}}
+.kh1-chg-eco{{margin-top:4px;font-size:8pt;font-weight:600;color:{j['ink']};}}
+.kh1-pillv{{display:inline-block;background:{j['data_soft']};color:{j['accent']};border-radius:10px;padding:2px 8px;font-size:7.4pt;font-weight:600;}}
+.kh1-oc{{display:table-cell;vertical-align:top;border:0.5pt solid {j['line']};border-top:3px solid {j['or']};border-radius:6px;padding:9px 12px;background:{j['wash']};}}
+.kh1-oc-t{{font-family:{j['display']};font-weight:600;font-size:12pt;color:{j['hero_bg']};margin-top:1px;}}
+.kh1-oc-prix{{font-family:{j['display']};font-weight:600;font-size:18pt;line-height:1.05;color:{j['hero_bg']};letter-spacing:-.01em;margin-top:3px;}}
+.kh1-oc-u{{font-family:{j['sans']};font-size:8pt;font-weight:500;color:{j['muted']};}}
+.kh1-oc-eco{{margin-top:4px;font-size:8pt;font-weight:600;color:{j['ink']};}}
+.kh1-oc-puces{{margin-top:5px;padding-top:4px;border-top:0.5pt solid {j['line']};}}
+.kh1-oc-li{{font-size:7.6pt;color:{j['ink']};line-height:1.4;margin-top:2px;}}
 .kh1-note{{margin-top:3.5mm;border-{cote}:3px solid {j['accent']};border-radius:{"6px 0 0 6px" if m["rtl"] else "0 6px 6px 0"};background:{j['data_soft']};
   padding:8px 12px;font-size:8.4pt;color:{j['ink']};line-height:1.45;}}
 .kh1-note b{{color:{j['hero_bg']};font-weight:600;}}
