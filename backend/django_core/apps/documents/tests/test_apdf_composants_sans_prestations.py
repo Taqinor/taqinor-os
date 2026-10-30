@@ -106,6 +106,49 @@ class ComposantsTests(TestCase):
         # Une seule garantie imprimée : celle du panneau, aucune par prestation.
         self.assertNotIn('Garantie selon conditions constructeur', texte)
 
+    def _chantier_nature_figee_materiel(self):
+        """Nomenclature gelée AVANT la recatégorisation : toutes les lignes
+        portent ``nature=materiel`` alors que les produits Installation et
+        Transport sont aujourd'hui de catégorie « service »."""
+        chantier = self._chantier()
+        chantier.bom = [dict(r, nature='materiel') for r in chantier.bom]
+        chantier.save(update_fields=['bom'])
+        return chantier
+
+    def test_nature_figee_materiel_produit_vivant_service(self):
+        """ERR-APDF-BL-PV-PRESTATIONS-COMPOSANTS — le produit vivant prime sur
+        la nature figée : ni BL ni PV ne listent les prestations, le dossier de
+        remise les range sous « Prestations » sans garantie constructeur."""
+        chantier = self._chantier_nature_figee_materiel()
+        from apps.documents import builders
+        self.assertEqual(
+            [c['designation'] for c in builders._composants(chantier)],
+            ['Panneau 550W'])
+        self.assertEqual(
+            [c['designation']
+             for c in builders._composants(chantier, services=True)],
+            ['Installation', 'Transport'])
+        for route in ('bon-livraison', 'pv-reception'):
+            with self.subTest(route=route):
+                lignes = {ln.strip() for ln in
+                          self._get(chantier, route).splitlines()}
+                self.assertNotIn('Installation', lignes)
+                self.assertNotIn('Transport', lignes)
+        remise = self._get(chantier, 'dossier-remise')
+        self.assertIn('Prestations', remise)
+        self.assertNotIn('Garantie selon conditions constructeur', remise)
+
+    def test_nature_figee_service_reste_service(self):
+        """La nature figée « service » reste honorée même si le produit a
+        quitté la catégorie service (aucune prestation ne redevient matériel)."""
+        chantier = self._chantier()
+        self.transport.categorie = None
+        self.transport.save(update_fields=['categorie'])
+        from apps.documents import builders
+        self.assertNotIn(
+            'Transport',
+            [c['designation'] for c in builders._composants(chantier)])
+
     def test_bom_ancienne(self):
         """Nomenclature sans nature : filtrée par lecture du produit."""
         chantier = self._chantier(avec_nature=False)
