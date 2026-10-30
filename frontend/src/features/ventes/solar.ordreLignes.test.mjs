@@ -14,7 +14,7 @@ import assert from 'node:assert/strict'
 import {
   defaultProductLines, orderLinesByRolePreference,
   deriveRoleOrderFromLines,
-} from './solar.js'
+} from './calc/lignesDefaut.js'
 
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
 let _id = 0
