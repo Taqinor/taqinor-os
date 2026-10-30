@@ -1,0 +1,27 @@
+RHOR8 — second rejeu en direct du 2026-10-30 (soir) : SEULES les trois étapes en FAIL le matin (enregistrement 2026-10-30-c58d67cd0), après leurs correctifs, + le devis à regles_calcul = 2 réellement enregistré (non rejoué le matin).
+Pile : http://localhost — backend erp-agentique-django_core-1 monté sur C:\dev\taqinor-os\backend\django_core, détaché au sha 31d05aa71 (branche dev-all-c9d8cc-5, correctifs présents : `entrees.ombrage_balayage`, `dimensionnement_devis.payback_servi`, `legacy_etude.css_document_arabe`), front reconstruit au même sha, base démo locale, demo_admin (société 2). Aucun redémarrage, aucune migration.
+Page /proposition : apps/web en `astro dev` :4329 (4321 occupé par une autre session) depuis ce worktree à 31d05aa71, PUBLIC_API_BASE=http://localhost, jeton INTERNE (`share-link` → token_interne, brouillons). Jonction node_modules retirée après.
+PDF : GET /api/django/ventes/devis/<id>/proposal/?include_etude=1[&langue=en|ar], texte par PyMuPDF (hôte, mêmes octets).
+Oracles : 0 console.error sur les pages rejouées (page /proposition 2007, 2300 ; générateur ?edit=2007), 0 réponse 4xx/5xx, PDF 200, aucun « prix d'achat » / « marge » / « purchase price » / « margin » dans les 9 PDF ni dans les charges /proposition 2007 et 2300 (prix_achat 0, marge 0).
+
+## RHOR1.tailles — PASS (ERR-RHOR8-TAILLES-PRODUCTION-SANS-OMBRAGE)
+Devis 2007 (DEV-202610-0111, regles_calcul = 5 en base, calepinage 162 simulé, perte 6,717 %).
+Charge /proposition `offres_tailles.offres` : recommande sans 6 355 / avec 8 473 kWh ; max (8 panneaux · 5,68 kWc) sans 8 473,47 / avec 8 473,47 kWh (le matin : 9 083,61, non ombré). 9 083,61 × (1 − 0,06717) = 8 473,5.
+Page /proposition (desktop 1366), « Explorer d'autres tailles », bascule Avec batterie : carte officielle « 8 panneaux · 5,68 kWc … Production / an 8 473 kWh », carte Max « 8 panneaux · 5,68 kWc … Production / an 8 473 kWh » (même champ, même production) ; bascule Sans batterie : officielle 6 panneaux 6 355 kWh, Max 8 panneaux 8 473 kWh.
+Générateur ?edit=2007, cartes « Tailles Éco / Recommandé / Max » : « Production annuelle 6 355 kWh » (Recommandé = devis, 6 panneaux sans) et « 8 473 kWh » (Max, 8 panneaux) — le matin 9 084.
+Porte de niveau (contre-épreuve EN MÉMOIRE, transaction annulée, base relue à 5 ensuite) : regles_calcul 5 → max 8 473,47 ; 4 → 9 083,61 ; 3 → 9 083,61 ; recommande 6 355 / 8 473 aux trois niveaux. Le niveau 3/4 garde les cartes non ombrées (porte voulue, devis envoyés = nouveaux rendus seulement) ; le niveau 5 ombre.
+Captures : ACCEPTATION-RHOR-rejeu2-tailles-ombrees-desktop.jpg, ACCEPTATION-RHOR-rejeu2-generateur-tailles.jpg
+
+## RHOR5.tailles — PASS (ERR-RHOR8-TAILLES-JAMAIS-RENTABILISE)
+Devis 2300 (DEV-202610-0114, jamais remboursé, regles_calcul 5). Charge : `offres_tailles.offres[recommande].sans|avec.payback_annees` = null (clé omise de la carte servie ; le matin 25,0). Max avec 21,7 ans (vrai), Max sans omis.
+Page /proposition, « Explorer d'autres tailles » : carte officielle SANS ligne « Rentabilisé en » (avec ET sans batterie) ; tableau « Ce qui change » : « Rentabilisé en | (vide) | 21,7 ans » ; 0 occurrence de « Rentabilisé en 25 » sur toute la page ; « Non rentabilisé sur 25 ans » ×2 (cartes d'option).
+Observation (non jugée) : la cellule « Recommandé » du tableau est vide plutôt qu'un libellé explicite « Non rentabilisé » ; conforme au correctif (clé omise, comme les cartes Éco/Max AMOT29).
+Capture : ACCEPTATION-RHOR-rejeu2-tailles-jamais-desktop.jpg
+
+## RHOR8.pdf-ar — PASS (ERR-RHOR8-PDF-AR-PAGES-ETUDE)
+include_etude=1 : devis 2007 FR 3 / EN 3 / AR 3 pages ; devis 2300 FR 4 / EN 4 / AR 4 pages (le matin AR 5 / 5). Texte par page AR 2007 : 1 128 / 3 321 / 2 389 car. (page 2 = tableaux des équipements, plus de page réduite à un titre) ; AR 2300 : 1 140 / 3 343 / 578 / 2 414.
+Capture : ACCEPTATION-RHOR-rejeu2-pdf-ar.png (planche des pages AR 2007 en haut, 2300 en bas).
+
+## RHOR8.regles2 — PASS (clause « un devis à regles_calcul = 2 rend ses chiffres d'origine », non rejouée le matin hors mémoire)
+POST /ventes/devis/2299/dupliquer/ → 201, devis 2489 (DEV-202610-0124, brouillon, mêmes 14 lignes, même lead 3400, etude_params identiques hors `ville_calcul` vide {ville:'', reference:''}) ; regles_calcul posé à 2 en base (shell, base démo locale).
+PDF include_etude=1 : 2489 (niveau 2) « Économie estimée : 9 159 MAD/an » / « 12 353 MAD/an », « Retour en 4,9 / 4,7 ans », « Tarif électricité : référence prudente (estimation) », « (approximatif) — à confirmer sur vos factures » = chiffres d'origine (12 353 = valeur brute du niveau 2 vue en mémoire le matin) ; 2299 (niveau 5, même contenu) : 10 316 / 11 308, 4,4 / 5 ans, « barème national par tranche ».

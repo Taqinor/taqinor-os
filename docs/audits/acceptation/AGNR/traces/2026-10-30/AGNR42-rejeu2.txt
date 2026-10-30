@@ -1,0 +1,24 @@
+AGNR42 — second rejeu en direct du 2026-10-30 (soir) : SEULES les deux étapes en FAIL le matin (enregistrement 2026-10-30-c58d67cd0), après leurs correctifs.
+Pile : http://localhost — backend erp-agentique-django_core-1 détaché au sha 31d05aa71 (branche dev-all-c9d8cc-5 : `ligneFabrique.withKeys` reporte `tvaBaseLegale`, `useLignesEcran.recomposerLignes` garde la clé appariée, `etude_chiffrage._conso_hiver_ete_niveau5`), front reconstruit au même sha, base démo locale, demo_admin, viewport 1366. Page /proposition par `astro dev` :4329 (PUBLIC_API_BASE=http://localhost), jeton interne.
+Oracles : 0 console.error (générateur ?lead=3745, ?edit=2299, page /proposition 2299), 0 réponse 4xx/5xx sur les gestes jugés ; seule boîte native : `beforeunload` (garde de sortie voulue, quitter le brouillon agricole non enregistré) ; aucun « prix d'achat » / « marge » dans les 6 PDF du devis 2299 (FR/EN/AR, avec et sans étude).
+
+## P3.4.tva0 — PASS (AGNR20, ERR-AGNR42-AUTOREMPLIR-BASE-LEGALE)
+Générateur ?lead=3745 (« AGNR42 rejeu agricole », Agricole (pompage) coché), guide d'accueil fermé, « Cas de pompe » = Pompe neuve, « Auto-remplir depuis le stock » ⇒ « Auto-remplissage effectué (kit calculé par le serveur) — champ PV 5.68 kWc (8 panneaux) », ligne « Pompe immergée solaire 5.5 CV Triphasé | 1 | 11000 | 20 ».
+TVA de la pompe tapée 0 ⇒ champ « Base légale de l'exonération » (id base-legale-16) rempli « Article 92-I-5° CGI — matériel agricole (rejeu 2 AGNR42) ».
+« Auto-remplir » à nouveau (aucune saisie manuelle de quantité ⇒ pas de dialogue) ⇒ pompe « 1 | 11000 | 0 », base-legale-16 = même texte (clé gardée — le matin re-clefée 16 → 24 et vidée), aucun message « Base légale obligatoire ».
+Mode « garder » explicite : TVA 0 + base légale « … (rejeu 2 AGNR42, garder) » (base-legale-32), Socles quantité 99, Auto-remplir ⇒ dialogue « Garder vos saisies ? » ⇒ « Recomposer en les gardant » ⇒ Socles 99, pompe TVA 0, base-legale-32 gardée.
+Mode « Prendre N (recalculé) » (choix explicite) ⇒ Socles 16, pompe TVA 20, base légale retirée : remplacement VOULU par AGNR20 (« le mode « recalcule » (choix explicite « Prendre N ») reste un remplacement »). Observation non jugée : le dialogue ne liste que « Socles : 99 » comme saisie, il ne dit pas que la TVA 0 % et sa base légale partiront aussi.
+« Recalculer le dimensionnement » : désactivé en agricole (comme le matin). Devis non enregistré (le geste jugé est la recomposition à l'écran).
+Captures : ACCEPTATION-AGNR-rejeu2-P3.4-tva0-avant.jpg, ACCEPTATION-AGNR-rejeu2-P3.4-tva0-apres.jpg
+
+## P5.1.sans-localisation — PASS (ERR-RHOR8-SANS-LOCALISATION-ECRAN-PDF ; clause CLIENT d'AGNR42)
+Devis 2299 (DEV-202610-0113, regles_calcul 5, lead 3400 « RHOR8 rejeu sans horaire » : facture 1 000 MAD, ni ville ni GPS, 8 × 710 W, batterie 5 kWh).
+Écran (?edit=2299, panneaux dépliés) : « Facture réelle ONEE ≈ 12 000 MAD/an sans solaire → avec solaire ≈ 692 MAD/an — économie calculée par tranche (barème ONEE), pas une estimation. », sans batterie 10 316 MAD/an ROI 4,4 ans, avec 11 308 MAD/an ROI 5 ans.
+PDF /proposal?include_etude=1 FR : « ÉCONOMIES ESTIMÉES / AN 10 316 MAD – 11 308 MAD », « Économie estimée : 10 316 MAD/an » / « 11 308 MAD/an », « Retour en 4,4 ans » / « Retour en 5 ans », « Tarif électricité : barème national par tranche », 0 « approximatif » ; EN « 10 316 MAD – 11 308 MAD », « Payback in 4.4 years » ; AR « 10 316 – 11 308 MAD », 4,4. PDF sans paramètre (FR/EN/AR, 3 pages) : « économie ≈ 11 308 MAD/an » (facture 12 000 → 692). Le matin : 9 159 / 12 034, 4,9 / 4,7 ans, « estimation ».
+Page /proposition 2299 : « ÉCONOMIE / AN 11 308 MAD », 10 316 ×1, 11 308 ×2, 0 « 9 159 » / « 12 034 » / « approximatif » ; charge savings_model « factures ».
+Écran = PDF = page.
+Non couvert ici : AGNR24 (son scénario exact 12 × 800 MAD sans facture réelle n'est pas celui-ci — reste en dette).
+Captures : ACCEPTATION-AGNR-rejeu2-sans-localisation-ecran.jpg, ACCEPTATION-AGNR-rejeu2-sans-localisation-page.jpg
+
+## Reste pour cocher AGNR42 (inchangé depuis le matin)
+P2.2 (charte H×H, virgule décimale) non concluant : à rejouer sur un Chrome réellement francophone (--lang fr). CLAUSE CLIENT « page publique de chaque devis touché » : relue le matin pour 2464 seulement, ce soir pour 2299 ; 2465-2468 non relues.
