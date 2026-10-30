@@ -4,7 +4,6 @@
   "groupe": "ASEC",
   "verdict": "PASS",
   "couvre": [
-    "ASEC21",
     "ASEC2",
     "ASEC3",
     "ASEC4",
@@ -14,7 +13,6 @@
     "ASEC8",
     "ASEC9",
     "ASEC10",
-    "ASEC11",
     "ASEC12",
     "ASEC13",
     "ASEC14",
@@ -44,9 +42,7 @@
     "ASEC45",
     "ASEC49"
   ],
-  "couvre_avec_ecart": [
-    "ASEC11"
-  ],
+  "couvre_avec_ecart": [],
   "etapes": [
     {
       "id": "ASEC21.statique",
