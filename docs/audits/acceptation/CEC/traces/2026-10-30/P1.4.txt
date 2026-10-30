@@ -1,0 +1,7 @@
+# CEC6 — sensibilités du PDF industriel (usine MT, devis par l’API)
+devis DEV-202610-0120 (id 1690)
+PDF : central {"retour":3.7,"tri":26.5,"cumul":2481054.68} ; production {"variation":-7.7,"retour":4,"tri":26.7,"cumul":2506240.24}
+economie_ci.sensibilites[production] : {"cle":"production","variation_pct":-7.7,"source":"P90 : P50 × (1 − 1,282 × σ), σ interannuel 6 % (variabilité météo typique 5 à 7 %, étude bancable du moteur)","economie_annee1_mad":129094.35,"retour_ans":4,"tri_pct":26.6991,"cumul_25_ans_mad":2506240.24,"ecart_retour_ans":0,"ecart_tri_pct":0.2331}
+economie_ci central : économie an 1 128025.17 ; cumul 25 ans 2481054.68 ; TRI 26.466
+Recalcul à la main : la production baisse de 7.7 % (P90) et RIEN d'autre ne change ⇒ autoconsommé ≤ central, donc économie an 1 ≤ 128025.17, cumul ≤ 2481054.68, TRI ≤ 26.466
+ÉCART : économie an 1 P90 129094.35 > centrale 128025.17 ; cumul 25 ans P90 2506240.24 > central 2481054.68 ; TRI P90 26.6991 > central 26.466 — responsable : backend/django_core/apps/ventes/economie_ci.py::_apercu_production (autoconsommé recalculé min(production, charge) cellule par cellule, base différente du scénario central)
