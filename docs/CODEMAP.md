@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 7702eeb5f4921eaa8a91dfe8d916fc369b7b4610d9a1801ab6cf56391cbb2059
-Plan fingerprint: b40444dc4bf389c1b8079f8611d56a35af1141c979ab5cf79b1c6eb2c09b2c43
+Plan fingerprint: cbe1e5fe01e50e14ba1db8058d8a07c43e24b3c908c215610a81a9f53da9e16f
 
 
 
