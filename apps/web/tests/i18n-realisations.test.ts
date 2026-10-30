@@ -12,7 +12,13 @@ import { cityContentBySlug } from '../src/lib/cityContent';
 import { caseStudyBySlug } from '../src/lib/caseStudies';
 import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+// ENF19 — le corps des pages ville (V2Enhance, class="v2", JSON-LD Service) vit dans
+// components/CityPageBody.astro + lib/cityPageData.ts : une page ville se lit avec eux.
+const read = (rel: string) =>
+  rel.includes('installation-solaire-[city]')
+    ? [rel, '../src/components/CityPageBody.astro', '../src/lib/cityPageData.ts'].map(readSrc).join('\n')
+    : readSrc(rel);
 
 describe('cityContentBySlug — locale-aware, additif', () => {
   it('FR par défaut = inchangé ; EN et AR distincts et non vides', () => {

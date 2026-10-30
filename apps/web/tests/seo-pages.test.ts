@@ -8,7 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
 import { NAP } from '../src/lib/nap';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+// ENF19 — le corps des pages ville (V2Enhance, class="v2", JSON-LD Service) vit dans
+// components/CityPageBody.astro + lib/cityPageData.ts : une page ville se lit avec eux.
+const read = (rel: string) =>
+  rel.includes('installation-solaire-[city]')
+    ? [rel, '../src/components/CityPageBody.astro', '../src/lib/cityPageData.ts'].map(readSrc).join('\n')
+    : readSrc(rel);
 
 // Le filtre d'exclusion sitemap (copié depuis astro.config.mjs).
 const sitemapExcluded = (page: string) =>

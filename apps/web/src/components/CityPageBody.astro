@@ -1,0 +1,177 @@
+---
+/**
+ * Corps commun des pages ville FR / EN / AR (ENF19) : le balisage était recopié
+ * trois fois, seuls le texte (`t`) et trois détails RTL changeaient — `dir="ltr"`
+ * sur les chiffres, flèches retournées, filet de la note délégataire. Chaque
+ * page garde ses libellés, son JSON-LD et le texte du paragraphe d'écart de
+ * rendement (slot `yieldNote`) ; ici : structure, classes et logique d'affichage.
+ */
+import V2Enhance from './V2Enhance.astro';
+import Article33Ribbon from './Article33Ribbon.astro';
+import Breadcrumb from './Breadcrumb.astro';
+import Picture from './Picture.astro';
+import CtaBand from './CtaBand.astro';
+import StickyCta from './StickyCta.astro';
+import type { cityPageBase } from '../lib/cityPageData';
+
+interface Props {
+  c: { name: string; sunshineHours: number | string; hasLocalInstall: boolean };
+  rtl?: boolean;
+  L: (href: string) => string;
+  cardAlt: (r: any) => string;
+  t: Record<string, string>;
+  breadcrumbItems: { label: string; href?: string }[];
+  heroPhoto: { name: string; widths: number[]; ratio: number };
+  showYieldNote: boolean;
+  /** Résultat de `cityPageBase()` (lib/cityPageData.ts) : listes de chantiers + prose de la ville. */
+  city: ReturnType<typeof cityPageBase>;
+}
+const { c, rtl = false, L, cardAlt, t, breadcrumbItems, heroPhoto, showYieldNote, city } = Astro.props;
+const {
+  heroLead, sunshineContext, roiNuance, delegataireNote, inCity, nearby, closest, closer,
+  pillarStudy, pillarMeasure, pillarCompliance,
+} = city;
+const pillars = [pillarStudy, pillarMeasure, pillarCompliance];
+const dir = rtl ? 'ltr' : undefined;
+const noteClass = rtl
+  ? 'mx-auto mt-4 max-w-3xl border-e-2 border-brass-400/60 pe-4 text-sm leading-relaxed text-lune-soft'
+  : 'mx-auto mt-4 max-w-3xl border-l-2 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft';
+const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10';
+const stats = [
+  { v: '50–100 %', k: t.statBill },
+  { v: t.statRoiValue, k: t.statRoi },
+  { v: t.statWarrantyValue, k: t.statWarranty },
+  { v: '< 11 kW', k: t.stat8221 },
+];
+---
+
+<div class="v2">
+  <V2Enhance />
+  <Article33Ribbon />
+
+  <Breadcrumb items={breadcrumbItems} />
+
+  <section class="relative isolate mt-6 overflow-hidden text-white">
+    <div class="v2-hero-media absolute inset-0 -z-10">
+      <Picture name={heroPhoto.name} alt="" widths={heroPhoto.widths} ratio={heroPhoto.ratio} sizes="100vw"
+        loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
+      <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/25"></div>
+    </div>
+    <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
+      <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">{t.kicker}</p>
+      <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">{t.h1}</h1>
+      <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{heroLead}</p>
+    </div>
+  </section>
+
+  <section class="border-y border-white/10 px-4 py-16 sm:py-20">
+    <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+      <div class="v2-rise">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">{t.potential}</p>
+        <p class="fig lum mt-4 text-5xl sm:text-6xl" dir={dir}>{c.sunshineHours} <span class="text-2xl">{t.hoursUnit}</span></p>
+        <p class="tech-label mt-2 text-lune-faint">{t.sunshineLabel}</p>
+        <p class="mt-4 max-w-md text-sm leading-relaxed text-lune-soft">
+          {t.publicData} {sunshineContext}
+        </p>
+      </div>
+      <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
+        {stats.map((s, i) => (
+          <div class="v2-rise" style={`--v2-i:${i}`}>
+            <dd class="fig lum text-3xl sm:text-4xl" dir={dir} data-tally>{s.v}</dd>
+            <dt class="tech-label mt-2 text-lune-faint">{s.k}</dt>
+          </div>
+        ))}
+      </dl>
+    </div>
+    <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
+    {delegataireNote && (
+      <p class={noteClass}>
+        {delegataireNote}
+      </p>
+    )}
+  </section>
+
+  {inCity.length > 0 && (
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">{t.projectsKicker}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{t.projectsH2}</h2>
+        <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {inCity.map((r, i) => (
+            <a href={L(`/realisations/${r!.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
+              <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={3 / 2}
+                sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
+                {r!.kwc && <span class="fig block text-2xl text-white" dir={dir}>{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>}
+                {r!.panneaux && <span class="mt-1 block text-xs text-lune">{r!.panneaux}</span>}
+                <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">{t.caseStudy} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}</span>
+              </div>
+            </a>
+          ))}
+        </div>
+        {showYieldNote && (
+          <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+            <slot name="yieldNote" />
+          </p>
+        )}
+      </div>
+    </section>
+  )}
+
+  {nearby.length > 0 && (
+    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">{t.nearbyKicker}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{t.nearbyH2}</h2>
+        <div class="mt-8 flex flex-wrap gap-3">
+          {nearby.map((r) => (
+            <a href={L(`/realisations/${r!.slug}`)} class={linkClass}>
+              {r!.kwc ? <>{r!.ville} · {rtl ? <span dir="ltr">{r!.kwc}</span> : r!.kwc}</> : r!.ville} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  {!c.hasLocalInstall && (
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">{t.coveredKicker}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{t.coveredH2}</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          <slot name="coveredNote" /> {t.closestLead}
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          {closest.map((r) => (
+            <a href={L(`/realisations/${r.slug}`)} class={linkClass}>
+              {r.kwc ? <>{r.ville} · {rtl ? <span dir="ltr">{r.kwc}</span> : r.kwc}</> : r.ville} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+            </a>
+          ))}
+          <a href={L('/realisations')} class={linkClass}>
+            {t.latest} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+          </a>
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+    <div class="mx-auto grid max-w-6xl gap-8 md:grid-cols-3" data-stagger>
+      {pillars.map((p, i) => (
+        <div class="v2-rise" style={`--v2-i:${i}`}>
+          <h3 class="display text-xl text-white">{p.heading}</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={p.body}></p>
+        </div>
+      ))}
+    </div>
+    <div class="mx-auto mt-10 flex max-w-6xl flex-wrap gap-3">
+      <a href={L('/résidentiel')} class={linkClass}>{t.residential} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}</a>
+      <a href={L('/professionnel')} class={linkClass}>{t.business} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}</a>
+    </div>
+  </section>
+
+  <CtaBand title={closer} href={L('/devis/mon-toit')} />
+
+  <StickyCta />
+</div>

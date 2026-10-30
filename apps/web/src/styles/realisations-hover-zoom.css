@@ -1,0 +1,17 @@
+/* W179 — hover-zoom standardisé 1.04, reduced-motion safe.
+   ENF19 : une seule copie pour realisations/index et realisations/[slug] (fr/en/ar) ;
+   les noms de classe sont propres à ces pages, la portée globale n'a pas d'effet ailleurs. */
+@media (prefers-reduced-motion: no-preference) {
+  .photo-card-img,
+  .slug-photo-img {
+    transition: transform 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  .photo-card-btn:hover .photo-card-img,
+  .photo-card-btn:focus-visible .photo-card-img,
+  .slug-gallery-btn:hover .slug-photo-img,
+  .slug-gallery-btn:focus-visible .slug-photo-img,
+  .phase-btn:hover .slug-photo-img,
+  .phase-btn:focus-visible .slug-photo-img {
+    transform: scale(1.04);
+  }
+}
