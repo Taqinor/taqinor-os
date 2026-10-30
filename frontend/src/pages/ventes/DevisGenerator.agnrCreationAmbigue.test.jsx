@@ -57,4 +57,34 @@ describe('AGNR40 — création à issue inconnue', () => {
     expect(opts1.idempotencyKey.length).toBeGreaterThan(8)
     expect(opts2?.idempotencyKey).toBe(opts1.idempotencyKey)
   }, 60000)
+
+  // ERR-AGNR40-IDEMPOTENCE-EN-VOL — la même création tourne encore côté
+  // serveur (409 « idempotency_en_cours ») : l'écran réessaie SEUL avec la
+  // MÊME clé et reçoit le devis rejoué, sans afficher d'erreur.
+  it('409 « en cours » : reprise automatique avec la même clé, aucun message d\'erreur', async () => {
+    const EN_COURS = Object.assign(new Error('Request failed with status code 409'), {
+      response: { status: 409, data: { code: 'idempotency_en_cours', detail: 'Une requête identique est déjà en cours de traitement.' } },
+    })
+    const vue = await monter(`/ventes/devis/nouveau?lead=${LEAD.id}`, {
+      avant: ({ ventesApi }) => {
+        ventesApi.composerDevis.mockResolvedValue({ data: exempleContrat('ventes', 'devis_composition', 'exemple') })
+        ventesApi.createDevisAtomic
+          .mockRejectedValueOnce(EN_COURS)
+          .mockResolvedValue({ data: { id: 901, reference: 'DEV-202610-0901', statut: 'brouillon' } })
+      },
+    })
+    await attendreStable(vue.container, act)
+    await autoRemplirAvecPanneaux('8')
+    await waitFor(() => expect(vue.ventesApi.composerDevis).toHaveBeenCalled())
+    await attendreStable(vue.container, act)
+
+    await cliquerCreer()
+    await waitFor(() => expect(vue.ventesApi.createDevisAtomic).toHaveBeenCalledTimes(2), { timeout: 10000 })
+    const [, opts1] = vue.ventesApi.createDevisAtomic.mock.calls[0]
+    const [, opts2] = vue.ventesApi.createDevisAtomic.mock.calls[1]
+    expect(opts2?.idempotencyKey).toBe(opts1.idempotencyKey)
+    await attendreStable(vue.container, act, { stables: 5 })
+    expect(vue.container.textContent).not.toMatch(/déjà en cours de traitement/)
+    expect(vue.container.textContent).not.toMatch(MESSAGE)
+  }, 60000)
 })

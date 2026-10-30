@@ -23,6 +23,11 @@ import { useRef, useState } from 'react'
 import { withKeys } from '../ligneFabrique.js'
 
 // AGNR33 — les champs d'en-tête dont un refus 400 se lit sous le champ.
+// ERR-AGNR40-IDEMPOTENCE-EN-VOL — reprise d'une création encore en vol côté
+// serveur : toutes les 2 s, pendant ~4 min (une création chargée a pris 100 s).
+const DELAI_REPRISE_EN_COURS_MS = 2000
+const REPRISES_EN_COURS = 120
+
 const LIBELLES_CHAMPS_ENTETE = {
   remise_globale: 'Réduction',
   taux_tva: 'TVA',
@@ -428,6 +433,23 @@ export function usePersistanceDevis(ctx) {
     return err.response.status >= 500 && !err.response.data?.detail
   }
 
+  // ERR-AGNR40-IDEMPOTENCE-EN-VOL — 409 « idempotency_en_cours » : la MÊME
+  // création tourne encore côté serveur (clé réservée). On réessaie avec la
+  // MÊME clé jusqu'à recevoir le devis rejoué — jamais un second devis, jamais
+  // une erreur affichée tant que le serveur travaille.
+  const creerAtomiqueAvecReprise = async (corps, idempotencyKey) => {
+    for (let essai = 0; ; essai += 1) {
+      try {
+        return await ventesApi.createDevisAtomic(corps, { idempotencyKey })
+      } catch (err) {
+        const enCours = err?.response?.status === 409
+          && err.response.data?.code === 'idempotency_en_cours'
+        if (!enCours || essai >= REPRISES_EN_COURS) throw err
+        await new Promise((r) => { setTimeout(r, DELAI_REPRISE_EN_COURS_MS) })
+      }
+    }
+  }
+
   const persisterDevis = async (surcharge = null) => {
     setSaving(true)
     // AGNR21 — trois issues : ok, PARTIEL (lignes écrites, étude ou registre
@@ -495,9 +517,9 @@ export function usePersistanceDevis(ctx) {
         // onduleurs compris — et l'écran « Devis enregistré » affichait un prix
         // qu'aucun document ne porte. Le PATCH qui suit reste inchangé (il
         // repose les mêmes choix + les entrées réelles, sans bouger le total).
-        const { data } = await ventesApi.createDevisAtomic({
+        const { data } = await creerAtomiqueAvecReprise({
           ...payload, etude_params: choixEcran(), lignes: lignesPayload,
-        }, { idempotencyKey: cleCreation() })
+        }, cleCreation())
         cleCreationRef.current = null
         devisId = data.id
         devisCree = data
