@@ -16,15 +16,8 @@
  * W185 — OG card propre à chaque réalisation : l'image héro réelle est passée
  *         via le prop ogImage de Layout (pris en charge depuis W185).
  */
+import RealisationSlugBody from '../../components/RealisationSlugBody.astro';
 import Layout from '../../layouts/Layout.astro';
-import V2Enhance from '../../components/V2Enhance.astro';
-import Article33Ribbon from '../../components/Article33Ribbon.astro';
-import Breadcrumb from '../../components/Breadcrumb.astro';
-import Picture from '../../components/Picture.astro';
-import PhotoCaption from '../../components/PhotoCaption.astro';
-import LiteVideo from '../../components/LiteVideo.astro';
-import CtaBand from '../../components/CtaBand.astro';
-import StickyCta from '../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../lib/realisations';
 import { caseStudyBySlug } from '../../lib/caseStudies';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
@@ -35,6 +28,7 @@ export function getStaticPaths() {
 }
 
 const { r } = Astro.props;
+const L = (href: string) => href; // FR : liens racine tels quels
 
 // Récit propre à l'étude (W42) — déporté dans lib/caseStudies.ts pour que les
 // cinq pages ne partagent plus une prose identique. Repli sûr garanti.
@@ -55,6 +49,7 @@ const ogSlug = r.segment === 'professionnel' ? 'professionnel' : 'residentiel';
 
 const hero = r.photos[0];
 const rest = r.photos.slice(1);
+const heroAlt = hero.alt;
 const heroLargest = Math.max(...hero.widths);
 const heroImg = new URL(`/photos/${hero.name}-${heroLargest}.webp`, Astro.site).href;
 
@@ -113,9 +108,47 @@ const waCaseStudy = whatsappLink(
   WHATSAPP_LEADS,
   caseStudyWhatsappText({ ville: r.ville, kwc: r.kwc, ref: r.ref }),
 );
-import RealisationsSlugP5E85 from '../../components/blocs/RealisationsSlugP5E85.astro';
 import PhotoLightbox from '../../components/PhotoLightbox.astro';
 import '../../styles/realisations-hover-zoom.css';
+const t = {
+  ref: 'Réf.',
+  h1Kwc: `d'installation solaire ${cityPage ? cityPage.intro : `à ${r.ville}`}`,
+  h1NoKwc: `Installation solaire ${cityPage ? cityPage.intro : `à ${r.ville}`}`,
+  resume: r.resume,
+  power: 'Puissance installée',
+  productionEstimated: 'Production estimée — rendement mesuré de nos chantiers',
+  productionMeasured: 'Production mesurée — suivi de production en temps réel',
+  panels: 'Panneaux posés',
+  storyKicker: 'Le chantier, raconté',
+  whyPre: 'Pourquoi ',
+  whyPost: ', sur cette toiture',
+  whatShows: 'Ce que ce chantier montre',
+  videoKicker: 'Le chantier filmé',
+  videoTitle: 'Voir le chantier en vidéo',
+  videoPlay: 'Lire la vidéo du chantier',
+  phasesKicker: 'Le chantier en phases',
+  phasesTitle: 'Avant · Pendant · Après',
+  enlarge: 'Agrandir :',
+  equipmentKicker: 'Le matériel posé',
+  equipmentTitle: 'Ce qui est réellement sur le toit',
+  brands: 'Marques tier-1 sourcées via des distributeurs officiels au Maroc — garanties locales activables.',
+  allEquipment: "Voir tout l'équipement",
+  galleryKicker: 'Pièces du dossier',
+  galleryTitle: 'Le chantier, tel quel',
+  nearestKicker: 'Un kWc plus proche du vôtre',
+  nearestCta: "Voir l'étude de cas →",
+  referKicker: 'Le bouche-à-oreille compte',
+  referTitle: 'Un proche a un profil similaire ? Recommandez Taqinor',
+  referCta: 'Découvrir le parrainage',
+  segment: `Solaire ${segmentLabel.toLowerCase()}`,
+  latest: 'Nos dernières réalisations',
+  monitoring: 'Suivi de production de ce chantier',
+  ctaTitle: `Une étude comme celle de ${r.ville}, pour votre toiture.`,
+  waQuestion: `Une question sur cette installation${r.kwc ? ` de ${r.kwc}` : ''} à ${r.ville} ?`,
+  waCta: 'Discuter de cette installation sur WhatsApp',
+};
+
+const bodyProps = { r, cs, L, rtl: false, fr: true, t, altOf: (p: { alt: string }) => p.alt, breadcrumbItems: [{ label: 'Accueil', href: '/' }, { label: 'Réalisations', href: '/realisations' }, { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville }], cityLink, segmentHref, phasedPhotos, phaseLabels, hasDiptych, galleryPhotos, equipment, heroAlt, nearestCase, waCaseStudy };
 ---
 
 <Layout
@@ -126,317 +159,7 @@ import '../../styles/realisations-hover-zoom.css';
   ogImageAlt={`Installation solaire${r.kwc ? ` ${r.kwc}` : ''} à ${r.ville} — photo de chantier`}
 >
   <script type="application/ld+json" set:html={JSON.stringify(articleJsonLd)} />
-  <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
-
-    <Breadcrumb
-      items={[
-        { label: 'Accueil', href: '/' },
-        { label: 'Réalisations', href: '/realisations' },
-        { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville },
-      ]}
-    />
-
-    <!-- ACTE I — la photo de chantier est la lumière -->
-    <section class="relative isolate mt-6 overflow-hidden text-white">
-      <div class="v2-hero-media absolute inset-0 -z-10">
-        {/* W155 — portraitPosition : recadrage doux vers le haut sur téléphones
-            verticaux (les panneaux sont en haut de la photo de chantier). Si
-            hero.objectPosition est déjà défini, il est gardé en paysage ; le
-            portrait override est center 25% (haut du champ) par défaut.
-            W364 — view-transition-name matching the gallery card that shares
-            this exact photo (index.astro / realisations/index.astro both key
-            off the same photo name) — morphs on arrival when the outgoing
-            page carried the matching name, silently degrades to a normal
-            navigation otherwise (LCP unaffected: this only shapes the
-            cross-document transition, never image loading/priority). */}
-        <Picture
-          name={hero.name}
-          alt={hero.alt}
-          widths={hero.widths}
-          ratio={hero.ratio}
-          sizes="100vw"
-          loading="eager"
-          fetchpriority="high"
-          position={hero.objectPosition}
-          portraitPosition="center 25%"
-          class="h-full w-full object-cover"
-          style={`view-transition-name: vt-photo-${hero.name}`}
-        />
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
-      </div>
-      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Réf. {r.ref} · {r.ville} · {r.date}</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
-          {r.kwc
-            ? <>{r.kwc} d'installation solaire {cityPage ? cityPage.intro : `à ${r.ville}`}</>
-            : <>Installation solaire {cityPage ? cityPage.intro : `à ${r.ville}`}</>}
-        </h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{r.resume}</p>
-      </div>
-    </section>
-
-    <!-- Chiffres-clés — uniquement ce qui est publié -->
-    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
-      <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-        {r.kwc && (
-          <div class="v2-rise" style="--v2-i:0">
-            {/* W211 — whitespace-nowrap retiré (un long chiffre kWh/an peut déborder à 320 px) */}
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Puissance installée</dt>
-          </div>
-        )}
-        {r.production && (
-          <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.production}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">
-              {r.productionEstimated
-                ? 'Production estimée — rendement mesuré de nos chantiers'
-                : 'Production mesurée — suivi de production en temps réel'}
-            </dt>
-          </div>
-        )}
-        {r.panneaux && (
-          <div class="v2-rise" style="--v2-i:2">
-            <dd class="font-display text-xl font-bold text-white">{r.panneaux}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Panneaux posés</dt>
-          </div>
-        )}
-        <div class="v2-rise" style="--v2-i:3">
-          <dd class="font-display text-xl font-bold text-white">{r.ville}</dd>
-          <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
-        </div>
-      </dl>
-    </section>
-
-    <!-- Le récit du chantier : situation, dimensionnement, résultat mesuré -->
-    <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
-      <p class="tech-label v2-kicker rule-brass text-lune">Le chantier, raconté</p>
-      <h2 class="display v2-section-title mt-5 text-white">{r.kwc ? <>Pourquoi {r.kwc}, sur cette toiture</> : 'Ce que ce chantier montre'}</h2>
-      <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
-      <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
-      <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
-      {/* W327 — voix du client : NO-OP tant que WG6 n'a fourni aucune vraie
-          citation (cs.clientQuote reste `undefined` pour les cinq études
-          actuelles) ; rien n'est rendu dans ce cas, jamais de placeholder. */}
-      {cs.clientQuote && (
-        <blockquote class="mt-8 border-l-2 border-brass-400 pl-5">
-          <p class="v2-lead text-white">« {cs.clientQuote.text} »</p>
-          <cite class="tech-label mt-3 block not-italic text-lune-faint">— {cs.clientQuote.author}</cite>
-        </blockquote>
-      )}
-    </section>
-
-    <!-- (2026-09) Vidéo de chantier propre à CETTE étude — absente pour toute
-         réalisation sans `video` (comportement historique inchangé). Façade
-         clic-pour-lire LiteVideo : aucun MP4 préchargé. -->
-    {r.video && (
-      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-        <div class="mx-auto max-w-3xl">
-          <p class="tech-label v2-kicker rule-brass text-lune">Le chantier filmé</p>
-          <h2 class="display v2-section-title mt-5 text-white">Voir le chantier en vidéo</h2>
-          <div class="mt-8 border border-brass-400/40">
-            <LiteVideo
-              id={`realisation-video-${r.slug}`}
-              src={r.video.src}
-              poster={r.video.poster}
-              alt={r.video.alt}
-              playLabel="Lire la vidéo du chantier"
-              aspectRatio="16/9"
-              posterWidth={1600}
-              posterHeight={900}
-            />
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- W184 — Diptych avant/pendant/après (si données présentes) -->
-    {hasDiptych && (
-      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-lune">Le chantier en phases</p>
-          <h2 class="display v2-section-title mt-5 text-white">Avant · Pendant · Après</h2>
-          <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-            {phasedPhotos.map((p, i) => (
-              <figure
-                class="v2-rise phase-card cine-card group relative overflow-hidden"
-                style={`--v2-i:${i}`}
-                data-phase={p.phase}
-              >
-                <button
-                  type="button"
-                  class="phase-btn block w-full overflow-hidden text-left"
-                  data-lightbox-trigger-slug
-                  data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
-                  data-lightbox-alt={p.alt}
-                  data-lightbox-label={`${phaseLabels[p.phase!] ?? p.phase} — ${p.alt}`}
-                  aria-label={`Agrandir : ${p.alt}`}
-                >
-                  <Picture
-                    name={p.name}
-                    alt={p.alt}
-                    widths={p.widths}
-                    ratio={p.ratio}
-                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                    style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
-                    class="slug-photo-img w-full object-cover"
-                  />
-                  <PhotoCaption caption={phaseLabels[p.phase!] ?? p.phase} />
-                </button>
-                <figcaption class="sr-only">{p.alt}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- Le matériel posé -->
-    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-      <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Le matériel posé</p>
-        <h2 class="display v2-section-title mt-5 text-white">Ce qui est réellement sur le toit</h2>
-        <RealisationsSlugP5E85 cs={cs} equipment={equipment} />
-        <p class="mt-5 text-sm text-lune-soft">
-          Marques tier-1 sourcées via des distributeurs officiels au Maroc — garanties locales
-          activables. <a href="/équipement" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">Voir tout l'équipement →</a>
-        </p>
-      </div>
-    </section>
-
-    <!-- Galerie chantier — W178 lightbox + W171 PhotoCaption + W179 hover-zoom -->
-    {galleryPhotos.length > 0 && (
-      <section class="px-4 py-20 sm:py-24">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-lune">Pièces du dossier</p>
-          <h2 class="display v2-section-title mt-5 text-white">Le chantier, tel quel</h2>
-          <div class="mt-10 grid gap-5 sm:grid-cols-2" data-stagger data-lightbox-gallery-slug>
-            {galleryPhotos.map((p, i) => (
-              <figure
-                class="v2-rise cine-card group relative overflow-hidden"
-                style={`--v2-i:${i}`}
-              >
-                <button
-                  type="button"
-                  class="slug-gallery-btn block w-full overflow-hidden text-left"
-                  data-lightbox-trigger-slug
-                  data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
-                  data-lightbox-alt={p.alt}
-                  data-lightbox-label={p.alt}
-                  aria-label={`Agrandir : ${p.alt}`}
-                >
-                  <Picture
-                    name={p.name}
-                    alt={p.alt}
-                    widths={p.widths}
-                    ratio={p.ratio}
-                    sizes="(min-width: 640px) 50vw, 100vw"
-                    style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
-                    class="slug-photo-img w-full object-cover"
-                  />
-                </button>
-                <figcaption class="sr-only">{p.alt}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- W327 — « kWc le plus proche du vôtre » : le prochain pas naturel pour
-         un acheteur qui compare sa propre toiture à un cas précis. -->
-    {nearestCase && (
-      <section class="border-t border-white/10 px-4 py-16">
-        <div class="mx-auto max-w-6xl">
-          <a
-            href={`/realisations/${nearestCase.slug}`}
-            class="group flex flex-wrap items-center justify-between gap-4 border border-brass-400/40 bg-white/[0.03] px-6 py-5 transition-colors hover:border-brass-400 hover:bg-white/[0.06]"
-          >
-            <span>
-              <span class="tech-label block text-brass-300">Un kWc plus proche du vôtre</span>
-              <span class="mt-1 block font-display text-lg font-bold text-white">
-                {nearestCase.kwc} à {nearestCase.ville}{nearestCase.production ? ` · ${nearestCase.production}` : ''}
-              </span>
-            </span>
-            <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 text-sm font-bold text-azur-200" aria-hidden="true">
-              Voir l'étude de cas →
-            </span>
-          </a>
-        </div>
-      </section>
-    )}
-
-    <!-- W344 — Référence soft vers /parrainage : la preuve la plus forte du
-         site (une étude de cas réelle) ne doit pas être une impasse. Ton
-         discret, non-transactionnel — pas de montant/récompense affiché ici
-         (voir /parrainage pour les conditions, WG14-gated). -->
-    <section class="border-t border-white/10 px-4 py-16">
-      <div class="mx-auto max-w-6xl">
-        <a
-          href="/parrainage"
-          class="group flex flex-wrap items-center justify-between gap-4 border border-white/20 px-6 py-5 transition-colors hover:border-brass-400/60 hover:bg-white/[0.03]"
-        >
-          <span>
-            <span class="tech-label block text-lune-faint">Le bouche-à-oreille compte</span>
-            <span class="mt-1 block font-display text-lg font-bold text-white">
-              Un proche a un profil similaire ? Recommandez Taqinor
-            </span>
-          </span>
-          <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 text-sm font-bold text-azur-200" aria-hidden="true">
-            Découvrir le parrainage →
-          </span>
-        </a>
-      </div>
-    </section>
-
-    <!-- Liens contextuels -->
-    <section class="border-t border-white/10 px-4 py-16">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        {cityLink && (
-          <a href={cityLink.href} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-            {cityLink.label} →
-          </a>
-        )}
-        <a href={segmentHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-          Solaire {segmentLabel.toLowerCase()} →
-        </a>
-        <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-          Nos dernières réalisations →
-        </a>
-        {/* (2026-09) Lien de suivi de production PROPRE à ce chantier — vide
-            tant que non fourni (jamais un lien générique/deviné). */}
-        {r.monitoringUrl && (
-          <a href={r.monitoringUrl} rel="noopener noreferrer" target="_blank" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-            Suivi de production de ce chantier →
-          </a>
-        )}
-      </div>
-    </section>
-
-    <CtaBand title={`Une étude comme celle de ${r.ville}, pour votre toiture.`} href="/devis/mon-toit" />
-
-    <!-- W350 — WhatsApp PROPRE À CETTE étude : le message cite déjà la ville,
-         la puissance et la référence exactes (bio-link réseaux sociaux →
-         réalisation → WhatsApp déjà contextualisé, sans rien à retaper). -->
-    <section class="border-t border-white/10 bg-blanc-azur px-4 py-10 text-center text-encre">
-      <p class="mx-auto max-w-xl text-sm text-encre-soft">
-        Une question sur cette installation{r.kwc ? ` de ${r.kwc}` : ''} à {r.ville} ?
-      </p>
-      <a
-        href={waCaseStudy}
-        rel="noopener noreferrer"
-        target="_blank"
-        class="mt-4 inline-flex items-center gap-2 border border-azur-600 px-5 py-2.5 text-sm font-bold text-azur-600 transition-colors hover:bg-azur-600 hover:text-white"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
-        Discuter de cette installation sur WhatsApp
-      </a>
-    </section>
-
-    <StickyCta />
-  </div>
+  <RealisationSlugBody {...bodyProps} />
 
   <PhotoLightbox locale="fr" trigger="[data-lightbox-trigger-slug]" />
 </Layout>

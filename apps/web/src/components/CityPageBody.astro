@@ -6,12 +6,9 @@
  * page garde ses libellés, son JSON-LD et le texte du paragraphe d'écart de
  * rendement (slot `yieldNote`) ; ici : structure, classes et logique d'affichage.
  */
-import V2Enhance from './V2Enhance.astro';
-import Article33Ribbon from './Article33Ribbon.astro';
-import Breadcrumb from './Breadcrumb.astro';
 import Picture from './Picture.astro';
 import CtaBand from './CtaBand.astro';
-import StickyCta from './StickyCta.astro';
+import V2Page from './V2Page.astro';
 import type { cityPageBase } from '../lib/cityPageData';
 
 interface Props {
@@ -45,13 +42,8 @@ const stats = [
 ];
 ---
 
-<div class="v2">
-  <V2Enhance />
-  <Article33Ribbon />
-
-  <Breadcrumb items={breadcrumbItems} />
-
-  <section class="relative isolate mt-6 overflow-hidden text-white">
+<V2Page breadcrumbItems={breadcrumbItems}>
+<section class="relative isolate mt-6 overflow-hidden text-white">
     <div class="v2-hero-media absolute inset-0 -z-10">
       <Picture name={heroPhoto.name} alt="" widths={heroPhoto.widths} ratio={heroPhoto.ratio} sizes="100vw"
         loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
@@ -173,5 +165,4 @@ const stats = [
 
   <CtaBand title={closer} href={L('/devis/mon-toit')} />
 
-  <StickyCta />
-</div>
+</V2Page>

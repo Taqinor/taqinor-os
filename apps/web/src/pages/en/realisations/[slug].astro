@@ -12,15 +12,8 @@
  * the phase data already lives in realisations.ts, this page just never
  * rendered it.
  */
+import RealisationSlugBody from '../../../components/RealisationSlugBody.astro';
 import Layout from '../../../layouts/Layout.astro';
-import V2Enhance from '../../../components/V2Enhance.astro';
-import Article33Ribbon from '../../../components/Article33Ribbon.astro';
-import Breadcrumb from '../../../components/Breadcrumb.astro';
-import Picture from '../../../components/Picture.astro';
-import PhotoCaption from '../../../components/PhotoCaption.astro';
-import LiteVideo from '../../../components/LiteVideo.astro';
-import CtaBand from '../../../components/CtaBand.astro';
-import StickyCta from '../../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../../lib/realisations';
 import { caseStudyBySlug } from '../../../lib/caseStudies';
 import { NAP } from '../../../lib/nap';
@@ -86,253 +79,48 @@ const hasDiptych = phasedPhotos.length >= 2;
 
 // W309 — lightbox: all gallery photos (rest), index from 0
 const galleryPhotos = rest;
-import RealisationsSlugP5E85 from '../../../components/blocs/RealisationsSlugP5E85.astro';
 import PhotoLightbox from '../../../components/PhotoLightbox.astro';
 import '../../../styles/realisations-hover-zoom.css';
+const t = {
+  ref: 'Ref.',
+  h1Kwc: `of solar installation ${cityIntro}`,
+  h1NoKwc: `Solar installation ${cityIntro}`,
+  resume: cs.resume,
+  power: 'Installed power',
+  productionEstimated: 'Estimated production — measured yield of our projects',
+  productionMeasured: 'Measured production — real-time production monitoring',
+  panels: 'Panels fitted',
+  storyKicker: 'The project, told',
+  whyPre: 'Why ',
+  whyPost: ', on this roof',
+  whatShows: 'What this project shows',
+  videoKicker: 'The project on film',
+  videoTitle: 'Watch the project on video',
+  videoPlay: 'Play the project video',
+  phasesKicker: 'The project in phases',
+  phasesTitle: 'Before · During · After',
+  enlarge: 'Enlarge:',
+  equipmentKicker: 'The equipment fitted',
+  equipmentTitle: 'What is really on the roof',
+  brands: 'Tier-1 brands sourced through official distributors in Morocco — local warranties activatable.',
+  allEquipment: 'See all the equipment',
+  galleryKicker: 'From the file',
+  galleryTitle: 'The project, as it is',
+  referKicker: 'Word of mouth matters',
+  referTitle: 'Know someone with a similar profile? Refer Taqinor',
+  referCta: 'Discover the referral programme',
+  segment: `${segmentLabel} solar`,
+  latest: 'Our latest projects',
+  monitoring: "This project's production monitoring",
+  ctaTitle: `An assessment like the one in ${r.ville}, for your roof.`,
+};
+
+const bodyProps = { r, cs, L, rtl: false, fr: false, t, altOf: (p: { name: string; alt: string }) => cs.alts[p.name] ?? p.alt, breadcrumbItems: [{ label: 'Home', href: L('/') }, { label: 'Projects', href: L('/realisations') }, { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville }], cityLink, segmentHref, phasedPhotos, phaseLabels, hasDiptych, galleryPhotos, equipment, heroAlt };
 ---
 
 <Layout title={title} description={description} ogSlug={ogSlug}>
   <script type="application/ld+json" set:html={JSON.stringify(articleJsonLd)} />
-  <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
-
-    <Breadcrumb
-      items={[
-        { label: 'Home', href: L('/') },
-        { label: 'Projects', href: L('/realisations') },
-        { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville },
-      ]}
-    />
-
-    <!-- ACT I — the project photo is the light -->
-    <section class="relative isolate mt-6 overflow-hidden text-white">
-      <div class="v2-hero-media absolute inset-0 -z-10">
-        <Picture name={hero.name} alt={heroAlt} widths={hero.widths} ratio={hero.ratio} sizes="100vw"
-          loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
-      </div>
-      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Ref. {r.ref} · {r.ville} · {r.date}</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
-          {r.kwc
-            ? <>{r.kwc} of solar installation {cityIntro}</>
-            : <>Solar installation {cityIntro}</>}
-        </h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{cs.resume}</p>
-      </div>
-    </section>
-
-    <!-- Key figures — only what is published -->
-    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
-      <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-        {r.kwc && (
-          <div class="v2-rise" style="--v2-i:0">
-            {/* W211 — whitespace-nowrap removed: wide production values can overflow at 320 px */}
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Installed power</dt>
-          </div>
-        )}
-        {r.production && (
-          <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.production}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">
-              {r.productionEstimated
-                ? 'Estimated production — measured yield of our projects'
-                : 'Measured production — real-time production monitoring'}
-            </dt>
-          </div>
-        )}
-        {r.panneaux && (
-          <div class="v2-rise" style="--v2-i:2">
-            <dd class="font-display text-xl font-bold text-white">{r.panneaux}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Panels fitted</dt>
-          </div>
-        )}
-        <div class="v2-rise" style="--v2-i:3">
-          <dd class="font-display text-xl font-bold text-white">{r.ville}</dd>
-          <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
-        </div>
-      </dl>
-    </section>
-
-    <!-- The project narrative: situation, sizing, measured result -->
-    <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
-      <p class="tech-label v2-kicker rule-brass text-lune">The project, told</p>
-      <h2 class="display v2-section-title mt-5 text-white">{r.kwc ? <>Why {r.kwc}, on this roof</> : 'What this project shows'}</h2>
-      <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
-      <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
-      <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
-    </section>
-
-    <!-- (2026-09) Project video specific to THIS case study — absent for any
-         realisation without `video` (unchanged for historical entries). -->
-    {r.video && (
-      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-        <div class="mx-auto max-w-3xl">
-          <p class="tech-label v2-kicker rule-brass text-lune">The project on film</p>
-          <h2 class="display v2-section-title mt-5 text-white">Watch the project on video</h2>
-          <div class="mt-8 border border-brass-400/40">
-            <LiteVideo
-              id={`realisation-video-${r.slug}`}
-              src={r.video.src}
-              poster={r.video.poster}
-              alt={r.video.alt}
-              playLabel="Play the project video"
-              aspectRatio="16/9"
-              posterWidth={1600}
-              posterHeight={900}
-            />
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- W309 — Before/During/After diptych (when data is present) -->
-    {hasDiptych && (
-      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-lune">The project in phases</p>
-          <h2 class="display v2-section-title mt-5 text-white">Before · During · After</h2>
-          <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-            {phasedPhotos.map((p, i) => (
-              <figure
-                class="v2-rise phase-card cine-card group relative overflow-hidden"
-                style={`--v2-i:${i}`}
-                data-phase={p.phase}
-              >
-                <button
-                  type="button"
-                  class="phase-btn block w-full overflow-hidden text-left"
-                  data-lightbox-trigger-slug
-                  data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
-                  data-lightbox-alt={cs.alts[p.name] ?? p.alt}
-                  data-lightbox-label={`${phaseLabels[p.phase!] ?? p.phase} — ${cs.alts[p.name] ?? p.alt}`}
-                  aria-label={`Enlarge: ${cs.alts[p.name] ?? p.alt}`}
-                >
-                  <Picture
-                    name={p.name}
-                    alt={cs.alts[p.name] ?? p.alt}
-                    widths={p.widths}
-                    ratio={p.ratio}
-                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                    style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
-                    class="slug-photo-img w-full object-cover"
-                  />
-                  <PhotoCaption caption={phaseLabels[p.phase!] ?? p.phase} />
-                </button>
-                <figcaption class="sr-only">{cs.alts[p.name] ?? p.alt}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- The equipment fitted -->
-    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
-      <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">The equipment fitted</p>
-        <h2 class="display v2-section-title mt-5 text-white">What is really on the roof</h2>
-        <RealisationsSlugP5E85 cs={cs} equipment={equipment} />
-        <p class="mt-5 text-sm text-lune-soft">
-          Tier-1 brands sourced through official distributors in Morocco — local warranties
-          activatable. <a href={L('/équipement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">See all the equipment →</a>
-        </p>
-      </div>
-    </section>
-
-    <!-- W309 — Project gallery: lightbox + PhotoCaption + standardized hover-zoom -->
-    {galleryPhotos.length > 0 && (
-      <section class="px-4 py-20 sm:py-24">
-        <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-lune">From the file</p>
-          <h2 class="display v2-section-title mt-5 text-white">The project, as it is</h2>
-          <div class="mt-10 grid gap-5 sm:grid-cols-2" data-stagger data-lightbox-gallery-slug>
-            {galleryPhotos.map((p, i) => (
-              <figure
-                class="v2-rise cine-card group relative overflow-hidden"
-                style={`--v2-i:${i}`}
-              >
-                <button
-                  type="button"
-                  class="slug-gallery-btn block w-full overflow-hidden text-left"
-                  data-lightbox-trigger-slug
-                  data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
-                  data-lightbox-alt={cs.alts[p.name] ?? p.alt}
-                  data-lightbox-label={cs.alts[p.name] ?? p.alt}
-                  aria-label={`Enlarge: ${cs.alts[p.name] ?? p.alt}`}
-                >
-                  <Picture
-                    name={p.name}
-                    alt={cs.alts[p.name] ?? p.alt}
-                    widths={p.widths}
-                    ratio={p.ratio}
-                    sizes="(min-width: 640px) 50vw, 100vw"
-                    style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
-                    class="slug-photo-img w-full object-cover"
-                  />
-                </button>
-                <figcaption class="sr-only">{cs.alts[p.name] ?? p.alt}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- W344 — Soft referral nudge to /parrainage : the site's strongest
-         proof point (a real case study) shouldn't dead-end. Discreet,
-         non-transactional tone — no amount/reward shown here (see
-         /parrainage for terms, WG14-gated). L('/parrainage') falls back to
-         the FR page (never a dead link) since /parrainage is not yet in the
-         i18n TRANSLATED registry despite the en/ar routes existing. -->
-    <section class="border-t border-white/10 px-4 py-16">
-      <div class="mx-auto max-w-6xl">
-        <a
-          href={L('/parrainage')}
-          class="group flex flex-wrap items-center justify-between gap-4 border border-white/20 px-6 py-5 transition-colors hover:border-brass-400/60 hover:bg-white/[0.03]"
-        >
-          <span>
-            <span class="tech-label block text-lune-faint">Word of mouth matters</span>
-            <span class="mt-1 block font-display text-lg font-bold text-white">
-              Know someone with a similar profile? Refer Taqinor
-            </span>
-          </span>
-          <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 text-sm font-bold text-azur-200" aria-hidden="true">
-            Discover the referral programme →
-          </span>
-        </a>
-      </div>
-    </section>
-
-    <!-- Contextual links -->
-    <section class="border-t border-white/10 px-4 py-16">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        {cityLink && (
-          <a href={L(cityLink.href)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-            {cityLink.label} →
-          </a>
-        )}
-        <a href={L(segmentHref)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-          {segmentLabel} solar →
-        </a>
-        <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-          Our latest projects →
-        </a>
-        {/* (2026-09) Monitoring link specific to this project — empty until provided. */}
-        {r.monitoringUrl && (
-          <a href={r.monitoringUrl} rel="noopener noreferrer" target="_blank" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-            This project's production monitoring →
-          </a>
-        )}
-      </div>
-    </section>
-
-    <CtaBand title={`An assessment like the one in ${r.ville}, for your roof.`} href={L('/devis/mon-toit')} />
-
-    <StickyCta />
-  </div>
+  <RealisationSlugBody {...bodyProps} />
 
   <PhotoLightbox locale="en" trigger="[data-lightbox-trigger-slug]" />
 </Layout>

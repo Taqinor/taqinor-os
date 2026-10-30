@@ -39,7 +39,7 @@ describe('élévation — pages publiques', () => {
   for (const p of ELEVATED) {
     it(`/${p} monte le moteur d'élévation et reste indexable`, () => {
       // ENF19 — le corps des pages ville vit dans components/CityPageBody.astro.
-      const src = read(`../src/pages/${p}.astro`) + (p.includes('[city]') ? read('../src/components/CityPageBody.astro') : '');
+      const src = read(`../src/pages/${p}.astro`) + (p.includes('[city]') ? read('../src/components/CityPageBody.astro') + read('../src/components/V2Page.astro') : '');
       expect(src, `${p}: V2Enhance`).toContain('V2Enhance');
       expect(src, `${p}: wrapper .v2`).toContain('class="v2"');
       // Page publique : surtout PAS de noindex (régression d'indexation).
