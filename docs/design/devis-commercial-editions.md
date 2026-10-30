@@ -305,3 +305,8 @@ ligne par article de l'une ou l'autre offre dans l'ordre de l'offre « sans » p
 propres à « avec », « — » quand l'article n'existe pas d'un côté ; prix unitaire ou taux
 différents sur deux lignes dans leur colonne ; puis les deux chaînes de totaux côte à côte et la
 position nette (option 1, nommée). `deux_options_detail.cote_a_cote`. Boulangerie : 3 pages.
+
+**30/10 — économie par mois partout, plus de prix au kWc** (Reda). Le bloc « ce que le solaire
+change » imprime l'économie par an ET par mois (servi annuel ÷ 12) sur tout document, deux
+options comprises ; chaque carte d'option porte aussi « ≈ N MAD/mois » ; la ligne « soit N
+MAD/kWc » est retirée (la puissance seule reste).

@@ -459,6 +459,9 @@ def changement(d, fmt):
             "avant_an": fmt(round(f["avant_num"])), "apres_an": fmt(round(f["apres_num"])),
             "avant_mois": fmt(round(f["avant_num"] / 12)), "apres_mois": fmt(round(f["apres_num"] / 12)),
             "economie": c["economies"], "economie_base": c["economies_base"],
+            # l'économie PAR MOIS, dérivée du servi annuel ÷ 12 comme la facture
+            "economie_mois": (fmt(round(_num(d.get("com_economies")) / 12))
+                              if (_num(d.get("com_economies")) or 0) > 0 and not d.get("com_masquer_economies") else None),
             "retour": c["payback"], "retour_unite": c["payback_unite"],
             "deux_options": bool(d.get("deux_options"))}
 
@@ -499,6 +502,7 @@ def cartes_options(d, fmt, fmt_mad):
                 "ttc": fmt_mad(ttc_n) if ttc_n else None,
                 "par_kwc": fmt(round(ttc_n / kwc_n)) if (ttc_n and kwc_n) else None,
                 "economie": (fmt(round(_num(economie))) if (not masque and _num(economie)) else None),
+                "economie_mois": (fmt(round(_num(economie) / 12)) if (not masque and _num(economie)) else None),
                 "economie_base": base, "retour": retour,
                 "couverture": (f"{round(_num(couverture))}" if _num(couverture) is not None else None),
                 "puces": _puces_equipement(items, fmt)}

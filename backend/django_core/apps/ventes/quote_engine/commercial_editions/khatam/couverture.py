@@ -129,10 +129,11 @@ def build(ctx, m, j):
         unite = ch["unite"]
         pill_retour = (f'<span class="kh1-pillv">{L("ci_retour_en", "Retour en {ans} ans", ans=ch["retour"])}</span>'
                        if ch["retour"] else "")
-        # deux options : l'économie et le retour sont sur les cartes, pas ici
+        # l'économie, par an ET par mois (fondateur 30/10), sur tout document
+        mois = (f' · {L("ci_economie_mois_approx", "≈ {v} MAD/mois", v=ch["economie_mois"])}' if ch["economie_mois"] else "")
         eco = (f'<div class="kh1-chg-eco">{L("ci_economie_approx", "Économie ≈ {v} MAD/an", v=ch["economie"])}'
-               + (f' ({ch["economie_base"]})' if ch["economie_base"] else "") + f' {pill_retour}</div>'
-               if (ch["economie"] and not ch["deux_options"]) else "")
+               + (f' ({ch["economie_base"]})' if ch["economie_base"] else "") + f'{mois} {pill_retour}</div>'
+               if ch["economie"] else "")
         cap = (f'<div class="kh-cap" style="margin-top:4px;">{L("ci_chiffres_option_sans", "Chiffres calculés pour l’option sans batterie.")}</div>'
                if ch["deux_options"] else "")
         kpis_argent = (f'<div class="kh1-chg"><div class="kh-row"><div class="kh-col" style="width:36%;vertical-align:middle;">'
@@ -162,7 +163,8 @@ def build(ctx, m, j):
             lignes = ""
             if ca["economie"]:
                 lignes += (f'<div class="kh1-oc-eco">{L("ci_economie_approx", "Économie ≈ {v} MAD/an", v=ca["economie"])}'
-                           + (f' ({ca["economie_base"]})' if ca["economie_base"] else "") + '</div>')
+                           + (f' ({ca["economie_base"]})' if ca["economie_base"] else "")
+                           + (f'<br>{L("ci_economie_mois_approx", "≈ {v} MAD/mois", v=ca["economie_mois"])}' if ca["economie_mois"] else "") + '</div>')
             if ca["couverture"]:
                 lignes += f'<div class="kh-lab">{L("ci_opt_couverture_courte", "{p} % de votre consommation couverte", p=ca["couverture"])}</div>'
             pill = f'<span class="kh1-pillv">{L("ci_retour_en", "Retour en {ans} ans", ans=ca["retour"])}</span>' if ca["retour"] else ""
@@ -170,7 +172,7 @@ def build(ctx, m, j):
                        f'<div class="kh-kicker">{L("ci_option_n", "Option {n}", n=ca["num"])}</div>'
                        f'<div class="kh1-oc-t">{ca["titre"]}</div>'
                        f'<div class="kh1-oc-prix">{(ca["ttc"] or "—").replace(chr(0x202F), chr(0xA0))}<span class="kh1-oc-u"> MAD {L("ci_ttc", "TTC")}</span></div>'
-                       + (f'<div class="kh-lab">{L("ci_soit_kwc", "soit {v} MAD/kWc · {k} kWc", v=ca["par_kwc"], k=ca["kwc"])}</div>' if ca["par_kwc"] else "")
+                       + (f'<div class="kh-lab">{ca["kwc"]} kWc</div>' if ca["kwc"] else "")
                        + f'<div style="margin-top:4px;">{pill}</div>{lignes}'
                        f'<div class="kh1-oc-puces">{puces}</div>'
                        f'<div class="kh-cap" style="margin-top:4px;">{L("ci_detail_page2", "Détail & équipement en page 2")}</div></td>'
