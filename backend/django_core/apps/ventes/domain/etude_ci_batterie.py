@@ -293,6 +293,10 @@ def _bloc(evaluation, valoriser=None, ctx=None, investissement=None):
     from core.money import quantize_mad
     ctx = ctx or {}
     economie, cout = evaluation.get('economie'), evaluation.get('cout')
+    if cout is None and investissement:
+        # ERR-CEC6-RETOUR-AVEC-BATTERIE-PERDU — option des LIGNES : le coût de
+        # vente HT est le total NET de l'option « avec » du devis.
+        cout = investissement.get('cout_vente_ht')
     complet = getattr(valoriser, 'complet', None)
     economie_ci = complet(evaluation['bilan']) if complet else None
     flux = None
@@ -436,30 +440,46 @@ def lignes_des_options(etude, lead=None):
 
 
 def _investissement_des_lignes(lignes, devis=None):
-    """CMP6 — ``{ht, ttc, lignes}`` de l'option « avec » des LIGNES du devis,
-    lu comme l'économie de l'option « sans » (``economie_ci_pour_devis``) :
-    totaux NETS de ``utils.options.option_totaux`` (remise de ligne ET remise
-    globale), lignes de ``economie_ci.lignes_pour_economie_ci``, O&M retirée de
+    """CMP6 — ``{ht, ttc, lignes, cout_vente_ht}`` de l'option « avec » des
+    LIGNES du devis, lu comme l'économie de l'option « sans »
+    (``economie_ci_pour_devis``) : totaux NETS de ``utils.options.option_totaux``
+    DE L'OPTION « AVEC » (remise de ligne ET remise globale), lignes de
+    ``economie_ci.lignes_pour_economie_ci`` de cette option, O&M retirée de
     l'année 0 (``investissement_hors_om``, CEC1). ``devis`` : à défaut, celui
-    des lignes. ``None`` quand l'option que suit l'argent du devis n'est pas
-    l'option « avec » (devis accepté « sans »), sans devis, ou sans total."""
+    des lignes. ``None`` quand le devis est accepté « sans », sans devis, ou
+    sans total.
+
+    ERR-CEC6-RETOUR-AVEC-BATTERIE-PERDU — un devis C&I à deux options non
+    accepté met en avant l'offre réseau (CIQ302 : ``option_effective`` =
+    « sans ») ; l'option « avec » y est pourtant chiffrée et son retour est
+    celui de SON investissement, comme à l'aperçu. Nouveaux rendus seulement :
+    un devis envoyé avant le niveau 4 (``REGLES_SENSIBILITES_3010``) garde
+    l'option que suit son argent, donc le retour absent qu'il a reçu."""
     from apps.ventes import economie_ci as eco
-    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, REGLES_SENSIBILITES_3010, regles_au_moins,
+    )
     from apps.ventes.economie_ci_options import investissement_hors_om
     from apps.ventes.utils.options import AVEC_BATTERIE, option_effective, option_totaux
     devis = devis or next((d for d in (getattr(li, 'devis', None) for li in lignes or [])
                            if d is not None), None)
-    if devis is None or option_effective(devis) not in ('', AVEC_BATTERIE):
+    if devis is None:
         return None
-    totaux = option_totaux(devis)
+    acceptee = getattr(devis, 'option_acceptee', '') or ''
+    suivie = acceptee or (AVEC_BATTERIE if regles_au_moins(devis, REGLES_SENSIBILITES_3010)
+                          else option_effective(devis))
+    if suivie not in ('', AVEC_BATTERIE):
+        return None
+    totaux = option_totaux(devis, AVEC_BATTERIE)
     ht, ttc = _num(totaux.get('ht')), _num(totaux.get('ttc'))
-    detail = eco.lignes_pour_economie_ci(devis)
+    detail = eco.lignes_pour_economie_ci(devis, AVEC_BATTERIE)
     if not ht or ht <= 0 or not detail:
         return None
     # CEC1 est une règle du 27/10 : un devis envoyé avant (niveau ≤ 2) garde son O&M en an 0.
     investissement = investissement_hors_om(
         {'ht': ht, 'ttc': ttc}, detail, regles_au_moins(devis, REGLES_CORRIGEES_2710))
-    return {'ht': investissement['ht'], 'ttc': investissement['ttc'], 'lignes': detail}
+    return {'ht': investissement['ht'], 'ttc': investissement['ttc'], 'lignes': detail,
+            'cout_vente_ht': ht}
 
 
 def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=None):

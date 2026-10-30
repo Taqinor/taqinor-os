@@ -1890,8 +1890,8 @@ def _est_panneau(produit, designation=None):
     return any(mot in nom for mot in MOTS_PANNEAU)
 
 
-def lignes_pour_economie_ci(devis):
-    """Les lignes de l'option RETENUE à la forme de :func:`onduleur_et_om` —
+def lignes_pour_economie_ci(devis, option=None):
+    """Les lignes de l'option RETENUE (``option``, sinon l'effective) — forme :func:`onduleur_et_om` —
     totaux CLIENT (remise de ligne ET remise globale), jamais ``prix_achat``.
     Les O&M optionnelles restent lues (« proposé, non souscrit »)."""
     from apps.ventes.utils.options import (
@@ -1899,7 +1899,7 @@ def lignes_pour_economie_ci(devis):
         option_effective)
     lignes = lignes_avec_produit(devis)
     if has_two_options(devis):
-        option = option_effective(devis)
+        option = option or option_effective(devis)
         if option:
             lignes = filter_lines_for_option(lignes, option)
     remise_globale = _f(getattr(devis, 'remise_globale', 0))
