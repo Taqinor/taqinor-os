@@ -982,8 +982,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                         else status.HTTP_409_CONFLICT if devis
                         else status.HTTP_404_NOT_FOUND))
         devis = devis[0]
-        langue = brut if isinstance(brut := request.data.get('langue'), str) else texte_verifie(request, 'langue')
-        langue = (langue or lead.langue_preferee or 'fr').strip()  # fuzz #1176 : non texte → 400 nommé
+        langue = ((brut if isinstance(brut := request.data.get('langue'), str) else texte_verifie(request, 'langue'))
+                  or lead.langue_preferee or 'fr').strip()  # fuzz #1176 : non texte → 400 nommé
         if langue not in ('fr', 'darija'):
             langue = 'fr'
         corps = MessageTemplate.get_corps(
