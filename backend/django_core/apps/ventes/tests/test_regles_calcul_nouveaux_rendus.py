@@ -4,6 +4,7 @@ Un devis déjà envoyé (``regles_calcul = 1`` posé par la migration 0138) rest
 rendu avec les règles d'origine ; un devis neuf naît aux règles corrigées.
 """
 import importlib
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -11,9 +12,9 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from apps.ventes.domain.regles_calcul import (
-    REGLES_CORRIGEES, REGLES_CORRIGEES_2710, REGLES_COURANTES, REGLES_ORIGINE,
-    REGLES_RETOURS_3010B, REGLES_SENSIBILITES_3010, calcul_corrige,
-    regles_au_moins)
+    REGLES_ARRONDI_3010, REGLES_CORRIGEES, REGLES_CORRIGEES_2710, REGLES_COURANTES,
+    REGLES_ORIGINE, REGLES_RETOURS_3010B, REGLES_SENSIBILITES_3010,
+    calcul_corrige, regles_au_moins)
 
 
 class ReglesCalculTests(SimpleTestCase):
@@ -30,7 +31,8 @@ class ReglesCalculTests(SimpleTestCase):
         from apps.ventes.models import Devis
         defaut = Devis._meta.get_field('regles_calcul').default
         self.assertEqual(defaut, REGLES_COURANTES)
-        self.assertEqual(REGLES_COURANTES, REGLES_RETOURS_3010B)
+        self.assertEqual(REGLES_COURANTES, REGLES_ARRONDI_3010)
+        self.assertGreater(REGLES_ARRONDI_3010, REGLES_RETOURS_3010B)
         self.assertGreater(REGLES_RETOURS_3010B, REGLES_SENSIBILITES_3010)
         self.assertTrue(calcul_corrige(SimpleNamespace(regles_calcul=defaut)))
 
@@ -113,6 +115,39 @@ class ReglesCalculTests(SimpleTestCase):
         Devis.objects.filter.return_value.update.assert_called_once_with(
             regles_calcul=4)
 
+    def test_migration_0145_ne_touche_que_les_brouillons(self):
+        """D-ENF-ARRONDI-PDF (30/10/2026) — un devis envoyé au niveau 5 y reste."""
+        mod = importlib.import_module(
+            'apps.ventes.migrations.0145_regles_calcul_niveau_6')
+        Devis = mock.MagicMock()
+        Devis.objects.filter.return_value.order_by.return_value             .values_list.return_value = [13]
+        apps = mock.MagicMock()
+        apps.get_model.return_value = Devis
+        mod.brouillons_au_niveau_6(apps, None)
+        self.assertEqual(Devis.objects.filter.call_args_list[0], mock.call(
+            statut='brouillon', date_envoi__isnull=True, regles_calcul=5))
+        Devis.objects.filter.assert_called_with(pk__in=[13])
+        Devis.objects.filter.return_value.update.assert_called_once_with(
+            regles_calcul=6)
+
+    def test_migration_0145_retour_ramene_6_a_5(self):
+        mod = importlib.import_module(
+            'apps.ventes.migrations.0145_regles_calcul_niveau_6')
+        Devis = mock.MagicMock()
+        Devis.objects.filter.return_value.order_by.return_value             .values_list.return_value = [14]
+        apps = mock.MagicMock()
+        apps.get_model.return_value = Devis
+        mod.retour_niveau_5(apps, None)
+        self.assertEqual(Devis.objects.filter.call_args_list[0],
+                         mock.call(regles_calcul=6))
+        Devis.objects.filter.return_value.update.assert_called_once_with(
+            regles_calcul=5)
+
+    def test_niveau_6_arrondi_des_seuls_nouveaux_rendus(self):
+        self.assertFalse(regles_au_moins(
+            SimpleNamespace(regles_calcul=REGLES_RETOURS_3010B), REGLES_ARRONDI_3010))
+        self.assertTrue(regles_au_moins(SimpleNamespace(), REGLES_ARRONDI_3010))
+
     def test_migration_fige_les_envoyes(self):
         mod = importlib.import_module(
             'apps.ventes.migrations.0138_regles_calcul_devis_envoyes')
@@ -183,3 +218,66 @@ class FormateursReglesOrigineTests(SimpleTestCase):
         corrige = calculate_savings_roi(5.0, 50000, 80000, **kw)
         self.assertEqual(sum(corrige['eco_s_monthly']),
                          round(corrige['eco_s_ann']))
+
+
+class ArrondiAffichageTests(SimpleTestCase):
+    """D-ENF-ARRONDI-PDF (fondateur 30/10/2026) — l'argent affiché par le
+    moteur est arrondi MOITIÉ VERS LE HAUT (``core.money.quantize_mad``) à la
+    MÊME précision ; un devis envoyé avant le niveau 6 garde ``round``."""
+
+    def setUp(self):
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False)
+        self.addCleanup(poser_regles_origine, False)
+
+    def test_quantize_mad_garde_la_precision_demandee(self):
+        from core.money import quantize_mad
+        self.assertEqual(quantize_mad('12.505'), Decimal('12.51'))
+        self.assertEqual(quantize_mad(12.5, decimales=0), Decimal('13'))
+        self.assertEqual(quantize_mad('0.1234565', decimales=6), Decimal('0.123457'))
+
+    def test_cas_moitie_par_precision(self):
+        from apps.ventes.quote_engine.montants import arrondi_affichage as A
+        # (valeur, ndigits, moitié vers le haut, round() bancaire d'hier)
+        for valeur, nd, haut, banquier in (
+                (12.5, None, 13, 12),            # dirham : cartes, prix au kWc
+                (51232.5, None, 51233, 51232),   # QJR53 : carte = bloc de totaux
+                (1250.5, None, 1251, 1250),      # provision onduleur
+                (0.125, 2, 0.13, 0.12),          # centime : multi-villa, cumul
+                (12.505, 2, 12.51, None),        # exemple de la convention
+                (1.25, 1, 1.3, 1.2),             # payback / kWh au dixième
+                (0.1234565, 6, 0.123457, 0.123456)):  # prix de tranche
+            with self.subTest(valeur=valeur, nd=nd):
+                self.assertEqual(A(valeur, nd), haut)
+                if banquier is not None:
+                    self.assertEqual(round(valeur, nd), banquier)
+        self.assertEqual(A(Decimal('1.005'), 2), Decimal('1.01'))
+
+    def test_aucune_valeur_hors_moitie_ne_bouge(self):
+        """Hors cas moitié, le chiffre est celui de ``round`` — au type près."""
+        from apps.ventes.quote_engine.montants import arrondi_affichage as A
+        for i in range(1, 4000):
+            for valeur in (i * 7.31, i / 3.0, i * 1.2 + 0.004, i * 0.37):
+                for nd in (None, 1, 2):
+                    attendu = round(valeur, nd)
+                    if Decimal(repr(valeur)).scaleb(nd or 0) % 1 == Decimal('0.5'):
+                        continue  # cas moitié (décimal) : il bouge, voulu
+                    self.assertEqual(A(valeur, nd), attendu, (valeur, nd))
+                    self.assertIs(type(A(valeur, nd)), type(attendu))
+        self.assertIs(type(A(7, 2)), int)
+
+    def test_devis_envoye_garde_round(self):
+        from apps.ventes.quote_engine import montants
+        montants.poser_regles_origine(False, arrondi_historique=True)
+        self.assertEqual(montants.arrondi_affichage(12.5), 12)
+        self.assertEqual(montants.arrondi_affichage(0.125, 2), 0.12)
+        montants.poser_regles_origine(True)  # niveau 1 : historique aussi
+        self.assertEqual(montants.arrondi_affichage(12.5), 12)
+        montants.reinitialiser_regles()
+        self.assertEqual(montants.arrondi_affichage(12.5), 13)
+
+    def test_entrees_non_finies_comme_round(self):
+        from apps.ventes.quote_engine.montants import arrondi_affichage as A
+        with self.assertRaises(ValueError):
+            A(float('nan'))
+        self.assertEqual(A(float('inf'), 1), float('inf'))

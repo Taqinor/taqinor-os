@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/visites/visites/<int:pk>/",
-  "pourquoi": "Groupe VTA (fondateur 2026-09-12) : l'agregat UNIQUE de l'app autonome VISITES (sortie du CRM). Meme forme que le contrat VT d'origine, servie desormais par apps/visites (source de verite : apps/visites/selectors.py::contexte_visite_terrain). PACT10 ETENDU (lecon #96) : les ACTIONS MUTANTES renvoient TOUTES cet agregat complet — POST <pk>/photos/, DELETE <pk>/photos/<media_id>/, PATCH <pk>/mesures/ (400 {\"erreurs\": {champ: message}}), POST <pk>/terminer/ (400 {\"manquants\": [...], \"message\"} tant qu'incomplet), POST <pk>/valider/, POST <pk>/renvoyer/ {photos, mesures, motif}, POST <pk>/assembler-photos/, PATCH <pk>/calage/, et les actions de progression POST <pk>/demarrer-route/ et POST <pk>/arriver/ (horodatage SERVEUR, idempotentes, reservees a l'assigne). Portee DURE : sans visites_valider, toutes les routes ne servent que commercial=self. en_route_le/arrivee_le : null tant que non horodates. VISITE-CADENCE (fondateur 15/09/2026) : POST <pk>/qualification/ rejoint les actions mutantes — la QUALIFICATION de fin de visite {temperature, devis, devis_details, decideur, frein, declencheur, rappel, conseil_closing}, vocabulaire FERME (apps/visites/qualification.py), reservee a l'ASSIGNE comme les jalons de progression, refusee en 400 {\"erreurs\": {champ: [message]}} sur toute valeur inconnue ou champ obligatoire manquant. La cle `qualification` de l'agregat vaut null tant que rien n'a ete saisi — jamais un objet de valeurs par defaut. terminer n'est PAS bloque par son absence. Le panneau client+devis reste sans prix_achat (garde testee).",
+  "pourquoi": "Groupe VTA (fondateur 2026-09-12) : l'agregat UNIQUE de l'app autonome VISITES (sortie du CRM). Meme forme que le contrat VT d'origine, servie desormais par apps/visites (source de verite : apps/visites/selectors.py::contexte_visite_terrain). PACT10 ETENDU (lecon #96) : les ACTIONS MUTANTES renvoient TOUTES cet agregat complet — POST <pk>/photos/, DELETE <pk>/photos/<media_id>/, PATCH <pk>/mesures/ (400 {\"erreurs\": {champ: message}}), POST <pk>/terminer/ (400 {\"manquants\": [...], \"message\"} tant qu'incomplet), POST <pk>/valider/, POST <pk>/renvoyer/ {photos, mesures, motif}, POST <pk>/assembler-photos/, PATCH <pk>/calage/, et les actions de progression POST <pk>/demarrer-route/ et POST <pk>/arriver/ (horodatage SERVEUR, idempotentes, reservees a l'assigne). Portee DURE : sans visites_valider, toutes les routes ne servent que commercial=self. en_route_le/arrivee_le : null tant que non horodates. VISITE-CADENCE (fondateur 15/09/2026) : POST <pk>/qualification/ rejoint les actions mutantes — la QUALIFICATION de fin de visite {temperature, devis, devis_details, decideur, frein, declencheur, rappel, conseil_closing}, vocabulaire FERME (apps/visites/qualification.py), reservee a l'ASSIGNE comme les jalons de progression, refusee en 400 {\"erreurs\": {champ: [message]}} sur toute valeur inconnue ou champ obligatoire manquant. La cle `qualification` de l'agregat vaut null tant que rien n'a ete saisi — jamais un objet de valeurs par defaut. terminer n'est PAS bloque par son absence. Le panneau client+devis reste sans prix_achat (garde testee). AANA42 : l'agregat porte `updated_at` (version lue de la visite, ISO) — l'ecran la renvoie comme `base_updated_at` quand il met des mesures en file hors-ligne, et chaque enregistrement de mesures la rafraichit.",
   "exemple": {
     "id": 7,
     "lead": 118,
@@ -217,7 +217,8 @@
       "declencheur": "coupures",
       "rappel": "demain_matin",
       "conseil_closing": "Insister sur l'autonomie pendant les coupures."
-    }
+    },
+    "updated_at": "2026-09-15T10:42:07.123000+00:00"
   },
   "gabarit_regle": "AGR5 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; D-AGR-4) — CONTRAT D'ABORD (PACT10). Aujourd'hui ce contrat ne décrit qu'une checklist TOITURE (reflet de apps/visites/visite_checklist.py) et « terminer » est refusé tant qu'un élément manque : un technicien sur un forage doit inventer des mesures de toit. L'agrégat gagne la clé `gabarit` ('toiture' | 'point_eau'), fixée à la création de la visite ; le gabarit `point_eau` (visite « relevé du point d'eau », posée AVANT le devis quand le niveau d'eau ou le débit du forage est inconnu) REMPLACE les catégories toiture/tableau/local_onduleur/cheminement par point_eau, pompe_existante, electricite, site_pv, administratif, general (`gabarit_point_eau`, `exemple_point_eau`). `photo_toit` vaut null en point_eau. AUCUN seuil ni verdict (règle VT1 : le module montre, le bureau d'études juge). Un `sauf_si` rend une mesure requise facultative quand le technicien coche l'impossibilité (`niveau_non_mesurable`, `debit_non_mesurable`). `retour_lead_point_eau` = la table mesure → colonne Lead du contrat crm `lead_pompage.json` (AGR1), appliquée à la VALIDATION de la visite (jamais avant) ; une mesure sans colonne Lead (niveau dynamique, conduite, refoulement) n'est pas recopiée ; AGV3 : la plaque de la pompe existante (kW, tension 220/380 V, alimentation mono/tri → phases) est recopiée sur les colonnes pompe_actuelle_kw / pompe_actuelle_tension_v / pompe_actuelle_phases : le moteur la lit par `visites.selectors.mesures_point_eau_pour_lead` (AGR413), provenance lead/mesure_visite. L'`exemple` toiture est IDENTIQUE à l'octet : la clé `gabarit` (« toiture ») y entrera avec la tâche backend qui la sert (`getVisite` est sous contrat de forme : une clé que la vue ne renvoie pas encore rougirait `check_api_shapes.py`). Valeurs ILLUSTRATIVES.",
   "gabarit_point_eau": {
@@ -729,7 +730,8 @@
       "declencheur": "coupures",
       "rappel": "demain_matin",
       "conseil_closing": "Insister sur l'autonomie pendant les coupures."
-    }
+    },
+    "updated_at": "2026-09-15T10:42:07.123000+00:00"
   },
   "retour_lead_point_eau": [
     {
@@ -1437,7 +1439,8 @@
       "declencheur": "coupures",
       "rappel": "demain_matin",
       "conseil_closing": "Insister sur l'autonomie pendant les coupures."
-    }
+    },
+    "updated_at": "2026-09-15T10:42:07.123000+00:00"
   },
   "exemple_ci_mt": {
     "id": 7,
@@ -1683,7 +1686,8 @@
       "declencheur": "coupures",
       "rappel": "demain_matin",
       "conseil_closing": "Insister sur l'autonomie pendant les coupures."
-    }
+    },
+    "updated_at": "2026-09-15T10:42:07.123000+00:00"
   },
   "exemple_ci_commerce": {
     "id": 7,
@@ -1881,7 +1885,8 @@
       "declencheur": "coupures",
       "rappel": "demain_matin",
       "conseil_closing": "Insister sur l'autonomie pendant les coupures."
-    }
+    },
+    "updated_at": "2026-09-15T10:42:07.123000+00:00"
   },
   "non_releves_motifs": [
     "acces_refuse",

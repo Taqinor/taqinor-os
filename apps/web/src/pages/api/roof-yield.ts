@@ -19,10 +19,8 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { fetchPvgisAnnualKwhAtTilt } from '../../lib/roofEstimate';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
-import { isSameOriginRequest } from '../../lib/sameOrigin';
-import { crossSiteRejection, num } from '../../lib/roofApiCommon';
+import { num, preludeRoofProxy } from '../../lib/roofApiCommon';
 
 interface Leg {
   kwc: number;
@@ -31,28 +29,10 @@ interface Leg {
 }
 
 export const POST: APIRoute = async ({ request }) => {
-  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
-  // traitement (même garde-fou que les autres proxies same-origin).
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
-
-  const rl = rateLimit(`roof-yield:${clientIpFromRequest(request)}`, { limit: 60, windowMs: 60_000 });
-  if (!rl.allowed) {
-    return json({ ok: false, error: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
-      'retry-after': String(rl.retryAfterSec),
-    });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return json({ ok: false, error: 'JSON invalide' }, 400);
-  }
-
-  const lat = num(body.lat);
-  const lon = num(body.lon);
-  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return json({ ok: false, error: 'lat invalide' }, 400);
-  if (!Number.isFinite(lon) || lon < -180 || lon > 180) return json({ ok: false, error: 'lon invalide' }, 400);
+  // W317/W316 — same-origin + rate-limit + corps JSON + lat/lon : prélude commun (roofApiCommon).
+  const pre = await preludeRoofProxy(request, 'roof-yield');
+  if ('response' in pre) return pre.response;
+  const { body, lat, lon } = pre;
 
   const rawLegs = Array.isArray(body.legs) ? (body.legs as unknown[]) : [];
   const legs: Leg[] = rawLegs

@@ -1,4 +1,7 @@
 """N79 — Tests des rapports sauvegardés : portée société + envoi planifié."""
+import json
+from pathlib import Path
+
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import TestCase, override_settings
@@ -11,6 +14,11 @@ from .models import SavedReport
 from .scheduled_reports import email_saved_reports
 
 User = get_user_model()
+
+# AANA45 (PACT10) — contrat partagé avec le vitest de l'écran « Envois
+# programmés » : chargé, jamais recopié.
+CONTRAT_RAPPORTS = (Path(__file__).resolve().parent / 'contract_samples'
+                    / 'rapports_programmes.json')
 
 
 def _auth(user):
@@ -214,3 +222,61 @@ class SavedReportTypesStrictsTests(TestCase):
             'recipients': '', 'destinataires_whatsapp': '',
         }, format='json')
         self.assertEqual(res.status_code, 201, res.data)
+
+
+class EnvoisProgrammesContratTests(TestCase):
+    """AANA45 / D-AANA-036-BRANCHER — l'écran « Envois programmés » lit la
+    forme RÉELLEMENT servie par ``saved-reports/`` (échantillon partagé)."""
+
+    URL = '/api/django/reporting/saved-reports/'
+
+    def setUp(self):
+        self.contrat = json.loads(CONTRAT_RAPPORTS.read_text(encoding='utf-8'))
+        self.company = Company.objects.create(nom='AANA45 Co')
+        self.user = User.objects.create_user(
+            username='aana45_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = _auth(self.user)
+
+    def test_rapport_programme_servi_egale_l_echantillon(self):
+        res = self.api.post(self.URL, {
+            'name': 'Ventes du lundi', 'target_kind': 'sales',
+            'schedule': 'weekly', 'heure_envoi': 8, 'canal': 'email',
+            'recipients': 'direction@exemple.ma',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        liste = self.api.get(self.URL).json()
+        ligne = (liste['results'] if 'results' in liste else liste)[0]
+        attendu = self.contrat['exemple']
+        self.assertEqual(set(ligne), set(attendu))
+        for cle, valeur in attendu.items():
+            if valeur is not None and ligne[cle] is not None:
+                self.assertIsInstance(ligne[cle], type(valeur), cle)
+
+    def test_choix_de_l_echantillon_egalent_ceux_du_modele(self):
+        choix = self.contrat['choix']
+        self.assertEqual(
+            choix['target_kind'],
+            [list(c) for c in SavedReport.TargetKind.choices])
+        self.assertEqual(
+            choix['schedule'],
+            [list(c) for c in SavedReport.Schedule.choices])
+        self.assertEqual(
+            choix['canal'], [list(c) for c in SavedReport.CANAL_CHOICES])
+
+    def test_edition_et_suppression_par_les_methodes_existantes(self):
+        sr = SavedReport.objects.create(
+            company=self.company, name='À éditer', target_kind='sales')
+        url = f'{self.URL}{sr.id}/'
+        res = self.api.patch(url, {'schedule': 'daily'}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        sr.refresh_from_db()
+        self.assertEqual(sr.schedule, 'daily')
+        self.assertEqual(self.api.delete(url).status_code, 204)
+        self.assertFalse(SavedReport.objects.filter(pk=sr.pk).exists())
+
+    def test_erreur_de_validation_portee_par_le_champ(self):
+        res = self.api.post(self.URL, {
+            'name': 'X', 'target_kind': 'dashboard'}, format='json')
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn('cible_id', res.data)

@@ -313,3 +313,29 @@ class TestE_FactureHorsPlage(SimpleTestCase):
                          sans_table["estimation"])
         nomme = pricing.kwh_from_bill(500.0, utility="srm_casablanca")
         self.assertFalse(nomme["estimation"])
+
+
+class TestArrondiAffichageMoitieVersLeHaut(SimpleTestCase):
+    """D-ENF-ARRONDI-PDF (fondateur 30/10/2026) — les montants affichés de
+    ``pricing`` (provision onduleur, économies, kWh de repli) arrondissent
+    moitié vers le haut ; un devis envoyé avant le niveau 6 garde ``round``."""
+
+    def setUp(self):
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False)
+        self.addCleanup(poser_regles_origine, False)
+
+    def test_provision_onduleur_au_dirham(self):
+        h = pricing.cashflow_assumptions(inverter_replace_cost=1250.5)
+        self.assertEqual(h["inverter_replace_cost"], 1251)  # round : 1250
+
+    def test_repli_kwh_au_dixieme(self):
+        self.assertEqual(pricing.kwh_from_bill(1.5, utility=None)["kwh_mensuel"],
+                         1.3)  # 1,5 / 1,20 = 1,25 ; round : 1,2
+
+    def test_devis_envoye_garde_round(self):
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False, arrondi_historique=True)
+        h = pricing.cashflow_assumptions(inverter_replace_cost=1250.5)
+        self.assertEqual(h["inverter_replace_cost"], 1250)
+        self.assertEqual(pricing.kwh_from_bill(1.5, utility=None)["kwh_mensuel"], 1.2)

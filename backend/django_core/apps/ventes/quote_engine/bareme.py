@@ -71,6 +71,8 @@ from .pricing import (
     _selective_rule,
     _split_tranches,
 )
+# D-ENF-ARRONDI-PDF (30/10/2026) — l'arrondi AFFICHÉ, moitié vers le haut (niveau 6).
+from .montants import arrondi_affichage
 
 # ════════════════════════════════════════════════════════════════════════════
 # 1. MILLÉSIMES — un barème par année de TVA, chacun avec sa PROVENANCE
@@ -635,7 +637,7 @@ def _tranche(rang, basse, haute, prix, regime):
         'libelle': libelle,
         'borne_basse_kwh': round(float(basse), 1),
         'borne_haute_kwh': None if haute is None else round(float(haute), 1),
-        'prix_mad_kwh': round(float(prix), 6),
+        'prix_mad_kwh': arrondi_affichage(float(prix), 6),
         'regime': regime,
     }
 

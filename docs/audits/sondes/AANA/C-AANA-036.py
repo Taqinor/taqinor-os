@@ -5,7 +5,9 @@ Rejoue C-AANA-036 (audit analyse du 05/10, §6) : code mort / résidus parqués 
 SONDE = {
     'constat': 'C-AANA-036',
     'sha': '5908d43bb',
-    'attendu': "défaut absent : scope juridique:read absent de portees, routes reporting/p2p/kpi et envois-rapports non servies ; FastAPI /kb/redaction, /projets/generer-plan, /chat/transcribe vérifiés hors sonde",
+    # D-AANA-036-BRANCHER (Reda, 30/10/2026) : les deux routes sans écran sont BRANCHÉES (bloc « Achats → paiement »
+    # du Reporting, écran « Envois programmés ») au lieu d'être supprimées — elles doivent donc rester servies.
+    'attendu': "défaut absent : scope juridique:read absent de portees ; routes reporting/p2p/kpi et envois-rapports SERVIES (200, branchées sur un écran — D-AANA-036-BRANCHER) ; FastAPI /kb/redaction, /projets/generer-plan, /chat/transcribe vérifiés hors sonde",
 }
 
 
@@ -29,7 +31,7 @@ def sonde(ctx):
         except Resolver404:
             resolu = None
         routes[ch] = {'resolve': resolu, 'GET': api.get(ch, HTTP_HOST='localhost').status_code}
-    routes_ok = all(v['resolve'] is None and v['GET'] == 404 for v in routes.values())
+    routes_ok = all(v['resolve'] is not None and v['GET'] == 200 for v in routes.values())
     print('juridique:read absent=%s routes=%s | FastAPI /kb/redaction, /projets/generer-plan, /chat/transcribe : vérifié hors sonde'
           % (scope_ok, routes))
     return {'repro': scope_ok and routes_ok, 'scope_juridique_absent': scope_ok, 'routes': routes,

@@ -44,6 +44,11 @@ const reportingApi = {
   updateSavedReport: (id, data) =>
     api.patch(`/reporting/saved-reports/${id}/`, data),
   deleteSavedReport: (id) => api.delete(`/reporting/saved-reports/${id}/`),
+  // AANA45 / D-AANA-036-BRANCHER — historique de diffusion des rapports
+  // programmés (lecture seule ; ?saved_report=, ?statut=) et KPI achats →
+  // paiement (?debut=&fin=, contrats kpi_p2p.json / rapports_programmes.json, envois_rapports.json).
+  listEnvoisRapports: (params) => api.get('/reporting/envois-rapports/', { params }),
+  kpiP2p: (params) => api.get('/reporting/p2p/kpi/', { params }),
   // FG96 — Config de tableau de bord (par utilisateur / palier de rôle).
   //   listDashboardConfigs → CRUD ; effectiveDashboardConfig → la config
   //   résolue pour l'utilisateur courant (per-user > palier > défaut Python).

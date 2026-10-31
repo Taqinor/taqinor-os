@@ -203,6 +203,7 @@ export const SOLAR_DECLINATION_DEG = 23.44; // déclinaison au solstice
 export const SHADOW_MARGIN_M = 0.05; // petite marge en plus de l'ombre calculée
 
 import { WGS84_RADIUS } from './geo';
+import { paverRangees, projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
 import type { ProLayout, ProPanel } from './roofPro';
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * WGS84_RADIUS;
@@ -431,20 +432,7 @@ export function layoutProRows2(
   };
   if (!Array.isArray(ring) || ring.length < 3) return empty;
 
-  let olng = 0;
-  let olat = 0;
-  for (const [lng, lat] of ring) {
-    olng += lng;
-    olat += lat;
-  }
-  olng /= ring.length;
-  olat /= ring.length;
-  const cosLat = Math.cos(olat * DEG2RAD);
-  const toENU = ([lng, lat]: LngLat): [number, number] => [
-    (lng - olng) * DEG2M * cosLat,
-    (lat - olat) * DEG2M,
-  ];
-  const ringENU = ring.map(toENU);
+  const { olng, olat, ringENU } = projectRingENU(ring);
 
   // Vecteur de visée réel depuis l'azimut (E = sin az, N = cos az).
   const azRad = azimuthDeg * DEG2RAD;
@@ -453,17 +441,7 @@ export function layoutProRows2(
   const u: [number, number] = [-f[1], f[0]]; // axe long des rangées
   const rowAngleRad = Math.atan2(u[1], u[0]);
 
-  const ringUV = ringENU.map(([x, y]) => [x * u[0] + y * u[1], x * s[0] + y * s[1]] as [number, number]);
-  let uMin = Infinity;
-  let uMax = -Infinity;
-  let vMin = Infinity;
-  let vMax = -Infinity;
-  for (const [uu, vv] of ringUV) {
-    if (uu < uMin) uMin = uu;
-    if (uu > uMax) uMax = uu;
-    if (vv < vMin) vMin = vv;
-    if (vv > vMax) vMax = vv;
-  }
+  const { uMin, uMax, vMin, vMax } = ringUVBounds(ringENU, u, s);
 
   const rows = Math.floor((vMax - vMin) / rowPitchM);
   const cols = Math.floor((uMax - uMin) / colPitch);
@@ -471,10 +449,7 @@ export function layoutProRows2(
     return { ...empty, origin: [olng, olat], ringENU };
   }
 
-  const toENUfromUV = (uu: number, vv: number): [number, number] => [
-    uu * u[0] + vv * s[0],
-    uu * u[1] + vv * s[1],
-  ];
+  const toENUfromUV = uvToENU(u, s);
   // CALX95 — anneau POSABLE : le contour rogné des retraits propres à certaines arêtes,
   // EN PLUS du retrait de catégorie que `ok()` mesure ci-dessous. Sans aucune arête saisie,
   // `rognerParArete` renvoie le contour tel quel et le pavage est inchangé.
@@ -485,27 +460,12 @@ export function layoutProRows2(
   const ok = (corners: [number, number][]): boolean =>
     corners.every((c) => pointInPolygon(c, ringPosable) && distToBoundary(c, ringPosable) >= PERIMETER_SETBACK_M);
 
-  const panels: ProPanel[] = [];
-  for (let r = 0; r < rows; r++) {
-    const v0 = vMin + PERIMETER_SETBACK_M + r * rowPitchM;
-    const v1 = v0 + depthFootprint;
-    if (v1 > vMax - PERIMETER_SETBACK_M + 1e-6) break;
-    for (let c = 0; c < cols; c++) {
-      const u0 = uMin + PERIMETER_SETBACK_M + c * colPitch;
-      const u1 = u0 + alongRow;
-      const corners: [number, number][] = [
-        toENUfromUV(u0, v0),
-        toENUfromUV(u1, v0),
-        toENUfromUV(u1, v1),
-        toENUfromUV(u0, v1),
-      ];
-      if (!ok(corners)) continue;
-      const center = toENUfromUV(u0 + alongRow / 2, v0 + depthFootprint / 2);
-      panels.push({ cx: center[0], cy: center[1] });
-    }
-  }
+  const panels: ProPanel[] = paverRangees({
+    rows, cols, uMin, vMin, vMax, setbackM: PERIMETER_SETBACK_M, rowPitch: rowPitchM, colPitch,
+    alongRow, depthFootprint, toENUfromUV, ok,
+  });
 
-  return {
+  const layout: ProLayout2 = {
     origin: [olng, olat],
     ringENU,
     panels,
@@ -522,4 +482,5 @@ export function layoutProRows2(
     rowPitchM,
     dims,
   };
+  return layout;
 }

@@ -30,6 +30,7 @@
  *  committée (« estimé ») si PVGIS est injoignable. JAMAIS un devis : une fourchette.
  */
 import { type LngLat } from './roof';
+import { centroidLngLat } from './roofGrid';
 import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import { rognerParArete } from './roofSetbackEdge'; // CALX95 câblage
 import { PANEL2_WATT, type ConfigFamily, type PackResult, type EastWestGeometry, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
@@ -94,14 +95,7 @@ export function anneauPosableParArete(
     );
   });
   if (!aRogner) return ring;
-  let olng = 0;
-  let olat = 0;
-  for (const [lng, lat] of ring) {
-    olng += lng;
-    olat += lat;
-  }
-  olng /= ring.length;
-  olat /= ring.length;
+  const [olng, olat] = centroidLngLat(ring);
   const metresParDegreLng = DEG2M_PROJ * Math.cos(olat * DEG2RAD_PROJ);
   if (!(metresParDegreLng > 0)) return ring;
   const plan = ring.map(

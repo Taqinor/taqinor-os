@@ -271,6 +271,36 @@ class CompletudeTests(VisiteTerrainBase):
         self.assertNotIn('pente_deg', codes)
 
 
+class MesuresRafraichissentUpdatedAtTests(VisiteTerrainBase):
+    """AANA42 — chaque enregistrement de mesures rafraîchit la version
+    (`updated_at`) de la visite, et l'agrégat la sert (base de la garde de
+    conflit hors-ligne, C-AANA-023)."""
+
+    def _patch(self, visite_id, valeurs):
+        return self.api.patch(
+            f'/api/django/visites/visites/{visite_id}/mesures/',
+            {'categorie': 'toiture', 'valeurs': valeurs}, format='json')
+
+    def test_mesures_rafraichit_updated_at(self):
+        visite_id = self.creer_visite()
+        # Version « figée » dans le passé : un `save(update_fields=['mesures'])`
+        # (le défaut constaté le 05/10) la laisserait telle quelle.
+        VisiteTerrain.objects.filter(pk=visite_id).update(
+            updated_at='2020-01-01T00:00:00Z')
+        avant = VisiteTerrain.objects.get(pk=visite_id).updated_at
+        resp = self._patch(visite_id, {'pente_deg': 15})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        apres = VisiteTerrain.objects.get(pk=visite_id).updated_at
+        self.assertGreater(apres, avant)
+
+    def test_agregat_sert_updated_at(self):
+        visite_id = self.creer_visite()
+        resp = self._patch(visite_id, {'pente_deg': 15})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        visite = VisiteTerrain.objects.get(pk=visite_id)
+        self.assertEqual(resp.data['updated_at'], visite.updated_at.isoformat())
+
+
 class BoucleDeRenvoiTests(VisiteTerrainBase):
     def test_renvoyer_puis_reupload_puis_reterminer(self):
         visite_id = self.creer_visite()

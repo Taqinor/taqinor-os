@@ -54,15 +54,12 @@ ANRE_PERIODE = (_dt.date(2026, 3, 1), _dt.date(2027, 2, 28))
 PLAFOND_INJECTION_PCT = 20
 PLAFOND_INJECTION_SOURCE = "loi 82-21 art. 12 (BO 7400) ; ANRE 04/26 art. 7"
 
-# ── Tarifs d'accès / services système : DOCUMENTAIRES, jamais soustraits ────
+# ── Tarifs d'accès / services système : jamais soustraits ───────────────────
 # La décision ANRE 02/25 (BO 7400, art. 8) exonère de TURD/TURT
 # l'autoproducteur consommant sur le MÊME site : aucun net n'est calculé.
 # TSS : une éventuelle TSS sur l'énergie injectée n'est pas déduite —
-# modalités MT non arrêtées (ANRE 02/25 §4).
-TSS_C_KWH = 6.81    # c/kWh — décision ANRE 02/26 ; documentaire, jamais soustrait
-# Transit HORS site — jamais appliqués sur site (documentaires, datés).
-TURD_C_KWH = 6.07   # c/kWh — décision ANRE 03/26, depuis le 01/03/2026
-TURT_C_KWH = 6.85   # c/kWh — décision ANRE 02/26, au 01/03/2026
+# modalités MT non arrêtées (ANRE 02/25 §4). Les constantes TSS/TURD/TURT
+# ont été supprimées (D-ENF-SYMBOLES-8221, décision fondateur 30/10/2026).
 
 # ── Mentions UNIQUES (aucune autre copie côté Python) ─────────────────────
 MENTION_82_21 = (
@@ -141,7 +138,7 @@ def tarif_excedent_en_vigueur(date_signature_prevue=None):
 # ``ventes/tarif_ci.py`` et porte « estimation ».
 # NON RETENU : la grille « Grands Comptes » (494,09 DH/kVA ; 1,3645 / 0,9736 /
 # 0,7131) — branche THT/HT, pas une grille MT. Le TURD (6,07 c/kWh depuis le
-# 01/03/2026, décision ANRE 03/26 — ``TURD_C_KWH``) est un tarif d'ACCÈS au
+# 01/03/2026, décision ANRE 03/26) est un tarif d'ACCÈS au
 # réseau, transit HORS site, jamais un tarif de vente.
 #
 # NB nomenclature : « C1 / C2 » n'existe PAS comme option tarifaire MT chez

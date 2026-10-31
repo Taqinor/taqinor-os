@@ -162,7 +162,8 @@ def render_pdf_bytes(data: dict) -> bytes:
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
     from ..montants import poser_regles_origine
     poser_regles_origine((data or {}).get("regles_calcul_origine"),
-                         avant_2710=(data or {}).get("regles_avant_2710"))
+                         avant_2710=(data or {}).get("regles_avant_2710"),
+                         arrondi_historique=(data or {}).get("regles_arrondi_historique"))
     from weasyprint import HTML
     from . import render as industriel_render
     from ..commercial.equip import pdf_adaptatif

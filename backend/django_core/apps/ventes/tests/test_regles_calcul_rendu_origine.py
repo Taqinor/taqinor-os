@@ -200,6 +200,10 @@ CLES_HORS_RENDU_ORIGINE = (
       if cle.startswith('rpdf_')),
     ('entreprise', 'capital_social'), ('entreprise', 'forme_juridique'),
     ('regles_calcul_origine',),
+    # D-ENF-ARRONDI-PDF (30/10/2026) — drapeau de GABARIT du niveau 6, posé
+    # sur tout devis avant ce niveau (donc ici) ; aucun chiffre : l'arrondi
+    # d'un devis aux règles d'origine reste ``round`` d'hier.
+    ('regles_arrondi_historique',),
     ('libelles_document', 'agr_base_besoin_agronomique'),
     # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
     ('libelles_document', 'ci_cgv_suite'),
@@ -441,6 +445,25 @@ class RenduReglesOrigineTests(TestCase):
                 {'libelle': 'Solde', 'type': 'pourcentage',
                  'pct_or_montant': 55}])
         return fx
+
+    def test_arrondi_moitie_haut_aux_seuls_nouveaux_rendus(self):
+        """D-ENF-ARRONDI-PDF — un devis envoyé au niveau 5 pose le drapeau
+        ``regles_arrondi_historique`` (son arrondi reste ``round``) ; un devis
+        au niveau 6 ne porte aucune clé et arrondit moitié vers le haut."""
+        from apps.ventes.coherence.contexte import rendu_sans_reseau
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.montants import (
+            arrondi_affichage, poser_regles_origine)
+        self.addCleanup(poser_regles_origine, False)
+        devis = self._d('DEV-DIAG-ARR', LIGNES_SANS)
+        for niveau, historique, attendu in ((5, True, 12), (6, False, 13)):
+            with self.subTest(niveau=niveau):
+                Devis.objects.filter(pk=devis.pk).update(regles_calcul=niveau)
+                frais = Devis.objects.get(pk=devis.pk)
+                with rendu_sans_reseau():
+                    data = build_quote_data(frais, {})
+                self.assertEqual(bool(data.get('regles_arrondi_historique')), historique)
+                self.assertEqual(arrondi_affichage(12.5), attendu)
 
     def test_devis_envoye_rendu_comme_avant_les_correctifs(self):
         from apps.ventes.coherence.contexte import rendu_sans_reseau

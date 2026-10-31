@@ -27,6 +27,7 @@
  */
 export const prerender = false;
 
+import { appelAmontJson } from '../../lib/apiPreludeJeton';
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
@@ -62,25 +63,17 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   const target = leadRefEndpoint(resolveApiBase(), key);
-  let upstreamStatus = 502;
-  let upstreamPayload: unknown = null;
-  try {
-    const res = await fetch(target, {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(5000),
-    });
-    upstreamStatus = res.status;
-    try {
-      upstreamPayload = await res.json();
-    } catch {
-      upstreamPayload = null;
-    }
-  } catch {
+  const amont = await appelAmontJson(target, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!amont) {
     // Backend injoignable/timeout : dégradation honnête, jamais une erreur
     // brute — l'appelant garde le code provisoire déjà affiché.
     return json({ ok: false }, 502);
   }
+  const { status: upstreamStatus, payload: upstreamPayload } = amont;
 
   const clientRef =
     upstreamStatus === 200 &&
