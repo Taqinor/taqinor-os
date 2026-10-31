@@ -491,6 +491,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         P('fin', STR, False, 'Date AAAA-MM-JJ ; ignoré si illisible (période ouverte)'),
         P('export', STR, False, 'xlsx pour télécharger', ['xlsx'], vide=True)], responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='export-conformite')
+    # headless: export de conformite fournisseur pour audit via API, aucun ecran frontend
     def export_conformite(self, request):
         """NTP2P19 — audit achats : conformité par fournisseur actif.
 
@@ -554,6 +555,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
     @extend_schema(parameters=[P('within', INT, False, 'Horizon en jours (défaut 30)',
                                  mini=0, maxi=36500, vide=True)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='documents-expirants')
+    # headless: alertes de documents expirants consommees par API/notifications, aucun ecran frontend
     def documents_expirants(self, request):
         """NTP2P20 — pièces d'onboarding (NTP2P7) expirant dans
         ``?within=N`` jours (30 par défaut). Réutilise le pattern

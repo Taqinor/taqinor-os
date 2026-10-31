@@ -812,6 +812,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses=LISTE)
     @action(detail=True, methods=['get'], url_path='lignes-import')
+    # headless: import de lignes de BC en masse, appel API/integration, aucun ecran frontend
     def lignes_import(self, request, pk=None):
         """XSTK19 — lignes candidates pour un dossier d'import ADII,
         pré-remplies (code SH + pays d'origine) depuis les SKUs de ce BCF."""

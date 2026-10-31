@@ -126,6 +126,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
         }),
     })
     @action(detail=True, methods=['post'], url_path='valider-scanne')
+    # headless: validation de retour par scan terminal via API, aucun ecran frontend
     def valider_scanne(self, request, pk=None):
         """NTWMS41 — valide le retour DEPUIS LE POSTE SCANNER.
 

@@ -387,6 +387,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         responses={201: FactureFournisseurSerializer})
     @action(detail=False, methods=['post'], url_path='depuis-ubl',
             parser_classes=[MultiPartParser, JSONParser])
+    # headless: creation de facture depuis un UBL par integration API, aucun ecran frontend
     def depuis_ubl(self, request):
         """XPUR26 — préparation mandat DGI 2026 (e-facturation ENTRANTE) :
         parse un fichier UBL 2.1 (corps multipart, clé ``file``) et crée une
@@ -428,6 +429,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(parameters=[P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='releve-deductions-tva')
+    # headless: releve declaratif TVA consomme par API/export comptable, aucun ecran frontend
     def releve_deductions_tva(self, request):
         """XPUR17 — relevé de déductions TVA (achats) groupé PAR TAUX sur la
         période (query params ``date_debut``/``date_fin`` optionnels).

@@ -675,6 +675,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
     @extend_schema(parameters=[P('date', DATE, True, 'Date de valorisation (AAAA-MM-JJ)')], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='valorisation-a-date',
             permission_classes=[IsAdminRole])
+    # headless: valorisation de stock a date pour API/reporting, aucun ecran frontend
     def valorisation_date(self, request):
         """XSTK13 — valorisation du stock reconstruite à une date passée
         (CGNC). Paramètre requis : ``date`` (YYYY-MM-DD). INTERNE (admin)."""
@@ -700,6 +701,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                          numero_lot=serializers.CharField(allow_null=True))})
     @action(detail=False, methods=['post'], url_path='decoupes',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
+    # headless: decoupe de produit via API/terminal, aucun ecran frontend
     def decoupes(self, request):
         """XSTK16 — découpe/reconditionnement : débite `produit_source` et
         crédite `produit_cible` (peut être le même SKU) en transférant la
@@ -817,6 +819,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                    jusqu_a=serializers.DateField()))
     @action(detail=True, methods=['get'], url_path='classe-abc',
             permission_classes=[IsAnyRole])
+    # headless: classification ABC consommee par API/reporting, aucun ecran frontend
     def classe_abc(self, request, *args, **kwargs):
         """NTWMS13 — classe ABC de rotation de ce produit sur 12 mois
         glissants (A = 20 % de la valeur de rotation cumulée, B = 30 %
@@ -844,6 +847,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                    lignes=serializers.ListField(child=serializers.DictField())))
     @action(detail=True, methods=['get'], url_path='plan-picking',
             permission_classes=[IsAnyRole])
+    # headless: plan de picking consomme par API/terminal, aucun ecran frontend
     def plan_picking(self, request, *args, **kwargs):
         """NTWMS3 — plan de prélèvement de ce produit pour la quantité
         demandée (`?quantite=`), ordonné par la stratégie de sa catégorie
@@ -995,6 +999,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                    responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=False, methods=['get'], url_path='etiquettes-prix',
             permission_classes=[IsAnyRole])
+    # headless: etiquettes de prix generees par API/impression, aucun ecran frontend
     def etiquettes_prix(self, request):
         """NTRET17 — Étiquettes PRIX de rayon (EAN-13 + prix TTC en gros).
 
@@ -1351,6 +1356,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
     })
     @action(detail=False, methods=['get'], url_path='tracabilite',
             permission_classes=[IsAnyRole])
+    # headless: tracabilite lot/serie consommee par API/audit, aucun ecran frontend
     def tracabilite(self, request):
         """NTWMS16 — traçabilité AMONT/AVAL bout-en-bout : ``?lot=`` ou
         ``?serie=``.

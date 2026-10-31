@@ -119,6 +119,7 @@ class AchatsParametresViewSet(viewsets.ViewSet):
             request.user.company, periode, seuil_jours=seuil_jours))
 
 
+# headless: reglage de tolerances par API/admin, aucun ecran frontend
 class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):
     """NTP2P9 — grille éditable Paramètres → Achats : override par catégorie
     des tolérances 3 voies (XPUR10). Lecture tout rôle ; écriture réservée à

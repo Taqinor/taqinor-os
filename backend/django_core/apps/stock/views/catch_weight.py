@@ -56,6 +56,7 @@ class PeseeLigneActionsMixin:
     })
     @action(detail=True, methods=['get'], url_path='pesees',
             permission_classes=[IsAnyRole])
+    # headless: lecture des pesees catch-weight par terminal/balance via API, aucun ecran frontend
     def pesees(self, request, pk=None):
         """Relevés (ou leur absence) de toutes les lignes de la réception."""
         from ..services_catch_weight import pesee_de_ligne
@@ -79,6 +80,7 @@ class PeseeLigneActionsMixin:
     @action(detail=True, methods=['post'],
             url_path=r'lignes/(?P<ligne_id>[0-9]+)/pesee',
             permission_classes=[IsResponsableOrAdmin])
+    # headless: saisie de pesee catch-weight par balance/terminal via API, aucun ecran frontend
     def pesee_ligne(self, request, pk=None, ligne_id=None):
         """Saisit le relevé d'UNE ligne (``{unite_variable?, quantite_reelle,
         unite_mesure?, note?}``). Sans appel, la ligne garde exactement le
@@ -117,6 +119,7 @@ class PeseeLigneActionsMixin:
     })
     @action(detail=True, methods=['post'], url_path='rapprocher-pesees',
             permission_classes=[IsResponsableOrAdmin])
+    # headless: rapprochement catch-weight declenche par terminal via API, aucun ecran frontend
     def rapprocher_pesees(self, request, pk=None):
         """AUD226 — solde les écarts de pesée de la réception CONFIRMÉE par un
         ajustement de stock tracé (idempotent, ``{note?}``)."""

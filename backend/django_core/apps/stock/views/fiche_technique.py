@@ -54,6 +54,7 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
                                                          confirmer=serializers.BooleanField(required=False))},
                    responses=OBJET)
     @action(detail=False, methods=['post'], url_path='importer-datasheet')
+    # headless: import de datasheet par API/integration, aucun ecran frontend
     def importer_datasheet(self, request):
         """CAL117 — import OPTIONNEL d'une fiche constructeur .PAN/.OND.
 

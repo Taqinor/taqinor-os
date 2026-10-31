@@ -191,6 +191,7 @@ class ScmFournisseurActionsMixin:
         })})
     @action(detail=True, methods=['get'], url_path='delai-mesure',
             permission_classes=[IsResponsableOrAdmin])
+    # headless: delai fournisseur mesure consomme par API/analytique, aucun ecran frontend
     def delai_mesure(self, request, pk=None):
         """NTSCM11 — délai RÉEL mesuré vs délai ANNONCÉ
         (``?produit=&fenetre_mois=&seuil_ecart_pct=``)."""

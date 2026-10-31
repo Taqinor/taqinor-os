@@ -169,6 +169,7 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('budget', INT), P('statut', STR), P('demande', INT)]))
+# headless: engagements budgetaires consommes par API/reporting, aucun ecran frontend
 class EngagementBudgetViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """NTP2P4 — engagements budgétaires, LECTURE SEULE.
 

@@ -245,6 +245,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
 
     @extend_schema(responses=LISTE)
     @action(detail=True, methods=['get'], url_path='suggestions-rangement')
+    # headless: suggestions de rangement pour terminal de reception via API, aucun ecran frontend
     def suggestions_rangement(self, request, pk=None):
         """NTWMS2 — casier SUGGÉRÉ pour chaque ligne, à afficher AVANT la
         validation de la réception (modifiable par le magasinier).
@@ -265,6 +266,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
         }),
     })
     @action(detail=True, methods=['get'], url_path='proposer-cross-dock')
+    # headless: cross-dock propose au terminal de reception via API, aucun ecran frontend
     def proposer_cross_dock(self, request, pk=None):
         """NTWMS15 — vagues en attente qui MATCHENT les lignes reçues.
 
@@ -304,6 +306,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
         }),
     })
     @action(detail=True, methods=['post'], url_path='affecter-cross-dock')
+    # headless: cross-dock affecte par terminal de reception via API, aucun ecran frontend
     def affecter_cross_dock(self, request, pk=None):
         """NTWMS15 — route les lignes reçues vers un colis d'EXPÉDITION.
 
