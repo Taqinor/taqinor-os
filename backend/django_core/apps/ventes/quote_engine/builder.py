@@ -61,7 +61,7 @@ from .options_pdf import LANGUES_SORTIE_PDF, VARIANTES_PDF, clean_pdf_options
 from .options_pdf import DEFAULT_PDF_OPTIONS  # noqa: F401
 # SPL166 — la phase D2 (restitution de l'étude) vit dans ``etude_restitution``
 # (move only) ; builder n'importe ici que ce qu'il utilise lui-même.
-from .etude_restitution import restituer_etude
+from .etude_restitution import factures_mensuelles_exactes, restituer_etude
 # SPL166 — ré-export (noqa: F401) pour d'autres propriétaires : test devis
 # test_qjr156_tarif_estime (ligne_tarif_hypothese).
 from .etude_restitution import ligne_tarif_hypothese  # noqa: F401
@@ -1738,10 +1738,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
         # chiffré compact). Même dict rendu par le PDF premium et /proposal.
         "savings_method": savings_method,
-        # QK4 — bloc « Nos hypothèses » (tarif, source barème, autoconso-first,
-        # productible). Même dict rendu par le PDF premium et /proposal.
+        # QK4 — bloc « Nos hypothèses » (tarif, barème, autoconso-first, productible).
         "hypotheses": hypotheses_block,
         "factures_mensuelles": factures_mensuelles,
+        "factures_mensuelles_exactes": factures_mensuelles_exactes(etude, factures_source, devis),
         # Z2 (ORDRE FONDATEUR, 20/08/2026) — la série « avant » est-elle RÉELLE
         # (12 factures du lead, PACT10/QF-REAL) ou reconstruite depuis l'économie
         # SUPPOSÉE ? C'est l'ancrage qui autorise la synthèse économies à être

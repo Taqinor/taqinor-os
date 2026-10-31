@@ -367,6 +367,21 @@ class TestReglesEtude(_Base):
         self.assertEqual(out[0].cle, {'figure': 'methode_facture_actuelle'})
         self.assertEqual(self.run_rule('ETU_I5_FACTURE_ACTUELLE', propre), [])
 
+    def test_i5_reference_factures_du_devis_pas_du_lead(self):
+        # ERR-QA-ETU-I5 : factures corrigées sur le devis (1200/mois) ; le
+        # lead porte l'ancienne valeur (1000) -> pas de faux positif.
+        ep = {'factures_hiver_ete': {'hiver_mad': 1200, 'ete_mad': None,
+                                     'ete_differente': False}}
+        devis = self.devis(mode_installation='industriel', etude_params=ep)
+        self.ctx.injecter_donnees(
+            devis, {'savings_method': {'facture_actuelle': 14400}})
+        lead = {'facture_hiver': 1000, 'facture_ete': None,
+                'ete_differente': False}
+        with mock.patch('apps.crm.selectors.lead_bills_for_devis',
+                        return_value=lead):
+            self.assertEqual(
+                self.run_rule('ETU_I5_FACTURE_ACTUELLE', devis), [])
+
     def test_i6_economies(self):
         ep = {'puissance_kwc': 5}
         tire = self.devis(mode_installation='industriel', etude_params=ep)
