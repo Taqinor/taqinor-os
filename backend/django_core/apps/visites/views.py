@@ -498,7 +498,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         _marquer_en_cours(visite)
         return self._agregat(visite)
 
-    @extend_schema(parameters=[OpenApiParameter(
+    @extend_schema(responses=_VISITE_CONTEXTE, parameters=[OpenApiParameter(
         'media_id', int, OpenApiParameter.PATH,
         description='Identifiant du VisiteMedia à retirer.')])
     @action(detail=True, methods=['delete'],

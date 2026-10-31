@@ -6,7 +6,6 @@ importer ``generate_devis_premium`` (matplotlib au chargement).
 """
 import contextlib
 import contextvars
-import math
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 #: Décision fondateur 08/10/2026 (« nouveaux rendus seulement ») — vrai
@@ -58,11 +57,14 @@ def arrondi_affichage(valeur, ndigits=None):
     (rien à arrondir), une entrée non finie ou non numérique suit ``round``
     (même valeur, mêmes exceptions qu'avant)."""
     if (_ARRONDI_HISTORIQUE.get() or isinstance(valeur, int)
-            or not isinstance(valeur, (float, Decimal))
-            or not math.isfinite(valeur)):
+            or not isinstance(valeur, (float, Decimal))):
         return round(valeur, ndigits)
-    from core.money import quantize_mad
-    arrondi = quantize_mad(valeur, 0 if ndigits is None else ndigits)
+    exact = valeur if isinstance(valeur, Decimal) else Decimal(str(valeur))
+    if not exact.is_finite():
+        return round(valeur, ndigits)
+    # Même règle que ``core.money.quantize_mad`` (ce module reste stdlib seul).
+    arrondi = exact.quantize(Decimal(1).scaleb(-(ndigits or 0)),
+                             rounding=ROUND_HALF_UP)
     if ndigits is None:
         return int(arrondi)
     return arrondi if isinstance(valeur, Decimal) else float(arrondi)

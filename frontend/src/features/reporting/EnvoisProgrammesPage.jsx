@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Mail, Pencil, Plus, Trash2 } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
 import { getApiError } from '../../lib/apiError'
+import { formatDateTime } from '../../lib/format'
 import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import PageHeader from '../../components/layout/PageHeader'
 import {
@@ -100,9 +101,7 @@ function destinataires(rapport) {
 }
 
 function dateFr(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('fr-MA')
+  return iso ? formatDateTime(iso) : '—'
 }
 
 export default function EnvoisProgrammesPage() {
