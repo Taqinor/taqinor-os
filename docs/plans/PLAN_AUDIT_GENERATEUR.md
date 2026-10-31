@@ -122,6 +122,7 @@ l'aperçu vers `frontend/src/features/ventes/calc/totaux.js`, la tâche édite c
 
 ## DONE LOG
 
+- 2026-10-30 — avertissement TVA 0 % + base légale dans la confirmation de recomposition — demande Reda 30/10 : la boîte « Garder vos saisies ? » nomme les lignes dont « Prendre N (recalculé) » remplace la TVA 0 % et la base légale par la TVA par défaut (`recomposition.js::phrasesTvaBaseLegaleRemplacee`, lue par `useLignesEcran.avecQuantitesFigees` ; déclencheur inchangé : quantité figée). Test : `solar.recomposition.test.mjs`.
 - 2026-10-30 — ERR-AGNR42-AUTOREMPLIR-BASE-LEGALE — code ; geste P3.4 d'AGNR42 à rejouer par l'orchestrateur. Cause : `withKeys` (ligneFabrique.js) ne reportait pas `tvaBaseLegale` (le 0 % survivait, la base légale était vidée) et ré-attribuait une clé neuve à toute ligne ; `recomposerLignes` garde désormais la `_key` de la ligne appariée. Tests : solar.agnrFusion.test.mjs, ligneFabrique.test.mjs.
 - 2026-10-27 — AGV7, AGV10, AGV12 (sans objet), AGV13 (session L3 AGV) : panneau agricole sans jargon, rail « Total TTC » en agricole, réouverture agricole forcée « Sans batterie ». Goldens agricoles recapturés (TZ=UTC) ; vitest RailArgent/PanneauAgricole/golden verts.
 - 2026-10-14 — AGNR47 (code livré, NON cochée : preuve en direct due, AMET88 ; pc2-all-2a8693, PC 2) — test d'AGNR17 renforcé : A puis B enregistré ⇒ aucune `factures_mensuelles_reelles` dans les corps `createDevisAtomic`/`patchEtudeParams`, réouverture `?edit=` = 12 mois par défaut (vitest 4/4 vert sur l'orchestrateur, bf6e4cc2e).

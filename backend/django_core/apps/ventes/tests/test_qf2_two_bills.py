@@ -413,6 +413,30 @@ class TestFacturesReellesContract(TestCase):
         self.assertEqual(data['savings_model'], 'estimation')
         self.assertTrue(data['savings_estimated'])
 
+    # ── ERR-RHOR8-CONSO-SAISIE-SANS-DISTRIBUTEUR — kWh saisis, sans distributeur
+    def test_rhor8_conso_saisie_sans_distributeur_tarife_par_tranche(self):
+        """Conso saisie stockée (kWh), aucun distributeur : niveau 5 ⇒ barème
+        national par tranche (l'écran tarife sur l'ONEE par défaut)."""
+        from apps.ventes.quote_engine import build_quote_data
+        data = build_quote_data(self._devis(
+            etude_params={'conso_annuelle': 6000},
+            reference='DEV-RHOR8-KWH5'))
+        self.assertEqual(data['savings_model'], 'factures')
+        self.assertFalse(data['savings_estimated'])
+        self.assertIn('Tarif électricité : barème national par tranche',
+                      data['hypotheses']['items'])
+
+    def test_rhor8_conso_saisie_niveau4_garde_son_estimation(self):
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine import build_quote_data
+        devis = self._devis(etude_params={'conso_annuelle': 6000},
+                            reference='DEV-RHOR8-KWH4')
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=4)
+        devis.refresh_from_db()
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'estimation')
+        self.assertTrue(data['savings_estimated'])
+
 
 class Rhor8SansLocalisationParite(SimpleTestCase):
     """ERR-RHOR8 — parité écran / PDF du devis 2299 (5,68 kWc, facture
@@ -455,3 +479,32 @@ class Rhor8SansLocalisationParite(SimpleTestCase):
         self.assertIsNone(self._conso(mode='commercial'))
         self.assertIsNone(self._conso(conso_annuelle=6000))
         self.assertIsNone(self._conso(etude_horaire={'prod_kwh': 1}))
+
+    # ── ERR-RHOR8-CONSO-SAISIE-SANS-DISTRIBUTEUR — 6 000 kWh/an saisis ──────
+    def test_conso_saisie_memes_chiffres_que_l_ecran(self):
+        """Même devis, conso SAISIE 6 000 kWh/an sans distributeur : serveur =
+        écran (``calc/roi.test.mjs``, ERR-RHOR8-CONSO-SAISIE) 8 531 / 9 191,
+        facture actuelle 9 789 ; hier le serveur estimait 9 159 / 10 366."""
+        kwargs = dict(conso_annuelle_kwh=6000, battery_kwh=5,
+                      productible=1651, stockage_present=True,
+                      regles_2710=True, fallback_tarif_kwh=1.75)
+        roi = calculate_savings_roi(5.68, 44500, 56500,
+                                    bareme_national_defaut=True, **kwargs)
+        self.assertEqual(roi['savings_model'], 'factures')
+        self.assertTrue(roi['bareme_national'])
+        self.assertEqual((roi['eco_s_ann'], roi['eco_a_ann'],
+                          roi['facture_sans']), (8531, 9191, 9789))
+        hier = calculate_savings_roi(5.68, 44500, 56500, **kwargs)
+        self.assertEqual(hier['savings_model'], 'estimation')
+        self.assertEqual((hier['eco_s_ann'], hier['eco_a_ann']), (9159, 10366))
+
+    def test_perimetre_du_bareme_national(self):
+        from types import SimpleNamespace
+        from apps.ventes.quote_engine.etude_chiffrage import (
+            _residentiel_niveau5_sans_horaire as perimetre)
+        d5, d4 = SimpleNamespace(regles_calcul=5), SimpleNamespace(regles_calcul=4)
+        self.assertTrue(perimetre(d5, '', {'conso_annuelle': 6000}))
+        self.assertTrue(perimetre(d5, 'residentiel', {}))
+        self.assertFalse(perimetre(d4, '', {'conso_annuelle': 6000}))
+        self.assertFalse(perimetre(d5, 'commercial', {}))
+        self.assertFalse(perimetre(d5, '', {'etude_horaire': {'prod_kwh': 1}}))

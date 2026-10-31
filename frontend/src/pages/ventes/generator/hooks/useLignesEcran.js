@@ -11,6 +11,7 @@ import { tauxTvaOf, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { _hasPrix, deriveRoleOrderFromLines } from '../../../../features/ventes/calc/lignesDefaut.js'
 import {
   appliquerRecomposition, lignesManuellesEnConflitPossible,
+  phrasesTvaBaseLegaleRemplacee,
 } from '../../../../features/ventes/calc/recomposition.js'
 import stockApi from '../../../../api/stockApi'
 import { emptyLine, structureLine, withKeys } from '../../../../features/ventes/quote/ligneFabrique.js'
@@ -375,10 +376,13 @@ export function useLignesEcran(ctx) {
     const noms = manuelles.slice(0, 5)
       .map(l => `${l.designation || 'ligne'} : ${l.quantite}`).join(', ')
       + (manuelles.length > 5 ? '…' : '')
+    // AGNR20 — « Prendre N (recalculé) » remet aussi la TVA par défaut : on le dit.
+    const tva = phrasesTvaBaseLegaleRemplacee(lines)
     confirm({
       title: 'Garder vos saisies ?',
       description: `Lignes saisies à la main (${noms}) : la recomposition peut les GARDER `
-        + 'ou prendre uniquement les valeurs recalculées.',
+        + 'ou prendre uniquement les valeurs recalculées.'
+        + (tva.length ? ` En prenant les valeurs recalculées : ${tva.join(' ; ')}.` : ''),
       confirmLabel: 'Recomposer en les gardant',
       alternativeLabel: 'Prendre N (recalculé)',
       destructive: false,

@@ -85,6 +85,20 @@ export function lignesManuellesEnConflitPossible(lignes) {
   return lignesQuantiteFigee(lignes)
 }
 
+// AGNR20 — « Prendre N (recalculé) » remet la TVA par défaut : une ligne produit
+// à TVA 0 % portant une base légale la perd. La confirmation le DIT, au même titre
+// que les quantités figées (mêmes lignes de la liste, pas de second mécanisme).
+export function lignesTvaBaseLegale(lignes) {
+  return (lignes || []).filter(l => _estLigneProduit(l) && l.produit
+    && String(l.tvaBaseLegale ?? '').trim() !== '')
+}
+
+export function phrasesTvaBaseLegaleRemplacee(lignes) {
+  return lignesTvaBaseLegale(lignes).map(l =>
+    `${l.designation || 'ligne'} : TVA ${String(l.taux_tva ?? '0')} % et base légale `
+    + `« ${String(l.tvaBaseLegale).trim()} » remplacées par la TVA par défaut`)
+}
+
 // Applique une composition générée : 'garder' fusionne (saisies conservées),
 // 'recalcule' ne garde EXACTEMENT que les lignes recalculées.
 export function appliquerRecomposition(anciennes, generees, mode = 'garder') {
