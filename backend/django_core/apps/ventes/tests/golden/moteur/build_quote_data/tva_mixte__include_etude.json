@@ -1,5 +1,5 @@
 {
-  "sha256": "34c47aee1e2f9f27bfa93e3dc8012e071528e9d386192107d29442d4743791e2",
+  "sha256": "b6e83c6492bfd3025af4ab524020ddd7ee5e5b5c7265cee6439ee7e959a5e63f",
   "cles": [
     "ref",
     "date",
@@ -73,6 +73,7 @@
     "savings_method",
     "hypotheses",
     "factures_mensuelles",
+    "factures_mensuelles_exactes",
     "factures_reelles",
     "factures_source",
     "factures_mensuelles_estimation",
