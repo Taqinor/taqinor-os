@@ -63,6 +63,8 @@ REGLES_ECARTS_3110 = 7
 #: ``etude_horaire.profil_conso_du_devis`` (factures écran, kWh déclaré
 #: CAD166, barème société) — la même série que l'étude. La migration 0147
 #: laisse à 7 tout devis non brouillon : il garde la page qu'il a reçue.
+#: Porte aussi AGNR52 : les % d'échéancier imprimés (puce CGV, marqueur C&I,
+#: cases agricoles) sont dérivés des montants servis, branches MAD dès 2 tranches.
 REGLES_CONSO_PUBLIQUE_0111 = 8
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_CONSO_PUBLIQUE_0111

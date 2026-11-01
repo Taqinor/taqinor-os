@@ -31,6 +31,7 @@ from decimal import Decimal
 
 # L-NIV — LA règle d'agrégation « kit » du niveau standard, partagée avec la
 # charge utile JSON publique et le comparatif de gammes (une seule vérité).
+from apps.ventes.domain.regles_calcul import REGLES_CONSO_PUBLIQUE_0111
 from apps.ventes.utils.anticopie import agreger_lignes_kit
 
 from . import i18n_labels as _i18n
@@ -197,8 +198,9 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
     }
 
 
-#: AGNR52 — niveau de règles d'AGNR54 (8) : % d'échéancier dérivés des montants, branches MAD dès 2 tranches.
-REGLES_ECHEANCIER_DERIVE = 8
+#: AGNR52 — LE niveau 8 d'AGNR54 (un seul niveau pour la contre-visite AGNR du
+#: 01/11) : % d'échéancier dérivés des montants, branches MAD dès 2 tranches.
+REGLES_ECHEANCIER_DERIVE = REGLES_CONSO_PUBLIQUE_0111
 
 
 def tranches_echeancier_en_montant(devis):
