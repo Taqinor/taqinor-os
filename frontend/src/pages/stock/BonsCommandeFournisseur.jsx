@@ -21,6 +21,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SelectFournisseur, CelluleRetirerLigne } from './ComposantsStock'
+import { parseSeries, erreurComptageSeries } from './numerosSerie.js'
 import { EnteteStock } from './EnteteStock'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import {
@@ -264,6 +265,9 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [membres, setMembres] = useState([])
   // Saisies de réception : { [ligneId]: quantité }
   const [receptions, setReceptions] = useState({})
+  // ACHT122 — séries (texte brut) et lot par ligne, saisis avec la quantité.
+  const [seriesRec, setSeriesRec] = useState({})
+  const [lotsRec, setLotsRec] = useState({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [showRetour, setShowRetour] = useState(false)
@@ -557,8 +561,22 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     setReceptions(next)
   }
 
+  // ACHT122 — même règle de comptage que l'écran Réceptions (numerosSerie.js).
+  const erreurSeriesLigne = (l) => erreurComptageSeries(
+    seriesRec[l.id],
+    Math.min(Math.floor(Number(receptions[l.id])), quantiteRestante(l)))
+
   const recevoir = async () => {
-    const payload = buildReceptionPayload(bcf.lignes, receptions)
+    const enErreur = (bcf.lignes ?? []).filter((l) => erreurSeriesLigne(l))
+    if (enErreur.length > 0) {
+      setError('Corrigez le nombre de n° de série (plus de séries que de quantités reçues).')
+      return
+    }
+    const traces = {}
+    for (const l of bcf.lignes ?? []) {
+      traces[l.id] = { numeros_serie: parseSeries(seriesRec[l.id]), numero_lot: lotsRec[l.id] }
+    }
+    const payload = buildReceptionPayload(bcf.lignes, receptions, traces)
     if (payload.length === 0) { setError('Saisissez au moins une quantité à recevoir.'); return }
     setBusy(true); setError(null)
     try {
@@ -995,10 +1013,24 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                   {!isNew && statut === 'envoye' && (
                     <td className="px-3 py-2">
                       {restante > 0 ? (
+                        <>
                         <Input type="number" min="0" max={restante} inputMode="numeric" className="h-9 w-24"
                                placeholder={`/${restante}`}
                                value={receptions[l.id] ?? ''}
                                onChange={(e) => setReceptions((r) => ({ ...r, [l.id]: e.target.value }))} />
+                        <Textarea rows={2} className="mt-1 w-48 text-xs" placeholder="N° de série (un par ligne)"
+                                  aria-label={`N° de série — ligne ${idx + 1}`}
+                                  aria-invalid={erreurSeriesLigne(l) ? 'true' : undefined}
+                                  value={seriesRec[l.id] ?? ''}
+                                  onChange={(e) => setSeriesRec((x) => ({ ...x, [l.id]: e.target.value }))} />
+                        <Input className="mt-1 h-8 w-48 text-xs" placeholder="N° de lot (optionnel)"
+                               aria-label={`N° de lot — ligne ${idx + 1}`}
+                               value={lotsRec[l.id] ?? ''}
+                               onChange={(e) => setLotsRec((x) => ({ ...x, [l.id]: e.target.value }))} />
+                        {erreurSeriesLigne(l) && (
+                          <p role="alert" className="mt-1 text-xs text-destructive">{erreurSeriesLigne(l)}</p>
+                        )}
+                        </>
                       ) : <span className="text-xs text-muted-foreground">soldée</span>}
                     </td>
                   )}

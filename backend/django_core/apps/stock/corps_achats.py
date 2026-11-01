@@ -149,6 +149,11 @@ class BcfRecevoirLigneCorps(serializers.Serializer):
     quantite = EntierStrict(min_value=1, max_value=ID_MAX)
     conditionnement = EntierStrict(required=False, allow_null=True, min_value=1, max_value=ID_MAX)
     conditionnement_code_barres = ChaineStricte(required=False, allow_null=True, allow_blank=True, max_length=64)
+    # ACHT122 — séries et lot saisis à la réception rapide (mêmes champs que
+    # l'écran Réceptions, ACHT106).
+    numeros_serie = serializers.ListField(
+        child=ChaineStricte(max_length=100), required=False, allow_null=True)
+    numero_lot = ChaineStricte(required=False, allow_null=True, allow_blank=True, max_length=100)
 
 
 class BcfRecevoirCorps(serializers.Serializer):
