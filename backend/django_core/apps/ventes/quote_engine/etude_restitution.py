@@ -39,6 +39,13 @@ def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
             "un calcul par tranches sur facture réelle reste possible.")
 
 
+def cle_factures_exactes(etude, factures_source, devis=None):
+    """ERR-AGNR42 — ``{"factures_mensuelles_exactes": série}`` au niveau de règles 5 avec
+    une série exacte, sinon ``{}`` : la clé est ABSENTE ailleurs (rendu d'origine intact)."""
+    serie = factures_mensuelles_exactes(etude, factures_source, devis)
+    return {} if serie is None else {"factures_mensuelles_exactes": serie}
+
+
 def factures_mensuelles_exactes(etude, factures_source, devis=None):
     """ERR-AGNR42 — les 12 factures du lead NON arrondies (ou None).
 
