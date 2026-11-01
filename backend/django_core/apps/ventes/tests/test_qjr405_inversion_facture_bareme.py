@@ -117,12 +117,20 @@ class InversionFactureTotaleTests(SimpleTestCase):
 
 
 class M10EstimationMasqueLeGrapheTests(SimpleTestCase):
-    """Le correctif M10 (19/08/2026) n'est pas défait par QJR405."""
+    """Le correctif M10 (19/08/2026) n'est pas défait par QJR405.
+
+    AGNR54 (niveau 8) remplace ce repli par LA résolution de l'étude (barème de
+    la société, sans exiger de distributeur) : ces cas décrivent le repli d'un
+    devis de niveau ≤ 7, qui garde sa page."""
 
     def _serie(self, bills):
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.regles_calcul import REGLES_ECARTS_3110
         with mock.patch(
                 'apps.crm.selectors.lead_bills_for_devis', return_value=bills):
-            return payload_economie._monthly_consumption(object())
+            return payload_economie._monthly_consumption(
+                SimpleNamespace(regles_calcul=REGLES_ECARTS_3110))
 
     def test_sans_distributeur_la_serie_reste_vide(self):
         total = bareme.facture_mad(359.0)['total_mad']

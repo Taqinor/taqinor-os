@@ -597,6 +597,10 @@ _FICHIERS_VALIDES = (
     # les octets magiques, inexprimable dans le schéma.
     (re.compile(r'^/api/django/records/attachments/$'), {'POST'},
      {'file': _PDF_MINIMAL}),
+    # Vague 11 — le PV de livraison d'un BC passe par ``store_attachment``
+    # (PDF/PNG/JPEG/WebP seulement).
+    (re.compile(r'^/api/django/ventes/bons-commande/\{[^}]+\}/marquer-livre/$'),
+     {'POST'}, {'pv': _PDF_MINIMAL}),
     # Nocturne 23/10 (run 40000624035) — avatar : le serveur lit les octets
     # magiques (PNG/JPEG/WebP, 2 Mo) → 413/415 hors schéma ; un vrai PNG au
     # cas positif. Import CSV des lignes d'une demande d'achat : un fichier

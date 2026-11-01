@@ -11,7 +11,7 @@ from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.champs_stricts import (
     ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin,
-    IdInconnu404ImbriquesMixin, TexteLie)
+    IdInconnu404ImbriquesMixin, QUANTITE_MAX, TexteLie)
 from core.unicite import ConflitUnicite
 from .champs_lignes import ChampsLigneFactureFournisseur
 from core.product_roles import (
@@ -2282,9 +2282,9 @@ class LigneInventaireSerializer(SameCompanyFKSerializerMixin,
             'id', 'produit', 'produit_nom',
             'quantite_theorique', 'quantite_comptee', 'ecart',
         ]
-        # ASTK39 — le théorique est snapshoté SERVEUR à la saisie du compté
-        # (règle « stock à la saisie ») ; jamais accepté du corps.
+        # ASTK39 — théorique snapshoté SERVEUR (« stock à la saisie »), jamais du corps.
         read_only_fields = ['quantite_theorique']
+        extra_kwargs = {'quantite_comptee': {'min_value': 0, 'max_value': QUANTITE_MAX}}  # sinon débord (500)
 
 
 def _poser_lignes_inventaire(session, lignes_data, anciennes=None):
