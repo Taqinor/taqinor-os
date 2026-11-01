@@ -627,9 +627,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         && !(await confirmerMes({ title: 'Champs non renseignés', destructive: false,
           confirmLabel: 'Enregistrer quand même',
           description: `Champs non renseignés : ${manques.join(' et ')}. `
-            + 'Enregistrer quand même la mise en service ?' }))) {
-      return
-    }
+            + 'Enregistrer quand même la mise en service ?' }))) return
     setMesBusy(true)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
