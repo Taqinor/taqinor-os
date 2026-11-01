@@ -20,6 +20,7 @@ import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
 import { toast, useConfirmDialog } from '../../ui/confirm'
+import { useCanListAssignableUsers } from '../../hooks/useHasPermission'
 // VX156 — le moment « chantier terminé » (mise en service) porte la voix Taqinor.
 import { voice } from '../../lib/voice'
 import { telHref } from '../../lib/contactLinks'
@@ -283,6 +284,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [editInterv, setEditInterv] = useState(null) // { id, date_realisee, compte_rendu, technicien }
   const [editIntervBusy, setEditIntervBusy] = useState(false)
   const [users, setUsers] = useState([])
+  const peutListerUsers = useCanListAssignableUsers()
   const { confirm: confirmerMes } = useConfirmDialog()
   const startEditInterv = (iv) => setEditInterv({
     id: iv.id,
@@ -418,7 +420,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     if (produits.length === 0) dispatch(fetchProduits())
     lireToutesLesPages((p) => installationsApi.getTypesIntervention(p))
       .then((rows) => setTypesInterv(rows.filter((t) => !t.archived))).catch(() => {})
-    crmApi.getAssignableUsers()
+    if (peutListerUsers) crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     loadDossierReglementaire()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rechargement par chantier : les loaders sont recréés à chaque rendu, seul `id` relance (D-ENF22)
