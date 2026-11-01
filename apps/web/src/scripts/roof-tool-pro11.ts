@@ -158,7 +158,7 @@ import {
   type HydratationAtelier,
 } from './roofPro11/hydratation'; // ACAL26 — une seule hydratation pour les deux boots
 import { reinitialiserDepuisTraceClient } from './roofPro11/edges'; // ACAL78
-import { repartirCibleVendue } from './roofPro11/cible'; // ACAL99
+import { repartirCibleVendue, neededAutoApresConservation } from './roofPro11/cible'; // ACAL99
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -2026,13 +2026,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         for (const z of areas) {
           const objectif = repartition.objectifs[z.id];
           if (objectif == null) continue;
+          z.neededAuto = neededAutoApresConservation(z, objectif); // ERR-ACAL351 : avant l'écrasement
           z.neededPanels = objectif;
-          z.neededAuto = false;
         }
         const actif = activeArea();
         if (actif && repartition.objectifs[actif.id] != null) {
           neededPanels = actif.neededPanels;
-          neededAuto = false;
+          neededAuto = actif.neededAuto;
         }
         return;
       }

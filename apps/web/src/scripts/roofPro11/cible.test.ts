@@ -1,7 +1,7 @@
 // ACAL99 — la cible VENDUE à la réouverture : jamais au-dessus de la conception enregistrée,
 // jamais le total du site au seul pan actif. PURE (aucun DOM, aucune carte).
 import { describe, expect, it } from 'vitest';
-import { repartirCibleVendue, type PanCible } from './cible';
+import { repartirCibleVendue, neededAutoApresConservation, type PanCible } from './cible';
 import { hydrateFromDevis } from './prefill';
 
 const pan = (id: string, neededPanels: number, neededAuto: boolean, count?: number): PanCible => ({
@@ -36,5 +36,15 @@ describe('ACAL99 — repartirCibleVendue', () => {
   it('plusieurs pans sans aucun compte : le total n’est jamais imposé au pan actif', () => {
     expect(repartirCibleVendue({ cibleVendue: 40, zones: [pan('a', 0, true), pan('b', 0, true)], activeAreaId: 'a' }))
       .toEqual({ mode: 'conserver', objectifs: {} });
+  });
+});
+
+describe('ERR-ACAL351 — neededAuto intact sans geste', () => {
+  it('pan auto dont l’objectif conservé est son besoin relu : reste auto', () => {
+    expect(neededAutoApresConservation({ neededPanels: 8, neededAuto: true }, 8)).toBe(true);
+  });
+  it('objectif différent ou pan déjà figé : figé', () => {
+    expect(neededAutoApresConservation({ neededPanels: 8, neededAuto: true }, 6)).toBe(false);
+    expect(neededAutoApresConservation({ neededPanels: 8, neededAuto: false }, 8)).toBe(false);
   });
 });
