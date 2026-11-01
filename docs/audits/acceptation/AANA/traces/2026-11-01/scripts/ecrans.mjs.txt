@@ -1,0 +1,39 @@
+// AANA74 — écrans rejoués (Chromium) avec oracles durs : 4xx/5xx même origine, console.error/pageerror,
+// dialogue natif, « prix_achat » visible, « Une erreur est survenue ». Usage :
+// node ecrans.mjs <front_url> <user> <dir_captures> <date> <id1=route1> ...
+import { chromium } from '/opt/node-tools/node_modules/playwright/index.mjs'
+import { writeFileSync } from 'node:fs'
+const [front, user, dir, date, ...pages] = process.argv.slice(2)
+const b = await chromium.launch()
+const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } })
+await ctx.addInitScript(() => { try { localStorage.setItem('taqinor-pwa-install-dismissed', '1'); localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch {} })
+const page = await ctx.newPage()
+const inc = []
+const origine = new URL(front).host
+page.on('response', (r) => { try { const u = new URL(r.url()); if (r.status() >= 400 && (u.host === origine || u.pathname.startsWith('/api/'))) inc.push({ o: r.status() >= 500 ? 1 : 2, s: r.status(), url: r.url() }) } catch {} })
+page.on('console', (m) => { if (m.type() === 'error') inc.push({ o: 3, t: m.text().slice(0, 300) }) })
+page.on('pageerror', (e) => inc.push({ o: 3, t: String(e).slice(0, 300) }))
+page.on('dialog', (d) => { inc.push({ o: 4, t: d.message() }); d.dismiss() })
+await page.goto(front + '/login')
+await page.getByPlaceholder('Entrez votre identifiant').fill(user)
+await page.locator('input[type="password"]').fill('Acc-Aana74-0111!')
+await page.getByRole('button', { name: /Se connecter/ }).click()
+await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 60000 })
+const res = {}
+for (const p of pages) {
+  const [id, cible] = p.split('=')
+  const [route, onglet] = cible.split('#')
+  const avant = inc.length
+  await page.goto(front + route)
+  await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {})
+  if (onglet) { await page.getByText(onglet, { exact: true }).first().click(); await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {}) }
+  await page.waitForTimeout(2500)
+  const texte = await page.locator('body').innerText()
+  const cap = `${dir}/ACCEPTATION-AANA-${id}-${user}.jpg`
+  await page.screenshot({ path: cap, type: 'jpeg', quality: 60, fullPage: true })
+  res[id] = { route, url: page.url(), incidents: inc.slice(avant), casse: /Une erreur est survenue/.test(texte),
+              prix_achat: /prix_achat|prix d.achat/i.test(texte), capture: cap, texte: texte.slice(0, 20000) }
+}
+writeFileSync(`${dir}/ecrans-${user}.json`, JSON.stringify(res, null, 1))
+for (const [id, r] of Object.entries(res)) console.log(id, r.url, 'incidents', JSON.stringify(r.incidents), 'casse', r.casse, 'prix_achat', r.prix_achat)
+await b.close()

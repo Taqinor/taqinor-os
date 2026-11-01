@@ -1,0 +1,15 @@
+import json
+from decimal import Decimal
+from django.db import transaction
+from apps.ventes.models import Facture
+from authentication.models import Company
+from django.contrib.auth import get_user_model
+from apps.semantic.services import resolve_metric_valeur
+M = Company.objects.get(slug='acc-aana74-m'); u = get_user_model().objects.get(username='acc74_dir_m')
+r = {'classiques_montant_ht_null': {c: str(resolve_metric_valeur(M, u, c)) for c in ('ca_ht', 'ca_ttc', 'panier_moyen')}}
+with transaction.atomic():
+    for f in Facture.objects.filter(company=M):
+        Facture.objects.filter(pk=f.pk).update(montant_ht=f.total_ht, montant_tva=f.total_ht * Decimal('0.2'), montant_ttc=f.total_ht * Decimal('1.2'))
+    r['montants_figes_brouillon_1000_emise_500'] = {c: str(resolve_metric_valeur(M, u, c)) for c in ('ca_ht', 'ca_ttc', 'panier_moyen')}
+    transaction.set_rollback(True)
+print('@@VAL ' + json.dumps(r))

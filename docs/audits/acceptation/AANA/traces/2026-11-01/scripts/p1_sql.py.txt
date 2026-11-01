@@ -1,0 +1,103 @@
+"""AANA74 P1 — garde de l'agent SQL (AANA53) + prompt (AANA63) rejoués : arbre du SQL exécuté relu
+avec la casse Postgres, puis exécution réelle sur la base locale. Usage : python p1_sql.py <repo> <dsn> <company_id>"""
+import re, sys, json
+repo, dsn, cid = sys.argv[1], sys.argv[2], int(sys.argv[3])
+sys.path.insert(0, f'{repo}/backend/fastapi_ia')
+import sqlglot
+from sqlglot import exp
+from app.services import sql_agent_service as s
+
+REFUS = [
+    'WITH "CRM_LEAD" AS (SELECT 1 AS id) SELECT * FROM crm_lead',
+    'WITH "PG_STATS" AS (SELECT 1) SELECT attname, most_common_vals FROM pg_stats',
+    'WITH "DJANGO_SESSION" AS (SELECT 1) SELECT session_key FROM django_session',
+    "WITH \"PG_STATS\" AS (SELECT 1) SELECT attname, most_common_vals FROM pg_stats WHERE tablename='crm_client'",
+    "WITH \"PG_STATS\" AS (SELECT 1) SELECT attname, histogram_bounds FROM pg_stats WHERE tablename='stock_produit' AND attname='prix_achat'",
+    'WITH "Pg_Roles" AS (SELECT 1) SELECT rolname FROM pg_roles',
+    "SELECT attname, most_common_vals FROM pg_stats WHERE tablename='crm_client'",
+    'WITH crm_client AS (SELECT 1 AS id) SELECT * FROM crm_client',
+    'SELECT * FROM autre_schema.crm_client',
+]
+ACCEPTE = [
+    'WITH c AS (SELECT id FROM crm_client) SELECT * FROM c',
+    'WITH "c" AS (SELECT id FROM crm_client) SELECT * FROM c',
+]
+out = {'refus': [], 'accepte': [], 'execution': [], 'prompt': {}}
+ok = True
+for q in REFUS:
+    try:
+        r = s._validate_and_secure(q, cid)
+        out['refus'].append({'sql': q, 'refuse': False, 'execute': r}); ok = False
+    except s.SQLSecurityError as e:
+        out['refus'].append({'sql': q, 'refuse': True, 'motif': str(e)[:120]})
+
+def tables_non_scopees(sql):
+    """Oracle : chaque table de base lue (casse Postgres) doit être lue DANS une sous-requête filtrée company_id."""
+    t = sqlglot.parse_one(sql, read='postgres')
+    ctes = {(c.args['alias'].this.this if c.args['alias'].this.args.get('quoted') else c.alias.lower()) for c in t.find_all(exp.CTE)}
+    mauvais = []
+    for tb in t.find_all(exp.Table):
+        ident = tb.this
+        nom = ident.this if ident.args.get('quoted') else ident.this.lower()
+        if nom in ctes:
+            continue
+        sel = tb.find_ancestor(exp.Select)
+        w = sel.args.get('where') if sel else None
+        if not (w and 'company_id' in w.sql()):
+            mauvais.append(nom)
+    return mauvais
+
+import psycopg2
+cn = psycopg2.connect(dsn); cn.set_session(readonly=True, autocommit=True)
+cur = cn.cursor()
+def executer(sql):
+    try:
+        cur.execute(sql); rows = cur.fetchall(); return {'ok': True, 'lignes': len(rows), 'apercu': str(rows[:3])[:200]}
+    except Exception as e:
+        return {'ok': False, 'erreur': str(e)[:200]}
+for q in ACCEPTE:
+    try:
+        r = s._validate_and_secure(q, cid)
+        ns = tables_non_scopees(r)
+        ex = executer(r)
+        out['accepte'].append({'sql': q, 'execute': r, 'tables_non_scopees': ns, 'execution': ex})
+        ok &= (not ns) and ex['ok']
+    except s.SQLSecurityError as e:
+        out['accepte'].append({'sql': q, 'refuse': True, 'motif': str(e)}); ok = False
+# AANA63 — exemple « CA facturé HT » du prompt, ce mois, rejoué sous la garde puis exécuté
+p = s._AGENT_PREFIX
+m = re.search(r"CA factur[ée] HT : (SELECT[^\n]+)", p)
+ca = m.group(1).strip() if m else None
+out['prompt']['exemple_ca'] = ca
+ca_mois = ca + " AND date_emission >= date_trunc('month', CURRENT_DATE)" if ca else None
+for q in [ca, ca_mois]:
+    try:
+        r = s._validate_and_secure(q, cid); ex = executer(r)
+        out['execution'].append({'sql': q, 'execute': r, 'tables_non_scopees': tables_non_scopees(r), 'execution': ex})
+        ok &= ex['ok']
+    except Exception as e:
+        out['execution'].append({'sql': q, 'erreur': str(e)}); ok = False
+# AANA63 — chaque table.colonne citée dans le prompt confrontée au schéma RÉEL de la base locale
+cur.execute("select table_name, column_name from information_schema.columns where table_schema='public'")
+cols = {}
+for t, c in cur.fetchall(): cols.setdefault(t, set()).add(c)
+cites = set()
+for tbl, liste in re.findall(r"-\s*([a-z_]+)\s*:\s*([^\n]+)", p):
+    if tbl in cols:
+        for c in re.findall(r"\b([a-z_][a-z0-9_]*)\b", liste.split('(')[0]):
+            cites.add((tbl, c))
+for q in re.findall(r"(SELECT[^\n]+(?:\n\s+[^\n-][^\n]*)?)", p):
+    try:
+        t = sqlglot.parse_one(q.replace('\\', ' '), read='postgres')
+    except Exception:
+        continue
+    tabs = [x.name for x in t.find_all(exp.Table)]
+    for col in t.find_all(exp.Column):
+        if len(tabs) == 1: cites.add((tabs[0], col.name))
+absentes = sorted(f'{t}.{c}' for t, c in cites if t in cols and c not in cols[t])
+out['prompt']['couples_confrontes'] = len(cites); out['prompt']['colonnes_absentes'] = absentes
+ok &= not absentes
+cur.execute('select current_user'); out['role_courant'] = cur.fetchone()[0]
+cur.execute("select exists(select 1 from pg_roles where rolname='sql_agent_ro')"); out['sql_agent_ro_existe'] = cur.fetchone()[0]
+out['verdict'] = 'PASS' if ok else 'FAIL'
+print(json.dumps(out, ensure_ascii=False, indent=1))

@@ -1,0 +1,1 @@
+@@R {"classiques_montant_ht_null": {"ca_ht": "None", "ca_ttc": "None", "panier_moyen": "None"}, "montants_figes_ht_1000_brouillon_500_emise": {"ca_ht": "500.00", "ca_ttc": "600.00", "panier_moyen": "600.00"}, "demo_company_id": 1}

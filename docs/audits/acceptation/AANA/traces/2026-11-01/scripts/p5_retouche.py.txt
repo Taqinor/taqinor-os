@@ -1,0 +1,8 @@
+from django.core.management import call_command
+from authentication.models import Company
+from apps.semantic.models import MetricDefinition
+A = Company.objects.get(slug='acc-aana74-a')
+call_command('seed_metriques', company=A.pk)
+d = MetricDefinition.objects.get(company=A, cle='ca_ht')
+d.filtres = {'statut__in': ['payee']}   # retouche « du fondateur » : ne doit PAS être réécrite
+d.save()

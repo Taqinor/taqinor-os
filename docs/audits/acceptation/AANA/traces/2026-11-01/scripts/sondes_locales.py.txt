@@ -1,0 +1,16 @@
+"""Rejoue les sondes C-AANA-VER-001..004 avec scripts/sonde.py (programme autonome, transaction annulée),
+mais sur un `manage.py shell` NATIF (pile sans docker). Usage : python sondes_locales.py <repo_sondes> <django_dir> <ids...>
+L'environnement (DB_*, REDIS_*) est celui du processus appelant."""
+import os, subprocess, sys
+repo, django_dir, ids = sys.argv[1], sys.argv[2], sys.argv[3:]
+sys.path.insert(0, f'{repo}/scripts')
+import sonde
+def executer(cmd, prog, timeout):
+    r = subprocess.run([sys.executable, '-u', 'manage.py', 'shell'], cwd=django_dir, input=prog.encode(),
+                       capture_output=True, timeout=timeout + 120, env=os.environ)
+    return r.returncode, r.stdout.decode('utf-8', 'replace'), r.stderr.decode('utf-8', 'replace')
+codes = {}
+for i in ids:
+    code, verdict = sonde.jouer(f'{repo}/docs/audits/sondes/AANA/{i}.py', None, 300, executer)
+    codes[i] = verdict
+print('@@VERDICTS', codes)

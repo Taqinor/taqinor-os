@@ -1,0 +1,27 @@
+# AANA74 P5.2 (AANA61) + P2.2 bis (AANA73) — lectures serveur sur la pile, sans écriture.
+import json
+from django.db.migrations.recorder import MigrationRecorder
+from authentication.models import Company
+from apps.semantic.models import MetricDefinition, MetricDefinitionVersion
+from apps.semantic.services import resolve_metric
+from apps.dataimport import services as di
+from django.contrib.auth import get_user_model
+out = {}
+out['migration_0004_appliquee'] = MigrationRecorder.Migration.objects.filter(app='semantic', name__startswith='0004').values_list('name', 'applied').first()
+M = Company.objects.get(slug='acc-aana74-m'); u = get_user_model().objects.get(username='acc74_dir_m')
+out['M'] = {c: str(resolve_metric(M, u, c)) for c in ('ca_ht', 'ca_ttc', 'panier_moyen')}
+out['M_filtres'] = {d.cle: d.filtres for d in MetricDefinition.objects.filter(company=M, cle__in=('ca_ht', 'ca_ttc', 'panier_moyen'))}
+# Sociétés semées AVANT la correction (démo) : défaut corrigé par la migration, version N+1
+demo = Company.objects.filter(slug='taqinor-demo').first()
+if demo:
+    out['demo'] = {d.cle: {'filtres': d.filtres, 'versions': list(MetricDefinitionVersion.objects.filter(metric_definition=d).order_by('pk').values_list('version', flat=True)) if True else 'n/a'}
+                   for d in MetricDefinition.objects.filter(company=demo, cle__in=('ca_ht', 'ca_ttc', 'panier_moyen'))}
+    du = get_user_model().objects.filter(company=demo, username='demo_admin').first()
+    out['demo_nb_metriques'] = MetricDefinition.objects.filter(company=demo).count()
+out['champs_autorises_factures_source'] = sorted(c for c in di.champs_autorises('factures') if 'montant' in c)
+out['champs_autorises_devis_source'] = sorted(c for c in di.champs_autorises('devis') if 'montant' in c)
+try:
+    di.valider_mapping('factures', {'montant_ttc': 'montant_ttc_source'}); out['valider_mapping'] = 'ACCEPTE'
+except ValueError as e:
+    out['valider_mapping'] = 'ValueError: ' + str(e)
+print('@@P5 ' + json.dumps(out, ensure_ascii=False, default=str))

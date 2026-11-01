@@ -1,0 +1,43 @@
+== acc-aana-old 32375fe659cc0ecc5fb69e0da5c9190560979266
+{
+ "repro": true,
+ "cas": {
+  "WITH \"CRM_LEAD\" AS (SELECT 1 AS id) SELECT * FROM crm_lead": {
+   "sql_execute": "WITH \"CRM_LEAD\" AS (SELECT 1 AS id) SELECT * FROM crm_lead",
+   "tables_lues_sans_filtre": [
+    "crm_lead"
+   ]
+  },
+  "WITH \"DJANGO_SESSION\" AS (SELECT 1 AS a) SELECT * FROM django_session": {
+   "sql_execute": "WITH \"DJANGO_SESSION\" AS (SELECT 1 AS a) SELECT * FROM django_session",
+   "tables_lues_sans_filtre": [
+    "django_session"
+   ]
+  },
+  "SELECT nom FROM crm_client WHERE EXISTS (WITH \"CRM_LEAD\" AS (SELECT 1) SELECT 1 FROM crm_lead)": {
+   "sql_execute": "SELECT nom FROM (SELECT * FROM crm_client WHERE company_id = 7) AS crm_client WHERE EXISTS(WITH \"CRM_LEAD\" AS (SELECT 1) SELECT 1 FROM crm_lead)",
+   "tables_lues_sans_filtre": [
+    "crm_lead"
+   ]
+  }
+ }
+}
+verdict : REPRO
+exit=0
+== acc-aana 15ebadca518c248e41f636e73a3367b2dffa405c
+{
+ "repro": false,
+ "cas": {
+  "WITH \"CRM_LEAD\" AS (SELECT 1 AS id) SELECT * FROM crm_lead": {
+   "rejete": "Table non autorisee ou non scopee par societe : crm_lead"
+  },
+  "WITH \"DJANGO_SESSION\" AS (SELECT 1 AS a) SELECT * FROM django_session": {
+   "rejete": "Table non autorisee ou non scopee par societe : django_session"
+  },
+  "SELECT nom FROM crm_client WHERE EXISTS (WITH \"CRM_LEAD\" AS (SELECT 1) SELECT 1 FROM crm_lead)": {
+   "rejete": "Table non autorisee ou non scopee par societe : crm_lead"
+  }
+ }
+}
+verdict : NON REPRODUIT
+exit=1

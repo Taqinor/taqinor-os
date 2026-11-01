@@ -1,0 +1,101 @@
+{
+ "refus": [
+  {
+   "sql": "WITH \"CRM_LEAD\" AS (SELECT 1 AS id) SELECT * FROM crm_lead",
+   "refuse": true,
+   "motif": "Table non autorisee ou non scopee par societe : crm_lead"
+  },
+  {
+   "sql": "WITH \"PG_STATS\" AS (SELECT 1) SELECT attname, most_common_vals FROM pg_stats",
+   "refuse": true,
+   "motif": "Table non autorisee ou non scopee par societe : pg_stats"
+  },
+  {
+   "sql": "WITH \"DJANGO_SESSION\" AS (SELECT 1) SELECT session_key FROM django_session",
+   "refuse": true,
+   "motif": "Table non autorisee ou non scopee par societe : django_session"
+  },
+  {
+   "sql": "WITH \"PG_STATS\" AS (SELECT 1) SELECT attname, most_common_vals FROM pg_stats WHERE tablename='crm_client'",
+   "refuse": true,
+   "motif": "Table non autorisee ou non scopee par societe : pg_stats"
+  },
+  {
+   "sql": "WITH \"PG_STATS\" AS (SELECT 1) SELECT attname, histogram_bounds FROM pg_stats WHERE tablename='stock_produit' AND attname='prix_achat'",
+   "refuse": true,
+   "motif": "Table non autorisee ou non scopee par societe : pg_stats"
+  },
+  {
+   "sql": "WITH \"Pg_Roles\" AS (SELECT 1) SELECT rolname FROM pg_roles",
+   "refuse": true,
+   "motif": "Table non autorisee ou non scopee par societe : pg_roles"
+  },
+  {
+   "sql": "SELECT attname, most_common_vals FROM pg_stats WHERE tablename='crm_client'",
+   "refuse": true,
+   "motif": "Table non autorisee ou non scopee par societe : pg_stats"
+  },
+  {
+   "sql": "WITH crm_client AS (SELECT 1 AS id) SELECT * FROM crm_client",
+   "refuse": true,
+   "motif": "Nom de CTE invalide ou homonyme d'une table."
+  },
+  {
+   "sql": "SELECT * FROM autre_schema.crm_client",
+   "refuse": true,
+   "motif": "Table non autorisee ou non scopee par societe : autre_schema.crm_client"
+  }
+ ],
+ "accepte": [
+  {
+   "sql": "WITH c AS (SELECT id FROM crm_client) SELECT * FROM c",
+   "execute": "WITH c AS (SELECT id FROM (SELECT * FROM crm_client WHERE company_id = 1) AS crm_client) SELECT * FROM c",
+   "tables_non_scopees": [],
+   "execution": {
+    "ok": true,
+    "lignes": 7,
+    "apercu": "[(1,), (2,), (3,)]"
+   }
+  },
+  {
+   "sql": "WITH \"c\" AS (SELECT id FROM crm_client) SELECT * FROM c",
+   "execute": "WITH \"c\" AS (SELECT id FROM (SELECT * FROM crm_client WHERE company_id = 1) AS crm_client) SELECT * FROM c",
+   "tables_non_scopees": [],
+   "execution": {
+    "ok": true,
+    "lignes": 7,
+    "apercu": "[(1,), (2,), (3,)]"
+   }
+  }
+ ],
+ "execution": [
+  {
+   "sql": "SELECT SUM(montant_ht) FROM ventes_facture WHERE statut IN ('emise','payee','en_retard')",
+   "execute": "SELECT SUM(montant_ht) FROM (SELECT * FROM ventes_facture WHERE company_id = 1) AS ventes_facture WHERE statut IN ('emise', 'payee', 'en_retard')",
+   "tables_non_scopees": [],
+   "execution": {
+    "ok": true,
+    "lignes": 1,
+    "apercu": "[(None,)]"
+   }
+  },
+  {
+   "sql": "SELECT SUM(montant_ht) FROM ventes_facture WHERE statut IN ('emise','payee','en_retard') AND date_emission >= date_trunc('month', CURRENT_DATE)",
+   "execute": "SELECT SUM(montant_ht) FROM (SELECT * FROM ventes_facture WHERE company_id = 1) AS ventes_facture WHERE statut IN ('emise', 'payee', 'en_retard') AND date_emission >= DATE_TRUNC('MONTH', CURRENT_DATE)",
+   "tables_non_scopees": [],
+   "execution": {
+    "ok": true,
+    "lignes": 1,
+    "apercu": "[(None,)]"
+   }
+  }
+ ],
+ "prompt": {
+  "exemple_ca": "SELECT SUM(montant_ht) FROM ventes_facture WHERE statut IN ('emise','payee','en_retard')",
+  "couples_confrontes": 11,
+  "colonnes_absentes": []
+ },
+ "role_courant": "erp_user",
+ "sql_agent_ro_existe": false,
+ "verdict": "PASS"
+}
