@@ -1707,7 +1707,7 @@ export default function DevisGenerator({
         + (n.envoye == null ? 'non envoyé (nombre illisible)' : String(n.envoye).replace('.', ','))
     }
   }
-  const lignesQuantiteNulle = lignesNonEnvoyees(lines).quantiteNulle  // AGNR59 : LA définition d'AGNR58, composées comprises
+  const lignesQuantiteNulle = lignesNonEnvoyees(lines).quantiteNulle.filter(l => !l.compose || l.quantiteManuelle || l.prixManuel)  // AGNR59 ; composée intacte de l'auto-remplissage : tue (fondateur 01/11)
   const avisQuantiteNulle = !lignesQuantiteNulle.length ? null
     : lignesQuantiteNulle.length === 1
       ? `1 ligne à quantité 0 ne sera pas enregistrée : ${lignesQuantiteNulle[0].designation || '—'}`
