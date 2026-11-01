@@ -391,3 +391,35 @@ test('conso_stockee_relue_exacte', () => {
     etude_params: { conso_annuelle: 1282, distributeur: 'onee' } }, { bareme: null })
   assert.equal(etat.realBillKwh, '106.83')
 })
+
+// AGNR57 — l'étude ENVOYÉE sort de `entreesDeEtat` (état d'écran du hook),
+// plus d'un second constructeur local.
+test('etude_envoyee_par_entreesDeEtat', () => {
+  const ecran = (extra) => ({
+    mode: 'residentiel', lignes: [], distributeur: 'onee', distributeurChoisi: false,
+    monthly: Array(12).fill(0), provenanceMois: Array(12).fill('exemple'),
+    facturesSaisies: false, fHiver: '', fEte: '', realBillSaisi: false, realBillMode: 'kwh',
+    consoAnnuelleReelle: null, consoStockee: null, bareme: null, ...extra,
+  })
+  const tapes = [300, 300, 280, 260, 250, 400, 500, 500, 400, 300, 280, 300]
+  const cas = [
+    ['12 mois tapés', ecran({ monthly: tapes, provenanceMois: Array(12).fill('tapee'), facturesSaisies: true }),
+      { factures_mensuelles_reelles: tapes,
+        conso_annuelle: consoAnnuelleDepuisFactures(tapes, 'onee'), distributeur: 'onee' }],
+    ['hiver / été', ecran({ facturesSaisies: true, fHiver: '500', fEte: '1200' }),
+      { factures_hiver_ete: { hiver_mad: 500, ete_mad: 1200, ete_differente: true } }],
+    ['conso stockée saisie', ecran({ consoStockee: { valeur: 1282, descendDesFactures: false, factures: null } }),
+      { conso_annuelle: 1282 }],
+    ['facture réelle MAD', ecran({ realBillSaisi: true, realBillMode: 'mad', consoAnnuelleReelle: 1282 }),
+      { conso_annuelle: 1282, distributeur: 'onee' }],
+  ]
+  for (const [nom, etat, attendu] of cas) {
+    assert.deepEqual(entreesDeEtat(etat), attendu, nom)
+    // le corps envoyé (`etude`) = les choix + exactement ces entrées
+    assert.deepEqual(etatVersEcritures(etat, { recommended: null }).etude,
+      { nombre_proprietes: null, ...attendu }, nom)
+  }
+  // aucune seconde construction dans le hook
+  const hook = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'hooks/usePersistanceDevis.js'), 'utf-8')
+  assert.equal(/const entreesReellesEcran\b/.test(hook), false)
+})

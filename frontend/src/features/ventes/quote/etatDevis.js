@@ -344,21 +344,40 @@ export function facturesHiverEte(fHiver, fEte) {
   return { hiver_mad: hiver, ete_mad: differente ? ete : null, ete_differente: differente }
 }
 
+/**
+ * AGNR57 — LES « entrées réelles » de l'étude envoyée (un seul constructeur,
+ * celui que le générateur appelle à l'enregistrement). Un état d'écran porte
+ * `provenanceMois` : seuls les douze mois TAPÉS partent (AGNR34, hiver / été
+ * sinon, jamais une série dérivée envoyée « réelle ») ; un état relu
+ * (`devisVersEtat`) n'en porte pas et garde ses factures stockées.
+ * Conso : facture réelle tapée (COUV-HOR, souveraine) → conso stockée saisie →
+ * dérivation des factures au barème → facture réelle de repli.
+ */
 export function entreesDeEtat(etat) {
   const entrees = {}
   const stockee = etat.consoStockee
-  const factures = Array.isArray(etat.monthly) ? etat.monthly : (stockee?.factures || null)
-  if (factures) entrees.factures_mensuelles_reelles = factures.map(v => parseFloat(v) || 0)
-  else if (etat.facturesHiverEte) entrees.factures_hiver_ete = etat.facturesHiverEte
+  const ecran = Array.isArray(etat.provenanceMois)
+  const tapees = ecran
+    ? (etat.provenanceMois.length === 12 && etat.provenanceMois.every(p => p === 'tapee') ? etat.monthly : null)
+    : (Array.isArray(etat.monthly) ? etat.monthly : null)
+  const emises = ecran ? tapees : (tapees ?? stockee?.factures ?? null)
+  const deux = etat.facturesHiverEte
+    ?? (etat.facturesSaisies ? facturesHiverEte(etat.fHiver, etat.fEte) : null)
+  if (emises) entrees.factures_mensuelles_reelles = emises.map(v => parseFloat(v) || 0)
+  else if (deux) entrees.factures_hiver_ete = deux
+  const factures = emises ?? stockee?.factures ?? null
+  const reelle = etat.consoAnnuelleReelle > 0 ? etat.consoAnnuelleReelle : null
   let conso = null
   let auBareme = false
-  if (stockee && !stockee.descendDesFactures) conso = stockee.valeur
+  if (etat.realBillSaisi && reelle) { conso = reelle; auBareme = etat.realBillMode === 'mad' }
+  if (conso == null && stockee && !stockee.descendDesFactures) conso = stockee.valeur
   if (conso == null && factures) {
     const bareme = baremePourDerivation(etat.bareme, stockee, factures)
     const derivee = consoAnnuelleDepuisFactures(factures, etat.distributeur || 'onee',
       bareme?.tranches, bareme?.chargesFixes)
     if (derivee > 0) { conso = derivee; auBareme = true }
   }
+  if (conso == null && reelle) { conso = reelle; auBareme = etat.realBillMode === 'mad' }
   if (conso != null) {
     entrees.conso_annuelle = conso
     if (auBareme || etat.distributeurChoisi) entrees.distributeur = etat.distributeur || 'onee'

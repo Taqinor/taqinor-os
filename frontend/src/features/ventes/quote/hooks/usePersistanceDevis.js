@@ -8,9 +8,9 @@ import { erreursConditions, erreurEcheancier } from '../../echeancierEdition'
 import {
   isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe, texteClassement,
 } from '../../calc/classification.js'
-import { controlerFacturesSaisies, consoAnnuelleDepuisFactures, controlerKwhDeclare, MESSAGE_KWH_INCOHERENT } from '../../calc/tarifs.js'
+import { controlerFacturesSaisies, controlerKwhDeclare, MESSAGE_KWH_INCOHERENT } from '../../calc/tarifs.js'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
-import { etatVersEcritures, baremePourDerivation, facturesHiverEte, etudeDeCreation } from '../etatDevis'
+import { etatVersEcritures, etudeDeCreation } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
 import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
@@ -166,7 +166,7 @@ export function usePersistanceDevis(ctx) {
       }
     }
     // ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — les 12 factures partent comme
-    // « réelles » (`entreesReellesEcran`) : une facture sous les lignes fixes
+    // « réelles » (`entreesDeEtat`) : une facture sous les lignes fixes
     // du compteur est REFUSÉE (le serveur la refuserait aussi, après
     // l'enregistrement des lignes) ; un écart avec la facture d'hiver du lead
     // se fait CONFIRMER une fois (second clic), jamais corrigé en silence.
@@ -225,7 +225,7 @@ export function usePersistanceDevis(ctx) {
   // clés envoyées bougent, les autres restent intouchées bit à bit.
   //   • TOUS LES MARCHÉS — les ENTRÉES RÉELLES tapées par le vendeur sur CET
   //     écran, et elles seules : les 12 factures du client, la consommation
-  //     annuelle et le distributeur (voir `entreesReellesEcran` ci-dessous).
+  //     annuelle et le distributeur (voir `entreesDeEtat`, etatDevis.js).
   //     ARBITRAGE ORCHESTRATEUR (QJR66, 29/08/2026) : « zéro perte ». Une
   //     première version de cette tâche n'écrivait RIEN en résidentiel, ce qui
   //     re-rouvrait le trou N1 — un devis créé À LA MAIN (hors devis auto d'un
@@ -307,60 +307,6 @@ export function usePersistanceDevis(ctx) {
     return choix
   }
 
-  const entreesReellesEcran = (consoDejaConnue) => {
-    const entrees = {}
-    // AGNR34 (D-AGNR-1 option (a)) — douze mois TAPÉS ⇒ `factures_mensuelles_reelles` ;
-    // des mois estimés depuis hiver / été ⇒ `factures_hiver_ete` (le moteur
-    // dérive lui-même les marches) — jamais une série dérivée envoyée « réelle ».
-    const deuxFactures = facturesHiverEte(fHiver, fEte)
-    if (provenanceMois.length === 12 && provenanceMois.every(p => p === 'tapee')) {
-      entrees.factures_mensuelles_reelles = monthly.map(v => parseFloat(v) || 0)
-    } else if (facturesSaisies && deuxFactures) {
-      entrees.factures_hiver_ete = deuxFactures
-    }
-    // Conso annuelle : la source la plus DIRECTE d'abord (l'étude du marché,
-    // qui descend de la saisie « consommation »), puis la facture réelle QF4,
-    // puis la dérivation depuis les 12 factures (kwhFromBill au barème réel du
-    // distributeur choisi — même patron que `autoQuote.js`, jamais un chiffre
-    // supposé).
-    //
-    // COUV-HOR (29/09/2026) — une facture/kWh TAPÉE dans cette session reste
-    // souveraine ; une conso STOCKÉE qui était une saisie repart telle quelle
-    // (exacte, sans la dérive ×12 de l'aller-retour kWh/mois) ; sinon les
-    // factures (celles de l'écran, à défaut celles du devis) sont RE-DÉRIVÉES
-    // au barème — jamais la valeur réaffichée par `?edit=` réécrite à
-    // l'identique (DEV-202609-0113 : 198 000 MAD ÷ 1,20 = 165 000 kWh revenait
-    // à chaque enregistrement, étiqueté 'onee').
-    const stockee = consoStockee.current
-    let conso = consoDejaConnue ?? null
-    let auBareme = false   // conso calculée ICI au barème de `distributeur`
-    if (conso == null && realBillSaisi && consoAnnuelleReelle > 0) {
-      conso = consoAnnuelleReelle
-      auBareme = realBillMode === 'mad'
-    }
-    if (conso == null && stockee && !stockee.descendDesFactures) conso = stockee.valeur
-    const factures = entrees.factures_mensuelles_reelles || stockee?.factures || null
-    if (conso == null && factures) {
-      const bareme = baremePourDerivation(baremeSociete, stockee, factures)
-      const derivee = consoAnnuelleDepuisFactures(factures, distributeur,
-        bareme?.tranches, bareme?.chargesFixes)
-      if (derivee > 0) { conso = derivee; auBareme = true }
-    }
-    if (conso == null && consoAnnuelleReelle > 0) {
-      conso = consoAnnuelleReelle
-      auBareme = realBillMode === 'mad'
-    }
-    if (conso != null) {
-      entrees.conso_annuelle = conso
-      // Jamais un distributeur que personne n'a choisi sur une conso que
-      // l'écran n'a pas calculée à son barème.
-      if (auBareme || distributeurChoisi) entrees.distributeur = distributeur
-    } else if (distributeur && distributeur !== 'onee') {
-      entrees.distributeur = distributeur
-    }
-    return entrees
-  }
-
   // QJR542 — la projection « étude du marché → clés etude_params légales »
   // vit dans UNE fonction pure partagée avec le devis automatique
   // (`features/ventes/quote/etudeMarcheBloc.js`) ; ici on ne fait que lui
@@ -373,6 +319,9 @@ export function usePersistanceDevis(ctx) {
     echeancier: echeancierSaisie, echeancierAEnvoyer: echeancierAEnvoyer.current,
     conditions, conditionsServies: conditionsServies.current,
     lignes: lines, multiMode, nombreProprietes, scenario, recommendedChoice,
+    // AGNR57 — de quoi construire les entrées réelles (`entreesDeEtat`).
+    monthly, provenanceMois, facturesSaisies, fHiver, fEte, realBillSaisi, realBillMode,
+    consoAnnuelleReelle, distributeur, distributeurChoisi, consoStockee: consoStockee.current,
     profilCi, ctxCi: ctxProfilCi, tarifSaisie, aujourdhui: aujourdhuiIso,
     ecoCi: { ...ecoCi, revente_demandee: profilCi.tension === 'mt' && Boolean(profilCi.revente) },
     // QJR575 — la sentinelle « Non précisée » se persiste null.
@@ -391,12 +340,6 @@ export function usePersistanceDevis(ctx) {
     },
     saisiesEco: ecoAvecCalendrier,
   })
-  const blocEtudeMarche = () => etatVersEcritures(etatEcran(), {
-    etude: null,
-    recommended,
-    entrees: entreesReellesEcran,
-  }).etude
-
   // Cœur de persistance extrait de `handleSubmit` (aucun changement de
   // comportement) : construit le payload + les lignes, écrit le devis (édition
   // atomique ou création atomique), attache l'étude du marché par l'endpoint de
@@ -465,7 +408,7 @@ export function usePersistanceDevis(ctx) {
       // repasse jamais en brouillon) : posé seulement à la création ci-dessous.
       // QJR658 — en-tête et lignes construits par le module pur
       // (`etatVersEcritures`), le même que l'aller-retour testé.
-      const ecritures = etatVersEcritures(etatEcran())
+      const ecritures = etatVersEcritures(etatEcran(), { recommended })
       const payload = { ...ecritures.entete }
       setErreursChamps({})
       // QX21 — lignes construites UNE fois (mêmes champs qu'avant : HT dérivé du
@@ -526,7 +469,7 @@ export function usePersistanceDevis(ctx) {
         // de l'étude partent aussi AVEC la création (`etudeDeCreation`).
         const { data } = await creerAtomiqueAvecReprise({
           ...payload,
-          etude_params: etudeDeCreation(modeInstallation, choixEcran(), blocEtudeMarche()),
+          etude_params: etudeDeCreation(modeInstallation, choixEcran(), ecritures.etude),
           lignes: lignesPayload,
         }, cleCreation())
         cleCreationRef.current = null
@@ -546,7 +489,7 @@ export function usePersistanceDevis(ctx) {
       // qu'elle envoie. Résidentiel ⇒ aucun appel.
       // QJR553 — une version restaurée porte SA propre étude (déjà rejouée
       // ci-dessus) : l'étude de l'écran courant ne la recouvre pas.
-      const etudeMarche = surcharge ? null : blocEtudeMarche()
+      const etudeMarche = surcharge ? null : ecritures.etude
       if (etudeMarche) {
         try {
           const reponseEtude = await ventesApi.patchEtudeParams(devisId, etudeMarche)
