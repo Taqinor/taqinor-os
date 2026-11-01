@@ -13,7 +13,7 @@ Constantes decouvertes (convention de nommage, pas une liste figee) dans
   - ``<NOM>_FIN_VALIDITE = date(...)`` / ``RELEVE_LE``-like : ``<NOM>_VALABLE_JUSQUAU``
     -> cette date ;
   - ``MILLESIME_COURANT = AAAA``                  -> fin de validite = 31/12/AAAA,
-    sauf si le meme fichier porte ``MILLESIME_COURANT_VALABLE_JUSQUAU = date(...)``
+    sauf si le meme fichier porte ``_MILLESIME_COURANT_VALABLE_JUSQUAU = date(...)``
     (decision fondateur datee : le bareme reste en vigueur au-dela du 31/12) ->
     cette date remplace le 31/12.
 
@@ -81,7 +81,7 @@ def echeances(racine_moteur: Path = None) -> list[tuple[str, str, dt.date]]:
                 fin = _date_litterale(valeur.elts[1])
                 if fin:
                     trouvees.append((rel, nom, fin))
-            elif nom == "MILLESIME_COURANT_VALABLE_JUSQUAU":
+            elif nom == "_MILLESIME_COURANT_VALABLE_JUSQUAU":
                 prolongation = _date_litterale(valeur)
             elif nom.endswith(SUFFIXES_DATE):
                 fin = _date_litterale(valeur)

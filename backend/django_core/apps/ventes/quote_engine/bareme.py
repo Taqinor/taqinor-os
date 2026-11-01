@@ -98,7 +98,8 @@ MILLESIME_COURANT = 2026
 #: Médias24) ; la TVA électricité a fini sa trajectoire (20 % depuis le
 #: 01/01/2026), le PLF 2027 n'en change pas le taux. La garde AMOT74 lit cette
 #: date au lieu du 31/12 : elle rougit 60 j avant, pour re-sourcer la grille ANRE.
-MILLESIME_COURANT_VALABLE_JUSQUAU = _dt.date(2027, 2, 28)
+#: Privée : annotation réglementaire lue par la garde, pas par le moteur (AMOT75).
+_MILLESIME_COURANT_VALABLE_JUSQUAU = _dt.date(2027, 2, 28)
 
 # ── PRIX TTC PAR TRANCHE, AVEC PROVENANCE LIGNE À LIGNE ─────────────────────
 # `PROVENANCE_TRANCHES` documente, pour CHAQUE tranche de CHAQUE millésime,

@@ -37,7 +37,7 @@ class EcheancesRealesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             Path(d, "b.py").write_text(
                 "import datetime as _dt\nMILLESIME_COURANT = 2026\n"
-                "MILLESIME_COURANT_VALABLE_JUSQUAU = _dt.date(2027, 2, 28)\n", encoding="utf-8")
+                "_MILLESIME_COURANT_VALABLE_JUSQUAU = _dt.date(2027, 2, 28)\n", encoding="utf-8")
             self.assertEqual(cer.echeances(Path(d)),
                              [("b.py", "MILLESIME_COURANT", dt.date(2027, 2, 28))])
             Path(d, "b.py").write_text("MILLESIME_COURANT = 2026\n", encoding="utf-8")
