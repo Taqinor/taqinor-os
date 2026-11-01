@@ -449,6 +449,9 @@ def _assert_every_table_scoped(test, secured_sql, company_id):
     for table in tables:
         attendu = "id" if table.name == "authentication_company" else "company_id"
         select = table.parent.parent if isinstance(table.parent, exp.From) else None
+        if nom_pg(table.this) in LIGNES_PAR_PARENT:
+            _assert_ligne_scopee_par_parent(test, table, select, secured_sql)
+            continue
         test.assertIsInstance(select, exp.Select, secured_sql)
         test.assertIsInstance(select.parent, exp.Subquery, secured_sql)
         test.assertEqual(len(select.args.get("joins") or []), 0, secured_sql)
@@ -463,6 +466,33 @@ def _assert_every_table_scoped(test, secured_sql, company_id):
         test.assertIsNone(cond.this.args.get("table"), secured_sql)
         test.assertEqual(cond.expression, exp.Literal.number(company_id),
                          secured_sql)
+
+
+# AANA78 — tables de lignes SANS company_id : scopees par leur document parent.
+LIGNES_PAR_PARENT = {
+    "ventes_lignedevis": ("devis_id", "ventes_devis"),
+    "ventes_lignefacture": ("facture_id", "ventes_facture"),
+}
+
+
+def _assert_ligne_scopee_par_parent(test, table, select, secured_sql):
+    """`(SELECT * FROM <ligne> WHERE <fk> IN (SELECT id FROM <parent scope>))`
+    — le parent lui-meme est verifie par la boucle generale (company_id = id)."""
+    from sqlglot import exp
+    fk, parent = LIGNES_PAR_PARENT[table.this.this.lower()]
+    test.assertIsInstance(select, exp.Select, secured_sql)
+    test.assertIsInstance(select.parent, exp.Subquery, secured_sql)
+    test.assertEqual(len(select.args.get("joins") or []), 0, secured_sql)
+    test.assertEqual([type(e) for e in select.expressions], [exp.Star], secured_sql)
+    cond = select.args["where"].this
+    test.assertIsInstance(cond, exp.In, secured_sql)
+    test.assertEqual(cond.this.name, fk, secured_sql)
+    test.assertIsNone(cond.this.args.get("table"), secured_sql)
+    inner = cond.args["query"].this
+    test.assertEqual([e.name for e in inner.expressions], ["id"], secured_sql)
+    source = inner.find(exp.From).this
+    test.assertIsInstance(source, exp.Subquery, secured_sql)
+    test.assertEqual(source.this.find(exp.From).this.name, parent, secured_sql)
 
 
 def _test_engine():
@@ -534,6 +564,84 @@ class ReecritureSurPostgresTests(unittest.TestCase):
                         self.assertNotIn("C8", valeurs, secured)
             finally:
                 tx.rollback()
+
+
+@unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
+class LignesScopeesParParentTests(unittest.TestCase):
+    """AANA78 — `ventes_lignedevis` / `ventes_lignefacture` n'ont PAS de
+    company_id : chaque forme qui les lit est scopee par le document parent, et
+    l'execution reelle (sqlite, 2 societes) ne voit que les lignes de l'appelant."""
+
+    FORMES = (
+        "SELECT SUM(ventes_lignedevis.quantite * ventes_lignedevis.prix_unitaire) "
+        "FROM ventes_lignedevis",
+        "SELECT SUM(l.quantite * l.prix_unitaire) FROM ventes_devis d "
+        "JOIN ventes_lignedevis l ON l.devis_id = d.id",
+        "SELECT SUM(l.quantite * l.prix_unitaire) FROM ventes_lignedevis AS l "
+        "LEFT JOIN ventes_devis d ON l.devis_id = d.id",
+        "WITH x AS (SELECT * FROM ventes_lignedevis) "
+        "SELECT SUM(quantite * prix_unitaire) FROM x",
+        "SELECT SUM(t.q) FROM (SELECT quantite * prix_unitaire AS q "
+        "FROM ventes_lignedevis) t",
+        "SELECT SUM(quantite * prix_unitaire) FROM \"ventes_lignedevis\"",
+        "SELECT SUM(quantite * prix_unitaire) FROM public.ventes_lignedevis",
+        "SELECT SUM(quantite * prix_unitaire) FROM ventes_lignedevis "
+        "WHERE devis_id = 2",
+        "SELECT SUM(quantite * prix_unitaire) FROM ventes_lignedevis "
+        "WHERE devis_id IN (SELECT id FROM ventes_devis)",
+    )
+
+    def _sqlite(self):
+        import sqlite3
+        conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
+        conn.executescript(
+            "CREATE TABLE ventes_devis (id int, company_id int);"
+            "CREATE TABLE ventes_facture (id int, company_id int);"
+            "CREATE TABLE ventes_lignedevis (id int, devis_id int, "
+            "quantite real, prix_unitaire real);"
+            "CREATE TABLE ventes_lignefacture (id int, facture_id int, "
+            "quantite real, prix_unitaire real);"
+            "INSERT INTO ventes_devis VALUES (1, 7), (2, 8);"
+            "INSERT INTO ventes_facture VALUES (1, 7), (2, 8);"
+            "INSERT INTO ventes_lignedevis VALUES (1, 1, 2, 10), (2, 2, 5, 1000);"
+            "INSERT INTO ventes_lignefacture VALUES (1, 1, 3, 10), (2, 2, 5, 1000);")
+        return conn
+
+    def _total(self, conn, sql):
+        rows = conn.execute(svc._validate_and_secure(sql, 7)).fetchall()
+        return rows[0][0] or 0
+
+    def test_toutes_les_formes_ne_voient_que_la_societe(self):
+        conn = self._sqlite()
+        for sql in self.FORMES:
+            with self.subTest(sql=sql):
+                secured = svc._validate_and_secure(sql, 7)
+                _assert_every_table_scoped(self, secured, 7)
+                total = self._total(conn, sql)
+                # « WHERE devis_id = 2 » vise le devis de la societe 8 : 0 ligne.
+                # Societe 7 : 2 x 10 = 20 (jamais les 5 000 de la societe 8).
+                self.assertEqual(total, 0 if "devis_id = 2" in sql else 20, secured)
+
+    def test_lignes_de_facture_scopees(self):
+        conn = self._sqlite()
+        for sql in (
+            "SELECT SUM(quantite * prix_unitaire) FROM ventes_lignefacture",
+            "SELECT SUM(l.quantite * l.prix_unitaire) FROM ventes_facture f "
+            "JOIN ventes_lignefacture l ON l.facture_id = f.id",
+            "SELECT SUM(quantite * prix_unitaire) FROM ventes_lignefacture "
+            "WHERE facture_id IN (SELECT id FROM ventes_facture WHERE id = 2)",
+        ):
+            with self.subTest(sql=sql):
+                _assert_every_table_scoped(self, svc._validate_and_secure(sql, 7), 7)
+                self.assertEqual(self._total(conn, sql), 0 if "id = 2" in sql else 30)
+
+    def test_lignes_hors_table_societe(self):
+        # Elles n'ont pas de colonne company_id : un filtre company_id direct
+        # ne doit jamais etre genere sur elles.
+        for t in LIGNES_PAR_PARENT:
+            self.assertNotIn(t, svc._TABLES_WITH_COMPANY_ID)
+            self.assertIn(t, svc._TENANT_SCOPED_TABLES)
 
 
 @unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
