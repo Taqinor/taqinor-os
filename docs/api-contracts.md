@@ -400,6 +400,8 @@
     activites_en_retard:inconnu, contrats_a_renouveler:inconnu, detail:texte, factures_impayees:inconnu, garanties_expirantes:inconnu, total:inconnu, visites_dues:inconnu
 - frontend/src/api/reportingApi.js :: getPipeline -> /api/django/reporting/pipeline
     detail:texte, devis_par_statut:inconnu, gagnes:objet, par_etape:inconnu, perdus_par_motif:liste, prevision_ponderee:texte
+- frontend/src/api/reportingApi.js :: getProbabilitesEtape -> /api/django/reporting/probabilites-etape
+    probabilites:inconnu
 - frontend/src/api/reportingApi.js :: integriteInsight -> /api/django/reporting/insights/integrite
     detail:texte, familles:inconnu, total_anomalies:inconnu
 - frontend/src/api/reportingApi.js :: kpiBadges -> /api/django/reporting/reports/kpi-federes

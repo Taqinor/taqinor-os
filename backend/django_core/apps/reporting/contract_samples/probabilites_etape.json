@@ -1,0 +1,14 @@
+{
+  "endpoint": "GET /api/django/reporting/probabilites-etape/",
+  "pourquoi": "AANA66 (D-AANA-VER-2, PACT10) — contrat PARTAGE de LA table des probabilites de base par etape : servie par le serveur depuis core/win_probability.py (STAGE_BASE_PROBABILITY), recalibree par societe par core/score_params.py::resoudre, ouverte a tout role de la societe. Cles = STAGES.py (regle #2), valeurs = probabilite dans [0, 1]. LUE telle quelle par le Kanban, le total Pipeline et les Previsions (AANA67) — le front ne garde plus aucune table locale.",
+  "exemple": {
+    "probabilites": {
+      "NEW": 0.1,
+      "CONTACTED": 0.2,
+      "QUOTE_SENT": 0.4,
+      "FOLLOW_UP": 0.6,
+      "SIGNED": 1.0,
+      "COLD": 0.05
+    }
+  }
+}
