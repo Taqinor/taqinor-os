@@ -9,6 +9,7 @@ import {
 } from './draftCore'
 import { getPrefetched } from './leadPrefetch'
 import fieldLabels from './fieldLabels'
+import { ecrireStockage, retirerStockage } from '../../../lib/stockageBestEffort'
 
 // LW9/LW12 — Hook moteur d'état du Lead Workspace : branche les effets (PATCH
 // réseau, debounce d'autosauvegarde, miroir sessionStorage, garde stale,
@@ -27,7 +28,7 @@ const readLastVille = () => {
   try { return localStorage.getItem(LAST_VILLE_KEY) || '' } catch { return '' }
 }
 export const rememberVille = (v) => {
-  try { if (v && v.trim()) localStorage.setItem(LAST_VILLE_KEY, v.trim()) } catch { /* best-effort */ }
+  if (v && v.trim()) ecrireStockage('local', LAST_VILLE_KEY, v.trim())
 }
 
 // Miroir sessionStorage `taqinor.lead.draft.<id>` (blueprint D2#6) : le draft
@@ -44,10 +45,10 @@ function readMirror(id) {
   } catch { return null }
 }
 function writeMirror(id, data) {
-  try { window.sessionStorage.setItem(MIRROR_PREFIX + id, JSON.stringify(data)) } catch { /* best-effort */ }
+  ecrireStockage('session', MIRROR_PREFIX + id, JSON.stringify(data))
 }
 function clearMirror(id) {
-  try { window.sessionStorage.removeItem(MIRROR_PREFIX + id) } catch { /* best-effort */ }
+  retirerStockage('session', MIRROR_PREFIX + id)
 }
 
 // LW24 — voisin déjà pré-chargé en idle (cf. leadPrefetch.js) : premier rendu

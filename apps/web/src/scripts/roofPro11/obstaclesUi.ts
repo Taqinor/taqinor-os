@@ -80,6 +80,7 @@ import {
   prochainId, // ACAL64
   tousLesObstacles, // ACAL64
 } from './zones';
+import { suivreAlt } from './altTracker';
 
 /** CAL72 — provenances proposées (vocabulaire `core.calepinage.types.Provenance`), avec
  *  libellé FR + note « bloque le compte » pour PLAN/DEVINE. */
@@ -1507,7 +1508,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     const idx = vertexAtPoint(point);
     // CALX91 — Alt maintenue : le geste est une SUPPRESSION (déjà traitée au mousedown),
     // jamais un glissé — sinon les deux partiraient ensemble.
-    if (gesteSommet({ sommet: idx, altEnfoncee, ferme: ctx.closed, modeObstacle: ctx.obstacleMode, modeDisposition: ctx.layoutMode }) !== 'deplacer') {
+    if (gesteSommet({ sommet: idx, altEnfoncee: altEtat.enfoncee, ferme: ctx.closed, modeObstacle: ctx.obstacleMode, modeDisposition: ctx.layoutMode }) !== 'deplacer') {
       return false;
     }
     if (idx == null) return false;
@@ -1558,18 +1559,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   // ————————————————————————————————————————————————————————————————————
 
   /** Alt maintenue ? Suivi au clavier ET relu sur chaque événement souris (source sûre). */
-  let altEnfoncee = false;
-  if (typeof document.addEventListener === 'function') {
-    document.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = true;
-    });
-    document.addEventListener('keyup', (e) => {
-      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = false;
-    });
-    window.addEventListener?.('blur', () => {
-      altEnfoncee = false; // Alt+Tab : on ne garde jamais l'état
-    });
-  }
+  const altEtat = suivreAlt();
 
   /** Tolérance de SAISIE d'une arête, en mètres : le rayon pixel du sommet (`VERTEX_GRAB_PX`,
    *  convention de dessin déjà en place) lu au zoom courant. 0 = carte pas prête, aucun geste. */
@@ -1612,12 +1602,12 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
 
   map.on?.('mousedown', (e: maplibregl.MapMouseEvent) => {
     const alt = (e.originalEvent as MouseEvent | undefined)?.altKey;
-    if (typeof alt === 'boolean') altEnfoncee = alt; // la source la plus sûre
-    if (!altEnfoncee) return;
+    if (typeof alt === 'boolean') altEtat.enfoncee = alt; // la source la plus sûre
+    if (!altEtat.enfoncee) return;
     const idx = vertexAtPoint(e.point);
     const geste = gesteSommet({
       sommet: idx,
-      altEnfoncee,
+      altEnfoncee: altEtat.enfoncee,
       ferme: ctx.closed,
       modeObstacle: ctx.obstacleMode,
       modeDisposition: ctx.layoutMode,

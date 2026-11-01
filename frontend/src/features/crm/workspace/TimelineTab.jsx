@@ -12,6 +12,7 @@ import { TIMELINE_FILTERS, matchesTimelineFilter } from './timelineFiltres'
 import ChatterTimeline from '../../../components/ChatterTimeline'
 import { formatDate } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
+import { ecrireStockage } from '../../../lib/stockageBestEffort'
 
 // LW20 — Onglet Historique : le chatter devient le fil unique — en-tête
 // multi-touch (points-contact/), filtre par type persisté, notes épinglées en
@@ -26,7 +27,7 @@ const readFilter = () => {
   try { return localStorage.getItem(FILTER_KEY) || 'tous' } catch { return 'tous' }
 }
 const writeFilter = (v) => {
-  try { localStorage.setItem(FILTER_KEY, v) } catch { /* best-effort */ }
+  ecrireStockage('local', FILTER_KEY, v)
 }
 
 const NOTE_ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp'

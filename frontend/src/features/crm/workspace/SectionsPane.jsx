@@ -18,6 +18,7 @@ import SectionSite from './sections/SectionSite'
 import SectionVisite from './sections/SectionVisite'
 import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './sections/SectionDivers'
 import SectionPro from './sections/SectionPro'
+import { ecrireStockage } from '../../../lib/stockageBestEffort'
 
 // LW11 — Le centre : registre de sections + nav-chips sticky (scroll-spy rAF,
 // aria-current), repli persisté par section, wrapper `<form>` en création.
@@ -37,7 +38,7 @@ const readCollapsed = () => {
   try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || {} } catch { return {} }
 }
 const writeCollapsed = (map) => {
-  try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(map)) } catch { /* best-effort */ }
+  ecrireStockage('local', COLLAPSE_KEY, JSON.stringify(map))
 }
 
 // Entête repliable + anchor de scroll-spy autour du contenu pur d'une section.

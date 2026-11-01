@@ -15,6 +15,8 @@
 // exception, jamais un item perdu). VX214 ajoute les 4 kinds d'EXÉCUTION
 // (chantier_assigne/intervention_du_jour/da_approuvee_a_commander/
 // ticket_transfere — jamais une 2ᵉ boîte, ils rejoignent CETTE même liste).
+import { ecrireStockage, retirerStockage } from '../../lib/stockageBestEffort'
+
 const ALL_KINDS = [
   'activite', 'approbation', 'mention', 'relance', 'lead_chaud', 'devis_expire',
   'chantier_assigne', 'intervention_du_jour', 'da_approuvee_a_commander',
@@ -76,10 +78,10 @@ function safeGet(key) {
   try { return window.localStorage?.getItem(key) ?? null } catch { return null }
 }
 function safeSet(key, value) {
-  try { window.localStorage?.setItem(key, value) } catch { /* indisponible : no-op */ }
+  ecrireStockage('local', key, value)
 }
 function safeRemove(key) {
-  try { window.localStorage?.removeItem(key) } catch { /* indisponible : no-op */ }
+  retirerStockage('local', key)
 }
 
 /** Surcharge persistée : une persona choisie explicitement par l'utilisateur

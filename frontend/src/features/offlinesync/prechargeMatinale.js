@@ -1,3 +1,4 @@
+import { ecrireStockage } from '../../lib/stockageBestEffort'
 // NTMOB28 — Pré-chargement PROACTIF de la tournée du jour.
 //
 // Au démarrage matinal de l'app (réseau présent + créneau matinal), on remplit
@@ -31,9 +32,7 @@ export function dernierPrechargement() {
 }
 
 export function marquerPrecharge(jour) {
-  try {
-    storage()?.setItem(FLAG_KEY, jour)
-  } catch { /* stockage indisponible : on repréchargera au prochain démarrage */ }
+  ecrireStockage('local', FLAG_KEY, jour)
 }
 
 /**

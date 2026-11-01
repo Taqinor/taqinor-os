@@ -62,6 +62,20 @@ export function ringUVBounds(
   return uvBounds(ringENU.map(([x, y]) => [x * u[0] + y * u[1], x * s[0] + y * s[1]] as [number, number]));
 }
 
+/** Champs communs d'un calepinage VIDE (tracé dégénéré) des moteurs roofPro / roofPro2. */
+export function emptyLayoutBase(ring: LngLat[], areaM2: number, tiltRad: number) {
+  return {
+    origin: (ring.length ? ring[0] : [0, 0]) as [number, number],
+    ringENU: [] as [number, number][],
+    panels: [] as never[],
+    count: 0,
+    kwc: 0,
+    areaM2,
+    rowAngleRad: 0,
+    tiltRad,
+  };
+}
+
 /** Conversion (u,v) → ENU pour le repère des rangées. */
 export function uvToENU(u: [number, number], s: [number, number]): (uu: number, vv: number) => [number, number] {
   return (uu, vv) => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
