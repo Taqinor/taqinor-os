@@ -870,11 +870,12 @@ _FORBIDDEN_COLUMNS = (
     "prix_revendeur",
     "marge",
     "marge_snapshot",      # ventes.Devis — marge HT figee (manager-only)
+    "cout_unitaire",       # ASTK44 : cout interne d'une entree de production (stock.MouvementStock)
 )
 
 # Tables autorisees portant un prix d'achat ou une marge (verifie sur les
 # modeles Django : stock.Produit.prix_achat, ventes.Devis.marge_snapshot).
-_PRICE_TABLES = ("stock_produit", "ventes_devis")
+_PRICE_TABLES = ("stock_produit", "ventes_devis", "stock_mouvementstock")  # ASTK44 : cout interne
 
 # Reponse renvoyee a l'agent quand il tente d'acceder a une colonne interdite —
 # le LLM la verbalise alors proprement, sans jamais voir la donnee.
