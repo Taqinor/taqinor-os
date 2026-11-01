@@ -226,6 +226,15 @@ class TotauxDocumentMixin:
             return self.total_ht + self.total_tva
         return self._canonique()['ttc']
 
+    def totaux_a_stocker(self):
+        """ATOT55 — ``{total_ht_stocke, total_ttc_stocke}`` : la copie
+        stockée de ``total_ht``/``total_ttc`` (même chaîne, au centime),
+        posée par ``Facture.rafraichir_totaux_stockes`` et par la migration
+        de remplissage facturation 0024."""
+        from core.money import quantize_mad
+        return {'total_ht_stocke': quantize_mad(self.total_ht),
+                'total_ttc_stocke': quantize_mad(self.total_ttc)}
+
     @property
     def totaux_affichage(self):
         """AUD105 — LA CHAÎNE IMPRIMABLE : ``{ht_brut, remise, arrondi,

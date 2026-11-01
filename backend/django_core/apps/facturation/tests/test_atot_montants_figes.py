@@ -250,3 +250,89 @@ class MontantTrancheBrouillonTests(TestCase):
         self.assertEqual(r.status_code, 403, r.data)
         self.brouillon.refresh_from_db()
         self.assertEqual(self.brouillon.total_ttc, Decimal('14700.00'))
+
+
+class TotalStockeTests(TestCase):
+    """ATOT55 — ``total_ht_stocke``/``total_ttc_stocke`` égalent
+    ``total_ht``/``total_ttc`` sur toute facture (remise globale, TVA
+    mêlées 10/20, palier ARRONDI-100, ×N villas, tranche figée) et suivent
+    chaque écriture de ligne ou de remise ; la migration facturation 0024
+    remplit une facture existante. Rouge avant : colonne absente."""
+
+    setUp = MontantsFigesTests.setUp
+    _facture = MontantsFigesTests._facture
+
+    def _egal(self, facture):
+        from apps.ventes.models import Facture
+        relue = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(relue.total_ht_stocke, relue.total_ht)
+        self.assertEqual(relue.total_ttc_stocke, relue.total_ttc)
+        return relue
+
+    def _ligne(self, facture, pu, taux=None):
+        from apps.ventes.models import LigneFacture
+        return LigneFacture.objects.create(
+            facture=facture, produit=self.produit, designation='L',
+            quantite=Decimal('3'), prix_unitaire=Decimal(pu),
+            remise=Decimal('7.5'), taux_tva=taux)
+
+    def test_stocke_egal_au_noyau_cas_typiques(self):
+        from apps.ventes.models import Facture
+        cas = [
+            {},
+            {'remise_globale': Decimal('12.5')},
+            {'remise_globale': Decimal('3'), 'arrondi_pas': 100},
+            {'arrondi_pas': 100, 'arrondi_unites': 2},
+        ]
+        for extra in cas:
+            with self.subTest(**{k: str(v) for k, v in extra.items()}):
+                facture = self._facture(Facture.Statut.BROUILLON, **extra)
+                self._ligne(facture, '1234.57', Decimal('10'))
+                relue = self._egal(facture)
+                self.assertGreater(relue.total_ttc_stocke, Decimal('0'))
+                if extra.get('arrondi_pas'):
+                    self.assertEqual(relue.total_ttc_stocke % 100, 0)
+        tranche = self._facture(
+            Facture.Statut.EMISE, montant_ht=Decimal('1000.00'),
+            montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'),
+            type_facture=Facture.TypeFacture.ACOMPTE,
+            pourcentage=Decimal('30'))
+        relue = self._egal(tranche)
+        self.assertEqual(relue.total_ttc_stocke, Decimal('1200.00'))
+
+    def test_suit_ligne_et_remise(self):
+        from apps.ventes.models import Facture
+        facture = self._facture(Facture.Statut.BROUILLON)
+        avant = self._egal(facture).total_ttc_stocke
+        ligne = self._ligne(facture, '499.99', Decimal('10'))
+        ajoutee = self._egal(facture).total_ttc_stocke
+        self.assertGreater(ajoutee, avant)
+        url = f'/api/django/ventes/factures-lignes/{ligne.id}/'
+        r = self.api.patch(url, {'quantite': '5'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertGreater(self._egal(facture).total_ttc_stocke, ajoutee)
+        r = self.api.patch(f'/api/django/ventes/factures/{facture.id}/',
+                           {'remise_globale': '10'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        remisee = self._egal(facture)
+        self.assertEqual(remisee.remise_globale, Decimal('10'))
+        r = self.api.delete(url)
+        self.assertEqual(r.status_code, 204, getattr(r, 'data', None))
+        self.assertLess(self._egal(facture).total_ttc_stocke,
+                        remisee.total_ttc_stocke)
+
+    def test_migration_0024_remplit_les_existantes(self):
+        import importlib
+
+        from django.apps import apps as registre
+
+        from apps.ventes.models import Facture
+        migration = importlib.import_module(
+            'apps.facturation.migrations.0024_atot55_total_stocke')
+        facture = self._facture(Facture.Statut.BROUILLON,
+                                remise_globale=Decimal('5'), arrondi_pas=100)
+        self._ligne(facture, '777.77', Decimal('10'))
+        Facture.objects.filter(pk=facture.pk).update(
+            total_ht_stocke=None, total_ttc_stocke=None)
+        migration.remplir(registre, None)
+        self.assertIsNotNone(self._egal(facture).total_ht_stocke)
