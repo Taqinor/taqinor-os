@@ -290,7 +290,7 @@ unites:
     pr: 846
     date: 2026-10-07
     dossier: docs/audits/2026-10-07-securite.md
-    notes: "core/events.py et core/event_coverage.py sont à X3 (plus spécifiques). Lecture par checklist, pas intégrale. Audit L3 du 07/10/2026 (dossier docs/audits/2026-10-07-securite.md) : 29 constats, 53 tâches ASEC (lane asec-p0 à construire en premier) ; prod servie avec settings.dev constatée."
+    notes: "vérifie ASEC du 01/11/2026 (clôture, 54/54 cochées ; dossier docs/audits/2026-11-01-sécurité-verifie.md) : 31 tâches échantillonnées (graine ba577e26a) — 24 ok, 6 partielles, 1 fausse ; 2 S1 maintenus en seconde lentille (élargissement d'un rôle au-delà des droits de l'acteur ; 11 portes d'argent sans `encaisser`, Admin Ventes et Responsable passent) + 1 S2 (6 modules du paquet racine tests/ jamais joués en CI) → ASEC55-ASEC64 (5 plans) ; décision D-ASEC-VER-1 = tout ; 1 critique Fable. core/events.py et core/event_coverage.py sont à X3 (plus spécifiques). Lecture par checklist, pas intégrale. Audit L3 du 07/10/2026 (dossier docs/audits/2026-10-07-securite.md) : 29 constats, 53 tâches ASEC (lane asec-p0 à construire en premier) ; prod servie avec settings.dev constatée."
 
   - id: X4
     rang: 8
