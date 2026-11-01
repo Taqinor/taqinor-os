@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import OrderedDict
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 import logging
 
@@ -140,6 +141,20 @@ def synthese_economies(data: dict) -> dict | None:
             return None
         after = [max(0, round(b - s)) for b, s in zip(before, eco_m)]
         annual_before, annual_after = sum(before), sum(after)
+        # ERR-AGNR42 — somme de la série EXACTE, arrondie une seule fois (la
+        # série arrondie mois par mois donnait 17 016 pour 17 010,4). Absente
+        # (devis < niveau 5, étude horaire) : somme arrondie historique.
+        _exact = data.get("factures_mensuelles_exactes")
+        if isinstance(_exact, (list, tuple)) and len(_exact) == 12:
+            try:
+                _ex = [float(v) for v in _exact]
+                annual_before = int(Decimal(str(sum(_ex))).quantize(
+                    Decimal("1"), rounding=ROUND_HALF_UP))
+                annual_after = int(Decimal(str(sum(
+                    max(0.0, b - s) for b, s in zip(_ex, eco_m)))).quantize(
+                        Decimal("1"), rounding=ROUND_HALF_UP))
+            except (TypeError, ValueError):
+                pass
         if annual_before <= 0:
             return None
         # Même formule que la couverture (cover.py) : « facture réduite de X % ».
