@@ -29,7 +29,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.reporting.integrity import factures_payees_avec_solde
-from apps.reporting.views import _ht_encaisse
+from apps.reporting.views import _ht_encaisse, _part_ht
 from apps.stock.models import Produit
 from apps.ventes.models import Facture, LigneFacture, Paiement
 from authentication.models import Company
@@ -87,18 +87,18 @@ class Aprf13DashboardRequetesTests(TestCase):
         self._facture(Facture.Statut.EMISE, paye=Decimal('100'))
 
     def _attendu(self):
-        """Chiffres recalculés facture par facture, SANS préchargement."""
+        """Chiffres recalculés facture par facture, SANS préchargement
+        (AANA55 : encaissé = part HT des paiements, attente = part HT de
+        ``montant_du``, sur émises, en retard et payées)."""
         payees = list(Facture.objects.filter(
             company=self.company, statut=Facture.Statut.PAYEE))
-        ca_paye = sum((_ht_encaisse(f) for f in payees), Decimal('0'))
-        ouvertes = Facture.objects.filter(
+        ouvertes = list(Facture.objects.filter(
             company=self.company,
-            statut__in=[Facture.Statut.EMISE, Facture.Statut.EN_RETARD])
-        ca_attente = sum((Decimal(f.total_ht or 0) for f in ouvertes),
+            statut__in=[Facture.Statut.EMISE, Facture.Statut.EN_RETARD]))
+        toutes = payees + ouvertes
+        ca_paye = sum((_ht_encaisse(f) for f in toutes), Decimal('0'))
+        ca_attente = sum((_part_ht(f, f.montant_du) for f in toutes),
                          Decimal('0'))
-        ca_attente += sum(
-            (Decimal(f.total_ht or 0) - _ht_encaisse(f) for f in payees),
-            Decimal('0'))
         creance = sum((f.montant_du for f in ouvertes), Decimal('0'))
         anomalies = sorted(f.id for f in payees if f.montant_du != 0)
         return ca_paye, ca_attente, creance, anomalies

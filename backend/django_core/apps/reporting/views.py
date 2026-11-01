@@ -117,23 +117,12 @@ def dashboard(request):
     # ── KPIs ──────────────────────────────────────────────────────────────────
     factures_qs = Facture.objects.filter(**co)
 
-    # AANA20 / D-AANA-6 — CA en HT lu sur ``Facture.total_ht`` (remise
-    # globale honorée), jamais une somme de lignes. Le reliquat d'une facture
-    # « payée » n'est PAS encaissé : il reste en attente.
-    factures_payees = factures_qs.filter(statut=Facture.Statut.PAYEE)
-    # APRF13 (C-APRF-025) — les payées sont lues UNE fois, préchargées par
-    # ``factures_avec_montant_du`` (APRF11), ``montant_du`` évalué une seule
-    # fois par facture : CA encaissé, reliquats et CA mensuel en réutilisent
-    # le résultat (requêtes constantes quel que soit le nombre de factures).
-    payees = _avec_du(factures_payees)
-    ca_paye = _ca_encaisse_ht(payees)
-
-    # Factures en attente (émises + en retard) + reliquats des « payées ».
-    ca_attente = _ca_attente_ht(
-        factures_qs.filter(
-            statut__in=[Facture.Statut.EMISE, Facture.Statut.EN_RETARD]),
-        payees,
-    )
+    # AANA20 / D-AANA-6 / AANA55 — encaissé = part HT des paiements reçus, attente = part HT de
+    # ``montant_du`` (avoirs déduits), sur émises, en retard et payées.
+    # APRF13 — lues UNE fois, préchargées (``factures_avec_montant_du``).
+    factures_ca = _avec_du(factures_qs.filter(statut__in=_STATUTS_CA))
+    ca_paye = _ca_encaisse_ht(factures_ca)
+    ca_attente = _ca_attente_ht(factures_ca)
 
     nb_clients = Client.objects.filter(**co).count()
 
@@ -145,9 +134,9 @@ def dashboard(request):
 
     # ── CA mensuel (12 derniers mois) ─────────────────────────────────────────
     debut = date.today().replace(day=1) - timedelta(days=365)
-    # CA HT encaissé par mois (Facture.total_ht — AANA20)
+    # CA HT encaissé par mois (même règle — AANA55)
     ca_mensuel = _ca_mensuel([
-        (f, du) for f, du in payees
+        (f, du) for f, du in factures_ca
         if f.date_emission is not None and f.date_emission >= debut
     ])
 
@@ -284,7 +273,7 @@ def dashboard(request):
         prev_fqs = factures_qs.filter(
             date_emission__gte=p_start,
             date_emission__lte=p_end)
-        prev_ca = _ca_encaisse_ht(prev_fqs.filter(statut=Facture.Statut.PAYEE))
+        prev_ca = _ca_encaisse_ht(prev_fqs.filter(statut__in=_STATUTS_CA))
         prev_leads = 0
         try:
             from apps.crm.models import Lead
@@ -301,7 +290,7 @@ def dashboard(request):
             curr_fqs_f = curr_fqs_f.filter(date_emission__gte=curr_from)
         if curr_to:
             curr_fqs_f = curr_fqs_f.filter(date_emission__lte=curr_to)
-        curr_ca = _ca_encaisse_ht(curr_fqs_f.filter(statut=Facture.Statut.PAYEE))
+        curr_ca = _ca_encaisse_ht(curr_fqs_f.filter(statut__in=_STATUTS_CA))
         curr_leads = Lead.objects.filter(**co)
         if curr_from:
             curr_leads = curr_leads.filter(date_creation__date__gte=curr_from)
@@ -362,50 +351,39 @@ def _avec_du(factures):
     return [(f, f.montant_du) for f in factures_avec_montant_du(factures)]
 
 
-def _ht_encaisse(facture, reste=None):
-    """AANA20 — HT réellement encaissé d'une facture « payée ».
+#: AANA55 — population du CA encaissé / en attente (comme ``nb_factures`` :
+#: brouillons et annulées exclues).
+_STATUTS_CA = (Facture.Statut.EMISE, Facture.Statut.EN_RETARD,
+               Facture.Statut.PAYEE)
 
-    ``Facture.total_ht`` (remise globale honorée), moins la part HT de son
-    reliquat ``montant_du`` (TTC) : un reliquat n'est jamais compté encaissé.
-    APRF13 — ``reste`` : ``montant_du`` déjà évalué (sinon lu ici).
-    """
-    total_ht = Decimal(facture.total_ht or 0)
-    if reste is None:
-        reste = facture.montant_du
-    reste = Decimal(reste or 0)
-    if reste <= 0 or total_ht <= 0:
-        return total_ht
+
+def _part_ht(facture, montant_ttc):
+    """AANA55 — part HT d'un montant TTC, au prorata HT/TTC de la facture."""
     total_ttc = Decimal(facture.total_ttc or 0)
     if total_ttc <= 0:
-        return total_ht
-    encaisse = total_ht - (reste * total_ht / total_ttc)
-    return encaisse if encaisse > 0 else Decimal('0')
+        return Decimal('0')
+    montant = min(Decimal(montant_ttc or 0), total_ttc)
+    return montant * Decimal(facture.total_ht or 0) / total_ttc
 
 
-def _reliquat_ht(facture, reste=None):
-    """AANA20 — part HT du reliquat d'une facture « payée » (0 si soldée)."""
-    return Decimal(facture.total_ht or 0) - _ht_encaisse(facture, reste)
+def _ht_encaisse(facture):
+    """AANA55 — HT réellement encaissé : la part HT des paiements reçus
+    (``montant_paye``), jamais ``total_ht`` d'une facture « payée » (un avoir
+    qui solde une facture n'encaisse rien)."""
+    return _part_ht(facture, facture.montant_paye)
 
 
-def _ca_encaisse_ht(factures_payees):
-    """AANA20 / D-AANA-6 — CA encaissé HT de factures payées (queryset ou
-    paires ``_avec_du`` — APRF13)."""
-    return sum((_ht_encaisse(f, du)
-                for f, du in _avec_du(factures_payees)),
+def _ca_encaisse_ht(factures):
+    """AANA20 / AANA55 — CA encaissé HT (queryset ou paires ``_avec_du``)."""
+    return sum((_ht_encaisse(f) for f, _du in _avec_du(factures)),
                Decimal('0'))
 
 
-def _ca_attente_ht(factures_ouvertes, factures_payees):
-    """AANA20 / D-AANA-6 — CA HT en attente : ``total_ht`` des factures
-    émises/en retard + la part HT des reliquats des factures « payées »
-    (queryset ou paires ``_avec_du`` — APRF13)."""
-    total = sum((Decimal(f.total_ht or 0)
-                 for f in factures_ouvertes.prefetch_related('lignes')),
-                Decimal('0'))
-    total += sum((_reliquat_ht(f, du)
-                  for f, du in _avec_du(factures_payees)),
-                 Decimal('0'))
-    return total
+def _ca_attente_ht(factures):
+    """AANA55 — CA HT en attente : part HT de ``montant_du`` (paiements et
+    avoirs déduits) de chaque facture (queryset ou paires ``_avec_du``)."""
+    return sum((_part_ht(f, du) for f, du in _avec_du(factures)),
+               Decimal('0'))
 
 
 def _ca_mensuel(factures_qs):
@@ -413,15 +391,15 @@ def _ca_mensuel(factures_qs):
     Retourne le CA HT ENCAISSÉ par mois pour les 12 derniers mois.
     Format : [{'mois': 'Jan 2025', 'ca': 12345.67}, ...]
 
-    AANA20 — lu sur ``Facture.total_ht`` (via ``_ht_encaisse``), jamais une
-    somme de lignes.
+    AANA55 — part HT des paiements reçus (``_ht_encaisse``), jamais une
+    somme de lignes ni le ``total_ht`` d'une facture soldée par un avoir.
     """
     from collections import defaultdict
 
     par_mois = defaultdict(Decimal)
-    for f, du in _avec_du(factures_qs):  # APRF13 — queryset ou paires
+    for f, _du in _avec_du(factures_qs):  # APRF13 — queryset ou paires
         cle = f.date_emission.strftime('%Y-%m')
-        par_mois[cle] += _ht_encaisse(f, du)
+        par_mois[cle] += _ht_encaisse(f)
 
     mois_labels = {
         '01': 'Jan', '02': 'Fév', '03': 'Mar', '04': 'Avr',
