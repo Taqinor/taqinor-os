@@ -189,7 +189,9 @@ class ConsoPubliqueTests(_CJ2bBase):
         hier = _profil_horaire_pour_devis(devis)[1]
         self.assertNotEqual(hier, etude)
         self.assertEqual(len({round(v) for v in hier}), 1, hier)
-        # Second lead à kWh DÉCLARÉ (CAD166) : la priorité de l'étude.
+        # Second lead à kWh DÉCLARÉ (CAD166) : quelle que soit la source que
+        # l'étude retient (ses factures priment sur le kWh déclaré), la page
+        # publique sert EXACTEMENT la série de l'étude.
         from apps.crm.models import Lead
         devis2, _l2 = self._devis('conso-cad166', scenario='Sans batterie',
                                   avec_batterie=False)
@@ -197,7 +199,7 @@ class ConsoPubliqueTests(_CJ2bBase):
         tranches2, charges2 = _reglages_tarifaires(devis2.company)
         attendu, source2, _d2 = profil_conso_du_devis(
             devis2, tranches=tranches2, charges_fixes_mad=charges2)
-        self.assertEqual(source2, 'kwh_mensuel_saisi')
+        self.assertTrue(source2 and attendu, source2)
         self.assertEqual(_profil_horaire_pour_devis(devis2)[1], attendu)
 
     def test_sans_lead_ni_facture_la_serie_reste_vide(self):

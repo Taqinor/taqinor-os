@@ -206,6 +206,9 @@ CLES_HORS_RENDU_ORIGINE = (
     # sur tout devis avant ce niveau (donc ici) ; aucun chiffre : l'arrondi
     # d'un devis aux règles d'origine reste ``round`` d'hier.
     ('regles_arrondi_historique',),
+    # AGNR52 (01/11/2026) — drapeau de GABARIT du niveau 8, posé sur tout devis
+    # avant ce niveau : son échéancier s'imprime comme hier (aucun chiffre).
+    ('regles_echeancier_historique',),
     ('libelles_document', 'agr_base_besoin_agronomique'),
     # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
     ('libelles_document', 'ci_cgv_suite'),

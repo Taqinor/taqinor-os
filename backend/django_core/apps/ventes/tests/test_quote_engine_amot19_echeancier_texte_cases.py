@@ -118,8 +118,8 @@ class EcheancierTexteCasesTests(TestCase):
         from apps.ventes.quote_engine import builder
         from apps.ventes.quote_engine.ci.synthese import _echeancier as bloc_ci
         from apps.ventes.quote_engine.clauses_cgv import _pct_txt, cgv_imprimees
-        from apps.ventes.quote_engine.conditions_commerciales import (
-            REGLES_ECHEANCIER_DERIVE)
+        from apps.ventes.domain.regles_calcul import (
+            REGLES_CONSO_PUBLIQUE_0111 as REGLES_ECHEANCIER_DERIVE)
         from apps.ventes.quote_engine.montants import fmt_centimes
         corps = [
             {'libelle': 'Commande', 'type': 'acompte', 'unite': 'montant', 'pct_or_montant': 6000},
