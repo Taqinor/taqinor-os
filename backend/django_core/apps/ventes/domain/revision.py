@@ -36,7 +36,8 @@ def renouveler_devis(devis, *, user=None):
     from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
-    from apps.ventes.domain.creation_clone import conditions_ci_pour_copie
+    from apps.ventes.domain.creation_clone import (
+        conditions_ci_pour_copie, echeancier_pour_copie)
     from apps.ventes.utils.company_settings import create_numbered
     from core.conflit_etat import ConflitEtat
 
@@ -126,6 +127,7 @@ def renouveler_devis(devis, *, user=None):
         # la main avait le plus divergé : elle clonait ``optionnelle`` sans
         # ``variante``, et aucune des trois ne clonait ``lot``.
         cloner_lignes(devis, nouveau, prix_unitaire=_prix_courant)
+        echeancier_pour_copie(nouveau)  # AGNR53 — au TTC re-tarifé
     # QJR117 — les études du RENOUVELLEMENT sont recalculées sur ses lignes
     # RE-TARIFÉES (force : le dimensionnement se court-circuite sinon sur
     # empreinte concordante, et l'édition de ligne ne rattrape pas).
@@ -374,7 +376,8 @@ def rattacher_aval_financier_revision(devis, *, user=None,
        qu'aucune facture de BC ne solde la vente), la tranche finale le porte
        déjà (solde = total V2 − déjà facturé) — une note le dit ; si la vente
        est entièrement facturée, reste > 0 → facture COMPLÉMENTAIRE brouillon
-       (rattachée à la V2), reste < 0 → AVOIR sur la dernière facture ;
+       (rattachée à la V2), reste < 0 → AVOIR(S) par ``crediter_ecart_de_
+       vente`` (ATOT45 : chacun sous le créditable de sa facture) ;
        des taux en sens opposés ⇒ les DEUX, chacun à ses seuls taux (ATOT44).
 
     La commission apporteur encore À_PAYER est recalculée par ``crm`` sur
@@ -395,8 +398,7 @@ def rattacher_aval_financier_revision(devis, *, user=None,
     from apps.ventes.models import (
         Avoir, BonCommande, Devis, Facture, FactureSource)
     from apps.ventes.selectors import predecesseurs_acceptes
-    from apps.ventes.utils.company_settings import (
-        create_numbered, create_provisoire)
+    from apps.ventes.utils.company_settings import create_provisoire
     from apps.ventes.utils.options import option_totaux
     from apps.ventes.vente_facturation import STATUTS_EMIS, plan_facturation
 
@@ -503,29 +505,24 @@ def rattacher_aval_financier_revision(devis, *, user=None,
                 f'Facture complémentaire {document.reference} (brouillon) : '
                 f'{montant_ttc:.2f} MAD TTC — écart de révision.')
         else:
-            # La facture qui peut le plus porter l'avoir (plafond AUD126 :
-            # jamais au-delà du reste créditable) ; à égalité, la plus récente.
-            cible = max(emises, key=lambda f: (
-                Decimal(str(f.total_ttc)) - Decimal(str(f.avoirs_total)),
-                f.pk))
-
-            def _avoir(ref):
-                return Avoir.objects.create(
-                    company=company, reference=ref, facture=cible,
-                    client=cible.client, statut=Avoir.Statut.EMISE,
-                    motif=(f'Révision {devis.reference} (remplace '
-                           f'{precedent.reference}) — écart de révision.'),
-                    taux_tva=taux, montant_ht=montant_ht,
-                    montant_tva=montant_tva, montant_ttc=montant_ttc,
-                    ventilation_tva=ventilation, created_by=user,
-                    # ATOT36 — l'avoir de révision corrige un montant facturé.
-                    type=Avoir.Type.CORRECTION)
-            document = create_numbered(Avoir, company, 'avoir', _avoir)
-            activity.log_facture_avoir(cible, user, document)
-            activity.log_devis_note(
-                devis, user,
-                f'Avoir {document.reference} : {montant_ttc:.2f} MAD TTC sur '
-                f'{cible.reference} — écart de révision.')
+            # ATOT45 — LE constructeur d'avoir d'écart (ATOT43) : plafond par
+            # facture, répartition, statuts recalculés, ``avoir_cree``.
+            from apps.ventes.domain.facturation_vente import (
+                crediter_ecart_de_vente)
+            avoirs = crediter_ecart_de_vente(
+                devis, montant_ttc, paniers or [
+                    {'taux': taux, 'base_ht': montant_ht,
+                     'montant': montant_tva}], user=user,
+                motif=(f'Révision {devis.reference} (remplace '
+                       f'{precedent.reference}) — écart de révision.'))
+            # ATOT22 — le taux de l'écart, jamais celui de la facture visée.
+            Avoir.objects.filter(pk__in=[a.pk for a in avoirs]).update(
+                taux_tva=taux)
+            document = avoirs[0]
+            activity.log_devis_note(devis, user, 'Avoir(s) ' + ', '.join(
+                f'{a.reference} : {a.montant_ttc:.2f} MAD TTC sur '
+                f'{a.facture.reference}' for a in avoirs)
+                + ' — écart de révision.')
         resultat['document'] = resultat['document'] or document
     return resultat
 

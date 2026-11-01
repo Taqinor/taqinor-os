@@ -136,6 +136,10 @@
         "id": 410,
         "reference": "DEV-202610-0009"
       }
+    },
+    "avoir_au_dela_du_creditable": {
+      "detail": "L'avoir dépasse le montant restant des factures de la vente.",
+      "code": "avoir_au_dela_du_creditable"
     }
   },
   "effets_non_rejoues": [

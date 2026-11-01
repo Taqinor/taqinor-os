@@ -209,6 +209,71 @@ class RevisionGardeLeTravailManuel(_Base):
             self.source.overrides['taille.nb_panneaux']['valeur'], 14)
         self.assertEqual(self.source.roof_layout['orientation'], 'sud')
 
+    def test_echeancier_recale_au_ttc_de_la_copie(self):
+        """AGNR53 (C-AGNR-VER-008) — l'échéancier recopié repasse par LA
+        règle d'AGNR49 au TTC de la COPIE : dernière tranche = reste en MAD,
+        reste négatif ⇒ 409 ``somme_invalide`` et aucune copie. ROUGE AVANT :
+        recopié tel quel (30 % / 130 %). Mutant : retirer l'appel dans
+        ``renouveler_devis`` ⇒ échec."""
+        from core.conflit_etat import ConflitEtat
+        from apps.ventes.domain.creation_clone import cloner_devis
+        from apps.ventes.domain.gammes import creer_variante_gamme
+        from apps.ventes.domain.revision import renouveler_devis
+        from apps.ventes.utils.options import option_totaux
+
+        def _tranches(acompte, mi, solde):
+            return [{'libelle': 'Acompte', 'unite': 'montant',
+                     'pct_or_montant': acompte},
+                    {'libelle': 'Pose', 'unite': 'pct', 'pct_or_montant': mi},
+                    {'libelle': 'Solde', 'unite': 'pct',
+                     'pct_or_montant': solde}]
+
+        def _source(ref, echeancier):
+            d = make_devis(self.company, self.user, self.client_obj,
+                           [('Kit AGNR53', '1', '50000', '20')],
+                           reference=ref)
+            Devis.objects.filter(pk=d.pk).update(
+                statut=Devis.Statut.EXPIRE, echeancier=echeancier)
+            d.refresh_from_db()
+            self.assertEqual(option_totaux(d)['ttc'], Decimal('60000.00'))
+            return d
+
+        # Cas 1 — renouvellement à moitié prix : [5 000 MAD ; 60 % ; reste].
+        s1 = _source('DEV-AGNR53-0001', _tranches(5000, 60, 30))
+        produit = s1.lignes.get().produit
+        produit.prix_vente = Decimal('25000')
+        produit.save(update_fields=['prix_vente'])
+        copie = renouveler_devis(s1, user=self.user)
+        copie.refresh_from_db()
+        self.assertEqual(option_totaux(copie)['ttc'], Decimal('30000.00'))
+        self.assertEqual(copie.echeancier, _tranches(5000, 60, 30)[:2] + [
+            {'libelle': 'Solde', 'unite': 'montant', 'pct_or_montant': 7000.0}])
+        s1.refresh_from_db()
+        self.assertEqual(s1.echeancier, _tranches(5000, 60, 30))
+        # Gamme sœur (même TTC) : la dernière tranche devient le reste juste.
+        soeur = creer_variante_gamme(s1, 'Premium', user=self.user)
+        soeur.refresh_from_db()
+        self.assertEqual(soeur.echeancier[-1]['pct_or_montant'], 19000.0)
+        self.assertEqual(soeur.echeancier[-1]['unite'], 'montant')
+
+        # Cas 2 — acompte 15 000 + 60 % au-delà du total de la copie : 409.
+        s2 = _source('DEV-AGNR53-0002', _tranches(15000, 60, 10))
+        avant = Devis.objects.filter(company=self.company).count()
+        with self.assertRaises(ConflitEtat) as ctx:
+            cloner_devis(s2, user=self.user, remplacements=lambda ligne: {
+                'quantite': ligne.quantite * Decimal('0.5'),
+                'quantite_manuelle': False})
+        self.assertEqual(ctx.exception.detail['code'], 'somme_invalide')
+        self.assertIn('33 000 MAD pour 30 000 MAD',
+                      str(ctx.exception.detail['detail']))
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+
+        # Tout en % : copie inchangée.
+        s3 = _source('DEV-AGNR53-0003', ECHEANCIER_NEGOCIE)
+        self.assertEqual(cloner_devis(s3, user=self.user).echeancier,
+                         ECHEANCIER_NEGOCIE)
+
     def test_dupliquer_ne_les_porte_toujours_pas(self):
         from apps.ventes.domain.creation_clone import dupliquer_devis
         copie = dupliquer_devis(self.source, user=self.user)

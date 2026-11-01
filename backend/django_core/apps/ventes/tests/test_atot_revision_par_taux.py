@@ -179,3 +179,79 @@ class RevisionParTauxTests(TestCase):
             for _t, base, montant in _paniers(doc):
                 self.assertGreater(base, 0)
                 self.assertGreater(montant, 0)
+
+    # ── ATOT45 — l'avoir d'écart passe par le constructeur unique ─────────
+
+    def _vente_5x20_emise(self):
+        """Devis accepté 12 000 TTC, échéancier 5 × 20 % entièrement émis
+        (sonde C-ATOT-VER-004), aucun paiement."""
+        d = make_devis(self.company, self.user, self.client_obj,
+                       [('Panneau ATOT45', '10', '1000', '20')],
+                       reference='DEV-ATOT45-0001')
+        Devis.objects.filter(pk=d.pk).update(
+            statut=Devis.Statut.ENVOYE,
+            echeancier=[{'pct_or_montant': 20}] * 5)
+        d = self._accepter(Devis.objects.get(pk=d.pk))
+        while True:
+            try:
+                creer_facture_tranche(Devis.objects.get(pk=d.pk), self.user,
+                                      self.company, create_with_reference)
+            except ValueError:
+                break
+        factures = list(Facture.objects.filter(devis=d).exclude(
+            statut=Facture.Statut.ANNULEE).order_by('pk'))
+        self.assertEqual([f.total_ttc for f in factures],
+                         [Decimal('2400.00')] * 5)
+        return Devis.objects.get(pk=d.pk), factures
+
+    def _negocier(self, devis):
+        from apps.ventes.domain.negociation import appliquer_prix_negocie
+        return appliquer_prix_negocie(devis, prix_ttc='9000', user=self.user,
+                                      confirmer_avoir=True)
+
+    def test_prix_negocie_avoirs_repartis_sous_le_creditable(self, *_):
+        """C-ATOT-VER-004 — 9 000 négocié sur 5 × 2 400 émis : deux avoirs
+        CORRECTION (2 400 + 600) sur deux factures distinctes, jamais un
+        avoir de 3 000 sur une facture de 2 400 ; dû restant 9 000. Mutant :
+        rappeler ``Avoir.objects.create`` ⇒ échec."""
+        d, factures = self._vente_5x20_emise()
+        r = self._negocier(d)
+        avoirs = list(Avoir.objects.filter(company=self.company)
+                      .order_by('-montant_ttc'))
+        self.assertEqual([a.montant_ttc for a in avoirs],
+                         [Decimal('2400.00'), Decimal('600.00')])
+        self.assertEqual({a.type for a in avoirs}, {Avoir.Type.CORRECTION})
+        self.assertEqual(len({a.facture_id for a in avoirs}), 2)
+        for a in avoirs:
+            a.refresh_from_db()
+            self.assertLessEqual(a.montant_ttc, a.facture.total_ttc)
+            self.assertEqual(a.montant_ht + a.montant_tva, a.montant_ttc)
+        # CLAUSE PERSISTANCE — factures relues : statuts recalculés, dû 9 000.
+        relues = [Facture.objects.get(pk=f.pk) for f in factures]
+        self.assertEqual(sum((f.montant_du for f in relues), Decimal('0')),
+                         Decimal('9000.00'))
+        soldee = Facture.objects.get(pk=avoirs[0].facture_id)
+        self.assertEqual(soldee.statut, Facture.Statut.PAYEE)
+        self.assertEqual(r['devis_v2']['version'], 2)
+
+    def test_prix_negocie_au_dela_du_creditable_409_rien_ecrit(self, *_):
+        """Un écart (3 000) au-delà du Σ créditable (gestes commerciaux
+        antérieurs sur quatre factures : reste 2 400) ⇒ 409
+        ``avoir_au_dela_du_creditable`` ; aucune V2, aucun avoir d'écart."""
+        from apps.ventes.domain.facturation_ops import creer_avoir_facture
+        from apps.ventes.domain.negociation import PrixNegocieRefuse
+        d, factures = self._vente_5x20_emise()
+        for f in factures[:4]:
+            creer_avoir_facture(facture=f, user=self.user, motif='Geste',
+                                type_avoir=Avoir.Type.GESTE_COMMERCIAL)
+        nb_devis, nb_avoirs = Devis.objects.count(), Avoir.objects.count()
+        with self.assertRaises(PrixNegocieRefuse) as ctx:
+            self._negocier(d)
+        self.assertEqual(ctx.exception.code, 'avoir_au_dela_du_creditable')
+        self.assertEqual(ctx.exception.statut_http, 409)
+        self.assertEqual(Devis.objects.count(), nb_devis)
+        self.assertEqual(Avoir.objects.count(), nb_avoirs)
+        self.assertFalse(Avoir.objects.filter(
+            type=Avoir.Type.CORRECTION).exists())
+        d.refresh_from_db()
+        self.assertTrue(d.is_active)

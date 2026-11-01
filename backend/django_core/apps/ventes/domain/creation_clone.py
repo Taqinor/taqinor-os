@@ -115,6 +115,7 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
         # maintenue à la main, elle ne peut donc plus diverger. Elle reprend le
         # jeu COMPLET — y compris le rattachement au LOT.
         cloner_lignes(devis, copie, remplacements=remplacements)
+        echeancier_pour_copie(copie)  # AGNR53 — au TTC de la copie
     # QJR117 — les études de la COPIE sont recalculées sur SES lignes, en
     # ``force`` : sans lui, le dimensionnement se court-circuite sur empreinte
     # concordante et l'édition de ligne ne rattrape jamais. Best-effort — aucun
@@ -161,6 +162,44 @@ def conditions_ci_pour_copie(devis):
             getattr(devis, 'penalites_retard_livraison', None)),
         'caution': copy.deepcopy(getattr(devis, 'caution', None)),
     }
+
+
+def echeancier_pour_copie(copie):
+    """AGNR53 — l'échéancier RECOPIÉ (renouvellement, gamme, clonage) repasse
+    par LA règle d'AGNR49 au TTC de la COPIE, lignes déjà clonées, dans la
+    transaction de la copie : dès qu'une tranche est en MAD, la dernière
+    devient le reste en MAD ; un reste négatif ⇒ 409 ``somme_invalide``
+    (la copie n'est pas créée). Tout en % ou TTC nul : inchangé."""
+    from decimal import Decimal
+
+    from apps.ventes.utils.echeancier import (
+        UNITE_MONTANT, UNITE_PCT, EcheancierIncoherent, EcheancierInvalide,
+        _mad, normaliser_tranche, regle_somme_echeancier)
+    from apps.ventes.utils.options import option_totaux
+    from core.conflit_etat import ConflitEtat
+    entrees = copie.echeancier
+    try:
+        tranches = [normaliser_tranche(e, i) for i, e in enumerate(entrees)]
+    except (EcheancierInvalide, TypeError):
+        return  # échéancier d'hier illisible : la copie garde la source
+    ttc = Decimal(str(option_totaux(copie)['ttc']))
+    if not tranches or ttc <= 0 or all(
+            t['unite'] == UNITE_PCT for t in tranches):
+        return
+    try:
+        _montants, reste = regle_somme_echeancier(tranches, ttc)
+    except EcheancierIncoherent:
+        total = sum((Decimal(str(t['valeur'])) if t['unite'] == UNITE_MONTANT
+                     else ttc * Decimal(str(t['valeur'])) / 100
+                     for t in tranches[:-1]), Decimal('0'))
+        detail = ("L'acompte et les tranches recopiés dépassent le total de "
+                  f'la copie ({_mad(total.quantize(Decimal("0.01")))} pour '
+                  f'{_mad(ttc)}).')
+        raise ConflitEtat({'code': 'somme_invalide', 'detail': detail,
+                           'echeancier': detail})
+    copie.echeancier = entrees[:-1] + [dict(
+        entrees[-1], unite=UNITE_MONTANT, pct_or_montant=float(reste))]
+    copie.save(update_fields=['echeancier'])
 
 
 def dupliquer_devis(devis, *, user):
