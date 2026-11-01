@@ -323,7 +323,7 @@ class RolesEscalationGuardTest(TestCase):
     def test_responsable_can_create_non_elevated_role(self):
         resp = self._api(self.resp).post(
             '/api/django/roles/',
-            {'nom': 'Magasinier', 'permissions': ['stock_voir', 'stock_creer']},
+            {'nom': 'Magasinier', 'permissions': ['stock_voir']},
             format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
@@ -344,6 +344,68 @@ class RolesEscalationGuardTest(TestCase):
             f'/api/django/roles/{self.resp_role.id}/',
             {'permissions': self.com_perms}, format='json')
         self.assertIn(resp.status_code, (400, 403), resp.data)
+
+    def test_non_admin_ne_definit_pas_un_role_plus_large(self):
+        """ASEC55 — rejoue la sonde C-ASEC-VER-002 : un Commercial responsable
+        ne crée ni n'élargit un rôle au-delà du sien (403 ``role_plus_large``,
+        même fonction que l'attribution ASEC2) ; le Directeur garde la main."""
+        from django.core.management import call_command
+        call_command('init_roles', verbosity=0)
+        sys_role = {r.nom: r for r in Role.objects.filter(company=self.company)}
+        c_role = sys_role['Commercial responsable']
+        self.assertFalse({'paie_gerer', 'compta_valider'} & set(c_role.permissions))
+        self.assertIn('users_gerer', c_role.permissions)
+        c = User.objects.create_user(
+            username='asec55_c', password='x', role=c_role,
+            company=self.company)
+        self.assertFalse(c.is_admin_role)
+        d = User.objects.create_user(
+            username='asec55_d', password='x', role=sys_role['Directeur'],
+            company=self.company)
+        r = Role.objects.create(company=self.company, nom='R étroit',
+                                permissions=['crm_voir'])
+        porteur = User.objects.create_user(
+            username='asec55_com', password='x', role=r, company=self.company)
+        lrole = Role.objects.create(company=self.company, nom='L large',
+                                    permissions=['crm_voir', 'compta_valider'])
+        api_c = self._api(c)
+
+        ok = api_c.post('/api/django/roles/',
+                        {'nom': 'C étroit', 'permissions': ['crm_voir']},
+                        format='json')
+        self.assertEqual(ok.status_code, 201, ok.data)
+
+        def etat():
+            return sorted((x.pk, x.nom, sorted(x.permissions or []))
+                          for x in Role.objects.filter(company=self.company))
+
+        avant = etat()
+        audits = SettingsAuditLog.objects.filter(section='roles').count()
+
+        def refus(resp):
+            self.assertEqual(resp.status_code, 403, resp.data)
+            self.assertEqual(resp.data.get('code'), 'role_plus_large', resp.data)
+            self.assertEqual(etat(), avant)
+            self.assertEqual(
+                SettingsAuditLog.objects.filter(section='roles').count(), audits)
+
+        refus(api_c.post('/api/django/roles/',
+                         {'nom': 'Large', 'permissions': ['crm_voir', 'paie_gerer']},
+                         format='json'))
+        refus(api_c.patch(f'/api/django/roles/{r.id}/',
+                          {'permissions': ['crm_voir', 'paie_gerer']},
+                          format='json'))
+        refus(api_c.patch(f'/api/django/roles/{lrole.id}/',
+                          {'nom': 'L renommé'}, format='json'))
+        porteur.refresh_from_db()
+        self.assertEqual(porteur.role.permissions, ['crm_voir'])
+
+        resp = self._api(d).patch(f'/api/django/roles/{r.id}/',
+                                  {'permissions': ['crm_voir', 'paie_gerer']},
+                                  format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        r.refresh_from_db()
+        self.assertIn('paie_gerer', r.permissions)
 
 
 class RevueAccesTest(TestCase):
