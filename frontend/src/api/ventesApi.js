@@ -324,8 +324,11 @@ const ventesApi = {
     api.post('/ventes/etude-horaire/preview/', body, config),
   // CIQ124 — aperçu serveur C&I (CIQ118) : LA source des chiffres commercial /
   // industriel, aucune écriture. Forme : `contract_samples/etude_ci_preview.json`.
+  // CAD177 (nocturne 41188540195) — sur un cache froid, la série PVGIS 8 760 h
+  // (`seriescalc`, délai serveur 30 s) se télécharge DANS l'aperçu : le délai
+  // global de 20 s coupait une réponse arrivée à 21,5 s (écran resté vide).
   etudeCiPreview: (body, config = {}) =>
-    api.post('/ventes/etude-ci/preview/', body, config),
+    api.post('/ventes/etude-ci/preview/', body, { timeout: 45000, ...config }),
   // CIQ223 — aperçu de l'économie C&I (CIQ205-CIQ210), aucune écriture.
   // Corps {sortie_etude_ci, saisies, lignes} ; forme : `contract_samples/economie_ci.json`.
   economieCiPreview: (body, config = {}) =>
