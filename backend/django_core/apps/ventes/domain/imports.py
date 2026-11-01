@@ -85,6 +85,8 @@ def _resoudre_client(company, ligne, external_system):
 # NTMIG10 — Devis (en-têtes)
 # ─────────────────────────────────────────────────────────────────────────
 def _statut_devis(valeur):
+    """Statut source → statut devis ; vide = brouillon (absence de statut),
+    valeur non reconnue = ``None`` (AANA70 : la ligne part en erreur)."""
     from apps.ventes.models import Devis
 
     table = {
@@ -98,7 +100,8 @@ def _statut_devis(valeur):
         'expire': Devis.Statut.EXPIRE, 'expiré': Devis.Statut.EXPIRE,
         'expired': Devis.Statut.EXPIRE,
     }
-    return table.get(str(valeur or '').strip().lower(), Devis.Statut.BROUILLON)
+    cle = str(valeur or '').strip().lower()
+    return table.get(cle, None if cle else Devis.Statut.BROUILLON)
 
 
 def creer_devis_import(company, ligne, *, external_system=None, user=None):
@@ -120,10 +123,14 @@ def creer_devis_import(company, ligne, *, external_system=None, user=None):
             "client introuvable (client_external_id/client_email/"
             "client_nom absents ou non migrés)"), None)
 
+    statut = _statut_devis(ligne.get('statut'))
+    if statut is None:
+        return ('erreur', f"statut source non reconnu : {ligne.get('statut')!r}", None)
+
     def _create(ref):
         return Devis.objects.create(
             company=company, reference=ref, client=client,
-            statut=_statut_devis(ligne.get('statut')),
+            statut=statut,
             created_by=user if getattr(user, 'pk', None) else None,
             note=(f"Migré (réf. source {ligne.get('reference_source')})"
                   if ligne.get('reference_source') else ''),
@@ -137,6 +144,7 @@ def creer_devis_import(company, ligne, *, external_system=None, user=None):
 # NTMIG10 — Factures (en-têtes)
 # ─────────────────────────────────────────────────────────────────────────
 def _statut_facture(valeur):
+    """Comme ``_statut_devis`` : vide = brouillon, inconnu = ``None`` (AANA70)."""
     from apps.ventes.models import Facture
 
     table = {
@@ -149,8 +157,8 @@ def _statut_facture(valeur):
         'annulee': Facture.Statut.ANNULEE, 'annulée': Facture.Statut.ANNULEE,
         'cancel': Facture.Statut.ANNULEE, 'cancelled': Facture.Statut.ANNULEE,
     }
-    return table.get(
-        str(valeur or '').strip().lower(), Facture.Statut.BROUILLON)
+    cle = str(valeur or '').strip().lower()
+    return table.get(cle, None if cle else Facture.Statut.BROUILLON)
 
 
 def creer_facture_import(company, ligne, *, external_system=None, user=None):
@@ -176,6 +184,8 @@ def creer_facture_import(company, ligne, *, external_system=None, user=None):
             "client_nom absents ou non migrés)"), None)
 
     statut = _statut_facture(ligne.get('statut'))
+    if statut is None:
+        return ('erreur', f"statut source non reconnu : {ligne.get('statut')!r}", None)
 
     def _create(ref):
         return Facture.objects.create(
