@@ -197,11 +197,15 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
     }
 
 
+#: AGNR52 — niveau de règles d'AGNR54 (8) : % d'échéancier dérivés des montants, branches MAD dès 2 tranches.
+REGLES_ECHEANCIER_DERIVE = 8
+
+
 def tranches_echeancier_en_montant(devis):
     """QJR624 — les tranches normalisées de l'échéancier du devis quand il
-    compte 2 ou 3 tranches dont au moins une déclarée en DIRHAMS, sinon
-    ``None`` (le chemin en pourcentages reste celui de QJR623). Lecture
-    tolérante (``tranches_normalisees``) ; jamais une exception."""
+    compte 2 ou 3 tranches (AGNR52 : 2 ou plus) dont au moins une déclarée en
+    DIRHAMS, sinon ``None`` (le chemin en pourcentages reste celui de QJR623).
+    Lecture tolérante (``tranches_normalisees``) ; jamais une exception."""
     if devis is None:
         return None
     try:
@@ -211,8 +215,10 @@ def tranches_echeancier_en_montant(devis):
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
         logger.warning("builder.tranches_echeancier_en_montant : erreur ignorée (mode dégradé)", exc_info=True)
         return None
-    if len(tranches) in (2, 3) and any(
-            t.get("unite") == UNITE_MONTANT for t in tranches):
+    from apps.ventes.domain.regles_calcul import regles_au_moins
+    nombre_ok = (len(tranches) >= 2 if regles_au_moins(devis, REGLES_ECHEANCIER_DERIVE)
+                 else len(tranches) in (2, 3))
+    if nombre_ok and any(t.get("unite") == UNITE_MONTANT for t in tranches):
         return tranches
     return None
 

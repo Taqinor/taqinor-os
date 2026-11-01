@@ -15,7 +15,7 @@ ré-échappé. Sans clause → chaîne vide (document octet-identique).
 from decimal import Decimal
 
 from . import i18n_labels
-from .montants import regles_origine
+from .montants import fmt_centimes, regles_origine
 
 #: AMOT81 — modes dont les puces CGV de REPLI sont au ton C&I : UNE puce
 #: échéancier (N jalons), jamais les trois créneaux résidentiels ni « barème
@@ -137,28 +137,48 @@ def _pct_txt(valeur):
         return str(valeur)
 
 
+def _nom_jalon(cle, nom, langue):
+    """AMOT81 — libellé par défaut d'un jalon traduit ; renommé : tel quel."""
+    cat = f"cgv_jalon_{cle}"
+    if cat in i18n_labels.LIBELLES and nom in (
+            None, "", i18n_labels.LIBELLES[cat]["fr"]):
+        return i18n_labels.libelle(cat, langue)
+    return nom or cle
+
+
+def jalons_imprimes(jalons, langue=None):
+    """AGNR52 — « Libellé : p % · m MAD TTC » par jalon servi (montant au centime,
+    dernier au reliquat) : % DÉRIVÉ du montant, dernier au reliquat par LA règle
+    du bloc C&I (``ci.synthese._pcts_au_reliquat``). Jalon nul : omis."""
+    from .ci.synthese import _pcts_au_reliquat
+    jalons = [j for j in jalons or [] if isinstance(j, dict) and j.get("pct") is not None]
+    pcts = _pcts_au_reliquat([float(j["pct"]) for j in jalons])
+    mad = i18n_labels.libelle("cgv_mad_ttc", langue)
+    return [i18n_labels.libelle("cgv_jalon_format", langue).format(
+        libelle=_nom_jalon(j.get("jalon"), j.get("libelle"), langue), valeur=_pct_txt(pct),
+        unite="%" if j.get("montant_ttc") is None else f"% · {fmt_centimes(j['montant_ttc'])} {mad}")
+        for j, pct in zip(jalons, pcts) if not _pct_nul(pct)]
+
+
 def puce_echeancier_ci(data, langue=None):
     """AMOT81 — « Échéancier de paiement : Commande : 30 % ; … » : les N
     jalons servis par le builder (``jalons_paiement``, CIQ212), sinon les
     créneaux SERVIS de ``payment_terms`` (jamais un repli 30/60/10, QJR146) ;
     un créneau nul est omis. Un libellé renommé par la société reste tel
-    quel ; aucun chiffre recalculé."""
-    jalons = [(j.get("jalon"), j.get("libelle"), j.get("pct"))
-              for j in data.get("jalons_paiement") or [] if isinstance(j, dict)]
+    quel ; aucun chiffre recalculé. AGNR52 : :func:`jalons_imprimes`."""
+    servis = [j for j in data.get("jalons_paiement") or [] if isinstance(j, dict)]
+    jalons = [(j.get("jalon"), j.get("libelle"), j.get("pct")) for j in servis]
     if not jalons:
         terms = data.get("payment_terms") or {}
         jalons = [(cle, None, terms.get(cle))
                   for cle in ("acompte", "materiel", "solde")]
-    morceaux = []
-    for cle, nom, pct in jalons:
+    morceaux = (jalons_imprimes(servis, langue)
+                if servis and not data.get("regles_echeancier_historique") else [])
+    for cle, nom, pct in jalons if not morceaux else ():
         if pct is None or _pct_nul(pct):
             continue
-        cat = f"cgv_jalon_{cle}"
-        if cat in i18n_labels.LIBELLES and nom in (
-                None, "", i18n_labels.LIBELLES[cat]["fr"]):
-            nom = i18n_labels.libelle(cat, langue)
         morceaux.append(i18n_labels.libelle("cgv_jalon_format", langue).format(
-            libelle=nom or cle, valeur=_pct_txt(pct), unite="%"))
+            libelle=_nom_jalon(cle, nom, langue), valeur=_pct_txt(pct), unite="%"))
     if not morceaux:
         return ""
     separateur = ("&#160;: " if i18n_labels.normaliser(langue) == "fr"

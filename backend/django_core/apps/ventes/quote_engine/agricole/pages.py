@@ -25,6 +25,7 @@ from __future__ import annotations
 from core.pompage import hypotheses as hypotheses_noyau
 
 from .. import i18n_labels, i18n_labels_agricole
+from ..ci.synthese import _pcts_au_reliquat
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
 from ..montants import fmt_centimes, lignes_remisees, pct_fr
@@ -988,11 +989,12 @@ def _echeancier(d, lg):
                 and abs(_num(m.get("total")) - tot) < 0.005:
             montants = m
             break
+    cles = [cle for cle in CRENEAUX if _num(termes.get(cle))]
+    pcts = [_num(termes.get(cle)) for cle in cles]
+    if not d.get("regles_echeancier_historique"):  # AGNR52 : % dérivé, dernier au reliquat (bloc C&I)
+        pcts = _pcts_au_reliquat(pcts)
     cases = []
-    for cle in CRENEAUX:
-        pct = _num(termes.get(cle))
-        if not pct:
-            continue
+    for cle, pct in zip(cles, pcts):
         montant = _mad((montants or {}).get(cle)) if montants else None
         cases.append(f'<td><div class="ag-ech-l">'
                      f'{_t(lg, f"agr_creneau_{cle}")}</div>'
