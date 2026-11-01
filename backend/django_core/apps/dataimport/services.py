@@ -98,10 +98,6 @@ FIELD_MAPS = {
         'client_external_id': 'client_external_id',
         'statut': 'statut',
         'date_creation': 'date_creation', 'date': 'date_creation',
-        'montant_ht_source': 'montant_ht_source',
-        'montant_ht': 'montant_ht_source',
-        'montant_ttc_source': 'montant_ttc_source',
-        'montant_ttc': 'montant_ttc_source',
         'external_id': 'external_id', 'id_externe': 'external_id',
     },
     # NTMIG10 — Factures (EN-TÊTES seulement — lignes via NTMIG11). Écriture
@@ -117,10 +113,6 @@ FIELD_MAPS = {
         'client_external_id': 'client_external_id',
         'statut': 'statut', 'statut_paiement': 'statut_paiement',
         'date_emission': 'date_emission', 'date': 'date_emission',
-        'montant_ht_source': 'montant_ht_source',
-        'montant_ht': 'montant_ht_source',
-        'montant_ttc_source': 'montant_ttc_source',
-        'montant_ttc': 'montant_ttc_source',
         'external_id': 'external_id', 'id_externe': 'external_id',
     },
 }
