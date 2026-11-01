@@ -18,7 +18,7 @@ import { ecartsAuRegistre } from '../overrides'
 import crmApi from '../../../../api/crmApi'
 import { fetchAllPages } from '../../../../utils/fetchAllPages'
 import { getApiError } from '../../../../lib/apiError'
-import { erreursBaseLegaleServeur, lignesServeurVersEcran } from '../lignesEcran'
+import { erreursBaseLegaleServeur, lignesServeurVersEcran, lignesEnvoyees, lignesNonEnvoyees } from '../lignesEcran'
 import { useRef, useState } from 'react'
 import { withKeys } from '../ligneFabrique.js'
 
@@ -72,8 +72,7 @@ export function usePersistanceDevis(ctx) {
   // ── Sauvegarde ──
   // Une ligne est enregistrée si elle a un produit et une quantité > 0 ;
   // les lignes placeholder (sans produit, prix 0) sont ignorées silencieusement.
-  const usableLines = () =>
-    lines.filter(l => l.produit && parseFloat(l.quantite) > 0)
+  const usableLines = () => lignesEnvoyees(lines).filter(l => l.produit)
 
   const validate = () => {
     const e = {}
@@ -113,9 +112,9 @@ export function usePersistanceDevis(ctx) {
     // AGNR31 — `validate()` DIT ce que `lignesEnvoyees` (quote/lignesEcran.js)
     // ne gardera pas : une ligne « prix à renseigner » (sans produit) ne part
     // jamais — elle bloque, nommée, au lieu de disparaître en silence.
-    const estStructureLigne = (l) => l.typeLigne === 'section' || l.typeLigne === 'note'
-    const sansPrix = lines.filter(l => !l.produit && !estStructureLigne(l)
-      && /prix à renseigner/i.test(l.designation || ''))
+    // AGNR58 — « ne partira pas » = `lignesNonEnvoyees` (lignesEcran.js), seule définition.
+    const { sansProduit } = lignesNonEnvoyees(lines)
+    const sansPrix = sansProduit.filter(l => /prix à renseigner/i.test(l.designation || ''))
     const nomLigne = (l) => (l.designation || '—').replace(/\s*—\s*prix à renseigner\s*$/i, '').trim()
     if (orphan) {
       e.lines = `Sélectionnez un produit du stock pour la ligne « ${orphan.designation || '—'} »`
@@ -204,6 +203,14 @@ export function usePersistanceDevis(ctx) {
         + 'Vous pouvez tout de même créer ce devis.'
     }
 
+    // AGNR58 — une ligne sans produit (hors « prix à renseigner », qui bloque)
+    // ne disparaît plus en silence : annoncée, nommée.
+    const ecartees = e.lines ? [] : sansProduit.filter(l => (l.designation || '').trim() && !sansPrix.includes(l))
+    if (ecartees.length) {
+      const noms = ecartees.map(l => l.designation.trim()).join(', ')
+      w.lignes = ecartees.length === 1 ? `1 ligne sans produit ne sera pas enregistrée : ${noms}`
+        : `${ecartees.length} lignes sans produit ne seront pas enregistrées : ${noms}`
+    }
     setWarnings(w)
     setErrors(e)
     return Object.keys(e).length === 0

@@ -231,9 +231,27 @@ const estStructure = (l) => TYPES_STRUCTURE.has(l.typeLigne)
 
 // Les lignes d'écran qui PARTENT au serveur (même filtre que le payload) :
 // l'index `lignes[i]` d'un refus serveur se lit dans CETTE liste.
-const lignesEnvoyees = (lines) => (lines || []).filter((l) => (estStructure(l)
+export const lignesEnvoyees = (lines) => (lines || []).filter((l) => (estStructure(l)
   ? !!(l.designation || '').trim()
   : (l.produit && parseFloat(l.quantite) > 0)))
+
+/**
+ * AGNR58 — le COMPLÉMENT exact de `lignesEnvoyees` : les lignes qui ne
+ * partiront pas, rangées par cause (`sansProduit`, `quantiteNulle`,
+ * `structuresVides` : section / note sans intitulé). L'union des trois +
+ * `lignesEnvoyees` = toutes les lignes ; une seule définition pour `validate()`
+ * et l'avis du générateur.
+ */
+export function lignesNonEnvoyees(lines) {
+  const r = { sansProduit: [], quantiteNulle: [], structuresVides: [] }
+  for (const l of lines || []) {
+    if (estStructure(l)) {
+      if (!(l.designation || '').trim()) r.structuresVides.push(l)
+    } else if (!l.produit) r.sansProduit.push(l)
+    else if (!(parseFloat(l.quantite) > 0)) r.quantiteNulle.push(l)
+  }
+  return r
+}
 
 /**
  * Lignes d'écran → corps `lignes` de replace-lines / devis atomique.
