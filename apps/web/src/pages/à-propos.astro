@@ -69,6 +69,8 @@ const etapes = [
 ];
 import AProposSection62FB from '../components/blocs/AProposSection62FB.astro';
 import GarantiesSection63F3 from '../components/blocs/GarantiesSection63F3.astro';
+import ProposDiv42A2 from '../components/blocs/ProposDiv42A2.astro';
+import ProposDiv96B3 from '../components/blocs/ProposDiv96B3.astro';
 ---
 
 <Layout
@@ -188,10 +190,7 @@ import GarantiesSection63F3 from '../components/blocs/GarantiesSection63F3.astro
             <dd class="font-display text-xl font-bold text-white">Suivi en temps réel</dd>
             <dt class="tech-label mt-2 text-lune-faint">Production mesurée, accès client inclus</dt>
           </div>
-          <div class="v2-rise" style="--v2-i:2">
-            <dd class="font-display text-xl font-bold text-white">Tier-1 only</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Canadian Solar, JA Solar, Deye, Huawei, Dyness</dt>
-          </div>
+          <ProposDiv96B3 />
           <div class="v2-rise" style="--v2-i:3">
             <dd class="font-display text-xl font-bold text-white">Loi 82-21</dd>
             <dt class="tech-label mt-2 text-lune-faint">Déclaration et régularisation, de bout en bout</dt>
@@ -224,10 +223,7 @@ import GarantiesSection63F3 from '../components/blocs/GarantiesSection63F3.astro
               <dd class="font-display text-2xl font-bold">Casablanca</dd>
               <dt class="tech-label mt-2 text-encre-faint">Registre de commerce (RC 691213)</dt>
             </div>
-            <div>
-              <dd class="font-display text-2xl font-bold">Tier-1 only</dd>
-              <dt class="tech-label mt-2 text-encre-faint">Canadian Solar, JA Solar, Deye, Huawei, Dyness</dt>
-            </div>
+            <ProposDiv42A2 />
             <div>
               <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>
               <dt class="tech-label mt-2 text-encre-faint">Chantier documenté le plus ancien ({earliestRealisation.ville})</dt>
