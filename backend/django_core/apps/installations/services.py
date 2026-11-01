@@ -5784,10 +5784,10 @@ def raison_machine_etats(installation, nouveau_statut):
     par le serveur. Renvoie la raison française du refus, ou None.
 
     * chantier annulé : tout changement de statut canonique est refusé ;
-    * pas en avant de plus d'un rang canonique (``STATUT_ORDER``, statuts
-      hérités rabattus sur leur colonne) : refusé — « un pas à la fois ».
-    Un recul n'est jamais bloqué ici (la réouverture d'un chantier clôturé
-    garde son verrou AUD326 dédié)."""
+    * pas de plus d'un rang canonique (``STATUT_ORDER``, statuts hérités
+      rabattus), en avant comme en arrière (ACHT118, miroir de
+      ``canMoveStatus``) : refusé — « un pas à la fois ». Seule exception :
+      le recul depuis Clôturé, laissé au verrou AUD326 (réouverture motivée)."""
     canon_old = Installation.canonical_statut(installation.statut)
     canon_new = Installation.canonical_statut(nouveau_statut)
     if canon_old == canon_new:
@@ -5800,7 +5800,7 @@ def raison_machine_etats(installation, nouveau_statut):
     if canon_old not in ordre or canon_new not in ordre:
         return None
     i, j = ordre.index(canon_old), ordre.index(canon_new)
-    if j - i > 1:
+    if j - i > 1 or (i - j > 1 and canon_old != Installation.Statut.CLOTURE):
         libelles = dict(Installation.Statut.choices)
         return (f"Passage de {libelles.get(canon_old, canon_old)} à "
                 f"{libelles.get(canon_new, canon_new)} refusé : un pas à la "
@@ -5819,9 +5819,9 @@ def _raisons_transition(installation, nouveau_statut, user,
     puis CIQ621 : site pro sans convention, même sans étapes amorcées.
 
     ACHT2 (D-ACHT-2) — EN TÊTE, la machine d'états serveur : un chantier
-    annulé ne change plus de statut, et aucun pas en AVANT ne saute un rang
-    canonique (miroir serveur de ``canMoveStatus``). Ces deux refus sont
-    exclusifs : le reste de la chaîne n'est pas évalué."""
+    annulé ne change plus de statut, et aucun pas (avant, ou recul hors
+    Clôturé) ne saute un rang canonique (miroir serveur de ``canMoveStatus``).
+    Ces deux refus sont exclusifs : le reste de la chaîne n'est pas évalué."""
     raison_machine = raison_machine_etats(installation, nouveau_statut)
     if raison_machine:
         return [raison_machine]
