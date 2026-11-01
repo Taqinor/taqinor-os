@@ -40,6 +40,11 @@ class DevisAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     readonly_fields = ('reference', 'date_creation', 'fichier_pdf')
     inlines = [LigneDevisInline]
 
+    def has_change_permission(self, request, obj=None):
+        # ATOT52 — devis verrouillé : vue en lecture seule, un POST est refusé
+        # (403) AVANT tout enregistrement (même ``updated_at`` ne bouge pas).
+        return super().has_change_permission(request, obj) and not _devis_verrouille(obj)
+
     def get_readonly_fields(self, request, obj=None):
         base = tuple(super().get_readonly_fields(request, obj))
         if not _devis_verrouille(obj):

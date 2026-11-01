@@ -223,8 +223,10 @@ class GardeActionsModifiabiliteTests(TestCase):
             'lignes-0-id': str(ligne.pk), 'lignes-0-devis': str(self.devis.pk),
             'lignes-0-quantite': '99',
         })
-        self.assertIn(reponse.status_code, (200, 302))
+        self.assertEqual(reponse.status_code, 403)
         self.assertEqual(self._instantane(), avant)
+        # La fiche reste CONSULTABLE (lecture seule), jamais introuvable.
+        self.assertEqual(self.client.get(url).status_code, 200)
         # Brouillon : champs et inline restent éditables.
         brouillon = Devis.objects.create(
             company=self.company, reference='DEV-ADEV42-0002',
