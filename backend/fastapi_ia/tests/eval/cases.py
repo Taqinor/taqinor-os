@@ -44,9 +44,11 @@ CASES = [
     },
     {
         "id": "total_factures_mois",
-        "question": "Quel est le montant total facture ce mois-ci ?",
+        # AANA77 (D-AANA-6) : montant_ht est NULL sur une facture classique —
+        # le CA facture n'est pas une colonne ; le cas compte les factures.
+        "question": "Combien de factures ont ete emises ce mois-ci ?",
         "gold_sql": (
-            "SELECT SUM(montant_ht) FROM ventes_facture WHERE company_id = 1 "
+            "SELECT COUNT(id) FROM ventes_facture WHERE company_id = 1 "
             "AND statut IN ('emise', 'payee', 'en_retard') "
             "AND date_emission >= date_trunc('month', now())"
         ),

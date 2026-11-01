@@ -114,6 +114,81 @@ class SeedMetriquesTests(TestCase):
         mig.realigner(parc, None)  # second passage : rien d'écrit
         self.assertEqual(ca.versions.count(), 2)
 
+    def _facture(self, ref, statut, ht=None, **montants):
+        from decimal import Decimal
+
+        from apps.crm.models import Client
+        from apps.stock.models import Produit
+        from apps.ventes.models import Facture, LigneFacture
+        if not hasattr(self, '_cli'):
+            self._cli = Client.objects.create(company=self.company, nom='C77')
+            self._prod = Produit.objects.create(
+                company=self.company, nom='Kit', sku='AANA77-P',
+                prix_vente=Decimal('1'), quantite_stock=0)
+        facture = Facture.objects.create(
+            company=self.company, reference=ref, client=self._cli,
+            statut=statut, **montants)
+        if ht is not None:
+            LigneFacture.objects.create(
+                facture=facture, produit=self._prod, designation='Kit',
+                quantite=Decimal('1'), prix_unitaire=Decimal(ht))
+        return facture
+
+    def test_ca_lit_total_ht(self):
+        # AANA77 (D-AANA-6) : factures classiques (montant_ht NULL) comptées
+        # par total_ht ; brouillon exclu ; échéancier (figé) compté une fois.
+        from decimal import Decimal
+        self._seed()
+        for i, ht in enumerate(('1000', '500', '250')):
+            f = self._facture('F77-%d' % i, 'emise', ht=ht)
+            self.assertIsNone(f.montant_ht)
+        self._facture('F77-B', 'brouillon', ht='1000')
+        val = services.resolve_metric_valeur
+        self.assertEqual(val(self.company, None, 'ca_ht'), Decimal('1750'))
+        self._facture('F77-A', 'emise', type_facture='acompte',
+                      montant_ht=Decimal('300'), montant_tva=Decimal('60'),
+                      montant_ttc=Decimal('360'))
+        self.assertEqual(val(self.company, None, 'ca_ht'), Decimal('2050'))
+        self.assertEqual(val(self.company, None, 'ca_ttc'), Decimal('2460'))
+        self.assertEqual(val(self.company, None, 'panier_moyen'),
+                         Decimal('615'))
+        self.assertEqual(
+            val(self.company, None, 'ca_ht', filters={'type_facture': 'acompte'}),
+            Decimal('300'))
+        with self.assertRaises(services.MetriqueNonResolvable):
+            val(self.company, None, 'ca_ht', filters={'montant_ht': 1})
+
+    def test_migration_0005_passe_sur_total_ht(self):
+        import importlib
+        from django.apps import apps as parc
+        mig = importlib.import_module(
+            'apps.semantic.migrations.0005_aana_ca_total_ht')
+        self._seed()
+        for cle, mesure in mig.ANCIEN.items():
+            MetricDefinition.objects.filter(
+                company=self.company, cle=cle).update(
+                dataset=mig.DATASET, mesure=mesure,
+                dimensions_par_defaut=['mois_emission'])
+        retouche = MetricDefinition.objects.get(company=self.company,
+                                                cle='ca_ttc')
+        retouche.mesure = {'field': 'reste_du', 'agg': 'sum'}
+        retouche.save()
+        nb = retouche.versions.count()
+        mig.realigner(parc, None)
+        ca = MetricDefinition.objects.get(company=self.company, cle='ca_ht')
+        self.assertEqual((ca.dataset, ca.mesure, ca.dimensions_par_defaut),
+                         ('', mig.NOUVEAU['ca_ht'], []))
+        self.assertEqual(ca.filtres,
+                         {'statut__in': ['emise', 'payee', 'en_retard']})
+        self.assertEqual(ca.versions.order_by('-version').first().mesure,
+                         mig.NOUVEAU['ca_ht'])
+        retouche.refresh_from_db()
+        self.assertEqual(retouche.mesure, {'field': 'reste_du', 'agg': 'sum'})
+        self.assertEqual(retouche.versions.count(), nb)
+        nb_ca = ca.versions.count()
+        mig.realigner(parc, None)  # second passage : rien d'écrit
+        self.assertEqual(ca.versions.count(), nb_ca)
+
     def test_seed_par_societe(self):
         autre = Company.objects.create(nom='NTDATA11 Autre',
                                        slug='ntdata11-autre')
@@ -129,6 +204,8 @@ class SeedMetriquesTests(TestCase):
         # compta.dso / compta.marge_brute : voir la note SOLMVP en tête de
         # fichier — compta est parqué, plus enregistré.
         self.assertIn('crm.pipeline_pondere', enregistres)
+        for cle in ('ca_ht', 'ca_ttc', 'panier_moyen'):  # AANA77
+            self.assertIn('reporting.%s' % cle, enregistres)
         self.assertNotIn('compta.dso', enregistres)
         self.assertNotIn('compta.marge_brute', enregistres)
 
