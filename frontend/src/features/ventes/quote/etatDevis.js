@@ -266,7 +266,8 @@ export function devisVersEtat(d, { bareme = null, produits = [] } = {}) {
   } : null
   if (etat.consoStockee && !etat.consoStockee.descendDesFactures) {
     etat.realBillMode = 'kwh'
-    etat.realBillKwh = String(Math.round(e.conso_annuelle / 12))
+    // AGNR55 — au centième : kWh/mois × 12 redonne la conso stockée exacte.
+    etat.realBillKwh = String(Math.round(e.conso_annuelle / 12 * 100) / 100)
   }
 
   // Exploitation guidée (toutes optionnelles). AGR212 — l'énergie et la

@@ -380,3 +380,14 @@ test('ERR-AGNR-CI-ETUDE — création C&I : choix + entrées de l’étude dans 
   assert.deepEqual(etudeDeCreation('agricole', choix, { mode_pompe: 'neuve' }), choix)
   assert.deepEqual(etudeDeCreation('industriel', choix, null), choix)
 })
+// AGNR55 — la conso annuelle stockée se relit EXACTE (kWh/mois au centième).
+test('conso_stockee_relue_exacte', () => {
+  for (const conso of [1282, 10057, 1284]) {
+    const etat = devisVersEtat({ id: 1, mode_installation: 'residentiel', lignes: [],
+      etude_params: { conso_annuelle: conso, distributeur: 'onee' } }, { bareme: null })
+    assert.equal(Math.round(parseFloat(etat.realBillKwh) * 12), conso)
+  }
+  const etat = devisVersEtat({ id: 1, mode_installation: 'residentiel', lignes: [],
+    etude_params: { conso_annuelle: 1282, distributeur: 'onee' } }, { bareme: null })
+  assert.equal(etat.realBillKwh, '106.83')
+})
