@@ -92,6 +92,20 @@ class PaybackPubliableTests(SimpleTestCase):
         self.assertEqual(publie, round(attendu['payback_years'], 2))
         self.assertIsNone(_payback_publie_palier(120000.0, 4000.0, [], 1.0))
 
+    def test_echelle_palier_definition_roi_a(self):
+        """AMOT102 (C-AMOT-VER-003, sonde 90 000 / 6 500 / onduleur 12 500 HT)
+        — niveau 7 : la définition de ``roi_a`` (part stockée 0, TVA de la
+        ligne) : 16,8, jamais 18,8. Un devis au niveau 6 garde 18,8.
+        Test-du-test : remettre ``part_batterie=None`` ⇒ échec."""
+        lignes = [{'role': 'onduleur_hybride', 'quantite': 1,
+                   'prix_unitaire_ht': 12500.0, 'designation': 'Onduleur hybride'}]
+        devis = SimpleNamespace(regles_calcul=7, company=None)
+        self.assertEqual(_payback_publie_palier(
+            90000.0, 6500.0, lignes, 1.0, devis=devis, taux_tva=20), 16.8)
+        self.assertEqual(_payback_publie_palier(
+            90000.0, 6500.0, lignes, 1.0, devis=SimpleNamespace(regles_calcul=6),
+            taux_tva=20), 18.8)
+
 
 class ArrondiAffichageCartesTests(SimpleTestCase):
     """D-ENF-ARRONDI-PDF (fondateur 30/10/2026) — les cartes de tailles
