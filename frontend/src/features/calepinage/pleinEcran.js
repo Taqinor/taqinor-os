@@ -37,8 +37,7 @@ export async function basculerPleinEcran(element, doc, enPleinEcranActuel) {
         await doc.exitFullscreen()
       }
     } catch {
-      /* Sortie refusée par le navigateur : le repli CSS de l'appelant suffit
-         à rendre la main — jamais un état bloqué en plein écran. */
+      console.warn("pleinEcran (basculerPleinEcran) : Sortie refusée par le navigateur : le repli CSS de l'appelant suffit à rendre la main — jamais un état bloqué en plein écran.")
     }
     return { enPleinEcran: false, repliCss: false }
   }
@@ -49,7 +48,7 @@ export async function basculerPleinEcran(element, doc, enPleinEcranActuel) {
       return { enPleinEcran: true, repliCss: false }
     }
   } catch {
-    /* Refusé (permission, contexte non interactif…) : repli CSS ci-dessous. */
+    console.warn('pleinEcran (basculerPleinEcran) : Refusé (permission, contexte non interactif…) : repli CSS ci-dessous.')
   }
   return { enPleinEcran: true, repliCss: true }
 }

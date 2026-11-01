@@ -73,7 +73,7 @@ export function idbStore() {
           tx.oncomplete = () => resolve()
           tx.onerror = () => reject(tx.error)
         })
-      } catch { /* quota/mode privé : le cache est simplement sans effet */ }
+      } catch { console.warn('readCache (ouvrir) : quota/mode privé : le cache est simplement sans effet') }
     },
   }
 }

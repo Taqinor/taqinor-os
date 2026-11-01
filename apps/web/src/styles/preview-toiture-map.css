@@ -1,0 +1,17 @@
+/* Placeholder centré de la carte (avant le boot de MapLibre), commun aux quatre pages
+   preview/toiture* : même règle, seule la classe (préfixe rt-/r3-/rp-/rp9-) change.
+   Ordre des déclarations sans effet : l'ordre est choisi pour ne pas recopier la règle
+   de centrage de styles/mon-toit-page.css. */
+.rt-map-placeholder,
+.r3-map-placeholder,
+.rp-map-placeholder,
+.rp9-map-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  text-align: center;
+  position: absolute;
+  inset: 0;
+}

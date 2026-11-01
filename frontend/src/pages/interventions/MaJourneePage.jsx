@@ -202,11 +202,11 @@ export default function MaJourneePage() {
     try {
       sessionStorage.setItem(SS_ACTIVE, String(interv.id))
       sessionStorage.setItem(SS_TAB, tab)
-    } catch { /* stockage indisponible */ }
+    } catch { console.warn('MaJourneePage (MaJourneePage) : stockage indisponible') }
   }, [])
   const closeInterv = useCallback(() => {
     setActive(null)
-    try { sessionStorage.removeItem(SS_ACTIVE) } catch { /* */ }
+    try { sessionStorage.removeItem(SS_ACTIVE) } catch { console.warn('MaJourneePage (MaJourneePage) : échec ignoré (dégradé)') }
   }, [])
 
   // VX88 — « Ma tournée » (FG73) : les interventions du jour du technicien
@@ -239,7 +239,7 @@ export default function MaJourneePage() {
               setActive(found)
             }
           }
-        } catch { /* stockage indisponible */ }
+        } catch { console.warn('MaJourneePage (MaJourneePage) : stockage indisponible') }
       }
       // NTMOB27 — la tournée fraîche alimente le cache de LECTURE hors-ligne
       // (jamais l'inverse : rien de ce cache ne repart vers le serveur).
@@ -613,7 +613,7 @@ function InterventionFlowSheet({
   // rechargement provoqué par un backgrounding).
   const changeTab = (t) => {
     setTab(t)
-    try { sessionStorage.setItem(SS_TAB, t) } catch { /* stockage indisponible */ }
+    try { sessionStorage.setItem(SS_TAB, t) } catch { console.warn('MaJourneePage (changeTab) : stockage indisponible') }
   }
   // EZ6 — les panneaux terrain (F5-F19) appellent `onChanged()` sans argument :
   // on leur passe l'intervention AVANT l'action pour que le parent puisse

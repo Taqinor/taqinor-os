@@ -43,6 +43,7 @@ from core.champs_stricts import (
     IdInconnu404Mixin,
 )
 from core.mixins import SameCompanyFKSerializerMixin
+from core.parseurs import ObjetJSON
 
 from .models import Calepinage, CalepinageVariante
 from .services.import_plan import (
@@ -777,6 +778,10 @@ class CalepinageVarianteSerializer(serializers.ModelSerializer):
     gardée par ``garde_retenue``). Un sérialiseur qui l'écrirait ouvrirait la
     seconde porte par laquelle on se retrouve avec deux retenues, ou zéro.
     """
+
+    # api-fuzz (vague 10) : la conception est un OBJET (ou null) — le service
+    # refuse tout autre type ; le schéma le publie au lieu de « tout JSON ».
+    roof_layout = ObjetJSON(required=False, allow_null=True)
 
     class Meta:
         model = CalepinageVariante

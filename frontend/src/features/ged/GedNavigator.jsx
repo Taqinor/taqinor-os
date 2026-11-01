@@ -89,7 +89,7 @@ export default function GedNavigator() {
       const token = r.data?.token
       const url = token ? `${window.location.origin}/ged/depot/${token}` : null
       if (url && navigator.clipboard) {
-        try { await navigator.clipboard.writeText(url) } catch { /* best-effort */ }
+        try { await navigator.clipboard.writeText(url) } catch { console.warn('GedNavigator (createDepotLink) : best-effort') }
       }
       toast.success(url ? `Lien de dépôt créé et copié : ${url}` : 'Lien de dépôt créé.')
     } catch (e) {

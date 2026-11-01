@@ -206,14 +206,6 @@ const howItWorks = [
 // W58 — Iconographie sobre des cartes « Nos solutions » : un trait SVG par
 // carte, currentColor (teinte brass), dans le langage de marque. Indexée par
 // href pour rester stable même si l'ordre des cartes change.
-const solutionIcons: Record<string, string> = {
-  '/résidentiel': '<path d="M4 13 12 5l8 8" /><path d="M6 11v8h12v-8" /><path d="M10 19v-4h4v4" />',
-  '/professionnel': '<path d="M4 21V8l7-3v4l7-3v15" /><path d="M4 21h16" /><path d="M8 12h0M8 16h0M14 12h0M14 16h0" />',
-  '/pompage-solaire': '<path d="M12 3v6" /><path d="M5 21c1.6-2 3.2-2 4.8 0s3.2 2 4.8 0 3.2-2 4.4 0" /><path d="M8 9h8l-2 6H10z" />',
-  '/batteries-stockage': '<path d="M5 8h14v11H5z" /><path d="M9 5h6v3H9z" /><path d="M12 11v5" /><path d="M9.5 13.5h5" />',
-  '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
-  '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
-};
 
 // Pourquoi Taqinor / confiance — bande de quatre chiffres monumentaux, faits
 // déjà publiés. Décision fondateur 2026-06-22 : le slot « docteur-ingénieur »
@@ -253,6 +245,10 @@ import EnIndexDl0C1D from '../components/blocs/EnIndexDl0C1D.astro';
 import '../styles/home-page.css';
 import HomeScripts from '../components/home/HomeScripts.astro';
 import GalleryLightboxDialog from '../components/home/GalleryLightboxDialog.astro';
+import ArIndexPicture8B05 from '../components/blocs/ArIndexPicture8B05.astro';
+import { solutionIcons } from '../lib/solutionIcons';
+import EnIndexA993D from '../components/blocs/EnIndexA993D.astro';
+import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
 ---
 
 <Layout
@@ -274,21 +270,7 @@ import GalleryLightboxDialog from '../components/home/GalleryLightboxDialog.astr
             W155 — Portrait-crop : en orientation portrait (téléphone tenu vertical),
             les sources portrait sont sélectionnées en priorité ; l'object-position
             recentre les panneaux (center 20%). */}
-        <picture>
-          <source type="image/avif" media="(orientation: portrait)" sizes="100vw"
-            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w" />
-          <source type="image/webp" media="(orientation: portrait)" sizes="100vw"
-            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w" />
-          <source type="image/avif" sizes="100vw"
-            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w" />
-          <source type="image/webp" sizes="100vw"
-            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w, /videos/hero-poster-1600.webp 1600w" />
-          <img src="/videos/hero-poster-1600.webp" alt="" width="1600" height="900"
-            loading="eager" decoding="async" fetchpriority="high"
-            class="h-full w-full object-cover hero-portrait-img" />
-        </picture>
-        <video id="hero-video" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1"
-          class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"></video>
+        <ArIndexPicture8B05 />
         {/* Scrim canonique RELEVÉ (--hero-scrim-strength 0.52) : compense la
             chaleur du grade « heure dorée » et garde le headline ≥ AA. */}
         <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
@@ -680,18 +662,12 @@ import GalleryLightboxDialog from '../components/home/GalleryLightboxDialog.astr
             <a href="/devis/mon-toit" class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
               Obtenir mon étude gratuite →
             </a>
-            <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
-              WhatsApp direct
-            </a>
+            <EnIndexA993D waDirect={waDirect} />
           </div>
         </div>
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">Dernière installation livrée</p>
-          <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
-          <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
-          <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-            {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
-          </p>
+          <EnIndexP51EC featured={featured} />
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
             Installation suivie en temps réel, accès client inclus. Visites de site possibles sur demande.
           </p>

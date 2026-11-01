@@ -1002,21 +1002,11 @@ def _reponse_pvcalculation(client, plan, site, decision, cascade, kwc):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _ecrire_resultat_variante(variante, blocs):
-    """ACAL112 — fusionne ``blocs`` dans ``variante.resultat`` relu SOUS
-    VERROU de ligne ; seule la colonne ``resultat`` est écrite."""
-    from django.db import transaction
+    """ACAL112 — fusion sous verrou de ligne dans ``variante.resultat`` ;
+    l'écriture vit dans ``services/resultat.py`` (ENF15, écrivain unique)."""
+    from .resultat import ecrire_resultat_variante
 
-    from ..models import CalepinageVariante
-
-    with transaction.atomic():
-        fraiche = (CalepinageVariante.objects.select_for_update()
-                   .get(pk=variante.pk))
-        resultat = (dict(fraiche.resultat)
-                    if isinstance(fraiche.resultat, dict) else {})
-        resultat.update(blocs)
-        fraiche.resultat = resultat
-        fraiche.save(update_fields=['resultat', 'updated_at'])
-    variante.resultat = resultat
+    ecrire_resultat_variante(variante, blocs)
 
 
 def _poser_version_moteur(calepinage, version):

@@ -11,10 +11,10 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
+import PourquoiTaqinorBloc660A from '../../components/blocs/PourquoiTaqinorBloc660A.astro';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -160,10 +160,7 @@ const piliers = [
     <section class="section-tight px-4 text-white">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">للتحقّق من هذه الأرقام</p>
-        <RelatedLinks links={[
-          { href: L('/production-mesuree'), label: 'إنتاجنا المتابَع باستمرار' },
-          { href: L('/impact-taqinor'), label: 'أثر Taqinor (kWc وkWh وCO2 المتجنَّب)' },
-        ]} />
+        <PourquoiTaqinorBloc660A L={L} />
       </div>
     </section>
 

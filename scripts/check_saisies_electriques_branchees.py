@@ -36,6 +36,10 @@ import _cliquet  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND = Path("backend") / "django_core" / "apps" / "calepinage"
+# ENF15 — les lecteurs des seuils DC/AC vivent dans le noyau electrique partage
+# (core/electrique/onduleurs.py, lit `reglages` pour toute societe) : ce sont
+# des lecteurs backend a part entiere des cles du registre calepinage.
+LECTEURS_CORE = Path("backend") / "django_core" / "core" / "electrique"
 ELECTRIQUE = BACKEND / "services" / "electrique.py"
 PARAMETRES = BACKEND / "services" / "parametres_cles.py"
 FRONT_API = Path("frontend") / "src" / "api" / "calepinageApi.js"
@@ -99,6 +103,10 @@ def _textes_backend(root: Path) -> dict:
         if _est_test(rel.relative_to(BACKEND)) or rel == PARAMETRES:
             continue
         out[rel] = p.read_text(encoding="utf-8").splitlines()
+    for p in sorted((root / LECTEURS_CORE).rglob("*.py")):
+        rel = p.relative_to(root)
+        if not _est_test(rel.relative_to(LECTEURS_CORE)):
+            out[rel] = p.read_text(encoding="utf-8").splitlines()
     return out
 
 

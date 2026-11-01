@@ -21,6 +21,7 @@ Run :
 import json
 import pathlib
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.services.variantes import retenir_variante
 from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
@@ -105,6 +106,19 @@ class CrudVarianteTest(BaseVariantes):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         variante.refresh_from_db()
         self.assertEqual(len(variante.layout_hash), 64)
+
+    def test_edition_multipart_refusee_en_415(self):
+        """api-fuzz (vague 10) — un PATCH multipart (« resultat » en fichier)
+        plantait en 500 à l'écriture JSON : le corps est JSON seul → 415."""
+        variante = CalepinageVariante.objects.create(
+            company=self.company, calepinage=self.calepinage, nom='A')
+        reponse = self.api.patch(
+            url_variante(self.calepinage.pk, variante.pk),
+            {'nom': 'B', 'resultat': SimpleUploadedFile('resultat', b'None')},
+            format='multipart')
+        self.assertEqual(reponse.status_code, 415)
+        variante.refresh_from_db()
+        self.assertEqual(variante.nom, 'A')
 
     def test_suppression_de_la_retenue_refusee(self):
         variante = CalepinageVariante.objects.create(

@@ -278,7 +278,7 @@ export default function SectionsPane({
           sessionStorage.removeItem('taqinor.leadform.pendingFocus')
           if (pending && String(pending.leadId) === String(state.leadId)) target = pending.section
         }
-      } catch { /* best-effort */ }
+      } catch { console.warn('SectionsPane (calculerRepliAuto) : best-effort') }
     }
     if (!target) return
     focusRan.current = true

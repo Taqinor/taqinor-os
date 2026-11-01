@@ -98,10 +98,6 @@ FIELD_MAPS = {
         'client_external_id': 'client_external_id',
         'statut': 'statut',
         'date_creation': 'date_creation', 'date': 'date_creation',
-        'montant_ht_source': 'montant_ht_source',
-        'montant_ht': 'montant_ht_source',
-        'montant_ttc_source': 'montant_ttc_source',
-        'montant_ttc': 'montant_ttc_source',
         'external_id': 'external_id', 'id_externe': 'external_id',
     },
     # NTMIG10 — Factures (EN-TÊTES seulement — lignes via NTMIG11). Écriture
@@ -117,10 +113,6 @@ FIELD_MAPS = {
         'client_external_id': 'client_external_id',
         'statut': 'statut', 'statut_paiement': 'statut_paiement',
         'date_emission': 'date_emission', 'date': 'date_emission',
-        'montant_ht_source': 'montant_ht_source',
-        'montant_ht': 'montant_ht_source',
-        'montant_ttc_source': 'montant_ttc_source',
-        'montant_ttc': 'montant_ttc_source',
         'external_id': 'external_id', 'id_externe': 'external_id',
     },
 }
@@ -907,8 +899,12 @@ def _valider_ligne_produit(f):
             return champs, 0, f'{cle} invalide : « {saisi} »'
         if nombre < 0:
             return champs, 0, f'{cle} négatif refusé : « {saisi} »'
-        if nombre >= PRIX_MAX:
+        from django.apps import apps
+        col = apps.get_model('stock', 'Produit')._meta.get_field(cle)
+        if nombre >= PRIX_MAX or nombre >= 10 ** (col.max_digits - col.decimal_places):
             return champs, 0, f'{cle} hors bornes : « {saisi} »'
+        if nombre.normalize().as_tuple().exponent < -col.decimal_places:
+            return champs, 0, f'{cle} : plus de {col.decimal_places} décimales : « {saisi} »'
         champs[cle] = nombre
     ouverture = 0
     if 'quantite_stock' in champs:

@@ -1,0 +1,25 @@
+/* W348 — impression : n'affiche QUE la fiche de dimensionnement, fond clair
+   et texte sombre (le thème nuit/laiton par défaut imprimerait dark-on-dark
+   — même correctif que sur /proposition/[token]). is:global : Header/Footer
+   sont rendus par Layout.astro, un composant distinct, donc un style scopé
+   à CETTE page ne les atteindrait jamais. */
+@media print {
+  header,
+  footer,
+  #sticky-cta,
+  .reading-bar,
+  .v2 > *:not(#fiche-dimensionnement) {
+    display: none !important;
+  }
+  #fiche-dimensionnement {
+    padding: 0 !important;
+  }
+  #fiche-dimensionnement,
+  #fiche-dimensionnement * {
+    background: #fff !important;
+    color: #111 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    border-color: #999 !important;
+  }
+}

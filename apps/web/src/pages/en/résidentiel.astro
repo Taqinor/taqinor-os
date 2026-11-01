@@ -83,6 +83,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
 const investRangeLow = formatMAD(Math.min(...brackets.map((b) => b.investLow)));
 const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh)));
 import ResidentielDiv9D1E from '../../components/blocs/ResidentielDiv9D1E.astro';
+import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.astro';
+import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.astro';
 ---
 
 <Layout
@@ -109,11 +111,7 @@ import ResidentielDiv9D1E from '../../components/blocs/ResidentielDiv9D1E.astro'
       </div>
 
       {/* Scroll-invitation chevron — static under reduced-motion */}
-      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </div>
+      <ProfessionnelDiv77FB />
 
       {/* Content anchored LOW — eyebrow demoted to lune (brass discipline) */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
@@ -262,14 +260,7 @@ import ResidentielDiv9D1E from '../../components/blocs/ResidentielDiv9D1E.astro'
     </section>
 
     <!-- W62 — Client reviews (empty → renders nothing until a real review exists) -->
-    <Testimonials />
-
-    <!-- Reassurance: the written warranties, in brief (links to /garanties) -->
-    <GarantiesTeaser />
-
-    <!-- W263 — shared FAQ (maintenance/price/included-excluded/timelines/
-         warranties) + per-component warranty, BEFORE the final form.
-         schema={false}: /faq stays the only FAQPage JSON-LD (W19). -->
+    <ProfessionnelBlocB4F1 />
     <Faq schema={false} heading="Frequently asked questions — residential solar" items={faqItems} />
     <section class="section-tight bg-blanc-azur px-4 text-encre">
       <ServiceWarrantyTable />

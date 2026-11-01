@@ -62,7 +62,7 @@ ALLOWLIST: set[str] = set()
 # 3) catch vide ou réduit à des commentaires (le corps ne contient que des
 #    espaces et des commentaires).
 RE_CATCH_VIDE = re.compile(
-    r"\bcatch\s*(?:\([^)]*\))?\s*\{(?:\s|/\*[\s\S]*?\*/|//[^\n]*)*\}")
+    r"\bcatch\s*(?:\([^)]*\))?\s*\{(?:\s|/\*[\s\S]*?\*/|//[^\n]*(?=\n|\Z))*\}")
 CATCH_VIDE_ALLOW = ROOT / "scripts" / "frontend_catch_vide_allow.txt"
 _DECLARATIONS = (
     re.compile(r"\bfunction\s*\*?\s*(\w+)\s*\("),
@@ -136,6 +136,11 @@ def scan_catch_vide() -> dict:
             sans_doc = re.sub(r"/\*\*[\s\S]*?\*/",
                               lambda m: " " * len(m.group(0)), texte)
             for m in RE_CATCH_VIDE.finditer(sans_doc):
+                # ENF15 - un `catch {}` CITE dans un commentaire de ligne
+                # (`// ... (`catch {}`) ...`) n'est pas du code.
+                debut = sans_doc.rfind("\n", 0, m.start()) + 1
+                if sans_doc[debut:m.start()].lstrip().startswith("//"):
+                    continue
                 cle = f"{rel}::{_fonction_de(sans_doc, m.start())}"
                 trouves[cle] = trouves.get(cle, 0) + 1
     return trouves

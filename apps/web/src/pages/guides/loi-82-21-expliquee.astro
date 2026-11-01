@@ -19,7 +19,6 @@ import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
-import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
@@ -88,6 +87,7 @@ const regimes = [
   },
 ];
 import Loi8221ExpliqueeDiv68F7 from '../../components/blocs/Loi8221ExpliqueeDiv68F7.astro';
+import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuGelPCFC9.astro';
 ---
 
 <Layout
@@ -109,11 +109,7 @@ import Loi8221ExpliqueeDiv68F7 from '../../components/blocs/Loi8221ExpliqueeDiv6
       <h1 class="display v2-page-title mt-5 text-white">Loi 82-21 expliquée simplement</h1>
 
       <!-- W303 — date de vérification + auteur + temps de lecture -->
-      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
-        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
-        <span aria-hidden="true">·</span>
-        <span>{readingMinutes} min de lecture</span>
-      </p>
+      <BatterieLithiumOuGelPCFC9 readingMinutes={readingMinutes} verifiedDate={verifiedDate} />
 
       <p class="v2-lead mt-6 text-lune-soft">
         Depuis le 9 juin 2026, la loi 82-21 sur l’autoproduction d’énergie électrique et son décret

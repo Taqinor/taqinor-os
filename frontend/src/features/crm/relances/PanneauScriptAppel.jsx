@@ -502,7 +502,7 @@ export default function PanneauScriptAppel({
       await navigator.clipboard.writeText(accroche)
       toastInfo('Texte copié.')
     } catch {
-      // best-effort — presse-papier indisponible : le texte reste lisible.
+      console.warn('PanneauScriptAppel (copier) : best-effort — presse-papier indisponible : le texte reste lisible.')
     }
   }
 

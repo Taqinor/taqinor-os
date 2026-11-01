@@ -1,0 +1,10 @@
+---
+// ENF19 : bloc partagé (copies identiques) — batterie-lithium-ou-gel.astro
+import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
+const { readingMinutes, verifiedDate } = Astro.props as Record<string, any>;
+---
+<p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+  <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+  <span aria-hidden="true">·</span>
+  <span>{readingMinutes} min de lecture</span>
+</p>

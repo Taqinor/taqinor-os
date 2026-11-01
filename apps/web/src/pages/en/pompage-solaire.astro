@@ -117,6 +117,8 @@ import PompageSolaireG2D36 from '../../components/blocs/PompageSolaireG2D36.astr
 import PompageSolaireDiv9A50 from '../../components/blocs/PompageSolaireDiv9A50.astro';
 import PompageSolaireDiv3A4E from '../../components/blocs/PompageSolaireDiv3A4E.astro';
 import BandeCapacitePompage from '../../components/blocs/BandeCapacitePompage.astro';
+import '../../styles/pompage-solaire.css';
+import PompageSolairePath72F9 from '../../components/blocs/PompageSolairePath72F9.astro';
 ---
 
 <Layout
@@ -239,11 +241,7 @@ import BandeCapacitePompage from '../../components/blocs/BandeCapacitePompage.as
               <text text-anchor="middle" dy="8" font-size="11" fill="white" font-weight="700">drive</text>
               <text text-anchor="middle" dy="24" font-size="11" fill="white" font-weight="700">+ PV array</text>
             </g>
-            <path d="M370 130 L520 130" stroke="#0f1c54" stroke-width="2" opacity="0.6" marker-end="url(#arrowP)" />
-            <g transform="translate(560,130)" class="fill-azur-700">
-              <circle r="26" fill="none" stroke="#e8b54a" stroke-width="2.5" />
-              <text text-anchor="middle" dy="4" font-size="18">💧</text>
-            </g>
+            <PompageSolairePath72F9 />
           </svg>
           <p class="mx-auto mt-4 max-w-xl text-center text-xs leading-relaxed text-encre-faint">
             The four measurements taken on site together determine one coherent system — not four
@@ -445,37 +443,5 @@ import BandeCapacitePompage from '../../components/blocs/BandeCapacitePompage.as
 </Layout>
 
 <script>
-  // W348 — print button for the sizing worksheet: window.print() triggers
-  // the @media print rules below (light background, chrome hidden).
-  document.getElementById('fiche-print-btn')?.addEventListener('click', () => {
-    window.print();
-  });
+  import '../../scripts/fichePrintButton';
 </script>
-
-<style is:global>
-  /* W348 — print: show ONLY the sizing worksheet, light background and dark
-     text (the default night/brass theme would print dark-on-dark — same fix
-     as on /proposition/[token]). is:global: Header/Footer are rendered by
-     Layout.astro, a separate component, so a style scoped to THIS page would
-     never reach them. */
-  @media print {
-    header,
-    footer,
-    #sticky-cta,
-    .reading-bar,
-    .v2 > *:not(#fiche-dimensionnement) {
-      display: none !important;
-    }
-    #fiche-dimensionnement {
-      padding: 0 !important;
-    }
-    #fiche-dimensionnement,
-    #fiche-dimensionnement * {
-      background: #fff !important;
-      color: #111 !important;
-      box-shadow: none !important;
-      text-shadow: none !important;
-      border-color: #999 !important;
-    }
-  }
-</style>

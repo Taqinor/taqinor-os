@@ -444,7 +444,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
       // QD2 — nom cohérent posé par le serveur (repli sur la référence).
       pending.deliver(res.data, filenameFromResponse(res, `${devisRef || 'Devis'}.pdf`))
     } catch {
-      try { pending.win?.close() } catch { /* fenêtre déjà fermée */ }
+      try { pending.win?.close() } catch { console.warn('LeadDevisPanel (handleDownload) : fenêtre déjà fermée') }
       setErrorMsg('Téléchargement du PDF indisponible. Réessayez.')
     } finally {
       setDownloading(false)

@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — marocains-du-monde.astro
+import Picture from '../Picture.astro';
+import ProfessionnelDiv77FB from './ProfessionnelDiv77FB.astro';
+---
+<div class="v2-hero-media absolute inset-0 -z-10">
+  <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
+    loading="eager" fetchpriority="high" class="h-full w-full object-cover object-[65%_40%]" />
+  <div class="hero-scrim absolute inset-0"></div>
+</div>
+
+{/* دعوة للتمرير — ثابتة تحت prefers-reduced-motion */}
+<ProfessionnelDiv77FB />

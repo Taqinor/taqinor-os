@@ -1,0 +1,591 @@
+{
+  "sha": "c0dde5cb8109cf3a0480aea96d02521f75af2f7b",
+  "date": "2026-11-01",
+  "groupe": "APDF",
+  "verdict": "PASS",
+  "couvre": [
+    "APDF46",
+    "APDF49",
+    "APDF17",
+    "APDF18",
+    "APDF47",
+    "APDF36",
+    "APDF48",
+    "APDF22",
+    "APDF16",
+    "APDF21",
+    "APDF26",
+    "APDF27",
+    "APDF29",
+    "APDF30",
+    "APDF31",
+    "APDF32",
+    "APDF33",
+    "APDF34",
+    "APDF37",
+    "APDF39",
+    "APDF42",
+    "APDF106",
+    "APDF99"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "APDF46",
+        "APDF49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-01/ACCEPTATION-APDF-P1.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "/proposal téléchargé sous session /login (demo_admin pour 741, anon_admin pour 461 / 524 / 445), PyMuPDF dans le conteneur : 741 défaut 3 / onepage 1 / include_etude 4 / devis_final 3 ; 461 3/1/3/3 ; 524 4/1/4/4 ; 445 3/1/3/3 et 4 avec include_note_calcul ; en et ar en défaut et onepage = mêmes pages ; arabe défaut 1 223 / 1 231 / 1 702 / 1 916 car., onepage 327 / 418 / 337 / 349 ; police arabe embarquée p. 1 ; aucun libellé de la liste APDF46 en en / ar ; aucun prix_achat / marge / revendeur ; Total TTC 78 900 / 89 600 / 70 800 / 15 600 lu dans le texte ar ; statuts brouillon -> brouillon. Rasters p. 1 ar : docs/qa-explorer/captures/2026-11-01/ACCEPTATION-APDF-P1-ar-<id>-<format>.jpg (chiffres-clés et Total TTC lisibles à l image sur le 741)."
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "APDF17"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-01/ACCEPTATION-APDF-P1.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "anon_admin par /login, liste des devis : dialogue PDF du 461 sans case « Joindre la note de calcul », du 445 avec case décochée ; cochée -> POST generer-pdf include_note_calcul=true accepté ; rouvert décochée ; statuts inchangés. Capture docs/qa-explorer/captures/2026-11-01/ACCEPTATION-APDF-P1.2-dialogue-agricole.jpg"
+    },
+    {
+      "id": "P2",
+      "taches": [
+        "APDF18",
+        "APDF47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-01/ACCEPTATION-APDF-P2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "client arabe créé par l API (société 2), devis DEV-202611-0001 (id 2506) envoyé par envoyer-email : pièce jointe Devis_<ref>.pdf relue dans la sortie console du conteneur Django (EMAIL_BACKEND console vérifié), PDF public du lien et /proposal sans paramètre : 3 p. chacun, 1 375 car. arabes chacun, aucun libellé APDF46, aucun prix_achat ; statut envoye inchangé par les rendus. Rasters docs/qa-explorer/captures/2026-11-01/ACCEPTATION-APDF-P2-*.jpg"
+    },
+    {
+      "id": "P3",
+      "taches": [
+        "APDF36",
+        "APDF48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-01/ACCEPTATION-APDF-P3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "même devis : conditions de l endpoint public = « Mes devis » du portail (titre et puces) ; chaque mot des puces retrouvé dans le PDF ; écran du portail /portail/client/devis : le dialogue « Accepter » montre les conditions, case obligatoire, POST accepter 200 avec accepte_conditions=true ; rechargé : accepté côté portail et ERP. Capture docs/qa-explorer/captures/2026-11-01/ACCEPTATION-APDF-P3-portail.jpg"
+    },
+    {
+      "id": "P7",
+      "taches": [
+        "APDF22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-01/ACCEPTATION-APDF-P7.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Paramètres › Société à l écran : capital 123 456,00 MAD et forme SARL AU enregistrés (PATCH), relus après rechargement, imprimés par /proposal du 741, puis restaurés (vides) et relus après restauration"
+    },
+    {
+      "id": "C-APDF-ACC-DEVIS-741",
+      "taches": [
+        "APDF21",
+        "APDF49",
+        "APDF7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-DEVIS-741.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "devis 741 résidentiel (société 2) : devis741:defaut|fr|p=3|ar=0|img=15|PASS; devis741:onepage|fr|p=1|ar=0|img=1|PASS; devis741:include_etude|fr|p=4|ar=0|img=12|PASS; devis741:devis_final|fr|p=3|ar=0|img=15|PASS; devis741:defaut|ar|p=3|ar=1344|img=15|PASS; devis741:onepage|ar|p=1|ar=327|img=1|PASS; devis741:include_etude|ar|p=4|ar=2089|img=12|PASS; devis741:devis_final|ar|p=3|ar=1324|img=15|PASS; devis741:defaut?langue=ar|ar|p=3|ar=1344|img=15|PASS; devis741:defaut?langue=en|en|p=3|ar=0|img=15|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-DEVIS-461",
+      "taches": [
+        "APDF21",
+        "APDF49",
+        "APDF7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-DEVIS-461.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "devis 461 commercial (société 4) : devis461:defaut|fr|p=3|ar=0|img=3|PASS; devis461:onepage|fr|p=1|ar=0|img=1|PASS; devis461:include_etude|fr|p=3|ar=0|img=3|PASS; devis461:devis_final|fr|p=3|ar=0|img=3|PASS; devis461:defaut|ar|p=3|ar=1231|img=3|PASS; devis461:onepage|ar|p=1|ar=423|img=1|PASS; devis461:include_etude|ar|p=3|ar=1231|img=3|PASS; devis461:devis_final|ar|p=3|ar=1231|img=3|PASS; devis461:defaut?langue=ar|ar|p=3|ar=1231|img=3|PASS; devis461:defaut?langue=en|en|p=3|ar=0|img=3|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-DEVIS-524",
+      "taches": [
+        "APDF21",
+        "APDF49",
+        "APDF7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-DEVIS-524.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "devis 524 industriel (société 4) : devis524:defaut|fr|p=4|ar=0|img=4|PASS; devis524:onepage|fr|p=1|ar=0|img=1|PASS; devis524:include_etude|fr|p=4|ar=0|img=4|PASS; devis524:devis_final|fr|p=4|ar=0|img=4|PASS; devis524:defaut|ar|p=4|ar=1702|img=4|PASS; devis524:onepage|ar|p=1|ar=342|img=1|PASS; devis524:include_etude|ar|p=4|ar=1702|img=4|PASS; devis524:devis_final|ar|p=4|ar=1702|img=4|PASS; devis524:defaut?langue=ar|ar|p=4|ar=1702|img=4|PASS; devis524:defaut?langue=en|en|p=4|ar=0|img=4|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-DEVIS-445",
+      "taches": [
+        "APDF16",
+        "APDF49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-DEVIS-445.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "devis 445 agricole (société 4) — bande légale ICE / RC / capital / forme exigée et présente dans tous les formats (FAIL du 30/10 levé) : devis445:defaut|fr|p=3|ar=0|img=3|PASS; devis445:onepage|fr|p=1|ar=0|img=1|PASS; devis445:include_etude|fr|p=3|ar=0|img=3|PASS; devis445:devis_final|fr|p=3|ar=0|img=3|PASS; devis445:note_calcul|fr|p=4|ar=0|img=4|PASS; devis445:defaut|ar|p=3|ar=1916|img=3|PASS; devis445:onepage|ar|p=1|ar=354|img=1|PASS; devis445:include_etude|ar|p=3|ar=1916|img=3|PASS; devis445:devis_final|ar|p=3|ar=1916|img=3|PASS; devis445:note_calcul|ar|p=4|ar=2345|img=4|PASS; devis445:defaut?langue=ar|ar|p=3|ar=1916|img=3|PASS; devis445:defaut?langue=en|en|p=3|ar=0|img=3|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-FACTURE",
+      "taches": [
+        "APDF26",
+        "APDF28"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-FACTURE.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "facture : facture|fr|p=2|ar=0|img=0|PASS; facture|ar|p=2|ar=311|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-AVOIR",
+      "taches": [
+        "APDF27",
+        "APDF28",
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-AVOIR.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "avoir : avoir|fr|p=1|ar=0|img=0|PASS; avoir|ar|p=2|ar=247|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-NOTE-DEBIT",
+      "taches": [
+        "APDF27",
+        "APDF28",
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-NOTE-DEBIT.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "note de débit : note_debit|fr|p=1|ar=0|img=0|PASS; note_debit|ar|p=2|ar=257|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-PROFORMA",
+      "taches": [
+        "APDF29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-PROFORMA.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "pro-forma : proforma|fr|p=2|ar=0|img=0|PASS; proforma|ar|p=2|ar=33|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-RECU",
+      "taches": [
+        "APDF30",
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-RECU.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "reçu : recu|fr|p=1|ar=0|img=0|PASS; recu|ar|p=1|ar=137|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-BC",
+      "taches": [
+        "APDF28",
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-BC.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "bon de commande : bon_commande|fr|p=2|ar=0|img=0|PASS; bon_commande|ar|p=2|ar=33|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-RELEVE",
+      "taches": [
+        "APDF106"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-RELEVE.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "relevé : releve|fr|p=1|ar=0|img=0|PASS; releve|ar|p=1|ar=33|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-RELANCE",
+      "taches": [
+        "APDF31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-RELANCE.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "lettre de relance et lettre de relance premium (ar traduite : FAIL du 30/10 levé) : lettre_relance|fr|p=1|ar=0|img=0|PASS; lettre_relance_premium|fr|p=1|ar=0|img=0|PASS; lettre_relance|ar|p=1|ar=212|img=0|PASS; lettre_relance_premium|ar|p=1|ar=437|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-BL",
+      "taches": [
+        "APDF32",
+        "APDF33",
+        "APDF40",
+        "APDF44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-BL.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "BL chantier 17 — Installation / Transport absents (FAIL du 30/10 levé) : bl_chantier|fr|p=1|ar=0|img=0|PASS; bl_chantier|ar|p=2|ar=114|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-PV",
+      "taches": [
+        "APDF32",
+        "APDF33",
+        "APDF34",
+        "APDF40",
+        "APDF44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-PV.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "PV de réception chantier 17 — Installation / Transport absents (FAIL du 30/10 levé) : pv_reception|fr|p=1|ar=0|img=0|PASS; pv_reception|ar|p=1|ar=0|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-REMISE",
+      "taches": [
+        "APDF32",
+        "APDF33",
+        "APDF34",
+        "APDF40",
+        "APDF44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-REMISE.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "dossier de remise et fiche premium chantier 17 — aucune prestation sous garantie (FAIL du 30/10 levé) : dossier_remise|fr|p=2|ar=0|img=0|PASS; fiche_remise_premium|fr|p=1|ar=0|img=0|PASS; dossier_remise|ar|p=2|ar=0|img=0|PASS; fiche_remise_premium|ar|p=1|ar=0|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-CR-INTERVENTION",
+      "taches": [
+        "APDF37",
+        "APDF41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-CR-INTERVENTION.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "compte-rendu d intervention, deux photos déposées (201, 201) : compte_rendu_intervention|fr|p=2|ar=0|img=4|PASS; compte_rendu_intervention|ar|p=2|ar=0|img=4|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-RAPPORT-SAV",
+      "taches": [
+        "APDF42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-RAPPORT-SAV.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rapport SAV : rapport_sav|fr|p=1|ar=0|img=0|PASS; rapport_sav|ar|p=1|ar=0|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "C-APDF-ACC-RAPPORT-ENERGIE",
+      "taches": [
+        "APDF39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/C-APDF-ACC-RAPPORT-ENERGIE.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rapport énergie : rapport_energie|fr|p=1|ar=0|img=0|PASS; rapport_energie|ar|p=1|ar=0|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "AUDIT-DOC",
+      "taches": [
+        "APDF99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/audit_coherence.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "D-APDF99-ORACLE (fondateur, 01/11/2026) : l'oracle audit_coherence d'APDF99 est restreint aux règles DOC_ sur les documents rendus. audit_coherence --no-persist (société 2 : 148 violations, société 4 : 146) : AUCUNE règle DOC_ sur les devis rejoués (741/461/524/445), aucune erreur de règle ; les violations CAL_/ETU_ (741 calepinage, 461 étude) restent suivies par leurs groupes — enregistrement FAIL 2026-11-01-9e43c2609."
+    }
+  ]
+}

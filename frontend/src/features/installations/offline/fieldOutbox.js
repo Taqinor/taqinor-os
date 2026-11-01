@@ -160,5 +160,5 @@ export function requestBackgroundSync() {
         .then((reg) => reg.sync && reg.sync.register('field-outbox-sync'))
         .catch(() => undefined)
     }
-  } catch { /* best-effort */ }
+  } catch { console.warn('fieldOutbox (requestBackgroundSync) : best-effort') }
 }

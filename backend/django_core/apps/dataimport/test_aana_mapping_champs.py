@@ -113,3 +113,21 @@ class TestMappingChampsAutorises(ImportBase):
             'target': 'leads', 'nom': 'Autre', 'mapping': {'Ref': 'inconnu'},
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_montants_source_non_mappes(self):
+        # AANA73 : rien ne lit montant_*_source ⇒ la colonne montant est
+        # annoncée « non mappée », pas acceptée puis ignorée.
+        from .services import champs_autorises, valider_mapping
+        for cible in ('devis', 'factures'):
+            self.assertFalse(
+                {'montant_ht_source', 'montant_ttc_source'}
+                & champs_autorises(cible))
+        with self.assertRaises(ValueError):
+            valider_mapping('factures', {'Total': 'montant_ttc_source'})
+        resp = self.api.post('/api/django/imports/dry-run/', {
+            'file': self._csv('reference,client_nom,statut,montant_ttc\n'
+                              'F1,Acme,payee,12000\n'),
+            'target': 'factures',
+        }, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('montant_ttc', resp.data['non_mappees'])

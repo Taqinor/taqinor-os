@@ -30,11 +30,10 @@
  * clairement étiqueté comme un canal séparé.
  */
 import Layout from '../layouts/Layout.astro';
-import V2Enhance from '../components/V2Enhance.astro';
-import Article33Ribbon from '../components/Article33Ribbon.astro';
 import StarRating from '../components/StarRating.astro';
 import { NAP } from '../lib/nap';
 import { contactWhatsappLinks } from '../lib/contactWhatsapp';
+import ContactBlocCF60 from '../components/blocs/ContactBlocCF60.astro';
 
 const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
 ---
@@ -45,8 +44,7 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
   ogSlug="contact"
 >
   <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
+    <ContactBlocCF60 />
 
     <section class="px-4 py-20 text-white">
       <div class="mx-auto max-w-6xl">

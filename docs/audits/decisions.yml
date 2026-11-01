@@ -2905,3 +2905,49 @@ decisions:
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie ASEC)"
     taches: [ASEC56]
+  - id: D-ENF15-DORMANTS
+    question: "La commande crm.detecter_comptes_dormants (alerte in-app au commercial pour chaque client sans activité depuis 90 jours ; le premier passage alerte tout l'arriéré) doit-elle être planifiée chaque jour en production ?"
+    options:
+      - cle: eteinte
+        texte: "Non : commande manuelle, l'entrée reste dans commandes_planifiees_allow comme exception voulue"
+      - cle: quotidienne
+        texte: "Oui, chaque matin, arriéré compris"
+      - cle: sans_arriere
+        texte: "Oui, mais les dormants existants marqués déjà alertés"
+    reponse: eteinte
+    date: "2026-11-01"
+    source: "Reda, décision fondateur du 01/11/2026 (question interactive, vague 10 ENF15)"
+    taches: [ENF15]
+  - id: D-APDF99-ORACLE
+    question: "L'oracle « audit_coherence sans violation » d'APDF99 couvre-t-il aussi les violations calepinage/étude des devis rejoués, ou seulement les règles DOC_ des documents rendus ?"
+    options:
+      - cle: doc
+        texte: "Restreint : aucune violation DOC_ sur les documents rendus ; CAL_/ETU_ suivies par leurs groupes"
+      - cle: tout
+        texte: "Toutes : APDF99 attend la correction des violations de 741/461"
+    reponse: doc
+    date: "2026-11-01"
+    source: "Reda, décision fondateur du 01/11/2026 (question interactive, vague 10)"
+    taches: [APDF99]
+  - id: D-ATOT-VER-1
+    question: "L'export comptable par défaut (/export-comptable/, format « ligne », envoyé au fiduciaire) ne contient que les factures : faut-il y inclure les avoirs et les notes de débit ?"
+    options:
+      - cle: inclure
+        texte: "Avoirs en négatif, notes de débit en positif, ventilés par taux : totaux de la période = CA et TVA réels"
+      - cle: factures_seules
+        texte: "L'export reste « factures seules »"
+    reponse: inclure
+    date: "2026-11-01"
+    source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie ATOT)"
+    taches: [ATOT47]
+  - id: D-ATOT-VER-2
+    question: "Une révision qui baisse un taux de TVA et en monte un autre (V1 40 000 @10 % + 60 000 @20 % → V2 30 000 @10 % + 80 000 @20 %) : comment régulariser l'écart ?"
+    options:
+      - cle: separes
+        texte: "Deux documents séparés : un complément pour le(s) taux en hausse, un avoir pour le(s) taux en baisse (soumis à la confirmation VNT64) — jamais un panier de TVA négatif imprimé"
+      - cle: net_ventile
+        texte: "Un seul document net, ventilé par taux avec un panier négatif"
+    reponse: separes
+    date: "2026-11-01"
+    source: "Reda, question interactive, contre-visite vérifie ATOT"
+    taches: [ATOT44, ATOT45]

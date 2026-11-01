@@ -502,7 +502,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     try {
       const r = await installationsApi.getInstallation(id)
       setCurrent(r.data)
-    } catch { /* erreur silencieuse */ }
+    } catch { console.warn('Chantier : rafraîchissement impossible, vue précédente conservée.') }
   }
 
   const handleSave = async (e) => {
@@ -572,7 +572,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       const r = await installationsApi.noter(id, body)
       setHistorique(h => [r.data, ...h])
       setNoteBody('')
-    } catch { /* erreur silencieuse */ }
+    } catch (err) { toast.error(errorMessageFrom(err, 'Note non enregistrée.')) }
   }
 
   const addIntervention = async () => {
@@ -648,7 +648,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     try {
       await installationsApi.annuler(id, annulerMotif)
       onSaved?.()
-    } catch { /* erreur silencieuse */ }
+    } catch (err) { toast.error(errorMessageFrom(err, 'Annulation impossible.')) }
     setAnnulerOpen(false)
   }
 
@@ -656,7 +656,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     try {
       await installationsApi.reactiver(id)
       onSaved?.()
-    } catch { /* erreur silencieuse */ }
+    } catch (err) { toast.error(errorMessageFrom(err, 'Réactivation impossible.')) }
   }
 
   // N7 — action rapide « Marquer réceptionné » : pose le statut Réceptionné

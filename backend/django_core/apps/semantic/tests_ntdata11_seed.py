@@ -81,6 +81,39 @@ class SeedMetriquesTests(TestCase):
         self.assertEqual(metrique.mesure, {'field': 'montant_ttc',
                                            'agg': 'sum'})
 
+    def test_ca_sans_brouillon(self):
+        # AANA61 : les trois métriques CA sont semées sans brouillon.
+        self._seed()
+        for cle in ('ca_ht', 'ca_ttc', 'panier_moyen'):
+            m = MetricDefinition.objects.get(company=self.company, cle=cle)
+            self.assertEqual(m.filtres,
+                             {'statut__in': ['emise', 'payee', 'en_retard']})
+
+    def test_migration_realigne_les_defauts_seuls(self):
+        import importlib
+        from django.apps import apps as parc
+        mig = importlib.import_module(
+            'apps.semantic.migrations.0004_aana_ca_sans_brouillon')
+        autre = Company.objects.create(nom='AANA61 B', slug='aana61-b')
+        self._seed()
+        call_command('seed_metriques', company=autre.id, stdout=StringIO())
+        MetricDefinition.objects.filter(cle__in=mig.CLES).update(
+            filtres=mig.ANCIEN)
+        retouche = MetricDefinition.objects.get(company=autre, cle='ca_ht')
+        retouche.filtres = {'statut__in': ['payee']}
+        retouche.save()
+        nb_retouche = retouche.versions.count()
+        mig.realigner(parc, None)
+        ca = MetricDefinition.objects.get(company=self.company, cle='ca_ht')
+        self.assertEqual(ca.filtres, mig.NOUVEAU)
+        self.assertEqual(list(ca.versions.values_list('version', flat=True)),
+                         [2, 1])  # v1 du semis + v2 de la migration
+        retouche.refresh_from_db()
+        self.assertEqual(retouche.filtres, {'statut__in': ['payee']})
+        self.assertEqual(retouche.versions.count(), nb_retouche)
+        mig.realigner(parc, None)  # second passage : rien d'écrit
+        self.assertEqual(ca.versions.count(), 2)
+
     def test_seed_par_societe(self):
         autre = Company.objects.create(nom='NTDATA11 Autre',
                                        slug='ntdata11-autre')
