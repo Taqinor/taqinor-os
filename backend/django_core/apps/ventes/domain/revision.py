@@ -259,13 +259,12 @@ def abandonner_revision(v2, user=None):
     return reactivees
 
 
-def _paniers_ecart_par_taux(precedent, devis, reste):
-    """ATOT22 — l'écart des bases (et de la TVA) PAR TAUX entre la version
-    facturée ``precedent`` et la V2 ``devis`` (option effective, chaîne
-    canonique ``argent.totaux`` vue NET), restreint aux taux dont l'écart va
-    dans le sens du document (``reste`` > 0 : complément ; < 0 : avoir).
-    Rend ``[{taux, base_ht, montant}]`` (Decimal, valeurs absolues), triés
-    par taux."""
+def _paniers_ecart_par_taux(precedent, devis):
+    """ATOT22 / ATOT44 — l'écart SIGNÉ des bases (et de la TVA) PAR TAUX entre
+    la version facturée ``precedent`` et la V2 ``devis`` (option effective,
+    chaîne canonique ``argent.totaux`` vue NET), pour TOUS les taux dont la
+    base bouge (un taux à écart nul n'a pas de panier). Rend
+    ``[{taux, base_ht, montant}]`` (Decimal signés), triés par taux."""
     from decimal import Decimal
 
     from apps.ventes.domain.argent import Vue, totaux
@@ -280,16 +279,78 @@ def _paniers_ecart_par_taux(precedent, devis, reste):
         return out
 
     avant, apres = _paniers(precedent), _paniers(devis)
-    signe = 1 if reste > 0 else -1
     zero = (Decimal('0'), Decimal('0'))
     paniers = []
     for t in sorted(set(avant) | set(apres)):
         d_base = apres.get(t, zero)[0] - avant.get(t, zero)[0]
         d_tva = apres.get(t, zero)[1] - avant.get(t, zero)[1]
-        if d_base * signe > 0:
-            paniers.append({'taux': t, 'base_ht': abs(d_base),
-                            'montant': abs(d_tva)})
+        if d_base:
+            paniers.append({'taux': t, 'base_ht': d_base, 'montant': d_tva})
     return paniers
+
+
+def _documents_ecart(precedent, devis, reste):
+    """ATOT44 (D-ATOT-VER-2 = ``separes``) — les documents d'écart
+    ``[(signe, ttc, paniers positifs)]``. Taux de sens opposés ⇒ DEUX
+    documents, chacun ventilé par ses seuls taux : un complément (Σ TTC des
+    taux en hausse) et un avoir (taux en baisse) tels que complément − avoir
+    = ``reste`` ; un complément de révision déjà fait pour la V2 (rejeu
+    confirmé) n'est pas refait. Sinon UN document de ``|reste|`` ventilé par
+    les taux de son sens (comme avant)."""
+    from decimal import Decimal
+
+    from apps.ventes.models import Facture
+    from core.money import quantize_mad
+
+    paniers = _paniers_ecart_par_taux(precedent, devis)
+    hausse = [p for p in paniers if p['base_ht'] > 0]
+    baisse = [{'taux': p['taux'], 'base_ht': -p['base_ht'],
+               'montant': -p['montant']} for p in paniers if p['base_ht'] < 0]
+    if hausse and baisse:
+        deja = Facture.objects.filter(
+            devis=devis,
+            libelle__startswith=f'Complément révision {devis.reference} (',
+        ).exclude(statut=Facture.Statut.ANNULEE).exists()
+        complement = Decimal('0') if deja else quantize_mad(sum(
+            (p['base_ht'] + p['montant'] for p in hausse), Decimal('0')))
+        avoir = complement - reste
+        if complement >= 0 and avoir >= 0:
+            return [d for d in ((1, complement, hausse), (-1, avoir, baisse))
+                    if d[1] > 0]
+    signe = 1 if reste > 0 else -1
+    return [(signe, abs(reste), hausse if signe > 0 else baisse)]
+
+
+def _ventiler_document(devis, paniers, montant_ttc):
+    """ATOT22 (C-ATOT-004) — HT / TVA / taux / ventilation d'un document
+    d'écart : la TVA est celle de l'ÉCART RÉEL des bases par taux (jamais un
+    « taux mélangé ») : un taux unique ⇒ HT/TVA à CE taux ; plusieurs ⇒
+    ventilés au centime par le service unique ``ventilation_document_fige``
+    (ATOT6) ; aucun (reste issu d'avoirs ou d'arrondis) ⇒ le chemin d'hier."""
+    from decimal import Decimal
+
+    from apps.ventes.utils.echeancier import blended_tva_pct
+    from core.money import quantize_mad
+
+    ventilation = None
+    if len(paniers) == 1:
+        taux = paniers[0]['taux']
+        montant_ht = quantize_mad(
+            montant_ttc / (1 + Decimal(str(taux)) / 100))
+    elif paniers:
+        from apps.facturation.totaux import ventilation_document_fige
+        ventilation = ventilation_document_fige(
+            [{'taux': str(p['taux']), 'base_ht': str(p['base_ht']),
+              'montant': str(p['montant'])} for p in paniers],
+            montant_ttc)
+        montant_ht = sum((Decimal(b['base_ht']) for b in ventilation),
+                         Decimal('0'))
+        taux = blended_tva_pct(devis)
+    else:
+        taux = blended_tva_pct(devis)
+        montant_ht = quantize_mad(
+            montant_ttc / (1 + Decimal(str(taux)) / 100))
+    return montant_ht, montant_ttc - montant_ht, taux, ventilation
 
 
 def rattacher_aval_financier_revision(devis, *, user=None,
@@ -313,7 +374,8 @@ def rattacher_aval_financier_revision(devis, *, user=None,
        qu'aucune facture de BC ne solde la vente), la tranche finale le porte
        déjà (solde = total V2 − déjà facturé) — une note le dit ; si la vente
        est entièrement facturée, reste > 0 → facture COMPLÉMENTAIRE brouillon
-       (rattachée à la V2), reste < 0 → AVOIR sur la dernière facture.
+       (rattachée à la V2), reste < 0 → AVOIR sur la dernière facture ;
+       des taux en sens opposés ⇒ les DEUX, chacun à ses seuls taux (ATOT44).
 
     La commission apporteur encore À_PAYER est recalculée par ``crm`` sur
     l'option acceptée de la V2 (``crm/receivers.py``, même événement).
@@ -335,7 +397,6 @@ def rattacher_aval_financier_revision(devis, *, user=None,
     from apps.ventes.selectors import predecesseurs_acceptes
     from apps.ventes.utils.company_settings import (
         create_numbered, create_provisoire)
-    from apps.ventes.utils.echeancier import blended_tva_pct
     from apps.ventes.utils.options import option_totaux
     from apps.ventes.vente_facturation import STATUTS_EMIS, plan_facturation
 
@@ -406,89 +467,67 @@ def rattacher_aval_financier_revision(devis, *, user=None,
                 'ecart_ttc': ecart, 'document': None}
 
     emises = [f for f, _r in parts if f.statut in STATUTS_EMIS]
-    if reste < 0 and (not confirmer_avoir or not emises):
-        # VNT64 — jamais un avoir d'écart sans confirmation (D-VNT-2).
-        activity.log_devis_note(
-            devis, user,
-            f'Écart de révision {ecart:.2f} MAD TTC : avoir de {-reste:.2f} '
-            'MAD à confirmer (aucun avoir émis automatiquement).')
-        return {'bc': bc, 'factures': factures, 'sources': sources,
-                'ecart_ttc': ecart, 'document': None,
-                'avoir_a_confirmer': -reste}
-
-    # ATOT22 (C-ATOT-004) — la TVA du document est celle de l'ÉCART RÉEL des
-    # bases par taux entre la version facturée et la V2 (jamais un « taux
-    # mélangé ») : un taux unique ⇒ HT/TVA à CE taux ; plusieurs ⇒ ventilés
-    # au centime par le service unique ``ventilation_document_fige`` (ATOT6).
-    montant_ttc = abs(reste)
-    ventilation = None
-    paniers = _paniers_ecart_par_taux(precedent, devis, reste)
-    if len(paniers) == 1:
-        taux = paniers[0]['taux']
-        montant_ht = quantize_mad(
-            montant_ttc / (1 + Decimal(str(taux)) / 100))
-        montant_tva = montant_ttc - montant_ht
-    elif paniers:
-        from apps.facturation.totaux import ventilation_document_fige
-        ventilation = ventilation_document_fige(
-            [{'taux': str(p['taux']), 'base_ht': str(p['base_ht']),
-              'montant': str(p['montant'])} for p in paniers],
-            montant_ttc)
-        montant_ht = sum((Decimal(b['base_ht']) for b in ventilation),
-                         Decimal('0'))
-        montant_tva = montant_ttc - montant_ht
-        taux = blended_tva_pct(devis)
-    else:
-        # Aucun écart de base dans le sens du document (reste issu d'avoirs
-        # ou d'arrondis antérieurs) : le chemin d'hier.
-        taux = blended_tva_pct(devis)
-        montant_ht = quantize_mad(
-            montant_ttc / (1 + Decimal(str(taux)) / 100))
-        montant_tva = montant_ttc - montant_ht
+    resultat = {'bc': bc, 'factures': factures, 'sources': sources,
+                'ecart_ttc': ecart, 'document': None}
     company = devis.company
-    if reste > 0:
-        def _facture(ref):
-            return Facture.objects.create(
-                company=company, reference=ref, devis=devis,
-                client=devis.client, lead=devis.lead,
-                statut=Facture.Statut.BROUILLON,
-                type_facture=Facture.TypeFacture.COMPLETE,
-                libelle=(f'Complément révision {devis.reference} '
-                         f'(remplace {precedent.reference})')[:255],
-                montant_ht=montant_ht, montant_tva=montant_tva,
-                montant_ttc=montant_ttc, taux_tva=taux,
-                ventilation_tva=ventilation, created_by=user)
-        # ATOT27 — brouillon hors série ; numéro légal à l'émission.
-        document = create_provisoire(_facture)
-        activity.log_devis_note(
-            devis, user,
-            f'Facture complémentaire {document.reference} (brouillon) : '
-            f'{montant_ttc:.2f} MAD TTC — écart de révision.')
-    else:
-        # La facture qui peut le plus porter l'avoir (plafond AUD126 : jamais
-        # au-delà du reste créditable) ; à reste égal, la plus récente.
-        cible = max(emises, key=lambda f: (
-            Decimal(str(f.total_ttc)) - Decimal(str(f.avoirs_total)), f.pk))
+    # ATOT44 (D-ATOT-VER-2) — taux de sens opposés : complément ET avoir.
+    for signe, montant_ttc, paniers in _documents_ecart(
+            precedent, devis, reste):
+        if signe < 0 and (not confirmer_avoir or not emises):
+            # VNT64 — jamais un avoir d'écart sans confirmation (D-VNT-2).
+            activity.log_devis_note(
+                devis, user,
+                f'Écart de révision {ecart:.2f} MAD TTC : avoir de '
+                f'{montant_ttc:.2f} MAD à confirmer (aucun avoir émis '
+                'automatiquement).')
+            resultat['avoir_a_confirmer'] = montant_ttc
+            continue
+        montant_ht, montant_tva, taux, ventilation = _ventiler_document(
+            devis, paniers, montant_ttc)
+        if signe > 0:
+            def _facture(ref):
+                return Facture.objects.create(
+                    company=company, reference=ref, devis=devis,
+                    client=devis.client, lead=devis.lead,
+                    statut=Facture.Statut.BROUILLON,
+                    type_facture=Facture.TypeFacture.COMPLETE,
+                    libelle=(f'Complément révision {devis.reference} '
+                             f'(remplace {precedent.reference})')[:255],
+                    montant_ht=montant_ht, montant_tva=montant_tva,
+                    montant_ttc=montant_ttc, taux_tva=taux,
+                    ventilation_tva=ventilation, created_by=user)
+            # ATOT27 — brouillon hors série ; numéro légal à l'émission.
+            document = create_provisoire(_facture)
+            activity.log_devis_note(
+                devis, user,
+                f'Facture complémentaire {document.reference} (brouillon) : '
+                f'{montant_ttc:.2f} MAD TTC — écart de révision.')
+        else:
+            # La facture qui peut le plus porter l'avoir (plafond AUD126 :
+            # jamais au-delà du reste créditable) ; à égalité, la plus récente.
+            cible = max(emises, key=lambda f: (
+                Decimal(str(f.total_ttc)) - Decimal(str(f.avoirs_total)),
+                f.pk))
 
-        def _avoir(ref):
-            return Avoir.objects.create(
-                company=company, reference=ref, facture=cible,
-                client=cible.client, statut=Avoir.Statut.EMISE,
-                motif=(f'Révision {devis.reference} (remplace '
-                       f'{precedent.reference}) — écart de révision.'),
-                taux_tva=taux, montant_ht=montant_ht,
-                montant_tva=montant_tva, montant_ttc=montant_ttc,
-                ventilation_tva=ventilation, created_by=user,
-                # ATOT36 — l'avoir de révision corrige un montant facturé.
-                type=Avoir.Type.CORRECTION)
-        document = create_numbered(Avoir, company, 'avoir', _avoir)
-        activity.log_facture_avoir(cible, user, document)
-        activity.log_devis_note(
-            devis, user,
-            f'Avoir {document.reference} : {montant_ttc:.2f} MAD TTC sur '
-            f'{cible.reference} — écart de révision.')
-    return {'bc': bc, 'factures': factures, 'sources': sources,
-            'ecart_ttc': ecart, 'document': document}
+            def _avoir(ref):
+                return Avoir.objects.create(
+                    company=company, reference=ref, facture=cible,
+                    client=cible.client, statut=Avoir.Statut.EMISE,
+                    motif=(f'Révision {devis.reference} (remplace '
+                           f'{precedent.reference}) — écart de révision.'),
+                    taux_tva=taux, montant_ht=montant_ht,
+                    montant_tva=montant_tva, montant_ttc=montant_ttc,
+                    ventilation_tva=ventilation, created_by=user,
+                    # ATOT36 — l'avoir de révision corrige un montant facturé.
+                    type=Avoir.Type.CORRECTION)
+            document = create_numbered(Avoir, company, 'avoir', _avoir)
+            activity.log_facture_avoir(cible, user, document)
+            activity.log_devis_note(
+                devis, user,
+                f'Avoir {document.reference} : {montant_ttc:.2f} MAD TTC sur '
+                f'{cible.reference} — écart de révision.')
+        resultat['document'] = resultat['document'] or document
+    return resultat
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────

@@ -132,3 +132,50 @@ class RevisionParTauxTests(TestCase):
         self.assertEqual(complement.montant_ttc, Decimal('12000.00'))
         self.assertEqual(complement.montant_tva, Decimal('2000.00'))
         self.assertEqual(complement.taux_tva, Decimal('20'))
+
+    def test_taux_de_sens_opposes_deux_documents(self, *_):
+        """ATOT44 (C-ATOT-VER-005, D-ATOT-VER-2 = séparés) — 10 % baisse,
+        20 % monte : un complément à 20 % seul, un avoir à 10 % seul soumis à
+        confirmation ; jamais un panier de TVA négatif. Mutant : remettre
+        ``d_base * signe > 0`` ⇒ un complément de 13 000 à TVA 2 166,67."""
+        self.v1 = self._accepter(self.v1)
+        self._facturer_tout(self.v1)
+        v2 = self._v2({A10: '30000', A20: '80000'})
+        complement = Facture.objects.get(
+            devis=v2, libelle__startswith='Complément révision')
+        complement.refresh_from_db()
+        self.assertEqual(complement.statut, Facture.Statut.BROUILLON)
+        self.assertEqual(
+            (complement.montant_ht, complement.montant_tva,
+             complement.montant_ttc, complement.taux_tva),
+            (Decimal('20000.00'), Decimal('4000.00'), Decimal('24000.00'),
+             Decimal('20')))
+        self.assertEqual([(t, m) for t, _b, m in _paniers(complement)],
+                         [(Decimal('20'), Decimal('4000.00'))])
+        self.assertFalse(Avoir.objects.filter(company=self.company).exists())
+        # Rejeu NON confirmé : l'avoir reste à confirmer, pas de 2e complément.
+        r = rattacher_aval_financier_revision(v2, user=self.user)
+        self.assertEqual(r['avoir_a_confirmer'], Decimal('11000.00'))
+        self.assertIsNone(r['document'])
+        self.assertFalse(Avoir.objects.filter(company=self.company).exists())
+        # Geste confirmé : l'avoir à 10 % seul, AUCUN second complément.
+        rattacher_aval_financier_revision(v2, user=self.user,
+                                          confirmer_avoir=True)
+        avoir = Avoir.objects.get(company=self.company)
+        avoir.refresh_from_db()
+        self.assertEqual(
+            (avoir.montant_ht, avoir.montant_tva, avoir.montant_ttc,
+             avoir.taux_tva),
+            (Decimal('10000.00'), Decimal('1000.00'), Decimal('11000.00'),
+             Decimal('10')))
+        self.assertEqual([(t, m) for t, _b, m in _paniers(avoir)],
+                         [(Decimal('10'), Decimal('1000.00'))])
+        self.assertEqual(Facture.objects.filter(
+            devis=v2, libelle__startswith='Complément révision').count(), 1)
+        # Σ complément − Σ avoir = écart de TTC des deux versions, au centime.
+        self.assertEqual(complement.montant_ttc - avoir.montant_ttc,
+                         Decimal('13000.00'))
+        for doc in (complement, avoir):
+            for _t, base, montant in _paniers(doc):
+                self.assertGreater(base, 0)
+                self.assertGreater(montant, 0)
