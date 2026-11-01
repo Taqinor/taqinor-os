@@ -7024,6 +7024,33 @@ def _date_cellule_tarif(valeur):
     return None
 
 
+def _lire_ligne_tarif(company, row, idx_sku, idx_prix, idx_paliers):
+    """AANA71 — valide UNE ligne du tarif : ``(sku, produit, prix, paliers,
+    motif)``. ``motif`` non nul = ligne refusée (rien n'est écrit) ;
+    ``produit is False`` = prix sans SKU ; ligne vide = ``produit`` None et
+    ``motif`` None. Aucun arrondi : plus de 2 décimales est un refus."""
+    from .models import Produit
+    sku = str(row[idx_sku] or '').strip() if idx_sku < len(row) else ''
+    if not sku:
+        if idx_prix < len(row) and row[idx_prix] not in (None, ''):
+            return sku, False, None, [], 'SKU manquant.'
+        return sku, None, None, [], None
+    produit = Produit.objects.filter(company=company, sku=sku).first()
+    if produit is None:
+        return sku, None, None, [], f'SKU introuvable : {sku}.'
+    prix_raw = row[idx_prix] if idx_prix < len(row) else None
+    prix = _dec(prix_raw)
+    if prix is None or not prix.is_finite():
+        return sku, produit, None, [], f'Prix invalide pour {sku} : {prix_raw!r}.'
+    paliers, rejets = _parse_palier_cell(
+        row[idx_paliers] if idx_paliers is not None and idx_paliers < len(row) else None)
+    rejets = ([f'prix à plus de 2 décimales : {prix_raw!r}']
+              if prix.as_tuple().exponent < -2 else []) + rejets
+    if rejets:
+        return sku, produit, None, [], f'{sku} : ' + ' ; '.join(rejets) + '.'
+    return sku, produit, prix, paliers, None
+
+
 def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
                                  apercu=False, ecraser=False, user=None,
                                  filename=''):
@@ -7062,7 +7089,7 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
     from openpyxl import load_workbook
     from apps.dataimport.services import (
         appliquer_maj_import, diff_import, enregistrer_job)
-    from .models import PrixFournisseur, PalierPrixFournisseur, Produit
+    from .models import PrixFournisseur, PalierPrixFournisseur
 
     # Un tarif/palier à 0 n'est PAS un prix négocié : c'est le défaut modèle
     # (« prix à renseigner »). Le remplir est un remplissage, pas un écrasement.
@@ -7108,26 +7135,15 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
                            'motif': message, 'donnees': {'sku': sku}})
 
     for row_num, row in enumerate(rows_iter, start=2):
-        sku = str(row[idx_sku] or '').strip() if idx_sku < len(row) else ''
-        if not sku:
-            if idx_prix < len(row) and row[idx_prix] not in (None, ''):
-                errors.append({'row': row_num, 'message': 'SKU manquant.'})
+        sku, produit, prix, paliers, motif = _lire_ligne_tarif(
+            company, row, idx_sku, idx_prix, idx_paliers)
+        if motif is not None:
+            if produit is False:  # ligne sans SKU : pas de ligne de journal
+                errors.append({'row': row_num, 'message': motif})
+            else:
+                _erreur(row_num, sku, motif)
             continue
-        produit = Produit.objects.filter(company=company, sku=sku).first()
-        if produit is None:
-            _erreur(row_num, sku, f'SKU introuvable : {sku}.')
-            continue
-        prix_raw = row[idx_prix] if idx_prix < len(row) else None
-        prix = _dec(prix_raw)
-        if prix is None or not prix.is_finite():
-            _erreur(row_num, sku, f'Prix invalide pour {sku} : {prix_raw!r}.')
-            continue
-        paliers, rejets = _parse_palier_cell(
-            row[idx_paliers] if idx_paliers is not None and idx_paliers < len(row) else None)
-        rejets = ([f'prix à plus de 2 décimales : {prix_raw!r}']
-                  if prix.as_tuple().exponent < -2 else []) + rejets
-        if rejets:
-            _erreur(row_num, sku, f'{sku} : ' + ' ; '.join(rejets) + '.')
+        if produit is None:  # ligne entièrement vide : ignorée
             continue
 
         # Champs FOURNIS par la ligne, valeurs vides ÉCARTÉES : ce qui n'est pas
