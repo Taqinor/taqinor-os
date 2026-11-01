@@ -45,17 +45,16 @@ const dhCompact = (v) => {
 
 // ── Barre de conversion (J146 — composant Progress partagé) ──────────────────
 function ConversionBar({ label, value, max, tone }) {
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0
+  // AANA57 — effectifs seuls : aucun pourcentage calculé ici (le seul taux du
+  // tunnel est `conversion.taux_acceptation_pct`, servi) ; largeur bornée à 100 %.
+  const largeur = max > 0 ? Math.min(value / max, 1) * 100 : 0
   return (
     <div className="mb-3">
       <div className="mb-1 flex items-center justify-between text-sm text-muted-foreground">
         <span>{label}</span>
-        <span className="font-semibold tabular-nums text-foreground">
-          {formatNumber(value)}{' '}
-          <span className="font-normal text-muted-foreground">({formatPercent(pct)})</span>
-        </span>
+        <span className="font-semibold tabular-nums text-foreground">{formatNumber(value)}</span>
       </div>
-      <Progress value={pct} tone={tone} />
+      <Progress value={largeur} tone={tone} />
     </div>
   )
 }

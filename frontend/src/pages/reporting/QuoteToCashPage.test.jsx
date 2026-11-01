@@ -13,7 +13,8 @@ vi.mock('../../api/ventesApi', () => ({
       data: {
         devis: {
           total: 10, envoyes: 8, acceptes: 4, refuses: 2, expires: 1,
-          taux_acceptation_pct: 50.0, valeur_pipeline: '120000.00',
+          taux_acceptation_pct: 50.0, envoyes_periode: 8, acceptes_periode: 4,
+          valeur_pipeline: '120000.00',
         },
         factures: {
           total: 6, emises: 3, payees: 2, en_retard: 1, annulees: 0,
@@ -74,6 +75,8 @@ describe('QuoteToCashPage (WIR84 — consommateur des agrégateurs ventes)', () 
     // FG45 — KPI + pipeline par commercial.
     expect(await screen.findByText('Sami Bennani')).toBeInTheDocument()
     expect(screen.getByText('50 %')).toBeInTheDocument()
+    // AANA57 — le hint lit les deux effectifs SERVIS du taux (acceptes_periode / envoyes_periode).
+    expect(screen.getByText('4 / 8 devis envoyés')).toBeInTheDocument()
     expect(screen.getByText('21.5 j')).toBeInTheDocument()
 
     // FG47 — buckets d'encaissement.
