@@ -157,6 +157,24 @@ class RecevoirDelegueTests(TestCase):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 0)
 
+    def test_recevoir_porte_series_et_lot(self):
+        # ACHT122 : forme exacte de buildReceptionPayload (séries + lot par ligne).
+        bc, ligne = self._bcf(3)
+        rep = self.api.post(f'{URL}{bc.pk}/recevoir/', {'receptions': [{
+            'ligne': ligne.pk, 'quantite': 3, 'numeros_serie': ['S1', 'S2', 'S3'],
+            'numero_lot': 'L-42'}]}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+        lr = ReceptionFournisseur.objects.get(bon_commande=bc).lignes.get()
+        self.assertEqual(lr.numeros_serie, ['S1', 'S2', 'S3'])
+        self.assertEqual(lr.numero_lot, 'L-42')
+        # 3 séries pour 2 reçus : 400 et rien d'écrit.
+        bc2, ligne2 = self._bcf(5)
+        rep = self.api.post(f'{URL}{bc2.pk}/recevoir/', {'receptions': [{
+            'ligne': ligne2.pk, 'quantite': 2, 'numeros_serie': ['A', 'B', 'C']}]}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertIn('3 n° de série saisis pour 2 reçu(s) : retirez-en 1.', rep.data['detail'])
+        self.assertFalse(ReceptionFournisseur.objects.filter(bon_commande=bc2).exists())
+
     def test_corps_hors_schema_400_et_inconnus_404(self):
         # api-fuzz : item vide / liste vide / corps non objet = 400 ; ligne ou
         # conditionnement inconnu = 404 (jamais 400 « Réception invalide »).
