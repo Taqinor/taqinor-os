@@ -324,8 +324,13 @@ const ventesApi = {
     api.post('/ventes/etude-horaire/preview/', body, config),
   // CIQ124 — aperçu serveur C&I (CIQ118) : LA source des chiffres commercial /
   // industriel, aucune écriture. Forme : `contract_samples/etude_ci_preview.json`.
+  // CAD177 (nocturne 41188540195) — l'aperçu C&I (8760 h × paliers × banque)
+  // a mis 15-21 s sur le runner pour un hôtel fermé en août : le timeout GLOBAL
+  // de 20 s (VX55) l'avortait et l'écran restait sur « Aperçu du moteur C&I
+  // indisponible », sans nouvel essai. Budget dédié de 60 s (même patron
+  // qu'APXTMO / ADEV80) ; `config` (signal d'annulation du hook) passe après.
   etudeCiPreview: (body, config = {}) =>
-    api.post('/ventes/etude-ci/preview/', body, config),
+    api.post('/ventes/etude-ci/preview/', body, { timeout: 60000, ...config }),
   // CIQ223 — aperçu de l'économie C&I (CIQ205-CIQ210), aucune écriture.
   // Corps {sortie_etude_ci, saisies, lignes} ; forme : `contract_samples/economie_ci.json`.
   economieCiPreview: (body, config = {}) =>

@@ -64,3 +64,16 @@ test('ADEV80 : creerDevisAuto porte un timeout dédié de 120 s, comme accepterD
   const accepter = VENTES_API_SRC.indexOf('accepterDevis:')
   assert.match(VENTES_API_SRC.slice(accepter, accepter + 250), /timeout:\s*120000/)
 })
+
+// CAD177 (nocturne 41188540195) — l'aperçu C&I d'un hôtel fermé en août a mis
+// 15-21 s : le global 20 s avortait la réponse, l'écran restait « indisponible ».
+test('CAD177 : etudeCiPreview porte un timeout dédié ≥ 60 s et garde le signal du hook', () => {
+  const start = VENTES_API_SRC.indexOf('etudeCiPreview:')
+  assert.notEqual(start, -1, 'etudeCiPreview introuvable')
+  const block = VENTES_API_SRC.slice(start, start + 200)
+  assert.match(block, /api\.post\('\/ventes\/etude-ci\/preview\/'/)
+  const m = block.match(/timeout:\s*(\d+)/)
+  assert.ok(m, 'etudeCiPreview ne porte aucun timeout dédié — le global 20 s avorte l\'aperçu C&I')
+  assert.ok(Number(m[1]) >= 60000, `timeout ${m[1]} ms trop court pour un aperçu C&I de ~21 s`)
+  assert.match(block, /\.\.\.config/, 'le signal d\'annulation du hook doit rester transmis')
+})

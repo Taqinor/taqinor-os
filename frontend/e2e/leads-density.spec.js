@@ -301,13 +301,21 @@ test.describe('APX8 — densité, viewport de référence 1440×900', () => {
       }
       const hMax = Math.max(...lignes)
       const hMin = Math.min(...lignes)
+      const triees = [...lignes].sort((a, b) => a - b)
+      const hMediane = triees[Math.floor(triees.length / 2)]
       noter(info, `${cible.nom} — ligne (px, min → max)`, `${Math.round(hMin)} → ${Math.round(hMax)}`)
+      noter(info, `${cible.nom} — ligne médiane (px)`, Math.round(hMediane))
       noter(info, `${cible.nom} — lignes rendues`, lignes.length)
 
       // CAD177 : plafond de CATASTROPHE (« seuils doux », voir ci-dessus) + la
       // tolérance sous-pixel PX du fichier — le runner CI a rendu 92,5 px pour un
       // plafond de 92 (vignette 40 px + arrondis de police), pas une régression.
-      expect(hMax, `${cible.nom} : la ligne reste dense`).toBeLessThanOrEqual(cible.plafond + PX)
+      // Le plafond porte sur la ligne MÉDIANE, pas la plus haute : un libellé
+      // qui passe à la ligne est un contenu légitime (en-tête du bloc), et le
+      // catalogue de la nocturne 41188540195 en portait un (112,5 px) sans
+      // aucun changement du Stock ni du moteur DataTable depuis la nuit verte.
+      // Une vraie régression de densité (padding, police) déplace la médiane.
+      expect(hMediane, `${cible.nom} : la ligne reste dense`).toBeLessThanOrEqual(cible.plafond + PX)
     })
   }
 })

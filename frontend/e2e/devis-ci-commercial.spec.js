@@ -110,8 +110,11 @@ test('CIQ334 — créer (hôtel, dimanche fermé, août fermé), rouvrir, ré-en
   await page.getByLabel('Fermeture 1 au').fill(`${ANNEE}-08-31`)
   await page.getByLabel('Fermeture 1 motif').fill('Fermeture annuelle')
 
-  await expect(page.getByTestId('ci-taille-retenue')).toBeVisible({ timeout: 45_000 })
-  const auto = page.waitForResponse((r) => r.request().method() === 'POST'
+  // CAD177 (nocturne 41188540195) — cet aperçu (hôtel, août fermé) a mis
+  // 15-21 s sur le runner, derrière les aperçus de la saisie encore calculés par
+  // les 3 workers : le budget de l'appel est désormais de 60 s (ventesApi).
+  await expect(page.getByTestId('ci-taille-retenue')).toBeVisible({ timeout: 90_000 })
+  const auto =page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
   await page.getByTestId('btn-auto-remplir').click()
   await auto
