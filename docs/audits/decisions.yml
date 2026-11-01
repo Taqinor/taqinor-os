@@ -2951,3 +2951,51 @@ decisions:
     date: "2026-11-01"
     source: "Reda, question interactive, contre-visite vérifie ATOT"
     taches: [ATOT44, ATOT45]
+  - id: D-AARG-1
+    question: "Un avoir sur une facture déjà payée (12 000 payés, avoir 2 400) fait disparaître le montant crédité : que devient le surplus ?"
+    options:
+      - cle: avance_client
+        texte: "Le surplus crédité devient une avance client (trop-perçu) visible au relevé, imputable sur une prochaine facture ou remboursable"
+      - cle: refuser
+        texte: "409 : aucun avoir au-delà du reste dû ; une facture payée se rembourse ou s'annule d'abord"
+      - cle: remboursement_du
+        texte: "Un remboursement dû au client (paiement négatif à régler), sans avance"
+    reponse: avance_client
+    date: "2026-11-02"
+    source: "Reda, question interactive, audit parcours PA4"
+    taches: [AARG1]
+  - id: D-AARG-2
+    question: "Retenue à la source (RAS-TVA) après un avoir : quelle base ?"
+    options:
+      - cle: tva_nette
+        texte: "Base = TVA de la facture − avoirs + notes de débit (D-ASTK171 « toute la TVA, acompte compris » reste vraie pour les acomptes)"
+      - cle: tva_totale
+        texte: "Garder la TVA totale de la facture, même après avoir (comportement actuel)"
+    reponse: tva_nette
+    date: "2026-11-02"
+    source: "Reda, question interactive, audit parcours PA4"
+    taches: [AARG4]
+  - id: D-AARG-3
+    question: "Émettre une facture exige `encaisser` sur « Facturer la vente » mais pas sur « Émettre » ni l'action groupée : quelle règle ?"
+    options:
+      - cle: exiger_encaisser
+        texte: "Émettre crée une créance : toute porte d'émission exige `encaisser` (cohérent avec D-ASEC-VER-1 « tout l'argent »)"
+      - cle: ne_pas_exiger
+        texte: "Émettre reste un geste commercial : retirer l'exigence de « Facturer la vente » aussi"
+    reponse: exiger_encaisser
+    date: "2026-11-02"
+    source: "Reda, question interactive, audit parcours PA4"
+    taches: [AARG9]
+  - id: D-AARG-4
+    question: "Remise en brouillon puis réémission d'une facture émise : le numéro légal est redaté au jour (N peut finir daté après N+1). Quelle règle ?"
+    options:
+      - cle: garder_date
+        texte: "La réémission garde la date et le numéro d'origine ; retour en brouillon permis seulement avant envoi ou transmission DGI"
+      - cle: interdire_retour
+        texte: "Une facture émise ne revient jamais en brouillon : corriger par avoir seulement"
+      - cle: actuel
+        texte: "Garder le redatage à la réémission (testé volontairement aujourd'hui)"
+    reponse: garder_date
+    date: "2026-11-02"
+    source: "Reda, question interactive, audit parcours PA4"
+    taches: [AARG23]
