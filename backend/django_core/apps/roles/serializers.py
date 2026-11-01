@@ -164,9 +164,7 @@ class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
             touches_perms = 'permissions' in attrs and \
                 sorted(attrs['permissions'] or []) != \
                 sorted(self.instance.permissions or [])
-            touches_nom = 'nom' in attrs and \
-                attrs['nom'] != self.instance.nom
-            if touches_perms or touches_nom:
+            if touches_perms:
                 raise serializers.ValidationError(
                     "Seul un administrateur peut modifier un rôle système."
                 )
@@ -176,12 +174,20 @@ class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         if self.instance is not None and self.instance.est_systeme \
                 and 'permissions' in attrs:
             interdits = codes_non_octroyables(
-                attrs.get('nom', self.instance.nom), attrs['permissions'])
+                self.instance.nom, attrs['permissions'])
             if interdits:
                 raise serializers.ValidationError({
                     'permissions': [
                         f"Code non octroyable à ce rôle : {interdits}."],
                 })
+        # ASEC60 — le nom d'un rôle système est son identité (init_roles le
+        # retrouve par nom) : personne, administrateur compris, ne le renomme.
+        # Refus d'ÉTAT (``est_systeme`` enregistré, corps conforme) : 409.
+        if self.instance is not None and self.instance.est_systeme \
+                and 'nom' in attrs and attrs['nom'] != self.instance.nom:
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({
+                'nom': ["Le nom d'un rôle système ne se modifie pas."]})
         return attrs
 
     def validate_entites_visibles(self, value):

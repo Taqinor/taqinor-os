@@ -1,0 +1,31 @@
+{
+  "checks": [
+    {
+      "nom": "P7 facture émise : statut, abandon_* et lignes absents du formulaire",
+      "ok": true,
+      "detail": {
+        "statut": false,
+        "abandon": [],
+        "lignesEditables": [],
+        "ajoutLigne": false,
+        "suppression": 0,
+        "lignesLues": 2
+      }
+    },
+    {
+      "nom": "P7 BC livré : devis et client absents du formulaire",
+      "ok": true,
+      "detail": {
+        "devis": false,
+        "client": false
+      }
+    }
+  ],
+  "incidents": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  }
+}

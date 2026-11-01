@@ -2,6 +2,7 @@ from django.core.validators import RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from core.champs_stricts import (
     MOTIF_SANS_NUL, ChaineStricte, ChampsStrictsSansDecimalMixin,
@@ -699,6 +700,18 @@ class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
             'created_at', 'updated_at',
         ]
 
+    def is_valid(self, *, raise_exception=False):
+        """ASEC65 — document hors de portée : 404 « Document inconnu. »
+        (même message que `exiger_ecriture`), pas l'erreur brute de clé
+        primaire ; id d'une autre société et id inexistant restent identiques,
+        et le corps reste indexé par le champ (contrat ERR-ENF11-FUZZ-GED)."""
+        try:
+            return super().is_valid(raise_exception=raise_exception)
+        except NotFound:
+            if 'document' in self.errors:
+                raise NotFound({'document': ['Document inconnu.']})
+            raise
+
     def get_fields(self):
         """ADOC6 — `document` borné aux documents VISIBLES de l'appelant
         (id invisible = id absent) et non modifiable après création."""
@@ -831,8 +844,14 @@ class PolitiqueRetentionSerializer(ChampsStrictsSansDecimalMixin,
             'cabinet', getattr(self.instance, 'cabinet', None))
         folder = attrs.get('folder', getattr(self.instance, 'folder', None))
         if cabinet is not None and folder is not None:
-            raise serializers.ValidationError(
-                'Une politique cible au plus un cabinet OU un dossier.')
+            message = 'Une politique cible au plus un cabinet OU un dossier.'
+            if self.instance is None:
+                # Création : la règle est PUBLIÉE au schéma (allOf/not) → 400.
+                raise serializers.ValidationError(message)
+            # ENF11 — en modification la règle lit la cible ENREGISTRÉE, que le
+            # schéma n'exprime pas : 409, jamais un 400.
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(message)
         return attrs
 
 

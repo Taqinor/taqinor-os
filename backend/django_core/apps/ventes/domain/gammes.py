@@ -133,7 +133,8 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
     """
     from apps.ventes.models import Devis
     from apps.ventes.domain.lignes import cloner_lignes
-    from apps.ventes.domain.creation_clone import conditions_ci_pour_copie
+    from apps.ventes.domain.creation_clone import (
+        conditions_ci_pour_copie, echeancier_pour_copie)
     from apps.ventes.domain.etudes import (
         etude_params_pour_copie, rafraichir_etudes_du_devis)
     from apps.ventes.utils.company_settings import create_numbered
@@ -215,6 +216,7 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
         # et ce qu'« à l'identique » recouvre n'est plus retapé à trois
         # endroits.
         cloner_lignes(devis, soeur)
+        echeancier_pour_copie(soeur)  # AGNR53 — au TTC de la sœur
         # ADEV32 — le marqueur « Gamme … » au chatter, jamais dans la note.
         from apps.ventes import activity
         activity.log_devis_note(soeur, user, f'Gamme {nom_gamme}')

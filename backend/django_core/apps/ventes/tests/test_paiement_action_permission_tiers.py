@@ -112,11 +112,14 @@ class PaiementActionPermissionTierTests(TestCase):
     def test_previously_broken_write_actions_now_responsable_or_admin(self):
         """Régression explicite (le trou refermé) : ces trois écritures
         déclaraient IsResponsableOrAdmin mais retombaient sur IsAnyRole avant
-        le correctif — n'importe quel rôle authentifié pouvait les appeler."""
-        for name in ('paiement_avec_retenue', 'attestation_recue',
-                     'envoyer_recu'):
+        le correctif — n'importe quel rôle authentifié pouvait les appeler.
+        ASEC56 : les deux gestes d'argent passent au code ``encaisser``."""
+        attendus = {'paiement_avec_retenue': 'HasPermissionOrLegacy_encaisser',
+                    'attestation_recue': 'HasPermissionOrLegacy_encaisser',
+                    'envoyer_recu': 'IsResponsableOrAdmin'}
+        for name, tier in attendus.items():
             with self.subTest(action=name):
-                self.assertEqual(_tier_name(name), 'IsResponsableOrAdmin')
+                self.assertEqual(_tier_name(name), tier)
 
     def test_recu_pdf_stays_is_any_role(self):
         """Le durcissement ne doit PAS sur-restreindre : recu-pdf déclare

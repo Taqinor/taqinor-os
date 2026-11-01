@@ -209,3 +209,37 @@ class ConvertirEnBcTests(TestCase):
                            {'devis': self.devis.id, 'note': 'ok'},
                            format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_bc_livre_ne_change_ni_de_devis_ni_de_client(self):
+        """ATOT48 — hors « en attente », ``devis`` et ``client`` sont figés
+        (409 à valeur changée) ; la note et la re-pose de sa valeur passent."""
+        bc = BonCommande.objects.create(
+            company=self.company, reference='BC-ATOT48-0001',
+            client=self.client_obj, devis=self.devis,
+            statut=BonCommande.Statut.EN_ATTENTE)
+        BonCommande.objects.filter(pk=bc.pk).update(
+            statut=BonCommande.Statut.LIVRE)
+        d2 = Devis.objects.create(
+            company=self.company, reference='DEV-ATOT48-0002',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'))
+        client_b = Client.objects.create(
+            company=self.company, nom='Autre', prenom='ATOT48',
+            telephone='+212600000648')
+        url = f'/api/django/ventes/bons-commande/{bc.id}/'
+        for corps in ({'devis': d2.id}, {'client': client_b.id}):
+            r = self.api.patch(url, corps, format='json')
+            self.assertEqual(r.status_code, 409, r.data)
+            self.assertIn('ne change plus de devis ni de client', str(r.data))
+        for corps in ({'note': 'x'}, {'devis': self.devis.id}):
+            r = self.api.patch(url, corps, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+        bc.refresh_from_db()
+        self.assertEqual((bc.devis_id, bc.client_id),
+                         (self.devis.id, self.client_obj.id))
+        attente = BonCommande.objects.create(
+            company=self.company, reference='BC-ATOT48-0002',
+            client=self.client_obj, statut=BonCommande.Statut.EN_ATTENTE)
+        r = self.api.patch(f'/api/django/ventes/bons-commande/{attente.id}/',
+                           {'devis': d2.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)

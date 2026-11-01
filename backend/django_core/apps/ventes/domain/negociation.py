@@ -103,6 +103,8 @@ REFUS_PRIX_NEGOCIE = {
         "Cette remise demande l'approbation d'un responsable."),
     'avoir_a_confirmer': 'Un avoir sera émis : confirmez pour continuer.',
     'pas_une_vente_active': "Ce devis n'est pas une vente active.",
+    'avoir_au_dela_du_creditable': (
+        "L'avoir dépasse le montant restant des factures de la vente."),
 }
 
 
@@ -311,6 +313,7 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
     from apps.ventes.domain.annulation_facture import (
         retirer_brouillons_de_la_vente)
     from apps.ventes.domain.cycle_vie import AcceptError, accept_devis
+    from apps.ventes.domain.facturation_ops import AvoirPlafondDepasse
     from apps.ventes.domain.modifiabilite import (
         CODE_VERSION_REMPLACEE, corps_version_remplacee)
     from apps.ventes.domain.revision import (
@@ -346,8 +349,13 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
                 f"l'aperçu annonçait {apercu['total_ttc']} — geste annulé.")
         retires = retirer_brouillons_de_la_vente(
             v2, user=user, motif=f'Prix négocié ({v2.reference})')
-        rattacher_aval_financier_revision(
-            v2, user=user, confirmer_avoir=confirmer_avoir)
+        try:
+            rattacher_aval_financier_revision(
+                v2, user=user, confirmer_avoir=confirmer_avoir)
+        except AvoirPlafondDepasse as exc:
+            # ATOT45 — écart > Σ créditable : refus nommé, rien d'écrit.
+            raise PrixNegocieRefuse('avoir_au_dela_du_creditable',
+                                    statut_http=409) from exc
     logger.info('VNT59: prix négocié %s → %s (%s MAD TTC, remise %s %%).',
                 devis.reference, v2.reference, apercu['total_ttc'],
                 apercu['remise_pct'])

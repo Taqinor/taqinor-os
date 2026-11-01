@@ -80,6 +80,50 @@ class CodeEncaisserTests(TestCase):
                          {'permissions': sans}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
 
+    def test_renommer_un_role_systeme_n_ouvre_pas_encaisser(self):
+        """ASEC60 — le contrôle porte sur le nom ENREGISTRÉ, et personne
+        (administrateur compris) ne renomme un rôle système."""
+        company = Company.objects.create(nom='ASEC60', slug='asec60-nom')
+        call_command('init_roles', verbosity=0)
+        admin = User.objects.create_user(
+            username='asec60_admin', password='x', company=company,
+            role=Role.objects.get(company=company, nom='Administrateur'))
+        api = APIClient()
+        api.force_authenticate(admin)
+        tech = Role.objects.get(company=company, nom='Technicien')
+        avant = list(tech.permissions)
+        url = f'/api/django/roles/{tech.id}/'
+
+        def inchange():
+            tech.refresh_from_db()
+            self.assertEqual(tech.nom, 'Technicien')
+            self.assertEqual(tech.permissions, avant)
+
+        resp = api.patch(url, {'nom': 'Tech 2', 'permissions': avant + [CODE]},
+                         format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('non octroyable', str(resp.data.get('permissions')))
+        inchange()
+        # Refus d'état (rôle système enregistré) : 409, pas un 400 (fuzz ENF11).
+        resp = api.patch(url, {'nom': 'Tech 2'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('ne se modifie pas', str(resp.data))
+        resp = api.put(url, {'nom': 'Tech 2', 'permissions': avant}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        inchange()
+        resp = api.patch(url, {'permissions': avant + [CODE]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('non octroyable', str(resp.data))
+        inchange()
+        perso = Role.objects.create(company=company, nom='Vendeur',
+                                    permissions=['crm_voir'])
+        resp = api.patch(f'/api/django/roles/{perso.id}/',
+                         {'nom': 'Vendeur 2'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        call_command('init_roles', verbosity=0)
+        self.assertEqual(
+            Role.objects.filter(company=company, nom='Technicien').count(), 1)
+
     def test_migration_aller_retour(self):
         migration = importlib.import_module(
             'apps.roles.migrations.0007_asec9_code_encaisser')

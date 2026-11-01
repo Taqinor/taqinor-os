@@ -206,10 +206,11 @@ class TestWinLossBySource(CommercialBase):
         self.assertEqual(resp.status_code, 200)
         by_canal = {r['canal']: r for r in resp.data['by_canal']}
 
-        # Meta Ads : 2 leads, 1 won → 50 %.
+        # Meta Ads : 2 leads, 1 won, 1 perdu → taux de gain 1 / 1 = 100 %
+        # (AANA56 : le perdu sort du dénominateur, comme ``taux_gain``).
         self.assertEqual(by_canal['meta_ads']['total'], 2)
         self.assertEqual(by_canal['meta_ads']['won'], 1)
-        self.assertAlmostEqual(by_canal['meta_ads']['close_rate_pct'], 50.0, places=0)
+        self.assertAlmostEqual(by_canal['meta_ads']['close_rate_pct'], 100.0, places=0)
 
         # Site web : 1 lead, 1 won → 100 %.
         self.assertEqual(by_canal['site_web']['total'], 1)
@@ -246,8 +247,31 @@ class TestWinLossBySource(CommercialBase):
         self.assertEqual(s['nb_total'], 3)
         self.assertEqual(s['nb_won'], 1)
         self.assertEqual(s['nb_lost'], 1)
-        # 1 won / 3 total ≈ 33.3 %
-        self.assertAlmostEqual(s['overall_close_rate_pct'], 33.3, places=0)
+        # AANA56 — 1 won / 2 non perdus = 50 %
+        self.assertAlmostEqual(s['overall_close_rate_pct'], 50.0, places=0)
+
+    def test_taux_de_cloture_egal_au_taux_de_gain(self):
+        """AANA56 (C-AANA-VER-003) — taux de clôture = ``win_rate_pct`` du
+        tableau commercial ; seau tout perdu → ``None``."""
+        self._make_lead(stage='SIGNED', canal='meta_ads')
+        self._make_lead(stage='NEW', canal='meta_ads', perdu=True)
+        self._make_lead(stage='SIGNED', canal='site_web')
+        self._make_lead(stage='NEW', canal='autre', perdu=True)
+
+        resp = self.api.get(f'{BASE}/win-loss-by-source/')
+        self.assertEqual(resp.status_code, 200)
+        by_canal = {r['canal']: r for r in resp.data['by_canal']}
+        self.assertEqual(by_canal['meta_ads']['close_rate_pct'], 100.0)
+        self.assertEqual(by_canal['site_web']['close_rate_pct'], 100.0)
+        self.assertIsNone(by_canal['autre']['close_rate_pct'])
+        self.assertEqual(by_canal['meta_ads']['total'], 2)
+        s = resp.data['summary']
+        self.assertEqual((s['nb_total'], s['nb_won'], s['nb_lost']), (4, 2, 2))
+
+        dash = self.api.get(f'{BASE}/dashboard/')
+        self.assertEqual(dash.status_code, 200)
+        self.assertEqual(s['overall_close_rate_pct'], dash.data['win_rate_pct'])
+        self.assertEqual(s['overall_close_rate_pct'], 100.0)
 
     def test_tenant_isolation(self):
         """Les leads d'une autre société ne polluent pas les compteurs."""

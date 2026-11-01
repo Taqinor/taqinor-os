@@ -19,7 +19,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.models import Client
 from apps.reporting.kpi_alertes import _resolve_representative_user
 from apps.stock.models import Produit
-from apps.ventes.models import Facture, LigneFacture, Paiement
+from apps.ventes.models import (
+    Avoir, Facture, LigneAvoir, LigneFacture, Paiement)
 from authentication.models import Company
 
 User = get_user_model()
@@ -108,6 +109,72 @@ class TestCaDashboard(TestCase):
         # Le CA mensuel lit la même base (encaissé HT).
         self.assertAlmostEqual(resp.data['ca_mensuel'][-1]['ca'], 500.0,
                                places=1)
+
+    # ── AANA55 (C-AANA-VER-002) — encaissé = paiements reçus, attente =
+    # ``montant_du`` (avoirs déduits), au prorata HT/TTC. ──────────────────
+
+    def _avoir(self, facture, ht, ref):
+        avoir = Avoir.objects.create(
+            company=self.company, reference=ref, facture=facture,
+            client=self.client_obj)
+        LigneAvoir.objects.create(
+            avoir=avoir, designation='Avoir', quantite=Decimal('1'),
+            prix_unitaire=Decimal(ht))
+        return avoir
+
+    def _paye(self, facture, montant):
+        Paiement.objects.create(
+            company=self.company, facture=facture, client=self.client_obj,
+            montant=Decimal(montant), date_paiement=date.today(),
+            mode=Paiement.Mode.VIREMENT)
+
+    def _force(self, facture, statut):
+        Facture.objects.filter(pk=facture.pk).update(statut=statut)
+
+    def test_avoir_total_sans_paiement_rien_d_encaisse(self):
+        facture = self._facture('FAC-AANA55-A', Facture.Statut.EMISE)
+        self._avoir(facture, '1000', 'AV-AANA55-A')
+        self._force(facture, Facture.Statut.PAYEE)  # soldée par l'avoir
+        resp = self.api.get(URL)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['kpis']['ca_paye'], 0.0)
+        self.assertEqual(resp.data['kpis']['ca_attente'], 0.0)
+        self.assertEqual(resp.data['ca_mensuel'][-1]['ca'], 0.0)
+
+    def test_avoir_partiel_deduit_de_l_attente(self):
+        facture = self._facture('FAC-AANA55-B', Facture.Statut.EMISE)
+        self._avoir(facture, '250', 'AV-AANA55-B')  # 300 TTC
+        resp = self.api.get(URL)
+        self.assertEqual(resp.status_code, 200)
+        self.assertAlmostEqual(resp.data['kpis']['ca_attente'], 750.0,
+                               places=2)
+        self.assertEqual(resp.data['kpis']['ca_paye'], 0.0)
+
+    def test_quatre_factures_du_scenario(self):
+        a = self._facture('FAC-AANA55-1', Facture.Statut.EMISE)
+        self._avoir(a, '1000', 'AV-AANA55-1')
+        self._force(a, Facture.Statut.PAYEE)
+        b = self._facture('FAC-AANA55-2', Facture.Statut.EMISE)
+        self._avoir(b, '250', 'AV-AANA55-2')
+        c = self._facture('FAC-AANA55-3', Facture.Statut.EMISE)
+        self._paye(c, '1200')
+        self._force(c, Facture.Statut.PAYEE)
+        d = self._facture('FAC-AANA55-4', Facture.Statut.EMISE)
+        self._paye(d, '600')
+        self._force(d, Facture.Statut.PAYEE)
+        resp = self.api.get(URL)
+        self.assertEqual(resp.status_code, 200)
+        self.assertAlmostEqual(resp.data['kpis']['ca_paye'], 1500.0, places=2)
+        self.assertAlmostEqual(resp.data['kpis']['ca_attente'], 1250.0,
+                               places=2)
+        self.assertAlmostEqual(resp.data['ca_mensuel'][-1]['ca'], 1500.0,
+                               places=2)
+        # Par facture : encaissé + attente + part HT des avoirs = total_ht.
+        from apps.reporting.views import _ht_encaisse, _part_ht
+        for f in Facture.objects.filter(pk__in=[a.pk, b.pk, c.pk, d.pk]):
+            somme = (_ht_encaisse(f) + _part_ht(f, f.montant_du)
+                     + _part_ht(f, f.avoirs_total))
+            self.assertAlmostEqual(float(somme), float(f.total_ht), places=2)
 
 
 class TestUtilisateurDeCalculKpi(TestCase):

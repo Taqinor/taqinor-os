@@ -47,6 +47,8 @@ from apps.records.openapi import (
 from apps.records.serializers import CibleIntrouvable, resolve_target
 
 from . import openapi as oa, selectors, services
+from .garde_ecriture import (
+    ACTIONS_ECRITURE_ASEC59, LienEcritureMixin, PartageEcritureMixin, PlanificationEcritureMixin)
 from .corps_requete import (
     GedArchiverLegalementCorps,
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
@@ -498,6 +500,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         # appellent `check_object_permissions` explicitement ; `fusionner`
         # et `operations_lot` (liste de documents) vérifient chaque cible.
         'restaurer_corbeille', 'purger', 'fusionner', 'operations_lot',
+        *ACTIONS_ECRITURE_ASEC59,  # ASEC59 — garde_ecriture.py
     })
 
     def check_object_permissions(self, request, obj):
@@ -2435,7 +2438,7 @@ class DocumentVersionViewSet(CorpsObjetMixin, ParsersParActionMixin, TenantMixin
         request=oa.LIEN_CORPS,
         responses={200: DocumentLienSerializer, 201: DocumentLienSerializer}),
 )
-class DocumentLienViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
+class DocumentLienViewSet(LienEcritureMixin, CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED6 — Liens polymorphes Document ↔ objet métier (records.ALLOWED_TARGETS).
 
     Création : `{"document": <id>, "model": "ventes.devis", "id": <pk>}`. La
@@ -2707,7 +2710,7 @@ class DemandeApprobationViewSet(CorpsObjetMixin, TenantMixin, viewsets.ReadOnlyM
 
 
 @extend_schema_view(list=extend_schema(parameters=[oa.Q_DOCUMENT, oa.Q_ACTIF]))
-class PartageGedViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
+class PartageGedViewSet(PartageEcritureMixin, CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED20 — CRUD de gestion des partages publics tokenisés (scopé société).
 
     Côté GESTION uniquement (créer, lister, révoquer) — l'accès public au
@@ -2747,13 +2750,6 @@ class PartageGedViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         elif actif in ('0', 'false'):
             qs = qs.filter(actif=False)
         return qs
-
-    def perform_create(self, serializer):
-        # company + created_by posés côté serveur (jamais du corps). Le document
-        # est validé company-scopé dans le serializer (`validate_document`).
-        serializer.save(
-            company=self.request.user.company,
-            created_by=self.request.user)
 
     @extend_schema(request=None, responses=PartageGedSerializer)
     @action(detail=True, methods=['post'], url_path='revoquer')
@@ -4517,7 +4513,7 @@ class LotEnvoiViewSet(CorpsObjetMixin, TenantMixin,
 
 
 @extend_schema_view(list=extend_schema(parameters=[oa.Q_DOCUMENT]))
-class PlanificationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
+class PlanificationDocumentViewSet(PlanificationEcritureMixin, CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED15 — Activités planifiées sur un document."""
     queryset = PlanificationDocument.objects.select_related(
         'document', 'assigne_a', 'created_by').all()
@@ -4540,10 +4536,6 @@ class PlanificationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelV
         if document:
             qs = qs.filter(document_id=document)
         return qs
-
-    def perform_create(self, serializer):
-        serializer.save(
-            company=self.request.user.company, created_by=self.request.user)
 
 
 @extend_schema(parameters=[oa.Q_LIMITE],

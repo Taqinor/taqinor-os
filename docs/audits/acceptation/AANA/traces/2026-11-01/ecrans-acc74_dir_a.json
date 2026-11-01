@@ -1,0 +1,47 @@
+{
+ "P3": {
+  "route": "/reporting",
+  "url": "http://127.0.0.1:5173/reporting",
+  "incidents": [],
+  "casse": false,
+  "prix_achat": false,
+  "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/aana/cap/ACCEPTATION-AANA-P3-acc74_dir_a.jpg",
+  "texte": "Aller au contenu\nReporting & analytics\nACC AANA74 A\nERP SOLAIRE\nANALYSE\nADMINISTRATEUR\nReporting\nRapports\nBalance âgée\nTableau commercial\nQuote-to-Cash\nCohortes\nApprobations\nClasseurs\nSLA SAV\nAnalytics terrain\nScorecard technicien\nPilotage chantiers\nTableaux de bord\nDashboards TV\nPartage de dashboards\nRapports croisés\nEnvois programmés\nJournal d'activité\nToutes les apps\nDéconnexion\nANALYSE\nAnalyse\nReporting & analytics\nReporting & analytics\n⌘K\nFR\nClair\nSystème\nSombre\nA\nacc74_dir_a\nReporting & Analytics\nExporter Excel\nActualiser\nValeur du pipeline\n\nPrévision pondérée : 1 200 DH · Gagnés : 2 (1 200 DH)\n\nPAR ÉTAPE\nNouveau\t0\t0 DH\nContacté\t0\t0 DH\nDevis envoyé\t0\t0 DH\nRelance\t0\t0 DH\nSigné\t2\t1 200 DH\nFroid\t0\t0 DH\nDEVIS PAR STATUT\nAccepté\t2\t3 600 DH\nPERTES PAR MOTIF\nNon précisé\t1\t0 DH\nCA ENCAISSÉ\n0 DH\nFactures payées\nEN ATTENTE DE PAIEMENT\n0 DH\nÉmises + en retard\nCLIENTS ACTIFS\n1\nTotal base clients\nVALEUR DU STOCK\n0 DH\nPrix vente × quantité\nCA mensuel\n6 mois\n12 mois\nTout\n\nAucune facture payée\n\nAucune facture payée sur la période sélectionnée.\n\nTop 5 produits vendus (quantité)\n0\n1\n2\n3\n4\nKit ACC74\nRépartition des factures\nPayée\nTunnel de conversion\nDevis créés\n2 (100 %)\nDevis acceptés\n2 (100 %)\nFactures émises\n1 (50 %)\nDevis acceptés / créés : 100 %\nStock sous seuil d'alerte\n0\n\nStocks au-dessus du seuil\n\nTous les stocks sont au-dessus du seuil.\n\nKPI fédérés\nHEALTH SCORE\n59 /100\nTAUX D'ADOPTION (30J)\n50 %\nSIÈGES UTILISÉS\n2\nDÉPENSE PUB (7 J)\n0 MAD\nLEADS META (7 J)\n0 leads\nLEADS ACTIFS\n2\nLEADS — NOUVEAU\n0\nLEADS — CONTACTÉ\n0\nLEADS — DEVIS ENVOYÉ\n0\nLEADS — RELANCE\n0\nLEADS — SIGNÉ\n2\nLEADS — FROID\n0\nLEADS PERDUS\n1\nCALEPINAGES\n0\nKWC CONÇUS\n0 kWc\nCALEPINAGES DEVENUS DEVIS SIGNÉS\n0\nÉCRANS AVEC VUE PAR DÉFAUT DE RÔLE\n0 %\nVUES PERSONNELLES PAR UTILISATEUR ACTIF\n0 vues\nÉDITION EN MASSE (30 DERNIERS JOURS)\n0 %\nKWC CONÇUS\n0 kWc\nKWC SIGNÉS\n0 kWc\nTAUX DE CONVERSION DES DEVIS CONÇUS\n0 %\nAchats → paiement\n\nAucune donnée d’achats exploitable pour le moment.\n\nKit ACC74"
+ },
+ "P4": {
+  "route": "/reporting/commercial",
+  "url": "http://127.0.0.1:5173/reporting/commercial",
+  "incidents": [],
+  "casse": false,
+  "prix_achat": false,
+  "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/aana/cap/ACCEPTATION-AANA-P4-acc74_dir_a.jpg",
+  "texte": "Aller au contenu\nReporting & analytics\nACC AANA74 A\nERP SOLAIRE\nANALYSE\nADMINISTRATEUR\nReporting\nRapports\nBalance âgée\nTableau commercial\nQuote-to-Cash\nCohortes\nApprobations\nClasseurs\nSLA SAV\nAnalytics terrain\nScorecard technicien\nPilotage chantiers\nTableaux de bord\nDashboards TV\nPartage de dashboards\nRapports croisés\nEnvois programmés\nJournal d'activité\nToutes les apps\nDéconnexion\nANALYSE\nAnalyse\nReporting & analytics\nReporting & analytics\n⌘K\nFR\nClair\nSystème\nSombre\nA\nacc74_dir_a\nTableau commercial\nTOTAL LEADS\n3\nLEADS SIGNÉS\n2\nTAUX DE VICTOIRE\n100 %\nVÉLOCITÉ MOYENNE\n—\nEntonnoir & vélocité\nClassement\nGains / Pertes\nENTONNOIR DE CONVERSION\n0\n25\n50\n75\n100\nNouveau\nContacté\nDevis envoyé\nRelance\nSigné\nFroid\nTEMPS MOYEN PAR ÉTAPE (GOULOTS D'ÉTRANGLEMENT)\nÉTAPE\tDURÉE MOY.\tÉCHANTILLON\nNouveau\t—\t0\nContacté\t—\t0\nDevis envoyé\t—\t0\nRelance\t—\t0\nSigné\t—\t0\nFroid\t—\t0\nVÉLOCITÉ DE VENTE\n\nDélai moyen lead → devis accepté :—\n\nVÉLOCITÉ PAR ÉTAPE\nÉTAPE\tDURÉE MOY.\tEN ATTENTE\tÉCHANTILLON\nNouveau\t—\t1\t0\nContacté\t—\t0\t0\nDevis envoyé\t—\t0\t0\nRelance\t—\t0\t0\nSigné\t—\t2\t0\nFroid\t—\t0\t0\nNouveau"
+ },
+ "P4-winloss": {
+  "route": "/reporting/commercial",
+  "url": "http://127.0.0.1:5173/reporting/commercial",
+  "incidents": [],
+  "casse": false,
+  "prix_achat": false,
+  "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/aana/cap/ACCEPTATION-AANA-P4-winloss-acc74_dir_a.jpg",
+  "texte": "Aller au contenu\nReporting & analytics\nACC AANA74 A\nERP SOLAIRE\nANALYSE\nADMINISTRATEUR\nReporting\nRapports\nBalance âgée\nTableau commercial\nQuote-to-Cash\nCohortes\nApprobations\nClasseurs\nSLA SAV\nAnalytics terrain\nScorecard technicien\nPilotage chantiers\nTableaux de bord\nDashboards TV\nPartage de dashboards\nRapports croisés\nEnvois programmés\nJournal d'activité\nToutes les apps\nDéconnexion\nANALYSE\nAnalyse\nReporting & analytics\nReporting & analytics\n⌘K\nFR\nClair\nSystème\nSombre\nA\nacc74_dir_a\nTableau commercial\nTOTAL LEADS\n3\nLEADS SIGNÉS\n2\nTAUX DE VICTOIRE\n100 %\nVÉLOCITÉ MOYENNE\n—\nEntonnoir & vélocité\nClassement\nGains / Pertes\nTOTAL LEADS\n3\nGAGNÉS (SIGNÉS)\n2\nPERDUS\n1\nTAUX DE CLÔTURE GLOBAL\n100 %\nTAUX DE CLÔTURE PAR CANAL\nCANAL\tTOTAL\tGAGNÉS\tTAUX\nPublicité Meta\t2\t1\t100 %\nSite web\t1\t1\t100 %\nTOP MOTIFS DE PERTE\n1\nNon précisé\n1\nTAUX PAR SOURCE TECHNIQUE\nSOURCE\tTOTAL\tGAGNÉS\tTAUX\nCréé dans TAQINOR\t3\t2\t100 %\nNouveau"
+ },
+ "P5.1-classement": {
+  "route": "/reporting/commercial",
+  "url": "http://127.0.0.1:5173/reporting/commercial",
+  "incidents": [],
+  "casse": false,
+  "prix_achat": false,
+  "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/aana/cap/ACCEPTATION-AANA-P5.1-classement-acc74_dir_a.jpg",
+  "texte": "Aller au contenu\nReporting & analytics\nACC AANA74 A\nERP SOLAIRE\nANALYSE\nADMINISTRATEUR\nReporting\nRapports\nBalance âgée\nTableau commercial\nQuote-to-Cash\nCohortes\nApprobations\nClasseurs\nSLA SAV\nAnalytics terrain\nScorecard technicien\nPilotage chantiers\nTableaux de bord\nDashboards TV\nPartage de dashboards\nRapports croisés\nEnvois programmés\nJournal d'activité\nToutes les apps\nDéconnexion\nANALYSE\nAnalyse\nReporting & analytics\nReporting & analytics\n⌘K\nFR\nClair\nSystème\nSombre\nA\nacc74_dir_a\nTableau commercial\nTOTAL LEADS\n3\nLEADS SIGNÉS\n2\nTAUX DE VICTOIRE\n100 %\nVÉLOCITÉ MOYENNE\n—\nEntonnoir & vélocité\nClassement\nGains / Pertes\nCLASSEMENT COMMERCIAUX\nExporter\n#\tCOMMERCIAL\tCA HT SIGNÉ\tDEVIS SIGNÉS\tDEAL MOYEN HT\tTAUX VICTOIRE\tKWC\n1\tacc74_com_a\t3 000 MAD\t2\t1 500 MAD\t100 %\t—\nNouveau"
+ },
+ "P2.1": {
+  "route": "/stock/produits",
+  "url": "http://127.0.0.1:5173/stock/produits",
+  "incidents": [],
+  "casse": false,
+  "prix_achat": false,
+  "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/aana/cap/ACCEPTATION-AANA-P2.1-acc74_dir_a.jpg",
+  "texte": "Aller au contenu\nStock\nACC AANA74 A\nERP SOLAIRE\nSTOCK\nADMINISTRATEUR\nProduits\nCatégories & marques\nFournisseurs\nMouvements\nCommandes fournisseur\nModèles de commande\nRéceptions fournisseur\nFactures fournisseur\nRetours fournisseur\nPaiements fournisseur\nImport OCR\nLots (FEFO)\nInventaires annuels\nRevalorisations\nConditionnements\nNomenclatures (kits)\nTableau de bord entrepôt\nCasiers\nPoste scanner\nPicking\nQuais et rendez-vous\nExpéditions\nQualité et rappels\nConsignation\nRemises arrière (RFA)\nDépôts tiers (3PL)\nToutes les apps\nDéconnexion\nSTOCK\nStock\nStock\n⌘K\nFR\nClair\nSystème\nSombre\nA\nacc74_dir_a\n\nPage introuvable (404)\n\nLa page demandée n'existe pas ou a été déplacée.\n\nRetour à l'accueil"
+ }
+}

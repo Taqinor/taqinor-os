@@ -1,0 +1,89 @@
+"""AANA74 — rejeu HTTP (vraies routes, vrai login par cookie) des gestes d'AANA54/55/56/61/62/66/73 + société B.
+Usage : python replay.py <base_url> <setup.json> <sortie.json>"""
+import json, sys, requests
+BASE, SETUP, OUT = sys.argv[1].rstrip('/'), json.load(open(sys.argv[2])), sys.argv[3]
+PWD = 'Acc-Aana74-0111!'
+R = {'appels': [], 'etapes': {}}
+
+def session(user):
+    s = requests.Session()
+    s.headers.update({'Origin': BASE, 'Referer': BASE + '/', 'Host': BASE.split('//')[1]})
+    r = s.post(f'{BASE}/api/django/token/', json={'username': user, 'password': PWD})
+    assert r.status_code == 200, (user, r.status_code, r.text[:300])
+    if 'csrftoken' in s.cookies: s.headers['X-CSRFToken'] = s.cookies['csrftoken']
+    return s
+
+def appel(s, meth, url, attendu=(200, 201), **kw):
+    r = getattr(s, meth)(f'{BASE}/api/django{url}', **kw)
+    R['appels'].append({'m': meth.upper(), 'url': url, 'statut': r.status_code})
+    try: d = r.json()
+    except Exception: d = r.text[:300]
+    if r.status_code not in attendu:
+        R['appels'][-1]['inattendu'] = str(d)[:300]
+    return r.status_code, d
+
+A, B = SETUP['A'], SETUP['B']
+da, db = session(A['dir']), session(B['dir'])
+
+# ── P2.1 AANA54 — import produits (aperçu puis commit), relu par la liste ──
+csv = 'Nom,SKU,Prix\nACC74 P1,ACC74-I1,12.345\nACC74 P2,ACC74-I2,"12,345"\nACC74 P3,ACC74-I3,99999999.999\nACC74 P4,ACC74-I4,12.34\nACC74 P5,ACC74-I5,"12,5"\n'
+csv_achat = 'Nom,SKU,Prix achat\nACC74 PA,ACC74-I6,7.123\n'
+st, apercu = appel(da, 'post', '/imports/dry-run/', files={'file': ('p.csv', csv, 'text/csv')}, data={'target': 'products'})
+st2, commit = appel(da, 'post', '/imports/commit/', files={'file': ('p.csv', csv, 'text/csv')}, data={'target': 'products'})
+st3, commit_achat = appel(da, 'post', '/imports/commit/', files={'file': ('a.csv', csv_achat, 'text/csv')}, data={'target': 'products'})
+st4, liste = appel(da, 'get', '/stock/produits/?search=ACC74-I&page_size=50')
+items = liste.get('results', liste) if isinstance(liste, dict) else liste
+relus = {p.get('sku'): p.get('prix_vente') for p in (items or []) if isinstance(p, dict)}
+R['etapes']['P2.1'] = {'apercu_statut': st, 'apercu': str(apercu)[:2500], 'commit_statut': st2, 'commit': commit,
+                       'commit_achat_statut': st3, 'commit_achat': commit_achat, 'produits_relus': relus}
+
+# ── P2.2 AANA73 — aperçu factures à colonne montant_ttc + mapping qui cite montant_ttc_source ──
+fcsv = 'reference,client_nom,statut,montant_ttc\nFAC-ACC74-IMP,Cli,emise,1200\n'
+st, ap = appel(da, 'post', '/imports/dry-run/', files={'file': ('f.csv', fcsv, 'text/csv')}, data={'target': 'factures'})
+stm, mp = appel(da, 'post', '/imports/mapping/', attendu=(400, 409), json={'nom': 'ACC74 map', 'target': 'factures',
+                'mapping': {'reference': 'reference', 'montant_ttc': 'montant_ttc_source'}})
+R['etapes']['P2.2'] = {'dry_run_statut': st, 'dry_run': ap, 'mapping_statut': stm, 'mapping': mp}
+
+# ── P3 AANA55 — avoir total sans paiement → tableau de bord (avant / après), relu deux fois ──
+st0, d0 = appel(da, 'get', '/reporting/dashboard/')
+fid = A['facture_avoir']
+sta, av = appel(da, 'post', f'/ventes/factures/{fid}/creer-avoir/', json={'motif': 'Annulation commerciale ACC74'})
+st1, d1 = appel(da, 'get', '/reporting/dashboard/')
+st1b, d1b = appel(da, 'get', '/reporting/dashboard/')
+stf, fac = appel(da, 'get', f'/ventes/factures/{fid}/')
+k = lambda d: {x: (d.get('kpis') or {}).get(x) for x in ('ca_paye', 'ca_attente', 'ca_total', 'nb_factures')} if isinstance(d, dict) else d
+R['etapes']['P3'] = {'avant': k(d0), 'avoir_statut': sta, 'avoir': str(av)[:400], 'apres': k(d1), 'apres_relu': k(d1b),
+                     'ca_mensuel_apres': (d1.get('ca_mensuel') if isinstance(d1, dict) else None),
+                     'facture_relue': {x: fac.get(x) for x in ('statut', 'montant_du', 'montant_paye', 'total_ht')} if isinstance(fac, dict) else fac}
+
+# ── P4 AANA56 — taux de clôture (win-loss-by-source) contre taux de gain (tableau commercial) ──
+st, cd = appel(da, 'get', '/reporting/commercial/dashboard/')
+st2, wl = appel(da, 'get', '/reporting/commercial/win-loss-by-source/')
+R['etapes']['P4'] = {'win_rate_pct': cd.get('win_rate_pct') if isinstance(cd, dict) else cd,
+                     'summary': wl.get('summary') if isinstance(wl, dict) else wl,
+                     'by_canal': wl.get('by_canal') if isinstance(wl, dict) else None}
+
+# ── P5.1 AANA62 — classement : tableau commercial contre export « Classement » ──
+frm, to = A['periode']
+q = f'?from={frm}&to={to}'
+st, cd2 = appel(da, 'get', f'/reporting/commercial/dashboard/{q}')
+st2, lb = appel(da, 'get', f'/reporting/insights/sales-leaderboard/{q}')
+st3, lbx = appel(da, 'get', f'/reporting/insights/sales-leaderboard/{q}&format=xlsx', attendu=(200, 400, 404, 406))
+R['etapes']['P5.1'] = {'commercial_dashboard': cd2.get('leaderboard') if isinstance(cd2, dict) else cd2,
+                       'sales_leaderboard': lb.get('rows') if isinstance(lb, dict) else lb, 'export_xlsx_statut': st3}
+
+# ── P6 AANA66 — table des probabilités servie ──
+st, pr = appel(da, 'get', '/reporting/probabilites-etape/')
+R['etapes']['P6'] = {'statut': st, 'table': pr}
+
+# ── P7 — chaque lecture rejouée au compte de B : rien de A ──
+b = {}
+for url in ('/reporting/dashboard/', '/reporting/commercial/dashboard/', '/reporting/commercial/win-loss-by-source/',
+            f'/reporting/insights/sales-leaderboard/{q}', '/stock/produits/?search=ACC74-I', f'/ventes/factures/{fid}/'):
+    st, d = appel(db, 'get', url, attendu=(200, 404))
+    b[url] = {'statut': st, 'corps': d if len(json.dumps(d, default=str)) < 1500 else str(d)[:1500]}
+R['etapes']['P7'] = b
+R['inattendus'] = [a for a in R['appels'] if 'inattendu' in a]
+json.dump(R, open(OUT, 'w'), ensure_ascii=False, indent=1, default=str)
+print(json.dumps({k2: (str(v)[:600]) for k2, v in R['etapes'].items()}, ensure_ascii=False, indent=1))
+print('INATTENDUS', R['inattendus'])

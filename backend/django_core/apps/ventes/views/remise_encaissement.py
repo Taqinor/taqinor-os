@@ -21,11 +21,12 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsAnyRole
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import Paiement, RemiseEncaissement, LigneRemiseEncaissement
 from ..serializers_facturation import RemiseEncaissementSerializer
+from .facture_gardes import PeutEncaisser
 import logging
 
 logger = logging.getLogger(__name__)
@@ -68,10 +69,9 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['pdf']:
             return [IsAnyRole()]
-        elif self.action in ['cloturer', 'valider', 'destroy']:
-            # AFAC16 — supprimer une remise est un geste de responsable.
-            return [IsResponsableOrAdmin()]
-        return [IsAnyRole()]
+        # ASEC62 / D-ASEC-VER-1 — déclarer, modifier, clôturer, supprimer une
+        # remise immobilise des paiements : geste d'argent, code ``encaisser``.
+        return [PeutEncaisser()]
 
     def get_queryset(self):
         user = self.request.user

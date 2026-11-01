@@ -1,0 +1,221 @@
+{
+  "sha": "15ebadca518c248e41f636e73a3367b2dffa405c",
+  "date": "2026-11-01",
+  "groupe": "ASEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ASEC55",
+    "ASEC56",
+    "ASEC58",
+    "ASEC59",
+    "ASEC60",
+    "ASEC64",
+    "ASEC62",
+    "ASEC61"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P63.1",
+      "taches": [
+        "ASEC55"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.1-head.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Commercial responsable (acc63-h5-cresp), /login puis /admin/roles : rôle étroit [crm_voir] créé 201 et attribué 200 à un Commercial ; PATCH +paie_gerer → 403 role_plus_large « Ce rôle est plus large que le vôtre… », rôle relu [crm_voir] ; POST d'emblée avec paie_gerer → 403, absent de la liste ; contre-épreuve ba577e26a : FAIL (docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.1-ba577e26a.jpg) — erreur : {\"id\":89,\"nom\":\"ACC63 b1 étroit\",\"permissions\":[\"crm_voir\",\"paie_gerer\"],\"est_systeme\":false,\"users_count\":1,\"users\":[{\"id\":72,\"username\":\"acc63-b1-cible\"}],\"entites_visibles\":[],\"perimetre\":null}"
+    },
+    {
+      "id": "P63.3",
+      "taches": [
+        "ASEC56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "PASS",
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.3-head.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Commercial (encaisser) : retour client → avoir AVO 201 (1 200 TTC) ; import relevé dry-run 200 puis commit 200 ; contre-épreuve ba577e26a : PASS (docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.3-ba577e26a.jpg)"
+    },
+    {
+      "id": "P63.5",
+      "taches": [
+        "ASEC58"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.5-head.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Directeur : ZIP par lot du document à version de clé attachments/<autre société>/… → ZIP vide (22 o), entrée absente ; Scinder → 404 « Fichier indisponible. », aucun document créé (6 → 6) ; contre-épreuve ba577e26a : FAIL (docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.5-ba577e26a.jpg) — erreur : entrée de la clé étrangère dans le ZIP"
+    },
+    {
+      "id": "P63.6",
+      "taches": [
+        "ASEC59"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.6-head.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "compte palier responsable ged_gerer+ged_gouvernance, propriétaire du coffre, ACL lecture : verrouiller, placer-legal-hold, POST partages → 403 « Droit d'écriture requis sur cette cible. » ; compte sans droit : POST partages → 404 ; relu par demo_admin : aucun verrou, hold, partage. ÉCART DE LIBELLÉ : le 404 du compte sans droit rend l'erreur de sérialiseur « Clé primaire « <id> » non valide - l'objet n'existe pas. » (code not_found) et non « Document inconnu. » attendu par la tâche — statut et absence d'écriture conformes ; contre-épreuve ba577e26a : FAIL (docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.6-ba577e26a.jpg) — erreur : verrouiller"
+    },
+    {
+      "id": "P63.7",
+      "taches": [
+        "ASEC60"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.7-head.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Administrateur (demo_admin) : PATCH rôle système Technicien {nom: 'Technicien ACC63', permissions + encaisser} → 400 « Code non octroyable à ce rôle : ['encaisser']. » sur 15ebadca5 (le PR à 9daeeefba2 répondrait 409 au renommage — oracle 400 ou 409), rôle relu inchangé (Technicien, 30 codes). Contre-épreuve : rôle renommé + encaisser ajouté sur ba577e26a, RESTAURÉ juste après le run ; contre-épreuve ba577e26a : FAIL (docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.7-ba577e26a.jpg) — erreur : {\"id\":7,\"nom\":\"Technicien ACC63\",\"permissions\":[\"installation_voir\",\"installation_gerer\",\"intervention_gerer\",\"equipement_voir\",\"sav_voir\",\"sav_gerer\",\"sav_repondre_client_externe\",\"stock_voir\",\"stock_mouvement\",\"parametres_voir\",\"reporting_voir\",\"client_pii_voir\",\"qhse_voir\",\"qhse_gerer\",\"projet_voir\",\"projet_gerer\",\"contrat_voir\",\"contrat_gerer\",\"litige_voir\",\"litige_gerer\",\"kb_voir\",\"kb_gerer\",\"ged_voir\",\"ged_gerer\",\"adsengine_view\",\"adsengine_manage\",\"btp_voir\",\"ux_vue_partager_equipe\",\"ux_vue_definir_defaut_role\",\"records_scope_equipe\",\"encaisser\"],\"est_systeme\":true,\"users_count\":9,\"users\":[{\"id\":4,\"username\":\"demo_tech\"},{\"id\":5,\"username\":\"demo_tech2\"},{\"id\":11,\"username\":\"acc63-head-tech\"},{\"id\":26,\"username\":\"acc63-h1-tech\"},{\"id\":35,\"username\":\"acc63-h2-tech\"},{\"id\":47,\"username\":\"acc63-h3-tech\"},{\"id\":57,\"username\":\"acc63-h4-tech\"},{\"id\":66,\"username\":\"acc63-h5-tech\"},{\"id\":75,\"username\":\"acc63-b1-tech\"}],\"entites_visibles\":[],\"perimetre\":null}"
+    },
+    {
+      "id": "P63.2-com",
+      "taches": [
+        "ASEC64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "PASS",
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.2-com-head.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Commercial (encaisser) : Encaisser, Payer en ligne, Avoir, menu (Pénalités, Abandonner le solde, Retour client), Importer un relevé, Rejeter, Réaffecter, Déclarer une remise, Clôturer visibles. Non relevés : Encaissement groupé (exige une sélection), Libérer la retenue, Annuler la saisie (non repérés à l'écran pour ce compte, hors preuve) ; contre-épreuve ba577e26a : PASS (docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.2-com-ba577e26a.jpg)"
+    },
+    {
+      "id": "P63.2-av",
+      "taches": [
+        "ASEC56",
+        "ASEC62",
+        "ASEC64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.2-av-head.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Admin Ventes : 0 geste d'argent sur liste+menu, fiche (?id=), /ventes/paiements, /ventes/paiements/import-releve, /ventes/remises-encaissement (écrans chargés, sans squelette) ; 13 portes ASEC56/ASEC62 (paiement-avec-retenue, attestation-recue, rejeter, annuler-saisie, reaffecter, retour-client, facturer-penalites, liberer-retenue, lien-paiement, revoquer-lien-paiement, import-releve dry-run et commit, POST remises-encaissement) → 403 chacune, facture/paiement/avoirs/remises relus identiques ; contre-épreuve ba577e26a : FAIL (docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.2-av-ba577e26a.jpg) — erreur : gestes d'argent affichés"
+    },
+    {
+      "id": "P63.2-resp",
+      "taches": [
+        "ASEC56",
+        "ASEC62",
+        "ASEC64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.2-resp-head.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Responsable : mêmes relevés que l'Admin Ventes — 0 geste, 13 portes 403, état relu identique ; contre-épreuve ba577e26a : FAIL (docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.2-resp-ba577e26a.jpg) — erreur : gestes d'argent affichés"
+    },
+    {
+      "id": "P63.8",
+      "taches": [
+        "ASEC61"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ASEC63-P63.8-asec61-head.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "hors navigateur : garde de l'outil SQL seule (aucune clé LLM — l'écran assistant SQL n'est pas rejoué) ; SELECT cout_unitaire et SELECT * sur stock_mouvementstock refusés (« acces refuse … prix d'achat ou de la marge »), aucun chiffre de coût rendu ; SELECT quantite, type_mouvement exécuté sur la vraie base (1 entree…) ; contre-épreuve ba577e26a : FAIL (docs/audits/acceptation/ASEC/traces/2026-11-01/ASEC63-P63.8-asec61-ba577e26a.txt) — ba577e26a : les deux requêtes rendent cout_unitaire 777.7700 au compte sans prix_achat_voir (fuite du coût interne)"
+    }
+  ]
+}

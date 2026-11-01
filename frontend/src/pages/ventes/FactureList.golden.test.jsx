@@ -42,6 +42,12 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
   return { ...actual, fetchFactures: () => ({ type: 'ventes/fetchFactures/noop' }) }
 })
 
+// ASEC64 — gestes d'argent sur le droit `encaisser` (store sans permissions).
+vi.mock('../../hooks/useHasPermission', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useHasPermission: (c) => c === 'encaisser',
+}))
+
 vi.mock('../../api/ventesApi', async (importOriginal) =>
   (await import('../../test/etendreApi')).etendreApi(importOriginal, {
     lienPaiementFacture: vi.fn(() => Promise.resolve({ data: {} })),

@@ -1,0 +1,380 @@
+{
+  "mode": "head",
+  "base": "http://127.0.0.1:5173",
+  "run": "head-mvy87500",
+  "e1": {
+    "emise": 27,
+    "emiseRef": "FAC-202611-0003",
+    "bc": 4,
+    "A": 13,
+    "B": 14,
+    "D1": 10,
+    "D2": 11,
+    "p": 25,
+    "caps": [
+      "out-head/ACCEPTATION-ATOT-P1.1.jpg",
+      "out-head/ACCEPTATION-ATOT-P1.3.jpg"
+    ]
+  },
+  "e6": {
+    "facture": 31,
+    "factureRef": "FAC-202611-0004",
+    "avoirRef": "AVO-202611-0003",
+    "noteRef": "ND-202611-0002",
+    "cap": "out-head/ACCEPTATION-ATOT-P6.jpg"
+  },
+  "etapes": {
+    "P1.1": [
+      {
+        "nom": "facture émise 1 200 TTC",
+        "ok": true,
+        "detail": {
+          "statut": "emise",
+          "ttc": "1200.00",
+          "ref": "FAC-202611-0003"
+        }
+      },
+      {
+        "nom": "ligne brouillon -> facture émise : 409",
+        "ok": true,
+        "detail": {
+          "st": 409,
+          "body": {
+            "facture": "Une ligne ne change pas de facture : supprimez-la et ajoutez-la sur l'autre facture.",
+            "error": {
+              "code": "api_error",
+              "message": "{'facture': ErrorDetail(string=\"Une ligne ne change pas de facture : supprimez-la et ajoutez-la sur l'autre facture.\", code='state_conflict')}",
+              "fields": null,
+              "request_id": "42bb5bf89f5645399782d8f05189be22"
+            }
+          }
+        }
+      },
+      {
+        "nom": "ligne brouillon -> autre brouillon : 409",
+        "ok": true,
+        "detail": {
+          "st": 409,
+          "body": {
+            "facture": "Une ligne ne change pas de facture : supprimez-la et ajoutez-la sur l'autre facture.",
+            "error": {
+              "code": "api_error",
+              "message": "{'facture': ErrorDetail(string=\"Une ligne ne change pas de facture : supprimez-la et ajoutez-la sur l'autre facture.\", code='state_conflict')}",
+              "fields": null,
+              "request_id": "6885024a012c49afb200365bb36c8965"
+            }
+          }
+        }
+      },
+      {
+        "nom": "PATCH {facture: sa facture, quantite: 2} : 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      },
+      {
+        "nom": "persistance : émise 1 ligne 1 200,00 TTC ; brouillon garde sa ligne",
+        "ok": true,
+        "detail": {
+          "emise": [
+            1,
+            "1200.00"
+          ],
+          "brouillon": [
+            1,
+            "1200.00"
+          ]
+        }
+      }
+    ],
+    "P1.2": [
+      {
+        "nom": "PATCH {client} sur émise : 409 champs_refuses ∋ client",
+        "ok": true,
+        "detail": {
+          "st": 409,
+          "body": {
+            "detail": "Montant figé après émission : corrigez par un avoir (ou remettez la facture en brouillon).",
+            "champs_refuses": [
+              "client"
+            ],
+            "error": {
+              "code": "api_error",
+              "message": "Montant figé après émission : corrigez par un avoir (ou remettez la facture en brouillon).",
+              "fields": null,
+              "request_id": "32fd03589e364dd3876bc3fe4b294c28"
+            }
+          }
+        }
+      },
+      {
+        "nom": "PATCH {retenue_garantie_mad} sur émise : 409 champs_refuses ∋ retenue_garantie_mad",
+        "ok": true,
+        "detail": {
+          "st": 409,
+          "body": {
+            "detail": "Montant figé après émission : corrigez par un avoir (ou remettez la facture en brouillon).",
+            "champs_refuses": [
+              "retenue_garantie_mad"
+            ],
+            "error": {
+              "code": "api_error",
+              "message": "Montant figé après émission : corrigez par un avoir (ou remettez la facture en brouillon).",
+              "fields": null,
+              "request_id": "b5f8396717af469caaabfcaa1fa1c1f3"
+            }
+          }
+        }
+      },
+      {
+        "nom": "PATCH {devise} sur émise : 409 champs_refuses ∋ devise",
+        "ok": true,
+        "detail": {
+          "st": 409,
+          "body": {
+            "detail": "Montant figé après émission : corrigez par un avoir (ou remettez la facture en brouillon).",
+            "champs_refuses": [
+              "devise"
+            ],
+            "error": {
+              "code": "api_error",
+              "message": "Montant figé après émission : corrigez par un avoir (ou remettez la facture en brouillon).",
+              "fields": null,
+              "request_id": "8ec018ab5a7948a2a7e28c722d5c9ba2"
+            }
+          }
+        }
+      },
+      {
+        "nom": "PATCH à valeurs inchangées (client A, devise) : 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      },
+      {
+        "nom": "PATCH {notes} : 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      },
+      {
+        "nom": "persistance : client A, retenue 0, devise et TTC 1 200 inchangés",
+        "ok": true,
+        "detail": {
+          "client": 13,
+          "retenue": null,
+          "devise": "MAD",
+          "ttc": "1200.00"
+        }
+      },
+      {
+        "nom": "brouillon : PATCH {client: B} 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      }
+    ],
+    "P1.3": [
+      {
+        "nom": "BC livré du devis D1 / client A",
+        "ok": true,
+        "detail": {
+          "statut": "livre",
+          "devis": 10,
+          "client": 13,
+          "livrer": 200
+        }
+      },
+      {
+        "nom": "PATCH BC {devis: D2} : 409",
+        "ok": true,
+        "detail": {
+          "st": 409,
+          "body": {
+            "detail": "Un bon de commande confirmé ne change plus de devis ni de client.",
+            "champs_refuses": [
+              "devis"
+            ],
+            "error": {
+              "code": "api_error",
+              "message": "Un bon de commande confirmé ne change plus de devis ni de client.",
+              "fields": null,
+              "request_id": "8b7d5367dc584f2ca29041ed57b397cd"
+            }
+          }
+        }
+      },
+      {
+        "nom": "PATCH BC {client: B} : 409",
+        "ok": true,
+        "detail": {
+          "st": 409,
+          "body": {
+            "detail": "Un bon de commande confirmé ne change plus de devis ni de client.",
+            "champs_refuses": [
+              "client"
+            ],
+            "error": {
+              "code": "api_error",
+              "message": "Un bon de commande confirmé ne change plus de devis ni de client.",
+              "fields": null,
+              "request_id": "73895cbec2a34fedb04deaba6566aa74"
+            }
+          }
+        }
+      },
+      {
+        "nom": "PATCH BC {note} : 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      },
+      {
+        "nom": "PATCH BC {devis: D1 (sa valeur)} : 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      },
+      {
+        "nom": "persistance : devis D1, client A",
+        "ok": true,
+        "detail": {
+          "devis": 10,
+          "client": 13
+        }
+      }
+    ],
+    "P6": [
+      {
+        "nom": "facture émise 1 000 HT (400 @10 + 600 @20) = 1 160 TTC",
+        "ok": true,
+        "detail": {
+          "ref": "FAC-202611-0004",
+          "ht": "1000.00",
+          "tva": "160.00",
+          "ttc": "1160.00"
+        }
+      },
+      {
+        "nom": "avoir émis 200 HT @20 et note de débit émise 100 HT @20",
+        "ok": true,
+        "detail": {
+          "avoir": [
+            "AVO-202611-0003",
+            "emise",
+            "240.00"
+          ],
+          "note": [
+            "ND-202611-0002",
+            "emise",
+            "120.00"
+          ]
+        }
+      }
+    ],
+    "P6.3": [
+      {
+        "nom": "export comptable (csv) : 900 HT / 140 TVA / 1 040 TTC sur nos pièces",
+        "ok": true,
+        "detail": {
+          "ht": 900,
+          "tva": 140,
+          "ttc": 1040,
+          "lignes": 4,
+          "cols": [
+            "Total HT",
+            "Montant TVA",
+            "Total TTC"
+          ]
+        }
+      },
+      {
+        "nom": "avoir en ligne négative, note en ligne positive",
+        "ok": true,
+        "detail": {
+          "avoir": [
+            "AVO-202611-0003",
+            "2026-11-01",
+            "Avoir",
+            "ATOT53 C6",
+            "",
+            "Avoir sur FAC-202611-0004",
+            "",
+            "",
+            "-200.0",
+            "20.0",
+            "-40.0",
+            "-240.0"
+          ],
+          "note": [
+            "ND-202611-0002",
+            "2026-11-01",
+            "Note de débit",
+            "ATOT53 C6",
+            "",
+            "Note de débit sur FAC-202611-0004",
+            "",
+            "",
+            "100.0",
+            "20.0",
+            "20.0",
+            "120.0"
+          ]
+        }
+      },
+      {
+        "nom": "export comptable xlsx servi",
+        "ok": true,
+        "detail": {
+          "st": 200,
+          "ct": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+      }
+    ],
+    "P6.1": [
+      {
+        "nom": "grand livre : note de débit D 3421 120 / C 7111 100 / C 4455 20, équilibrée",
+        "ok": true,
+        "detail": {
+          "lignes": 3,
+          "deb": 120,
+          "cre": 120,
+          "comptes": [
+            "3421:120.0/0.0",
+            "7111:0.0/100.0",
+            "4455:0.0/20.0"
+          ]
+        }
+      },
+      {
+        "nom": "IIF : la note de débit y figure",
+        "ok": true,
+        "detail": {
+          "lignes": 3
+        }
+      }
+    ],
+    "P6.2": [
+      {
+        "nom": "journal des ventes xlsx servi (contenu relu par openpyxl)",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      }
+    ]
+  },
+  "incidents": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  }
+}

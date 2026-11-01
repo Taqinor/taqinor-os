@@ -12,9 +12,11 @@ LES HUIT, ET D'OÙ VIENT CHAQUE CHIFFRE
 Aucune de ces définitions n'invente un nombre : chacune pointe soit un champ
 RÉELLEMENT stocké, soit le calcul qui fait déjà autorité dans le dépôt.
 
-* `ca_ht` / `ca_ttc` — somme de `Facture.montant_ht` / `montant_ttc`
-  (colonnes du modèle), factures annulées exclues.
-* `panier_moyen` — CA TTC / nombre de factures, sur la même population.
+* `ca_ht` / `ca_ttc` / `panier_moyen` — ADAPTATEURS `reporting.*`
+  (AANA77, D-AANA-6) : somme de `Facture.total_ht` / `total_ttc` (propriétés
+  du noyau canonique, pas des colonnes : `montant_ht`/`montant_ttc` ne sont
+  remplis que sur les factures d'échéancier) des factures émises, payées, en
+  retard ; panier = CA TTC / nombre de factures.
 * `taux_conversion` — somme(`signe_num`) / nombre de leads × 100, où
   `signe_num` est l'indicateur 1/0 « étape SIGNED ET non perdu » du dataset
   `crm_leads` : EXACTEMENT la règle de `crm.selectors`.
@@ -43,40 +45,29 @@ METRIQUES_COEUR = [
         'libelle': "Chiffre d'affaires HT",
         'description': "Somme des montants HT des factures émises, hors "
                        'factures annulées.',
-        'dataset': 'ventes_factures',
-        'mesure': {'field': 'montant_ht', 'agg': 'sum'},
-        'filtres': {'statut__in': ['brouillon', 'emise', 'payee',
-                                   'en_retard']},
+        'dataset': '',
+        'mesure': {'adapter': 'reporting.ca_ht'},
+        'filtres': {'statut__in': ['emise', 'payee', 'en_retard']},
         'unite': MetricDefinition.Unite.MAD,
-        'dimensions_par_defaut': ['mois_emission'],
     },
     {
         'cle': 'ca_ttc',
         'libelle': "Chiffre d'affaires TTC",
         'description': 'Somme des montants TTC des factures émises, hors '
                        'factures annulées.',
-        'dataset': 'ventes_factures',
-        'mesure': {'field': 'montant_ttc', 'agg': 'sum'},
-        'filtres': {'statut__in': ['brouillon', 'emise', 'payee',
-                                   'en_retard']},
+        'dataset': '',
+        'mesure': {'adapter': 'reporting.ca_ttc'},
+        'filtres': {'statut__in': ['emise', 'payee', 'en_retard']},
         'unite': MetricDefinition.Unite.MAD,
-        'dimensions_par_defaut': ['mois_emission'],
     },
     {
         'cle': 'panier_moyen',
         'libelle': 'Panier moyen',
         'description': 'Chiffre d\'affaires TTC divisé par le nombre de '
                        'factures de la période.',
-        'dataset': 'ventes_factures',
-        'mesure': {
-            'formula': 'ca / nb',
-            'aggregates': [
-                {'alias': 'ca', 'fn': 'sum', 'field': 'montant_ttc'},
-                {'alias': 'nb', 'fn': 'count', 'field': 'id'},
-            ],
-        },
-        'filtres': {'statut__in': ['brouillon', 'emise', 'payee',
-                                   'en_retard']},
+        'dataset': '',
+        'mesure': {'adapter': 'reporting.panier_moyen'},
+        'filtres': {'statut__in': ['emise', 'payee', 'en_retard']},
         'unite': MetricDefinition.Unite.MAD,
     },
     {

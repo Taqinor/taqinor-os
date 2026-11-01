@@ -114,7 +114,10 @@ class TestTrouB_BlocBancable(_EtatMoteur):
     """(b) — le bloc bancable prouve qu'il décrit le champ PV vendu."""
 
     def test_concordance_le_bloc_est_rendu(self):
-        self._poser(KWC=7.7, PUISSANCE_INCONNUE=False)
+        # Sans étude ingérée (aucune carte « Production annuelle » à contredire) :
+        # un test voisin du shard peut laisser ETUDE d'un autre rendu (ASEC57
+        # a rebrassé les shards — run de file 41348928263).
+        self._poser(KWC=7.7, PUISSANCE_INCONNUE=False, ETUDE=None)
         self.assertTrue(moteur._bankable_decrit_ce_champ(SIMULATION))
         self.assertIn("Production P50", moteur._bankable_block_html(SIMULATION))
 

@@ -67,11 +67,12 @@ import uxviewsApi from '../../api/uxviewsApi'
 // de wrapper de HARNAIS uniquement — aucune assertion n'est modifiée.
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-function makeStore({ factures = [], loading = false, error = null, role = 'admin' } = {}) {
+// ASEC64 — les gestes d'argent lisent le droit `encaisser` (porté par défaut ici).
+function makeStore({ factures = [], loading = false, error = null, role = 'admin', permissions = ['encaisser'] } = {}) {
   return configureStore({
     reducer: {
       ventes: (state = { factures, loading, error }) => state,
-      auth: (state = { role }) => state,
+      auth: (state = { role, permissions }) => state,
     },
   })
 }

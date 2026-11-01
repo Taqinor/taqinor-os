@@ -1,0 +1,5 @@
+﻿Facture;Date;Type;Client;ICE client;Désignation;Qté;P.U. HT;Total HT;TVA %;Montant TVA;Total TTC
+FAC-202611-0004;2026-11-01;Facture complète;ATOT53 C6;;Panneau;1.00;400.00;400.0;10.0;40.0;440.0
+FAC-202611-0004;2026-11-01;Facture complète;ATOT53 C6;;Onduleur;1.00;600.00;600.0;20.0;120.0;720.0
+AVO-202611-0003;2026-11-01;Avoir;ATOT53 C6;;Avoir sur FAC-202611-0004;;;-200.0;20.0;-40.0;-240.0
+ND-202611-0002;2026-11-01;Note de débit;ATOT53 C6;;Note de débit sur FAC-202611-0004;;;100.0;20.0;20.0;120.0

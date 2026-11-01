@@ -28,6 +28,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
+# ATOT48 — figés hors « en attente » (comparés à valeur, `argent_modifie`) ;
+# l'admin la lit (ATOT51).
+BC_CHAMPS_FIGES = ('devis', 'client')
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
@@ -260,15 +263,22 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         """api-fuzz #1176 — PUT/PATCH qui re-pointe le BC sur un devis portant
         DÉJÀ un autre BC : corps conforme, c'est l'ÉTAT qui refuse → 409 avec
         le message de la porte unique (AMET5), jamais le 400 d'unicité."""
-        from ..domain.facturation_ops import MESSAGE_BC_EXISTANT
+        from ..domain.facturation_ops import MESSAGE_BC_EXISTANT, argent_modifie
         from ..models import Devis
+        from core.conflit_etat import ConflitEtat
         devis = serializer.validated_data.get('devis')
+        figes = argent_modifie(serializer.instance, serializer.validated_data,
+                               BC_CHAMPS_FIGES)
+        if figes and serializer.instance.statut != BonCommande.Statut.EN_ATTENTE:
+            raise ConflitEtat({
+                'detail': 'Un bon de commande confirmé ne change plus de '
+                          'devis ni de client.',
+                'champs_refuses': sorted(figes)})
         with transaction.atomic():
             if devis is not None and devis.pk != serializer.instance.devis_id:
                 Devis.objects.select_for_update().filter(pk=devis.pk).first()
                 if (BonCommande.objects.filter(devis=devis)
                         .exclude(pk=serializer.instance.pk).exists()):
-                    from core.conflit_etat import ConflitEtat
                     raise ConflitEtat(MESSAGE_BC_EXISTANT)
             super().perform_update(serializer)  # TenantMixin : société serveur
 

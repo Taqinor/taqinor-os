@@ -977,19 +977,6 @@ def cle_d_une_autre_societe(company, file_key):
     return bool(m) and int(m.group(1)) != _company_pk(company)
 
 
-def cle_stockage_autorisee(company, file_key):
-    """ASEC37 — une clé reçue d'un appelant n'est acceptée que si elle est
-    vide, sous le préfixe de LA société, ou déjà enregistrée sur une version
-    de cette société (clé plate historique)."""
-    if not file_key:
-        return True
-    m = _RE_CLE_SOCIETE.match(file_key)
-    if m:
-        return int(m.group(1)) == _company_pk(company)
-    return DocumentVersion.objects.filter(
-        company_id=_company_pk(company), file_key=file_key).exists()
-
-
 def find_duplicate(company, checksum, *, document=None):
     """Première version d'une société portant ce checksum, ou None (dedup).
 
@@ -2201,8 +2188,7 @@ def _version_integrity_hash(version):
     # 1) Recalcul depuis le contenu stocké (import paresseux de la couche
     #    storage partagée — on ne réimplémente pas le stockage objet).
     try:
-        from apps.records.storage import fetch_attachment
-        data, err = fetch_attachment(version.file_key)
+        data, err = _fetch_version_bytes(version)
         if not err and data:
             return compute_checksum(data)
     except Exception:
@@ -2280,6 +2266,8 @@ def archiver_legalement(document, *, user, motif='', retain_until=None):
 
     if document.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Document inaccessible.")
+    from . import selectors as _selectors
+    _selectors.assert_acl_niveau(document, user, 'ecriture')
     # ADOC22 — un document en corbeille ne s'archive pas (400 nommé).
     if document.supprime_le is not None:
         raise ValueError(
@@ -2405,6 +2393,8 @@ def placer_legal_hold(document, *, user, motif=''):
         raise PermissionError("Document inaccessible.")
     # WIR174 — défense en profondeur : le gel est un acte de gouvernance.
     _assert_gouvernance_documentaire(user, 'poser une rétention légale')
+    from . import selectors as _selectors
+    _selectors.assert_acl_niveau(document, user, 'ecriture')
     with transaction.atomic():
         # Idempotence : un hold actif existant tient lieu de gel — on ne pose
         # pas de doublon (le document est déjà gelé).
@@ -2446,6 +2436,8 @@ def lever_legal_hold(document, *, user):
     # WIR174 — défense en profondeur : le DÉGEL est l'acte le plus sensible des
     # deux (il rend le document à nouveau supprimable).
     _assert_gouvernance_documentaire(user, 'lever une rétention légale')
+    from . import selectors as _selectors
+    _selectors.assert_acl_niveau(document, user, 'ecriture')
     with transaction.atomic():
         actifs = list(LegalHold.objects
                       .select_for_update()
@@ -3336,8 +3328,7 @@ def lire_pdf_signe(demande):
     signée avant ADOC68 (aucune version figée). Renvoie None si introuvable."""
     if demande.version_signee_id:
         try:
-            from apps.records.storage import fetch_attachment
-            data, err = fetch_attachment(demande.version_signee.file_key)
+            data, err = _fetch_version_bytes(demande.version_signee)
             return None if err else data
         except Exception:  # pragma: no cover - défensif.
             logger.warning("ged.lire_pdf_signe : exception ignorée", exc_info=True)
@@ -3355,8 +3346,7 @@ def _hash_version_contenu(version):
     if version is None:
         return ''
     try:
-        from apps.records.storage import fetch_attachment
-        data, err = fetch_attachment(version.file_key)
+        data, err = _fetch_version_bytes(version)
         if err or data is None:
             return ''
         return hashlib.sha256(data).hexdigest()
@@ -4203,8 +4193,7 @@ def rendre_pdf_signe_avec_champs(demande):
     if version is None:
         return None, False
     try:
-        from apps.records.storage import fetch_attachment
-        data, err = fetch_attachment(version.file_key)
+        data, err = _fetch_version_bytes(version)
         if err or data is None:
             return None, False
     except Exception:  # pragma: no cover - défensif.
@@ -4511,8 +4500,7 @@ def classer_signature_completee(demande, *, created_by=None):
     contenu = None
     if version is not None:
         try:
-            from apps.records.storage import fetch_attachment
-            data, err = fetch_attachment(version.file_key)
+            data, err = _fetch_version_bytes(version)
             contenu = data if not err else None
         except Exception:  # pragma: no cover - défensif.
             logger.warning("ged.classer_signature_completee : exception ignorée", exc_info=True)
@@ -4760,8 +4748,7 @@ def _hash_constate_pour_archivage(archivage):
     if version is None:
         return None
     try:
-        from apps.records.storage import fetch_attachment
-        data, err = fetch_attachment(version.file_key)
+        data, err = _fetch_version_bytes(version)
         if err or data is None:
             return None
         return compute_checksum(data)
@@ -5539,7 +5526,11 @@ def _octets_version(version):
 
 def _fetch_version_bytes(version):
     """XGED10 — Récupère les octets d'une version (helper interne, mêmes
-    codes d'erreur que le proxy de téléchargement)."""
+    codes d'erreur que le proxy de téléchargement). ASEC58 : même garde que
+    ``views._lire_version`` — aucune clé d'une autre société n'est lue."""
+    if cle_d_une_autre_societe(version.company_id, version.file_key):
+        logger.warning('ASEC58 : version %s — clé de stockage hors société refusée.', version.pk)
+        return None, 'Fichier indisponible.'
     from apps.records.storage import fetch_attachment
     return fetch_attachment(version.file_key)
 
@@ -5683,8 +5674,6 @@ def zipper_documents(documents):
     import io
     import zipfile
 
-    from apps.records.storage import fetch_attachment
-
     erreurs = []
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -5694,7 +5683,7 @@ def zipper_documents(documents):
             if version is None:
                 erreurs.append({'document': document.pk, 'erreur': 'Aucune version.'})
                 continue
-            data, err = fetch_attachment(version.file_key)
+            data, err = _fetch_version_bytes(version)
             if err:
                 erreurs.append({'document': document.pk, 'erreur': err})
                 continue

@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from .views import dashboard
 from .search import global_search, notifications
-from .pipeline import pipeline, funnel_velocity
+from .pipeline import pipeline, funnel_velocity, probabilites_etape
 from .reports import (
     kpi_federes, sales_report, stock_report, service_report,
 )
@@ -78,6 +78,8 @@ urlpatterns = [
     path('geo/', geo_points, name='reporting-geo'),
     path('pipeline/', pipeline, name='reporting-pipeline'),
     path('pipeline/velocity/', funnel_velocity, name='reporting-funnel-velocity'),  # FG29
+    # AANA66 — table des probabilités par étape (tout rôle de la société).
+    path('probabilites-etape/', probabilites_etape, name='reporting-probabilites-etape'),
     path('reports/sales/', sales_report, name='report-sales'),
     path('reports/stock/', stock_report, name='report-stock'),
     path('reports/service/', service_report, name='report-service'),

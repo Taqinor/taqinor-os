@@ -1,0 +1,69 @@
+{
+  "checks": [
+    {
+      "nom": "P7 facture émise : statut, abandon_* et lignes absents du formulaire",
+      "ok": false,
+      "detail": {
+        "statut": true,
+        "abandon": [
+          "abandon_motif",
+          "abandon_montant",
+          "abandon_date_0",
+          "abandon_date_1",
+          "abandon_auto",
+          "abandon_par"
+        ],
+        "lignesEditables": [
+          "lignes-0-produit",
+          "lignes-0-designation",
+          "lignes-0-quantite",
+          "lignes-0-prix_unitaire",
+          "lignes-0-remise",
+          "lignes-0-taux_tva",
+          "lignes-0-source_devis",
+          "lignes-0-DELETE",
+          "lignes-1-produit",
+          "lignes-1-designation",
+          "lignes-1-quantite",
+          "lignes-1-prix_unitaire",
+          "lignes-1-remise",
+          "lignes-1-taux_tva",
+          "lignes-1-source_devis",
+          "lignes-1-DELETE",
+          "lignes-2-produit",
+          "lignes-2-designation",
+          "lignes-2-quantite",
+          "lignes-2-prix_unitaire",
+          "lignes-2-remise",
+          "lignes-2-taux_tva",
+          "lignes-2-source_devis",
+          "lignes-__prefix__-produit",
+          "lignes-__prefix__-designation",
+          "lignes-__prefix__-quantite",
+          "lignes-__prefix__-prix_unitaire",
+          "lignes-__prefix__-remise",
+          "lignes-__prefix__-taux_tva",
+          "lignes-__prefix__-source_devis"
+        ],
+        "ajoutLigne": true,
+        "suppression": 2,
+        "lignesLues": 5
+      }
+    },
+    {
+      "nom": "P7 BC livré : devis et client absents du formulaire",
+      "ok": false,
+      "detail": {
+        "devis": true,
+        "client": true
+      }
+    }
+  ],
+  "incidents": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  }
+}

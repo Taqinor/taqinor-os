@@ -166,7 +166,7 @@ export default function FactureList() {
   } = docs
   const gestes = useFactureGestes({ dispatch, confirm, lot })
   const {
-    canManage, wir183Busy, handleRemettreBrouillon, handleFacturerPenalites,
+    canManage, peutEncaisser, wir183Busy, handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient, openConsolider, openEncaissementGroupe,
     openAvoirModal, actionId, doAction, demanderAnnulation,
     payeeSecheTarget, setPayeeSecheTarget, payeeSecheMotif, setPayeeSecheMotif, openMarquerPayee,
@@ -414,7 +414,7 @@ export default function FactureList() {
     openMarquerPayee,
     highlightFactureId,
     // WIR183 - les quatre actions de fiche, jusqu'ici sans point d'entree.
-    canManage, wir183Busy,
+    canManage, peutEncaisser, wir183Busy,
     handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient,
     demanderAnnulation,
@@ -783,7 +783,7 @@ export default function FactureList() {
                 {/* WIR183/ZFAC6 — un seul règlement réparti sur PLUSIEURS
                     factures. Le serveur exige un client UNIQUE : le bouton
                     reste visible mais désactivé, et DIT pourquoi. */}
-                {canManage && (
+                {peutEncaisser && (
                   <button
                     type="button"
                     disabled={bulkBusy || wir183Busy || !clientSelectionUnique}

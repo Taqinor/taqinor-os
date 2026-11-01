@@ -798,16 +798,9 @@ def sales_leaderboard(request):
     from apps.installations.models import Installation
     from decimal import Decimal
 
-    # Devis signés (acceptés ACTIFS — AANA19) bornés à la société.
-    from apps.reporting.pipeline import _devis_signes
-    signed = (_devis_signes(co)
-              .select_related('lead', 'lead__owner', 'created_by'))
+    # AANA62 — population de devis signés construite DANS build_leaderboard.
     start = _qdate(request.query_params.get('from'))
     end = _qdate(request.query_params.get('to'))
-    if start:
-        signed = signed.filter(date_acceptation__gte=start)
-    if end:
-        signed = signed.filter(date_acceptation__lte=end)
 
     # kWc installé par devis (chemin devis→chantier).
     kwc_by_devis = defaultdict(Decimal)
@@ -823,7 +816,7 @@ def sales_leaderboard(request):
     # AANA21/AANA22 — le taux individuel = LE taux de gain partagé, sur la
     # fenêtre de leads construite DANS build_leaderboard (bornes inclusives).
     from apps.reporting.services import build_leaderboard
-    rows = build_leaderboard(signed, kwc_by_devis, co, start, end)
+    rows = build_leaderboard(kwc_by_devis, co, start, end)
 
     x = _maybe_xlsx(
         request, 'classement-commerciaux.xlsx',

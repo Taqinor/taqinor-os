@@ -73,7 +73,7 @@ export default function FactureRow({ f, ctx }) {
     selectedIds, toggleSelect,
     echeanceEditId, echeanceValue, setEcheanceValue, echeanceSaving,
     saveEcheance, setEcheanceEditId, startEditEcheance,
-    dgiActif, isAdmin,
+    dgiActif,
     actionId, pdfGenerating, pdfDownloading, waBusy, payLinkBusy, dgiBusy,
     openEdit, doAction, emettreFacture,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
@@ -94,7 +94,7 @@ export default function FactureRow({ f, ctx }) {
   const {
     highlightFactureId,
     // WIR183 - les quatre actions de fiche, jusqu'ici sans point d'entree.
-    canManage, wir183Busy,
+    canManage, peutEncaisser, wir183Busy,
     handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient,
   } = ctx
@@ -323,7 +323,7 @@ export default function FactureRow({ f, ctx }) {
               <Zap className="size-3.5" aria-hidden="true" /> Émettre
             </Button>
           )}
-          {nba === 'encaisser' && (
+          {peutEncaisser && nba === 'encaisser' && (
             <Button size="sm" variant="default"
                     onClick={() => openPayModal(f)} title="Action recommandée — enregistrer un paiement">
               <Zap className="size-3.5" aria-hidden="true" /> Encaisser
@@ -350,7 +350,7 @@ export default function FactureRow({ f, ctx }) {
               l'unique action rapide — avec, DANS son dialogue, l'option
               « paiement simple (sans détail) » pour qui veut vraiment aller
               vite sans rien détruire. */}
-          {f.encaissable !== false && nba !== 'encaisser' && (
+          {peutEncaisser && f.encaissable !== false && nba !== 'encaisser' && (
             <Button size="sm" variant="default"
                     onClick={() => openPayModal(f)} title="Enregistrer un paiement">
               <Zap className="size-3.5" aria-hidden="true" /> Encaisser
@@ -359,7 +359,7 @@ export default function FactureRow({ f, ctx }) {
           {/* FG53/WR2b — lien « Payer en ligne » (copié au presse-papier). */}
           {/* AFAC26 — seulement si quelque chose est exigible (une facture C&I dont
               seule la retenue reste due n'a rien à payer en ligne ; « Encaisser » reste). */}
-          {f.encaissable !== false
+          {peutEncaisser && f.encaissable !== false
             && (f.montant_exigible == null || toNumber(f.montant_exigible) > 0) && (
             <Button size="sm" variant="outline" loading={isPayLinkBusy}
                     onClick={() => handleLienPaiement(f)} title="Créer/copier le lien de paiement en ligne">
@@ -377,7 +377,7 @@ export default function FactureRow({ f, ctx }) {
               <FileText /> {isGenerating ? pdfLabel : 'PDF'}
             </Button>
           )}
-          {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+          {peutEncaisser && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
             <Button size="sm" variant="outline" onClick={() => openAvoirModal(f)}
                     title="Créer un avoir (note de crédit)">
               Avoir
@@ -460,7 +460,7 @@ export default function FactureRow({ f, ctx }) {
                 )}
                 {/* ── WIR183 — les quatre actions de FICHE, jusqu'ici sans
                     aucun point d'entrée (ZFAC1 / XFAC6 / XFAC13 / XPOS7).
-                    Réservées au palier responsable/admin, comme le serveur. ── */}
+                    Gestes d’argent : droit `encaisser` (ASEC64), comme le serveur. ── */}
                 {canManage && f.statut === 'emise' && (
                   <DropdownMenuItem
                     data-testid="remettre-brouillon"
@@ -469,7 +469,7 @@ export default function FactureRow({ f, ctx }) {
                     Remettre en brouillon
                   </DropdownMenuItem>
                 )}
-                {canManage && (f.statut === 'en_retard' || overdue) && (
+                {peutEncaisser && (f.statut === 'en_retard' || overdue) && (
                   <DropdownMenuItem
                     data-testid="facturer-penalites"
                     disabled={wir183Busy}
@@ -477,7 +477,7 @@ export default function FactureRow({ f, ctx }) {
                     Facturer les pénalités de retard
                   </DropdownMenuItem>
                 )}
-                {canManage && f.statut !== 'annulee'
+                {peutEncaisser && f.statut !== 'annulee'
                   && parseFloat(f.montant_du ?? 0) > 0 && (
                   <DropdownMenuItem
                     data-testid="abandonner-solde"
@@ -485,7 +485,7 @@ export default function FactureRow({ f, ctx }) {
                     Abandonner le solde…
                   </DropdownMenuItem>
                 )}
-                {canManage && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                {peutEncaisser && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem
                     data-testid="retour-client"
                     onSelect={(e) => { e.preventDefault(); openRetourClient(f) }}>

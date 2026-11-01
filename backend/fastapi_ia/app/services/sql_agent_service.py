@@ -240,35 +240,37 @@ utilise-la directement sans demander confirmation.
 GUIDE DES TABLES — utilise TOUJOURS la bonne table :
 
 Stock actuel des produits → stock_produit
-  - quantite       = quantite actuellement en stock
-  - prix_vente_ht  = prix de vente HT
-  - prix_achat_ht  = prix d'achat HT
+  - quantite_stock = quantite actuellement en stock
+  - prix_vente     = prix de vente catalogue
   - seuil_alerte   = seuil minimum avant rupture
   - categorie_id   = FK vers stock_categorie
   - fournisseur_id = FK vers stock_fournisseur
 
 Historique des entrees/sorties → stock_mouvementstock
   (NE PAS utiliser pour connaitre le stock actuel,
-   utiliser stock_produit.quantite a la place)
+   utiliser stock_produit.quantite_stock a la place)
   - type_mouvement = 'entree' ou 'sortie'
   - quantite       = quantite du mouvement (pas le stock actuel)
 
 Clients → crm_client (nom, prenom, email, telephone)
 
 Devis → ventes_devis + ventes_lignedevis
-  - statut : 'brouillon', 'accepte', 'refuse', 'expire'
-  - montant_total = montant total du devis
+  - statut : 'brouillon', 'envoye', 'accepte', 'refuse', 'expire'
+  (aucun montant stocke : SUM(ventes_lignedevis.quantite * ventes_lignedevis.prix_unitaire), remises en plus)
 
 Factures → ventes_facture + ventes_lignefacture
-  - statut_paiement : 'non_paye', 'partiel', 'paye'
-  - montant_ttc = montant total TTC
+  - statut : 'brouillon', 'emise', 'payee', 'en_retard', 'annulee'
+  - montant_ht / montant_ttc = montants figes des SEULES factures d echeancier,
+    NULL sur une facture classique : le CA facture HT/TTC n est stocke dans
+    aucune colonne, ne le calcule JAMAIS par SUM(montant_ht) ou SUM(montant_ttc)
+    et reponds qu il se lit dans l ecran Rapports ; reference, date_emission, date_echeance
 
 Chantiers (installations) → installations_installation
   - statut : 'signe', 'materiel_commande', 'planifie', 'en_cours',
     'installe', 'receptionne', 'cloture' (+ herites : 'a_planifier', 'pose',
     'mise_en_service'). Chantiers a planifier = statut 'a_planifier' OU 'planifie'.
   - client_id, devis_id, puissance_installee_kwc, type_installation
-  - dates : date_pose_prevue, date_reception, date_cloture
+  - date_pose_prevue, date_reception, date_cloture = dates cles
 
 Interventions terrain → installations_intervention
   - installation_id = FK vers le chantier
@@ -288,13 +290,13 @@ Contrats de maintenance → sav_contratmaintenance
   - periodicite, date_debut, derniere_visite, actif
 
 EXEMPLES DE REQUETES CORRECTES :
-- Stock actuel : SELECT nom, quantite FROM stock_produit ORDER BY quantite DESC
-- Ruptures : SELECT nom, quantite FROM stock_produit WHERE quantite <= seuil_alerte
-- CA factures : SELECT SUM(montant_ttc) FROM ventes_facture WHERE statut_paiement='paye'
+- Stock actuel : SELECT nom, quantite_stock FROM stock_produit ORDER BY quantite_stock DESC
+- Ruptures : SELECT nom, quantite_stock FROM stock_produit WHERE quantite_stock <= seuil_alerte
+- Nombre de factures emises : SELECT COUNT(id) FROM ventes_facture WHERE statut IN ('emise','payee','en_retard')
 - Chantiers a planifier : SELECT reference FROM installations_installation \
 WHERE statut IN ('a_planifier','planifie')
-- Factures en retard : SELECT numero FROM ventes_facture \
-WHERE statut_paiement <> 'paye' AND date_echeance < CURRENT_DATE
+- Factures en retard : SELECT reference FROM ventes_facture \
+WHERE statut IN ('emise','en_retard') AND date_echeance < CURRENT_DATE
 - Garanties qui expirent : SELECT numero_serie, date_fin_garantie \
 FROM sav_equipement WHERE date_fin_garantie BETWEEN CURRENT_DATE AND \
 (CURRENT_DATE + INTERVAL '3 months')
@@ -699,6 +701,13 @@ def _scoped_source(name: str, company_id: int, alias) -> exp.Subquery:
     return exp.Subquery(this=inner, alias=alias)
 
 
+def _nom_pg(ident) -> str:
+    """AANA53 — nom Postgres : tel quel entre guillemets, sinon en minuscules."""
+    if not isinstance(ident, exp.Identifier):
+        return ""
+    return ident.this if ident.quoted else ident.this.lower()
+
+
 def _rewrite_table(table: exp.Table, visibles: frozenset, company_id: int):
     """Remplace une table autorisee par sa sous-requete filtree ; laisse une
     reference de CTE visible intacte ; rejette tout le reste."""
@@ -715,8 +724,8 @@ def _rewrite_table(table: exp.Table, visibles: frozenset, company_id: int):
         raise SQLSecurityError("Source de donnees non autorisee.")
     if table.args.get("catalog") is not None:
         raise SQLSecurityError("Reference de base externe interdite.")
-    name = table.name.lower()
-    schema = table.text("db").lower()
+    name = _nom_pg(table.this)
+    schema = _nom_pg(table.args.get("db"))
     if not schema and name in visibles:
         return table  # reference a une CTE de la requete (deja reecrite)
     if schema not in ("", "public") or name not in _TENANT_SCOPED_TABLES:
@@ -742,7 +751,7 @@ def _rewrite_node(node, visibles: frozenset, company_id: int, found: list):
                 raise SQLSecurityError("WITH RECURSIVE interdit.")
             noms = set(visibles)
             for cte in value.expressions:
-                nom = (cte.alias or "").lower()
+                nom = _nom_pg(cte.args["alias"].this if cte.args.get("alias") else None)
                 if not nom or nom in _TENANT_SCOPED_TABLES:
                     raise SQLSecurityError(
                         "Nom de CTE invalide ou homonyme d'une table."
@@ -827,11 +836,9 @@ def _extract_base_tables(sql: str) -> set[str]:
         tree = _parse_single_query(sql)
     except SQLSecurityError:
         return set()
-    ctes = {(c.alias or "").lower() for c in tree.find_all(exp.CTE)}
-    return {
-        t.name.lower() for t in tree.find_all(exp.Table)
-        if t.name and t.name.lower() not in ctes
-    }
+    ctes = {_nom_pg(c.args["alias"].this) for c in tree.find_all(exp.CTE) if c.args.get("alias")}
+    noms = (_nom_pg(t.this) for t in tree.find_all(exp.Table))
+    return {n for n in noms if n and n not in ctes}
 
 
 # ── AUD401 + L17 + AANA4 — confidentialite INTRA-societe des PROJECTIONS ─────
@@ -870,11 +877,12 @@ _FORBIDDEN_COLUMNS = (
     "prix_revendeur",
     "marge",
     "marge_snapshot",      # ventes.Devis — marge HT figee (manager-only)
+    "cout_unitaire",       # ASTK44 : cout interne d'une entree de production (stock.MouvementStock)
 )
 
 # Tables autorisees portant un prix d'achat ou une marge (verifie sur les
 # modeles Django : stock.Produit.prix_achat, ventes.Devis.marge_snapshot).
-_PRICE_TABLES = ("stock_produit", "ventes_devis")
+_PRICE_TABLES = ("stock_produit", "ventes_devis", "stock_mouvementstock")  # ASTK44 : cout interne
 
 # Reponse renvoyee a l'agent quand il tente d'acceder a une colonne interdite —
 # le LLM la verbalise alors proprement, sans jamais voir la donnee.

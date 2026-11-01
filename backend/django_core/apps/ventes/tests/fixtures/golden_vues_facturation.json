@@ -176,7 +176,7 @@
    "IsResponsableOrAdmin"
   ],
   "facturer_penalites": [
-   "IsResponsableOrAdmin"
+   "HasPermissionOrLegacy_encaisser"
   ],
   "generer_pdf": [
    "IsResponsableOrAdmin"
@@ -188,10 +188,10 @@
    "LectureFactures"
   ],
   "liberer_retenue": [
-   "IsResponsableOrAdmin"
+   "HasPermissionOrLegacy_encaisser"
   ],
   "lien_paiement": [
-   "IsResponsableOrAdmin"
+   "HasPermissionOrLegacy_encaisser"
   ],
   "list": [
    "IsAnyRole"
@@ -225,13 +225,13 @@
    "HasPermissionOrLegacy_encaisser"
   ],
   "retour_client": [
-   "IsResponsableOrAdmin"
+   "HasPermissionOrLegacy_encaisser"
   ],
   "retrieve": [
    "IsAnyRole"
   ],
   "revoquer_lien_paiement": [
-   "IsResponsableOrAdmin"
+   "HasPermissionOrLegacy_encaisser"
   ],
   "telecharger_pdf": [
    "IsResponsableOrAdmin"

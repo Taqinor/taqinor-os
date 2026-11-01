@@ -2,7 +2,7 @@
 # Format : fichier::fonction  <endpoint>  <raison> @<fichier_backend>:<ligne>
 # La citation @fichier:ligne est vérifiée par scripts/check_liste_page1.py (la ligne doit porter
 # `pagination_class = None`, une tranche `[:N]` ou `@api_view`). Entrée MORTE (site plus signalé) = rouge.
-frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog  ged/coffres/<id>/documents/  @action(pagination_class=None), liste complète @backend/django_core/apps/ged/views.py:420
+frontend/src/features/ged/advanced/CoffresPage.jsx::CoffreDocumentsDialog  ged/coffres/<id>/documents/  @action(pagination_class=None), liste complète @backend/django_core/apps/ged/views.py:422
 frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor  parametres/messages/  vue @api_view (liste Response(out) complète, un modèle par clé) @backend/django_core/apps/parametres/views_messages.py:120
 frontend/src/pages/parametres/ApplicationsSection.jsx::load  core/modules/toggles/  ModuleToggleViewSet pagination_class=None (la liste complète des bascules ; l'action journal renvoie un Response non paginé) @backend/django_core/core/views.py:1285
 frontend/src/pages/parametres/HistoriqueStatutPage.jsx::HistoriqueStatutPage  statuspage/historique-statut/  HistoriqueStatutComponentView pagination_class=None @backend/django_core/apps/statuspage/views.py:229
@@ -36,7 +36,7 @@ frontend/src/pages/crm/VisiteursPage.jsx::chargerAppareils  crm/visites-externes
 frontend/src/pages/crm/RelancesSuiviPage.jsx::RelancesSuiviPage  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:107
 frontend/src/pages/interventions/InterventionsPage.jsx::reload  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:107
 frontend/src/pages/installations/SuiviGpsPage.jsx::SuiviGpsPage  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:107
-frontend/src/features/ged/GedNavigator.jsx::submit  ged/documents/docqa/  @action(pagination_class=None) top-k plafonné à 50 @backend/django_core/apps/ged/views.py:1134
+frontend/src/features/ged/GedNavigator.jsx::submit  ged/documents/docqa/  @action(pagination_class=None) top-k plafonné à 50 @backend/django_core/apps/ged/views.py:1137
 frontend/src/pages/stock/FournisseurFiche360.jsx::reload  stock/fournisseurs/<id>/portail-tokens/  @action(pagination_class=None) @backend/django_core/apps/stock/views/fournisseur.py:418
 frontend/src/pages/sav/ContratsMaintenance.jsx::loadTournee  sav/contrats-maintenance/tournee/  @action(pagination_class=None) tournée calculée @backend/django_core/apps/sav/maintenance.py:339
 frontend/src/pages/sav/ContratsMaintenance.jsx::loadRentabilite  sav/contrats-maintenance/rentabilite/  @action(pagination_class=None) liste calculée @backend/django_core/apps/sav/maintenance.py:428

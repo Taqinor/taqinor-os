@@ -116,3 +116,55 @@ class PipelineEndpointForecastTests(TestCase):
         # d'unité ci-dessus couvre déjà la garde perdu via par_etape ; on
         # vérifie seulement que l'appel ne casse pas avec ce champ additif.
         self.assertIn('prevision_ponderee', res.json())
+
+
+class ProbabilitesEtapeEndpointTests(TestCase):
+    """AANA66 (D-AANA-VER-2) — LA table serveur des probabilités par étape,
+    servie à tout rôle de la société, recalibrée par ``score_params``."""
+
+    URL = '/api/django/reporting/probabilites-etape/'
+
+    def setUp(self):
+        from core import score_params
+        precedent = score_params.registered_params_resolver()
+        self.addCleanup(
+            lambda: score_params.register_params_resolver(precedent)
+            if precedent else score_params.clear_params_resolver())
+        self.co_a = Company.objects.create(nom='AANA66 A', slug='aana66-a')
+        self.co_b = Company.objects.create(nom='AANA66 B', slug='aana66-b')
+
+        def resolveur(company, nom):
+            if company.pk == self.co_b.pk and nom == score_params.NOM_WIN_PROBA:
+                from apps.crm import stages as stage_mod
+                return {'STAGE_BASE_PROBABILITY': {stage_mod.QUOTE_SENT: 0.70}}
+            return {}
+        score_params.register_params_resolver(resolveur)
+
+    def _get(self, company):
+        user = User.objects.create_user(
+            username=f'aana66_{company.slug}', password='x',
+            role_legacy='normal', company=company)
+        api = APIClient()
+        api.force_authenticate(user=user)
+        return api.get(self.URL)
+
+    def test_table_servie_et_recalibree(self):
+        from apps.crm import stages as stage_mod
+        attendu = {
+            stage_mod.NEW: 0.10, stage_mod.CONTACTED: 0.20,
+            stage_mod.QUOTE_SENT: 0.40, stage_mod.FOLLOW_UP: 0.60,
+            stage_mod.SIGNED: 1.0, stage_mod.COLD: 0.05,
+        }
+        res_a = self._get(self.co_a)
+        self.assertEqual(res_a.status_code, 200)
+        self.assertEqual(res_a.json()['probabilites'], attendu)
+        self.assertEqual(list(res_a.json()['probabilites']),
+                         list(stage_mod.STAGES))
+
+        res_b = self._get(self.co_b)
+        self.assertEqual(res_b.status_code, 200)
+        self.assertEqual(res_b.json()['probabilites'],
+                         {**attendu, stage_mod.QUOTE_SENT: 0.70})
+
+    def test_anonyme_refuse(self):
+        self.assertEqual(APIClient().get(self.URL).status_code, 401)

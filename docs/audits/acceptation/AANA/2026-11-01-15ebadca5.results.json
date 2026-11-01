@@ -1,0 +1,243 @@
+{
+  "sha": "15ebadca518c248e41f636e73a3367b2dffa405c",
+  "date": "2026-11-01",
+  "groupe": "AANA",
+  "verdict": "PASS",
+  "couvre": [
+    "AANA53",
+    "AANA54",
+    "AANA55",
+    "AANA56",
+    "AANA61",
+    "AANA62",
+    "AANA63",
+    "AANA66",
+    "AANA73"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "AANA53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/p1-sql-head.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "HEAD : _validate_and_secure (code fastapi_ia au sha) refuse les 9 formes (CTE entre guillemets CRM_LEAD/DJANGO_SESSION, pg_stats ×3 dont crm_client et stock_produit.prix_achat, Pg_Roles/pg_roles, pg_stats nu, WITH crm_client homonyme, autre_schema.crm_client) ; WITH c / WITH \"c\" restent acceptées, arbre exécuté relu casse Postgres : 0 table hors sous-requête company_id, exécutées sans erreur sur la base locale (7 lignes). Sonde C-AANA-VER-005 : REPRO sur 32375fe65, NON REPRODUIT au sha (sonde-VER-005.txt). Exécuté sous le rôle propriétaire erp_user : sql_agent_ro absent de la pile (AANA64 non construite) ; route FastAPI /sql-agent/query non jouée (aucune clé LLM) — garde testée en direct sur le code."
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "AANA63"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/p1-sql-head.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "Exemple « CA facturé HT » du prompt (SUM(montant_ht) … statut IN emise/payee/en_retard) et sa variante « ce mois » passés par la garde puis exécutés sur la base locale : aucune erreur de colonne ; couples table.colonne du prompt confrontés à information_schema : 0 absente. DÉFAUT HORS PÉRIMÈTRE constaté : la réponse vaut NULL sur la société démo (18/18 factures classiques à montant_ht NULL — colonne remplie pour les seules tranches), contre D-AANA-6 (CA = Facture.total_ht)."
+    },
+    {
+      "id": "P2.1",
+      "taches": [
+        "AANA54"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/replay-head.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "HTTP réel (login cookie, Directeur A) : commit 12.345 / 12,345 / 99999999.999 → skipped lignes 1-3 « prix_vente : plus de 2 décimales », 100000000 → « hors bornes » (p2-bornes-head.json), prix_achat 7.123 → refusé ; 12.34 et 12,5 créés, relus 12.34 / 12.50 ; aperçu : creation 2 / ignoree 3 (mêmes refus, comptés). Base 32375fe65 : même fichier → 400 « Import impossible » (replay-old.json), sonde C-AANA-VER-001 REPRO (12.345 relu 12.35)."
+    },
+    {
+      "id": "P2.2",
+      "taches": [
+        "AANA73"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/replay-head.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Dry-run factures reference,client_nom,statut,montant_ttc : montant_ttc dans non_mappees ; mapping citant montant_ttc_source refusé 400 ; valider_mapping → ValueError « Champ(s) cible(s) non importable(s) » ; champs_autorises factures/devis sans montant_* (p5-metriques-head.json). Base : montant_ttc mappé sur montant_ttc_source (replay-old.json)."
+    },
+    {
+      "id": "P3",
+      "taches": [
+        "AANA55"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/ACCEPTATION-AANA-P3-acc74_dir_a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Facture 1 000 HT émise : attente 1 000 ; POST creer-avoir (total, 201) → facture « payée », montant_paye 0 ; /reporting/dashboard/ ca_paye 0, ca_attente 0, ca_mensuel 0 (relu deux fois) ; écran /reporting : « CA ENCAISSÉ 0 DH », « EN ATTENTE DE PAIEMENT 0 DH ». Base : ca_paye 1 000 (replay-old.json, sonde C-AANA-VER-002 REPRO). Accueil non capturé : /dashboard redirige le directeur d'une société neuve vers /onboarding/demarrage."
+    },
+    {
+      "id": "P4",
+      "taches": [
+        "AANA56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/ACCEPTATION-AANA-P4-winloss-acc74_dir_a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "meta_ads signé + perdu, site_web signé : win_rate_pct 100.0 = overall_close_rate_pct 100.0, meta_ads 100.0, site_web 100.0 ; écran /reporting/commercial : « TAUX DE VICTOIRE 100 % » et onglet Gains/Pertes « TAUX DE CLÔTURE GLOBAL 100 % ». Base : 100 contre 66,7 (replay-old.json), sonde C-AANA-VER-003 REPRO."
+    },
+    {
+      "id": "P5.1",
+      "taches": [
+        "AANA62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/ACCEPTATION-AANA-P5.1-classement-acc74_dir_a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Devis signé à lead 1 000 HT + sans lead 2 000 HT : commercial/dashboard et insights/sales-leaderboard → acc74_com_a 3 000 HT / 2 devis tous deux ; écran Classement : « acc74_com_a 3 000 MAD 2 ». Base : 1 000/1 contre 3 000/2."
+    },
+    {
+      "id": "P5.2",
+      "taches": [
+        "AANA61"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/p5-migration-2-head-sur-old.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "Migration semantic/0004 du sha appliquée sur la base 32375fe65 : société M semée avant (brouillon dans les filtres, v1) → filtres emise/payee/en_retard, version 2 ; société A : ca_ht retouché intact, ca_ttc/panier_moyen corrigés v2 ; second migrate « No migrations to apply », état identique ; société neuve semée au sha sans brouillon (p5-metriques-head.json). Brouillon 1 000 + émise 500 à montants figés : ca_ht 1 500 → 500, ca_ttc 1 800 → 600 (p5-valeur-old.txt / p5-migration-2). Widget écran non joué (aucune métrique sur la société démo). DÉFAUT HORS PÉRIMÈTRE (D-AANA-6, exclu par la tâche) : sur factures classiques montant_ht est NULL → ca_ht/ca_ttc/panier_moyen = None."
+    },
+    {
+      "id": "P6",
+      "taches": [
+        "AANA66"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/replay-head.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "GET /api/django/reporting/probabilites-etape/ 200, six clés STAGES ; base : 404. Rejeu de confirmation (tâche déjà cochée)."
+    },
+    {
+      "id": "P7",
+      "taches": [
+        "AANA54",
+        "AANA55",
+        "AANA56",
+        "AANA62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/ACCEPTATION-AANA-P7-reporting-acc74_dir_b.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "Directeur de B : dashboard 0/0, commercial et win-loss vides, leaderboard 0 ligne, produits ACC74 0, facture de A → 404 ; écrans /reporting, Gains/Pertes, Classement : aucune donnée de A."
+    }
+  ]
+}

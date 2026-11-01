@@ -1,0 +1,25 @@
+{
+  "facture": {
+    "id": 27,
+    "statut": "emise",
+    "ttc": "1200.00",
+    "lignes": [
+      [
+        30,
+        "1.00",
+        "1000.00"
+      ]
+    ],
+    "abandon_montant": null
+  },
+  "bc": {
+    "id": 4,
+    "statut": "livre",
+    "devis": 10,
+    "client": 13
+  },
+  "attendu": {
+    "D1": 10,
+    "D2": 11
+  }
+}

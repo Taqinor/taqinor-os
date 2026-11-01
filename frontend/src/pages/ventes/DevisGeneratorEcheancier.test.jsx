@@ -330,3 +330,62 @@ describe('CIQ226 — conditions demandées par le client', () => {
   })
 })
 
+// AGNR51 / AGNR60 — acompte personnalisé absorbé par la dernière tranche ;
+// aller-retour échéancier ⇄ saisie sans perte (fonctions pures).
+const assertDeepEqual = (a, b) => expect(a).toEqual(b)
+const assertEqual = (a, b) => expect(a).toBe(b)
+const assertMatch = (a, re) => expect(a).toMatch(re)
+
+describe('AGNR51/AGNR60 — échéancier pur', () => {
+  const INDUSTRIEL = [
+    { type: 'commande', libelle: 'Commande', unite: 'pct', pct_or_montant: 30, jalon: 'commande' },
+    { type: 'materiel', libelle: 'Livraison', unite: 'pct', pct_or_montant: 40, jalon: 'livraison_materiel' },
+    { type: 'materiel', libelle: 'Mise en service', unite: 'pct', pct_or_montant: 20, jalon: 'mise_en_service' },
+    { type: 'solde', libelle: 'Réception', unite: 'pct', pct_or_montant: 10, jalon: 'reception_definitive' },
+  ]
+  
+  it('acompte_personnalise_quatre_jalons', () => {
+    const r = echeancierAvecAcompte(INDUSTRIEL, '6000', 17000, 'industriel', null)
+    assertDeepEqual(r.map(t => [t.unite, t.pct_or_montant]),[
+      ['montant', 6000], ['pct', 40], ['pct', 20], ['montant', 800],
+    ])
+  })
+  
+  it('acompte trop grand : aucune tranche inventée, l\'erreur est nommée', () => {
+    const r = echeancierAvecAcompte(INDUSTRIEL, '8500', 17000, 'industriel', null)
+    assertEqual(r[3].unite, 'pct'); assertEqual(r[3].pct_or_montant, 10)
+    assertMatch(erreurEcheancier(echeancierVersSaisie(r), 17000), /Total des tranches/)
+  })
+  
+  it('TTC inconnu : aucune conversion inventée', () => {
+    const r = echeancierAvecAcompte(INDUSTRIEL, '6000', 0, 'industriel', null)
+    assertEqual(r[3].unite, 'pct'); assertEqual(r[3].pct_or_montant, 10)
+  })
+  
+  it('3 tranches : le matériel absorbe toujours l\'écart', () => {
+    const trois = [
+      { type: 'commande', libelle: 'Acompte', unite: 'pct', pct_or_montant: 20 },
+      { type: 'materiel', libelle: 'Matériel', unite: 'pct', pct_or_montant: 70 },
+      { type: 'solde', libelle: 'Solde', unite: 'pct', pct_or_montant: 10 },
+    ]
+    const r = echeancierAvecAcompte(trois, '20000', 100000, 'residentiel', null)
+    assertDeepEqual(r.map(t => [t.unite, t.pct_or_montant]),[['montant', 20000], ['pct', 70], ['pct', 10]])
+  })
+  
+  const SERVI = [
+    { type: 'commande', libelle: 'Commande', unite: 'pct', pct_or_montant: 30, jalon: 'commande',
+      fige_le: '2026-10-02T09:00:00+00:00' },
+    { libelle: 'Livraison', unite: 'pct', pct_or_montant: 60, jalon: 'livraison_materiel', x_inconnue: 1 },
+    { type: 'solde', libelle: 'Solde', unite: 'pct', pct_or_montant: 10 },
+  ]
+  
+  it('aller_retour_sans_perte', () => {
+    assertDeepEqual(saisieVersEcheancier(echeancierVersSaisie(SERVI)), SERVI)
+    const saisie = echeancierVersSaisie(SERVI)
+    saisie[1] = { ...saisie[1], valeur: '55' }
+    const edite = saisieVersEcheancier(saisie)
+    assertDeepEqual(edite[1], { ...SERVI[1], pct_or_montant: 55 })
+    assertEqual('type' in edite[1], false)
+    assertEqual(edite[0].fige_le, SERVI[0].fige_le)
+  })
+})

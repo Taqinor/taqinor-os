@@ -10,11 +10,14 @@ from decimal import Decimal
 from django.utils import timezone
 
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from apps.crm import stages as stage_mod
+from core.score_params import NOM_WIN_PROBA, resoudre
 from core.win_probability import (
+    DEFAUTS_PARAMS,
     base_probability_for_stage,
     win_probability,
 )
@@ -393,3 +396,22 @@ def funnel_velocity(request):
         })
 
     return Response({'velocity': result})
+
+
+_PROBABILITES_ETAPE_REPONSE = inline_serializer('ReportingProbabilitesEtapeReponse', {
+    'probabilites': drf_serializers.DictField(child=drf_serializers.FloatField()),
+})
+
+
+@extend_schema(responses={200: _PROBABILITES_ETAPE_REPONSE})
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def probabilites_etape(request):
+    """AANA66 (D-AANA-VER-2) — LA table des probabilités de base par étape
+    (``core.win_probability``), recalibrée par société (``score_params.
+    resoudre``), ouverte à tout rôle de la société (sans société : table du
+    code). Clés : STAGES.py."""
+    params = resoudre(request.user.company, NOM_WIN_PROBA, DEFAUTS_PARAMS)
+    return Response({'probabilites': {
+        cle: float(base_probability_for_stage(cle, params))
+        for cle in stage_mod.STAGES}})

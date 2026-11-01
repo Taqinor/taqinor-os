@@ -1,0 +1,1 @@
+@@RESULT {"constructeur": "ABSENT (cannot import name 'crediter_ecart_de_vente' from 'apps.ventes.domain.facturation_vente' (/home/user/acc-atot-old/backend/django_core/apps/ventes/domain/facturation_vente.py))"}

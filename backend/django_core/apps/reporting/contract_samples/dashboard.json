@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/reporting/dashboard/",
-  "pourquoi": "AANA1 (C-AANA-022, PACT10) — contrat PARTAGE du tableau de bord /reporting. `conversion.taux_acceptation_pct` = nb_acceptes / nb_devis x 100, arrondi a 1 decimale, null si nb_devis = 0 ; servi par le serveur (AANA28) et LU tel quel par Reporting.jsx (AANA29) — le front ne recalcule plus de taux (l'ancienne formule nb_factures / nb_devis depassait 100 %). Les cles existantes sont inchangees. Montants : `kpis.ca_paye` / `kpis.ca_attente` / `ca_mensuel[].ca` en HT (Facture.total_ht), `creances[].montant_total` en TTC restant du (Facture.montant_du) — D-AANA-6.",
+  "pourquoi": "AANA1 (C-AANA-022, PACT10) — contrat PARTAGE du tableau de bord /reporting. `conversion.taux_acceptation_pct` = nb_acceptes / nb_devis x 100, arrondi a 1 decimale, null si nb_devis = 0 ; servi par le serveur (AANA28) et LU tel quel par Reporting.jsx (AANA29) — le front ne recalcule plus de taux (l'ancienne formule nb_factures / nb_devis depassait 100 %). Les cles existantes sont inchangees. Montants : `kpis.ca_paye` / `ca_mensuel[].ca` = part HT des paiements recus (montant_paye x total_ht / total_ttc), `kpis.ca_attente` = part HT du reste du (montant_du x total_ht / total_ttc, avoirs deduits), sur les factures emises, en retard et payees (AANA55) ; `creances[].montant_total` en TTC restant du (Facture.montant_du) — D-AANA-6.",
   "exemple": {
     "kpis": {
       "ca_paye": 125000.0,
