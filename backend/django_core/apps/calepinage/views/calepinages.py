@@ -51,6 +51,7 @@ from apps.records.serializers import ChatterActivitySerializer
 from apps.records.views import ChatterViewSetMixin
 from authentication.permissions import IsResponsableOrAdmin
 from core.champs_stricts import ChaineStricte
+from core.parseurs import ObjetJSON
 from core.idempotency import (
     IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
     _fingerprint,
@@ -873,8 +874,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         # en objets, ``retenir`` booleen.
         request=inline_serializer('CalepinageVarianteCorps', {
             'nom': ChaineStricte(max_length=160),
-            'roof_layout': drf_serializers.JSONField(required=False,
-                                                     allow_null=True),
+            'roof_layout': ObjetJSON(required=False, allow_null=True),
             'resultat': drf_serializers.JSONField(required=False,
                                                   allow_null=True),
             'retenir': drf_serializers.BooleanField(required=False)}),

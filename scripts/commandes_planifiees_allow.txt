@@ -27,7 +27,9 @@
 # SOLMVP42, 2026-09-21 : contrats/fpa/flotte/mrp sont sortis du MVP solaire —
 # Groupe SOLMVP, coquillés SOLMVP30/31 — ces commandes ont disparu avec leurs
 # apps.)
-crm.detecter_comptes_dormants    # non planifié VOLONTAIREMENT — D-ENF15-DORMANTS (fondateur, 01/11/2026) : commande manuelle, jamais planifiée (alertes de dormance en production = décision fondateur)
+# D-ENF15-DORMANTS (fondateur, 01/11/2026) : non planifiée VOLONTAIREMENT — commande
+# manuelle (alertes de dormance en production = décision fondateur).
+crm.detecter_comptes_dormants    # non planifié
 # AUD730 — `rh.accruer_conges` est retirée de cette dette : la commande est
 # désormais RÉELLEMENT planifiée (tâche `rh.accruer_conges`, beat
 # `rh-accruer-conges-mensuel`, le 1er de chaque mois).
