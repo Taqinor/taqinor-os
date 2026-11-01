@@ -69,4 +69,26 @@ describe('AGNR31 — lignes que l’enregistrement ne gardera pas', () => {
     const [, lignes] = vue.ventesApi.replaceLignesDevis.mock.calls.at(-1)
     expect(lignes).toHaveLength(2)
   }, 60000)
+
+  it('ligne_composee_a_quantite_zero_annoncee — AGNR59 : une ligne COMPOSÉE passée à 0 est annoncée', async () => {
+    const devis = {
+      ...DEVIS_REGISTRE,
+      lignes: [...DEVIS_REGISTRE.lignes, {
+        id: 3, produit: SMART.id, designation: 'Smart Meter', quantite: '1', prix_unitaire: '1000.00',
+        taux_tva: '20.00', remise: '0.00', ordre: 2, type_ligne: 'produit', optionnelle: false,
+        variante: '', prix_manuel: false, ligne_composee: true,
+      }],
+    }
+    const vue = await monter(`/ventes/devis/nouveau?edit=${devis.id}`, { devis })
+    await attendreStable(vue.container, act)
+    const qtes = [...document.querySelectorAll('[data-role="line-qty"]')]
+    await taper(qtes[2], '0')
+    await attendreStable(vue.container, act)
+    expect(screen.getByTestId('avis-quantite-nulle').textContent)
+      .toBe('1 ligne à quantité 0 ne sera pas enregistrée : Smart Meter')
+    await enregistrer()
+    await waitFor(() => expect(vue.ventesApi.replaceLignesDevis).toHaveBeenCalled(), { timeout: 5000 })
+    const [, lignes] = vue.ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(lignes).toHaveLength(2)
+  }, 60000)
 })
