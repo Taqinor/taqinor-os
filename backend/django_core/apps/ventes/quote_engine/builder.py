@@ -1743,6 +1743,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QK4 — bloc « Nos hypothèses » (tarif, barème, autoconso-first, productible).
         "hypotheses": hypotheses_block,
         "factures_mensuelles": factures_mensuelles,
+        **cle_factures_exactes(etude, factures_source, devis),  # ERR-AGNR42 : absente hors niveau 5
         # Z2 (ORDRE FONDATEUR, 20/08/2026) — la série « avant » est-elle RÉELLE
         # (12 factures du lead, PACT10/QF-REAL) ou reconstruite depuis l'économie
         # SUPPOSÉE ? C'est l'ancrage qui autorise la synthèse économies à être
@@ -1908,7 +1909,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # destructive) ; seule sa republication s'arrête.
         "devise": "MAD",
     }
-    data.update(cle_factures_exactes(etude, factures_source, devis))  # ERR-AGNR42 : absente hors niveau 5
     # COUV-HOR (fondateur, 29/09/2026) — la donut de couverture lit la
     # couverture du MOTEUR HORAIRE (autoconsommé ÷ la conso qu'il a inversée des
     # factures), jamais un recalcul contre ``conso_annuelle`` : le devis auto la
