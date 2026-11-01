@@ -36,7 +36,8 @@ def renouveler_devis(devis, *, user=None):
     from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
-    from apps.ventes.domain.creation_clone import conditions_ci_pour_copie
+    from apps.ventes.domain.creation_clone import (
+        conditions_ci_pour_copie, echeancier_pour_copie)
     from apps.ventes.utils.company_settings import create_numbered
     from core.conflit_etat import ConflitEtat
 
@@ -126,6 +127,7 @@ def renouveler_devis(devis, *, user=None):
         # la main avait le plus divergé : elle clonait ``optionnelle`` sans
         # ``variante``, et aucune des trois ne clonait ``lot``.
         cloner_lignes(devis, nouveau, prix_unitaire=_prix_courant)
+        echeancier_pour_copie(nouveau)  # AGNR53 — au TTC re-tarifé
     # QJR117 — les études du RENOUVELLEMENT sont recalculées sur ses lignes
     # RE-TARIFÉES (force : le dimensionnement se court-circuite sinon sur
     # empreinte concordante, et l'édition de ligne ne rattrape pas).
