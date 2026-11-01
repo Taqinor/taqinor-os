@@ -1222,11 +1222,11 @@ jobs:
   # `fastapi-security`. Les 218 tests du service IA, dont la garde qui empeche
   # `prix_achat` de sortir vers un client, ne tournaient que la nuit
   # (release-verify, 03:00 UTC) : un ImportError d'`app.*` passait compileall et
-  # flake8 (`noqa`) et ne rougissait qu'a 03:00. Cette lane execute les cinq
+  # flake8 (`noqa`) et ne rougissait qu'a 03:00. Cette lane execute les six
   # suites SECURITE, UNIQUEMENT quand `backend/fastapi_ia/**` change (sortie
   # `fastapi` du filtre `changes`), sous `verifier_sortie_unittest.py` : un test
   # SAUTE (dependance absente, import casse) ou un nombre de tests sous le plancher
-  # (78 = decompte statique des `def test_` des cinq fichiers) la fait echouer.
+  # (90 = decompte statique des `def test_` des six fichiers, AANA72) la fait echouer.
   # Le check REQUIS `backend-tests` la suit (agregateur) : AUCUN nouveau contexte
   # requis, aucun desserre. Le nightly `fastapi-tests` garde la suite complete.
   # Budget de jobs simultanes : +1 UNIQUEMENT sur un diff fastapi_ia (la vague
@@ -1283,8 +1283,9 @@ jobs:
             tests.test_sql_security \
             tests.test_permissions_agent \
             tests.test_jwt_security \
-            tests.test_asec42_agent_sql_formes 2>&1 \
-            | python ../../scripts/verifier_sortie_unittest.py --plancher 78
+            tests.test_asec42_agent_sql_formes \
+            tests.test_config_agent_sql 2>&1 \
+            | python ../../scripts/verifier_sortie_unittest.py --plancher 90
 
   # ---------------------------------------------------------------------------
   # ENF11 (11/10/2026) — SOUS-ENSEMBLE PR DU FUZZ API (Schemathesis), BLOQUANT.
