@@ -12,11 +12,14 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 import { ui } from '../src/i18n/ui';
 
 const uiFr = ui.fr as Record<string, string>;
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
-const index = read('../src/pages/index.astro');
+const index = lireAstroAvecBlocs(fileURLToPath(new URL('../src/pages/index.astro', import.meta.url)));
+// ENF19 (lane apps/web) — la table des pictogrammes vit dans lib/solutionIcons.ts (partagée accueil + hub).
+const solutionIconsLib = read('../src/lib/solutionIcons.ts');
 const form = read('../src/components/DiagnosticForm.astro');
 const faq = read('../src/components/Faq.astro');
 // W64/W65 — la bande fondateur et la bande de marques sont passées en
@@ -132,7 +135,8 @@ describe('W57 — frise de parcours bout-en-bout', () => {
 
 describe('W58 — cartes « Nos solutions » enrichies (SVG inline)', () => {
   it('chaque carte porte un pictogramme SVG inline (currentColor/brass)', () => {
-    expect(index).toContain('const solutionIcons');
+    expect(solutionIconsLib).toContain('export const solutionIcons');
+    expect(index).toContain("import { solutionIcons } from");
     expect(index).toContain('solutionIcons[s.href]');
     // SVG au trait, teinte brass, aucune dépendance/image externe.
     expect(index).toMatch(/<svg[^>]*text-brass-400[^>]*set:html=\{solutionIcons/);

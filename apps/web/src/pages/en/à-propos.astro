@@ -60,6 +60,8 @@ const etapes = [
 ];
 import AProposSection62FB from '../../components/blocs/AProposSection62FB.astro';
 import GarantiesSection63F3 from '../../components/blocs/GarantiesSection63F3.astro';
+import ProposDiv42A2 from '../../components/blocs/ProposDiv42A2.astro';
+import ProposDiv96B3 from '../../components/blocs/ProposDiv96B3.astro';
 ---
 
 <Layout
@@ -178,10 +180,7 @@ import GarantiesSection63F3 from '../../components/blocs/GarantiesSection63F3.as
             <dd class="font-display text-xl font-bold text-white">Real-time monitoring</dd>
             <dt class="tech-label mt-2 text-lune-faint">Measured production, client access included</dt>
           </div>
-          <div class="v2-rise" style="--v2-i:2">
-            <dd class="font-display text-xl font-bold text-white">Tier-1 only</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Canadian Solar, JA Solar, Deye, Huawei, Dyness</dt>
-          </div>
+          <ProposDiv96B3 />
           <div class="v2-rise" style="--v2-i:3">
             <dd class="font-display text-xl font-bold text-white">Law 82-21</dd>
             <dt class="tech-label mt-2 text-lune-faint">Declaration and regularisation, end to end</dt>
@@ -213,10 +212,7 @@ import GarantiesSection63F3 from '../../components/blocs/GarantiesSection63F3.as
               <dd class="font-display text-2xl font-bold">Casablanca</dd>
               <dt class="tech-label mt-2 text-encre-faint">Trade register (RC 691213)</dt>
             </div>
-            <div>
-              <dd class="font-display text-2xl font-bold">Tier-1 only</dd>
-              <dt class="tech-label mt-2 text-encre-faint">Canadian Solar, JA Solar, Deye, Huawei, Dyness</dt>
-            </div>
+            <ProposDiv42A2 />
             <div>
               <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>
               <dt class="tech-label mt-2 text-encre-faint">Earliest documented project ({earliestRealisation.ville})</dt>

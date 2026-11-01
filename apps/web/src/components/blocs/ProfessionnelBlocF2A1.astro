@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — professionnel.astro
+import GarantiesTeaser from '../GarantiesTeaser.astro';
+import Testimonials from '../Testimonials.astro';
+---
+<Testimonials />
+
+<!-- Réassurance : les garanties écrites, en bref (renvoi vers /garanties) -->
+<GarantiesTeaser />
+
+<!-- W263 — FAQ partagée (entretien/prix/inclus-exclus/délais/garanties)
+     + garantie par composant, AVANT le formulaire final. schema={false} :
+     /faq reste l'unique page émettant le FAQPage JSON-LD (W19). -->

@@ -162,6 +162,7 @@ const jsonLd = {
 };
 import MaintenanceMonitoringOlF23D from '../components/blocs/MaintenanceMonitoringOlF23D.astro';
 import MaintenanceMonitoringDiv7416 from '../components/blocs/MaintenanceMonitoringDiv7416.astro';
+import '../styles/maintenance-monitoring.css';
 ---
 
 <Layout
@@ -380,55 +381,3 @@ import MaintenanceMonitoringDiv7416 from '../components/blocs/MaintenanceMonitor
     <StickyCta />
   </div>
 </Layout>
-
-<style>
-  /* W257 — cadre téléphone CSS pur, aucune image : anti-CLS garanti,
-     dimensions fixes, zéro dépendance réseau. Discipline laiton : le seul
-     accent doré vit sur le chiffre .text-brass-300, jamais sur le cadre. */
-  .phone-frame {
-    width: 160px;
-    height: 320px;
-    border-radius: 28px;
-    border: 3px solid rgba(255, 255, 255, 0.25);
-    background: #0c1330;
-    padding: 10px;
-    position: relative;
-    box-shadow: 0 20px 45px -20px rgb(6 10 30 / 0.6);
-  }
-  .phone-notch {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 48px;
-    height: 6px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.2);
-  }
-  .phone-screen {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    padding-top: 1rem;
-    text-align: center;
-  }
-  .phone-app-label {
-    font-size: 0.6rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.45);
-  }
-  .phone-headline {
-    font-family: var(--font-display, inherit);
-    font-weight: 700;
-    font-size: 1.5rem;
-    line-height: 1.1;
-  }
-  .phone-sub {
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.6);
-  }
-</style>

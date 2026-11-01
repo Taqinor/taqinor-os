@@ -168,14 +168,6 @@ const howItWorks = [
 // Sober iconography for the "Our solutions" cards: one SVG line per card,
 // currentColor (brass tint), in the brand language. Keyed by href so it stays
 // stable even if the card order changes.
-const solutionIcons: Record<string, string> = {
-  '/résidentiel': '<path d="M4 13 12 5l8 8" /><path d="M6 11v8h12v-8" /><path d="M10 19v-4h4v4" />',
-  '/professionnel': '<path d="M4 21V8l7-3v4l7-3v15" /><path d="M4 21h16" /><path d="M8 12h0M8 16h0M14 12h0M14 16h0" />',
-  '/pompage-solaire': '<path d="M12 3v6" /><path d="M5 21c1.6-2 3.2-2 4.8 0s3.2 2 4.8 0 3.2-2 4.4 0" /><path d="M8 9h8l-2 6H10z" />',
-  '/batteries-stockage': '<path d="M5 8h14v11H5z" /><path d="M9 5h6v3H9z" /><path d="M12 11v5" /><path d="M9.5 13.5h5" />',
-  '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
-  '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
-};
 
 // Why Taqinor / trust — three statistics, already-published facts. Founder
 // decision 2026-06-22: the "doctor-engineer" slot is replaced by Law 82-21
@@ -210,6 +202,12 @@ import EnIndexDl0C1D from '../../components/blocs/EnIndexDl0C1D.astro';
 import '../../styles/home-page.css';
 import HomeScripts from '../../components/home/HomeScripts.astro';
 import GalleryLightboxDialog from '../../components/home/GalleryLightboxDialog.astro';
+import ArIndexPicture8B05 from '../../components/blocs/ArIndexPicture8B05.astro';
+import { solutionIcons } from '../../lib/solutionIcons';
+import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.astro';
+import EnIndexA993D from '../../components/blocs/EnIndexA993D.astro';
+import EnIndexP51EC from '../../components/blocs/EnIndexP51EC.astro';
+import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
 ---
 
 <Layout
@@ -230,21 +228,7 @@ import GalleryLightboxDialog from '../../components/home/GalleryLightboxDialog.a
             raised on this page, carries the warmth without touching text contrast.
             W155 — Portrait-crop: in portrait orientation (phone held vertical),
             portrait sources are picked first; object-position recenters the panels. */}
-        <picture>
-          <source type="image/avif" media="(orientation: portrait)" sizes="100vw"
-            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w" />
-          <source type="image/webp" media="(orientation: portrait)" sizes="100vw"
-            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w" />
-          <source type="image/avif" sizes="100vw"
-            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w" />
-          <source type="image/webp" sizes="100vw"
-            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w, /videos/hero-poster-1600.webp 1600w" />
-          <img src="/videos/hero-poster-1600.webp" alt="" width="1600" height="900"
-            loading="eager" decoding="async" fetchpriority="high"
-            class="h-full w-full object-cover hero-portrait-img" />
-        </picture>
-        <video id="hero-video" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1"
-          class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"></video>
+        <ArIndexPicture8B05 />
         {/* Canonical scrim RAISED (--hero-scrim-strength 0.52): compensates for
             the "golden hour" grade warmth and keeps the headline ≥ AA. */}
         <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
@@ -257,11 +241,7 @@ import GalleryLightboxDialog from '../../components/home/GalleryLightboxDialog.a
       </div>
 
       {/* W161 — Scroll invitation: animated chevron, static under prefers-reduced-motion */}
-      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </div>
+      <ProfessionnelDiv77FB />
 
       {/* Content anchored LOW — eyebrow demoted to lune (brass discipline). */}
       {/* WC7 (2026-07-05) — `relative z-10`: the content (including the
@@ -274,10 +254,7 @@ import GalleryLightboxDialog from '../../components/home/GalleryLightboxDialog.a
             `.cine-in` on the LCP element → it paints immediately, no "appears
             then disappears" flash. Defensive text-shadow: the white figure
             stays legible even over a very bright video frame (full sun). */}
-        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch] [text-shadow:0_2px_28px_rgb(7_11_29/0.72)]">
-          <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
-        </h1>
-        <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
+        <ArIndexH1ED0F heroFigure={heroFigure} heroSub={heroSub} heroTitleSuffix={heroTitleSuffix} />
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* The single brass CTA (brass discipline) — gold is allowed here */}
           <a id="hero-cta-magnetic" href={L('/devis/mon-toit')} class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
@@ -591,18 +568,12 @@ import GalleryLightboxDialog from '../../components/home/GalleryLightboxDialog.a
             <a href={L('/devis/mon-toit')} class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
               Get my free study →
             </a>
-            <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
-              WhatsApp direct
-            </a>
+            <EnIndexA993D waDirect={waDirect} />
           </div>
         </div>
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">Latest installation delivered</p>
-          <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
-          <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
-          <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-            {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
-          </p>
+          <EnIndexP51EC featured={featured} />
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
             Installation tracked in real time, client access included. Site visits available on request.
           </p>

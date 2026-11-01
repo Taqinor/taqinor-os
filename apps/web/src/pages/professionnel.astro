@@ -34,8 +34,6 @@ import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
-import GarantiesTeaser from '../components/GarantiesTeaser.astro';
-import Testimonials from '../components/Testimonials.astro';
 import CertLogoRow from '../components/CertLogoRow.astro';
 import Faq from '../components/Faq.astro';
 import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
@@ -43,6 +41,8 @@ import RelatedLinks from '../components/RelatedLinks.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 import { serviceFaqItems } from '../lib/serviceFaq';
+import ProfessionnelDiv77FB from '../components/blocs/ProfessionnelDiv77FB.astro';
+import ProfessionnelBlocF2A1 from '../components/blocs/ProfessionnelBlocF2A1.astro';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 
@@ -142,11 +142,7 @@ const capexOpex = [
       </div>
 
       {/* Chevron d'invitation au défilement — statique sous reduced-motion */}
-      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </div>
+      <ProfessionnelDiv77FB />
 
       {/* Contenu ancré BAS — eyebrow rétrogradé en lune (discipline laiton) */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
@@ -325,14 +321,7 @@ const capexOpex = [
     </section>
 
     <!-- W62 — Avis clients (vide → ne rend rien tant qu'aucun vrai avis) -->
-    <Testimonials />
-
-    <!-- Réassurance : les garanties écrites, en bref (renvoi vers /garanties) -->
-    <GarantiesTeaser />
-
-    <!-- W263 — FAQ partagée (entretien/prix/inclus-exclus/délais/garanties)
-         + garantie par composant, AVANT le formulaire final. schema={false} :
-         /faq reste l'unique page émettant le FAQPage JSON-LD (W19). -->
+    <ProfessionnelBlocF2A1 />
     <Faq schema={false} heading="Questions fréquentes — solaire professionnel" items={faqItems} />
     <section class="section-tight bg-blanc-azur px-4 text-encre">
       <ServiceWarrantyTable />

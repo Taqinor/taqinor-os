@@ -1,0 +1,18 @@
+---
+// ENF19 : bloc partagé (copies identiques) — index.astro
+---
+<picture>
+  <source type="image/avif" media="(orientation: portrait)" sizes="100vw"
+    srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w" />
+  <source type="image/webp" media="(orientation: portrait)" sizes="100vw"
+    srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w" />
+  <source type="image/avif" sizes="100vw"
+    srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w" />
+  <source type="image/webp" sizes="100vw"
+    srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w, /videos/hero-poster-1600.webp 1600w" />
+  <img src="/videos/hero-poster-1600.webp" alt="" width="1600" height="900"
+    loading="eager" decoding="async" fetchpriority="high"
+    class="h-full w-full object-cover hero-portrait-img" />
+</picture>
+<video id="hero-video" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1"
+  class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"></video>

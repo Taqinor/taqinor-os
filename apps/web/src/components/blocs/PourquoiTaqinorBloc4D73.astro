@@ -1,0 +1,9 @@
+---
+// ENF19 : bloc partagé (copies identiques) — pourquoi-taqinor.astro
+import RelatedLinks from '../RelatedLinks.astro';
+const { L } = Astro.props as Record<string, any>;
+---
+<RelatedLinks links={[
+  { href: L('/production-mesuree'), label: 'Our tracked production, ongoing' },
+  { href: L('/impact-taqinor'), label: 'Taqinor Impact (kWc, kWh, CO2 avoided)' },
+]} />

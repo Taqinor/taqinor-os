@@ -16,7 +16,7 @@ import Callout from '../../components/Callout.astro';
 import KeyFigure from '../../components/KeyFigure.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
-import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
+import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuGelPCFC9.astro';
 
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
@@ -71,11 +71,7 @@ const jsonLd = {
       <h1 class="display v2-page-title mt-5 text-white">Faut-il des batteries ?</h1>
 
       <!-- W303 — date de vérification + auteur + temps de lecture -->
-      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
-        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
-        <span aria-hidden="true">·</span>
-        <span>{readingMinutes} min de lecture</span>
-      </p>
+      <BatterieLithiumOuGelPCFC9 readingMinutes={readingMinutes} verifiedDate={verifiedDate} />
 
       <p class="v2-lead mt-6 text-lune-soft">
         Réponse courte : souvent non. C’est la question qui revient le plus, et beaucoup la posent

@@ -9,12 +9,12 @@ import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
-import Picture from '../components/Picture.astro';
 import WhatsAppMock from '../components/WhatsAppMock.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
+import MarocainsDuMondeDiv5A30 from '../components/blocs/MarocainsDuMondeDiv5A30.astro';
 
 const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je suis Marocain·e à l’étranger et je souhaite étudier une installation solaire pour ma villa au Maroc.');
 
@@ -41,18 +41,7 @@ const etapes = [
         seul le scrim canonique porte le contraste AA du headline. Eyebrow
         rétrogradé en lune (discipline laiton) ; un CTA brass + un ghost WhatsApp. ── */}
     <section class="relative isolate mt-4 flex min-h-[90svh] flex-col justify-end overflow-hidden text-white">
-      <div class="v2-hero-media absolute inset-0 -z-10">
-        <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
-          loading="eager" fetchpriority="high" class="h-full w-full object-cover object-[65%_40%]" />
-        <div class="hero-scrim absolute inset-0"></div>
-      </div>
-
-      {/* Invitation au défilement — statique sous prefers-reduced-motion */}
-      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </div>
+      <MarocainsDuMondeDiv5A30 />
 
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Marocains du monde · MRE</p>
