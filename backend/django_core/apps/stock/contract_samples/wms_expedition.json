@@ -228,10 +228,8 @@
         "created_at": "2026-10-12T09:00:00Z",
         "updated_at": "2026-10-12T09:00:00Z"
       },
-      "exemple_erreur_400_scellee": {
-        "detail": [
-          "Unité scellée : elle ne peut plus être modifiée."
-        ]
+      "exemple_erreur_409_scellee": {
+        "detail": "Unité scellée : elle ne peut plus être modifiée."
       },
       "exemple_erreur_400_parent_cyclique": {
         "parent": [
@@ -241,7 +239,7 @@
     },
     "unites_logistiques_lignes": {
       "endpoint": "POST /api/django/stock/unites-logistiques/<id>/lignes/",
-      "pourquoi": "Ajoute une ligne de contenu {produit, quantite, lot?} ; 201 + l'unité complète (clés de `unites_logistiques.exemple_element`). Unité scellée → 400 {detail}.",
+      "pourquoi": "Ajoute une ligne de contenu {produit, quantite, lot?} ; 201 + l'unité complète (clés de `unites_logistiques.exemple_element`). Unité scellée → 409 {detail}.",
       "exemple": {
         "id": 12,
         "type_unite": "colis",

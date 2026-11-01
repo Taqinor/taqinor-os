@@ -1339,8 +1339,15 @@ class EmplacementStockSerializer(ChampsTexteBooleenStricts, serializers.ModelSer
                                       'interne.'})
         if (type_proprietaire != EmplacementStock.TypeProprietaire.INTERNE
                 and not tiers_nom.strip()):
-            raise serializers.ValidationError(
-                {'tiers_nom': 'Nommez le tiers concerné par cet emplacement.'})
+            erreur = {'tiers_nom': 'Nommez le tiers concerné par cet emplacement.'}
+            # api-fuzz stock (vague 8) : le corps SEUL viole la règle publiée
+            # (création, ou type de tiers + nom vide dans la même requête) →
+            # 400 ; la violation vient de l'emplacement ENREGISTRÉ (type ou
+            # nom relu sur l'instance) → refus d'état 409.
+            if instance is None or (
+                    'type_proprietaire' in attrs and 'tiers_nom' in attrs):
+                raise serializers.ValidationError(erreur)
+            raise ConflitEtat(erreur)
         return attrs
 
 

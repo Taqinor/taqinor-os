@@ -1,6 +1,8 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import UnsupportedMediaType
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import INT, OBJET, P, corps
@@ -18,7 +20,20 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('produit', INT)]))
+#: api-fuzz stock (vague 8) — seul le PDF constructeur voyage en multipart
+#: (``uploadFicheTechniquePdf`` du front) : les objets/listes JSON de la fiche
+#: (``struct_notice``, ``lim_marques``…) n'ont aucune forme multipart lisible.
+FichePdfCorps = corps('FichePdfCorps', pdf=serializers.FileField())
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[P('produit', INT)]),
+    create=extend_schema(request={'application/json': FicheTechniqueSerializer}),
+    update=extend_schema(request={'application/json': FicheTechniqueSerializer}),
+    partial_update=extend_schema(request={
+        'application/json': FicheTechniqueSerializer,
+        'multipart/form-data': FichePdfCorps}),
+)
 class FicheTechniqueViewSet(CompanyScopedModelViewSet):
     """DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
 
@@ -32,6 +47,20 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
     ordering = ['-date_mise_a_jour']
     # YAPIC2 — whitelist explicite (jamais '__all__').
     ordering_fields = ['date_creation', 'date_mise_a_jour', 'pmax_wc']
+    # api-fuzz stock (vague 8) : plus de formulaire urlencodé (415) ; le
+    # multipart ne sert qu'au PDF (PATCH) et à ``importer-datasheet``.
+    parser_classes = [JSONParser, MultiPartParser]
+
+    def initial(self, request, *args, **kwargs):
+        """Création / remplacement complet (POST, PUT) : JSON seul — un
+        multipart y est refusé 415 (``struct_notice`` y arrivait en texte
+        « None », 400 sur un corps conforme). Posé ici et non dans
+        ``create``/``update`` : la forme servie reste celle du sérialiseur
+        (lisible par ``check_api_shapes``)."""
+        super().initial(request, *args, **kwargs)
+        if (self.action in ('create', 'update')
+                and (request.content_type or '').lower().startswith('multipart/')):
+            raise UnsupportedMediaType(request.content_type)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

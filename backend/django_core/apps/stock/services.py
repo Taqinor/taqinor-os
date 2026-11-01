@@ -1318,6 +1318,15 @@ def creer_revalorisation(*, company, produit, nouveau_cout, motif, user,
         (produit.quantite_stock or 0)
         - quantite_de_tiers(company, produit=produit), 0)
     delta = (nouveau_cout - ancien_cout) * quantite
+    # api-fuzz stock (vague 8) — un coût conforme (≤ 99 999 999,99) × le stock
+    # ENREGISTRÉ peut dépasser ``delta_valeur`` (numeric(14,2)) : refus d'état
+    # nommé (409), plus un 500 « numeric field overflow ».
+    from .erreurs_achats import PLAFOND_MONTANT, PLAFOND_PRIX
+    if abs(delta) > PLAFOND_MONTANT or abs(Decimal(ancien_cout)) > PLAFOND_PRIX:
+        raise EtatIncompatible(
+            'Revalorisation hors capacité : le coût moyen actuel ou l’écart de '
+            'valeur (nouveau coût − ancien coût) × quantité en stock dépasse '
+            'ce que le document peut enregistrer.')
     return RevalorisationStock.objects.create(
         company=company, produit=produit, ancien_cout=ancien_cout,
         nouveau_cout=nouveau_cout, quantite_snapshot=quantite,

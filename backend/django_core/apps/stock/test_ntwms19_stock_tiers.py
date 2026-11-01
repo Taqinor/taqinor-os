@@ -150,6 +150,20 @@ class TestEndpointEmplacementsTiers(Ntwms19Base):
         self.assertEqual(reponse.status_code, 409)  # ENF11 : règle d'état
         self.assertIn('type_proprietaire', reponse.data)
 
+    def test_patch_nom_de_tiers_vide_corps_400_instance_409(self):
+        """api-fuzz stock (vague 8) — PATCH : la règle portée par le CORPS seul
+        (type de tiers + nom vide) est publiée → 400 ; un nom vidé sur un
+        emplacement ENREGISTRÉ de tiers est un refus d'état → 409."""
+        url = f'{self.URL}{self.depot_client.id}/'
+        r = self.api.patch(url, {'type_proprietaire': 'de_tiers', 'tiers_nom': ''},
+                           format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.patch(url, {'tiers_nom': ''}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('tiers_nom', r.data)
+        self.depot_client.refresh_from_db()
+        self.assertEqual(self.depot_client.tiers_nom, 'Client Alpha')
+
 
 class IdentiteFournisseurSansPrixTests(TestCase):
     """AUDV23 (déplacé de apps.tiers.tests) — garde permanente : le pont

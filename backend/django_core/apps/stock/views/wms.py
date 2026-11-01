@@ -336,11 +336,11 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         """ASTK31 — une unité SCELLÉE (ou expédiée) est immuable : parent,
         vague, type, poids et dimensions ne bougent plus (l'étiquette SSCC
         déjà imprimée doit toujours correspondre au contenu). Même prédicat
-        ``est_figee`` que l'ajout de ligne."""
-        from rest_framework.exceptions import ValidationError
+        ``est_figee`` que l'ajout de ligne. Refus d'ÉTAT (le corps était
+        conforme) : 409, comme l'ajout de ligne (api-fuzz stock, vague 8)."""
         if serializer.instance.est_figee:
-            raise ValidationError({'detail': (
-                'Unité scellée : elle ne peut plus être modifiée.')})
+            raise ConflitEtat(
+                'Unité scellée : elle ne peut plus être modifiée.')
         super().perform_update(serializer)
 
     @extend_schema(request=UniteAjouterLigneCorps, responses={201: UniteLogistiqueSerializer})

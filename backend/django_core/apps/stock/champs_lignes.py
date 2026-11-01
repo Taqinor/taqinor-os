@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from core.champs_stricts import DecimalBornee
+from core.champs_stricts import DecimalBornee, TexteLie
 from core.conflit_etat import ConflitEtat
 
 #: api-fuzz-full 24/10 — ``total_ht`` d'une ligne est SERVI en
@@ -32,7 +32,9 @@ class ChampsLigneFactureFournisseur(serializers.Serializer):
     """Champs declares de ``LigneFactureFournisseurSerializer`` (lecture
     seule + ``taux_tva`` strict)."""
 
-    produit_nom = serializers.CharField(
+    # api-fuzz stock (vague 8) — ``TexteLie`` : ligne libre (produit nul) au
+    # PATCH de la facture, DRF sautait la clé que le schéma déclare.
+    produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
     total_ht = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
