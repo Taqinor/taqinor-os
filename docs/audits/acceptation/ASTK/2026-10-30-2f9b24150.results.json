@@ -1,0 +1,33 @@
+{
+  "sha": "2f9b24150a",
+  "date": "2026-10-30",
+  "groupe": "ASTK",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACHT122"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "E9",
+      "taches": [
+        "ACHT122"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "FAIL",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    }
+  ]
+}
