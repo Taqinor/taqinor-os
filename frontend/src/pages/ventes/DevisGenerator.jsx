@@ -1000,7 +1000,7 @@ export default function DevisGenerator({
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
     // RGEN5 — niveau de règles du devis édité (`Devis.regles_calcul`, ancien calcul tant
     // qu'il n'est pas lu) ; un devis neuf naît au niveau 3.
-    sizing, dispatchSizing, produits, reglesCalcul: editId ? (editDevis?.regles_calcul ?? 0) : 3,
+    sizing, dispatchSizing, produits, discountPct, reglesCalcul: editId ? (editDevis?.regles_calcul ?? 0) : 3,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
