@@ -21,6 +21,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
@@ -213,7 +214,7 @@ class GardeActionsModifiabiliteTests(TestCase):
         ligne = self.devis.lignes.get()
         avant = self._instantane()
         self.client.force_login(root)
-        url = f'/admin/ventes/devis/{self.devis.pk}/change/'
+        url = reverse('admin:ventes_devis_change', args=[self.devis.pk])
         reponse = self.client.post(url, {
             'remise_globale': '50', 'taux_tva': '10', 'statut': 'brouillon',
             'option_acceptee': 'sans_batterie',
