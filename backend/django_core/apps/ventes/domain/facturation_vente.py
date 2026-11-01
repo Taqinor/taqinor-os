@@ -827,3 +827,68 @@ def modifier_montant_tranche(facture, montant_ttc, *, user):
             tranche, montant_ttc=montant, ht=ht, tva=tva,
             ventilation_tva=vent, pourcentage=_q(montant / prix * 100)),
             user, None)
+
+
+# ── ATOT43 — avoir d'ÉCART de vente (révision, prix négocié) ────────────────
+
+def _ventiler_part(paniers, part, total):
+    """Paniers ``[{taux, base_ht, montant}]`` de ``part`` au prorata de
+    l'écart ``total`` (``ventilation_document_fige`` dès deux taux)."""
+    from apps.facturation.totaux import ventilation_document_fige
+    vent = ventilation_document_fige(paniers, part)
+    if vent is None:
+        tva = _q(part * Decimal(str(paniers[0]['montant'])) / total)
+        vent = [{'taux': str(paniers[0]['taux']), 'base_ht': str(part - tva),
+                 'montant': str(tva)}]
+    return vent
+
+
+def crediter_ecart_de_vente(devis, montant_ttc, paniers, *, user, motif):
+    """ATOT43 — crédite ``montant_ttc`` (paniers de l'écart) sur les factures
+    émises de la vente, chacune sous son créditable (le plafond de
+    ``creer_avoir_facture``) : le plus fort reste d'abord, à égalité la plus
+    récente. Un avoir CORRECTION par facture, ventilé au prorata ; le dernier
+    porte le solde des paniers au centime. Σ créditable insuffisant ⇒
+    ``AvoirPlafondDepasse``, rien n'est écrit (transaction unique)."""
+    from datetime import date
+
+    from apps.ventes.models import Avoir, Facture
+    from .facturation_ops import AvoirPlafondDepasse, creer_avoir_facture
+    montant = _q(montant_ttc)
+    total = sum(_q(p['base_ht']) + _q(p['montant']) for p in paniers)
+    restes = {Decimal(str(p['taux'])): [_q(p['base_ht']), _q(p['montant'])]
+              for p in paniers}
+    avoirs = []
+    with transaction.atomic():
+        factures = sorted((
+            (_q(f.total_ttc + f.notes_debit_total - f.avoirs_total
+                - (f.abandon_montant or 0)), f.date_emission or date.min,
+             f.pk, f)
+            for f in Facture.objects.select_for_update().filter(
+                company_id=devis.company_id, devis_id=devis.pk).exclude(
+                statut__in=(Facture.Statut.BROUILLON, Facture.Statut.ANNULEE))
+        ), key=lambda x: x[:3], reverse=True)
+        if sum(max(x[0], 0) for x in factures) < montant or not total:
+            raise AvoirPlafondDepasse(
+                "L'écart dépasse le montant restant des factures de la vente.")
+        reste = montant
+        for creditable, _date, _pk, facture in factures:
+            part = min(reste, creditable)
+            if part <= 0:
+                break
+            reste -= part
+            vent = (_ventiler_part(paniers, part, total)
+                    if reste or total != montant else [
+                        {'taux': str(t), 'base_ht': str(b), 'montant': str(m)}
+                        for t, (b, m) in restes.items()])
+            for v in vent:
+                r = restes[Decimal(str(v['taux']))]
+                r[0] -= Decimal(v['base_ht'])
+                r[1] -= Decimal(v['montant'])
+            tva = sum(Decimal(v['montant']) for v in vent)
+            avoirs.append(creer_avoir_facture(
+                facture=facture, user=user, motif=motif,
+                type_avoir=Avoir.Type.CORRECTION, montant_ventile={
+                    'ht': part - tva, 'tva': tva, 'ttc': part,
+                    'ventilation': vent}))
+    return avoirs
