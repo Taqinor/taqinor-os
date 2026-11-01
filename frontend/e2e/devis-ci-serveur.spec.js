@@ -12,7 +12,7 @@
 import { test, expect } from '@playwright/test'
 import {
   choisirMarche, declarerProfilCi, telephoneMobileUnique, uniq, cliquerCreerDevis,
-  retirerLignesPrixARenseigner, tariferPostesCiDemo,
+  retirerLignesPrixARenseigner, tariferPostesCiDemo, retablirPrixPartages,
 } from './helpers'
 
 const API = '/api/django'
@@ -21,6 +21,8 @@ const CLES_V1 = ['taux_autoconso', 'taux_couverture', 'payback', 'part_diurne_pc
   'etude_kwc_base', 'injection_kwh_an', 'injection_dh_an']
 const devisIds = []
 const leadIds = []
+// Articles partagés (rôle C&I déduit, ex. câble solaire DC H1Z2Z2) tarifés pour CIQ127, remis à 0 ensuite.
+const prixPartages = []
 
 async function json(res, quoi) {
   expect(res.ok(), `${quoi} → HTTP ${res.status()} ${await res.text()}`).toBeTruthy()
@@ -45,6 +47,7 @@ test.afterAll(async ({ request }) => {
     request.delete(`${API}/ventes/devis/${id}/`).catch(() => null)))
   await Promise.all(leadIds.map((id) =>
     request.delete(`${API}/crm/leads/${id}/`).catch(() => null)))
+  await retablirPrixPartages(request, prixPartages)
 })
 
 test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvrir = mêmes lignes et même taille', async ({ page, request }) => {
@@ -141,7 +144,11 @@ test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon a
   expect(lead.contrat_electricite).toBe('bt_patente')
   leadIds.push(lead.id)
   // ADEV79 (D-ACI-6=a) — postes C&I de la démo tarifés par l'API (helper partagé).
-  await tariferPostesCiDemo(request)
+  // CAD177 (nocturne 41188540195) — y compris les articles PARTAGÉS au rôle C&I
+  // déduit : le câble « Nexans H1Z2Z2-K 4 mm² » (seed `CAB-H1Z2Z2-*-M`, prix vide
+  // par conception) n'a pas `role_ci` ; sans prix, le moteur refuse le devis
+  // automatique (409 « Prix à renseigner avant un devis automatique C&I »).
+  await tariferPostesCiDemo(request, { partages: prixPartages })
   await page.goto(`/crm/leads/${lead.id}`)
   const appel = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/auto\/$/.test(new URL(r.url()).pathname), { timeout: 60_000 })

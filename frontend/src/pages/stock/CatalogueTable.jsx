@@ -94,6 +94,21 @@ const TON_SEV = {
   [SEV_OK]: 'success',
 }
 
+// CAD177 (nocturne 41188540195, APX8 « catalogue Stock ») — un badge à texte
+// long (« HMT d'arrêt 45 m · courbe constructeur », « tarif réglé dans
+// Paramètres › Devis › Prestations C&I ») passait à la ligne dans sa colonne
+// étroite et faisait la hauteur de la ligne (112 px pour un plafond de 92) :
+// UNE ligne, tronquée, texte complet en infobulle — la ligne du catalogue garde
+// la hauteur unique que promet detailStock().
+function BadgeUneLigne({ children, ...props }) {
+  const titre = typeof children === 'string' ? children : undefined
+  return (
+    <Badge {...props} className="max-w-full min-w-0" title={titre}>
+      <span className="truncate">{children}</span>
+    </Badge>
+  )
+}
+
 // Badge réutilisé par ProduitDetail.jsx — un seul rendu pour les deux écrans.
 export function BadgeCompletudeFiche({ fiche }) {
   const { statut, manquants } = completudeFiche(fiche)
@@ -315,7 +330,7 @@ export function CatalogueTable({
         <div className="min-w-0">
           <div className="truncate">{value}</div>
           {p.categorie_type_display && (
-            <Badge tone="neutral">{p.categorie_type_display}</Badge>
+            <BadgeUneLigne tone="neutral">{p.categorie_type_display}</BadgeUneLigne>
           )}
         </div>
       ),
@@ -328,7 +343,7 @@ export function CatalogueTable({
       searchable: false,
       sortable: false,
       accessor: (p) => keySpec(p) ?? '',
-      cell: (v) => (v ? <Badge tone="primary">{v}</Badge> : <span className="text-muted-foreground">—</span>),
+      cell: (v) => (v ? <BadgeUneLigne tone="primary">{v}</BadgeUneLigne> : <span className="text-muted-foreground">—</span>),
       exportValue: (p) => keySpec(p) ?? '',
     },
     {
@@ -364,14 +379,14 @@ export function CatalogueTable({
               <Link to={ROUTE_PARAMETRES_PRESTATIONS_CI}
                  data-testid="tarif-parametres-ci"
                  onClick={(e) => e.stopPropagation()}>
-                <Badge tone="info">{TEXTE_TARIF_PARAMETRES_CI}</Badge>
+                <BadgeUneLigne tone="info">{TEXTE_TARIF_PARAMETRES_CI}</BadgeUneLigne>
               </Link>
             )
           }
           // CCAT3 — coffret C&I tarifé par barème (par onduleur / par panneau) :
           // le prix est connu, seul le prix de vente fixe est absent.
           if (etatPrixCi(r) === 'bareme') {
-            return <Badge tone="info">{TEXTE_PRIX_BAREME_CI}</Badge>
+            return <BadgeUneLigne tone="info">{TEXTE_PRIX_BAREME_CI}</BadgeUneLigne>
           }
           return <Badge tone="warning">prix à renseigner</Badge>
         }

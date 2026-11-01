@@ -91,6 +91,11 @@ test('CIQ334 — créer (hôtel, dimanche fermé, août fermé), rouvrir, ré-en
   await page.goto(`/ventes/devis/nouveau?lead=${lead.id}`)
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
     .toBeVisible({ timeout: 30_000 })
+  // Lead appliqué (ville → site PVGIS) AVANT de choisir le marché et de saisir le
+  // profil : sinon l'étude C&I part sans site (aucun aperçu, « Taille retenue »
+  // jamais affichée — nocturne 41188540195). Même attente que les helpers C&I
+  // (2e84aa95, vague 11).
+  await expect(page.locator('#gen-tel')).not.toHaveValue('', { timeout: 90_000 })
   await choisirMarche(page, /Commercial/)
   await expect(page.getByTestId('ci-profil')).toBeVisible()
 
