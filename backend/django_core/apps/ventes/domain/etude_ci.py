@@ -1142,6 +1142,7 @@ def _vide_etude(res, alertes, hypotheses, sous_reserve=None):
         'economie_ci': None, 'composition': None, 'regime_8221_suggere': None,
         'alertes': _uniques(alertes), 'hypotheses': _uniques(hypotheses, cle=('cle',)),
         'methode': METHODE, 'version_moteur': VERSION_MOTEUR,
+        'feuille_consommation_retenue': None,
     }
 
 
@@ -1182,6 +1183,22 @@ def _combinaison_imposee(onduleurs_imposes, catalogue_onduleurs):
                             'source': 'onduleurs du devis (lignes facturées)'},
             'chaines': None, 'exclus': [], 'prix_vente_total_ht': str(total),
             'motif': None, 'alertes': [], 'hypotheses': []}
+
+
+def _consommation_retenue(res, tarif, alertes, hypotheses):
+    """AMOT104 — ``(conso, feuille retenue, registres MT, courbe mesurée)`` :
+    la feuille de ``_consommation``, sinon la courbe mesurée / les registres MT
+    quand ce sont eux qui chiffrent (``None`` sans consommation)."""
+    conso, feuille = _consommation(res, tarif, alertes, hypotheses)
+    registres = _registres_resolus(res)
+    mesuree = _courbe_mesuree_resolue(res.valeur('courbe_mesuree'), _aujourdhui().year - 1)
+    if conso is None and mesuree:
+        conso, feuille = round(sum(mesuree[0]), 3), 'courbe_mesuree'
+    if conso is None and registres:
+        from apps.ventes.moteur_ci.charge import POSTES_MT, _registre
+        conso = [sum(_registre(m, p) for p in POSTES_MT) for m in registres]
+        feuille = 'registres_mt'
+    return conso, feuille, registres, mesuree
 
 
 def _jours_types_de_charge(company, res, mode, categorie, rythme, mesuree, registres,
@@ -1329,14 +1346,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     if tarif.get('origine') == tarif_ci.ORIGINE_OMIS:
         alertes.append(_alerte('tarif_omis', 'tarif', tarif_ci.MENTION_OMIS,
                                niveau='bloquant'))
-    conso, _feuille = _consommation(res, tarif, alertes, hypotheses)
-    registres = _registres_resolus(res)
-    mesuree = _courbe_mesuree_resolue(res.valeur('courbe_mesuree'), _aujourdhui().year - 1)
-    if conso is None and mesuree:
-        conso = round(sum(mesuree[0]), 3)
-    if conso is None and registres:
-        from apps.ventes.moteur_ci.charge import POSTES_MT, _registre
-        conso = [sum(_registre(m, p) for p in POSTES_MT) for m in registres]
+    conso, feuille_retenue, registres, mesuree = _consommation_retenue(
+        res, tarif, alertes, hypotheses)
     _garde_kwh_factures(res, tarif, alertes)
 
     site = res.valeur('site') or {}
@@ -1397,6 +1408,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         etude = _vide_etude(res, alertes, hypotheses, sous_reserve)
         etude['production'] = production
         etude['niveau_donnees'] = niveau
+        etude['feuille_consommation_retenue'] = feuille_retenue
         return _sans_cles_interdites(_json(etude))
     profil_charge = {'methode': prov_charge.get('methode'),
                      'archetype': prov_charge.get('archetype'),
@@ -1491,6 +1503,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         'hypotheses': _uniques(hypotheses, cle=('cle',)),
         'methode': METHODE_8760 if production.get('serie_horaire') else METHODE,
         'version_moteur': VERSION_MOTEUR,
+        # AMOT104 — la feuille que le moteur a RETENUE (None sans consommation).
+        'feuille_consommation_retenue': feuille_retenue if conso is not None else None,
     }
     return _sans_cles_interdites(_json(etude))
 
@@ -1817,7 +1831,8 @@ def bloc_etude_ci_stocke(etude, *, mono=False):
     dans ``production_figee`` seule (``economie_ci_options.apercu_du_devis``)."""
     bloc = {cle: etude.get(cle) for cle in (
         'entrees_resolues', 'profil_charge', 'production', 'taille', 'bilan',
-        'composition', 'economie_ci', 'alertes', 'hypotheses')}
+        'composition', 'economie_ci', 'alertes', 'hypotheses',
+        'feuille_consommation_retenue')}
     if etude.get(CLE_OPTION_AVEC):
         bloc[CLE_OPTION_AVEC] = etude[CLE_OPTION_AVEC]
         if mono:

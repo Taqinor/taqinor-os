@@ -1019,7 +1019,8 @@ def _echelle_paliers_batterie(devis):
             # simple, qui ne sert plus qu'au tri interne.
             'payback_annees': (
                 _payback_publie_palier(
-                    cout, economie, vue.get('lignes'), facteur_remise)
+                    cout, economie, vue.get('lignes'), facteur_remise,
+                    devis=devis, taux_tva=taux_tva)
                 if _corrige
                 # Règles d'origine (avant AMOT29) : le ratio simple d'hier.
                 else _arrondi(_payback(cout, economie))),
@@ -1070,24 +1071,36 @@ def _echelle_paliers_batterie(devis):
     return echelle
 
 
-def _payback_publie_palier(cout, economie, lignes, facteur_remise):
+def _payback_publie_palier(cout, economie, lignes, facteur_remise,
+                           devis=None, taux_tva=None):
     """AMOT29 — payback PUBLIÉ d'un palier de l'échelle batterie :
     ``pricing.payback_publiable`` sur son prix (déjà remisé) et son économie,
     stockage présent, provision d'onduleur = Σ lignes onduleur de la
-    composition (P.U. HT × qté × 1,20 × remise du devis, comme
-    ``offres_tailles._cout_onduleur_ttc``), ``None`` sans ligne onduleur."""
+    composition (P.U. HT × qté × 1,20 × remise du devis), ``None`` sans ligne
+    onduleur. AMOT102 — niveau 7 (``REGLES_ECARTS_3110``) : la définition de
+    ``roi_a`` (part stockée 0 — économie horaire déjà nette —, rendement du
+    devis, TVA de la ligne ``_facteur_ttc_ligne`` comme
+    ``offres_tailles._cout_onduleur_ttc``)."""
+    from apps.ventes.dimensionnement import _facteur_ttc_ligne
+    from apps.ventes.domain.regles_calcul import REGLES_ECARTS_3110, regles_au_moins
     from apps.ventes.quote_engine.pricing import payback_publiable
+    roi_a = devis is not None and regles_au_moins(devis, REGLES_ECARTS_3110)
     onduleur = 0.0
     for ligne in (lignes or []):
         if (ligne or {}).get('role') in ('onduleur_reseau', 'onduleur_hybride'):
-            onduleur += (_num(ligne.get('quantite'))
-                         * _num(ligne.get('prix_unitaire_ht')) * 1.2)
+            onduleur += (_num(ligne.get('quantite')) * _num(ligne.get('prix_unitaire_ht')) * (
+                _facteur_ttc_ligne(None, ligne.get('designation') or '', taux_tva,
+                                   getattr(devis, 'company', None)) if roi_a else 1.2))
     onduleur *= float(facteur_remise or 1.0)
+    definition = {}
+    if roi_a:
+        from apps.ventes.horaire.batterie_lignes import rendement_batterie_du_devis
+        definition = {'part_batterie': 0.0, 'battery_roundtrip': rendement_batterie_du_devis(devis).get('rendement')}
     try:
         return payback_publiable(
             cout, economie, stockage=True,
             cout_onduleur_ttc=(round(onduleur, 2) if onduleur > 0
-                               else None))['payback_years']
+                               else None), **definition)['payback_years']
     except Exception:  # noqa: BLE001 — un payback indisponible s'omet (D-ENF22-BLE001)
         logger.warning("dimensionnement_devis._payback_publie_palier : erreur ignorée (mode dégradé)", exc_info=True)
         return None

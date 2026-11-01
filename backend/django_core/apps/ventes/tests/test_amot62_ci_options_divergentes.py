@@ -11,9 +11,9 @@ Deux gardes :
   * ``synthese._systeme`` / ``synthese_ci`` omettent production ET taux (motif
     publié) quand le kWc servi s'écarte de plus de 2 % de celui de l'étude.
 
-PVGIS simulé (patron CIQ119/CIQ210) ; ``puissances_etude_horaire`` est
-contraint aux puissances de la sonde (35,5 / 49,7) — c'est l'entrée réelle
-qu'il rend sur ce devis, le moteur C&I lui-même n'est pas simulé.
+PVGIS simulé (patron CIQ119/CIQ210) ; AMOT113 : plus aucun ``mock.patch``
+interne — les lignes du devis sont variantées pour de vrai (50 « sans » /
+70 « avec »), ``puissances_etude_horaire`` les lit.
 
 Test-du-test : remettre ``kwc, _kwc_sans = puissances_etude_horaire(devis)``
 sans usage de l'option servie ⇒ ``test_etude_calculee_pour_l_option_servie``
@@ -23,7 +23,7 @@ Run :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_amot62_ci_options_divergentes -v 2
 """
-from unittest import mock
+from decimal import Decimal
 
 from django.test import TestCase
 
@@ -37,17 +37,48 @@ KWC_AVEC, KWC_SANS = 49.7, 35.5
 
 
 class CiOptionsDivergentesTests(_BaseDevis):
+    """AMOT113 — sur un devis RÉEL à lignes variantées (50 « sans » / 70
+    « avec ») : aucune source moquée à part PVGIS (``setUp`` de ``_BaseDevis``)."""
+
+    def _devis_variante(self, ref, mode):
+        from apps.stock.models import Produit
+        from apps.ventes.models import LigneDevis
+        devis = self._devis(ref, mode=mode, tension='bt')
+        LigneDevis.objects.filter(devis=devis, produit=self.panneau).update(
+            variante='avec', quantite=Decimal('70'))
+        LigneDevis.objects.filter(devis=devis, produit=self.ond).update(
+            variante='sans')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.panneau, designation='Panneau 710W',
+            quantite=Decimal('50'), prix_unitaire=Decimal('1272.73'),
+            remise=Decimal('0'), variante='sans')
+        # Le builder ne sert « deux options » (donc une option SERVIE) que si
+        # les deux paniers existent : hybride + batterie côté « avec ».
+        for nom, prix in (('Onduleur hybride Deye 50kW Triphasé', '60000'),
+                          ('Batterie Dyness 10 kWh', '14000')):
+            produit, _ = Produit.objects.get_or_create(
+                company=self.co, nom=nom, defaults={
+                    'prix_vente': Decimal(prix), 'prix_achat': Decimal('1')})
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal('1'), prix_unitaire=Decimal(prix),
+                remise=Decimal('0'), variante='avec')
+        return devis
 
     def _rafraichir(self, devis):
         from apps.ventes.domain.etude_ci import rafraichir_etude_ci_devis
-        with mock.patch('apps.ventes.domain.etudes.puissances_etude_horaire',
-                        return_value=(KWC_AVEC, KWC_SANS)):
-            rafraichir_etude_ci_devis(devis, force=True)
+        rafraichir_etude_ci_devis(devis, force=True)
         devis.refresh_from_db()
         return (devis.etude_params or {}).get('etude_ci') or {}
 
+    def _synthese(self, devis):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.options_pdf import clean_pdf_options
+        devis = Devis.objects.get(pk=devis.pk)
+        return synthese_ci(build_quote_data(devis, clean_pdf_options({})))
+
     def test_etude_calculee_pour_l_option_servie(self):
-        devis = self._devis('DEV-AMOT62-0010', mode='commercial', tension='bt')
+        devis = self._devis_variante('DEV-AMOT62-0010', 'commercial')
         etude = self._rafraichir(devis)
         self.assertEqual((etude.get('taille') or {}).get('retenue_kwc'),
                          KWC_SANS)
@@ -55,13 +86,38 @@ class CiOptionsDivergentesTests(_BaseDevis):
         self.assertEqual(self._rafraichir(devis), etude)
 
     def test_option_avec_acceptee_l_etude_suit(self):
-        devis = self._devis('DEV-AMOT62-0020', mode='commercial', tension='bt')
+        devis = self._devis_variante('DEV-AMOT62-0020', 'commercial')
         Devis.objects.filter(pk=devis.pk).update(
             option_acceptee='avec_batterie')
         devis.refresh_from_db()
         etude = self._rafraichir(devis)
         self.assertEqual((etude.get('taille') or {}).get('retenue_kwc'),
                          KWC_AVEC)
+
+    def test_lignes_variantees_synthese_commercial_et_industriel(self):
+        # AMOT113 (C-AMOT-VER-012) — kWc, production et taux de la synthèse
+        # = ceux de l'étude rafraîchie du MÊME enregistrement.
+        for mode, ref in (('commercial', 'DEV-AMOT62-0030'),
+                          ('industriel', 'DEV-AMOT62-0031')):
+            devis = self._devis_variante(ref, mode)
+            etude = self._rafraichir(devis)
+            synthese = self._synthese(devis)
+            self.assertEqual(synthese['option_servie'], 'sans_batterie', mode)
+            self.assertEqual(synthese['systeme']['kwc'], KWC_SANS, mode)
+            self.assertEqual(synthese['systeme']['production_kwh_an'],
+                             etude['bilan']['production_kwh'], mode)
+            self.assertAlmostEqual(
+                synthese['energie']['taux_autoconso_pct'],
+                etude['bilan']['taux_autoconso'] * 100, delta=0.1, msg=mode)
+            Devis.objects.filter(pk=devis.pk).update(
+                option_acceptee='avec_batterie')
+            devis.refresh_from_db()
+            etude = self._rafraichir(devis)
+            synthese = self._synthese(devis)
+            self.assertEqual(synthese['systeme']['kwc'], KWC_AVEC, mode)
+            self.assertEqual(etude['taille']['retenue_kwc'], KWC_AVEC, mode)
+            self.assertEqual(synthese['systeme']['production_kwh_an'],
+                             etude['bilan']['production_kwh'], mode)
 
 
 def _data(kwc_servi, kwc_etude):

@@ -1,0 +1,18 @@
+== AMOT114 étape (3) — écran du générateur d'un devis remisé de 10 % avec onduleur et batterie, puis PDF /proposal (AMOT106)
+Pile : idem étape (1). Navigateur Playwright MCP, demo_admin (session ouverte par /login), viewport 1366x900.
+Données : POST /ventes/devis/1119/dupliquer/ -> 201 devis 2505 DEV-202611-0001 (résidentiel, option « avec » : onduleur hybride Deye 5 kW 12 500 HT + batterie Dyness 5 kWh ; option « sans » : onduleur réseau Huawei 5 kW) ; PATCH remise_globale 10.00 -> 200 ; relu : remise 10.00, total_ttc 50 700, regles_calcul 7 (>= 3).
+Écran : /ventes/devis/nouveau?edit=2505, onglet Simulation, aperçu déplié (deux modales d'accueil in-app « Guide d'accueil » / « welcome-moment » fermées par Échap — pas des dialogues natifs).
+  Sans batterie : Économies 9 308 MAD/an | ROI 4.1 ans | Coût 38 100 MAD TTC
+  Avec batterie (★ Recommandé) : Économies 12 670 MAD/an | ROI 4 ans | Coût 50 700 MAD TTC
+PDF : GET /ventes/devis/2505/proposal/ -> 200 application/pdf, 4 pages.
+  p1 « Option 1 Sans batterie 38 100,00 MAD … Rentabilisé en 4,1 ans » ; « Option 2 Avec batterie Recommandé 50 700,00 MAD … Rentabilisé en 4 ans »
+  p2 tableau « Retour sur investissement 4,1 ans / 4 ans »
+  p3 « remplacement onduleur provisionné en année 12 (12 600 MAD option 1, 13 500 MAD option 2) » — 13 500 = 12 500 × 1,20 × 0,90 : provision au prix PAYÉ (remise déduite).
+  /proposal data (jeton interne) : quote.roi_a = 4.0, roi_s = 4.1, discount_pct 10.0.
+Comparaison au dixième : avec 4,0 (écran) = 4,0 (PDF, roi_a) ; sans 4,1 = 4,1 -> PASS.
+NOTE de discrimination : sur ce devis le payback croise zéro avant l'année 12 du remplacement, donc la provision ne le change pas : calc/roi.js::paybackMoteurHoraire(50 700, 12 670, stockage, rendement 0,98) = 4 ans avec provision 13 500 (payée) ET 15 000 (non remisée) ; seul le gain net 25 ans diffère (234 254 contre 232 754), et l'écran du générateur n'affiche pas de gain 25 ans. L'égalité écran = PDF est donc vérifiée ici, la différence de provision ne l'est que par la ligne p3 du PDF (13 500) et par le test d'AMOT106.
+Oracles durs : 0 réponse >= 400, 0 console.error (seul avertissement : « No HydrateFallback element », react-router), 0 pageerror, 0 dialogue natif ; « prix_achat » absent de l'écran et du PDF (l'écran porte l'indicateur interne « MARGE INDICATIVE (INTERNE) … 2 lignes sans prix d'achat », réservé au générateur par CLAUDE.md — jamais dans le PDF).
+Persistance : rechargement de l'écran -> mêmes ROI 4.1 / 4 ; GET devis relu : remise 10.00, total 50 700.
+Nettoyage : DELETE /ventes/devis/2505/ -> 204, GET -> 404.
+Captures : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E3-generateur-roi.png, AMOT114-E3-pdf-p1.png, AMOT114-E3-pdf-p3.png
+verdict : PASS

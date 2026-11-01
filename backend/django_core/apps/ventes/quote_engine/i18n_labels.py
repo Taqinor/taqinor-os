@@ -260,6 +260,10 @@ LIBELLES = {
     'agr_mois_couverture': {'fr': '{mois} : {pct} % de votre besoin',
                             'en': '{mois}: {pct} % of your need',
                             'ar': '{mois}: {pct} % من حاجتكم'},
+    'agr_mois_couverture_agro': {
+        'fr': '{mois} : {pct} % du besoin agronomique estimé',
+        'en': '{mois}: {pct} % of the estimated agronomic need',
+        'ar': '{mois}: {pct} % من الحاجة الزراعية المقدّرة'},
     # AGQ38 — notes client issues des alertes du noyau (liste blanche,
     # agricole/synthese.py::CODES_NOTES_CLIENT) ; valeurs lues, jamais calculées.
     'agr_notes_titre': {'fr': 'Notes de dimensionnement', 'en': 'Sizing notes',
@@ -2366,7 +2370,7 @@ LIBELLES = {
         'en': 'Simulation based on the solar yield of {ville} and the consumption profile provided. Mode: {mode}',
         'ar': 'محاكاة مبنية على المردودية الشمسية لـ{ville} وعلى بيانات الاستهلاك المقدمة. النمط: {mode}'},
     'lg_methode_etude': {
-        'fr': 'Simulation établie et le profil de consommation communiqué. Mode\xa0: {mode}',
+        'fr': 'Simulation établie sur le profil de consommation communiqué. Mode\xa0: {mode}',
         'en': 'Simulation based on the consumption profile provided. Mode: {mode}',
         'ar': 'محاكاة مبنية على بيانات الاستهلاك المقدمة. النمط: {mode}'},
     'lg_racc_tri': {'fr': 'raccordement triphasé', 'en': 'three-phase connection', 'ar': 'ربط ثلاثي الطور'},

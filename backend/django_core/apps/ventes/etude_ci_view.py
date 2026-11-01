@@ -40,6 +40,8 @@ EtudeCiPreviewResponse = inline_serializer('EtudeCiPreviewResponse', {
     'hypotheses': serializers.ListField(child=serializers.JSONField()),
     'methode': serializers.CharField(),
     'version_moteur': serializers.CharField(),
+    # AMOT104 — la feuille de consommation que le moteur a RETENUE (null sans conso).
+    'feuille_consommation_retenue': serializers.CharField(allow_null=True),
     # CORC1 (27/10/2026) — l'écran vendeur sait AVANT le clic si le devis
     # automatique passera, et pourquoi (même refus que le bouton).
     'devis_auto': serializers.JSONField(),
@@ -121,6 +123,7 @@ def etude_ci_preview(request):
         'hypotheses': etude['hypotheses'],
         'methode': etude['methode'],
         'version_moteur': etude['version_moteur'],
+        'feuille_consommation_retenue': etude.get('feuille_consommation_retenue'),
         'devis_auto': devis_auto_possible(etude),
         'option_avec': etude.get(CLE_OPTION_AVEC) or None,
     })

@@ -161,6 +161,13 @@ export function computeCashflowPayback(investment, economieAnnee1, {
 // servie (`etude_horaire` borne le restitué) ; la part batterie du cashflow
 // vaut donc 0 — plus de seconde déduction. Flux année 1 = économie servie.
 // `annuel` et `rendementBatterie` restent acceptés (appelants inchangés).
+// AMOT106 — provision onduleur au prix PAYÉ (remise globale déduite) dès le niveau 3, comme `_cout_onduleur_paye` du PDF.
+export function provisionOnduleurPayee(cout, discountPct = 0, reglesCalcul = 0) {
+  const c = parseFloat(cout) || 0
+  const r = parseFloat(discountPct) || 0
+  return reglesCalcul >= 3 && r > 0 ? c * (1 - r / 100) : c
+}
+
 export function paybackMoteurHoraire(total, ecoAnnuelle, {
   annuel = null, rendementBatterie = null, stockage = false, inverterReplaceCost = null,
 } = {}) {
@@ -196,7 +203,7 @@ export function computeROI({
   lines = [],
   // AGNR36 — catalogue de l'écran : chaque ligne se classe sur désignation + nom du produit lié (`texteClassement`). Absent ⇒ désignation seule.
   // RGEN5 — `reglesCalcul` (`Devis.regles_calcul`) ≥ 3 : économie « avec » nette (absent ⇒ brut, inchangé).
-  produits = [], reglesCalcul = 0,
+  produits = [], reglesCalcul = 0, discountPct = 0,
 }) {
   // RGEN10 — prix du kWh « estimation » = cascade du PDF (barème société → grille du distributeur reçu → tarif société → 1,20).
   const PRICE = prixKwhEstimation({ utility, tranches: bareme?.tranches, consoAnnuelleKwh, kwhPrice }, { grilleNationale: ONEE_TRANCHES, factureMensuelle: monthlyBillFromKwh, defaut: KWH_PRICE, repli: FALLBACK_KWH_PRICE })
@@ -390,8 +397,8 @@ export function computeROI({
   // exactement comme avant.
   const linesSans = lines.filter(l => appartientAuPanierSans(l, produits))
   const linesAvec = lines.filter(l => appartientAuPanierAvec(l, produits))
-  const inverterCostSans = inverterCostFromLines(linesSans, produits)
-  const inverterCostAvec = inverterCostFromLines(linesAvec, produits)
+  const inverterCostSans = provisionOnduleurPayee(inverterCostFromLines(linesSans, produits), discountPct, reglesCalcul)
+  const inverterCostAvec = provisionOnduleurPayee(inverterCostFromLines(linesAvec, produits), discountPct, reglesCalcul)
 
   // M9 — l'option 2 porte-t-elle RÉELLEMENT du stockage ? Dérivé des VRAIES
   // lignes (`batteryKwh` = `batteryKwhFromLines(...)` chez l'appelant), jamais

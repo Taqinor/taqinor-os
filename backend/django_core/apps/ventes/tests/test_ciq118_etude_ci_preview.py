@@ -417,6 +417,32 @@ class LeadTests(_Base):
         self.assertEqual(data['profil_charge']['archetype']['source'],
                          'relevé de compteur 2025')
 
+    def test_feuille_retenue_persistee(self):
+        # AMOT104 (C-AMOT-VER-004) — la feuille que le moteur RETIENT est
+        # servie par l'aperçu ET persistée dans le bloc stocké (dérivée).
+        factures = [{'mois': '2026-%02d' % m, 'montant_ttc': None, 'kwh': 5000}
+                    for m in range(1, 13)]
+        annee = etude_ci._aujourdhui().year - 1
+        registres = [{'pointe_kwh': 1800, 'pleines_kwh': 9000, 'creuses_kwh': 3200}] * 12
+        cas = {
+            'kwh_annuel': dict(consommation={
+                'kwh_mensuels': None, 'kwh_annuel': 60000, 'factures_mad': factures}),
+            'courbe_mesuree': dict(consommation={}, courbe_mesuree={
+                'pas_minutes': 60, 'points': [5.0] * 8760, 'debut': '%d-01-01' % annee,
+                'source': 'export', 'date': '2026-09-30'}),
+            'registres_mt': dict(consommation={'kwh_mensuels': None, 'registres_mt': registres},
+                                 mode='industriel', tension='mt',
+                                 tarif={'contrat': 'mt_general'}, taille_explicite_kwc=50),
+        }
+        for attendue, extra in cas.items():
+            data = self.post(self.corps(**extra))
+            self.assertEqual(data['feuille_consommation_retenue'], attendue, attendue)
+            direct = etude_ci.etudier_ci(self.co, self.corps(**extra))
+            stocke = etude_ci.bloc_etude_ci_stocke(direct)
+            self.assertEqual(stocke['feuille_consommation_retenue'], attendue, attendue)
+        sans = self.post(self.corps(consommation={}))
+        self.assertIsNone(sans['feuille_consommation_retenue'])
+
 
 class BornePoseParDefautAdev90(_Base):
     """ADEV90 (D-ACI-13=a) — une surface déclarée SANS mode de pose borne la

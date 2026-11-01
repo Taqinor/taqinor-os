@@ -7,7 +7,7 @@
 // par `pages/ventes/DevisGeneratorPaybackMoteur.test.jsx`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { paybackMoteurHoraire } from './calc/roi.js'
+import { paybackMoteurHoraire, provisionOnduleurPayee } from './calc/roi.js'
 
 test("cas e2e : 36 873,11 MAD / 4 580 MAD/an ⇒ 8,2 ans (document), pas 8,05", () => {
   const r = paybackMoteurHoraire(36873.11, 4580, { inverterReplaceCost: 12000 })
@@ -40,4 +40,22 @@ test('jamais remboursé sur 25 ans : drapeau, jamais un nombre à afficher', () 
 test('sans coût ou sans économie : rien', () => {
   assert.equal(paybackMoteurHoraire(0, 4580), null)
   assert.equal(paybackMoteurHoraire(36873, 0), null)
+})
+
+// AMOT106 — provision onduleur au prix PAYÉ (remise globale déduite) au niveau 3+,
+// comme `_cout_onduleur_paye` du PDF (sonde C-AMOT-VER-005 : 16,1 ans / gain 58 003).
+test('AMOT106 : provision payée niveau 3 avec remise 10 % = PDF (16,1 ans, 58 003)', () => {
+  const prov = provisionOnduleurPayee(24000, 10, 3)
+  assert.equal(prov, 21600)
+  const r = paybackMoteurHoraire(90000, 7200, {
+    stockage: true, rendementBatterie: 0.9, inverterReplaceCost: prov,
+  })
+  assert.equal(r.paybackYears, 16.1)
+  assert.equal(r.netGain, 58003)
+})
+
+test('AMOT106 : niveau 2 ou sans remise, provision inchangée (24 000)', () => {
+  assert.equal(provisionOnduleurPayee(24000, 10, 2), 24000)
+  assert.equal(provisionOnduleurPayee(24000, 0, 3), 24000)
+  assert.equal(provisionOnduleurPayee(24000, '', 3), 24000)
 })

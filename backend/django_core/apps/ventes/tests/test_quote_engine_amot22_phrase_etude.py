@@ -85,3 +85,6 @@ class PhraseEtudeTests(TestCase):
         ], {'scenario': 'Sans batterie'})
         self.assertNotIn(FIXE, html)
         self.assertNotIn('productible de', html)
+        # AMOT111 — « établie SUR le profil », jamais « établie et le profil ».
+        self.assertIn('Simulation établie sur le profil de consommation communiqué.', html)
+        self.assertNotIn('établie et le profil', html)
