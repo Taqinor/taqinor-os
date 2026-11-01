@@ -85,8 +85,13 @@ def reponse(chemin, proto=None):
 
 xff = rf.get('/', HTTP_X_FORWARDED_FOR='6.6.6.6, 203.0.113.7', REMOTE_ADDR='172.18.0.5')
 rapport = {
+    # fields.W161 sur un TimeField = heure fixe tombée à ±10 s de l'horloge
+    # (CompanyProfile.appel_heure_fin = 20:00 : run CI 41344304551 à 20:00) —
+    # faux positif d'horloge ; un DateField/DateTimeField fixe reste signalé.
     'checks': [[m.id, m.level, m.msg[:300]] for m in
-               checks.run_checks(include_deployment_checks=True)],
+               checks.run_checks(include_deployment_checks=True)
+               if not (m.id == 'fields.W161'
+                       and type(m.obj).__name__ == 'TimeField')],
     'qjr423': [m.id for m in verifier_reglages_production()],
     'prod': environnement_de_production(),
     'debug': settings.DEBUG,
