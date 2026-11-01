@@ -198,3 +198,44 @@ class GardeActionsModifiabiliteTests(TestCase):
         self.assertEqual(ecarts, [], '\n'.join(ecarts))
         # Aucun geste refusé n'a écrit (statut LU, jamais écrit — règle #4).
         self.assertEqual(self._instantane(), avant)
+
+    def test_admin_devis_accepte_en_lecture_seule(self):
+        """ATOT52 — /admin/ lit le verdict de modifiabilité : un superutilisateur
+        ne change ni lignes, ni remise, ni taux, ni statut, ni option d'un devis
+        accepté ; un brouillon reste éditable (champs et inline)."""
+        from django.contrib import admin as dj_admin
+        from django.test import RequestFactory
+
+        from apps.ventes.admin import DevisAdmin, LigneDevisInline
+        root = User.objects.create_user(
+            username='adev42-root', password='x', company=self.company,
+            is_staff=True, is_superuser=True)
+        ligne = self.devis.lignes.get()
+        avant = self._instantane()
+        self.client.force_login(root)
+        url = f'/admin/ventes/devis/{self.devis.pk}/change/'
+        reponse = self.client.post(url, {
+            'remise_globale': '50', 'taux_tva': '10', 'statut': 'brouillon',
+            'option_acceptee': 'sans_batterie',
+            'lignes-TOTAL_FORMS': '1', 'lignes-INITIAL_FORMS': '1',
+            'lignes-MIN_NUM_FORMS': '0', 'lignes-MAX_NUM_FORMS': '1000',
+            'lignes-0-id': str(ligne.pk), 'lignes-0-devis': str(self.devis.pk),
+            'lignes-0-quantite': '99',
+        })
+        self.assertIn(reponse.status_code, (200, 302))
+        self.assertEqual(self._instantane(), avant)
+        # Brouillon : champs et inline restent éditables.
+        brouillon = Devis.objects.create(
+            company=self.company, reference='DEV-ADEV42-0002',
+            client=self.devis.client, created_by=self.user)
+        requete = RequestFactory().get('/admin/')
+        requete.user = root
+        modele = DevisAdmin(Devis, dj_admin.site)
+        self.assertNotIn('remise_globale',
+                         modele.get_readonly_fields(requete, brouillon))
+        self.assertIn('remise_globale',
+                      modele.get_readonly_fields(requete, self.devis))
+        inline = LigneDevisInline(Devis, dj_admin.site)
+        self.assertTrue(inline.has_add_permission(requete, brouillon))
+        self.assertFalse(inline.has_add_permission(requete, self.devis))
+        self.assertFalse(inline.has_delete_permission(requete, self.devis))
