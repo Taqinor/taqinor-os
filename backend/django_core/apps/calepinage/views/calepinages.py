@@ -881,7 +881,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         responses={201: CalepinageVarianteSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='variantes',
             permission_classes=[PeutLireOuEcrireCalepinage],
-            pagination_class=None)
+            pagination_class=None, parser_classes=[JSONParser])
     def variantes(self, request, pk=None):
         """CAL21 — liste (GET) ou crée (POST) une variante, la RETENUE en tête.
 
@@ -912,7 +912,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         responses={200: CalepinageVarianteSerializer, 204: None})
     @action(detail=True, methods=['get', 'patch', 'delete'],
             url_path=r'variantes/(?P<variante_id>[^/.]+)',
-            permission_classes=[PeutLireOuEcrireCalepinage])
+            permission_classes=[PeutLireOuEcrireCalepinage],
+            parser_classes=[JSONParser])  # conception/résultat : objets JSON
     def variante(self, request, pk=None, variante_id=None):
         """CAL21 — lit, édite ou retire UNE variante (jamais ``retenue``).
 
