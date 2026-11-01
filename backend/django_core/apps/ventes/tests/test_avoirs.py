@@ -193,6 +193,50 @@ class TestAvoirs(TestCase):
         self.assertEqual(r2.status_code, 409, r2.data)
         self.assertEqual(Avoir.objects.count(), 1)
 
+    def test_ecart_de_vente_reparti_sous_le_creditable(self):
+        """ATOT43 — écart 3 000 TTC sur 5 × 2 400 : 2 400 + 600, Σ dû 9 000 ;
+        un écart au-delà du créditable n'écrit rien."""
+        import datetime
+
+        from apps.ventes.domain.facturation_ops import AvoirPlafondDepasse
+        from apps.ventes.domain.facturation_vente import (
+            crediter_ecart_de_vente)
+        from testkit.factories import DevisFactory
+        devis = DevisFactory(company=self.company, client=self.client_obj,
+                             statut='accepte')
+        tranches = [Facture.objects.create(
+            company=self.company, reference=f'FAC-ATOT43-{i}', devis=devis,
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), montant_ht=Decimal('2000.00'),
+            montant_tva=Decimal('400.00'), montant_ttc=Decimal('2400.00'),
+            date_emission=datetime.date(2026, 10, 1 + i)) for i in range(5)]
+        paniers = [{'taux': '20', 'base_ht': '2500', 'montant': '500'}]
+        with self.assertRaises(AvoirPlafondDepasse):
+            crediter_ecart_de_vente(devis, Decimal('12000.01'), paniers,
+                                    user=self.admin, motif='Trop')
+        self.assertEqual(Avoir.objects.count(), 0)
+        avoirs = crediter_ecart_de_vente(
+            devis, Decimal('3000'), paniers, user=self.admin,
+            motif='Prix négocié')
+        self.assertEqual(len(avoirs), 2)
+        self.assertEqual([a.facture_id for a in avoirs],
+                         [tranches[4].id, tranches[3].id])
+        for avoir, ttc, ht, tva in zip(
+                avoirs, ('2400.00', '600.00'), ('2000.00', '500.00'),
+                ('400.00', '100.00')):
+            avoir.refresh_from_db()
+            self.assertEqual(avoir.type, Avoir.Type.CORRECTION)
+            self.assertEqual(avoir.total_ttc, Decimal(ttc))
+            self.assertEqual(avoir.total_ht, Decimal(ht))
+            self.assertEqual(avoir.ventilation_tva, [
+                {'taux': '20', 'base_ht': ht, 'montant': tva}])
+        for f in tranches:
+            f.refresh_from_db()
+        self.assertEqual(tranches[4].montant_du, Decimal('0'))
+        self.assertEqual(tranches[3].montant_du, Decimal('1800.00'))
+        self.assertEqual(sum(f.montant_du for f in tranches),
+                         Decimal('9000.00'))
+
     def test_corps_hors_schema_400_jamais_500(self):
         # CI M1 tour 3 (api-fuzz run 38295727060) — corps EXACT du fuzzeur :
         # ``designation`` liste → ``.strip()`` levait AttributeError (500).

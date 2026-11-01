@@ -212,3 +212,56 @@ class FactureAdminVerrousTests(TestCase):
             'admin:facturation_facture_change', args=[self.facture_b.pk]))
         # get_object() passe par get_queryset() → l'objet « n'existe pas ».
         self.assertIn(reponse.status_code, (302, 404))
+
+    # ── ATOT51 — lignes, statut, abandon et BC lus comme l'API ──────────────
+    def test_lignes_statut_et_bc_geles_hors_brouillon(self):
+        from apps.ventes.models import BonCommande, LigneFacture
+        from testkit.factories import DevisFactory
+        LigneFacture.objects.create(
+            facture=self.emise, designation='Panneau', quantite=Decimal('1'),
+            prix_unitaire=Decimal('1000'))
+        request = self._request()
+        inline = next(i for i in self.model_admin.get_inline_instances(
+            request, self.emise) if i.model is LigneFacture)
+        for facture, permis in ((self.emise, False), (self.brouillon, True)):
+            with self.subTest(statut=facture.statut):
+                self.assertEqual(inline.has_add_permission(request, facture),
+                                 permis)
+                self.assertEqual(
+                    inline.has_change_permission(request, facture), permis)
+                self.assertEqual(
+                    inline.has_delete_permission(request, facture), permis)
+        readonly = self.model_admin.get_readonly_fields(request, self.emise)
+        for champ in ('statut', 'abandon_montant', 'abandon_motif'):
+            self.assertIn(champ, readonly)
+        self.assertNotIn('statut', self.model_admin.get_readonly_fields(
+            request, self.brouillon))
+        self._assert_enregistre(self._post_change(
+            self.emise, statut='payee', abandon_montant='50.00'))
+        self.emise.refresh_from_db()
+        self.assertEqual(self.emise.statut, Facture.Statut.EMISE)
+        self.assertEqual(self.emise.abandon_montant or Decimal('0'),
+                         Decimal('0'))
+        self.assertEqual(list(self.emise.lignes.values_list(
+            'quantite', 'prix_unitaire')), [(Decimal('1'), Decimal('1000'))])
+
+        d1 = DevisFactory(company=self.societe_a, client=self.client_a)
+        d2 = DevisFactory(company=self.societe_a, client=self.client_a)
+        livre = BonCommande.objects.create(
+            company=self.societe_a, reference='BC-ATOT51-LIVRE',
+            client=self.client_a, devis=d1,
+            statut=BonCommande.Statut.LIVRE)
+        attente = BonCommande.objects.create(
+            company=self.societe_a, reference='BC-ATOT51-ATTENTE',
+            client=self.client_a, statut=BonCommande.Statut.EN_ATTENTE)
+        bc_admin = django_admin.site._registry[BonCommande]
+        self.assertIn('devis', bc_admin.get_readonly_fields(request, livre))
+        self.assertIn('client', bc_admin.get_readonly_fields(request, livre))
+        self.assertNotIn('devis', bc_admin.get_readonly_fields(
+            request, attente))
+        data = payload_depuis_form(bc_admin, request, livre)
+        data['devis'] = str(d2.pk)
+        self._assert_enregistre(self.http.post(reverse(
+            'admin:ventes_boncommande_change', args=[livre.pk]), data))
+        livre.refresh_from_db()
+        self.assertEqual(livre.devis_id, d1.pk)

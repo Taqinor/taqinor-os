@@ -15,6 +15,24 @@ class LigneFactureInline(admin.TabularInline):
     model = LigneFacture
     extra = 1
 
+    # ATOT51 — lignes d'une facture non brouillon : lecture seule (l'API
+    # refuse création, modification et suppression, ATOT9/ATOT40).
+    @staticmethod
+    def _parent_fige(obj):
+        return obj is not None and obj.statut != Facture.Statut.BROUILLON
+
+    def has_add_permission(self, request, obj=None):
+        return (not self._parent_fige(obj)
+                and super().has_add_permission(request, obj))
+
+    def has_change_permission(self, request, obj=None):
+        return (not self._parent_fige(obj)
+                and super().has_change_permission(request, obj))
+
+    def has_delete_permission(self, request, obj=None):
+        return (not self._parent_fige(obj)
+                and super().has_delete_permission(request, obj))
+
 
 @admin.register(Devis)
 class DevisAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
@@ -32,6 +50,15 @@ class BonCommandeAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     search_fields = ('reference', 'client__nom')
     readonly_fields = ('reference', 'date_creation')
 
+    def get_readonly_fields(self, request, obj=None):
+        """ATOT51 — hors « en attente », `BC_CHAMPS_FIGES` (la liste de la
+        vue, ATOT48) est en lecture seule."""
+        champs = tuple(super().get_readonly_fields(request, obj))
+        if obj is None or obj.statut == BonCommande.Statut.EN_ATTENTE:
+            return champs
+        from .views.bon_commande import BC_CHAMPS_FIGES
+        return champs + tuple(c for c in BC_CHAMPS_FIGES if c not in champs)
+
 
 # ── AUD185 (F3) — l'administration Django n'est plus une porte dérobée ──────
 # Le gel des champs financiers (XFAC24) vivait EXCLUSIVEMENT dans
@@ -47,6 +74,11 @@ SUPPRESSION_FACTURE_POSTEE_INTERDITE = (
 )
 
 
+# ATOT51 — champs d'état posés par les seules actions de l'API.
+ADMIN_FACTURE_ETAT = ('statut', 'abandon_motif', 'abandon_montant',
+                      'abandon_date', 'abandon_auto', 'abandon_par')
+
+
 @admin.register(Facture)
 class FactureAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     list_display = ('reference', 'client', 'statut', 'date_emission', 'date_echeance')
@@ -60,15 +92,14 @@ class FactureAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
 
         Même liste que `FACTURE_CHAMPS_FINANCIERS` (XFAC24), importée depuis le
         ViewSet pour qu'aucune divergence ne s'installe entre les deux
-        surfaces. `statut` reste volontairement modifiable : l'API l'autorise
-        également (bascule PAYEE), et l'adjudication de l'audit a retiré cette
-        branche du périmètre.
+        surfaces. ATOT51 — `statut` et `abandon_*` aussi : ils ne bougent que
+        par les actions dédiées de l'API (paiement, annulation, abandon).
         """
         champs = tuple(super().get_readonly_fields(request, obj))
         if obj is None or obj.statut == Facture.Statut.BROUILLON:
             return champs
         from .views.facture import FACTURE_CHAMPS_FINANCIERS
-        geles = tuple(sorted(FACTURE_CHAMPS_FINANCIERS))
+        geles = tuple(sorted(FACTURE_CHAMPS_FINANCIERS)) + ADMIN_FACTURE_ETAT
         return champs + tuple(c for c in geles if c not in champs)
 
     # ── Garde anti-suppression d'un document posté (voir le message ci-dessus)
