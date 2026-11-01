@@ -309,7 +309,7 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
         try:
             validateur(value)
         except DjangoValidationError as exc:
-            raise serializers.ValidationError({champ: exc.messages}, code=CODE_REFUS_ETAT)
+            raise serializers.ValidationError(exc.messages, code=CODE_REFUS_ETAT)
         return value
 
     def validate_rendement_par_irradiance(self, value):
