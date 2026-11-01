@@ -40,3 +40,20 @@ test('3 tranches : le matériel absorbe toujours l\'écart', () => {
   const r = echeancierAvecAcompte(trois, '20000', 100000, 'residentiel', null)
   assert.deepEqual(r.map(t => [t.unite, t.pct_or_montant]),[['montant', 20000], ['pct', 70], ['pct', 10]])
 })
+
+const SERVI = [
+  { type: 'commande', libelle: 'Commande', unite: 'pct', pct_or_montant: 30, jalon: 'commande',
+    fige_le: '2026-10-02T09:00:00+00:00' },
+  { libelle: 'Livraison', unite: 'pct', pct_or_montant: 60, jalon: 'livraison_materiel', x_inconnue: 1 },
+  { type: 'solde', libelle: 'Solde', unite: 'pct', pct_or_montant: 10 },
+]
+
+test('aller_retour_sans_perte', () => {
+  assert.deepEqual(saisieVersEcheancier(echeancierVersSaisie(SERVI)), SERVI)
+  const saisie = echeancierVersSaisie(SERVI)
+  saisie[1] = { ...saisie[1], valeur: '55' }
+  const edite = saisieVersEcheancier(saisie)
+  assert.deepEqual(edite[1], { ...SERVI[1], pct_or_montant: 55 })
+  assert.equal('type' in edite[1], false)
+  assert.equal(edite[0].fige_le, SERVI[0].fige_le)
+})
