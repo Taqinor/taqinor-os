@@ -3578,7 +3578,7 @@ class PolitiqueRetentionApiTests(RetentionBase):
             'nom': 'Bad', 'duree_conservation_jours': 10,
             'cabinet': self.cab_a.id, 'folder': self.folder_a.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # ENF11 : règle croisée
 
     def test_rejects_cross_company_folder(self):
         cab_b = Cabinet.objects.create(company=self.co_b, nom='Cab B')

@@ -182,9 +182,11 @@ class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
                 })
         # ASEC60 — le nom d'un rôle système est son identité (init_roles le
         # retrouve par nom) : personne, administrateur compris, ne le renomme.
+        # Refus d'ÉTAT (``est_systeme`` enregistré, corps conforme) : 409.
         if self.instance is not None and self.instance.est_systeme \
                 and 'nom' in attrs and attrs['nom'] != self.instance.nom:
-            raise serializers.ValidationError({
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({
                 'nom': ["Le nom d'un rôle système ne se modifie pas."]})
         return attrs
 
