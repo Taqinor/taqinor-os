@@ -46,16 +46,16 @@ beforeEach(() => {
 })
 
 describe('PaiementsPage — AFAC7 : import de relevé (revue, 9 statuts, sélection)', () => {
-  it('nomme les 9 statuts du contrat : aucun statut brut affiché', async () => {
+  it('nomme tous les statuts du contrat : aucun statut brut affiché', async () => {
     const preview = DRY.statuts_ligne.map((statut, i) => ({
       ligne: i + 2, date: '2026-06-20', reference: 'R', libelle: 'L', montant: '10.00',
       statut, facture_id: null, facture_reference: null, candidats: [],
     }))
-    const dialog = await ouvrirApercu({ ...DRY.exemple, preview, revue: [], total_rows: 9 })
+    const dialog = await ouvrirApercu({ ...DRY.exemple, preview, revue: [], total_rows: DRY.statuts_ligne.length })
     for (const brut of DRY.statuts_ligne) {
       expect(within(dialog).queryByText(brut)).toBeNull()
     }
-    expect(within(dialog).getAllByRole('checkbox')).toHaveLength(9)
+    expect(within(dialog).getAllByRole('checkbox')).toHaveLength(DRY.statuts_ligne.length)
   })
 
   it('rend TOUTES les lignes (pagination au-delà de 50)', async () => {
