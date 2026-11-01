@@ -1,6 +1,9 @@
 """SPL115 — ``FicheTechniqueSerializer`` déplacé tel quel depuis
 ``serializers.py`` (move only). Même app : aucun ré-export, les appelants
 importent ce module."""
+import re
+
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -15,7 +18,8 @@ from .erreurs_achats import ConflitEtat
 # ``scripts/check_api_shapes.py`` pour garder les ``choices`` de la fiche
 # (type_fiche, bat_chimie) dans docs/api-contracts.md — son résolveur ne
 # suit pas les ré-exports de façade (deux classes ``FicheTechnique``).
-from .models_fiche_technique import FicheTechnique
+from .models_fiche_technique import (
+    FicheTechnique, valider_courbe_irradiance, valider_courbe_rendement_onduleur)
 from .utils.params import UniciteEn409Mixin
 
 
@@ -51,6 +55,58 @@ class NoticeStructure(serializers.JSONField):
     rien d'autre) : un JSON quelconque était « conforme » puis refusé 400."""
 
 
+# ── api-fuzz stock (vague 8, 3e passe) — chaque champ JSON libre de la fiche
+# publie la forme EXACTE que le serveur accepte (et le serveur refuse 400 tout
+# ce que le schéma refuse) : un corps conforme n'échoue plus que sur un état
+# (doublon de produit → 409, courbe dont l'abscisse recule → 409). ``lim_phases``
+# est déjà publié (``schema_contraintes.PHASES_LIMITEUR``).
+
+#: Bornes publiées d'une valeur de courbe (W/m², %, V) — au-delà, ``float()``
+#: du validateur modèle débordait (500) sur un entier JSON géant.
+BORNE_COURBE = 100000
+_NOMBRE_COURBE = {'type': 'number', 'minimum': 0, 'maximum': BORNE_COURBE}
+
+
+def _schema_courbe(requises, facultatives=()):
+    proprietes = {cle: dict(_NOMBRE_COURBE) for cle in requises}
+    proprietes.update({cle: {**_NOMBRE_COURBE, 'nullable': True}
+                       for cle in facultatives})
+    return {'type': 'array', 'nullable': True, 'minItems': 1, 'items': {
+        'type': 'object', 'additionalProperties': False,
+        'required': list(requises), 'properties': proprietes}}
+
+
+#: (champ, clés requises, clés facultatives, validateur modèle) — UNE source
+#: pour le schéma publié et pour le contrôle de forme du sérialiseur.
+COURBES = {
+    'rendement_par_irradiance': (('w_m2', 'rendement_relatif_pct'), (),
+                                 valider_courbe_irradiance),
+    'ond_courbe_rendement': (('charge_pct', 'rendement_pct'), ('tension_v',),
+                             valider_courbe_rendement_onduleur),
+}
+
+
+@extend_schema_field(_schema_courbe(*COURBES['rendement_par_irradiance'][:2]))
+class CourbeIrradiance(serializers.JSONField):
+    """Courbe ``[{w_m2, rendement_relatif_pct}, …]`` (ou null)."""
+
+
+@extend_schema_field(_schema_courbe(*COURBES['ond_courbe_rendement'][:2]))
+class CourbeRendementOnduleur(serializers.JSONField):
+    """Courbe ``[{charge_pct, rendement_pct, tension_v?}, …]`` (ou null)."""
+
+
+@extend_schema_field({'type': 'array', 'nullable': True,
+                      'items': {'type': 'string', 'pattern': MOTIF_SANS_NUL}})
+class ListeDeTextes(serializers.JSONField):
+    """Liste de textes (compteurs compatibles, marques) ; null = liste vide."""
+
+
+#: Date de notice telle que publiée (``format: date``) : AAAA-MM-JJ strict —
+#: ``date.fromisoformat`` lit aussi ``20260102`` ou ``2026-W01-1``.
+_DATE_ISO = re.compile(r'\d{4}-\d{2}-\d{2}', re.ASCII)
+
+
 class FicheTechniqueSerializer(IdInconnu404Mixin,
                                UniciteEn409Mixin,
                                AttachmentSerializerMixin,
@@ -73,6 +129,20 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
         models.CharField: ChaineStricte,
         models.TextField: ChaineStricte,
     }
+    rendement_par_irradiance = CourbeIrradiance(
+        required=False, allow_null=True,
+        help_text=FicheTechnique._meta.get_field('rendement_par_irradiance').help_text)
+    ond_courbe_rendement = CourbeRendementOnduleur(
+        required=False, allow_null=True,
+        help_text=FicheTechnique._meta.get_field('ond_courbe_rendement').help_text)
+    ond_compteurs_compatibles = ListeDeTextes(
+        required=False, allow_null=True,
+        help_text='Onduleur — modèles de compteur compatibles publiés.')
+    lim_marques = ListeDeTextes(
+        required=False, allow_null=True,
+        help_text="Limiteur — marques d'onduleur compatibles.")
+    log_marques = ListeDeTextes(
+        required=False, allow_null=True, help_text='Logger — marques supervisées.')
     struct_notice = NoticeStructure(
         required=False, allow_null=True,
         help_text='Provenance de la masse : {"document": "", "date": null, '
@@ -174,9 +244,6 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
         # validateur qui normalise. Sans `allow_null`, DRF refusait ce que le
         # code accepte (api-fuzz #997).
         extra_kwargs = {
-            'ond_compteurs_compatibles': {'allow_null': True},
-            'lim_marques': {'allow_null': True},
-            'log_marques': {'allow_null': True},
         }
 
     @extend_schema_field(serializers.URLField(allow_null=True))
@@ -196,12 +263,12 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
     # ── CIQ101 — fiches C&I ──────────────────────────────────────────────
     @staticmethod
     def _liste_de_textes(champ, value):
-        if value in (None, ''):
+        if value is None:
             return []
         if not isinstance(value, list) or not all(
-                isinstance(v, str) for v in value):
+                isinstance(v, str) and chr(0) not in v for v in value):
             raise serializers.ValidationError(
-                f"`{champ}` doit être une liste de textes.")
+                f"`{champ}` doit être une liste de textes (sans caractère nul).")
         return [v.strip() for v in value if v.strip()]
 
     def validate_ond_compteurs_compatibles(self, value):
@@ -213,6 +280,41 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
     def validate_log_marques(self, value):
         return self._liste_de_textes('log_marques', value)
 
+    @staticmethod
+    def _courbe(champ, value):
+        """Forme publiée (``COURBES``) contrôlée ici → 400 ; la seule règle
+        que le schéma ne sait pas dire (abscisse strictement croissante, par
+        série) reste au validateur modèle → refus 409 nommé."""
+        if value is None:
+            return None
+        requises, facultatives, validateur = COURBES[champ]
+
+        def nombre(v):
+            return (isinstance(v, (int, float)) and not isinstance(v, bool)
+                    and 0 <= v <= BORNE_COURBE)
+
+        if not isinstance(value, list) or not value or not all(
+                isinstance(p, dict) and set(requises) <= set(p)
+                and set(p) <= set(requises) | set(facultatives)
+                and all(nombre(p[c]) for c in requises)
+                and all(p.get(c) is None or nombre(p[c]) for c in facultatives)
+                for p in value):
+            cles = ', '.join(list(requises) + [f'{c}?' for c in facultatives])
+            raise serializers.ValidationError(
+                f'`{champ}` : liste non vide de points {{{cles}}} '
+                f'(nombres de 0 à {BORNE_COURBE}), ou null.')
+        try:
+            validateur(value)
+        except DjangoValidationError as exc:
+            raise ConflitEtat({champ: exc.messages})
+        return value
+
+    def validate_rendement_par_irradiance(self, value):
+        return self._courbe('rendement_par_irradiance', value)
+
+    def validate_ond_courbe_rendement(self, value):
+        return self._courbe('ond_courbe_rendement', value)
+
     def validate_lim_phases(self, value):
         if value is not None and value not in (1, 3):
             raise serializers.ValidationError(
@@ -221,7 +323,7 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
 
     def validate_struct_notice(self, value):
         """Normalise en ``{document, date, page}`` ; vide = non publiée."""
-        if value in (None, {}, ''):
+        if value in (None, {}):
             return {'document': '', 'date': None, 'page': None}
         if not isinstance(value, dict):
             raise serializers.ValidationError(
@@ -232,24 +334,24 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             raise serializers.ValidationError(
                 "`struct_notice` n'accepte que `document`, `date` et `page` "
                 f"(reçu en trop : {', '.join(sorted(inconnues))}).")
-        document = value.get('document') or ''
+        document = value.get('document', '')
         if not isinstance(document, str) or chr(0) in document:
             raise serializers.ValidationError(
                 '`struct_notice.document` doit être un texte (sans caractère nul).')
-        date = value.get('date') or None
+        date = value.get('date')
         if date is not None:
             import datetime
             try:
-                datetime.date.fromisoformat(str(date))
+                if not isinstance(date, str) or not _DATE_ISO.fullmatch(date):
+                    raise ValueError(date)
+                datetime.date.fromisoformat(date)
             except ValueError:
                 raise serializers.ValidationError(
                     '`struct_notice.date` doit être une date ISO '
                     '(AAAA-MM-JJ).')
             date = str(date)
         page = value.get('page')
-        if page in ('', None):
-            page = None
-        elif isinstance(page, bool) or not isinstance(page, int):
+        if page is not None and (isinstance(page, bool) or not isinstance(page, int)):
             raise serializers.ValidationError(
                 '`struct_notice.page` doit être un entier.')
         return {'document': document.strip(), 'date': date, 'page': page}
