@@ -98,3 +98,38 @@ class BaselineFeuillesTests(SimpleTestCase):
             "valeur": "bt", "provenance": dict(PROV_CLIENT)}}))
         self.assertNotIn("baseline", s)
         self.assertEqual(_motif_baseline(s), MOTIF_BASELINE_ABSENTE)
+
+    def test_feuille_persistee_fait_foi(self):
+        # AMOT105 (C-AMOT-VER-004) — la feuille RETENUE par le moteur (AMOT104)
+        # prime sur l'ordre de CLES_CONSOMMATION ; sans la clé : comme avant.
+        from apps.ventes.quote_engine.industriel.cover import _nb_factures_reelles
+        entrees = {
+            "kwh_annuel": {"valeur": 240000, "provenance": dict(PROV_CLIENT)},
+            "releve_kwh": {"valeur": list(RELEVES), "provenance": dict(PROV_FACTURE)},
+        }
+        sans_cle = _data(entrees)
+        self.assertEqual(synthese_ci(sans_cle)["baseline"]["source"], "factures")  # avant
+        sans_cle["etude"]["etude_ci"]["feuille_consommation_retenue"] = "kwh_annuel"
+        s = synthese_ci(sans_cle)
+        self.assertEqual(s["baseline"], {"source": "kwh_declares", "estimation": True})
+        # Montants MAD seuls convertis : une estimation, jamais « mois interpolés ».
+        montants = [{"mois": "2026-%02d" % (m + 1), "kwh": None, "montant_ttc": 4000}
+                    for m in range(12)]
+        data = _data({"factures_mad": {"valeur": montants, "provenance": dict(PROV_FACTURE)}})
+        data["etude"]["etude_ci"]["feuille_consommation_retenue"] = "factures_mad"
+        self.assertEqual(synthese_ci(data)["baseline"],
+                         {"source": "kwh_declares", "estimation": True})
+        # Courbe mesurée seule : plus « non résolue ».
+        data = _data({})
+        data["etude"]["etude_ci"]["feuille_consommation_retenue"] = "courbe_mesuree"
+        s = synthese_ci(data)
+        self.assertEqual(s["baseline"], {"source": "courbe_mesuree", "estimation": False})
+        self.assertIsNone(_motif_baseline(s))
+        # Couverture : les factures de CETTE feuille seulement.
+        retenue = _data({
+            "kwh_annuel": {"valeur": 240000, "provenance": dict(PROV_CLIENT)},
+            "factures_mad": {"valeur": list(RELEVES), "mois_interpoles": [1, 2],
+                             "provenance": dict(PROV_FACTURE)}})
+        self.assertEqual(_nb_factures_reelles(retenue), 10)  # sans la clé : ordre historique
+        retenue["etude"]["etude_ci"]["feuille_consommation_retenue"] = "kwh_annuel"
+        self.assertIsNone(_nb_factures_reelles(retenue))

@@ -34,24 +34,13 @@ from .. import logo as _logo
 
 _MONTHS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
 
-#: Clés de consommation du moteur C&I (mêmes que ``ci/synthese``).
-_CLES_CONSO = ("kwh_mensuels", "consommation", "factures_mad")
-
-
 def _nb_factures_reelles(d):
     """Le nombre de mois RELEVÉS d'une baseline interpolée (12 − mois
     interpolés), quand le moteur le dit ; sinon None (jamais deviné)."""
-    etude_ci = (d.get("etude") or {}).get("etude_ci") or {}
-    entrees = etude_ci.get("entrees_resolues") or {}
-    for cle in _CLES_CONSO:
-        entree = entrees.get(cle)
-        if not isinstance(entree, dict):
-            continue
-        interpoles = entree.get("mois_interpoles") or entree.get("interpoles")
-        if isinstance(interpoles, (list, tuple)):
-            return max(0, 12 - len(interpoles))
-        return None
-    return None
+    from ..ci.synthese import entree_consommation_retenue
+    entree = entree_consommation_retenue((d.get("etude") or {}).get("etude_ci"))
+    interpoles = (entree or {}).get("mois_interpoles") or (entree or {}).get("interpoles")
+    return max(0, 12 - len(interpoles)) if isinstance(interpoles, (list, tuple)) else None
 
 
 def _base_argent(argent):
