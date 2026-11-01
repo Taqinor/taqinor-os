@@ -871,8 +871,8 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
     passage moteur — donc, tôt ou tard, deux chiffres pour la même chose.
     Absent (défaut) ⇒ comportement byte-identique à avant.
     """
-    from apps.ventes.dimensionnement import _compter_modules_batterie
-    from apps.ventes.dimensionnement import _lire_composition
+    from apps.ventes.dimensionnement import _compter_modules_batterie, _lire_composition
+    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
     from apps.ventes.etude_horaire import calculer_etude_horaire
     from apps.ventes.horaire.batterie_lignes import (
         puissances_batterie_des_lignes)
@@ -993,9 +993,10 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             # nette du rendement aller-retour : rien à re-déduire au cashflow
             # (``battery_share = 0``), comme ``pricing`` en modèle horaire.
             'part_batterie': (0.0 if variante == 'avec' else None),
+            # AMOT108 — provision remisée au niveau ≥ 3 seulement, comme le PDF (``_cout_onduleur_paye``).
             'cout_onduleur_ttc': _cout_onduleur_ttc(
-                lignes, list(getattr(lignes, 'roles', ()) or ()),
-                contexte.facteur_remise, contexte.devis.taux_tva,
+                lignes, list(getattr(lignes, 'roles', ()) or ()), contexte.facteur_remise
+                if regles_au_moins(contexte.devis, REGLES_CORRIGEES_2710) else 1.0, contexte.devis.taux_tva,
                 (contexte.entrees or {}).get('company')),
             # AMOT30 — le rendement aller-retour que le moteur horaire a
             # RÉELLEMENT appliqué (fiche prouvée), comme ``pricing``.

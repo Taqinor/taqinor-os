@@ -84,6 +84,33 @@ class PaybackPubliableTests(SimpleTestCase):
         self.assertEqual(carte['payback_annees'], payback_publiable(
             90000, 6500)['payback_years'])
 
+    def test_provision_non_remisee_niveau_2(self):
+        """AMOT108 (C-AMOT-VER-007) — devis remisé de 10 %, onduleur 24 000
+        TTC : au niveau 2 la carte chiffre la provision NON remisée que son
+        PDF a imprimée (``_cout_onduleur_paye``) ; au niveau ≥ 3, 21 600.
+        Test-du-test : retirer la garde de niveau ⇒ 21 600 au niveau 2."""
+        from decimal import Decimal
+        from unittest import mock
+
+        from apps.ventes.tests.test_offres_tailles import _contexte_factice
+        nom = 'Onduleur hybride Deye 10kW'
+        lignes = type('Compo', (list,), {})([SimpleNamespace(
+            produit=None, designation=nom, quantite=1, prix_unitaire=20000)])
+        lignes.roles = ['onduleur_hybride']
+        vus = {}
+        for niveau, attendu in ((2, 24000.0), (3, 21600.0)):
+            contexte = _contexte_factice(SimpleNamespace(
+                taux_tva=Decimal('20'), regles_calcul=niveau), remise=0.9)
+            contexte.composer = (lambda nb, avec_batterie=False, cible_kwh=None:
+                                 None if avec_batterie else lignes)
+            with mock.patch('apps.ventes.etude_horaire.calculer_etude_horaire',
+                            return_value=None), \
+                    mock.patch.object(ot, '_payback_publie',
+                                      return_value=None) as publie:
+                ot._carte_moteur(contexte, 10, avec_servable=False)
+            vus[niveau] = publie.call_args.kwargs['cout_onduleur_ttc']
+            self.assertEqual(vus[niveau], attendu)
+
     def test_err_rhor8_carte_recommande_jamais_rembourse_omise(self):
         """ERR-RHOR8-TAILLES-JAMAIS-RENTABILISE (devis 2300) — ``roi_*`` servi
         à la sentinelle 25,0 avec ``roi_*_jamais`` : la carte Recommandé OMET
