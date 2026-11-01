@@ -21,7 +21,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.ventes.models import Devis
 from apps.ventes.tests import test_qjr_echeancier_validation as Q
 from apps.ventes.utils.echeancier import (
-    EcheancierInvalide, montants_tranches, tranches_normalisees,
+    EcheancierIncoherent, EcheancierInvalide, controler_somme_echeancier,
+    montants_tranches, regle_somme_echeancier, tranches_normalisees,
     valider_echeancier,
 )
 
@@ -76,6 +77,39 @@ class SommeEcheancierProprieteTests(SimpleTestCase):
         with self.assertRaises(EcheancierInvalide):
             valider_echeancier(_pcts(70, 60, 10))
         self.assertEqual(len(valider_echeancier(_pcts(50, 30, 20))), 3)
+
+    def test_mixte_reste_et_depassement(self):
+        """AGNR49 — cas de la sonde C-AGNR-VER-006 (17 000 TTC)."""
+        def tr(*specs):
+            return [{'key': k, 'unite': u, 'valeur': v} for k, u, v in specs]
+        jalons = [('livraison_materiel', 'pct', 40),
+                  ('mise_en_service', 'pct', 20),
+                  ('reception_definitive', 'pct', 10)]
+        montants, reste = regle_somme_echeancier(
+            tr(('acompte', 'montant', 6000), *jalons), 17000)
+        self.assertEqual(montants, [Decimal('6000.00'), Decimal('6800.00'),
+                                    Decimal('3400.00')])
+        self.assertEqual(reste, Decimal('800.00'))
+        with self.assertRaises(EcheancierIncoherent) as ctx:
+            regle_somme_echeancier(
+                tr(('acompte', 'montant', 8500), *jalons), 17000)
+        self.assertIn('18 700 MAD', str(ctx.exception))
+        self.assertIn('17 000 MAD', str(ctx.exception))
+        _m, reste = regle_somme_echeancier(
+            tr(('a', 'pct', 30), ('b', 'pct', 60), ('c', 'pct', 10)), 17000)
+        self.assertEqual(reste, Decimal('1700.00'))
+        with self.assertRaisesMessage(
+                EcheancierIncoherent,
+                'Total des tranches : 140 % — il doit faire 100 %.'):
+            regle_somme_echeancier(
+                tr(('a', 'pct', 70), ('b', 'pct', 60), ('c', 'pct', 10)),
+                17000)
+        with self.assertRaises(EcheancierIncoherent):
+            regle_somme_echeancier(
+                tr(('acompte', 'montant', 17000), ('solde', 'pct', 10)), 17000)
+        # Sans TTC (création sans ligne) : seul le contrôle tout-% demeure.
+        controler_somme_echeancier(None, tr(('acompte', 'montant', 8500),
+                                            *jalons))
 
     @settings(max_examples=60, deadline=None)
     @given(st.lists(st.integers(1, 80), min_size=1, max_size=5),
