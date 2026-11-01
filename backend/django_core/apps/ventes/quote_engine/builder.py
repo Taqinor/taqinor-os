@@ -430,29 +430,27 @@ def _marqueurs_cgv_ci(devis, tva_note, langue=None):
     DÉFAUT des jalons (``TRANCHE_LABELS`` → ``cgv_jalon_*``), l'unité et la
     retenue ; un libellé renommé par la société reste tel quel ; français :
     le texte d'hier, octet pour octet."""
+    from apps.ventes.domain.regles_calcul import REGLES_CONSO_PUBLIQUE_0111, regles_au_moins
     from apps.ventes.utils.echeancier import (
-        TRANCHE_LABELS, UNITE_MONTANT, tranches_normalisees,
+        TRANCHE_LABELS, UNITE_MONTANT, jalons_paiement_devis, tranches_normalisees,
     )
-    jalons = []
+    from .clauses_cgv import _pct_txt, jalons_imprimes
+    jalons, tranches = [], []
     try:
         tranches = tranches_normalisees(devis)
+        if regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111):  # AGNR52 : % dérivés des montants imprimés
+            jalons = jalons_imprimes(jalons_paiement_devis(devis), langue)
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un texte (D-ENF22-BLE001)
         logger.warning("builder._marqueurs_cgv_ci : erreur ignorée (mode dégradé)", exc_info=True)
-        tranches = []
-    for t in tranches:
-        try:
-            valeur = format(Decimal(str(t.get("valeur"))).normalize(), "f")
-        except (ArithmeticError, ValueError, TypeError):
-            valeur = str(t.get("valeur"))
+    for t in (tranches if not jalons else ()):
         jalons.append(_i18n.libelle("cgv_jalon_format", langue).format(
             libelle=(_i18n.libelle(f"cgv_jalon_{t.get('key')}", langue)
                      if (t.get("libelle") or t.get("key"))
                      == TRANCHE_LABELS.get(t.get("key"))
                      and f"cgv_jalon_{t.get('key')}" in _i18n.LIBELLES
                      else t.get("libelle") or t.get("key")),
-            valeur=valeur, unite=(_i18n.libelle("cgv_mad_ttc", langue)
-                                  if t.get("unite") == UNITE_MONTANT
-                                  else "%")))
+            valeur=_pct_txt(t.get("valeur")),
+            unite=(_i18n.libelle("cgv_mad_ttc", langue) if t.get("unite") == UNITE_MONTANT else "%")))
     retenue = ""
     rg = getattr(devis, "retenue_garantie", None)
     if isinstance(rg, dict) and rg.get("taux_pct") not in (None, ""):
@@ -509,7 +507,8 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
 
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
-    from apps.ventes.domain.regles_calcul import REGLES_ARRONDI_3010, calcul_corrige, regles_au_moins
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_ARRONDI_3010, REGLES_CONSO_PUBLIQUE_0111, calcul_corrige, regles_au_moins)
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
@@ -2174,6 +2173,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     data.update({cle: True for cle, pose in (
         ("regles_calcul_origine", not _corrige),
         ("regles_avant_2710", _corrige and not _regles_2710(devis)),
+        ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)),  # AGNR52
         ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),

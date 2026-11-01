@@ -80,6 +80,17 @@ class EcartInventaireRegleTests(TestCase):
         r = self.api.post(f'{BASE}/{self.session.id}/valider/')
         self.assertEqual(r.status_code, 200, r.content)
 
+    def test_compte_hors_capacite_refuse_400(self):
+        """api-fuzz (vague 11) — un compté au-delà de ``QUANTITE_MAX`` débordait
+        la colonne entière à la validation (500) : refusé dès la saisie (400)."""
+        from core.champs_stricts import QUANTITE_MAX
+        r = self.api.patch(
+            f'{BASE}/{self.session.id}/',
+            {'lignes': [{'produit': self.produit.id,
+                         'quantite_comptee': QUANTITE_MAX + 1}]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self._saisir(QUANTITE_MAX)
+
     def test_sortie_entre_generation_et_saisie(self):
         """MVT-8 : génération 100, sortie 20 (live 80), compté 80 saisi."""
         self._mouvement(MouvementStock.TypeMouvement.SORTIE, -20)

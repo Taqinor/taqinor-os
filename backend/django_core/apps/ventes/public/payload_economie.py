@@ -133,11 +133,17 @@ def _monthly_consumption(devis) -> list:
     depuis_etude = _monthly_consumption_etude(devis)
     if depuis_etude:
         return depuis_etude
+    from ..domain.regles_calcul import REGLES_CONSO_PUBLIQUE_0111, regles_au_moins
+    from ..quote_engine.montants import arrondi_affichage  # D-ENF-ARRONDI-PDF
+    if regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111):
+        # AGNR54 — repli = LA résolution de l'étude (niveau 8).
+        from .payload_horaire import conso_publique_du_devis
+        conso = conso_publique_du_devis(devis)
+        return [arrondi_affichage(v) for v in conso] if conso else []
     from apps.crm.selectors import lead_bills_for_devis
     bills = lead_bills_for_devis(devis)
     if not bills:
         return []
-    from ..quote_engine.montants import arrondi_affichage  # D-ENF-ARRONDI-PDF
     from ..quote_engine.pricing import kwh_from_bill
     utility = bills.get('distributeur')
     hiver_mad = bills['facture_hiver']

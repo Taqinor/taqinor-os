@@ -349,7 +349,8 @@ class AgregateursChangesTests(unittest.TestCase):
         script = " ".join(s.get("run", "") for s in job["steps"])
         for suite in ("test_margin_guard", "test_sql_security",
                       "test_permissions_agent", "test_jwt_security",
-                      "test_asec42_agent_sql_formes"):
+                      "test_asec42_agent_sql_formes",
+                      "test_config_agent_sql"):
             self.assertIn(suite, script)
         self.assertIn("verifier_sortie_unittest.py", script)
 

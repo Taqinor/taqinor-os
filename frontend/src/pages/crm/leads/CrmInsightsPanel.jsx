@@ -313,7 +313,7 @@ export default function CrmInsightsPanel() {
                     </td>
                     <td className="py-1 pr-2 text-right">{r.lead_count}</td>
                     <td className="py-1 pr-2 text-right">
-                      {r.signed_count} ({r.win_rate} %)
+                      {r.signed_count} ({r.win_rate == null ? '—' : `${r.win_rate} %`})
                     </td>
                     <td className="py-1 text-right">{fmtMAD(r.signed_value_ttc)}</td>
                   </tr>

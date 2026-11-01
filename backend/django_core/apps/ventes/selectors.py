@@ -881,6 +881,16 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
     return qs.order_by('date_envoi', 'id')
 
 
+def taux_acceptation_periode(company, date_debut, date_fin, commercial_id=None):
+    """D-AANA-VER-1 — LE taux d'acceptation : acceptés ÷ devis envoyés dans la
+    période (versions en jeu, révisions remplacées exclues). `None` sans envoi."""
+    envoyes = devis_envoyes_periode(
+        company, date_debut=date_debut, date_fin=date_fin, commercial_id=commercial_id)
+    n, acceptes = envoyes.count(), envoyes.filter(statut='accepte').count()
+    return {'envoyes': n, 'acceptes': acceptes,
+            'taux_pct': round(acceptes / n * 100, 1) if n else None}
+
+
 def devis_envoyes_en_attente(company, since=None):
     """MRY23 — Devis ENVOYÉS et TOUJOURS en attente de réponse depuis ``since``.
 
@@ -975,7 +985,10 @@ def resultats_devis_periode(company, lead_ids, *, depuis, depuis_jour):
     base = Devis.objects.filter(company=company, lead_id__in=lead_ids)
     return {
         'envoyes': base.filter(date_envoi__gte=depuis).count(),
-        'acceptes': base.filter(date_acceptation__gte=depuis_jour).count(),
+        # AANA68 : une vente par révision. ``lead_ids`` peut être une
+        # sous-requête : filtrée en SQL, jamais matérialisée.
+        'acceptes': devis_signes_en_vigueur(company).filter(
+            lead_id__in=lead_ids, date_acceptation__gte=depuis_jour).count(),
     }
 
 

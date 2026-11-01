@@ -440,16 +440,30 @@ def _activites_en_retard(company, membre_ids, today=None):
     ).count()
 
 
-def _devis_compte_comme_signe(devis):
-    """ACRM10 (C-ACRM-006) — LE prédicat local du CA « signé » côté crm :
-    ``statut='accepte'`` ET ``is_active=True`` — aligné sur
-    ``reporting.pipeline._devis_signes`` (AANA19 / D-AANA-5). Réviser un devis
-    accepté laisse la V1 acceptée mais INACTIVE : la compter en plus de la V2
-    doublait le CA (53 500 + 72 500 au lieu de 72 500). Lit l'instance (la
-    relation ``lead.devis`` préchargée) — jamais un import de
+def _devis_en_vigueur_ids(company, lead_ids=None):
+    """AANA75 — l'ensemble (identifiants) des ventes EN VIGUEUR, calculé UNE
+    fois par ``apps.ventes.selectors.devis_signes_en_vigueur`` (VNT22)."""
+    from apps.ventes.selectors import devis_signes_en_vigueur
+    return set(devis_signes_en_vigueur(company, lead_ids=lead_ids)
+               .values_list('pk', flat=True))
+
+
+def _devis_compte_comme_signe(devis, en_vigueur=None):
+    """AANA75 (C-AANA-VER-004) — LE prédicat « signé » côté crm : le devis est
+    une vente EN VIGUEUR de ``apps.ventes.selectors.devis_signes_en_vigueur``
+    (VNT22) — la V1 acceptée d'une révision encore brouillon reste LA vente,
+    comme dans ``reporting.pipeline._devis_signes``. ``en_vigueur`` = ensemble
+    d'identifiants fourni en lot par l'appelant (``_devis_en_vigueur_ids``) ;
+    sans lui, repli EXACT (une requête par devis). Jamais un import de
     ``apps.ventes.models``."""
-    return (getattr(devis, 'statut', None) == 'accepte'
-            and getattr(devis, 'is_active', True))
+    # L'ensemble en vigueur ne contient que des devis ACCEPTÉS (VNT22).
+    if en_vigueur is not None:
+        return devis.pk in en_vigueur
+    from apps.ventes.selectors import devis_signes_en_vigueur
+    lead_id = getattr(devis, 'lead_id', None)
+    return devis_signes_en_vigueur(
+        devis.company_id, lead_ids=None if lead_id is None else [lead_id]
+    ).filter(pk=devis.pk).exists()
 
 
 def _ca_signe_mois(company, membre_ids, today=None):
@@ -470,7 +484,7 @@ def ca_signe_periode(company, membre_ids, debut, fin):
     « Mes équipes » (``_ca_signe_mois``), le réalisé des objectifs ``ca_signe``
     et les défis la partagent — jamais deux chiffres. ``membre_ids`` ``None``
     = toute la société. Seule la version en vigueur compte
-    (``_devis_compte_comme_signe``, ACRM10). Lecture via ``lead.devis`` —
+    (``_devis_compte_comme_signe``, AANA75). Lecture via ``lead.devis`` —
     jamais un import de ``apps.ventes.models``."""
     from decimal import Decimal
 
@@ -479,9 +493,10 @@ def ca_signe_periode(company, membre_ids, debut, fin):
     if membre_ids is not None:
         leads = leads.filter(owner_id__in=membre_ids)
     total = Decimal('0')
+    en_vigueur = _devis_en_vigueur_ids(company)  # AANA75 : une fois
     for lead in leads.prefetch_related('devis'):
         for devis in lead.devis.all():
-            if not _devis_compte_comme_signe(devis):  # ACRM10
+            if not _devis_compte_comme_signe(devis, en_vigueur):  # AANA75
                 continue
             d = devis.date_acceptation
             if d is None or d < debut or d > fin:

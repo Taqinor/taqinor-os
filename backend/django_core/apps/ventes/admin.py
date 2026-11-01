@@ -6,9 +6,25 @@ from core.admin_scoping import CompanyScopedAdminMixin
 from .models import Devis, LigneDevis, BonCommande, Facture, LigneFacture
 
 
+def _devis_verrouille(devis):
+    """ATOT52 — devis non modifiable (accepté, remplacé, refusé…) selon LE
+    verdict de modifiabilité de l'API ; un devis en création n'est jamais verrouillé."""
+    from .domain.modifiabilite import verdict
+    return devis is not None and devis.pk is not None and not verdict(devis)['modifiable']
+
+
 class LigneDevisInline(admin.TabularInline):
     model = LigneDevis
     extra = 1
+
+    def has_add_permission(self, request, obj=None):
+        return super().has_add_permission(request, obj) and not _devis_verrouille(obj)
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and not _devis_verrouille(obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and not _devis_verrouille(obj)
 
 
 class LigneFactureInline(admin.TabularInline):
@@ -23,6 +39,19 @@ class DevisAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     search_fields = ('reference', 'client__nom')
     readonly_fields = ('reference', 'date_creation', 'fichier_pdf')
     inlines = [LigneDevisInline]
+
+    def has_change_permission(self, request, obj=None):
+        # ATOT52 — devis verrouillé : vue en lecture seule, un POST est refusé
+        # (403) AVANT tout enregistrement (même ``updated_at`` ne bouge pas).
+        return super().has_change_permission(request, obj) and not _devis_verrouille(obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        base = tuple(super().get_readonly_fields(request, obj))
+        if not _devis_verrouille(obj):
+            return base
+        meta = self.model._meta
+        return base + tuple(f.name for f in (*meta.fields, *meta.many_to_many)
+                            if f.name not in base)
 
 
 @admin.register(BonCommande)

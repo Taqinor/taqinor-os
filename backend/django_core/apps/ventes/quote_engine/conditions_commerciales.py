@@ -31,6 +31,7 @@ from decimal import Decimal
 
 # L-NIV — LA règle d'agrégation « kit » du niveau standard, partagée avec la
 # charge utile JSON publique et le comparatif de gammes (une seule vérité).
+from apps.ventes.domain.regles_calcul import REGLES_CONSO_PUBLIQUE_0111
 from apps.ventes.utils.anticopie import agreger_lignes_kit
 
 from . import i18n_labels as _i18n
@@ -199,9 +200,9 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
 
 def tranches_echeancier_en_montant(devis):
     """QJR624 — les tranches normalisées de l'échéancier du devis quand il
-    compte 2 ou 3 tranches dont au moins une déclarée en DIRHAMS, sinon
-    ``None`` (le chemin en pourcentages reste celui de QJR623). Lecture
-    tolérante (``tranches_normalisees``) ; jamais une exception."""
+    compte 2 ou 3 tranches (AGNR52 : 2 ou plus) dont au moins une déclarée en
+    DIRHAMS, sinon ``None`` (le chemin en pourcentages reste celui de QJR623).
+    Lecture tolérante (``tranches_normalisees``) ; jamais une exception."""
     if devis is None:
         return None
     try:
@@ -211,8 +212,10 @@ def tranches_echeancier_en_montant(devis):
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
         logger.warning("builder.tranches_echeancier_en_montant : erreur ignorée (mode dégradé)", exc_info=True)
         return None
-    if len(tranches) in (2, 3) and any(
-            t.get("unite") == UNITE_MONTANT for t in tranches):
+    from apps.ventes.domain.regles_calcul import regles_au_moins
+    nombre_ok = (len(tranches) >= 2 if regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)
+                 else len(tranches) in (2, 3))
+    if nombre_ok and any(t.get("unite") == UNITE_MONTANT for t in tranches):
         return tranches
     return None
 

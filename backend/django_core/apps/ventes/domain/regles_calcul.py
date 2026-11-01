@@ -56,8 +56,18 @@ REGLES_ARRONDI_3010 = 6
 #: devis, provision d'onduleur réelle). La migration 0146 laisse à 6 tout devis
 #: non brouillon : il garde les paybacks qu'il a reçus.
 REGLES_ECARTS_3110 = 7
+#: Niveau 8 (contre-visite AGNR du 01/11/2026, C-AGNR-VER-007, AGNR54,
+#: « nouveaux rendus seulement ») : la consommation de TOUS les lecteurs
+#: publics (estimation mois par mois, journée type, couverture batterie,
+#: simulateur, repli de ``monthly_consumption``) est résolue par
+#: ``etude_horaire.profil_conso_du_devis`` (factures écran, kWh déclaré
+#: CAD166, barème société) — la même série que l'étude. La migration 0147
+#: laisse à 7 tout devis non brouillon : il garde la page qu'il a reçue.
+#: Porte aussi AGNR52 : les % d'échéancier imprimés (puce CGV, marqueur C&I,
+#: cases agricoles) sont dérivés des montants servis, branches MAD dès 2 tranches.
+REGLES_CONSO_PUBLIQUE_0111 = 8
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_ECARTS_3110
+REGLES_COURANTES = REGLES_CONSO_PUBLIQUE_0111
 
 
 def regles_au_moins(devis, niveau: int) -> bool:
