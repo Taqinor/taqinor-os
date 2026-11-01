@@ -1,4 +1,4 @@
-import { ecrireStockage } from '../../lib/stockageBestEffort'
+import { ecrireStockage } from '../../lib/stockageBestEffort.js'
 // NTMOB33 — logique PURE du bandeau d'onboarding contextuel TERRAIN.
 // Distinct du guide global FG16 (`OnboardingCoachmarks`, tour de l'app pour
 // l'administrateur) : ici, 3 phrases affichées UNE SEULE FOIS au premier accès

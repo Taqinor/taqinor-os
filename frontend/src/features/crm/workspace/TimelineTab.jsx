@@ -12,7 +12,7 @@ import { TIMELINE_FILTERS, matchesTimelineFilter } from './timelineFiltres'
 import ChatterTimeline from '../../../components/ChatterTimeline'
 import { formatDate } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
-import { ecrireStockage } from '../../../lib/stockageBestEffort'
+import { ecrireStockage } from '../../../lib/stockageBestEffort.js'
 
 // LW20 — Onglet Historique : le chatter devient le fil unique — en-tête
 // multi-touch (points-contact/), filtre par type persisté, notes épinglées en

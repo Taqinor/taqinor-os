@@ -15,7 +15,7 @@ import VisiteTab from './VisiteTab'
 // changement de stage, apps/crm/receivers.py) : portée de l'ancien LeadForm
 // (section « Playbook », origin/main 2026-07-19) vers un onglet du rail.
 import PlaybookChecklistPanel from '../../../pages/crm/leads/PlaybookChecklistPanel'
-import { ecrireStockage } from '../../../lib/stockageBestEffort'
+import { ecrireStockage } from '../../../lib/stockageBestEffort.js'
 
 // LW19 — Rail contexte (zone droite) : `ui/Tabs` (clavier/ARIA gratuits,
 // remplace le rail maison sans ARIA — recon 04 §6) avec 4 onglets — Historique

@@ -66,7 +66,7 @@ import { formatMAD } from '../../../../lib/format'
 import { useColumnPrefs } from '../../../../ui/datatable/useColumnPrefs'
 import { ColumnManager, columnStateReducer, initColumnState } from '../../../../ui/datatable'
 import { useIsMobile } from '../../../../ui/ResponsiveDialog'
-import { ecrireStockage } from '../../../../lib/stockageBestEffort'
+import { ecrireStockage } from '../../../../lib/stockageBestEffort.js'
 
 // LB32 — dédup : hook CANONIQUE `useIsMobile` (ui/ResponsiveDialog, déjà
 // adopté par LeadsPage.jsx/LeadWorkspace) au lieu d'une copie locale

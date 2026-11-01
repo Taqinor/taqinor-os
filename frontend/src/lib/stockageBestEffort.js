@@ -5,7 +5,8 @@
 // Valeurs BRUTES (chaînes) : pour du JSON avec éviction sur quota, voir `lib/safeStorage.js`.
 
 function stockage(type) {
-  return type === 'session' ? globalThis.sessionStorage : globalThis.localStorage
+  const w = globalThis.window ?? globalThis // navigateur : window ; tests node : window simulé ou global
+  return type === 'session' ? w.sessionStorage : w.localStorage
 }
 
 /** `true` si l'écriture a réussi, `false` si le stockage est indisponible ou plein. */

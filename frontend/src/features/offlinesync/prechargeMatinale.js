@@ -1,4 +1,4 @@
-import { ecrireStockage } from '../../lib/stockageBestEffort'
+import { ecrireStockage } from '../../lib/stockageBestEffort.js'
 // NTMOB28 — Pré-chargement PROACTIF de la tournée du jour.
 //
 // Au démarrage matinal de l'app (réseau présent + créneau matinal), on remplit

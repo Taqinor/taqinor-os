@@ -15,7 +15,7 @@
 // exception, jamais un item perdu). VX214 ajoute les 4 kinds d'EXÉCUTION
 // (chantier_assigne/intervention_du_jour/da_approuvee_a_commander/
 // ticket_transfere — jamais une 2ᵉ boîte, ils rejoignent CETTE même liste).
-import { ecrireStockage, retirerStockage } from '../../lib/stockageBestEffort'
+import { ecrireStockage, retirerStockage } from '../../lib/stockageBestEffort.js'
 
 const ALL_KINDS = [
   'activite', 'approbation', 'mention', 'relance', 'lead_chaud', 'devis_expire',

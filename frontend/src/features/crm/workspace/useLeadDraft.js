@@ -9,7 +9,7 @@ import {
 } from './draftCore'
 import { getPrefetched } from './leadPrefetch'
 import fieldLabels from './fieldLabels'
-import { ecrireStockage, retirerStockage } from '../../../lib/stockageBestEffort'
+import { ecrireStockage, retirerStockage } from '../../../lib/stockageBestEffort.js'
 
 // LW9/LW12 — Hook moteur d'état du Lead Workspace : branche les effets (PATCH
 // réseau, debounce d'autosauvegarde, miroir sessionStorage, garde stale,

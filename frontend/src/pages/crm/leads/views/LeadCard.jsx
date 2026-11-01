@@ -50,7 +50,7 @@ import {
 } from '../../../../ui'
 // LB15 — flux « Marquer perdu » partagé (fin de la triplication carte/liste).
 import PerduPopover from '../PerduPopover'
-import { ecrireStockage } from '../../../../lib/stockageBestEffort'
+import { ecrireStockage } from '../../../../lib/stockageBestEffort.js'
 
 // GESTES PURS (retour fondateur 2026-08-01, « make the sweep the most pleasant
 // possible ») — le swipe-to-action VX43/LB17 est RETIRÉ : sa bande ☎/💬 était

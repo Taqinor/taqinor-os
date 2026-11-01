@@ -24,7 +24,7 @@ import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle,
   Form, FormField, FormActions, Input,
 } from '../../../ui'
-import { ecrireStockage } from '../../../lib/stockageBestEffort'
+import { ecrireStockage } from '../../../lib/stockageBestEffort.js'
 
 // Dédoublonnage grossier : on retire les non-chiffres pour comparer.
 function normalizePhone(raw) {
