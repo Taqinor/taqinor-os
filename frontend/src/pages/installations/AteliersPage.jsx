@@ -274,7 +274,7 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
   }, [ordre.id])
   useEffect(() => { load() }, [load])
 
-  // Miroir de controle_qualite_bloque_cloture : tout résultat autre que `pass` bloque.
+  // Règle serveur controle_qualite_bloque_cloture : tout résultat autre que `pass` bloque.
   const qcBloque = controles.some((c) => c.resultat !== 'pass')
 
   const demarrer = () => {
