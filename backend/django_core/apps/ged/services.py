@@ -2266,6 +2266,8 @@ def archiver_legalement(document, *, user, motif='', retain_until=None):
 
     if document.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Document inaccessible.")
+    from . import selectors as _selectors
+    _selectors.assert_acl_niveau(document, user, 'ecriture')
     # ADOC22 — un document en corbeille ne s'archive pas (400 nommé).
     if document.supprime_le is not None:
         raise ValueError(
@@ -2391,6 +2393,8 @@ def placer_legal_hold(document, *, user, motif=''):
         raise PermissionError("Document inaccessible.")
     # WIR174 — défense en profondeur : le gel est un acte de gouvernance.
     _assert_gouvernance_documentaire(user, 'poser une rétention légale')
+    from . import selectors as _selectors
+    _selectors.assert_acl_niveau(document, user, 'ecriture')
     with transaction.atomic():
         # Idempotence : un hold actif existant tient lieu de gel — on ne pose
         # pas de doublon (le document est déjà gelé).
@@ -2432,6 +2436,8 @@ def lever_legal_hold(document, *, user):
     # WIR174 — défense en profondeur : le DÉGEL est l'acte le plus sensible des
     # deux (il rend le document à nouveau supprimable).
     _assert_gouvernance_documentaire(user, 'lever une rétention légale')
+    from . import selectors as _selectors
+    _selectors.assert_acl_niveau(document, user, 'ecriture')
     with transaction.atomic():
         actifs = list(LegalHold.objects
                       .select_for_update()

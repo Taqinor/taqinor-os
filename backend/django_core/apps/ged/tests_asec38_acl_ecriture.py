@@ -107,3 +107,82 @@ class AclEcritureGedTests(TestCase):
         r3 = api.post(f'{BASE}documents/{self.doc.pk}/purger/')
         self.assertEqual(r3.status_code, 204, r3.content)
         self.assertFalse(Document.objects.filter(pk=self.doc.pk).exists())
+
+    # ── ASEC59 — verrou, Office, revue, archivage / legal hold,
+    # planification, délier un lien, partage public : écriture ACL ──────
+    ROUTES_DOC = (
+        'verrouiller', 'deverrouiller', 'office-ouvrir', 'demander-revue',
+        'archiver-legalement', 'placer-legal-hold', 'lever-legal-hold',
+        'planifier',
+    )
+
+    def _neutre(self):
+        return User.objects.create_user(
+            username='asec59_neutre', password='x', company=self.co,
+            role_legacy='responsable')
+
+    def _lien(self):
+        from django.contrib.contenttypes.models import ContentType
+        return DocumentLien.objects.create(
+            company=self.co, document=self.doc,
+            content_type=ContentType.objects.get_for_model(Client),
+            object_id=self.client_crm.pk)
+
+    def test_gestes_sans_acl_403(self):
+        from apps.ged.models import (
+            ArchivageLegal, LegalHold, PlanificationDocument)
+        lien = self._lien()
+        api_l, api_n = _api(self.lecteur), _api(self._neutre())
+        for route in self.ROUTES_DOC:
+            url = f'{BASE}documents/{self.doc.pk}/{route}/'
+            rl = api_l.post(url, {}, format='json')
+            self.assertEqual(rl.status_code, 403, (route, rl.content))
+            rn = api_n.post(url, {}, format='json')
+            self.assertEqual(rn.status_code, 404, (route, rn.content))
+        for api in (api_l, api_n):
+            for url in ('archivages-legaux/', 'legal-holds/',
+                        'planifications/'):
+                r = api.post(f'{BASE}{url}', {
+                    'document': self.doc.pk, 'echeance': '2030-01-01',
+                    'libelle': 'x'}, format='json')
+                self.assertIn(r.status_code, (403, 404), (url, r.content))
+            r = api.delete(f'{BASE}liens/{lien.pk}/')
+            self.assertIn(r.status_code, (403, 404), r.content)
+        self.doc.refresh_from_db()
+        self.assertIsNone(self.doc.locked_by_id)
+        self.assertFalse(LegalHold.objects.filter(document=self.doc).exists())
+        self.assertFalse(
+            ArchivageLegal.objects.filter(document=self.doc).exists())
+        self.assertFalse(
+            PlanificationDocument.objects.filter(document=self.doc).exists())
+        self.assertTrue(DocumentLien.objects.filter(pk=lien.pk).exists())
+
+    def test_services_gouvernance_refusent_lecteur(self):
+        from apps.ged import services
+        for fn in (services.placer_legal_hold, services.lever_legal_hold,
+                   services.archiver_legalement):
+            with self.assertRaises(PermissionError):
+                fn(self.doc, user=self.lecteur)
+
+    def test_lien_supprime_par_ecrivain(self):
+        lien = self._lien()
+        r = _api(self.redacteur).delete(f'{BASE}liens/{lien.pk}/')
+        self.assertEqual(r.status_code, 204, r.content)
+        self.assertFalse(DocumentLien.objects.filter(pk=lien.pk).exists())
+
+    def test_verrou_ecrivain_ok(self):
+        r = _api(self.redacteur).post(
+            f'{BASE}documents/{self.doc.pk}/verrouiller/')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_partage_public_sans_droit_refuse(self):
+        from apps.ged.models import PartageGed
+        corps = {'document': self.doc.pk}
+        rn = _api(self._neutre()).post(f'{BASE}partages/', corps, format='json')
+        self.assertEqual(rn.status_code, 404, rn.content)
+        rl = _api(self.lecteur).post(f'{BASE}partages/', corps, format='json')
+        self.assertEqual(rl.status_code, 403, rl.content)
+        self.assertFalse(PartageGed.objects.filter(document=self.doc).exists())
+        re_ = _api(self.redacteur).post(
+            f'{BASE}partages/', corps, format='json')
+        self.assertEqual(re_.status_code, 201, re_.content)

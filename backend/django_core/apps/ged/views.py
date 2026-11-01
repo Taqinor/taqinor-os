@@ -498,6 +498,10 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         # appellent `check_object_permissions` explicitement ; `fusionner`
         # et `operations_lot` (liste de documents) vérifient chaque cible.
         'restaurer_corbeille', 'purger', 'fusionner', 'operations_lot',
+        # ASEC59 — gestes restés sans ACL d'écriture.
+        'verrouiller', 'deverrouiller', 'office_ouvrir', 'demander_revue',
+        'archiver_legalement', 'placer_legal_hold', 'lever_legal_hold',
+        'planifier',
     })
 
     def check_object_permissions(self, request, obj):
@@ -2513,6 +2517,16 @@ class DocumentLienViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(DocumentLienSerializer(lien).data, status=code)
 
+    def perform_destroy(self, instance):
+        # ASEC59 — délier modifie le document : écriture ACL exigée.
+        from rest_framework.exceptions import PermissionDenied
+        try:
+            selectors.assert_acl_niveau(
+                instance.document, self.request.user, 'ecriture')
+        except PermissionError as exc:
+            raise PermissionDenied(str(exc))
+        super().perform_destroy(instance)
+
 
 @extend_schema_view(list=extend_schema(parameters=oa.Q_TAGS))
 class DocumentTagViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
@@ -2751,9 +2765,29 @@ class PartageGedViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # company + created_by posés côté serveur (jamais du corps). Le document
         # est validé company-scopé dans le serializer (`validate_document`).
+        self._garde_document_ecriture(serializer.validated_data['document'])
         serializer.save(
             company=self.request.user.company,
             created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        document = serializer.validated_data.get(
+            'document', serializer.instance.document)
+        self._garde_document_ecriture(document)
+        serializer.save()
+
+    def _garde_document_ecriture(self, document):
+        # ASEC59 — le document doit être VISIBLE de l'appelant (404, même
+        # texte que le sérialiseur) puis accessible en écriture (403).
+        from rest_framework.exceptions import NotFound, PermissionDenied
+        if not selectors.documents_visible_to_user(
+                self.request.user).filter(pk=document.pk).exists():
+            raise NotFound('Document inconnu.')
+        try:
+            selectors.assert_acl_niveau(
+                document, self.request.user, 'ecriture')
+        except PermissionError as exc:
+            raise PermissionDenied(str(exc))
 
     @extend_schema(request=None, responses=PartageGedSerializer)
     @action(detail=True, methods=['post'], url_path='revoquer')
@@ -4542,6 +4576,15 @@ class PlanificationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelV
         return qs
 
     def perform_create(self, serializer):
+        # ASEC59 — écriture ACL exigée sur le document planifié.
+        from rest_framework.exceptions import PermissionDenied
+        document = serializer.validated_data.get('document')
+        if document is not None:
+            try:
+                selectors.assert_acl_niveau(
+                    document, self.request.user, 'ecriture')
+            except PermissionError as exc:
+                raise PermissionDenied(str(exc))
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
