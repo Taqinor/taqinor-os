@@ -198,3 +198,65 @@ class TestDoubleFacturationDevis(TestCase):
             f'/api/django/ventes/devis/{autre_devis.id}/generer-facture/',
             {}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
+
+    # ── ATOT49 — la porte `facturable` servie sur chaque BC ───────────────
+
+    def _devis_et_bc(self):
+        devis = Devis.objects.create(
+            company=self.company, created_by=self.user,
+            client=self.client_obj, reference=f'DEV-AUD112-{_nxt()}',
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produit, designation='Kit PV',
+            quantite=Decimal('1'), prix_unitaire=Decimal('10000'),
+            taux_tva=Decimal('20'))
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-AUD112-{_nxt()}',
+            devis=devis, client=self.client_obj,
+            statut=BonCommande.Statut.CONFIRME)
+        return devis, bc
+
+    def _facturable(self, bc):
+        resp = self.api.get('/api/django/ventes/bons-commande/')
+        self.assertEqual(resp.status_code, 200)
+        rows = (resp.data['results'] if isinstance(resp.data, dict)
+                else resp.data)
+        return next(r for r in rows if r['id'] == bc.id)['facturable']
+
+    def test_bc_facturable_suit_la_porte(self):
+        import json
+        from pathlib import Path
+
+        _d2, b2 = self._devis_et_bc()
+        # B2 : le devis a déjà une facture COMPLÈTE émise (autre porte).
+        Facture.objects.create(
+            company=self.company, reference=f'FAC-ATOT49-{_nxt()}',
+            devis=b2.devis, client=self.client_obj,
+            statut=Facture.Statut.EMISE,
+            type_facture=Facture.TypeFacture.COMPLETE)
+        # B3 : déjà facturé par ce BC.
+        self.assertEqual(self._facturer_bc().status_code, 201)
+
+        _d1, b1 = self._devis_et_bc()
+        self.assertEqual(self._facturable(b1), {'ok': True, 'motif': ''})
+        f2 = self._facturable(b2)
+        self.assertFalse(f2['ok'])
+        self.assertIn('déjà facturé', f2['motif'])
+        self.assertEqual(
+            self._facturable(self.bc),
+            {'ok': False, 'motif': 'Une facture existe déjà pour ce BC.'})
+        # Le refus de creer-facture porte le MÊME motif.
+        resp = self.api.post(
+            f'/api/django/ventes/bons-commande/{b2.id}/creer-facture/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data['detail'], f2['motif'])
+        # Contrat partagé : mêmes clés que l'exemple du fichier.
+        ech = json.loads((Path(__file__).resolve().parents[2]
+                          / 'facturation' / 'contract_samples'
+                          / 'bon_commande_facturable.json').read_text())
+        for cle in ('exemple', 'exemple_devis_facture',
+                    'exemple_deja_facture'):
+            self.assertEqual(set(ech[cle]['facturable']), {'ok', 'motif'})
+        self.assertEqual(ech['exemple']['facturable'],
+                         self._facturable(b1))

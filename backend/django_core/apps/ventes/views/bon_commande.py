@@ -638,53 +638,14 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def creer_facture(self, request, pk=None):
         bc = self.get_object()
-        # CI #997 fuzz — sans corps, chaque refus ci-dessous vient de l'ÉTAT
-        # du BC (statut, facture existante, vente déjà facturée, société) :
-        # 409, comme les trois autres portes de facturation, plus 400.
-        if bc.statut not in [
-            BonCommande.Statut.CONFIRME, BonCommande.Statut.LIVRE
-        ]:
-            return Response(
-                {'detail': 'Le BC doit être confirmé ou livré.'},
-                status=status.HTTP_409_CONFLICT,
-            )
-        if Facture.objects.filter(bon_commande=bc).exists():
-            return Response(
-                {'detail': 'Une facture existe déjà pour ce BC.'},
-                status=status.HTTP_409_CONFLICT,
-            )
-        # AUD112 — LES DEUX PORTES SE VOIENT ENFIN. La garde ci-dessus ne
-        # regardait que la chaîne BC : un devis déjà facturé par l'échéancier
-        # (acompte/tranche) passait ici sans obstacle, et le client recevait
-        # deux fois la même vente. Prédicat partagé, une seule définition de
-        # « déjà facturé » pour les deux portes.
-        # ATOT2 — LA garde unique des quatre portes (échéancier, complète,
-        # consolidée) : le refus nomme la facture existante.
-        from ..selectors_facturation import (
-            DevisDejaFacture, exiger_devis_facturable,
-        )
-        if bc.devis_id:
-            try:
-                exiger_devis_facturable(bc.devis, 'bc')
-            except DevisDejaFacture as exc:
-                return Response({'detail': exc.motif},
-                                status=status.HTTP_409_CONFLICT)
-        # AUD117 — LA SOCIÉTÉ VIENT DU BON DE COMMANDE, PAS DE L'UTILISATEUR.
-        # La règle maison est « company forcée côté serveur, jamais issue de la
-        # requête » : elle venait bien du serveur, mais du MAUVAIS objet
-        # serveur. Un superutilisateur sans société (`company_qs` laisse
-        # passer TOUS les BC dans ce cas) facturait le BC de la société A et la
-        # facture naissait dans SA société — ou sans société : invisible pour
-        # son propriétaire légitime, et comptée dans le CA d'un autre tenant.
-        # Le BC est déjà scopé par `get_object` : c'est LA source de vérité.
-        if bc.company_id is None:
-            return Response(
-                {'detail': (
-                    'Ce bon de commande n\'appartient à aucune société : '
-                    'impossible d\'émettre une facture.'
-                )},
-                status=status.HTTP_409_CONFLICT,
-            )
+        # ATOT49 — LA porte unique (statut, facture existante, vente déjà
+        # facturée, société) : la MÊME fonction que le champ `facturable`
+        # servi sur chaque BC ; tout refus = 409 avec son motif.
+        from ..selectors_facturation import porte_facture_bc
+        porte = porte_facture_bc(bc)
+        if not porte['ok']:
+            return Response({'detail': porte['motif']},
+                            status=status.HTTP_409_CONFLICT)
         company = bc.company
 
         def _create_facture(ref):
