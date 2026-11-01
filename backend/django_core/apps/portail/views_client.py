@@ -285,13 +285,13 @@ def contenu_diffusable(doc, company):
     (``data`` alors ``None``). Un échec du filigrane dégrade à l'original
     (comportement GED21 historique de « Télécharger », jamais un 500).
     """
+    from apps.ged import services as _ged_services
     from apps.ged.selectors import latest_version
-    from apps.records.storage import fetch_attachment
 
     version = latest_version(doc)
     if version is None:
         return None, None, None, None
-    data, erreur = fetch_attachment(version.file_key)
+    data, erreur = _ged_services._fetch_version_bytes(version)
     if erreur:
         return version, None, None, erreur
     mime = version.mime or 'application/octet-stream'

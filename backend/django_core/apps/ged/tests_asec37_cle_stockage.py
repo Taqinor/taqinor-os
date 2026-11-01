@@ -111,3 +111,54 @@ class CleStockageGedTests(TestCase):
         self.assertTrue(b''.join(r.streaming_content
                                  if hasattr(r, 'streaming_content')
                                  else [r.content]).startswith(b'%PDF'))
+
+    # ── ASEC58 — toute lecture d'octets passe par la garde ─────────────
+    def _version_etrangere(self):
+        return services.add_version(
+            self.doc, file_key=self.cle_b, company=self.a,
+            filename='secret-b.pdf', mime='application/pdf',
+            uploaded_by=self.user)
+
+    def test_zip_lot_cle_etrangere_refuse(self):
+        from unittest import mock
+        self._version_etrangere()
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(PDF, None)) as fetch:
+            r = self.api.post(f'{BASE}documents/operations-lot/', {
+                'documents': [self.doc.pk], 'operation': 'telecharger_zip',
+            }, format='json')
+        for call in fetch.call_args_list:
+            self.assertNotEqual(call.args[0], self.cle_b)
+        self.assertNotIn(b'secret-b.pdf', r.content)
+
+    def test_scinder_cle_etrangere_refuse(self):
+        from unittest import mock
+        version = self._version_etrangere()
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(PDF, None)) as fetch:
+            with self.assertRaises(services.FichierIndisponible):
+                services._octets_version(version)
+        fetch.assert_not_called()
+        self.assertEqual(self.doc.versions.count(), 1)
+
+    def test_portail_contenu_diffusable_cle_etrangere_refuse(self):
+        from unittest import mock
+        from apps.portail.views_client import contenu_diffusable
+        self._version_etrangere()
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(PDF, None)) as fetch:
+            _version, data, _mime, erreur = contenu_diffusable(
+                self.doc, self.a)
+        fetch.assert_not_called()
+        self.assertIsNone(data)
+        self.assertEqual(erreur, 'Fichier indisponible.')
+
+    def test_cle_propre_societe_lisible_par_helper(self):
+        from unittest import mock
+        v = services.add_version(
+            self.doc, file_key=f'attachments/{self.a.pk}/ok.pdf',
+            company=self.a, filename='ok.pdf', mime='application/pdf',
+            uploaded_by=self.user)
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(PDF, None)):
+            self.assertEqual(services._fetch_version_bytes(v), (PDF, None))
