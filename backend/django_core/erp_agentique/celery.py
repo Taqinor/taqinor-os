@@ -319,12 +319,6 @@ app.conf.beat_schedule = {
         'task': 'crm.escalader_rappels_demandes',
         'schedule': crontab(minute='*/30'),
     },
-    # NTCRM14 (ENF15) — alertes de comptes dormants, une fois par jour
-    # (idempotent : jamais deux alertes pour la même dormance).
-    'crm-detecter-comptes-dormants': {
-        'task': 'crm.detecter_comptes_dormants',
-        'schedule': crontab(hour=8, minute=45),
-    },
     # NTCRM6 — snapshot forecast hebdomadaire (glissement visible dans le
     # temps) ; idempotent (upsert par semaine ISO + owner), lundi tôt matin.
     'crm-snapshot-forecast-hebdo': {

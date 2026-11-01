@@ -50,14 +50,14 @@ def detecter_comptes_dormants(seuil_jours=90, now=None, dry_run=False):
     TOUTES les sociétés, chacune isolée. Idempotent : un client déjà alerté
     pour la dormance en cours (`derniere_alerte_dormance` postérieure à sa
     `derniere_activite`) n'est jamais réalerté."""
-    from authentication.selectors import active_companies
+    from authentication.models import Company
 
     from apps.crm import selectors
 
     now = now or timezone.now()
     nb_alertes = 0
 
-    for company in active_companies():
+    for company in Company.objects.all():
         dormants = selectors.comptes_dormants(
             company, seuil_jours=seuil_jours, now=now)
         for entry in dormants:
