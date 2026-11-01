@@ -2366,7 +2366,7 @@ LIBELLES = {
         'en': 'Simulation based on the solar yield of {ville} and the consumption profile provided. Mode: {mode}',
         'ar': 'محاكاة مبنية على المردودية الشمسية لـ{ville} وعلى بيانات الاستهلاك المقدمة. النمط: {mode}'},
     'lg_methode_etude': {
-        'fr': 'Simulation établie et le profil de consommation communiqué. Mode\xa0: {mode}',
+        'fr': 'Simulation établie sur le profil de consommation communiqué. Mode\xa0: {mode}',
         'en': 'Simulation based on the consumption profile provided. Mode: {mode}',
         'ar': 'محاكاة مبنية على بيانات الاستهلاك المقدمة. النمط: {mode}'},
     'lg_racc_tri': {'fr': 'raccordement triphasé', 'en': 'three-phase connection', 'ar': 'ربط ثلاثي الطور'},
