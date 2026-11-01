@@ -26,7 +26,8 @@ version (``services/layout.py``) n'est pas un écrivain de clé : il reste à pa
 from __future__ import annotations
 
 __all__ = ['CLES_SAISIES', 'CLES_SORTIES', 'appliquer_en_memoire',
-           'modifier_resultat']
+           'ecrire_resultat_variante', 'modifier_resultat',
+           'poser_resultat_variante']
 
 #: Les clés de ``resultat`` qui portent une SAISIE (ou un geste) de
 #: l'utilisateur — par opposition aux sorties du moteur, recalculables.
@@ -109,3 +110,32 @@ def modifier_resultat(calepinage, modifier):
     if hasattr(calepinage, 'updated_at'):
         calepinage.updated_at = frais.updated_at
     return valeur
+
+
+def poser_resultat_variante(variante, valeur):
+    """ENF15 (ACAL321) — pose ``valeur`` sur ``variante.resultat`` EN MÉMOIRE.
+
+    ``CalepinageVariante.resultat`` est un sac distinct de ``Calepinage.resultat``
+    mais suit la même règle : l'affectation reste dans le SEUL module écrivain.
+    L'appelant enregistre (``save(update_fields=…)``) avec le reste de ses
+    champs, comme avant."""
+    variante.resultat = valeur
+
+
+def ecrire_resultat_variante(variante, blocs):
+    """ACAL112 — fusionne ``blocs`` dans ``variante.resultat`` relu SOUS
+    VERROU de ligne ; seule la colonne ``resultat`` est écrite (déplacé ici
+    depuis ``simulation`` : ENF15, écrivain unique)."""
+    from django.db import transaction
+
+    from ..models import CalepinageVariante
+
+    with transaction.atomic():
+        fraiche = (CalepinageVariante.objects.select_for_update()
+                   .get(pk=variante.pk))
+        resultat = (dict(fraiche.resultat)
+                    if isinstance(fraiche.resultat, dict) else {})
+        resultat.update(blocs)
+        fraiche.resultat = resultat
+        fraiche.save(update_fields=['resultat', 'updated_at'])
+    variante.resultat = resultat

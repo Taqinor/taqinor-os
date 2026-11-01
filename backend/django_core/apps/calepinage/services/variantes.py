@@ -28,6 +28,7 @@ import copy
 # ferait rougir le contrat import-linter CAL5 (mesuré). On le RÉ-EXPORTE ici :
 # le chemin d'écriture unique reste le service.
 from ..garde_retenue import bascule_autorisee
+from .resultat import poser_resultat_variante
 
 
 # ---------------------------------------------------------------------------
@@ -190,10 +191,10 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...,
             # résultat de la variante est remis à ``None`` (sauf s'il est
             # fourni dans le MÊME appel).
             if resultat is ... and variante.resultat is not None:
-                variante.resultat = None
+                poser_resultat_variante(variante, None)
                 champs.append('resultat')
     if resultat is not ... and resultat != variante.resultat:
-        variante.resultat = resultat
+        poser_resultat_variante(variante, resultat)
         champs.append('resultat')
 
     if champs:
