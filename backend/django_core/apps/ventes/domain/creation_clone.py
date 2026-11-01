@@ -177,6 +177,7 @@ def echeancier_pour_copie(copie):
         _mad, normaliser_tranche, regle_somme_echeancier)
     from apps.ventes.utils.options import option_totaux
     from core.conflit_etat import ConflitEtat
+    from core.money import quantize_mad
     entrees = copie.echeancier
     try:
         tranches = [normaliser_tranche(e, i) for i, e in enumerate(entrees)]
@@ -193,7 +194,7 @@ def echeancier_pour_copie(copie):
                      else ttc * Decimal(str(t['valeur'])) / 100
                      for t in tranches[:-1]), Decimal('0'))
         detail = ("L'acompte et les tranches recopiés dépassent le total de "
-                  f'la copie ({_mad(total.quantize(Decimal("0.01")))} pour '
+                  f'la copie ({_mad(quantize_mad(total))} pour '
                   f'{_mad(ttc)}).')
         raise ConflitEtat({'code': 'somme_invalide', 'detail': detail,
                            'echeancier': detail})
