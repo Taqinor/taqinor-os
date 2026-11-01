@@ -42,7 +42,7 @@ from .etude_chiffrage import (  # noqa: F401
 # n'importe ici que ce qu'il utilise lui-même.
 from .conditions_commerciales import (
     _pct_simple, conditions_et_liens, delais_validite_et_kit, remises_et_puces,
-    repartition_paiement, tranches_echeancier_en_montant, REGLES_ECHEANCIER_DERIVE,
+    repartition_paiement, tranches_echeancier_en_montant,
 )
 # SPL164 — ré-export (noqa: F401) pour d'autres propriétaires :
 # utils/company_settings et tests devis test_qx43_mode_commercial,
@@ -430,7 +430,7 @@ def _marqueurs_cgv_ci(devis, tva_note, langue=None):
     DÉFAUT des jalons (``TRANCHE_LABELS`` → ``cgv_jalon_*``), l'unité et la
     retenue ; un libellé renommé par la société reste tel quel ; français :
     le texte d'hier, octet pour octet."""
-    from apps.ventes.domain.regles_calcul import regles_au_moins
+    from apps.ventes.domain.regles_calcul import REGLES_CONSO_PUBLIQUE_0111, regles_au_moins
     from apps.ventes.utils.echeancier import (
         TRANCHE_LABELS, UNITE_MONTANT, jalons_paiement_devis, tranches_normalisees,
     )
@@ -438,7 +438,7 @@ def _marqueurs_cgv_ci(devis, tva_note, langue=None):
     jalons, tranches = [], []
     try:
         tranches = tranches_normalisees(devis)
-        if regles_au_moins(devis, REGLES_ECHEANCIER_DERIVE):  # AGNR52 : % dérivés des montants imprimés
+        if regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111):  # AGNR52 : % dérivés des montants imprimés
             jalons = jalons_imprimes(jalons_paiement_devis(devis), langue)
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un texte (D-ENF22-BLE001)
         logger.warning("builder._marqueurs_cgv_ci : erreur ignorée (mode dégradé)", exc_info=True)
@@ -507,7 +507,8 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
 
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
-    from apps.ventes.domain.regles_calcul import REGLES_ARRONDI_3010, calcul_corrige, regles_au_moins
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_ARRONDI_3010, REGLES_CONSO_PUBLIQUE_0111, calcul_corrige, regles_au_moins)
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
@@ -2172,7 +2173,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     data.update({cle: True for cle, pose in (
         ("regles_calcul_origine", not _corrige),
         ("regles_avant_2710", _corrige and not _regles_2710(devis)),
-        ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_ECHEANCIER_DERIVE)),  # AGNR52
+        ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)),  # AGNR52
         ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),

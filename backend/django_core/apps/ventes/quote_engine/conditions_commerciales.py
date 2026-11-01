@@ -198,11 +198,6 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
     }
 
 
-#: AGNR52 — LE niveau 8 d'AGNR54 (un seul niveau pour la contre-visite AGNR du
-#: 01/11) : % d'échéancier dérivés des montants, branches MAD dès 2 tranches.
-REGLES_ECHEANCIER_DERIVE = REGLES_CONSO_PUBLIQUE_0111
-
-
 def tranches_echeancier_en_montant(devis):
     """QJR624 — les tranches normalisées de l'échéancier du devis quand il
     compte 2 ou 3 tranches (AGNR52 : 2 ou plus) dont au moins une déclarée en
@@ -218,7 +213,7 @@ def tranches_echeancier_en_montant(devis):
         logger.warning("builder.tranches_echeancier_en_montant : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     from apps.ventes.domain.regles_calcul import regles_au_moins
-    nombre_ok = (len(tranches) >= 2 if regles_au_moins(devis, REGLES_ECHEANCIER_DERIVE)
+    nombre_ok = (len(tranches) >= 2 if regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)
                  else len(tranches) in (2, 3))
     if nombre_ok and any(t.get("unite") == UNITE_MONTANT for t in tranches):
         return tranches
