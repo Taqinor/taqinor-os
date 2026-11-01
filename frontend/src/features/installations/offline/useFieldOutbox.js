@@ -39,7 +39,7 @@ export function useFieldOutbox() {
       setPending((all.length - fail.length) + (mods.length - modFail.length))
       setPendingPhotos(bin.length - binFail.length)
       setFailed([...fail, ...binFail, ...modFail])
-    } catch { /* défensif */ }
+    } catch { console.warn('useFieldOutbox (useFieldOutbox) : défensif') }
   }, [])
 
   const flush = useCallback(async () => {

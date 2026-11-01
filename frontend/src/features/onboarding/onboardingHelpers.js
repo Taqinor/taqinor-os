@@ -50,13 +50,13 @@ export function shouldAutoOpenCoachmarks() {
 export function markCoachmarksSeen() {
   try {
     window.localStorage.setItem(SEEN_KEY, String(COACHMARK_VERSION))
-  } catch { /* stockage indisponible : on ignore silencieusement */ }
+  } catch { console.warn('onboardingHelpers (markCoachmarksSeen) : stockage indisponible : on ignore silencieusement') }
 }
 
 export function resetCoachmarks() {
   try {
     window.localStorage.removeItem(SEEN_KEY)
-  } catch { /* idem */ }
+  } catch { console.warn('onboardingHelpers (resetCoachmarks) : échec ignoré (dégradé)') }
 }
 
 // Re-déclenche le guide (utilisé par le bouton « Revoir le guide » des
@@ -65,7 +65,7 @@ export function replayCoachmarks() {
   resetCoachmarks()
   try {
     window.dispatchEvent(new CustomEvent(REPLAY_EVENT))
-  } catch { /* environnement sans window : sans effet */ }
+  } catch { console.warn('onboardingHelpers (replayCoachmarks) : environnement sans window : sans effet') }
 }
 
 // ── État de la checklist de configuration ───────────────────────────────────
@@ -142,7 +142,7 @@ export function isOnboardingDismissed(companyId) {
 export function dismissOnboarding(companyId) {
   try {
     window.localStorage.setItem(dismissKey(companyId), '1')
-  } catch { /* stockage indisponible : sans effet */ }
+  } catch { console.warn('onboardingHelpers (dismissOnboarding) : stockage indisponible : sans effet') }
 }
 
 // Les deux lectures de comptes (produits, utilisateurs) de l'onboarding — UN

@@ -41,7 +41,7 @@ export default function DormantAccountsWidget({ seuil = 90 }) {
       await crmApi.relancerDormance(id)
       setRelanceDoneIds((prev) => new Set(prev).add(id))
     } catch {
-      // best-effort UI — l'échec reste silencieux, le bouton redevient cliquable
+      console.warn("DormantAccountsWidget (relancer) : best-effort UI — l'échec reste silencieux, le bouton redevient cliquable")
     } finally {
       setRelanceId(null)
     }

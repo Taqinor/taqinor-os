@@ -111,7 +111,7 @@ export default function AppointmentBooker({ leadId }) {
       const res = await crmApi.getAppointmentIcs(apptId)
       pending.deliver(res.data, filenameFromResponse(res, `rdv-${apptId}.ics`))
     } catch {
-      try { pending.win?.close() } catch { /* fenêtre déjà fermée */ }
+      try { pending.win?.close() } catch { console.warn('AppointmentBooker (handleDownloadIcs) : fenêtre déjà fermée') }
       setError("Téléchargement de l'agenda impossible.")
     }
   }

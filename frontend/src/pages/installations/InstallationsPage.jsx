@@ -59,7 +59,7 @@ function readLastSeen() {
 function writeLastSeen(iso) {
   try {
     safeStorage()?.setItem(LAST_SEEN_KEY, iso)
-  } catch { /* stockage indisponible */ }
+  } catch { console.warn('InstallationsPage (writeLastSeen) : stockage indisponible') }
 }
 
 // Paramètres SERVEUR dérivés des filtres « annulés » et « Mes chantiers ».
@@ -122,7 +122,7 @@ function CalendarView({ items, onOpen, onReschedule }) {
   // date_pose_prevue via le parent (qui journalise le changement côté serveur).
   const handleDragStart = (e, item) => {
     setDragId(item.id)
-    try { e.dataTransfer.setData('text/plain', String(item.id)) } catch { /* */ }
+    try { e.dataTransfer.setData('text/plain', String(item.id)) } catch { console.warn('InstallationsPage (handleDragStart) : échec ignoré (dégradé)') }
     e.dataTransfer.effectAllowed = 'move'
   }
   const handleDrop = (cellKey) => {
@@ -248,7 +248,7 @@ export default function InstallationsPage() {
     }
   })
   useEffect(() => {
-    try { localStorage.setItem(VIEW_KEY, view) } catch { /* stockage indisponible */ }
+    try { localStorage.setItem(VIEW_KEY, view) } catch { console.warn('InstallationsPage (InstallationsPage) : stockage indisponible') }
   }, [view])
 
   const [filters, setFilters] = useState(EMPTY_FILTERS)
@@ -347,7 +347,7 @@ export default function InstallationsPage() {
   // l'on peut envoyer à un collègue — /chantiers?id=<pk> rouvre le même chantier.
   const copierLien = async (it) => {
     const url = `${window.location.origin}/chantiers?id=${it.id}`
-    try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+    try { await navigator.clipboard?.writeText(url) } catch { console.warn('InstallationsPage (copierLien) : presse-papier indispo') }
     toast.success('Lien du chantier copié.')
   }
 

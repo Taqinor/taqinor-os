@@ -87,6 +87,6 @@ export function ecrireEtatCalques(utilisateurId, etat, stockage) {
     const store = stockage ?? (typeof localStorage !== 'undefined' ? localStorage : null)
     store?.setItem(cleStockage(utilisateurId), JSON.stringify(etat))
   } catch {
-    /* stockage refusé : l'écran fonctionne quand même, sans mémoire */
+    console.warn("calques (ecrireEtatCalques) : stockage refusé : l'écran fonctionne quand même, sans mémoire")
   }
 }

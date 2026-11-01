@@ -290,7 +290,7 @@ export default function CalepinageNouveau() {
         try {
           await calepinageApi.calepinages.update(id, { responsable: responsableId })
         } catch {
-          // la fiche du calepinage permet de le choisir à nouveau
+          console.warn('CalepinageNouveau (creer) : la fiche du calepinage permet de le choisir à nouveau')
         }
       }
       if (id) navigate(`/calepinage/${id}`)

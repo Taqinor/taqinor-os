@@ -62,7 +62,7 @@ export const logoutUser = createAsyncThunk(
       // Le cookie refresh_token est envoye automatiquement
       await api.post('/auth/logout/', pushEndpoint ? { push_endpoint: pushEndpoint } : {})
     } catch {
-      // Continuer meme si le serveur echoue
+      console.warn('authSlice (auth/logoutUser) : Continuer meme si le serveur echoue')
     }
     dispatch(authSlice.actions.logout())
     // LW45 — purge les caches best-effort de CET onglet (ex. leadPrefetch.js).

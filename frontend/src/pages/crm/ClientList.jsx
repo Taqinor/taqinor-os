@@ -167,10 +167,12 @@ export default function ClientList() {
     })
     if (!ok) return
     let done = 0
+    let echecs = 0
     for (const c of supprimables) {
-      try { await dispatch(deleteClient(c.id)).unwrap(); done += 1 } catch { /* ignoré */ }
+      try { await dispatch(deleteClient(c.id)).unwrap(); done += 1 } catch { echecs += 1 }
     }
     toast.success(`${done} client(s) supprimé(s).`)
+    if (echecs) toast.error(`${echecs} client(s) non supprimé(s).`)
     clear?.()
   }
 
