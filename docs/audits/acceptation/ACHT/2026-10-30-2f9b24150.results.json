@@ -1,0 +1,209 @@
+{
+  "sha": "2f9b24150a",
+  "date": "2026-10-30",
+  "groupe": "ACHT",
+  "verdict": "PASS",
+  "couvre": [
+    "ACHT113",
+    "ACHT114",
+    "ACHT115",
+    "ACHT116",
+    "ACHT117",
+    "ACHT118",
+    "ACHT119",
+    "ACHT120",
+    "ACHT121"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "E1",
+      "taches": [
+        "ACHT113"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "E2",
+      "taches": [
+        "ACHT114"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "E3",
+      "taches": [
+        "ACHT115"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "E4",
+      "taches": [
+        "ACHT117"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "E5",
+      "taches": [
+        "ACHT116"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "E6",
+      "taches": [
+        "ACHT118"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "E7",
+      "taches": [
+        "ACHT119"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "E8",
+      "taches": [
+        "ACHT121"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "E10",
+      "taches": [
+        "ACHT120"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    }
+  ]
+}

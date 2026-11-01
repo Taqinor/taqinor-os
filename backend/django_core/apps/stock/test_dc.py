@@ -536,6 +536,113 @@ class TestDC35FicheTechniqueAPI(DCBase):
             url, {'produit': self.produit.id, 'pmax_wc': '600'}, format='json')
         self.assertEqual(doublon.status_code, 409, doublon.content)
 
+    def test_json_seul_hors_pdf_multipart(self):
+        """api-fuzz stock (vague 8) — création / remplacement en JSON seul
+        (``struct_notice`` n'a pas de forme multipart : 400 « JSON valide »
+        sur un corps conforme) ; le multipart ne sert qu'au PDF du PATCH."""
+        url = '/api/django/stock/fiches-techniques/'
+        resp = self.client.post(
+            url, {'produit': self.produit.id, 'pmax_wc': '550'},
+            format='multipart')
+        self.assertEqual(resp.status_code, 415, resp.content)
+        fiche = self.client.post(
+            url, {'produit': self.produit.id, 'pmax_wc': '550'}, format='json')
+        self.assertEqual(fiche.status_code, 201, fiche.content)
+        detail = f"{url}{fiche.data['id']}/"
+        resp = self.client.put(
+            detail, {'produit': self.produit.id, 'pmax_wc': '600'},
+            format='multipart')
+        self.assertEqual(resp.status_code, 415, resp.content)
+        resp = self.client.patch(detail, {}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.stock import urls as stock_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/stock/', include(stock_urls)),
+        ]).get_schema(request=None, public=True)
+        ops = schema['paths']['/api/django/stock/fiches-techniques/{id}/']
+        self.assertEqual(set(ops['put']['requestBody']['content']), {'application/json'})
+        self.assertEqual(set(ops['patch']['requestBody']['content']),
+                         {'application/json', 'multipart/form-data'})
+        self.assertEqual(set(schema['paths']['/api/django/stock/fiches-techniques/'][
+            'post']['requestBody']['content']), {'application/json'})
+        notice = schema['components']['schemas']['FicheTechniqueRequest'][
+            'properties']['struct_notice']
+        self.assertEqual(notice['type'], 'object')
+        self.assertFalse(notice['additionalProperties'])
+        self.assertEqual(set(notice['properties']), {'document', 'date', 'page'})
+
+    def test_notice_publiee_doublon_seul_409(self):
+        """api-fuzz stock (vague 8, rerun) — ``struct_notice`` conforme à sa
+        forme publiée passe la validation : le doublon de produit reste SEUL
+        et répond 409 ; une clé hors forme reste un 400."""
+        url = '/api/django/stock/fiches-techniques/'
+        notice = {'document': 'Notice', 'date': '2026-01-02', 'page': 3}
+        r = self.client.post(url, {'produit': self.produit.id,
+                                   'struct_notice': notice}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = self.client.post(url, {'produit': self.produit.id,
+                                   'struct_notice': {'document': ''}}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = self.client.post(url, {'produit': self.produit.id,
+                                   'struct_notice': {'x': 1}}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_champs_json_publies_doublon_seul_409(self):
+        """api-fuzz stock (vague 8, 3e passe) — chaque champ JSON libre publie
+        sa forme exacte : une valeur conforme laisse le doublon de produit
+        SEUL (409), une valeur hors forme reste un 400 ; une courbe conforme
+        dont l'abscisse recule est un refus d'état 409."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.stock import urls as stock_urls
+        props = SchemaGenerator(patterns=[
+            path('api/django/stock/', include(stock_urls)),
+        ]).get_schema(request=None, public=True)['components']['schemas'][
+            'FicheTechniqueRequest']['properties']
+        url = '/api/django/stock/fiches-techniques/'
+        r = self.client.post(url, {'produit': self.produit.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        cas = {
+            'ond_compteurs_compatibles': (['DDSU666'], [1]),
+            'lim_marques': (['Huawei'], 'Huawei'),
+            'log_marques': ([], ['a\x00b']),
+            'rendement_par_irradiance': (
+                [{'w_m2': 200, 'rendement_relatif_pct': 97.5}],
+                [{'w_m2': 200, 'rendement_relatif_pct': 97.5, 'x': 1}]),
+            'ond_courbe_rendement': (
+                [{'charge_pct': 30, 'rendement_pct': 97.2, 'tension_v': None}],
+                []),
+        }
+        for champ, (bon, mauvais) in cas.items():
+            with self.subTest(champ=champ):
+                self.assertEqual(props[champ]['type'], 'array')
+                self.assertTrue(props[champ]['nullable'])
+                r = self.client.post(url, {'produit': self.produit.id, champ: bon},
+                                     format='json')
+                self.assertEqual(r.status_code, 409, r.content)
+                r = self.client.post(url, {'produit': self.produit.id, champ: mauvais},
+                                     format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn(champ, r.data)
+        self.assertFalse(props['rendement_par_irradiance']['items']['additionalProperties'])
+        from apps.stock.models import FicheTechnique
+        fiche = FicheTechnique.objects.get(produit=self.produit)
+        r = self.client.patch(f'{url}{fiche.pk}/', {'rendement_par_irradiance': [
+            {'w_m2': 400, 'rendement_relatif_pct': 98},
+            {'w_m2': 200, 'rendement_relatif_pct': 97}]}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('rendement_par_irradiance', r.data)
+        # Doublon de produit ET courbe qui recule (corps conforme) : deux refus
+        # d'état ensemble restent un 409, jamais un 400.
+        r = self.client.post(url, {'produit': self.produit.id, 'ond_courbe_rendement': [
+            {'charge_pct': 0, 'rendement_pct': 0}, {'charge_pct': 0, 'rendement_pct': 0}]},
+            format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
     def test_queryset_scoped_to_company(self):
         from apps.stock.models import FicheTechnique
         other_prod = Produit.objects.create(

@@ -37,6 +37,7 @@ import {
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { erreurComptageSeries, parseSeries } from './numerosSerie.js'
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { AlerteErreurStock, MessagesStock } from './BandeauxListeStock'
 import { AlerteErreur, InfoSucces } from '../../ui/AlertesServeur'
@@ -222,6 +223,12 @@ export function MotifAnnulationModal({ onClose, onConfirm, busy }) {
 
 // ── Modal de création / consultation / réception d'un BCF ──
 // Export nommé : testé directement (QS1 — bouton « PDF (interne) »).
+// ACHT122 — même règle de comptage que l'écran Réceptions (numerosSerie.js).
+function erreurSeriesLigne(l, receptions, tracas) {
+  const qte = Math.min(Math.floor(Number(receptions[l.id])), quantiteRestante(l))
+  return erreurComptageSeries(tracas[l.id]?.series, qte)
+}
+
 export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [confirmer, dialogueConfirmation] = useConfirmation()
   const isNew = !bcf?.id
@@ -264,6 +271,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [membres, setMembres] = useState([])
   // Saisies de réception : { [ligneId]: quantité }
   const [receptions, setReceptions] = useState({})
+  const [tracas, setTracas] = useState({})   // ACHT122 { ligneId: { series, lot } }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [showRetour, setShowRetour] = useState(false)
@@ -558,7 +566,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   }
 
   const recevoir = async () => {
-    const payload = buildReceptionPayload(bcf.lignes, receptions)
+    const trac = Object.fromEntries(Object.entries(tracas).map(([id, t]) => [
+      id, { numeros_serie: parseSeries(t.series), numero_lot: t.lot }]))
+    const ligneEnErreur = bcf.lignes.find((l) => erreurSeriesLigne(l, receptions, tracas))
+    if (ligneEnErreur) { setError(erreurSeriesLigne(ligneEnErreur, receptions, tracas)); return }
+    const payload = buildReceptionPayload(bcf.lignes, receptions, trac)
     if (payload.length === 0) { setError('Saisissez au moins une quantité à recevoir.'); return }
     setBusy(true); setError(null)
     try {
@@ -1000,6 +1012,18 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                                value={receptions[l.id] ?? ''}
                                onChange={(e) => setReceptions((r) => ({ ...r, [l.id]: e.target.value }))} />
                       ) : <span className="text-xs text-muted-foreground">soldée</span>}
+                      {restante > 0 && (
+                        <div className="mt-1 flex flex-col gap-1">
+                          <Textarea rows={2} className="w-48 text-xs" placeholder="N° de série (un par ligne)"
+                                    aria-label={`N° de série — ${l.produit_nom ?? l.designation ?? 'ligne'}`}
+                                    value={tracas[l.id]?.series ?? ''}
+                                    onChange={(e) => setTracas((t) => ({ ...t, [l.id]: { ...t[l.id], series: e.target.value } }))} />
+                          <Input className="h-8 w-48 text-xs" placeholder="N° de lot"
+                                 aria-label={`N° de lot — ${l.produit_nom ?? l.designation ?? 'ligne'}`}
+                                 value={tracas[l.id]?.lot ?? ''}
+                                 onChange={(e) => setTracas((t) => ({ ...t, [l.id]: { ...t[l.id], lot: e.target.value } }))} />
+                        </div>
+                      )}
                     </td>
                   )}
                   {editableLignes && (

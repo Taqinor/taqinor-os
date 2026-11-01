@@ -29,6 +29,7 @@ import {
 } from './offline/fieldOutbox'
 // EZ8 — le badge de synchro est monté LÀ où les photos partent en file.
 import OfflineSyncIndicator from './offline/OfflineSyncIndicator'
+import { useSuppressionAvecMotif } from './InterventionCapturePanels'
 import CameraCapture from '../pwa/CameraCapture'
 import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import {
@@ -618,11 +619,10 @@ export function PhotosPanel({ intervention, onChanged }) {
     e.target.value = ''
     await uploadPhoto(file, pendingSlot.current)
   }
-  const remove = async (photoId) => {
-    setBusy(true)
-    try { await installationsApi.supprimerPhoto(id, photoId); await load(); onChanged?.() }
-    catch { toast.error('Suppression impossible.') } finally { setBusy(false) }
-  }
+  const suppression = useSuppressionAvecMotif(
+    (photoId, motif) => installationsApi.supprimerPhoto(id, photoId, motif),
+    async () => { await load(); onChanged?.() })
+  const remove = suppression.remove
 
   if (loading) return (
     <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
@@ -684,6 +684,8 @@ export function PhotosPanel({ intervention, onChanged }) {
           </div>
         </div>
       )}
+
+      {suppression.champ}
 
       {/* VX227 — lien croisé discret vers les photos avant/pendant/après du
           chantier : les deux magasins de photos (intervention vs chantier) ne
@@ -758,7 +760,7 @@ export function PhotosPanel({ intervention, onChanged }) {
                   : (
                     <div className="flex flex-wrap gap-2">
                       {slot.photos.map((p) => (
-                        <PhotoThumb key={p.id} photo={p} onRemove={remove} busy={busy} />
+                        <PhotoThumb key={p.id} photo={p} onRemove={remove} busy={busy || suppression.busy} />
                       ))}
                     </div>
                   )}
@@ -775,7 +777,7 @@ export function PhotosPanel({ intervention, onChanged }) {
           {(data.autres ?? []).map((slot) => (
             <div key={slot.cle} className="flex flex-wrap gap-2 rounded border border-border p-2">
               {slot.photos.map((p) => (
-                <PhotoThumb key={p.id} photo={p} onRemove={remove} busy={busy} />
+                <PhotoThumb key={p.id} photo={p} onRemove={remove} busy={busy || suppression.busy} />
               ))}
             </div>
           ))}

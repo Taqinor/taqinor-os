@@ -1,0 +1,33 @@
+{
+  "sha": "a81c10d43b",
+  "date": "2026-10-30",
+  "groupe": "ASTK",
+  "verdict": "PASS",
+  "couvre": [
+    "ACHT122"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "E9",
+      "taches": [
+        "ACHT122"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ASTK/2026-10-30-a81c10d43.md"
+    }
+  ]
+}

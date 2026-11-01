@@ -183,3 +183,28 @@ class TestFacturationLigneLibre(Xpur16Base):
         self.assertEqual(len(lignes_facture), 1)
         self.assertEqual(lignes_facture[0].designation, 'Transport Casablanca')
         self.assertEqual(lignes_facture[0].prix_unitaire_ht, Decimal('500'))
+
+    def test_patch_facture_sert_produit_nom_de_la_ligne_libre(self):
+        """api-fuzz stock (vague 8) — PATCH de la facture : chaque ligne garde
+        ``produit_nom`` (``None`` pour une ligne libre) que le schéma déclare
+        obligatoire ; DRF sautait la clé d'un lien nul en mode partiel."""
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-X16-PATCH',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        ligne_libre = bc.lignes.create(
+            produit=None, designation='Transport Rabat', quantite=1,
+            prix_achat_unitaire=Decimal('300'))
+        reception = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-X16-2', bon_commande=bc)
+        reception.lignes.create(
+            ligne_commande=ligne_libre, produit=None, quantite=1)
+        confirm_reception_fournisseur(reception, self.user)
+        facture = facturer_reception(self.company, self.user, reception)
+        r = self.api.patch(
+            f'/api/django/stock/factures-fournisseur/{facture.pk}/',
+            {'note': 'relue'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(len(r.data['lignes']), 1)
+        self.assertIn('produit_nom', r.data['lignes'][0])
+        self.assertIsNone(r.data['lignes'][0]['produit_nom'])

@@ -1,0 +1,27 @@
+ACHT123 — rejeu des 3 étapes en échec (E1-DLG, TECH, AUDIT), orchestrateur, pile locale http://localhost, 2026-11-01 ~03:57-04:05 UTC
+Backend monté sur f785f3109 (tête dev-all-c9d8cc-8, contient les correctifs), front reconstruit. Playwright MCP, un onglet.
+Mots de passe : demo_admin (helpers e2e) ; acht123.tech réinitialisé localement en mémoire seulement (jamais écrit).
+
+[E1-DLG] PASS — demo_admin, /chantiers?id=1008 (Réceptionné, « ACHT123 rejeu ») › Jalons & gates › date 2026-10-08, production et tension VIDES
+  › « Enregistrer la mise en service » : un role=alertdialog APPLICATIF « Champs non renseignés — Champs non renseignés : test de
+  production et tension. Enregistrer quand même la mise en service ? » (boutons Annuler / Enregistrer quand même). Aucun dialogue natif :
+  window.confirm remplacé par un compteur → 0 appel ; aucun évènement « dialog » Playwright.
+  Annuler : aucun POST …/mise-en-service/ (réseau) ; relecture ORM statut=receptionne date_mise_en_service=None.
+  Rejeu, « Enregistrer quand même » : POST /installations/chantiers/1008/mise-en-service/ 200 ; relecture ORM statut=mise_en_service
+  date_mise_en_service=2026-10-08. Console : 0 erreur.
+  Observation (non bloquante, hors oracle) : Annuler et Enregistrer referment aussi le panneau chantier (URL → /chantiers) — la date
+  saisie est perdue après Annuler.
+
+[TECH] PASS — acht123.tech (rôle Technicien, société 2) : /chantiers (liste) puis, chantier 1007 « ACHT123-REJEU-I » posé à ce technicien
+  (technicien_responsable, ORM) : ouverture du détail + onglet Jalons & gates. performance.getEntriesByType('resource') : AUCUNE requête
+  crm/assignable-users/ (liste + détail) ; aucun 4xx dans le réseau ; console : 0 erreur (1 avertissement préexistant).
+  Pré-condition : fenêtres d'accueil (Guide d'accueil, « Bienvenue chez Taqinor ») fermées au premier chargement (S4 connu).
+
+[AUDIT] PASS (oracle redéfini par la consigne : aucune violation sur les objets du rejeu) —
+  manage.py audit_coherence --company taqinor-demo --no-persist --json (sortie : ACHT123-audit_coherence-rejeu2.json) :
+  154 violations PRÉEXISTANTES (62 ETU_I5_FACTURE_ACTUELLE, 47 CAL_KWC_DEVIS_VS_CALEPINAGE, 17 CAL_MODULES…, 7 CAL_EMPREINTE…,
+  5 CRM_SIGNE_SANS_DEVIS_ACCEPTE, 4 DOC_ACCEPTE_SANS_DATE, 4 DOC_RENDU_SANS_MARGE, 3 ETU_I7…, 2 SEC_COMPTE_DEMO_ACTIF, 1 DOC_VALIDITE…,
+  1 DOC_ECHEANCE…, 1 FACTURE_STATUT_RESTE_INCOHERENT) ; types d'objet : devis, facture, lead, utilisateur.
+  Filtre sur les objets du rejeu (devis 2498/2499, lead 3791, toute occurrence « ACHT123 ») dans `violations` : 0.
+  rule_errors QUOTE_BUILD sur DEV-ACHT123-REJEU-1/-7 (« aucune option ne contient d'onduleur ») = fixtures sans onduleur, pas des violations
+  (comme les 12 autres devis démo listés).

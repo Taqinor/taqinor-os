@@ -139,6 +139,19 @@ class CreerRevalorisationTests(Xstk14Base):
             format='json')
         self.assertEqual(resp.status_code, 404, resp.content)
 
+    def test_endpoint_delta_hors_capacite_409_jamais_500(self):
+        """api-fuzz stock (vague 8) — coût conforme (≤ 99 999 999,99) × stock
+        enregistré > numeric(14,2) de ``delta_valeur`` : refus d'état 409
+        nommé, rien d'écrit (était un 500 « numeric field overflow »)."""
+        Produit.objects.filter(pk=self.produit.pk).update(quantite_stock=20000)
+        resp = self.api.post(
+            '/api/django/stock/revalorisations-stock/',
+            {'produit': self.produit.pk, 'nouveau_cout': 99999998.99,
+             'motif': '0'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('hors capacité', str(resp.data))
+        self.assertFalse(RevalorisationStock.objects.exists())
+
 
 class ValiderRevalorisationTests(Xstk14Base):
     def test_validation_verrouille_le_document(self):

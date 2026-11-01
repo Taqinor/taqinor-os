@@ -32,8 +32,13 @@ class StatutConfigSerializer(TypageStrictParametres, serializers.ModelSerializer
             self.instance, 'domaine', None)
         cle = attrs.get('cle') or getattr(self.instance, 'cle', None)
         if domaine and cle and cle not in default_keys(domaine):
-            raise serializers.ValidationError(
-                {'cle': "Cette clé n'est pas un statut connu de ce domaine."})
+            erreur = {'cle': "Cette clé n'est pas un statut connu de ce domaine."}
+            # api-fuzz (vague 8) : couple domaine/clé du CORPS = règle publiée
+            # (CLE_DU_DOMAINE_CORPS / _PATCH, 400) ; l'un des deux relu sur la
+            # surcharge = refus d'état (409).
+            if self.instance is None or {'domaine', 'cle'} <= set(attrs):
+                raise serializers.ValidationError(erreur)
+            raise ConflitEtat(erreur)
         # La clé d'une surcharge existante ne peut pas être réaffectée (elle
         # référence la machine à états).
         if self.instance is not None:

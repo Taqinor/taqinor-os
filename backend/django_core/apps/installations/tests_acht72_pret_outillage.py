@@ -113,6 +113,7 @@ class PretOutillageTests(TestCase):
         self.assertEqual(self._statut('E'), (S.DISPONIBLE, self.van.id))
         statut_c, emplacement_c = self._statut('C')
         self.assertEqual(statut_c, S.EN_INTERVENTION)
+        self.assertIsNone(emplacement_c)  # ACHT121
 
     def test_double_pret_bloque(self):
         self._scenario()
@@ -136,3 +137,38 @@ class PretOutillageTests(TestCase):
         self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Retour déjà confirmé', str(r.data))
         self.assertEqual({n: self._statut(n) for n in self.outils}, avant)
+
+    def test_sortie_vide_emplacement_retour_restaure(self):
+        """ACHT121 (C-ACHT-VER-012) — la sortie vide l'emplacement et le
+        mémorise sur la ligne de retour ; décocher ou rendre le restaure."""
+        for nom in ('C', 'E'):
+            self.assertEqual(self._cocher(self.iv1, nom).status_code, 200)
+        self.assertEqual(self._statut('C'), (S.EN_INTERVENTION, None))
+        self.assertEqual(self._statut('E'), (S.EN_INTERVENTION, None))
+        self.assertEqual(self._statut('D'), (S.DISPONIBLE, self.depot.id))
+        self.assertEqual(self._cocher(self.iv1, 'E', False).status_code, 200)
+        self.assertEqual(self._statut('E'), (S.DISPONIBLE, self.depot.id))
+        self.assertEqual(self._cocher(self.iv1, 'E').status_code, 200)
+        self.assertEqual(self._statut('E'), (S.EN_INTERVENTION, None))
+        r = self.api.get(f'{BASE}/{self.iv1.id}/tool-return/')
+        self.assertEqual(r.status_code, 200)
+        lignes = {tr['outil']: tr for tr in r.data}
+        self.assertEqual(len(r.data), 2)
+        self.assertEqual(lignes[self.outils['C'].id]['emplacement_retour'],
+                         self.depot.id)
+        self.api.post(f'{BASE}/{self.iv1.id}/cocher-tool-return/', {
+            'ligne': lignes[self.outils['E'].id]['id'], 'rendu': True,
+            'emplacement': self.van.id}, format='json')
+        self.api.post(f'{BASE}/{self.iv1.id}/confirmer-tool-return/', {},
+                      format='json')
+        self.assertEqual(self._statut('E'), (S.DISPONIBLE, self.van.id))
+        self.assertEqual(self._statut('C'), (S.EN_INTERVENTION, None))
+
+    def test_rendu_sans_emplacement_choisi_revient_au_depot(self):
+        self.assertEqual(self._cocher(self.iv1, 'C').status_code, 200)
+        r = self.api.get(f'{BASE}/{self.iv1.id}/tool-return/')
+        self.api.post(f'{BASE}/{self.iv1.id}/cocher-tool-return/', {
+            'ligne': r.data[0]['id'], 'rendu': True}, format='json')
+        self.api.post(f'{BASE}/{self.iv1.id}/confirmer-tool-return/', {},
+                      format='json')
+        self.assertEqual(self._statut('C'), (S.DISPONIBLE, self.depot.id))

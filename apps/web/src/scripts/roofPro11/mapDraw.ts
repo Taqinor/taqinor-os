@@ -45,6 +45,7 @@ import {
 } from './clavier';
 import { DEG2M, DEG2RAD, VERTEX_GRAB_PX } from './constants';
 import { monterAtelierPose } from './poseSurfaces'; // CALX123
+import { suivreAlt } from './altTracker';
 
 /**
  * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
@@ -671,19 +672,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   }
 
   /** Alt maintenue : suspend l'aide le temps d'un point (jamais mémorisé). */
-  let altEnfoncee = false;
-  if (typeof document.addEventListener === 'function') {
-    document.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = true;
-    });
-    document.addEventListener('keyup', (e) => {
-      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = false;
-    });
-    // Le focus peut partir pendant qu'Alt est enfoncée (Alt+Tab) : on ne garde jamais l'état.
-    window.addEventListener?.('blur', () => {
-      altEnfoncee = false;
-    });
-  }
+  const altEtat = suivreAlt();
   angleChipEl?.addEventListener('click', () => {
     const on = angleChipEl.getAttribute('aria-pressed') === 'true';
     angleChipEl.setAttribute('aria-pressed', String(!on));
@@ -697,7 +686,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   /** Pas d'angle ACTIF (°), ou 0 quand la puce est éteinte / Alt maintenue — 0 = aide neutre. */
   function pasAngleDeg(): number {
     if (angleChipEl?.getAttribute('aria-pressed') !== 'true') return 0;
-    if (altEnfoncee) return 0;
+    if (altEtat.enfoncee) return 0;
     const v = Number.parseFloat(anglePasEl?.value ?? '');
     return Number.isFinite(v) && v > 0 ? v : 0;
   }
@@ -748,7 +737,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   /** Tolérance d'aimantation ACTIVE (m), ou 0 quand la puce est éteinte / Alt maintenue. */
   function toleranceAimantM(lat: number): number {
     if (aimantChipEl?.getAttribute('aria-pressed') !== 'true') return 0;
-    if (altEnfoncee) return 0;
+    if (altEtat.enfoncee) return 0;
     const saisie = Number.parseFloat((aimantTolEl?.value ?? '').replace(/\s/g, '').replace(',', '.'));
     if (Number.isFinite(saisie) && saisie > 0) return saisie;
     // Repli : le rayon de saisie d'un sommet, lu en mètres au zoom courant.

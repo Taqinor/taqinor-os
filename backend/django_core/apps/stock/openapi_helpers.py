@@ -259,17 +259,26 @@ class _DecimalSoupleStockBorne(OpenApiSerializerFieldExtension):
 class _EmplacementTiersNomme(OpenApiSerializerExtension):
     """ERR fuzz (PUT/POST emplacements) — règle croisée PUBLIÉE au schéma de
     requête : un emplacement non interne nomme son tiers (``tiers_nom`` non
-    blanc), sinon 400 « Nommez le tiers… » sur un corps jugé conforme. Le
-    PATCH (partiel, type relu sur l'instance) garde le schéma brut."""
+    blanc), sinon 400 « Nommez le tiers… » sur un corps jugé conforme. Au
+    PATCH (api-fuzz stock, vague 8), seule la règle INTERNE au corps est
+    publiée (type de tiers envoyé ⇒ nom non blanc s'il est envoyé) ; ce qui
+    se relit sur l'instance est un refus d'état 409."""
     target_class = 'apps.stock.serializers.EmplacementStockSerializer'
 
     def map_serializer(self, auto_schema, direction):
         schema = auto_schema._map_serializer(self.target, direction, bypass_extensions=True)
-        if direction != 'request' or auto_schema.method == 'PATCH':
+        if direction != 'request':
             return schema
         from .models import EmplacementStock
         interne = EmplacementStock.TypeProprietaire.INTERNE
         tiers = [v for v in EmplacementStock.TypeProprietaire.values if v != interne]
+        if auto_schema.method == 'PATCH':
+            return {**schema, 'anyOf': [
+                {'properties': {'type_proprietaire': {'anyOf': [{'enum': [interne]}]}}},
+                {'properties': {'type_proprietaire': {'anyOf': [{'enum': tiers}]},
+                                'tiers_nom': {'type': 'string', 'pattern': r'\S'}},
+                 'required': ['type_proprietaire']},
+            ]}
         # Enums ENVELOPPÉS (``anyOf`` de propriété) : le post-traitement des
         # enums de drf-spectacular ne les voit pas — sinon il renomme le
         # composant ``TypeProprietaireEnum`` (collision de jeux de valeurs).

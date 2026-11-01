@@ -746,8 +746,15 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 qte = convertir_en_unites_stock(qte, conditionnement)
             # Plafonnement au reste dû — jamais plus que commandé (idempotence).
             qte = min(qte, ligne.quantite_restante)
+            series = rec.get('numeros_serie') or []
+            if len(series) > max(qte, 0):  # ACHT122 : jamais d'ajustement silencieux
+                return Response(
+                    {'detail': (
+                        f'{len(series)} n° de série saisis pour {max(qte, 0)} '
+                        f'reçu(s) : retirez-en {len(series) - max(qte, 0)}.')},
+                    status=status.HTTP_400_BAD_REQUEST)
             if qte > 0:
-                plan.append((ligne, qte))
+                plan.append((ligne, qte, series, (rec.get('numero_lot') or '').strip() or None))
 
         if not plan:
             return Response(
@@ -771,11 +778,12 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
                 reception = create_with_reference(
                     ReceptionFournisseur, 'REC', bc.company, _creer)
-                for ligne, qte in plan:
+                for ligne, qte, series, lot in plan:
                     reception.lignes.create(
                         ligne_commande=ligne,
                         produit=ligne.produit if ligne.produit_id else None,
-                        quantite=qte)
+                        quantite=qte, numeros_serie=series or None,
+                        numero_lot=lot)
                 # ASTK62 — survivant UNIQUE (XPUR16 lignes libres, XPUR23
                 # destination, YPROC* GR/IR + réservation, NTWMS34 qualité,
                 # XSTK6 lots) : la confirmation de réception.

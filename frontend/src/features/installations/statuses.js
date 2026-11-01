@@ -85,6 +85,15 @@ export function canMoveStatus(from, to) {
   return Math.abs(a - b) <= 1
 }
 
+// ACHT113 — « Enregistrer la mise en service » : offert dès « Installé » (rang
+// canonique ≥ Installé, y compris Réceptionné et le hérité mise_en_service),
+// jamais sur un chantier clôturé ni annulé — reflet de la règle du serveur.
+export function canRecordCommissioning(statut, annule = false) {
+  if (annule) return false
+  const r = canonicalRank(statut)
+  return r >= canonicalRank('installe') && r < canonicalRank('cloture')
+}
+
 // Statuts canoniques accessibles depuis `from` (courant ±1), pour alimenter un
 // sélecteur restreint. La valeur courante est toujours incluse.
 export function adjacentStatuses(from) {

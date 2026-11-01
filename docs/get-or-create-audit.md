@@ -6,3 +6,4 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 
 | Clé | Appel | Récepteur | Clés de lookup |
 |---|---|---|---|
+| `backend/django_core/apps/installations/field_services.py::cocher_outil_ligne::interv.tool_returns` | get_or_create | interv.tool_returns | outil |

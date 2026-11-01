@@ -25,6 +25,7 @@ import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS, queuePhoto } from './offline/fieldOutbox'
 import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
+import { apiErrorMessage } from '../../lib/apiError'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
@@ -68,6 +69,44 @@ function caracteristiquesPropres(carac, fabricant) {
     out.puissance_wc = Number.isFinite(n) ? n : puissance
   }
   return out
+}
+
+// ACHT117 — suppression d'une preuve : sur une intervention terminée le serveur
+// répond 409 « indiquez le motif » ; on affiche son message, on demande le
+// motif dans l'écran (jamais window.prompt) puis on renvoie avec `motif`.
+// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé avec les panneaux qui le partagent (ACHT117)
+export function useSuppressionAvecMotif(supprimer, apres) {
+  const [busy, setBusy] = useState(false)
+  const [attente, setAttente] = useState(null)
+  const [motif, setMotif] = useState('')
+  const envoyer = async (cible, texte) => {
+    setBusy(true)
+    try {
+      await supprimer(cible, texte)
+      setAttente(null); setMotif('')
+      await apres()
+    } catch (err) {
+      const message = apiErrorMessage(err, 'Suppression impossible.')
+      if (!texte && err?.response?.status === 409 && /motif/i.test(message)) {
+        setAttente({ cible, message })
+      } else { toast.error(message) }
+    } finally { setBusy(false) }
+  }
+  const champ = attente && (
+    <div className="flex flex-col gap-1.5 rounded border border-border p-2" role="group">
+      <span className="text-[12px] text-destructive">{attente.message}</span>
+      <Input aria-label="Motif de la suppression" placeholder="Motif de la suppression"
+             value={motif} onChange={(e) => setMotif(e.target.value)} />
+      <div className="flex gap-2">
+        <Button size="sm" disabled={busy || !motif.trim()}
+                onClick={() => envoyer(attente.cible, motif.trim())}>
+          Confirmer la suppression
+        </Button>
+        <Button size="sm" variant="outline" disabled={busy}
+                onClick={() => { setAttente(null); setMotif('') }}>Annuler</Button>
+      </div>
+    </div>)
+  return { busy, champ, remove: (cible) => envoyer(cible, '') }
 }
 
 export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
@@ -217,11 +256,9 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
       toast.error(autre ? String(autre) : 'Enregistrement impossible.')
     } finally { setBusy(false) }
   }
-  const remove = async (sid) => {
-    setBusy(true)
-    try { await installationsApi.supprimerSerial(id, sid); await load() }
-    catch { toast.error('Suppression impossible.') } finally { setBusy(false) }
-  }
+  const suppression = useSuppressionAvecMotif(
+    (sid, motif) => installationsApi.supprimerSerial(id, sid, motif), load)
+  const remove = suppression.remove
 
   if (loading) return <PanelLoading label="numéros de série" />
   return (
@@ -316,6 +353,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
           <Tag className="size-4" aria-hidden="true" /> Ajouter le relevé
         </Button>
       </div>
+      {suppression.champ}
       {rows.length === 0
         ? <span className="text-[12px] text-muted-foreground">Aucun relevé.</span>
         : rows.map((s) => (
@@ -331,7 +369,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
               {s.plaque_url && (
                 <a href={s.plaque_url} target="_blank" rel="noreferrer"
                    className="text-[11px] underline">plaque</a>)}
-              <button type="button" disabled={busy} onClick={() => remove(s.id)}
+              <button type="button" disabled={busy || suppression.busy} onClick={() => remove(s.id)}
                 title="Supprimer" className="text-destructive disabled:opacity-50">
                 <Trash2 className="size-4" aria-hidden="true" />
               </button>
@@ -509,11 +547,9 @@ export function MemosPanel({ intervention, onChanged }) {
     } catch { toast.error('Micro indisponible.') }
   }
   const stop = () => { recorder.current?.stop(); setRecording(false) }
-  const remove = async (mid) => {
-    setBusy(true)
-    try { await installationsApi.supprimerMemo(id, mid); await load() }
-    catch { toast.error('Suppression impossible.') } finally { setBusy(false) }
-  }
+  const suppression = useSuppressionAvecMotif(
+    (mid, motif) => installationsApi.supprimerMemo(id, mid, motif), load)
+  const remove = suppression.remove
   const saveTranscript = async (mid, transcript) => {
     try { await installationsApi.modifierMemo(id, mid, transcript); await load() }
     catch { toast.error('Édition impossible.') }
@@ -530,13 +566,14 @@ export function MemosPanel({ intervention, onChanged }) {
         : <Button size="sm" disabled={busy} onClick={start}>
             <Mic className="size-4" aria-hidden="true" /> Enregistrer un mémo
           </Button>}
+      {suppression.champ}
       {rows.length === 0
         ? <span className="text-[12px] text-muted-foreground">Aucun mémo.</span>
         : rows.map((m) => (
           <div key={m.id} className="rounded border border-border p-2">
             <div className="flex items-center justify-between gap-2">
               {m.audio_url && <audio src={m.audio_url} controls className="h-8 w-full max-w-[220px]" />}
-              <button type="button" disabled={busy} onClick={() => remove(m.id)}
+              <button type="button" disabled={busy || suppression.busy} onClick={() => remove(m.id)}
                 title="Supprimer" className="text-destructive disabled:opacity-50">
                 <Trash2 className="size-4" aria-hidden="true" />
               </button>
