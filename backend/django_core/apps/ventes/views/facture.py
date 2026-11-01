@@ -35,23 +35,15 @@ __all__ = ['arrondir_au_pas']  # ré-export ZFAC11
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
-# XFAC24 — champs FINANCIERS d'une facture, verrouillés en écriture quand
-# CompanyProfile.factures_immuables est ON et que la facture n'est plus
-# brouillon (correction par avoir + nouvelle facture uniquement). Le client
-# est inclus (changer le tiers facturé revient à réécrire le document).
+# XFAC24/ATOT9/ATOT41 (D-ATOT-1) — LA liste des champs FIGÉS d'une facture
+# dès qu'elle quitte le brouillon, QUEL QUE SOIT `factures_immuables` : une
+# facture émise se corrige par avoir (ou `remettre-brouillon`), jamais en
+# place. Refus dès que la VALEUR change (`argent_modifie`) ; l'admin la lit.
 FACTURE_CHAMPS_FINANCIERS = frozenset([
     'client', 'montant_ht', 'montant_tva', 'montant_ttc', 'remise_globale',
     'taux_tva', 'escompte_pct', 'escompte_jours', 'pourcentage',
-    'type_facture',
-])
-
-# ATOT9 (C-ATOT-007, D-ATOT-1) — les champs d'ARGENT d'une facture sont FIGÉS
-# dès qu'elle quitte le brouillon, QUEL QUE SOIT `factures_immuables` : une
-# facture émise se corrige par avoir (ou `remettre-brouillon`), jamais en
-# place. Le flag ne gouverne plus que le reste de FACTURE_CHAMPS_FINANCIERS.
-FACTURE_CHAMPS_ARGENT = frozenset([
-    'montant_ht', 'montant_tva', 'montant_ttc', 'remise_globale', 'taux_tva',
-    'pourcentage', 'arrondi_pas', 'arrondi_unites',
+    'type_facture', 'arrondi_pas', 'arrondi_unites', 'ventilation_tva',
+    'retenue_garantie_mad', 'devise', 'taux_change',
 ])
 MESSAGE_MONTANT_FIGE = (
     'Montant figé après émission : corrigez par un avoir '
@@ -279,41 +271,21 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
 
     def perform_update(self, serializer):
         # Refus d'ÉTAT (facture non brouillon) : 409 ConflitEtat (ENF11).
-        # XFAC24 — immutabilité de la facture émise (opt-in). Flag OFF
-        # (défaut) → comportement actuel byte-identique. Flag ON et facture
-        # non-brouillon : tout champ FINANCIER dans le corps est refusé (la
-        # correction passe par un avoir + une nouvelle facture) ; les champs
-        # non financiers (conditions, notes, dates de livraison…) restent
-        # modifiables.
+        # ATOT41 — hors brouillon, tout champ de FACTURE_CHAMPS_FINANCIERS
+        # dont la valeur change est refusé, quel que soit le réglage ; les
+        # champs non financiers (conditions, notes, livraison…) restent libres.
         facture = self.get_object()
         # AFAC66 / VNT89 — mêmes portes fermées en modification (BC d'un
         # devis, devis posé ou changé par le corps).
         refuser_portes_fermees(serializer.validated_data, facture)
         from ..domain.facturation_ops import argent_modifie  # ATOT35
         argent_touche = argent_modifie(
-            facture, serializer.validated_data, FACTURE_CHAMPS_ARGENT)
+            facture, serializer.validated_data, FACTURE_CHAMPS_FINANCIERS)
         if facture.statut != Facture.Statut.BROUILLON and argent_touche:
             raise ConflitEtat({
                 'detail': MESSAGE_MONTANT_FIGE,
                 'champs_refuses': sorted(argent_touche),
             })
-        if facture.statut != Facture.Statut.BROUILLON:
-            from apps.parametres.models import CompanyProfile
-            profile = CompanyProfile.get(company=facture.company)
-            if getattr(profile, 'factures_immuables', False):
-                champs_touches = (
-                    set(serializer.validated_data.keys())
-                    & FACTURE_CHAMPS_FINANCIERS)
-                if champs_touches:
-                    raise ConflitEtat({
-                        'detail': (
-                            "Facture immuable : les champs financiers d'une "
-                            "facture émise ne peuvent plus être modifiés. "
-                            "Corrigez par un avoir puis une nouvelle "
-                            "facture."
-                        ),
-                        'champs_refuses': sorted(champs_touches),
-                    })
         # ATOT9 — toute modification d'argent ACCEPTÉE (brouillon) laisse une
         # trace avant/après dans le chatter de la facture.
         avant = {champ: getattr(facture, champ) for champ in argent_touche}

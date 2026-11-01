@@ -1948,15 +1948,21 @@ def creer_bon_commande(devis, company, user=None, *, enregistrer=None):
 
 
 def argent_modifie(instance, donnees, champs):
-    """ATOT35 (C-AMET-001) — champs d'ARGENT dont la VALEUR change : une clé
-    présente avec une valeur identique (PUT du formulaire inchangé) ne compte
-    pas. ``champs`` = ``FACTURE_CHAMPS_ARGENT`` (définition unique, vue)."""
+    """ATOT35/ATOT41 — champs FIGÉS dont la VALEUR change : une clé présente
+    à valeur identique (PUT inchangé) ne compte pas. Clé étrangère comparée
+    par pk, nombre par ``Decimal``, le reste par égalité. ``champs`` = la
+    liste de la vue (``FACTURE_CHAMPS_FINANCIERS``, ``BC_CHAMPS_FIGES``)."""
     modifies = set()
     for champ in set(donnees) & set(champs):
-        nouveau, actuel = donnees[champ], getattr(instance, champ, None)
+        nouveau, actuel = (getattr(v, 'pk', v) for v in (
+            donnees[champ], getattr(instance, champ, None)))
         if nouveau is None or actuel is None:
             if nouveau is not actuel:
                 modifies.add(champ)
-        elif Decimal(str(nouveau)) != Decimal(str(actuel)):
+        elif isinstance(actuel, (int, float, Decimal)) and not isinstance(
+                actuel, bool):
+            if Decimal(str(nouveau)) != Decimal(str(actuel)):
+                modifies.add(champ)
+        elif nouveau != actuel:
             modifies.add(champ)
     return modifies

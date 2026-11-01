@@ -125,6 +125,51 @@ class MontantsFigesTests(TestCase):
         ligne.refresh_from_db()
         self.assertEqual(ligne.quantite, Decimal('2'))
 
+    def test_identite_et_retenue_figees_sur_emise(self):
+        """ATOT41 — client, retenue, devise figés hors brouillon, réglage
+        OFF comme ON ; corps inchangé et note acceptés ; brouillon libre."""
+        from apps.crm.models import Client
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.models import Facture
+        client_b = Client.objects.create(
+            company=self.company, nom='Autre', prenom='B',
+            email=f'atot41-{_nxt()}@example.invalid')
+        facture = self._facture(
+            Facture.Statut.EMISE, montant_ht=Decimal('1000.00'),
+            montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'))
+        url = f'/api/django/ventes/factures/{facture.id}/'
+        profile = CompanyProfile.get(company=self.company)
+        for flag in (False, True):
+            profile.factures_immuables = flag
+            profile.save(update_fields=['factures_immuables'])
+            for corps, champ in (({'client': client_b.id}, 'client'),
+                                 ({'retenue_garantie_mad': '500'},
+                                  'retenue_garantie_mad'),
+                                 ({'devise': 'EUR'}, 'devise')):
+                with self.subTest(flag=flag, champ=champ):
+                    r = self.api.patch(url, corps, format='json')
+                    self.assertEqual(r.status_code, 409, r.data)
+                    self.assertEqual(r.data['champs_refuses'], [champ])
+                    self.assertIn('Montant figé', str(r.data))
+            inchange = {'client': self.client_obj.id, 'devise': facture.devise,
+                        'montant_ttc': '1200.00', 'taux_tva': '20.00',
+                        'type_facture': facture.type_facture}
+            r = self.api.patch(url, inchange, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+            r = self.api.patch(url, {'note': 'x'}, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+        facture.refresh_from_db()
+        self.assertEqual(facture.client_id, self.client_obj.id)
+        self.assertEqual(facture.retenue_garantie_mad or Decimal('0'),
+                         Decimal('0'))
+        self.assertEqual(facture.devise, 'MAD')
+        self.assertEqual(facture.montant_ttc, Decimal('1200.00'))
+        brouillon = self._facture(Facture.Statut.BROUILLON)
+        r = self.api.patch(f'/api/django/ventes/factures/{brouillon.id}/',
+                           {'client': client_b.id, 'devise': 'EUR'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_brouillon_modifiable_trace(self):
         from apps.ventes.models import Facture, FactureActivity
         facture = self._facture(Facture.Statut.BROUILLON)
