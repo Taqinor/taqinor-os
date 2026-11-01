@@ -77,8 +77,13 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
                 nouveau_cout=nouveau_cout,
                 motif=donnees.get('motif'), user=request.user)
         except (ValueError, TypeError, ArithmeticError) as exc:
+            # api-fuzz stock (vague 8) : capacité dépassée par le stock
+            # enregistré (``EtatIncompatible``) = 409 ; entrée illisible = 400.
+            from ..erreurs_achats import statut_refus_metier
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)},
+                status=statut_refus_metier(exc) if isinstance(exc, ValueError)
+                else status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(revalorisation).data,
             status=status.HTTP_201_CREATED)

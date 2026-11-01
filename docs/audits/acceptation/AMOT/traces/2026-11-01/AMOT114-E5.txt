@@ -1,0 +1,11 @@
+== AMOT114 étape (5) — GET lettre-relance-premium/?niveau=3 d'une facture brouillon à exigible > 0 (AMOT112)
+Pile : idem étape (1) ; demo_admin.
+Donnée : facture démo existante BROUILLON-302 (id 302, statut brouillon, total_ttc 21 870,00, montant_exigible 21 870,00, montant_du 21 870,00) — aucune donnée créée : l'étape est une lecture (GET), aucun nettoyage nécessaire.
+API (session demo_admin) : GET /api/django/ventes/factures/302/lettre-relance-premium/?niveau=3 -> 409 application/json {"detail":"Aucune somme exigible sur cette facture."}, 53 octets, pas d'en-tête %PDF (rejoué deux fois, identique).
+Navigateur (Playwright, session ouverte par /login) : fetch same-origin du même GET depuis la page de l'ERP -> 409 application/json, même corps ; 0 pageerror, 0 dialogue.
+Contrôle positif : GET /api/django/ventes/factures/301/lettre-relance-premium/?niveau=3 (FAC-202610-0001, émise) -> 200 application/pdf (%PDF-, 17 950 octets) : la porte refuse le brouillon, pas toute la route.
+Persistance : GET /ventes/factures/302/ relu après -> statut brouillon, exigible 21 870,00, updated_at inchangé (2026-10-24T21:18:51.772425Z) : rien écrit.
+Capture : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E5-relance-brouillon-409.png (vue navigable DRF de l'URL, « HTTP 409 Conflict »).
+NOTE oracle 3 : en ouvrant la vue navigable DRF pour la capture, la console a relevé 19 erreurs = la ressource 409 elle-même (attendue) + 18 refus/404 des fichiers /static/rest_framework/* (CSS/JS de la vue de débogage DRF non servis par le nginx local). Vue hors ERP, artefact de la méthode de capture ; le fetch depuis l'ERP n'a produit aucune erreur. Oracle 3 noté NA pour cette étape (aucun écran ERP).
+OBSERVATION optionnelle : le message du 409 dit « Aucune somme exigible » alors que le brouillon porte 21 870 exigibles ; le motif réel (statut brouillon) est celui que `facture_relancable` calcule mais que la vue ne renvoie pas.
+verdict : PASS

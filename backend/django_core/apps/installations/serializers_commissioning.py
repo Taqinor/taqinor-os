@@ -114,7 +114,7 @@ class CommissioningRecordSerializer(IdInconnu404Mixin, UniciteEn409Mixin, Champs
             # CIQ627 — promesse figée (lecture seule).
             'promesse_figee',
         ]
-        read_only_fields = ['promesse_figee']
+        read_only_fields = ['promesse_figee', 'ventes_recette_id']
 
     def validate(self, attrs):
         """CIQ625 — ``resultat`` est CALCULÉ par le serveur à chaque écriture

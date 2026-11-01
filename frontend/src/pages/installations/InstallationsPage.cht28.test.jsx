@@ -5,6 +5,7 @@ import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import crmApi from '../../api/crmApi'
 import installationsReducer from '../../features/installations/store/installationsSlice'
 
 /* ============================================================================
@@ -46,19 +47,19 @@ vi.mock('../../api/ventesApi', async () => (await import('../../test/selectNatif
 
 import InstallationsPage from './InstallationsPage'
 
-function makeStore() {
+function makeStore(auth = { user: { id: 1 }, role: 'admin' }) {
   return configureStore({
     reducer: {
       installations: installationsReducer,
-      auth: (state = { user: { id: 1 } }) => state,
+      auth: (state = auth) => state,
       stock: (state = { produits: [{ id: 1, nom: 'Panneau' }] }) => state,
     },
   })
 }
 
-function renderPage(route = '/chantiers') {
+function renderPage(route = '/chantiers', auth) {
   return render(
-    <Provider store={makeStore()}>
+    <Provider store={makeStore(auth)}>
       <MemoryRouter initialEntries={[route]}>
         <ThemeProvider>
           <InstallationsPage />
@@ -111,5 +112,17 @@ describe('InstallationsPage (CHT28)', () => {
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeVisible())
     expect(screen.getAllByText(/CH-CHT28-021/).length).toBeGreaterThan(0)
+  })
+
+  it('assignable-users : aucun appel (403) pour un Technicien, appel pour un admin', async () => {
+    const appel = vi.spyOn(crmApi, 'getAssignableUsers')
+    mocks.getInstallations.mockResolvedValue({ data: { count: 0, results: [] } })
+    renderPage('/chantiers', { user: { id: 2 }, role: 'technicien', role_nom: 'Technicien', permissions: ['chantiers_voir'] })
+    await waitFor(() => expect(mocks.getInstallations).toHaveBeenCalled())
+    expect(appel).not.toHaveBeenCalled()
+    cleanup()
+    renderPage()
+    await waitFor(() => expect(appel).toHaveBeenCalled())
+    appel.mockRestore()
   })
 })

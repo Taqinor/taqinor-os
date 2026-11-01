@@ -589,8 +589,11 @@ def _sous_tolerance(bvl, lg):
     80 % de votre besoin. » ; "" quand aucun mois n'est sous la tolérance."""
     mois = [m for m in bvl.get("mois_sous_tolerance") or []
             if isinstance(m, dict) and m.get("mois") in range(1, 13)]
+    cle = ("agr_mois_couverture_agro"
+           if bvl.get("base_besoin") == "agronomique_plein"
+           else "agr_mois_couverture")
     liste = "; ".join(
-        _t(lg, "agr_mois_couverture", mois=_t(lg, f"agr_mois_{m['mois']}"),
+        _t(lg, cle, mois=_t(lg, f"agr_mois_{m['mois']}"),
            pct=_n(m.get("couverture_pct"), 0))
         if _n(m.get("couverture_pct"), 0) is not None
         else _t(lg, f"agr_mois_{m['mois']}") for m in mois)

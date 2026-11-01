@@ -242,7 +242,10 @@ def _bloc_baseline(entrees, etude_ci=None):
     dans la provenance du moteur (jamais devinées). AMOT41 : le bloc porte
     aussi ``kwh_an`` (somme des 12 mois résolus du moteur) quand le bilan la
     donne."""
-    bloc, motif = _bloc_baseline_source(entrees)
+    feuille = _dict(etude_ci).get("feuille_consommation_retenue")
+    bloc, motif = _bloc_baseline_source(entrees, feuille)
+    if bloc is None and feuille:  # feuille retenue absente des entrées
+        bloc, motif = _bloc_baseline_source(entrees)
     if bloc is not None:
         kwh_an = _kwh_an_moteur(etude_ci)
         if kwh_an is not None:
@@ -250,14 +253,35 @@ def _bloc_baseline(entrees, etude_ci=None):
     return bloc, motif
 
 
-def _bloc_baseline_source(entrees):
-    for cle in CLES_CONSOMMATION:
+def entree_consommation_retenue(etude_ci):
+    """AMOT105 — l'entrée résolue de la feuille que le moteur a RETENUE
+    (``feuille_consommation_retenue``, AMOT104) ; sans la clé (étude posée
+    avant AMOT104) : la première feuille présente, dans l'ordre de
+    ``CLES_CONSOMMATION``. UNE seule liste, lue par la synthèse ET la couverture."""
+    etude_ci = _dict(etude_ci)
+    entrees = _dict(etude_ci.get("entrees_resolues"))
+    feuille = etude_ci.get("feuille_consommation_retenue")
+    cles = (feuille,) if feuille in CLES_CONSOMMATION else CLES_CONSOMMATION
+    for cle in cles:
+        if isinstance(entrees.get(cle), dict) and entrees[cle]:
+            return entrees[cle]
+    return None
+
+
+def _bloc_baseline_source(entrees, feuille=None):
+    """``feuille`` (AMOT104) : la feuille que le moteur a retenue — seule lue ;
+    ``None`` : l'ordre de ``CLES_CONSOMMATION`` (études sans la clé)."""
+    if feuille == "courbe_mesuree":
+        return {"source": "courbe_mesuree", "estimation": False}, None
+    for cle in ((feuille,) if feuille in CLES_CONSOMMATION else CLES_CONSOMMATION):
         entree = _dict(entrees.get(cle))
         if not entree:
             continue
         prov = _dict(entree.get("provenance"))
         serie = _serie_kwh(entree.get("valeur"))
         interpoles = entree.get("mois_interpoles") or entree.get("interpoles")
+        if feuille and serie is not None and all(v is None for v in serie):
+            return {"source": "kwh_declares", "estimation": True}, None  # montants MAD convertis
         if serie is not None:
             complets = (len(serie) == 12
                         and all(v is not None for v in serie))

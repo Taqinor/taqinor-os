@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
-from core.champs_stricts import IdInconnu404Mixin
+from core.champs_stricts import IdInconnu404Mixin, TexteLie
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import INT, P, STR
 from ..utils.params import UniciteEn409Mixin
@@ -36,10 +36,10 @@ class SeuilReapproCasierSerializer(IdInconnu404Mixin, UniciteEn409Mixin, Company
 
 class TacheReapproInterneSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                                     serializers.ModelSerializer):
-    bin_cible_code = serializers.CharField(source='bin_cible.code',
-                                           read_only=True, default='')
-    bin_source_code = serializers.CharField(source='bin_source.code',
-                                            read_only=True, default='')
+    # api-fuzz stock (vague 8) — ``TexteLie`` : DRF SAUTAIT la clé d'un lien
+    # vide au PATCH (``bin_source`` nul), alors que le schéma la déclare.
+    bin_cible_code = TexteLie(source='bin_cible.code', read_only=True, default='')
+    bin_source_code = TexteLie(source='bin_source.code', read_only=True, default='')
 
     class Meta:
         model = TacheReapproInterne

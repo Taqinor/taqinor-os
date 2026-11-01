@@ -58,6 +58,59 @@ class PaybackPubliableTests(SimpleTestCase):
             90000, 6500)['payback_years'])
         self.assertNotEqual(carte['payback_annees'], round(90000 / 6500, 2))
 
+    def test_carte_recommande_repli_avec_stockage(self):
+        """AMOT107 (C-AMOT-VER-006) — sans ``roi_a`` servi, la carte « avec »
+        de repli d'un devis au niveau 7 publie avec les arguments de
+        ``_carte_moteur`` (stockage, part stockée 0, provision d'onduleur) ;
+        au niveau 6 : le repli d'hier. Test-du-test : remettre
+        ``_payback_publie(prix, economie)`` ⇒ échec."""
+        from apps.ventes.tests.test_offres_tailles import _contexte_factice
+        data = {'nb_panneaux_avec': 22, 'puissance_kwc_avec': 12.1,
+                'totaux_avec': {'ttc': 90000.0}, 'eco_a_ann': 6500.0}
+        ligne = SimpleNamespace(
+            designation='Onduleur hybride Deye 5kW', quantite=1,
+            prix_unitaire=12500.0, produit=None, variante='avec',
+            compte_dans_totaux=True)
+        devis = SimpleNamespace(
+            etude_params={}, reference='DEV-AMOT107', regles_calcul=7,
+            taux_tva=20, lignes=SimpleNamespace(all=lambda: [ligne]))
+        carte = ot._carte_du_devis(_contexte_factice(devis), data, 'avec')
+        self.assertEqual(carte['payback_annees'], payback_publiable(
+            90000, 6500, stockage=True, part_batterie=0.0,
+            cout_onduleur_ttc=15000)['payback_years'])
+        self.assertEqual(carte['payback_annees'], 16.8)
+        devis.regles_calcul = 6
+        carte = ot._carte_du_devis(_contexte_factice(devis), data, 'avec')
+        self.assertEqual(carte['payback_annees'], payback_publiable(
+            90000, 6500)['payback_years'])
+
+    def test_provision_non_remisee_niveau_2(self):
+        """AMOT108 (C-AMOT-VER-007) — devis remisé de 10 %, onduleur 24 000
+        TTC : au niveau 2 la carte chiffre la provision NON remisée que son
+        PDF a imprimée (``_cout_onduleur_paye``) ; au niveau ≥ 3, 21 600.
+        Test-du-test : retirer la garde de niveau ⇒ 21 600 au niveau 2."""
+        from decimal import Decimal
+        from unittest import mock
+
+        from apps.ventes.tests.test_offres_tailles import _contexte_factice
+        nom = 'Onduleur hybride Deye 10kW'
+        lignes = type('Compo', (list,), {})([SimpleNamespace(
+            produit=None, designation=nom, quantite=1, prix_unitaire=20000)])
+        lignes.roles = ['onduleur_hybride']
+        vus = {}
+        for niveau, attendu in ((2, 24000.0), (3, 21600.0)):
+            contexte = _contexte_factice(SimpleNamespace(
+                taux_tva=Decimal('20'), regles_calcul=niveau), remise=0.9)
+            contexte.composer = (lambda nb, avec_batterie=False, cible_kwh=None:
+                                 None if avec_batterie else lignes)
+            with mock.patch('apps.ventes.etude_horaire.calculer_etude_horaire',
+                            return_value=None), \
+                    mock.patch.object(ot, '_payback_publie',
+                                      return_value=None) as publie:
+                ot._carte_moteur(contexte, 10, avec_servable=False)
+            vus[niveau] = publie.call_args.kwargs['cout_onduleur_ttc']
+            self.assertEqual(vus[niveau], attendu)
+
     def test_err_rhor8_carte_recommande_jamais_rembourse_omise(self):
         """ERR-RHOR8-TAILLES-JAMAIS-RENTABILISE (devis 2300) — ``roi_*`` servi
         à la sentinelle 25,0 avec ``roi_*_jamais`` : la carte Recommandé OMET
@@ -91,6 +144,20 @@ class PaybackPubliableTests(SimpleTestCase):
             inverter_replace_cost=round(12500 * 1.2 * 0.9, 2))
         self.assertEqual(publie, round(attendu['payback_years'], 2))
         self.assertIsNone(_payback_publie_palier(120000.0, 4000.0, [], 1.0))
+
+    def test_echelle_palier_definition_roi_a(self):
+        """AMOT102 (C-AMOT-VER-003, sonde 90 000 / 6 500 / onduleur 12 500 HT)
+        — niveau 7 : la définition de ``roi_a`` (part stockée 0, TVA de la
+        ligne) : 16,8, jamais 18,8. Un devis au niveau 6 garde 18,8.
+        Test-du-test : remettre ``part_batterie=None`` ⇒ échec."""
+        lignes = [{'role': 'onduleur_hybride', 'quantite': 1,
+                   'prix_unitaire_ht': 12500.0, 'designation': 'Onduleur hybride'}]
+        devis = SimpleNamespace(regles_calcul=7, company=None)
+        self.assertEqual(_payback_publie_palier(
+            90000.0, 6500.0, lignes, 1.0, devis=devis, taux_tva=20), 16.8)
+        self.assertEqual(_payback_publie_palier(
+            90000.0, 6500.0, lignes, 1.0, devis=SimpleNamespace(regles_calcul=6),
+            taux_tva=20), 18.8)
 
 
 class ArrondiAffichageCartesTests(SimpleTestCase):

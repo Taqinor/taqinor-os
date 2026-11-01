@@ -89,6 +89,35 @@ class InvariantsMaisonTests(TestCase):
                         _Ctx(self.company))
         self.assertTrue(out)
 
+    def test_prix_ttc_remise_jamais_une_fuite(self):
+        # AMOT109 — un prix de vente remisé TTC égal au prix d'achat d'une ligne
+        # est un hasard de catalogue ; une clé `prix_achat` reste une fuite.
+        devis = self._devis([('Panneau mono 550W', '10', '1100'),
+                             ('Onduleur réseau Huawei 5kW', '1', '8000')])
+        data = copy.deepcopy(build_quote_data(devis, clean_pdf_options({})))
+        achat = float(devis.lignes.first().produit.prix_achat)
+        data['all_items'][0]['pu_ttc_remise'] = achat
+        data['all_items'][0]['total_ttc_remise'] = achat
+        ctx = _Ctx(self.company)
+        ctx.injecter_donnees(devis, data)
+        self.assertEqual(self._run('DOC_RENDU_SANS_MARGE', devis, ctx), [])
+        data['all_items'][0]['prix_achat'] = achat
+        ctx = _Ctx(self.company)
+        ctx.injecter_donnees(devis, data)
+        self.assertTrue(self._run('DOC_RENDU_SANS_MARGE', devis, ctx))
+
+    def test_pompage_classe_sur_nom_produit(self):
+        # AMOT109 — ligne « Équipement de régulation » liée au produit
+        # « Onduleur hybride Deye 5kW » : classée sur désignation + nom produit.
+        devis = self._devis([('Pompe immergée OSP 30/8 10 CV', '1', '15000'),
+                             ('Onduleur hybride Deye 5kW', '1', '12000')],
+                            mode='agricole')
+        devis.lignes.filter(designation__startswith='Onduleur').update(
+            designation='Équipement de régulation')
+        out = self._run('DOC_POMPAGE_SANS_ONDULEUR_BATTERIE', devis,
+                        _Ctx(self.company))
+        self.assertTrue(out)
+
     # AMOT56 (D-AMOT-7 = a) — DOC_POMPAGE_M3_SANS_COURBE : un m³/jour imprimé
     # exige une pompe à courbe OU un débit déclaré (étiqueté par le gabarit).
     # Test-du-test : faire rendre ``[]`` à la règle ⇒

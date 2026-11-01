@@ -1,0 +1,97 @@
+{
+  "sha": "f9ef4046c285a007e82cb5279da98037a500c662",
+  "date": "2026-10-30",
+  "groupe": "ACHT",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACHT123"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "E1-DLG",
+      "taches": [
+        "ACHT123"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "FAIL",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "TECH",
+      "taches": [
+        "ACHT123"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "FAIL",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    },
+    {
+      "id": "AUDIT",
+      "taches": [
+        "ACHT123"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-audit_coherence.json"
+    },
+    {
+      "id": "E9",
+      "taches": [
+        "ACHT122",
+        "ACHT123"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "FAIL",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-30/ACHT123-rejeu.txt"
+    }
+  ]
+}

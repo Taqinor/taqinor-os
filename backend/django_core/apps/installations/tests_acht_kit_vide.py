@@ -9,6 +9,8 @@ Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.installations.tests_acht_kit_vide"
 """
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -16,8 +18,12 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.installations.models import Kit, KitComposant, OrdreAssemblage
+from apps.crm.models import Client, Lead
+from apps.installations.models import (
+    Kit, KitComposant, OrdreAssemblage, OrdreAssemblageLigne,
+)
 from apps.stock.models import MouvementStock, Produit
+from apps.ventes.models import Devis, LigneDevis
 
 User = get_user_model()
 BASE = '/api/django/installations'
@@ -85,3 +91,49 @@ class KitVideTests(TestCase):
         self.assertIn(MSG, str(r.data))
         kit.refresh_from_db()
         self.assertFalse(kit.active)
+
+    # ACHT119 (C-ACHT-VER-010) — `depuis-devis` et lignes réelles de l'ordre.
+    def test_depuis_devis_kit_vide_refuse(self):
+        kit = self._kit('Kit vide devis')
+        client = Client.objects.create(
+            company=self.company, nom='Site', prenom='Client',
+            email='acht119@example.invalid')
+        lead = Lead.objects.create(
+            company=self.company, nom='Site', prenom='Client',
+            stage='SIGNED', type_installation='residentiel')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ACHT119-1', client=client,
+            lead=lead, statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.fantome, designation='Fantome',
+            quantite=Decimal('1'), prix_unitaire=Decimal('100'))
+        r = self.api.post(f'{BASE}/ordres-assemblage/depuis-devis/',
+                          {'devis': devis.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(MSG, str(r.data))
+        self.assertFalse(OrdreAssemblage.objects.filter(
+            company=self.company, devis=devis, kit=kit).exists())
+        self._assert_rien_entre()
+
+    def test_terminer_lignes_sans_produit_refuse(self):
+        kit = self._kit('Kit lignes')
+        vis = Produit.objects.create(
+            company=self.company, nom='Vis', prix_vente=1, prix_achat=0,
+            quantite_stock=50)
+        KitComposant.objects.create(kit=kit, produit=vis, quantite=2)
+        ordre = OrdreAssemblage.objects.create(
+            company=self.company, reference='ASM-ACHT119-1', kit=kit,
+            quantite=1, statut=OrdreAssemblage.Statut.EN_COURS)
+        OrdreAssemblageLigne.objects.filter(ordre=ordre).delete()
+        OrdreAssemblageLigne.objects.create(
+            ordre=ordre, produit=None, designation='Visserie', quantite=3)
+        r = self.api.post(f'{BASE}/ordres-assemblage/{ordre.id}/terminer/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(MSG, str(r.data))
+        ordre.refresh_from_db()
+        self.assertEqual(ordre.statut, OrdreAssemblage.Statut.EN_COURS)
+        self._assert_rien_entre()
+        vis.refresh_from_db()
+        self.assertEqual(vis.quantite_stock, 50)

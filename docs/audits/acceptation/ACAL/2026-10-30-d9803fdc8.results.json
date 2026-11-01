@@ -1,0 +1,33 @@
+{
+  "sha": "d9803fdc83c0e96051fa9c5cc658817f1db22d80",
+  "date": "2026-10-30",
+  "groupe": "ACAL",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACAL351"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "S-A.premier-enregistrer",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-30/ACAL351-rejeu-ecran.txt § S-A.premier-enregistrer ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL351-rejeu-S-A-premier-enregistrer.jpg — A1 : exemple du schéma semé par l API, atelier ouvert, Enregistrer SANS geste ⇒ « Conception enregistrée — version 173 » au lieu de « Conception inchangée », zones[0].neededAuto true → false, layout_hash changé, versions 1 → 2, hash_entree du resultat changé ; reproduit après restauration de la v1 (version 177) ; suspect apps/web/src/scripts/roofPro11/prefill.ts:1858 neededAuto = neededPanels == null"
+    }
+  ]
+}

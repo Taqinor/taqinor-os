@@ -417,6 +417,32 @@ class LeadTests(_Base):
         self.assertEqual(data['profil_charge']['archetype']['source'],
                          'relevé de compteur 2025')
 
+    def test_feuille_retenue_persistee(self):
+        # AMOT104 (C-AMOT-VER-004) — la feuille que le moteur RETIENT est
+        # servie par l'aperçu ET persistée dans le bloc stocké (dérivée).
+        factures = [{'mois': '2026-%02d' % m, 'montant_ttc': None, 'kwh': 5000}
+                    for m in range(1, 13)]
+        annee = etude_ci._aujourdhui().year - 1
+        registres = [{'pointe_kwh': 1800, 'pleines_kwh': 9000, 'creuses_kwh': 3200}] * 12
+        cas = {
+            'kwh_annuel': dict(consommation={
+                'kwh_mensuels': None, 'kwh_annuel': 60000, 'factures_mad': factures}),
+            'courbe_mesuree': dict(consommation={}, courbe_mesuree={
+                'pas_minutes': 60, 'points': [5.0] * 8760, 'debut': '%d-01-01' % annee,
+                'source': 'export', 'date': '2026-09-30'}),
+            'registres_mt': dict(consommation={'kwh_mensuels': None, 'registres_mt': registres},
+                                 mode='industriel', tension='mt',
+                                 tarif={'contrat': 'mt_general'}, taille_explicite_kwc=50),
+        }
+        for attendue, extra in cas.items():
+            data = self.post(self.corps(**extra))
+            self.assertEqual(data['feuille_consommation_retenue'], attendue, attendue)
+            direct = etude_ci.etudier_ci(self.co, self.corps(**extra))
+            stocke = etude_ci.bloc_etude_ci_stocke(direct)
+            self.assertEqual(stocke['feuille_consommation_retenue'], attendue, attendue)
+        sans = self.post(self.corps(consommation={}))
+        self.assertIsNone(sans['feuille_consommation_retenue'])
+
 
 class BornePoseParDefautAdev90(_Base):
     """ADEV90 (D-ACI-13=a) — une surface déclarée SANS mode de pose borne la
@@ -612,6 +638,40 @@ class AnneeTypePvgisAmot99(TestCase):
                 33.57, -7.59, angle_deg=30, aspect_deg=0, montage='free'))
         self.assertIsNone(pp.serie_horaire_annee_type(
             None, None, angle_deg=30, aspect_deg=0, montage='free'))
+
+    def test_un_seul_telechargement_par_cle_a_la_fois(self):
+        """CAD177 (nocturne 41188540195) — deux aperçus simultanés sur un cache
+        froid : le second ATTEND la série que le premier télécharge (aucun
+        second ``seriescalc``) et reçoit EXACTEMENT la même série."""
+        from django.core.cache import cache
+        cle = 'pvgis:serie8760:%.3f:%.3f:%g:%g:%s' % (33.57, -7.59, 30, 0, 'free')
+        serie = {'kwh_kwc': [0.5] * 8760, 'annees': [2016] * 12}
+        lus = []
+
+        def lire(c):
+            lus.append(c)
+            return serie if c == cle and len(lus) > 1 else None
+        cache.add(pp._cle_verrou_serie(cle), 1, 60)   # téléchargement « en vol » ailleurs
+        try:
+            with mock.patch.object(pp, '_cache_lire', side_effect=lire), \
+                    mock.patch('time.sleep'), \
+                    mock.patch.object(pp, '_appel_pvgis') as reseau:
+                obtenue = pp.serie_horaire_annee_type(33.57, -7.59, angle_deg=30, aspect_deg=0,
+                                                      montage='free')
+        finally:
+            cache.delete(pp._cle_verrou_serie(cle))
+        reseau.assert_not_called()
+        self.assertEqual(obtenue, serie)
+
+    def test_verrou_libere_apres_telechargement(self):
+        from django.core.cache import cache
+        cle = 'pvgis:serie8760:%.3f:%.3f:%g:%g:%s' % (33.57, -7.59, 30, 0, 'free')
+        with mock.patch.object(pp, '_cache_lire', return_value=None), \
+                mock.patch.object(pp, '_cache_ecrire'), \
+                mock.patch.object(pp, '_appel_pvgis', return_value=self._reponse()) as reseau:
+            pp.serie_horaire_annee_type(33.57, -7.59, angle_deg=30, aspect_deg=0, montage='free')
+        self.assertEqual(reseau.call_count, 1)
+        self.assertIsNone(cache.get(pp._cle_verrou_serie(cle)))
 
 
 class SerieAuPointDeLaVilleCorc12(TestCase):

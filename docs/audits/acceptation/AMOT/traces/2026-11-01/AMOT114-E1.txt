@@ -1,0 +1,28 @@
+== AMOT114 étape (1) — curseur de stockage + échelle batterie de /proposition (AMOT102, AMOT103)
+Pile : http://localhost (backend erp-agentique-django_core-1 monté sur le checkout principal détaché à a3141257d = HEAD de dev-all-c9d8cc-9, seules diffs = goldens de test), EMAIL_BACKEND console vérifié avant le run, demo_admin connecté par /login (Playwright MCP, viewport 1366x900). Page /proposition servie par astro dev :4339 (PUBLIC_API_BASE=http://localhost), jeton INTERNE (aperçu, aucune ouverture client tracée).
+Données : POST /ventes/devis/1119/dupliquer/ -> 201, devis 2502 DEV-202611-0001 (résidentiel, onduleur hybride Deye 5 kW 12 500 HT + 1 batterie Dyness 5 kWh en option « avec »), regles_calcul = 7 (niveau d'AMOT103), statut brouillon ; POST share-link -> 200.
+API /ventes/proposal/<jeton>/ : quote.roi_a = 4.5 ; balayage_stockage.paliers (curseur) = [{nb_packs 1, cout_ttc 56 400, payback 4.5}] (position offerte = 1 module, celui du devis) ; paliers_batterie retenu (4,6 kWh) payback 4.5.
+Oracle indépendant (manage.py shell, pricing.payback_publiable(prix, éco, stockage=True, part_batterie=0.0, battery_roundtrip=rendement_batterie_du_devis = 0.98, cout_onduleur_ttc = Σ qté × P.U. HT onduleur de la composition × 1,20 TVA × remise 1,0)) :
+{"cout": 54300.0, "eco": 12213.56, "onduleurs": [["Onduleur hybride Deye 5kW Monophasé", 1, 12500.0]], "provision_ttc": 15000.0, "servi": 4.5, "oracle_def_roi_a": 4.5}
+{"cout": 85400.0, "eco": 15106.9, "onduleurs": [["Onduleur hybride Deye 10kW Monophasé", 1, 23333.33]], "provision_ttc": 28000.0, "servi": 5.7, "oracle_def_roi_a": 5.7}
+{"cout": 104500.0, "eco": 17045.89, "onduleurs": [["Onduleur hybride Deye 10kW Monophasé", 1, 23333.33]], "provision_ttc": 28000.0, "servi": 6.2, "oracle_def_roi_a": 6.2}
+{"cout": 122500.0, "eco": 17467.79, "onduleurs": [["Onduleur hybride Deye 10kW Monophasé", 1, 23333.33]], "provision_ttc": 28000.0, "servi": 7.1, "oracle_def_roi_a": 7.1}
+{"cout": 140500.0, "eco": 17521.36, "onduleurs": [["Onduleur hybride Deye 10kW Monophasé", 1, 23333.33]], "provision_ttc": 28000.0, "servi": 8.2, "oracle_def_roi_a": 8.2}
+{"cout": 158500.0, "eco": 17521.33, "onduleurs": [["Onduleur hybride Deye 10kW Monophasé", 1, 23333.33]], "provision_ttc": 28000.0, "servi": 9.2, "oracle_def_roi_a": 9.2}
+{"cout": 202800.0, "eco": 17521.34, "onduleurs": [["Onduleur hybride Deye 10kW Monophasé", 2, 23333.33]], "provision_ttc": 55999.99, "servi": 15.3, "oracle_def_roi_a": 15.3}
+  contrôle de discrimination (premier passage, provision 15 000 de l onduleur 5 kW appliquée à tous les paliers) : ancienne définition (part_batterie None, sans rendement) = 5.0 / 6.4 / 6.9 / 7.9 / 9.1 / 10.3 contre 4.5 / 5.7 / 6.2 / 7.1 / 8.2 / 9.2 sous la définition de roi_a -> les deux définitions se distinguent au dixième.
+Écran (Playwright, section « Choisir la taille de batterie ») :
+  position initiale = offerte : 8 panneaux · 5,68 kWc | 56 400 MAD | 12 670 MAD/an | 4,5 ans  (= roi_a 4.5)
+  9,2 kWh : 9 panneaux · 6,39 kWc | 85 400 MAD | 15 107 MAD/an | 5,7 ans (oracle 5.7)
+  13,8 kWh : 104 500 MAD | 17 046 MAD/an | 6,2 ans (oracle 6.2)
+  18,4 kWh : 122 500 MAD | 17 468 MAD/an | 7,1 ans (oracle 7.1)
+  23 kWh : 140 500 MAD | 17 521 MAD/an | 8,2 ans (oracle 8.2)
+  27,6 kWh : 158 500 MAD | 17 521 MAD/an | 9,2 ans (oracle 9.2)
+  32,2 kWh : grisé (disabled = true, remplissage_ok false) — non cliquable, payload 15.3 = oracle 15.3 (2 onduleurs 10 kW)
+  retour à 4,6 kWh : 4,5 ans
+Cartes : « Avec batterie — Rentabilisé en 4,5 ans » ; tailles « Recommandé » 4,5 ans.
+Oracles durs : 0 réponse >= 400, 0 console.error, 0 pageerror, 0 dialogue ; « prix_achat » absent du texte de la page et du payload public.
+Persistance : rechargement de la page -> mêmes valeurs ; GET /ventes/proposal/ relu : roi_a 4.5, curseur [(1, 4.5)], paliers identiques ; GET devis 2502 : regles_calcul 7, total_ttc 56 400.
+Nettoyage : DELETE /ventes/devis/2502/ -> 204, GET -> 404.
+Captures : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E1-curseur-offert.png, AMOT114-E1-palier-9-2.png
+verdict : PASS

@@ -39,7 +39,13 @@ class PrixPalierRemiseTests(TestCase):
                          44300.0)
         self.assertIsNone(prix_client_composition(None, self.devis))
 
+    def _au_niveau(self, niveau):
+        from apps.ventes.models import Devis
+        Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=niveau)
+        self.devis.refresh_from_db()
+
     def test_curseur_remise(self):
+        self._au_niveau(6)  # AMOT103 : devis envoyé au niveau 6, calcul d'hier
         dimensionnement = {'recommandation_avec': {'balayage_stockage': [{
             'capacite_kwh': 5.0, 'cout_ttc': 49322.08,
             'lignes_batterie': [{'quantite': 1}],
@@ -75,7 +81,7 @@ class PrixPalierRemiseTests(TestCase):
         } for n in packs]}}
 
     def test_ancre_sur_le_devis(self):
-        self.assertGreaterEqual(self.devis.regles_calcul, 5)  # devis neuf : niveau 5 ou plus récent
+        self._au_niveau(6)  # AMOT103 : devis envoyé au niveau 6, calcul d'hier
         paliers = _balayage_stockage_publique(
             self._deux_paliers(), self.devis, ttc_offert=50700.0)['paliers']
         self.assertEqual([p['cout_ttc'] for p in paliers], [50700.0, 68700.0])
@@ -109,3 +115,30 @@ class PrixPalierRemiseTests(TestCase):
         palier = _balayage_stockage_publique(
             self._deux_paliers(), self.devis, ttc_offert=50700.0)['paliers'][0]
         self.assertEqual(palier['cout_ttc'], 49322.08)
+
+    # AMOT103 (C-AMOT-VER-003, sonde 90 000 / 6 500 / onduleur 15 000 TTC) —
+    # niveau 7 : la position offerte publie ``roi_a`` servi, l'autre palier la
+    # définition de ``roi_a`` (part stockée 0, provision servie) : 16,8, jamais
+    # 16,0. Test-du-test : remettre ``payback_publiable(cout, eco,
+    # stockage=True)`` ⇒ échec.
+    def test_curseur_offert_egale_roi_a(self):
+        self.assertEqual(self.devis.regles_calcul, 7)  # devis neuf : niveau 7
+        dim = {'recommandation_avec': {'balayage_stockage': [{
+            'capacite_kwh': 5.0 * n, 'cout_ttc': 60000.0 + 20000 * (n - 1),
+            'lignes_batterie': [{'quantite': n}], 'payback_annees': 6.0,
+            'economie_mad': 5500.0 + 1000 * (n - 1)} for n in (1, 2)]}}
+        servi = {'roi_a': 12.3, 'roi_a_jamais': False,
+                 'cashflow_assumptions': {'inverter_replace_cost': 15000}}
+        paliers = _balayage_stockage_publique(
+            dim, self.devis, ttc_offert=72000.0, servi=servi)['paliers']
+        self.assertEqual([p['cout_ttc'] for p in paliers], [72000.0, 90000.0])
+        self.assertEqual(paliers[0]['payback_annees'], 12.3)
+        self.assertEqual(paliers[1]['payback_annees'], 16.8)
+        servi['roi_a_jamais'] = True
+        paliers = _balayage_stockage_publique(
+            dim, self.devis, ttc_offert=72000.0, servi=servi)['paliers']
+        self.assertIsNone(paliers[0]['payback_annees'])
+        self._au_niveau(6)
+        paliers = _balayage_stockage_publique(
+            dim, self.devis, ttc_offert=72000.0, servi=servi)['paliers']
+        self.assertEqual(paliers[1]['payback_annees'], 16.0)

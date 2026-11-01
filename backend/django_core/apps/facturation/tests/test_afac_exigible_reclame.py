@@ -127,3 +127,18 @@ class ExigibleReclameTests(TestCase):
         self.assertEqual(lst.status_code, 200)
         row = next(x for x in lst.data if x['id'] == self.facture.id)
         self.assertEqual(Decimal(row['niveau']['penalite']), attendu)
+
+    def test_lettre_premium_brouillon_409(self):
+        # AMOT112 (C-AMOT-VER-011) — la lettre premium passe par la porte
+        # partagée `facture_relancable` : un brouillon à exigible > 0 → 409.
+        from apps.ventes.models import Facture
+        Facture.objects.filter(pk=self.facture.pk).update(statut='brouillon')
+        with patch('apps.ventes.quote_engine.extra_docs.render_lettre_relance_pdf',
+                   return_value=b'%PDF-1.4 test') as rendu:
+            r = self.api.get(
+                f'/api/django/ventes/factures/{self.facture.id}/'
+                'lettre-relance-premium/?niveau=3')
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', r))
+        self.assertEqual(r.data['detail'],
+                         'Aucune somme exigible sur cette facture.')
+        self.assertFalse(rendu.called)

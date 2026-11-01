@@ -101,6 +101,16 @@ CLE_DU_DOMAINE_CORPS = {
         }} for domaine in _DOMAINE_ENUM]}
 _CLE_DU_DOMAINE = extend_schema(
     extensions={EXTENSION_CORPS_RESSERRE: CLE_DU_DOMAINE_CORPS})
+#: api-fuzz (vague 8) — PATCH : le couple n'est contraint que si ``domaine``
+#: est envoyé (même source ``default_keys``) ; sans lui, la clé se juge contre
+#: le domaine ENREGISTRÉ de la surcharge — refus d'état 409, pas une forme.
+CLE_DU_DOMAINE_PATCH = {
+    'oneOf': [{
+        'required': ['domaine'],
+        'properties': {
+            'domaine': {'enum': [domaine]},
+            'cle': {'enum': sorted(default_keys(domaine))},
+        }} for domaine in _DOMAINE_ENUM] + [{'not': {'required': ['domaine']}}]}
 
 
 @extend_schema_view(
@@ -108,7 +118,9 @@ _CLE_DU_DOMAINE = extend_schema(
         'domaine', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
         enum=_DOMAINE_ENUM,
         description='Ne garder que les statuts de ce domaine.')]),
-    create=_CLE_DU_DOMAINE, update=_CLE_DU_DOMAINE)
+    create=_CLE_DU_DOMAINE, update=_CLE_DU_DOMAINE,
+    partial_update=extend_schema(
+        extensions={EXTENSION_CORPS_RESSERRE: CLE_DU_DOMAINE_PATCH}))
 class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
                           viewsets.ModelViewSet):
     """Surcharges d'affichage des statuts métier (N58).

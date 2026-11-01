@@ -122,6 +122,26 @@ MESSAGE_CAPACITE = (
     'dépasserait 999 999 999 999,99 (quantité × prix d’achat).')
 
 
+def refus_corps_ou_etat(erreur, *, du_corps):
+    """api-fuzz stock (vague 8) — une règle croisée violée par le CORPS seul
+    (règle publiée au schéma) est un 400 ; la même règle violée par une
+    valeur RELUE sur l'enregistrement (PATCH partiel) est un refus d'état 409."""
+    raise (ValidationError(erreur) if du_corps else ConflitEtat(erreur))
+
+
+def delta_revalorisation_borne(ancien_cout, delta):
+    """api-fuzz stock (vague 8) — ``delta`` (écart × stock ENREGISTRÉ) d'une
+    revalorisation, ou ``EtatIncompatible`` (409) s'il dépasse
+    ``delta_valeur`` numeric(14,2) — ou le coût moyen actuel
+    ``ancien_cout`` numeric(10,2) — au lieu d'un 500 « numeric overflow »."""
+    if abs(delta) > PLAFOND_MONTANT or abs(Decimal(ancien_cout)) > PLAFOND_PRIX:
+        raise EtatIncompatible(
+            'Revalorisation hors capacité : le coût moyen actuel ou l’écart de '
+            'valeur (nouveau coût − ancien coût) × quantité en stock dépasse '
+            'ce que le document peut enregistrer.')
+    return delta
+
+
 def controler_capacite_montants(lignes):
     """``lignes`` : couples ``(quantité, prix unitaire MAD)``. Lève
     ``ConflitEtat`` (409) si un prix, un total de ligne ou le total du

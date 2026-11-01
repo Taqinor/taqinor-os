@@ -1,13 +1,16 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import UnsupportedMediaType
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import INT, OBJET, P, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..importers.fiche_pan_ond import FichierIllisible, champs_a_ecrire, parse_pan_ond_bytes
 from ..models import FicheTechnique, Produit
-from ..serializers_fiche_technique import FicheTechniqueSerializer
+from ..erreurs_achats import ConflitEtat
+from ..serializers_fiche_technique import CODE_REFUS_ETAT, FicheTechniqueSerializer
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
@@ -18,7 +21,20 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('produit', INT)]))
+#: api-fuzz stock (vague 8) — seul le PDF constructeur voyage en multipart
+#: (``uploadFicheTechniquePdf`` du front) : les objets/listes JSON de la fiche
+#: (``struct_notice``, ``lim_marques``…) n'ont aucune forme multipart lisible.
+FichePdfCorps = corps('FichePdfCorps', pdf=serializers.FileField())
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[P('produit', INT)]),
+    create=extend_schema(request={'application/json': FicheTechniqueSerializer}),
+    update=extend_schema(request={'application/json': FicheTechniqueSerializer}),
+    partial_update=extend_schema(request={
+        'application/json': FicheTechniqueSerializer,
+        'multipart/form-data': FichePdfCorps}),
+)
 class FicheTechniqueViewSet(CompanyScopedModelViewSet):
     """DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
 
@@ -32,6 +48,30 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
     ordering = ['-date_mise_a_jour']
     # YAPIC2 — whitelist explicite (jamais '__all__').
     ordering_fields = ['date_creation', 'date_mise_a_jour', 'pmax_wc']
+    # api-fuzz stock (vague 8) : plus de formulaire urlencodé (415) ; le
+    # multipart ne sert qu'au PDF (PATCH) et à ``importer-datasheet``.
+    parser_classes = [JSONParser, MultiPartParser]
+
+    def initial(self, request, *args, **kwargs):
+        """Création / remplacement complet (POST, PUT) : JSON seul — un
+        multipart y est refusé 415 (``struct_notice`` y arrivait en texte
+        « None », 400 sur un corps conforme). Posé ici et non dans
+        ``create``/``update`` : la forme servie reste celle du sérialiseur
+        (lisible par ``check_api_shapes``)."""
+        super().initial(request, *args, **kwargs)
+        if (self.action in ('create', 'update')
+                and (request.content_type or '').lower().startswith('multipart/')):
+            raise UnsupportedMediaType(request.content_type)
+
+    def handle_exception(self, exc):
+        """Refus d'état du sérialiseur (code ``refus_etat`` : courbe non croissante,
+        masse sans notice), seul ou avec un doublon (``unique``) → 409 ; toute
+        autre erreur de corps reste 400."""
+        if isinstance(exc, serializers.ValidationError):
+            codes = _codes(exc.get_codes())
+            if CODE_REFUS_ETAT in codes and codes <= {CODE_REFUS_ETAT, 'unique'}:
+                exc = ConflitEtat(exc.detail)
+        return super().handle_exception(exc)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -125,3 +165,12 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
             'confirme': True,
             'fiche': FicheTechniqueSerializer(fiche).data,
         })
+
+
+def _codes(codes):
+    """Ensemble des codes d'erreur DRF, aplati (dict / liste imbriqués)."""
+    if isinstance(codes, dict):
+        return set().union(*(_codes(v) for v in codes.values())) if codes else set()
+    if isinstance(codes, (list, tuple)):
+        return set().union(*(_codes(v) for v in codes)) if codes else set()
+    return {codes}

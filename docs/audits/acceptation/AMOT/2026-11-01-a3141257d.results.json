@@ -1,0 +1,136 @@
+{
+  "sha": "a3141257d25237d251a84e897be47692a61f83e3",
+  "date": "2026-11-01",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT102",
+    "AMOT103",
+    "AMOT104",
+    "AMOT105",
+    "AMOT106",
+    "AMOT109",
+    "AMOT112",
+    "AMOT114"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "AMOT114-E1",
+      "taches": [
+        "AMOT102",
+        "AMOT103",
+        "AMOT114"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E1.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Devis résidentiel avec batterie (2502, niveau 7) partagé, /proposition (astro dev, jeton interne) : curseur à la position offerte 4,5 ans = roi_a 4.5 ; pilule retenue 4,5 ; voisines 5,7 / 6,2 / 7,1 / 8,2 / 9,2 = oracle payback_publiable(part 0, rendement 0,98, provision d'onduleur de chaque composition) ; 32,2 kWh grisé (15,3 = oracle). Captures : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E1-curseur-offert.png, docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E1-palier-9-2.png"
+    },
+    {
+      "id": "AMOT114-E2",
+      "taches": [
+        "AMOT104",
+        "AMOT105",
+        "AMOT114"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E2.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "PDF industriel /proposal : kWh annuel + 12 factures relevées -> feuille kwh_annuel, baseline kwh_declares, « d'après vos kWh déclarés », 0 « facture(s) » ; courbe mesurée seule -> feuille courbe_mesuree, baseline courbe_mesuree, « Consommation : 657 000 kWh/an ». Observation : le PATCH etude-params n'a pas relancé l'étude C&I (rafraîchissement forcé = Given d'AMOT104). Captures : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E2a-pdf-industriel-p1.png, docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E2b-pdf-courbe-p1.png"
+    },
+    {
+      "id": "AMOT114-E3",
+      "taches": [
+        "AMOT106",
+        "AMOT114"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E3.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Générateur d'un devis remisé de 10 % (2505, onduleur hybride + batterie) : ROI écran avec 4 ans / sans 4.1 ans = PDF « Rentabilisé en 4 ans » / « 4,1 ans », roi_a 4.0 ; PDF p3 provision onduleur option 2 = 13 500 (prix payé). Le payback ne discrimine pas la provision sur ce devis (croisement avant l'année 12). Captures : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E3-generateur-roi.png, docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E3-pdf-p1.png, docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E3-pdf-p3.png"
+    },
+    {
+      "id": "AMOT114-E4",
+      "taches": [
+        "AMOT109",
+        "AMOT114"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E4.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "notes": "audit_coherence --company taqinor-demo --no-persist : 142 devis + 12 factures, 150 violations, 0 DOC_RENDU_SANS_MARGE (1 522 faux positifs à la contre-visite) ; --rules DOC_RENDU_SANS_MARGE : 0 violation. Sorties : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E4-audit_coherence.txt, docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E4-audit_coherence.json, docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E4-audit_coherence-regle-marge.json"
+    },
+    {
+      "id": "AMOT114-E5",
+      "taches": [
+        "AMOT112",
+        "AMOT114"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E5.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "GET lettre-relance-premium/?niveau=3 de BROUILLON-302 (exigible 21 870) -> 409 JSON, aucun PDF ; contrôle positif facture émise 301 -> 200 PDF. Oracle 3 NA : aucun écran ERP (erreurs console de la seule vue navigable DRF, statiques non servies localement). Capture : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E5-relance-brouillon-409.png"
+    }
+  ]
+}

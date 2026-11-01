@@ -274,8 +274,7 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
   }, [ordre.id])
   useEffect(() => { load() }, [load])
 
-  const qcBloque = controles.some(
-    (c) => c.resultat == null || c.resultat === 'echec')
+  const qcBloque = controles.some((c) => c.resultat !== 'pass')
 
   const demarrer = () => {
     setBusy(true)
@@ -566,25 +565,25 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
                       <span className="flex gap-1">
                         <Button
                           type="button" size="sm"
-                          variant={c.resultat === 'conforme' ? 'default' : 'outline'}
-                          onClick={() => enregistrerQc(c.item_modele, 'conforme')}
+                          variant={c.resultat === 'pass' ? 'default' : 'outline'}
+                          onClick={() => enregistrerQc(c.item_modele, 'pass')}
                         >
                           Conforme
                         </Button>
                         <Button
                           type="button" size="sm"
-                          variant={c.resultat === 'echec' ? 'destructive' : 'outline'}
-                          onClick={() => enregistrerQc(c.item_modele, 'echec')}
+                          variant={c.resultat === 'fail' ? 'destructive' : 'outline'}
+                          onClick={() => enregistrerQc(c.item_modele, 'fail')}
                         >
                           Échec
                         </Button>
                       </span>
                     ) : (
                       <StatusPill
-                        tone={c.resultat === 'conforme' ? 'success'
-                          : c.resultat === 'echec' ? 'danger' : 'neutral'}
-                        label={c.resultat === 'conforme' ? 'Conforme'
-                          : c.resultat === 'echec' ? 'Échec' : 'En attente'}
+                        tone={c.resultat === 'pass' ? 'success'
+                          : c.resultat === 'fail' ? 'danger' : 'neutral'}
+                        label={c.resultat === 'pass' ? 'Conforme'
+                          : c.resultat === 'fail' ? 'Échec' : 'En attente'}
                       />
                     )}
                   </li>

@@ -1,0 +1,42 @@
+ACAL351 — rejeu ÉCRAN du 2026-10-30 (nuit), Playwright MCP, demo_admin, pile locale http://localhost sur origin/main db8ca9670 (migrée, front reconstruit, nginx redémarré), base démo locale.
+Écart d'environnement déclaré (dossier §0, méthode de 2026-10-30-f1f711dc7) : la clé MapTiler est absente (design-context → carte.available false, maptilerKey ""). CÔTÉ NAVIGATEUR seulement (`context.route`) : la réponse design-context est complétée par une clé factice (`available: true, maptilerKey: "cle-factice-rejeu"`) et api.maptiler.com répond un style minimal valide `{version: 8, sources: {}, layers: [fond]}` (204 pour le reste). Avec un style vide `{}`, la carte lève « missing required property version/sources/layers » et le bouton « Enregistrer le calepinage » reste désactivé (scène jamais hydratée) — d'où le style minimal. Aucune autre réponse modifiée.
+Données : leads 3748 « ACAL351 rejeu » et 3749 « ACAL351 rejeu 02 » ; calepinages 171 et 172, chacun semé par POST layout/ (If-Match) avec l'`exemple` de backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json (33 clés) — même semis que la sonde serveur.
+Bruit attendu : GET 171|172/plan-importe/ → 404 (l'`underlay` de l'exemple désigne la pièce jointe fictive 512 ; l'écran l'annonce « Fond non affiché : le fichier du fond n'est pas accessible ») ; avertissements HydrateFallback / PCFSoftShadowMap.
+Observation non jugée : avec l'exemple, l'atelier affiche « Surface : ~742 163 548 708 m² » pour un contour de 0,0001° × 0,0001° (~100 m²) et « 0 posés / 12 au devis » ; à confirmer sur un toit dessiné (les coordonnées de l'exemple sont [lat, lng]).
+
+## S-A.premier-enregistrer — FAIL (ACAL351) — défaut A1
+Calepinage 172 juste semé (1 version, layout_hash afef9b47…). /calepinage/172 ouvert, guide fermé, AUCUN geste, « Enregistrer le calepinage » :
+  200 POST 172/layout/ puis 201 POST 172/roof-image/ ; statut écran « Conception enregistrée — version 173. » (attendu « Conception inchangée ») ;
+  diff clé par clé document exemple → après : UNE clé, `zones[0].neededAuto : true -> false` ; layout_hash afef9b47… → a5f80705… ; versions 1 → 2 ; resultat : hash_entree et simulation.hash_entree changés (f536d898… → cc9740d4…).
+Reproduit une seconde fois : après « Restaurer » la version 172 (document v1, neededAuto true), atelier rouvert, Enregistrer sans geste ⇒ « Conception enregistrée — version 177. », neededAuto true → false.
+Suspect (lu, non corrigé) : l'hydratation du constructeur réécrit `neededAuto` d'après la présence d'un nombre de panneaux — apps/web/src/scripts/roofPro11/prefill.ts:1858 `neededAuto: neededPanels == null` (l'exemple porte neededPanels 12 ET neededAuto true : un pan « automatique » qui garde son nombre est re-sérialisé « manuel »). La sonde serveur du matin (POST de l'exemple renvoyé tel quel → « inchangé ») ne voit pas ce défaut : il est côté atelier.
+Capture : docs/qa-explorer/captures/2026-10-30/ACCEPTATION-ACAL351-rejeu-S-A-premier-enregistrer.jpg
+
+## S-A.idempotence — PASS (ACAL351)
+Calepinage 171 (déjà normalisé par un premier Enregistrer, 2 versions) rechargé, aucun geste, Enregistrer : 200 POST layout/ ; « Conception inchangée — le calepinage n'a pas bougé. » ; diff document vide, diff resultat vide, layout_hash a5f80705… = a5f80705…, empreinte_document identique, versions 2 → 2 ; seuls modifie_le et image.genere_le/expire_le bougent (rendu 3D régénéré). Même résultat sur 172 après rechargement (S-B.409 ci-dessous).
+Capture : ACCEPTATION-ACAL351-rejeu-S-A-second-enregistrer.jpg
+
+## S-B.409 — PASS (ACAL351, ACAL22)
+172 ouvert dans l'atelier ; PENDANT ce temps écriture « ailleurs » par l'API (POST layout/ avec le jeton courant, zones[0].label = « Pan Sud (modifié ailleurs ACAL351) ») → 200.
+Enregistrer dans l'atelier ⇒ 409 POST 172/layout/ ; l'écran affiche « La conception a été modifiée ailleurs (onglet, autre navigateur) — rechargez avant d'enregistrer. » + « Le document a été modifié ailleurs depuis votre ouverture : rechargez avant d'enregistrer. » et un bouton « Recharger » ; serveur inchangé (layout_hash = celui de l'écriture ailleurs, label « modifié ailleurs »).
+« Recharger » puis Enregistrer sans geste ⇒ 200, « Conception inchangée », label « Pan Sud (modifié ailleurs ACAL351) » gardé, layout_hash identique : rechargement sans perte.
+Captures : ACCEPTATION-ACAL351-rejeu-S-B-409.jpg, ACCEPTATION-ACAL351-rejeu-S-B-recharge.jpg
+
+## S-B.lecture-bloquee — PASS (ACAL351)
+L'atelier lit le document par design-context/ (aucun GET layout/ au chargement : un blocage de layout/ seul ne coupe rien). `page.route` abort sur les GET 172/design-context/ et 172/layout/ : requestfailed « GET design-context/ net::ERR_FAILED » ; écran « Impossible de charger le calepinage — réessayez. », « Connexion perdue. Vos saisies sont conservées… » ; « Enregistrer le calepinage » DÉSACTIVÉ ; aucun POST layout/ ; serveur : layout_hash et versions (3 → 3) inchangés.
+Observation (libellé) : la même vue affiche aussi « Calepinage introuvable (erreur ?). » — code d'erreur absent sur un échec réseau.
+Capture : ACCEPTATION-ACAL351-rejeu-S-B-lecture-bloquee.jpg
+
+## S-G.meme-message — PASS (ACAL351)
+/calepinage/19 (calepinage de la société taqinor-demo-full, lu en base) et /calepinage/999999999 (absent) : réponses 404 identiques (design-context/, resultat/, modules-disponibles/) et MÊME message à l'écran « Calepinage introuvable (erreur 404). » / « Calepinage introuvable. ».
+Captures : ACCEPTATION-ACAL351-rejeu-S-G-autre-societe.jpg, ACCEPTATION-ACAL351-rejeu-S-G-absent.jpg
+
+## S-G.lead-deja-ouvert — PASS (ACAL351)
+/calepinage/nouveau, onglet Lead, recherche « ACAL351 rejeu 02 » (lead 3749 qui a déjà le calepinage 172) ⇒ « Ce lead a déjà un calepinage ouvert : « ACAL351 rejeu 02 ». Pour une autre option, ouvrez-le puis créez une variante. », bouton « Ouvrir l'existant » à la place de « Créer le calepinage » ; clic ⇒ /calepinage/172, aucun POST ; GET calepinages/?lead=3749 → un seul calepinage [172].
+Capture : ACCEPTATION-ACAL351-rejeu-S-G-lead-deja-ouvert.jpg
+
+## P6.2.restaurer — PASS (ACAL351)
+Onglet Versions de 172 : « Restaurer » sur la version 172 ⇒ confirmation en ligne (« Remplace le dessin et vide le rendu 3D ; … l'état actuel est gardé comme version « Avant restauration » ») ⇒ « Confirmer » ⇒ versions 175 « Avant restauration de #172 » et 176 « Restauration de la version #172 » ; GET layout/ = document v1 (label « Pan Sud », neededAuto true). (Le premier rechargement de l'atelier juste après est resté blanc ~30 s ; le suivant a chargé normalement — non reproduit, non jugé.) L'Enregistrer sans geste qui suit retombe sur le défaut A1 (version 177).
+
+## Non joué ce soir (reste d'ACAL351)
+S-B : onglet Horizon puis atelier depuis une page ouverte avant ; Terrain/Ombrière puis atelier ; ombrière → Générer. S-C publication complète (dessin, Générer, Resynchroniser, /ventes/devis/<id>/design, envoi, correction, acceptation, Réviser) ; S-C+S-D cycle (badge périmé, /proposal?include_calepinage=1, chatter, bandeau « révisez-le », variantes, approbation, archivage refusé, P1.5 modèle) ; S-E simulation (PVGIS hors ligne) ; S-F électrique F06 ; S-G : fusion de leads, corbeille 409, renommer, double clic depuis-lead à l'écran, GPS corrigé, liste/recherche, photos, relevé, plan DXF, reprise de visite ; S-H livrables et pose réelle (jeu anonymisé) ; parité écran = devis = PDF = page publique.

@@ -15,7 +15,7 @@ import {
 import {
   inverterCostFromLines, appartientAuPanierSans, appartientAuPanierAvec, isBattery, texteClassement,
 } from '../../../../features/ventes/calc/classification.js'
-import { computeROI, paybackMoteurHoraire } from '../../../../features/ventes/calc/roi.js'
+import { computeROI, paybackMoteurHoraire, provisionOnduleurPayee } from '../../../../features/ventes/calc/roi.js'
 import { consoAnnuelleDepuisFactures } from '../../../../features/ventes/calc/tarifs.js'
 import {
   construireCorpsPreview, etiquetteSource, lignesAffichables,
@@ -34,7 +34,7 @@ export function useApercuEtude(ctx) {
     monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits, reglesCalcul,
+    sizing, dispatchSizing, produits, reglesCalcul, discountPct,
   } = ctx
 
   // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
@@ -170,6 +170,7 @@ export function useApercuEtude(ctx) {
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
       reglesCalcul,
+      discountPct,
       // QF5 — bascule sur le modèle « deux factures » par tranche (parité
       // PDF) dès qu'une consommation réelle + un distributeur sont connus.
       // AGNR24 — la conso ENREGISTRÉE (`consoEcran`), jamais la seule saisie.
@@ -182,7 +183,7 @@ export function useApercuEtude(ctx) {
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul])
+    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul, discountPct])
 
   // L-2OPT — miroir local de `roi` recalculé AU kWc DE LA BRANCHE AVEC. `null`
   // dès que rien ne diverge (`kwpAvec === kwp`) : l'écran retombe alors mot
@@ -206,6 +207,7 @@ export function useApercuEtude(ctx) {
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
       reglesCalcul,
+      discountPct,
       consoAnnuelleKwh: consoEcran,
       utility: distributeur,
       bareme: baremeSociete,
@@ -213,7 +215,7 @@ export function useApercuEtude(ctx) {
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul])
+    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul, discountPct])
 
   // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
   const villeCalculLead = villeEffectiveLead(selectedLead)
@@ -409,8 +411,8 @@ export function useApercuEtude(ctx) {
   const paybackServeurSans = etudeHoraireSourceServeur
     ? paybackMoteurHoraire(totals.totalSans, apercuEcoSans, {
         annuel: etudeHoraireAnnuel,
-        inverterReplaceCost: inverterCostFromLines(
-          lines.filter(l => appartientAuPanierSans(l, produits)), produits),
+        inverterReplaceCost: provisionOnduleurPayee(inverterCostFromLines(
+          lines.filter(l => appartientAuPanierSans(l, produits)), produits), discountPct, reglesCalcul),
       })
     : null
   const paybackServeurAvec = etudeHoraireAnnuelAvec
@@ -418,8 +420,8 @@ export function useApercuEtude(ctx) {
         annuel: etudeHoraireAnnuelAvec,
         rendementBatterie: etudeHoraireDonneesPourAvec?.etude?.rendement_batterie ?? null,
         stockage: batteryKwhFromLines(lines, produits) > 0,
-        inverterReplaceCost: inverterCostFromLines(
-          lines.filter(l => appartientAuPanierAvec(l, produits)), produits),
+        inverterReplaceCost: provisionOnduleurPayee(inverterCostFromLines(
+          lines.filter(l => appartientAuPanierAvec(l, produits)), produits), discountPct, reglesCalcul),
       })
     : null
   const apercuPaybackSans = etudeHoraireSourceServeur
