@@ -21,8 +21,8 @@ class EcheancesRealesTests(unittest.TestCase):
         fins = {nom: fin for _rel, nom, fin in cer.echeances()}
         self.assertEqual(fins["ANRE_PERIODE"], dt.date(2027, 2, 28))
 
-    def test_rouge_au_30_12_2026(self):
-        erreurs = cer.verifier(dt.date(2026, 12, 30))
+    def test_rouge_au_01_02_2027(self):
+        erreurs = cer.verifier(dt.date(2027, 2, 1))
         self.assertTrue(any(e.startswith("ANRE_PERIODE") and "28/02/2027" in e and "re-sourcer" in e
                             for e in erreurs), erreurs)
 
@@ -42,7 +42,7 @@ class FixtureTests(unittest.TestCase):
     def test_fin_dans_la_fenetre_est_nommee(self):
         with tempfile.TemporaryDirectory() as tmp:
             r = self._moteur(
-    tmp, "import datetime as _dt\nTARIF_X_PERIODE = (_dt.date(2026, 1, 1), _dt.date(2026, 12, 1))\n")
+    tmp, "import datetime as _dt\nTARIF_X_PERIODE = (_dt.date(2026, 1, 1), _dt.date(2026, 11, 1))\n")
             erreurs = cer.verifier(dt.date(2026, 10, 15), r)
             self.assertEqual(len(erreurs), 1)
             self.assertIn("TARIF_X_PERIODE", erreurs[0])
