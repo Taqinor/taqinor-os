@@ -298,7 +298,7 @@ def win_loss_by_source(request):
       ?from=YYYY-MM-DD  / ?to=YYYY-MM-DD  fenêtre sur date_creation du lead.
 
     Retourne :
-      by_canal           : taux de fermeture par Lead.canal (won / total par canal)
+      by_canal           : taux de clôture par Lead.canal (taux_gain : won / non perdus)
       by_source_technique: idem pour Lead.source (os_native / site_web / import)
       top_loss_reasons   : top motifs de perte (Lead.motif_perte, leads perdus)
       summary            : nb total, nb won, nb lost, overall close rate %
@@ -320,25 +320,25 @@ def win_loss_by_source(request):
 
     leads = list(leads_qs.only(
         'stage', 'perdu', 'canal', 'source', 'motif_perte'))
-    # AANA21 / D-AANA-1 — « gagné » = SIGNED non perdu (helper partagé).
-    from apps.reporting.services import est_lead_gagne
+    # AANA21 / D-AANA-1 — « gagné » = SIGNED non perdu ; AANA56 — taux de
+    # clôture = LE taux de gain (gagnés ÷ non perdus, None si tous perdus).
+    from apps.reporting.services import est_lead_gagne, taux_gain
 
     # ── Par canal marketing ───────────────────────────────────────────────────
     canal_labels = dict(Lead.Canal.choices)
-    canal_buckets = {}  # canal_key → {total, won}
+    canal_buckets = {}  # canal_key → {total, won, leads}
     for le in leads:
         canal = le.canal or 'autre'
-        b = canal_buckets.setdefault(canal, {'total': 0, 'won': 0})
+        b = canal_buckets.setdefault(canal, {'total': 0, 'won': 0, 'leads': []})
         b['total'] += 1
+        b['leads'].append(le)
         if est_lead_gagne(le):
             b['won'] += 1
 
     by_canal = []
     for canal_key, b in sorted(
             canal_buckets.items(), key=lambda kv: -kv[1]['total']):
-        close_rate = (
-            round(b['won'] / b['total'] * 100, 1) if b['total'] else 0.0
-        )
+        close_rate = taux_gain(b['leads'])
         by_canal.append({
             'canal': canal_key,
             'label': canal_labels.get(canal_key, canal_key),
@@ -352,17 +352,16 @@ def win_loss_by_source(request):
     source_buckets = {}
     for le in leads:
         src = le.source or 'os_native'
-        b = source_buckets.setdefault(src, {'total': 0, 'won': 0})
+        b = source_buckets.setdefault(src, {'total': 0, 'won': 0, 'leads': []})
         b['total'] += 1
+        b['leads'].append(le)
         if est_lead_gagne(le):
             b['won'] += 1
 
     by_source_technique = []
     for src_key, b in sorted(
             source_buckets.items(), key=lambda kv: -kv[1]['total']):
-        close_rate = (
-            round(b['won'] / b['total'] * 100, 1) if b['total'] else 0.0
-        )
+        close_rate = taux_gain(b['leads'])
         by_source_technique.append({
             'source': src_key,
             'label': source_labels.get(src_key, src_key),
@@ -387,9 +386,7 @@ def win_loss_by_source(request):
     nb_total = len(leads)
     nb_won = sum(1 for le in leads if est_lead_gagne(le))
     nb_lost = len(perdus)
-    overall_close_rate = (
-        round(nb_won / nb_total * 100, 1) if nb_total else 0.0
-    )
+    overall_close_rate = taux_gain(leads) or 0.0  # = win_rate_pct du tableau
 
     return Response({
         'by_canal': by_canal,
