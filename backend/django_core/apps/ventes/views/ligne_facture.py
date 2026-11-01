@@ -79,6 +79,15 @@ class LigneFactureViewSet(CompanyScopedModelViewSet):
             "lignes d'une facture émise. Corrigez par un avoir (ou "
             "remettez la facture en brouillon).")
 
+    def _check_facture_inchangee(self, serializer):
+        """ATOT40 — une ligne ne CHANGE jamais de facture (motif QJR516)."""
+        from core.conflit_etat import ConflitEtat
+        cible = serializer.validated_data.get('facture')
+        if cible is not None and cible.pk != serializer.instance.facture_id:
+            raise ConflitEtat({
+                'facture': "Une ligne ne change pas de facture : supprimez-la "
+                           "et ajoutez-la sur l'autre facture."})
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         facture = serializer.validated_data.get('facture')
@@ -87,6 +96,7 @@ class LigneFactureViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        self._check_facture_inchangee(serializer)
         self._check_immuable(serializer.instance.facture)
         serializer.save()
 

@@ -97,6 +97,34 @@ class MontantsFigesTests(TestCase):
             list(LigneFacture.objects.filter(facture=facture)
                  .values_list('id', 'quantite', 'prix_unitaire')), avant)
 
+    def test_ligne_ne_change_pas_de_facture(self):
+        """ATOT40 — ``PATCH {facture}`` ne déplace jamais une ligne."""
+        from apps.ventes.models import Facture, LigneFacture
+        emise = self._facture(
+            Facture.Statut.EMISE, montant_ht=Decimal('1000.00'),
+            montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'))
+        brouillon = self._facture(Facture.Statut.BROUILLON)
+        autre = self._facture(Facture.Statut.BROUILLON)
+        ligne = LigneFacture.objects.get(facture=brouillon)
+        LigneFacture.objects.filter(pk=ligne.pk).update(
+            prix_unitaire=Decimal('500'))
+        url = f'/api/django/ventes/factures-lignes/{ligne.id}/'
+        for cible in (emise, autre):
+            r = self.api.patch(url, {'facture': cible.id}, format='json')
+            self.assertEqual(r.status_code, 409, r.data)
+            self.assertIn('ne change pas de facture', str(r.data))
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.facture_id, brouillon.id)
+        self.assertEqual(LigneFacture.objects.filter(facture=emise).count(), 1)
+        self.assertEqual(LigneFacture.objects.filter(facture=autre).count(), 1)
+        emise.refresh_from_db()
+        self.assertEqual(emise.montant_ttc, Decimal('1200.00'))
+        r = self.api.patch(url, {'facture': brouillon.id, 'quantite': '2'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.quantite, Decimal('2'))
+
     def test_brouillon_modifiable_trace(self):
         from apps.ventes.models import Facture, FactureActivity
         facture = self._facture(Facture.Statut.BROUILLON)
