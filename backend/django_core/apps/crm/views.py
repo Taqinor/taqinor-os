@@ -1,6 +1,5 @@
 import logging
 from contextlib import contextmanager
-from django.core.exceptions import FieldDoesNotExist
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -518,9 +517,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         Prudent : une valeur non comparable (M2M, type inconnu) compte comme
         un changement."""
         for nom, valeur in vd.items():
-            try:
-                champ = Lead._meta.get_field(nom)
-            except FieldDoesNotExist:  # champ non modèle (ENF15)
+            champ = {f.name: f for f in Lead._meta.get_fields()}.get(nom)
+            if champ is None:  # champ non modèle (ENF15)
                 return True
             if getattr(champ, 'many_to_many', False):
                 actuel = set(getattr(old, nom).values_list('pk', flat=True))
