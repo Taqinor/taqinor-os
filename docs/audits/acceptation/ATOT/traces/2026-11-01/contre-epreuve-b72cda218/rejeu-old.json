@@ -1,0 +1,528 @@
+{
+  "mode": "old",
+  "base": "http://127.0.0.1:8002",
+  "run": "old-mvy8b2uf",
+  "e1": {
+    "emise": 3,
+    "emiseRef": "FAC-202611-0001",
+    "bc": 3,
+    "A": 6,
+    "B": 7,
+    "D1": 6,
+    "D2": 7,
+    "p": 16,
+    "caps": []
+  },
+  "e6": {
+    "facture": 7,
+    "factureRef": "FAC-202611-0002",
+    "avoirRef": "AVO-202611-0001",
+    "noteRef": "ND-202611-0001",
+    "cap": null
+  },
+  "etapes": {
+    "P1.1": [
+      {
+        "nom": "facture émise 1 200 TTC",
+        "ok": true,
+        "detail": {
+          "statut": "emise",
+          "ttc": "1200.00",
+          "ref": "FAC-202611-0001"
+        }
+      },
+      {
+        "nom": "ligne brouillon -> facture émise : 409",
+        "ok": false,
+        "detail": {
+          "st": 200,
+          "body": {
+            "id": 7,
+            "total_ht": "500.00",
+            "designation": "Ajout",
+            "quantite": "1.00",
+            "prix_unitaire": "500.00",
+            "remise": "0.00",
+            "taux_tva": "20.00",
+            "facture": 3,
+            "produit": 16,
+            "source_devis": null
+          }
+        }
+      },
+      {
+        "nom": "ligne brouillon -> autre brouillon : 409",
+        "ok": true,
+        "detail": {
+          "st": 409,
+          "body": {
+            "detail": "Montant figé après émission : impossible de modifier les lignes d'une facture émise. Corrigez par un avoir (ou remettez la facture en brouillon).",
+            "error": {
+              "code": "api_error",
+              "message": "Montant figé après émission : impossible de modifier les lignes d'une facture émise. Corrigez par un avoir (ou remettez la facture en brouillon).",
+              "fields": null,
+              "request_id": "4504d5af1e1041ada4f7ab68bd9baa1e"
+            }
+          }
+        }
+      },
+      {
+        "nom": "PATCH {facture: sa facture, quantite: 2} : 200",
+        "ok": false,
+        "detail": {
+          "st": 409
+        }
+      },
+      {
+        "nom": "persistance : émise 1 ligne 1 200,00 TTC ; brouillon garde sa ligne",
+        "ok": false,
+        "detail": {
+          "emise": [
+            2,
+            "1800.00"
+          ],
+          "brouillon": [
+            0,
+            "0.00"
+          ]
+        }
+      }
+    ],
+    "P1.2": [
+      {
+        "nom": "PATCH {client} sur émise : 409 champs_refuses ∋ client",
+        "ok": false,
+        "detail": {
+          "st": 200,
+          "body": {
+            "id": 3,
+            "bon_commande": null,
+            "devis": null,
+            "lead": null,
+            "type_facture": "complete",
+            "pourcentage": null,
+            "libelle": null,
+            "montant_ht": null,
+            "montant_tva": null,
+            "montant_ttc": null,
+            "client": 7,
+            "statut": "emise",
+            "date_emission": "2026-11-01",
+            "date_echeance": "2026-12-01",
+            "taux_tva": "20.00",
+            "remise_globale": "0.00",
+            "arrondi_pas": 0,
+            "arrondi_unites": 1,
+            "note": null,
+            "date_livraison": null,
+            "conditions_paiement": "",
+            "retenue_garantie_mad": null,
+            "retenue_liberee_le": null,
+            "ventilation_tva": null,
+            "cle_tranche": "",
+            "reference_commande_client": "",
+            "condition_paiement_ref": null,
+            "prochaine_relance": null,
+            "exclu_relances": false,
+            "exclu_relances_jusquau": null,
+            "escompte_pct": null,
+            "escompte_jours": null,
+            "abandon_motif": "",
+            "abandon_montant": null,
+            "abandon_date": null,
+            "abandon_auto": false,
+            "abandon_par": null,
+            "revue_statut": "",
+            "statut_teledeclaration": "non_soumise",
+            "created_by": 1,
+            "pdf_render_meta": null,
+            "fichier_ubl": null,
+            "devise": "MAD",
+            "taux_change": "1.000000",
+            "dgi_statut": "a_transmettre",
+            "dgi_reference": "",
+            "dgi_motif_rejet": "",
+            "periode_service_debut": null,
+            "periode_service_fin": null,
+            "updated_at": "2026-11-01T19:34:28.360096Z",
+            "updated_by": 1,
+            "entite": null,
+            "company": 1
+          }
+        }
+      },
+      {
+        "nom": "PATCH {retenue_garantie_mad} sur émise : 409 champs_refuses ∋ retenue_garantie_mad",
+        "ok": false,
+        "detail": {
+          "st": 200,
+          "body": {
+            "id": 3,
+            "bon_commande": null,
+            "devis": null,
+            "lead": null,
+            "type_facture": "complete",
+            "pourcentage": null,
+            "libelle": null,
+            "montant_ht": null,
+            "montant_tva": null,
+            "montant_ttc": null,
+            "client": 7,
+            "statut": "emise",
+            "date_emission": "2026-11-01",
+            "date_echeance": "2026-12-01",
+            "taux_tva": "20.00",
+            "remise_globale": "0.00",
+            "arrondi_pas": 0,
+            "arrondi_unites": 1,
+            "note": null,
+            "date_livraison": null,
+            "conditions_paiement": "",
+            "retenue_garantie_mad": "500.00",
+            "retenue_liberee_le": null,
+            "ventilation_tva": null,
+            "cle_tranche": "",
+            "reference_commande_client": "",
+            "condition_paiement_ref": null,
+            "prochaine_relance": null,
+            "exclu_relances": false,
+            "exclu_relances_jusquau": null,
+            "escompte_pct": null,
+            "escompte_jours": null,
+            "abandon_motif": "",
+            "abandon_montant": null,
+            "abandon_date": null,
+            "abandon_auto": false,
+            "abandon_par": null,
+            "revue_statut": "",
+            "statut_teledeclaration": "non_soumise",
+            "created_by": 1,
+            "pdf_render_meta": null,
+            "fichier_ubl": null,
+            "devise": "MAD",
+            "taux_change": "1.000000",
+            "dgi_statut": "a_transmettre",
+            "dgi_reference": "",
+            "dgi_motif_rejet": "",
+            "periode_service_debut": null,
+            "periode_service_fin": null,
+            "updated_at": "2026-11-01T19:34:28.483317Z",
+            "updated_by": 1,
+            "entite": null,
+            "company": 1
+          }
+        }
+      },
+      {
+        "nom": "PATCH {devise} sur émise : 409 champs_refuses ∋ devise",
+        "ok": false,
+        "detail": {
+          "st": 200,
+          "body": {
+            "id": 3,
+            "bon_commande": null,
+            "devis": null,
+            "lead": null,
+            "type_facture": "complete",
+            "pourcentage": null,
+            "libelle": null,
+            "montant_ht": null,
+            "montant_tva": null,
+            "montant_ttc": null,
+            "client": 7,
+            "statut": "emise",
+            "date_emission": "2026-11-01",
+            "date_echeance": "2026-12-01",
+            "taux_tva": "20.00",
+            "remise_globale": "0.00",
+            "arrondi_pas": 0,
+            "arrondi_unites": 1,
+            "note": null,
+            "date_livraison": null,
+            "conditions_paiement": "",
+            "retenue_garantie_mad": "500.00",
+            "retenue_liberee_le": null,
+            "ventilation_tva": null,
+            "cle_tranche": "",
+            "reference_commande_client": "",
+            "condition_paiement_ref": null,
+            "prochaine_relance": null,
+            "exclu_relances": false,
+            "exclu_relances_jusquau": null,
+            "escompte_pct": null,
+            "escompte_jours": null,
+            "abandon_motif": "",
+            "abandon_montant": null,
+            "abandon_date": null,
+            "abandon_auto": false,
+            "abandon_par": null,
+            "revue_statut": "",
+            "statut_teledeclaration": "non_soumise",
+            "created_by": 1,
+            "pdf_render_meta": null,
+            "fichier_ubl": null,
+            "devise": "EUR",
+            "taux_change": "1.000000",
+            "dgi_statut": "a_transmettre",
+            "dgi_reference": "",
+            "dgi_motif_rejet": "",
+            "periode_service_debut": null,
+            "periode_service_fin": null,
+            "updated_at": "2026-11-01T19:34:28.606865Z",
+            "updated_by": 1,
+            "entite": null,
+            "company": 1
+          }
+        }
+      },
+      {
+        "nom": "PATCH à valeurs inchangées (client A, devise) : 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      },
+      {
+        "nom": "PATCH {notes} : 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      },
+      {
+        "nom": "persistance : client A, retenue 0, devise et TTC 1 200 inchangés",
+        "ok": false,
+        "detail": {
+          "client": 6,
+          "retenue": "500.00",
+          "devise": "MAD",
+          "ttc": "1800.00"
+        }
+      },
+      {
+        "nom": "brouillon : PATCH {client: B} 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      }
+    ],
+    "P1.3": [
+      {
+        "nom": "BC livré du devis D1 / client A",
+        "ok": true,
+        "detail": {
+          "statut": "livre",
+          "devis": 6,
+          "client": 6,
+          "livrer": 200
+        }
+      },
+      {
+        "nom": "PATCH BC {devis: D2} : 409",
+        "ok": false,
+        "detail": {
+          "st": 200,
+          "body": {
+            "id": 3,
+            "client_nom": "ATOT53 A",
+            "devis_reference": "DEV-202611-0002",
+            "has_facture": false,
+            "facture_active": false,
+            "has_proof_of_delivery": true,
+            "total_ht": "1000.00",
+            "total_tva": "200.00",
+            "total_ttc": "1200.00",
+            "reliquat_par_ligne": [
+              {
+                "ligne_devis_id": 22,
+                "designation": "Kit ATOT53",
+                "quantite_commandee": 1,
+                "quantite_livree": 0,
+                "reliquat": 1
+              }
+            ],
+            "est_partiellement_livre": false,
+            "reference": "BC-202611-0001",
+            "statut": "livre",
+            "date_creation": "2026-11-01T19:34:30.971639Z",
+            "date_livraison_prevue": null,
+            "note": null,
+            "pv_livraison": {
+              "signed_at": "2026-11-01T19:34:31.190708+00:00",
+              "signataire": "ATOT53"
+            },
+            "date_livraison_reelle": "2026-11-01",
+            "signe_au_domicile": false,
+            "date_signature_domicile": null,
+            "company": 1,
+            "devis": 7,
+            "lead": null,
+            "client": 6
+          }
+        }
+      },
+      {
+        "nom": "PATCH BC {client: B} : 409",
+        "ok": false,
+        "detail": {
+          "st": 200,
+          "body": {
+            "id": 3,
+            "client_nom": "ATOT53 B",
+            "devis_reference": "DEV-202611-0002",
+            "has_facture": false,
+            "facture_active": false,
+            "has_proof_of_delivery": true,
+            "total_ht": "1000.00",
+            "total_tva": "200.00",
+            "total_ttc": "1200.00",
+            "reliquat_par_ligne": [
+              {
+                "ligne_devis_id": 22,
+                "designation": "Kit ATOT53",
+                "quantite_commandee": 1,
+                "quantite_livree": 0,
+                "reliquat": 1
+              }
+            ],
+            "est_partiellement_livre": false,
+            "reference": "BC-202611-0001",
+            "statut": "livre",
+            "date_creation": "2026-11-01T19:34:30.971639Z",
+            "date_livraison_prevue": null,
+            "note": null,
+            "pv_livraison": {
+              "signed_at": "2026-11-01T19:34:31.190708+00:00",
+              "signataire": "ATOT53"
+            },
+            "date_livraison_reelle": "2026-11-01",
+            "signe_au_domicile": false,
+            "date_signature_domicile": null,
+            "company": 1,
+            "devis": 7,
+            "lead": null,
+            "client": 7
+          }
+        }
+      },
+      {
+        "nom": "PATCH BC {note} : 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      },
+      {
+        "nom": "PATCH BC {devis: D1 (sa valeur)} : 200",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      },
+      {
+        "nom": "persistance : devis D1, client A",
+        "ok": false,
+        "detail": {
+          "devis": 6,
+          "client": 7
+        }
+      }
+    ],
+    "P6": [
+      {
+        "nom": "facture émise 1 000 HT (400 @10 + 600 @20) = 1 160 TTC",
+        "ok": true,
+        "detail": {
+          "ref": "FAC-202611-0002",
+          "ht": "1000.00",
+          "tva": "160.00",
+          "ttc": "1160.00"
+        }
+      },
+      {
+        "nom": "avoir émis 200 HT @20 et note de débit émise 100 HT @20",
+        "ok": true,
+        "detail": {
+          "avoir": [
+            "AVO-202611-0001",
+            "emise",
+            "240.00"
+          ],
+          "note": [
+            "ND-202611-0001",
+            "emise",
+            "120.00"
+          ]
+        }
+      }
+    ],
+    "P6.3": [
+      {
+        "nom": "export comptable (csv) : 900 HT / 140 TVA / 1 040 TTC sur nos pièces",
+        "ok": false,
+        "detail": {
+          "ht": 1000,
+          "tva": 160,
+          "ttc": 1160,
+          "lignes": 2,
+          "cols": [
+            "Total HT",
+            "Montant TVA",
+            "Total TTC"
+          ]
+        }
+      },
+      {
+        "nom": "avoir en ligne négative, note en ligne positive",
+        "ok": false,
+        "detail": {}
+      },
+      {
+        "nom": "export comptable xlsx servi",
+        "ok": true,
+        "detail": {
+          "st": 200,
+          "ct": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+      }
+    ],
+    "P6.1": [
+      {
+        "nom": "grand livre : note de débit D 3421 120 / C 7111 100 / C 4455 20, équilibrée",
+        "ok": false,
+        "detail": {
+          "lignes": 0,
+          "deb": 0,
+          "cre": 0,
+          "comptes": []
+        }
+      },
+      {
+        "nom": "IIF : la note de débit y figure",
+        "ok": false,
+        "detail": {
+          "lignes": 0
+        }
+      }
+    ],
+    "P6.2": [
+      {
+        "nom": "journal des ventes xlsx servi (contenu relu par openpyxl)",
+        "ok": true,
+        "detail": {
+          "st": 200
+        }
+      }
+    ]
+  },
+  "incidents": {
+    "1": [],
+    "2": [
+      "API PATCH /ventes/factures-lignes/7/ -> 409 {\"detail\":\"Montant figé après émission : impossible de modifier les lignes d'une facture émise. Corrigez par un avoir (ou remettez la facture en brouillon).\",\"error\":{\"code\":\"api_error\",\"message\":\"Mon"
+    ],
+    "3": [],
+    "4": [],
+    "8": []
+  }
+}

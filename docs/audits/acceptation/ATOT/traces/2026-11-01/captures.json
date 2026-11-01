@@ -1,0 +1,46 @@
+[
+  {
+    "nom": "P1.1",
+    "url": "/ventes/factures",
+    "manquants": [
+      "1 200,00"
+    ],
+    "incidents": {
+      "1": [],
+      "2": [],
+      "3": [],
+      "4": [],
+      "7": [],
+      "8": []
+    },
+    "extrait": "Aller au contenu\nFactures\nTAQINOR Démo\nERP SOLAIRE\nVENTES\nADMINISTRATEUR\nCockpit\nDevis\nConception 3D\nBons de commande\nFactures\nAvoirs\nEncaissements\nImport relevé bancaire\nRelances / Impayés\nAction requise\nListes de prix\nDossiers réglementaires\nRemises d'encaissement\nToutes les apps\nDéconnexion\nVENTES\nVentes\nFactures\nFactures\n⌘K\n20\nFR\nClair\nSystème\nSombre\nD\ndemo_admin\nFactures\n36\n\n28 factures à encaisser\n\nTous les types\nImprimer\nExporter\nFR\nDarija\nConsolider des devis\nNouvelle facture\nENCAISSÉ CE MOIS\n3 600,00 MAD\nMois en cours\nTOTAL DÛ\n61 254,00 MAD\nToutes factures non soldées\nEN RETARD\n23 090,00 MAD\n23 factures échues\nÀ ÉCHOIR ≤ 7 J\n0,00 MAD\n5 factures · 7 prochains jours\nToutes\n36\nBrouillon\n6\nÉmises\n5\nEn retard\n23\nPartiellement payées\n11\nPayées\n2\nAnnulées\nReste à encaisser (onglet) : 1 200,00 MAD\n⭐ Enregistrer cette vue\nVues\nListe\nKanban\n\tRÉFÉRENCE\tCLIENT\tÉMISSION\tÉCHÉANCE\tTOTAL TTC\tSTATUT\tACTIONS\n\tFAC-202611-0003\nFacture complète\n5 mention(s) manquante(s)\nHistorique\n\tATOT53 A\t01/11/2026\t01/12/2026\t1 200,00 MAD\nPayé 0,00 MAD / Dû 1 200,00 MAD\n\t\nÉmise\nTélédéclaration : DGI : Non soumise\n\t\nEncaisser\nPayer en ligne\nPDF\nAvoir\nActions"
+  },
+  {
+    "nom": "P1.3",
+    "url": "/ventes/bons-commande",
+    "manquants": [],
+    "incidents": {
+      "1": [],
+      "2": [],
+      "3": [],
+      "4": [],
+      "7": [],
+      "8": []
+    },
+    "extrait": "Aller au contenu\nBons de commande\nTAQINOR Démo\nERP SOLAIRE\nVENTES\nADMINISTRATEUR\nCockpit\nDevis\nConception 3D\nBons de commande\nFactures\nAvoirs\nEncaissements\nImport relevé bancaire\nRelances / Impayés\nAction requise\nListes de prix\nDossiers réglementaires\nRemises d'encaissement\nToutes les apps\nDéconnexion\nVENTES\nVentes\nBons de commande\nBons de commande\n⌘K\n20\nFR\nClair\nSystème\nSombre\nD\ndemo_admin\nBons de commande\n4\n\nLe maillon devis → bon de commande → facture\n\nNouveau BC\nTous\n4\nEn attente\n1\nConfirmés\n1\nLivrés\n2\nAnnulés\nRÉFÉRENCE\tCLIENT\tDEVIS\tTOTAL TTC\tLIVRAISON PRÉVUE\tSTATUT\tRELIQUAT\tFACTURE\tACTIONS\nBC-202611-0002\tATOT53 A\tDEV-202611-0003\t1 200,00 MAD\t—\t\nLivré\n\t—\t—\t\nFacture\nPDF\n\nBC-202611-0001\tATOT53 A\tDEV-202611-0001\t1 200,00 MAD\t—\t\nLivré\n\t—\t—\t\nFacture\nPDF"
+  },
+  {
+    "nom": "P6",
+    "url": "/ventes/avoirs",
+    "manquants": [],
+    "incidents": {
+      "1": [],
+      "2": [],
+      "3": [],
+      "4": [],
+      "7": [],
+      "8": []
+    },
+    "extrait": "Aller au contenu\nAvoirs\nTAQINOR Démo\nERP SOLAIRE\nVENTES\nADMINISTRATEUR\nCockpit\nDevis\nConception 3D\nBons de commande\nFactures\nAvoirs\nEncaissements\nImport relevé bancaire\nRelances / Impayés\nAction requise\nListes de prix\nDossiers réglementaires\nRemises d'encaissement\nToutes les apps\nDéconnexion\nVENTES\nVentes\nAvoirs\nAvoirs\n⌘K\n20\nFR\nClair\nSystème\nSombre\nD\ndemo_admin\nAvoirs (notes de crédit)\n3\n\nNotes de crédit émises sur les factures\n\nTous\nÉmis\nAnnulés\nRÉFÉRENCE\tFACTURE\tCLIENT\tTOTAL TTC\tMOTIF\tSTATUT\t\nAVO-202611-0003\tFAC-202611-0004\tATOT53 C6 head-mvy87500\t240,00 MAD\tATOT53 avoir\t\nÉmis\t\nPDF\nAnnuler\n\nAVO-202611-0002\tFAC-202611-0002\tATOT53 C6 head-mvy85ygg\t240,00 MAD\tATOT53 avoir\t\nÉmis\t\nPDF\nAnnuler\n\nAVO-202611-0001\tFAC-ACC63-h1-1-com-5\tACC63 h1 Client Argent\t1 200,00 MAD\tretour\t\nÉmis\t\nPDF\nAnnuler"
+  }
+]
