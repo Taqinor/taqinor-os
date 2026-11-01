@@ -2872,3 +2872,25 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; lane w15-reporting)"
     taches: [AANA45]
+  - id: D-AANA-VER-1
+    question: "Le taux d'acceptation des devis a trois définitions (/reporting : acceptés ÷ créés ; Quote-to-cash : acceptés ÷ envoyés dans la période ; tableau de bord : acceptés ÷ sortis du brouillon). Laquelle devient l'unique définition ?"
+    options:
+      - cle: envoyes_periode
+        texte: "Acceptés ÷ devis envoyés dans la période (révisions remplacées exclues), déjà servi par le Quote-to-cash"
+      - cle: crees
+        texte: "Acceptés ÷ tous les devis créés (contrat AANA1)"
+    reponse: envoyes_periode
+    date: "2026-11-01"
+    source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie AANA)"
+    taches: [AANA57, AANA58, AANA59, AANA60]
+  - id: D-AANA-VER-2
+    question: "Le prévisionnel pondéré du pipeline a deux tables de probabilité par étape (Kanban CRM 25/50/70 %, serveur 20/40/60 %). Laquelle garder comme unique table, servie par le serveur ?"
+    options:
+      - cle: serveur
+        texte: "La table du serveur (core/win_probability.py::STAGE_BASE_PROBABILITY), lue par le Kanban depuis l'API"
+      - cle: kanban
+        texte: "La table du Kanban, le serveur s'aligne"
+    reponse: serveur
+    date: "2026-11-01"
+    source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie AANA)"
+    taches: [AANA66, AANA67]
