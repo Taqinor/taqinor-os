@@ -411,6 +411,19 @@ class EcheancierValidationMixin:
     def validate(self, attrs):
         attrs = super().validate(attrs)
         incoherence = getattr(self, '_echeancier_incoherent', None)
+        if (not incoherence and attrs.get('echeancier')
+                and getattr(self, 'instance', None) is not None
+                and not self.context.get('ttc_apres_lignes')):
+            # AGNR50 — LA règle d'AGNR49 au TTC du devis (dernière = reste en
+            # MAD dès qu'une tranche est en MAD ; dépassement ⇒ 409).
+            from .domain.modifiabilite import echeancier_au_reste
+            from .utils.echeancier import EcheancierIncoherent
+            from .utils.options import option_totaux
+            try:
+                attrs['echeancier'] = echeancier_au_reste(
+                    attrs['echeancier'], option_totaux(self.instance)['ttc'])
+            except EcheancierIncoherent as exc:
+                incoherence = str(exc)
         if incoherence:
             from core.conflit_etat import ConflitEtat
             raise ConflitEtat({'echeancier': [incoherence]})

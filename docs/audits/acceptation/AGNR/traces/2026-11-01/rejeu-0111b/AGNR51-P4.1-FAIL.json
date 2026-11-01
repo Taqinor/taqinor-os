@@ -1,0 +1,151 @@
+{
+ "id": "P4.1",
+ "taches": [
+  "AGNR51"
+ ],
+ "verdict": "FAIL",
+ "base_verdict": "FAIL",
+ "trace": "docs/audits/acceptation/AGNR/traces/2026-11-01/rejeu-0111b/AGNR51-6000-proposal-page-echeancier.png",
+ "oracles": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "NA",
+  "6": "PASS",
+  "7": "PASS",
+  "8": "PASS",
+  "9": "NA",
+  "10": "NA"
+ },
+ "patch_envoye_6000": {
+  "echeancier": [
+   {
+    "libelle": "Commande",
+    "type": "commande",
+    "unite": "montant",
+    "pct_or_montant": 6000,
+    "jalon": "commande"
+   },
+   {
+    "libelle": "Livraison du matériel",
+    "type": "livraison_materiel",
+    "unite": "pct",
+    "pct_or_montant": 40,
+    "jalon": "livraison_materiel"
+   },
+   {
+    "libelle": "Mise en service",
+    "type": "mise_en_service",
+    "unite": "pct",
+    "pct_or_montant": 20,
+    "jalon": "mise_en_service"
+   },
+   {
+    "libelle": "Réception définitive",
+    "type": "reception_definitive",
+    "unite": "montant",
+    "pct_or_montant": 800,
+    "jalon": "reception_definitive"
+   }
+  ]
+ },
+ "echeancier_relu_6000": [
+  {
+   "type": "commande",
+   "jalon": "commande",
+   "unite": "montant",
+   "libelle": "Commande",
+   "pct_or_montant": 6000
+  },
+  {
+   "type": "livraison_materiel",
+   "jalon": "livraison_materiel",
+   "unite": "pct",
+   "libelle": "Livraison du matériel",
+   "pct_or_montant": 40
+  },
+  {
+   "type": "mise_en_service",
+   "jalon": "mise_en_service",
+   "unite": "pct",
+   "libelle": "Mise en service",
+   "pct_or_montant": 20
+  },
+  {
+   "type": "reception_definitive",
+   "jalon": "reception_definitive",
+   "unite": "montant",
+   "libelle": "Réception définitive",
+   "pct_or_montant": 800
+  }
+ ],
+ "pdf_bloc_echeancier": [
+  "35,29 % · À la commande · 5 999,30 MAD TTC",
+  "40 % · À la livraison · 6 800,00 MAD TTC",
+  "20 % · À la mise en service · 3 400,00 MAD TTC",
+  "4,71 % · À la réception définitive · 800,70 MAD TTC"
+ ],
+ "patch_envoye_8500": {
+  "echeancier": [
+   {
+    "libelle": "Commande",
+    "type": "commande",
+    "unite": "montant",
+    "pct_or_montant": 8500,
+    "jalon": "commande"
+   },
+   {
+    "libelle": "Livraison du matériel",
+    "type": "livraison_materiel",
+    "unite": "pct",
+    "pct_or_montant": 40,
+    "jalon": "livraison_materiel"
+   },
+   {
+    "libelle": "Mise en service",
+    "type": "mise_en_service",
+    "unite": "pct",
+    "pct_or_montant": 20,
+    "jalon": "mise_en_service"
+   },
+   {
+    "libelle": "Réception définitive",
+    "type": "reception_definitive",
+    "unite": "pct",
+    "pct_or_montant": 10,
+    "jalon": "reception_definitive"
+   }
+  ]
+ },
+ "echeancier_relu_8500": [
+  {
+   "type": "commande",
+   "jalon": "commande",
+   "unite": "montant",
+   "libelle": "Commande",
+   "pct_or_montant": 8500
+  },
+  {
+   "type": "livraison_materiel",
+   "jalon": "livraison_materiel",
+   "unite": "pct",
+   "libelle": "Livraison du matériel",
+   "pct_or_montant": 40
+  },
+  {
+   "type": "mise_en_service",
+   "jalon": "mise_en_service",
+   "unite": "pct",
+   "libelle": "Mise en service",
+   "pct_or_montant": 20
+  },
+  {
+   "type": "reception_definitive",
+   "jalon": "reception_definitive",
+   "unite": "pct",
+   "libelle": "Réception définitive",
+   "pct_or_montant": 10
+  }
+ ]
+}

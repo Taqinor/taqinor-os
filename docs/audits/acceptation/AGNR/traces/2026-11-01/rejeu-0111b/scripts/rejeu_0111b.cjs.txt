@@ -1,0 +1,553 @@
+// Rejeu en direct 0111b (orchestrateur, pile locale native) — AANA57/58/69/79, ATOT45/49, AGNR51/53/60.
+// Usage : node rejeu_0111b.cjs <head|old> <baseURL> <outDir> [frontURL]
+//  head : connexion UI demo_admin sur le front (vite preview, E2E_PROXY), API via page.request (cookies),
+//         oracles observés sur chaque page + chaque appel API (statut attendu déclaré).
+//  old  : API seule (contre-épreuve) sur Django direct, jeton Bearer.
+// Données : créées par l'API sous la société démo, préfixe « ACC2 <run> » ; rien d'existant n'est modifié.
+// ETAPES=bi,bc,avoir,copie,acompte,aller,releve,taux (défaut : toutes, dans cet ordre).
+const { chromium, request: pwRequest } = require('playwright')
+const fs = require('fs')
+const path = require('path')
+const { execFileSync } = require('child_process')
+
+const [mode, BASE, OUT, FRONT] = process.argv.slice(2)
+const RUN = `${mode}-${Date.now().toString(36)}`
+const API = '/api/django'
+fs.mkdirSync(OUT, { recursive: true })
+const journal = []
+const log = (...a) => { const s = a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '); journal.push(s); console.log(s) }
+
+let page = null
+let ctx = null
+let req = null
+const incidents = { '1': [], '2': [], '3': [], '4': [], '8': [] }
+const requetes = []
+
+function surveiller(p) {
+  p.on('console', (m) => { if (m.type() === 'error') incidents['3'].push(`console.error ${m.text().slice(0, 200)}`) })
+  p.on('pageerror', (e) => incidents['3'].push(`pageerror ${String(e).slice(0, 200)}`))
+  p.on('dialog', async (d) => { incidents['4'].push(`dialog ${d.type()} ${d.message().slice(0, 120)}`); await d.dismiss().catch(() => {}) })
+  p.on('request', (r) => {
+    if (['PATCH', 'POST', 'PUT'].includes(r.method()) && r.url().includes(API)) {
+      requetes.push({ m: r.method(), url: r.url().replace(FRONT, ''), body: r.postData() })
+    }
+  })
+  p.on('response', (r) => {
+    const u = r.url()
+    if (!u.startsWith(FRONT || BASE)) return
+    if (attenduUI.some((a) => a.re.test(u) && a.st === r.status())) return
+    if (r.status() >= 500) incidents['1'].push(`${r.status()} ${u}`)
+    else if (r.status() >= 400) incidents['2'].push(`${r.status()} ${u}`)
+  })
+}
+const attenduUI = [] // refus ATTENDUS déclarés avant le geste (seuls excusés)
+
+async function call(method, p, data, attendu, extra = {}) {
+  const opts = { timeout: 180000, ...extra }
+  if (data !== undefined) opts.data = data
+  const r = await req[method.toLowerCase()](`${API}${p}`, opts)
+  const st = r.status()
+  let body = null
+  const ct = r.headers()['content-type'] || ''
+  const buf = await r.body()
+  if (ct.includes('json')) { try { body = JSON.parse(buf.toString('utf8')) } catch { body = buf.toString('utf8') } } else body = buf
+  const okAttendu = attendu === undefined ? st < 400 : (Array.isArray(attendu) ? attendu.includes(st) : st === attendu)
+  if (!okAttendu && st >= 500) incidents['1'].push(`API ${method} ${p} -> ${st}`)
+  else if (!okAttendu && st >= 400) incidents['2'].push(`API ${method} ${p} -> ${st} ${typeof body === 'object' && !Buffer.isBuffer(body) ? JSON.stringify(body).slice(0, 200) : ''}`)
+  log(`${method} ${p} ${data !== undefined ? JSON.stringify(data).slice(0, 200) : ''} -> ${st}${Buffer.isBuffer(body) ? ` [${body.length} o, ${ct}]` : ` ${JSON.stringify(body).slice(0, 300)}`}`)
+  return { st, body, ct }
+}
+const must = async (method, p, data, attendu) => {
+  const r = await call(method, p, data, attendu)
+  const ok = attendu === undefined ? r.st < 400 : (Array.isArray(attendu) ? attendu.includes(r.st) : r.st === attendu)
+  if (!ok) throw new Error(`${method} ${p} -> ${r.st} ${JSON.stringify(r.body).slice(0, 400)}`)
+  return r.body
+}
+
+const etapes = {}
+function verif(etape, nom, ok, detail) {
+  etapes[etape] = etapes[etape] || []
+  etapes[etape].push({ nom, ok: !!ok, detail })
+  log(`  [${ok ? 'OK' : 'KO'}] ${etape} ${nom} ${detail !== undefined ? JSON.stringify(detail).slice(0, 400) : ''}`)
+}
+async function aller(url) {
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+  await fermerBienvenue()
+}
+async function fermerBienvenue() {
+  const plus = page.getByText('Plus tard', { exact: true })
+  if (await plus.count().catch(() => 0)) { await plus.first().click().catch(() => {}); await page.waitForTimeout(500) }
+}
+async function capture(nom, url) {
+  if (!page) return null
+  const f = path.join(OUT, `ACCEPTATION-${nom}.jpg`)
+  if (url) await aller(url)
+  const casse = await page.getByText('Une erreur est survenue').count().catch(() => 0)
+  if (casse) incidents['8'].push(`écran cassé ${page.url()}`)
+  const texte = await page.locator('body').innerText().catch(() => '')
+  await page.screenshot({ path: f, type: 'jpeg', quality: 60, fullPage: true })
+  return { f, texte }
+}
+const num = (v) => Number(v)
+const eq2 = (a, b) => Math.abs(num(a) - num(b)) < 0.005
+const liste = (b) => (Array.isArray(b) ? b : (b && b.results) || [])
+
+async function client(nom) {
+  return must('POST', '/crm/clients/', { nom: `ACC2 ${nom}`, prenom: RUN, email: `acc2-${nom.toLowerCase()}-${RUN}@example.invalid` })
+}
+async function produit(nom, pu) {
+  return must('POST', '/stock/produits/', { nom: `ACC2 ${nom} ${RUN}`, prix_vente: pu, quantite_stock: 1000 })
+}
+async function factureLibre(cl, pu, pr) {
+  const f = await must('POST', '/ventes/factures/', { client: cl.id, taux_tva: '20.00' })
+  await must('POST', '/ventes/factures-lignes/', { facture: f.id, produit: pr.id, designation: 'Prestation ACC2', quantite: '1', prix_unitaire: pu, taux_tva: '20.00' })
+  await must('POST', `/ventes/factures/${f.id}/emettre/`, {})
+  return must('GET', `/ventes/factures/${f.id}/`)
+}
+async function devis(cl, lignes, extra = {}) {
+  return must('POST', '/ventes/devis/atomic/', {
+    client: cl.id, taux_tva: '20.00', remise_globale: '0', ...extra,
+    lignes: lignes.map((l, i) => ({ produit: l.p.id, designation: l.d || 'Ligne ACC2', quantite: l.q, prix_unitaire: l.pu, remise: '0.00', taux_tva: l.tva || '20.00', type_ligne: 'produit', ordre: i })),
+  })
+}
+async function envoyerAccepter(d) {
+  await must('POST', `/ventes/devis/${d.id}/share-link/`, { envoi: true })
+  await must('POST', `/ventes/devis/${d.id}/accepter/`, { nom: 'Client ACC2' })
+  return must('GET', `/ventes/devis/${d.id}/`)
+}
+const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((c) => [c, x[c]])) : x))
+const ech = (d) => canon(d.echeancier)
+
+// ── AANA79 — jeu BI ventes_factures (explorateur), société démo ────────────────
+async function etapeBI() {
+  const FILT = { statut__in: ['emise', 'payee', 'en_retard'] }
+  const r1 = await call('POST', '/core/data-explorer/run/', { dataset: 'ventes_factures', filters: FILT, aggregates: [{ fn: 'sum', field: 'total_ht', alias: 'ht' }, { fn: 'sum', field: 'total_ttc', alias: 'ttc' }, { fn: 'count', field: 'id', alias: 'nb' }] }, mode === 'head' ? 200 : [200, 400])
+  const r2 = await call('POST', '/core/data-explorer/run/', { dataset: 'ventes_factures', filters: FILT, aggregates: [{ fn: 'sum', field: 'montant_ht', alias: 'ht_fige' }, { fn: 'count', field: 'id', alias: 'nb' }] }, 200)
+  const r3 = await call('POST', '/core/data-explorer/run/', { dataset: 'ventes_factures', group_by: ['statut'], aggregates: [{ fn: 'sum', field: mode === 'head' ? 'total_ht' : 'montant_ht', alias: 'ht' }, { fn: 'count', field: 'id', alias: 'nb' }] }, 200)
+  const meta = await call('GET', '/core/data-explorer/datasets/ventes_factures/', undefined, 200)
+  const res = { run_total: r1, run_montant_fige: r2, par_statut: r3, meta_champs: meta.body }
+  verif('BI', 'explorateur : somme total_ht servie (factures émises/payées/en retard)', r1.st === 200 && r1.body && r1.body.rows && r1.body.rows[0] && r1.body.rows[0].ht != null, { st: r1.st, rows: r1.body && r1.body.rows })
+  if (page) {
+    await aller(`${FRONT}/donnees/explorateur`)
+    await page.getByRole('button', { name: /^Factures$/ }).locator('visible=true').first().click()
+    await page.waitForTimeout(800)
+    const choisir = async (aria, val) => {
+      await page.getByRole('combobox', { name: aria }).locator('visible=true').first().click()
+      await page.getByRole('option', { name: val, exact: true }).click()
+    }
+    await choisir('Regrouper par', 'statut')
+    await choisir('Agrégation', 'Somme')
+    await choisir('Champ agrégé', 'total_ht')
+    await page.getByTestId('expl-executer').click()
+    await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+    await page.waitForTimeout(1000)
+    const c = await capture('AANA-BI-explorateur')
+    res.ecran = c.texte.slice(0, 4000)
+    res.capture = c.f
+  }
+  return res
+}
+
+// ── ATOT49 — porte `facturable` servie sur chaque BC + bouton Facture ─────────
+async function etapeBC() {
+  const A = await client('BC')
+  const p = await produit('Kit BC', '1000')
+  const mk = async (avantBC) => {
+    const d = await envoyerAccepter(await devis(A, [{ p, q: '1', pu: '1000.00' }]))
+    if (avantBC) await avantBC(d)
+    const bc0 = await must('POST', `/ventes/devis/${d.id}/convertir-bc/`, {})
+    const id = bc0.id || (bc0.bon_commande && bc0.bon_commande.id) || bc0.bc_id
+    await must('POST', `/ventes/bons-commande/${id}/confirmer/`, {})
+    return { d, id }
+  }
+  let fc = null
+  const B1 = await mk()
+  const B2 = await mk(async (d) => { fc = await call('POST', `/ventes/devis/${d.id}/facturer-complet/`, {}, 201) })
+  const B3 = await mk()
+  verif('BC', 'B2 : devis facturé en complet par une autre porte (201)', fc.st === 201, { st: fc.st, ref: fc.body && fc.body.facture_reference })
+  const f3 = await call('POST', `/ventes/bons-commande/${B3.id}/creer-facture/`, {}, 201)
+  verif('BC', 'B3 : facturé par son BC (201)', f3.st === 201, { st: f3.st })
+  const get = async (id) => must('GET', `/ventes/bons-commande/${id}/`)
+  const g1 = await get(B1.id); const g2 = await get(B2.id); const g3 = await get(B3.id)
+  const lst = liste(await must('GET', '/ventes/bons-commande/?page_size=200'))
+  const dansListe = (id) => (lst.find((b) => b.id === id) || {}).facturable
+  const res = { B1: { id: B1.id, ref: g1.reference, facturable: g1.facturable, liste: dansListe(B1.id) }, B2: { id: B2.id, ref: g2.reference, facturable: g2.facturable, liste: dansListe(B2.id) }, B3: { id: B3.id, ref: g3.reference, facturable: g3.facturable, liste: dansListe(B3.id) } }
+  verif('BC', 'B1 facturable {ok: true, motif: ""} (fiche + liste)', g1.facturable && g1.facturable.ok === true && g1.facturable.motif === '' && JSON.stringify(dansListe(B1.id)) === JSON.stringify(g1.facturable), res.B1)
+  verif('BC', 'B2 facturable {ok: false, motif DevisDejaFacture}', g2.facturable && g2.facturable.ok === false && /déjà facturé/.test(g2.facturable.motif || ''), res.B2)
+  verif('BC', 'B3 facturable {ok: false, "Une facture existe déjà pour ce BC."}', g3.facturable && g3.facturable.ok === false && g3.facturable.motif === 'Une facture existe déjà pour ce BC.', res.B3)
+  attenduUI.push({ re: new RegExp(`/bons-commande/${B2.id}/creer-facture/`), st: 409 })
+  const r2 = await call('POST', `/ventes/bons-commande/${B2.id}/creer-facture/`, {}, 409)
+  res.creer_facture_B2 = { st: r2.st, body: r2.body }
+  verif('BC', 'creer-facture B2 : 409 au MÊME motif', r2.st === 409 && (!g2.facturable || (r2.body && r2.body.detail === g2.facturable.motif)), res.creer_facture_B2)
+  if (page) {
+    await aller(`${FRONT}/ventes/bons-commande`)
+    const ligne = (ref) => page.getByRole('row').filter({ hasText: ref })
+    const ecran = {}
+    for (const [k, g] of [['B1', g1], ['B2', g2], ['B3', g3]]) {
+      const l = ligne(g.reference)
+      const n = await l.count()
+      ecran[k] = { lignes: n, bouton_facture: n ? await l.first().getByRole('button', { name: /Facture/ }).count() : null, infobulle: n ? await l.first().locator('td[title]').first().getAttribute('title').catch(() => null) : null }
+    }
+    res.ecran = ecran
+    verif('BC', 'écran : bouton « Facture » sur B1 seul ; B2 motif en infobulle', ecran.B1.bouton_facture === 1 && ecran.B2.bouton_facture === 0 && ecran.B3.bouton_facture === 0 && ecran.B2.infobulle === g2.facturable.motif, ecran)
+    await page.reload({ waitUntil: 'domcontentloaded' }); await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+    const c = await capture('ATOT-BC-liste')
+    res.capture = c.f
+    const l2 = ligne(g2.reference)
+    verif('BC', 'persistance (rechargé) : B2 toujours sans bouton', (await l2.first().getByRole('button', { name: /Facture/ }).count()) === 0, {})
+  }
+  return res
+}
+
+// ── ATOT45 — prix négocié 9 000 sur 5 × 20 % émis : avoirs sous le créditable ──
+async function etapeAvoir() {
+  const cl = await client('Avoir')
+  const p = await produit('Panneau Avoir', '1000')
+  const cinq = Array.from({ length: 5 }, (_, i) => ({ libelle: `Tranche ${i + 1}`, unite: 'pct', pct_or_montant: 20 }))
+  const scenario = async (nom, gesteAvant) => {
+    let d = await devis(cl, [{ p, q: '10', pu: '1000.00' }])
+    await must('PATCH', `/ventes/devis/${d.id}/`, { echeancier: cinq })
+    d = await envoyerAccepter(d)
+    const fids = []
+    for (let i = 0; i < 5; i++) {
+      const r = await call('POST', `/ventes/devis/${d.id}/generer-facture/`, {}, [200, 201])
+      const fid = r.body && r.body.id
+      if (fid) { if (r.body.statut === 'brouillon') await must('POST', `/ventes/factures/${fid}/emettre/`, {}); fids.push(fid) }
+    }
+    if (gesteAvant) await gesteAvant(fids)
+    const avant = await Promise.all(fids.map((id) => must('GET', `/ventes/factures/${id}/`)))
+    const avoirsAvant = liste(await must('GET', `/ventes/avoirs/?page_size=200`)).filter((a) => fids.includes(a.facture))
+    return { d, fids, avant, avoirsAvant }
+  }
+  const res = {}
+  // Cas 1 — 201, deux avoirs 2 400 + 600 sur deux factures distinctes, Σ dû 9 000
+  const s1 = await scenario('cas1')
+  verif('AVOIR', '5 tranches émises de 2 400 TTC (12 000)', s1.avant.length === 5 && s1.avant.every((f) => eq2(f.total_ttc, 2400) && f.statut !== 'brouillon'), s1.avant.map((f) => [f.reference, f.total_ttc, f.statut]))
+  const r1 = await call('POST', `/ventes/devis/${s1.d.id}/prix-negocie/`, { prix_ttc: '9000', mode: 'appliquer', confirmer_avoir: true }, 201)
+  const apres = await Promise.all(s1.fids.map((id) => must('GET', `/ventes/factures/${id}/`)))
+  const avoirs = liste(await must('GET', `/ventes/avoirs/?page_size=200`)).filter((a) => s1.fids.includes(a.facture))
+  const du = apres.reduce((s, f) => s + num(f.montant_du), 0)
+  res.cas1 = { devis: s1.d.id, prix_negocie: { st: r1.st, body: r1.body }, factures: apres.map((f) => ({ id: f.id, ref: f.reference, ttc: f.total_ttc, avoirs_total: f.avoirs_total, du: f.montant_du, statut: f.statut })), avoirs: avoirs.map((a) => ({ id: a.id, ref: a.reference, facture: a.facture, ttc: a.total_ttc ?? a.montant_ttc, type: a.type_avoir ?? a.type })), somme_du: du }
+  const montants = avoirs.map((a) => num(a.total_ttc ?? a.montant_ttc)).sort((x, y) => y - x)
+  verif('AVOIR', 'prix-negocie 9 000 appliqué : 201', r1.st === 201, { st: r1.st })
+  verif('AVOIR', 'deux avoirs 2 400 + 600 sur deux factures distinctes, chacun ≤ créditable', avoirs.length === 2 && eq2(montants[0], 2400) && eq2(montants[1], 600) && new Set(avoirs.map((a) => a.facture)).size === 2 && apres.every((f) => num(f.avoirs_total || 0) <= num(f.total_ttc) + 0.005), res.cas1.avoirs)
+  verif('AVOIR', 'Σ dû des factures = 9 000,00', eq2(du, 9000), { du })
+  const soldee = apres.find((f) => eq2(f.avoirs_total || 0, f.total_ttc))
+  verif('AVOIR', 'statut recalculé de la facture créditée en entier (plus « émise » à dû 0)', !!soldee && soldee.statut !== 'emise', soldee && { ref: soldee.reference, statut: soldee.statut, du: soldee.montant_du })
+  const dv = await must('GET', `/ventes/devis/${s1.d.id}/`)
+  res.cas1.devis_relu = { statut: dv.statut, total_ttc: dv.total_ttc, remplace_par: dv.remplace_par ?? dv.version_suivante, solde: dv.solde, reste_a_payer: dv.reste_a_payer ?? (dv.solde && dv.solde.reste_a_payer) }
+  // relecture (persistance)
+  const relu = await Promise.all(s1.fids.map((id) => must('GET', `/ventes/factures/${id}/`)))
+  verif('AVOIR', 'persistance : factures relues identiques', JSON.stringify(relu.map((f) => [f.montant_du, f.statut, f.avoirs_total])) === JSON.stringify(apres.map((f) => [f.montant_du, f.statut, f.avoirs_total])), {})
+  // Cas 2 — avoir geste commercial antérieur : écart > Σ créditable ⇒ 409, rien d'écrit
+  const s2 = await scenario('cas2', async (fids) => {
+    for (const id of fids.slice(0, 4)) await must('POST', `/ventes/factures/${id}/creer-avoir/`, { motif: `Geste commercial ACC2 ${RUN}` }, [200, 201])
+  })
+  attenduUI.push({ re: /prix-negocie/, st: 409 })
+  const r2 = await call('POST', `/ventes/devis/${s2.d.id}/prix-negocie/`, { prix_ttc: '9000', mode: 'appliquer', confirmer_avoir: true }, mode === 'head' ? 409 : [201, 409])
+  const avoirs2 = liste(await must('GET', `/ventes/avoirs/?page_size=200`)).filter((a) => s2.fids.includes(a.facture))
+  const dv2 = await must('GET', `/ventes/devis/${s2.d.id}/`)
+  res.cas2 = { devis: s2.d.id, prix_negocie: { st: r2.st, body: r2.body }, avoirs_avant: s2.avoirsAvant.length, avoirs_apres: avoirs2.length, devis_statut: dv2.statut }
+  verif('AVOIR', 'écart 3 000 > créditable 2 400 : 409 avoir_au_dela_du_creditable, rien d\'écrit', r2.st === 409 && JSON.stringify(r2.body).includes('avoir_au_dela_du_creditable') && avoirs2.length === s2.avoirsAvant.length, res.cas2)
+  if (page) { const c = await capture('ATOT-AVOIR-factures', `${FRONT}/ventes/factures`); res.capture = c.f }
+  return res
+}
+
+// ── AGNR53 — échéancier recopié recalé au TTC de la copie ──────────────────────
+async function etapeCopie() {
+  const cl = await client('Copie')
+  const p = await produit('Panneau Copie', '1000')
+  const source = async (e) => {
+    let d = await devis(cl, [{ p, q: '50', pu: '1000.00' }])
+    const pr = await call('PATCH', `/ventes/devis/${d.id}/`, { echeancier: e }, 200)
+    d = await must('GET', `/ventes/devis/${d.id}/`)
+    return { d, patch: pr.st }
+  }
+  const E1 = [{ libelle: 'Acompte', type: 'acompte', unite: 'montant', pct_or_montant: 6000 }, { libelle: 'Livraison', type: 'materiel', unite: 'pct', pct_or_montant: 60 }, { libelle: 'Solde', type: 'solde', unite: 'pct', pct_or_montant: 30 }]
+  const E2 = [{ libelle: 'Acompte', type: 'acompte', unite: 'montant', pct_or_montant: 18000 }, { libelle: 'Livraison', type: 'materiel', unite: 'pct', pct_or_montant: 60 }, { libelle: 'Solde', type: 'solde', unite: 'pct', pct_or_montant: 10 }]
+  const EP = [{ libelle: 'Acompte', type: 'acompte', unite: 'pct', pct_or_montant: 30 }, { libelle: 'Livraison', type: 'materiel', unite: 'pct', pct_or_montant: 60 }, { libelle: 'Solde', type: 'solde', unite: 'pct', pct_or_montant: 10 }]
+  const somme = (e, ttc) => e.reduce((s, t) => s + (t.unite === 'montant' ? num(t.pct_or_montant) : num(ttc) * num(t.pct_or_montant) / 100), 0)
+  const res = {}
+  // Gamme (même TTC 60 000) — cas 1
+  const g = await source(E1)
+  const rg = await call('POST', `/ventes/devis/${g.d.id}/dupliquer-variante-gamme/`, { nom: 'Premium ACC2' }, 201)
+  const soeur = rg.body && rg.body.gamme
+  const soeurRelue = soeur ? await must('GET', `/ventes/devis/${soeur.id}/`) : null
+  res.gamme = { source: { id: g.d.id, ttc: g.d.total_ttc, echeancier: g.d.echeancier }, soeur: soeurRelue && { id: soeurRelue.id, ttc: soeurRelue.total_ttc, echeancier: soeurRelue.echeancier, somme: somme(soeurRelue.echeancier, soeurRelue.total_ttc) } }
+  verif('COPIE', 'gamme : échéancier de la sœur Σ = TTC (60 000), dernière tranche en MAD', soeurRelue && eq2(somme(soeurRelue.echeancier, soeurRelue.total_ttc), soeurRelue.total_ttc) && soeurRelue.echeancier[2].unite === 'montant', res.gamme.soeur)
+  // Renouvellement à TTC réduit de moitié — cas 1 et cas 2, + tout en %
+  const s1 = await source(E1); const s2 = await source(E2); const s3 = await source(EP)
+  for (const s of [s1, s2, s3]) {
+    await must('POST', `/ventes/devis/${s.d.id}/share-link/`, { envoi: true })
+    await must('PATCH', `/ventes/devis/${s.d.id}/`, { date_validite: '2026-10-15' })
+  }
+  res.expiration = execFileSync(process.env.EXPIRE_CMD.split(' ')[0], process.env.EXPIRE_CMD.split(' ').slice(1)).toString().trim()
+  for (const s of [s1, s2, s3]) s.d = await must('GET', `/ventes/devis/${s.d.id}/`)
+  verif('COPIE', 'sources expirées par la tâche planifiée expire_stale_devis', [s1, s2, s3].every((s) => s.d.statut === 'expire'), { exp: res.expiration, statuts: [s1, s2, s3].map((s) => s.d.statut) })
+  await must('PATCH', `/stock/produits/${p.id}/`, { prix_vente: '500' })
+  const r1 = await call('POST', `/ventes/devis/${s1.d.id}/renouveler/`, {}, 201)
+  const c1 = r1.body && r1.body.id ? await must('GET', `/ventes/devis/${r1.body.id}/`) : null
+  res.renouv_cas1 = { source: { id: s1.d.id, ttc: s1.d.total_ttc, echeancier: s1.d.echeancier }, copie: c1 && { id: c1.id, ttc: c1.total_ttc, echeancier: c1.echeancier, somme: somme(c1.echeancier, c1.total_ttc) } }
+  verif('COPIE', 'renouvellement cas 1 : copie à 30 000, [6 000 MAD ; 60 % ; 6 000 MAD], Σ = TTC', c1 && eq2(c1.total_ttc, 30000) && eq2(c1.echeancier[0].pct_or_montant, 6000) && c1.echeancier[1].unite === 'pct' && eq2(c1.echeancier[1].pct_or_montant, 60) && c1.echeancier[2].unite === 'montant' && eq2(c1.echeancier[2].pct_or_montant, 6000), res.renouv_cas1.copie)
+  const src1 = await must('GET', `/ventes/devis/${s1.d.id}/`)
+  verif('COPIE', 'source jamais modifiée', ech(src1) === ech(s1.d), { echeancier: src1.echeancier })
+  const nbAvant = liste(await must('GET', `/ventes/devis/?search=${encodeURIComponent(s2.d.reference)}&page_size=50`)).length
+  attenduUI.push({ re: /renouveler/, st: 409 })
+  const r2 = await call('POST', `/ventes/devis/${s2.d.id}/renouveler/`, {}, mode === 'head' ? 409 : [201, 409])
+  const c2 = r2.st === 201 && r2.body ? await must('GET', `/ventes/devis/${r2.body.id}/`) : null
+  res.renouv_cas2 = { st: r2.st, body: r2.st === 201 ? { id: c2.id, ttc: c2.total_ttc, echeancier: c2.echeancier, somme: somme(c2.echeancier, c2.total_ttc) } : r2.body }
+  verif('COPIE', 'renouvellement cas 2 : 409 somme_invalide nommé en français, aucune copie', r2.st === 409 && JSON.stringify(r2.body).includes('somme_invalide') && /dépassent le total de la copie/.test(JSON.stringify(r2.body)), res.renouv_cas2)
+  const r3 = await call('POST', `/ventes/devis/${s3.d.id}/renouveler/`, {}, 201)
+  const c3 = r3.body && r3.body.id ? await must('GET', `/ventes/devis/${r3.body.id}/`) : null
+  res.renouv_pct = { copie: c3 && { ttc: c3.total_ttc, echeancier: c3.echeancier } }
+  verif('COPIE', 'tout en % : copie inchangée (30/60/10)', c3 && ech(c3) === ech(s3.d), res.renouv_pct.copie)
+  // Persistance : ré-enregistrer la copie sans toucher ⇒ identique
+  if (c1) {
+    const rp = await call('PATCH', `/ventes/devis/${c1.id}/`, { echeancier: c1.echeancier }, 200)
+    const c1b = await must('GET', `/ventes/devis/${c1.id}/`)
+    verif('COPIE', 'persistance : copie relue, ré-enregistrée sans toucher ⇒ identique (PATCH accepté tel quel)', rp.st === 200 && ech(c1b) === ech(c1), { st: rp.st, echeancier: c1b.echeancier })
+  }
+  await must('PATCH', `/stock/produits/${p.id}/`, { prix_vente: '1000' })
+  if (page && c1) { const c = await capture('AGNR-COPIE-liste', `${FRONT}/ventes/devis`); res.capture = c.f }
+  return res
+}
+
+// ── AGNR51 — dialogue PDF, devis industriel 4 jalons, acompte personnalisé ────
+async function etapeAcompte() {
+  const cl = await client('Industriel')
+  const pan = liste(await must('GET', `/stock/produits/?search=${encodeURIComponent('Panneau mono 550W')}&page_size=5`))[0]
+  const ond = liste(await must('GET', `/stock/produits/?search=${encodeURIComponent('Onduleur réseau 10kW')}&page_size=5`))[0]
+  const mk = async () => devis(cl, [{ p: pan, d: pan.nom, q: '10', pu: '1000.00', tva: '10.00' }, { p: ond, d: ond.nom, q: '1', pu: '5000.00', tva: '20.00' }], { mode_installation: 'industriel' })
+  const prof = await must('GET', '/parametres/').catch(() => null)
+  const res = { effectifs_industriel: prof && prof.payment_terms_effectifs && prof.payment_terms_effectifs.industriel }
+  const cas = {}
+  for (const acompte of ['6000', '8500']) {
+    const d0 = await mk()
+    const d = await must('GET', `/ventes/devis/${d0.id}/`)
+    const r = { devis: d.id, ref: d.reference, ttc: d.total_ttc, echeancier_depart: d.echeancier }
+    if (page) {
+      const nreq = requetes.length
+      if (acompte === '8500') attenduUI.push({ re: new RegExp(`/ventes/devis/${d.id}/`), st: 409 })
+      await aller(`${FRONT}/ventes/devis?search=${encodeURIComponent(d.reference)}`)
+      const ligne = page.getByRole('row').filter({ hasText: d.reference }).first()
+      await ligne.getByRole('button', { name: /PDF/ }).first().click()
+      const dlg = page.getByRole('dialog')
+      await dlg.getByText('Devis Final', { exact: false }).first().click()
+      await dlg.getByText('Acompte personnalisé', { exact: false }).first().click()
+      await dlg.locator('#pdf-acompte').fill(acompte)
+      const cap0 = path.join(OUT, `ACCEPTATION-AGNR-ACOMPTE-${acompte}-dialogue.jpg`)
+      await page.screenshot({ path: cap0, type: 'jpeg', quality: 60 })
+      const dl = page.waitForEvent('download', { timeout: 150000 }).catch(() => null)
+      await dlg.getByRole('button', { name: /Générer/ }).click()
+      await page.waitForTimeout(4000)
+      const patch = requetes.slice(nreq).find((q) => q.m === 'PATCH' && q.url.includes(`/ventes/devis/${d.id}/`))
+      r.patch_envoye = patch ? JSON.parse(patch.body) : null
+      r.generer_pdf = requetes.slice(nreq).some((q) => q.url.includes(`/ventes/devis/${d.id}/generer-pdf/`))
+      r.capture_dialogue = cap0
+      if (acompte === '6000') {
+        const fichier = await dl
+        if (fichier) { const f = path.join(OUT, `AGNR51-${acompte}-telecharge.pdf`); await fichier.saveAs(f); r.pdf_telecharge = f }
+      }
+      await page.waitForTimeout(1500)
+      const ecr = await capture(`AGNR-ACOMPTE-${acompte}-apres`)
+      r.ecran_apres = ecr.texte.slice(0, 1500)
+      r.capture_apres = ecr.f
+    }
+    const relu = await must('GET', `/ventes/devis/${d.id}/`)
+    r.echeancier_relu = relu.echeancier
+    const pdf = await call('GET', `/ventes/devis/${d.id}/proposal/?pdf_mode=full&devis_final=true`, undefined, 200)
+    if (Buffer.isBuffer(pdf.body)) {
+      const f = path.join(OUT, `AGNR51-${acompte}-proposal.pdf`)
+      fs.writeFileSync(f, pdf.body); r.pdf_proposal = f
+      try { r.pdf_texte = execFileSync('python3', ['-I', '-c', 'import sys,pymupdf;d=pymupdf.open(sys.argv[1]);print(len(d));print("\\n".join(p.get_text() for p in d))', f]).toString() } catch (e) { r.pdf_texte = 'ERREUR ' + e }
+    }
+    cas[acompte] = r
+  }
+  res.cas = cas
+  const p6 = cas['6000'].patch_envoye && cas['6000'].patch_envoye.echeancier
+  const attendu = [['commande', 'montant', 6000], ['livraison_materiel', 'pct', 40], ['mise_en_service', 'pct', 20], ['reception_definitive', 'montant', 800]]
+  if (mode === 'head') {
+    verif('ACOMPTE', '6 000 : PATCH envoyé = [commande 6 000 MAD ; 40 % ; 20 % ; réception 800 MAD]', p6 && p6.length === 4 && attendu.every(([j, u, v], i) => p6[i].jalon === j && p6[i].unite === u && eq2(p6[i].pct_or_montant, v)), p6)
+    verif('ACOMPTE', '6 000 : échéancier stocké = échéancier envoyé (serveur ne réécrit pas)', p6 && canon(cas['6000'].echeancier_relu) === canon(p6), cas['6000'].echeancier_relu)
+    const txt = cas['6000'].pdf_texte || ''
+    verif('ACOMPTE', '6 000 : PDF (/proposal devis_final) imprime 6 000,00 et 800,00 MAD en dernière tranche', /6[\s  ]000,00/.test(txt) && /800,00/.test(txt), (txt.match(/[^\n]*(800,00|6[\s  ]000,00)[^\n]*/g) || []).slice(0, 6))
+    const p85 = cas['8500'].patch_envoye && cas['8500'].patch_envoye.echeancier
+    verif('ACOMPTE', '8 500 : aucune tranche inventée — la sortie garde le % déclaré (10 %) en dernière tranche', p85 ? (p85.length === 4 && p85[3].unite === 'pct' && eq2(p85[3].pct_or_montant, 10)) : true, { patch: p85, ecran: (cas['8500'].ecran_apres || '').slice(0, 300) })
+  }
+  return res
+}
+
+// ── AGNR60 — générateur : rouvrir un devis à échéancier figé, enregistrer sans toucher ──
+async function etapeAllerRetour() {
+  const cl = await client('Fige')
+  const pan = liste(await must('GET', `/stock/produits/?search=${encodeURIComponent('Panneau mono 550W')}&page_size=5`))[0]
+  const ond = liste(await must('GET', `/stock/produits/?search=${encodeURIComponent('Onduleur réseau 10kW')}&page_size=5`))[0]
+  let d = await devis(cl, [{ p: pan, d: pan.nom, q: '8', pu: String(pan.prix_vente || '1000') }, { p: ond, d: ond.nom, q: '1', pu: String(ond.prix_vente || '5000') }])
+  const servi = [
+    { type: 'commande', libelle: 'Commande', unite: 'pct', pct_or_montant: 30, jalon: 'commande', fige_le: '2026-10-02T09:00:00+00:00' },
+    { libelle: 'Livraison', unite: 'pct', pct_or_montant: 60, jalon: 'livraison_materiel', x_inconnue: 1 },
+    { type: 'solde', libelle: 'Solde', unite: 'pct', pct_or_montant: 10 },
+  ]
+  const pr = await call('PATCH', `/ventes/devis/${d.id}/`, { echeancier: servi }, 200)
+  const avant = await must('GET', `/ventes/devis/${d.id}/`)
+  const res = { devis: d.id, ref: avant.reference, patch: pr.st, echeancier_servi_avant: avant.echeancier }
+  if (!page) return res
+  const enregistrer = async (tour) => {
+    const nreq = requetes.length
+    await aller(`${FRONT}/ventes/devis/nouveau?edit=${d.id}`)
+    await page.waitForTimeout(2500)
+    const btn = page.getByRole('button', { name: /^Enregistrer$/ }).last()
+    await btn.click()
+    await page.waitForTimeout(3000)
+    let envoi = requetes.slice(nreq).find((q) => /replace-lines|\/ventes\/devis\/\d+\/$/.test(q.url) && q.m !== 'GET')
+    if (!envoi) { // confirmation éventuelle (second clic)
+      await page.getByRole('button', { name: /^Enregistrer$/ }).last().click().catch(() => {})
+      await page.waitForTimeout(3000)
+      envoi = requetes.slice(nreq).find((q) => /replace-lines|\/ventes\/devis\/\d+\/$/.test(q.url) && q.m !== 'GET')
+    }
+    const c = await capture(`AGNR-ALLER-RETOUR-${tour}`)
+    let corps = null
+    try { corps = envoi && JSON.parse(envoi.body) } catch { corps = envoi && envoi.body }
+    const apres = await must('GET', `/ventes/devis/${d.id}/`)
+    return { requete: envoi && envoi.url, echeancier_envoye: corps && (corps.entete ? corps.entete.echeancier : corps.echeancier), echeancier_relu: apres.echeancier, capture: c.f, url_apres: page.url() }
+  }
+  res.tour1 = await enregistrer(1)
+  res.tour2 = await enregistrer(2)
+  verif('ALLER', 'tour 1 : enregistrement envoyé (replace-lines)', !!res.tour1.requete, { requete: res.tour1.requete, url: res.tour1.url_apres })
+  verif('ALLER', 'tour 1 : échéancier ENVOYÉ = objet serveur (fige_le, x_inconnue gardés, aucun type ajouté)', canon(res.tour1.echeancier_envoye) === canon(avant.echeancier), res.tour1.echeancier_envoye)
+  verif('ALLER', 'tour 1 : Devis.echeancier relu identique', canon(res.tour1.echeancier_relu) === canon(avant.echeancier), res.tour1.echeancier_relu)
+  verif('ALLER', 'tour 2 (rouvert, ré-enregistré) : identique', canon(res.tour2.echeancier_relu) === canon(avant.echeancier) && canon(res.tour2.echeancier_envoye) === canon(avant.echeancier), res.tour2.echeancier_relu)
+  return res
+}
+
+// ── AANA69 — import de relevé : mode « traite » en revue, montant 3 décimales refusé ──
+async function etapeReleve() {
+  const cl = await client('Releve')
+  const pr = await produit('Prestation Releve', '1000')
+  const fs4 = []
+  for (const pu of ['1000.00', '2000.00', '3000.00', '1000.00']) fs4.push(await factureLibre(cl, pu, pr))
+  const lignes = [
+    ['2026-10-20', fs4[0].reference, fs4[0].total_ttc, 'traite'],
+    ['2026-10-20', fs4[1].reference, fs4[1].total_ttc, ''],
+    ['2026-10-20', fs4[2].reference, fs4[2].total_ttc, 'chèque'],
+    ['2026-10-20', fs4[3].reference, '1200.005', 'virement'],
+  ]
+  const csv = 'date;reference;montant;mode\n' + lignes.map((l) => l.join(';')).join('\n') + '\n'
+  const fichier = path.join(OUT, `AANA69-releve-${mode}.csv`)
+  fs.writeFileSync(fichier, csv)
+  const res = { factures: fs4.map((f) => ({ id: f.id, ref: f.reference, ttc: f.total_ttc })), csv }
+  if (page) {
+    await aller(`${FRONT}/ventes/paiements/import-releve`)
+    await page.locator('input[type="file"]').first().setInputFiles(fichier)
+    const bouton = page.getByRole('button', { name: /Aperçu|Analyser|Prévisualiser|Vérifier/ })
+    if (await bouton.count()) await bouton.first().click()
+    await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+    await page.waitForTimeout(1500)
+    const c = await capture('AANA-RELEVE-apercu')
+    res.ecran_apercu = c.texte.slice(0, 3000); res.capture = c.f
+    verif('RELEVE', 'écran : « Mode de paiement non reconnu » et « virement (supposé) » affichés', /Mode de paiement non reconnu/.test(c.texte) && /virement \(supposé\)/.test(c.texte), {})
+  }
+  const dry = await call('POST', '/ventes/paiements/import-releve/dry-run/', undefined, 200, { multipart: { file: { name: 'releve.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) } } })
+  const prev = (dry.body && dry.body.preview) || []
+  res.dry_run = { st: dry.st, preview: prev, revue: dry.body && dry.body.revue }
+  const parRef = (ref) => prev.find((l) => (l.reference || l.ref || '').includes(ref) || JSON.stringify(l).includes(ref)) || {}
+  const l0 = parRef(fs4[0].reference), l1 = parRef(fs4[1].reference), l2 = parRef(fs4[2].reference), l3 = parRef(fs4[3].reference)
+  verif('RELEVE', '« traite » ⇒ mode_invalide, en file de revue', l0.statut === 'mode_invalide' && ((dry.body && dry.body.revue) || []).some((x) => x.ligne === l0.ligne), l0)
+  verif('RELEVE', 'mode vide ⇒ importable, virement supposé (mode_par_defaut)', l1.statut === 'a_importer' && l1.mode === 'virement' && l1.mode_par_defaut === true, l1)
+  verif('RELEVE', '« chèque » ⇒ cheque', l2.statut === 'a_importer' && l2.mode === 'cheque' && l2.mode_par_defaut === false, l2)
+  verif('RELEVE', '1200.005 ⇒ montant_invalide', l3.statut === 'montant_invalide', l3)
+  const com = await call('POST', '/ventes/paiements/import-releve/commit/', { token: dry.body && dry.body.token }, 200)
+  res.commit = { st: com.st, body: com.body }
+  const pays = []
+  for (const f of fs4) pays.push(liste(await must('GET', `/ventes/paiements/?facture=${f.id}&page_size=20`)).filter((x) => x.facture === f.id).map((x) => ({ montant: x.montant, mode: x.mode })))
+  res.paiements_relus = pays
+  verif('RELEVE', 'commit : 2 lignes écrites seulement (vide→virement, chèque→cheque), traite et 1200.005 jamais écrites', com.body && com.body.created === 2 && pays[0].length === 0 && pays[3].length === 0 && pays[1].length === 1 && pays[1][0].mode === 'virement' && eq2(pays[1][0].montant, fs4[1].total_ttc) && pays[2].length === 1 && pays[2][0].mode === 'cheque', pays)
+  return res
+}
+
+// ── AANA58 / AANA57 — taux /reporting = taux Quote-to-cash, tunnel sans % recalculé ──
+async function etapeTaux() {
+  const res = {}
+  const periodes = [[null, null], ['2026-10-01', '2026-11-01'], ['2020-01-01', '2020-01-31']]
+  for (const [a, b] of periodes) {
+    const q1 = a ? `?from=${a}&to=${b}` : ''
+    const q2 = a ? `?start=${a}&end=${b}` : ''
+    const d1 = await must('GET', `/reporting/dashboard/${q1}`)
+    const d2 = await must('GET', `/ventes/dashboard/${q2}`)
+    const k = a ? `${a}..${b}` : 'defaut'
+    res[k] = { reporting_conversion: d1.conversion, q2c_devis: d2.devis }
+    const c = d1.conversion || {}, v = d2.devis || {}
+    verif('TAUX', `${k} : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux`, c.taux_acceptation_pct === v.taux_acceptation_pct && c.nb_envoyes_periode === v.envoyes_periode && c.nb_acceptes_periode === v.acceptes_periode, { reporting: [c.taux_acceptation_pct, c.nb_acceptes_periode, c.nb_envoyes_periode], q2c: [v.taux_acceptation_pct, v.acceptes_periode, v.envoyes_periode] })
+  }
+  verif('TAUX', 'aucun envoi dans la période ⇒ taux null', res['2020-01-01..2020-01-31'].reporting_conversion && res['2020-01-01..2020-01-31'].reporting_conversion.taux_acceptation_pct === null, res['2020-01-01..2020-01-31'].reporting_conversion)
+  if (page) {
+    const conv = res.defaut.reporting_conversion
+    await aller(`${FRONT}/reporting`)
+    await page.getByText('Tunnel de conversion', { exact: true }).waitFor({ timeout: 30000 })
+    const carte = page.getByText('Tunnel de conversion', { exact: true }).locator('xpath=ancestor::*[.//*[@role="progressbar"]][1]')
+    const texte = await carte.innerText()
+    const barres = await carte.locator('[role="progressbar"]').evaluateAll((els) => els.map((e) => ({ now: e.getAttribute('aria-valuenow'), style: (e.querySelector('[style]') || e).getAttribute('style') })))
+    const c = await capture('AANA-REPORTING-tunnel')
+    res.ecran_tunnel = { texte, barres, capture: c.f }
+    const pctTxt = (texte.match(/[\d\s,.]+\s?%/g) || []).map((s) => s.trim())
+    const tauxAffiche = conv.taux_acceptation_pct === null ? null : (texte.match(/Devis acceptés \/ envoyés\s*:\s*([^\n]+)/) || [])[1]
+    verif('TUNNEL', `tunnel : ${conv.nb_factures} factures pour ${conv.nb_devis} devis — aucun « 150 », aucun % dans les barres, seul % = taux servi`, !/150/.test(texte) && pctTxt.length === (conv.taux_acceptation_pct === null ? 0 : 1) && (conv.taux_acceptation_pct === null ? !/Devis acceptés \/ envoyés/.test(texte) : /Devis acceptés \/ envoyés/.test(texte)), { pourcentages: pctTxt, tauxAffiche, servi: conv.taux_acceptation_pct, texte: texte.slice(0, 500) })
+    verif('TUNNEL', 'largeur des barres bornée à 100 %', barres.every((b) => b.now === null || num(b.now) <= 100), barres)
+    verif('TUNNEL', 'cas réel : plus de factures émises que de devis créés', num(conv.nb_factures) > num(conv.nb_devis), { nb_factures: conv.nb_factures, nb_devis: conv.nb_devis })
+    await aller(`${FRONT}/reporting/quote-to-cash`)
+    await page.getByText("Taux d'acceptation", { exact: true }).first().waitFor({ timeout: 30000 })
+    const kpi = page.getByText("Taux d'acceptation", { exact: true }).first().locator('xpath=ancestor::*[contains(., "devis envoyés")][1]')
+    const tq = await kpi.innerText()
+    const c2 = await capture('AANA-Q2C-taux')
+    const v = res.defaut.q2c_devis
+    res.ecran_q2c = { texte: tq, capture: c2.f }
+    verif('TUNNEL', 'Q2C : hint = acceptes_periode / envoyes_periode servis', tq.includes(`${v.acceptes_periode} / ${v.envoyes_periode} devis envoyés`), { texte: tq, servi: [v.acceptes_periode, v.envoyes_periode, v.taux_acceptation_pct] })
+    await page.reload({ waitUntil: 'domcontentloaded' }); await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+    const tq2 = await page.getByText("Taux d'acceptation", { exact: true }).first().locator('xpath=ancestor::*[contains(., "devis envoyés")][1]').innerText()
+    verif('TUNNEL', 'persistance : Q2C rechargé identique', tq2 === tq, { tq2 })
+  }
+  return res
+}
+
+;(async () => {
+  let browser = null
+  const res = { mode, base: BASE, run: RUN }
+  try {
+    if (mode === 'head') {
+      browser = await chromium.launch()
+      ctx = await browser.newContext({ baseURL: FRONT, serviceWorkers: 'block', viewport: { width: 1440, height: 900 }, acceptDownloads: true })
+      page = await ctx.newPage()
+      surveiller(page)
+      await page.goto('/login')
+      await page.getByPlaceholder('Entrez votre identifiant').fill(process.env.LOGIN || 'demo_admin')
+      await page.locator('input[type="password"]').fill(process.env.MDP || 'Demo@2026!')
+      await page.getByRole('button', { name: 'Se connecter →' }).click()
+      await page.waitForURL(/\/apps|\/dashboard|\/onboarding/, { timeout: 60000 })
+      req = page.request
+    } else {
+      const anon = await pwRequest.newContext({ baseURL: BASE })
+      const t = await anon.post(`${API}/token/`, { data: { username: process.env.LOGIN || 'demo_admin', password: process.env.MDP || 'Demo@2026!' } })
+      const tb = await t.json().catch(() => ({}))
+      log('token', t.status())
+      const headers = tb.access ? { Authorization: `Bearer ${tb.access}` } : {}
+      req = await pwRequest.newContext({ baseURL: BASE, extraHTTPHeaders: headers, storageState: await anon.storageState() })
+    }
+    const quoi = (process.env.ETAPES || 'bi,bc,avoir,copie,acompte,aller,releve,taux').split(',')
+    const F = { bi: etapeBI, bc: etapeBC, avoir: etapeAvoir, copie: etapeCopie, acompte: etapeAcompte, aller: etapeAllerRetour, releve: etapeReleve, taux: etapeTaux }
+    for (const q of quoi) {
+      const inc0 = JSON.stringify(incidents)
+      try { res[q] = await F[q]() } catch (e) { log(`ETAPE ${q} ERREUR`, String(e.stack || e).slice(0, 800)); verif(q.toUpperCase(), `étape ${q} exécutée sans erreur`, false, String(e).slice(0, 500)); if (page) await capture(`ERREUR-${q}`).catch(() => {}) }
+      res[`incidents_${q}`] = JSON.parse(JSON.stringify(incidents))
+      log(`INCIDENTS après ${q}`, inc0 === JSON.stringify(incidents) ? 'aucun nouveau' : incidents)
+    }
+  } finally {
+    res.etapes = etapes
+    res.incidents = incidents
+    res.requetes = requetes.slice(-200)
+    fs.writeFileSync(path.join(OUT, `rejeu-${mode}${process.env.SUFFIXE || ''}.json`), JSON.stringify(res, null, 2))
+    fs.writeFileSync(path.join(OUT, `rejeu-${mode}${process.env.SUFFIXE || ''}.log`), journal.join('\n') + '\n')
+    log('INCIDENTS', incidents)
+    if (browser) await browser.close()
+  }
+})()

@@ -1,0 +1,52 @@
+"""Rejeu 0111b — AANA78 : outil SQL sécurisé de l'agent (code fastapi_ia du sha) exécuté sur le VRAI Postgres
+local, deux sociétés. Usage : python3 aana78_sql.py <repo> <dsn> <json {"A": cid, "B": cid, "demo": cid}>"""
+import sys, json
+repo, dsn, ids = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+sys.path.insert(0, f'{repo}/backend/fastapi_ia')
+import sqlglot
+from sqlglot import exp
+from app.services import sql_agent_service as s
+import psycopg2
+cn = psycopg2.connect(dsn); cn.set_session(readonly=True, autocommit=True); cur = cn.cursor()
+
+REQ = {
+    'devis_somme': 'SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignedevis',
+    'devis_join': 'SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_devis d JOIN ventes_lignedevis l ON l.devis_id = d.id',
+    'devis_join_inverse': 'SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_lignedevis l LEFT JOIN ventes_devis d ON l.devis_id = d.id',
+    'devis_sous_requete': 'SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM ventes_lignedevis) t',
+    'devis_cte': 'WITH x AS (SELECT * FROM ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x',
+    'devis_public_guillemets': 'SELECT SUM(quantite * prix_unitaire) AS total FROM public."ventes_lignedevis"',
+    'facture_somme': 'SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture',
+    'facture_alias_join': 'SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM ventes_lignefacture lf JOIN ventes_facture f ON f.id = lf.facture_id',
+    'facture_in': 'SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM ventes_lignefacture)',
+}
+VERITE = {
+    'devis': 'SELECT SUM(l.quantite * l.prix_unitaire) FROM ventes_lignedevis l JOIN ventes_devis d ON d.id = l.devis_id WHERE d.company_id = %s',
+    'facture': 'SELECT SUM(l.quantite * l.prix_unitaire) FROM ventes_lignefacture l JOIN ventes_facture f ON f.id = l.facture_id WHERE f.company_id = %s',
+}
+cur.execute('SELECT SUM(quantite * prix_unitaire) FROM ventes_lignedevis'); tout_devis = cur.fetchone()[0]
+cur.execute('SELECT SUM(quantite * prix_unitaire) FROM ventes_lignefacture'); tout_fac = cur.fetchone()[0]
+out = {'toutes_societes': {'devis': str(tout_devis), 'facture': str(tout_fac)}, 'societes': {}}
+ok = True
+for nom, cid in ids.items():
+    v = {}
+    for k, q in VERITE.items():
+        cur.execute(q, (cid,)); v[k] = cur.fetchone()[0]
+    res = {'verite': {k: str(x) for k, x in v.items()}, 'requetes': {}}
+    for cle, q in REQ.items():
+        attendu = v['devis' if cle.startswith('devis') else 'facture']
+        r = {'sql': q}
+        try:
+            sec = s._validate_and_secure(q, cid); r['execute'] = sec
+            try:
+                cur.execute(sec); val = cur.fetchone()[0]
+                r['valeur'] = str(val); r['egal_verite'] = (val == attendu)
+            except Exception as e:
+                r['erreur_execution'] = str(e).split('\n')[0][:200]; r['egal_verite'] = False
+        except s.SQLSecurityError as e:
+            r['refuse'] = str(e)[:200]; r['egal_verite'] = False
+        ok &= r['egal_verite']
+        res['requetes'][cle] = r
+    out['societes'][nom] = res
+out['verdict'] = 'PASS' if ok else 'FAIL'
+print(json.dumps(out, ensure_ascii=False, indent=1, default=str))

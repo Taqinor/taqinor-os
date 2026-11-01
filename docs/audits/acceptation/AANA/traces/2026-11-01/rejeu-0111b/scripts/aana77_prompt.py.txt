@@ -1,0 +1,22 @@
+"""Rejeu 0111b — AANA77 volet prompt : exemples du prompt de l'agent SQL (code du sha) passés par la garde puis exécutés
+sur le vrai Postgres local. Usage : python3 aana77_prompt.py <repo> <dsn> <company_id>"""
+import re, sys, json
+repo, dsn, cid = sys.argv[1], sys.argv[2], int(sys.argv[3])
+sys.path.insert(0, f'{repo}/backend/fastapi_ia')
+from app.services import sql_agent_service as s
+import psycopg2
+cn = psycopg2.connect(dsn); cn.set_session(readonly=True, autocommit=True); cur = cn.cursor()
+p = s._AGENT_PREFIX
+out = {'sum_montant_ht_comme_exemple': bool(re.search(r'^- [^\n]*SUM\(montant_(ht|ttc)\)', p, re.M)),
+       'puce_factures': re.search(r'Factures → [^\n]*\n(?:  [^\n]*\n){1,6}', p).group(0) if 'Factures →' in p else None, 'exemples': []}
+for m in re.finditer(r'^- ([^:\n]+) : (SELECT[^\n]+(?:\\\n[^\n]+)*)', p, re.M):
+    sql = m.group(2).replace('\\\n', ' ')
+    if 'ventes_facture' not in sql:
+        continue
+    r = {'libelle': m.group(1), 'sql': sql}
+    try:
+        sec = s._validate_and_secure(sql, cid); cur.execute(sec); r['resultat'] = str(cur.fetchall()[:3])
+    except Exception as e:
+        r['erreur'] = str(e)[:200]
+    out['exemples'].append(r)
+print(json.dumps(out, ensure_ascii=False, indent=1))
