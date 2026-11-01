@@ -39,6 +39,41 @@ class MarginGuardTests(unittest.TestCase):
         for col in ("prix_achat", "prix_revendeur", "marge"):
             self.assertIn(col, svc._FORBIDDEN_COLUMNS, col)
 
+    def test_cout_unitaire_des_mouvements_est_un_cout_interne(self):
+        """ASEC61 : `cout_unitaire` (ASTK44) suit la regle prix d'achat."""
+        refusees = (
+            "SELECT produit_id, cout_unitaire FROM stock_mouvementstock",
+            "SELECT m.COUT_UNITAIRE FROM stock_mouvementstock m",
+            "SELECT * FROM stock_mouvementstock",
+            "SELECT row_to_json(m) FROM stock_mouvementstock m",
+        )
+        for sql in refusees:
+            self.assertTrue(svc._references_forbidden_column(sql), sql)
+            self.assertFalse(svc._references_forbidden_column(sql, allow_price=True), sql)
+        self.assertFalse(svc._references_forbidden_column(
+            "SELECT quantite, type_mouvement FROM stock_mouvementstock"))
+        tool = None
+        try:
+            tool = svc._make_secure_query_tool(_FakeDB(), 7, allow_purchase_price=False)
+        except Exception:  # pragma: no cover - langchain indisponible
+            return
+        called = {"ran": False}
+
+        def fake_parent_run(self, query, run_manager=None):
+            called["ran"] = True
+            return "RAN"
+
+        parent = type(tool).__mro__[1]
+        original = getattr(parent, "_run", None)
+        parent._run = fake_parent_run
+        try:
+            out = tool._run(refusees[0])
+            self.assertEqual(out, svc._FORBIDDEN_TOOL_REPLY)
+            self.assertFalse(called["ran"])
+        finally:
+            if original is not None:
+                parent._run = original
+
     def test_detects_prix_achat_in_sql(self):
         sql = "SELECT nom, prix_achat FROM stock_produit"
         self.assertTrue(svc._references_forbidden_column(sql))
