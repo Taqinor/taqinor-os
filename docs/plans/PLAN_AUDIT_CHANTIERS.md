@@ -315,3 +315,4 @@ Contre-visite de clôture du groupe (dossier `docs/audits/2026-10-10-stock-verif
 
 - 2026-10-30 — ACHT112 — rapport énergie : logo détouré par quote_engine.logo via la porte apps.ventes.selectors.logo_entete_html (e43d53ef08, 8c79e94103, 0dd6a045fe) ; tests RapportEnergieLogoTests ; preuve en direct P4 due à l orchestrateur.
 - 2026-10-30 — ACHT112 — acceptation en direct (rejeu complet 30/10, SHA e9e8593e5, 18/18) : logo à masque alpha en en-tête de la page 1 du rapport-energie — docs/audits/acceptation/ACHT/2026-10-30-e9e8593e5.md
+- 2026-10-30 — ACHT114 — code ; preuve en direct à rejouer par l'orchestrateur (ACHT123) — `_reactiver_chantier_reaccepte` appelle `realigner_nomenclature_si_divergente(inst, user, 'à la ré-acceptation')` après `annule=False`, `seed_reservations` seulement si rien n'est réaligné (services.py net −1) ; test `ReactivationV2Tests::test_reacceptation_apres_sortie_signe_realigne` (non exécuté localement, CI).

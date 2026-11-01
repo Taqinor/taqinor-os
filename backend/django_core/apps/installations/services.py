@@ -788,10 +788,10 @@ def annuler_chantiers_desaccepte(devis, user, company):
 
 
 def _reactiver_chantier_reaccepte(inst, devis, user):
-    """Ré-acceptation d'un devis dés-accepté : le chantier annulé par la
-    dés-acceptation redevient actif (jamais un second chantier), sa date de
-    signature suit la nouvelle acceptation et ses réservations sont
-    réamorcées s'il en portait (même règle que l'action « Réactiver »)."""
+    """Ré-acceptation d'un devis dés-accepté : le chantier annulé redevient
+    actif (jamais un second), sa signature suit la nouvelle acceptation, puis
+    (ACHT114, comme « Réactiver », APRÈS ``annule=False``) sa nomenclature est
+    réalignée sur le gel du devis — à défaut, ses réservations réamorcées."""
     from . import activity
     inst.annule = False
     inst.motif_annulation = None
@@ -801,11 +801,10 @@ def _reactiver_chantier_reaccepte(inst, devis, user):
         inst.date_signature = date_acc
         champs.append('date_signature')
     inst.save(update_fields=champs)
-    activity.log_note(
-        inst, user,
-        f'Chantier réactivé : le devis {devis.reference} a été accepté de '
-        'nouveau.')
-    if inst.reservations.exists():
+    activity.log_note(inst, user, f'Chantier réactivé : le devis '
+                      f'{devis.reference} a été accepté de nouveau.')
+    if not realigner_nomenclature_si_divergente(
+            inst, user, 'à la ré-acceptation') and inst.reservations.exists():
         seed_reservations(inst)
 
 

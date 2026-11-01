@@ -15,11 +15,13 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
+import apps.crm.stages as stages
 from apps.crm.models import Client, Lead
 from apps.installations.models import (
     Installation, InstallationActivity, StockReservation,
@@ -140,3 +142,66 @@ class ReactivationV2Tests(TestCase):
         r = self.api.post(self._url('reserver-stock'), {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self._attendu_v2()
+
+    def test_reacceptation_apres_sortie_signe_realigne(self):
+        """ACHT114 (C-ACHT-VER-005) — rejoue la sonde par HTTP : devis envoyé
+        PAN × 10 accepté, lead sorti de « Signé », ligne corrigée à 14,
+        ré-accepté ⇒ un seul chantier actif, bom et réservations à 14, note de
+        réalignement ; 2e aller-retour sans changement ⇒ aucune nouvelle note.
+        ROUGE AVANT : bom resté {PAN : 10}."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Reaccept', prenom='Client',
+            stage=stages.FOLLOW_UP, type_installation='residentiel')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ACHT114-1',
+            client=self.v1.client, lead=lead, statut=Devis.Statut.ENVOYE,
+            date_envoi=timezone.now(), taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+        ligne = LigneDevis.objects.create(
+            devis=devis, produit=self.panneau, designation='Panneau',
+            quantite=Decimal('10'), prix_unitaire=Decimal('100'))
+
+        def accepter():
+            r = self.api.post(f'/api/django/ventes/devis/{devis.id}/accepter/',
+                              {'nom': 'M. Client'}, format='json')
+            self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+
+        def sortir_de_signe():
+            r = self.api.patch(f'/api/django/crm/leads/{lead.id}/', {
+                'stage': stages.FOLLOW_UP, 'confirme_recul': True},
+                format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+
+        def notes_realignement(inst):
+            return InstallationActivity.objects.filter(
+                installation=inst,
+                body__contains=f'nomenclature réalignée sur {devis.reference} '
+                               'à la ré-acceptation').count()
+
+        accepter()
+        inst = Installation.objects.get(devis=devis)
+        sortir_de_signe()
+        inst.refresh_from_db()
+        self.assertTrue(inst.annule)
+        LigneDevis.objects.filter(pk=ligne.pk).update(quantite=Decimal('14'))
+        accepter()
+        chantiers = Installation.objects.filter(devis=devis)
+        self.assertEqual(chantiers.count(), 1)
+        inst = chantiers.get()
+        self.assertFalse(inst.annule)
+        self.assertEqual(
+            {li['produit_id']: li['quantite'] for li in inst.bom},
+            {self.panneau.id: 14.0})
+        self.assertEqual(dict(StockReservation.objects.filter(
+            installation=inst, active=True).values_list(
+                'produit_id', 'quantite')), {self.panneau.id: 14})
+        self.assertEqual(notes_realignement(inst), 1)
+        # Idempotent : nouvel aller-retour sans changement de ligne.
+        sortir_de_signe()
+        accepter()
+        inst.refresh_from_db()
+        self.assertFalse(inst.annule)
+        self.assertEqual(notes_realignement(inst), 1)
+        self.assertEqual(dict(StockReservation.objects.filter(
+            installation=inst, active=True).values_list(
+                'produit_id', 'quantite')), {self.panneau.id: 14})
