@@ -113,6 +113,34 @@ class PretOutillageTests(TestCase):
         self.assertEqual(self._statut('E'), (S.DISPONIBLE, self.van.id))
         statut_c, emplacement_c = self._statut('C')
         self.assertEqual(statut_c, S.EN_INTERVENTION)
+        self.assertIsNone(emplacement_c)  # ACHT121 : sorti = sans emplacement
+
+    def test_sortie_vide_emplacement_retour_restaure(self):
+        """ACHT121 — sortie : « En intervention », emplacement nul, quitté
+        mémorisé sur la ligne de retour ; décochage : restauré."""
+        for nom in ('C', 'E'):
+            self.assertEqual(self._cocher(self.iv1, nom).status_code, 200)
+        self.assertEqual(self._statut('C'), (S.EN_INTERVENTION, None))
+        self.assertEqual(self._statut('E'), (S.EN_INTERVENTION, None))
+        self.assertEqual(self._statut('D'), (S.DISPONIBLE, self.depot.id))
+        lignes = {tr.outil.nom: tr for tr in self.iv1.tool_returns.all()}
+        self.assertEqual(set(lignes), {'C', 'E'})
+        self.assertEqual(lignes['E'].emplacement_retour_id, self.depot.id)
+        self._cocher(self.iv1, 'E', coche=False)
+        self.assertEqual(self._statut('E'), (S.DISPONIBLE, self.depot.id))
+        self._cocher(self.iv1, 'E')
+        self.assertEqual(self._statut('E'), (S.EN_INTERVENTION, None))
+        self.assertEqual(self.iv1.tool_returns.filter(
+            outil=self.outils['E']).count(), 1)
+
+    def test_rendu_sans_choix_revient_a_l_emplacement_quitte(self):
+        self._cocher(self.iv1, 'D')
+        tr = self.iv1.tool_returns.get(outil=self.outils['D'])
+        self.api.post(f'{BASE}/{self.iv1.id}/cocher-tool-return/', {
+            'ligne': tr.id, 'rendu': True}, format='json')
+        self.api.post(f'{BASE}/{self.iv1.id}/confirmer-tool-return/', {},
+                      format='json')
+        self.assertEqual(self._statut('D'), (S.DISPONIBLE, self.depot.id))
 
     def test_double_pret_bloque(self):
         self._scenario()
