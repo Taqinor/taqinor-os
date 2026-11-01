@@ -1302,16 +1302,16 @@ def _carte_du_devis(contexte, data, variante):
     # Payback SERVI d'abord (``roi_s``/``roi_a``), « jamais remboursé » ⇒ OMIS (ERR-RHOR8) ; repli QUE s'il n'est pas
     # servi : la définition du document (AMOT29 ; règles d'origine : ratio simple) avec, niveau 7 « avec » (AMOT107),
     # les arguments de ``_carte_moteur`` (stockage, part stockée 0, provision d'onduleur, rendement du bloc horaire).
-    from apps.ventes.domain.dimensionnement_devis import _payback_servi, lignes_vendues
-    from apps.ventes.domain.regles_calcul import REGLES_ECARTS_3110, regles_au_moins
-    lv = (lignes_vendues(contexte.devis, 'avec') if variante == 'avec'
-          and regles_au_moins(contexte.devis, REGLES_ECARTS_3110) else None)
-    cf = {} if lv is None else {'stockage': True, 'part_batterie': 0.0, 'cout_onduleur_ttc': _cout_onduleur_ttc(
-        lv, [_role_de_la_ligne(getattr(ln, 'designation', '') or '') for ln in lv], contexte.facteur_remise,
-        getattr(contexte.devis, 'taux_tva', None), (contexte.entrees or {}).get('company')), 'battery_roundtrip': (
-        (getattr(contexte.devis, 'etude_params', None) or {}).get('etude_horaire') or {}).get('rendement_batterie')}
-    paye = _payback_servi(data, variante, repli=lambda: (
-        _payback_publie(prix, economie, **cf) if getattr(contexte, 'corrige', True) else _payback(prix, economie)))
+    from apps.ventes.domain import dimensionnement_devis as dd, regles_calcul as rc
+    paye = dd._payback_servi(data, variante, repli=lambda: (_payback_publie(prix, economie, **(
+        {'stockage': True, 'part_batterie': 0.0, 'cout_onduleur_ttc': _cout_onduleur_ttc(
+            (lv := dd.lignes_vendues(contexte.devis, 'avec')),
+            [_role_de_la_ligne(getattr(ln, 'designation', '') or '') for ln in lv], contexte.facteur_remise,
+            getattr(contexte.devis, 'taux_tva', None), (contexte.entrees or {}).get('company')),
+         'battery_roundtrip': ((getattr(contexte.devis, 'etude_params', None) or {}).get('etude_horaire')
+                               or {}).get('rendement_batterie')}
+        if variante == 'avec' and rc.regles_au_moins(contexte.devis, rc.REGLES_ECARTS_3110) else {}))
+        if getattr(contexte, 'corrige', True) else _payback(prix, economie)))
     if paye is not None:
         carte['payback_annees'] = round(paye, 2)
     production = _positif((data or {}).get('prod_kwh_%s' % suffixe))
