@@ -8,7 +8,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 from django.db import models
 
-from .erreurs_achats import ConflitEtat, EtatIncompatible, IntrouvableMetier
+from .erreurs_achats import ConflitEtat, EtatIncompatible, IntrouvableMetier, delta_revalorisation_borne
 from .services_produit import get_or_create_produit
 
 logger = logging.getLogger('stock.audit')
@@ -1317,7 +1317,8 @@ def creer_revalorisation(*, company, produit, nouveau_cout, motif, user,
     quantite = max(
         (produit.quantite_stock or 0)
         - quantite_de_tiers(company, produit=produit), 0)
-    delta = (nouveau_cout - ancien_cout) * quantite
+    # api-fuzz stock (vague 8) : écart hors capacité = 409, plus un 500.
+    delta = delta_revalorisation_borne(ancien_cout, (nouveau_cout - ancien_cout) * quantite)
     return RevalorisationStock.objects.create(
         company=company, produit=produit, ancien_cout=ancien_cout,
         nouveau_cout=nouveau_cout, quantite_snapshot=quantite,

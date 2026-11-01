@@ -536,6 +536,39 @@ class TestDC35FicheTechniqueAPI(DCBase):
             url, {'produit': self.produit.id, 'pmax_wc': '600'}, format='json')
         self.assertEqual(doublon.status_code, 409, doublon.content)
 
+    def test_json_seul_hors_pdf_multipart(self):
+        """api-fuzz stock (vague 8) — création / remplacement en JSON seul
+        (``struct_notice`` n'a pas de forme multipart : 400 « JSON valide »
+        sur un corps conforme) ; le multipart ne sert qu'au PDF du PATCH."""
+        url = '/api/django/stock/fiches-techniques/'
+        resp = self.client.post(
+            url, {'produit': self.produit.id, 'pmax_wc': '550'},
+            format='multipart')
+        self.assertEqual(resp.status_code, 415, resp.content)
+        fiche = self.client.post(
+            url, {'produit': self.produit.id, 'pmax_wc': '550'}, format='json')
+        self.assertEqual(fiche.status_code, 201, fiche.content)
+        detail = f"{url}{fiche.data['id']}/"
+        resp = self.client.put(
+            detail, {'produit': self.produit.id, 'pmax_wc': '600'},
+            format='multipart')
+        self.assertEqual(resp.status_code, 415, resp.content)
+        resp = self.client.patch(detail, {}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.stock import urls as stock_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/stock/', include(stock_urls)),
+        ]).get_schema(request=None, public=True)
+        ops = schema['paths']['/api/django/stock/fiches-techniques/{id}/']
+        self.assertEqual(set(ops['put']['requestBody']['content']), {'application/json'})
+        self.assertEqual(set(ops['patch']['requestBody']['content']),
+                         {'application/json', 'multipart/form-data'})
+        self.assertEqual(set(schema['paths']['/api/django/stock/fiches-techniques/'][
+            'post']['requestBody']['content']), {'application/json'})
+
     def test_queryset_scoped_to_company(self):
         from apps.stock.models import FicheTechnique
         other_prod = Produit.objects.create(
