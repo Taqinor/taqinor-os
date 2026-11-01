@@ -198,6 +198,8 @@ import HomeScripts from '../../components/home/HomeScripts.astro';
 import GalleryLightboxDialog from '../../components/home/GalleryLightboxDialog.astro';
 import ArIndexPicture8B05 from '../../components/blocs/ArIndexPicture8B05.astro';
 import { solutionIcons } from '../../lib/solutionIcons';
+import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.astro';
+import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
 ---
 
 <Layout
@@ -231,11 +233,7 @@ import { solutionIcons } from '../../lib/solutionIcons';
       </div>
 
       {/* W161 — دعوة إلى التمرير: شيفرون متحرّك، ساكن تحت prefers-reduced-motion */}
-      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </div>
+      <ProfessionnelDiv77FB />
 
       {/* المحتوى مرسى أسفلًا — eyebrow مُرتجَع إلى لون اللون (انضباط النحاس). */}
       {/* القاعدة ج7 (2026-07-05) — `relative z-10`: يبقى المحتوى (بما فيه
@@ -248,10 +246,7 @@ import { solutionIcons } from '../../lib/solutionIcons';
             «يظهر ثم يختفي». ظل نصي دفاعي: يبقى الرقم الأبيض مقروءًا حتى فوق
             إطار فيديو مضيء جداً (شمس ساطعة). الرقم يبقى dir="ltr" ليصحّ عرضه
             ضمن نص عربي. */}
-        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch] [text-shadow:0_2px_28px_rgb(7_11_29/0.72)]">
-          <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
-        </h1>
-        <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
+        <ArIndexH1ED0F heroFigure={heroFigure} heroSub={heroSub} heroTitleSuffix={heroTitleSuffix} />
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* CTA نحاسي وحيد (انضباط النحاس) — الذهب مأذون هنا */}
           <a id="hero-cta-magnetic" href={L('/devis/mon-toit')} class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">

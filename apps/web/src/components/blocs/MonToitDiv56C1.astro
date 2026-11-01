@@ -1,0 +1,54 @@
+---
+
+import MonToitDiv56C1Span6F51 from './MonToitDiv56C1Span6F51.astro';
+import MonToitDiv56C1Div1839 from './MonToitDiv56C1Div1839.astro';// ENF19 : bloc partagé (copies identiques) — mon-toit.astro
+---
+<div class="mt-teaser-preview" aria-hidden="true">
+  <MonToitDiv56C1Div1839 />
+</div>
+<!-- voile + cadenas + accroche par-dessus le flou -->
+<div class="mt-teaser-lock">
+  <MonToitDiv56C1Span6F51 />
+  <p class="mt-teaser-hook" id="mt-teaser-hook-roof" data-i18n
+    data-fr="Votre toit peut couvrir une bonne part de votre facture."
+    data-ar="سطحكم يمكن أن يغطّي جزءاً كبيراً من فاتورتكم.">
+    Votre toit peut couvrir une bonne part de votre facture.
+  </p>
+  <p class="mt-teaser-hook" id="mt-teaser-hook-pump" hidden data-i18n
+    data-fr="Le solaire peut alimenter votre pompage au fil du soleil."
+    data-ar="يمكن للطاقة الشمسية أن تشغّل ضخّكم على مدار الشمس.">
+    Le solaire peut alimenter votre pompage au fil du soleil.
+  </p>
+  <!-- WJ127 — REPLI HONNETE pour les chemins SANS estimation. Les
+       cartes d'erreur/edge (`mt-estimate-toolarge`, `-toolarge-pro`,
+       le rappel agricole) vivent DANS `#mt-doc`, que le gating WJ125
+       masque : un visiteur dont le site depasse l'echelle du
+       simulateur ne voyait donc plus le message honnete « a cette
+       echelle, etude dediee » — seulement l'accroche generique. Pire,
+       la parite a11y etait INVERSEE : `announceEstimate` disait bien
+       la verite au lecteur d'ecran, l'ecran ne la montrait pas. Ces
+       deux accroches de repli disent EXACTEMENT ce que la voix
+       annonce, et ne divulguent aucun chiffre. Ce commentaire vit
+       DANS le bloc teaser lu par teaserGateWJ125.test.ts : il ne doit
+       lui-meme porter ni unite ni montant. -->
+  <p class="mt-teaser-hook" id="mt-teaser-hook-etude" hidden data-i18n
+    data-fr="À cette échelle, votre projet relève d'une étude dédiée — un conseiller vous rappelle."
+    data-ar="على هذا النطاق، مشروعكم يستدعي دراسة مخصّصة — سيتصل بكم مستشار.">
+    À cette échelle, votre projet relève d'une étude dédiée — un conseiller vous rappelle.
+  </p>
+  <p class="mt-teaser-hook" id="mt-teaser-hook-rappel" hidden data-i18n
+    data-fr="Votre pompage se dimensionne sur votre forage — un conseiller vous rappelle avec un calcul adapté."
+    data-ar="يُحدَّد حجم ضخّكم انطلاقاً من ثقبكم — سيتصل بكم مستشار بحساب مناسب.">
+    Votre pompage se dimensionne sur votre forage — un conseiller vous rappelle avec un calcul adapté.
+  </p>
+  <p class="mt-teaser-headline" data-i18n
+    data-fr="Recevez votre étude complète et personnalisée"
+    data-ar="استلموا دراستكم الكاملة والمخصّصة">
+    Recevez votre étude complète et personnalisée
+  </p>
+  <p class="mt-teaser-sub" data-i18n
+    data-fr="Renseignez vos coordonnées ci-dessous — un ingénieur vous l'envoie."
+    data-ar="أدخلوا معلوماتكم أدناه — يرسلها لكم مهندس.">
+    Renseignez vos coordonnées ci-dessous — un ingénieur vous l'envoie.
+  </p>
+</div>

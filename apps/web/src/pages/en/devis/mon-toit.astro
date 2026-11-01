@@ -115,6 +115,8 @@ import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.a
 import '../../../styles/mon-toit-doc.css';
 import '../../../styles/mon-toit-page.css';
 import DevisMonToitExitModal from '../../../components/blocs/DevisMonToitExitModal.astro';
+import MonToitDiv56C1Div1839 from '../../../components/blocs/MonToitDiv56C1Div1839.astro';
+import MonToitDiv56C1Span6F51 from '../../../components/blocs/MonToitDiv56C1Span6F51.astro';
 ---
 
 <Layout
@@ -789,21 +791,11 @@ import DevisMonToitExitModal from '../../../components/blocs/DevisMonToitExitMod
         <div id="mt-teaser" hidden class="mt-teaser relative mt-4 overflow-hidden border border-brass-400/25 bg-white/5 p-5 sm:p-6">
           <!-- blurred & decorative preview: no value, only grey bars -->
           <div class="mt-teaser-preview" aria-hidden="true">
-            <div class="mt-teaser-kpis">
-              <span class="mt-teaser-bar"></span>
-              <span class="mt-teaser-bar"></span>
-              <span class="mt-teaser-bar"></span>
-              <span class="mt-teaser-bar"></span>
-            </div>
-            <div class="mt-teaser-chart"></div>
+            <MonToitDiv56C1Div1839 />
           </div>
           <!-- veil + lock + hook over the blur -->
           <div class="mt-teaser-lock">
-            <span class="mt-teaser-lock-badge" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
-              </svg>
-            </span>
+            <MonToitDiv56C1Span6F51 />
             <p class="mt-teaser-hook" id="mt-teaser-hook-roof">
               Your roof could cover a good part of your bill.
             </p>

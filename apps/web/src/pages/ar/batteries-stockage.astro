@@ -23,7 +23,6 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import Faq from '../../components/Faq.astro';
-import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
@@ -136,6 +135,7 @@ const jsonLd = {
   areaServed: { '@type': 'Country', name: 'Maroc' },
 };
 import BatteriesStockageDivE1BCSuite from '../../components/blocs/BatteriesStockageDivE1BCSuite.astro';
+import BatteriesStockageDiv1626 from '../../components/blocs/BatteriesStockageDiv1626.astro';
 ---
 
 <Layout
@@ -392,10 +392,7 @@ import BatteriesStockageDivE1BCSuite from '../../components/blocs/BatteriesStock
     </section>
 
     <!-- W263 — ضمان حسب المكوّن، قبل الاستدعاء النهائي. -->
-    <div class="v2-seam" aria-hidden="true"></div>
-    <section class="section-tight bg-blanc-azur px-4 text-encre">
-      <ServiceWarrantyTable />
-    </section>
+    <BatteriesStockageDiv1626 />
 
     <CtaBand title="تخزين أم لا؟ منحنى استهلاكك سيقول — تشخيص مجاني." href={devisHref} />
 

@@ -20,7 +20,6 @@ import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
-import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
 // vient du module partagé guideMeta.ts (source unique par slug).
@@ -74,6 +73,7 @@ const toitures = [
   },
 ];
 import GuidesMonToitPeutIlSupporterDesPanneauxDiv5AAB from '../../components/blocs/GuidesMonToitPeutIlSupporterDesPanneauxDiv5AAB.astro';
+import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuGelPCFC9.astro';
 ---
 
 <Layout
@@ -95,11 +95,7 @@ import GuidesMonToitPeutIlSupporterDesPanneauxDiv5AAB from '../../components/blo
       <h1 class="display v2-page-title mt-5 text-white">Mon toit peut-il supporter des panneaux ?</h1>
 
       <!-- W303 — date de vérification + auteur + temps de lecture -->
-      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
-        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
-        <span aria-hidden="true">·</span>
-        <span>{readingMinutes} min de lecture</span>
-      </p>
+      <BatterieLithiumOuGelPCFC9 readingMinutes={readingMinutes} verifiedDate={verifiedDate} />
 
       <p class="v2-lead mt-6 text-lune-soft">
         C’est l’objection qui revient juste après le prix : « et si mon toit ne tient pas le poids ? ».

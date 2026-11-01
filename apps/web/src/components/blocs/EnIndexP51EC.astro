@@ -1,0 +1,9 @@
+---
+// ENF19 : bloc partagé (copies identiques) — index.astro
+const { featured } = Astro.props as Record<string, any>;
+---
+<p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
+<p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
+<p class="mt-4 text-sm leading-relaxed text-lune-soft">
+  {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
+</p>

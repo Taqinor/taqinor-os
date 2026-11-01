@@ -31,7 +31,7 @@ import RelatedLinks from '../../components/RelatedLinks.astro';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { estimateReadingTime } from '../../lib/readingTime';
-import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
+import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuGelPCFC9.astro';
 
 const verifiedDate = new Date('2026-07-03');
 
@@ -129,11 +129,7 @@ const jsonLd = {
       <p class="tech-label v2-kicker rule-brass text-lune">Ressource · Checklist</p>
       <h1 class="display v2-page-title mt-5 text-white">10 questions à poser avant de signer un devis solaire</h1>
 
-      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
-        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
-        <span aria-hidden="true">·</span>
-        <span>{readingMinutes} min de lecture</span>
-      </p>
+      <BatterieLithiumOuGelPCFC9 readingMinutes={readingMinutes} verifiedDate={verifiedDate} />
 
       <p class="v2-lead mt-6 text-lune-soft">
         Un devis solaire se lit rarement d’un coup d’œil : le prix affiché cache des écarts de

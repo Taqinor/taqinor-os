@@ -26,6 +26,7 @@ const inputClass =
 import Toiture3dProOption4857 from '../../components/blocs/Toiture3dProOption4857.astro';
 import Toiture3dProButtonC44A from '../../components/blocs/Toiture3dProButtonC44A.astro';
 import '../../styles/preview-toiture-map.css';
+import Toiture3dProOption3967 from '../../components/blocs/Toiture3dProOption3967.astro';
 ---
 
 <Layout
@@ -136,9 +137,7 @@ import '../../styles/preview-toiture-map.css';
               <div class="flex items-center gap-2">
                 <label for="rp-floors" class="text-sm text-lune-soft">Étages</label>
                 <select id="rp-floors" class="border border-white/15 bg-nuit-700 px-3 py-2 text-sm text-white outline-none focus:border-brass-400">
-                  <option value="1">1</option>
-                  <option value="2" selected>2</option>
-                  <option value="3">3 et +</option>
+                  <Toiture3dProOption3967 />
                 </select>
               </div>
               <label class="flex items-center gap-2 text-sm text-lune-soft">

@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — professionnel.astro
+import GarantiesTeaser from '../GarantiesTeaser.astro';
+import Testimonials from '../Testimonials.astro';
+---
+<Testimonials />
+
+<!-- طمأنة: الضمانات المكتوبة، باختصار (إحالة إلى /garanties) -->
+<GarantiesTeaser />
+
+<!-- W263 — بنك أسئلة شائعة مشترك (صيانة/ثمن/مُدرَج-مُستثنى/آجال/ضمانات)
+     + ضمان حسب المكوّن، قبل الاستمارة النهائية. schema={false}:
+     /faq تبقى الصفحة الوحيدة التي تُصدر FAQPage JSON-LD (W19). -->

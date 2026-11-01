@@ -247,6 +247,8 @@ import HomeScripts from '../components/home/HomeScripts.astro';
 import GalleryLightboxDialog from '../components/home/GalleryLightboxDialog.astro';
 import ArIndexPicture8B05 from '../components/blocs/ArIndexPicture8B05.astro';
 import { solutionIcons } from '../lib/solutionIcons';
+import EnIndexA993D from '../components/blocs/EnIndexA993D.astro';
+import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
 ---
 
 <Layout
@@ -660,18 +662,12 @@ import { solutionIcons } from '../lib/solutionIcons';
             <a href="/devis/mon-toit" class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
               Obtenir mon étude gratuite →
             </a>
-            <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
-              WhatsApp direct
-            </a>
+            <EnIndexA993D waDirect={waDirect} />
           </div>
         </div>
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">Dernière installation livrée</p>
-          <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
-          <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
-          <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-            {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
-          </p>
+          <EnIndexP51EC featured={featured} />
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
             Installation suivie en temps réel, accès client inclus. Visites de site possibles sur demande.
           </p>

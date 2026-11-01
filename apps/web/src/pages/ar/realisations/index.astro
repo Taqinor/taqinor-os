@@ -22,7 +22,6 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import BrandStrip from '../../../components/BrandStrip.astro';
-import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { REALISATIONS, standardCaption } from '../../../lib/realisations';
 import { caseStudyBySlug } from '../../../lib/caseStudies';
 import { getLocaleFromPath } from '../../../i18n/utils';
@@ -59,6 +58,7 @@ const itemListJsonLd = {
 import RealisationsIndexSection9BE4 from '../../../components/blocs/RealisationsIndexSection9BE4.astro';
 import PhotoLightbox from '../../../components/PhotoLightbox.astro';
 import '../../../styles/realisations-hover-zoom.css';
+import PourquoiTaqinorBloc660A from '../../../components/blocs/PourquoiTaqinorBloc660A.astro';
 ---
 
 <Layout
@@ -162,10 +162,7 @@ import '../../../styles/realisations-hover-zoom.css';
     <section class="section-tight px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">للتعمّق أكثر</p>
-        <RelatedLinks links={[
-          { href: L('/production-mesuree'), label: 'إنتاجنا المتابَع باستمرار' },
-          { href: L('/impact-taqinor'), label: 'أثر Taqinor (kWc وkWh وCO2 المتجنَّب)' },
-        ]} />
+        <PourquoiTaqinorBloc660A L={L} />
       </div>
     </section>
 
