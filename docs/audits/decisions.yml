@@ -2915,4 +2915,15 @@ decisions:
     reponse: inclure
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie ATOT)"
-    taches: []
+    taches: [ATOT47]
+  - id: D-ATOT-VER-2
+    question: "Une révision qui baisse un taux de TVA et en monte un autre (V1 40 000 @10 % + 60 000 @20 % → V2 30 000 @10 % + 80 000 @20 %) : comment régulariser l'écart ?"
+    options:
+      - cle: separes
+        texte: "Deux documents séparés : un complément pour le(s) taux en hausse, un avoir pour le(s) taux en baisse (soumis à la confirmation VNT64) — jamais un panier de TVA négatif imprimé"
+      - cle: net_ventile
+        texte: "Un seul document net, ventilé par taux avec un panier négatif"
+    reponse: separes
+    date: "2026-11-01"
+    source: "Reda, question interactive, contre-visite vérifie ATOT"
+    taches: [ATOT44, ATOT45]
