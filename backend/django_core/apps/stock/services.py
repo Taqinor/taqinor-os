@@ -5,7 +5,7 @@ l'utilisateur. Le PRIX D'ACHAT n'est JAMAIS modifié ni exposé (règle marges).
 Les changements sont journalisés (audit logger).
 """
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from django.db import models
 
 from .erreurs_achats import ConflitEtat, EtatIncompatible, IntrouvableMetier, delta_revalorisation_borne
@@ -6997,7 +6997,7 @@ def _parse_palier_cell(value):
         if prix.as_tuple().exponent < -2:
             rejets.append(f'palier à plus de 2 décimales : « {segment} »')
             continue
-        out.append((qte, prix))
+        out.append((qte, prix.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))  # échelle exacte, aucun arrondi
     return out, rejets
 
 
@@ -7144,7 +7144,7 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
 
         # Champs FOURNIS par la ligne, valeurs vides ÉCARTÉES : ce qui n'est pas
         # dans le fichier ne peut ni être écrit ni effacer l'existant.
-        champs = {'prix_achat': prix}
+        champs = {'prix_achat': prix.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}  # ≤ 2 déc. : exact
         if idx_ref is not None and idx_ref < len(row):
             ref = str(row[idx_ref] or '').strip()
             if ref:
