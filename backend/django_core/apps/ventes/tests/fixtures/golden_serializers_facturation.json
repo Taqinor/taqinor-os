@@ -339,6 +339,13 @@
      null,
      false
     ],
+    "facturable": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
     "facture_active": [
      "SerializerMethodField",
      true,
@@ -546,6 +553,13 @@
     "abandon_par": [
      "CompanyScopedPrimaryKeyRelatedField",
      false,
+     false,
+     null,
+     false
+    ],
+    "acompte_auto_le": [
+     "DateTimeField",
+     true,
      false,
      null,
      false

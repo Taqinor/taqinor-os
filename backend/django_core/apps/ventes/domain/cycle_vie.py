@@ -1113,7 +1113,7 @@ def _persist_attribution(*, devis):
 
 
 def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
-                                 groupe=None):
+                                 groupe=None, canal=''):
     """QJR134 — L'AVAL D'UNE ACCEPTATION, dans la transaction de l'appelant.
 
     YDOCF3 — variantes (QJ15 dupliquer-variante) : accepter l'une d'elles doit
@@ -1178,7 +1178,7 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
     pred = predecesseur_accepte(devis)
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien,
-        avenant_de=pred.pk if pred is not None else None)
+        avenant_de=pred.pk if pred is not None else None, canal=canal)
 
 
 def _option_offerte(option, *, qd, nb_options, scenario):
@@ -1587,7 +1587,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # l'événement, sous le verrou du groupe pris plus haut.
         _effondrer_soeurs_et_publier(
             devis=devis, user=user, date_acc=date_acc, ancien=ancien,
-            groupe=groupe)
+            groupe=groupe, canal=canal)
 
     # ── APRÈS LE COMMIT — entrées-sorties best-effort, jamais bloquantes ────
     if not avenant:
@@ -1612,12 +1612,11 @@ def _rattacher_revision_au_mieux(devis, *, user):
 
 
 def _apres_commit_acceptation(devis, *, user, ip, user_agent, lignes):
-    """L'APRÈS-COMMIT d'une acceptation (hors avenant négocié, VNT59) :
-    échéancier figé + brouillon d'acompte (VNT62, D-SIGN-AUTO = a), PDF
-    signé, e-mails et CAPI — entrées-sorties best-effort, jamais bloquantes.
+    """L'APRÈS-COMMIT d'une acceptation (hors avenant négocié, VNT59) : PDF
+    signé, e-mails et CAPI — entrées-sorties best-effort, jamais bloquantes
+    (le brouillon d'acompte provisoire est déjà né DANS la transaction, par
+    l'abonné facturation de ``devis_accepted`` — AMET4).
     Les noms restent lus sur CE module (``mock.patch`` des tests)."""
-    from apps.ventes.domain.facturation_vente import acompte_a_l_acceptation
-    acompte_a_l_acceptation(devis, user)
     # QJ22 / QJ10 — exemplaire signé PUIS confirmation (exemplaire joint) :
     # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE (fondateur 28/10, option a) — mis en
     # file Celery APRÈS le commit, plus jamais rendus dans la requête
@@ -1669,14 +1668,16 @@ def raison_blocage_annulation_acceptation(devis):
     ``devis``, ou ``None`` si l'annulation est permise. Lecture seule.
 
     Bloquent : une facture non annulée liée au devis (directement, par son bon
-    de commande ou par une facture consolidée — brouillon compris, hors l'acompte
-    automatique qu'``annuler_acceptation`` retire d'abord, VNT62), un BC non annulé, un
+    de commande ou par une facture consolidée — brouillon compris, hors le
+    brouillon d'acompte PROVISOIRE (AMET4, ``acomptes_provisoires``) que
+    l'abonné facturation de ``devis_acceptation_annulee`` annule), un BC non annulé, un
     dossier 82-21 sorti de « En constitution », puis ce que disent les
     sélecteurs des apps propriétaires (chantier avancé, contrat SAV engagé)."""
     from django.db.models import Q
     from apps.ventes.models import (
         BonCommande, Facture, RegulatoryDossier,
     )
+    from apps.ventes.domain.facturation_vente import acomptes_provisoires
 
     company_id = devis.company_id
     facture = (Facture.objects
@@ -1685,6 +1686,7 @@ def raison_blocage_annulation_acceptation(devis):
                        | Q(bon_commande__devis_id=devis.pk)
                        | Q(sources__devis_id=devis.pk))
                .exclude(statut=Facture.Statut.ANNULEE)
+               .exclude(pk__in=[f.pk for f in acomptes_provisoires(devis)])
                .order_by('pk').distinct().first())
     if facture is not None:
         if facture.statut == Facture.Statut.BROUILLON:
@@ -1765,8 +1767,6 @@ def annuler_acceptation(*, devis, user, motif=''):
             return courant or devis
         devis = courant
 
-        from apps.ventes.domain.facturation_vente import retirer_acompte_automatique  # VNT62
-        retirer_acompte_automatique(devis, user=user)  # brouillon d'acompte auto annulé, sans avoir
         raison = raison_blocage_annulation_acceptation(devis)
         if raison:
             raise AnnulationAcceptationBloquee(raison)

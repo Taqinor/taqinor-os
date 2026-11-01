@@ -596,6 +596,8 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
                             'retenue_garantie_mad', 'retenue_liberee_le',
                             # ATOT5 — clé de tranche posée par le serveur.
                             'cle_tranche',
+                            # AMET4 — marque du brouillon d'acompte provisoire.
+                            'acompte_auto_le',
                             # APAR61 — identité vendeur figée à l'émission.
                             'identite_vendeur',
                             # VNT15 — blocs figés à l'émission par le serveur.

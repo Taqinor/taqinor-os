@@ -233,16 +233,22 @@ def _champs_tranche(devis, tranche, user, libelle):
     return champs
 
 
-def creer_brouillon_tranche(devis, tranche, user, libelle=None):
+def creer_brouillon_tranche(devis, tranche, user, libelle=None,
+                            acompte_auto=False):
     """Crée le BROUILLON « BROUILLON-<id> » de ``tranche`` (jamais émis).
 
     VNT27 — l'INSERT vit dans un savepoint : deux requêtes qui ont lu le
     même plan heurtent ``uq_facture_tranche_vivante`` (devis, clé) ; la
-    seconde rend 409 ``tranche_deja_creee``, jamais un 500."""
+    seconde rend 409 ``tranche_deja_creee``, jamais un 500.
+    ``acompte_auto`` (AMET4) : pose ``acompte_auto_le`` (brouillon provisoire
+    de l'acceptation)."""
     from django.db import IntegrityError
+    from django.utils import timezone
 
     from apps.ventes.utils.company_settings import create_provisoire
     champs = _champs_tranche(devis, tranche, user, libelle)
+    if acompte_auto:
+        champs['acompte_auto_le'] = timezone.now()
     try:
         with transaction.atomic():
             return create_provisoire(
@@ -645,18 +651,22 @@ def facturer_vente(devis, *, nature, user, montant_ttc=None,
 # ── VNT62 — l'acompte AUTOMATIQUE de l'acceptation (AMET2 + AMET4) ──────────
 
 def acompte_a_l_acceptation(devis, user):
-    """VNT62 (D-SIGN-AUTO = a) — appelé par ``accept_devis`` APRÈS le commit
-    du statut (jamais pour un avenant négocié) : l'échéancier est FIGÉ
+    """VNT62 (D-SIGN-AUTO = a) — AMET4 : appelé par l'abonné
+    ``apps.facturation.receivers`` de ``devis_accepted`` (DANS la transaction
+    de l'acceptation, jamais pour un avenant négocié) : l'échéancier est FIGÉ
     (``figer_echeancier``, idempotent — un échéancier propre n'est jamais
     réécrit) puis le BROUILLON d'acompte de la première tranche est créé
     (``creer_brouillon_tranche`` : « BROUILLON-<id> », aucun numéro, aucune
-    émission). Jamais un deuxième : une tranche d'acompte déjà couverte
-    (brouillon ou émise, toute la chaîne de versions) ne crée rien.
+    émission), marqué PROVISOIRE (``acompte_auto_le``, D-AMET4-PROVISOIRE :
+    il ne ferme aucune porte). Jamais un deuxième : une tranche d'acompte
+    déjà couverte (brouillon ou émise, toute la chaîne de versions) ne crée
+    rien.
 
     L'échéancier figé reste en % (l'acompte n'est PAS réécrit en MAD ici :
     seule une saisie « Facturer l'acompte » le fait, en modifiant CE
-    brouillon). Best-effort : un incident est journalisé, jamais remonté
-    (la vente est déjà acceptée). Rend la facture créée ou ``None``."""
+    brouillon). Best-effort sous point de sauvegarde : un incident est
+    journalisé, jamais remonté (l'acceptation n'en dépend pas). Rend la
+    facture créée ou ``None``."""
     import logging
 
     from apps.ventes.utils.echeancier import figer_echeancier
@@ -670,7 +680,8 @@ def acompte_a_l_acceptation(devis, user):
                     or premiere['statut'] != 'a_faire'
                     or premiere['montant_ttc'] <= 0):
                 return None
-            return creer_brouillon_tranche(devis, premiere, user)
+            return creer_brouillon_tranche(devis, premiere, user,
+                                           acompte_auto=True)
     except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
         logger = logging.getLogger('apps.ventes.services')
         logger.exception(
@@ -679,31 +690,36 @@ def acompte_a_l_acceptation(devis, user):
         return None
 
 
-def retirer_acompte_automatique(devis, *, user):
-    """VNT62 — la dés-acceptation annule d'abord le brouillon d'acompte
-    automatique de ``devis`` (« BROUILLON-<id> », nature acompte, aucun
-    paiement compté) par ``annuler_facture`` : jamais supprimé, aucun avoir
-    (référence provisoire). Toute autre facture reste et bloque comme avant.
-    À appeler DANS la transaction de la dés-acceptation (un blocage ensuite
-    l'annule avec elle). Rend les factures annulées."""
+def acomptes_provisoires(devis):
+    """AMET4 — les brouillons d'acompte PROVISOIRES de ``devis`` que la
+    dés-acceptation retire : marqués ``acompte_auto_le``, encore brouillon,
+    référence provisoire, aucun paiement compté. Un brouillon saisi à la
+    main (marque absente) n'en fait jamais partie."""
     from core.numbering import est_reference_provisoire
 
     from apps.ventes.models import Facture, Paiement
+    return [f for f in (Facture.objects.filter(
+                company_id=devis.company_id, devis_id=devis.pk,
+                statut=Facture.Statut.BROUILLON, type_facture='acompte',
+                acompte_auto_le__isnull=False)
+                .prefetch_related('paiements').order_by('pk'))
+            if est_reference_provisoire(f.reference)
+            and not any(p.statut not in Paiement.STATUTS_NON_COMPTES
+                        for p in f.paiements.all())]
+
+
+def retirer_acompte_automatique(devis, *, user):
+    """VNT62 / AMET4 — la dés-acceptation (abonné ``facturation.receivers``
+    de ``devis_acceptation_annulee``, DANS sa transaction) annule le
+    brouillon d'acompte provisoire de ``devis`` (:func:`acomptes_provisoires`)
+    par ``annuler_facture`` : jamais supprimé, aucun avoir (référence
+    provisoire). Toute autre facture reste et bloque comme avant
+    (``raison_blocage_annulation_acceptation``). Rend les factures annulées."""
     from .annulation_facture import annuler_facture
-    retirees = []
-    for facture in (Facture.objects.filter(
-            company_id=devis.company_id, devis_id=devis.pk,
-            statut=Facture.Statut.BROUILLON, type_facture='acompte')
-            .order_by('pk')):
-        if not est_reference_provisoire(facture.reference):
-            continue
-        if any(p.statut not in Paiement.STATUTS_NON_COMPTES
-               for p in facture.paiements.all()):
-            continue
-        retirees.append(annuler_facture(
-            facture, user=user, motif="Acceptation annulée — brouillon "
-                                      "d'acompte automatique retiré."))
-    return retirees
+    return [annuler_facture(
+                facture, user=user, motif="Acceptation annulée — brouillon "
+                                          "d'acompte automatique retiré.")
+            for facture in acomptes_provisoires(devis)]
 
 
 # ── VNT66 — réécrire l'échéancier d'une vente (contrat devis_echeancier.json) ─
