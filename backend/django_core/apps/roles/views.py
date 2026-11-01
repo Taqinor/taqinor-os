@@ -10,6 +10,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
+from authentication.role_tiers import exiger_role_pas_plus_large
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsAnyRole)
 from apps.parametres.models import SettingsAuditLog
@@ -151,6 +152,8 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         # que le sien, et le rôle qu'il crée HÉRITE de son périmètre (sans
         # quoi il suffirait de créer un rôle « global » pour s'échapper).
         self._guard_perimetre(serializer.validated_data.get('permissions'))
+        # ASEC55 — jamais un rôle plus large que celui de l'acteur non admin.
+        exiger_role_pas_plus_large(self.request.user, serializer.validated_data.get('permissions'))
         extra = {}
         perimetre = self._perimetre_acteur()
         if perimetre:
@@ -192,6 +195,8 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         self._guard_perimetre(
             instance0.permissions,
             serializer.validated_data.get('permissions'))
+        # ASEC55 — le jeu RÉSULTANT (validé, sinon existant) jamais plus large.
+        exiger_role_pas_plus_large(user, serializer.validated_data.get('permissions', instance0.permissions))
         old_nom = serializer.instance.nom
         old_perms = sorted(serializer.instance.permissions or [])
         extra = {}

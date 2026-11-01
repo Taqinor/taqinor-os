@@ -1184,15 +1184,8 @@ class UserViewSet(viewsets.ModelViewSet):
         instance = getattr(serializer, 'instance', None)
         if instance is not None and instance.role_id == role.pk:
             return  # rôle inchangé (PUT complet) : rien n'est attribué
-        from rest_framework.exceptions import PermissionDenied
-        from .role_tiers import CODE_ROLE_PLUS_LARGE, codes_plus_larges
-        acteur_perms = actor.role.permissions if actor.role_id else []
-        if codes_plus_larges(acteur_perms, role.permissions):
-            raise PermissionDenied({
-                'detail': "Ce rôle est plus large que le vôtre : vous ne "
-                          "pouvez pas l'attribuer.",
-                'code': CODE_ROLE_PLUS_LARGE,
-            })
+        from .role_tiers import exiger_role_pas_plus_large
+        exiger_role_pas_plus_large(actor, role.permissions)
 
     def perform_create(self, serializer):
         self._garde_role_plus_large(serializer)

@@ -142,3 +142,20 @@ def codes_plus_larges(permissions_acteur, permissions_role):
         and not c.startswith('records_scope')
         and not (c.startswith('app_') and c.endswith('_voir'))
     )
+
+
+def exiger_role_pas_plus_large(acteur, permissions):
+    """ASEC2/ASEC55 — LE refus des deux portes du même geste (attribuer un rôle,
+    définir un rôle) : 403 ``role_plus_large`` si un acteur non administrateur
+    vise un jeu de permissions portant un code qu'il n'a pas lui-même (un compte
+    sans rôle fin compte pour un jeu vide)."""
+    if getattr(acteur, 'is_admin_role', False):
+        return
+    acteur_perms = acteur.role.permissions if getattr(acteur, 'role_id', None) else []
+    if codes_plus_larges(acteur_perms, permissions):
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied({
+            'detail': "Ce rôle est plus large que le vôtre : vous ne pouvez "
+                      "ni l'attribuer ni le définir.",
+            'code': CODE_ROLE_PLUS_LARGE,
+        })
