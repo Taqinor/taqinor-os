@@ -38,6 +38,7 @@
 // provoqué (rejouable seule via `MONKEY_ROUTE`/`MONKEY_GRAINE`, voir plus bas).
 import { expect } from '@playwright/test'
 import { createRequire } from 'node:module'
+import { setTimeout as attendre } from 'node:timers/promises'
 import {
   routesParModule, TITRE_ECRAN_ERREUR,
   // CAD177 — session partagée vérifiée au démarrage de chaque module, et
@@ -190,16 +191,17 @@ async function lacherGremlins(page, { dureeMs, graine }) {
   // du test entier (« Test timeout of 300000ms exceeded » sans dire où). Ici le
   // blocage ÉCHOUE VITE, nommé, et le singe passe à l'écran suivant.
   const delaiDurMs = dureeMs + 20_000
-  let minuteur
-  const garde = new Promise((_, rejeter) => {
-    minuteur = setTimeout(() => rejeter(new Error(
+  const arret = new AbortController()
+  const garde = attendre(delaiDurMs, null, { signal: arret.signal }).then(() => {
+    throw new Error(
       `gremlins sans retour après ${delaiDurMs} ms (page gelée ? requête bloquante ?)`
-    )), delaiDurMs)
+    )
   })
+  garde.catch(() => {}) // l'annulation (AbortError) du garde-fou n'est jamais un défaut
   try {
     await Promise.race([evaluerGremlins(page, { dureeMs, graine }), garde])
   } finally {
-    clearTimeout(minuteur)
+    arret.abort()
   }
 }
 
