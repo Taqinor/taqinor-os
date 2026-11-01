@@ -1,0 +1,43 @@
+{
+  "endpoint": "GET /api/django/ventes/dashboard/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AANA59 (D-AANA-VER-1, PACT10) — contrat PARTAGE du Quote-to-cash. `devis.taux_acceptation_pct` = acceptes_periode / envoyes_periode x 100, arrondi a 1 decimale, null sans envoi : acceptes ÷ devis ENVOYES dans la periode (`date_envoi`), versions en jeu, revisions remplacees exclues ; UNE formule, le selecteur `apps/ventes/selectors.py::taux_acceptation_periode`. Les deux effectifs `envoyes_periode` / `acceptes_periode` sont servis (le front n'en recalcule jamais le taux) et `conversion.devis_envoye_vers_accepte_pct` est identique au taux. `devis.envoyes` / `devis.acceptes` (stock ouvert / de la periode) gardent leur sens. Parametre `mine=1` : devis du demandeur (`created_by`), pour le taux, les deux effectifs et les conversions. Lu par QuoteToCashPage (AANA57), /reporting (AANA58) et l'accueil (AANA60). Les cles existantes sont inchangees.",
+  "parametres": {
+    "start": "AAAA-MM-JJ (avec end)",
+    "end": "AAAA-MM-JJ (avec start)",
+    "month": "AAAA-MM",
+    "mine": "1 = devis du demandeur (created_by) ; absent = toute la societe"
+  },
+  "exemple": {
+    "devis": {
+      "total": 12,
+      "envoyes": 3,
+      "acceptes": 4,
+      "refuses": 1,
+      "expires": 0,
+      "taux_acceptation_pct": 40.0,
+      "envoyes_periode": 5,
+      "acceptes_periode": 2,
+      "valeur_pipeline": "84000.0"
+    },
+    "factures": {
+      "total": 9,
+      "emises": 3,
+      "payees": 4,
+      "en_retard": 1,
+      "annulees": 1,
+      "montant_facture": "210000.0",
+      "montant_encaisse": "150000.0"
+    },
+    "conversion": {
+      "devis_envoye_vers_accepte_pct": 40.0,
+      "devis_accepte_vers_facture_pct": 75.0,
+      "devis_envoye_vers_facture_pct": 20.0
+    },
+    "dso_jours": 21.5,
+    "cycle_moyen_jours": 34.0,
+    "par_commercial": [
+      {"commercial": "Sara Alami", "devis_actifs": 2, "valeur_pipeline": "54000.0"}
+    ]
+  }
+}

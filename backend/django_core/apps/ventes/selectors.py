@@ -881,6 +881,16 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
     return qs.order_by('date_envoi', 'id')
 
 
+def taux_acceptation_periode(company, date_debut, date_fin, commercial_id=None):
+    """D-AANA-VER-1 — LE taux d'acceptation : acceptés ÷ devis envoyés dans la
+    période (versions en jeu, révisions remplacées exclues). `None` sans envoi."""
+    envoyes = devis_envoyes_periode(
+        company, date_debut=date_debut, date_fin=date_fin, commercial_id=commercial_id)
+    n, acceptes = envoyes.count(), envoyes.filter(statut='accepte').count()
+    return {'envoyes': n, 'acceptes': acceptes,
+            'taux_pct': round(acceptes / n * 100, 1) if n else None}
+
+
 def devis_envoyes_en_attente(company, since=None):
     """MRY23 — Devis ENVOYÉS et TOUJOURS en attente de réponse depuis ``since``.
 
