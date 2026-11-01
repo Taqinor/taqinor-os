@@ -16,7 +16,9 @@ NOUVEAU = {'statut__in': ['emise', 'payee', 'en_retard']}
 def realigner(apps, schema_editor):
     Definition = apps.get_model('semantic', 'MetricDefinition')
     Version = apps.get_model('semantic', 'MetricDefinitionVersion')
-    for m in Definition.objects.filter(cle__in=CLES, filtres=ANCIEN):
+    # Lecture par lots (`.iterator`) ; écriture ligne à ligne par pk (YOPSB4).
+    for m in Definition.objects.filter(
+            cle__in=CLES, filtres=ANCIEN).iterator(chunk_size=500):
         m.filtres = dict(NOUVEAU)
         Definition.objects.filter(pk=m.pk).update(filtres=m.filtres)
         dernier = (Version.objects.filter(metric_definition=m)
