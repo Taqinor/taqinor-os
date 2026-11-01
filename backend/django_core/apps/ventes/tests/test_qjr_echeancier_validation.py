@@ -325,6 +325,47 @@ class EcheancierDUnDevis(TestCase):
                        echeancier='pas-une-liste')
         self.assertEqual(len(schedule_for_devis(devis)), 3)
 
+    def test_jalons_mixtes_impriment_les_montants_saisis(self):
+        """AGNR62 — [6 000 MAD ; 40 % ; 20 % ; 800 MAD] sur 17 000 TTC : le
+        PDF imprime 6 000 / 6 800 / 3 400 / 800 (LA règle d'AGNR49), jamais
+        des montants re-dérivés des % arrondis. ROUGE AVANT : « 5 999,30 » …
+        « 800,70 ». Une dernière stockée en % (donnée d'hier) vaut le reste ;
+        un échéancier tout en % reste imprimé comme avant."""
+        from apps.ventes.quote_engine.clauses_cgv import jalons_imprimes
+        from apps.ventes.utils.echeancier import jalons_paiement_devis
+        attendu = [Decimal('6000.00'), Decimal('6800.00'),
+                   Decimal('3400.00'), Decimal('800.00')]
+        for suffixe, derniere in (('Q62A', {'unite': 'montant',
+                                            'pct_or_montant': 800}),
+                                  ('Q62B', {'unite': 'pct',
+                                            'pct_or_montant': 10})):
+            devis = _devis(
+                self.company, self.client_obj, f'DEV-{MONTH}-{suffixe}',
+                echeancier=[
+                    {'libelle': 'Commande', 'type': 'acompte',
+                     'unite': 'montant', 'pct_or_montant': 6000},
+                    {'libelle': 'Livraison', 'jalon': 'livraison_materiel',
+                     'unite': 'pct', 'pct_or_montant': 40},
+                    {'libelle': 'MES', 'jalon': 'mise_en_service',
+                     'unite': 'pct', 'pct_or_montant': 20},
+                    dict({'libelle': 'Réception',
+                          'jalon': 'reception_definitive'}, **derniere)])
+            jalons = jalons_paiement_devis(devis)
+            self.assertEqual([j['montant_ttc'] for j in jalons], attendu,
+                             suffixe)
+            texte = ' ; '.join(jalons_imprimes(jalons))
+            self.assertIn('6\u202f000,00 MAD TTC', texte)
+            self.assertNotIn('5\u202f999,30', texte)
+            self.assertIn('Réception : 4.71 % · 800,00 MAD TTC', texte)
+        devis = _devis(
+            self.company, self.client_obj, f'DEV-{MONTH}-Q62C',
+            echeancier=[{'type': 'acompte', 'pct_or_montant': 30},
+                        {'type': 'materiel', 'pct_or_montant': 60},
+                        {'type': 'solde', 'pct_or_montant': 10}])
+        self.assertEqual(
+            [j['montant_ttc'] for j in jalons_paiement_devis(devis)],
+            [Decimal('5100.00'), Decimal('10200.00'), Decimal('1700.00')])
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. L'API REFUSE EN 400 — la garde à l'écriture

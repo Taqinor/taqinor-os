@@ -641,13 +641,27 @@ def jalons_paiement_devis(devis, lignes=None) -> list:
     ``TTC × pct`` au centime, le DERNIER reçoit le reliquat (la somme égale le
     TTC de l'option retenue). Délai et semaines : ``None`` quand non déclarés
     (jamais un délai inventé). Fonction de lecture, aucune écriture.
+
+    AGNR62 — dès qu'une tranche est saisie en MAD, les montants sont ceux de
+    LA règle d'AGNR49 (:func:`regle_somme_echeancier`) : chaque tranche en MAD
+    à SON montant, la dernière au reste en MAD — jamais re-dérivés des %
+    arrondis (6 000 imprimait 5 999,30). Règle refusée (donnée d'hier hors
+    règle) ou tout en % : répartition par pourcentages, comme avant.
     """
     from apps.ventes.utils.options import option_totaux
     tranches = tranches_normalisees(devis)
     pourcentages = pourcentages_echeancier(devis, lignes=lignes)
     total = option_totaux(devis, lignes=lignes)['ttc']
-    montants = montants_tranches(
-        total, [(i, p['pct']) for i, p in enumerate(pourcentages)])
+    montants = None
+    if any(t['unite'] == UNITE_MONTANT for t in tranches):
+        try:
+            non_dernieres, reste = regle_somme_echeancier(tranches, total)
+            montants = dict(enumerate(non_dernieres + [reste]))
+        except EcheancierIncoherent:
+            pass  # donnée d'hier hors règle : répartition par les %
+    if montants is None:
+        montants = montants_tranches(
+            total, [(i, p['pct']) for i, p in enumerate(pourcentages)])
     return [{
         'jalon': t.get('jalon') or t['key'],
         'libelle': t['libelle'],
