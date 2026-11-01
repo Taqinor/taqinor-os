@@ -392,15 +392,30 @@ def cocher_outil_ligne(ligne, coche):
             raise OutilIndisponible('Outil en réparation.')
         if outil.statut == Outillage.Statut.EN_INTERVENTION:
             raise OutilIndisponible('Outil déjà sorti.')
+        # ACHT121 — un outil sorti n'est plus au Dépôt : emplacement nul,
+        # l'emplacement quitté est mémorisé sur sa ligne de retour.
+        from .models_field import ToolReturn
+        interv = ligne.preparation.intervention
+        tr, cree = ToolReturn.objects.get_or_create(
+            intervention=interv, outil=outil,
+            defaults={'company': interv.company,
+                      'emplacement_retour_id': outil.emplacement_id})
+        if not cree and not tr.confirme_le:
+            tr.emplacement_retour_id = outil.emplacement_id
+            tr.save(update_fields=['emplacement_retour'])
         outil.statut = Outillage.Statut.EN_INTERVENTION
-        outil.save(update_fields=['statut'])
+        outil.emplacement = None
+        outil.save(update_fields=['statut', 'emplacement'])
     elif outil is not None and not coche and ligne.coche:
-        deja_confirme = ligne.preparation.intervention.tool_returns.filter(
-            outil=outil, confirme_le__isnull=False).exists()
+        tr = ligne.preparation.intervention.tool_returns.filter(
+            outil=outil).first()
+        deja_confirme = bool(tr and tr.confirme_le)
         if outil.statut == Outillage.Statut.EN_INTERVENTION and (
                 not deja_confirme):
             outil.statut = Outillage.Statut.DISPONIBLE
-            outil.save(update_fields=['statut'])
+            if outil.emplacement_id is None and tr is not None:
+                outil.emplacement_id = tr.emplacement_retour_id
+            outil.save(update_fields=['statut', 'emplacement'])
     ligne.coche = coche
     ligne.save(update_fields=['coche'])
     return ligne
