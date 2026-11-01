@@ -19,7 +19,8 @@ import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
+import { useCanListAssignableUsers } from '../../hooks/useHasPermission'
 // VX156 — le moment « chantier terminé » (mise en service) porte la voix Taqinor.
 import { voice } from '../../lib/voice'
 import { telHref } from '../../lib/contactLinks'
@@ -283,6 +284,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [editInterv, setEditInterv] = useState(null) // { id, date_realisee, compte_rendu, technicien }
   const [editIntervBusy, setEditIntervBusy] = useState(false)
   const [users, setUsers] = useState([])
+  const peutListerUsers = useCanListAssignableUsers()
+  const { confirm: confirmerMes } = useConfirmDialog()
   const startEditInterv = (iv) => setEditInterv({
     id: iv.id,
     date_realisee: iv.date_realisee ?? '',
@@ -417,7 +420,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     if (produits.length === 0) dispatch(fetchProduits())
     lireToutesLesPages((p) => installationsApi.getTypesIntervention(p))
       .then((rows) => setTypesInterv(rows.filter((t) => !t.archived))).catch(() => {})
-    crmApi.getAssignableUsers()
+    if (peutListerUsers) crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     loadDossierReglementaire()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rechargement par chantier : les loaders sont recréés à chaque rendu, seul `id` relance (D-ENF22)
@@ -612,23 +615,19 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   }
 
   const saveMes = async () => {
-    // N7 — la mise en service exige une date ; on avertit (sans bloquer) si le
-    // test de production ou la tension mesurée sont vides.
+    // N7 — date exigée ; avertit (sans bloquer) si production/tension vides.
     if (!mes.date_mise_en_service) {
       setActionError('Indiquez une date de mise en service avant d’enregistrer.')
       return
     }
     const manques = []
-    if (mes.mes_production_test === '' || mes.mes_production_test == null) {
-      manques.push('test de production')
-    }
+    if (mes.mes_production_test === '' || mes.mes_production_test == null) manques.push('test de production')
     if (mes.mes_tension === '' || mes.mes_tension == null) manques.push('tension')
     if (manques.length
-        && !window.confirm(
-          `Champs non renseignés : ${manques.join(' et ')}. `
-          + 'Enregistrer quand même la mise en service ?')) {
-      return
-    }
+        && !(await confirmerMes({ title: 'Champs non renseignés', destructive: false,
+          confirmLabel: 'Enregistrer quand même',
+          description: `Champs non renseignés : ${manques.join(' et ')}. `
+            + 'Enregistrer quand même la mise en service ?' }))) return
     setMesBusy(true)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
@@ -636,8 +635,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         Object.entries(mes).map(([k, v]) => [k, nullable(v)]))
       await installationsApi.miseEnService(id, data)
       setActionError(null)
-      // VX156 — moment « chantier terminé » : la voix Taqinor célèbre la mise
-      // en service (pas un toast plat de sauvegarde).
+      // VX156 — moment « chantier terminé » : la voix Taqinor célèbre.
       toast.success(voice.chantierDone)
       onSaved?.()
     } catch (err) {
