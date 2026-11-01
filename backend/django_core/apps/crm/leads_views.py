@@ -505,6 +505,7 @@ class LeadIntakeActionsMixin:
         # campagnes et de leads signés.
         from django.db.models import Count, Q
         from apps.reporting.pipeline import leads_avec_devis_totaux
+        from .clients_selectors import _devis_en_vigueur_ids
         from .selectors import _devis_compte_comme_signe, lead_signe_q
 
         base = Lead.objects.filter(pk__in=qs.values('pk'))
@@ -517,11 +518,14 @@ class LeadIntakeActionsMixin:
                                          distinct=True))
             .order_by('canal', 'utm_campaign'))
         valeurs = {}
-        for lead in leads_avec_devis_totaux(base.filter(lead_signe_q())):
+        leads_signes = list(leads_avec_devis_totaux(base.filter(lead_signe_q())))
+        # AANA75 — ventes en vigueur (VNT22) calculées UNE fois, en lot.
+        en_vigueur = _devis_en_vigueur_ids(
+            request.user.company, [lead.pk for lead in leads_signes])
+        for lead in leads_signes:
             cle = (lead.canal, lead.utm_campaign)
             for d in lead.devis.all():
-                # ACRM10 — la V2 seule d'une révision acceptée.
-                if not _devis_compte_comme_signe(d):
+                if not _devis_compte_comme_signe(d, en_vigueur):
                     continue
                 try:
                     valeurs[cle] = valeurs.get(cle, 0) + float(d.total_ttc)

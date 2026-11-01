@@ -131,3 +131,26 @@ class CaSigneVersionTests(TestCase):
         self.assertEqual(
             selectors._ca_signe_mois(autre, [user.pk], today=self.today),
             Decimal(str(devis.total_ttc)))
+
+    def test_v1_acceptee_revision_brouillon_reste_la_vente(self):
+        """AANA75 — V1 acceptée révisée en V2 BROUILLON = toujours LA vente
+        (``devis_signes_en_vigueur``), comme /reporting."""
+        from apps.ventes.selectors import devis_signes_en_vigueur
+        lead = Lead.objects.create(
+            company=self.company, nom='Brouillon', owner=self.user,
+            client=self.client_c, stage=stages.SIGNED)
+        v1 = self._devis_accepte('DEV-AANA75-0001', Decimal('1000'))
+        Devis.objects.filter(pk=v1.pk).update(lead=lead)
+        reviser_devis(Devis.objects.get(pk=v1.pk), user=self.user)
+        v1.refresh_from_db()
+        self.assertFalse(v1.is_active)
+        en_vigueur = {d.pk for d in devis_signes_en_vigueur(
+            self.company, lead_ids=[lead.pk])}
+        self.assertEqual(en_vigueur, {v1.pk})
+        total = selectors.ca_signe_periode(
+            self.company, [self.user.pk], self.today, self.today)
+        # lead du setUp (V2 seule) + la V1 en vigueur du lead « Brouillon ».
+        attendu = self.attendu + Decimal(str(v1.total_ttc))
+        self.assertEqual(total.quantize(Decimal('0.01')),
+                         attendu.quantize(Decimal('0.01')))
+        self.assertTrue(selectors._devis_compte_comme_signe(v1))  # repli exact
