@@ -1,0 +1,195 @@
+{
+ "toutes_societes": {
+  "devis": "262454.0000",
+  "facture": "38995.0000"
+ },
+ "societes": {
+  "A": {
+   "verite": {
+    "devis": "20.0000",
+    "facture": "1750.0000"
+   },
+   "requetes": {
+    "devis_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignedevis",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 8) AS ventes_devis)) AS ventes_lignedevis",
+     "valeur": "20.0000",
+     "egal_verite": true
+    },
+    "devis_join": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_devis d JOIN ventes_lignedevis l ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_devis WHERE company_id = 8) AS d JOIN (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 8) AS ventes_devis)) AS l ON l.devis_id = d.id",
+     "valeur": "20.0000",
+     "egal_verite": true
+    },
+    "devis_join_inverse": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_lignedevis l LEFT JOIN ventes_devis d ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 8) AS ventes_devis)) AS l LEFT JOIN (SELECT * FROM ventes_devis WHERE company_id = 8) AS d ON l.devis_id = d.id",
+     "valeur": "20.0000",
+     "egal_verite": true
+    },
+    "devis_sous_requete": {
+     "sql": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM ventes_lignedevis) t",
+     "execute": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 8) AS ventes_devis)) AS ventes_lignedevis) AS t",
+     "valeur": "20.0000",
+     "egal_verite": true
+    },
+    "devis_cte": {
+     "sql": "WITH x AS (SELECT * FROM ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "execute": "WITH x AS (SELECT * FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 8) AS ventes_devis)) AS ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "valeur": "20.0000",
+     "egal_verite": true
+    },
+    "devis_public_guillemets": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM public.\"ventes_lignedevis\"",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 8) AS ventes_devis)) AS ventes_lignedevis",
+     "valeur": "20.0000",
+     "egal_verite": true
+    },
+    "facture_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 8) AS ventes_facture)) AS ventes_lignefacture",
+     "valeur": "1750.0000",
+     "egal_verite": true
+    },
+    "facture_alias_join": {
+     "sql": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM ventes_lignefacture lf JOIN ventes_facture f ON f.id = lf.facture_id",
+     "execute": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 8) AS ventes_facture)) AS lf JOIN (SELECT * FROM ventes_facture WHERE company_id = 8) AS f ON f.id = lf.facture_id",
+     "valeur": "1750.0000",
+     "egal_verite": true
+    },
+    "facture_in": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM ventes_lignefacture)",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 8) AS ventes_facture)) AS ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 8) AS ventes_facture)) AS ventes_lignefacture)",
+     "valeur": "1750.0000",
+     "egal_verite": true
+    }
+   }
+  },
+  "B": {
+   "verite": {
+    "devis": "5000.0000",
+    "facture": "2100.0000"
+   },
+   "requetes": {
+    "devis_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignedevis",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 9) AS ventes_devis)) AS ventes_lignedevis",
+     "valeur": "5000.0000",
+     "egal_verite": true
+    },
+    "devis_join": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_devis d JOIN ventes_lignedevis l ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_devis WHERE company_id = 9) AS d JOIN (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 9) AS ventes_devis)) AS l ON l.devis_id = d.id",
+     "valeur": "5000.0000",
+     "egal_verite": true
+    },
+    "devis_join_inverse": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_lignedevis l LEFT JOIN ventes_devis d ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 9) AS ventes_devis)) AS l LEFT JOIN (SELECT * FROM ventes_devis WHERE company_id = 9) AS d ON l.devis_id = d.id",
+     "valeur": "5000.0000",
+     "egal_verite": true
+    },
+    "devis_sous_requete": {
+     "sql": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM ventes_lignedevis) t",
+     "execute": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 9) AS ventes_devis)) AS ventes_lignedevis) AS t",
+     "valeur": "5000.0000",
+     "egal_verite": true
+    },
+    "devis_cte": {
+     "sql": "WITH x AS (SELECT * FROM ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "execute": "WITH x AS (SELECT * FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 9) AS ventes_devis)) AS ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "valeur": "5000.0000",
+     "egal_verite": true
+    },
+    "devis_public_guillemets": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM public.\"ventes_lignedevis\"",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 9) AS ventes_devis)) AS ventes_lignedevis",
+     "valeur": "5000.0000",
+     "egal_verite": true
+    },
+    "facture_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 9) AS ventes_facture)) AS ventes_lignefacture",
+     "valeur": "2100.0000",
+     "egal_verite": true
+    },
+    "facture_alias_join": {
+     "sql": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM ventes_lignefacture lf JOIN ventes_facture f ON f.id = lf.facture_id",
+     "execute": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 9) AS ventes_facture)) AS lf JOIN (SELECT * FROM ventes_facture WHERE company_id = 9) AS f ON f.id = lf.facture_id",
+     "valeur": "2100.0000",
+     "egal_verite": true
+    },
+    "facture_in": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM ventes_lignefacture)",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 9) AS ventes_facture)) AS ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 9) AS ventes_facture)) AS ventes_lignefacture)",
+     "valeur": "2100.0000",
+     "egal_verite": true
+    }
+   }
+  },
+  "demo": {
+   "verite": {
+    "devis": "257434.0000",
+    "facture": "35145.0000"
+   },
+   "requetes": {
+    "devis_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignedevis",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 1) AS ventes_devis)) AS ventes_lignedevis",
+     "valeur": "257434.0000",
+     "egal_verite": true
+    },
+    "devis_join": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_devis d JOIN ventes_lignedevis l ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_devis WHERE company_id = 1) AS d JOIN (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 1) AS ventes_devis)) AS l ON l.devis_id = d.id",
+     "valeur": "257434.0000",
+     "egal_verite": true
+    },
+    "devis_join_inverse": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_lignedevis l LEFT JOIN ventes_devis d ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 1) AS ventes_devis)) AS l LEFT JOIN (SELECT * FROM ventes_devis WHERE company_id = 1) AS d ON l.devis_id = d.id",
+     "valeur": "257434.0000",
+     "egal_verite": true
+    },
+    "devis_sous_requete": {
+     "sql": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM ventes_lignedevis) t",
+     "execute": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 1) AS ventes_devis)) AS ventes_lignedevis) AS t",
+     "valeur": "257434.0000",
+     "egal_verite": true
+    },
+    "devis_cte": {
+     "sql": "WITH x AS (SELECT * FROM ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "execute": "WITH x AS (SELECT * FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 1) AS ventes_devis)) AS ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "valeur": "257434.0000",
+     "egal_verite": true
+    },
+    "devis_public_guillemets": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM public.\"ventes_lignedevis\"",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE devis_id IN (SELECT id FROM (SELECT * FROM ventes_devis WHERE company_id = 1) AS ventes_devis)) AS ventes_lignedevis",
+     "valeur": "257434.0000",
+     "egal_verite": true
+    },
+    "facture_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 1) AS ventes_facture)) AS ventes_lignefacture",
+     "valeur": "35145.0000",
+     "egal_verite": true
+    },
+    "facture_alias_join": {
+     "sql": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM ventes_lignefacture lf JOIN ventes_facture f ON f.id = lf.facture_id",
+     "execute": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 1) AS ventes_facture)) AS lf JOIN (SELECT * FROM ventes_facture WHERE company_id = 1) AS f ON f.id = lf.facture_id",
+     "valeur": "35145.0000",
+     "egal_verite": true
+    },
+    "facture_in": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM ventes_lignefacture)",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 1) AS ventes_facture)) AS ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM (SELECT * FROM ventes_lignefacture WHERE facture_id IN (SELECT id FROM (SELECT * FROM ventes_facture WHERE company_id = 1) AS ventes_facture)) AS ventes_lignefacture)",
+     "valeur": "35145.0000",
+     "egal_verite": true
+    }
+   }
+  }
+ },
+ "verdict": "PASS"
+}

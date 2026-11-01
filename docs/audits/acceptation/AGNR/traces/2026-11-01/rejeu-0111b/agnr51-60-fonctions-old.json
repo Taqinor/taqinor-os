@@ -1,0 +1,85 @@
+{
+ "acompte_6000": [
+  {
+   "libelle": "Commande",
+   "type": "commande",
+   "unite": "montant",
+   "pct_or_montant": 6000,
+   "jalon": "commande"
+  },
+  {
+   "libelle": "Livraison",
+   "type": "livraison_materiel",
+   "unite": "pct",
+   "pct_or_montant": 40,
+   "jalon": "livraison_materiel"
+  },
+  {
+   "libelle": "MES",
+   "type": "mise_en_service",
+   "unite": "pct",
+   "pct_or_montant": 20,
+   "jalon": "mise_en_service"
+  },
+  {
+   "libelle": "Réception",
+   "type": "reception_definitive",
+   "unite": "pct",
+   "pct_or_montant": 10,
+   "jalon": "reception_definitive"
+  }
+ ],
+ "acompte_8500": [
+  {
+   "libelle": "Commande",
+   "type": "commande",
+   "unite": "montant",
+   "pct_or_montant": 8500,
+   "jalon": "commande"
+  },
+  {
+   "libelle": "Livraison",
+   "type": "livraison_materiel",
+   "unite": "pct",
+   "pct_or_montant": 40,
+   "jalon": "livraison_materiel"
+  },
+  {
+   "libelle": "MES",
+   "type": "mise_en_service",
+   "unite": "pct",
+   "pct_or_montant": 20,
+   "jalon": "mise_en_service"
+  },
+  {
+   "libelle": "Réception",
+   "type": "reception_definitive",
+   "unite": "pct",
+   "pct_or_montant": 10,
+   "jalon": "reception_definitive"
+  }
+ ],
+ "aller_retour": [
+  {
+   "libelle": "Commande",
+   "type": "commande",
+   "unite": "pct",
+   "pct_or_montant": 30,
+   "jalon": "commande"
+  },
+  {
+   "libelle": "Livraison",
+   "type": "materiel",
+   "unite": "pct",
+   "pct_or_montant": 60,
+   "jalon": "livraison_materiel"
+  },
+  {
+   "libelle": "Solde",
+   "type": "solde",
+   "unite": "pct",
+   "pct_or_montant": 10
+  }
+ ],
+ "aller_retour_identique": false
+}

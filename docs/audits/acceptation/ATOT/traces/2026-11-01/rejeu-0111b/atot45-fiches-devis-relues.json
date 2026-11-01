@@ -1,0 +1,45 @@
+{
+ "login": 200,
+ "29": {
+  "id": 29,
+  "reference": "DEV-202611-0015",
+  "version": 1,
+  "statut": "accepte",
+  "total_ttc": "12000.00",
+  "solde": {
+   "total_ttc": "12000.00",
+   "facture": "9000.00",
+   "paye": "0.00",
+   "avoirs": "3000.00",
+   "restant": "12000.00",
+   "tranches_total": "5",
+   "tranches_facturees": "5",
+   "porte_facturation": "aucune",
+   "facturation_terminee": "True",
+   "emis": "12000.00",
+   "brouillons": "0.00",
+   "reste_a_facturer": "3000.00"
+  }
+ },
+ "30": {
+  "id": 30,
+  "reference": "DEV-202611-0016",
+  "version": 2,
+  "statut": "accepte",
+  "total_ttc": "9000.00",
+  "solde": {
+   "total_ttc": "9000.00",
+   "facture": "9000.00",
+   "paye": "0.00",
+   "avoirs": "3000.00",
+   "restant": "9000.00",
+   "tranches_total": "5",
+   "tranches_facturees": "5",
+   "porte_facturation": "aucune",
+   "facturation_terminee": "True",
+   "emis": "12000.00",
+   "brouillons": "0.00",
+   "reste_a_facturer": "0.00"
+  }
+ }
+}

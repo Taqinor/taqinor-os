@@ -1,0 +1,5 @@
+#!/bin/bash
+# expire.sh head|old [db] — joue la vraie tâche planifiée ventes.expire_stale_devis
+source /tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/env.sh $1
+[ -n "$2" ] && export DB_NAME=$2
+echo "from apps.ventes.scheduled import expire_stale_devis; print('@@EXP', expire_stale_devis())" | $PY manage.py shell 2>/dev/null | grep '@@EXP'
