@@ -308,6 +308,42 @@ def controler_somme_echeancier(entries, tranches):
                 f"Total des tranches : {total_txt} % — il doit faire 100 %.")
 
 
+def _mad(montant):
+    """« 18 700 MAD » / « 800,50 MAD » — montant lisible du message FR."""
+    entier = montant == montant.to_integral_value()
+    texte = f"{montant:,.0f}" if entier else f"{montant:,.2f}"
+    return texte.replace(',', ' ').replace('.', ',') + ' MAD'
+
+
+def regle_somme_echeancier(tranches, total_ttc):
+    """AGNR49 — LA règle de somme de tout échéancier (mixte ou tout en %),
+    généralisée de VNT66. PURE sur des tranches NORMALISÉES
+    (``{unite, valeur}``) : rend ``(montants TTC des tranches NON dernières,
+    reste de la dernière)`` en ``Decimal`` — la dernière tranche vaut le
+    RESTE, en MAD. Tout en % : total 100 (AGNR12, même message). Toujours :
+    Σ des non dernières ≤ TTC et acompte < TTC, sinon
+    :class:`EcheancierIncoherent` (409) qui donne le total trouvé et le TTC."""
+    ttc = _q(Decimal(str(total_ttc)))
+    if not tranches:
+        raise EcheancierIncoherent("L'échéancier ne porte aucune tranche.")
+    if all(t.get('unite') == UNITE_PCT for t in tranches):
+        controler_somme_echeancier(None, tranches)
+    montants = [_q(Decimal(str(t.get('valeur') or 0))
+                   if t.get('unite') == UNITE_MONTANT
+                   else ttc * Decimal(str(t.get('valeur') or 0)) / 100)
+                for t in tranches[:-1]]
+    if montants and montants[0] >= ttc:
+        raise EcheancierIncoherent(
+            f"Acompte : {_mad(montants[0])} — il doit rester inférieur au "
+            f"total TTC du devis ({_mad(ttc)}).")
+    total = sum(montants, Decimal('0'))
+    if total > ttc:
+        raise EcheancierIncoherent(
+            f"Total des tranches avant la dernière : {_mad(total)} — il "
+            f"dépasse le total TTC du devis ({_mad(ttc)}).")
+    return montants, ttc - total
+
+
 # ── CI #997 (4) — forme d'ÉCRITURE d'une tranche = forme PUBLIÉE ────────────
 # (api-fuzz PUT devis ``echeancier: [{}]`` : 400 « Total des tranches : 0 % »
 # sur un corps conforme). Une seule source pour le schéma
