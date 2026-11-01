@@ -6,9 +6,11 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 
 const pagesDir = fileURLToPath(new URL('../src/pages', import.meta.url));
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+// ENF19 (lane apps/web) — une partie du balisage des pages vit dans components/blocs : lecture avec blocs déroulés.
+const read = (rel: string) => lireAstroAvecBlocs(fileURLToPath(new URL(rel, import.meta.url)));
 
 // Les pages élevées (les 2 pages légales restent volontairement sobres).
 // Inclut le lot SEO public (W2–W8) : pages ville, FAQ, garanties, pourquoi,

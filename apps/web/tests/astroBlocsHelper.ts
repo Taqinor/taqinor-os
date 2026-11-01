@@ -11,7 +11,12 @@ import { dirname, resolve } from 'node:path';
 
 // CPRW (27/10/2026) — même déroulé pour les blocs C&I / agricoles déplacés hors de /proposition
 // (`components/proposition/{ci,agricole}/`) : le balisage testé est identique à l'ancien.
-const IMPORT_BLOC = /^import (\w+) from '([^']*\/components\/(?:blocs|proposition\/(?:ci|agricole))\/[^']+\.astro)';?\s*$/gm;
+// ENF19 (lane apps/web) — aussi les imports RELATIFS entre blocs (`./AutreBloc.astro`, blocs imbriqués) et
+// les blocs à slots (`<Bloc …>contenu</Bloc>` : le modèle sans ses <slot/> puis le contenu).
+const IMPORT_BLOC = /^import (\w+) from '([^']*\.astro)';?\s*$/gm;
+const DOSSIER_BLOCS = /\/components\/(?:blocs|proposition\/(?:ci|agricole))\//;
+// ENF19 (lane apps/web) — feuilles de style extraites des pages (même balisage testé qu'avant : leur texte suit la page).
+const FEUILLES_EXTRAITES = /^import '([^']*\/(?:mon-toit-page|maintenance-monitoring|pompage-solaire|preview-toiture-map)\.css)';?\s*$/gm;
 
 function separerFrontmatter(src: string): { front: string; modele: string } {
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(src);
@@ -22,9 +27,11 @@ function derouler(texte: string, front: string, dossier: string): string {
   let sortie = texte;
   for (const [, nom, rel] of front.matchAll(IMPORT_BLOC)) {
     const chemin = resolve(dossier, rel);
+    if (!DOSSIER_BLOCS.test(chemin.replace(/\\/g, '/'))) continue;
     const bloc = separerFrontmatter(readFileSync(chemin, 'utf-8'));
     const corps = derouler(bloc.modele, bloc.front, dirname(chemin));
     sortie = sortie.replace(new RegExp(`<${nom}\\b[^>]*?/>`, 'g'), () => corps);
+    sortie = sortie.replace(new RegExp(`<${nom}\\b[^>]*>([\\s\\S]*?)</${nom}>`, 'g'), (_m, enfants: string) => `${corps.replace(/<slot\b[^>]*\/>/g, '')}\n${enfants}`);
   }
   return sortie;
 }
@@ -33,7 +40,8 @@ function derouler(texte: string, front: string, dossier: string): string {
 export function lireAstroAvecBlocs(chemin: string): string {
   const src = readFileSync(chemin, 'utf-8');
   const { front } = separerFrontmatter(src);
-  return derouler(src, front, dirname(chemin));
+  const feuilles = [...front.matchAll(FEUILLES_EXTRAITES)].map(([, rel]) => `\n${readFileSync(resolve(dirname(chemin), rel), 'utf-8')}`).join('');
+  return derouler(src, front, dirname(chemin)) + feuilles;
 }
 
 /**
