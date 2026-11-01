@@ -1,0 +1,30 @@
+{
+  "facture": {
+    "id": 3,
+    "statut": "annulee",
+    "ttc": "606.00",
+    "lignes": [
+      [
+        6,
+        "5.00",
+        "1.00"
+      ],
+      [
+        7,
+        "1.00",
+        "500.00"
+      ]
+    ],
+    "abandon_montant": "100.00"
+  },
+  "bc": {
+    "id": 3,
+    "statut": "livre",
+    "devis": 7,
+    "client": 7
+  },
+  "attendu": {
+    "D1": 6,
+    "D2": 7
+  }
+}

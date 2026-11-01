@@ -1,0 +1,4 @@
+Journal des ventes (xlsx, journal-ventes/?start=2026-11-01&end=2026-11-01), relu par openpyxl, avant / après la note de débit :
+old  (b72cda218) ND-202611-0001 lignes « Note de débit » : []                                                         delta résumé TVA 20 % (base, TVA, TTC) : [0, 0, 0]
+head (15ebadca5) ND-202611-0002 lignes : [('ND-202611-0002','2026-11-01','Note de débit','ATOT53 C6',None,'Note de débit sur FAC-202611-0004',None,None,100,20,20,120)]   delta résumé TVA 20 % : [100, 20, 120]
+Export comptable xlsx (head) relu par openpyxl sur nos 3 pièces : 4 lignes, Σ HT 900, Σ TVA 140, Σ TTC 1040, types ['Facture complète','Facture complète','Avoir','Note de débit'].

@@ -1,0 +1,194 @@
+{
+  "sha": "15ebadca518c248e41f636e73a3367b2dffa405c",
+  "date": "2026-11-01",
+  "groupe": "ATOT",
+  "verdict": "PASS",
+  "couvre": [
+    "ATOT40",
+    "ATOT41",
+    "ATOT43",
+    "ATOT46",
+    "ATOT47",
+    "ATOT48",
+    "ATOT51"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "ATOT40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-01/ACCEPTATION-ATOT-P1.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "PATCH factures-lignes {facture: émise} 409 « Une ligne ne change pas de facture », vers un autre brouillon 409, {facture: sa facture, quantite: 2} 200 ; relu : émise FAC-202611-0003 1 ligne 1 200,00 TTC (rejeu-head.log). Contre-épreuve b72cda218 : PATCH 200, l'émise passe à 2 lignes / 1 800,00 TTC (contre-epreuve-b72cda218/rejeu-old.log ; sonde C-ATOT-VER-002 REPRO sur base, ECART sur HEAD)."
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "ATOT41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-01/ACCEPTATION-ATOT-P1.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Émise : PATCH {client: B}, {retenue_garantie_mad: 500}, {devise: EUR} → 409 MESSAGE_MONTANT_FIGE, champs_refuses nomme le champ ; valeurs inchangées 200 ; notes 200 ; brouillon {client: B} 200 ; relu client A, retenue nulle, MAD, 1 200,00. Le PUT complet de FactureForm et le réglage factures_immuables ON non rejoués (test CI). Contre-épreuve : les trois PATCH 200, relu client B, retenue 500,00 (sonde C-ATOT-VER-007 REPRO base / ECART HEAD)."
+    },
+    {
+      "id": "P1.3",
+      "taches": [
+        "ATOT48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-01/ACCEPTATION-ATOT-P1.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "BC livré (devis D1, client A) : PATCH {devis: D2} et {client: B} 409 « Un bon de commande confirmé ne change plus de devis ni de client », {note} 200, {devis: D1} 200 ; relu devis D1 / client A. BC en attente non rejoué. Contre-épreuve : 200/200, relu client B."
+    },
+    {
+      "id": "P4",
+      "taches": [
+        "ATOT43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-01/atot43-relire.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Constructeur seul (aucun appelant de production : ATOT45 n'est PAS construit ici, donc le geste écran PrixNegocieDialog de l'étape (4) d'ATOT53 n'est pas rejoué et la sonde C-ATOT-VER-004 reste REPRO sur HEAD, sondes-head.txt). Rejeu `manage.py shell` sur une base HEAD propre (clone migré à 15ebadca5 de la base de contre-épreuve, Postgres :55482 — la base partagée refusait toute connexion « too many clients » à ce moment) : devis 12 000 TTC, 5 tranches émises de 2 400 (vraie route generer-facture) ; écart 12 000,01 → AvoirPlafondDepasse, 0 avoir ; écart 3 000 → AVO-202611-0004 2 400,00 (base 2 000 / TVA 400) sur la plus récente puis AVO-202611-0005 600,00 (500 / 100), type correction, avoir_cree émis 2 fois, facture soldée « payee » dû 0, Σ dû 9 000,00 ; relu dans un second processus identique. Contre-épreuve : crediter_ecart_de_vente absent sur b72cda218 (ImportError)."
+    },
+    {
+      "id": "P6.1",
+      "taches": [
+        "ATOT46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-01/grand-livre-head.csv",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Note de débit ÉMISE ND-202611-0002 (100 HT / 20 TVA, route creer-note-debit) : grand livre reconstitué D 3421 120 / C 7111 100 / C 4455 20, équilibré ; IIF QuickBooks : TRNS 120 / SPL −100 / −20. Contre-épreuve : 0 ligne de la note au grand livre ni à l'IIF (sonde C-ATOT-VER-006 REPRO base, ECART HEAD)."
+    },
+    {
+      "id": "P6.2",
+      "taches": [
+        "ATOT46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-01/journal-note-debit-comparaison.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Journal des ventes : ligne « Note de débit » +100 HT / +20 TVA / +120 TTC et résumé TVA 20 % majoré de 100 / 20 / 120 entre avant et après la note. Contre-épreuve : aucune ligne, delta 0."
+    },
+    {
+      "id": "P6.3",
+      "taches": [
+        "ATOT47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-01/export-comptable-head.csv",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Export comptable par défaut (csv et xlsx) sur facture 1 000 HT (400 @10 + 600 @20) + avoir 200 HT @20 + note 100 HT @20 : lignes facture par taux, « Avoir » −200 / −40 / −240, « Note de débit » +100 / +20 / +120, Σ 900 HT / 140 TVA / 1 040 TTC, colonnes inchangées. Brouillon/annulé non rejoué. Contre-épreuve : 2 lignes, 1 000 / 160 / 1 160 (avoir et note absents)."
+    },
+    {
+      "id": "P7",
+      "taches": [
+        "ATOT51"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-01/ACCEPTATION-ATOT-P7-head-facture.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Superutilisateur atot53_super : fiche admin de la facture émise sans statut, abandon_* ni ligne éditable (inline max_num 0, ajout masqué, 0 suppression) ; BC livré sans devis ni client ; poste forcé (statut=annulee, abandon_montant=100, lignes-0-quantite=5, devis du BC=D2) → relu statut émise, ligne 1 × 1 000, abandon nul, BC devis D1 (admin-head-relu.json). Brouillon / BC en attente non rejoués. Contre-épreuve : la même poste écrit tout (facture annulée, ligne 5 × 1, abandon 100, BC re-pointé sur D2 — contre-epreuve-b72cda218/admin-old-relu.json). DÉFAUT HORS DU Then D'ATOT51 relevé ici : sur la facture ÉMISE, `company`, `bon_commande`, `devis`, `lead`, `identite_vendeur`, `created_by`… restent éditables dans /admin/ ; `devis` re-pointé sur un autre devis puis relu 11 par l'API (admin-head-facture-devis.log), remis à vide ensuite."
+    }
+  ]
+}
