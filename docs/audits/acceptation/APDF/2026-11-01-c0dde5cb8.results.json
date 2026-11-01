@@ -25,7 +25,8 @@
     "APDF37",
     "APDF39",
     "APDF42",
-    "APDF106"
+    "APDF106",
+    "APDF99"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -563,6 +564,28 @@
         "10": "NA"
       },
       "notes": "rapport énergie : rapport_energie|fr|p=1|ar=0|img=0|PASS; rapport_energie|ar|p=1|ar=0|img=0|PASS — sonde AMET93, transaction annulée, base relue inchangée"
+    },
+    {
+      "id": "AUDIT-DOC",
+      "taches": [
+        "APDF99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/audit_coherence.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "D-APDF99-ORACLE (fondateur, 01/11/2026) : l'oracle audit_coherence d'APDF99 est restreint aux règles DOC_ sur les documents rendus. audit_coherence --no-persist (société 2 : 148 violations, société 4 : 146) : AUCUNE règle DOC_ sur les devis rejoués (741/461/524/445), aucune erreur de règle ; les violations CAL_/ETU_ (741 calepinage, 461 étude) restent suivies par leurs groupes — enregistrement FAIL 2026-11-01-9e43c2609."
     }
   ]
 }

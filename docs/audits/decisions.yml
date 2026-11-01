@@ -2883,3 +2883,27 @@ decisions:
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie ASEC)"
     taches: [ASEC56]
+  - id: D-ENF15-DORMANTS
+    question: "La commande crm.detecter_comptes_dormants (alerte in-app au commercial pour chaque client sans activité depuis 90 jours ; le premier passage alerte tout l'arriéré) doit-elle être planifiée chaque jour en production ?"
+    options:
+      - cle: eteinte
+        texte: "Non : commande manuelle, l'entrée reste dans commandes_planifiees_allow comme exception voulue"
+      - cle: quotidienne
+        texte: "Oui, chaque matin, arriéré compris"
+      - cle: sans_arriere
+        texte: "Oui, mais les dormants existants marqués déjà alertés"
+    reponse: eteinte
+    date: "2026-11-01"
+    source: "Reda, décision fondateur du 01/11/2026 (question interactive, vague 10 ENF15)"
+    taches: [ENF15]
+  - id: D-APDF99-ORACLE
+    question: "L'oracle « audit_coherence sans violation » d'APDF99 couvre-t-il aussi les violations calepinage/étude des devis rejoués, ou seulement les règles DOC_ des documents rendus ?"
+    options:
+      - cle: doc
+        texte: "Restreint : aucune violation DOC_ sur les documents rendus ; CAL_/ETU_ suivies par leurs groupes"
+      - cle: tout
+        texte: "Toutes : APDF99 attend la correction des violations de 741/461"
+    reponse: doc
+    date: "2026-11-01"
+    source: "Reda, décision fondateur du 01/11/2026 (question interactive, vague 10)"
+    taches: [APDF99]
