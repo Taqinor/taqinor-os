@@ -179,7 +179,6 @@ Marge indicative (interne)
 <button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
 hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
 Modèles de devis
-2 lignes à quantité 0 ne seront pas enregistrées : Smart Meter, Structures acier
 Texte pour le client (imprimé sur le devis)
 Pose sous quinzaine.
 Création du Devis

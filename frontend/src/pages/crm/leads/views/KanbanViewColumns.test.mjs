@@ -53,17 +53,17 @@ test('LB9 : colonne à 0 lead = zone de dépôt en pointillés, plus « Aucun le
 // APX6 — la somme porte désormais `.num` (typographie de données) en plus de
 // `.kb-col-money` : l'invariant LB9 « UNE seule rangée d'argent » est inchangé,
 // c'est la classe qui s'est enrichie.
-test('LB9/APX6 : une SEULE rangée montant + prévisionnel pondéré, tooltip STAGE_PROBABILITY (jamais une 2e table)', () => {
+test('LB9/APX6 : une SEULE rangée montant + prévisionnel pondéré, tooltip de la table SERVIE (jamais une table locale)', () => {
   const block = stageColumnBody()
   // Une seule occurrence de kb-col-money (fini les deux <span> empilés).
   assert.equal((block.match(/className="kb-col-money num"/g) || []).length, 1)
   assert.equal((block.match(/kb-col-money/g) || []).length, 1)
   assert.doesNotMatch(block, /kb-col-forecast/)
-  assert.match(block, /STAGE_PROBABILITY\[col\.key\]/)
-  assert.match(block, /Prév\. \{formatMAD\(forecast\)\}/)
+  assert.match(block, /probas\[col\.key\]/)
+  assert.match(block, /Prév\. \{forecast == null \? '—' : formatMAD\(forecast\)\}/)
 })
 
-test('LB9 : STAGE_PROBABILITY importée de KanbanView, jamais re-déclarée ailleurs dans ce fichier', () => {
-  // Une SEULE déclaration `export const STAGE_PROBABILITY` dans tout le fichier.
-  assert.equal((KANBAN.match(/export const STAGE_PROBABILITY/g) || []).length, 1)
+test('AANA67 : aucune constante de probabilité dans KanbanView (table servie via useProbabilitesEtape)', () => {
+  assert.equal((KANBAN.match(/STAGE_PROBABILITY\s*=/g) || []).length, 0)
+  assert.match(KANBAN, /useProbabilitesEtape\(\)/)
 })
