@@ -1,12 +1,10 @@
 """Cycle de vie du devis — envoi, signature, acceptation, renouvellement.
 
-Ce que le devis TRAVERSE entre sa composition et sa suite : l'envoi
-(`mark_devis_sent`), l'OTP d'e-signature et l'OTP de LECTURE (demande,
-validation, envois wa.me/e-mail), l'acceptation (`accept_devis`, dépôt,
-e-mails, notification vendeur), l'attribution marketing et la Conversions
-API Meta, les liens de partage (proposition, bon de commande,
-installation), les clauses figées, le cliché de configuration et son diff,
-l'activation d'une ligne optionnelle et le renouvellement.
+Ce que le devis TRAVERSE entre sa composition et sa suite : l'OTP d'e-signature
+et l'OTP de LECTURE (demande, validation, envois wa.me/e-mail), l'acceptation
+(`accept_devis` : preuve, PDF scellé, e-mails et bloc d'acompte, notification
+vendeur, attribution, Conversions API Meta, ``devis_accepted``), la
+dés-acceptation (`annuler_acceptation`) et l'activation d'une ligne optionnelle.
 
 AVERTISSEMENT DE LECTURE (R4-B1). Les corps e-signature / OTP /
 `accept_devis` et la synchronisation Meta n'ont JAMAIS été audités : ce
@@ -1122,10 +1120,11 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
     du funnel). Ne touche jamais un devis d'un autre groupe ni les révisions
     déjà terminales. Un devis sans variante est inchangé.
 
-    M6 — puis PUBLIE ``devis_accepted`` : c'est cet événement qui déclenche la
-    chaîne bon-commande / facture / chantier. Il vit ici, avec l'effondrement,
-    parce que les deux forment UNE seule vente : les séparer, c'est exactement
-    l'état partiel qu'ES3 décrit.
+    M6 — puis PUBLIE ``devis_accepted`` : ses abonnés (crm, installations,
+    sav, onboarding, automation, facturation — brouillon d'acompte PROVISOIRE,
+    AMET4) font l'aval ; jamais de BC (D-SIGN-AUTO). Il vit ici, avec
+    l'effondrement, parce que les deux forment UNE seule vente : les séparer,
+    c'est exactement l'état partiel qu'ES3 décrit.
 
     ``groupe`` — les devis du groupe DÉJÀ verrouillés par l'appelant (il les a
     lus sous ``select_for_update``, dans l'ordre des ``pk``). Absent, ils sont
@@ -1218,9 +1217,10 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     Shared by the in-app viewset action (N25) and the tokenized web proposal
     (Q7): records the stamp (typed name + date [+ IP in the chatter]), sets the
     accepted option, writes the acceptance activity and emits the
-    ``devis_accepted`` domain event — so the downstream BonCommande/Facture
-    chain is preserved 1:1 (rule #4). The engine only RENDERS elsewhere; this
-    is the single place a quote document changes status to accepté.
+    ``devis_accepted`` domain event (subscribers: chantier, SAV, lead, the
+    PROVISIONAL deposit draft — AMET4; never a BC, D-SIGN-AUTO). The engine
+    only RENDERS elsewhere; this is the single place a quote document changes
+    status to accepté.
 
     With ``idempotent_reaccept=True`` (default) a re-submit on an
     already-accepted devis is returned unchanged (no second stamp, no second
@@ -1278,7 +1278,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # accepté (``of=('self',)``), et l'effondrement des sœurs s'exécutait
         # hors de lui, sans ``select_for_update`` : deux POST concurrents sur
         # DEUX jetons du MÊME groupe de variantes basculaient TOUS DEUX en
-        # « accepté » — deux événements, deux chaînes bon-commande/facture pour
+        # « accepté » — deux événements, deux avals (chantier, acompte…) pour
         # une seule vente.
         #
         # On verrouille donc TOUT le groupe (la racine et ses variantes), et
@@ -1470,7 +1470,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # s'exécutaient hors transaction et hors verrou, sans
         # ``ATOMIC_REQUESTS`` (vérifié : absent des settings). Un échec chez
         # UN abonné (``send()`` propage la première exception) laissait un
-        # devis « accepté » SANS bon de commande ni facture — et la garde
+        # devis « accepté » SANS son aval (chantier, étape du lead…) — et la garde
         # d'idempotence rendait le rejeu impossible : l'état partiel était
         # PERMANENT et SILENCIEUX.
         #
@@ -1640,7 +1640,7 @@ def _apres_commit_acceptation(devis, *, user, ip, user_agent, lignes):
 # unitaire ou en masse) dés-accepte son devis : le devis repasse « envoyé »,
 # les tampons d'acceptation sont effacés, les variantes sœurs refusées PAR
 # cette acceptation reviennent, et ce que l'acceptation a créé
-# AUTOMATIQUEMENT (chantier, contrat SAV, commission, parrainage) est défait
+# AUTOMATIQUEMENT (chantier, contrat SAV, commission, parrainage, acompte provisoire) est défait
 # par les abonnés de ``devis_acceptation_annulee``. Si quelque chose de RÉEL
 # existe en aval (facture, bon de commande, chantier avancé, contrat SAV
 # facturé…), RIEN n'est écrit et la raison est rendue en français.
