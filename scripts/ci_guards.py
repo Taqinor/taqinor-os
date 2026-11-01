@@ -85,7 +85,7 @@ GARDES = {
         ('Tests symboles du moteur sans lecteur (AMOT75)',
          'python -m unittest scripts.tests.test_check_services_appeles_constantes -v',
          '.'),
-        ('Check echeances reglementaires du moteur (AMOT74 : rouge 60 j avant chaque fin de validite)',
+        ('Check echeances reglementaires du moteur (AMOT74 : rouge 30 j avant chaque fin de validite)',
          'python scripts/check_echeances_reglementaires.py',
          '.'),
         ('Tests de la garde echeances reglementaires (AMOT74)',
