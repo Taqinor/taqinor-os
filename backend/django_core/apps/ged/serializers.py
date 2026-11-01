@@ -831,7 +831,10 @@ class PolitiqueRetentionSerializer(ChampsStrictsSansDecimalMixin,
             'cabinet', getattr(self.instance, 'cabinet', None))
         folder = attrs.get('folder', getattr(self.instance, 'folder', None))
         if cabinet is not None and folder is not None:
-            raise serializers.ValidationError(
+            # ENF11 — règle croisée que le schéma n'exprime pas (et qui lit la
+            # cible ENREGISTRÉE en modification) : 409, jamais un 400.
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(
                 'Une politique cible au plus un cabinet OU un dossier.')
         return attrs
 
