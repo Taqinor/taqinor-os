@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event'
    createLigneAssemblage / updateLigneAssemblage / deleteLigneAssemblage /
    updateLigneDemontage / getKitStructure. */
 
-const api = await vi.hoisted(async () => (await import('../../test/ateliersApi')).apiAteliers(['cocherEtapeAssemblage', 'createLigneAssemblage', 'updateLigneAssemblage', 'deleteLigneAssemblage', 'updateLigneDemontage']))
+const api = await vi.hoisted(async () => (await import('../../test/ateliersApi')).apiAteliers(['cocherEtapeAssemblage', 'createLigneAssemblage', 'updateLigneAssemblage', 'deleteLigneAssemblage', 'updateLigneDemontage', 'enregistrerControleQualiteAssemblage']))
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
 import AteliersPage from './AteliersPage'
@@ -160,5 +160,39 @@ describe('AteliersPage — WIR247 quantité récupérée au démontage', () => {
     await user.tab()
     await waitFor(() => expect(api.updateLigneDemontage).toHaveBeenCalledWith(
       31, { quantite_recuperee: '3' }))
+  })
+})
+
+describe('AteliersPage — ACHT115 contrôle qualité pass/fail', () => {
+  it('envoie pass/fail au serveur et signale le blocage tant qu’un item n’est pas pass', async () => {
+    api.getControleQualiteAssemblage.mockResolvedValue({ data: [
+      { id: 1, item_modele: 41, item_libelle: 'Serrage', resultat: 'en_attente' },
+      { id: 2, item_modele: 42, item_libelle: 'Isolement', resultat: 'pass' },
+    ] })
+    api.enregistrerControleQualiteAssemblage.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    const { container } = renderPage()
+    const dialog = await ouvrirOrdre(user, 'ASM-002', container)
+
+    // Un item `en_attente` bloque déjà la clôture (comme le serveur).
+    expect(await within(dialog).findByText(/clôture sera bloquée/)).toBeInTheDocument()
+
+    await user.click(within(dialog).getAllByRole('button', { name: 'Conforme' })[0])
+    await waitFor(() => expect(api.enregistrerControleQualiteAssemblage)
+      .toHaveBeenCalledWith(2, 41, { resultat: 'pass' }))
+    await user.click(within(dialog).getAllByRole('button', { name: 'Échec' })[1])
+    await waitFor(() => expect(api.enregistrerControleQualiteAssemblage)
+      .toHaveBeenCalledWith(2, 42, { resultat: 'fail' }))
+  })
+
+  it('aucun blocage quand tous les items sont pass', async () => {
+    api.getControleQualiteAssemblage.mockResolvedValue({ data: [
+      { id: 1, item_modele: 41, item_libelle: 'Serrage', resultat: 'pass' },
+    ] })
+    const user = userEvent.setup()
+    const { container } = renderPage()
+    const dialog = await ouvrirOrdre(user, 'ASM-002', container)
+    await within(dialog).findByText('Serrage')
+    expect(within(dialog).queryByText(/clôture sera bloquée/)).toBeNull()
   })
 })
