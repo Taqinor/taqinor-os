@@ -511,7 +511,7 @@ unites:
     statut: audité
     groupe: AGNR
     plan: docs/plans/PLAN_AUDIT_GENERATEUR.md
-    plans_alimentes: [docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_FACTURATION.md]
+    plans_alimentes: [docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_MOTEUR.md]
     pr: 870
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-generateur.md
