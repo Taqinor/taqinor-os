@@ -64,6 +64,8 @@ Fonctions PURES : aucun I/O, aucun ORM, aucun Django (comme ``pricing.py``).
 """
 from __future__ import annotations
 
+import datetime as _dt
+
 from .pricing import (
     TrancheTable,
     _monthly_bill_from_kwh,
@@ -89,6 +91,14 @@ from .montants import arrondi_affichage
 
 #: Millésime appliqué par défaut (l'année en vigueur).
 MILLESIME_COURANT = 2026
+
+#: D-ONEE-2027 (fondateur, 01/11/2026) — aucun barème 2027 publié au 01/11/2026 :
+#: le barème 2026 reste appliqué jusqu'à la refonte tarifaire de l'ANRE, annoncée
+#: pour le 1er mars 2027 (fin du 1er cycle tarifaire, 28/02/2027 — Le Matin,
+#: Médias24) ; la TVA électricité a fini sa trajectoire (20 % depuis le
+#: 01/01/2026), le PLF 2027 n'en change pas le taux. La garde AMOT74 lit cette
+#: date au lieu du 31/12 : elle rougit 60 j avant, pour re-sourcer la grille ANRE.
+MILLESIME_COURANT_VALABLE_JUSQUAU = _dt.date(2027, 2, 28)
 
 # ── PRIX TTC PAR TRANCHE, AVEC PROVENANCE LIGNE À LIGNE ─────────────────────
 # `PROVENANCE_TRANCHES` documente, pour CHAQUE tranche de CHAQUE millésime,
