@@ -503,7 +503,7 @@ class LeadIntakeActionsMixin:
         # valeur signée sur les devis retenus par ACRM10, préchargés AVEC
         # leurs totaux — nombre de requêtes indépendant du nombre de
         # campagnes et de leads signés.
-        from django.db.models import Count
+        from django.db.models import Count, Q
         from apps.reporting.pipeline import leads_avec_devis_totaux
         from .selectors import _devis_compte_comme_signe, lead_signe_q
 
@@ -512,6 +512,8 @@ class LeadIntakeActionsMixin:
             base.order_by().values('canal', 'utm_campaign')
             .annotate(lead_count=Count('pk', distinct=True),
                       signed_count=Count('pk', filter=lead_signe_q(),
+                                         distinct=True),
+                      perdus_count=Count('pk', filter=Q(perdu=True),
                                          distinct=True))
             .order_by('canal', 'utm_campaign'))
         valeurs = {}
@@ -535,8 +537,11 @@ class LeadIntakeActionsMixin:
                 'utm_campaign': grp['utm_campaign'],
                 'lead_count': lead_count,
                 'signed_count': signed_count,
-                'win_rate': round(signed_count / lead_count * 100, 1)
-                if lead_count else 0,
+                # AANA65 — règle de `taux_gain` (D-AANA-1) : signés ÷ leads
+                # NON perdus ; groupe tout perdu → null.
+                'win_rate': round(signed_count / (lead_count - grp['perdus_count'])
+                                  * 100, 1)
+                if lead_count - grp['perdus_count'] > 0 else None,
                 'signed_value_ttc': round(signed_value, 2),
             })
         return Response(result)
