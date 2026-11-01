@@ -2905,3 +2905,14 @@ decisions:
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie ASEC)"
     taches: [ASEC56]
+  - id: D-ATOT-VER-1
+    question: "L'export comptable par défaut (/export-comptable/, format « ligne », envoyé au fiduciaire) ne contient que les factures : faut-il y inclure les avoirs et les notes de débit ?"
+    options:
+      - cle: inclure
+        texte: "Avoirs en négatif, notes de débit en positif, ventilés par taux : totaux de la période = CA et TVA réels"
+      - cle: factures_seules
+        texte: "L'export reste « factures seules »"
+    reponse: inclure
+    date: "2026-11-01"
+    source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie ATOT)"
+    taches: []
