@@ -12,9 +12,6 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.permissions import (
-    IsResponsableOrAdmin,
-)
 from . import openapi_docs as D
 from .facture_gardes import LectureFactures, PeutEncaisser
 from ..domain.encaissements import proposer_arrondi_caisse
@@ -234,7 +231,7 @@ class FactureEncaissementActionsMixin:
                    responses={200: FactureListeSerializer,
                               400: D.ErreurRetenue, 409: D.ErreurRetenue})
     @action(detail=True, methods=['post'], url_path='liberer-retenue',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def liberer_retenue(self, request, pk=None):
         """CIQ214 — libère la retenue de garantie CLIENT d'une facture de
         tranche (D-CIQ-14), à la date SAISIE (``date`` AAAA-MM-JJ, la
@@ -273,7 +270,7 @@ class FactureEncaissementActionsMixin:
 
     @extend_schema(request=D.LienPaiementRequest, responses={201: D.LienPaiementResponse})
     @action(detail=True, methods=['post'], url_path='lien-paiement',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def lien_paiement(self, request, pk=None):
         """FG53 — crée (ou réutilise) un lien « Payer en ligne » pour la facture.
 
@@ -332,7 +329,7 @@ class FactureEncaissementActionsMixin:
 
     @extend_schema(request=None, responses=D.RevoquerLienPaiementResponse)
     @action(detail=True, methods=['post'], url_path='revoquer-lien-paiement',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def revoquer_lien_paiement(self, request, pk=None):
         """AUD136 — révoque le lien « Payer en ligne » actif de la facture.
 
@@ -341,10 +338,8 @@ class FactureEncaissementActionsMixin:
         jusqu'à son expiration. Idempotent : sans lien actif, 200 et rien à
         faire — jamais une erreur pour un état déjà atteint.
 
-        NB : `get_permissions` ci-dessus SURCHARGE les `permission_classes` du
-        décorateur ; l'action doit donc être nommée dans sa liste
-        `IsResponsableOrAdmin` (comme `lien_paiement`), sans quoi elle retombe
-        sur le `IsAdminRole()` terminal et rend 403 au responsable."""
+        ASEC56 — geste d'argent (comme `lien_paiement`) : garde `PeutEncaisser`
+        déclarée, qui PRIME sur le tiering de `get_permissions` (ASEC29)."""
         from ..services import revoquer_lien_paiement
         facture = self.get_object()
         lien = revoquer_lien_paiement(facture=facture, user=request.user)

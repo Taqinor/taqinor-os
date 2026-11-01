@@ -5,6 +5,7 @@
 // depuis FactureList.jsx ; `lot` = useFactureLot (sélection encaissable).
 import { useState } from 'react'
 import { useSelector } from 'react-redux'
+import { useHasPermission } from '../../../hooks/useHasPermission'
 import ventesApi from '../../../api/ventesApi'
 import fetchAllPages from '../../../utils/fetchAllPages'
 import { fetchFactures, annulerFacture } from '../../../features/ventes/store/ventesSlice'
@@ -32,6 +33,8 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
      texte maison masquerait la cause). */
   const canManage = ['admin', 'responsable'].includes(
     useSelector(s => s.auth.role))
+  // ASEC64 — gestes d'argent : le droit `encaisser`, comme le serveur.
+  const peutEncaisser = useHasPermission('encaisser')
   const [wir183Busy, setWir183Busy] = useState(false)
   const erreurServeur = (err, repli) =>
     toast.error(err?.response?.data?.detail ?? repli)
@@ -338,7 +341,7 @@ export default function useFactureGestes({ dispatch, confirm, lot }) {
   }
 
   return {
-    canManage, wir183Busy, handleRemettreBrouillon, handleFacturerPenalites,
+    canManage, peutEncaisser, wir183Busy, handleRemettreBrouillon, handleFacturerPenalites,
     MOTIFS_ABANDON, abandonTarget, setAbandonTarget, abandonMotif, setAbandonMotif,
     openAbandonSolde, handleAbandonnerSolde,
     retourTarget, setRetourTarget, retourMotif, setRetourMotif, retourRestocker,

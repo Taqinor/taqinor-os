@@ -14,6 +14,7 @@ import { frenchError } from '../../lib/frenchError'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { todayLocalIso } from '../../lib/dateLocale.js'
 import EnteteVentes from '../../features/ventes/EnteteVentes'
+import { useHasPermission } from '../../hooks/useHasPermission'
 
 /* ============================================================================
    PACT46 — Remises d'encaissement terrain (XFSM19).
@@ -45,6 +46,7 @@ export default function RemisesEncaissementPage() {
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const peutEncaisser = useHasPermission('encaisser') // ASEC64 — comme le serveur (ASEC62)
   // Alerte d'écart renvoyée par la clôture (jamais masquée).
   const [alerteEcart, setAlerteEcart] = useState(null)
 
@@ -210,7 +212,7 @@ export default function RemisesEncaissementPage() {
       align: 'right',
       cell: (r) => (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {r.statut === 'ouverte' && (
+          {peutEncaisser && r.statut === 'ouverte' && (
             <Button size="sm" loading={busyId === r.id} disabled={busyId === r.id}
                     onClick={() => cloturer(r)}>
               Clôturer
@@ -232,7 +234,7 @@ export default function RemisesEncaissementPage() {
         icon={Banknote}
         title="Remises d'encaissement terrain"
         subtitle="Collectes espèces et chèques déclarées par les techniciens, clôturées par le responsable. L'écart déclaré / encaissé est toujours affiché."
-        actions={(
+        actions={peutEncaisser && (
           <Button onClick={ouvrirCreation}>
             <Plus /> Déclarer une remise
           </Button>

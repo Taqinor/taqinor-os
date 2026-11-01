@@ -17,13 +17,13 @@ const CONTRAT = JSON.parse(readFileSync(join(
 const ctx = {
   selectedIds: [], toggleSelect: () => {},
   pdfGenerating: {}, pdfDownloading: {}, waBusy: {}, payLinkBusy: {}, dgiBusy: {},
-  actionId: null, histoCache: {}, canManage: true, isAdmin: true,
+  actionId: null, histoCache: {}, canManage: true, isAdmin: true, peutEncaisser: true,
 }
 
-function rendre(facture) {
+function rendre(facture, droits = {}) {
   return render(
     <MemoryRouter>
-      <table><tbody><FactureRow f={{ client: 1, client_nom: 'X', ...facture }} ctx={ctx} /></tbody></table>
+      <table><tbody><FactureRow f={{ client: 1, client_nom: 'X', ...facture }} ctx={{ ...ctx, ...droits }} /></tbody></table>
     </MemoryRouter>,
   )
 }
@@ -33,6 +33,18 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
     rendre(CONTRAT.exemple)
     expect(screen.getByRole('button', { name: /Encaisser/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Payer en ligne/ })).toBeInTheDocument()
+  })
+
+  it('ASEC64 — sans `encaisser` : aucun geste d’argent (Encaisser, Payer en ligne, Avoir)', () => {
+    rendre(CONTRAT.exemple, { peutEncaisser: false })
+    expect(screen.queryByRole('button', { name: /Encaisser/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Payer en ligne/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Avoir$/ })).toBeNull()
+  })
+
+  it('ASEC64 — avec `encaisser` sans palier admin : Avoir visible', () => {
+    rendre(CONTRAT.exemple, { isAdmin: false, canManage: false })
+    expect(screen.getByRole('button', { name: /^Avoir$/ })).toBeInTheDocument()
   })
 
   it('brouillon sans Encaisser ni Payer en ligne, motif en infobulle d’Émettre', () => {

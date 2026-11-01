@@ -15,7 +15,7 @@ import {
 import { Table } from '../reporting/Table'
 // AUD132 — le rejet est une écriture réservée au palier responsable/admin
 // (même garde que le serveur : `get_permissions` → IsResponsableOrAdmin).
-import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useHasPermission } from '../../hooks/useHasPermission'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
@@ -113,7 +113,9 @@ export default function PaiementsPage() {
      intégralement du serveur. */
   const location = useLocation()
   const navigate = useNavigate()
-  const importOuvert = location.pathname.endsWith('/import-releve')
+  // ASEC64 — import, rejet, réaffectation, annulation de saisie : `encaisser`.
+  const peutEncaisser = useHasPermission('encaisser')
+  const importOuvert = peutEncaisser && location.pathname.endsWith('/import-releve')
   const [fichier, setFichier] = useState(null)
   const [apercu, setApercu] = useState(null)
   const [bilan, setBilan] = useState(null)
@@ -222,7 +224,6 @@ export default function PaiementsPage() {
      paiement rejeté comme un encaissement valide. Le motif est OBLIGATOIRE
      (le serveur refuse en 400 sans lui) ; le message d'erreur serveur est
      affiché TEL QUEL. */
-  const peutRejeter = useIsAdminOrResponsable()
   const [rejetCible, setRejetCible] = useState(null)
   const [rejetMotif, setRejetMotif] = useState('')
   const [rejetFrais, setRejetFrais] = useState('')
@@ -320,7 +321,7 @@ export default function PaiementsPage() {
         icon={Wallet}
         title="Encaissements"
         subtitle="Tous les paiements reçus, par facture et par mode"
-        actions={(
+        actions={peutEncaisser && (
           <Button size="sm" variant="outline"
                   onClick={() => navigate('/ventes/paiements/import-releve')}>
             <Upload className="size-4" /> Importer un relevé bancaire
@@ -628,7 +629,7 @@ export default function PaiementsPage() {
                   key: 'actions',
                   header: '',
                   align: 'right',
-                  cell: (p) => (peutRejeter && !estNonCompte(p) ? (
+                  cell: (p) => (peutEncaisser && !estNonCompte(p) ? (
                     <div className="flex flex-wrap justify-end gap-1">
                       <Button size="sm" variant="outline"
                               onClick={() => ouvrirRejet(p)}

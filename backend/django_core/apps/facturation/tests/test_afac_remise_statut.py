@@ -72,14 +72,14 @@ class RemiseStatutTests(TestCase):
         return corps
 
     def _remise_ouverte(self):
-        r = self.api_tech.post(URL, self._corps(), format='json')
+        r = self.api_resp.post(URL, self._corps(), format='json')
         self.assertEqual(r.status_code, 201, r.data)
         return r.data['id']
 
     def test_patch_statut_ignore(self):
         from apps.ventes.models import RemiseEncaissement
         rid = self._remise_ouverte()
-        r = self.api_tech.patch(f'{URL}{rid}/', {'statut': 'validee'},
+        r = self.api_resp.patch(f'{URL}{rid}/', {'statut': 'validee'},
                                 format='json')
         self.assertIn(r.status_code, (200, 400), r.data)
         remise = RemiseEncaissement.objects.get(pk=rid)
@@ -88,7 +88,7 @@ class RemiseStatutTests(TestCase):
 
     def test_creation_statut_ignore(self):
         from apps.ventes.models import RemiseEncaissement
-        r = self.api_tech.post(URL, self._corps(statut='validee'),
+        r = self.api_resp.post(URL, self._corps(statut='validee'),
                                format='json')
         self.assertEqual(r.status_code, 201, r.data)
         remise = RemiseEncaissement.objects.get(pk=r.data['id'])
@@ -98,7 +98,7 @@ class RemiseStatutTests(TestCase):
     def test_creation_atomique(self):
         from apps.ventes.models import LigneRemiseEncaissement, RemiseEncaissement
         paiement = self._paiement()
-        r = self.api_tech.post(URL, self._corps(
+        r = self.api_resp.post(URL, self._corps(
             statut='cloturee', lignes=[{'paiement': paiement.id}]),
             format='json')
         self.assertEqual(r.status_code, 201, r.data)
@@ -119,7 +119,7 @@ class RemiseStatutTests(TestCase):
     def test_delete_cloturee_refuse(self):
         from apps.ventes.models import LigneRemiseEncaissement, RemiseEncaissement
         paiement = self._paiement()
-        r = self.api_tech.post(URL, self._corps(
+        r = self.api_resp.post(URL, self._corps(
             lignes=[{'paiement': paiement.id}]), format='json')
         self.assertEqual(r.status_code, 201, r.data)
         rid = r.data['id']

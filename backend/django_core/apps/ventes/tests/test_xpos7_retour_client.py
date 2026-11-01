@@ -36,7 +36,8 @@ class TestRetourClient(TestCase):
         self.company = make_company()
         resp_role = Role.objects.create(
             company=self.company, nom='Responsable',
-            permissions=RESPONSABLE_PERMISSIONS, est_systeme=True)
+            permissions=[*RESPONSABLE_PERMISSIONS, 'encaisser'],  # ASEC56
+            est_systeme=True)
         self.resp = User.objects.create_user(
             username='xpos7_resp', password='x', role=resp_role,
             role_legacy='responsable', company=self.company)
@@ -175,7 +176,8 @@ class TestRetourClient(TestCase):
         from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
         other_role = Role.objects.create(
             company=other, nom='Responsable',
-            permissions=RESPONSABLE_PERMISSIONS, est_systeme=True)
+            permissions=[*RESPONSABLE_PERMISSIONS, 'encaisser'],  # ASEC56
+            est_systeme=True)
         other_user = User.objects.create_user(
             username='xpos7_other', password='x', role=other_role,
             role_legacy='responsable', company=other)

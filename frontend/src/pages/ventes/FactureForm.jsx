@@ -13,6 +13,7 @@ import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import { resilientMutation } from '../../lib/resilientMutation'
 import { useStaleGuard } from '../../hooks/useStaleGuard'
+import { useHasPermission } from '../../hooks/useHasPermission'
 import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, IconButton,
@@ -107,6 +108,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     montant_exigible: facture?.montant_exigible ?? null,
   })
   const [dateLiberation, setDateLiberation] = useState('')
+  const peutEncaisser = useHasPermission('encaisser') // ASEC64 — geste d'argent
   const [liberation, setLiberation] = useState({ enCours: false, erreur: null })
   const libererRetenue = async () => {
     setLiberation({ enCours: true, erreur: null })
@@ -788,7 +790,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               <p>Retenue de garantie : <strong>{formatMAD(retenue.retenue_garantie_mad)}</strong>
                 {retenue.retenue_liberee_le ? ` — libérée le ${retenue.retenue_liberee_le}` : ' — non libérée'}</p>
               <p data-testid="fc-montant-exigible">Montant exigible : <strong>{formatMAD(retenue.montant_exigible)}</strong></p>
-              {!retenue.retenue_liberee_le && (
+              {peutEncaisser && !retenue.retenue_liberee_le && (
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="grid gap-1">
                     <Label htmlFor="fc-date-liberation">Date de réception définitive</Label>

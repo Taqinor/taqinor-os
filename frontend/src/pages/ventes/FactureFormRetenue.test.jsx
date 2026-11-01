@@ -35,7 +35,7 @@ const FACTURE = {
 function rendre() {
   const store = configureStore({
     reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: { auth: { user: { id: 1 }, role: 'responsable', permissions: [], isAuthenticated: true, loading: false } },
+    preloadedState: { auth: { user: { id: 1 }, role: 'responsable', permissions: ['encaisser'], isAuthenticated: true, loading: false } },
   })
   return render(
     <Provider store={store}>
