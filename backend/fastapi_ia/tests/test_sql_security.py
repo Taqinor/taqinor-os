@@ -230,6 +230,33 @@ class TenantIsolationTests(unittest.TestCase):
             "SELECT id FROM crm_client"
         )
 
+    def test_cte_entre_guillemets_ne_masque_pas_une_table(self):
+        # AANA53 — pour Postgres "CRM_LEAD" n'est pas crm_lead (C-AANA-VER-005).
+        for sql in (
+            'WITH "CRM_LEAD" AS (SELECT 1 AS id) SELECT * FROM crm_lead',
+            'WITH "DJANGO_SESSION" AS (SELECT 1 AS a) SELECT * FROM django_session',
+            'SELECT nom FROM crm_client WHERE EXISTS '
+            '(WITH "CRM_LEAD" AS (SELECT 1) SELECT 1 FROM crm_lead)',
+            'WITH c AS (SELECT id FROM crm_client) SELECT * FROM "C"',
+        ):
+            with self.subTest(sql=sql):
+                self._reject(sql)
+        for sql in ("WITH c AS (SELECT id FROM crm_client) SELECT * FROM c",
+                    'WITH "c" AS (SELECT id FROM crm_client) SELECT * FROM c'):
+            with self.subTest(sql=sql):
+                _assert_every_table_scoped(self, self._ok(sql), self.CID)
+
+    def test_vue_catalogue_sous_cte_homonyme_refusee(self):
+        for sql in (
+            'WITH "PG_STATS" AS (SELECT 1) SELECT attname, most_common_vals '
+            "FROM pg_stats WHERE tablename = 'crm_client'",
+            'WITH "PG_STATS" AS (SELECT 1) SELECT most_common_vals FROM pg_stats '
+            "WHERE tablename = 'stock_produit' AND attname = 'prix_achat'",
+            'WITH "Pg_Roles" AS (SELECT 1) SELECT rolname FROM pg_roles',
+        ):
+            with self.subTest(sql=sql):
+                self._reject(sql)
+
     def test_schema_etranger_refuse(self):
         self._reject("SELECT nom FROM autre_schema.crm_client")
 
@@ -411,10 +438,13 @@ def _assert_every_table_scoped(test, secured_sql, company_id):
     import sqlglot
     from sqlglot import exp
 
+    def nom_pg(i):  # casse Postgres (AANA53) : guillemets = sensible
+        return i.this if i.quoted else i.this.lower()
+
     tree = sqlglot.parse_one(secured_sql, read="postgres")
-    ctes = {(c.alias or "").lower() for c in tree.find_all(exp.CTE)}
+    ctes = {nom_pg(c.args["alias"].this) for c in tree.find_all(exp.CTE)}
     tables = [t for t in tree.find_all(exp.Table)
-              if t.name.lower() not in ctes]
+              if nom_pg(t.this) not in ctes]
     test.assertTrue(tables, secured_sql)
     for table in tables:
         attendu = "id" if table.name == "authentication_company" else "company_id"

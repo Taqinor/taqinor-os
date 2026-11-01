@@ -699,6 +699,13 @@ def _scoped_source(name: str, company_id: int, alias) -> exp.Subquery:
     return exp.Subquery(this=inner, alias=alias)
 
 
+def _nom_pg(ident) -> str:
+    """AANA53 — nom Postgres : tel quel entre guillemets, sinon en minuscules."""
+    if not isinstance(ident, exp.Identifier):
+        return ""
+    return ident.this if ident.quoted else ident.this.lower()
+
+
 def _rewrite_table(table: exp.Table, visibles: frozenset, company_id: int):
     """Remplace une table autorisee par sa sous-requete filtree ; laisse une
     reference de CTE visible intacte ; rejette tout le reste."""
@@ -715,8 +722,8 @@ def _rewrite_table(table: exp.Table, visibles: frozenset, company_id: int):
         raise SQLSecurityError("Source de donnees non autorisee.")
     if table.args.get("catalog") is not None:
         raise SQLSecurityError("Reference de base externe interdite.")
-    name = table.name.lower()
-    schema = table.text("db").lower()
+    name = _nom_pg(table.this)
+    schema = _nom_pg(table.args.get("db"))
     if not schema and name in visibles:
         return table  # reference a une CTE de la requete (deja reecrite)
     if schema not in ("", "public") or name not in _TENANT_SCOPED_TABLES:
@@ -742,7 +749,7 @@ def _rewrite_node(node, visibles: frozenset, company_id: int, found: list):
                 raise SQLSecurityError("WITH RECURSIVE interdit.")
             noms = set(visibles)
             for cte in value.expressions:
-                nom = (cte.alias or "").lower()
+                nom = _nom_pg(cte.args["alias"].this if cte.args.get("alias") else None)
                 if not nom or nom in _TENANT_SCOPED_TABLES:
                     raise SQLSecurityError(
                         "Nom de CTE invalide ou homonyme d'une table."
@@ -827,11 +834,9 @@ def _extract_base_tables(sql: str) -> set[str]:
         tree = _parse_single_query(sql)
     except SQLSecurityError:
         return set()
-    ctes = {(c.alias or "").lower() for c in tree.find_all(exp.CTE)}
-    return {
-        t.name.lower() for t in tree.find_all(exp.Table)
-        if t.name and t.name.lower() not in ctes
-    }
+    ctes = {_nom_pg(c.args["alias"].this) for c in tree.find_all(exp.CTE) if c.args.get("alias")}
+    noms = (_nom_pg(t.this) for t in tree.find_all(exp.Table))
+    return {n for n in noms if n and n not in ctes}
 
 
 # ── AUD401 + L17 + AANA4 — confidentialite INTRA-societe des PROJECTIONS ─────
