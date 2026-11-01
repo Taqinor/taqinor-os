@@ -41,14 +41,28 @@ class CiOptionsDivergentesTests(_BaseDevis):
     « avec ») : aucune source moquée à part PVGIS (``setUp`` de ``_BaseDevis``)."""
 
     def _devis_variante(self, ref, mode):
+        from apps.stock.models import Produit
         from apps.ventes.models import LigneDevis
         devis = self._devis(ref, mode=mode, tension='bt')
         LigneDevis.objects.filter(devis=devis, produit=self.panneau).update(
             variante='avec', quantite=Decimal('70'))
+        LigneDevis.objects.filter(devis=devis, produit=self.ond).update(
+            variante='sans')
         LigneDevis.objects.create(
             devis=devis, produit=self.panneau, designation='Panneau 710W',
             quantite=Decimal('50'), prix_unitaire=Decimal('1272.73'),
             remise=Decimal('0'), variante='sans')
+        # Le builder ne sert « deux options » (donc une option SERVIE) que si
+        # les deux paniers existent : hybride + batterie côté « avec ».
+        for nom, prix in (('Onduleur hybride Deye 50kW Triphasé', '60000'),
+                          ('Batterie Dyness 10 kWh', '14000')):
+            produit = Produit.objects.create(
+                company=self.co, nom=nom, prix_vente=Decimal(prix),
+                prix_achat=Decimal('1'))
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal('1'), prix_unitaire=Decimal(prix),
+                remise=Decimal('0'), variante='avec')
         return devis
 
     def _rafraichir(self, devis):
