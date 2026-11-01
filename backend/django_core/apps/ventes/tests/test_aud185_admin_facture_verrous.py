@@ -265,3 +265,25 @@ class FactureAdminVerrousTests(TestCase):
             'admin:ventes_boncommande_change', args=[livre.pk]), data))
         livre.refresh_from_db()
         self.assertEqual(livre.devis_id, d1.pk)
+
+    # ── ATOT54 — identité et rattachement figés hors brouillon ─────────────
+    def test_identite_et_rattachement_geles_hors_brouillon(self):
+        from testkit.factories import DevisFactory
+        request = self._request()
+        champs = ('company', 'bon_commande', 'devis', 'lead',
+                  'identite_vendeur', 'created_by', 'entite')
+        readonly = self.model_admin.get_readonly_fields(request, self.emise)
+        brouillon_ro = self.model_admin.get_readonly_fields(
+            request, self.brouillon)
+        for champ in champs:
+            self.assertIn(champ, readonly)
+        for champ in ('devis', 'bon_commande', 'lead', 'entite'):
+            self.assertNotIn(champ, brouillon_ro)
+        d1 = DevisFactory(company=self.societe_a, client=self.client_a)
+        d2 = DevisFactory(company=self.societe_a, client=self.client_a)
+        Facture.objects.filter(pk=self.emise.pk).update(devis=d1)
+        self.emise.refresh_from_db()
+        self._assert_enregistre(self._post_change(
+            self.emise, devis=str(d2.pk)))
+        self.emise.refresh_from_db()
+        self.assertEqual(self.emise.devis_id, d1.pk)

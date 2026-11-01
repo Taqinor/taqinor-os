@@ -106,6 +106,9 @@ SUPPRESSION_FACTURE_POSTEE_INTERDITE = (
 # ATOT51 — champs d'état posés par les seules actions de l'API.
 ADMIN_FACTURE_ETAT = ('statut', 'abandon_motif', 'abandon_montant',
                       'abandon_date', 'abandon_auto', 'abandon_par')
+# ATOT54 — identité et rattachement : posés à la création, figés hors brouillon.
+ADMIN_FACTURE_IDENTITE = ('company', 'bon_commande', 'devis', 'lead',
+                          'identite_vendeur', 'created_by', 'entite')
 
 
 @admin.register(Facture)
@@ -128,7 +131,7 @@ class FactureAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
         if obj is None or obj.statut == Facture.Statut.BROUILLON:
             return champs
         from .views.facture import FACTURE_CHAMPS_FINANCIERS
-        geles = tuple(sorted(FACTURE_CHAMPS_FINANCIERS)) + ADMIN_FACTURE_ETAT
+        geles = tuple(sorted(FACTURE_CHAMPS_FINANCIERS)) + ADMIN_FACTURE_ETAT + ADMIN_FACTURE_IDENTITE
         return champs + tuple(c for c in geles if c not in champs)
 
     # ── Garde anti-suppression d'un document posté (voir le message ci-dessus)
