@@ -180,7 +180,7 @@ class AclEcritureGedTests(TestCase):
         corps = {'document': self.doc.pk}
         rn = _api(self._neutre()).post(f'{BASE}partages/', corps, format='json')
         self.assertEqual(rn.status_code, 404, rn.content)
-        self.assertEqual(rn.json(), {'detail': 'Document inconnu.'})  # ASEC65
+        self.assertEqual(rn.json()['document'], ['Document inconnu.'])  # ASEC65
         rl = _api(self.lecteur).post(f'{BASE}partages/', corps, format='json')
         self.assertEqual(rl.status_code, 403, rl.content)
         self.assertFalse(PartageGed.objects.filter(document=self.doc).exists())

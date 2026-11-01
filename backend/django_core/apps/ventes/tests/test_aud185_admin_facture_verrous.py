@@ -216,9 +216,10 @@ class FactureAdminVerrousTests(TestCase):
     # ── ATOT51 — lignes, statut, abandon et BC lus comme l'API ──────────────
     def test_lignes_statut_et_bc_geles_hors_brouillon(self):
         from apps.ventes.models import BonCommande, LigneFacture
-        from testkit.factories import DevisFactory
+        from testkit.factories import DevisFactory, ProduitFactory
         LigneFacture.objects.create(
-            facture=self.emise, designation='Panneau', quantite=Decimal('1'),
+            facture=self.emise, produit=ProduitFactory(company=self.emise.company),
+            designation='Panneau', quantite=Decimal('1'),
             prix_unitaire=Decimal('1000'))
         request = self._request()
         inline = next(i for i in self.model_admin.get_inline_instances(
