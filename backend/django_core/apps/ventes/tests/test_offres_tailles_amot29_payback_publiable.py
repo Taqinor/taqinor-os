@@ -58,6 +58,32 @@ class PaybackPubliableTests(SimpleTestCase):
             90000, 6500)['payback_years'])
         self.assertNotEqual(carte['payback_annees'], round(90000 / 6500, 2))
 
+    def test_carte_recommande_repli_avec_stockage(self):
+        """AMOT107 (C-AMOT-VER-006) — sans ``roi_a`` servi, la carte « avec »
+        de repli d'un devis au niveau 7 publie avec les arguments de
+        ``_carte_moteur`` (stockage, part stockée 0, provision d'onduleur) ;
+        au niveau 6 : le repli d'hier. Test-du-test : remettre
+        ``_payback_publie(prix, economie)`` ⇒ échec."""
+        from apps.ventes.tests.test_offres_tailles import _contexte_factice
+        data = {'nb_panneaux_avec': 22, 'puissance_kwc_avec': 12.1,
+                'totaux_avec': {'ttc': 90000.0}, 'eco_a_ann': 6500.0}
+        ligne = SimpleNamespace(
+            designation='Onduleur hybride Deye 5kW', quantite=1,
+            prix_unitaire=12500.0, produit=None, variante='avec',
+            compte_dans_totaux=True)
+        devis = SimpleNamespace(
+            etude_params={}, reference='DEV-AMOT107', regles_calcul=7,
+            taux_tva=20, lignes=SimpleNamespace(all=lambda: [ligne]))
+        carte = ot._carte_du_devis(_contexte_factice(devis), data, 'avec')
+        self.assertEqual(carte['payback_annees'], payback_publiable(
+            90000, 6500, stockage=True, part_batterie=0.0,
+            cout_onduleur_ttc=15000)['payback_years'])
+        self.assertEqual(carte['payback_annees'], 16.8)
+        devis.regles_calcul = 6
+        carte = ot._carte_du_devis(_contexte_factice(devis), data, 'avec')
+        self.assertEqual(carte['payback_annees'], payback_publiable(
+            90000, 6500)['payback_years'])
+
     def test_err_rhor8_carte_recommande_jamais_rembourse_omise(self):
         """ERR-RHOR8-TAILLES-JAMAIS-RENTABILISE (devis 2300) — ``roi_*`` servi
         à la sentinelle 25,0 avec ``roi_*_jamais`` : la carte Recommandé OMET
