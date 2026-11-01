@@ -511,11 +511,11 @@ unites:
     statut: audité
     groupe: AGNR
     plan: docs/plans/PLAN_AUDIT_GENERATEUR.md
-    plans_alimentes: [docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_FACTURATION.md]
+    plans_alimentes: [docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_MOTEUR.md]
     pr: 870
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-generateur.md
-    notes: "Audité par QJR5 le 30/09, contre-visite après un cycle de build (d'où le rang 14 malgré le score 20). DevisGenerator.jsx = 5 668 lignes. Préfixe AGEN déjà pris (docs/done_task.md) → AGNR. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-generateur.md) : 28 constats (4 S1, 9 S2, 15 S3), 45 tâches AGNR ; prix de liste HT écrit dans le champ TTC, factures d'un lead reportées sur un autre."
+    notes: "vérifie AGNR du 01/11/2026 (clôture, 47/48 cochées ; dossier docs/audits/2026-11-01-générateur-verifie.md) : 19 tâches échantillonnées (graine 5093a9913) — 14 ok, 5 partielles ; 2 S1 maintenus en seconde lentille (échéancier mixte imprimé incohérent dans le PDF et sur /proposition ; blocs publics calculés sur les factures du lead) + 1 S1 de la critique (copies de devis qui recopient un échéancier mixte) + 2 S2 (réouverture : conso arrondie, panneaux à 0) → AGNR49-AGNR61 (4 plans) ; 1 critique Fable. Audité par QJR5 le 30/09, contre-visite après un cycle de build (d'où le rang 14 malgré le score 20). DevisGenerator.jsx = 5 668 lignes. Préfixe AGEN déjà pris (docs/done_task.md) → AGNR. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-generateur.md) : 28 constats (4 S1, 9 S2, 15 S3), 45 tâches AGNR ; prix de liste HT écrit dans le champ TTC, factures d'un lead reportées sur un autre."
 
   - id: J1b
     rang: 15
@@ -639,10 +639,14 @@ unites:
       - docs/plans/PLAN_AUDIT_ANALYSE.md
       - docs/plans/PLAN_AUDIT_LEAD.md
       - docs/plans/PLAN_AUDIT_DEPLOY.md
+      - docs/plans/PLAN_AUDIT_DEVIS.md
+      - docs/plans/PLAN_AUDIT_FACTURATION.md
+      - docs/plans/PLAN_AUDIT_STOCK.md
+      - docs/plans/PLAN_AUDIT_ACQUISITION.md
     pr: 802
     date: 2026-10-05
     dossier: docs/audits/2026-10-05-analyse.md
-    notes: "Audit L1 du 2026-10-05 (docs/audits/2026-10-05-analyse.md) : 42 constats confirmés par exécution, dont 5 S1 de fuite inter-sociétés / secrets (agent SQL, import, favoris) et 2 S1 de chiffres de pilotage ; re-score P3×I3 → P4×I5 (fuite locataire + argent), contre-visite en L2. backend/fastapi_ia ajouté au registre (absent de la synthèse) : propriétaire à confirmer par la session de propriété."
+    notes: "vérifie AANA du 01/11/2026 (clôture, 51/51 cochées ; dossier docs/audits/2026-11-01-analyse-verifie.md) : 21 tâches échantillonnées (graine 32375fe65) — 14 ok, 7 partielles ; 1 S1 maintenu en seconde lentille (CTE entre guillemets : l'agent SQL lit toute relation hors liste blanche sans filtre société, pg_stats compris) + 14 S2 (imports arrondis ou défauts muets, CA encaissé faux après avoir, trois taux d'acceptation, deux taux de gain, deux tables de probabilités, CA signé crm) → AANA53-AANA76 (8 plans) ; D-AANA-VER-1 = envoyés par période, D-AANA-VER-2 = table du serveur ; 1 critique Fable. Audit L1 du 2026-10-05 (docs/audits/2026-10-05-analyse.md) : 42 constats confirmés par exécution, dont 5 S1 de fuite inter-sociétés / secrets (agent SQL, import, favoris) et 2 S1 de chiffres de pilotage ; re-score P3×I3 → P4×I5 (fuite locataire + argent), contre-visite en L2. backend/fastapi_ia ajouté au registre (absent de la synthèse) : propriétaire à confirmer par la session de propriété."
 
   - id: X6
     rang: 19
