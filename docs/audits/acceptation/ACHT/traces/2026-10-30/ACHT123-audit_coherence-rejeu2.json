@@ -1,0 +1,5180 @@
+{
+ "companies": [
+  "taqinor-demo"
+ ],
+ "checked": {
+  "devis": 142,
+  "facture": 12
+ },
+ "violations": [
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 313,
+   "reference": "DEV-DEMO-0003",
+   "company": "taqinor-demo",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_VALIDITE_AVANT_CREATION",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 315,
+   "reference": "DEV-DEMO-0005",
+   "company": "taqinor-demo",
+   "message": "Validité 2026-09-15 antérieure à la création 2026-09-30.",
+   "values": {
+    "date_validite": "2026-09-15",
+    "date_creation": "2026-09-30",
+    "attendu": ">= 2026-09-30"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 639,
+   "reference": "DEV-202610-0001",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 639,
+   "reference": "DEV-202610-0001",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 639,
+   "reference": "DEV-202610-0001",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 302 modules, le devis en chiffre 30.",
+   "values": {
+    "modules_calepinage": 302,
+    "modules_devis": 30,
+    "calepinage_id": 3,
+    "attendu": 302
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 639,
+   "reference": "DEV-202610-0001",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 190.24 kWc, le devis en porte 16.50.",
+   "values": {
+    "kwc_calepinage": 190.24,
+    "kwc_devis": 16.5,
+    "ecart_ratio": 0.9133,
+    "calepinage_id": 3,
+    "attendu": 190.24
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 640,
+   "reference": "DEV-202610-0002",
+   "company": "taqinor-demo",
+   "message": "Bloc horaire calculé pour 11.0 kWc, devis à 8.8 kWc (doc) : écart 25.0%.",
+   "values": {
+    "kwc_bloc": 11.0,
+    "kwc_devis": 8.8,
+    "colonne": "doc",
+    "ecart": 0.25,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 8.8
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 640,
+   "reference": "DEV-202610-0002",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 9.92 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 9.92,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 4,
+    "attendu": 9.92
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 641,
+   "reference": "DEV-202610-0003",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 641,
+   "reference": "DEV-202610-0003",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 641,
+   "reference": "DEV-202610-0003",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 5,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 642,
+   "reference": "DEV-202610-0004",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.82 kWc, le devis en porte 6.05.",
+   "values": {
+    "kwc_calepinage": 6.82,
+    "kwc_devis": 6.05,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 6,
+    "attendu": 6.82
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 643,
+   "reference": "DEV-202610-0005",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 643,
+   "reference": "DEV-202610-0005",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 643,
+   "reference": "DEV-202610-0005",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 7,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 644,
+   "reference": "DEV-202610-0006",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 644,
+   "reference": "DEV-202610-0006",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 644,
+   "reference": "DEV-202610-0006",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 200 modules, le devis en chiffre 340.",
+   "values": {
+    "modules_calepinage": 200,
+    "modules_devis": 340,
+    "calepinage_id": 8,
+    "attendu": 200
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 644,
+   "reference": "DEV-202610-0006",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "a1eb008b641d",
+    "empreinte_devis": "f7b6aae3988c",
+    "calepinage_id": 8,
+    "attendu": "a1eb008b641d"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 645,
+   "reference": "DEV-202610-0007",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 645,
+   "reference": "DEV-202610-0007",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 645,
+   "reference": "DEV-202610-0007",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 52 modules, le devis en chiffre 12.",
+   "values": {
+    "modules_calepinage": 52,
+    "modules_devis": 12,
+    "calepinage_id": 9,
+    "attendu": 52
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 645,
+   "reference": "DEV-202610-0007",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 9,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 646,
+   "reference": "DEV-202610-0008",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 646,
+   "reference": "DEV-202610-0008",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 646,
+   "reference": "DEV-202610-0008",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 10,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 647,
+   "reference": "DEV-202610-0009",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 647,
+   "reference": "DEV-202610-0009",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 647,
+   "reference": "DEV-202610-0009",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.68 kWc, le devis en porte 7.70.",
+   "values": {
+    "kwc_calepinage": 8.68,
+    "kwc_devis": 7.7,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 11,
+    "attendu": 8.68
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 6 modules, le devis en chiffre 12.",
+   "values": {
+    "modules_calepinage": 6,
+    "modules_devis": 12,
+    "calepinage_id": 18,
+    "attendu": 6
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.26 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 4.26,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.5493,
+    "calepinage_id": 18,
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "8556e9aba985",
+    "empreinte_devis": "249ec9edd6cd",
+    "calepinage_id": 18,
+    "attendu": "8556e9aba985"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 677,
+   "reference": "DEV-202610-0013",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 677,
+   "reference": "DEV-202610-0013",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 677,
+   "reference": "DEV-202610-0013",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 24,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 679,
+   "reference": "DEV-202610-0015",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 679,
+   "reference": "DEV-202610-0015",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 679,
+   "reference": "DEV-202610-0015",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 31,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 680,
+   "reference": "DEV-202610-0016",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 7 modules, le devis en chiffre 10.",
+   "values": {
+    "modules_calepinage": 7,
+    "modules_devis": 10,
+    "calepinage_id": 33,
+    "attendu": 7
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 680,
+   "reference": "DEV-202610-0016",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 33,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 681,
+   "reference": "DEV-202610-0017",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 34,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 682,
+   "reference": "DEV-202610-0018",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 16 modules, le devis en chiffre 0.",
+   "values": {
+    "modules_calepinage": 16,
+    "modules_devis": 0,
+    "calepinage_id": 37,
+    "attendu": 16
+   }
+  },
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 683,
+   "reference": "DEV-202610-0019",
+   "company": "taqinor-demo",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 683,
+   "reference": "DEV-202610-0019",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 14 modules, le devis en chiffre 8.",
+   "values": {
+    "modules_calepinage": 14,
+    "modules_devis": 8,
+    "calepinage_id": 38,
+    "attendu": 14
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 683,
+   "reference": "DEV-202610-0019",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.68 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 8.68,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.4931,
+    "calepinage_id": 38,
+    "attendu": 8.68
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 683,
+   "reference": "DEV-202610-0019",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "f1733c33a239",
+    "empreinte_devis": "7f36708f45ad",
+    "calepinage_id": 38,
+    "attendu": "f1733c33a239"
+   }
+  },
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 684,
+   "reference": "DEV-202610-0020",
+   "company": "taqinor-demo",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 684,
+   "reference": "DEV-202610-0020",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 16 modules, le devis en chiffre 8.",
+   "values": {
+    "modules_calepinage": 16,
+    "modules_devis": 8,
+    "calepinage_id": 39,
+    "attendu": 16
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 684,
+   "reference": "DEV-202610-0020",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 9.92 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 9.92,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.5565,
+    "calepinage_id": 39,
+    "attendu": 9.92
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 684,
+   "reference": "DEV-202610-0020",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "f022371e316b",
+    "empreinte_devis": "7f36708f45ad",
+    "calepinage_id": 39,
+    "attendu": "f022371e316b"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 689,
+   "reference": "DEV-202610-0023",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 689,
+   "reference": "DEV-202610-0023",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 689,
+   "reference": "DEV-202610-0023",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 45,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 689,
+   "reference": "DEV-202610-0023",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "0e05f6b16e7c",
+    "empreinte_devis": "8145e12771c5",
+    "calepinage_id": 45,
+    "attendu": "0e05f6b16e7c"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 690,
+   "reference": "DEV-202610-0024",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 690,
+   "reference": "DEV-202610-0024",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 690,
+   "reference": "DEV-202610-0024",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 46,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 692,
+   "reference": "DEV-202610-0025",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 692,
+   "reference": "DEV-202610-0025",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 692,
+   "reference": "DEV-202610-0025",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.68 kWc, le devis en porte 7.70.",
+   "values": {
+    "kwc_calepinage": 8.68,
+    "kwc_devis": 7.7,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 49,
+    "attendu": 8.68
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 693,
+   "reference": "DEV-202610-0026",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 693,
+   "reference": "DEV-202610-0026",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 693,
+   "reference": "DEV-202610-0026",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 12 modules, le devis en chiffre 10.",
+   "values": {
+    "modules_calepinage": 12,
+    "modules_devis": 10,
+    "calepinage_id": 48,
+    "attendu": 12
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 693,
+   "reference": "DEV-202610-0026",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.2608,
+    "calepinage_id": 48,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 694,
+   "reference": "DEV-202610-0027",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 694,
+   "reference": "DEV-202610-0027",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 694,
+   "reference": "DEV-202610-0027",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.82 kWc, le devis en porte 6.05.",
+   "values": {
+    "kwc_calepinage": 6.82,
+    "kwc_devis": 6.05,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 50,
+    "attendu": 6.82
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 10 modules, le devis en chiffre 11.",
+   "values": {
+    "modules_calepinage": 10,
+    "modules_devis": 11,
+    "calepinage_id": 51,
+    "attendu": 10
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 6.05.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 6.05,
+    "ecart_ratio": 0.0242,
+    "calepinage_id": 51,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "0e05f6b16e7c",
+    "empreinte_devis": "0a36bf2bee56",
+    "calepinage_id": 51,
+    "attendu": "0e05f6b16e7c"
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 696,
+   "reference": "DEV-202610-0029",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 53,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 697,
+   "reference": "DEV-202610-0030",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.68 kWc, le devis en porte 7.70.",
+   "values": {
+    "kwc_calepinage": 8.68,
+    "kwc_devis": 7.7,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 55,
+    "attendu": 8.68
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 701,
+   "reference": "DEV-202610-0034",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 67,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 703,
+   "reference": "DEV-202610-0036",
+   "company": "taqinor-demo",
+   "message": "Bloc horaire calculé pour 5.5 kWc, devis à 8.8 kWc (doc) : écart 37.5%.",
+   "values": {
+    "kwc_bloc": 5.5,
+    "kwc_devis": 8.8,
+    "colonne": "doc",
+    "ecart": 0.375,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 8.8
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 703,
+   "reference": "DEV-202610-0036",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 9.92 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 9.92,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 70,
+    "attendu": 9.92
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 704,
+   "reference": "DEV-202610-0037",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 704,
+   "reference": "DEV-202610-0037",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 704,
+   "reference": "DEV-202610-0037",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 12 modules, le devis en chiffre 10.",
+   "values": {
+    "modules_calepinage": 12,
+    "modules_devis": 10,
+    "calepinage_id": 71,
+    "attendu": 12
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 704,
+   "reference": "DEV-202610-0037",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.2608,
+    "calepinage_id": 71,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 705,
+   "reference": "DEV-202610-0038",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 705,
+   "reference": "DEV-202610-0038",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 705,
+   "reference": "DEV-202610-0038",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 9.92 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 9.92,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 72,
+    "attendu": 9.92
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 706,
+   "reference": "DEV-202610-0039",
+   "company": "taqinor-demo",
+   "message": "Bloc horaire calculé pour 5.5 kWc, devis à 6.6 kWc (doc) : écart 16.7%.",
+   "values": {
+    "kwc_bloc": 5.5,
+    "kwc_devis": 6.6,
+    "colonne": "doc",
+    "ecart": 0.167,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 6.6
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 706,
+   "reference": "DEV-202610-0039",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 73,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 707,
+   "reference": "DEV-202610-0040",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 707,
+   "reference": "DEV-202610-0040",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 707,
+   "reference": "DEV-202610-0040",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 7.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.2361,
+    "calepinage_id": 74,
+    "attendu": 7.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 709,
+   "reference": "DEV-202610-0041",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 709,
+   "reference": "DEV-202610-0041",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 709,
+   "reference": "DEV-202610-0041",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 75,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 710,
+   "reference": "DEV-202610-0042",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 710,
+   "reference": "DEV-202610-0042",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 710,
+   "reference": "DEV-202610-0042",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 77,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 713,
+   "reference": "DEV-202610-0043",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 713,
+   "reference": "DEV-202610-0043",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 714,
+   "reference": "DEV-202610-0044",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 714,
+   "reference": "DEV-202610-0044",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 714,
+   "reference": "DEV-202610-0044",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.0645,
+    "calepinage_id": 81,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 716,
+   "reference": "DEV-202610-0046",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 85,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 717,
+   "reference": "DEV-202610-0047",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.96 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 4.96,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 86,
+    "attendu": 4.96
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 718,
+   "reference": "DEV-202610-0048",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 718,
+   "reference": "DEV-202610-0048",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 718,
+   "reference": "DEV-202610-0048",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 88,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 719,
+   "reference": "DEV-202610-0049",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 719,
+   "reference": "DEV-202610-0049",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 720,
+   "reference": "DEV-202610-0050",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 720,
+   "reference": "DEV-202610-0050",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 721,
+   "reference": "DEV-202610-0051",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 721,
+   "reference": "DEV-202610-0051",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 722,
+   "reference": "DEV-202610-0052",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.96 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 4.96,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 90,
+    "attendu": 4.96
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 723,
+   "reference": "DEV-202610-0053",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 723,
+   "reference": "DEV-202610-0053",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 724,
+   "reference": "DEV-202610-0054",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 724,
+   "reference": "DEV-202610-0054",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 725,
+   "reference": "DEV-202610-0055",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 725,
+   "reference": "DEV-202610-0055",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 725,
+   "reference": "DEV-202610-0055",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.82 kWc, le devis en porte 6.05.",
+   "values": {
+    "kwc_calepinage": 6.82,
+    "kwc_devis": 6.05,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 91,
+    "attendu": 6.82
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 726,
+   "reference": "DEV-202610-0056",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 8 modules, le devis en chiffre 10.",
+   "values": {
+    "modules_calepinage": 8,
+    "modules_devis": 10,
+    "calepinage_id": 99,
+    "attendu": 8
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 726,
+   "reference": "DEV-202610-0056",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 99,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 726,
+   "reference": "DEV-202610-0056",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "f1d3c4f02552",
+    "empreinte_devis": "a71c5d6a074e",
+    "calepinage_id": 99,
+    "attendu": "f1d3c4f02552"
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 730,
+   "reference": "DEV-202610-0060",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.96 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 4.96,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 111,
+    "attendu": 4.96
+   }
+  },
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 731,
+   "reference": "DEV-202610-0061",
+   "company": "taqinor-demo",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 731,
+   "reference": "DEV-202610-0061",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.96 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 4.96,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 116,
+    "attendu": 4.96
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 732,
+   "reference": "DEV-202610-0062",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 120,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 733,
+   "reference": "DEV-202610-0063",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 121,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 734,
+   "reference": "DEV-202610-0064",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 11.36 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 11.36,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 123,
+    "attendu": 11.36
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 735,
+   "reference": "DEV-202610-0065",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 11.36 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 11.36,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 126,
+    "attendu": 11.36
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 736,
+   "reference": "DEV-202610-0066",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 11.36 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 11.36,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 127,
+    "attendu": 11.36
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 737,
+   "reference": "DEV-202610-0067",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 129,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 738,
+   "reference": "DEV-202610-0068",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 12 modules, le devis en chiffre 0.",
+   "values": {
+    "modules_calepinage": 12,
+    "modules_devis": 0,
+    "calepinage_id": 132,
+    "attendu": 12
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 739,
+   "reference": "DEV-202610-0069",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 3 modules, le devis en chiffre 0.",
+   "values": {
+    "modules_calepinage": 3,
+    "modules_devis": 0,
+    "calepinage_id": 134,
+    "attendu": 3
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 740,
+   "reference": "DEV-202610-0070",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 3 modules, le devis en chiffre 0.",
+   "values": {
+    "modules_calepinage": 3,
+    "modules_devis": 0,
+    "calepinage_id": 135,
+    "attendu": 3
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 741,
+   "reference": "DEV-202610-0071",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 12 modules, le devis en chiffre 14.",
+   "values": {
+    "modules_calepinage": 12,
+    "modules_devis": 14,
+    "calepinage_id": 136,
+    "attendu": 12
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 741,
+   "reference": "DEV-202610-0071",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 7.70.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 7.7,
+    "ecart_ratio": 0.0962,
+    "calepinage_id": 136,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 1091,
+   "reference": "DEV-202610-0096",
+   "company": "taqinor-demo",
+   "message": "Valeur « all_items[1].pu_ttc_remise » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].pu_ttc_remise",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 1091,
+   "reference": "DEV-202610-0096",
+   "company": "taqinor-demo",
+   "message": "Valeur « all_items[1].total_ttc_remise » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].total_ttc_remise",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 1091,
+   "reference": "DEV-202610-0096",
+   "company": "taqinor-demo",
+   "message": "Valeur « sans_items[1].pu_ttc_remise » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].pu_ttc_remise",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 1091,
+   "reference": "DEV-202610-0096",
+   "company": "taqinor-demo",
+   "message": "Valeur « sans_items[1].total_ttc_remise » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].total_ttc_remise",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 2007,
+   "reference": "DEV-202610-0111",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 6 modules, le devis en chiffre 8.",
+   "values": {
+    "modules_calepinage": 6,
+    "modules_devis": 8,
+    "calepinage_id": 162,
+    "attendu": 6
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 2495,
+   "reference": "DEV-202610-0130",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 17016 MAD pour des factures réelles de 14400 MAD (×1.18).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 17016,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.182,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 2495,
+   "reference": "DEV-202610-0130",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 17010 MAD pour des factures réelles de 14400 MAD (×1.18).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 17010,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.181,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "DOC_ECHEANCE_AVANT_EMISSION",
+   "severity": "avertissement",
+   "object_type": "facture",
+   "object_id": 9,
+   "reference": "FAC-DEMO-0002",
+   "company": "taqinor-demo",
+   "message": "Échéance 2026-09-25 antérieure à l'émission 2026-09-30.",
+   "values": {
+    "date_echeance": "2026-09-25",
+    "date_emission": "2026-09-30",
+    "attendu": ">= 2026-09-30"
+   }
+  },
+  {
+   "rule": "FACTURE_STATUT_RESTE_INCOHERENT",
+   "severity": "critique",
+   "object_type": "facture",
+   "object_id": 9,
+   "reference": "FAC-DEMO-0002",
+   "company": "taqinor-demo",
+   "message": "Facture « payée » avec un reste à payer de 6984.00.",
+   "values": {
+    "statut": "payee",
+    "montant_du": 6984.0,
+    "attendu": 0.0
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2608,
+   "reference": "LEAD-2608",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2609,
+   "reference": "LEAD-2609",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2610,
+   "reference": "LEAD-2610",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2611,
+   "reference": "LEAD-2611",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2612,
+   "reference": "LEAD-2612",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "SEC_COMPTE_DEMO_ACTIF",
+   "severity": "critique",
+   "object_type": "utilisateur",
+   "object_id": 2,
+   "reference": "demo_admin",
+   "company": "taqinor-demo",
+   "message": "Le compte « demo_admin » est actif alors que son mot de passe est publié dans le dépôt (commande de seed).",
+   "values": {
+    "username": "demo_admin",
+    "derniere_connexion": "2026-11-01",
+    "attendu": "compte désactivé"
+   }
+  },
+  {
+   "rule": "SEC_COMPTE_DEMO_ACTIF",
+   "severity": "critique",
+   "object_type": "utilisateur",
+   "object_id": 3,
+   "reference": "demo_resp",
+   "company": "taqinor-demo",
+   "message": "Le compte « demo_resp » est actif alors que son mot de passe est publié dans le dépôt (commande de seed).",
+   "values": {
+    "username": "demo_resp",
+    "derniere_connexion": "2026-09-30",
+    "attendu": "compte désactivé"
+   }
+  }
+ ],
+ "new": [
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 313,
+   "reference": "DEV-DEMO-0003",
+   "company": "taqinor-demo",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_VALIDITE_AVANT_CREATION",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 315,
+   "reference": "DEV-DEMO-0005",
+   "company": "taqinor-demo",
+   "message": "Validité 2026-09-15 antérieure à la création 2026-09-30.",
+   "values": {
+    "date_validite": "2026-09-15",
+    "date_creation": "2026-09-30",
+    "attendu": ">= 2026-09-30"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 639,
+   "reference": "DEV-202610-0001",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 639,
+   "reference": "DEV-202610-0001",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 639,
+   "reference": "DEV-202610-0001",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 302 modules, le devis en chiffre 30.",
+   "values": {
+    "modules_calepinage": 302,
+    "modules_devis": 30,
+    "calepinage_id": 3,
+    "attendu": 302
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 639,
+   "reference": "DEV-202610-0001",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 190.24 kWc, le devis en porte 16.50.",
+   "values": {
+    "kwc_calepinage": 190.24,
+    "kwc_devis": 16.5,
+    "ecart_ratio": 0.9133,
+    "calepinage_id": 3,
+    "attendu": 190.24
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 640,
+   "reference": "DEV-202610-0002",
+   "company": "taqinor-demo",
+   "message": "Bloc horaire calculé pour 11.0 kWc, devis à 8.8 kWc (doc) : écart 25.0%.",
+   "values": {
+    "kwc_bloc": 11.0,
+    "kwc_devis": 8.8,
+    "colonne": "doc",
+    "ecart": 0.25,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 8.8
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 640,
+   "reference": "DEV-202610-0002",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 9.92 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 9.92,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 4,
+    "attendu": 9.92
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 641,
+   "reference": "DEV-202610-0003",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 641,
+   "reference": "DEV-202610-0003",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 641,
+   "reference": "DEV-202610-0003",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 5,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 642,
+   "reference": "DEV-202610-0004",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.82 kWc, le devis en porte 6.05.",
+   "values": {
+    "kwc_calepinage": 6.82,
+    "kwc_devis": 6.05,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 6,
+    "attendu": 6.82
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 643,
+   "reference": "DEV-202610-0005",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 643,
+   "reference": "DEV-202610-0005",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 643,
+   "reference": "DEV-202610-0005",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 7,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 644,
+   "reference": "DEV-202610-0006",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 644,
+   "reference": "DEV-202610-0006",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 644,
+   "reference": "DEV-202610-0006",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 200 modules, le devis en chiffre 340.",
+   "values": {
+    "modules_calepinage": 200,
+    "modules_devis": 340,
+    "calepinage_id": 8,
+    "attendu": 200
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 644,
+   "reference": "DEV-202610-0006",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "a1eb008b641d",
+    "empreinte_devis": "f7b6aae3988c",
+    "calepinage_id": 8,
+    "attendu": "a1eb008b641d"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 645,
+   "reference": "DEV-202610-0007",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 645,
+   "reference": "DEV-202610-0007",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 645,
+   "reference": "DEV-202610-0007",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 52 modules, le devis en chiffre 12.",
+   "values": {
+    "modules_calepinage": 52,
+    "modules_devis": 12,
+    "calepinage_id": 9,
+    "attendu": 52
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 645,
+   "reference": "DEV-202610-0007",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 9,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 646,
+   "reference": "DEV-202610-0008",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 646,
+   "reference": "DEV-202610-0008",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 646,
+   "reference": "DEV-202610-0008",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 10,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 647,
+   "reference": "DEV-202610-0009",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 647,
+   "reference": "DEV-202610-0009",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 647,
+   "reference": "DEV-202610-0009",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.68 kWc, le devis en porte 7.70.",
+   "values": {
+    "kwc_calepinage": 8.68,
+    "kwc_devis": 7.7,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 11,
+    "attendu": 8.68
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 21156 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 21156,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 21154 MAD pour des factures réelles de 14400 MAD (×1.47).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 21154,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.469,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 6 modules, le devis en chiffre 12.",
+   "values": {
+    "modules_calepinage": 6,
+    "modules_devis": 12,
+    "calepinage_id": 18,
+    "attendu": 6
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.26 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 4.26,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.5493,
+    "calepinage_id": 18,
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 648,
+   "reference": "DEV-202610-0010",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "8556e9aba985",
+    "empreinte_devis": "249ec9edd6cd",
+    "calepinage_id": 18,
+    "attendu": "8556e9aba985"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 677,
+   "reference": "DEV-202610-0013",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 677,
+   "reference": "DEV-202610-0013",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 677,
+   "reference": "DEV-202610-0013",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 24,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 679,
+   "reference": "DEV-202610-0015",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 679,
+   "reference": "DEV-202610-0015",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 679,
+   "reference": "DEV-202610-0015",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 31,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 680,
+   "reference": "DEV-202610-0016",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 7 modules, le devis en chiffre 10.",
+   "values": {
+    "modules_calepinage": 7,
+    "modules_devis": 10,
+    "calepinage_id": 33,
+    "attendu": 7
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 680,
+   "reference": "DEV-202610-0016",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 33,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 681,
+   "reference": "DEV-202610-0017",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 34,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 682,
+   "reference": "DEV-202610-0018",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 16 modules, le devis en chiffre 0.",
+   "values": {
+    "modules_calepinage": 16,
+    "modules_devis": 0,
+    "calepinage_id": 37,
+    "attendu": 16
+   }
+  },
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 683,
+   "reference": "DEV-202610-0019",
+   "company": "taqinor-demo",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 683,
+   "reference": "DEV-202610-0019",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 14 modules, le devis en chiffre 8.",
+   "values": {
+    "modules_calepinage": 14,
+    "modules_devis": 8,
+    "calepinage_id": 38,
+    "attendu": 14
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 683,
+   "reference": "DEV-202610-0019",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.68 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 8.68,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.4931,
+    "calepinage_id": 38,
+    "attendu": 8.68
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 683,
+   "reference": "DEV-202610-0019",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "f1733c33a239",
+    "empreinte_devis": "7f36708f45ad",
+    "calepinage_id": 38,
+    "attendu": "f1733c33a239"
+   }
+  },
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 684,
+   "reference": "DEV-202610-0020",
+   "company": "taqinor-demo",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 684,
+   "reference": "DEV-202610-0020",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 16 modules, le devis en chiffre 8.",
+   "values": {
+    "modules_calepinage": 16,
+    "modules_devis": 8,
+    "calepinage_id": 39,
+    "attendu": 16
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 684,
+   "reference": "DEV-202610-0020",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 9.92 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 9.92,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.5565,
+    "calepinage_id": 39,
+    "attendu": 9.92
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 684,
+   "reference": "DEV-202610-0020",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "f022371e316b",
+    "empreinte_devis": "7f36708f45ad",
+    "calepinage_id": 39,
+    "attendu": "f022371e316b"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 689,
+   "reference": "DEV-202610-0023",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 689,
+   "reference": "DEV-202610-0023",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 689,
+   "reference": "DEV-202610-0023",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 45,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 689,
+   "reference": "DEV-202610-0023",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "0e05f6b16e7c",
+    "empreinte_devis": "8145e12771c5",
+    "calepinage_id": 45,
+    "attendu": "0e05f6b16e7c"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 690,
+   "reference": "DEV-202610-0024",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 690,
+   "reference": "DEV-202610-0024",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 690,
+   "reference": "DEV-202610-0024",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 46,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 692,
+   "reference": "DEV-202610-0025",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 692,
+   "reference": "DEV-202610-0025",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 692,
+   "reference": "DEV-202610-0025",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.68 kWc, le devis en porte 7.70.",
+   "values": {
+    "kwc_calepinage": 8.68,
+    "kwc_devis": 7.7,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 49,
+    "attendu": 8.68
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 693,
+   "reference": "DEV-202610-0026",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 693,
+   "reference": "DEV-202610-0026",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 693,
+   "reference": "DEV-202610-0026",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 12 modules, le devis en chiffre 10.",
+   "values": {
+    "modules_calepinage": 12,
+    "modules_devis": 10,
+    "calepinage_id": 48,
+    "attendu": 12
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 693,
+   "reference": "DEV-202610-0026",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.2608,
+    "calepinage_id": 48,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 694,
+   "reference": "DEV-202610-0027",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 694,
+   "reference": "DEV-202610-0027",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 694,
+   "reference": "DEV-202610-0027",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.82 kWc, le devis en porte 6.05.",
+   "values": {
+    "kwc_calepinage": 6.82,
+    "kwc_devis": 6.05,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 50,
+    "attendu": 6.82
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 10 modules, le devis en chiffre 11.",
+   "values": {
+    "modules_calepinage": 10,
+    "modules_devis": 11,
+    "calepinage_id": 51,
+    "attendu": 10
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 6.05.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 6.05,
+    "ecart_ratio": 0.0242,
+    "calepinage_id": 51,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 695,
+   "reference": "DEV-202610-0028",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "0e05f6b16e7c",
+    "empreinte_devis": "0a36bf2bee56",
+    "calepinage_id": 51,
+    "attendu": "0e05f6b16e7c"
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 696,
+   "reference": "DEV-202610-0029",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 53,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 697,
+   "reference": "DEV-202610-0030",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.68 kWc, le devis en porte 7.70.",
+   "values": {
+    "kwc_calepinage": 8.68,
+    "kwc_devis": 7.7,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 55,
+    "attendu": 8.68
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 701,
+   "reference": "DEV-202610-0034",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 67,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 703,
+   "reference": "DEV-202610-0036",
+   "company": "taqinor-demo",
+   "message": "Bloc horaire calculé pour 5.5 kWc, devis à 8.8 kWc (doc) : écart 37.5%.",
+   "values": {
+    "kwc_bloc": 5.5,
+    "kwc_devis": 8.8,
+    "colonne": "doc",
+    "ecart": 0.375,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 8.8
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 703,
+   "reference": "DEV-202610-0036",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 9.92 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 9.92,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 70,
+    "attendu": 9.92
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 704,
+   "reference": "DEV-202610-0037",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 704,
+   "reference": "DEV-202610-0037",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 704,
+   "reference": "DEV-202610-0037",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 12 modules, le devis en chiffre 10.",
+   "values": {
+    "modules_calepinage": 12,
+    "modules_devis": 10,
+    "calepinage_id": 71,
+    "attendu": 12
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 704,
+   "reference": "DEV-202610-0037",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.2608,
+    "calepinage_id": 71,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 705,
+   "reference": "DEV-202610-0038",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 705,
+   "reference": "DEV-202610-0038",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 705,
+   "reference": "DEV-202610-0038",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 9.92 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 9.92,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 72,
+    "attendu": 9.92
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 706,
+   "reference": "DEV-202610-0039",
+   "company": "taqinor-demo",
+   "message": "Bloc horaire calculé pour 5.5 kWc, devis à 6.6 kWc (doc) : écart 16.7%.",
+   "values": {
+    "kwc_bloc": 5.5,
+    "kwc_devis": 6.6,
+    "colonne": "doc",
+    "ecart": 0.167,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 6.6
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 706,
+   "reference": "DEV-202610-0039",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 73,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 707,
+   "reference": "DEV-202610-0040",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 707,
+   "reference": "DEV-202610-0040",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 707,
+   "reference": "DEV-202610-0040",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 7.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.2361,
+    "calepinage_id": 74,
+    "attendu": 7.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 709,
+   "reference": "DEV-202610-0041",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 709,
+   "reference": "DEV-202610-0041",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 709,
+   "reference": "DEV-202610-0041",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 75,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 710,
+   "reference": "DEV-202610-0042",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 710,
+   "reference": "DEV-202610-0042",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 710,
+   "reference": "DEV-202610-0042",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 77,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 713,
+   "reference": "DEV-202610-0043",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 713,
+   "reference": "DEV-202610-0043",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 714,
+   "reference": "DEV-202610-0044",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 714,
+   "reference": "DEV-202610-0044",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 714,
+   "reference": "DEV-202610-0044",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.0645,
+    "calepinage_id": 81,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 716,
+   "reference": "DEV-202610-0046",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 85,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 717,
+   "reference": "DEV-202610-0047",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.96 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 4.96,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 86,
+    "attendu": 4.96
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 718,
+   "reference": "DEV-202610-0048",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 718,
+   "reference": "DEV-202610-0048",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 718,
+   "reference": "DEV-202610-0048",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 88,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 719,
+   "reference": "DEV-202610-0049",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 719,
+   "reference": "DEV-202610-0049",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 720,
+   "reference": "DEV-202610-0050",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 720,
+   "reference": "DEV-202610-0050",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 721,
+   "reference": "DEV-202610-0051",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 721,
+   "reference": "DEV-202610-0051",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 722,
+   "reference": "DEV-202610-0052",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.96 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 4.96,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 90,
+    "attendu": 4.96
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 723,
+   "reference": "DEV-202610-0053",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 723,
+   "reference": "DEV-202610-0053",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 724,
+   "reference": "DEV-202610-0054",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 724,
+   "reference": "DEV-202610-0054",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 725,
+   "reference": "DEV-202610-0055",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 19212 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 19212,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 725,
+   "reference": "DEV-202610-0055",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 19206 MAD pour des factures réelles de 14400 MAD (×1.33).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19206,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.334,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 725,
+   "reference": "DEV-202610-0055",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.82 kWc, le devis en porte 6.05.",
+   "values": {
+    "kwc_calepinage": 6.82,
+    "kwc_devis": 6.05,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 91,
+    "attendu": 6.82
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 726,
+   "reference": "DEV-202610-0056",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 8 modules, le devis en chiffre 10.",
+   "values": {
+    "modules_calepinage": 8,
+    "modules_devis": 10,
+    "calepinage_id": 99,
+    "attendu": 8
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 726,
+   "reference": "DEV-202610-0056",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 6.20 kWc, le devis en porte 5.50.",
+   "values": {
+    "kwc_calepinage": 6.2,
+    "kwc_devis": 5.5,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 99,
+    "attendu": 6.2
+   }
+  },
+  {
+   "rule": "CAL_EMPREINTE_IMPRIMEE_PERIMEE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 726,
+   "reference": "DEV-202610-0056",
+   "company": "taqinor-demo",
+   "message": "La conception a changé depuis la dernière resynchronisation du devis (empreinte imprimée périmée).",
+   "values": {
+    "empreinte_calepinage": "f1d3c4f02552",
+    "empreinte_devis": "a71c5d6a074e",
+    "calepinage_id": 99,
+    "attendu": "f1d3c4f02552"
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 730,
+   "reference": "DEV-202610-0060",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.96 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 4.96,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 111,
+    "attendu": 4.96
+   }
+  },
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 731,
+   "reference": "DEV-202610-0061",
+   "company": "taqinor-demo",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 731,
+   "reference": "DEV-202610-0061",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 4.96 kWc, le devis en porte 4.40.",
+   "values": {
+    "kwc_calepinage": 4.96,
+    "kwc_devis": 4.4,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 116,
+    "attendu": 4.96
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 732,
+   "reference": "DEV-202610-0062",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 7.44 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 7.44,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.1129,
+    "calepinage_id": 120,
+    "attendu": 7.44
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 733,
+   "reference": "DEV-202610-0063",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 121,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 734,
+   "reference": "DEV-202610-0064",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 11.36 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 11.36,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 123,
+    "attendu": 11.36
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 735,
+   "reference": "DEV-202610-0065",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 11.36 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 11.36,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 126,
+    "attendu": 11.36
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 736,
+   "reference": "DEV-202610-0066",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 11.36 kWc, le devis en porte 8.80.",
+   "values": {
+    "kwc_calepinage": 11.36,
+    "kwc_devis": 8.8,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 127,
+    "attendu": 11.36
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 737,
+   "reference": "DEV-202610-0067",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 6.60.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 6.6,
+    "ecart_ratio": 0.2254,
+    "calepinage_id": 129,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 738,
+   "reference": "DEV-202610-0068",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 12 modules, le devis en chiffre 0.",
+   "values": {
+    "modules_calepinage": 12,
+    "modules_devis": 0,
+    "calepinage_id": 132,
+    "attendu": 12
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 739,
+   "reference": "DEV-202610-0069",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 3 modules, le devis en chiffre 0.",
+   "values": {
+    "modules_calepinage": 3,
+    "modules_devis": 0,
+    "calepinage_id": 134,
+    "attendu": 3
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 740,
+   "reference": "DEV-202610-0070",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 3 modules, le devis en chiffre 0.",
+   "values": {
+    "modules_calepinage": 3,
+    "modules_devis": 0,
+    "calepinage_id": 135,
+    "attendu": 3
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 741,
+   "reference": "DEV-202610-0071",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 12 modules, le devis en chiffre 14.",
+   "values": {
+    "modules_calepinage": 12,
+    "modules_devis": 14,
+    "calepinage_id": 136,
+    "attendu": 12
+   }
+  },
+  {
+   "rule": "CAL_KWC_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 741,
+   "reference": "DEV-202610-0071",
+   "company": "taqinor-demo",
+   "message": "Le calepinage dessine 8.52 kWc, le devis en porte 7.70.",
+   "values": {
+    "kwc_calepinage": 8.52,
+    "kwc_devis": 7.7,
+    "ecart_ratio": 0.0962,
+    "calepinage_id": 136,
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 1091,
+   "reference": "DEV-202610-0096",
+   "company": "taqinor-demo",
+   "message": "Valeur « all_items[1].pu_ttc_remise » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].pu_ttc_remise",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 1091,
+   "reference": "DEV-202610-0096",
+   "company": "taqinor-demo",
+   "message": "Valeur « all_items[1].total_ttc_remise » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].total_ttc_remise",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 1091,
+   "reference": "DEV-202610-0096",
+   "company": "taqinor-demo",
+   "message": "Valeur « sans_items[1].pu_ttc_remise » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].pu_ttc_remise",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 1091,
+   "reference": "DEV-202610-0096",
+   "company": "taqinor-demo",
+   "message": "Valeur « sans_items[1].total_ttc_remise » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].total_ttc_remise",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "CAL_MODULES_DEVIS_VS_CALEPINAGE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 2007,
+   "reference": "DEV-202610-0111",
+   "company": "taqinor-demo",
+   "message": "Le calepinage pose 6 modules, le devis en chiffre 8.",
+   "values": {
+    "modules_calepinage": 6,
+    "modules_devis": 8,
+    "calepinage_id": 162,
+    "attendu": 6
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 2495,
+   "reference": "DEV-202610-0130",
+   "company": "taqinor-demo",
+   "message": "« page1_facture_avant » imprime 17016 MAD pour des factures réelles de 14400 MAD (×1.18).",
+   "values": {
+    "figure": "page1_facture_avant",
+    "imprime": 17016,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.182,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 2495,
+   "reference": "DEV-202610-0130",
+   "company": "taqinor-demo",
+   "message": "« methode_facture_actuelle » imprime 17010 MAD pour des factures réelles de 14400 MAD (×1.18).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 17010,
+    "factures_reelles": 14400,
+    "source": "lead_hiver_ete",
+    "ratio": 1.181,
+    "modele": "horaire",
+    "attendu": 14400
+   }
+  },
+  {
+   "rule": "DOC_ECHEANCE_AVANT_EMISSION",
+   "severity": "avertissement",
+   "object_type": "facture",
+   "object_id": 9,
+   "reference": "FAC-DEMO-0002",
+   "company": "taqinor-demo",
+   "message": "Échéance 2026-09-25 antérieure à l'émission 2026-09-30.",
+   "values": {
+    "date_echeance": "2026-09-25",
+    "date_emission": "2026-09-30",
+    "attendu": ">= 2026-09-30"
+   }
+  },
+  {
+   "rule": "FACTURE_STATUT_RESTE_INCOHERENT",
+   "severity": "critique",
+   "object_type": "facture",
+   "object_id": 9,
+   "reference": "FAC-DEMO-0002",
+   "company": "taqinor-demo",
+   "message": "Facture « payée » avec un reste à payer de 6984.00.",
+   "values": {
+    "statut": "payee",
+    "montant_du": 6984.0,
+    "attendu": 0.0
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2608,
+   "reference": "LEAD-2608",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2609,
+   "reference": "LEAD-2609",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2610,
+   "reference": "LEAD-2610",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2611,
+   "reference": "LEAD-2611",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 2612,
+   "reference": "LEAD-2612",
+   "company": "taqinor-demo",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "os_native",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "SEC_COMPTE_DEMO_ACTIF",
+   "severity": "critique",
+   "object_type": "utilisateur",
+   "object_id": 2,
+   "reference": "demo_admin",
+   "company": "taqinor-demo",
+   "message": "Le compte « demo_admin » est actif alors que son mot de passe est publié dans le dépôt (commande de seed).",
+   "values": {
+    "username": "demo_admin",
+    "derniere_connexion": "2026-11-01",
+    "attendu": "compte désactivé"
+   }
+  },
+  {
+   "rule": "SEC_COMPTE_DEMO_ACTIF",
+   "severity": "critique",
+   "object_type": "utilisateur",
+   "object_id": 3,
+   "reference": "demo_resp",
+   "company": "taqinor-demo",
+   "message": "Le compte « demo_resp » est actif alors que son mot de passe est publié dans le dépôt (commande de seed).",
+   "values": {
+    "username": "demo_resp",
+    "derniere_connexion": "2026-09-30",
+    "attendu": "compte désactivé"
+   }
+  }
+ ],
+ "rule_errors": [
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 314,
+   "reference": "DEV-DEMO-0004",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-DEMO-0004 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 315,
+   "reference": "DEV-DEMO-0005",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-DEMO-0005 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 642,
+   "reference": "DEV-202610-0004",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0004 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 682,
+   "reference": "DEV-202610-0018",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0018 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 686,
+   "reference": "DEV-202610-0021",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0021 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 702,
+   "reference": "DEV-202610-0035",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0035 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 738,
+   "reference": "DEV-202610-0068",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0068 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 739,
+   "reference": "DEV-202610-0069",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0069 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 740,
+   "reference": "DEV-202610-0070",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0070 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 1048,
+   "reference": "DEV-202610-0079",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0079 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 1049,
+   "reference": "DEV-202610-0080",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0080 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 1050,
+   "reference": "DEV-202610-0081",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-202610-0081 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 2498,
+   "reference": "DEV-ACHT123-REJEU-1",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-ACHT123-REJEU-1 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 2499,
+   "reference": "DEV-ACHT123-REJEU-7",
+   "company": "taqinor-demo",
+   "error": "ErreurRendu: ValueError: Devis DEV-ACHT123-REJEU-7 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  }
+ ],
+ "duration_s": 62.462
+}
