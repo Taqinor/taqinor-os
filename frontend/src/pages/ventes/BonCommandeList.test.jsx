@@ -40,6 +40,7 @@ const BC_AVEC_RELIQUAT = {
   date_livraison_prevue: null,
   statut: 'confirme',
   has_facture: false,
+  facturable: { ok: true, motif: '' },
   est_partiellement_livre: false,
   reliquat_par_ligne: [
     { ligne_devis_id: 42, designation: 'Panneau Solaire 550W', quantite_commandee: 10, quantite_livree: 0, reliquat: 10 },
@@ -96,6 +97,18 @@ describe('BonCommandeList — XSAL12 livraison partielle', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer la livraison' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/au moins une quantité/)
     expect(ventesApi.livrerPartielBC).not.toHaveBeenCalled()
+  })
+})
+
+describe('BonCommandeList — ATOT49 porte de facturation', () => {
+  it('affiche « Facture » seulement si facturable.ok', () => {
+    renderPage([BC_AVEC_RELIQUAT])
+    expect(screen.getByRole('button', { name: /Facture/ })).toBeInTheDocument()
+  })
+
+  it('pas de bouton Facture si facturable.ok faux', () => {
+    renderPage([{ ...BC_AVEC_RELIQUAT, facturable: { ok: false, motif: 'Ce devis est déjà facturé par FAC-1 : corrigez-la par un avoir.' } }])
+    expect(screen.queryByRole('button', { name: /Facture/ })).not.toBeInTheDocument()
   })
 })
 

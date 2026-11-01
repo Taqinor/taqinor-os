@@ -182,13 +182,12 @@ def dashboard(request):
     nb_factures_emises = factures_qs.exclude(
         statut__in=[Facture.Statut.BROUILLON, Facture.Statut.ANNULEE]
     ).count()
-    # AANA28 (contrat AANA1, dashboard.json) — taux d'acceptation SERVI :
-    # devis acceptés ÷ devis créés, 1 décimale, None sans devis. L'écran le
-    # lit tel quel (fini la formule nb_factures ÷ nb_devis, qui dépassait
-    # 100 %).
-    taux_acceptation_pct = (
-        round(nb_devis_acceptes / nb_devis_total * 100, 1)
-        if nb_devis_total else None)
+    # AANA58 (D-AANA-VER-1) — taux SERVI = celui du Quote-to-cash : acceptés ÷ devis
+    # ENVOYÉS dans la période (from/to, sinon 365 j), via LE sélecteur ventes.
+    from apps.ventes.selectors import taux_acceptation_periode
+    fin_t = _qdate(request.query_params.get('to')) or date.today()
+    debut_t = _qdate(request.query_params.get('from')) or fin_t - timedelta(days=365)
+    taux_acc = taux_acceptation_periode(co.get('company'), debut_t, fin_t)
 
     # ── Stock critique (produits sous seuil, seuil > 0) ───────────────────────
     from django.db.models import F
@@ -329,7 +328,9 @@ def dashboard(request):
             'nb_devis': nb_devis_total,
             'nb_acceptes': nb_devis_acceptes,
             'nb_factures': nb_factures_emises,
-            'taux_acceptation_pct': taux_acceptation_pct,
+            'taux_acceptation_pct': taux_acc['taux_pct'],
+            'nb_envoyes_periode': taux_acc['envoyes'],
+            'nb_acceptes_periode': taux_acc['acceptes'],
         },
         'stock_alerte': stock_alerte_list,
         'creances': creances_list,

@@ -45,6 +45,7 @@ const BC = {
   date_livraison_prevue: null,
   statut: 'confirme',
   has_facture: false,
+  facturable: { ok: true, motif: '' },
   facture_active: false,
   est_partiellement_livre: false,
   has_proof_of_delivery: false,

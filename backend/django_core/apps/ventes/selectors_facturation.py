@@ -810,6 +810,34 @@ def exiger_devis_facturable(devis, porte):
     raise DevisDejaFacture(motif)
 
 
+def porte_facture_bc(bc):
+    """ATOT49 — LA porte « facturer ce bon de commande » : ``{ok, motif}``.
+
+    Servie sur chaque BC (``facturable``) ET appliquée par ``creer-facture``
+    (409 avec le MÊME motif) : l'écran ne redécide jamais. Ordre des refus
+    historique : statut, facture déjà émise pour ce BC, vente déjà facturée
+    par une autre porte (``exiger_devis_facturable``), BC sans société."""
+    from .models import BonCommande, Facture
+    if bc.statut not in (BonCommande.Statut.CONFIRME,
+                         BonCommande.Statut.LIVRE):
+        return {'ok': False, 'motif': 'Le BC doit être confirmé ou livré.'}
+    annote = getattr(bc, 'has_facture_annote', None)
+    deja = (bool(annote) if annote is not None
+            else Facture.objects.filter(bon_commande=bc).exists())
+    if deja:
+        return {'ok': False, 'motif': 'Une facture existe déjà pour ce BC.'}
+    if bc.devis_id:
+        try:
+            exiger_devis_facturable(bc.devis, 'bc')
+        except DevisDejaFacture as exc:
+            return {'ok': False, 'motif': exc.motif}
+    if bc.company_id is None:
+        return {'ok': False, 'motif': (
+            "Ce bon de commande n'appartient à aucune société : "
+            "impossible d'émettre une facture.")}
+    return {'ok': True, 'motif': ''}
+
+
 def kpis_q2c_periode(company, debut, fin):
     """AFAC53 — KPI factures du tableau Quote-to-Cash, sur les DÉFINITIONS du
     modèle et de la période ``[debut, fin]`` (dates incluses).
