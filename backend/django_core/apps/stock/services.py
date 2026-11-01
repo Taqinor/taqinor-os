@@ -7102,6 +7102,11 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
                 'conflits': [], 'ecrasements_total': 0,
                 'ecrasements_appliques': 0, 'refuses': [], 'job_id': None}
 
+    def _erreur(row_num, sku, message):
+        errors.append({'row': row_num, 'message': message})
+        lignes_job.append({'ligne': row_num, 'statut': 'erreur',
+                           'motif': message, 'donnees': {'sku': sku}})
+
     for row_num, row in enumerate(rows_iter, start=2):
         sku = str(row[idx_sku] or '').strip() if idx_sku < len(row) else ''
         if not sku:
@@ -7110,18 +7115,12 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
             continue
         produit = Produit.objects.filter(company=company, sku=sku).first()
         if produit is None:
-            message = f'SKU introuvable : {sku}.'
-            errors.append({'row': row_num, 'message': message})
-            lignes_job.append({'ligne': row_num, 'statut': 'erreur',
-                               'motif': message, 'donnees': {'sku': sku}})
+            _erreur(row_num, sku, f'SKU introuvable : {sku}.')
             continue
         prix_raw = row[idx_prix] if idx_prix < len(row) else None
         prix = _dec(prix_raw)
         if prix is None or not prix.is_finite():
-            message = f'Prix invalide pour {sku} : {prix_raw!r}.'
-            errors.append({'row': row_num, 'message': message})
-            lignes_job.append({'ligne': row_num, 'statut': 'erreur',
-                               'motif': message, 'donnees': {'sku': sku}})
+            _erreur(row_num, sku, f'Prix invalide pour {sku} : {prix_raw!r}.')
             continue
         paliers, rejets = [], []
         if idx_paliers is not None and idx_paliers < len(row):
@@ -7129,10 +7128,7 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
         if prix.as_tuple().exponent < -2:
             rejets.insert(0, f'prix à plus de 2 décimales : {prix_raw!r}')
         if rejets:
-            message = f'{sku} : ' + ' ; '.join(rejets) + '.'
-            errors.append({'row': row_num, 'message': message})
-            lignes_job.append({'ligne': row_num, 'statut': 'erreur',
-                               'motif': message, 'donnees': {'sku': sku}})
+            _erreur(row_num, sku, f'{sku} : ' + ' ; '.join(rejets) + '.')
             continue
 
         # Champs FOURNIS par la ligne, valeurs vides ÉCARTÉES : ce qui n'est pas
