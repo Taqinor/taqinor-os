@@ -224,3 +224,36 @@ class TestVariantSummariesChaineCanonique(TestCase):
         self.assertEqual(len(summaries), 1)
         self.assertEqual(summaries[0]['id'], frere.id)
         self.assertAlmostEqual(summaries[0]['total_ttc'], 0.0, places=2)
+
+    def test_soeur_ci_deux_options_suit_l_option_effective(self):
+        """ATOT42 — une sœur industrielle à deux options NON acceptée affiche
+        le TTC de l'option que suit l'argent (SANS, CIQ302 : 14 000 HT → 16 800),
+        pas le panier AVEC (36 000) ; acceptée en SANS ⇒ SANS."""
+        from apps.ventes.utils.options import option_totaux
+        source = self._devis('DEV-ATOT42-A')
+        self._ligne(source, 'Panneau solaire 550 W', 'ATOT42-SRC', '1000',
+                    qty='6')
+
+        def soeur(reference, **kw):
+            s = self._devis(
+                reference, version_parent=source, version=2, is_active=True,
+                statut='envoye', mode_installation='industriel',
+                etude_params={'scenario': 'Les deux (Sans + Avec)'}, **kw)
+            sfx = reference[-3:]
+            self._ligne(s, 'Panneau solaire 550 W', f'AT42-PAN{sfx}', '1000',
+                        qty='10', ordre=1)
+            self._ligne(s, 'Onduleur réseau 5 kW', f'AT42-RES{sfx}', '4000',
+                        ordre=2)
+            self._ligne(s, 'Onduleur hybride 5 kW', f'AT42-HYB{sfx}', '12000',
+                        ordre=3)
+            self._ligne(s, 'Batterie 5 kWh', f'AT42-BAT{sfx}', '4000',
+                        qty='2', ordre=4)
+            return s
+
+        s1 = soeur('DEV-ATOT42-S11')
+        s2 = soeur('DEV-ATOT42-S22', option_acceptee='sans_batterie')
+        bande = {b['id']: b['total_ttc'] for b in _variant_summaries(source)}
+        self.assertAlmostEqual(bande[s1.id], 16800.00, places=2)
+        self.assertAlmostEqual(bande[s2.id], 16800.00, places=2)
+        self.assertAlmostEqual(
+            bande[s1.id], float(option_totaux(s1)['ttc']), places=2)

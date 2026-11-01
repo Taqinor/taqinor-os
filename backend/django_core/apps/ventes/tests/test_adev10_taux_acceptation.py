@@ -40,13 +40,14 @@ class TauxAcceptationTests(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
         self.n = 0
 
-    def _devis(self, statut, date_envoi):
+    def _devis(self, statut, date_envoi, par=None, en_jeu=True):
         self.n += 1
         d = Devis.objects.create(
             company=self.company, client=self.client_obj,
-            created_by=self.user, reference=f'DEV-ADEV10-{self.n:04d}',
+            created_by=par or self.user, reference=f'DEV-ADEV10-{self.n:04d}',
             statut=statut)
-        Devis.objects.filter(pk=d.pk).update(date_envoi=date_envoi)
+        Devis.objects.filter(pk=d.pk).update(
+            date_envoi=date_envoi, is_active=en_jeu)
         return d
 
     def _devis_dashboard(self, **params):
@@ -84,3 +85,34 @@ class TauxAcceptationTests(TestCase):
         self._devis('accepte', None)
         data = self._devis_dashboard()
         self.assertIsNone(data['devis']['taux_acceptation_pct'])
+
+    def _scenario_aana59(self):
+        """D-AANA-VER-1 : 6 envois, dont une V1 remplacée ⇒ base 5, 2 acceptés
+        (+ un envoi hors période et un devis d'un autre commercial)."""
+        autre = make_user(self.company, 'commercial')
+        maintenant = timezone.now()
+        self._devis('envoye', maintenant, en_jeu=False)  # V1 remplacée
+        self._devis('accepte', maintenant)  # sa V2, acceptée
+        self._devis('accepte', maintenant)
+        self._devis('envoye', maintenant)
+        self._devis('refuse', maintenant, par=autre)
+        self._devis('envoye', maintenant, par=autre)
+        self._devis('accepte', maintenant - timedelta(days=400))  # hors période
+        return autre
+
+    def test_effectifs_servis_reproduisent_le_taux(self):
+        self._scenario_aana59()
+        devis = self._devis_dashboard()['devis']
+        self.assertEqual(devis['envoyes_periode'], 5)
+        self.assertEqual(devis['acceptes_periode'], 2)
+        self.assertEqual(devis['taux_acceptation_pct'], 40.0)
+        self.assertEqual(
+            self._devis_dashboard()['conversion']['devis_envoye_vers_accepte_pct'],
+            40.0)
+
+    def test_scope_mine(self):
+        self._scenario_aana59()
+        devis = self._devis_dashboard(mine=1)['devis']
+        self.assertEqual(devis['envoyes_periode'], 3)  # 2 acceptés + 1 envoyé
+        self.assertEqual(devis['acceptes_periode'], 2)
+        self.assertEqual(devis['taux_acceptation_pct'], 66.7)
