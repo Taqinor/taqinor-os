@@ -1,0 +1,434 @@
+{
+  "P63.1": {
+    "creer_etroit": {
+      "statut": 201,
+      "id": 87,
+      "permissions": [
+        "crm_voir"
+      ]
+    },
+    "attribuer": {
+      "statut": 200
+    },
+    "elargir": {
+      "statut": 403,
+      "corps": {
+        "detail": "Ce rôle est plus large que le vôtre : vous ne pouvez ni l'attribuer ni le définir.",
+        "code": "role_plus_large",
+        "error": {
+          "code": "permission_denied",
+          "message": "Ce rôle est plus large que le vôtre : vous ne pouvez ni l'attribuer ni le définir.",
+          "fields": null,
+          "request_id": "d978c9cc53404c3fa800cf4666e572b5"
+        }
+      }
+    },
+    "relu": [
+      "crm_voir"
+    ],
+    "creer_large": {
+      "statut": 403,
+      "corps": {
+        "detail": "Ce rôle est plus large que le vôtre : vous ne pouvez ni l'attribuer ni le définir.",
+        "code": "role_plus_large",
+        "error": {
+          "code": "permission_denied",
+          "message": "Ce rôle est plus large que le vôtre : vous ne pouvez ni l'attribuer ni le définir.",
+          "fields": null,
+          "request_id": "cd232b7f99af44089b2ca8bb5341632b"
+        }
+      }
+    },
+    "large_present": false,
+    "ecran_url": "http://127.0.0.1:5173/admin/roles"
+  },
+  "P63.2-com": {
+    "ecrans": {
+      "factures_ligne_visible": true,
+      "factures": [
+        "Encaisser",
+        "Payer en ligne",
+        "Avoir"
+      ],
+      "factures_menu": [
+        "Encaisser",
+        "Payer en ligne",
+        "Avoir",
+        "Facturer les pénalités de retard",
+        "Abandonner le solde…",
+        "Retour client…"
+      ],
+      "charge_fiche": true,
+      "fiche": [
+        "Encaisser",
+        "Payer en ligne",
+        "Avoir"
+      ],
+      "charge_paiements": true,
+      "paiements": [
+        "Importer un relevé bancaire",
+        "Rejeter",
+        "Réaffecter"
+      ],
+      "charge_import_releve": true,
+      "import_releve": [],
+      "charge_remises": true,
+      "remises": [
+        "Déclarer une remise",
+        "Clôturer"
+      ]
+    }
+  },
+  "P63.2-av": {
+    "ecrans": {
+      "factures_ligne_visible": true,
+      "factures": [],
+      "factures_menu": [],
+      "charge_fiche": true,
+      "fiche": [],
+      "charge_paiements": true,
+      "paiements": [],
+      "charge_import_releve": true,
+      "import_releve": [],
+      "charge_remises": true,
+      "remises": []
+    },
+    "role": "Admin Ventes",
+    "portes": {
+      "paiement_avec_retenue": 403,
+      "attestation_recue": 403,
+      "rejeter": 403,
+      "annuler_saisie": 403,
+      "reaffecter": 403,
+      "retour_client": 403,
+      "facturer_penalites": 403,
+      "liberer_retenue": 403,
+      "lien_paiement": 403,
+      "revoquer_lien_paiement": 403,
+      "releve_commit": 403,
+      "remise_declarer": 403,
+      "releve_dry_run": 403
+    },
+    "etat_avant": {
+      "facture": {
+        "statut": "emise",
+        "montant_paye": "300.00",
+        "montant_du": "850.00",
+        "retenue_liberee_le": null,
+        "abandon": null
+      },
+      "paiement": {
+        "statut": "encaisse",
+        "facture": 83,
+        "statut_affectation": "affecte"
+      },
+      "avoirs": 0,
+      "remises": 2
+    },
+    "etat_apres": {
+      "facture": {
+        "statut": "emise",
+        "montant_paye": "300.00",
+        "montant_du": "850.00",
+        "retenue_liberee_le": null,
+        "abandon": null
+      },
+      "paiement": {
+        "statut": "encaisse",
+        "facture": 83,
+        "statut_affectation": "affecte"
+      },
+      "avoirs": 0,
+      "remises": 2
+    }
+  },
+  "P63.2-resp": {
+    "ecrans": {
+      "factures_ligne_visible": true,
+      "factures": [],
+      "factures_menu": [],
+      "charge_fiche": true,
+      "fiche": [],
+      "charge_paiements": true,
+      "paiements": [],
+      "charge_import_releve": true,
+      "import_releve": [],
+      "charge_remises": true,
+      "remises": []
+    },
+    "role": "Responsable",
+    "portes": {
+      "paiement_avec_retenue": 403,
+      "attestation_recue": 403,
+      "rejeter": 403,
+      "annuler_saisie": 403,
+      "reaffecter": 403,
+      "retour_client": 403,
+      "facturer_penalites": 403,
+      "liberer_retenue": 403,
+      "lien_paiement": 403,
+      "revoquer_lien_paiement": 403,
+      "releve_commit": 403,
+      "remise_declarer": 403,
+      "releve_dry_run": 403
+    },
+    "etat_avant": {
+      "facture": {
+        "statut": "emise",
+        "montant_paye": "300.00",
+        "montant_du": "850.00",
+        "retenue_liberee_le": null,
+        "abandon": null
+      },
+      "paiement": {
+        "statut": "encaisse",
+        "facture": 85,
+        "statut_affectation": "affecte"
+      },
+      "avoirs": 0,
+      "remises": 2
+    },
+    "etat_apres": {
+      "facture": {
+        "statut": "emise",
+        "montant_paye": "300.00",
+        "montant_du": "850.00",
+        "retenue_liberee_le": null,
+        "abandon": null
+      },
+      "paiement": {
+        "statut": "encaisse",
+        "facture": 85,
+        "statut_affectation": "affecte"
+      },
+      "avoirs": 0,
+      "remises": 2
+    }
+  },
+  "P63.3": {
+    "retour_client": {
+      "statut": 201,
+      "corps": {
+        "id": 12,
+        "lignes": [
+          {
+            "id": 8,
+            "produit": 35,
+            "designation": "Centrale ACC63",
+            "quantite": "1.00",
+            "prix_unitaire": "1000.00",
+            "remise": "0.00",
+            "taux_tva": "20.00",
+            "total_ht": "1000.00"
+          }
+        ],
+        "total_ht": "1000.00",
+        "total_tva": "200.00",
+        "total_ttc": "1200.00",
+        "tva_par_taux": [
+          {
+            "taux": "20.00",
+            "base_ht": "1000.00",
+            "montant": "200.00"
+          }
+        ],
+        "statut_display": "Émis",
+        "facture_reference": "FAC-ACC63-h5-5-com-5",
+        "client_nom": "ACC63 h5 Client Argent",
+        "type": "retour",
+        "reference": "AVO-202611-0010",
+        "statut": "emise",
+        "motif": "retour",
+        "date_emission": "2026-11-01",
+        "taux_tva": "20.00",
+        "remise_globale": "0.00",
+        "arrondi_pas": 0,
+        "arrondi_unites": 1,
+        "montant_ht": null,
+        "montant_tva": null,
+        "montant_ttc": null,
+        "fichier_pdf": null,
+        "ventilation_tva": null,
+        "restocke": false,
+        "motif_retour": "retour",
+        "company": 1,
+        "facture": 71,
+        "client": 23,
+        "created_by": 62,
+        "note_debit": null
+      }
+    },
+    "releve_dry_run": {
+      "statut": 200,
+      "corps": {
+        "token": "lPicqdX5Kvsr9SW1TNEuX5bLj7vGg47tXRRkXqQaLXE",
+        "columns": {
+          "date": "date",
+          "libelle": "libelle",
+          "montant": "montant"
+        },
+        "unmapped": [],
+        "preview": [
+          {
+            "ligne": 2,
+            "date": "2026-11-01",
+            "reference": "",
+            "libelle": "VIR FAC-ACC63-h5-5-com-5",
+            "montant": "50",
+            "mode": "virement",
+            "statut": "non_trouve",
+            "facture_id": null,
+            "facture_reference": null,
+            "match_type": null,
+            "candidats": []
+          }
+        ],
+        "revue": [],
+        "total_rows": 1,
+        "matched": 0,
+        "ambigus": 0,
+        "already_paid": 0,
+        "deja_importe": false
+      }
+    },
+    "releve_commit": {
+      "statut": 200,
+      "corps": {
+        "token": "lPicqdX5Kvsr9SW1TNEuX5bLj7vGg47tXRRkXqQaLXE",
+        "created": 0,
+        "skipped": 1,
+        "errors": 0,
+        "results": [
+          {
+            "ligne": 2,
+            "statut": "non_trouve"
+          }
+        ]
+      }
+    },
+    "facture_relue": {
+      "statut": "payee",
+      "montant_du": "0.00",
+      "avoirs": [
+        {
+          "id": 12,
+          "reference": "AVO-202611-0010",
+          "statut": "emise",
+          "total_ttc": "1200.00",
+          "motif": "retour"
+        }
+      ]
+    }
+  },
+  "P63.5": {
+    "zip": {
+      "statut": 200,
+      "type": "application/zip",
+      "octets": 22,
+      "entree_secret_presente": false,
+      "extrait": "PK...................."
+    },
+    "scinder": {
+      "statut": 404,
+      "corps": {
+        "detail": "Fichier indisponible."
+      }
+    },
+    "documents": {
+      "avant": 10,
+      "apres": 10,
+      "versions": 0
+    }
+  },
+  "P63.6": {
+    "lecteur": {
+      "verrouiller": {
+        "statut": 403,
+        "corps": {
+          "detail": "Droit d'écriture requis sur cette cible.",
+          "error": {
+            "code": "permission_denied",
+            "message": "Droit d'écriture requis sur cette cible.",
+            "fields": null,
+            "request_id": "5622f3f3360e4e8389c54d0092919bd8"
+          }
+        }
+      },
+      "placer-legal-hold": {
+        "statut": 403,
+        "corps": {
+          "detail": "Droit d'écriture requis sur cette cible.",
+          "error": {
+            "code": "permission_denied",
+            "message": "Droit d'écriture requis sur cette cible.",
+            "fields": null,
+            "request_id": "d82812c386d041ed8138f3449a4da19a"
+          }
+        }
+      },
+      "partage": {
+        "statut": 403,
+        "corps": {
+          "detail": "Droit d'écriture requis sur cette cible.",
+          "error": {
+            "code": "permission_denied",
+            "message": "Droit d'écriture requis sur cette cible.",
+            "fields": null,
+            "request_id": "7027524f3eb74ff69e288411d725b489"
+          }
+        }
+      }
+    },
+    "sans_droit_partage": {
+      "statut": 404,
+      "corps": {
+        "document": [
+          "Clé primaire « 10 » non valide - l'objet n'existe pas."
+        ],
+        "error": {
+          "code": "not_found",
+          "message": "{'document': [ErrorDetail(string=\"Clé primaire «\\xa010\\xa0» non valide - l'objet n'existe pas.\", code='does_not_exist')]}",
+          "fields": null,
+          "request_id": "cff82042530e4eef930887261d457f97"
+        }
+      }
+    },
+    "relu_directeur": {
+      "locked_by": null,
+      "partages": 0,
+      "holds": 0
+    },
+    "libelle_document_inconnu": false
+  },
+  "P63.7": {
+    "patch": {
+      "statut": 400,
+      "corps": {
+        "permissions": [
+          "Code non octroyable à ce rôle : ['encaisser']."
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "{'permissions': [ErrorDetail(string=\"Code non octroyable à ce rôle : ['encaisser'].\", code='invalid')]}",
+          "fields": {
+            "permissions": [
+              "Code non octroyable à ce rôle : ['encaisser']."
+            ]
+          },
+          "request_id": "e21a7a6298a24244851acaae75419d30"
+        }
+      }
+    },
+    "avant": {
+      "nom": "Technicien",
+      "n": 30,
+      "encaisser": false
+    },
+    "apres": {
+      "nom": "Technicien",
+      "n": 30,
+      "encaisser": false
+    }
+  },
+  "_note": "P63.1, P63.3, P63.5-P63.7 : jeu de données acc63-h5 ; P63.2-* : rejoué avec acc63-h6 (attente « écran chargé » ajoutée)"
+}
