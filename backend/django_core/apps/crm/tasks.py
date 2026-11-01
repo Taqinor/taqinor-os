@@ -37,6 +37,20 @@ def escalader_rappels_demandes_task():
     return {'escalated': escalated}
 
 
+@shared_task(name='crm.detecter_comptes_dormants')
+def detecter_comptes_dormants_task():
+    """NTCRM14 (ENF15) — Enveloppe Celery Beat de la commande homonyme.
+
+    Planifiée dans ``erp_agentique/celery.py`` : notifie le commercial
+    propriétaire des comptes dormants (au plus une fois par franchissement de
+    seuil, anti-spam interne). Passe par ``notify()`` : report de nuit (N4).
+    """
+    from apps.crm.management.commands.detecter_comptes_dormants import (
+        detecter_comptes_dormants,
+    )
+    return {'alertes': detecter_comptes_dormants()}
+
+
 @shared_task(name='crm.snapshot_forecast_hebdo')
 def snapshot_forecast_hebdo_task():
     """NTCRM6 — Enveloppe Celery Beat de la commande de gestion homonyme.
