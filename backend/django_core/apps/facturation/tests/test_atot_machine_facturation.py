@@ -304,8 +304,8 @@ class MachineFacturation(RuleBasedStateMachine):
         total = sum(poids.values(), ZERO)
         return (poids.get(devis.pk, ZERO) / total) if total else ZERO
 
-    def _verifier_borne(self, devis):
-        from apps.ventes.utils.options import option_totaux
+    def _net(self, devis):
+        """Σ TTC émis − avoirs actifs imputable à ``devis`` (relu en base)."""
         # VNT20 — l'invariant porte sur les factures ÉMISES : un brouillon
         # (facture de BC, complément de révision) ne facture rien tant
         # qu'il n'est pas émis, et son émission est bornée au prix convenu.
@@ -317,11 +317,22 @@ class MachineFacturation(RuleBasedStateMachine):
             avoirs = sum((_d(a.total_ttc) for a in f.avoirs.all()
                           if a.statut != 'annulee'), ZERO)
             net += (_d(f.total_ttc) - avoirs) * part
-        plafond = _d(option_totaux(devis)['ttc'])
+        return net, actives
+
+    def _verifier_borne(self, devis):
+        from apps.ventes.utils.options import option_totaux
+        from apps.ventes.vente_facturation import plan_facturation
+        net, actives = self._net(devis)
+        # ATOT50 / VNT64 (D-VNT-2) — après une révision à la baisse, l'avoir
+        # d'écart ATTEND sa confirmation : le facturé dépasse le TTC de la
+        # V2 de cet avoir à confirmer, LU sur la vente (jamais recalculé).
+        plan = plan_facturation(devis)
+        a_confirmer = max(ZERO, plan['prevu'] - plan['prix_convenu_ttc'])
+        plafond = _d(option_totaux(devis)['ttc']) + a_confirmer
         tolerance = CENT * (len(actives) + 1)
         assert net <= plafond + tolerance, (
             f'{devis.reference} : facturé net {_q(net)} > TTC du devis '
-            f'{plafond} — factures '
+            f'+ avoir à confirmer {plafond} — factures '
             + ', '.join(f'{f.reference}={f.total_ttc}' for f in actives))
 
     @invariant()
@@ -339,3 +350,32 @@ class MachineFacturation(RuleBasedStateMachine):
 class MachineFacturationTests(HypothesisDjangoTestCase):
     def test_somme_factures_bornee_par_le_devis(self):
         run_state_machine_as_test(MachineFacturation, settings=MACHINE)
+
+    def test_revision_a_la_baisse_avoir_a_confirmer(self):
+        """ATOT50 — devis 150 000 facturé en complète, révisé ×0,9 : avoir à
+        confirmer 15 000 (invariant vert), puis confirmé : net 135 000."""
+        from apps.ventes.domain.revision import (
+            rattacher_aval_financier_revision)
+        from apps.ventes.models import Devis, LigneDevis
+        from apps.ventes.vente_facturation import plan_facturation
+        m = MachineFacturation()
+        devis = Devis.objects.create(
+            company=m.company, reference=f'DEV-ATOT50-{uuid.uuid4().hex[:8]}',
+            client=m.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'), mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=m.onduleur, designation='Onduleur',
+            quantite=Decimal('1'), prix_unitaire=Decimal('125000'),
+            remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        m.devis_id = devis.pk
+        m.complete()
+        m.reviser_et_accepter(Decimal('0.9'))
+        v2 = m._devis()
+        plan = plan_facturation(v2)
+        self.assertEqual(_q(m._net(v2)[0]), Decimal('150000.00'))
+        self.assertEqual((plan['prevu'], plan['prix_convenu_ttc']),
+                         (Decimal('150000.00'), Decimal('135000.00')))
+        m.somme_factures_bornee_par_devis()
+        rattacher_aval_financier_revision(v2, confirmer_avoir=True)
+        self.assertEqual(_q(m._net(m._devis())[0]), Decimal('135000.00'))
+        m.somme_factures_bornee_par_devis()
