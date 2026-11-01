@@ -35,8 +35,8 @@ CASES = [
         "id": "stock_faible",
         "question": "Quels produits ont un stock inferieur au seuil d'alerte ?",
         "gold_sql": (
-            "SELECT nom, quantite, seuil_alerte FROM stock_produit "
-            "WHERE company_id = 1 AND quantite < seuil_alerte LIMIT 100"
+            "SELECT nom, quantite_stock, seuil_alerte FROM stock_produit "
+            "WHERE company_id = 1 AND quantite_stock < seuil_alerte LIMIT 100"
         ),
         "expected_tables": {"stock_produit"},
         "forbidden_tables": set(),
@@ -46,8 +46,9 @@ CASES = [
         "id": "total_factures_mois",
         "question": "Quel est le montant total facture ce mois-ci ?",
         "gold_sql": (
-            "SELECT SUM(montant_total) FROM ventes_facture "
-            "WHERE company_id = 1 AND date_facture >= date_trunc('month', now())"
+            "SELECT SUM(montant_ht) FROM ventes_facture WHERE company_id = 1 "
+            "AND statut IN ('emise', 'payee', 'en_retard') "
+            "AND date_emission >= date_trunc('month', now())"
         ),
         "expected_tables": {"ventes_facture"},
         "forbidden_tables": set(),
@@ -65,7 +66,7 @@ CASES = [
         "id": "devis_en_attente",
         "question": "Liste les devis envoyes mais pas encore acceptes ni refuses.",
         "gold_sql": (
-            "SELECT reference, montant_total, statut FROM ventes_devis "
+            "SELECT reference, date_envoi, statut FROM ventes_devis "
             "WHERE company_id = 1 AND statut = 'envoye' LIMIT 100"
         ),
         "expected_tables": {"ventes_devis"},
@@ -76,11 +77,11 @@ CASES = [
         "id": "join_devis_lignes",
         "question": "Quelles sont les lignes du devis le plus recent ?",
         "gold_sql": (
-            "SELECT l.designation, l.quantite, l.prix_unitaire_ht "
+            "SELECT l.designation, l.quantite, l.prix_unitaire "
             "FROM ventes_lignedevis l "
             "JOIN ventes_devis d ON l.devis_id = d.id "
             "WHERE d.company_id = 1 "
-            "ORDER BY d.created_at DESC LIMIT 100"
+            "ORDER BY d.date_creation DESC LIMIT 100"
         ),
         "expected_tables": {"ventes_lignedevis", "ventes_devis"},
         "forbidden_tables": set(),
@@ -102,7 +103,7 @@ CASES = [
         "question": "Combien de tickets SAV sont encore ouverts ?",
         "gold_sql": (
             "SELECT COUNT(*) FROM sav_ticket "
-            "WHERE company_id = 1 AND statut != 'ferme'"
+            "WHERE company_id = 1 AND statut NOT IN ('resolu', 'cloture')"
         ),
         "expected_tables": {"sav_ticket"},
         "forbidden_tables": set(),
