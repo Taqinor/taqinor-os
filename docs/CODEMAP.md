@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: f2445526f75509c61c02247fd9f59b2096796916ca50e60cba0918643bb3a378
-Plan fingerprint: 097fdd1d0d6b030b9914b5f45b8d7713d4b17fe9d1befe8ef5b993505c41aec8
+Plan fingerprint: 0c8965a79f3f6102656b845bd2efc2426d248450c32b89c90b0fa02f2d24b547
 
 
 
@@ -592,7 +592,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1301)**
+**Done (1302)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -953,6 +953,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD174` — La moitié écran de la migration : un champ qui n'est pas déclaré à la fiche est…
 - `CAD175` — Seconde livraison du panneau d'appel : agricole (pompage) et industriel
 - `CAD176` — La touche e-mail rend un texte vide et l'adresse du client n'atteint jamais la file
+- `CAD177` — (30/09 : nocturne encore rouge — backend-full sur 3 tests PDF ventes réels ; e2e…
 - `CAD178` — Aucune mesure mobile des gestes de relance
 - `CIQ1` — Contrat d'abord : forme pro du Lead, règle « devis auto prêt » pro, drapeau…
 - `CIQ2` — Contrat d'abord : aperçu serveur C&I `POST /ventes/etude-ci/preview/` + clés…
@@ -1896,7 +1897,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (124)**
+**Open — to build (123)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1946,7 +1947,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AICM2` — Réglage de confidentialité du compte claude.ai
 - `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]
-- `CAD177` — (30/09 : nocturne encore rouge — backend-full sur 3 tests PDF ventes réels ; e2e…
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
 - `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
