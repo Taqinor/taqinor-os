@@ -71,7 +71,7 @@ def leads_de_la_fenetre(co, start=None, end=None):
     return list(qs.only('id', 'owner_id', 'stage', 'perdu'))
 
 
-def build_leaderboard(signed_devis, kwc_by_devis, co, start=None, end=None):
+def build_leaderboard(kwc_by_devis, co, start=None, end=None):
     """WIR82 — calcul UNIQUE du classement commercial.
 
     Source partagée consommée à la fois par
@@ -80,8 +80,9 @@ def build_leaderboard(signed_devis, kwc_by_devis, co, start=None, end=None):
     calculs quasi identiques divergents.
 
     Arguments :
-      - ``signed_devis`` : itérable de Devis signés (statut ACCEPTE), avec
-        ``lead``/``lead__owner``/``created_by`` select_related.
+      - AANA62 — la population de devis signés (signés en vigueur, bornes
+        ``date_acceptation``, devis sans lead crédités à ``created_by``) est
+        construite ICI, jamais par l'appelant : même CA sur les deux écrans.
       - ``kwc_by_devis`` : dict {devis_id: Decimal(kWc installé)}.
       - ``co`` / ``start`` / ``end`` : portée société et fenêtre (dates).
         AANA22 — la fenêtre de leads est construite ICI
@@ -95,6 +96,15 @@ def build_leaderboard(signed_devis, kwc_by_devis, co, start=None, end=None):
     # QX2 — CA sur le HT REMISÉ de l'option acceptée (chaîne canonique QX1),
     # jamais le HT brut : le classement/CA reflète le vrai revenu signé.
     from apps.ventes.utils.options import option_totaux
+    from apps.reporting.pipeline import _devis_signes
+    from apps.ventes.selectors import devis_avec_totaux
+    # APRF42 — lead.owner, created_by et option_totaux préchargés.
+    signed_devis = devis_avec_totaux(_devis_signes(co).select_related(
+        'lead', 'lead__owner', 'created_by', 'company'))
+    if start:
+        signed_devis = signed_devis.filter(date_acceptation__gte=start)
+    if end:
+        signed_devis = signed_devis.filter(date_acceptation__lte=end)
 
     agg = {}
     for d in signed_devis:

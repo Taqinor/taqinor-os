@@ -159,16 +159,11 @@ def commercial_dashboard(request):
         })
 
     # ── Vélocité de vente : délai moyen lead→devis accepté ───────────────────
-    # AANA19 — devis signés = acceptés ACTIFS (helper unique du reporting).
-    # ERR-PERF-SAV-REPORTING-N1 — ``build_leaderboard`` lit ``lead.owner``,
-    # ``created_by`` et ``option_totaux`` (lignes + produit) PAR devis signé :
-    # sans préchargement, 863 requêtes sur 486 devis (APRF42).
+    # AANA19 — devis signés = acceptés ACTIFS ; AANA62 — la vélocité seule
+    # lit les devis à lead (le classement construit sa propre population).
     from apps.reporting.pipeline import _devis_signes
-    from apps.ventes.selectors import devis_avec_totaux
-    signed_devis = devis_avec_totaux(
-        _devis_signes(co)
-        .exclude(lead__isnull=True)
-        .select_related('lead', 'lead__owner', 'created_by', 'company'))
+    signed_devis = (_devis_signes(co).exclude(lead__isnull=True)
+                    .select_related('lead'))
     if start:
         signed_devis = signed_devis.filter(date_acceptation__gte=start)
     if end:
@@ -201,8 +196,7 @@ def commercial_dashboard(request):
     # AANA21/AANA22 — le taux individuel est LE taux de gain partagé, calculé
     # par build_leaderboard sur SA fenêtre de leads (bornes inclusives).
     from apps.reporting.services import build_leaderboard
-    leaderboard = build_leaderboard(
-        signed_devis, kwc_by_devis, co, start, end)
+    leaderboard = build_leaderboard(kwc_by_devis, co, start, end)
 
     # ── QX31be — délai jusqu'au PREMIER contact (speed-to-lead) ──────────────
     # De la création du lead à la première activité SORTANTE (appel/e-mail),
