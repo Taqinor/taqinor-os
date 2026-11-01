@@ -1,6 +1,20 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import ForecastView from './ForecastView'
+import { formatMAD } from '../../../../features/crm/stages'
+import { readFileSync } from 'node:fs'
+
+// Contrat PARTAGÉ (AANA66) chargé tel quel depuis le dépôt.
+const contrat = JSON.parse(readFileSync(
+  new URL('../../../../../../backend/django_core/apps/reporting/contract_samples/probabilites_etape.json', import.meta.url),
+  'utf8',
+))
+
+// AANA67 — la table est LUE de la réponse servie (contrat partagé AANA66).
+vi.mock('../../../../api/reportingApi', () => ({
+  default: { getProbabilitesEtape: vi.fn() },
+}))
+import reportingApi from '../../../../api/reportingApi'
 
 /* XSAL15 — Vue kanban « Prévision » : regroupement par mois de
    date_cloture_prevue + colonne Non daté + totaux brut/pondéré en tête.
@@ -60,8 +74,14 @@ describe('ForecastView (XSAL15)', () => {
 
   it('affiche un total brut + prévisionnel pondéré en tête de colonne quand > 0', () => {
     render(<ForecastView leads={leads} users={[]} />)
-    // QUOTE_SENT → STAGE_PROBABILITY 0.5 × 100000 = 50000 pondéré.
-    expect(screen.getByText(/Prév\./)).toBeInTheDocument()
+    expect(screen.getAllByText(/Prév\./).length).toBeGreaterThan(0)
+  })
+
+  it('pondéré lu de la table servie', async () => {
+    // Contrat chargé tel quel : QUOTE_SENT = 0.4 ⇒ 100 000 MAD → 40 000.
+    reportingApi.getProbabilitesEtape.mockResolvedValue({ data: contrat.exemple })
+    render(<ForecastView leads={[leads[0]]} users={[]} />)
+    expect(await screen.findByText(`Prév. ${formatMAD(40000)}`)).toBeInTheDocument()
   })
 
   it('LB28 — affiche un EmptyState (plus le board) quand la liste de leads est vide', () => {

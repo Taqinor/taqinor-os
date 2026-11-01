@@ -1,6 +1,6 @@
 // XSAL15 — Vue kanban « Prévision » : leads ouverts groupés par mois de
 // date_cloture_prevue, total brut + pondéré en tête de colonne (réutilise
-// STAGE_PROBABILITY de KanbanView — jamais une 2e table de probabilités),
+// la table de probabilités SERVIE — AANA67, jamais une table locale),
 // glisser une carte PATCHe date_cloture_prevue via onInlineSave existant,
 // colonne « Non daté » pour les leads sans date. Verified against SOURCE (no
 // node_modules in this worktree/lane).
@@ -19,9 +19,9 @@ const VIEWSWITCHER_SRC = readFileSync(join(HERE, '..', 'ViewSwitcher.jsx'), 'utf
 // LB22 — VALID_VIEWS a déménagé dans urlFilters.js (source unique).
 const URLFILTERS_SRC = readFileSync(join(HERE, '..', 'urlFilters.js'), 'utf8')
 
-test('XSAL15 : ForecastView réutilise STAGE_PROBABILITY de KanbanView (jamais une 2e table)', () => {
-  assert.match(SRC, /import \{ STAGE_PROBABILITY \} from '\.\/KanbanView'/)
-  assert.match(KANBAN_SRC, /export const STAGE_PROBABILITY = \{/)
+test('AANA67 : ForecastView lit la table SERVIE (useProbabilitesEtape), aucune table locale', () => {
+  assert.match(SRC, /import \{ useProbabilitesEtape, ponderer \} from '\.\.\/useProbabilitesEtape'/)
+  assert.doesNotMatch(KANBAN_SRC, /STAGE_PROBABILITY\s*=/)
   // Aucune redéclaration locale d'une table de probabilités par étape.
   assert.doesNotMatch(SRC, /NEW: 0\.1/)
 })
@@ -38,7 +38,7 @@ test('XSAL15 : le regroupement se fait par mois de date_cloture_prevue, avec une
 
 test('XSAL15 : chaque colonne calcule total brut + pondéré (même formule que KanbanView : proba × brut)', () => {
   assert.match(SRC, /totalBrut = inMonth\.reduce\(\(s, l\) => s \+ latestDevisTotal\(l\), 0\)/)
-  assert.match(SRC, /totalPondere = inMonth\.reduce\(\s*\n?\s*\(s, l\) => s \+ latestDevisTotal\(l\) \* \(STAGE_PROBABILITY\[l\.stage\] \?\? 0\), 0\)/)
+  assert.match(SRC, /totalPondere = probas && inMonth\.reduce\(\s*\n?\s*\(s, l\) => s \+ ponderer\(probas, l\.stage, latestDevisTotal\(l\)\), 0\)/)
 })
 
 test('XSAL15 : le drop PATCHe date_cloture_prevue via onInlineSave existant (pas de nouvel endpoint)', () => {

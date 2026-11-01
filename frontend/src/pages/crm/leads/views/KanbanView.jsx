@@ -8,8 +8,6 @@ import { DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, useD
 import {
   formatMAD, groupLeadsByStage, isSortieSigne, isStageMoveAllowed,
   isStageMoveBackward, PIPELINE_STAGES, STAGE_LABELS,
-  NEW_STAGE, CONTACTED_STAGE, QUOTE_SENT_STAGE, FOLLOW_UP_STAGE, SIGNED_STAGE,
-  COLD_STAGE,
 } from '../../../../features/crm/stages'
 import {
   buildKanbanAnnouncements,
@@ -30,6 +28,7 @@ import { Button } from '../../../../ui'
 // `(pointer: coarse)` — c'est le POINTEUR qui décide, jamais une largeur.
 import { useIsMobile } from '../../../../ui/ResponsiveDialog'
 import LeadCard from './LeadCard'
+import { useProbabilitesEtape, ponderer } from '../useProbabilitesEtape'
 import EtatVideVueLeads from './EtatVideVueLeads'
 import BoutonChargerPlus from './BoutonChargerPlus'
 
@@ -45,21 +44,6 @@ const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
    glisser-déposer (souris/clavier via KeyboardSensor, garde LB4 + recul
    confirmé round 4) et la pilule d'étape de la fenêtre du lead. Le contrat
    d'absence vit dans KanbanView.test.jsx. */
-
-// Probabilité de conversion par étape (entonnoir) — UI seulement, sert au
-// prévisionnel pondéré (proba × total devis). Les leads perdus comptent 0.
-// XSAL15 — exportée pour être réutilisée telle quelle par la vue « Prévision »
-// (regroupement par mois plutôt que par étape, MÊME calcul de pondération —
-// jamais une seconde table de probabilités déclarée ailleurs).
-// eslint-disable-next-line react-refresh/only-export-components -- STAGE_PROBABILITY co-localisé (D-ENF22)
-export const STAGE_PROBABILITY = {
-  [NEW_STAGE]: 0.1,
-  [CONTACTED_STAGE]: 0.25,
-  [QUOTE_SENT_STAGE]: 0.5,
-  [FOLLOW_UP_STAGE]: 0.7,
-  [SIGNED_STAGE]: 1,
-  [COLD_STAGE]: 0.05,
-}
 
 // Enveloppe draggable d'une carte ; l'original reste en place (style fantôme)
 // pendant que le DragOverlay suit le pointeur.
@@ -154,8 +138,9 @@ export const RENDER_CAP = 40
 // reste une zone droppable à part entière (surbrillance `kb-over` incluse).
 function StageColumn({ col, collapsed, onToggleCollapse, children }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key })
-  // Prévisionnel pondéré : total devis × probabilité de l'étape.
-  const forecast = col.totalDevis * (STAGE_PROBABILITY[col.key] ?? 0)
+  // Prévisionnel pondéré : total devis × probabilité SERVIE de l'étape (AANA67).
+  const probas = useProbabilitesEtape()
+  const forecast = ponderer(probas, col.key, col.totalDevis)
   const chevronLabel = collapsed
     ? `Déplier la colonne ${col.label}`
     : `Replier la colonne ${col.label}`
@@ -191,15 +176,17 @@ function StageColumn({ col, collapsed, onToggleCollapse, children }) {
         </div>
         {/* LB9 — une SEULE rangée « total MAD · Prév. pondéré » (au lieu de
             deux lignes empilées) ; le tooltip explique la pondération
-            STAGE_PROBABILITY importée de plus haut (jamais une seconde table).
+            la table SERVIE (useProbabilitesEtape — jamais une table locale).
             APX6 — la somme porte explicitement `.num` (typographie de données)
             et s'aligne à DROITE de l'en-tête. */}
         {!collapsed && col.totalDevis > 0 && (
           <span
             className="kb-col-money num"
-            title={`Prévisionnel pondéré à ${Math.round((STAGE_PROBABILITY[col.key] ?? 0) * 100)} % (probabilité de conversion à cette étape)`}
+            title={probas
+              ? `Prévisionnel pondéré à ${Math.round((probas[col.key] ?? 0) * 100)} % (probabilité de conversion à cette étape)`
+              : 'Prévisionnel pondéré indisponible'}
           >
-            {formatMAD(col.totalDevis)} · Prév. {formatMAD(forecast)}
+            {formatMAD(col.totalDevis)} · Prév. {forecast == null ? '—' : formatMAD(forecast)}
           </span>
         )}
       </header>

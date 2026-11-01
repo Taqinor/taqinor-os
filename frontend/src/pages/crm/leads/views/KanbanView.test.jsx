@@ -16,7 +16,8 @@ describe('KanbanView · StageMover — SUPPRIMÉ (ordre fondateur 2026-08-02)', 
     const mod = await import('./KanbanView')
     expect(mod.StageMover).toBeUndefined()
     // Le module garde ses exports légitimes.
-    expect(mod.STAGE_PROBABILITY).toBeTruthy()
+    // AANA67 — la table locale de probabilités n'existe plus (table SERVIE).
+    expect(mod.STAGE_PROBABILITY).toBeUndefined()
     expect(mod.default).toBeTypeOf('function')
   })
 })
