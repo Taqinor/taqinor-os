@@ -29,32 +29,17 @@ def _variant_total_ttc(frere):
     (``compte_dans_totaux`` — donc jamais une option non activée ni une ligne
     de section/note) → remise globale → TVA **par ligne** → TTC au centime.
 
-    L'option retenue est celle que porte le total d'affichage canonique
-    (``builder.display_total`` / ``utils.options.totaux_affichage_repli``,
-    LANE CHOIX-AVEC du 25/08) : sur un devis à DEUX options c'est l'option
-    AVEC batterie — jamais la somme des deux, un montant qui n'existe dans
-    aucun document. Le prédicat utilisé est le prédicat LÉGER
-    (``deux_options_declarees``) : la bande des variantes ne doit pas payer un
-    rendu PDF complet par frère, et un moteur en échec ne doit pas la faire
-    retomber silencieusement sur la somme des deux options.
+    ATOT42 — l'option retenue est CELLE QUE SUIT L'ARGENT de la sœur
+    (``option_totaux`` sans option → ``option_effective`` : option acceptée,
+    scénario mono, sinon l'option mise en avant — AVEC en résidentiel, SANS
+    pour un C&I, CIQ302) : le montant de la bande est celui que la page et le
+    PDF de cette sœur affichent déjà. Jamais la somme des deux paniers. Le
+    prédicat utilisé est LÉGER (``deux_options_declarees``) : la bande ne paie
+    pas un rendu PDF complet par frère.
     """
-    from ..utils.options import (
-        AVEC_BATTERIE, SANS_BATTERIE, deux_options_declarees,
-        filter_lines_for_option, option_totaux,
-    )
+    from ..utils.options import option_totaux
     lignes = list(frere.lignes.select_related('produit', 'devis').all())
-    if not deux_options_declarees(frere):
-        # Option unique / pompage / liste libre : tout le devis, comme la liste.
-        return option_totaux(frere, option='', lignes=lignes)['ttc']
-    avec = option_totaux(
-        frere, option='',
-        lignes=filter_lines_for_option(lignes, AVEC_BATTERIE))['ttc']
-    if avec:
-        return avec
-    # Panier « avec » sans total lisible → l'autre option, jamais un forfait.
-    return option_totaux(
-        frere, option='',
-        lignes=filter_lines_for_option(lignes, SANS_BATTERIE))['ttc']
+    return option_totaux(frere, lignes=lignes)['ttc']
 
 
 def _variant_summaries(devis) -> list:
@@ -98,8 +83,9 @@ def _variant_summaries(devis) -> list:
             # ``etude_params`` est chargé ici (et non différé) : le filtre de
             # gamme ci-dessous le lit sur chaque sœur — le différer coûterait
             # une requête par ligne.
-            .only('id', 'reference', 'version', 'note',
-                  'taux_tva', 'remise_globale', 'etude_params')
+            .only('id', 'reference', 'version', 'note', 'taux_tva',
+                  'remise_globale', 'etude_params', 'mode_installation',
+                  'option_acceptee')
         )
         # GAMMES — une sœur porteuse d'un libellé de gamme n'est PAS une
         # « autre taille » : elle est rendue par le bloc « gammes » (mode

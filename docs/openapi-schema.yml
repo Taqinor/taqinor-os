@@ -8419,7 +8419,7 @@ query_params:
   get /api/django/ventes/calendrier-reglementaire/: seuil statut validite
   get /api/django/ventes/clients/{client_id}/credit-warning/: montant_ttc
   get /api/django/ventes/courbes-iv/: defaut ordering page page_size recette search
-  get /api/django/ventes/dashboard/: end month start
+  get /api/django/ventes/dashboard/: end mine month start
   get /api/django/ventes/devis-lignes/: ordering page page_size search
   get /api/django/ventes/devis/: concevable entite lead ordering page page_size search statut
   get /api/django/ventes/devis/prefill-site/: client
@@ -9210,7 +9210,7 @@ query_params:
   get /api/v1/ventes/calendrier-reglementaire/: seuil statut validite
   get /api/v1/ventes/clients/{client_id}/credit-warning/: montant_ttc
   get /api/v1/ventes/courbes-iv/: defaut ordering page page_size recette search
-  get /api/v1/ventes/dashboard/: end month start
+  get /api/v1/ventes/dashboard/: end mine month start
   get /api/v1/ventes/devis-lignes/: ordering page page_size search
   get /api/v1/ventes/devis/: concevable entite lead ordering page page_size search statut
   get /api/v1/ventes/devis/prefill-site/: client

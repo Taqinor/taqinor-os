@@ -5,7 +5,7 @@ Déplacement pur ; `apps.crm.selectors` ré-exporte chaque nom (frontière
 inter-apps). N'importe jamais `.selectors` au niveau module.
 """
 from .clients_selectors import (
-    _devis_compte_comme_signe,
+    _devis_compte_comme_signe, _devis_en_vigueur_ids,
 )
 from .portee_selectors import (
     lead_signe_q, est_lead_signe, cles_numeros_lead,
@@ -256,6 +256,9 @@ def attribution_leads(company, debut=None, fin=None):
     if fin is not None:
         qs = qs.filter(date_creation__date__lte=fin)
     leads = list(qs.prefetch_related('devis').select_related('owner'))
+    # AANA76 — ventes en vigueur (VNT22) calculées UNE fois pour tous les leads.
+    en_vigueur = _devis_en_vigueur_ids(company, [lead.pk for lead in leads])
+    ttc_en_vigueur = _ttc_en_lot(en_vigueur, company)
 
     # Lead.Canal (TextChoices statique) : labels français prêts pour l'UI.
     # Un canal libre non listé (ex. valeur legacy) retombe sur sa propre clé.
@@ -264,12 +267,8 @@ def attribution_leads(company, debut=None, fin=None):
     def _ca_signe_lead(lead):
         total = Decimal('0')
         for devis in lead.devis.all():
-            if _devis_compte_comme_signe(devis):  # ACRM10
-                try:
-                    total += Decimal(str(devis.total_ttc or 0))
-                except Exception:
-                    logger.warning('%s : échec ignoré (dégradé)', '_ca_signe_lead', exc_info=True)
-                    continue
+            if _devis_compte_comme_signe(devis, en_vigueur):  # AANA75
+                total += ttc_en_vigueur.get(devis.pk, Decimal('0'))
         return total
 
     par_commercial = {}
@@ -399,6 +398,9 @@ def revenu_attribue_campagne(company, nom_campagne):
         Lead.objects.filter(
             company=company, is_archived=False, utm_campaign=nom_campagne,
         ).prefetch_related('devis'))
+    # AANA76 — ventes en vigueur (VNT22) calculées UNE fois, en lot.
+    en_vigueur = _devis_en_vigueur_ids(company, [lead.pk for lead in leads])
+    ttc_en_vigueur = _ttc_en_lot(en_vigueur, company)
     nb_signes = 0
     revenu = Decimal('0')
     for lead in leads:
@@ -407,13 +409,9 @@ def revenu_attribue_campagne(company, nom_campagne):
         if not est_lead_signe(lead):
             continue
         for devis in lead.devis.all():
-            if _devis_compte_comme_signe(devis):  # ACRM10
+            if _devis_compte_comme_signe(devis, en_vigueur):  # AANA75
                 signe_pour_ce_lead = True
-                try:
-                    revenu += Decimal(str(devis.total_ttc or 0))
-                except Exception:
-                    logger.warning('%s : échec ignoré (dégradé)', 'revenu_attribue_campagne', exc_info=True)
-                    continue
+                revenu += ttc_en_vigueur.get(devis.pk, Decimal('0'))
         if signe_pour_ce_lead:
             nb_signes += 1
     return {
@@ -959,3 +957,10 @@ def attribution_comparaison_devis(devis):
             for modele in ATTRIBUTION_MODELES
         },
     }
+
+
+def _ttc_en_lot(devis_ids, company):
+    """AANA76 — TTC des ventes en vigueur EN LOT (``ventes.selectors.montants_devis``,
+    requêtes constantes) au lieu d'un ``devis.total_ttc`` par devis (N+1)."""
+    from apps.ventes.selectors import montants_devis
+    return {pk: m['ttc'] for pk, m in montants_devis(devis_ids, company).items()}

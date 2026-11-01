@@ -174,6 +174,8 @@ DashboardQuoteToCashResponse = _ser('DashboardQuoteToCash', {
         'refuses': s.IntegerField(),
         'expires': s.IntegerField(),
         'taux_acceptation_pct': s.FloatField(allow_null=True),
+        'envoyes_periode': s.IntegerField(),
+        'acceptes_periode': s.IntegerField(),
         'valeur_pipeline': s.CharField(),
     }),
     'factures': _ser('DashboardFactures', {

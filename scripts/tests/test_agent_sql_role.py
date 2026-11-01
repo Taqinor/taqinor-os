@@ -94,6 +94,23 @@ class TestRoleAgentSql(unittest.TestCase):
             compose, r"(?i)GRANT\s+SELECT\s+ON\s+ALL\s+TABLES[^\n]*" + ROLE)
         self.assertIn("rls_roles.sql", compose)
 
+    def test_provisionnement_appele_apres_migrate(self):
+        """AANA64 — script présent, appelé après `migrate` dans les deux scripts,
+        variables actives dans .env.example."""
+        script = ROOT / "backend" / "db" / "provision_sql_agent_ro.sh"
+        self.assertTrue(script.is_file())
+        corps = script.read_text(encoding="utf-8")
+        self.assertIn("rls_roles.sql", corps)  # une seule source des GRANT
+        for nom in ("pile_locale.ps1", "deploy-prod.ps1"):
+            texte = (ROOT / "scripts" / nom).read_text(encoding="utf-8")
+            i_migrate = texte.index("manage.py migrate")
+            self.assertIn("provision_sql_agent_ro.sh", texte, nom)
+            self.assertGreater(texte.index("provision_sql_agent_ro.sh"),
+                               i_migrate, nom)
+        env = ENV_EXAMPLE.read_text(encoding="utf-8")
+        self.assertRegex(env, r"(?m)^SQL_AGENT_DB_USER=sql_agent_ro$")
+        self.assertRegex(env, r"(?m)^SQL_AGENT_DB_PASSWORD=\S+$")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ from rest_framework.fields import SkipField
 from core.champs_stricts import (
     ChaineStricte, ChampsStrictsSansDecimalMixin, DecimalSouple,
     DecimalStricte,
-    DecimalSoupleMixin, IdInconnu404Mixin,
+    DecimalSoupleMixin, IdInconnu404Mixin, TexteLie,
 )
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ListeJSON, ObjetJSON
@@ -165,6 +165,11 @@ class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
     produit_tva = _ProduitTva(
         source='produit.tva', max_digits=5, decimal_places=2,
         read_only=True, allow_null=True, default=None)
+
+    # AGNR56 — le NOM du produit lié (lecture seule ; jamais ``prix_achat``) :
+    # l'écran compte les panneaux d'un devis rouvert sans catalogue chargé.
+    produit_nom = TexteLie(
+        source='produit.nom', read_only=True, default=None, allow_null=True)
 
     # R2 (fondateur 28/10/2026) — groupe CLIENT de la ligne, calculé du
     # ``role_ci`` du PRODUIT (une seule source : ``moteur_ci.composition``) :

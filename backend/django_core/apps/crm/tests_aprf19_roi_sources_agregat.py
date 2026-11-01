@@ -100,4 +100,20 @@ class RoiSourcesAgregatTests(TestCase):
         # Montants multiples de 100 TTC : le palier ARRONDI-100
         # (argent.PAS_ARRONDI_DEVIS) ne les touche pas.
         self.assertEqual(ligne['signed_value_ttc'], 1200.0)
-        self.assertEqual(ligne['win_rate'], 50.0)
+        # AANA65 — 2 signés ÷ 3 leads non perdus (règle de taux_gain).
+        self.assertEqual(ligne['win_rate'], 66.7)
+
+    def test_win_rate_exclut_les_perdus(self):
+        self._lead_signe('site_web', 'mix', Decimal('1000'))
+        self._lead_signe('site_web', 'mix', Decimal('2000'), perdu=True,
+                         motif_perte='Prix')
+        Lead.objects.create(company=self.company, nom='Ouvert',
+                            canal='site_web', utm_campaign='mix',
+                            stage=stages.CONTACTED)
+        self._lead_signe('site_web', 'tout-perdu', Decimal('1000'),
+                         perdu=True, motif_perte='Prix')
+        lignes = {(r['canal'], r['utm_campaign']): r for r in self._get()}
+        # 1 signé, 1 perdu, 1 ouvert : 1 ÷ 2 non perdus = 50,0 (pas 33,3).
+        self.assertEqual(lignes[('site_web', 'mix')]['win_rate'], 50.0)
+        self.assertEqual(lignes[('site_web', 'mix')]['signed_count'], 1)
+        self.assertIsNone(lignes[('site_web', 'tout-perdu')]['win_rate'])

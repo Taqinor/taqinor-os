@@ -187,6 +187,7 @@ import PanneauAgricole from './generator/PanneauAgricole'
 // ATOT25 — désormais via `solar.lignesRemiseesParPanier` (répartition par panier).
 import { usePersistanceDevis } from '../../features/ventes/quote/hooks/usePersistanceDevis'
 import { normaliserNombreEntete } from '../../features/ventes/quote/etatDevis'
+import { lignesNonEnvoyees } from '../../features/ventes/quote/lignesEcran'
 import { useChargeurEdition } from '../../features/ventes/quote/hooks/useChargeurEdition'
 import { useRegistreOverrides } from '../../features/ventes/quote/hooks/useRegistreOverrides'
 import { useLignesEcran } from './generator/hooks/useLignesEcran'
@@ -1706,8 +1707,7 @@ export default function DevisGenerator({
         + (n.envoye == null ? 'non envoyé (nombre illisible)' : String(n.envoye).replace('.', ','))
     }
   }
-  const lignesQuantiteNulle = lines.filter(l => l.typeLigne !== 'section' && l.typeLigne !== 'note'
-    && l.produit && !(parseFloat(l.quantite) > 0) && (l.prixManuel || !l.compose))
+  const lignesQuantiteNulle = lignesNonEnvoyees(lines).quantiteNulle  // AGNR59 : LA définition d'AGNR58, composées comprises
   const avisQuantiteNulle = !lignesQuantiteNulle.length ? null
     : lignesQuantiteNulle.length === 1
       ? `1 ligne à quantité 0 ne sera pas enregistrée : ${lignesQuantiteNulle[0].designation || '—'}`

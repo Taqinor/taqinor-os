@@ -119,7 +119,9 @@ def _cle_commercial(devis):
     parameters=[
         qdate_ou_vide('start'), qdate_ou_vide('end'),
         OpenApiParameter('month', OpenApiTypes.STR, required=False,
-                         description='YYYY-MM', pattern=MOIS_OU_VIDE)],
+                         description='YYYY-MM', pattern=MOIS_OU_VIDE),
+        OpenApiParameter('mine', OpenApiTypes.STR, required=False,
+                         description='1 = devis du demandeur (created_by)')],
     responses={200: SH.DashboardQuoteToCashResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
@@ -141,7 +143,7 @@ def dashboard_quote_to_cash(request):
         "acceptes": int,
         "refuses":  int,
         "expires":  int,
-        "taux_acceptation_pct": float | null,  # acceptés / envoyés de la période × 100 (ADEV10)
+        "taux_acceptation_pct": float | null,  # + envoyes_periode / acceptes_periode (AANA59)
         "valeur_pipeline": str,   # TTC des devis envoyés encore ouverts
       },
       "factures": {
@@ -170,7 +172,7 @@ def dashboard_quote_to_cash(request):
     }
     """
     from .models import Devis, Facture
-    from .selectors import devis_en_jeu
+    from .selectors import devis_en_jeu, devis_envoyes_periode, taux_acceptation_periode
     # ENF11 — une période mal formée répond 400 (elle finissait en 500 :
     # ``date_creation__date__range=['abc', …]``).
     invalide = _periode_invalide(request.query_params)
@@ -283,17 +285,14 @@ def dashboard_quote_to_cash(request):
     # STOCK d'envoyés encore ouverts (un accepté n'y est plus) : 4 acceptés
     # pour 1 envoyé ouvert donnaient 400 %. Numérateur ⊂ dénominateur ⇒ le
     # taux reste entre 0 et 100 %. ``envoyes`` (stock ouvert) reste servi.
-    envoyes_periode_qs = devis_en_jeu(Devis.objects.filter(
-        company=company, date_envoi__date__range=[debut_p, fin_p]))
-    base_taux = envoyes_periode_qs.aggregate(
-        envoyes=Count('id'),
-        acceptes=Count('id', filter=Q(statut='accepte')),
-    )
-    n_envoyes_periode = base_taux['envoyes']
-    n_acceptes_periode = base_taux['acceptes']
+    mine = request.query_params.get('mine') in ('1', 'true')  # AANA59 — devis du demandeur
+    commercial_id = request.user.id if mine else None
+    taux = taux_acceptation_periode(company, debut_p, fin_p, commercial_id)
+    n_envoyes_periode, n_acceptes_periode = taux['envoyes'], taux['acceptes']
     factures_periode = (
-        envoyes_periode_qs.filter(statut='accepte', factures__isnull=False)
-        .distinct().count())
+        devis_envoyes_periode(company, date_debut=debut_p, date_fin=fin_p,
+                              commercial_id=commercial_id)
+        .filter(statut='accepte', factures__isnull=False).distinct().count())
 
     # ── DSO ──────────────────────────────────────────────────────────────────
     # DSO = encours (Σ montant_du) / facturé × jours de la période (AFAC53).
@@ -351,7 +350,9 @@ def dashboard_quote_to_cash(request):
             'acceptes': n_acceptes,
             'refuses': agg_devis['refuses'],
             'expires': agg_devis['expires'],
-            'taux_acceptation_pct': _pct(n_acceptes_periode, n_envoyes_periode),
+            'taux_acceptation_pct': taux['taux_pct'],
+            'envoyes_periode': n_envoyes_periode,
+            'acceptes_periode': n_acceptes_periode,
             'valeur_pipeline': str(round(float(valeur_pipeline), 2)),
         },
         'factures': {
@@ -364,8 +365,7 @@ def dashboard_quote_to_cash(request):
             'montant_encaisse': str(round(montant_encaisse, 2)),
         },
         'conversion': {
-            'devis_envoye_vers_accepte_pct': _pct(
-                n_acceptes_periode, n_envoyes_periode),
+            'devis_envoye_vers_accepte_pct': taux['taux_pct'],
             'devis_accepte_vers_facture_pct': _pct(devis_avec_facture, n_acceptes),
             'devis_envoye_vers_facture_pct': _pct(
                 factures_periode, n_envoyes_periode),

@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 import {
   lignesServeurVersEcran, lignesEcranVersPayload,
   baseLegaleManquante, erreursBaseLegaleServeur, sequenceGroupesClient,
-  deplacerDansSequence, bornesDeplacement,
+  deplacerDansSequence, bornesDeplacement, lignesEnvoyees, lignesNonEnvoyees,
 } from './lignesEcran.js'
 import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples.js'
 import { lireSourceGenerateur } from '../../../pages/ventes/DevisGeneratorSource.js'
@@ -327,4 +327,23 @@ test('R2 — Monter/Descendre sur la séquence affichée : [Coffret DC, Panneau,
   assert.deepEqual(cles(deplacerDansSequence(libres, 'f', -1)), ['c', 'f', 'p'])
   assert.deepEqual(bornesDeplacement(libres), [
     { haut: false, bas: true }, { haut: true, bas: true }, { haut: true, bas: false }])
+})
+
+// AGNR58 — le complément exact de `lignesEnvoyees`.
+test('lignes_non_envoyees_complement_exact', () => {
+  const a = { _key: 'a', produit: '', quantite: '2', prix_unit_ttc: '0', designation: 'Câble' }
+  const b = { _key: 'b', produit: '12', quantite: '0', compose: true, designation: 'Panneau' }
+  const c = { _key: 'c', produit: '', quantite: '1', designation: 'Pompe — prix à renseigner' }
+  const d = { _key: 'd', typeLigne: 'note', designation: '  ' }
+  const e = { _key: 'e', produit: '7', quantite: '3', designation: 'Onduleur' }
+  const lignes = [a, b, c, d, e]
+  const r = lignesNonEnvoyees(lignes)
+  assert.deepEqual(r.sansProduit.map(l => l._key), ['a', 'c'])
+  assert.deepEqual(r.quantiteNulle.map(l => l._key), ['b'])
+  assert.deepEqual(r.structuresVides.map(l => l._key), ['d'])
+  assert.deepEqual(lignesEnvoyees(lignes).map(l => l._key), ['e'])
+  const union = [...r.sansProduit, ...r.quantiteNulle, ...r.structuresVides, ...lignesEnvoyees(lignes)]
+  assert.deepEqual(union.map(l => l._key).sort(), ['a', 'b', 'c', 'd', 'e'])
+  // et le payload réellement envoyé = lignesEnvoyees
+  assert.equal(lignesEcranVersPayload(lignes).length, lignesEnvoyees(lignes).length)
 })

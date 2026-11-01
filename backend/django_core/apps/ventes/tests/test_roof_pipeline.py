@@ -431,13 +431,17 @@ class TestProposalMonthlyArrays(TestCase):
         (``estimation``) et ce drapeau était JETÉ : la page publiait une simple
         division par un forfait, présentée comme une mesure de consommation.
         La série part vide et la page masque le graphe — comme elle le fait
-        déjà pour un devis sans facture."""
+        déjà pour un devis sans facture. AGNR54 (niveau 8) : le repli devient la
+        résolution de l'étude (barème réel société ou grille nationale) ; ce
+        cas décrit un devis de niveau ≤ 7, qui garde sa page."""
         from apps.crm.models import Lead
+        from apps.ventes.domain.regles_calcul import REGLES_ECARTS_3110
         lead = Lead.objects.create(
             company=self.company, nom='SansBareme', client=self.devis.client,
             facture_hiver='875', ete_differente=False)   # aucun distributeur
         self.devis.lead = lead
-        self.devis.save(update_fields=['lead'])
+        self.devis.regles_calcul = REGLES_ECARTS_3110
+        self.devis.save(update_fields=['lead', 'regles_calcul'])
         resp = self._data()
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['monthly_consumption'], [])

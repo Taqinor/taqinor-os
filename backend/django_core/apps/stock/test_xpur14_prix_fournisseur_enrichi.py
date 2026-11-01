@@ -231,6 +231,32 @@ class TestExportImportXlsx(Xpur14Base):
             produit=autre_produit, fournisseur=self.fournisseur)
         self.assertEqual(autre_pf.prix_achat, Decimal('550'))
 
+    def test_import_sans_arrondi_ni_saut_muet(self):
+        """AANA71 — prix/palier à > 2 décimales, palier malformé, prix sans
+        SKU : une erreur de ligne chacun, rien d'écrit pour ces lignes."""
+        sku_b = Produit.objects.create(
+            company=self.company, nom='Produit B', sku='SKU-B',
+            prix_vente=Decimal('900'), prix_achat=Decimal('500'))
+        file_bytes = self._make_xlsx([
+            ['OND-XPUR14', 'A', '', 12.345, None, None, ''],
+            ['SKU-B', 'B', '', 10, None, None, '10:9.5;20:abc'],
+            ['', 'sans sku', '', 8, None, None, ''],
+            [None, None, None, None, None, None, None],
+        ])
+        for apercu in (True, False):
+            result = import_prix_fournisseur_xlsx(
+                self.company, self.fournisseur, file_bytes, apercu=apercu)
+            self.assertEqual(
+                [e['row'] for e in result['errors']], [2, 3, 4])
+            self.assertIn('plus de 2 décimales', result['errors'][0]['message'])
+            self.assertIn('« 20:abc »', result['errors'][1]['message'])
+            self.assertIn('SKU manquant', result['errors'][2]['message'])
+            self.assertEqual(result['created'], 0)
+        self.assertFalse(PrixFournisseur.objects.filter(
+            fournisseur=self.fournisseur).exists())
+        self.assertFalse(PalierPrixFournisseur.objects.filter(
+            prix_fournisseur__produit=sku_b).exists())
+
     def test_import_ne_supprime_jamais_silencieusement(self):
         # Un produit absent du fichier garde son tarif existant.
         PrixFournisseur.objects.create(

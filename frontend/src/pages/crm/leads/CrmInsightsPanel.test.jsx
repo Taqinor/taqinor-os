@@ -78,6 +78,18 @@ describe('CrmInsightsPanel (WR9 — FG39/FG34/FG28)', () => {
     expect(crmApi.getSlaBreach).toHaveBeenCalled()
   })
 
+  it('AANA65 — groupe tout perdu : taux nul servi → « — », jamais « ( %) »', async () => {
+    crmApi.getRoiSources.mockResolvedValueOnce({
+      data: [{
+        canal: 'salon', utm_campaign: '', lead_count: 4,
+        signed_count: 0, win_rate: null, signed_value_ttc: 0,
+      }],
+    })
+    renderWithStore(<CrmInsightsPanel />)
+    await waitFor(() => expect(screen.getByText('0 (—)')).toBeInTheDocument())
+    expect(screen.queryByText(/\( %\)/)).not.toBeInTheDocument()
+  })
+
   it('reste lisible quand les endpoints échouent', async () => {
     crmApi.getObjectifsAttainment.mockRejectedValueOnce(new Error('x'))
     crmApi.getRoiSources.mockRejectedValueOnce(new Error('x'))

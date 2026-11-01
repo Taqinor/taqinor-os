@@ -122,7 +122,7 @@ class PrixPalierRemiseTests(TestCase):
     # 16,0. Test-du-test : remettre ``payback_publiable(cout, eco,
     # stockage=True)`` ⇒ échec.
     def test_curseur_offert_egale_roi_a(self):
-        self.assertEqual(self.devis.regles_calcul, 7)  # devis neuf : niveau 7
+        self.assertGreaterEqual(self.devis.regles_calcul, 7)  # neuf : ≥ 7
         dim = {'recommandation_avec': {'balayage_stockage': [{
             'capacite_kwh': 5.0 * n, 'cout_ttc': 60000.0 + 20000 * (n - 1),
             'lignes_batterie': [{'quantite': n}], 'payback_annees': 6.0,

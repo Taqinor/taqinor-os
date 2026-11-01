@@ -108,6 +108,77 @@ class EcheancierTexteCasesTests(TestCase):
         self.assertEqual(sum(float(v) for v in termes.values()), 100)
         self.assertIn(f"Acompte à la commande : {cases['pct_a']}%", res)
 
+    def test_mixte_quatre_jalons_pct_derives_des_montants(self):
+        """AGNR52 (C-AGNR-VER-006) — échéancier mixte hors règle (6 000 MAD
+        + 40/20/10 % sur 17 000 TTC) : au niveau d'AGNR54, la puce CGV, le
+        marqueur ``{echeancier}`` et la page publique impriment les % du bloc
+        C&I (dernier au reliquat) à côté des montants servis (Σ = TTC) ; les
+        4 jalons reçoivent leurs branches en MAD ; niveau 7 : le texte d'hier.
+        Mutant : relire le % déclaré dans ``puce_echeancier_ci`` ⇒ échec."""
+        from apps.ventes.quote_engine import builder
+        from apps.ventes.quote_engine.ci.synthese import _echeancier as bloc_ci
+        from apps.ventes.quote_engine.clauses_cgv import _pct_txt, cgv_imprimees
+        from apps.ventes.domain.regles_calcul import (
+            REGLES_CONSO_PUBLIQUE_0111 as REGLES_ECHEANCIER_DERIVE)
+        from apps.ventes.quote_engine.montants import fmt_centimes
+        corps = [
+            {'libelle': 'Commande', 'type': 'acompte', 'unite': 'montant', 'pct_or_montant': 6000},
+            {'libelle': 'Livraison', 'jalon': 'livraison_materiel', 'unite': 'pct', 'pct_or_montant': 40},
+            {'libelle': 'MES', 'jalon': 'mise_en_service', 'unite': 'pct', 'pct_or_montant': 20},
+            {'libelle': 'Réception', 'jalon': 'reception_definitive', 'unite': 'pct', 'pct_or_montant': 10}]
+        textes = {}
+        for niveau in (REGLES_ECHEANCIER_DERIVE, REGLES_ECHEANCIER_DERIVE - 1):
+            self.n += 1
+            devis = make_devis(self.company, self.user, self.client_obj, [
+                ('Panneau mono 550W', '10', '1000', '10'),
+                ('Onduleur réseau Huawei 5kW', '1', '5000', '20')],
+                reference=f'DEV-AGNR52-{self.n}')
+            Devis.objects.filter(pk=devis.pk).update(
+                echeancier=corps, mode_installation='industriel', regles_calcul=niveau)
+            devis.refresh_from_db()
+            data = build_quote_data(devis, clean_pdf_options({'pdf_mode': 'full'}))
+            textes[niveau] = (
+                data, ' '.join(_texte(p) for p in cgv_imprimees(data)['puces']),
+                builder._marqueurs_cgv_ci(devis, '')['echeancier'],
+                _texte(' '.join(_conditions_publiques(data, devis) or [])))
+        data, puce, marqueur, publique = textes[REGLES_ECHEANCIER_DERIVE]
+        bloc = bloc_ci(data, 'sans')
+        self.assertEqual([j['pct'] for j in bloc], [35.29, 40, 20, 4.71])
+        self.assertAlmostEqual(sum(j['montant_ttc'] for j in bloc), 17000, places=2)
+        for j in bloc:
+            morceau = f"{_pct_txt(j['pct'])} % · {fmt_centimes(j['montant_ttc'])} MAD TTC"
+            for surface in (puce, marqueur, publique):
+                self.assertIn(morceau, surface)
+        self.assertNotIn(' 10 % ·', puce + marqueur)
+        cases = data['montants_tranches']['sans']
+        self.assertEqual(cases['acompte'], 6000.0)
+        self.assertAlmostEqual(cases['acompte'] + cases['solde2'], 17000, places=2)
+        data7, puce7, marqueur7, _publique7 = textes[REGLES_ECHEANCIER_DERIVE - 1]
+        self.assertTrue(data7.get('regles_echeancier_historique'))
+        self.assertNotIn('regles_echeancier_historique', data)
+        self.assertNotIn('% ·', puce7 + marqueur7)
+        self.assertIn('6000 MAD TTC', marqueur7)
+        self.assertNotEqual(data7['montants_tranches']['sans']['acompte'], 6000.0)
+
+    def test_agricole_cases_pct_derives_des_montants(self):
+        """AGNR52 — cases agricoles d'un [5 000 MAD ; 60 % ; 10 %] sur 20 000
+        TTC : 25 / 60 / 15 % à côté de 5 000 / 12 000 / 3 000 MAD (dernier au
+        reliquat) ; ``regles_echeancier_historique`` : les % servis d'hier."""
+        from apps.ventes.quote_engine.agricole import pages as agr
+        from apps.ventes.quote_engine.conditions_commerciales import (
+            repartition_paiement)
+        termes = {'acompte': 25, 'materiel': 60, 'solde': 10}
+        tranches = [{'unite': 'montant', 'valeur': 5000},
+                    {'unite': 'pct', 'valeur': 60}, {'unite': 'pct', 'valeur': 10}]
+        d = {'payment_terms': termes, 'totaux_all': {'ttc': 20000},
+             'montants_tranches': {'sans': repartition_paiement(20000, termes, tranches)}}
+        from apps.ventes.quote_engine.montants import fmt_centimes
+        cases = _texte(agr._echeancier(d, 'fr'))
+        for pct, montant in ((25, 5000), (60, 12000), (15, 3000)):
+            self.assertIn(f'{pct} % · {fmt_centimes(montant)} MAD', cases)
+        hier = _texte(agr._echeancier(dict(d, regles_echeancier_historique=True), 'fr'))
+        self.assertIn(f'10 % · {fmt_centimes(3000)} MAD', hier)
+
     def test_trois_tranches_par_defaut_inchangees(self):
         data, res, une_page, cgv, publiques = self._surfaces(self._devis())
         self.assertEqual(data['payment_terms'],

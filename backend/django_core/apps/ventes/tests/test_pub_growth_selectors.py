@@ -304,3 +304,28 @@ class VentesEnVigueurPubliciteTests(TestCase):
         # La V1 remplacée (sans batterie) n'est plus le devis d'origine.
         result = signed_clients_cross_sell_segments(self.company)
         self.assertEqual(result['sans_batterie'], [])
+
+    def test_controle_suivi_compte_une_vente_par_revision(self):
+        """AANA68 — « Contrôle du suivi » : V1 acceptée puis V2 acceptée = 1
+        vente ; une V1 acceptée révisée en V2 brouillon compte toujours 1."""
+        from datetime import date, timedelta
+
+        from apps.ventes.selectors import resultats_devis_periode
+        depuis = date(2026, 5, 1)
+        # Lead 1 (setUp) : V1 → V2 acceptées = 1 ; lead 2 : V1 acceptée, V2 brouillon.
+        lead2 = Lead.objects.create(company=self.company, nom='Lead AANA68')
+        v1 = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-6810',
+            client=self.client_obj, lead=lead2, taux_tva=Decimal('0'),
+            statut=Devis.Statut.ACCEPTE, date_acceptation=date(2026, 6, 1),
+            is_active=False)
+        v2 = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-6820',
+            client=self.client_obj, lead=lead2, taux_tva=Decimal('0'),
+            statut=Devis.Statut.BROUILLON)
+        Devis.objects.filter(pk=v1.pk).update(superseded_by=v2)
+        res = resultats_devis_periode(
+            self.company, [self.lead.id, lead2.id],
+            depuis=timezone.now() - timedelta(days=3650),
+            depuis_jour=depuis)
+        self.assertEqual(res['acceptes'], 2)

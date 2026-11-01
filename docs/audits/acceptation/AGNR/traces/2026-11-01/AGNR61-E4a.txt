@@ -1,0 +1,23 @@
+AGNR61-E4a — générateur : « Facture réelle » 150 MAD, création, réouverture, ré-enregistrement sans toucher (AGNR55, AGNR57)
+Pile : http://localhost, code b4923c7f1, front reconstruit ; demo_admin (Playwright MCP).
+
+Données : POST /api/django/crm/leads/ -> lead 3801 « AGNR61 rejeu facture reelle » (Casablanca, aucune facture).
+Écran /ventes/devis/nouveau : brouillon local proposé -> « Ignorer » ; Résidentiel ; lead 3801 ; Nombre de panneaux 8, Puissance 710 W ;
+« Auto-remplir depuis le stock » ; Distributeur ONEE ; « Facture réelle (MAD/mois) » = 150
+  -> « Consommation annuelle dérivée » = « 1 282 kWh/an », 5,68 kWp (capture AGNR61-E4a-facture-reelle-150-creation.png)
+« Créer le devis » -> POST /devis/atomic/ 201 (devis 2519, DEV-202611-0004) puis PATCH /devis/2519/etude-params/ 200
+  GET /devis/2519/ : etude_params.conso_annuelle = 1282, distributeur = onee, puissance_kwc 5.68, 14 lignes.
+
+Réouverture /ventes/devis/nouveau?edit=2519 :
+  « Consommation annuelle dérivée » = « 1 282 kWh/an » ; champ #gen-realbill (mode kWh) = « 106.83 » (centième, 1282/12) ; panneaux 8
+  (capture AGNR61-E4a-facture-reelle-150-reouvert.png)
+« Enregistrer » sans rien toucher -> POST /devis/2519/replace-lines/ (clés lignes, entete, etude_params, expected_updated_at) 200,
+  PATCH /devis/2519/etude-params/ corps conso_annuelle = 1282 -> 200 ; aucune réponse >= 400.
+Objet serveur avant / après (GET /devis/2519/) : conso_annuelle 1282 -> 1282 ; etude_params STRICTEMENT identique (JSON égal) ;
+  lignes identiques hormis leurs ids (replace-lines recrée les lignes : 14 diffs « lignes.N.id » seulement).
+Rechargement ?edit=2519 après l'enregistrement : « 1 282 kWh/an », champ 106.83.
+=> AGNR55 : 150 MAD ONEE enregistré à 1 282 se rouvre, s'affiche et se ré-enregistre à 1 282 (1 284 à la contre-visite).
+=> AGNR57 : créer, rouvrir, enregistrer sans toucher -> etude_params identique (corps envoyé = étude relue).
+
+Oracles : 1 PASS, 2 PASS, 3 PASS (0 console.error ; avertissements React seulement), 4 PASS (aucun alert/confirm/prompt ; un « beforeunload » de navigateur au départ d'un brouillon local non enregistré, accepté), 5 NA, 6 NA, 7 NA (écran interne), 8 PASS, 9 NA, 10 NA.
+Nettoyage (fin d'étape 4) : DELETE devis 2519 -> 204, client 2730 -> 204, lead 3801 -> 200 corbeille_id 40.

@@ -1,0 +1,9 @@
+AGNR61-E4d — générateur : réouverture d'un devis à échéancier figé, enregistrer sans toucher (AGNR60 — NON CONSTRUIT sur cette branche)
+Données : POST /devis/atomic/ -> devis 2518 (DEV-202611-0003, lead 3802), 8 x Panneau Canadien Solar 710W + onduleur ;
+PATCH /devis/2518/ echeancier = [Acompte 30 % ; Livraison du matériel 60 % ; Solde 10 %], chaque tranche avec fige_le « 2026-10-02T09:00:00+00:00 » -> 200, relu avec fige_le.
+Réouverture ?edit=2518 (panneaux 8) ; « Enregistrer » sans toucher -> POST /devis/2518/replace-lines/ 200 ; entete.echeancier envoyé SANS fige_le.
+Diff GET avant / après : echeancier.0/1/2.fige_le « 2026-10-02T09:00:00+00:00 » -> absent ; lignes.0/1.ligne_composee null -> true ; etude_params.recommended_option absent -> « Sans batterie ».
+Second enregistrement sans toucher après rechargement : aucun diff (stable une fois l'empreinte perdue).
+Verdict : FAIL — l'objet serveur n'est pas identique après ré-enregistrement (fige_le perdu) ; attendu tant qu'AGNR60 (echeancierEdition.js sans perte) n'est pas construit. Aucune tâche cochée par cette étape.
+Oracles : 1 PASS, 2 PASS, 3 PASS, 4 PASS, 5 NA, 6 NA, 7 NA, 8 PASS, 9 NA, 10 NA (l'échec est la clause de persistance de l'étape, hors oracles).
+Nettoyage : DELETE devis 2518 -> 204, client 2731 -> 204, lead 3802 -> 200 corbeille_id 41.

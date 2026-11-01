@@ -1,0 +1,11 @@
+AGNR61-E4b — générateur : réouverture d'un devis à panneaux renommés (AGNR56)
+Données : POST /crm/leads/ -> lead 3802 « AGNR61 rejeu reouverture » (Casablanca, facture_hiver 800) ;
+POST /devis/atomic/ -> devis 2516 (DEV-202611-0002), résidentiel brouillon : 12 x « Modules toiture sud » liés au produit 130 « Panneau mono 550W », 1 x Onduleur réseau Huawei 10kW Triphasé.
+GET /devis/2516/ (ligne servie) : {designation: « Modules toiture sud », produit: 130, produit_nom: « Panneau mono 550W », quantite 12.00} ; aucune clé prix_achat sur les lignes.
+Réouverture /ventes/devis/nouveau?edit=2516 : « Nombre de panneaux » = 12, « Puissance Panneau (W) » = 550, PV 6,60 kWp (capture AGNR61-E4b-panneaux-renommes-reouvert.png)
+  => nombre de panneaux = lignes (0 à la contre-visite, chargeur sans catalogue).
+« Enregistrer » sans toucher -> POST /devis/2516/replace-lines/ 200 (lignes envoyées : « Modules toiture sud » p=130 q=12, onduleur p=2325 q=1 ; AUCUNE clé produit_nom envoyée), PATCH etude-params 200 ; aucune réponse >= 400.
+Relu après : compte de panneaux identique (12), lignes identiques hormis ids.
+Observation hors oracle (devis né par l'API, pas par l'écran) : le premier ré-enregistrement pose ligne_composee null -> true sur les 2 lignes et etude_params.recommended_option absent -> « Sans batterie ».
+Oracles : 1 PASS, 2 PASS, 3 PASS, 4 PASS, 5 NA, 6 NA, 7 PASS (prix_achat absent des lignes servies), 8 PASS, 9 NA, 10 NA.
+Nettoyage : DELETE devis 2516 -> 204 (client 2731 et lead 3802 avec E4c/E4d).

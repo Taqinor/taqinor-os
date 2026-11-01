@@ -1,0 +1,44 @@
+AGNR61-E1 — dialogue PDF d'un devis industriel démo, « Devis Final » + « Acompte personnalisé » 6 000 (AGNR52)
+Pile : http://localhost, code b4923c7f1 (dev-all-c9d8cc-12), migrations ventes jusqu'à 0147 (niveau 8), EMAIL_BACKEND console vérifié avant le run.
+Connexion : demo_admin par /login (Playwright MCP).
+
+Données posées par l'API (supprimées en fin d'étape) :
+- client 2728 « AGNR61 rejeu industriel »
+- devis 2514 DEV-202611-0002, industriel, brouillon, POST /devis/atomic/ 201 :
+  Panneau Canadien Solar 710W 10 x 1 000 HT TVA 10 % ; Onduleur réseau Huawei 10kW 1 x 5 000 HT TVA 20 % => total_ttc 17000.00, regles_calcul 8
+  échéancier de départ tout-% : Commande 30 / Livraison 40 / MES 20 / Réception 10
+
+Écran /ventes/devis, ligne DEV-202611-0002, bouton PDF :
+- dialogue « Générer le PDF — DEV-202611-0002 », format « Document industriel (4 pages) »
+- coche « Devis Final (ajoute modalités de paiement + RIB) » puis « Acompte personnalisé » = 6000 (capture AGNR61-E1-dialogue-acompte-6000.png)
+- « Générer » => requêtes observées :
+  PATCH /api/django/ventes/devis/2514/ {"echeancier":[{"libelle":"Commande","type":"acompte","unite":"montant","pct_or_montant":6000,"jalon":"commande"},{"libelle":"Livraison","type":"materiel","unite":"pct","pct_or_montant":40,"jalon":"livraison_materiel"},{"libelle":"MES","type":"solde","unite":"pct","pct_or_montant":20,"jalon":"mise_en_service"},{"libelle":"Réception","type":"","unite":"pct","pct_or_montant":10,"jalon":"reception_definitive"}]}
+  POST /api/django/ventes/devis/2514/generer-pdf/ {"pdf_mode":"full","show_monthly":true,"devis_final":true,"include_etude":false,"include_calepinage":null}
+  GET etat-pdf/ x5 puis téléchargement automatique du PDF ; aucune réponse >= 400 enregistrée par l'écouteur de réponses.
+
+PDF téléchargé (PyMuPDF, texte complet : AGNR61-E1-pdf-industriel.txt, page 4 : AGNR61-E1-pdf-dialogue-p4.png) : 4 pages.
+Bloc « Échéancier de paiement » (page 4) :
+  35,29 % À la commande 5 999,30 MAD TTC
+  40 % À la livraison 6 800,00 MAD TTC
+  20 % À la mise en service 3 400,00 MAD TTC
+  4,71 % À la réception définitive 800,70 MAD TTC
+  Σ % = 100,00 ; Σ montants = 17 000,00 = TTC ; aucun montant négatif.
+La puce CGV échéancier n'est pas réimprimée dans ce PDF à côté des cartes (filtre CPDF10 `ci/blocs.py::bloc_conditions`, voulu).
+
+Puce CGV servie et marqueur cgv_ci, sur le même devis 2514 (manage.py shell, fonctions réelles, lecture seule ; sortie AGNR61-E1-surfaces-moteur.txt) :
+  cgv_imprimees(build_quote_data(devis, devis_final)).puces[1] = « Échéancier de paiement : Commande : 35.29 % · 5 999,30 MAD TTC ; Livraison : 40 % · 6 800,00 MAD TTC ; MES : 20 % · 3 400,00 MAD TTC ; Réception : 4.71 % · 800,70 MAD TTC »
+  _marqueurs_cgv_ci(devis)['echeancier'] = mêmes % et mêmes montants
+  bloc C&I (ci/synthese._echeancier) = [(35.29, 5999.3), (40, 6800), (20, 3400), (4.71, 800.7)]
+  => aucun « 10 % » déclaré imprimé ; % et montants identiques sur les trois surfaces.
+
+Variante cgv_ci imprimée dans un PDF : réglage société posé par l'API le temps du rendu
+  PATCH /api/django/parametres/document-templates/update/ cgv_par_mode={industriel:{titre:'Conditions générales AGNR61', bullets:['Paiement : {echeancier}','{tva_note}']}} -> 200
+  GET /api/django/ventes/devis/2514/proposal/?pdf_mode=full&devis_final=true -> 200 application/pdf, 4 pages (texte : AGNR61-E1-pdf-industriel-cgv_ci.txt, page 4 : AGNR61-E1-pdf-cgv_ci-p4.png)
+  « Conditions générales AGNR61 / Paiement : Commande : 35.29 % · 5 999,30 MAD TTC ; Livraison : 40 % · 6 800,00 MAD TTC ; MES : 20 % · 3 400,00 MAD TTC ; Réception : 4.71 % · 800,70 MAD TTC » = bloc de cartes de la même page
+  réglage remis à {} : PATCH -> 200, cgv_par_mode relu {}
+
+Oracles (qa-explorer 1-10, frontend/e2e/acceptation/_format.md) : 1 PASS (aucune réponse >= 500), 2 PASS (aucun 4xx sur action légitime ; le seul 404 console est le GET de vérification APRÈS suppression), 3 PASS (aucun console.error / pageerror pendant le parcours), 4 PASS (aucun alert/confirm/prompt), 5 NA, 6 PASS (PDF généré et /proposal 200, 4 pages), 7 PASS (prix_achat absent des deux PDF), 8 PASS (écran liste intact), 9 NA, 10 NA.
+Nettoyage : DELETE devis 2514 -> 204, DELETE client 2728 -> 204, GET devis 2514 -> 404.
+
+Non joué (AGNR49 non construit) : acompte 8 500 => génération arrêtée sur le 409 nommé.
+Observations hors oracle : l'acompte saisi 6 000 s'imprime 5 999,30 (montant dérivé du % arrondi 35,29, toutes surfaces) ; le dialogue réécrit `type` par position (« materiel », « solde », « ») sur des tranches qui n'en portaient pas (famille d'AGNR60, non construit).

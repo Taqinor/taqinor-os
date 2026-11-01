@@ -1,0 +1,12 @@
+AGNR61-E4c — générateur : ligne libre sans produit annoncée (AGNR58) et ligne composée passée à quantité 0 annoncée (AGNR59)
+Écran /ventes/devis/nouveau : brouillon local -> « Ignorer » ; lead 3802 ; 8 panneaux 710 W ; « Auto-remplir depuis le stock » (lignes composées par l'auto-remplissage).
+(AGNR59) ligne composée « Câble de terre Nexans 6 mm² (au mètre) » (quantité 40) passée à 0 :
+  avis affiché sous les lignes AVANT tout enregistrement : « 1 ligne à quantité 0 ne sera pas enregistrée : Câble de terre Nexans 6 mm² (au mètre) »
+  (capture AGNR61-E4e-ligne-composee-quantite-0.png) — la contre-visite n'annonçait pas une ligne composée.
+(AGNR58) « Ajouter ligne » : désignation « Câble », quantité 2, prix 0, aucun produit.
+« Créer le devis » : sous les lignes « 1 ligne sans produit ne sera pas enregistrée : Câble » + l'avis quantité 0 (capture AGNR61-E4c-ligne-libre-annoncee.png) ;
+  l'envoi part : POST /devis/atomic/ 201 (devis 2520, DEV-202611-0005) avec 13 lignes, sans « Câble » ni « Câble de terre » ; PATCH etude-params 200 ; aucune réponse >= 400.
+Persistance : GET /devis/2520/ -> 13 lignes, aucune ligne annoncée stockée ; réouverture ?edit=2520 -> ni « Câble » ni « Câble de terre », aucun avis.
+Contexte : le serveur refuse lui-même une ligne sans produit (POST /devis/atomic/ avec produit null -> 409 « Enregistrement échoué : Ligne sans produit valide. », appel de préparation de cette étape) : un devis à ligne libre ne peut pas exister côté serveur, la preuve P4.1 se joue donc à la saisie.
+Oracles : 1 PASS, 2 PASS (le 409 ci-dessus est un appel API de préparation, pas une action de l'écran), 3 PASS, 4 PASS, 5 NA, 6 NA, 7 NA, 8 PASS, 9 NA, 10 NA.
+Nettoyage : DELETE devis 2520 -> 204.
