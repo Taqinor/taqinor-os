@@ -1,5 +1,6 @@
 import logging
 from contextlib import contextmanager
+from django.core.exceptions import FieldDoesNotExist
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -519,7 +520,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         for nom, valeur in vd.items():
             try:
                 champ = Lead._meta.get_field(nom)
-            except Exception:  # noqa: BLE001 — champ non modèle (D-ENF22-BLE001)
+            except FieldDoesNotExist:  # champ non modèle (ENF15)
                 return True
             if getattr(champ, 'many_to_many', False):
                 actuel = set(getattr(old, nom).values_list('pk', flat=True))
