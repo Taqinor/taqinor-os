@@ -2,6 +2,7 @@ from django.core.validators import RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from core.champs_stricts import (
     MOTIF_SANS_NUL, ChaineStricte, ChampsStrictsSansDecimalMixin,
@@ -698,6 +699,17 @@ class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
             'token', 'telechargements', 'created_by', 'actif',
             'created_at', 'updated_at',
         ]
+
+    def is_valid(self, *, raise_exception=False):
+        """ASEC65 — document hors de portée : 404 « Document inconnu. »
+        (même message que `exiger_ecriture`), pas l'erreur brute de clé
+        primaire ; id d'une autre société et id inexistant restent identiques."""
+        try:
+            return super().is_valid(raise_exception=raise_exception)
+        except NotFound:
+            if 'document' in self.errors:
+                raise NotFound('Document inconnu.')
+            raise
 
     def get_fields(self):
         """ADOC6 — `document` borné aux documents VISIBLES de l'appelant
