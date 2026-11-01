@@ -56,7 +56,7 @@ COUPLES = {
     'FicheInterventionChampSerializer': ('template',),
     'FraisImportSerializer': ('dossier',),
     'InstallationSerializer': ('etape',),
-    'InterventionSerializer': ('installation',),
+    'InterventionSerializer': ('installation', 'devis_upsell_id'),  # ACHT120
     'KitComposantSerializer': ('kit',),
     'LandedCostLigneSerializer': ('dossier',),
     'LivraisonLigneSerializer': ('livraison',),
@@ -81,7 +81,7 @@ COUPLES = {
     'SerieEntrepotSerializer': ('bin', 'installation'),
 }
 COUPLES_COMMISSIONING = {
-    'CommissioningRecordSerializer': ('installation',),
+    'CommissioningRecordSerializer': ('installation', 'ventes_recette_id'),  # ACHT120
     'HandoverPackSerializer': ('installation',),
 }
 

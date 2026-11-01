@@ -378,7 +378,7 @@ class InterventionSerializer(InterventionGpsChampsMixin, IdInconnu404Mixin, Same
             'rdv_reschedule_count', 'arrivee_dans_fenetre',
             # api-fuzz full : horodatage de notification pose par le serveur
             # (service de cloture), jamais du corps (an 1194 -> offset LMT).
-            'cloturee_notifiee_le',
+            'cloturee_notifiee_le', 'devis_upsell_id',
         ]
 
     @extend_schema_field(serializers.IntegerField())
