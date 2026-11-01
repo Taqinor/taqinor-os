@@ -9,7 +9,8 @@ from ..openapi_helpers import INT, OBJET, P, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..importers.fiche_pan_ond import FichierIllisible, champs_a_ecrire, parse_pan_ond_bytes
 from ..models import FicheTechnique, Produit
-from ..serializers_fiche_technique import FicheTechniqueSerializer
+from ..erreurs_achats import ConflitEtat
+from ..serializers_fiche_technique import CODE_REFUS_ETAT, FicheTechniqueSerializer
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
@@ -61,6 +62,13 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
         if (self.action in ('create', 'update')
                 and (request.content_type or '').lower().startswith('multipart/')):
             raise UnsupportedMediaType(request.content_type)
+
+    def handle_exception(self, exc):
+        """Refus d'état du sérialiseur (code ``refus_etat`` : courbe non croissante,
+        masse sans notice) → 409 ; toute autre erreur de corps reste 400."""
+        if isinstance(exc, serializers.ValidationError) and _codes(exc.get_codes()) == {CODE_REFUS_ETAT}:
+            exc = ConflitEtat(exc.detail)
+        return super().handle_exception(exc)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -154,3 +162,12 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
             'confirme': True,
             'fiche': FicheTechniqueSerializer(fiche).data,
         })
+
+
+def _codes(codes):
+    """Ensemble des codes d'erreur DRF, aplati (dict / liste imbriqués)."""
+    if isinstance(codes, dict):
+        return set().union(*(_codes(v) for v in codes.values())) if codes else set()
+    if isinstance(codes, (list, tuple)):
+        return set().union(*(_codes(v) for v in codes)) if codes else set()
+    return {codes}

@@ -11,7 +11,6 @@ from rest_framework import serializers
 from apps.records.storage import AttachmentSerializerMixin, attachment_url
 from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
-from .erreurs_achats import ConflitEtat
 
 # Import DIRECT du module du modèle (pas la façade ``.models``) : sans cycle
 # (``models_fiche_technique`` n'importe rien de stock), et c'est ce que lit
@@ -21,6 +20,10 @@ from .erreurs_achats import ConflitEtat
 from .models_fiche_technique import (
     FicheTechnique, valider_courbe_irradiance, valider_courbe_rendement_onduleur)
 from .utils.params import UniciteEn409Mixin
+
+# Refus d'ÉTAT (règle croisée ou relue sur l'instance, que le schéma ne dit pas) :
+# erreur de champ ici (``is_valid`` reste un dict), 409 à l'API (vue).
+CODE_REFUS_ETAT = 'refus_etat'
 
 
 class FichierFacultatifField(serializers.FileField):
@@ -306,7 +309,7 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
         try:
             validateur(value)
         except DjangoValidationError as exc:
-            raise ConflitEtat({champ: exc.messages})
+            raise serializers.ValidationError({champ: exc.messages}, code=CODE_REFUS_ETAT)
         return value
 
     def validate_rendement_par_irradiance(self, value):
@@ -369,10 +372,10 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
         if masse is not None and not (notice.get('document') or '').strip():
             # Règle croisée (masse ↔ notice, relue sur l'instance en PATCH)
             # que le schéma ne dit pas : 409, plus un 400 sur un corps conforme.
-            raise ConflitEtat({
+            raise serializers.ValidationError({
                 'struct_notice': (
                     'Masse de structure saisie sans notice : renseignez le '
-                    'document fabricant (`struct_notice.document`).')})
+                    'document fabricant (`struct_notice.document`).')}, code=CODE_REFUS_ETAT)
         return attrs
 
     def to_representation(self, instance):
