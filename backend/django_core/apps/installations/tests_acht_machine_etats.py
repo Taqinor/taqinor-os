@@ -175,9 +175,13 @@ class MachineEtatsChantierTests(TestCase):
              .aggregate(t=Sum('quantite'))['t']), 10)
 
     def test_recul_reste_permis(self):
+        """Le recul d'UN rang passe ; depuis ACHT118 un recul de deux rangs
+        (En cours → Matériel commandé) est refusé comme l'écran le refuse."""
         Installation.objects.filter(pk=self.inst.pk).update(
             statut=Installation.Statut.EN_COURS)
         r = self._patch(Installation.Statut.MATERIEL_COMMANDE)
+        self.assertEqual(r.status_code, 409, r.data)
+        r = self._patch(Installation.Statut.PLANIFIE)
         self.assertEqual(r.status_code, 200, r.data)
 
     def test_recul_de_plus_d_un_rang_refuse(self):
