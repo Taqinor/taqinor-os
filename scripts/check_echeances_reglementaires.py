@@ -12,7 +12,10 @@ Constantes decouvertes (convention de nommage, pas une liste figee) dans
   - ``<NOM>_PERIODE = (date(debut), date(fin))``  -> fin de validite = ``fin`` ;
   - ``<NOM>_FIN_VALIDITE = date(...)`` / ``RELEVE_LE``-like : ``<NOM>_VALABLE_JUSQUAU``
     -> cette date ;
-  - ``MILLESIME_COURANT = AAAA``                  -> fin de validite = 31/12/AAAA.
+  - ``MILLESIME_COURANT = AAAA``                  -> fin de validite = 31/12/AAAA,
+    sauf si le meme fichier porte ``_MILLESIME_COURANT_VALABLE_JUSQUAU = date(...)``
+    (decision fondateur datee : le bareme reste en vigueur au-dela du 31/12) ->
+    cette date remplace le 31/12.
 
 Usage : python scripts/check_echeances_reglementaires.py [--date AAAA-MM-JJ]
 (0 = vert ; 1 = au moins une echeance dans la fenetre de 30 jours ou depassee).
@@ -64,6 +67,8 @@ def echeances(racine_moteur: Path = None) -> list[tuple[str, str, dt.date]]:
             arbre = ast.parse(chemin.read_text(encoding="utf-8"))
         except (SyntaxError, UnicodeDecodeError):
             continue
+        prolongation = None  # MILLESIME_COURANT_VALABLE_JUSQUAU du fichier
+        millesime = None
         for stmt in arbre.body:
             if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1:
                 continue
@@ -76,13 +81,18 @@ def echeances(racine_moteur: Path = None) -> list[tuple[str, str, dt.date]]:
                 fin = _date_litterale(valeur.elts[1])
                 if fin:
                     trouvees.append((rel, nom, fin))
+            elif nom == "_MILLESIME_COURANT_VALABLE_JUSQUAU":
+                prolongation = _date_litterale(valeur)
             elif nom.endswith(SUFFIXES_DATE):
                 fin = _date_litterale(valeur)
                 if fin:
                     trouvees.append((rel, nom, fin))
             elif nom == "MILLESIME_COURANT" and isinstance(valeur, ast.Constant) \
                     and isinstance(valeur.value, int):
-                trouvees.append((rel, nom, dt.date(valeur.value, 12, 31)))
+                millesime = (rel, nom, dt.date(valeur.value, 12, 31))
+        if millesime:
+            rel_m, nom_m, fin_m = millesime
+            trouvees.append((rel_m, nom_m, prolongation or fin_m))
     return trouvees
 
 

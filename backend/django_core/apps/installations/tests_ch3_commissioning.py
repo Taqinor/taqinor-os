@@ -180,6 +180,17 @@ class CommissioningApiTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(r2.data['id'], rid)
 
+    def test_patch_ventes_recette_id_ignore(self):
+        """ACHT120 — `ventes_recette_id` en lecture seule : PATCH ignoré."""
+        inst = make_installation(self.company)
+        rec = ensure_commissioning_record(inst, self.user)
+        r = self.api.patch(
+            f'{BASE}/recettes-commissioning/{rec.id}/',
+            {'ventes_recette_id': 999999}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        rec.refresh_from_db()
+        self.assertIsNone(rec.ventes_recette_id)
+
     def test_maj_resultat_et_iv(self):
         inst = make_installation(self.company)
         rec = ensure_commissioning_record(inst, self.user)

@@ -26,7 +26,7 @@ import { frErrForm } from '../../lib/frErr'
 import CellulesProduitQuantite from './CellulesProduitQuantite'
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
-import { parseSeries } from './numerosSerie.js'
+import { parseSeries, erreurComptageSeries } from './numerosSerie.js'
 
 const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
@@ -109,11 +109,7 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   // Erreur de comptage des séries d'une ligne (jamais d'ajustement silencieux).
   const erreurSeries = (l) => {
     const qte = Math.min(Math.floor(Number(saisies[l.id])), resteLigne(l))
-    const nb = parseSeries(series[l.id]).length
-    if (nb > 0 && nb > (Number.isFinite(qte) && qte > 0 ? qte : 0)) {
-      return `${nb} n° de série saisis pour ${Number.isFinite(qte) && qte > 0 ? qte : 0} reçu(s) : retirez-en ${nb - (Number.isFinite(qte) && qte > 0 ? qte : 0)}.`
-    }
-    return null
+    return erreurComptageSeries(series[l.id], qte)
   }
 
   const submit = async (confirmer) => {

@@ -1,7 +1,8 @@
 """ACHT7 (C-ACHT-006) — un chantier ANNULÉ rattaché à une V2 garde la
 nomenclature V1 (le réalignement ASTK177 l'ignore tant qu'il est annulé) :
 `reactiver` (et `reserver-stock`) le réalignent sur la V2 avant de réamorcer
-les réservations.
+les réservations. ACHT114 (C-ACHT-VER-005) : la ré-acceptation d'un devis
+dés-accepté (lead sorti de « Signé ») réaligne de même.
 
 Rejoue CCRE-7 : V1 (10 panneaux + 1 onduleur) → chantier → annuler ; V2
 (14 panneaux + 1 batterie, sans onduleur) acceptée ; POST reactiver. ROUGE
@@ -15,11 +16,13 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
+import apps.crm.stages as stages
 from apps.crm.models import Client, Lead
 from apps.installations.models import (
     Installation, InstallationActivity, StockReservation,
@@ -140,3 +143,59 @@ class ReactivationV2Tests(TestCase):
         r = self.api.post(self._url('reserver-stock'), {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self._attendu_v2()
+
+    def test_reacceptation_apres_sortie_signe_realigne(self):
+        """ACHT114 — sonde C-ACHT-VER-005 rejouée par HTTP : accepter (PAN
+        10) → lead sorti de « Signé » → ligne 10 → 14 → ré-accepter."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Ré-accept', prenom='Client',
+            stage=stages.FOLLOW_UP, type_installation='residentiel')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ACHT114-1',
+            client=self.v1.client, lead=lead, statut=Devis.Statut.ENVOYE,
+            date_envoi=timezone.now(), taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.panneau, designation='Panneau',
+            quantite=Decimal('10'), prix_unitaire=Decimal('100'))
+
+        def accepter():
+            r = self.api.post(f'/api/django/ventes/devis/{devis.id}/accepter/',
+                              {'nom': 'M. Client'}, format='json')
+            self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+
+        def sortir_de_signe():
+            r = self.api.patch(
+                f'/api/django/crm/leads/{lead.id}/',
+                {'stage': stages.FOLLOW_UP, 'confirme_recul': True},
+                format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+
+        def notes_realignement():
+            return InstallationActivity.objects.filter(
+                installation=self.inst,
+                body__contains='nomenclature réalignée sur DEV-ACHT114-1 '
+                               'à la ré-acceptation').count()
+
+        accepter()
+        self.inst = Installation.objects.get(devis=devis)
+        self.assertEqual(self._bom(), {self.panneau.id: 10.0})
+        sortir_de_signe()
+        self.inst.refresh_from_db()
+        self.assertTrue(self.inst.annule)
+        LigneDevis.objects.filter(devis=devis).update(quantite=Decimal('14'))
+        accepter()
+        chantiers = Installation.objects.filter(devis=devis)
+        self.assertEqual(chantiers.count(), 1)
+        self.assertFalse(chantiers.get().annule)
+        self.assertEqual(self._bom(), {self.panneau.id: 14.0})
+        self.assertEqual(self._actives(), {self.panneau.id: 14})
+        self.assertEqual(notes_realignement(), 1)
+        # Idempotent : nouvelle sortie + ré-acceptation SANS changement de
+        # ligne → nomenclature inchangée, aucune nouvelle note, réservations
+        # réamorcées à l'identique.
+        sortir_de_signe()
+        accepter()
+        self.assertEqual(self._bom(), {self.panneau.id: 14.0})
+        self.assertEqual(self._actives(), {self.panneau.id: 14})
+        self.assertEqual(notes_realignement(), 1)

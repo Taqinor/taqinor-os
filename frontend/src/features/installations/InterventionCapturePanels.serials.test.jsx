@@ -160,4 +160,23 @@ describe('SerialsPanel — séries attendues (revue chantier 26/10/2026)', () =>
     expect((await screen.findByRole('alert')).textContent).toBe(
       'N° de série déjà relevé.')
   })
+
+  it('ACHT117 — intervention terminée : 409 affiché, motif saisi, renvoi avec motif', async () => {
+    const user = userEvent.setup()
+    api.getSerials.mockResolvedValue({ data: [
+      { id: 7, designation: 'Onduleur', numero_serie: 'INV-9' }] })
+    api.supprimerSerial
+      .mockRejectedValueOnce({ response: { status: 409, data: {
+        detail: 'Intervention terminée : indiquez le motif de la suppression.' } } })
+      .mockResolvedValueOnce({ status: 204 })
+    render(<SerialsPanel intervention={INTERVENTION} />)
+    await user.click(await screen.findByTitle('Supprimer'))
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Intervention terminée : indiquez le motif de la suppression.')
+    expect(api.supprimerSerial.mock.calls[0]).toEqual([12, 7, undefined])
+    await user.type(screen.getByLabelText('Motif de la suppression'), 'Doublon')
+    await user.click(screen.getByRole('button', { name: 'Supprimer avec ce motif' }))
+    await waitFor(() => expect(api.supprimerSerial).toHaveBeenCalledTimes(2))
+    expect(api.supprimerSerial.mock.calls[1]).toEqual([12, 7, 'Doublon'])
+  })
 })

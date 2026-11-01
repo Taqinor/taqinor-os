@@ -53,6 +53,20 @@ test('buildReceptionPayload : plafonne au reste, ignore <=0', () => {
   ])
 })
 
+test('buildReceptionPayload transmet séries et lot', () => {
+  const lignes = [{ id: 1, quantite: 3, quantite_recue: 0 }, { id: 2, quantite: 5, quantite_recue: 0 }]
+  assert.deepEqual(
+    buildReceptionPayload(lignes, { 1: 3, 2: 5 }, {
+      1: { numeros_serie: ['S1', 'S2', 'S3'], numero_lot: '' },
+      2: { numeros_serie: [], numero_lot: ' L-42 ' },
+    }),
+    [
+      { ligne: 1, quantite: 3, numeros_serie: ['S1', 'S2', 'S3'] },
+      { ligne: 2, quantite: 5, numero_lot: 'L-42' },
+    ],
+  )
+})
+
 test('penuries : filtre manque > 0', () => {
   const items = [
     { sku: 'A', manque: 7 },

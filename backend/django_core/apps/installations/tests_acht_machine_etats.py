@@ -175,7 +175,30 @@ class MachineEtatsChantierTests(TestCase):
              .aggregate(t=Sum('quantite'))['t']), 10)
 
     def test_recul_reste_permis(self):
+        """Le recul d'UN rang passe ; depuis ACHT118 un recul de deux rangs
+        (En cours → Matériel commandé) est refusé comme l'écran le refuse."""
         Installation.objects.filter(pk=self.inst.pk).update(
             statut=Installation.Statut.EN_COURS)
         r = self._patch(Installation.Statut.MATERIEL_COMMANDE)
+        self.assertEqual(r.status_code, 409, r.data)
+        r = self._patch(Installation.Statut.PLANIFIE)
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_recul_de_plus_d_un_rang_refuse(self):
+        """ACHT118 (C-ACHT-VER-009) — miroir de `canMoveStatus` : un recul
+        de plus d'un rang est refusé (409, statut et chatter inchangés) ; le
+        recul d'un rang passe. Le recul depuis Clôturé reste à AUD326."""
+        Installation.objects.filter(pk=self.inst.pk).update(
+            statut=Installation.Statut.RECEPTIONNE)
+        notes = self.inst.activites.count()
+        r = self._patch(Installation.Statut.SIGNE)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('Passage de Réceptionné à Signé refusé : un pas à la '
+                      'fois.', str(r.data))
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.statut, Installation.Statut.RECEPTIONNE)
+        self.assertEqual(self.inst.activites.count(), notes)
+        r = self._patch(Installation.Statut.INSTALLE)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.statut, Installation.Statut.INSTALLE)

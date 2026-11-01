@@ -26,6 +26,24 @@ class EcheancesRealesTests(unittest.TestCase):
         self.assertTrue(any(e.startswith("ANRE_PERIODE") and "28/02/2027" in e and "re-sourcer" in e
                             for e in erreurs), erreurs)
 
+    def test_millesime_prolonge_au_28_02_2027(self):
+        # D-ONEE-2027 (fondateur, 01/11/2026) : bareme 2026 en vigueur jusqu'a la
+        # refonte ANRE (1er cycle tarifaire jusqu'au 28/02/2027).
+        fins = {nom: fin for _rel, nom, fin in cer.echeances()}
+        self.assertEqual(fins["MILLESIME_COURANT"], dt.date(2027, 2, 28))
+        self.assertEqual(cer.verifier(dt.date(2026, 11, 1)), [])
+
+    def test_prolongation_remplace_le_31_12(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "b.py").write_text(
+                "import datetime as _dt\nMILLESIME_COURANT = 2026\n"
+                "_MILLESIME_COURANT_VALABLE_JUSQUAU = _dt.date(2027, 2, 28)\n", encoding="utf-8")
+            self.assertEqual(cer.echeances(Path(d)),
+                             [("b.py", "MILLESIME_COURANT", dt.date(2027, 2, 28))])
+            Path(d, "b.py").write_text("MILLESIME_COURANT = 2026\n", encoding="utf-8")
+            self.assertEqual(cer.echeances(Path(d)),
+                             [("b.py", "MILLESIME_COURANT", dt.date(2026, 12, 31))])
+
     def test_vert_au_08_10_2026(self):
         self.assertEqual(cer.verifier(dt.date(2026, 10, 8)), [])
 

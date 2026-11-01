@@ -22,6 +22,7 @@ import {
   Button, Badge, Spinner, Checkbox, Input, Textarea, toast, ErrorBoundary,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
+import { apiErrorMessage } from '../../lib/apiError'
 import { withOfflineFallback, FIELD_OPS, queuePhoto } from './offline/fieldOutbox'
 import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
@@ -217,16 +218,16 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
       toast.error(autre ? String(autre) : 'Enregistrement impossible.')
     } finally { setBusy(false) }
   }
-  const remove = async (sid) => {
-    setBusy(true)
-    try { await installationsApi.supprimerSerial(id, sid); await load() }
-    catch { toast.error('Suppression impossible.') } finally { setBusy(false) }
-  }
+  const { remove, formulaire: motifForm } = useSuppressionMotif({
+    supprimer: (sid, m) => installationsApi.supprimerSerial(id, sid, m),
+    apres: load, setBusy,
+  })
 
   if (loading) return <PanelLoading label="numéros de série" />
   return (
     <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
+      {motifForm}
       {attendus && attendus.nb_attendus > 0 && (
         <div data-testid="serials-progression"
           className="flex flex-col gap-1 rounded border border-border p-2">
@@ -509,11 +510,10 @@ export function MemosPanel({ intervention, onChanged }) {
     } catch { toast.error('Micro indisponible.') }
   }
   const stop = () => { recorder.current?.stop(); setRecording(false) }
-  const remove = async (mid) => {
-    setBusy(true)
-    try { await installationsApi.supprimerMemo(id, mid); await load() }
-    catch { toast.error('Suppression impossible.') } finally { setBusy(false) }
-  }
+  const { remove, formulaire: motifForm } = useSuppressionMotif({
+    supprimer: (mid, m) => installationsApi.supprimerMemo(id, mid, m),
+    apres: load, setBusy,
+  })
   const saveTranscript = async (mid, transcript) => {
     try { await installationsApi.modifierMemo(id, mid, transcript); await load() }
     catch { toast.error('Édition impossible.') }
@@ -523,6 +523,7 @@ export function MemosPanel({ intervention, onChanged }) {
   return (
     <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
+      {motifForm}
       {recording
         ? <Button size="sm" variant="destructive" onClick={stop}>
             <Square className="size-4" aria-hidden="true" /> Arrêter l'enregistrement
@@ -758,6 +759,47 @@ export function CodePanel({ intervention }) {
       <code className="text-[11px] text-muted-foreground">{data.token}</code>
     </div>
   )
+}
+
+/**
+ * ACHT117 — suppression d'une pièce de preuve. Intervention en cours : directe.
+ * Terminée/validée : le serveur répond 409 « indiquez le motif » → message
+ * affiché + champ de motif (composant, jamais window.prompt) → renvoi avec `motif`.
+ * `supprimer(ref, motif?)` appelle le wrapper ; `apres()` recharge.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useSuppressionMotif({ supprimer, apres, setBusy }) {
+  const [attente, setAttente] = useState(null) // { ref, message }
+  const [motif, setMotif] = useState('')
+  const envoyer = async (ref, m) => {
+    setBusy(true)
+    try {
+      await (m ? supprimer(ref, m) : supprimer(ref))
+      setAttente(null); setMotif('')
+      await apres()
+    } catch (err) {
+      if (!m && err?.response?.status === 409) {
+        setAttente({ ref, message: apiErrorMessage(err, 'Indiquez le motif de la suppression.') })
+      } else {
+        toast.error(apiErrorMessage(err, 'Suppression impossible.'))
+      }
+    } finally { setBusy(false) }
+  }
+  const remove = (ref) => envoyer(ref)
+  const formulaire = attente && (
+    <div className="flex flex-col gap-2 rounded border border-border p-2 text-sm" role="alert">
+      <span>{attente.message}</span>
+      <Input aria-label="Motif de la suppression" placeholder="Motif de la suppression"
+        value={motif} onChange={(e) => setMotif(e.target.value)} />
+      <div className="flex gap-2">
+        <Button size="sm" disabled={!motif.trim()}
+          onClick={() => envoyer(attente.ref, motif.trim())}>Supprimer avec ce motif</Button>
+        <Button size="sm" variant="outline"
+          onClick={() => { setAttente(null); setMotif('') }}>Annuler</Button>
+      </div>
+    </div>
+  )
+  return { remove, formulaire }
 }
 
 function PanelLoading({ label }) {
