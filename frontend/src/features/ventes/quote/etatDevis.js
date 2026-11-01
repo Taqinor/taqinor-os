@@ -136,8 +136,16 @@ export function entreesPompageEcran(etat) {
 }
 
 /** Le devis servi → l'état de l'écran d'Édition complète. */
-export function devisVersEtat(d, { bareme = null, produits = [] } = {}) {
+export function devisVersEtat(d, { bareme = null, produits: catalogue = [] } = {}) {
   const devis = d || {}
+  // AGNR56 — catalogue complété par `produit_nom` servi sur les lignes (lecture
+  // seule) : le chargeur `?edit=` n'a pas encore le catalogue ; celui de l'écran prime.
+  const produits = [...catalogue]
+  for (const l of devis.lignes ?? []) {
+    if (l?.produit && l.produit_nom && !produits.some(p => String(p.id) === String(l.produit))) {
+      produits.push({ id: l.produit, nom: l.produit_nom })
+    }
+  }
   const e = devis.etude_params || {}
   const mode = devis.mode_installation || undefined
   const lignes = lignesServeurVersEcran(devis.lignes ?? [], devis.taux_tva)

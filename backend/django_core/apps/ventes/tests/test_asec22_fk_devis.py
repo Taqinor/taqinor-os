@@ -136,6 +136,21 @@ class FkDevisSocieteTests(TestCase):
         self.assertIn('produit_tva', r.data)
         self.assertIsNone(r.data['produit_tva'])
 
+    def test_agnr56_ligne_sert_produit_nom_lecture_seule(self):
+        # AGNR56 : le nom du produit lié est servi (lu seul) ; sans produit : null.
+        ligne = LigneDevis.objects.create(
+            devis=self.devis_a, produit=self.produit_a, designation='Modules sud',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+        section = LigneDevis.objects.create(
+            devis=self.devis_a, designation='Section',
+            type_ligne=LigneDevis.TypeLigne.SECTION)
+        r = self.api.patch(f'{LIGNES}{ligne.id}/', {'designation': 'Modules bis'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['produit_nom'], self.produit_a.nom)
+        self.assertNotIn('prix_achat', r.data)
+        r = self.api.patch(f'{LIGNES}{section.id}/', {'designation': 'S2'}, format='json')
+        self.assertIsNone(r.data['produit_nom'])
+
     # ── LigneDevis.lot ──────────────────────────────────────────────────
     def test_ligne_lot_etranger_400(self):
         r = self._ligne(lot=self.lot_b.id)

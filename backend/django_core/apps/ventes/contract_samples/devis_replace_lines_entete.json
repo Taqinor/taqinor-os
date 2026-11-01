@@ -95,6 +95,7 @@
         "role_devis": "",
         "total_ht": "3000.00",
         "produit_tva": "20.00",
+        "produit_nom": "Coffret DC C&I",
         "groupe_client": "tableau_ci"
       },
       {
@@ -120,6 +121,7 @@
         "role_devis": "",
         "total_ht": "2000.00",
         "produit_tva": "20.00",
+        "produit_nom": "Smart Meter Huawei DTSU666-H 100 A (raccordement direct)",
         "groupe_client": "supervision_ci"
       },
       {
@@ -145,6 +147,7 @@
         "role_devis": "",
         "total_ht": "20000.00",
         "produit_tva": "20.00",
+        "produit_nom": "Pose des modules C&I",
         "groupe_client": "installation_ci"
       },
       {
@@ -170,6 +173,7 @@
         "role_devis": "panneau",
         "total_ht": "11600.00",
         "produit_tva": "10.00",
+        "produit_nom": "Panneau Canadien Solar 710W",
         "groupe_client": null
       }
     ]
