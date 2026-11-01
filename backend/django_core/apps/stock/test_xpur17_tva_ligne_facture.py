@@ -117,6 +117,26 @@ class TestSousTotauxParTaux(Xpur17Base):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data['sous_totaux_par_taux']), 1)
 
+    def test_patch_rend_produit_nom_dune_ligne_libre(self):
+        """api-fuzz PR #1184 (« Response violates schema ») : sur un PATCH
+        partiel, une ligne libre (produit vide) perdait ``produit_nom``
+        (``default=None`` sauté par DRF) ; la clé est servie, nulle."""
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-X17-4',
+            fournisseur=self.fournisseur,
+            montant_ht=Decimal('0'), montant_tva=Decimal('0'),
+            montant_ttc=Decimal('0'))
+        facture.lignes.create(
+            designation='0', quantite=0, prix_unitaire_ht=Decimal('0'),
+            taux_tva=Decimal('100'))
+        resp = self.api.patch(
+            f'/api/django/stock/factures-fournisseur/{facture.id}/',
+            {'ref_fournisseur': ''}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        ligne = resp.data['lignes'][0]
+        self.assertIn('produit_nom', ligne)
+        self.assertIsNone(ligne['produit_nom'])
+
 
 class TestFacturationReprendTauxProduit(Xpur17Base):
     def test_facturer_reception_reprend_taux_produit(self):

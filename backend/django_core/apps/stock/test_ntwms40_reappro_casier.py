@@ -214,3 +214,18 @@ class Ntwms40ApiTests(Ntwms40Base):
         res = auth(self.admin).post(
             '/api/django/stock/taches-reappro-interne/', corps, format='json')
         self.assertEqual(res.status_code, 201, res.content)
+
+    def test_patch_tache_sans_casier_source_rend_bin_source_code(self):
+        """api-fuzz PR #1184 (« Response violates schema ») : un PATCH partiel
+        d'une tâche SANS casier source sautait ``bin_source_code`` (source
+        pointillée + ``default``) ; la clé est servie, vide, comme au GET."""
+        tache = TacheReapproInterne.objects.create(
+            company=self.company, produit=self.produit, bin_cible=self.pick,
+            bin_source=None, quantite=0)
+        res = auth(self.admin).patch(
+            f'/api/django/stock/taches-reappro-interne/{tache.id}/',
+            {'produit': self.produit.id, 'bin_cible': self.pick.id,
+             'bin_source': None, 'quantite': 0}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data['bin_source_code'], '')
+        self.assertEqual(res.data['bin_cible_code'], 'P-01-01')

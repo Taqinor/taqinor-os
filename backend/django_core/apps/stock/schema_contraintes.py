@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 
-from core.champs_stricts import QUANTITE_MAX
+from core.champs_stricts import MOTIF_SANS_NUL, QUANTITE_MAX
 
 #: Un schéma de chaîne décimale « fait de chiffres » : au moins un chiffre de
 #: chaque côté du séparateur quand il y en a un (la regex de drf-spectacular en
@@ -51,6 +51,44 @@ PRODUIT_OU_DESIGNATION = {
 #: ``lim_phases`` (fiche limiteur) : 1, 3 ou vide (``validate_lim_phases``).
 PHASES_LIMITEUR = {'type': 'integer', 'enum': [1, 3, None], 'nullable': True,
                    'description': 'Limiteur — 1 ou 3 phases (vide = non publié).'}
+
+#: api-fuzz PR #1184 — champs JSON de la fiche technique, publiés « valeur
+#: quelconque » (un ``{}`` conforme était refusé 400). Leur FORME telle que
+#: ``FicheTechniqueSerializer`` l'applique : listes de textes sans caractère nul
+#: (``_liste_de_textes``), courbes = liste non vide de points aux clés
+#: numériques (``_valider_courbe``) ; ``""`` reste lu « non publié ». La
+#: croissance STRICTE de l'abscisse est une règle croisée que JSON Schema ne
+#: dit pas : description + 409 (comme ``courbe_pompe`` du produit).
+_VIDE_NON_PUBLIE = {'type': 'string', 'enum': ['']}
+_LISTE_TEXTES_FICHE = {'nullable': True, 'anyOf': [
+    {'type': 'array', 'items': {'type': 'string', 'pattern': MOTIF_SANS_NUL}},
+    _VIDE_NON_PUBLIE]}
+
+
+def _courbe_fiche(abscisse, ordonnee, serie=None, description=''):
+    proprietes = {abscisse: {'type': 'number'}, ordonnee: {'type': 'number'}}
+    if serie:
+        proprietes[serie] = {'type': 'number', 'nullable': True}
+    return {'nullable': True, 'description': description, 'anyOf': [
+        {'type': 'array', 'minItems': 1, 'items': {
+            'type': 'object', 'required': [abscisse, ordonnee],
+            'properties': proprietes}},
+        _VIDE_NON_PUBLIE]}
+
+
+FORMES_JSON_FICHE = {
+    'ond_compteurs_compatibles': _LISTE_TEXTES_FICHE,
+    'lim_marques': _LISTE_TEXTES_FICHE,
+    'log_marques': _LISTE_TEXTES_FICHE,
+    'rendement_par_irradiance': _courbe_fiche(
+        'w_m2', 'rendement_relatif_pct',
+        description='Points {w_m2, rendement_relatif_pct}, w_m2 STRICTEMENT '
+                    'croissant (sinon 409).'),
+    'ond_courbe_rendement': _courbe_fiche(
+        'charge_pct', 'rendement_pct', serie='tension_v',
+        description='Points {charge_pct, rendement_pct, tension_v?}, '
+                    'charge_pct STRICTEMENT croissant par tension (sinon 409).'),
+}
 
 #: Rendement en % borné à [1 ; 100] avec UNE décimale
 #: (``MinValueValidator(1)`` / ``MaxValueValidator(100)``, ``decimal_places=1``).
@@ -195,16 +233,18 @@ CONTRAINTES = {
     # ERR-ENF11-FUZZ-STOCK (CI #997) — fiche technique : les bornes que les
     # validateurs du modèle appliquent et qu'une chaîne décimale ne porte pas.
     # Rendements 1–100 % (1 décimale), C-rate ≥ 0,01, conso de nuit ≥ 0, `lim_phases` = 1 ou 3.
-    'FicheTechniqueRequest': {
+    # api-fuzz PR #1184 : mêmes bornes sur le corps multipart (PDF
+    # constructeur, ``FicheTechniqueMultipartSerializer``, sans champ JSON) ;
+    # le corps JSON publie en plus la forme de ses champs JSON.
+    **{nom: {
         'pourcentages_1_100': ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
         'montants_positifs': ['bat_c_rate_charge', 'bat_c_rate_decharge'],
         'montants_non_negatifs': ['ond_conso_nuit_w'],
-        'remplacer': {'lim_phases': PHASES_LIMITEUR}},
-    'PatchedFicheTechniqueRequest': {
-        'pourcentages_1_100': ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
-        'montants_positifs': ['bat_c_rate_charge', 'bat_c_rate_decharge'],
-        'montants_non_negatifs': ['ond_conso_nuit_w'],
-        'remplacer': {'lim_phases': PHASES_LIMITEUR}},
+        'remplacer': {'lim_phases': PHASES_LIMITEUR,
+                      **(FORMES_JSON_FICHE if 'Multipart' not in nom else {})}}
+       for nom in ('FicheTechniqueRequest', 'PatchedFicheTechniqueRequest',
+                   'FicheTechniqueMultipartRequest',
+                   'PatchedFicheTechniqueMultipartRequest')},
     'LigneFactureFournisseurRequest': {'motifs': {'taux_tva': MOTIF_TAUX_TVA_LIGNE}},
     # NTWMS12 — `mode` = ModeLiberation ; AUTO_SEUIL exige un seuil de lignes >= 1.
     'VagueConfigurerLiberationCorpsRequest': {
