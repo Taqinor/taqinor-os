@@ -1185,6 +1185,22 @@ def _combinaison_imposee(onduleurs_imposes, catalogue_onduleurs):
             'motif': None, 'alertes': [], 'hypotheses': []}
 
 
+def _consommation_retenue(res, tarif, alertes, hypotheses):
+    """AMOT104 — ``(conso, feuille retenue, registres MT, courbe mesurée)`` :
+    la feuille de ``_consommation``, sinon la courbe mesurée / les registres MT
+    quand ce sont eux qui chiffrent (``None`` sans consommation)."""
+    conso, feuille = _consommation(res, tarif, alertes, hypotheses)
+    registres = _registres_resolus(res)
+    mesuree = _courbe_mesuree_resolue(res.valeur('courbe_mesuree'), _aujourdhui().year - 1)
+    if conso is None and mesuree:
+        conso, feuille = round(sum(mesuree[0]), 3), 'courbe_mesuree'
+    if conso is None and registres:
+        from apps.ventes.moteur_ci.charge import POSTES_MT, _registre
+        conso = [sum(_registre(m, p) for p in POSTES_MT) for m in registres]
+        feuille = 'registres_mt'
+    return conso, feuille, registres, mesuree
+
+
 def _jours_types_de_charge(company, res, mode, categorie, rythme, mesuree, registres,
                            conso, production):
     """Extraction C20 d'``etudier_ci`` : ``(jours_types, provenance, alertes)`` de la
@@ -1330,15 +1346,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     if tarif.get('origine') == tarif_ci.ORIGINE_OMIS:
         alertes.append(_alerte('tarif_omis', 'tarif', tarif_ci.MENTION_OMIS,
                                niveau='bloquant'))
-    conso, feuille_retenue = _consommation(res, tarif, alertes, hypotheses)
-    registres = _registres_resolus(res)
-    mesuree = _courbe_mesuree_resolue(res.valeur('courbe_mesuree'), _aujourdhui().year - 1)
-    if conso is None and mesuree:
-        conso, feuille_retenue = round(sum(mesuree[0]), 3), 'courbe_mesuree'
-    if conso is None and registres:
-        from apps.ventes.moteur_ci.charge import POSTES_MT, _registre
-        conso = [sum(_registre(m, p) for p in POSTES_MT) for m in registres]
-        feuille_retenue = 'registres_mt'
+    conso, feuille_retenue, registres, mesuree = _consommation_retenue(
+        res, tarif, alertes, hypotheses)
     _garde_kwh_factures(res, tarif, alertes)
 
     site = res.valeur('site') or {}
