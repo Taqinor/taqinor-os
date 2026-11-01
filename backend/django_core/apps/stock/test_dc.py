@@ -568,6 +568,27 @@ class TestDC35FicheTechniqueAPI(DCBase):
                          {'application/json', 'multipart/form-data'})
         self.assertEqual(set(schema['paths']['/api/django/stock/fiches-techniques/'][
             'post']['requestBody']['content']), {'application/json'})
+        notice = schema['components']['schemas']['FicheTechniqueRequest'][
+            'properties']['struct_notice']
+        self.assertEqual(notice['type'], 'object')
+        self.assertFalse(notice['additionalProperties'])
+        self.assertEqual(set(notice['properties']), {'document', 'date', 'page'})
+
+    def test_notice_publiee_doublon_seul_409(self):
+        """api-fuzz stock (vague 8, rerun) — ``struct_notice`` conforme à sa
+        forme publiée passe la validation : le doublon de produit reste SEUL
+        et répond 409 ; une clé hors forme reste un 400."""
+        url = '/api/django/stock/fiches-techniques/'
+        notice = {'document': 'Notice', 'date': '2026-01-02', 'page': 3}
+        r = self.client.post(url, {'produit': self.produit.id,
+                                   'struct_notice': notice}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = self.client.post(url, {'produit': self.produit.id,
+                                   'struct_notice': {'document': ''}}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = self.client.post(url, {'produit': self.produit.id,
+                                   'struct_notice': {'x': 1}}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
 
     def test_queryset_scoped_to_company(self):
         from apps.stock.models import FicheTechnique

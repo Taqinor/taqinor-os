@@ -6,7 +6,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.records.storage import AttachmentSerializerMixin, attachment_url
-from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
+from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
 from .erreurs_achats import ConflitEtat
 
@@ -35,6 +35,22 @@ class FichierFacultatifField(serializers.FileField):
         return super().validate_empty_values(data)
 
 
+@extend_schema_field({
+    'type': 'object', 'nullable': True, 'additionalProperties': False,
+    'description': 'Provenance de la masse : {"document", "date", "page"} '
+                   '(vide ou null = non publiée).',
+    'properties': {
+        'document': {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+        'date': {'type': 'string', 'format': 'date', 'nullable': True},
+        'page': {'type': 'integer', 'nullable': True},
+    },
+})
+class NoticeStructure(serializers.JSONField):
+    """api-fuzz stock (vague 8, rerun) — ``struct_notice`` publié avec la forme
+    exacte qu'exige ``validate_struct_notice`` (objet {document, date, page},
+    rien d'autre) : un JSON quelconque était « conforme » puis refusé 400."""
+
+
 class FicheTechniqueSerializer(IdInconnu404Mixin,
                                UniciteEn409Mixin,
                                AttachmentSerializerMixin,
@@ -57,6 +73,10 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
         models.CharField: ChaineStricte,
         models.TextField: ChaineStricte,
     }
+    struct_notice = NoticeStructure(
+        required=False, allow_null=True,
+        help_text='Provenance de la masse : {"document": "", "date": null, '
+                  '"page": null}.')
 
     pdf = FichierFacultatifField(
         write_only=True, required=False, allow_null=True)
@@ -157,7 +177,6 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             'ond_compteurs_compatibles': {'allow_null': True},
             'lim_marques': {'allow_null': True},
             'log_marques': {'allow_null': True},
-            'struct_notice': {'allow_null': True},
         }
 
     @extend_schema_field(serializers.URLField(allow_null=True))
@@ -214,9 +233,9 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
                 "`struct_notice` n'accepte que `document`, `date` et `page` "
                 f"(reçu en trop : {', '.join(sorted(inconnues))}).")
         document = value.get('document') or ''
-        if not isinstance(document, str):
+        if not isinstance(document, str) or chr(0) in document:
             raise serializers.ValidationError(
-                '`struct_notice.document` doit être un texte.')
+                '`struct_notice.document` doit être un texte (sans caractère nul).')
         date = value.get('date') or None
         if date is not None:
             import datetime
