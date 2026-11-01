@@ -1,0 +1,17 @@
+== AMOT114 étape (2) — PDF industriel : kWh annuel déclaré + 12 factures relevées, puis courbe mesurée seule (AMOT104, AMOT105)
+Pile : idem étape (1) (backend a3141257d, EMAIL_BACKEND console, demo_admin). PDF rendu par GET /api/django/ventes/devis/<id>/proposal/ (seul chemin client, règle #4), texte extrait par PyMuPDF.
+(2a) Données : POST /crm/leads/ « AMOT114 rejeu kWh+factures » (industriel, MT, releve_conso source lu_sur_facture, 12 mois 2026-01..12 × 60 000 kWh) -> 201 lead 3796 ; POST /ventes/devis/2466/dupliquer/ -> 201 devis 2503 DEV-202611-0001 (industriel, regles_calcul 7, etude_params.consommation.kwh_annuel = 720 000) ; PATCH lead -> 200 (étude C&I rafraîchie à l'enregistrement).
+  etude_params.etude_ci.feuille_consommation_retenue = « kwh_annuel » (AMOT104) ; entrees_resolues : kwh_annuel (origine devis) + releve_kwh 12 mois (origine lead, detail « facture »).
+  build_quote_data + synthese_ci (manage.py shell) : baseline = {"source": "kwh_declares", "estimation": true} (attendu du test AMOT105 test_feuille_persistee_fait_foi ; avant AMOT105 : « factures »).
+  PDF : 200 application/pdf, 4 pages ; p1 « Votre consommation et votre production — d'après vos kWh déclarés » / « Consommation : 719 999 kWh/an · Production : 483 028 kWh/an » ; 0 occurrence de « facture(s) » sur les 4 pages (aucune ligne « 12 factures »).
+(2b) Données : POST /crm/leads/ « AMOT114 rejeu courbe seule » (sans aucune consommation) -> 201 lead 3797 ; dupliquer 2466 -> devis 2504 DEV-202611-0002 ; PATCH /ventes/devis/2504/etude-params/ consommation vidée + courbe_mesuree {8 760 points horaires, 120 kWh 7h-19h sinon 30 kWh, somme 657 000 kWh, debut 2025-01-01, source compteur} -> 200.
+  OBSERVATION (hors oracle AMOT114) : ce PATCH etude-params n'a PAS relancé l'étude C&I (empreinte 33bbae55da107f31 inchangée, feuille encore « kwh_annuel » héritée de la duplication) ; rafraîchissement forcé par manage.py shell `rafraichir_etude_ci_devis(devis, force=True)` — exactement le Given d'AMOT104 — -> feuille « courbe_mesuree », empreinte 34b52bb76004f572.
+  synthese_ci : baseline = {"source": "courbe_mesuree", "estimation": false} (avant AMOT105 : None « non résolue »).
+  PDF : 200, 4 pages ; p1 « Consommation : 657 000 kWh/an » (= somme de la courbe) et « Taux calculés heure par heure sur votre courbe de charge mesurée. » -> consommation dite.
+  OBSERVATION optionnelle : p1 imprime aussi « Facture électrique actuelle non communiquée — transmettez 12 mois de factures et votre consommation de référence se chiffre. » (industriel/cover.py::_factures n'exempte que la source kwh_declares) : la facture MAD est réellement absente, mais la fin de phrase contredit la consommation chiffrée juste en dessous. Hors périmètre d'AMOT105 (montant MAD, pas la source) — à trier.
+  OBSERVATION optionnelle : 2a imprime 719 999 kWh/an pour 720 000 déclarés (somme horaire).
+Oracles durs : réponses HTTP toutes attendues (201/200/204), aucun écran navigateur dans cette étape (PDF serveur) ; « prix_achat » absent des 2 PDF.
+Persistance : GET devis relus -> feuilles inchangées (kwh_annuel / courbe_mesuree) ; PDF re-rendus identiques sur les lignes contrôlées.
+Nettoyage : DELETE devis 2503, 2504 -> 204 (GET 404) ; DELETE leads 3796, 3797 -> 200 (GET 404).
+Captures : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E2a-pdf-industriel-p1.png, AMOT114-E2b-pdf-courbe-p1.png
+verdict : PASS

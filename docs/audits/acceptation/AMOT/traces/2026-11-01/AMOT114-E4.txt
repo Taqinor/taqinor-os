@@ -1,0 +1,14 @@
+== AMOT114 étape (4) — manage.py audit_coherence --no-persist sur la société démo (AMOT109)
+Pile : idem étape (1) ; conteneur erp-agentique-django_core-1 (code a3141257d). Société démo de demo_admin = Company 2, slug « taqinor-demo ».
+Commande 1 : python manage.py audit_coherence --company taqinor-demo --no-persist  -> exit 0, 63,3 s
+  sortie texte : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E4-audit_coherence.txt (en-tête + extrait ; la sortie texte n'énumère pas tout)
+Commande 2 : idem --json  -> exit 0 ; sortie complète : docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E4-audit_coherence.json
+  contrôlés : devis 142, facture 12 ; 150 violations (rien écrit) ; par règle : ETU_I5_FACTURE_ACTUELLE 62, CAL_KWC_DEVIS_VS_CALEPINAGE 47, CAL_MODULES_DEVIS_VS_CALEPINAGE 17, CAL_EMPREINTE_IMPRIMEE_PERIMEE 7, CRM_SIGNE_SANS_DEVIS_ACCEPTE 5, DOC_ACCEPTE_SANS_DATE 4, ETU_I7_BLOC_HORAIRE_PERIME 3, SEC_COMPTE_DEMO_ACTIF 2, DOC_VALIDITE_AVANT_CREATION 1, DOC_ECHEANCE_AVANT_EMISSION 1, FACTURE_STATUT_RESTE_INCOHERENT 1.
+  DOC_RENDU_SANS_MARGE : 0 (contre 1 522 faux positifs dans la trace de contre-visite docs/audits/acceptation/AMOT/traces/2026-10-30/C-AMOT-HXH-COHERENCE.txt citée par AMOT109).
+Commande 3 (preuve que la règle a tourné) : --rules DOC_RENDU_SANS_MARGE --json -> docs/audits/acceptation/AMOT/traces/2026-11-01/AMOT114-E4-audit_coherence-regle-marge.json : checked devis 142, violations 0, rule_errors 14.
+  Les 14 rule_errors (les mêmes dans les trois sorties) sont des QUOTE_BUILD « aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité) » sur des devis démo sans onduleur (DEV-DEMO-0004/0005, DEV-202610-0004/0018/0021/0035/0068/0069/0070/0079/0080/0081, DEV-ACHT123-REJEU-1/7) : données démo, préexistantes, sans rapport avec AMOT109 ; les 128 autres devis ont été rendus et contrôlés.
+  La démo contient des devis remisés (ex. DEV-202610-0119, remise 12,35 %) : la classe de faux positifs `pu_ttc_remise` / `total_ttc_remise` est donc exercée.
+Les autres violations (ETU_I5, CAL_*, …) appartiennent à d'autres règles/groupes et ne sont pas des oracles de cette étape.
+Oracles durs : commande en lecture seule (--no-persist : rien écrit), exit 0 ; aucun écran.
+Persistance : n/a (lecture seule) — deux exécutions complètes (texte et JSON) donnent le même compte (150 violations, 14 erreurs).
+verdict : PASS
