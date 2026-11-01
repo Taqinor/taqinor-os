@@ -9,3 +9,15 @@ export function parseSeries(texte) {
   }
   return out
 }
+
+// Règle de comptage des séries (écran Réceptions + réception rapide du BCF) :
+// jamais plus de séries que de quantités reçues, jamais d'ajustement silencieux.
+// `qte` = quantité reçue déjà plafonnée au reste (NaN/<=0 compte pour 0).
+export function erreurComptageSeries(texte, qte) {
+  const attendus = Number.isFinite(qte) && qte > 0 ? qte : 0
+  const nb = parseSeries(texte).length
+  if (nb > 0 && nb > attendus) {
+    return `${nb} n° de série saisis pour ${attendus} reçu(s) : retirez-en ${nb - attendus}.`
+  }
+  return null
+}

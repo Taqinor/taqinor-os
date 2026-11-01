@@ -38,14 +38,23 @@ export function estEntierementRecu(lignes = []) {
 }
 
 // Construit le payload `receptions` pour l'action recevoir : map ligneId→qté.
+// `traces` optionnel : { [ligneId]: { numeros_serie: [...], numero_lot } }.
 // Ignore les quantités nulles/négatives ; plafonne au reste dû (idempotence).
-export function buildReceptionPayload(lignes = [], saisies = {}) {
+export function buildReceptionPayload(lignes = [], saisies = {}, traces = {}) {
   const out = []
   for (const ligne of lignes) {
     const brut = Number(saisies[ligne.id])
     if (!Number.isFinite(brut) || brut <= 0) continue
     const qte = Math.min(Math.floor(brut), quantiteRestante(ligne))
-    if (qte > 0) out.push({ ligne: ligne.id, quantite: qte })
+    if (qte > 0) {
+      const item = { ligne: ligne.id, quantite: qte }
+      // ACHT122 — séries (déjà découpées) et lot par ligne, seulement si saisis.
+      const t = traces?.[ligne.id]
+      if (t?.numeros_serie?.length > 0) item.numeros_serie = t.numeros_serie
+      const lot = (t?.numero_lot ?? '').trim()
+      if (lot) item.numero_lot = lot
+      out.push(item)
+    }
   }
   return out
 }
