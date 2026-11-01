@@ -71,11 +71,14 @@ export function echeancierVersSaisie(echeancier) {
     const unite = MOTS_MONTANT.has(declaree) ? UNITE_MONTANT
       : declaree ? UNITE_PCT
         : (valeur > 100 ? UNITE_MONTANT : UNITE_PCT)
+    const libelle = t?.libelle || LIBELLES[i]?.[0] || `Tranche ${i + 1}`
+    const type = t?.type && !MOTS_MONTANT.has(String(t.type).toLowerCase())
+      ? t.type : (LIBELLES[i]?.[1] || '')
     return {
-      libelle: t?.libelle || LIBELLES[i]?.[0] || `Tranche ${i + 1}`,
-      type: t?.type && !MOTS_MONTANT.has(String(t.type).toLowerCase())
-        ? t.type : (LIBELLES[i]?.[1] || ''),
-      unite,
+      libelle, type, unite,
+      // AGNR60 — entrée serveur d'origine + valeurs de repli inventées pour
+      // l'affichage : `saisieVersEcheancier` les renvoie sans perte.
+      _origine: t, _invente: { libelle, type },
       valeur: String(t?.pct_or_montant ?? ''),
       // AGR220 — date facultative (AAAA-MM-JJ) relue telle que le serveur la sert.
       date_prevue: typeof t?.date_prevue === 'string' ? t.date_prevue : '',
@@ -93,12 +96,20 @@ export function echeancierVersSaisie(echeancier) {
 export function saisieVersEcheancier(saisie) {
   if (!Array.isArray(saisie)) return []
   return saisie.map((t) => {
-    const tranche = {
-      libelle: t.libelle,
-      type: t.type,
-      unite: t.unite === UNITE_MONTANT ? UNITE_MONTANT : UNITE_PCT,
-      pct_or_montant: nombre(t.valeur),
+    // AGNR60 — repart de l'entrée serveur : clés non éditées conservées telles
+    // quelles ; libellé / type / unité inventés pour l'affichage non réécrits.
+    const o = t._origine && typeof t._origine === 'object' ? t._origine : {}
+    const inv = t._invente || {}
+    const tranche = { ...o }
+    const unite = t.unite === UNITE_MONTANT ? UNITE_MONTANT : UNITE_PCT
+    if (o.libelle !== undefined || t.libelle !== inv.libelle) tranche.libelle = t.libelle
+    if (o.type !== undefined || t.type !== inv.type) tranche.type = t.type
+    tranche.unite = unite
+    if (!(nombre(o.pct_or_montant) === nombre(t.valeur) && 'pct_or_montant' in o)) {
+      tranche.pct_or_montant = nombre(t.valeur)
     }
+    for (const cle of ['date_prevue', 'jalon', 'payeur', 'delai_reglement_jours',
+      'semaines_indicatives']) delete tranche[cle]
     // AGR220 — `date_prevue` seulement si saisie (le serveur l'omet quand null :
     // enregistrer sans toucher redonne l'échéancier serveur à l'identique).
     const d = String(t.date_prevue ?? '').trim()
@@ -157,6 +168,16 @@ export function echeancierAvecAcompte(echeancier, montant, totalTtc, mode, effec
     const pctSolde = nombre(saisie[2].valeur)
     saisie[1] = { ...saisie[1],
                   valeur: String(Math.max(0, arrondi2(100 - pctSolde - pctAcompte))) }
+  } else if (saisie.length >= 2 && saisie.length !== 3 && total > 0) {
+    // AGNR51 — 2, 4 jalons ou plus : la DERNIÈRE tranche devient le reste en MAD
+    // (Σ = TTC, règle AGNR49) ; reste négatif ⇒ rien d'inventé, `erreurEcheancier` le nomme.
+    const milieu = saisie.slice(1, -1).reduce((s, t) => s + (t.unite === UNITE_MONTANT
+      ? nombre(t.valeur) : (nombre(t.valeur) / 100) * total), 0)
+    const reste = arrondi2(total - acompte - milieu)
+    if (reste >= 0) {
+      saisie[saisie.length - 1] = { ...saisie[saisie.length - 1],
+                                    unite: UNITE_MONTANT, valeur: String(reste) }
+    }
   }
   return saisieVersEcheancier(saisie)
 }

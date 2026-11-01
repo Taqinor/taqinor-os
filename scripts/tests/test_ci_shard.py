@@ -48,23 +48,23 @@ class DiscoveryTests(unittest.TestCase):
                         rel = os.path.relpath(os.path.join(dirpath, name),
                                               DJANGO_ROOT)
                         expected.add(rel.replace(os.sep, "/")[:-3].replace("/", "."))
-        # QAH4 — modules du paquet racine `tests/` ouverts UN PAR UN.
-        expected.update(ci_shard.TOP_LEVEL_MODULES)
         self.assertEqual(set(ci_shard.discover_units()), expected)
 
-    def test_explicit_top_level_modules_exist_and_are_sharded(self):
-        """QAH4 — un module de `tests/` liste explicitement doit exister : un
-        renommage le ferait sinon sortir du decoupage EN SILENCE (le gate
-        resterait vert sans jamais le lancer, exactement le defaut que ce
-        fichier existe pour empecher)."""
+    def test_tout_le_paquet_racine_tests_est_decouvert(self):
+        """ASEC57 — chaque `tests/test*.py` du paquet racine est une unite
+        (plus de liste figee : un module ajoute est decouvert sans toucher
+        ci_shard.py)."""
         units = set(ci_shard.discover_units())
-        for label in ci_shard.TOP_LEVEL_MODULES:
-            with self.subTest(module=label):
-                self.assertTrue(os.path.isfile(
-                    os.path.join(DJANGO_ROOT, *label.split(".")) + ".py"),
-                    f"{label} n'existe plus : mettez a jour TOP_LEVEL_MODULES")
-                self.assertIn(label, units)
-        self.assertIn("tests.test_tenant_sweep", ci_shard.TOP_LEVEL_MODULES)
+        racine = os.path.join(DJANGO_ROOT, "tests")
+        fichiers = [n[:-3] for n in os.listdir(racine)
+                    if n.startswith("test") and n.endswith(".py")]
+        self.assertGreaterEqual(len(fichiers), 11)
+        for nom in fichiers:
+            with self.subTest(module=nom):
+                self.assertIn("tests." + nom, units)
+        for nom in ("test_asec19_champs_serveur", "test_asec51_portail_defaut"):
+            self.assertIn("tests." + nom, units)
+        self.assertFalse(hasattr(ci_shard, "TOP_LEVEL_MODULES"))
 
     def test_every_unit_is_an_importable_dotted_path(self):
         """A dotted label only works if every directory on the way is a package."""

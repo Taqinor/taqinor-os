@@ -260,7 +260,10 @@ Devis → ventes_devis + ventes_lignedevis
 
 Factures → ventes_facture + ventes_lignefacture
   - statut : 'brouillon', 'emise', 'payee', 'en_retard', 'annulee'
-  - montant_ht / montant_ttc = montants HT / TTC ; reference, date_emission, date_echeance
+  - montant_ht / montant_ttc = montants figes des SEULES factures d echeancier,
+    NULL sur une facture classique : le CA facture HT/TTC n est stocke dans
+    aucune colonne, ne le calcule JAMAIS par SUM(montant_ht) ou SUM(montant_ttc)
+    et reponds qu il se lit dans l ecran Rapports ; reference, date_emission, date_echeance
 
 Chantiers (installations) → installations_installation
   - statut : 'signe', 'materiel_commande', 'planifie', 'en_cours',
@@ -289,7 +292,7 @@ Contrats de maintenance → sav_contratmaintenance
 EXEMPLES DE REQUETES CORRECTES :
 - Stock actuel : SELECT nom, quantite_stock FROM stock_produit ORDER BY quantite_stock DESC
 - Ruptures : SELECT nom, quantite_stock FROM stock_produit WHERE quantite_stock <= seuil_alerte
-- CA facturé HT : SELECT SUM(montant_ht) FROM ventes_facture WHERE statut IN ('emise','payee','en_retard')
+- Nombre de factures emises : SELECT COUNT(id) FROM ventes_facture WHERE statut IN ('emise','payee','en_retard')
 - Chantiers a planifier : SELECT reference FROM installations_installation \
 WHERE statut IN ('a_planifier','planifie')
 - Factures en retard : SELECT reference FROM ventes_facture \

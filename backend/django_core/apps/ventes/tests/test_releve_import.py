@@ -156,6 +156,41 @@ class TestReleveImport(_ReleveImportBase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['preview'][0]['statut'], 'montant_invalide')
 
+    def test_mode_inconnu_en_revue_jamais_virement(self):
+        """AANA69 — « traite » : mode_invalide (revue, non importable) ; vide :
+        virement SUPPOSÉ (mode_par_defaut) ; « chèque » : cheque."""
+        f1 = self._facture(ttc=Decimal('1000'))
+        f2 = self._facture(ttc=Decimal('2000'))
+        f3 = self._facture(ttc=Decimal('3000'))
+        csv_bytes = _make_csv([
+            {'date': '2026-06-20', 'reference': f1.reference, 'montant': '1000', 'mode': 'traite'},
+            {'date': '2026-06-20', 'reference': f2.reference, 'montant': '2000', 'mode': ''},
+            {'date': '2026-06-20', 'reference': f3.reference, 'montant': '3000', 'mode': 'chèque'},
+        ])
+        dry, commit = self._commit(csv_bytes)
+        prev = dry.data['preview']
+        self.assertEqual(prev[0]['statut'], 'mode_invalide')
+        self.assertIn(prev[0]['ligne'], [d['ligne'] for d in dry.data['revue']])
+        self.assertEqual((prev[1]['statut'], prev[1]['mode'], prev[1]['mode_par_defaut']),
+                         ('a_importer', 'virement', True))
+        self.assertEqual((prev[2]['statut'], prev[2]['mode'], prev[2]['mode_par_defaut']),
+                         ('a_importer', 'cheque', False))
+        self.assertEqual(commit.data['created'], 2)
+        self.assertFalse(Paiement.objects.filter(facture=f1).exists())
+        self.assertEqual(Paiement.objects.get(facture=f3).mode, 'cheque')
+
+    def test_montant_a_trois_decimales_invalide(self):
+        """AANA69 — 1200.005 : montant_invalide, jamais arrondi par Postgres."""
+        fac = self._facture(ttc=Decimal('1200'))
+        csv_bytes = _make_csv([{
+            'date': '2026-06-20', 'reference': fac.reference,
+            'montant': '1200.005', 'mode': 'virement',
+        }])
+        dry, commit = self._commit(csv_bytes)
+        self.assertEqual(dry.data['preview'][0]['statut'], 'montant_invalide')
+        self.assertEqual(commit.data['created'], 0)
+        self.assertFalse(Paiement.objects.filter(facture=fac).exists())
+
     def test_dry_run_exposes_columns(self):
         """Dry-run renvoie le mapping colonnes reconnues + non reconnues."""
         csv_bytes = _make_csv([{'date': '2026-06-20', 'reference': 'X',
