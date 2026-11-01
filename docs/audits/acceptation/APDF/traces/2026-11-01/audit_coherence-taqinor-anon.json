@@ -1,0 +1,4608 @@
+{
+ "companies": [
+  "taqinor-anon"
+ ],
+ "checked": {
+  "devis": 334,
+  "facture": 7
+ },
+ "violations": [
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 319,
+   "reference": "DEV-DEMO-0003",
+   "company": "taqinor-anon",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_VALIDITE_AVANT_CREATION",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 321,
+   "reference": "DEV-DEMO-0005",
+   "company": "taqinor-anon",
+   "message": "Validité 2026-05-26 antérieure à la création 2026-06-11.",
+   "values": {
+    "date_validite": "2026-05-26",
+    "date_creation": "2026-06-11",
+    "attendu": ">= 2026-06-11"
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 329,
+   "reference": "DEV-202606-0009",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 329,
+   "reference": "DEV-202606-0009",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 329,
+   "reference": "DEV-202606-0009",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 393,
+   "reference": "DEV-202606-0073",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[3].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[3].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 393,
+   "reference": "DEV-202606-0073",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[3].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[3].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 393,
+   "reference": "DEV-202606-0073",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[3].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[3].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 394,
+   "reference": "DEV-202606-0074",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 394,
+   "reference": "DEV-202606-0074",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 394,
+   "reference": "DEV-202606-0074",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 395,
+   "reference": "DEV-202606-0075",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 395,
+   "reference": "DEV-202606-0075",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 395,
+   "reference": "DEV-202606-0075",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 396,
+   "reference": "DEV-202606-0076",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 396,
+   "reference": "DEV-202606-0076",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 396,
+   "reference": "DEV-202606-0076",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 397,
+   "reference": "DEV-202606-0077",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 397,
+   "reference": "DEV-202606-0077",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 397,
+   "reference": "DEV-202606-0077",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 398,
+   "reference": "DEV-202606-0078",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 398,
+   "reference": "DEV-202606-0078",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 398,
+   "reference": "DEV-202606-0078",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 399,
+   "reference": "DEV-202606-0079",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 399,
+   "reference": "DEV-202606-0079",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 399,
+   "reference": "DEV-202606-0079",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 400,
+   "reference": "DEV-202606-0080",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 400,
+   "reference": "DEV-202606-0080",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 400,
+   "reference": "DEV-202606-0080",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 401,
+   "reference": "DEV-202606-0081",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 401,
+   "reference": "DEV-202606-0081",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 401,
+   "reference": "DEV-202606-0081",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 403,
+   "reference": "DEV-202606-0083",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[5].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[5].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 403,
+   "reference": "DEV-202606-0083",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[5].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[5].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 403,
+   "reference": "DEV-202606-0083",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[5].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[5].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "ETU_I6_ECONOMIES",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 407,
+   "reference": "DEV-202606-0087",
+   "company": "taqinor-anon",
+   "message": "Option sans : économie annuelle 0 ≤ 0.",
+   "values": {
+    "option": "sans",
+    "economie": 0,
+    "attendu": "> 0"
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 409,
+   "reference": "DEV-202606-0089",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 409,
+   "reference": "DEV-202606-0089",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 409,
+   "reference": "DEV-202606-0089",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 411,
+   "reference": "DEV-202606-0091",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 411,
+   "reference": "DEV-202606-0091",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 411,
+   "reference": "DEV-202606-0091",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 412,
+   "reference": "DEV-202606-0092",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 412,
+   "reference": "DEV-202606-0092",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 412,
+   "reference": "DEV-202606-0092",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 413,
+   "reference": "DEV-202606-0093",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 413,
+   "reference": "DEV-202606-0093",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 413,
+   "reference": "DEV-202606-0093",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 414,
+   "reference": "DEV-202606-0094",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 414,
+   "reference": "DEV-202606-0094",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 414,
+   "reference": "DEV-202606-0094",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 415,
+   "reference": "DEV-202606-0095",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 415,
+   "reference": "DEV-202606-0095",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 415,
+   "reference": "DEV-202606-0095",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 416,
+   "reference": "DEV-202606-0096",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 416,
+   "reference": "DEV-202606-0096",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 416,
+   "reference": "DEV-202606-0096",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 417,
+   "reference": "DEV-202606-0097",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 417,
+   "reference": "DEV-202606-0097",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 417,
+   "reference": "DEV-202606-0097",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 418,
+   "reference": "DEV-202606-0098",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 418,
+   "reference": "DEV-202606-0098",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 418,
+   "reference": "DEV-202606-0098",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 431,
+   "reference": "DEV-202607-0010",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 431,
+   "reference": "DEV-202607-0010",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 431,
+   "reference": "DEV-202607-0010",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 438,
+   "reference": "DEV-202607-0017",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 19835 MAD pour des factures réelles de 18000 MAD (×1.10).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19835,
+    "factures_reelles": 18000,
+    "source": "lead_hiver_ete",
+    "ratio": 1.102,
+    "modele": "factures",
+    "attendu": 18000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 438,
+   "reference": "DEV-202607-0017",
+   "company": "taqinor-anon",
+   "message": "« facture_sans_solaire » imprime 19835 MAD pour des factures réelles de 18000 MAD (×1.10).",
+   "values": {
+    "figure": "facture_sans_solaire",
+    "imprime": 19835,
+    "factures_reelles": 18000,
+    "source": "lead_hiver_ete",
+    "ratio": 1.102,
+    "modele": "factures",
+    "attendu": 18000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 461,
+   "reference": "DEV-202608-0001",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 39978 MAD pour des factures réelles de 48000 MAD (×0.83).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 39978,
+    "factures_reelles": 48000,
+    "source": "lead_hiver_ete",
+    "ratio": 0.833,
+    "modele": "factures",
+    "attendu": 48000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 461,
+   "reference": "DEV-202608-0001",
+   "company": "taqinor-anon",
+   "message": "« facture_sans_solaire » imprime 39978 MAD pour des factures réelles de 48000 MAD (×0.83).",
+   "values": {
+    "figure": "facture_sans_solaire",
+    "imprime": 39978,
+    "factures_reelles": 48000,
+    "source": "lead_hiver_ete",
+    "ratio": 0.833,
+    "modele": "factures",
+    "attendu": 48000
+   }
+  },
+  {
+   "rule": "ETU_I4_CONSO_REPLI",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 471,
+   "reference": "DEV-202608-0011",
+   "company": "taqinor-anon",
+   "message": "Conso annuelle 15000 kWh = Σ factures 18000 MAD ÷ 1.2 : repli au prix plat au lieu du barème.",
+   "values": {
+    "conso_annuelle": 15000,
+    "somme_factures": 18000,
+    "factures_div_prix_plat": 15000,
+    "distributeur": null,
+    "attendu": "conso issue du barème progressif"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 471,
+   "reference": "DEV-202608-0011",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 25616 MAD pour des factures réelles de 18000 MAD (×1.42).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 25616,
+    "factures_reelles": 18000,
+    "source": "factures_mensuelles_reelles",
+    "ratio": 1.423,
+    "modele": "factures",
+    "attendu": 18000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 471,
+   "reference": "DEV-202608-0011",
+   "company": "taqinor-anon",
+   "message": "« facture_sans_solaire » imprime 25616 MAD pour des factures réelles de 18000 MAD (×1.42).",
+   "values": {
+    "figure": "facture_sans_solaire",
+    "imprime": 25616,
+    "factures_reelles": 18000,
+    "source": "factures_mensuelles_reelles",
+    "ratio": 1.423,
+    "modele": "factures",
+    "attendu": 18000
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 478,
+   "reference": "DEV-202608-0018",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 5.68 kWc, devis à 4.4 kWc (doc) : écart 29.1%.",
+   "values": {
+    "kwc_bloc": 5.68,
+    "kwc_devis": 4.4,
+    "colonne": "doc",
+    "ecart": 0.291,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.4
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 480,
+   "reference": "DEV-202608-0020",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 5.68 kWc, devis à 4.4 kWc (doc) : écart 29.1%.",
+   "values": {
+    "kwc_bloc": 5.68,
+    "kwc_devis": 4.4,
+    "colonne": "doc",
+    "ecart": 0.291,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.4
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 494,
+   "reference": "DEV-202608-0034",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 30.53 kWc, devis à 14.91 kWc (doc) : écart 104.8%.",
+   "values": {
+    "kwc_bloc": 30.53,
+    "kwc_devis": 14.91,
+    "colonne": "doc",
+    "ecart": 1.048,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 14.91
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 496,
+   "reference": "DEV-202608-0036",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 30.53 kWc, devis à 14.91 kWc (doc) : écart 104.8%.",
+   "values": {
+    "kwc_bloc": 30.53,
+    "kwc_devis": 14.91,
+    "colonne": "doc",
+    "ecart": 1.048,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 14.91
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 500,
+   "reference": "DEV-202608-0040",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 20.59 kWc, devis à 9.94 kWc (doc) : écart 107.1%.",
+   "values": {
+    "kwc_bloc": 20.59,
+    "kwc_devis": 9.94,
+    "colonne": "doc",
+    "ecart": 1.071,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 9.94
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 503,
+   "reference": "DEV-202608-0043",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 5.68 kWc (sans) : écart 187.5%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.875,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 505,
+   "reference": "DEV-202608-0045",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 5.68 kWc (sans) : écart 187.5%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.875,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I2_REDUCTION_VS_COUVERTURE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 505,
+   "reference": "DEV-202608-0045",
+   "company": "taqinor-anon",
+   "message": "−58 % imprimé pour une couverture de 63 % : hors de [59.2 ; 65] en régime linéaire.",
+   "values": {
+    "couverture_pct": 63,
+    "reduction_pct": 58,
+    "mois_min_apres_kwh": 530,
+    "part_fixe": 0.013,
+    "option": "avec",
+    "attendu": [
+     59.2,
+     65
+    ]
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 506,
+   "reference": "DEV-202608-0046",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 5.68 kWc (sans) : écart 187.5%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.875,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I2_REDUCTION_VS_COUVERTURE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 506,
+   "reference": "DEV-202608-0046",
+   "company": "taqinor-anon",
+   "message": "−58 % imprimé pour une couverture de 63 % : hors de [59.2 ; 65] en régime linéaire.",
+   "values": {
+    "couverture_pct": 63,
+    "reduction_pct": 58,
+    "mois_min_apres_kwh": 530,
+    "part_fixe": 0.013,
+    "option": "avec",
+    "attendu": [
+     59.2,
+     65
+    ]
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 508,
+   "reference": "DEV-202608-0048",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 13.49 kWc, devis à 4.97 kWc (sans) : écart 171.4%.",
+   "values": {
+    "kwc_bloc": 13.49,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.714,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 509,
+   "reference": "DEV-202608-0049",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 7.1 kWc, devis à 2.84 kWc (sans) : écart 150.0%.",
+   "values": {
+    "kwc_bloc": 7.1,
+    "kwc_devis": 2.84,
+    "colonne": "sans",
+    "ecart": 1.5,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 2.84
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 511,
+   "reference": "DEV-202608-0051",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.97 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.97,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 512,
+   "reference": "DEV-202609-0001",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 13.49 kWc, devis à 4.97 kWc (sans) : écart 171.4%.",
+   "values": {
+    "kwc_bloc": 13.49,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.714,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 513,
+   "reference": "DEV-202609-0002",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 15.62 kWc, devis à 7.1 kWc (sans) : écart 120.0%.",
+   "values": {
+    "kwc_bloc": 15.62,
+    "kwc_devis": 7.1,
+    "colonne": "sans",
+    "ecart": 1.2,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 7.1
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 514,
+   "reference": "DEV-202609-0003",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 6.39 kWc, devis à 2.84 kWc (sans) : écart 125.0%.",
+   "values": {
+    "kwc_bloc": 6.39,
+    "kwc_devis": 2.84,
+    "colonne": "sans",
+    "ecart": 1.25,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 2.84
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 515,
+   "reference": "DEV-202609-0004",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 516,
+   "reference": "DEV-202609-0005",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.07 kWc, devis à 5.68 kWc (doc) : écart 112.5%.",
+   "values": {
+    "kwc_bloc": 12.07,
+    "kwc_devis": 5.68,
+    "colonne": "doc",
+    "ecart": 1.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 518,
+   "reference": "DEV-202609-0007",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 5.68 kWc, devis à 0.71 kWc (sans) : écart 700.0%.",
+   "values": {
+    "kwc_bloc": 5.68,
+    "kwc_devis": 0.71,
+    "colonne": "sans",
+    "ecart": 7.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 0.71
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 519,
+   "reference": "DEV-202609-0008",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 5.68 kWc, devis à 0.71 kWc (sans) : écart 700.0%.",
+   "values": {
+    "kwc_bloc": 5.68,
+    "kwc_devis": 0.71,
+    "colonne": "sans",
+    "ecart": 7.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 0.71
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 530,
+   "reference": "DEV-202609-0019",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 22.01 kWc, devis à 9.94 kWc (sans) : écart 121.4%.",
+   "values": {
+    "kwc_bloc": 22.01,
+    "kwc_devis": 9.94,
+    "colonne": "sans",
+    "ecart": 1.214,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 9.94
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 531,
+   "reference": "DEV-202609-0020",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.75 kWc, devis à 5.68 kWc (sans) : écart 212.5%.",
+   "values": {
+    "kwc_bloc": 17.75,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 2.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 532,
+   "reference": "DEV-202609-0021",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.75 kWc, devis à 5.68 kWc (sans) : écart 212.5%.",
+   "values": {
+    "kwc_bloc": 17.75,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 2.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 533,
+   "reference": "DEV-202609-0022",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 18.46 kWc, devis à 8.52 kWc (sans) : écart 116.7%.",
+   "values": {
+    "kwc_bloc": 18.46,
+    "kwc_devis": 8.52,
+    "colonne": "sans",
+    "ecart": 1.167,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "ETU_I2_REDUCTION_VS_COUVERTURE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 533,
+   "reference": "DEV-202609-0022",
+   "company": "taqinor-anon",
+   "message": "−58 % imprimé pour une couverture de 63 % : hors de [59.1 ; 65] en régime linéaire.",
+   "values": {
+    "couverture_pct": 63,
+    "reduction_pct": 58,
+    "mois_min_apres_kwh": 512,
+    "part_fixe": 0.014,
+    "option": "avec",
+    "attendu": [
+     59.1,
+     65
+    ]
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 534,
+   "reference": "DEV-202609-0023",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.07 kWc, devis à 5.68 kWc (sans) : écart 112.5%.",
+   "values": {
+    "kwc_bloc": 12.07,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 535,
+   "reference": "DEV-202609-0024",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.04 kWc, devis à 8.52 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 17.04,
+    "kwc_devis": 8.52,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 537,
+   "reference": "DEV-202609-0026",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 538,
+   "reference": "DEV-202609-0027",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 541,
+   "reference": "DEV-202609-0030",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 82.36 kWc, devis à 31.24 kWc (sans) : écart 163.6%.",
+   "values": {
+    "kwc_bloc": 82.36,
+    "kwc_devis": 31.24,
+    "colonne": "sans",
+    "ecart": 1.636,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 31.24
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 543,
+   "reference": "DEV-202609-0032",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 87.33 kWc, devis à 31.24 kWc (sans) : écart 179.5%.",
+   "values": {
+    "kwc_bloc": 87.33,
+    "kwc_devis": 31.24,
+    "colonne": "sans",
+    "ecart": 1.795,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 31.24
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 544,
+   "reference": "DEV-202609-0033",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.07 kWc, devis à 5.68 kWc (sans) : écart 112.5%.",
+   "values": {
+    "kwc_bloc": 12.07,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 546,
+   "reference": "DEV-202609-0035",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 10.65 kWc, devis à 4.97 kWc (sans) : écart 114.3%.",
+   "values": {
+    "kwc_bloc": 10.65,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.143,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 547,
+   "reference": "DEV-202609-0036",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.23 kWc, devis à 3.55 kWc (sans) : écart 160.0%.",
+   "values": {
+    "kwc_bloc": 9.23,
+    "kwc_devis": 3.55,
+    "colonne": "sans",
+    "ecart": 1.6,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 3.55
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 548,
+   "reference": "DEV-202609-0037",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.23 kWc, devis à 3.55 kWc (sans) : écart 160.0%.",
+   "values": {
+    "kwc_bloc": 9.23,
+    "kwc_devis": 3.55,
+    "colonne": "sans",
+    "ecart": 1.6,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 3.55
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 549,
+   "reference": "DEV-202609-0038",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 550,
+   "reference": "DEV-202609-0039",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 551,
+   "reference": "DEV-202609-0040",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 19.17 kWc, devis à 9.23 kWc (doc) : écart 107.7%.",
+   "values": {
+    "kwc_bloc": 19.17,
+    "kwc_devis": 9.23,
+    "colonne": "doc",
+    "ecart": 1.077,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 9.23
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 554,
+   "reference": "DEV-202609-0043",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.78 kWc, devis à 5.68 kWc (sans) : écart 125.0%.",
+   "values": {
+    "kwc_bloc": 12.78,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.25,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 555,
+   "reference": "DEV-202609-0044",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.78 kWc, devis à 5.68 kWc (sans) : écart 125.0%.",
+   "values": {
+    "kwc_bloc": 12.78,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.25,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 556,
+   "reference": "DEV-202609-0045",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 557,
+   "reference": "DEV-202609-0046",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 7.1 kWc, devis à 3.55 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 7.1,
+    "kwc_devis": 3.55,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 3.55
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 558,
+   "reference": "DEV-202609-0047",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 560,
+   "reference": "DEV-202609-0049",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.75 kWc, devis à 5.68 kWc (sans) : écart 212.5%.",
+   "values": {
+    "kwc_bloc": 17.75,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 2.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 562,
+   "reference": "DEV-202609-0051",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 564,
+   "reference": "DEV-202609-0053",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 566,
+   "reference": "DEV-202609-0055",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 10.65 kWc, devis à 4.26 kWc (sans) : écart 150.0%.",
+   "values": {
+    "kwc_bloc": 10.65,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.5,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 572,
+   "reference": "DEV-202609-0061",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.04 kWc, devis à 8.52 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 17.04,
+    "kwc_devis": 8.52,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 573,
+   "reference": "DEV-202609-0062",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 10.65 kWc, devis à 4.97 kWc (sans) : écart 114.3%.",
+   "values": {
+    "kwc_bloc": 10.65,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.143,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 574,
+   "reference": "DEV-202609-0063",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.23 kWc, devis à 4.26 kWc (sans) : écart 116.7%.",
+   "values": {
+    "kwc_bloc": 9.23,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.167,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 575,
+   "reference": "DEV-202609-0064",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 577,
+   "reference": "DEV-202609-0066",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 579,
+   "reference": "DEV-202609-0068",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 10.65 kWc, devis à 4.97 kWc (sans) : écart 114.3%.",
+   "values": {
+    "kwc_bloc": 10.65,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.143,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 582,
+   "reference": "DEV-202609-0071",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 7.1 kWc (sans) : écart 130.0%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 7.1,
+    "colonne": "sans",
+    "ecart": 1.3,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 7.1
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 584,
+   "reference": "DEV-202609-0073",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 83.07 kWc, devis à 31.24 kWc (sans) : écart 165.9%.",
+   "values": {
+    "kwc_bloc": 83.07,
+    "kwc_devis": 31.24,
+    "colonne": "sans",
+    "ecart": 1.659,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 31.24
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 588,
+   "reference": "DEV-202609-0077",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 7.1 kWc (sans) : écart 130.0%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 7.1,
+    "colonne": "sans",
+    "ecart": 1.3,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 7.1
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 593,
+   "reference": "DEV-202609-0082",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 977 MAD pour des factures réelles de 180000 MAD (×0.01).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 977,
+    "factures_reelles": 180000,
+    "source": "factures_mensuelles_reelles",
+    "ratio": 0.005,
+    "modele": "horaire",
+    "attendu": 180000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 596,
+   "reference": "DEV-202609-0085",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 825 MAD pour des factures réelles de 90000 MAD (×0.01).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 825,
+    "factures_reelles": 90000,
+    "source": "factures_mensuelles_reelles",
+    "ratio": 0.009,
+    "modele": "horaire",
+    "attendu": 90000
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 599,
+   "reference": "DEV-202609-0088",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.23 kWc, devis à 4.26 kWc (sans) : écart 116.7%.",
+   "values": {
+    "kwc_bloc": 9.23,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.167,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 601,
+   "reference": "DEV-202609-0090",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 29.11 kWc, devis à 12.07 kWc (sans) : écart 141.2%.",
+   "values": {
+    "kwc_bloc": 29.11,
+    "kwc_devis": 12.07,
+    "colonne": "sans",
+    "ecart": 1.412,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 12.07
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 602,
+   "reference": "DEV-202609-0091",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 34.08 kWc, devis à 17.04 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 34.08,
+    "kwc_devis": 17.04,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 17.04
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 606,
+   "reference": "DEV-202609-0095",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 14.2 kWc, devis à 5.68 kWc (sans) : écart 150.0%.",
+   "values": {
+    "kwc_bloc": 14.2,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.5,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 608,
+   "reference": "DEV-202609-0097",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 7.81 kWc, devis à 2.84 kWc (sans) : écart 175.0%.",
+   "values": {
+    "kwc_bloc": 7.81,
+    "kwc_devis": 2.84,
+    "colonne": "sans",
+    "ecart": 1.75,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 2.84
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 609,
+   "reference": "DEV-202609-0098",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 8.52 kWc, devis à 3.55 kWc (sans) : écart 140.0%.",
+   "values": {
+    "kwc_bloc": 8.52,
+    "kwc_devis": 3.55,
+    "colonne": "sans",
+    "ecart": 1.4,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 3.55
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 615,
+   "reference": "DEV-202609-0104",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 14.91 kWc, devis à 5.68 kWc (sans) : écart 162.5%.",
+   "values": {
+    "kwc_bloc": 14.91,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.625,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 618,
+   "reference": "DEV-202609-0107",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 14.2 kWc, devis à 5.68 kWc (sans) : écart 150.0%.",
+   "values": {
+    "kwc_bloc": 14.2,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.5,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 620,
+   "reference": "DEV-202609-0109",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 622,
+   "reference": "DEV-202609-0111",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 22.01 kWc, devis à 9.94 kWc (sans) : écart 121.4%.",
+   "values": {
+    "kwc_bloc": 22.01,
+    "kwc_devis": 9.94,
+    "colonne": "sans",
+    "ecart": 1.214,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 9.94
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 623,
+   "reference": "DEV-202609-0112",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "DOC_ECHEANCE_AVANT_EMISSION",
+   "severity": "avertissement",
+   "object_type": "facture",
+   "object_id": 11,
+   "reference": "FAC-DEMO-0002",
+   "company": "taqinor-anon",
+   "message": "Échéance 2026-06-05 antérieure à l'émission 2026-06-10.",
+   "values": {
+    "date_echeance": "2026-06-05",
+    "date_emission": "2026-06-10",
+    "attendu": ">= 2026-06-10"
+   }
+  },
+  {
+   "rule": "FACTURE_STATUT_RESTE_INCOHERENT",
+   "severity": "critique",
+   "object_type": "facture",
+   "object_id": 11,
+   "reference": "FAC-DEMO-0002",
+   "company": "taqinor-anon",
+   "message": "Facture « payée » avec un reste à payer de 6984.00.",
+   "values": {
+    "statut": "payee",
+    "montant_du": 6984.0,
+    "attendu": 0.0
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 1268,
+   "reference": "LEAD-1268",
+   "company": "taqinor-anon",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "meta_lead_ads",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "SEC_COMPTE_DEMO_ACTIF",
+   "severity": "critique",
+   "object_type": "utilisateur",
+   "object_id": 6,
+   "reference": "anon_admin",
+   "company": "taqinor-anon",
+   "message": "Le compte « anon_admin » est actif alors que son mot de passe est publié dans le dépôt (commande de seed).",
+   "values": {
+    "username": "anon_admin",
+    "derniere_connexion": "2026-11-01",
+    "attendu": "compte désactivé"
+   }
+  }
+ ],
+ "new": [
+  {
+   "rule": "DOC_ACCEPTE_SANS_DATE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 319,
+   "reference": "DEV-DEMO-0003",
+   "company": "taqinor-anon",
+   "message": "Devis accepté sans date d'acceptation.",
+   "values": {
+    "date_acceptation": null,
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_VALIDITE_AVANT_CREATION",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 321,
+   "reference": "DEV-DEMO-0005",
+   "company": "taqinor-anon",
+   "message": "Validité 2026-05-26 antérieure à la création 2026-06-11.",
+   "values": {
+    "date_validite": "2026-05-26",
+    "date_creation": "2026-06-11",
+    "attendu": ">= 2026-06-11"
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 329,
+   "reference": "DEV-202606-0009",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 329,
+   "reference": "DEV-202606-0009",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 329,
+   "reference": "DEV-202606-0009",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 393,
+   "reference": "DEV-202606-0073",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[3].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[3].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 393,
+   "reference": "DEV-202606-0073",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[3].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[3].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 393,
+   "reference": "DEV-202606-0073",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[3].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[3].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 394,
+   "reference": "DEV-202606-0074",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 394,
+   "reference": "DEV-202606-0074",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 394,
+   "reference": "DEV-202606-0074",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 395,
+   "reference": "DEV-202606-0075",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 395,
+   "reference": "DEV-202606-0075",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 395,
+   "reference": "DEV-202606-0075",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 396,
+   "reference": "DEV-202606-0076",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 396,
+   "reference": "DEV-202606-0076",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 396,
+   "reference": "DEV-202606-0076",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 397,
+   "reference": "DEV-202606-0077",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 397,
+   "reference": "DEV-202606-0077",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 397,
+   "reference": "DEV-202606-0077",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 398,
+   "reference": "DEV-202606-0078",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 398,
+   "reference": "DEV-202606-0078",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 398,
+   "reference": "DEV-202606-0078",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 399,
+   "reference": "DEV-202606-0079",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 399,
+   "reference": "DEV-202606-0079",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 399,
+   "reference": "DEV-202606-0079",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 400,
+   "reference": "DEV-202606-0080",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 400,
+   "reference": "DEV-202606-0080",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 400,
+   "reference": "DEV-202606-0080",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[1].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[1].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 401,
+   "reference": "DEV-202606-0081",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 401,
+   "reference": "DEV-202606-0081",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 401,
+   "reference": "DEV-202606-0081",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[7].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[7].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 403,
+   "reference": "DEV-202606-0083",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[5].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[5].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 403,
+   "reference": "DEV-202606-0083",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[5].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[5].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 403,
+   "reference": "DEV-202606-0083",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[5].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[5].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "ETU_I6_ECONOMIES",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 407,
+   "reference": "DEV-202606-0087",
+   "company": "taqinor-anon",
+   "message": "Option sans : économie annuelle 0 ≤ 0.",
+   "values": {
+    "option": "sans",
+    "economie": 0,
+    "attendu": "> 0"
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 409,
+   "reference": "DEV-202606-0089",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 409,
+   "reference": "DEV-202606-0089",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 409,
+   "reference": "DEV-202606-0089",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 411,
+   "reference": "DEV-202606-0091",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 411,
+   "reference": "DEV-202606-0091",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 411,
+   "reference": "DEV-202606-0091",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 412,
+   "reference": "DEV-202606-0092",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 412,
+   "reference": "DEV-202606-0092",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 412,
+   "reference": "DEV-202606-0092",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 413,
+   "reference": "DEV-202606-0093",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 413,
+   "reference": "DEV-202606-0093",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 413,
+   "reference": "DEV-202606-0093",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 414,
+   "reference": "DEV-202606-0094",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 414,
+   "reference": "DEV-202606-0094",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 414,
+   "reference": "DEV-202606-0094",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 415,
+   "reference": "DEV-202606-0095",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 415,
+   "reference": "DEV-202606-0095",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 415,
+   "reference": "DEV-202606-0095",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 416,
+   "reference": "DEV-202606-0096",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 416,
+   "reference": "DEV-202606-0096",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 416,
+   "reference": "DEV-202606-0096",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 417,
+   "reference": "DEV-202606-0097",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 417,
+   "reference": "DEV-202606-0097",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 417,
+   "reference": "DEV-202606-0097",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 418,
+   "reference": "DEV-202606-0098",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 418,
+   "reference": "DEV-202606-0098",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 418,
+   "reference": "DEV-202606-0098",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[2].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[2].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 431,
+   "reference": "DEV-202607-0010",
+   "company": "taqinor-anon",
+   "message": "Valeur « all_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "all_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 431,
+   "reference": "DEV-202607-0010",
+   "company": "taqinor-anon",
+   "message": "Valeur « sans_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "sans_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "DOC_RENDU_SANS_MARGE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 431,
+   "reference": "DEV-202607-0010",
+   "company": "taqinor-anon",
+   "message": "Valeur « avec_items[6].garantie_production_mois » égale à un prix d'achat de ligne.",
+   "values": {
+    "cle": "avec_items[6].garantie_production_mois",
+    "attendu": null
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 438,
+   "reference": "DEV-202607-0017",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 19835 MAD pour des factures réelles de 18000 MAD (×1.10).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 19835,
+    "factures_reelles": 18000,
+    "source": "lead_hiver_ete",
+    "ratio": 1.102,
+    "modele": "factures",
+    "attendu": 18000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 438,
+   "reference": "DEV-202607-0017",
+   "company": "taqinor-anon",
+   "message": "« facture_sans_solaire » imprime 19835 MAD pour des factures réelles de 18000 MAD (×1.10).",
+   "values": {
+    "figure": "facture_sans_solaire",
+    "imprime": 19835,
+    "factures_reelles": 18000,
+    "source": "lead_hiver_ete",
+    "ratio": 1.102,
+    "modele": "factures",
+    "attendu": 18000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 461,
+   "reference": "DEV-202608-0001",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 39978 MAD pour des factures réelles de 48000 MAD (×0.83).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 39978,
+    "factures_reelles": 48000,
+    "source": "lead_hiver_ete",
+    "ratio": 0.833,
+    "modele": "factures",
+    "attendu": 48000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 461,
+   "reference": "DEV-202608-0001",
+   "company": "taqinor-anon",
+   "message": "« facture_sans_solaire » imprime 39978 MAD pour des factures réelles de 48000 MAD (×0.83).",
+   "values": {
+    "figure": "facture_sans_solaire",
+    "imprime": 39978,
+    "factures_reelles": 48000,
+    "source": "lead_hiver_ete",
+    "ratio": 0.833,
+    "modele": "factures",
+    "attendu": 48000
+   }
+  },
+  {
+   "rule": "ETU_I4_CONSO_REPLI",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 471,
+   "reference": "DEV-202608-0011",
+   "company": "taqinor-anon",
+   "message": "Conso annuelle 15000 kWh = Σ factures 18000 MAD ÷ 1.2 : repli au prix plat au lieu du barème.",
+   "values": {
+    "conso_annuelle": 15000,
+    "somme_factures": 18000,
+    "factures_div_prix_plat": 15000,
+    "distributeur": null,
+    "attendu": "conso issue du barème progressif"
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 471,
+   "reference": "DEV-202608-0011",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 25616 MAD pour des factures réelles de 18000 MAD (×1.42).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 25616,
+    "factures_reelles": 18000,
+    "source": "factures_mensuelles_reelles",
+    "ratio": 1.423,
+    "modele": "factures",
+    "attendu": 18000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 471,
+   "reference": "DEV-202608-0011",
+   "company": "taqinor-anon",
+   "message": "« facture_sans_solaire » imprime 25616 MAD pour des factures réelles de 18000 MAD (×1.42).",
+   "values": {
+    "figure": "facture_sans_solaire",
+    "imprime": 25616,
+    "factures_reelles": 18000,
+    "source": "factures_mensuelles_reelles",
+    "ratio": 1.423,
+    "modele": "factures",
+    "attendu": 18000
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 478,
+   "reference": "DEV-202608-0018",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 5.68 kWc, devis à 4.4 kWc (doc) : écart 29.1%.",
+   "values": {
+    "kwc_bloc": 5.68,
+    "kwc_devis": 4.4,
+    "colonne": "doc",
+    "ecart": 0.291,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.4
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 480,
+   "reference": "DEV-202608-0020",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 5.68 kWc, devis à 4.4 kWc (doc) : écart 29.1%.",
+   "values": {
+    "kwc_bloc": 5.68,
+    "kwc_devis": 4.4,
+    "colonne": "doc",
+    "ecart": 0.291,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.4
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 494,
+   "reference": "DEV-202608-0034",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 30.53 kWc, devis à 14.91 kWc (doc) : écart 104.8%.",
+   "values": {
+    "kwc_bloc": 30.53,
+    "kwc_devis": 14.91,
+    "colonne": "doc",
+    "ecart": 1.048,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 14.91
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 496,
+   "reference": "DEV-202608-0036",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 30.53 kWc, devis à 14.91 kWc (doc) : écart 104.8%.",
+   "values": {
+    "kwc_bloc": 30.53,
+    "kwc_devis": 14.91,
+    "colonne": "doc",
+    "ecart": 1.048,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 14.91
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 500,
+   "reference": "DEV-202608-0040",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 20.59 kWc, devis à 9.94 kWc (doc) : écart 107.1%.",
+   "values": {
+    "kwc_bloc": 20.59,
+    "kwc_devis": 9.94,
+    "colonne": "doc",
+    "ecart": 1.071,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 9.94
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 503,
+   "reference": "DEV-202608-0043",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 5.68 kWc (sans) : écart 187.5%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.875,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 505,
+   "reference": "DEV-202608-0045",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 5.68 kWc (sans) : écart 187.5%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.875,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I2_REDUCTION_VS_COUVERTURE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 505,
+   "reference": "DEV-202608-0045",
+   "company": "taqinor-anon",
+   "message": "−58 % imprimé pour une couverture de 63 % : hors de [59.2 ; 65] en régime linéaire.",
+   "values": {
+    "couverture_pct": 63,
+    "reduction_pct": 58,
+    "mois_min_apres_kwh": 530,
+    "part_fixe": 0.013,
+    "option": "avec",
+    "attendu": [
+     59.2,
+     65
+    ]
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 506,
+   "reference": "DEV-202608-0046",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 5.68 kWc (sans) : écart 187.5%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.875,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I2_REDUCTION_VS_COUVERTURE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 506,
+   "reference": "DEV-202608-0046",
+   "company": "taqinor-anon",
+   "message": "−58 % imprimé pour une couverture de 63 % : hors de [59.2 ; 65] en régime linéaire.",
+   "values": {
+    "couverture_pct": 63,
+    "reduction_pct": 58,
+    "mois_min_apres_kwh": 530,
+    "part_fixe": 0.013,
+    "option": "avec",
+    "attendu": [
+     59.2,
+     65
+    ]
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 508,
+   "reference": "DEV-202608-0048",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 13.49 kWc, devis à 4.97 kWc (sans) : écart 171.4%.",
+   "values": {
+    "kwc_bloc": 13.49,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.714,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 509,
+   "reference": "DEV-202608-0049",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 7.1 kWc, devis à 2.84 kWc (sans) : écart 150.0%.",
+   "values": {
+    "kwc_bloc": 7.1,
+    "kwc_devis": 2.84,
+    "colonne": "sans",
+    "ecart": 1.5,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 2.84
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 511,
+   "reference": "DEV-202608-0051",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.97 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.97,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 512,
+   "reference": "DEV-202609-0001",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 13.49 kWc, devis à 4.97 kWc (sans) : écart 171.4%.",
+   "values": {
+    "kwc_bloc": 13.49,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.714,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 513,
+   "reference": "DEV-202609-0002",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 15.62 kWc, devis à 7.1 kWc (sans) : écart 120.0%.",
+   "values": {
+    "kwc_bloc": 15.62,
+    "kwc_devis": 7.1,
+    "colonne": "sans",
+    "ecart": 1.2,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 7.1
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 514,
+   "reference": "DEV-202609-0003",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 6.39 kWc, devis à 2.84 kWc (sans) : écart 125.0%.",
+   "values": {
+    "kwc_bloc": 6.39,
+    "kwc_devis": 2.84,
+    "colonne": "sans",
+    "ecart": 1.25,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 2.84
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 515,
+   "reference": "DEV-202609-0004",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 516,
+   "reference": "DEV-202609-0005",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.07 kWc, devis à 5.68 kWc (doc) : écart 112.5%.",
+   "values": {
+    "kwc_bloc": 12.07,
+    "kwc_devis": 5.68,
+    "colonne": "doc",
+    "ecart": 1.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 518,
+   "reference": "DEV-202609-0007",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 5.68 kWc, devis à 0.71 kWc (sans) : écart 700.0%.",
+   "values": {
+    "kwc_bloc": 5.68,
+    "kwc_devis": 0.71,
+    "colonne": "sans",
+    "ecart": 7.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 0.71
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 519,
+   "reference": "DEV-202609-0008",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 5.68 kWc, devis à 0.71 kWc (sans) : écart 700.0%.",
+   "values": {
+    "kwc_bloc": 5.68,
+    "kwc_devis": 0.71,
+    "colonne": "sans",
+    "ecart": 7.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 0.71
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 530,
+   "reference": "DEV-202609-0019",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 22.01 kWc, devis à 9.94 kWc (sans) : écart 121.4%.",
+   "values": {
+    "kwc_bloc": 22.01,
+    "kwc_devis": 9.94,
+    "colonne": "sans",
+    "ecart": 1.214,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 9.94
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 531,
+   "reference": "DEV-202609-0020",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.75 kWc, devis à 5.68 kWc (sans) : écart 212.5%.",
+   "values": {
+    "kwc_bloc": 17.75,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 2.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 532,
+   "reference": "DEV-202609-0021",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.75 kWc, devis à 5.68 kWc (sans) : écart 212.5%.",
+   "values": {
+    "kwc_bloc": 17.75,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 2.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 533,
+   "reference": "DEV-202609-0022",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 18.46 kWc, devis à 8.52 kWc (sans) : écart 116.7%.",
+   "values": {
+    "kwc_bloc": 18.46,
+    "kwc_devis": 8.52,
+    "colonne": "sans",
+    "ecart": 1.167,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "ETU_I2_REDUCTION_VS_COUVERTURE",
+   "severity": "avertissement",
+   "object_type": "devis",
+   "object_id": 533,
+   "reference": "DEV-202609-0022",
+   "company": "taqinor-anon",
+   "message": "−58 % imprimé pour une couverture de 63 % : hors de [59.1 ; 65] en régime linéaire.",
+   "values": {
+    "couverture_pct": 63,
+    "reduction_pct": 58,
+    "mois_min_apres_kwh": 512,
+    "part_fixe": 0.014,
+    "option": "avec",
+    "attendu": [
+     59.1,
+     65
+    ]
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 534,
+   "reference": "DEV-202609-0023",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.07 kWc, devis à 5.68 kWc (sans) : écart 112.5%.",
+   "values": {
+    "kwc_bloc": 12.07,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 535,
+   "reference": "DEV-202609-0024",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.04 kWc, devis à 8.52 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 17.04,
+    "kwc_devis": 8.52,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 537,
+   "reference": "DEV-202609-0026",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 538,
+   "reference": "DEV-202609-0027",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 541,
+   "reference": "DEV-202609-0030",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 82.36 kWc, devis à 31.24 kWc (sans) : écart 163.6%.",
+   "values": {
+    "kwc_bloc": 82.36,
+    "kwc_devis": 31.24,
+    "colonne": "sans",
+    "ecart": 1.636,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 31.24
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 543,
+   "reference": "DEV-202609-0032",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 87.33 kWc, devis à 31.24 kWc (sans) : écart 179.5%.",
+   "values": {
+    "kwc_bloc": 87.33,
+    "kwc_devis": 31.24,
+    "colonne": "sans",
+    "ecart": 1.795,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 31.24
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 544,
+   "reference": "DEV-202609-0033",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.07 kWc, devis à 5.68 kWc (sans) : écart 112.5%.",
+   "values": {
+    "kwc_bloc": 12.07,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 546,
+   "reference": "DEV-202609-0035",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 10.65 kWc, devis à 4.97 kWc (sans) : écart 114.3%.",
+   "values": {
+    "kwc_bloc": 10.65,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.143,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 547,
+   "reference": "DEV-202609-0036",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.23 kWc, devis à 3.55 kWc (sans) : écart 160.0%.",
+   "values": {
+    "kwc_bloc": 9.23,
+    "kwc_devis": 3.55,
+    "colonne": "sans",
+    "ecart": 1.6,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 3.55
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 548,
+   "reference": "DEV-202609-0037",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.23 kWc, devis à 3.55 kWc (sans) : écart 160.0%.",
+   "values": {
+    "kwc_bloc": 9.23,
+    "kwc_devis": 3.55,
+    "colonne": "sans",
+    "ecart": 1.6,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 3.55
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 549,
+   "reference": "DEV-202609-0038",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 550,
+   "reference": "DEV-202609-0039",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 551,
+   "reference": "DEV-202609-0040",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 19.17 kWc, devis à 9.23 kWc (doc) : écart 107.7%.",
+   "values": {
+    "kwc_bloc": 19.17,
+    "kwc_devis": 9.23,
+    "colonne": "doc",
+    "ecart": 1.077,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 9.23
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 554,
+   "reference": "DEV-202609-0043",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.78 kWc, devis à 5.68 kWc (sans) : écart 125.0%.",
+   "values": {
+    "kwc_bloc": 12.78,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.25,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 555,
+   "reference": "DEV-202609-0044",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 12.78 kWc, devis à 5.68 kWc (sans) : écart 125.0%.",
+   "values": {
+    "kwc_bloc": 12.78,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.25,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 556,
+   "reference": "DEV-202609-0045",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 557,
+   "reference": "DEV-202609-0046",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 7.1 kWc, devis à 3.55 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 7.1,
+    "kwc_devis": 3.55,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 3.55
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 558,
+   "reference": "DEV-202609-0047",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 560,
+   "reference": "DEV-202609-0049",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.75 kWc, devis à 5.68 kWc (sans) : écart 212.5%.",
+   "values": {
+    "kwc_bloc": 17.75,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 2.125,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 562,
+   "reference": "DEV-202609-0051",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 564,
+   "reference": "DEV-202609-0053",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 566,
+   "reference": "DEV-202609-0055",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 10.65 kWc, devis à 4.26 kWc (sans) : écart 150.0%.",
+   "values": {
+    "kwc_bloc": 10.65,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.5,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 572,
+   "reference": "DEV-202609-0061",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 17.04 kWc, devis à 8.52 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 17.04,
+    "kwc_devis": 8.52,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 8.52
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 573,
+   "reference": "DEV-202609-0062",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 10.65 kWc, devis à 4.97 kWc (sans) : écart 114.3%.",
+   "values": {
+    "kwc_bloc": 10.65,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.143,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 574,
+   "reference": "DEV-202609-0063",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.23 kWc, devis à 4.26 kWc (sans) : écart 116.7%.",
+   "values": {
+    "kwc_bloc": 9.23,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.167,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 575,
+   "reference": "DEV-202609-0064",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 577,
+   "reference": "DEV-202609-0066",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 579,
+   "reference": "DEV-202609-0068",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 10.65 kWc, devis à 4.97 kWc (sans) : écart 114.3%.",
+   "values": {
+    "kwc_bloc": 10.65,
+    "kwc_devis": 4.97,
+    "colonne": "sans",
+    "ecart": 1.143,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.97
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 582,
+   "reference": "DEV-202609-0071",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 7.1 kWc (sans) : écart 130.0%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 7.1,
+    "colonne": "sans",
+    "ecart": 1.3,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 7.1
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 584,
+   "reference": "DEV-202609-0073",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 83.07 kWc, devis à 31.24 kWc (sans) : écart 165.9%.",
+   "values": {
+    "kwc_bloc": 83.07,
+    "kwc_devis": 31.24,
+    "colonne": "sans",
+    "ecart": 1.659,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 31.24
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 588,
+   "reference": "DEV-202609-0077",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 16.33 kWc, devis à 7.1 kWc (sans) : écart 130.0%.",
+   "values": {
+    "kwc_bloc": 16.33,
+    "kwc_devis": 7.1,
+    "colonne": "sans",
+    "ecart": 1.3,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 7.1
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 593,
+   "reference": "DEV-202609-0082",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 977 MAD pour des factures réelles de 180000 MAD (×0.01).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 977,
+    "factures_reelles": 180000,
+    "source": "factures_mensuelles_reelles",
+    "ratio": 0.005,
+    "modele": "horaire",
+    "attendu": 180000
+   }
+  },
+  {
+   "rule": "ETU_I5_FACTURE_ACTUELLE",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 596,
+   "reference": "DEV-202609-0085",
+   "company": "taqinor-anon",
+   "message": "« methode_facture_actuelle » imprime 825 MAD pour des factures réelles de 90000 MAD (×0.01).",
+   "values": {
+    "figure": "methode_facture_actuelle",
+    "imprime": 825,
+    "factures_reelles": 90000,
+    "source": "factures_mensuelles_reelles",
+    "ratio": 0.009,
+    "modele": "horaire",
+    "attendu": 90000
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 599,
+   "reference": "DEV-202609-0088",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.23 kWc, devis à 4.26 kWc (sans) : écart 116.7%.",
+   "values": {
+    "kwc_bloc": 9.23,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.167,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 601,
+   "reference": "DEV-202609-0090",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 29.11 kWc, devis à 12.07 kWc (sans) : écart 141.2%.",
+   "values": {
+    "kwc_bloc": 29.11,
+    "kwc_devis": 12.07,
+    "colonne": "sans",
+    "ecart": 1.412,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 12.07
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 602,
+   "reference": "DEV-202609-0091",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 34.08 kWc, devis à 17.04 kWc (doc) : écart 100.0%.",
+   "values": {
+    "kwc_bloc": 34.08,
+    "kwc_devis": 17.04,
+    "colonne": "doc",
+    "ecart": 1.0,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 17.04
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 606,
+   "reference": "DEV-202609-0095",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 14.2 kWc, devis à 5.68 kWc (sans) : écart 150.0%.",
+   "values": {
+    "kwc_bloc": 14.2,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.5,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 608,
+   "reference": "DEV-202609-0097",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 7.81 kWc, devis à 2.84 kWc (sans) : écart 175.0%.",
+   "values": {
+    "kwc_bloc": 7.81,
+    "kwc_devis": 2.84,
+    "colonne": "sans",
+    "ecart": 1.75,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 2.84
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 609,
+   "reference": "DEV-202609-0098",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 8.52 kWc, devis à 3.55 kWc (sans) : écart 140.0%.",
+   "values": {
+    "kwc_bloc": 8.52,
+    "kwc_devis": 3.55,
+    "colonne": "sans",
+    "ecart": 1.4,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 3.55
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 615,
+   "reference": "DEV-202609-0104",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 14.91 kWc, devis à 5.68 kWc (sans) : écart 162.5%.",
+   "values": {
+    "kwc_bloc": 14.91,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.625,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 618,
+   "reference": "DEV-202609-0107",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 14.2 kWc, devis à 5.68 kWc (sans) : écart 150.0%.",
+   "values": {
+    "kwc_bloc": 14.2,
+    "kwc_devis": 5.68,
+    "colonne": "sans",
+    "ecart": 1.5,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 5.68
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 620,
+   "reference": "DEV-202609-0109",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 622,
+   "reference": "DEV-202609-0111",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 22.01 kWc, devis à 9.94 kWc (sans) : écart 121.4%.",
+   "values": {
+    "kwc_bloc": 22.01,
+    "kwc_devis": 9.94,
+    "colonne": "sans",
+    "ecart": 1.214,
+    "modele_sans": "factures",
+    "modele_avec": "factures",
+    "attendu": 9.94
+   }
+  },
+  {
+   "rule": "ETU_I7_BLOC_HORAIRE_PERIME",
+   "severity": "critique",
+   "object_type": "devis",
+   "object_id": 623,
+   "reference": "DEV-202609-0112",
+   "company": "taqinor-anon",
+   "message": "Bloc horaire calculé pour 9.94 kWc, devis à 4.26 kWc (sans) : écart 133.3%.",
+   "values": {
+    "kwc_bloc": 9.94,
+    "kwc_devis": 4.26,
+    "colonne": "sans",
+    "ecart": 1.333,
+    "modele_sans": "estimation",
+    "modele_avec": "estimation",
+    "attendu": 4.26
+   }
+  },
+  {
+   "rule": "DOC_ECHEANCE_AVANT_EMISSION",
+   "severity": "avertissement",
+   "object_type": "facture",
+   "object_id": 11,
+   "reference": "FAC-DEMO-0002",
+   "company": "taqinor-anon",
+   "message": "Échéance 2026-06-05 antérieure à l'émission 2026-06-10.",
+   "values": {
+    "date_echeance": "2026-06-05",
+    "date_emission": "2026-06-10",
+    "attendu": ">= 2026-06-10"
+   }
+  },
+  {
+   "rule": "FACTURE_STATUT_RESTE_INCOHERENT",
+   "severity": "critique",
+   "object_type": "facture",
+   "object_id": 11,
+   "reference": "FAC-DEMO-0002",
+   "company": "taqinor-anon",
+   "message": "Facture « payée » avec un reste à payer de 6984.00.",
+   "values": {
+    "statut": "payee",
+    "montant_du": 6984.0,
+    "attendu": 0.0
+   }
+  },
+  {
+   "rule": "CRM_SIGNE_SANS_DEVIS_ACCEPTE",
+   "severity": "avertissement",
+   "object_type": "lead",
+   "object_id": 1268,
+   "reference": "LEAD-1268",
+   "company": "taqinor-anon",
+   "message": "Lead à l'étape Signé sans devis accepté.",
+   "values": {
+    "stage": "SIGNED",
+    "source": "meta_lead_ads",
+    "attendu": "au moins un devis accepté"
+   }
+  },
+  {
+   "rule": "SEC_COMPTE_DEMO_ACTIF",
+   "severity": "critique",
+   "object_type": "utilisateur",
+   "object_id": 6,
+   "reference": "anon_admin",
+   "company": "taqinor-anon",
+   "message": "Le compte « anon_admin » est actif alors que son mot de passe est publié dans le dépôt (commande de seed).",
+   "values": {
+    "username": "anon_admin",
+    "derniere_connexion": "2026-11-01",
+    "attendu": "compte désactivé"
+   }
+  }
+ ],
+ "rule_errors": [
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 320,
+   "reference": "DEV-DEMO-0004",
+   "company": "taqinor-anon",
+   "error": "ErreurRendu: ValueError: Devis DEV-DEMO-0004 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  },
+  {
+   "rule": "QUOTE_BUILD",
+   "object_type": "devis",
+   "object_id": 321,
+   "reference": "DEV-DEMO-0005",
+   "company": "taqinor-anon",
+   "error": "ErreurRendu: ValueError: Devis DEV-DEMO-0005 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."
+  }
+ ],
+ "duration_s": 199.674
+}
