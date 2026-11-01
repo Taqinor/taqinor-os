@@ -1,0 +1,34 @@
+{
+  "sha": "9e43c2609139d683dda89d85038722596b827e71",
+  "date": "2026-11-01",
+  "groupe": "APDF",
+  "verdict": "FAIL",
+  "couvre": [
+    "APDF99"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "audit_coherence",
+      "taches": [
+        "APDF99"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/APDF/traces/2026-11-01/audit_coherence.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "FAIL"
+      },
+      "notes": "manage.py audit_coherence --no-persist (lecture seule), après la passe : société 2 taqinor-demo {'devis': 143, 'facture': 13} -> 148 violations, 14 règles en erreur ; société 4 taqinor-anon {'devis': 334, 'facture': 7} -> 146 violations, 2 règles en erreur. Sur les devis de la passe : DEV-202610-0071 CAL_MODULES_DEVIS_VS_CALEPINAGE (avertissement) « Le calepinage pose 12 modules, le devis en chiffre 14. »; DEV-202610-0071 CAL_KWC_DEVIS_VS_CALEPINAGE (avertissement) « Le calepinage dessine 8.52 kWc, le devis en porte 7.70. » ; DEV-202608-0001 ETU_I5_FACTURE_ACTUELLE (critique) « « methode_facture_actuelle » imprime 39978 MAD pour des factures réelles de 48000 MAD (×0.83). »; DEV-202608-0001 ETU_I5_FACTURE_ACTUELLE (critique) « « facture_sans_solaire » imprime 39978 MAD pour des factures réelles de 48000 MAD (×0.83). » ; aucune règle en erreur sur ces devis. Attendu (oracle dur de la tâche) : sans violation. Aucune violation de famille DOC_ ne vise un devis rendu par la passe ; les violations visées sont du calepinage (CAL_, 741) et de l étude (ETU_I5, 461), hors du groupe APDF."
+    }
+  ]
+}
