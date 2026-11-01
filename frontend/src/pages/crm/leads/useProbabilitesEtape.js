@@ -14,6 +14,9 @@ const charger = () => {
   return _lecture
 }
 
+// Tests : repartir d'une lecture neuve (même motif que `resetInsightsCache`).
+export const resetProbabilitesEtape = () => { _lecture = null }
+
 export function useProbabilitesEtape() {
   const [table, setTable] = useState(null)
   useEffect(() => {

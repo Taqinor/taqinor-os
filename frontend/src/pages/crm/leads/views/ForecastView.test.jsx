@@ -1,20 +1,16 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import ForecastView from './ForecastView'
 import { formatMAD } from '../../../../features/crm/stages'
-import { readFileSync } from 'node:fs'
-
 // Contrat PARTAGÉ (AANA66) chargé tel quel depuis le dépôt.
-const contrat = JSON.parse(readFileSync(
-  new URL('../../../../../../backend/django_core/apps/reporting/contract_samples/probabilites_etape.json', import.meta.url),
-  'utf8',
-))
+import contrat from '../../../../../../backend/django_core/apps/reporting/contract_samples/probabilites_etape.json'
 
 // AANA67 — la table est LUE de la réponse servie (contrat partagé AANA66).
 vi.mock('../../../../api/reportingApi', () => ({
   default: { getProbabilitesEtape: vi.fn() },
 }))
 import reportingApi from '../../../../api/reportingApi'
+import { resetProbabilitesEtape } from '../useProbabilitesEtape'
 
 /* XSAL15 — Vue kanban « Prévision » : regroupement par mois de
    date_cloture_prevue + colonne Non daté + totaux brut/pondéré en tête.
@@ -27,6 +23,7 @@ vi.mock('./LeadCard', () => ({
   default: ({ lead }) => <div data-testid={`lead-${lead.id}`}>{lead.nom}</div>,
 }))
 
+beforeEach(() => { resetProbabilitesEtape() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 const now = new Date()
@@ -81,7 +78,8 @@ describe('ForecastView (XSAL15)', () => {
     // Contrat chargé tel quel : QUOTE_SENT = 0.4 ⇒ 100 000 MAD → 40 000.
     reportingApi.getProbabilitesEtape.mockResolvedValue({ data: contrat.exemple })
     render(<ForecastView leads={[leads[0]]} users={[]} />)
-    expect(await screen.findByText(`Prév. ${formatMAD(40000)}`)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTitle(/Prévisionnel pondéré/).textContent)
+      .toBe(`Prév. ${formatMAD(40000)}`))
   })
 
   it('LB28 — affiche un EmptyState (plus le board) quand la liste de leads est vide', () => {
