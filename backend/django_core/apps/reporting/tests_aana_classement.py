@@ -80,3 +80,28 @@ class TestMemeTauxDeuxEcrans(TestCase):
 
         self.assertEqual(taux_tableau, 50.0)
         self.assertEqual(taux_export, taux_tableau)
+
+    def test_devis_sans_lead_meme_ca_deux_ecrans(self):
+        """AANA62 — un devis signé SANS lead (crédité à ``created_by``) compte
+        dans les deux classements : 1 000 + 2 000 HT, 2 devis, partout."""
+        client = Client.objects.get(company=self.company, nom='Cli R8')
+        produit = Produit.objects.get(company=self.company, sku='AANA22-P')
+        sans_lead = Devis.objects.create(
+            company=self.company, reference='DEV-AANA62', client=client,
+            statut=Devis.Statut.ACCEPTE, date_acceptation=self.to,
+            created_by=self.owner)
+        LigneDevis.objects.create(
+            devis=sans_lead, produit=produit, designation='Kit',
+            quantite=Decimal('2'), prix_unitaire=Decimal('1000'))
+        params = f'?from={self.frm.isoformat()}&to={self.to.isoformat()}'
+        lignes = []
+        for url, cle in ((f'{BASE}/commercial/dashboard/{params}', 'leaderboard'),
+                         (f'{BASE}/insights/sales-leaderboard/{params}', 'rows')):
+            resp = self.api.get(url)
+            self.assertEqual(resp.status_code, 200)
+            ligne = next(r for r in resp.data[cle]
+                         if r['commercial'] == self.owner.username)
+            lignes.append(ligne)
+            self.assertAlmostEqual(float(ligne['ca_ht']), 3000.0, places=2)
+            self.assertEqual(ligne['nb_devis_signes'], 2)
+        self.assertEqual(lignes[0]['ca_ht'], lignes[1]['ca_ht'])

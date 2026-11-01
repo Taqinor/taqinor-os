@@ -9,6 +9,8 @@ const reportingApi = {
   getNotifications: (config) => api.get('/reporting/notifications/', config),
   // Tableau de bord valeur du pipeline (par étape, prévision, devis, pertes).
   getPipeline: () => api.get('/reporting/pipeline/'),
+  // AANA66 — LA table serveur des probabilités par étape (tout rôle).
+  getProbabilitesEtape: () => api.get('/reporting/probabilites-etape/'),
   // Insights (N49/N70/N95/N78/N80) — lecture seule.
   recurringRevenue: () => api.get('/reporting/insights/recurring-revenue/'),
   auditLog: (params) => api.get('/reporting/insights/audit-log/', { params }),
