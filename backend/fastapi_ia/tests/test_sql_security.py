@@ -566,7 +566,7 @@ class ReecritureSurPostgresTests(unittest.TestCase):
                 tx.rollback()
 
 
-@unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
+# AANA78 — jamais sauté : un service SQL non importable est un échec (garde ENF23).
 class LignesScopeesParParentTests(unittest.TestCase):
     """AANA78 — `ventes_lignedevis` / `ventes_lignefacture` n'ont PAS de
     company_id : chaque forme qui les lit est scopee par le document parent, et

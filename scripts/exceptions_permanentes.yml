@@ -477,7 +477,6 @@ tests_sautes_environnement:
     - "backend/fastapi_ia/tests/test_sql_agent_endpoint.py::SqlNotDisclosedTests"
     - "backend/fastapi_ia/tests/test_sql_agent_limites.py::SqlAgentLimitesTests"
     - "backend/fastapi_ia/tests/test_sql_security.py::CombinedGuardTests"
-    - "backend/fastapi_ia/tests/test_sql_security.py::LignesScopeesParParentTests"
     - "backend/fastapi_ia/tests/test_sql_security.py::FunctionWhitelistTests"
     - "backend/fastapi_ia/tests/test_sql_security.py::SingleSelectEnforcementTests"
     - "backend/fastapi_ia/tests/test_sql_security.py::TenantIsolationTests"
