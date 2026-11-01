@@ -47,3 +47,22 @@ class BesoinAgronomiqueTests(SimpleTestCase):
         page2 = pages.page2(pages.build_ctx(d))
         self.assertIn(i18n_labels.libelle('agr_legende_barres', 'fr'), page2)
         self.assertNotIn('FAO-56', page2)
+
+    def test_mois_sous_tolerance_agronomique_trois_langues(self):
+        """AMOT110 - la liste des mois sous tolerance ne dit "votre besoin"
+        que pour un besoin DECLARE ; agronomique plein = libelle neutre."""
+        ar = i18n_labels.libelle('agr_mois_couverture_agro', 'ar').format(
+            mois=i18n_labels.libelle('agr_mois_10', 'ar'), pct='80')
+        attendu = {'fr': 'octobre : 80 % du besoin agronomique estimé',
+                   'en': 'October: 80 % of the estimated agronomic need',
+                   'ar': ar}
+        mois = [{'mois': 10, 'couverture_pct': 80}]
+        for langue in ('fr', 'en', 'ar'):
+            with self.subTest(langue=langue):
+                texte = pages._sous_tolerance(
+                    {'base_besoin': 'agronomique_plein',
+                     'mois_sous_tolerance': mois}, langue)
+                self.assertIn(attendu[langue], texte)
+        declare = pages._sous_tolerance(
+            {'base_besoin': 'declare', 'mois_sous_tolerance': mois}, 'fr')
+        self.assertIn('octobre : 80 % de votre besoin', declare)

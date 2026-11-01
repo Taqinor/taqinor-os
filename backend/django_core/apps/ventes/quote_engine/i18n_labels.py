@@ -260,6 +260,10 @@ LIBELLES = {
     'agr_mois_couverture': {'fr': '{mois} : {pct} % de votre besoin',
                             'en': '{mois}: {pct} % of your need',
                             'ar': '{mois}: {pct} % من حاجتكم'},
+    'agr_mois_couverture_agro': {
+        'fr': '{mois} : {pct} % du besoin agronomique estimé',
+        'en': '{mois}: {pct} % of the estimated agronomic need',
+        'ar': '{mois}: {pct} % من الحاجة الزراعية المقدّرة'},
     # AGQ38 — notes client issues des alertes du noyau (liste blanche,
     # agricole/synthese.py::CODES_NOTES_CLIENT) ; valeurs lues, jamais calculées.
     'agr_notes_titre': {'fr': 'Notes de dimensionnement', 'en': 'Sizing notes',
