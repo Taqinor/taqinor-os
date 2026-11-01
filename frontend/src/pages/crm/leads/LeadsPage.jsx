@@ -73,6 +73,7 @@ import {
 import KanbanView from './views/KanbanView'
 import { useOuvrirNouveauParUrl } from '../../../hooks/useOuvrirNouveauParUrl'
 import FacetteFiltre from './FacetteFiltre'
+import { ecrireStockage } from '../../../lib/stockageBestEffort'
 const ListView = lazy(() => import('./views/ListView'))
 const CalendarView = lazy(() => import('./views/CalendarView'))
 const ChartsView = lazy(() => import('./views/ChartsView'))
@@ -191,7 +192,7 @@ export default function LeadsPage() {
     }
   })
   useEffect(() => {
-    try { sessionStorage.setItem(VIEW_KEY, view) } catch { /* stockage indisponible */ }
+    ecrireStockage('session', VIEW_KEY, view)
   }, [view])
 
   /* APX4 — « ⛶ Plein écran board ».
@@ -213,7 +214,7 @@ export default function LeadsPage() {
   const toggleBoardFullscreen = useCallback(() => {
     setBoardFullscreen((v) => {
       const next = !v
-      try { localStorage.setItem(BOARD_FULLSCREEN_KEY, next ? '1' : '0') } catch { /* no-op */ }
+      ecrireStockage('local', BOARD_FULLSCREEN_KEY, next ? '1' : '0')
       return next
     })
   }, [])
@@ -224,7 +225,7 @@ export default function LeadsPage() {
     const onKey = (e) => {
       if (e.key === 'Escape') {
         setBoardFullscreen(false)
-        try { localStorage.setItem(BOARD_FULLSCREEN_KEY, '0') } catch { /* no-op */ }
+        ecrireStockage('local', BOARD_FULLSCREEN_KEY, '0')
       }
     }
     window.addEventListener('keydown', onKey)

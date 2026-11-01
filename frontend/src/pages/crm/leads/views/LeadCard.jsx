@@ -50,6 +50,7 @@ import {
 } from '../../../../ui'
 // LB15 — flux « Marquer perdu » partagé (fin de la triplication carte/liste).
 import PerduPopover from '../PerduPopover'
+import { ecrireStockage } from '../../../../lib/stockageBestEffort'
 
 // GESTES PURS (retour fondateur 2026-08-01, « make the sweep the most pleasant
 // possible ») — le swipe-to-action VX43/LB17 est RETIRÉ : sa bande ☎/💬 était
@@ -66,9 +67,7 @@ import PerduPopover from '../PerduPopover'
 // fois puis la retire — jamais un focus fantôme sur un futur lead sans rapport.
 const PENDING_FOCUS_KEY = 'taqinor.leadform.pendingFocus'
 function requestFocusSection(leadId, section) {
-  try {
-    sessionStorage.setItem(PENDING_FOCUS_KEY, JSON.stringify({ leadId, section }))
-  } catch { /* best-effort — sessionStorage indisponible (navigation privée…) */ }
+  ecrireStockage('session', PENDING_FOCUS_KEY, JSON.stringify({ leadId, section }))
 }
 
 const formatDateFr = (iso) =>

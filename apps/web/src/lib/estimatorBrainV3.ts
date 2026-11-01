@@ -40,6 +40,7 @@
  * JAMAIS un devis : une fourchette indicative. Voir apps/web/BRAIN_V3_NOTES.md.
  */
 import { distToBoundary, geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
+import { makeClearanceAt, makeHitsObstruction, makeCellInside, makeCellTests, latticeDims } from './estimatorBrainGeom';
 import { PERIMETER_SETBACK_M, cotesDePavage, resolveSetbacks, extremityTotalM, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
@@ -67,7 +68,7 @@ export { PANEL2_WATT };
 
 const DEG2RAD = Math.PI / 180;
 import { WGS84_RADIUS } from './geo';
-import { projectRingENU, ringUVBounds } from './roofGrid';
+import { projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
 import { departageBase, packFlat, type EvalProduction } from './estimatorBrainCommun';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000;
@@ -490,38 +491,22 @@ function packFlushCells(
   // W108 — débord : fenêtre de balayage étendue d'un nombre ENTIER de pas de chaque
   // côté (phase du lattice inchangée → panneaux intérieurs identiques). overhangM=0
   // → ohRows=ohCols=0 → calepinage identique à aujourd'hui.
-  const ohRows = overhangM > 0 ? Math.ceil(overhangM / p.rowPitchM) : 0;
-  const ohCols = overhangM > 0 ? Math.ceil(overhangM / colPitch) : 0;
-  const rows = Math.floor((vMax - vMin) / p.rowPitchM) + 2 * ohRows;
-  const cols = Math.floor((uMax - uMin) / colPitch) + 2 * ohCols;
-  if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
+  const dims = latticeDims({ uMin, uMax, vMin, vMax }, p.rowPitchM, colPitch, overhangM, MAX_CELLS);
+  if (!dims) return [];
+  const { ohRows, ohCols, rows, cols } = dims;
 
-  const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
+  const toENU = uvToENU(u, s);
   // PV60 — l'empreinte COMPLÈTE du panneau (ses 4 coins + son centre) est sondée contre
   // l'obstacle et son dégagement : un panneau à moitié dans la cheminée ne se pose plus.
   // `center` = ancienne règle (centre seul), gardée pour le diff de comptage des tests.
   // PV61 — dégagement PAR obstruction (tableau parallèle) ; entrée absente/aberrante →
   // dégagement uniforme `clearanceM` (comportement historique).
-  const clearanceAt = (i: number): number => {
-    const v = clearancesM?.[i];
-    return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : clearanceM;
-  };
-  const hitsObstruction = (probe: [number, number][]): boolean =>
-    obstructionsENU.some((o, i) => {
-      const cl = clearanceAt(i);
-      return probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= cl);
-    });
   // W108 — distance SIGNÉE au bord (+ dedans, − dehors) : un coin tient s'il est à
   // au moins `setbackM` à l'intérieur OU déborde d'au plus `overhangM`. overhangM=0
   // → équivaut exactement à l'ancienne règle (dedans/pile-rive ET retrait).
   // PV63 — acrotère = distance minimale à toute rive (chaque coin) ; latéral/extrémité
   // décalent le départ du balayage. Trois valeurs égales → comportement historique.
-  const cellInside = (corners: [number, number][]): boolean =>
-    corners.every((c) => {
-      const d = distToBoundary(c, ringENU);
-      const sd = pointInPolygon(c, ringENU) ? d : -d;
-      return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M;
-    });
+  const { hitsObstruction, cellInside } = makeCellTests(ringENU, obstructionsENU, clearancesM, clearanceM, setbacks.parapetM, overhangM, EDGE_EPS_M);
 
   // CAL76 — total extrémité+joint (défaut joint=0 → identique au retrait d'extrémité seul,
   // même discipline que estimatorBrainV2.ts).

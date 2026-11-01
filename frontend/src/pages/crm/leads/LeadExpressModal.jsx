@@ -24,6 +24,7 @@ import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle,
   Form, FormField, FormActions, Input,
 } from '../../../ui'
+import { ecrireStockage } from '../../../lib/stockageBestEffort'
 
 // Dédoublonnage grossier : on retire les non-chiffres pour comparer.
 function normalizePhone(raw) {
@@ -40,8 +41,7 @@ const lireLastCanal = () => {
   catch { return 'walk_in' }
 }
 const ecrireLastCanal = (v) => {
-  try { if (v) window.localStorage.setItem(LEAD_EXPRESS_CANAL_KEY, v) }
-  catch { /* localStorage indisponible (navigation privée, quota) : no-op */ }
+  if (v) ecrireStockage('local', LEAD_EXPRESS_CANAL_KEY, v)
 }
 
 export default function LeadExpressModal({ onClose, onSaved }) {

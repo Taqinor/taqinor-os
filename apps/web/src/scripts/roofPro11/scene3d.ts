@@ -19,6 +19,8 @@
  */
 import * as maplibregl from 'maplibre-gl';
 import * as THREE from 'three';
+import { enuSharedEdgeOverlapM } from './edgeOverlap';
+import { makeCompose, configureShadowRenderer, ringsBBox, fitShadowCamera } from './threeShared';
 import { PANEL2_THICK_M, sunDirection, describeRowPitch } from '../../lib/roofPro2';
 import { rowSelfShading } from '../../lib/shadingEngine';
 import {
@@ -169,50 +171,6 @@ export interface RidgePan {
   facingAzimuthDeg: number;
   /** Pente (°) du pan. */
   tiltDeg: number;
-}
-
-/** Longueur (m) du segment de RECOUVREMENT entre deux arêtes quasi-collinéaires/coïncidentes
- *  en ENU, ou 0 si elles ne sont pas une arête partagée (écart trop grand, angle trop large,
- *  recouvrement trop court). Mêmes tolérances que roofAdjacency (1,5 m / 12° / 0,5 m). */
-function enuSharedEdgeOverlapM(
-  a1: [number, number],
-  a2: [number, number],
-  b1: [number, number],
-  b2: [number, number],
-): number {
-  const MAX_GAP_M = 1.5;
-  const MAX_ANGLE_DEG = 12;
-  const MIN_OVERLAP_M = 0.5;
-  const da: [number, number] = [a2[0] - a1[0], a2[1] - a1[1]];
-  const db: [number, number] = [b2[0] - b1[0], b2[1] - b1[1]];
-  const la = Math.hypot(da[0], da[1]);
-  const lb = Math.hypot(db[0], db[1]);
-  if (la <= 0 || lb <= 0) return 0;
-  // Angle d'arête (non-orienté, mod 180°).
-  const angA = Math.atan2(da[1], da[0]) * (180 / Math.PI);
-  const angB = Math.atan2(db[1], db[0]) * (180 / Math.PI);
-  let diff = Math.abs(angA - angB) % 180;
-  if (diff > 90) diff = 180 - diff;
-  if (diff > MAX_ANGLE_DEG) return 0;
-  // Écart moyen point→segment (robuste aux longueurs différentes).
-  const distPS = (p: [number, number], s: [number, number], e: [number, number]): number => {
-    const se: [number, number] = [e[0] - s[0], e[1] - s[1]];
-    const len2 = se[0] * se[0] + se[1] * se[1];
-    if (len2 === 0) return Math.hypot(p[0] - s[0], p[1] - s[1]);
-    let t = ((p[0] - s[0]) * se[0] + (p[1] - s[1]) * se[1]) / len2;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(p[0] - (s[0] + se[0] * t), p[1] - (s[1] + se[1] * t));
-  };
-  const gap = (distPS(b1, a1, a2) + distPS(b2, a1, a2) + distPS(a1, b1, b2) + distPS(a2, b1, b2)) / 4;
-  if (gap > MAX_GAP_M) return 0;
-  // Recouvrement : projette les 4 extrémités sur la direction unitaire de l'arête A.
-  const ux = da[0] / la;
-  const uy = da[1] / la;
-  const proj = (p: [number, number]): number => (p[0] - a1[0]) * ux + (p[1] - a1[1]) * uy;
-  const lo2 = Math.min(proj(b1), proj(b2));
-  const hi2 = Math.max(proj(b1), proj(b2));
-  const overlap = Math.min(la, hi2) - Math.max(0, lo2);
-  return overlap >= MIN_OVERLAP_M ? overlap : 0;
 }
 
 /** Deux pans ENU partagent-ils une arête ? (au moins une paire d'arêtes coïncidentes). */
@@ -1385,18 +1343,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     if (groupeElectrique && sceneRoot && groupeElectrique.parent !== sceneRoot) sceneRoot.add(groupeElectrique);
   }
 
-  const AXIS_X = new THREE.Vector3(1, 0, 0);
-  const AXIS_Z = new THREE.Vector3(0, 0, 1);
-  const _q = new THREE.Quaternion();
-  const _qz = new THREE.Quaternion();
-  const _qx = new THREE.Quaternion();
-  const _scl = new THREE.Vector3(1, 1, 1);
-  const compose = (px: number, py: number, pz: number, rotZ: number, rotX: number): THREE.Matrix4 => {
-    _qz.setFromAxisAngle(AXIS_Z, rotZ);
-    _qx.setFromAxisAngle(AXIS_X, rotX);
-    _q.copy(_qz).multiply(_qx);
-    return new THREE.Matrix4().compose(new THREE.Vector3(px, py, pz), _q, _scl);
-  };
+  const compose = makeCompose();
 
   /**
    * PV62 — comme `compose`, plus deux réglages LOCAUX (appliqués APRÈS l'orientation du
@@ -1540,12 +1487,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
    *  ses options de rendu. Extrait de onAdd pour être réutilisable à la restauration. */
   function buildRenderer(gl: WebGLRenderingContext | WebGL2RenderingContext) {
     renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: !lowEnd });
-    renderer.autoClear = false;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    configureShadowRenderer(renderer);
   }
 
   function onContextLost(e: Event) {
@@ -2621,15 +2563,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // l'ombre ne soit pas tronquée quand plusieurs zones coexistent. `appendOtherZones`
     // (appelée plus bas) ajoute les anneaux translatés des autres zones à cette liste.
     const shadowRings: [number, number][][] = [built.ring];
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const otherRings = appendOtherZones(pack.origin);
     for (const r of otherRings) shadowRings.push(r);
-    for (const r of shadowRings) for (const [x, y] of r) {
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
+    const { minX, minY, maxX, maxY } = ringsBBox(shadowRings);
     const cxm = (minX + maxX) / 2;
     const cym = (minY + maxY) / 2;
     const span = Math.max(maxX - minX, maxY - minY, wallH) + 8;
@@ -2657,14 +2593,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const dist = span * 2.5;
     sun.target.position.set(cxm, cym, roofZ);
     sun.position.set(cxm + Math.sin(azR) * Math.cos(elR) * dist, cym + Math.cos(azR) * Math.cos(elR) * dist, roofZ + Math.sin(elR) * dist);
-    const sc = sun.shadow.camera as THREE.OrthographicCamera;
-    sc.left = -span;
-    sc.right = span;
-    sc.top = span;
-    sc.bottom = -span;
-    sc.near = 0.5;
-    sc.far = dist * 2;
-    sc.updateProjectionMatrix();
+    fitShadowCamera(sun, span, dist * 2);
 
     attacherCoucheElectrique(); // CALX219 câblage — la couche électrique revient sur la scène
     for (const m of construireMaillagesPose(ctx.surfacesPose, pack.origin, readOnly)) sceneRoot!.add(m); // CALX124 — surfaces de pose (sol/ombrière) : volumes et ombres portées ; aucune surface ⇒ rien d'ajouté

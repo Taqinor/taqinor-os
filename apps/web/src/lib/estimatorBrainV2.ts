@@ -34,8 +34,9 @@
  * (yieldTable.ts). JAMAIS un devis. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
  */
 import { distToBoundary, geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
+import { makeClearanceAt, makeHitsObstruction, makeCellInside, makeCellTests, latticeDims } from './estimatorBrainGeom';
 import { PANEL2_WATT, PERIMETER_SETBACK_M, cotesDePavage, resolveSetbacks, extremityTotalM, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
-import { projectRingENU, ringUVBounds } from './roofGrid';
+import { projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
 import { YIELD_TABLE } from './yieldTable';
 import { PRODUCTION_NET_FACTOR } from './systemLoss';
 
@@ -1038,13 +1039,11 @@ function packCells(
   // W108 — débord : on étend la fenêtre de balayage d'un nombre ENTIER de pas de
   // chaque côté (la PHASE du lattice reste inchangée → panneaux intérieurs
   // identiques au pixel près). overhangM=0 → ohRows=ohCols=0 → tout est identique.
-  const ohRows = overhangM > 0 ? Math.ceil(overhangM / p.pitchM) : 0;
-  const ohCols = overhangM > 0 ? Math.ceil(overhangM / colPitch) : 0;
-  const rows = Math.floor((vMax - vMin) / p.pitchM) + 2 * ohRows;
-  const cols = Math.floor((uMax - uMin) / colPitch) + 2 * ohCols;
-  if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
+  const dims = latticeDims({ uMin, uMax, vMin, vMax }, p.pitchM, colPitch, overhangM, MAX_CELLS);
+  if (!dims) return [];
+  const { ohRows, ohCols, rows, cols } = dims;
 
-  const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
+  const toENU = uvToENU(u, s);
   // Un panneau est retiré si l'un des POINTS SONDÉS tombe DANS un obstacle OU à moins
   // de `clearanceM` de son bord (zone d'exclusion + dégagement) — une seule règle qui
   // couvre l'union d'obstacles superposés et la part qui chevauche le toit.
@@ -1055,15 +1054,6 @@ function packCells(
   // PV61 — le dégagement est PROPRE À CHAQUE obstruction (cheminée > antenne) : on lit
   // le tableau parallèle `clearancesM`, et toute entrée absente/aberrante retombe sur le
   // dégagement uniforme `clearanceM` (comportement historique).
-  const clearanceAt = (i: number): number => {
-    const v = clearancesM?.[i];
-    return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : clearanceM;
-  };
-  const hitsObstruction = (probe: [number, number][]): boolean =>
-    obstructionsENU.some((o, i) => {
-      const cl = clearanceAt(i);
-      return probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= cl);
-    });
   // EPS : les vecteurs de base portent un bruit flottant (sin(180°) ≈ 1e−16) qui
   // place les cellules pile au retrait à 0,5 − ε ; sans tolérance on perdrait toute
   // la première rangée/colonne (asymétrique entre Sud et E-O sur petits toits).
@@ -1081,12 +1071,7 @@ function packCells(
   // PV63 — l'ACROTÈRE (distance minimale à toute rive) borne chaque coin de cellule ; le
   // LATÉRAL et l'EXTRÉMITÉ décalent le DÉPART du balayage (u et v). Trois retraits égaux
   // → règle et séquence identiques au retrait unique historique.
-  const cellInside = (corners: [number, number][]): boolean =>
-    corners.every((c) => {
-      const d = distToBoundary(c, ringENU);
-      const sd = pointInPolygon(c, ringENU) ? d : -d;
-      return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M;
-    });
+  const { hitsObstruction, cellInside } = makeCellTests(ringENU, obstructionsENU, clearancesM, clearanceM, setbacks.parapetM, overhangM, EDGE_EPS_M);
 
   // Départ décalé de ohRows/ohCols pas entiers vers l'extérieur ; borne haute
   // étendue du débord. overhangM=0 : vStart=vMin+extrémité, séquence et borne identiques.
@@ -1179,10 +1164,7 @@ function packMixedCells(
 
   const { uMin, uMax, vMin, vMax } = ringUVBounds(ringENU, u, s);
 
-  const clearanceAt = (i: number): number => {
-    const v = clearancesM?.[i];
-    return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : clearanceM;
-  };
+  const clearanceAt = makeClearanceAt(clearancesM, clearanceM);
   // Boîte englobante de chaque obstruction : le balayage fin sonde surtout du toit LIBRE,
   // et un point hors de la boîte élargie du dégagement ne peut pas toucher l'obstacle.
   // Filtre EXACT (jamais un raccourci qui laisserait passer un panneau interdit).
@@ -1208,12 +1190,7 @@ function packMixedCells(
         return pointInPolygon(c, o) || distToBoundary(c, o) <= cl;
       });
     });
-  const cellInside = (corners: [number, number][]): boolean =>
-    corners.every((c) => {
-      const d = distToBoundary(c, ringENU);
-      const sd = pointInPolygon(c, ringENU) ? d : -d;
-      return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M; // PV63 — acrotère
-    });
+  const cellInside = makeCellInside(ringENU, setbacks.parapetM, overhangM, EDGE_EPS_M); // PV63 — acrotère
   /** Rectangle (u0..u1 × v0..v1) posable : entièrement dans le toit ET hors obstacle. */
   const rectOk = (u0: number, u1: number, v0: number, v1: number): boolean => {
     const corners: [number, number][] = [toENU(u0, v0), toENU(u1, v0), toENU(u1, v1), toENU(u0, v1)];

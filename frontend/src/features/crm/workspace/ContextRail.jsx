@@ -15,6 +15,7 @@ import VisiteTab from './VisiteTab'
 // changement de stage, apps/crm/receivers.py) : portée de l'ancien LeadForm
 // (section « Playbook », origin/main 2026-07-19) vers un onglet du rail.
 import PlaybookChecklistPanel from '../../../pages/crm/leads/PlaybookChecklistPanel'
+import { ecrireStockage } from '../../../lib/stockageBestEffort'
 
 // LW19 — Rail contexte (zone droite) : `ui/Tabs` (clavier/ARIA gratuits,
 // remplace le rail maison sans ARIA — recon 04 §6) avec 4 onglets — Historique
@@ -27,7 +28,7 @@ const readTab = () => {
   try { return sessionStorage.getItem(TAB_KEY) || 'historique' } catch { return 'historique' }
 }
 const writeTab = (v) => {
-  try { sessionStorage.setItem(TAB_KEY, v) } catch { /* best-effort */ }
+  ecrireStockage('session', TAB_KEY, v)
 }
 
 // LW20/LW22 — composer (note en cours) + sélection WhatsApp DOIVENT vivre sur

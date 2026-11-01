@@ -203,7 +203,7 @@ export const SOLAR_DECLINATION_DEG = 23.44; // déclinaison au solstice
 export const SHADOW_MARGIN_M = 0.05; // petite marge en plus de l'ombre calculée
 
 import { WGS84_RADIUS } from './geo';
-import { paverRangees, projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
+import { emptyLayoutBase, paverRangees, projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
 import type { ProLayout, ProPanel } from './roofPro';
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * WGS84_RADIUS;
@@ -416,14 +416,7 @@ export function layoutProRows2(
   const dims = { alongRow, slope, depthFootprint, rise, frontStrut: FRONT_STRUT_M };
 
   const empty: ProLayout2 = {
-    origin: ring.length ? ring[0] : [0, 0],
-    ringENU: [],
-    panels: [],
-    count: 0,
-    kwc: 0,
-    areaM2,
-    rowAngleRad: 0,
-    tiltRad,
+    ...emptyLayoutBase(ring, areaM2, tiltRad),
     azimuthDeg,
     latitudeDeg,
     designElevDeg,

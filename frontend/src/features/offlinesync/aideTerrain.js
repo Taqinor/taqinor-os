@@ -1,3 +1,4 @@
+import { ecrireStockage } from '../../lib/stockageBestEffort'
 // NTMOB33 — logique PURE du bandeau d'onboarding contextuel TERRAIN.
 // Distinct du guide global FG16 (`OnboardingCoachmarks`, tour de l'app pour
 // l'administrateur) : ici, 3 phrases affichées UNE SEULE FOIS au premier accès
@@ -37,7 +38,5 @@ export function doitAfficherOnboarding(userId) {
 }
 
 export function marquerOnboardingVu(userId) {
-  try {
-    storage()?.setItem(cleOnboarding(userId), '1')
-  } catch { /* stockage indisponible : rien à persister */ }
+  ecrireStockage('local', cleOnboarding(userId), '1')
 }

@@ -66,6 +66,7 @@ import { formatMAD } from '../../../../lib/format'
 import { useColumnPrefs } from '../../../../ui/datatable/useColumnPrefs'
 import { ColumnManager, columnStateReducer, initColumnState } from '../../../../ui/datatable'
 import { useIsMobile } from '../../../../ui/ResponsiveDialog'
+import { ecrireStockage } from '../../../../lib/stockageBestEffort'
 
 // LB32 — dédup : hook CANONIQUE `useIsMobile` (ui/ResponsiveDialog, déjà
 // adopté par LeadsPage.jsx/LeadWorkspace) au lieu d'une copie locale
@@ -149,8 +150,7 @@ const lireListGroup = () => {
   catch { return 'plat' }
 }
 const ecrireListGroup = (v) => {
-  try { localStorage.setItem(LIST_GROUP_KEY, v) }
-  catch { /* localStorage indisponible : no-op */ }
+  ecrireStockage('local', LIST_GROUP_KEY, v)
 }
 const LIST_GROUP_COLLAPSED_KEY = 'taqinor.leads.listGroupCollapsed'
 const lireGroupesReplies = () => {
@@ -160,8 +160,7 @@ const lireGroupesReplies = () => {
   } catch { return new Set() }
 }
 const ecrireGroupesReplies = (setValue) => {
-  try { localStorage.setItem(LIST_GROUP_COLLAPSED_KEY, JSON.stringify([...setValue])) }
-  catch { /* localStorage indisponible : no-op */ }
+  ecrireStockage('local', LIST_GROUP_COLLAPSED_KEY, JSON.stringify([...setValue]))
 }
 
 const fullName = (l) => `${l.nom ?? ''} ${l.prenom ?? ''}`.trim()
