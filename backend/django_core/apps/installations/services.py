@@ -788,10 +788,10 @@ def annuler_chantiers_desaccepte(devis, user, company):
 
 
 def _reactiver_chantier_reaccepte(inst, devis, user):
-    """Ré-acceptation d'un devis dés-accepté : le chantier annulé par la
-    dés-acceptation redevient actif (jamais un second chantier), sa date de
-    signature suit la nouvelle acceptation et ses réservations sont
-    réamorcées s'il en portait (même règle que l'action « Réactiver »)."""
+    """Ré-acceptation d'un devis dés-accepté : le chantier annulé redevient
+    actif (jamais un second), sa signature suit la nouvelle acceptation, puis
+    (ACHT114, comme « Réactiver », APRÈS ``annule=False``) sa nomenclature est
+    réalignée sur le gel du devis — à défaut, ses réservations réamorcées."""
     from . import activity
     inst.annule = False
     inst.motif_annulation = None
@@ -801,11 +801,10 @@ def _reactiver_chantier_reaccepte(inst, devis, user):
         inst.date_signature = date_acc
         champs.append('date_signature')
     inst.save(update_fields=champs)
-    activity.log_note(
-        inst, user,
-        f'Chantier réactivé : le devis {devis.reference} a été accepté de '
-        'nouveau.')
-    if inst.reservations.exists():
+    activity.log_note(inst, user, f'Chantier réactivé : le devis '
+                      f'{devis.reference} a été accepté de nouveau.')
+    if not realigner_nomenclature_si_divergente(
+            inst, user, 'à la ré-acceptation') and inst.reservations.exists():
         seed_reservations(inst)
 
 
@@ -5785,10 +5784,9 @@ def raison_machine_etats(installation, nouveau_statut):
     par le serveur. Renvoie la raison française du refus, ou None.
 
     * chantier annulé : tout changement de statut canonique est refusé ;
-    * pas en avant de plus d'un rang canonique (``STATUT_ORDER``, statuts
-      hérités rabattus sur leur colonne) : refusé — « un pas à la fois ».
-    Un recul n'est jamais bloqué ici (la réouverture d'un chantier clôturé
-    garde son verrou AUD326 dédié)."""
+    * pas de plus d'un rang canonique, en avant COMME en arrière (ACHT118,
+      miroir de ``canMoveStatus``) : refusé — « un pas à la fois » ; seule
+      exception : la réouverture d'un Clôturé (verrou AUD326, cible libre)."""
     canon_old = Installation.canonical_statut(installation.statut)
     canon_new = Installation.canonical_statut(nouveau_statut)
     if canon_old == canon_new:
@@ -5801,7 +5799,7 @@ def raison_machine_etats(installation, nouveau_statut):
     if canon_old not in ordre or canon_new not in ordre:
         return None
     i, j = ordre.index(canon_old), ordre.index(canon_new)
-    if j - i > 1:
+    if abs(j - i) > 1 and canon_old != Installation.Statut.CLOTURE:
         libelles = dict(Installation.Statut.choices)
         return (f"Passage de {libelles.get(canon_old, canon_old)} à "
                 f"{libelles.get(canon_new, canon_new)} refusé : un pas à la "
@@ -5820,7 +5818,7 @@ def _raisons_transition(installation, nouveau_statut, user,
     puis CIQ621 : site pro sans convention, même sans étapes amorcées.
 
     ACHT2 (D-ACHT-2) — EN TÊTE, la machine d'états serveur : un chantier
-    annulé ne change plus de statut, et aucun pas en AVANT ne saute un rang
+    annulé ne change plus de statut, et aucun pas ne saute un rang
     canonique (miroir serveur de ``canMoveStatus``). Ces deux refus sont
     exclusifs : le reste de la chaîne n'est pas évalué."""
     raison_machine = raison_machine_etats(installation, nouveau_statut)
