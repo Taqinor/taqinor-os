@@ -7032,14 +7032,12 @@ def _lire_ligne_tarif(company, row, idx_sku, idx_prix, idx_paliers):
     from .models import Produit
     sku = str(row[idx_sku] or '').strip() if idx_sku < len(row) else ''
     if not sku:
-        if idx_prix < len(row) and row[idx_prix] not in (None, ''):
-            return sku, False, None, [], 'SKU manquant.'
-        return sku, None, None, [], None
+        motif = 'SKU manquant.' if idx_prix < len(row) and row[idx_prix] not in (None, '') else None
+        return sku, (False if motif else None), None, [], motif
     produit = Produit.objects.filter(company=company, sku=sku).first()
     if produit is None:
         return sku, None, None, [], f'SKU introuvable : {sku}.'
-    prix_raw = row[idx_prix] if idx_prix < len(row) else None
-    prix = _dec(prix_raw)
+    prix = _dec(prix_raw := row[idx_prix] if idx_prix < len(row) else None)
     if prix is None or not prix.is_finite():
         return sku, produit, None, [], f'Prix invalide pour {sku} : {prix_raw!r}.'
     paliers, rejets = _parse_palier_cell(
@@ -7047,8 +7045,8 @@ def _lire_ligne_tarif(company, row, idx_sku, idx_prix, idx_paliers):
     rejets = ([f'prix à plus de 2 décimales : {prix_raw!r}']
               if prix.as_tuple().exponent < -2 else []) + rejets
     if rejets:
-        return sku, produit, None, [], f'{sku} : ' + ' ; '.join(rejets) + '.'
-    return sku, produit, prix, paliers, None
+        prix, paliers = None, []
+    return sku, produit, prix, paliers, (f'{sku} : ' + ' ; '.join(rejets) + '.' if rejets else None)
 
 
 def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
@@ -7129,19 +7127,17 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
                 'conflits': [], 'ecrasements_total': 0,
                 'ecrasements_appliques': 0, 'refuses': [], 'job_id': None}
 
-    def _erreur(row_num, sku, message):
+    def _erreur(row_num, sku, message, journal=True):
         errors.append({'row': row_num, 'message': message})
-        lignes_job.append({'ligne': row_num, 'statut': 'erreur',
-                           'motif': message, 'donnees': {'sku': sku}})
+        if journal:
+            lignes_job.append({'ligne': row_num, 'statut': 'erreur',
+                               'motif': message, 'donnees': {'sku': sku}})
 
     for row_num, row in enumerate(rows_iter, start=2):
         sku, produit, prix, paliers, motif = _lire_ligne_tarif(
             company, row, idx_sku, idx_prix, idx_paliers)
-        if motif is not None:
-            if produit is False:  # ligne sans SKU : pas de ligne de journal
-                errors.append({'row': row_num, 'message': motif})
-            else:
-                _erreur(row_num, sku, motif)
+        if motif is not None:  # ligne sans SKU (produit False) : pas de ligne de journal
+            _erreur(row_num, sku, motif, journal=produit is not False)
             continue
         if produit is None:  # ligne entièrement vide : ignorée
             continue
