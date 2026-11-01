@@ -1346,6 +1346,7 @@ CELERY_TASK_ROUTES = {
     # NTP2P34 — recalcul quotidien des scores de risque fournisseur (NTP2P8).
     'stock.recompute_scores_risque': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
+    'crm.detecter_comptes_dormants': {'queue': 'scheduled'},
     # ALEA1 — réveil saisonnier CAD74 (beat juin → septembre).
     'crm.poser_reveils_saisonniers': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.

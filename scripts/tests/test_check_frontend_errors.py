@@ -84,6 +84,15 @@ function f() {
   try { g() } catch (e) { toast.error(frenchError(e, 'Erreur.')) }
 }
 """
+CATCH_ACCOLADE_EN_COMMENTAIRE = """
+function g() {
+  try { h() } catch (e) {
+    // le 400 porte {statut: [raisons]}
+    toast.error(frenchError(e, 'Erreur.'))
+  }
+}
+// l'echec etait avale (`catch {}`) : corrige
+"""
 
 
 class CatchVideTests(unittest.TestCase):
@@ -108,6 +117,11 @@ class CatchVideTests(unittest.TestCase):
         erreurs = guard.verifier_catch_vide(trouves, {})
         self.assertEqual(len(erreurs), 2)
         self.assertIn("catch vide", erreurs[0])
+
+    def test_accolade_ou_citation_dans_un_commentaire_ne_fait_pas_un_catch_vide(self):
+        # ENF15 - faux positifs : `}` dans un commentaire de ligne, `catch {}`
+        # cite dans un commentaire.
+        self.assertEqual(self._trouves({"A.jsx": CATCH_ACCOLADE_EN_COMMENTAIRE}), {})
 
     def test_catch_qui_affiche_accepte(self):
         self.assertEqual(self._trouves({"A.jsx": CATCH_AFFICHE}), {})

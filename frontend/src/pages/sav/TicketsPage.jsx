@@ -1639,7 +1639,7 @@ const lireLastTicketType = () => {
 }
 const ecrireLastTicketType = (v) => {
   try { if (v) window.localStorage.setItem(TICKET_QC_TYPE_KEY, v) }
-  catch { /* localStorage indisponible (navigation privée, quota) : no-op */ }
+  catch { console.warn('TicketsPage (ecrireLastTicketType) : localStorage indisponible (navigation privée, quota) : no-op') }
 }
 
 function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
@@ -1858,7 +1858,7 @@ export default function TicketsPage() {
   // l'on peut envoyer à un collègue — /sav?id=<pk> rouvre le même ticket.
   const copierLien = async (t) => {
     const url = `${window.location.origin}/sav?id=${t.id}`
-    try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+    try { await navigator.clipboard?.writeText(url) } catch { console.warn('TicketsPage (copierLien) : presse-papier indispo') }
     toast.success('Lien du ticket copié.')
   }
 

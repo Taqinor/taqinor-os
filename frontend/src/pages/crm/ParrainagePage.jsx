@@ -54,7 +54,7 @@ export default function ParrainagePage() {
     } catch (e) { setMsg(e?.response?.data?.detail ?? 'Création impossible.') }
   }
   const setStatut = async (id, statut) => {
-    try { await crmApi.saveParrainage(id, { statut }); load() } catch { /* */ }
+    try { await crmApi.saveParrainage(id, { statut }); load() } catch { console.warn('ParrainagePage (setStatut) : échec ignoré (dégradé)') }
   }
 
   // P169 — plus aucun style={} en dur : tout passe par des classes Tailwind/tokens.

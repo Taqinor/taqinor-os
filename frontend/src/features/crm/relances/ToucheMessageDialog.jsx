@@ -140,8 +140,7 @@ export default function ToucheMessageDialog({
       await navigator.clipboard.writeText(rendu.message)
       toast.success('Texte copié.')
     } catch {
-      // best-effort — presse-papier indisponible (contexte non sécurisé,
-      // permission refusée) : le texte reste lisible et sélectionnable.
+      console.warn('ToucheMessageDialog (copier) : best-effort — presse-papier indisponible (contexte non sécurisé, permission refusée) : le texte reste lisible et sélectionnable.')
     }
   }
 
@@ -174,8 +173,7 @@ export default function ToucheMessageDialog({
       onSent?.(etape.id, r?.data)
       onOpenChange(false)
     } catch {
-      // best-effort — WhatsApp est déjà ouvert ; un échec du marquage reste
-      // silencieux ici, la file se resynchronisera au prochain chargement.
+      console.warn('ToucheMessageDialog (ouvrirWhatsApp) : best-effort — WhatsApp est déjà ouvert ; un échec du marquage reste silencieux ici, la file se resynchronisera au prochain chargement.')
     } finally {
       setSending(false)
     }

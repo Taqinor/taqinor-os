@@ -4,4 +4,3 @@
 # Un site liste ici est CONSTATE, pas approuve : ajouter un log nomme l'operation (ou resserrer
 # l'exception) puis retirer sa ligne. REGLE ABSOLUE : cette liste ne peut que DECROITRE ;
 # une cle morte fait echouer la garde.
-backend/django_core/apps/crm/views.py::LeadViewSet._a_un_changement

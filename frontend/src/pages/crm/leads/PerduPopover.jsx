@@ -83,7 +83,7 @@ export default function PerduPopover({
       setOpen(false)
       setMotif('')
     } catch {
-      // Échec réseau : toast déjà affiché en amont, popover reste ouverte.
+      console.warn('PerduPopover (confirm) : Échec réseau : toast déjà affiché en amont, popover reste ouverte.')
     } finally {
       setBusy(false)
     }

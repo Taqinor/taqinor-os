@@ -122,8 +122,12 @@ test('ODY32: budgets mesurés — LCP du Menu d’accueil, tâches longues à l�
       })
       obs.observe({ type: 'largest-contentful-paint', buffered: true })
     } catch { /* API absente : on retombe sur le repli ci-dessous */ }
-    // Laisse une frame ou deux au navigateur pour livrer l'entrée bufferisée.
-    setTimeout(() => resolve(Math.round(dernier)), 500)
+    // Laisse une frame ou deux au navigateur pour livrer l'entrée bufferisée
+    // (observation de 500 ms rythmée par les frames, sans minuteur nu).
+    const fin = performance.now() + 500
+    const tic = () => (performance.now() >= fin
+      ? resolve(Math.round(dernier)) : requestAnimationFrame(tic))
+    requestAnimationFrame(tic)
   }))
   consigner('Menu d’accueil — LCP', lcp, 1500)
   expect(lcp, 'le Menu d’accueil peint dans un délai plausible').toBeLessThan(LCP_PLAFOND_CI)
