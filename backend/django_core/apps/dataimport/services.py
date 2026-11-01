@@ -907,8 +907,12 @@ def _valider_ligne_produit(f):
             return champs, 0, f'{cle} invalide : « {saisi} »'
         if nombre < 0:
             return champs, 0, f'{cle} négatif refusé : « {saisi} »'
-        if nombre >= PRIX_MAX:
+        from django.apps import apps
+        col = apps.get_model('stock', 'Produit')._meta.get_field(cle)
+        if nombre >= PRIX_MAX or nombre >= 10 ** (col.max_digits - col.decimal_places):
             return champs, 0, f'{cle} hors bornes : « {saisi} »'
+        if nombre.normalize().as_tuple().exponent < -col.decimal_places:
+            return champs, 0, f'{cle} : plus de {col.decimal_places} décimales : « {saisi} »'
         champs[cle] = nombre
     ouverture = 0
     if 'quantite_stock' in champs:

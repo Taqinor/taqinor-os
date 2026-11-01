@@ -68,6 +68,26 @@ class TestValidationLignesProduits(ImportBase):
         self.assertEqual(str(w.prix_vente), '1200.50')
         self.assertEqual(w.quantite_stock, 3)
 
+    def test_prix_a_trois_decimales_refuse_jamais_arrondi(self):
+        data = self._importer('Nom,SKU,Prix\n'
+                              'A,D1,"12.345"\nB,D2,"12,345"\n'
+                              'C,D4,12.34\nD,D5,"12,5"\n')
+        lignes = {s['ligne']: s['raison'] for s in data['skipped']}
+        self.assertEqual(sorted(lignes), [1, 2], data)
+        self.assertIn('plus de 2 décimales', lignes[1])
+        self.assertFalse(Produit.objects.filter(
+            company=self.company, sku__in=['D1', 'D2']).exists())
+        prix = {p.sku: str(p.prix_vente) for p in Produit.objects.filter(
+            company=self.company, sku__in=['D4', 'D5'])}
+        self.assertEqual(prix, {'D4': '12.34', 'D5': '12.50'})
+
+    def test_prix_hors_bornes_de_la_colonne_ligne_d_erreur(self):
+        data = self._importer('Nom,SKU,Prix\n'
+                              'A,B1,99999999.999\nB,B2,100000000\n')
+        self.assertEqual(sorted(s['ligne'] for s in data['skipped']),
+                         [1, 2], data)
+        self.assertEqual(data['created'], 0, data)
+
     def test_quantite_entiere_ecrite_en_decimal_acceptee(self):
         data = self._importer('Nom,SKU,Prix,Quantite\nV,S5,10,4.0\n')
         self.assertEqual(data['created'], 1, data)
