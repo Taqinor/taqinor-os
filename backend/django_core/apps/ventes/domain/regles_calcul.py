@@ -49,8 +49,15 @@ REGLES_RETOURS_3010B = 5
 #: valeurs exactement à moitié. La migration 0145 laisse à 5 tout devis non
 #: brouillon : il garde l'arrondi qu'il a reçu (``montants.arrondi_affichage``).
 REGLES_ARRONDI_3010 = 6
+#: Niveau 7 (écarts de la contre-visite AMOT du 31/10/2026, C-AMOT-VER-003/006,
+#: « nouveaux rendus seulement ») : le payback du curseur de stockage
+#: (AMOT103), de l'échelle batterie (AMOT102) et de la carte « avec » de repli
+#: (AMOT107) suit la définition de ``roi_a`` (part stockée 0, rendement du
+#: devis, provision d'onduleur réelle). La migration 0146 laisse à 6 tout devis
+#: non brouillon : il garde les paybacks qu'il a reçus.
+REGLES_ECARTS_3110 = 7
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_ARRONDI_3010
+REGLES_COURANTES = REGLES_ECARTS_3110
 
 
 def regles_au_moins(devis, niveau: int) -> bool:
