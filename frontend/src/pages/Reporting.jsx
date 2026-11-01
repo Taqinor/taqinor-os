@@ -422,7 +422,7 @@ export function Component() {
                 formule factures ÷ devis dépassait 100 %. */}
             {conversion.taux_acceptation_pct != null && (
               <div className="mt-4 rounded-lg bg-muted px-3.5 py-2.5 text-sm text-muted-foreground">
-                Devis acceptés / créés :{' '}
+                Devis acceptés / envoyés :{' '}
                 <strong className="tabular-nums text-foreground">
                   {formatPercent(conversion.taux_acceptation_pct)}
                 </strong>
