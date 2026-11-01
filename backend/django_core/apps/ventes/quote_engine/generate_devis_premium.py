@@ -38,11 +38,11 @@ except ImportError:  # exécution directe du moteur depuis son dossier
 # QJR613 — formateur monétaire au centime UNIQUE (stdlib), partagé avec les
 # paquets premium ; même double chemin d'import.
 try:
-    from .montants import (decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams, format_anglais,
-                           format_langue, pct_fr, poser_regles_origine, regles_origine)
+    from .montants import (arrondi_affichage, decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams,
+                           format_anglais, format_langue, pct_fr, poser_regles_origine, regles_origine)
 except ImportError:  # exécution directe du moteur depuis son dossier
-    from montants import (decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams, format_anglais,
-                          format_langue, pct_fr, poser_regles_origine, regles_origine)
+    from montants import (arrondi_affichage, decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams,
+                          format_anglais, format_langue, pct_fr, poser_regles_origine, regles_origine)
 
 # QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
 # fonction pure partagée ; même double chemin d'import.
@@ -1866,8 +1866,8 @@ def page1():
     # document du client. Le format d'affichage reste le DIRHAM (convention
     # maison de ``fmt``, et les tranches de paiement de ce document sont
     # arrondies au millier) : seule la regle d'arrondi est alignee.
-    ts      = f"{int(round(TOTAL_SANS)):,}".replace(",", _s) + "\u00a0MAD"
-    ta      = f"{int(round(TOTAL_AVEC)):,}".replace(",", _s) + "\u00a0MAD"
+    ts      = f"{int(arrondi_affichage(TOTAL_SANS)):,}".replace(",", _s) + "\u00a0MAD"
+    ta      = f"{int(arrondi_affichage(TOTAL_AVEC)):,}".replace(",", _s) + "\u00a0MAD"
     esa_mad = f"{int(ECO_S_ANN):,}".replace(",", _s) + "\u00a0MAD"
     eaa_mad = f"{int(ECO_A_ANN):,}".replace(",", _s) + "\u00a0MAD"
     pk      = f"{int(PROD_KWH):,}".replace(",", _s)
@@ -1949,8 +1949,8 @@ def page1():
         # QJR53 \u2014 meme alignement que ``ts``/``ta`` ci-dessus : le prix
         # barre est le MEME montant, il ne peut pas suivre une autre regle
         # d'arrondi que le total qu'il barre.
-        _s_before = f"{int(round(TOTAL_SANS_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
-        _a_before = f"{int(round(TOTAL_AVEC_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
+        _s_before = f"{int(arrondi_affichage(TOTAL_SANS_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
+        _a_before = f"{int(arrondi_affichage(TOTAL_AVEC_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
         # AMOT24 ; devis envoyé avant la correction (décision 08/10/2026) :
         # la remise tronquée d'hier.
         _disc_str = (f"\u2212{int(DISCOUNT_PCT)}\u202f%" if regles_origine()
@@ -3494,7 +3494,8 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"))
+    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"),
+                         arrondi_historique=(data or {}).get("regles_arrondi_historique"))  # D-ENF-ARRONDI-PDF
     # ERR17 — serialize the whole render: the body writes module globals and
     # reads them back while building the HTML, so concurrent renders must not
     # interleave (one client's data leaking into another's PDF).
@@ -3906,7 +3907,8 @@ def render_html_for(data: dict) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"))
+    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"),
+                         arrondi_historique=(data or {}).get("regles_arrondi_historique"))  # D-ENF-ARRONDI-PDF
     # AGR312 — le moteur legacy ne sert JAMAIS un devis agricole en format à
     # options (pas d'onduleur) : le document complet est le renderer agricole
     # de 3 pages (``agricole/renderer``) ; s'il refuse un devis (repli NOMMÉ

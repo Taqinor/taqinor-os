@@ -178,7 +178,9 @@ def intervention_pre_save(sender, instance, **kwargs):
 def intervention_post_save(sender, instance, created, **kwargs):
     old = getattr(instance, _OLD_STATUT_ATTR, None)
     done = Intervention.Statut.TERMINEE
-    if instance.statut == done and old != done:
+    # ACHT116 — première clôture seulement (borne ACHT36 du service).
+    if (instance.statut == done and old != done
+            and instance.cloturee_notifiee_le is None):
         _safe_dispatch(instance.company_id, EVENT_INTERVENTION_COMPLETED, {
             'event': EVENT_INTERVENTION_COMPLETED,
             'id': instance.pk,

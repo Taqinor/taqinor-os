@@ -75,6 +75,9 @@ import math
 
 from django.utils import timezone
 
+# D-ENF-ARRONDI-PDF (30/10/2026) — MÊME arrondi d'affichage que le moteur (moitié vers le haut, niveau 6).
+from .quote_engine.montants import arrondi_affichage
+
 logger = logging.getLogger(__name__)
 
 #: Les trois clés, dans l'ordre d'affichage (Éco → Recommandé → Max).
@@ -195,9 +198,8 @@ def _payback(cout, economie):
     DÉJÀ remisé, donc le payback affiché correspond au prix affiché. Sans cela,
     la carte annoncerait un prix remisé et un retour calculé sur le catalogue.
     """
-    if cout is None or economie is None or cout <= 0 or economie <= 0:
-        return None
-    return round(cout / economie, 2)
+    return (None if cout is None or economie is None or cout <= 0 or economie <= 0
+            else arrondi_affichage(cout / economie, 2))
 
 
 def _payback_publie(cout, economie, *, stockage=False, part_batterie=None,
@@ -228,7 +230,7 @@ def _prix_par_kwc(prix_ttc, kwc):
     """
     if not prix_ttc or not kwc or kwc <= 0:
         return None
-    return float(round(prix_ttc / kwc))
+    return float(arrondi_affichage(prix_ttc / kwc))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -448,7 +450,7 @@ def _cumul_servi(data, variante, prix_ttc):
     serie = (data or {}).get('cashflow_%s' % variante)
     if not isinstance(serie, (list, tuple)) or not serie or not prix_ttc:
         return None
-    return round(_num(serie[-1]) + float(prix_ttc), 2)
+    return arrondi_affichage(_num(serie[-1]) + float(prix_ttc), 2)
 
 
 def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
@@ -491,7 +493,7 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
         return None
     if sortie is not None:
         sortie['cumulative'] = [round(_num(v), 2) for v in cumul]
-    return round(_num(cumul[-1]) + float(prix_ttc), 2)
+    return arrondi_affichage(_num(cumul[-1]) + float(prix_ttc), 2)
 
 
 def _part_batterie(annuel):
@@ -535,7 +537,7 @@ def _cout_onduleur_ttc(lignes, roles, facteur_remise, taux_tva=None,
             getattr(ligne, 'produit', None),
             getattr(ligne, 'designation', ''), taux_tva, company)
     total *= float(facteur_remise or 1.0)
-    return round(total, 2) if total > 0 else None
+    return arrondi_affichage(total, 2) if total > 0 else None
 
 
 def _horizon_et_escalade():
@@ -975,7 +977,7 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             'puissance_kwc': kwc,
         }
         if prix is not None:
-            carte['prix_ttc'] = round(prix, 2)
+            carte['prix_ttc'] = arrondi_affichage(prix, 2)
             prix_kwc = _prix_par_kwc(prix, kwc)
             if prix_kwc is not None:
                 carte['prix_par_kwc_ttc'] = prix_kwc
@@ -1264,8 +1266,8 @@ def _substituer(vue, lignes, substitutions, taux_tva=None, company=None):
             if kwh > 0:
                 batterie_kwh += kwh * quantite
     vue = dict(vue)
-    vue['cout_ht'] = round(cout_ht, 2)
-    vue['cout_ttc'] = round(cout_ttc, 2)
+    vue['cout_ht'] = arrondi_affichage(cout_ht, 2)
+    vue['cout_ttc'] = arrondi_affichage(cout_ttc, 2)
     if 'batterie' in substitutions:
         vue['batterie_kwh'] = round(batterie_kwh, 2) if batterie_kwh else 0.0
     return vue
@@ -1294,7 +1296,7 @@ def _carte_du_devis(contexte, data, variante):
 
     carte = {'nb_panneaux': int(nb_panneaux), 'puissance_kwc': round(kwc, 3)}
     if prix is not None:
-        carte['prix_ttc'] = round(prix, 2)
+        carte['prix_ttc'] = arrondi_affichage(prix, 2)
         prix_kwc = _prix_par_kwc(prix, kwc)
         if prix_kwc is not None:
             carte['prix_par_kwc_ttc'] = prix_kwc

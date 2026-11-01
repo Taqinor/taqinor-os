@@ -509,7 +509,7 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
 
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
-    from apps.ventes.domain.regles_calcul import calcul_corrige
+    from apps.ventes.domain.regles_calcul import REGLES_ARRONDI_3010, calcul_corrige, regles_au_moins
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
@@ -518,8 +518,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # aux seuls points où une correction change un chiffre ; les formateurs
     # (AMOT24/26) le lisent par ``montants.regles_origine``.
     _corrige = calcul_corrige(devis)
-    from .montants import poser_regles_origine
-    poser_regles_origine(not _corrige, avant_2710=not _regles_2710(devis))
+    from .montants import arrondi_affichage, poser_regles_origine
+    # D-ENF-ARRONDI-PDF — avant le niveau 6 : l'arrondi bancaire reçu (``montants.arrondi_affichage``).
+    poser_regles_origine(not _corrige, avant_2710=not _regles_2710(devis),
+                         arrondi_historique=not regles_au_moins(devis, REGLES_ARRONDI_3010))
     client = devis.client
     # AMOT11 (C-AMOT-006) — un taux de devis à 0 % est un VRAI taux : même
     # règle que ``LigneDevis.taux_tva_effectif`` (``is not None``) ; seul
@@ -1973,19 +1975,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                         # QJR53 — ``ttc`` est au CENTIME comme les autres
                         # étages ; seul ``ttc_avant`` (le prix BARRÉ, artefact
                         # d'affichage) reste arrondi au dirham.
-                        out[k] = (round(out[k] * _n)
+                        out[k] = (arrondi_affichage(out[k] * _n)
                                   if k == "ttc_avant"
-                                  else round(out[k] * _n, 2))
+                                  else arrondi_affichage(out[k] * _n, 2))
                 if isinstance(out.get("tva_par_taux"), list):
                     out["tva_par_taux"] = [
-                        {**b, "montant": round(b.get("montant", 0) * _n, 2),
-                         "ht_net": round(b.get("ht_net", 0) * _n, 2)}
+                        {**b, "montant": arrondi_affichage(b.get("montant", 0) * _n, 2),
+                         "ht_net": arrondi_affichage(b.get("ht_net", 0) * _n, 2)}
                         for b in out["tva_par_taux"]]
                 return out
             data["nombre_proprietes"] = _n
             data["display_total_unitaire"] = display_total
             # QJR53 — au CENTIME, comme le total unitaire dont il dérive.
-            data["display_total_multi"] = round(display_total * _n, 2)
+            data["display_total_multi"] = arrondi_affichage(display_total * _n, 2)
             data["totaux_multi"] = {
                 "sans": _scale_tot(totaux_sans),
                 "avec": _scale_tot(totaux_avec),
@@ -2032,7 +2034,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _tranches_montant = tranches_echeancier_en_montant(devis)
     data["montants_tranches"] = {
         branche: repartition_paiement(
-            round(float(data.get(f"total_{branche}") or 0) * _n_villas, 2),
+            arrondi_affichage(float(data.get(f"total_{branche}") or 0) * _n_villas, 2),
             payment_terms, _tranches_montant)
         for branche in ("sans", "avec")}
     # ── AMOT19 (C-AMOT-017) — LE TEXTE DES CONDITIONS = LES CASES ────────────
@@ -2171,7 +2173,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # seuls nouveaux rendus ; niveau 1 ⇒ dit par la 1re clé) ; un devis aux règles courantes ne porte aucune clé.
     data.update({cle: True for cle, pose in (
         ("regles_calcul_origine", not _corrige),
-        ("regles_avant_2710", _corrige and not _regles_2710(devis))) if pose})  # CE2E4 : tout mode
+        ("regles_avant_2710", _corrige and not _regles_2710(devis)),
+        ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
     # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une

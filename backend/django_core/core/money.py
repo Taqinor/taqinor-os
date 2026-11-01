@@ -19,8 +19,13 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 
 
-def quantize_mad(value) -> Decimal:
-    """Arrondit `value` à 2 décimales (MAD), moitié-vers-le-haut.
+def quantize_mad(value, decimales=2) -> Decimal:
+    """Arrondit `value` à `decimales` décimales (2 = le centime MAD),
+    moitié-vers-le-haut.
+
+    D-ENF-ARRONDI-PDF (30/10/2026) — ``decimales`` garde la PRÉCISION d'un
+    affichage existant (le dirham entier du PDF : ``decimales=0``) sans
+    changer la politique : il n'y a toujours qu'UNE règle d'arrondi.
 
     Accepte un `Decimal`, un `int`, ou une chaîne (JAMAIS un `float` littéral
     passé directement en production — convertir via `str(x)` ou `Decimal(x)`
@@ -30,4 +35,4 @@ def quantize_mad(value) -> Decimal:
     """
     if not isinstance(value, Decimal):
         value = Decimal(str(value))
-    return value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return value.quantize(Decimal(1).scaleb(-int(decimales)), rounding=ROUND_HALF_UP)

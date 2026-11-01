@@ -141,7 +141,7 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
 
     from apps.ventes.utils.echeancier import montants_tranches
 
-    tot = _D(str(total or 0)).quantize(_D("0.01"))
+    tot = _D(str(total or 0)).quantize(_D("0.01"), rounding=ROUND_HALF_UP)
     pa = _D(str(termes.get("acompte", 30) or 0))
     ps = _D(str(termes.get("solde", 10) or 0))
     pm = _D(100) - pa - ps

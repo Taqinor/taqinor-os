@@ -1,0 +1,292 @@
+# python scripts/sonde.py --toutes AANA --conteneur accept-replay-django (all-plans-w15 72bf8c4be, 31/10/2026)
+== C-AANA-001 (sha 5908d43bb)
+attendu : défaut absent : les 5 requêtes à prédicat société neutralisé sont RÉÉCRITES (chaque table lue = sous-requête company_id = <jeton>) ; exécutées sur la base locale à 3 sociétés, 0 ligne d'une autre société
+observé : STATIQUE — constat côté FastAPI, hors portée du lanceur (conteneur django_core) ; rejoué en lecture seule dans erp-agentique-fastapi_ia-1 le 2026-10-30 : docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt
+verdict : STATIQUE
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-002 (sha 5908d43bb)
+attendu : défaut absent : query_to_xml / pg_read_file / lo_export / set_config / pg_sleep REJETÉES ; DJANGO_DEBUG=False sans SQL_AGENT_DB_USER ⇒ agent désactivé (raison nommant la variable), repli seulement en développement
+observé : STATIQUE — constat côté FastAPI, hors portée du lanceur (conteneur django_core) ; rejoué en lecture seule dans erp-agentique-fastapi_ia-1 le 2026-10-30 : docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt
+verdict : STATIQUE
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-003 (sha 5908d43bb)
+attendu : défaut absent : row_to_json(u) et SELECT p.* FROM stock_produit REJETÉES ; _references_forbidden_column('SELECT p.* FROM stock_produit p …') = True
+observé : STATIQUE — constat côté FastAPI, hors portée du lanceur (conteneur django_core) ; rejoué en lecture seule dans erp-agentique-fastapi_ia-1 le 2026-10-30 : docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt
+verdict : STATIQUE
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-004 (sha 5908d43bb)
+attendu : défaut absent : l'enregistrement du mapping company_id répond 400, et même un mapping déjà en base ne place pas le lead dans B
+observé : mapping=400 commit=200 lead_in_B=False lead_company_is_A=True
+{"repro": true, "mapping": 400, "commit": 200, "lead_in_B": false}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-005 (sha 5908d43bb)
+attendu : défaut absent : épingler le client de B est refusé (4xx), aucune ligne FavoriUtilisateur, le nom de B ne fuit pas
+observé : POST favoris client de B -> 404 ligne_creee=False nom_de_B_fuite=False
+{"repro": true, "statut": 404, "ligne": false, "fuite": false}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-006 (sha 5908d43bb)
+attendu : défaut absent : champ_identifiant=prix_achat__gte refusé pour les deux seuils (importes 0, non_resolues 1), aucun favori créé
+observé : seuil->(HTTP, importes, non_resolues)={'400': (200, 0, 1), '600': (200, 0, 1)} favoris_crees=0
+{"repro": true, "resultats": {"400": [200, 0, 1], "600": [200, 0, 1]}, "favoris": 0}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-007 (sha 5908d43bb)
+attendu : défaut absent : les trois écritures inter-société sont refusées (4xx) et rien n'est écrit
+observé : vue(def-role/patch)=400/400 alerte=404 config=404 ecrits={'vue_role_B': False, 'alerte': False, 'config': False}
+{"repro": true, "statuts": [400, 400, 404, 404], "ecrits": {"vue_role_B": false, "alerte": false, "config": false}}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-008 (sha 5908d43bb)
+attendu : défaut absent : confirmer sans preuve valide = 403 et aucun journal ; annuler un journal pointant un client préexistant = 409 et le client existe encore
+observé : confirmer sans crm_creer/preuve=403 journaux=0 | annuler journal sur client préexistant=409 client_deleted=False
+{"repro": true, "confirmer": 403, "journaux": 0, "annuler": 409, "client_deleted": false}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-009 (sha 5908d43bb)
+attendu : défaut absent : rendre_rapport(SavedReport(company=None)) renvoie (None,)*4, aucune ligne rendue, création sans société refusée (400)
+observé : rendu=(None, None, None, None) lignes=0 POST=400 créés=0
+{"repro": true, "rendu": "(None, None, None, None)", "lignes": 0, "post": 400, "crees": 0}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-010 (sha 5908d43bb)
+attendu : défaut absent : une clé read:stock de la même société obtient 404 sur le job d'export leads (créateur : 200)
+observé : autre cle=404 createur=200 fuite_lien=False
+{"repro": true, "autre": 404, "createur": 200}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-011 (sha 5908d43bb)
+attendu : défaut absent : GET saved-views/?owner=<u2> avec une clé read:vues ne renvoie pas la vue personnelle de u2
+observé : statut=200 noms=['Equipe U2']
+{"repro": true, "noms": ["Equipe U2"]}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-012 (sha 5908d43bb)
+attendu : défaut absent : POST keys/<id>/revoke/ sur une clé de bac à sable répond 200 et la clé est refusée ensuite
+observé : creation=201 avant=200 revoke=200 apres=401 enabled=False
+{"repro": true, "revoke": 200, "apres": 401}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-013 (sha 5908d43bb)
+attendu : défaut absent : exports/leads.csv?token=<clé read:leads + leads:write> répond 403 (clé lecture seule : 200)
+observé : cle ecriture=403 cle lecture=200
+{"repro": true, "ecriture": 403, "lecture": 200}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-014 (sha 5908d43bb)
+attendu : défaut absent : l'op crm.lead.noter sur le lead d'un autre commercial renvoie status error, aucune note créée
+observé : crm.lead.noter hors portée -> status=error notes=0
+{"repro": true, "status": "error", "notes": 0}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-015 (sha 5908d43bb)
+attendu : défaut absent : require_company_id({company_id:1, active_company_id:2}) = 2
+observé : STATIQUE — constat côté FastAPI, hors portée du lanceur (conteneur django_core) ; rejoué en lecture seule dans erp-agentique-fastapi_ia-1 le 2026-10-30 : docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt
+verdict : STATIQUE
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-016 (sha 5908d43bb)
+attendu : défaut absent : rendu planifié et lien public = en-tête ['nom'] ; export CSV d'un lecteur sans prix_achat_voir = ['nom'] sans 300.00
+observé : planifié=['nom'] public=['nom'] export=200 ['nom'] fuite300=False
+{"repro": true, "planifie": ["nom"], "public": ["nom"], "export_entete": ["nom"], "fuite": false}
+verdict : REPRO
+base inchangée : oui (avant 91440, après 91440) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-017 (sha 5908d43bb)
+attendu : défaut absent : GET /reporting/reports/stock/ sans valorisation_achat pour un responsable sans prix_achat_voir ; présente (300.00) pour l'admin
+observé : responsable=200 clé présente=False ; admin=200 valorisation_achat=300.00
+{"repro": true, "resp_status": 200, "resp_fuite": false, "admin_val": "300.00"}
+verdict : REPRO
+base inchangée : non (avant 91440, après 91445) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-018 (sha 5908d43bb)
+attendu : défaut absent : aucune colonne token / marge / prix_achat dans le registre d'export, ni dans un export réel (leads, devis, produits)
+observé : registre=17 objets, colonnes sensibles={} ; exports réels={'leads': [], 'devis': [], 'produits': []}
+{"repro": true, "registre": {}, "exports": {"leads": [], "devis": [], "produits": []}}
+verdict : REPRO
+base inchangée : non (avant 91449, après 91450) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-019 (sha 5908d43bb)
+attendu : défaut absent : commissions count=1 base=10000 commission=500 ; dashboard nb_acceptes=1 ; classement nb_devis_signes=1
+observé : commissions count=1 base=10000.00 commission=500.0000 ; nb_acceptes=1 ; nb_devis_signes=1
+{"repro": true, "count": 1, "base": "10000.00", "commission": "500.0000", "nb_acceptes": 1, "nb_devis_signes": 1}
+verdict : REPRO
+base inchangée : oui (avant 91450, après 91450) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-020 (sha 5908d43bb)
+attendu : défaut absent : facture 1×1000, remise_globale 50 % → total_ht 500 et dashboard kpis.ca_attente = 500.0 (créance = montant_du)
+observé : total_ht=500.00 ca_attente=500.0 créances=[600.0] montant_du=600.00
+{"repro": true, "total_ht": "500.00", "ca_attente": 500.0, "creances": [600.0]}
+verdict : REPRO
+base inchangée : oui (avant 91450, après 91450) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-021 (sha 5908d43bb)
+attendu : défaut absent : lead SIGNED perdu exclu partout — rapport ventes SIGNED=1, pipeline gagnés=1, tableau commercial SIGNED=1 et taux 50 %, même taux au classement
+observé : ventes SIGNED=1 pipeline gagnés=1 commercial SIGNED=1 taux=50.0 classement taux=50.0
+{"repro": true, "ventes_signed": 1, "pipeline_gagnes": 1, "commercial_signed": 1, "taux": 50.0, "taux_classement": 50.0}
+verdict : REPRO
+base inchangée : oui (avant 91450, après 91450) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-022 (sha 5908d43bb)
+attendu : défaut absent : 10 devis dont 3 acceptés + 15 factures → dashboard conversion.taux_acceptation_pct = 30.0 (jamais 150)
+observé : conversion={'nb_devis': 10, 'nb_acceptes': 3, 'nb_factures': 15, 'taux_acceptation_pct': 30.0}
+{"repro": true, "taux_acceptation_pct": 30.0, "nb_devis": 10, "nb_acceptes": 3, "nb_factures": 15}
+verdict : REPRO
+base inchangée : non (avant 91450, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-023 (sha 5908d43bb)
+attendu : défaut absent : op longueur_m=9 avec base antérieure -> status conflict, valeur bureau 20 intacte (ATTEND AANA40/AANA42 : défaut encore présent attendu)
+observé : visite.mesures base antérieure -> status=conflict longueur_m bureau 20 -> 20 (conflit détecté)
+{"repro": true, "status": "conflict", "longueur_m": 20, "note": "attend AANA40/AANA42"}
+verdict : REPRO
+base inchangée : oui (avant 91454, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-024 (sha 5908d43bb)
+attendu : défaut absent : un devis passé à accepté dans un atomic annulé ne met AUCUN deliver_webhook en file (mise en file différée à on_commit)
+observé : deliver_webhook en file dans atomic=0 apres rollback=0 callbacks on_commit en attente=1 statut=envoye apiEvent=0
+{"repro": true, "en_file": 0, "apres_rollback": 0, "on_commit_en_attente": 1, "api_events": 0}
+verdict : REPRO
+base inchangée : oui (avant 91454, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-025 (sha 5908d43bb)
+attendu : défaut absent : ticket récidive ANNULÉ exclu — scorecard technicien et rapport terrain donnent le même taux_recidive_pct (0.0)
+observé : scorecard nb_recidives=0 taux=0.0 ; terrain taux=0.0
+{"repro": true, "scorecard_taux": 0.0, "terrain_taux": 0.0, "nb_recidives": 0}
+verdict : REPRO
+base inchangée : oui (avant 91454, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-026 (sha 5908d43bb)
+attendu : défaut absent : un paiement Decimal('123.45') produit un ApiEvent paiement.recorded de montant 123.45 (témoin facture.created présent)
+observé : facture.created=1 paiement.recorded=True montant=123.45
+{"repro": true, "temoin_facture_created": 1, "montant": 123.45}
+verdict : REPRO
+base inchangée : oui (avant 91454, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-027 (sha 5908d43bb)
+attendu : défaut absent : POST leads-write avec une Idempotency-Key de 300 caractères répond 400 et ne crée aucun lead
+observé : statut=400 exception=None leads=0 enregistrements_idempotence=0
+{"repro": true, "statut": 400, "leads": 0, "exception": null}
+verdict : REPRO
+base inchangée : oui (avant 91454, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-028 (sha 5908d43bb)
+attendu : défaut absent : import JSONL A,<vide>,B,C,D repris après B crée C (4 leads) et l'export de 4 leads repris à cursor=2 stocke 4 lignes
+observé : import: curseur après coupure=2 leads=['A', 'B', 'C', 'D'] | export repris à cursor=2: 4 lignes de données (attendu 4)
+{"repro": true, "curseur": 2, "leads_import": ["A", "B", "C", "D"], "lignes_export": 4}
+verdict : REPRO
+base inchangée : oui (avant 91454, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-029 (sha 5908d43bb)
+attendu : défaut absent : l'import clients mode=maj external_id=A1 ne modifie pas le client C de même pk que le lead L
+observé : lead-import=200 client-maj=200 updated=0 client.adresse='Rue origine' modifie=False
+{"repro": true, "updated": 0, "adresse": "Rue origine"}
+verdict : REPRO
+base inchangée : oui (avant 91454, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-030 (sha 5908d43bb)
+attendu : défaut absent : second import du même devis (et de la même facture) = created 0, skipped doublon, 1 seul document
+observé : devis HTTP 200/200 skipped=[{'ligne': 1, 'raison': 'doublon'}] nb_devis=1 | factures HTTP 200/200 nb=1 skipped=[{'ligne': 1, 'raison': 'doublon'}]
+{"repro": true, "devis": 1, "factures": 1, "skipped": [{"ligne": 1, "raison": "doublon"}]}
+verdict : REPRO
+base inchangée : oui (avant 91454, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-031 (sha 5908d43bb)
+attendu : défaut absent : lignes 1-2 ignorées avec raison, ligne 3 refusée (quantité non entière), aucun produit S1/S2/S3 créé
+observé : commit=200 skipped={1: 'prix_vente invalide : « abc »', 2: 'prix_vente négatif refusé : « -5 »', 3: 'quantité non entière : « 2.7 »'} produits_crees=[]
+{"repro": true, "skipped": {"1": "prix_vente invalide : « abc »", "2": "prix_vente négatif refusé : « -5 »", "3": "quantité non entière : « 2.7 »"}, "crees": []}
+verdict : REPRO
+base inchangée : oui (avant 91454, après 91454) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-032 (sha 5908d43bb)
+attendu : défaut absent : le contrat logs_confirmer.json est chargé par du code (test django ; la moitié FastAPI vit hors conteneur django)
+observé : STATIQUE — contrat présent=True (clés ['endpoint', 'exemple', 'exemple_corps', 'exemple_erreur_action', 'exemple_erreur_champs_manquants', 'exemple_erreur_preuve', 'forme_serveur', 'pourquoi', 'preuve']) ; lecteurs exécutables=['apps/agent/tests_aana_confirmation_prouvee.py:11', 'apps/agent/tests_aana_confirmation_prouvee.py:35'] ; simples mentions=['apps/agent/services.py:73', 'apps/agent/services.py:223', 'apps/agent/views.py:233'] ; chargé par le test apps/agent/tests_aana_confirmation_prouvee.py::ContratPreuveTests (CONTRAT.read_text) ; code de production = commentaires seulement ; moitié FastAPI : backend/fastapi_ia/tests/test_action_tools.py (hors conteneur django)
+verdict : STATIQUE
+base inchangée : non (avant 91454, après 91468) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-033 (sha 5908d43bb)
+attendu : défaut absent : permissions lues à /api/django/auth/me/ depuis fastapi_ia (Host autorisé, AANA52) — demo_admin non superutilisateur ⇒ prix_achat_voir = True ; jeton invalide ⇒ [] (fail-closed)
+observé : STATIQUE — constat côté FastAPI, hors portée du lanceur (conteneur django_core) ; rejoué en lecture seule dans erp-agentique-fastapi_ia-1 le 2026-10-30 : docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt
+verdict : STATIQUE
+base inchangée : oui (avant 91468, après 91468) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-034 (sha 5908d43bb)
+attendu : défaut absent : question de 1 Mo refusée (422 string_too_long, max 2 000) ; statement_timeout 15 s sur le moteur de l'agent ; limiteur Redis présent
+observé : STATIQUE — constat côté FastAPI, hors portée du lanceur (conteneur django_core) ; rejoué en lecture seule dans erp-agentique-fastapi_ia-1 le 2026-10-30 : docs/audits/acceptation/AANA/traces/2026-10-30/fastapi-garde-sql.txt
+verdict : STATIQUE
+base inchangée : oui (avant 91468, après 91468) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-035 (sha 5908d43bb)
+attendu : défaut absent (STATIQUE) : 0 littéral d'étape entre guillemets dans les fichiers non-test de apps/reporting
+observé : STATIQUE — 0 littéral d'étape dans apps/reporting (43 fichiers lus)
+STATIQUE — 0 littéral d'étape dans apps/reporting (43 fichiers lus)
+verdict : STATIQUE
+base inchangée : oui (avant 91468, après 91468) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-036 (sha 5908d43bb)
+attendu : défaut absent : scope juridique:read absent de portees ; routes reporting/p2p/kpi et envois-rapports SERVIES (200, branchées sur un écran — D-AANA-036-BRANCHER) ; FastAPI /kb/redaction, /projets/generer-plan, /chat/transcribe vérifiés hors sonde
+observé : juridique:read absent=True routes={'/api/django/reporting/p2p/kpi/': {'resolve': 'reporting-p2p-kpi', 'GET': 200}, '/api/django/reporting/envois-rapports/': {'resolve': 'envoi-rapport-list', 'GET': 200}} | FastAPI /kb/redaction, /projets/generer-plan, /chat/transcribe : vérifié hors sonde
+{"repro": true, "scope_juridique_absent": true, "routes": {"/api/django/reporting/p2p/kpi/": {"resolve": "reporting-p2p-kpi", "GET": 200}, "/api/django/reporting/envois-rapports/": {"resolve": "envoi-rapport-list", "GET": 200}}, "hors_sonde": ["/kb/redaction", "/projets/generer-plan", "/chat/transcribe"]}
+verdict : REPRO
+base inchangée : oui (avant 91468, après 91468) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-037 (sha 5908d43bb)
+attendu : défaut absent : l'e-mail de confirmation d'abonnement à la page de statut porte un lien ABSOLU (http(s)://…/confirmer/<jeton>/)
+observé : abonner=202 mails=1 lien=http://localhost/api/django/statuspage/public/confirmer/tJOfnlyBGjQoOKFo6HveVcuZ2mLA4Xyr4r2BfhWZlo4/
+{"repro": true, "statut": 202, "lien": "http://localhost/api/django/statuspage/public/confirmer/tJOfnlyBGjQoOKFo6HveVcuZ2mLA4Xyr4r2BfhWZlo4/"}
+verdict : REPRO
+base inchangée : oui (avant 91468, après 91468) ; mails 1 ; tâches Celery bloquées 0
+== C-AANA-038 (sha 5908d43bb)
+attendu : défaut absent : commercial/dashboard et insights/sales-leaderboard donnent le même win_rate_pct (50.0) avec un 2e lead créé le jour `to` à 15 h
+observé : tableau commercial=50.0 export classement=50.0
+{"repro": true, "tableau": 50.0, "export": 50.0}
+verdict : REPRO
+base inchangée : oui (avant 91468, après 91468) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-039 (sha 5908d43bb)
+attendu : défaut absent : PU 1000, achat 600, remise ligne 20 %, plan MARGE_INTERNE 10 % → base 200, commission 20 (pas 400 / 40)
+observé : base=200.000000 commission=20.00000000 (attendu 200 / 20)
+{"repro": true, "base": "200.000000", "commission": "20.00000000"}
+verdict : REPRO
+base inchangée : oui (avant 91468, après 91468) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-040 (sha 5908d43bb)
+attendu : défaut absent : aucune route edi n'est servie (404), apps.publicapi.edi / edi_partners non importables, PartenaireEdi hors état Django
+observé : statuts={'/api/public/v1/edi/': 404, '/api/public/v1/edi/810/': 404, '/api/public/v1/edi/850/': 404, '/api/django/publicapi/edi/': 404} routes_edi=[] modules_importables=[] modele_dans_etat=False
+{"repro": true, "statuts": {"/api/public/v1/edi/": 404, "/api/public/v1/edi/810/": 404, "/api/public/v1/edi/850/": 404, "/api/django/publicapi/edi/": 404}, "routes_edi": [], "modules": [], "modele": false}
+verdict : REPRO
+base inchangée : oui (avant 91468, après 91468) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-041 (sha 5908d43bb)
+attendu : défaut absent : POST leads-write {nom:'X', canal:'nimporte', email:'pas-un-email'} répond 400 (champ fautif nommé) et ne crée aucun lead
+observé : statut=400 code=validation_error param=email leads_crees=0
+{"repro": true, "statut": 400, "param": "email", "leads": 0}
+verdict : REPRO
+base inchangée : oui (avant 91470, après 91470) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-042 (sha 5908d43bb)
+attendu : défaut absent : la ligne au même téléphone normalisé est ignorée (doublon), aucun lead créé
+observé : commit=200 created=0 skipped=[{'ligne': 1, 'raison': 'doublon (existe déjà)'}] leads=1
+{"repro": true, "leads": 1, "skipped": [{"ligne": 1, "raison": "doublon (existe déjà)"}]}
+verdict : REPRO
+base inchangée : oui (avant 91470, après 91470) ; mails 0 ; tâches Celery bloquées 0
+
+== bilan AANA : 38/42 OK
+  C-AANA-001.py    STATIQUE
+  C-AANA-002.py    STATIQUE
+  C-AANA-003.py    STATIQUE
+  C-AANA-004.py    REPRO
+  C-AANA-005.py    REPRO
+  C-AANA-006.py    REPRO
+  C-AANA-007.py    REPRO
+  C-AANA-008.py    REPRO
+  C-AANA-009.py    REPRO
+  C-AANA-010.py    REPRO
+  C-AANA-011.py    REPRO
+  C-AANA-012.py    REPRO
+  C-AANA-013.py    REPRO
+  C-AANA-014.py    REPRO
+  C-AANA-015.py    STATIQUE
+  C-AANA-016.py    REPRO
+  C-AANA-017.py    REPRO (échec)
+  C-AANA-018.py    REPRO (échec)
+  C-AANA-019.py    REPRO
+  C-AANA-020.py    REPRO
+  C-AANA-021.py    REPRO
+  C-AANA-022.py    REPRO (échec)
+  C-AANA-023.py    REPRO
+  C-AANA-024.py    REPRO
+  C-AANA-025.py    REPRO
+  C-AANA-026.py    REPRO
+  C-AANA-027.py    REPRO
+  C-AANA-028.py    REPRO
+  C-AANA-029.py    REPRO
+  C-AANA-030.py    REPRO
+  C-AANA-031.py    REPRO
+  C-AANA-032.py    STATIQUE (échec)
+  C-AANA-033.py    STATIQUE
+  C-AANA-034.py    STATIQUE
+  C-AANA-035.py    STATIQUE
+  C-AANA-036.py    REPRO
+  C-AANA-037.py    REPRO
+  C-AANA-038.py    REPRO
+  C-AANA-039.py    REPRO
+  C-AANA-040.py    REPRO
+  C-AANA-041.py    REPRO
+  C-AANA-042.py    REPRO
+
+# Rejeu seul des sondes 017, 018, 022, 032 : base inchangée (91470 -> 91470), même verdict

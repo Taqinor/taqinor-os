@@ -32,6 +32,7 @@
  * Module PUR : aucun DOM, aucune 3D, aucun MapLibre.
  */
 import { pointInPolygon } from './roof';
+import { uvBounds } from './roofGrid';
 
 /** Tolérance « pile sur la rive » (m) — même esprit que EDGE_EPS_M du pavage : le repère
  *  tourné porte un bruit flottant, sans quoi un retrait nul rejetterait la rive. */
@@ -687,16 +688,7 @@ export function findFreeSpot(
 ): { cx: number; cy: number } | null {
   const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
   if (ringUV.length < 3) return null;
-  let uMin = Infinity;
-  let uMax = -Infinity;
-  let vMin = Infinity;
-  let vMax = -Infinity;
-  for (const [uu, vv] of ringUV) {
-    if (uu < uMin) uMin = uu;
-    if (uu > uMax) uMax = uu;
-    if (vv < vMin) vMin = vv;
-    if (vv > vMax) vMax = vv;
-  }
+  const { uMin, uMax, vMin, vMax } = uvBounds(ringUV);
   const step = Number.isFinite(stepM) && stepM > 0 ? stepM : 0.1;
   // Garde-fou : un toit immense au pas de 10 cm ne doit pas figer le navigateur.
   const maxSteps = 400;

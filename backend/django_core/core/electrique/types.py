@@ -49,10 +49,14 @@ TEMPERATURE_STC_C = 25.0
 
 #: Température de cellule MINIMALE de dimensionnement (cas dimensionnant de la
 #: borne HAUTE : le Voc monte quand il fait froid). −5 °C = hiver Maroc altitude.
+#: Source : décision fondateur 30/10/2026 (D-ENF-SEUILS-DEFAUT) — défaut conservé,
+#: utilisé seulement si la météo du site manque.
 TEMP_FROID_DEFAUT_C = -5.0
 
 #: Température de cellule MAXIMALE de dimensionnement (cas dimensionnant de la
 #: borne BASSE : le Vmp chute quand le module chauffe). 70 °C = module en été.
+#: Source : décision fondateur 30/10/2026 (D-ENF-SEUILS-DEFAUT) — défaut conservé,
+#: utilisé seulement si la météo du site manque.
 TEMP_CHAUD_DEFAUT_C = 70.0
 
 #: Régimes de neutre (NF C 15-100 §312.2). Le TT est le régime des raccordements
@@ -160,8 +164,12 @@ class SpecModule:
     imp_a: float
     pmax_wc: float
     #: β(Voc) en %/°C, NÉGATIF — le Voc MONTE quand il fait froid.
+    #: Source : décision fondateur 30/10/2026 (D-ENF-SEUILS-DEFAUT) — défaut conservé,
+    #: utilisé seulement si la fiche produit manque.
     temp_coeff_voc_pct_c: float = -0.27
     #: γ(Pmax) en %/°C, NÉGATIF — sert de coefficient de dérive du Vmp.
+    #: Source : décision fondateur 30/10/2026 (D-ENF-SEUILS-DEFAUT) — défaut conservé,
+    #: utilisé seulement si la fiche produit manque.
     temp_coeff_pmax_pct_c: float = -0.35
     #: Désignation COMMERCIALE du module (« Canadien Solar 710 Wc ») — purement
     #: descriptive, elle ne participe à AUCUN calcul : elle sert à ce qu'un

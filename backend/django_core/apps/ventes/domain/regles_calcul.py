@@ -41,8 +41,16 @@ REGLES_SENSIBILITES_3010 = 4
 #: groupe de modules, ``batterie_rentable: false``, l'offre réseau reste
 #: recommandée) au lieu d'être cachée — un devis de niveau ≤ 4 la cache encore.
 REGLES_RETOURS_3010B = 5
+#: Niveau 6 (D-ENF-ARRONDI-PDF, fondateur 30/10/2026, « nouveaux rendus
+#: seulement ») : l'argent AFFICHÉ par le moteur de devis (cartes d'option,
+#: totaux multi-villa, prix au kWc, économies, cumul 25 ans des tailles…) est
+#: arrondi MOITIÉ VERS LE HAUT (``core.money.quantize_mad``) au lieu de
+#: l'arrondi bancaire de ``round()`` — un écart d'une unité, sur les seules
+#: valeurs exactement à moitié. La migration 0145 laisse à 5 tout devis non
+#: brouillon : il garde l'arrondi qu'il a reçu (``montants.arrondi_affichage``).
+REGLES_ARRONDI_3010 = 6
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_RETOURS_3010B
+REGLES_COURANTES = REGLES_ARRONDI_3010
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

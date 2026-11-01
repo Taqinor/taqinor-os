@@ -593,6 +593,41 @@ class ExtraEventTriggerTests(TestCase):
             interv.save()
         self.assertIn(EVENT_INTERVENTION_COMPLETED, self._events(d))
 
+    def test_intervention_recloturee_ne_reemet_pas(self):
+        """ACHT116 — terminée → sur site → terminée (PATCH ×3) n'émet
+        qu'UN « intervention.completed » (borne ACHT36
+        `cloturee_notifiee_le`) ; une autre intervention terminée pour la
+        première fois en émet toujours un."""
+        user = make_user(self.co, 'resp-acht116', role='responsable')
+        api = session_auth(user)
+        inst = Installation.objects.create(
+            company=self.co, reference='CH-ACHT116', client=self.client_obj)
+        interv = Intervention.objects.create(
+            company=self.co, installation=inst,
+            type_intervention=Intervention.Type.POSE, created_by=user,
+            technicien=user, statut=Intervention.Statut.SUR_SITE)
+        url = f'/api/django/installations/interventions/{interv.id}/'
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            for statut in ('terminee', 'sur_site', 'terminee', 'sur_site',
+                           'terminee'):
+                r = api.patch(url, {'statut': statut}, format='json')
+                self.assertEqual(r.status_code, 200, r.data)
+        emis = [c for c in d.call_args_list
+                if c.args[1] == EVENT_INTERVENTION_COMPLETED
+                and c.args[2]['id'] == interv.id]
+        self.assertEqual(len(emis), 1)
+        autre = Intervention.objects.create(
+            company=self.co, installation=inst,
+            type_intervention=Intervention.Type.POSE, created_by=user,
+            technicien=user, statut=Intervention.Statut.SUR_SITE)
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            r = api.patch(
+                f'/api/django/installations/interventions/{autre.id}/',
+                {'statut': 'terminee'}, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(
+            self._events(d).count(EVENT_INTERVENTION_COMPLETED), 1)
+
     def test_ticket_created_and_resolved_dispatch(self):
         with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
             ticket = Ticket.objects.create(

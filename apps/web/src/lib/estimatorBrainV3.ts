@@ -67,6 +67,7 @@ export { PANEL2_WATT };
 
 const DEG2RAD = Math.PI / 180;
 import { WGS84_RADIUS } from './geo';
+import { projectRingENU, ringUVBounds } from './roofGrid';
 import { departageBase, packFlat, type EvalProduction } from './estimatorBrainCommun';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000;
@@ -483,17 +484,7 @@ function packFlushCells(
   const s = f; // empilement des rangées vers le bas de la pente (la face)
   const u: [number, number] = [-f[1], f[0]]; // axe long des rangées
 
-  const ringUV = ringENU.map(([x, y]) => [x * u[0] + y * u[1], x * s[0] + y * s[1]] as [number, number]);
-  let uMin = Infinity;
-  let uMax = -Infinity;
-  let vMin = Infinity;
-  let vMax = -Infinity;
-  for (const [uu, vv] of ringUV) {
-    if (uu < uMin) uMin = uu;
-    if (uu > uMax) uMax = uu;
-    if (vv < vMin) vMin = vv;
-    if (vv > vMax) vMax = vv;
-  }
+  const { uMin, uMax, vMin, vMax } = ringUVBounds(ringENU, u, s);
 
   const colPitch = p.rowWidthM + PANEL_SIDE_GAP_M;
   // W108 — débord : fenêtre de balayage étendue d'un nombre ENTIER de pas de chaque
@@ -654,17 +645,7 @@ export function packFlushPlane(
     };
   }
 
-  let olng = 0;
-  let olat = 0;
-  for (const [lng, lat] of ring) {
-    olng += lng;
-    olat += lat;
-  }
-  olng /= ring.length;
-  olat /= ring.length;
-  const cosLat = Math.cos(olat * DEG2RAD);
-  const toENU = ([lng, lat]: LngLat): [number, number] => [(lng - olng) * DEG2M * cosLat, (lat - olat) * DEG2M];
-  const ringENU = ring.map(toENU);
+  const { olng, olat, toENU, ringENU } = projectRingENU(ring);
   const obsENU = obstructions.map((o) => o.map(toENU));
 
   // Portrait : grand côté (2,384) dans le sens de la pente. Paysage : l'inverse.

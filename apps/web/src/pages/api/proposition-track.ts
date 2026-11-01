@@ -28,8 +28,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import { buildProposalTrackPayload, type ProposalEngagementEvent } from '../../lib/proposition';
-import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { preludeBalise } from '../../lib/apiPreludeJeton';
 import { cleanVisitePage } from '../../lib/visite';
 import { jsonResponse as json } from '../../lib/apiJson';
 
@@ -67,21 +66,11 @@ function redactProposalTrackForLog(payload: { event_type: string; token: string;
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
   // traitement (même garde-fou que les autres proxies same-origin).
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
-
   // W316 — bucket dédié, généreux : deux événements par vue de page suffisent,
   // mais un onglet laissé ouvert / un double-montage ne doit jamais bloquer.
-  const rl = rateLimit(`proposition-track:${clientIpFromRequest(request)}`, { limit: 20, windowMs: 60_000 });
-  if (!rl.allowed) {
-    return json({ ok: false }, 429, { 'retry-after': String(rl.retryAfterSec) });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return json({ ok: false }, 400);
-  }
+  const pre = await preludeBalise(request, { scope: 'proposition-track', limit: 20 });
+  if ('response' in pre) return pre.response;
+  const body = pre.body as Record<string, unknown>;
 
   const token = typeof body.token === 'string' ? body.token.trim() : '';
   const reference = typeof body.reference === 'string' ? body.reference.trim() : '';

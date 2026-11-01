@@ -19,6 +19,8 @@ Couvre :
     aucune demande décidée sur la période ;
   * l'endpoint ``GET reporting/p2p/kpi/`` (réservé Responsable/Admin).
 """
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -28,9 +30,15 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.installations.models import DemandeAchat
 from apps.reporting.p2p_kpi import dashboard_p2p
+from apps.stock.models import BudgetDepartement
 from authentication.models import Company
 
 User = get_user_model()
+
+# AANA45 (PACT10) — contrat partagé avec le vitest du bloc « Achats →
+# paiement » : chargé, jamais recopié.
+CONTRAT = (Path(__file__).resolve().parent / 'contract_samples'
+           / 'kpi_p2p.json')
 
 FAUX_TABLEAU_BORD = {
     'debut': '2026-01-01', 'fin': '2026-01-31',
@@ -143,3 +151,35 @@ class KpiP2pEndpointTests(TestCase):
     def test_endpoint_refuse_role_normal(self):
         resp = self._client_for(self.normal).get(self.URL)
         self.assertEqual(resp.status_code, 403)
+
+    def test_utilisateur_sans_societe_400(self):
+        sans_societe = User.objects.create_user(
+            username='ntp2p46_sans_co', password='x', company=None,
+            role_legacy='admin')
+        resp = self._client_for(sans_societe).get(self.URL)
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('Société requise.', resp.content.decode('utf-8'))
+
+    def test_forme_servie_egale_l_echantillon_partage(self):
+        """AANA45 — avec un VRAI budget en base, la réponse porte
+        exactement les clés/natures du contrat consommé par l'écran."""
+        from django.utils import timezone
+
+        BudgetDepartement.objects.create(
+            company=self.company, periodicite='annuelle',
+            annee=timezone.localdate().year, mois=0, montant_alloue=100000)
+        resp = self._client_for(self.admin).get(self.URL)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        servi = json.loads(resp.content)
+        attendu = json.loads(CONTRAT.read_text(encoding='utf-8'))['exemple']
+        self.assertEqual(set(servi), set(attendu))
+        self.assertEqual(len(servi['budgets_departement']), 1)
+        budget = servi['budgets_departement'][0]
+        modele = attendu['budgets_departement'][0]
+        self.assertEqual(set(budget), set(modele))
+        for cle, valeur in modele.items():
+            self.assertIsInstance(budget[cle], type(valeur), cle)
+        # Sans donnée exploitable : null, jamais un 0 inventé.
+        self.assertIsNone(servi['delai_demande_bcf_jours'])
+        self.assertIsNone(servi['conformite_fournisseur_moyenne'])
+        self.assertIsNone(servi['taux_conversion_pct'])
