@@ -31,7 +31,7 @@ import {
   statusLabel,
   INTERVENTION_TYPES,
   adjacentStatuses,
-  canMoveStatus,
+  canMoveStatus, canRecordCommissioning,
   canonicalStatus,
   nextBestAction,
   REGIME_8221_LABELS,
@@ -1416,12 +1416,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               </FormField>
               {/* ACHT3 — le serveur refuse la mise en service avant « Installé » :
                   le geste n'est offert que lorsqu'il est actionnable. */}
-              {canMoveStatus(current.statut, 'receptionne') ? (
+              {canRecordCommissioning(current.statut, current.annule) ? (
                 <Button variant="success" loading={mesBusy} onClick={saveMes} className="self-start">
                   Enregistrer la mise en service
                 </Button>
               ) : (
-                <Hint>Enregistrement de la mise en service disponible à partir d’Installé.</Hint>
+                <Hint>{canonicalStatus(current.statut) === 'cloture' ? 'Chantier clôturé : rouvrez-le d’abord avec un motif de réouverture.' : 'Enregistrement de la mise en service disponible à partir d’Installé.'}</Hint>
               )}
               {current.type_installation === 'industriel' && (
                 <div className="flex flex-col gap-1" data-testid="reception-definitive">

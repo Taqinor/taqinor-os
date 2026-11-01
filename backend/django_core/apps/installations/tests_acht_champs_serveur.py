@@ -124,6 +124,23 @@ class ChampsServeurTests(TestCase):
         self.assertEqual(self.interv.rdv_reschedule_count, 0)
         self.assertIsNone(self.interv.arrivee_dans_fenetre)
 
+    def test_patch_devis_upsell_id_ignore(self):
+        """ACHT120 — lien posé par le serveur : l'id d'un devis d'une AUTRE
+        société envoyé en PATCH est ignoré (200, valeur inchangée)."""
+        autre, _ = Company.objects.get_or_create(
+            slug='co-acht120-b', defaults={'nom': 'Co ACHT120 B'})
+        client_b = Client.objects.create(
+            company=autre, nom='Autre', prenom='Client',
+            email='acht120b@example.invalid')
+        devis_b = Devis.objects.create(
+            company=autre, reference='DEV-ACHT120-B', client=client_b,
+            taux_tva=Decimal('20'))
+        r = self.api.patch(f'{BASE}/interventions/{self.interv.id}/',
+                           {'devis_upsell_id': devis_b.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.interv.refresh_from_db()
+        self.assertIsNone(self.interv.devis_upsell_id)
+
     def test_actions_ecrivent_toujours(self):
         r = self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/',
                           {'motif': 'Client se désiste'}, format='json')

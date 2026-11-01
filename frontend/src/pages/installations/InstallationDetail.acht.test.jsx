@@ -58,4 +58,22 @@ describe('InstallationDetail — ACHT3 gestes refusés masqués', () => {
     await ouvrirJalons(user)
     expect(screen.getByRole('button', BTN)).toBeInTheDocument()
   })
+
+  it('réceptionné ou mise_en_service hérité : bouton présent', async () => {
+    for (const [id, statut] of [[4, 'receptionne'], [5, 'mise_en_service']]) {
+      const user = userEvent.setup()
+      rendre({ id, reference: `CH-${id}`, statut, annule: false })
+      await ouvrirJalons(user)
+      expect(screen.getByRole('button', BTN)).toBeInTheDocument()
+      cleanup()
+    }
+  })
+
+  it('clôturé : bouton absent, texte de réouverture', async () => {
+    const user = userEvent.setup()
+    rendre({ id: 6, reference: 'CH-6', statut: 'cloture', annule: false })
+    await ouvrirJalons(user)
+    expect(screen.queryByRole('button', BTN)).toBeNull()
+    expect(screen.getByText(/Chantier clôturé : rouvrez-le d’abord avec un motif de réouverture\./)).toBeInTheDocument()
+  })
 })
