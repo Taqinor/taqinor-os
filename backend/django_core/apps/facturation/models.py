@@ -111,6 +111,16 @@ class Facture(TotauxDocumentMixin, models.Model):
     montant_ttc = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
     )
+    # ATOT55 — COPIE stockée de ``total_ht`` / ``total_ttc`` (même noyau,
+    # palier ARRONDI-100 compris), recalculée par le SERVEUR à chaque écriture
+    # de la facture ou de ses lignes : les lectures SQL (agent SQL, exports)
+    # lisent un total exact sans rejouer le noyau. Jamais saisie.
+    total_ht_stocke = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        editable=False)
+    total_ttc_stocke = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        editable=False)
     client = models.ForeignKey(
         'crm.Client',
         on_delete=models.PROTECT,
@@ -495,6 +505,18 @@ class Facture(TotauxDocumentMixin, models.Model):
             self.reference = f'{PREFIXE_PROVISOIRE}{self.pk}'
             type(self).objects.filter(pk=self.pk).update(
                 reference=self.reference)
+        self.rafraichir_totaux_stockes()
+
+    def rafraichir_totaux_stockes(self):
+        """ATOT55 — recalcule ``total_ht_stocke``/``total_ttc_stocke`` depuis
+        le noyau (lignes relues en base) et les pose par ``update`` : aucun
+        signal, aucun garde de champ figé rejoué, aucune récursion."""
+        cache = getattr(self, '_prefetched_objects_cache', None) or {}
+        cache.pop('lignes', None)
+        valeurs = self.totaux_a_stocker()
+        for champ, valeur in valeurs.items():
+            setattr(self, champ, valeur)
+        type(self).objects.filter(pk=self.pk).update(**valeurs)
 
     # AUD106 — `_remise_globale_active`, `total_ht`, `tva_par_taux`,
     # `total_tva`, `total_ttc` et `totaux_affichage` vivent désormais dans
@@ -1362,3 +1384,22 @@ def decomposition_du(facture):
         'avoirs': facture.avoirs_total,
         'abandons': facture.abandon_montant or Decimal('0'),
     }
+
+
+def _ligne_facture_ecrite(sender, instance, raw=False, **kwargs):
+    """ATOT55 — toute écriture/suppression d'une ligne (``save``, ``delete``,
+    ``QuerySet.delete``) recalcule le total stocké de sa facture. Une facture
+    déjà supprimée (cascade) n'a plus rien à tenir à jour."""
+    if raw:
+        return
+    facture = Facture.objects.filter(pk=instance.facture_id).first()
+    if facture is not None:
+        facture.rafraichir_totaux_stockes()
+
+
+models.signals.post_save.connect(
+    _ligne_facture_ecrite, sender=LigneFacture,
+    dispatch_uid='atot55_total_stocke_ligne_save')
+models.signals.post_delete.connect(
+    _ligne_facture_ecrite, sender=LigneFacture,
+    dispatch_uid='atot55_total_stocke_ligne_delete')

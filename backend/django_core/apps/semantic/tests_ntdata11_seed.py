@@ -158,6 +158,35 @@ class SeedMetriquesTests(TestCase):
         with self.assertRaises(services.MetriqueNonResolvable):
             val(self.company, None, 'ca_ht', filters={'montant_ht': 1})
 
+    def test_exemple_agent_ca_facture_lit_total_stocke(self):
+        # AANA77 volet agent (ATOT55) : l'exemple « CA facture HT » du prompt
+        # de l'agent SQL, exécuté tel quel (scopé société comme la
+        # réécriture), rend Σ total_ht ; l'échéancier figé compté une fois.
+        from decimal import Decimal
+
+        from django.db import connection
+
+        from apps.agent.tests.test_registry import (
+            _guide_et_exemples, _prefixe)
+        _, exemples = _guide_et_exemples(_prefixe())
+        sql = [x.split(' : ', 1)[1] for x in exemples.splitlines()
+               if x.startswith('- CA facture HT : ')]
+        self.assertEqual(len(sql), 1, exemples)
+
+        def executer():
+            with connection.cursor() as cur:
+                cur.execute(sql[0] + ' AND company_id = %s',
+                            [self.company.id])
+                return cur.fetchone()[0]
+        for i, ht in enumerate(('1000', '500', '250')):
+            self._facture('F77S-%d' % i, 'emise', ht=ht)
+        self._facture('F77S-B', 'brouillon', ht='1000')
+        self.assertEqual(executer(), Decimal('1750'))
+        self._facture('F77S-A', 'emise', type_facture='acompte',
+                      montant_ht=Decimal('300'), montant_tva=Decimal('60'),
+                      montant_ttc=Decimal('360'))
+        self.assertEqual(executer(), Decimal('2050'))
+
     def test_migration_0005_passe_sur_total_ht(self):
         import importlib
         from django.apps import apps as parc
