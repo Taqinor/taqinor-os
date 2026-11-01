@@ -157,6 +157,16 @@ export function echeancierAvecAcompte(echeancier, montant, totalTtc, mode, effec
     const pctSolde = nombre(saisie[2].valeur)
     saisie[1] = { ...saisie[1],
                   valeur: String(Math.max(0, arrondi2(100 - pctSolde - pctAcompte))) }
+  } else if (saisie.length >= 2 && saisie.length !== 3 && total > 0) {
+    // AGNR51 — 2, 4 jalons ou plus : la DERNIÈRE tranche devient le reste en MAD
+    // (Σ = TTC, règle AGNR49) ; reste négatif ⇒ rien d'inventé, `erreurEcheancier` le nomme.
+    const milieu = saisie.slice(1, -1).reduce((s, t) => s + (t.unite === UNITE_MONTANT
+      ? nombre(t.valeur) : (nombre(t.valeur) / 100) * total), 0)
+    const reste = arrondi2(total - acompte - milieu)
+    if (reste >= 0) {
+      saisie[saisie.length - 1] = { ...saisie[saisie.length - 1],
+                                    unite: UNITE_MONTANT, valeur: String(reste) }
+    }
   }
   return saisieVersEcheancier(saisie)
 }
