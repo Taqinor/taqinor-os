@@ -44,6 +44,8 @@ const api = vi.hoisted(() => ({
   cocherOutil: vi.fn(),
   confirmerCharge: vi.fn(),
   commanderManques: vi.fn(),
+  getPhotos: vi.fn(),
+  supprimerPhoto: vi.fn(),
 }))
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
@@ -64,7 +66,9 @@ vi.mock('../../lib/monitoring', () => ({
   captureException: vi.fn(), initMonitoring: vi.fn(), suivreSocieteDuStore: vi.fn(),
 }))
 
-import { PreparationPanel } from './InterventionFieldExecution'
+vi.mock('./offline/OfflineSyncIndicator', () => ({ default: () => null }))
+
+import { PreparationPanel, PhotosPanel } from './InterventionFieldExecution'
 
 const INTERVENTION = { id: 11 }
 
@@ -113,5 +117,28 @@ describe('PreparationPanel — ERR-QAH-CHANTIERS-PREPARATION-MATERIEL-DISAPPEARS
     // vidant `prep.materiel` (every() sur un tableau vide = true).
     expect(screen.getByRole('button', { name: 'Confirmer « Tout est chargé »' }))
       .toBeDisabled()
+  })
+})
+
+describe('PhotosPanel — suppression avec motif (ACHT117)', () => {
+  it('intervention terminée : 409 affiché, motif saisi, renvoi avec motif', async () => {
+    const user = userEvent.setup()
+    api.getPhotos.mockResolvedValue({ data: {
+      groupes: { avant: [{ cle: 's1', libelle: 'Toit', photos: [
+        { id: 9, url: 'http://x/p.jpg', filename: 'p.jpg', created_at: null }] }] },
+      autres: [], obligatoires_manquants: [] } })
+    api.supprimerPhoto
+      .mockRejectedValueOnce({ response: { status: 409, data: {
+        detail: 'Intervention terminée : indiquez le motif de la suppression.' } } })
+      .mockResolvedValueOnce({ data: null })
+    render(<MemoryRouter><PhotosPanel intervention={{ id: 11 }} /></MemoryRouter>)
+    await user.click(await screen.findByTitle('Supprimer la photo'))
+    expect(await screen.findByText(
+      'Intervention terminée : indiquez le motif de la suppression.')).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Motif de la suppression'), 'Doublon')
+    await user.click(screen.getByRole('button', { name: 'Confirmer la suppression' }))
+    await waitFor(() => expect(api.supprimerPhoto).toHaveBeenCalledTimes(2))
+    expect(api.supprimerPhoto.mock.calls[0]).toEqual([11, 9, ''])
+    expect(api.supprimerPhoto.mock.calls[1]).toEqual([11, 9, 'Doublon'])
   })
 })
