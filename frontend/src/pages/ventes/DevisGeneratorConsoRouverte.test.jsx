@@ -107,7 +107,7 @@ describe('COUV-HOR — la conso annuelle d\'un devis rouvert', () => {
     }))
     renderEdition()
     const champ = await screen.findByLabelText('Consommation réelle (kWh/mois)')
-    await waitFor(() => expect(champ).toHaveValue(9167))
+    await waitFor(() => expect(champ).toHaveValue(9166.67))
     await userEvent.clear(champ)
     await userEvent.type(champ, '9000')
     const cles = await enregistrerEtLireEtude()
