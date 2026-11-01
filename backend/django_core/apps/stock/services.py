@@ -7122,11 +7122,10 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
         if prix is None or not prix.is_finite():
             _erreur(row_num, sku, f'Prix invalide pour {sku} : {prix_raw!r}.')
             continue
-        paliers, rejets = [], []
-        if idx_paliers is not None and idx_paliers < len(row):
-            paliers, rejets = _parse_palier_cell(row[idx_paliers])
-        if prix.as_tuple().exponent < -2:
-            rejets.insert(0, f'prix à plus de 2 décimales : {prix_raw!r}')
+        paliers, rejets = _parse_palier_cell(
+            row[idx_paliers] if idx_paliers is not None and idx_paliers < len(row) else None)
+        rejets = ([f'prix à plus de 2 décimales : {prix_raw!r}']
+                  if prix.as_tuple().exponent < -2 else []) + rejets
         if rejets:
             _erreur(row_num, sku, f'{sku} : ' + ' ; '.join(rejets) + '.')
             continue
