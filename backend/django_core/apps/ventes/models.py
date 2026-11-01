@@ -217,9 +217,9 @@ class Devis(models.Model):
     # migration 0142 laisse à 2 les devis envoyés ; 30/10/2026 : niveau 4 (0143,
     # sensibilités C&I) ; niveau 5 (0144, retours C&I « avec batterie » et
     # curseur de stockage) ; niveau 6 (0145, arrondi moitié vers le haut de
-    # l'argent affiché, D-ENF-ARRONDI-PDF) — un devis neuf naît en 6
-    # (``regles_au_moins``).
-    regles_calcul = models.PositiveSmallIntegerField(default=6)
+    # l'argent affiché, D-ENF-ARRONDI-PDF) ; niveau 7 (0146, écarts AMOT du
+    # 31/10) — un devis neuf naît en 7 (``regles_au_moins``).
+    regles_calcul = models.PositiveSmallIntegerField(default=7)
     version = models.PositiveIntegerField(default=1)
     version_parent = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,

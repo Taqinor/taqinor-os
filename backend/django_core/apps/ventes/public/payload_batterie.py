@@ -160,7 +160,8 @@ def _residuel_falaise_publiable(dimensionnement, devis) -> bool:
         _config_vendue(devis))
 
 
-def _balayage_stockage_publique(dimensionnement, devis=None, ttc_offert=None):
+def _balayage_stockage_publique(dimensionnement, devis=None, ttc_offert=None,
+                                servi=None):
     """ORDRE FONDATEUR (24/08/2026, soir) — sous-ensemble PUBLIC, client-safe,
     du mini-balayage de stockage (``apps.ventes.dimensionnement`` DIM2) :
     ``dimensionnement.recommandation_avec.balayage_stockage`` (les paliers de
@@ -239,11 +240,10 @@ def _balayage_stockage_publique(dimensionnement, devis=None, ttc_offert=None):
             # (AMOT29) sur CE prix.
             from apps.ventes.domain.dimensionnement_devis import (
                 prix_client_composition)
-            from apps.ventes.quote_engine.pricing import payback_publiable
             cout_ttc = prix_client_composition(cout_ttc, devis)
-            payback = payback_publiable(
+            payback = _payback_curseur(
                 cout_ttc, _nombre_positif_ou_none(palier.get('economie_mad')),
-                stockage=True)['payback_years']
+                devis, servi)
         brut = palier.get('cout_ttc')
         bruts.append(float(brut) if isinstance(brut, (int, float))
                      and not isinstance(brut, bool) and brut > 0 else None)
@@ -260,7 +260,7 @@ def _balayage_stockage_publique(dimensionnement, devis=None, ttc_offert=None):
         from apps.ventes.domain.regles_calcul import calcul_corrige
         if calcul_corrige(devis):
             _ancrer_paliers_sur_le_devis(paliers_public, bruts, devis,
-                                         ttc_offert)
+                                         ttc_offert, servi=servi)
 
     refuse_public = None
     refuse = reco.get('stockage_refuse')
@@ -279,7 +279,25 @@ def _balayage_stockage_publique(dimensionnement, devis=None, ttc_offert=None):
     return {'paliers': paliers_public, 'refuse': refuse_public}
 
 
-def _ancrer_paliers_sur_le_devis(paliers, bruts, devis, ttc_offert):
+def _payback_curseur(cout, eco, devis, servi):
+    """AMOT103 (C-AMOT-VER-003) — payback d'un palier du curseur. Niveau 7
+    (``REGLES_ECARTS_3110``) : la définition de ``roi_a`` — part stockée 0
+    (économie horaire déjà nette), rendement du devis, provision d'onduleur
+    servie (``cashflow_assumptions``) ; en dessous, le calcul d'hier."""
+    from apps.ventes.domain.regles_calcul import REGLES_ECARTS_3110, regles_au_moins
+    from apps.ventes.quote_engine.pricing import payback_publiable
+    if not regles_au_moins(devis, REGLES_ECARTS_3110):
+        return payback_publiable(cout, eco, stockage=True)['payback_years']
+    from ..horaire.batterie_lignes import rendement_batterie_du_devis
+    hyp = (servi or {}).get('cashflow_assumptions') or {}
+    return payback_publiable(
+        cout, eco, stockage=True, part_batterie=0.0,
+        battery_roundtrip=rendement_batterie_du_devis(devis).get('rendement'),
+        cout_onduleur_ttc=(hyp.get('inverter_replace_cost_avec')
+                           or hyp.get('inverter_replace_cost')))['payback_years']
+
+
+def _ancrer_paliers_sur_le_devis(paliers, bruts, devis, ttc_offert, servi=None):
     """ERR-AMOT59-CURSEUR-STOCKAGE-PRIX (sonde C-AMOT-035) — le palier de la
     quantité OFFERTE publie le TTC du devis, les autres en sont dérivés par
     différence.
@@ -298,7 +316,9 @@ def _ancrer_paliers_sur_le_devis(paliers, bruts, devis, ttc_offert):
       composition est chiffré au catalogue, remisé par le facteur RÉEL du
       devis (``facteur_remise_du_devis``) — jamais un second arrondi-100 qui
       décalerait la référence ;
-    * payback republié sur ce prix (``payback_publiable``, AMOT29).
+    * payback republié sur ce prix (``payback_publiable``, AMOT29) ; niveau 7
+      (AMOT103) : à la position offerte, ``roi_a`` servi (omis si jamais
+      remboursé), ailleurs la même définition (``_payback_curseur``).
 
     Aucun palier offert identifiable (option sans batterie, packs absents du
     balayage, coût illisible) ⇒ paliers inchangés (prix AMOT59). Nouveaux
@@ -325,8 +345,10 @@ def _ancrer_paliers_sur_le_devis(paliers, bruts, devis, ttc_offert):
         return
     from apps.ventes.domain.dimensionnement_devis import (
         facteur_remise_du_devis)
-    from apps.ventes.quote_engine.pricing import payback_publiable
+    from apps.ventes.domain.dimensionnement_devis import _payback_servi
+    from apps.ventes.domain.regles_calcul import REGLES_ECARTS_3110
     from decimal import ROUND_HALF_UP, Decimal
+    servi_offert = servi is not None and regles_au_moins(devis, REGLES_ECARTS_3110)
     facteur = facteur_remise_du_devis(devis)
     brut_offert = bruts[offerts[0]]
     for i, (palier, brut) in enumerate(zip(paliers, bruts)):
@@ -337,8 +359,9 @@ def _ancrer_paliers_sur_le_devis(paliers, bruts, devis, ttc_offert):
         if cout <= 0:
             continue
         palier['cout_ttc'] = cout
-        palier['payback_annees'] = payback_publiable(
-            cout, palier.get('economie_mad'), stockage=True)['payback_years']
+        calcul = _payback_curseur(cout, palier.get('economie_mad'), devis, servi)
+        palier['payback_annees'] = (_payback_servi(servi, 'avec', repli=lambda: calcul)
+                                    if servi_offert and i == offerts[0] else calcul)
 
 
 def _echelle_paliers_batterie_publique(devis, data, est_residentiel):

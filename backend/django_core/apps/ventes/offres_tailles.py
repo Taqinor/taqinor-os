@@ -871,8 +871,8 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
     passage moteur — donc, tôt ou tard, deux chiffres pour la même chose.
     Absent (défaut) ⇒ comportement byte-identique à avant.
     """
-    from apps.ventes.dimensionnement import _compter_modules_batterie
-    from apps.ventes.dimensionnement import _lire_composition
+    from apps.ventes.dimensionnement import _compter_modules_batterie, _lire_composition
+    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
     from apps.ventes.etude_horaire import calculer_etude_horaire
     from apps.ventes.horaire.batterie_lignes import (
         puissances_batterie_des_lignes)
@@ -993,9 +993,10 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             # nette du rendement aller-retour : rien à re-déduire au cashflow
             # (``battery_share = 0``), comme ``pricing`` en modèle horaire.
             'part_batterie': (0.0 if variante == 'avec' else None),
+            # AMOT108 — provision remisée au niveau ≥ 3 seulement, comme le PDF (``_cout_onduleur_paye``).
             'cout_onduleur_ttc': _cout_onduleur_ttc(
-                lignes, list(getattr(lignes, 'roles', ()) or ()),
-                contexte.facteur_remise, contexte.devis.taux_tva,
+                lignes, list(getattr(lignes, 'roles', ()) or ()), contexte.facteur_remise
+                if regles_au_moins(contexte.devis, REGLES_CORRIGEES_2710) else 1.0, contexte.devis.taux_tva,
                 (contexte.entrees or {}).get('company')),
             # AMOT30 — le rendement aller-retour que le moteur horaire a
             # RÉELLEMENT appliqué (fiche prouvée), comme ``pricing``.
@@ -1276,16 +1277,11 @@ def _substituer(vue, lignes, substitutions, taux_tva=None, company=None):
 def _carte_du_devis(contexte, data, variante):
     """La carte Recommandé — REPRISE des valeurs SERVIES, jamais recalculée.
 
-    C'est la règle centrale de ce module. Le prix, l'économie, le payback, la
-    production, le kWc et le nombre de panneaux viennent TELS QUELS de
-    ``build_quote_data`` — la source que la page affiche déjà partout ailleurs.
-    Aucun second calcul, aucun second arrondi : la carte « Recommandé » ne peut
-    donc pas annoncer un chiffre différent de l'offre officielle juste à côté.
-
-    Les deux taux (couverture, autoconsommation) viennent du bloc horaire DÉJÀ
-    POSÉ sur le devis (``etude_params['etude_horaire']``) — le même que celui
-    dont la page tire ses économies mensuelles — et sont OMIS s'il est absent.
-    """
+    C'est la règle centrale de ce module. Prix, économie, payback, production,
+    kWc et panneaux viennent TELS QUELS de ``build_quote_data`` (la source que
+    la page affiche partout) : aucun second calcul, aucun second arrondi. Les
+    deux taux (couverture, autoconsommation) viennent du bloc horaire DÉJÀ
+    POSÉ sur le devis (``etude_params['etude_horaire']``) ; OMIS s'il manque."""
     suffixe = 'sans' if variante == 'sans' else 'avec'
     totaux = (data or {}).get('totaux_%s' % suffixe) or {}
     prix = _positif(totaux.get('ttc'))
@@ -1304,14 +1300,19 @@ def _carte_du_devis(contexte, data, variante):
         'eco_s_ann' if variante == 'sans' else 'eco_a_ann'))
     if economie is not None:
         carte['economie_annuelle_mad'] = round(economie, 2)
-    # Le payback SERVI d'abord (``roi_s``/``roi_a``) ; « jamais remboursé » ⇒ OMIS
-    # (ERR-RHOR8, comme RHOR5) ; repli QUE s'il n'est pas servi.
-    from apps.ventes.domain.dimensionnement_devis import _payback_servi
-    # AMOT29 — repli : la définition du document, jamais le ratio simple
-    # (règles d'origine : le ratio simple d'hier).
-    paye = _payback_servi(data, variante, repli=lambda: (
-        _payback_publie(prix, economie) if getattr(contexte, 'corrige', True)
-        else _payback(prix, economie)))
+    # Payback SERVI d'abord (``roi_s``/``roi_a``), « jamais remboursé » ⇒ OMIS (ERR-RHOR8) ; repli QUE s'il n'est pas
+    # servi : la définition du document (AMOT29 ; règles d'origine : ratio simple) avec, niveau 7 « avec » (AMOT107),
+    # les arguments de ``_carte_moteur`` (stockage, part stockée 0, provision d'onduleur, rendement du bloc horaire).
+    from apps.ventes.domain import dimensionnement_devis as dd, regles_calcul as rc
+    paye = dd._payback_servi(data, variante, repli=lambda: (_payback_publie(prix, economie, **(
+        {'stockage': True, 'part_batterie': 0.0, 'cout_onduleur_ttc': _cout_onduleur_ttc(
+            (lv := dd.lignes_vendues(contexte.devis, 'avec')),
+            [_role_de_la_ligne(getattr(ln, 'designation', '') or '') for ln in lv], contexte.facteur_remise,
+            getattr(contexte.devis, 'taux_tva', None), (contexte.entrees or {}).get('company')),
+         'battery_roundtrip': ((getattr(contexte.devis, 'etude_params', None) or {}).get('etude_horaire')
+                               or {}).get('rendement_batterie')}
+        if variante == 'avec' and rc.regles_au_moins(contexte.devis, rc.REGLES_ECARTS_3110) else {}))
+        if getattr(contexte, 'corrige', True) else _payback(prix, economie)))
     if paye is not None:
         carte['payback_annees'] = round(paye, 2)
     production = _positif((data or {}).get('prod_kwh_%s' % suffixe))
