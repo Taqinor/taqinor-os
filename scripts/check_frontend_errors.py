@@ -141,7 +141,7 @@ def scan_catch_vide() -> dict:
                 debut = sans_doc.rfind("\n", 0, m.start()) + 1
                 if sans_doc[debut:m.start()].lstrip().startswith("//"):
                     continue
-                cle =f"{rel}::{_fonction_de(sans_doc, m.start())}"
+                cle = f"{rel}::{_fonction_de(sans_doc, m.start())}"
                 trouves[cle] = trouves.get(cle, 0) + 1
     return trouves
 
