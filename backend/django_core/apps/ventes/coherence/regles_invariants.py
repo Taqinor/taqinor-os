@@ -31,6 +31,7 @@ PREFIXES_INTERDITS = ("marge",)
 _CLES_PRIX_VENTE = {
     "prix_unit_ht", "prix_unit_ttc", "pu_ht_remise", "total_ht_remise",
     "total_ht", "total_ttc", "ttc", "ht_brut", "ht_net", "tva", "remise",
+    "pu_ttc_remise", "total_ttc_remise",
 }
 
 
@@ -124,14 +125,18 @@ def pompage_sans_onduleur_batterie(r, devis, ctx):
     if mode != "agricole":
         return []
     from apps.ventes import solar_classification as sc
-    from apps.ventes.utils.options import texte_classement
+    from apps.ventes.utils.options import _blob, texte_classement
     data = ctx.donnees_devis(devis)
+    # AMOT109 — `_produit_nom` est retiré du rendu : le nom du produit lié se lit
+    # sur la LigneDevis (comme le moteur : désignation + nom produit).
+    blobs = {lg.designation: _blob(lg)
+             for lg in devis.lignes.select_related('produit')}
     out = []
     for it in data.get("all_items") or []:
         if not isinstance(it, dict) or (it.get("quantite") or 0) <= 0:
             continue
-        texte = texte_classement(it.get("designation", ""),
-                                 it.get("_produit_nom", ""))
+        texte = blobs.get(it.get("designation", "")) or texte_classement(
+            it.get("designation", ""), it.get("_produit_nom", ""))
         if (sc.is_battery(texte) or sc.is_inverter(texte)
                 or sc.is_hybrid_inverter(texte)
                 or sc.is_offgrid_inverter(texte)):
