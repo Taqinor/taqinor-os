@@ -1946,7 +1946,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `AICM2` — Réglage de confidentialité du compte claude.ai
 - `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]
-- `CAD177` — (30/09 : nocturne encore rouge — backend-full sur 3 tests PDF ventes réels ; e2e…
+- `CAD177` — (01/11 : nocturne 41188540195 (31/10) e2e-full — 3 causes corrigées, non rejouées (pas…
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
 - `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
