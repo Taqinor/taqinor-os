@@ -1,0 +1,221 @@
+{
+  "sha": "ba577e26ad8d763462e2a7065c459caaa44bd386",
+  "date": "2026-11-01",
+  "groupe": "ASEC",
+  "verdict": "FAIL",
+  "couvre": [
+    "ASEC55",
+    "ASEC64",
+    "ASEC56",
+    "ASEC62",
+    "ASEC58",
+    "ASEC59",
+    "ASEC60",
+    "ASEC61"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P63.1",
+      "taches": [
+        "ASEC55"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.1-ba577e26a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : {\"id\":89,\"nom\":\"ACC63 b1 étroit\",\"permissions\":[\"crm_voir\",\"paie_gerer\"],\"est_systeme\":false,\"users_count\":1,\"users\":[{\"id\":72,\"username\":\"acc63-b1-cible\"}],\"entites_visibles\":[],\"perimetre\":null}"
+    },
+    {
+      "id": "P63.2-com",
+      "taches": [
+        "ASEC64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.2-com-ba577e26a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P63.2-av",
+      "taches": [
+        "ASEC56",
+        "ASEC62",
+        "ASEC64"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.2-av-ba577e26a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : gestes d'argent affichés"
+    },
+    {
+      "id": "P63.2-resp",
+      "taches": [
+        "ASEC56",
+        "ASEC62",
+        "ASEC64"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.2-resp-ba577e26a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : gestes d'argent affichés"
+    },
+    {
+      "id": "P63.3",
+      "taches": [
+        "ASEC56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.3-ba577e26a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P63.5",
+      "taches": [
+        "ASEC58"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.5-ba577e26a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : entrée de la clé étrangère dans le ZIP"
+    },
+    {
+      "id": "P63.6",
+      "taches": [
+        "ASEC59"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.6-ba577e26a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : verrouiller"
+    },
+    {
+      "id": "P63.7",
+      "taches": [
+        "ASEC60"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ACCEPTATION-ASEC-P63.7-ba577e26a.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : {\"id\":7,\"nom\":\"Technicien ACC63\",\"permissions\":[\"installation_voir\",\"installation_gerer\",\"intervention_gerer\",\"equipement_voir\",\"sav_voir\",\"sav_gerer\",\"sav_repondre_client_externe\",\"stock_voir\",\"stock_mouvement\",\"parametres_voir\",\"reporting_voir\",\"client_pii_voir\",\"qhse_voir\",\"qhse_gerer\",\"projet_voir\",\"projet_gerer\",\"contrat_voir\",\"contrat_gerer\",\"litige_voir\",\"litige_gerer\",\"kb_voir\",\"kb_gerer\",\"ged_voir\",\"ged_gerer\",\"adsengine_view\",\"adsengine_manage\",\"btp_voir\",\"ux_vue_partager_equipe\",\"ux_vue_definir_defaut_role\",\"records_scope_equipe\",\"encaisser\"],\"est_systeme\":true,\"users_count\":9,\"users\":[{\"id\":4,\"username\":\"demo_tech\"},{\"id\":5,\"username\":\"demo_tech2\"},{\"id\":11,\"username\":\"acc63-head-tech\"},{\"id\":26,\"username\":\"acc63-h1-tech\"},{\"id\":35,\"username\":\"acc63-h2-tech\"},{\"id\":47,\"username\":\"acc63-h3-tech\"},{\"id\":57,\"username\":\"acc63-h4-tech\"},{\"id\":66,\"username\":\"acc63-h5-tech\"},{\"id\":75,\"username\":\"acc63-b1-tech\"}],\"entites_visibles\":[],\"perimetre\":null}"
+    },
+    {
+      "id": "P63.8",
+      "taches": [
+        "ASEC61"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-11-01/ASEC63-P63.8-asec61-ba577e26a.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "FAIL",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ba577e26a : les deux requêtes rendent cout_unitaire 777.7700 au compte sans prix_achat_voir (fuite du coût interne)"
+    }
+  ]
+}

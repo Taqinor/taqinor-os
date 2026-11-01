@@ -1,0 +1,669 @@
+{
+  "P63.1": {
+    "creer_etroit": {
+      "statut": 201,
+      "id": 89,
+      "permissions": [
+        "crm_voir"
+      ]
+    },
+    "attribuer": {
+      "statut": 200
+    },
+    "elargir": {
+      "statut": 200,
+      "corps": {
+        "id": 89,
+        "nom": "ACC63 b1 étroit",
+        "permissions": [
+          "crm_voir",
+          "paie_gerer"
+        ],
+        "est_systeme": false,
+        "users_count": 1,
+        "users": [
+          {
+            "id": 72,
+            "username": "acc63-b1-cible"
+          }
+        ],
+        "entites_visibles": [],
+        "perimetre": null
+      }
+    },
+    "relu": [
+      "crm_voir",
+      "paie_gerer"
+    ],
+    "creer_large": {
+      "statut": 201,
+      "corps": {
+        "id": 90,
+        "nom": "ACC63 b1 large",
+        "permissions": [
+          "crm_voir",
+          "paie_gerer"
+        ],
+        "est_systeme": false,
+        "users_count": 0,
+        "users": [],
+        "entites_visibles": [],
+        "perimetre": null
+      }
+    },
+    "large_present": true,
+    "ecran_url": "http://127.0.0.1:5174/admin/roles"
+  },
+  "P63.2-com": {
+    "ecrans": {
+      "factures_ligne_visible": true,
+      "factures": [
+        "Encaisser",
+        "Payer en ligne"
+      ],
+      "factures_menu": [
+        "Encaisser",
+        "Payer en ligne"
+      ],
+      "fiche": [
+        "Encaisser",
+        "Payer en ligne"
+      ],
+      "paiements": [
+        "Importer un relevé bancaire"
+      ],
+      "import_releve": [],
+      "remises": [
+        "Déclarer une remise"
+      ]
+    }
+  },
+  "P63.2-av": {
+    "ecrans": {
+      "factures_ligne_visible": true,
+      "factures": [
+        "Encaisser",
+        "Payer en ligne"
+      ],
+      "factures_menu": [
+        "Encaisser",
+        "Payer en ligne",
+        "Facturer les pénalités de retard",
+        "Abandonner le solde…",
+        "Retour client…"
+      ],
+      "fiche": [
+        "Encaisser",
+        "Payer en ligne"
+      ],
+      "paiements": [
+        "Importer un relevé bancaire",
+        "Rejeter",
+        "Réaffecter"
+      ],
+      "import_releve": [
+        "Importer un relevé bancaire",
+        "Rejeter",
+        "Réaffecter"
+      ],
+      "remises": [
+        "Déclarer une remise"
+      ]
+    },
+    "role": "Admin Ventes",
+    "portes": {
+      "paiement_avec_retenue": 409,
+      "attestation_recue": 200,
+      "rejeter": 200,
+      "annuler_saisie": 409,
+      "reaffecter": 400,
+      "retour_client": 201,
+      "facturer_penalites": 409,
+      "liberer_retenue": 200,
+      "lien_paiement": 409,
+      "revoquer_lien_paiement": 200,
+      "releve_commit": 404,
+      "remise_declarer": 201,
+      "releve_dry_run": 200
+    },
+    "etat_avant": {
+      "facture": {
+        "statut": "emise",
+        "montant_paye": "300.00",
+        "montant_du": "850.00",
+        "retenue_liberee_le": null,
+        "abandon": null
+      },
+      "paiement": {
+        "statut": "encaisse",
+        "facture": 75,
+        "statut_affectation": "affecte"
+      },
+      "avoirs": 0,
+      "remises": 0
+    },
+    "etat_apres": {
+      "facture": {
+        "statut": "payee",
+        "montant_paye": "100.00",
+        "montant_du": "0.00",
+        "retenue_liberee_le": "2026-11-01",
+        "abandon": null
+      },
+      "paiement": {
+        "statut": "rejete",
+        "facture": 75,
+        "statut_affectation": "affecte"
+      },
+      "avoirs": 1,
+      "remises": 1
+    }
+  },
+  "P63.2-resp": {
+    "ecrans": {
+      "factures_ligne_visible": true,
+      "factures": [
+        "Encaisser",
+        "Payer en ligne"
+      ],
+      "factures_menu": [
+        "Encaisser",
+        "Payer en ligne",
+        "Facturer les pénalités de retard",
+        "Abandonner le solde…",
+        "Retour client…"
+      ],
+      "fiche": [
+        "Encaisser",
+        "Payer en ligne"
+      ],
+      "paiements": [
+        "Importer un relevé bancaire",
+        "Rejeter",
+        "Réaffecter"
+      ],
+      "import_releve": [
+        "Importer un relevé bancaire",
+        "Rejeter",
+        "Réaffecter"
+      ],
+      "remises": [
+        "Déclarer une remise",
+        "Clôturer"
+      ]
+    },
+    "role": "Responsable",
+    "portes": {
+      "paiement_avec_retenue": 409,
+      "attestation_recue": 200,
+      "rejeter": 200,
+      "annuler_saisie": 409,
+      "reaffecter": 400,
+      "retour_client": 201,
+      "facturer_penalites": 409,
+      "liberer_retenue": 200,
+      "lien_paiement": 409,
+      "revoquer_lien_paiement": 200,
+      "releve_commit": 404,
+      "remise_declarer": 201,
+      "releve_dry_run": 200
+    },
+    "etat_avant": {
+      "facture": {
+        "statut": "emise",
+        "montant_paye": "300.00",
+        "montant_du": "850.00",
+        "retenue_liberee_le": null,
+        "abandon": null
+      },
+      "paiement": {
+        "statut": "encaisse",
+        "facture": 77,
+        "statut_affectation": "affecte"
+      },
+      "avoirs": 0,
+      "remises": 1
+    },
+    "etat_apres": {
+      "facture": {
+        "statut": "payee",
+        "montant_paye": "100.00",
+        "montant_du": "0.00",
+        "retenue_liberee_le": "2026-11-01",
+        "abandon": null
+      },
+      "paiement": {
+        "statut": "rejete",
+        "facture": 77,
+        "statut_affectation": "affecte"
+      },
+      "avoirs": 1,
+      "remises": 2
+    }
+  },
+  "P63.3": {
+    "retour_client": {
+      "statut": 201,
+      "corps": {
+        "id": 15,
+        "lignes": [
+          {
+            "id": 11,
+            "produit": 36,
+            "designation": "Centrale ACC63",
+            "quantite": "1.00",
+            "prix_unitaire": "1000.00",
+            "remise": "0.00",
+            "taux_tva": "20.00",
+            "total_ht": "1000.00"
+          }
+        ],
+        "total_ht": "1000.00",
+        "total_tva": "200.00",
+        "total_ttc": "1200.00",
+        "tva_par_taux": [
+          {
+            "taux": "20.00",
+            "base_ht": "1000.00",
+            "montant": "200.00"
+          }
+        ],
+        "statut_display": "Émis",
+        "facture_reference": "FAC-ACC63-b1-1-com-5",
+        "client_nom": "ACC63 b1 Client Argent",
+        "type": "retour",
+        "reference": "AVO-202611-0013",
+        "statut": "emise",
+        "motif": "retour",
+        "date_emission": "2026-11-01",
+        "taux_tva": "20.00",
+        "remise_globale": "0.00",
+        "arrondi_pas": 0,
+        "arrondi_unites": 1,
+        "montant_ht": null,
+        "montant_tva": null,
+        "montant_ttc": null,
+        "fichier_pdf": null,
+        "ventilation_tva": null,
+        "restocke": false,
+        "motif_retour": "retour",
+        "company": 1,
+        "facture": 79,
+        "client": 24,
+        "created_by": 71,
+        "note_debit": null
+      }
+    },
+    "releve_dry_run": {
+      "statut": 200,
+      "corps": {
+        "token": "zqSxoK3dYr9amaCr4Vwd_8yBYWggS0C8gSUiJ72ih0Y",
+        "columns": {
+          "date": "date",
+          "libelle": "libelle",
+          "montant": "montant"
+        },
+        "unmapped": [],
+        "preview": [
+          {
+            "ligne": 2,
+            "date": "2026-11-01",
+            "reference": "",
+            "libelle": "VIR FAC-ACC63-b1-1-com-5",
+            "montant": "50",
+            "mode": "virement",
+            "statut": "non_trouve",
+            "facture_id": null,
+            "facture_reference": null,
+            "match_type": null,
+            "candidats": []
+          }
+        ],
+        "revue": [],
+        "total_rows": 1,
+        "matched": 0,
+        "ambigus": 0,
+        "already_paid": 0,
+        "deja_importe": false
+      }
+    },
+    "releve_commit": {
+      "statut": 200,
+      "corps": {
+        "token": "zqSxoK3dYr9amaCr4Vwd_8yBYWggS0C8gSUiJ72ih0Y",
+        "created": 0,
+        "skipped": 1,
+        "errors": 0,
+        "results": [
+          {
+            "ligne": 2,
+            "statut": "non_trouve"
+          }
+        ]
+      }
+    },
+    "facture_relue": {
+      "statut": "payee",
+      "montant_du": "0.00",
+      "avoirs": [
+        {
+          "id": 15,
+          "reference": "AVO-202611-0013",
+          "statut": "emise",
+          "total_ttc": "1200.00",
+          "motif": "retour"
+        }
+      ]
+    }
+  },
+  "P63.5": {
+    "zip": {
+      "statut": 200,
+      "type": "application/zip",
+      "octets": 475,
+      "entree_secret_presente": true,
+      "extrait": "PK........).a]..q.O...........acc63-b1-secret-b.pdf.QMk.1...W.e.=.|lb6 ..U(E*...x..e.lJ.....?._...+]..s..{..f2......D......x.e......u$.vX.a.Q ........7...f.6xb6v.,.S|_.].'.....7....X.V...._n'..]].`..\\"
+    },
+    "scinder": {
+      "statut": 201,
+      "corps": [
+        {
+          "id": 13,
+          "reference": "DOC-202611-0013",
+          "folder": 7,
+          "folder_nom": "Racine",
+          "coffre": null,
+          "nom": "acc63-b1-zip.pdf (1-1)",
+          "description": "",
+          "custom_data": {},
+          "created_by": 76,
+          "created_by_nom": "acc63-b1-dir",
+          "version_count": 1,
+          "derniere_version": 1,
+          "derniere_mime": "application/pdf",
+          "favori": false,
+          "tags": [],
+          "locked_by": null,
+          "locked_by_nom": null,
+          "locked_at": null,
+          "is_locked": false,
+          "statut": "brouillon",
+          "statut_display": "Brouillon",
+          "transitions_autorisees": [
+            "revue"
+          ],
+          "watermark_diffusion": false,
+          "supprime_le": null,
+          "supprime_par": null,
+          "supprime_par_nom": null,
+          "est_dans_corbeille": false,
+          "url_externe": "",
+          "est_document_lien": false,
+          "proprietaire": null,
+          "proprietaire_nom": null,
+          "contact_id": null,
+          "contact_label": null,
+          "verrou_avertissement_par": null,
+          "verrou_avertissement_par_nom": null,
+          "verrou_avertissement_le": null,
+          "verrou_avertissement_motif": "",
+          "est_verrouille_avertissement": false,
+          "created_at": "2026-11-01T19:49:19.838151Z",
+          "updated_at": "2026-11-01T19:49:19.838160Z"
+        },
+        {
+          "id": 14,
+          "reference": "DOC-202611-0014",
+          "folder": 7,
+          "folder_nom": "Racine",
+          "coffre": null,
+          "nom": "acc63-b1-zip.pdf (2-2)",
+          "description": "",
+          "custom_data": {},
+          "created_by": 76,
+          "created_by_nom": "acc63-b1-dir",
+          "version_count": 1,
+          "derniere_version": 1,
+          "derniere_mime": "application/pdf",
+          "favori": false,
+          "tags": [],
+          "locked_by": null,
+          "locked_by_nom": null,
+          "locked_at": null,
+          "is_locked": false,
+          "statut": "brouillon",
+          "statut_display": "Brouillon",
+          "transitions_autorisees": [
+            "revue"
+          ],
+          "watermark_diffusion": false,
+          "supprime_le": null,
+          "supprime_par": null,
+          "supprime_par_nom": null,
+          "est_dans_corbeille": false,
+          "url_externe": "",
+          "est_document_lien": false,
+          "proprietaire": null,
+          "proprietaire_nom": null,
+          "contact_id": null,
+          "contact_label": null,
+          "verrou_avertissement_par": null,
+          "verrou_avertissement_par_nom": null,
+          "verrou_avertissement_le": null,
+          "verrou_avertissement_motif": "",
+          "est_verrouille_avertissement": false,
+          "created_at": "2026-11-01T19:49:19.929281Z",
+          "updated_at": "2026-11-01T19:49:19.929292Z"
+        }
+      ]
+    },
+    "documents": {
+      "avant": 12,
+      "apres": 14,
+      "versions": 0
+    }
+  },
+  "P63.6": {
+    "lecteur": {
+      "verrouiller": {
+        "statut": 200,
+        "corps": {
+          "id": 12,
+          "reference": "DOC-202611-0012",
+          "folder": 7,
+          "folder_nom": "Racine",
+          "coffre": 6,
+          "nom": "acc63-b1-coffre.pdf",
+          "description": "",
+          "custom_data": {},
+          "created_by": null,
+          "created_by_nom": null,
+          "version_count": 1,
+          "derniere_version": 1,
+          "derniere_mime": "application/pdf",
+          "favori": false,
+          "tags": [],
+          "locked_by": null,
+          "locked_by_nom": null,
+          "locked_at": null,
+          "is_locked": false,
+          "statut": "brouillon",
+          "statut_display": "Brouillon",
+          "transitions_autorisees": [
+            "revue"
+          ],
+          "watermark_diffusion": false,
+          "supprime_le": null,
+          "supprime_par": null,
+          "supprime_par_nom": null,
+          "est_dans_corbeille": false,
+          "url_externe": "",
+          "est_document_lien": false,
+          "proprietaire": null,
+          "proprietaire_nom": null,
+          "contact_id": null,
+          "contact_label": null,
+          "verrou_avertissement_par": 77,
+          "verrou_avertissement_par_nom": "acc63-b1-gedl",
+          "verrou_avertissement_le": "2026-11-01T19:49:26.863372Z",
+          "verrou_avertissement_motif": "",
+          "est_verrouille_avertissement": true,
+          "created_at": "2026-11-01T19:47:18.797707Z",
+          "updated_at": "2026-11-01T19:49:26.866101Z"
+        }
+      },
+      "placer-legal-hold": {
+        "statut": 201,
+        "corps": {
+          "id": 1,
+          "document": 12,
+          "document_nom": "acc63-b1-coffre.pdf",
+          "motif": "",
+          "actif": true,
+          "date_pose": "2026-11-01T19:49:27.038912Z",
+          "place_par": 77,
+          "place_par_nom": "acc63-b1-gedl",
+          "date_levee": null,
+          "leve_par": null,
+          "leve_par_nom": null
+        }
+      },
+      "partage": {
+        "statut": 201,
+        "corps": {
+          "id": 1,
+          "document": 12,
+          "document_nom": "acc63-b1-coffre.pdf",
+          "token": "C4oLFyPp_f5XZNY4YUidoiGmhZTV1Zgf3zPd5ND7PWg",
+          "public_url": "/api/django/ged/public/C4oLFyPp_f5XZNY4YUidoiGmhZTV1Zgf3zPd5ND7PWg/",
+          "expires_at": null,
+          "has_password": false,
+          "quota_max": null,
+          "telechargements": 0,
+          "quota_exhausted": false,
+          "is_expired": false,
+          "is_accessible": true,
+          "watermark": false,
+          "actif": true,
+          "created_by": 77,
+          "created_by_nom": "acc63-b1-gedl",
+          "created_at": "2026-11-01T19:49:27.137112Z",
+          "updated_at": "2026-11-01T19:49:27.137121Z"
+        }
+      }
+    },
+    "sans_droit_partage": {
+      "statut": 404,
+      "corps": {
+        "document": [
+          "Clé primaire « 12 » non valide - l'objet n'existe pas."
+        ],
+        "error": {
+          "code": "not_found",
+          "message": "{'document': [ErrorDetail(string=\"Clé primaire «\\xa012\\xa0» non valide - l'objet n'existe pas.\", code='does_not_exist')]}",
+          "fields": null,
+          "request_id": "429d6b3c2e2f43b785d018b7dfb3900e"
+        }
+      }
+    },
+    "relu_directeur": {
+      "locked_by": null,
+      "partages": 1,
+      "holds": 1
+    }
+  },
+  "P63.7": {
+    "patch": {
+      "statut": 200,
+      "corps": {
+        "id": 7,
+        "nom": "Technicien ACC63",
+        "permissions": [
+          "installation_voir",
+          "installation_gerer",
+          "intervention_gerer",
+          "equipement_voir",
+          "sav_voir",
+          "sav_gerer",
+          "sav_repondre_client_externe",
+          "stock_voir",
+          "stock_mouvement",
+          "parametres_voir",
+          "reporting_voir",
+          "client_pii_voir",
+          "qhse_voir",
+          "qhse_gerer",
+          "projet_voir",
+          "projet_gerer",
+          "contrat_voir",
+          "contrat_gerer",
+          "litige_voir",
+          "litige_gerer",
+          "kb_voir",
+          "kb_gerer",
+          "ged_voir",
+          "ged_gerer",
+          "adsengine_view",
+          "adsengine_manage",
+          "btp_voir",
+          "ux_vue_partager_equipe",
+          "ux_vue_definir_defaut_role",
+          "records_scope_equipe",
+          "encaisser"
+        ],
+        "est_systeme": true,
+        "users_count": 9,
+        "users": [
+          {
+            "id": 4,
+            "username": "demo_tech"
+          },
+          {
+            "id": 5,
+            "username": "demo_tech2"
+          },
+          {
+            "id": 11,
+            "username": "acc63-head-tech"
+          },
+          {
+            "id": 26,
+            "username": "acc63-h1-tech"
+          },
+          {
+            "id": 35,
+            "username": "acc63-h2-tech"
+          },
+          {
+            "id": 47,
+            "username": "acc63-h3-tech"
+          },
+          {
+            "id": 57,
+            "username": "acc63-h4-tech"
+          },
+          {
+            "id": 66,
+            "username": "acc63-h5-tech"
+          },
+          {
+            "id": 75,
+            "username": "acc63-b1-tech"
+          }
+        ],
+        "entites_visibles": [],
+        "perimetre": null
+      }
+    },
+    "avant": {
+      "nom": "Technicien",
+      "n": 30,
+      "encaisser": false
+    },
+    "apres": {
+      "nom": "Technicien ACC63",
+      "n": 31,
+      "encaisser": true
+    }
+  }
+}
