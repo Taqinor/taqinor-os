@@ -97,10 +97,8 @@ _TABLES_WITH_COMPANY_ID = frozenset([
     "stock_mouvementstock",
     "crm_client",
     "ventes_devis",
-    "ventes_lignedevis",
     "ventes_boncommande",
     "ventes_facture",
-    "ventes_lignefacture",
     "authentication_customuser",
     "parametres_companyprofile",
     "ia_ocr_document",
@@ -121,10 +119,20 @@ _TABLES_WITH_COMPANY_ID = frozenset([
 # qui la lit doit etre contrainte par `id = <company_id>` (pas `company_id`).
 _TENANT_TABLE = "authentication_company"
 
+# AANA78 — Tables de LIGNES sans colonne company_id (modeles Django
+# ventes.LigneDevis.devis / facturation.LigneFacture.facture, FK NOT NULL) :
+# scopees par leur document PARENT, lui-meme filtre par company_id.
+_TABLES_PAR_PARENT: dict[str, tuple[str, str]] = {
+    "ventes_lignedevis": ("devis_id", "ventes_devis"),
+    "ventes_lignefacture": ("facture_id", "ventes_facture"),
+}
+assert all(p in _TABLES_WITH_COMPANY_ID for _, p in _TABLES_PAR_PARENT.values())
+
 # ERR2 — Ensemble FERME des tables qu'un appelant peut lire. Toute table de base
 # hors de cet ensemble est rejetee (fail-closed) : pas de fuite via une table
-# non scopee. = tables company_id + la table tenant.
-_TENANT_SCOPED_TABLES = frozenset(_TABLES_WITH_COMPANY_ID | {_TENANT_TABLE})
+# non scopee. = tables company_id + la table tenant + les lignes (AANA78).
+_TENANT_SCOPED_TABLES = frozenset(
+    _TABLES_WITH_COMPANY_ID | {_TENANT_TABLE} | set(_TABLES_PAR_PARENT))
 
 # Descriptions en francais pour pgvector
 _TABLE_DESCRIPTIONS: dict[str, str] = {
@@ -686,15 +694,23 @@ def _scoped_source(name: str, company_id: int, alias) -> exp.Subquery:
 
     La table societe (`authentication_company`) est filtree par son `id`. Sans
     alias explicite, la sous-requete reprend le NOM de la table pour que les
-    references qualifiees (`crm_client.nom`) restent valides."""
-    colonne = "id" if name == _TENANT_TABLE else "company_id"
+    references qualifiees (`crm_client.nom`) restent valides.
+
+    AANA78 — une table de lignes (sans company_id) devient
+    `(SELECT * FROM <ligne> WHERE <fk> IN (SELECT id FROM <parent scope>))`."""
+    if name in _TABLES_PAR_PARENT:
+        fk, parent = _TABLES_PAR_PARENT[name]
+        condition = exp.In(this=exp.column(fk), query=exp.Subquery(
+            this=exp.select("id").from_(_scoped_source(parent, company_id, None))))
+    else:
+        condition = exp.EQ(
+            this=exp.column("id" if name == _TENANT_TABLE else "company_id"),
+            expression=exp.Literal.number(int(company_id)),
+        )
     inner = (
         exp.select(exp.Star())
         .from_(exp.Table(this=exp.to_identifier(name)))
-        .where(exp.EQ(
-            this=exp.column(colonne),
-            expression=exp.Literal.number(int(company_id)),
-        ))
+        .where(condition)
     )
     if alias is None:
         alias = exp.TableAlias(this=exp.to_identifier(name))

@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/ventes/bons-commande/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ATOT49 (C3, S3) — jumeau d'ATOT31 côté bons de commande. La règle « ce BC peut-il être facturé ? » vit au SERVEUR (`selectors_facturation.porte_facture_bc`, la MÊME fonction que `POST …/creer-facture/`) ; la liste des BC LIT la clé additive `facturable` ({ok, motif}) au lieu de décider sur `statut` et `has_facture`. Le bouton « Facture » n'est affiché que si `facturable.ok` ; sinon le motif sert d'infobulle. `creer-facture` refuse en 409 avec le MÊME motif.",
+  "exemple": {
+    "id": 301,
+    "reference": "BC-2026-0301",
+    "statut": "confirme",
+    "has_facture": false,
+    "facturable": {"ok": true, "motif": ""}
+  },
+  "exemple_devis_facture": {
+    "id": 302,
+    "reference": "BC-2026-0302",
+    "statut": "confirme",
+    "has_facture": false,
+    "facturable": {"ok": false, "motif": "Ce devis est déjà facturé par FAC-2026-10-0007 : corrigez-la par un avoir."}
+  },
+  "exemple_deja_facture": {
+    "id": 303,
+    "reference": "BC-2026-0303",
+    "statut": "livre",
+    "has_facture": true,
+    "facturable": {"ok": false, "motif": "Une facture existe déjà pour ce BC."}
+  }
+}

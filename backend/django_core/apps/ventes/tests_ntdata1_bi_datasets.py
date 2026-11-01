@@ -142,6 +142,39 @@ class VentesBiDatasetsTests(TestCase):
             })
         self.assertTrue(any(r['total'] for r in lignes))
 
+    def test_factures_total_ht_rempli_sur_factures_classiques(self):
+        """AANA79 — HT du jeu = somme des ``Facture.total_ht`` (propriété),
+        même quand ``montant_ht`` est NULL ; une tranche compte une fois."""
+        from apps.ventes.models import LigneFacture
+        from testkit.factories import ProduitFactory
+        produit = ProduitFactory(company=self.company)
+        attendus = []
+        for i, ht in enumerate(('1000', '500', '250')):
+            f = Facture.objects.create(
+                company=self.company, reference='F-AANA79-%d' % i,
+                client=self.client_obj, statut=Facture.Statut.EMISE)
+            LigneFacture.objects.create(
+                facture=f, produit=produit, designation='L', quantite=1,
+                prix_unitaire=Decimal(ht), taux_tva=Decimal('20'))
+            attendus.append(f)
+        tranche = Facture.objects.create(
+            company=self.company, reference='F-AANA79-T',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            montant_ht=Decimal('100.00'), montant_tva=Decimal('20.00'),
+            montant_ttc=Decimal('120.00'))
+        lignes = data_explorer.run_query(
+            FACTURES_DATASET, self.company, self.user, {'aggregates': [
+                {'alias': 'ht', 'fn': 'sum', 'field': 'total_ht'},
+                {'alias': 'ttc', 'fn': 'sum', 'field': 'total_ttc'}]})
+        attendu_ht = sum((f.total_ht for f in attendus), Decimal('0')) \
+            + tranche.total_ht
+        self.assertEqual(attendu_ht, Decimal('1850.00'))
+        self.assertEqual(lignes[0]['ht'], attendu_ht)
+        self.assertEqual(
+            lignes[0]['ttc'],
+            sum((f.total_ttc for f in attendus), Decimal('0'))
+            + Decimal('120.00'))
+
     # ── paiements ──────────────────────────────────────────────────────────
     def test_paiements_group_by_mode(self):
         Paiement.objects.create(
