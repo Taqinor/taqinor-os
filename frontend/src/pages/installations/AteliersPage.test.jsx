@@ -12,6 +12,12 @@ const api = vi.hoisted(() => ({
   getOrdresDemontage: vi.fn(),
   getKitsAssemblage: vi.fn(),
   bonAssemblageUrl: (id) => `/api/x/${id}/bon-pdf/`,
+  getDisponibiliteAssemblage: vi.fn(),
+  getControleQualiteAssemblage: vi.fn(),
+  enregistrerControleQualiteAssemblage: vi.fn(),
+  getHistoriqueAssemblage: vi.fn(),
+  getEtapesAssemblage: vi.fn(),
+  getLignesAssemblage: vi.fn(),
 }))
 
 vi.mock('../../api/installationsApi', () => ({ default: api }))
@@ -60,5 +66,44 @@ describe('AteliersPage (XMFG1-16)', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Démontage' }))
     await waitFor(() =>
       expect(screen.getAllByText('DSM-001').length).toBeGreaterThan(0))
+  })
+
+  // ACHT115 — valeurs du serveur (pass/fail/en_attente), blocage = tout sauf pass.
+  it("contrôle qualité : envoie pass/fail, Forcer visible tant qu'un item n'est pas pass", async () => {
+    api.getOrdresAssemblage.mockResolvedValue({
+      data: [{ id: 1, reference: 'ASM-001', kit_nom: 'Kit', quantite: 1, statut: 'en_cours', date_creation: '2026-01-01' }],
+    })
+    let controles = [
+      { id: 1, item_modele: 11, item_libelle: 'Serrage', resultat: 'en_attente' },
+      { id: 2, item_modele: 12, item_libelle: 'Isolement', resultat: 'en_attente' },
+    ]
+    api.getDisponibiliteAssemblage.mockResolvedValue({ data: [] })
+    api.getHistoriqueAssemblage.mockResolvedValue({ data: [] })
+    api.getEtapesAssemblage.mockResolvedValue({ data: [] })
+    api.getLignesAssemblage.mockResolvedValue({ data: [] })
+    api.getControleQualiteAssemblage.mockImplementation(() => Promise.resolve({ data: controles }))
+    api.enregistrerControleQualiteAssemblage.mockImplementation((_id, item, { resultat }) => {
+      controles = controles.map((c) => (c.item_modele === item ? { ...c, resultat } : c))
+      return Promise.resolve({ data: {} })
+    })
+    renderPage('responsable')
+    fireEvent.click((await screen.findAllByText('ASM-001'))[0])
+    const conformes = await screen.findAllByRole('button', { name: 'Conforme' })
+    fireEvent.click(conformes[0])
+    await waitFor(() => expect(api.enregistrerControleQualiteAssemblage)
+      .toHaveBeenLastCalledWith(1, 11, { resultat: 'pass' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Échec' })[1])
+    await waitFor(() => expect(api.enregistrerControleQualiteAssemblage)
+      .toHaveBeenLastCalledWith(1, 12, { resultat: 'fail' }))
+    await waitFor(() => expect(api.getControleQualiteAssemblage.mock.calls.length).toBeGreaterThan(2))
+    fireEvent.click(screen.getByRole('button', { name: /Clôturer/ }))
+    expect(await screen.findByLabelText(/Forcer malgré/)).toBeInTheDocument()
+    cleanup()
+    controles = controles.map((c) => ({ ...c, resultat: 'pass' }))
+    renderPage('responsable')
+    fireEvent.click((await screen.findAllByText('ASM-001'))[0])
+    fireEvent.click(await screen.findByRole('button', { name: /Clôturer/ }))
+    await screen.findByLabelText(/Quantité produite/)
+    expect(screen.queryByLabelText(/Forcer malgré/)).toBeNull()
   })
 })

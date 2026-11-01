@@ -16,6 +16,7 @@ import {
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import crmApi from '../../api/crmApi'
+import { useCanListAssignableUsers } from '../../hooks/useHasPermission'
 import { Button, Badge, Spinner, EmptyState, Card, StatusAccentCard, toast } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
@@ -284,9 +285,10 @@ export default function InstallationsPage() {
   // d'erreur ; ceci ajoute juste l'état chargement manquant).
   const [xlsxBusy, setXlsxBusy] = useState(false)
   const [users, setUsers] = useState([])
+  const peutListerUsers = useCanListAssignableUsers()
   useEffect(() => {
-    crmApi.getAssignableUsers().then(r => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
-  }, [])
+    if (peutListerUsers) crmApi.getAssignableUsers().then(r => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+  }, [peutListerUsers])
 
   // Les filtres « annulés » et « Mes chantiers » sont des dimensions SERVEUR :
   // on refait l'appel quand ils changent (les autres filtres restent côté client).

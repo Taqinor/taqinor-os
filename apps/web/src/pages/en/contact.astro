@@ -13,40 +13,10 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import StarRating from '../../components/StarRating.astro';
-import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
-import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
+import { NAP } from '../../lib/nap';
+import { contactWhatsappLinks } from '../../lib/contactWhatsapp';
 
-// Deeplinks are built server-side with the SAME WhatsApp leads number; the
-// pre-filled text stays French (it reaches the French-speaking sales team).
-const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
-const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
-// W249 — phone callback request: pre-filled WhatsApp message explicitly
-// asking for a phone callback (rather than an online quote) — a human door
-// for visitors who'd rather talk than type.
-const waRappel = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, pouvez-vous me rappeler par téléphone pour parler de mon projet solaire ?',
-);
-
-/**
- * W285 — "Visit a project" becomes an action: same invitation as
- * pourquoi-taqinor.astro ("Ask to visit"), here as a direct WhatsApp
- * shortcut rather than a plain link to /realisations. Pre-filled text stays
- * French (same sales team reads every WhatsApp deeplink on the site).
- */
-const waVisite = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, je souhaite visiter une installation réelle Taqinor avant de me décider.',
-);
-
-// W339 — "Already a customer?" SAV/urgent door, SEPARATE from the commercial
-// prospection doors above (new project / callback / regularization). Pre-filled
-// text stays French (same sales/SAV team) but explicitly flags an
-// existing-installation fault report so it's routed differently from a quote request.
-const waSav = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, je suis déjà client Taqinor et je signale un problème sur mon installation existante (SAV). Merci de me recontacter.',
-);
+const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
 ---
 
 <Layout

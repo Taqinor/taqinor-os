@@ -33,41 +33,10 @@ import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import StarRating from '../components/StarRating.astro';
-import { NAP, WHATSAPP_LEADS } from '../lib/nap';
-import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
+import { NAP } from '../lib/nap';
+import { contactWhatsappLinks } from '../lib/contactWhatsapp';
 
-const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
-const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
-// W249 — rappel téléphonique : message WhatsApp pré-rempli qui demande
-// explicitement un rappel (plutôt qu'un devis en ligne) — porte humaine pour
-// qui préfère parler de vive voix.
-const waRappel = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, pouvez-vous me rappeler par téléphone pour parler de mon projet solaire ?',
-);
-
-/**
- * W285 — « Visiter un chantier » devient une action : même invitation que
- * pourquoi-taqinor.astro (« Demandez à visiter »), mais ici sous forme de
- * raccourci WhatsApp direct plutôt qu'un simple lien vers /realisations.
- */
-const waVisite = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, je souhaite visiter une installation réelle Taqinor avant de me décider.',
-);
-
-/**
- * W339 — « Déjà client ? » porte SAV/urgence, SÉPARÉE des portes de
- * prospection commerciale ci-dessus (nouveau projet / rappel / régularisation).
- * Même numéro WhatsApp que le reste du site (WHATSAPP_LEADS — un seul numéro connu à ce
- * jour), mais un message pré-rempli qui identifie explicitement un signalement
- * de panne sur une installation EXISTANTE, pour que l'équipe SAV le route
- * différemment d'une demande de devis dès la première lecture.
- */
-const waSav = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, je suis déjà client Taqinor et je signale un problème sur mon installation existante (SAV). Merci de me recontacter.',
-);
+const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
 ---
 
 <Layout

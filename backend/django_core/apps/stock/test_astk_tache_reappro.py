@@ -105,6 +105,17 @@ class ExecuterTests(TestCase):
                          TacheReapproInterne.Statut.A_FAIRE)
         self.assertFalse(MouvementStock.objects.exists())
 
+    def test_patch_sans_source_sert_bin_source_code(self):
+        """api-fuzz stock (vague 8) — PATCH qui vide ``bin_source`` : la
+        réponse garde ``bin_source_code`` (« ») que le schéma déclare
+        obligatoire ; DRF sautait la clé d'un lien nul en mode partiel."""
+        rep = self.api.patch(f'{URL}{self.tache.pk}/',
+                             {'bin_source': None, 'quantite': 0}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+        self.assertIsNone(rep.data['bin_source'])
+        self.assertEqual(rep.data['bin_source_code'], '')
+        self.assertEqual(rep.data['bin_cible_code'], 'P-01-01')
+
     def test_executer_conforme_contrat(self):
         contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
         exemple = contrat['routes']['taches_reappro_interne_executer'][

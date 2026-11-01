@@ -221,8 +221,8 @@ const installationsApi = {
     return api.post(`/installations/interventions/${id}/ajouter-photo/`, fd,
       { headers: { 'Content-Type': 'multipart/form-data' } })
   },
-  supprimerPhoto: (id, photo) =>
-    api.post(`/installations/interventions/${id}/supprimer-photo/`, { photo }),
+  supprimerPhoto: (id, photo, motif) =>
+    api.post(`/installations/interventions/${id}/supprimer-photo/`, motif ? { photo, motif } : { photo }),
 
   // F7/F8 — Créneaux de shot list (Paramètres → Documentation terrain).
   getShotlistSlots: () => api.get('/installations/shotlist-slots/'),
@@ -262,8 +262,8 @@ const installationsApi = {
   },
   modifierSerial: (id, payload) =>
     api.post(`/installations/interventions/${id}/modifier-serial/`, payload),
-  supprimerSerial: (id, serial) =>
-    api.post(`/installations/interventions/${id}/supprimer-serial/`, { serial }),
+  supprimerSerial: (id, serial, motif) =>
+    api.post(`/installations/interventions/${id}/supprimer-serial/`, motif ? { serial, motif } : { serial }),
 
   // ── F10 — Annotation d'une photo (dessin + légende) ──
   annoterPhoto: (id, payload) =>
@@ -276,8 +276,8 @@ const installationsApi = {
     api.post(`/installations/interventions/${id}/ajouter-ligne-consommation/`, payload),
   modifierLigneConsommation: (id, payload) =>
     api.post(`/installations/interventions/${id}/modifier-ligne-consommation/`, payload),
-  supprimerLigneConsommation: (id, ligne) =>
-    api.post(`/installations/interventions/${id}/supprimer-ligne-consommation/`, { ligne }),
+  supprimerLigneConsommation: (id, ligne, motif) =>
+    api.post(`/installations/interventions/${id}/supprimer-ligne-consommation/`, motif ? { ligne, motif } : { ligne }),
   validerConsommation: (id) =>
     api.post(`/installations/interventions/${id}/valider-consommation/`, {}),
   overageReview: () =>
@@ -294,8 +294,8 @@ const installationsApi = {
   },
   modifierMemo: (id, memo, transcript) =>
     api.post(`/installations/interventions/${id}/modifier-memo/`, { memo, transcript }),
-  supprimerMemo: (id, memo) =>
-    api.post(`/installations/interventions/${id}/supprimer-memo/`, { memo }),
+  supprimerMemo: (id, memo, motif) =>
+    api.post(`/installations/interventions/${id}/supprimer-memo/`, motif ? { memo, motif } : { memo }),
 
   // ── F15 — Temps d'équipe ──
   getCrewTime: (id) => api.get(`/installations/interventions/${id}/crew-time/`),

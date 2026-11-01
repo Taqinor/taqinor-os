@@ -26,6 +26,7 @@ import * as maplibregl from 'maplibre-gl';
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
 import { GOLD, MOROCCO_CENTER, $, assertWebGL, addTraceLayers, estimateAndShow, geocodeAndFly, injectMaplibreCss, makeSetStatus, mapErrorWarner, maptilerStyleUrl, renderRoofResults, traceGeoJson, wireSearchForm, wireVertexClicks, createRoofMap, wireOrientReestimate, type RoofResults } from './roofToolShared';
 import * as THREE from 'three';
+import { makeCompose, configureShadowRenderer, ringsBBox, fitShadowCamera } from './roofPro11/threeShared';
 import { layoutProRows, type ProLayout } from '../lib/roofPro';
 import type { LngLat } from '../lib/roof';
 
@@ -130,18 +131,7 @@ export function initRoofToolPro(opts: InitOptions): void {
   let modelMatrix: THREE.Matrix4 | null = null;
   const panelTex = makePanelTexture();
 
-  const AXIS_X = new THREE.Vector3(1, 0, 0);
-  const AXIS_Z = new THREE.Vector3(0, 0, 1);
-  const _q = new THREE.Quaternion();
-  const _qz = new THREE.Quaternion();
-  const _qx = new THREE.Quaternion();
-  const _scl = new THREE.Vector3(1, 1, 1);
-  const compose = (px: number, py: number, pz: number, rotZ: number, rotX: number): THREE.Matrix4 => {
-    _qz.setFromAxisAngle(AXIS_Z, rotZ);
-    _qx.setFromAxisAngle(AXIS_X, rotX);
-    _q.copy(_qz).multiply(_qx);
-    return new THREE.Matrix4().compose(new THREE.Vector3(px, py, pz), _q, _scl);
-  };
+  const compose = makeCompose();
 
   const empty = { type: 'FeatureCollection', features: [] } as const;
 
@@ -168,12 +158,7 @@ export function initRoofToolPro(opts: InitOptions): void {
       scene.add(sun.target);
 
       renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: true });
-      renderer.autoClear = false;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.05;
+      configureShadowRenderer(renderer);
     },
     render(_gl: WebGLRenderingContext | WebGL2RenderingContext, args: maplibregl.CustomRenderMethodInput) {
       if (!renderer || !scene || !threeCamera || !modelMatrix) return;
@@ -356,29 +341,13 @@ export function initRoofToolPro(opts: InitOptions): void {
     }
 
     // — Soleil + cadrage des ombres sur l'emprise —
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const [x, y] of ring) {
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
+    const { minX, minY, maxX, maxY } = ringsBBox([ring]);
     const cxm = (minX + maxX) / 2;
     const cym = (minY + maxY) / 2;
     const span = Math.max(maxX - minX, maxY - minY, wallH) + 8;
     sun.target.position.set(cxm, cym, wallH);
     sun.position.set(cxm - span * 0.6, cym - span * 0.85, wallH + span * 1.25);
-    const sc = sun.shadow.camera as THREE.OrthographicCamera;
-    sc.left = -span;
-    sc.right = span;
-    sc.top = span;
-    sc.bottom = -span;
-    sc.near = 0.5;
-    sc.far = span * 4;
-    sc.updateProjectionMatrix();
+    fitShadowCamera(sun, span, span * 4);
 
     map.triggerRepaint();
   }

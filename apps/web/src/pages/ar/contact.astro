@@ -15,36 +15,10 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import StarRating from '../../components/StarRating.astro';
-import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
-import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
+import { NAP } from '../../lib/nap';
+import { contactWhatsappLinks } from '../../lib/contactWhatsapp';
 
-// Deeplinks built server-side with the SAME WhatsApp leads number; the
-// pre-filled text stays French (it reaches the French-speaking sales team).
-const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
-const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
-// W249 — طلب معاودة الاتصال: رسالة واتساب مُعبَّأة مسبقاً تطلب صراحة معاودة
-// اتصال هاتفي (بدل عرض ثمن عبر الإنترنت) — باب إنساني لمن يفضّل التحدث بدل الكتابة.
-const waRappel = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, pouvez-vous me rappeler par téléphone pour parler de mon projet solaire ?',
-);
-
-// W285 — «زيارة ورش» تصبح فعلاً: نفس دعوة pourquoi-taqinor.astro، هنا في
-// شكل رابط واتساب مباشر بدل رابط بسيط نحو /realisations. النص المُعبَّأ
-// مسبقاً يبقى بالفرنسية (نفس فريق البيع يقرأ كل روابط واتساب في الموقع).
-const waVisite = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, je souhaite visiter une installation réelle Taqinor avant de me décider.',
-);
-
-// W339 — باب SAV/الأعطال «هل أنت زبون بالفعل؟»، منفصل عن أبواب الاستقطاب
-// التجاري أعلاه (مشروع جديد / معاودة اتصال / تسوية). النص مُعبَّأ مسبقاً
-// يبقى بالفرنسية (نفس فريق البيع/الصيانة) لكنه يحدد صراحة بلاغ عطل على
-// تركيبة قائمة، ليُوجَّه بشكل مختلف عن طلب عرض ثمن.
-const waSav = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, je suis déjà client Taqinor et je signale un problème sur mon installation existante (SAV). Merci de me recontacter.',
-);
+const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
 ---
 
 <Layout

@@ -58,14 +58,14 @@ describe('ASTK220 — ExpeditionsPage', () => {
 
   it('un PATCH refusé affiche le message serveur', async () => {
     api.patch.mockRejectedValue({
-      response: { status: 400, data: R.unites_logistiques.exemple_erreur_400_scellee },
+      response: { status: 409, data: R.unites_logistiques.exemple_erreur_409_scellee },
     })
     monter()
     const champ = await screen.findByLabelText(/Dimensions de l'unité 000000000000000012/)
     fireEvent.change(champ, { target: { value: '10x10x10' } })
     fireEvent.blur(champ)
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      R.unites_logistiques.exemple_erreur_400_scellee.detail[0])
+      R.unites_logistiques.exemple_erreur_409_scellee.detail)
   })
 
   it('générer l\'étiquette appelle generer-etiquette', async () => {

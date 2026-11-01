@@ -1017,7 +1017,7 @@ CLES_PAR_SECTION = {
         'facture_apres_avec_mad', 'facture_annuelle_sans_solaire',
         'facture_annuelle_avec_solaire_opt1',
         'facture_annuelle_avec_solaire_opt2', 'factures_mensuelles',
-        'factures_mensuelles_reelles', 'factures_mensuelles_estimation',
+        'factures_mensuelles_reelles', 'factures_mensuelles_estimation', 'factures_mensuelles_exactes',
         'factures_avant_monthly', 'factures_approximatif', 'factures_note',
         'factures_note_methode', 'factures_reelles', 'factures_source',
         'pct_cut', 'annual_before', 'annual_after', 'coverage_pct',

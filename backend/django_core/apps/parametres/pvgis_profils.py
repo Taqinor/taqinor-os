@@ -1157,11 +1157,64 @@ def serie_horaire_annee_type(lat, lon, *, angle_deg, aspect_deg, montage):
         'angle': angle_deg, 'aspect': aspect_deg, 'startyear': SERIE_ANNEE_DEBUT,
         'endyear': SERIE_ANNEE_FIN, 'outputformat': 'json',
     }
-    serie = _annee_type_depuis_seriescalc(_appel_pvgis(
-        PVGIS_SERIESCALC + '?' + urllib.parse.urlencode(params), timeout=SERIE_TIMEOUT_S))
-    if serie is not None:
-        _cache_ecrire(cle, serie)
+    verrou = _verrou_serie(cle)
+    if not verrou:
+        en_cache = _attendre_serie_en_vol(cle)
+        if en_cache is not None:
+            return en_cache or None
+    try:
+        serie = _annee_type_depuis_seriescalc(_appel_pvgis(
+            PVGIS_SERIESCALC + '?' + urllib.parse.urlencode(params), timeout=SERIE_TIMEOUT_S))
+        if serie is not None:
+            _cache_ecrire(cle, serie)
+    finally:
+        if verrou:
+            _liberer_verrou_serie(cle)
     return serie
+
+
+def _cle_verrou_serie(cle):
+    from core import cache as tenant_cache
+    return tenant_cache.tenant_key(None, 'verrou:' + cle)
+
+
+def _verrou_serie(cle):
+    """CAD177 (perf aperçu C&I, nocturne 41188540195) — UN seul téléchargement
+    ``seriescalc`` (≈ 8 Mo, 5-20 s) par clé à la fois : deux aperçus simultanés
+    sur un cache froid téléchargeaient chacun la même série (le second, à
+    21,5 s, dépassait le délai de 20 s de l'écran). ``True`` = ce processus
+    télécharge ; cache indisponible ⇒ ``True`` (comportement d'avant)."""
+    try:
+        from django.core.cache import cache
+        return bool(cache.add(_cle_verrou_serie(cle), 1, SERIE_TIMEOUT_S + 5))
+    except Exception:  # noqa: BLE001 — cache indisponible : téléchargement direct (D-ENF22-BLE001)
+        logger.debug('verrou serie pvgis indisponible pour %s', cle, exc_info=True)
+        return True
+
+
+def _liberer_verrou_serie(cle):
+    try:
+        from django.core.cache import cache
+        cache.delete(_cle_verrou_serie(cle))
+    except Exception:  # noqa: BLE001 — le verrou expire seul (D-ENF22-BLE001)
+        logger.debug('verrou serie pvgis non libere pour %s', cle, exc_info=True)
+
+
+def _attendre_serie_en_vol(cle, pas_s=0.2):
+    """La série qu'un autre processus télécharge : relue dans le cache dès
+    qu'elle y est ; ``None`` quand le verrou tombe sans série, au coupe-circuit
+    ou au délai (l'appelant télécharge alors lui-même, comme avant)."""
+    import time
+    from django.core.cache import cache
+    fin = time.monotonic() + SERIE_TIMEOUT_S
+    while time.monotonic() < fin:
+        time.sleep(pas_s)
+        en_cache = _cache_lire(cle)
+        if en_cache is not None:
+            return en_cache
+        if _cache_lire(PANNE_CLE) or cache.get(_cle_verrou_serie(cle)) is None:
+            return None
+    return None
 
 
 # ── API publique : chaîne de résolution ──────────────────────────────────────

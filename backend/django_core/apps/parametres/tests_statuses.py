@@ -199,3 +199,28 @@ class StatutConfigEnf11Test(TestCase):
         r = self.api.post(BASE, {'domaine': 'sav', 'cle': 'commercial',
                                  'libelle': 'x'}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
+
+    def test_patch_cle_inconnue_corps_400_publie(self):
+        """api-fuzz (vague 8) — PATCH : le couple domaine/clé envoyé est publié
+        (même source) et refusé 400 ; une clé seule se juge contre le domaine
+        ENREGISTRÉ — refus d'état 409."""
+        from apps.parametres.statuses_defaults import default_keys
+        from apps.parametres.views_statuses import CLE_DU_DOMAINE_PATCH
+        branches = CLE_DU_DOMAINE_PATCH['oneOf']
+        self.assertEqual(branches[-1], {'not': {'required': ['domaine']}})
+        for b in branches[:-1]:
+            self.assertEqual(set(b['properties']['cle']['enum']),
+                             default_keys(b['properties']['domaine']['enum'][0]))
+        cle = sorted(default_keys('chantier'))[0]
+        r = self.api.post(BASE, {'domaine': 'chantier', 'cle': cle,
+                                 'libelle': 'A'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        pk = r.data['id']
+        url = f'{BASE}{pk}/'
+        r = self.api.patch(url, {'domaine': 'chantier', 'cle': '0',
+                                 'libelle': '0', 'ordre': 0, 'actif': True},
+                           format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.patch(url, {'cle': '0'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(StatutConfig.objects.get(pk=pk).cle, cle)

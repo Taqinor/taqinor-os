@@ -1,0 +1,54 @@
+{
+  "sha": "db8ca9670424f43ae123c55c801a6a76e733063a",
+  "date": "2026-10-30",
+  "groupe": "AGNR",
+  "verdict": "PASS",
+  "couvre": [
+    "AGNR42"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P2.2.fr",
+      "taches": [
+        "AGNR42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-30/AGNR42-rejeu3.txt § P2.2.fr ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu3-P2.2-saisie-fr.jpg ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu3-P2.2-reouverture.jpg — navigator.language fr-FR ; « 1234,567 » ⇒ 1234.567, « 0,5 » ⇒ 0.5, « 99,125 » ⇒ 99.125 (badInput false, jamais refusé ni arrondi dans le champ) ; devis 2495 : quantité 0.50 et factures 1234.567 / 1600.5 stockées telles quelles, prix de ligne normalisé HT 2 déc. (1028.81, 82.60, OPTIONNEL LGEN2 O1) ; réouverture identique ; oracle 10 jugé à CLIENT.2495"
+    },
+    {
+      "id": "CLIENT.2465-2468",
+      "taches": [
+        "AGNR42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-30/AGNR42-rejeu3.txt § CLIENT.2465-2468 ; docs/qa-explorer/captures/2026-10-30/ACCEPTATION-AGNR-rejeu3-page-2465.jpg (et -2466, -2467, -2468) — page = PDF = écran = serveur : 2465 149 200 / 41 402 HT / 49 681 TTC / 3,1 ans ; 2466 1 360 300 / 302 215 / 362 678 / 3,9 ans / TRI 24,8 % ; 2467 32 600, m³/jour omis ; 2468 40 200 / 52 500, 6 543 kWh/an, aucune économie chiffrée ; audit_coherence : 0 violation sur DEV-202610-0120…0123"
+    }
+  ]
+}

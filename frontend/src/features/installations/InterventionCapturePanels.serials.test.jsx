@@ -160,4 +160,32 @@ describe('SerialsPanel — séries attendues (revue chantier 26/10/2026)', () =>
     expect((await screen.findByRole('alert')).textContent).toBe(
       'N° de série déjà relevé.')
   })
+
+  it('intervention terminée : 409 affiché, motif saisi, renvoi avec motif (ACHT117)', async () => {
+    const user = userEvent.setup()
+    api.getSerials.mockResolvedValue({ data: [{ id: 5, numero_serie: 'SN-1', designation: 'Onduleur' }] })
+    api.supprimerSerial
+      .mockRejectedValueOnce({ response: { status: 409, data: {
+        detail: 'Intervention terminée : indiquez le motif de la suppression.' } } })
+      .mockResolvedValueOnce({ data: null })
+    render(<SerialsPanel intervention={INTERVENTION} />)
+    await user.click(await screen.findByTitle('Supprimer'))
+    expect(await screen.findByText(
+      'Intervention terminée : indiquez le motif de la suppression.')).toBeInTheDocument()
+    expect(api.supprimerSerial.mock.calls[0]).toEqual([12, 5, ''])
+    await user.type(screen.getByLabelText('Motif de la suppression'), 'Doublon')
+    await user.click(screen.getByRole('button', { name: 'Confirmer la suppression' }))
+    await waitFor(() => expect(api.supprimerSerial).toHaveBeenCalledTimes(2))
+    expect(api.supprimerSerial.mock.calls[1]).toEqual([12, 5, 'Doublon'])
+  })
+
+  it('intervention en cours : suppression directe sans champ motif (ACHT117)', async () => {
+    const user = userEvent.setup()
+    api.getSerials.mockResolvedValue({ data: [{ id: 5, numero_serie: 'SN-1', designation: 'Onduleur' }] })
+    api.supprimerSerial.mockResolvedValue({ data: null })
+    render(<SerialsPanel intervention={INTERVENTION} />)
+    await user.click(await screen.findByTitle('Supprimer'))
+    await waitFor(() => expect(api.supprimerSerial).toHaveBeenCalledTimes(1))
+    expect(screen.queryByLabelText('Motif de la suppression')).not.toBeInTheDocument()
+  })
 })

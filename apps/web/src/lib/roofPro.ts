@@ -32,7 +32,7 @@ export const PANEL_SIDE_GAP_M = 0.02; // jeu entre panneaux d'une même rangée
 export const FRONT_STRUT_M = 0.08; // hauteur du montant avant (bas) du châssis
 
 import { WGS84_RADIUS } from './geo';
-import { paverRangees, projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
+import { emptyLayoutBase, paverRangees, projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000; // garde-fou anti-calepinage pathologique
@@ -115,17 +115,7 @@ export function layoutProRows(ring: LngLat[], orientation = 'sud', opts: ProLayo
   const rise = slope * Math.sin(tiltRad);
   const dims = { alongRow, slope, depthFootprint, rise, frontStrut: FRONT_STRUT_M };
 
-  const empty: ProLayout = {
-    origin: ring.length ? ring[0] : [0, 0],
-    ringENU: [],
-    panels: [],
-    count: 0,
-    kwc: 0,
-    areaM2,
-    rowAngleRad: 0,
-    tiltRad,
-    dims,
-  };
+  const empty: ProLayout = { ...emptyLayoutBase(ring, areaM2, tiltRad), dims };
   if (!Array.isArray(ring) || ring.length < 3) return empty;
 
   // Projection équirectangulaire locale, origine = centroïde du tracé.

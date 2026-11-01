@@ -73,7 +73,7 @@ def option_imprimee(data):
 def factures_reelles(devis, ep):
     """(12 factures MAD/mois réellement données, source) ou (None, None).
     Priorité aux 12 factures stockées dans l'étude, sinon le couple
-    hiver/été du lead (lu par ``apps.crm.selectors`` — jamais ses modèles)."""
+    hiver/été du devis (``factures_hiver_ete``), sinon du lead (lu par ``apps.crm.selectors`` — jamais ses modèles)."""
     fm = ep.get('factures_mensuelles_reelles')
     if isinstance(fm, (list, tuple)) and len(fm) == 12:
         vals = [num(v) for v in fm]
@@ -81,13 +81,18 @@ def factures_reelles(devis, ep):
             return vals, 'factures_mensuelles_reelles'
     try:
         from apps.crm.selectors import lead_bills_for_devis
+        from apps.ventes.domain.etude_schema import factures_hiver_ete_saisies
         from apps.ventes.horaire.conso import serie_mad_mensuelle
-        b = lead_bills_for_devis(devis) or {}
+        # ERR-QA-ETU-I5 — les factures corrigées/confirmées SUR LE DEVIS
+        # (``factures_hiver_ete``) priment ; repli sur celles du lead.
+        saisies = factures_hiver_ete_saisies(ep)
+        b = saisies or lead_bills_for_devis(devis) or {}
         serie = serie_mad_mensuelle(b.get('facture_hiver'),
                                     b.get('facture_ete'),
                                     b.get('ete_differente'))
         if serie:
-            return [float(v) for v in serie], 'lead_hiver_ete'
+            return [float(v) for v in serie], (
+                'devis_hiver_ete' if saisies else 'lead_hiver_ete')
     except Exception:  # noqa: BLE001 — pas de factures lisibles = pas de règle (D-ENF22-BLE001)
         logger.warning("regles_etude.factures_reelles : erreur ignorée (mode dégradé)", exc_info=True)
     return None, None

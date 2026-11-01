@@ -20,7 +20,8 @@ from core.product_roles import (
 
 from .corps_achats import valider_lignes_modele_bcf
 from .erreurs_achats import (
-    CapaciteMontantsBcfMixin, CapaciteMontantsFactureMixin, ConflitEtat, IdInconnu404LignesMixin)
+    CapaciteMontantsBcfMixin, CapaciteMontantsFactureMixin, ConflitEtat, IdInconnu404LignesMixin,
+    refus_corps_ou_etat)
 from .openapi_helpers import ChampsStrictsProduitMixin, ChampsStrictsSouplesMixin, DecimalLie
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -1339,8 +1340,11 @@ class EmplacementStockSerializer(ChampsTexteBooleenStricts, serializers.ModelSer
                                       'interne.'})
         if (type_proprietaire != EmplacementStock.TypeProprietaire.INTERNE
                 and not tiers_nom.strip()):
-            raise serializers.ValidationError(
-                {'tiers_nom': 'Nommez le tiers concerné par cet emplacement.'})
+            # api-fuzz stock (vague 8) : corps seul (création, ou type + nom
+            # dans la même requête) = 400 ; valeur relue sur l'instance = 409.
+            refus_corps_ou_etat(
+                {'tiers_nom': 'Nommez le tiers concerné par cet emplacement.'},
+                du_corps=instance is None or {'type_proprietaire', 'tiers_nom'} <= set(attrs))
         return attrs
 
 
