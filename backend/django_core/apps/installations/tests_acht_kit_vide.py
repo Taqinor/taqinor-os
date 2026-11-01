@@ -85,3 +85,62 @@ class KitVideTests(TestCase):
         self.assertIn(MSG, str(r.data))
         kit.refresh_from_db()
         self.assertFalse(kit.active)
+
+    def _devis_avec(self, produit):
+        from decimal import Decimal
+
+        from apps.crm.models import Client, Lead
+        from apps.ventes.models import Devis, LigneDevis
+        client = Client.objects.create(
+            company=self.company, nom='Site', prenom='Client',
+            email='acht119@example.invalid')
+        lead = Lead.objects.create(
+            company=self.company, nom='Site', prenom='Client',
+            stage='SIGNED', type_installation='residentiel')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ACHT119', client=client,
+            lead=lead, statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=produit.nom,
+            quantite=Decimal('2'), prix_unitaire=Decimal('100'))
+        return devis
+
+    def test_depuis_devis_kit_vide_refuse(self):
+        """ACHT119 — kit actif vide vendu : 409, aucun ordre créé."""
+        kit = self._kit('Kit vendu vide')
+        devis = self._devis_avec(self.fantome)
+        r = self.api.post(f'{BASE}/ordres-assemblage/depuis-devis/',
+                          {'devis': devis.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(MSG, str(r.data))
+        self.assertFalse(OrdreAssemblage.objects.filter(
+            devis=devis, kit=kit).exists())
+
+    def test_terminer_lignes_sans_produit_refuse(self):
+        """ACHT119 — lignes catalogue supprimées + ligne « Visserie » sans
+        produit : 409, ordre non terminé, stock inchangé ; avec une ligne
+        catalogue la garde laisse passer."""
+        from apps.installations.models import OrdreAssemblageLigne
+        comp = Produit.objects.create(
+            company=self.company, nom='Comp119', prix_vente=1,
+            prix_achat=0, quantite_stock=50)
+        kit = self._kit('Kit valide')
+        KitComposant.objects.create(kit=kit, produit=comp, quantite=1)
+        ordre = OrdreAssemblage.objects.create(
+            company=self.company, reference='ASM-ACHT119', kit=kit,
+            quantite=2)
+        OrdreAssemblageLigne.objects.create(
+            ordre=ordre, produit=None, designation='Visserie', quantite=3)
+        r = self.api.post(f'{BASE}/ordres-assemblage/{ordre.id}/terminer/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(MSG, str(r.data))
+        ordre.refresh_from_db()
+        self.assertEqual(ordre.statut, OrdreAssemblage.Statut.PLANIFIE)
+        self._assert_rien_entre()
+        OrdreAssemblageLigne.objects.create(
+            ordre=ordre, produit=comp, designation='Comp119', quantite=1)
+        r = self.api.post(f'{BASE}/ordres-assemblage/{ordre.id}/terminer/',
+                          {}, format='json')
+        self.assertNotEqual(r.status_code, 409, r.data)

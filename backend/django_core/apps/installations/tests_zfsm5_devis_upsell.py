@@ -127,3 +127,22 @@ class TestGenererDevisUpsell(TestCase):
         reserve.refresh_from_db()
         self.assertEqual(self.interv.devis_upsell_id, r_upsell.data['devis_id'])
         self.assertEqual(reserve.devis_repare_id, r_reserve.data['devis_id'])
+
+    def test_patch_devis_upsell_id_ignore(self):
+        """ACHT120 — `devis_upsell_id` est posé par le serveur : un PATCH
+        portant un id étranger est ignoré (200, valeur inchangée)."""
+        r = self.api.patch(
+            f'{BASE}/interventions/{self.interv.id}/',
+            {'devis_upsell_id': 999999}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.interv.refresh_from_db()
+        self.assertIsNone(self.interv.devis_upsell_id)
+        r = self.api.post(
+            f'{BASE}/interventions/{self.interv.id}/generer-devis/',
+            format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.api.patch(
+            f'{BASE}/interventions/{self.interv.id}/',
+            {'devis_upsell_id': 999999}, format='json')
+        self.interv.refresh_from_db()
+        self.assertEqual(self.interv.devis_upsell_id, r.data['devis_id'])
