@@ -63,7 +63,9 @@ class Xfsm19TestBase(TestCase):
 
 class TestDeclarationRemise(Xfsm19TestBase):
     def test_declaration_avec_lignes_sans_ecart(self):
-        api = self._api(self.technicien)
+        # ASEC62 — le déclarant porte ``encaisser`` (responsable hérité) ; le
+        # technicien reste le ``technicien`` de la remise.
+        api = self._api(self.resp)
         r = api.post('/api/django/ventes/remises-encaissement/', {
             'technicien': self.technicien.id,
             'date_collecte': str(timezone.localdate()),
@@ -82,7 +84,7 @@ class TestDeclarationRemise(Xfsm19TestBase):
         self.assertTrue(remise.reference)
 
     def test_ecart_calcule_et_expose(self):
-        api = self._api(self.technicien)
+        api = self._api(self.resp)
         r = api.post('/api/django/ventes/remises-encaissement/', {
             'technicien': self.technicien.id,
             'date_collecte': str(timezone.localdate()),
@@ -95,6 +97,89 @@ class TestDeclarationRemise(Xfsm19TestBase):
         self.assertEqual(r.status_code, 201, r.data)
         remise = RemiseEncaissement.objects.get(id=r.data['id'])
         self.assertEqual(remise.ecart, Decimal('-50'))
+
+    def test_declaration_reservee_a_encaisser(self):
+        """ASEC62 (C-ASEC-VER-009, D-ASEC-VER-1) — déclarer, modifier,
+        clôturer, supprimer une remise : code ``encaisser`` (rôles système
+        réels). Refusés : 403, aucune remise ni ligne, remise relue inchangée,
+        paiements toujours remisables ; lecture inchangée (``IsAnyRole``)."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        from apps.ventes.models import LigneRemiseEncaissement
+        from apps.ventes.views.remise_encaissement import paiements_remisables
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
+        comptes = {nom: User.objects.create_user(
+            username=f'xfsm19-{i}', password='x', role_legacy='normal',
+            role=roles[nom], company=self.company)
+            for i, nom in enumerate(('Directeur', 'Commercial', 'Responsable',
+                                     'Admin Ventes', 'Technicien', 'Admin RH'))}
+        # Comptes hérités SANS rôle fin créés APRÈS init_roles (qui rattache
+        # les comptes existants à un rôle système).
+        for nom, legacy in (('technicien hérité', 'technicien'),
+                            ('responsable hérité', 'responsable')):
+            comptes[nom] = User.objects.create_user(
+                username=f'xfsm19-{legacy}-h', password='x',
+                role_legacy=legacy, company=self.company)
+        url = '/api/django/ventes/remises-encaissement/'
+        corps = {'technicien': self.technicien.id,
+                 'date_collecte': str(timezone.localdate()),
+                 'montant_declare': '800',
+                 'lignes': [{'paiement': self.paiement1.id},
+                            {'paiement': self.paiement2.id}]}
+        ouverte = RemiseEncaissement.objects.create(
+            company=self.company, reference='REM-ASEC62-0001',
+            technicien=self.technicien, date_collecte=timezone.localdate(),
+            montant_declare=Decimal('10'), created_by=self.resp)
+
+        def photo():
+            r = RemiseEncaissement.objects.get(pk=ouverte.pk)
+            return (r.montant_declare, r.statut, r.cloture_par_id,
+                    RemiseEncaissement.objects.count(),
+                    LigneRemiseEncaissement.objects.count())
+        avant = photo()
+        for nom in ('Responsable', 'Admin Ventes', 'Technicien', 'Admin RH',
+                    'technicien hérité'):
+            api = self._api(comptes[nom])
+            for geste, r in (
+                    ('declarer', lambda: api.post(url, corps, format='json')),
+                    ('modifier', lambda: api.patch(
+                        f'{url}{ouverte.id}/', {'montant_declare': '99'},
+                        format='json')),
+                    ('cloturer', lambda: api.post(
+                        f'{url}{ouverte.id}/cloturer/')),
+                    ('supprimer', lambda: api.delete(f'{url}{ouverte.id}/'))):
+                with self.subTest(role=nom, geste=geste):
+                    self.assertEqual(r().status_code, 403)
+                    self.assertEqual(photo(), avant)
+            with self.subTest(role=nom, geste='lire'):
+                self.assertEqual(api.get(f'{url}{ouverte.id}/').status_code,
+                                 200)
+        self.assertEqual(paiements_remisables(Paiement.objects.filter(
+            company=self.company)).count(), 2)
+        for nom in ('Directeur', 'Commercial', 'responsable hérité'):
+            with self.subTest(role=nom):
+                frais = [Paiement.objects.create(
+                    company=self.company, facture=self.facture1,
+                    montant=Decimal('400'), date_paiement=timezone.localdate(),
+                    mode=Paiement.Mode.ESPECES) for _ in range(2)]
+                api = self._api(comptes[nom])
+                r = api.post(url, dict(corps, lignes=[
+                    {'paiement': p.id} for p in frais]), format='json')
+                self.assertEqual(r.status_code, 201, r.data)
+                rid = r.data['id']
+                r = api.patch(f'{url}{rid}/', {'montant_declare': '800'},
+                              format='json')
+                self.assertEqual(r.status_code, 200, r.data)
+                r = api.post(f'{url}{rid}/cloturer/')
+                self.assertEqual(r.status_code, 200, r.data)
+                autre = RemiseEncaissement.objects.create(
+                    company=self.company, reference=f'REM-ASEC62-D{rid}',
+                    technicien=self.technicien,
+                    date_collecte=timezone.localdate(),
+                    montant_declare=Decimal('1'), created_by=comptes[nom])
+                self.assertEqual(
+                    api.delete(f'{url}{autre.id}/').status_code, 204)
 
 
 class TestClotureRemise(Xfsm19TestBase):
