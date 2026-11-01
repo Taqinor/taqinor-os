@@ -2872,3 +2872,14 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; lane w15-reporting)"
     taches: [AANA45]
+  - id: D-ASEC-VER-1
+    question: "Le droit `encaisser` (D-ASEC-1) garde-t-il aussi les gestes d'argent qui n'enregistrent pas d'encaissement (lien de paiement en ligne créé ou révoqué, pénalités de retard facturées, attestation RAS reçue), en plus du paiement avec retenue, du retour client avec avoir, de l'import de relevé, du rejet / de l'annulation / de la réaffectation d'un paiement et de la libération de retenue ?"
+    options:
+      - cle: tout
+        texte: "Oui, tout l'argent : tout geste qui touche une créance ou un paiement exige `encaisser`"
+      - cle: encaissement
+        texte: "Non : lien de paiement, pénalités et attestation RAS restent au droit d'écriture des ventes"
+    reponse: tout
+    date: "2026-11-01"
+    source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie ASEC)"
+    taches: [ASEC56]

@@ -4,7 +4,7 @@
 Le moteur porte des constantes DATEES dont la validite se termine (tarif d'excedent ANRE
 04/26 valable jusqu'au 28/02/2027, millesime 2026 du bareme ONEE). Passee la date, le moteur
 extrapolerait une decision perimee. Cette garde LIT ces constantes dans le code reel (AST,
-sans Django) et passe au ROUGE 60 jours avant chaque fin de validite, en nommant la constante
+sans Django) et passe au ROUGE 30 jours avant chaque fin de validite, en nommant la constante
 et la decision a re-sourcer.
 
 Constantes decouvertes (convention de nommage, pas une liste figee) dans
@@ -15,7 +15,7 @@ Constantes decouvertes (convention de nommage, pas une liste figee) dans
   - ``MILLESIME_COURANT = AAAA``                  -> fin de validite = 31/12/AAAA.
 
 Usage : python scripts/check_echeances_reglementaires.py [--date AAAA-MM-JJ]
-(0 = vert ; 1 = au moins une echeance dans la fenetre de 60 jours ou depassee).
+(0 = vert ; 1 = au moins une echeance dans la fenetre de 30 jours ou depassee).
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MOTEUR = ROOT / "backend" / "django_core" / "apps" / "ventes" / "quote_engine"
-FENETRE_JOURS = 60
+FENETRE_JOURS = 30  # fondateur 01/11/2026 : préavis ramené de 60 à 30 j (barème ONEE 2026)
 SUFFIXES_DATE = ("_FIN_VALIDITE", "_VALABLE_JUSQUAU")
 
 
