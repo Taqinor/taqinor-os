@@ -1,0 +1,1 @@
+{"dry-run": {"statut": 200, "skipped": null, "resume": {"creation": 0, "mise_a_jour": 0, "ignoree": 1}, "created": null}, "commit": {"statut": 200, "skipped": [{"ligne": 1, "raison": "prix_vente hors bornes : « 100000000 »"}], "resume": null, "created": 0}, "produits_relus": {"ACC74-I4": "12.34", "ACC74-I5": "12.50"}}

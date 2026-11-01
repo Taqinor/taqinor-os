@@ -1,0 +1,61 @@
+# AANA74 — données PROPRES de l'acceptation (sociétés A, B, M préfixées « ACC AANA74 »), posées par l'ORM
+# exactement comme les sondes C-AANA-VER-00x ; les gestes eux-mêmes passent par HTTP (replay.py).
+import json, os
+from datetime import date, timedelta
+from decimal import Decimal
+from django.contrib.auth import get_user_model
+from authentication.models import Company
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS, COMMERCIAL_PERMISSIONS
+from apps.crm import stages
+from apps.crm.models import Client, Lead
+from apps.stock.models import Produit
+from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture
+U = get_user_model()
+PWD = 'Acc-Aana74-0111!'
+out = {}
+for k in ('A', 'B', 'M'):
+    co, _ = Company.objects.get_or_create(slug=f'acc-aana74-{k.lower()}', defaults={'nom': f'ACC AANA74 {k}'})
+    rd, _ = Role.objects.get_or_create(company=co, nom='Directeur', defaults={'permissions': list(DIRECTEUR_PERMISSIONS), 'est_systeme': True})
+    rc, _ = Role.objects.get_or_create(company=co, nom='Commercial', defaults={'permissions': list(COMMERCIAL_PERMISSIONS), 'est_systeme': True})
+    users = {}
+    for nom, role, legacy in (('dir', rd, 'admin'), ('com', rc, 'normal')):
+        un = f'acc74_{nom}_{k.lower()}'
+        u = U.objects.filter(username=un).first()
+        if not u:
+            u = U.objects.create_user(username=un, password=PWD, company=co, role=role, role_legacy=legacy,
+                                      email=f'{un}@example.invalid')
+        users[nom] = u
+    out[k] = {'company_id': co.pk, 'dir': users['dir'].username, 'com': users['com'].username}
+    if k == 'B':
+        continue
+    cl, _ = Client.objects.get_or_create(company=co, email=f'cli-acc74-{k.lower()}@example.invalid', defaults={'nom': f'Cli ACC74 {k}', 'prenom': 'X'})
+    p, _ = Produit.objects.get_or_create(company=co, sku=f'ACC74-KIT-{k}', defaults={'nom': 'Kit ACC74', 'prix_vente': Decimal('1000'), 'quantite_stock': 0})
+    def facture(ref, statut, pu):
+        f = Facture.objects.filter(company=co, reference=ref).first()
+        if f: return f
+        f = Facture.objects.create(company=co, reference=ref, client=cl, statut=statut, taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(facture=f, produit=p, designation='Kit', quantite=Decimal('1'),
+                                    prix_unitaire=Decimal(pu), remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        return f
+    if k == 'A':
+        f1 = facture('FAC-ACC74-A-1', 'emise', '1000')
+        out[k]['facture_avoir'] = f1.pk
+        com = users['com']
+        l1 = Lead.objects.get_or_create(company=co, nom='ACC74 signé meta', defaults={'stage': stages.SIGNED, 'canal': 'meta_ads', 'owner': com})[0]
+        Lead.objects.get_or_create(company=co, nom='ACC74 perdu meta', defaults={'stage': stages.NEW, 'perdu': True, 'canal': 'meta_ads', 'owner': com})
+        Lead.objects.get_or_create(company=co, nom='ACC74 signé site', defaults={'stage': stages.SIGNED, 'canal': 'site_web', 'owner': com})
+        acc = date.today() - timedelta(days=2)
+        for ref, lead, qte in (('DEV-ACC74-A-LEAD', l1, '1'), ('DEV-ACC74-A-SANS', None, '2')):
+            d = Devis.objects.filter(company=co, reference=ref).first()
+            if not d:
+                d = Devis.objects.create(company=co, reference=ref, client=cl, lead=lead, statut=Devis.Statut.ACCEPTE,
+                                         date_acceptation=acc, created_by=com)
+                LigneDevis.objects.create(devis=d, produit=p, designation='Kit', quantite=Decimal(qte), prix_unitaire=Decimal('1000'))
+        out[k]['periode'] = [(acc - timedelta(days=5)).isoformat(), date.today().isoformat()]
+    if k == 'M':
+        from django.core.management import call_command
+        call_command('seed_metriques', company=co.pk)
+        facture('FAC-ACC74-M-BROUILLON', 'brouillon', '1000')
+        facture('FAC-ACC74-M-EMISE', 'emise', '500')
+print('@@SETUP ' + json.dumps(out))

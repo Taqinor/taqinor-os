@@ -1,0 +1,579 @@
+{
+ "appels": [
+  {
+   "m": "POST",
+   "url": "/imports/dry-run/",
+   "statut": 200
+  },
+  {
+   "m": "POST",
+   "url": "/imports/commit/",
+   "statut": 400,
+   "inattendu": "{'detail': 'Import impossible (vérifiez le fichier).'}"
+  },
+  {
+   "m": "POST",
+   "url": "/imports/commit/",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/stock/produits/?search=ACC74-I&page_size=50",
+   "statut": 200
+  },
+  {
+   "m": "POST",
+   "url": "/imports/dry-run/",
+   "statut": 200
+  },
+  {
+   "m": "POST",
+   "url": "/imports/mapping/",
+   "statut": 400
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/dashboard/",
+   "statut": 200
+  },
+  {
+   "m": "POST",
+   "url": "/ventes/factures/1/creer-avoir/",
+   "statut": 201
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/dashboard/",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/dashboard/",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/ventes/factures/1/",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/commercial/dashboard/",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/commercial/win-loss-by-source/",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/commercial/dashboard/?from=2026-10-25&to=2026-11-01",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/insights/sales-leaderboard/?from=2026-10-25&to=2026-11-01",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/insights/sales-leaderboard/?from=2026-10-25&to=2026-11-01&format=xlsx",
+   "statut": 404
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/probabilites-etape/",
+   "statut": 404,
+   "inattendu": "{'detail': 'Ressource introuvable.', 'error': {'code': 'not_found', 'message': 'Ressource introuvable.', 'fields': None, 'request_id': '4878cf413ddb41e281acd1e6a75133c4'}}"
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/dashboard/",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/commercial/dashboard/",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/commercial/win-loss-by-source/",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/insights/sales-leaderboard/?from=2026-10-25&to=2026-11-01",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/stock/produits/?search=ACC74-I",
+   "statut": 200
+  },
+  {
+   "m": "GET",
+   "url": "/ventes/factures/1/",
+   "statut": 404
+  }
+ ],
+ "etapes": {
+  "P2.1": {
+   "apercu_statut": 200,
+   "apercu": "{'target': 'products', 'colonnes': ['Nom', 'SKU', 'Prix'], 'mapping': {'Nom': 'nom', 'SKU': 'sku', 'Prix': 'prix_vente'}, 'non_mappees': [], 'apercu': [{'nom': 'ACC74 P1', 'sku': 'ACC74-I1', 'prix_vente': '12.345'}, {'nom': 'ACC74 P2', 'sku': 'ACC74-I2', 'prix_vente': '12,345'}, {'nom': 'ACC74 P3', 'sku': 'ACC74-I3', 'prix_vente': '99999999.999'}, {'nom': 'ACC74 P4', 'sku': 'ACC74-I4', 'prix_vente': '12.34'}, {'nom': 'ACC74 P5', 'sku': 'ACC74-I5', 'prix_vente': '12,5'}], 'total_lignes': 5, 'mode': 'creer', 'ecraser': False, 'conflits': [], 'conflits_tronques': False, 'resume': {'creation': 5, 'mise_a_jour': 0, 'ignoree': 0}, 'ecrasements_total': 0, 'lignes_ecrasees': 0, 'ecrasements_appliques': 0}",
+   "commit_statut": 400,
+   "commit": {
+    "detail": "Import impossible (vérifiez le fichier)."
+   },
+   "commit_achat_statut": 200,
+   "commit_achat": {
+    "ok": true,
+    "target": "products",
+    "mode": "creer",
+    "ecraser": false,
+    "created": 1,
+    "updated": 0,
+    "skipped": [],
+    "total": 1,
+    "job_id": 1,
+    "statut": "ok",
+    "ecrasements": 0,
+    "refuses": []
+   },
+   "produits_relus": {
+    "ACC74-I6": "0.00"
+   }
+  },
+  "P2.2": {
+   "dry_run_statut": 200,
+   "dry_run": {
+    "target": "factures",
+    "colonnes": [
+     "reference",
+     "client_nom",
+     "statut",
+     "montant_ttc"
+    ],
+    "mapping": {
+     "reference": "reference_source",
+     "client_nom": "client_nom",
+     "statut": "statut",
+     "montant_ttc": "montant_ttc_source"
+    },
+    "non_mappees": [],
+    "apercu": [
+     {
+      "reference_source": "FAC-ACC74-IMP",
+      "client_nom": "Cli",
+      "statut": "emise",
+      "montant_ttc_source": "1200"
+     }
+    ],
+    "total_lignes": 1,
+    "mode": "creer",
+    "ecraser": false,
+    "conflits": [],
+    "conflits_tronques": false,
+    "resume": {
+     "creation": 0,
+     "mise_a_jour": 0,
+     "ignoree": 0
+    },
+    "ecrasements_total": 0,
+    "lignes_ecrasees": 0,
+    "ecrasements_appliques": 0
+   },
+   "mapping_statut": 400,
+   "mapping": {
+    "mapping": {
+     "reference": [
+      "« reference » n'est pas un choix valide."
+     ]
+    },
+    "error": {
+     "code": "validation_error",
+     "message": "{'mapping': {'reference': [ErrorDetail(string=\"«\\xa0reference\\xa0» n'est pas un choix valide.\", code='invalid_choice')]}}",
+     "fields": {
+      "mapping": [
+       {
+        "reference": [
+         "« reference » n'est pas un choix valide."
+        ]
+       }
+      ]
+     },
+     "request_id": "ef52ba5ff1f4461aa8ac87af0b6955ce"
+    }
+   }
+  },
+  "P3": {
+   "avant": {
+    "ca_paye": 0.0,
+    "ca_attente": 1000.0,
+    "ca_total": null,
+    "nb_factures": null
+   },
+   "avoir_statut": 201,
+   "avoir": "{'id': 1, 'lignes': [{'id': 1, 'produit': 1, 'designation': 'Kit', 'quantite': '1.00', 'prix_unitaire': '1000.00', 'remise': '0.00', 'taux_tva': '20.00', 'total_ht': '1000.00'}], 'total_ht': '1000.00', 'total_tva': '200.00', 'total_ttc': '1200.00', 'tva_par_taux': [{'taux': '20.00', 'base_ht': '1000.00', 'montant': '200.00'}], 'statut_display': 'Émis', 'facture_reference': 'FAC-ACC74-A-1', 'client",
+   "apres": {
+    "ca_paye": 1000.0,
+    "ca_attente": 0.0,
+    "ca_total": null,
+    "nb_factures": null
+   },
+   "apres_relu": {
+    "ca_paye": 1000.0,
+    "ca_attente": 0.0,
+    "ca_total": null,
+    "nb_factures": null
+   },
+   "ca_mensuel_apres": [
+    {
+     "mois": "Déc 2025",
+     "ca": 0.0
+    },
+    {
+     "mois": "Jan 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Fév 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Mar 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Avr 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Mai 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Jun 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Jul 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Aoû 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Sep 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Oct 2026",
+     "ca": 0.0
+    },
+    {
+     "mois": "Nov 2026",
+     "ca": 1000.0
+    }
+   ],
+   "facture_relue": {
+    "statut": "payee",
+    "montant_du": "0.00",
+    "montant_paye": "0.00",
+    "total_ht": "1000.00"
+   }
+  },
+  "P4": {
+   "win_rate_pct": 100.0,
+   "summary": {
+    "nb_total": 3,
+    "nb_won": 2,
+    "nb_lost": 1,
+    "overall_close_rate_pct": 66.7
+   },
+   "by_canal": [
+    {
+     "canal": "meta_ads",
+     "label": "Publicité Meta",
+     "total": 2,
+     "won": 1,
+     "close_rate_pct": 50.0
+    },
+    {
+     "canal": "site_web",
+     "label": "Site web",
+     "total": 1,
+     "won": 1,
+     "close_rate_pct": 100.0
+    }
+   ]
+  },
+  "P5.1": {
+   "commercial_dashboard": [
+    {
+     "commercial": "acc74_com_a",
+     "ca_ht": "1000.00",
+     "nb_devis_signes": 1,
+     "avg_deal_ht": "1000.0",
+     "kwc": "0",
+     "win_rate_pct": 100.0
+    }
+   ],
+   "sales_leaderboard": [
+    {
+     "commercial": "acc74_com_a",
+     "ca_ht": "3000.00",
+     "nb_devis_signes": 2,
+     "avg_deal_ht": "1500.0",
+     "kwc": "0",
+     "win_rate_pct": 100.0
+    }
+   ],
+   "export_xlsx_statut": 404
+  },
+  "P6": {
+   "statut": 404,
+   "table": {
+    "detail": "Ressource introuvable.",
+    "error": {
+     "code": "not_found",
+     "message": "Ressource introuvable.",
+     "fields": null,
+     "request_id": "4878cf413ddb41e281acd1e6a75133c4"
+    }
+   }
+  },
+  "P7": {
+   "/reporting/dashboard/": {
+    "statut": 200,
+    "corps": {
+     "kpis": {
+      "ca_paye": 0.0,
+      "ca_attente": 0.0,
+      "nb_clients": 0,
+      "valeur_stock": 0.0
+     },
+     "ca_mensuel": [
+      {
+       "mois": "Déc 2025",
+       "ca": 0.0
+      },
+      {
+       "mois": "Jan 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Fév 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Mar 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Avr 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Mai 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Jun 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Jul 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Aoû 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Sep 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Oct 2026",
+       "ca": 0.0
+      },
+      {
+       "mois": "Nov 2026",
+       "ca": 0.0
+      }
+     ],
+     "top_produits": [],
+     "statuts_factures": [],
+     "conversion": {
+      "nb_devis": 0,
+      "nb_acceptes": 0,
+      "nb_factures": 0,
+      "taux_acceptation_pct": null
+     },
+     "stock_alerte": [],
+     "creances": [],
+     "comparison": null
+    }
+   },
+   "/reporting/commercial/dashboard/": {
+    "statut": 200,
+    "corps": {
+     "funnel": [
+      {
+       "stage": "NEW",
+       "label": "Nouveau",
+       "count": 0,
+       "valeur": "0",
+       "conversion_pct": 0.0
+      },
+      {
+       "stage": "CONTACTED",
+       "label": "Contacté",
+       "count": 0,
+       "valeur": "0",
+       "conversion_pct": 0.0
+      },
+      {
+       "stage": "QUOTE_SENT",
+       "label": "Devis envoyé",
+       "count": 0,
+       "valeur": "0",
+       "conversion_pct": 0.0
+      },
+      {
+       "stage": "FOLLOW_UP",
+       "label": "Relance",
+       "count": 0,
+       "valeur": "0",
+       "conversion_pct": 0.0
+      },
+      {
+       "stage": "SIGNED",
+       "label": "Signé",
+       "count": 0,
+       "valeur": "0",
+       "conversion_pct": 0.0
+      },
+      {
+       "stage": "COLD",
+       "label": "Froid",
+       "count": 0,
+       "valeur": "0",
+       "conversion_pct": 0.0
+      }
+     ],
+     "win_rate_pct": 0.0,
+     "time_in_stage": [
+      {
+       "stage": "NEW",
+       "label": "Nouveau",
+       "avg_days": null,
+       "sample_count": 0
+      },
+      {
+       "stage": "CONTACTED",
+       "label": "Contacté",
+       "avg_days": null,
+       "sample_count": 0
+      },
+      {
+       "stage": "QUOTE_SENT",
+       "label": "Devis envoyé",
+       "avg_days": null,
+       "sample_count": 0
+      },
+      {
+       "stage": "FOLLOW_UP",
+       "label": "Relance",
+       "avg_days": null,
+       "sample_count": 0
+      },
+      {
+       "stage": "SIGNED",
+       "label": "Signé",
+       "avg_days": null,
+       "sample_count": 0
+      },
+      {
+       "stage": "COLD",
+       "label": "Froid",
+       "avg_days": null,
+       "sample_count": 0
+      }
+     ],
+     "sales_velocity": {
+      "avg_days": null,
+      "sample_count": 0
+     },
+     "leaderboard": [],
+     "time_to_first_touch": {
+      "avg_minutes": null,
+      "sample_count": 0,
+      "by_seller": []
+     },
+     "total_leads": 0,
+     "total_signes": 0
+    }
+   },
+   "/reporting/commercial/win-loss-by-source/": {
+    "statut": 200,
+    "corps": {
+     "by_canal": [],
+     "by_source_technique": [],
+     "top_loss_reasons": [],
+     "summary": {
+      "nb_total": 0,
+      "nb_won": 0,
+      "nb_lost": 0,
+      "overall_close_rate_pct": 0.0
+     }
+    }
+   },
+   "/reporting/insights/sales-leaderboard/?from=2026-10-25&to=2026-11-01": {
+    "statut": 200,
+    "corps": {
+     "rows": [],
+     "total_commerciaux": 0
+    }
+   },
+   "/stock/produits/?search=ACC74-I": {
+    "statut": 200,
+    "corps": {
+     "count": 0,
+     "next": null,
+     "previous": null,
+     "results": []
+    }
+   },
+   "/ventes/factures/1/": {
+    "statut": 404,
+    "corps": {
+     "detail": "No Facture matches the given query.",
+     "error": {
+      "code": "not_found",
+      "message": "Ressource introuvable.",
+      "fields": null,
+      "request_id": "9cfc31d285fc4e5fa259e8a9e693bf42"
+     }
+    }
+   }
+  }
+ },
+ "inattendus": [
+  {
+   "m": "POST",
+   "url": "/imports/commit/",
+   "statut": 400,
+   "inattendu": "{'detail': 'Import impossible (vérifiez le fichier).'}"
+  },
+  {
+   "m": "GET",
+   "url": "/reporting/probabilites-etape/",
+   "statut": 404,
+   "inattendu": "{'detail': 'Ressource introuvable.', 'error': {'code': 'not_found', 'message': 'Ressource introuvable.', 'fields': None, 'request_id': '4878cf413ddb41e281acd1e6a75133c4'}}"
+  }
+ ]
+}

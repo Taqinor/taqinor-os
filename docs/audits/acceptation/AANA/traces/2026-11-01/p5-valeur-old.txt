@@ -1,0 +1,1 @@
+@@VAL {"classiques_montant_ht_null": {"ca_ht": "None", "ca_ttc": "None", "panier_moyen": "None"}, "montants_figes_brouillon_1000_emise_500": {"ca_ht": "1500.00", "ca_ttc": "1800.00", "panier_moyen": "900.00"}}

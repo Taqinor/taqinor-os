@@ -1,0 +1,8 @@
+import json
+from authentication.models import Company
+from apps.semantic.models import MetricDefinition, MetricDefinitionVersion
+etat = {}
+for slug in ('acc-aana74-a', 'acc-aana74-m'):
+    for x in MetricDefinition.objects.filter(company__slug=slug, cle__in=('ca_ht', 'ca_ttc', 'panier_moyen')).order_by('cle'):
+        etat[f'{slug}:{x.cle}'] = {'filtres': x.filtres, 'versions': list(MetricDefinitionVersion.objects.filter(metric_definition=x).order_by('version').values_list('version', flat=True))}
+print('@@ETAT ' + json.dumps(etat))

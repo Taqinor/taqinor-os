@@ -1,0 +1,16 @@
+# HEAD 15ebadca5 : migrate semantic sur la base 32375fe65 (société M semée avant la correction, A retouchée)
+    raise LookupError(
+LookupError: App 'contrats' doesn't have a 'contrat' model.
+    raise LookupError(
+LookupError: App 'kb' doesn't have a 'kbarticle' model.
+?: (crm.W010) META_LEAD_ADS_APP_SECRET n'est pas configuré : le webhook Meta Lead Ads est FAIL-CLOSED (DR3) et refuse tout POST (403). La synchronisation entrante des leads Meta reste EN PAUSE.
+?: (notifications.W010) WHATSAPP_BSP_APP_SECRET n'est pas configuré : le webhook BSP WhatsApp est FAIL-CLOSED (DR3) et refuse tout POST (403). La réception des statuts de livraison reste EN PAUSE.
+  Apply all migrations: semantic
+  Applying semantic.0004_aana_ca_sans_brouillon... OK
+@@ETAT {"acc-aana74-a:ca_ht": {"filtres": {"statut__in": ["payee"]}, "versions": [1, 2]}, "acc-aana74-a:ca_ttc": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}, "acc-aana74-a:panier_moyen": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}, "acc-aana74-m:ca_ht": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}, "acc-aana74-m:ca_ttc": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}, "acc-aana74-m:panier_moyen": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}}
+# second migrate
+  Apply all migrations: semantic
+  No migrations to apply.
+@@ETAT {"acc-aana74-a:ca_ht": {"filtres": {"statut__in": ["payee"]}, "versions": [1, 2]}, "acc-aana74-a:ca_ttc": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}, "acc-aana74-a:panier_moyen": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}, "acc-aana74-m:ca_ht": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}, "acc-aana74-m:ca_ttc": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}, "acc-aana74-m:panier_moyen": {"filtres": {"statut__in": ["emise", "payee", "en_retard"]}, "versions": [1, 2]}}
+@@VAL {"classiques_montant_ht_null": {"ca_ht": "None", "ca_ttc": "None", "panier_moyen": "None"}, "montants_figes_brouillon_1000_emise_500": {"ca_ht": "500.00", "ca_ttc": "600.00", "panier_moyen": "600.00"}}
+# seed_metriques sur société neuve

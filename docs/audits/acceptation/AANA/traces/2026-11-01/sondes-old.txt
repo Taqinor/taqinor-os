@@ -1,0 +1,25 @@
+== C-AANA-VER-001 (sha 32375fe65)
+attendu : prix 12.345 importé : produit créé et relu 12.35, ligne absente de skipped (arrondi muet)
+observé : commit=200 skipped=[] prix_relu=12.35 reponse={'ok': True, 'target': 'products', 'mode': 'creer', 'ecraser': False, 'created': 1, 'updated': 0, 'skipped': [], 'total': 1, 'job_id': 2, 'statut': ImportJob.Statut.OK, 'ecrasements': 0, 'refuses': []}
+{"repro": true, "commit": 200, "prix_relu": "12.35", "skipped": []}
+verdict : REPRO
+base inchangée : oui (avant 3528, après 3528) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-VER-002 (sha 32375fe65)
+attendu : facture 1000 HT émise, avoir total sans paiement : CA encaissé HT du tableau de bord > 0 (attendu 0)
+observé : avoir=201 statut=payee dashboard=200 ca_paye=1000.0 ca_attente=0.0 (attendu ca_paye 0)
+{"repro": true, "avoir": 201, "statut": "payee", "ca_paye": 1000.0, "ca_attente": 0.0}
+verdict : REPRO
+base inchangée : oui (avant 3528, après 3528) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-VER-003 (sha 32375fe65)
+attendu : 1 lead signé + 1 lead perdu : win_rate_pct différent de overall_close_rate_pct (un seul taux attendu)
+observé : dashboard=200 win_rate_pct=100.0 winloss=200 overall_close_rate_pct=50.0 (attendu égaux)
+{"repro": true, "win_rate_pct": 100.0, "overall_close_rate_pct": 50.0}
+verdict : REPRO
+base inchangée : oui (avant 3528, après 3528) ; mails 0 ; tâches Celery bloquées 0
+== C-AANA-VER-004 (sha 32375fe65)
+attendu : V1 acceptée révisée en V2 brouillon : _devis_signes compte V1, ca_signe_periode crm = 0
+observé : _devis_signes=[3] (V1=3) ca_signe_periode=0
+{"repro": true, "reporting": [3], "crm_ca_signe": "0"}
+verdict : REPRO
+base inchangée : oui (avant 3528, après 3528) ; mails 0 ; tâches Celery bloquées 0
+@@VERDICTS {'C-AANA-VER-001': 'REPRO', 'C-AANA-VER-002': 'REPRO', 'C-AANA-VER-003': 'REPRO', 'C-AANA-VER-004': 'REPRO'}
