@@ -1,0 +1,31 @@
+AGNR61-E3 — devis résidentiel à factures écran 500 / 1 200 ≠ lead 1 800, page /proposition/<jeton> (AGNR54)
+Pile : http://localhost, code b4923c7f1, niveau de règles 8 appliqué (migration 0147). Page /proposition servie par astro dev :4339 depuis C:\dev\taqinor-os\apps\web (PUBLIC_API_BASE=http://localhost), jeton INTERNE (aperçu, aucune ouverture client tracée) ; astro arrêté après l'étape.
+
+Données posées par l'API (session demo_admin) :
+- POST /api/django/crm/leads/ -> lead 3800 « AGNR61 rejeu proposition », Casablanca, facture_hiver 1800, ete_differente false
+- POST /api/django/ventes/devis/atomic/ -> devis 2515 (DEV-202611-0002), résidentiel brouillon, lead 3800 (client 2729 résolu serveur),
+  14 x Panneau Canadien Solar 710W + 1 x Onduleur réseau Huawei 10kW Triphasé, regles_calcul 8
+- PATCH /devis/2515/etude-params/ {factures_hiver_ete:{hiver_mad:500, ete_mad:1200, ete_differente:true}} -> 200
+- POST /devis/2515/share-link/ {} -> 200 (lien standard, devis resté brouillon)
+
+Série de l'étude (manage.py shell, fonctions réelles, lecture seule) :
+devis 2515 DEV-202611-0002 regles_calcul 8 statut brouillon
+lead facture_hiver 1800.00 ete_differente False
+etude_params.factures_hiver_ete {'ete_mad': 1200, 'hiver_mad': 500, 'ete_differente': True}
+etude profil_conso_du_devis [310, 310, 310, 310, 653, 653, 653, 653, 653, 653, 310, 310] source facture_hiver_ete
+public _profil_horaire_pour_devis [310, 310, 310, 310, 653, 653, 653, 653, 653, 653, 310, 310]
+public _monthly_consumption [310, 310, 310, 310, 653, 653, 653, 653, 653, 653, 310, 310]
+
+Payload public GET /api/django/ventes/proposal/<jeton interne>/ -> 200 :
+  monthly_consumption = [310,310,310,310,653,653,653,653,653,653,310,310]
+  jours_types conso_jour_kwh : janv 10 (=310/31), avr 10.33 (=310/30), juil 21.07 (=653/31), nov 10.33 (=310/30)
+  aucune clé prix_achat dans la réponse
+
+Page /proposition (astro) :
+  « Votre production » > « Sur l'année » : barres consommation (data-kind=consumption) janv..déc = 310,310,310,310,653,653,653,653,653,653,310,310 kWh (capture AGNR61-E3-proposition-mois-par-mois.png)
+  « Une journée type » : Janvier Conso 10 kWh · Avril Conso 10,33 kWh · Juillet Conso 21,07 kWh · Novembre Conso 10,33 kWh (capture AGNR61-E3-proposition-journee-type.png)
+  => estimation mois par mois et journée type = série de l'étude (source facture_hiver_ete), pas le lead 1 800 ([1023]x12 à la contre-visite).
+Persistance : rechargement de la page => mêmes barres (310x4, 653x6, 310x2) et mêmes quatre journées types ; payload relu identique.
+
+Oracles (qa-explorer 1-10) : 1 PASS, 2 PASS (aucun 4xx au chargement), 3 PASS (0 console.error au chargement de la page ; les 2 erreurs CORS du journal viennent d'un fetch de sonde lancé à la main depuis l'origine :4339, pas de la page), 4 PASS (aucun dialogue natif), 5 NA, 6 NA, 7 PASS (prix_achat absent du payload public), 8 PASS (page intacte, rechargement identique), 9 NA, 10 NA.
+Nettoyage : DELETE devis 2515 -> 204 (lien public -> 404), DELETE client 2729 -> 204, DELETE lead 3800 -> 200 {corbeille_id: 39} (lead mis en corbeille, non purgé).

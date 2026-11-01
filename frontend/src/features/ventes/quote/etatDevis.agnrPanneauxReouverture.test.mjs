@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { devisVersEtat } from './etatDevis.js'
+import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 const CAS = JSON.parse(readFileSync(join(ICI,
@@ -50,4 +51,19 @@ test('contrat AGNR2 : compte = quantité ssi `est_panneau`', () => {
     const etat = devisVersEtat(devis([ligne(1, cas.designation, 10)]), { produits })
     assert.equal(etat.panneaux, cas.est_panneau ? 10 : 0, cas.designation)
   }
+})
+
+// AGNR56 — le chargeur `?edit=` n'a pas le catalogue : la ligne servie porte
+// `produit_nom` (contrat `devis_replace_lines_entete.json`) et `devisVersEtat`
+// compte les panneaux dessus.
+test('chargeur_sans_catalogue_compte_par_produit_nom', () => {
+  const lignesContrat = documentContrat('ventes', 'devis_replace_lines_entete').exemple.lignes
+  const servie = lignesContrat.find(l => l.produit_nom === 'Panneau Canadien Solar 710W')
+  assert.ok(servie, 'le contrat sert produit_nom')
+  const d = devis([{ ...servie, designation: 'Modules toiture sud', quantite: '12.00' }])
+  assert.equal(devisVersEtat(d, { bareme: null }).panneaux, 12)
+  // catalogue fourni : il prime ; ligne sans produit : désignation seule.
+  assert.equal(devisVersEtat(d, { produits: [{ id: servie.produit, nom: 'Onduleur X' }] }).panneaux, 0)
+  const sans = { ...servie, produit: null, produit_nom: null, designation: 'Modules toiture sud' }
+  assert.equal(devisVersEtat(devis([sans]), { bareme: null }).panneaux, 0)
 })

@@ -13,6 +13,7 @@
 // Module PUR (aucun React) : exécuté par `node --test` / vitest.
 import { ttcExactFromHt, tauxTvaOf } from '../solar.js'
 import { isPanel } from '../calc/classification.js'
+import { lignesEnvoyees } from './lignesEcran.js'
 
 const TYPES_STRUCTURE = new Set(['section', 'note'])
 const MICRO = 1000000n
@@ -73,7 +74,7 @@ const produitDe = (l, produits) => (l?.produit
 
 // Les lignes que le serveur RECEVRA (même filtre que `lignesEcranVersPayload`).
 const ligneEnvoyee = (l) => l && !TYPES_STRUCTURE.has(l.typeLigne)
-  && l.produit && parseFloat(l.quantite) > 0
+  && lignesEnvoyees([l]).length > 0
 
 /**
  * Le compte de panneaux de chaque vue, miroir de

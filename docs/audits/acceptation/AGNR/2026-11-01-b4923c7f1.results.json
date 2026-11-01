@@ -1,0 +1,130 @@
+{
+  "sha": "b4923c7f185ca949c0e9453fc196debcb8dcdcfc",
+  "date": "2026-11-01",
+  "groupe": "AGNR",
+  "verdict": "PASS",
+  "couvre": [
+    "AGNR52",
+    "AGNR54",
+    "AGNR55",
+    "AGNR56",
+    "AGNR57",
+    "AGNR58",
+    "AGNR59"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "AGNR61-E1",
+      "taches": [
+        "AGNR52"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E1.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Devis industriel démo 2514 (17 000 TTC, niveau 8), dialogue PDF « Devis Final » + « Acompte personnalisé » 6 000 : PATCH échéancier [6 000 MAD ; 40 ; 20 ; 10 %] puis PDF 4 pages ; bloc échéancier 35,29 % 5 999,30 / 40 % 6 800,00 / 20 % 3 400,00 / 4,71 % 800,70 MAD TTC (Σ 100 %, Σ 17 000,00 = TTC, aucun négatif) = puce CGV servie = marqueur cgv_ci ; variante cgv_ci posée le temps d'un rendu /proposal : mêmes % et montants imprimés. Non joué : 8 500 => 409 (AGNR49 non construit). Captures : docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E1-dialogue-acompte-6000.png, docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E1-pdf-dialogue-p4.png, docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E1-pdf-cgv_ci-p4.png"
+    },
+    {
+      "id": "AGNR61-E3",
+      "taches": [
+        "AGNR54"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E3.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Devis résidentiel 2515 (niveau 8), lead facture_hiver 1 800, écran 500 / 1 200 : étude profil_conso_du_devis [310x4, 653x6, 310x2] source facture_hiver_ete = _profil_horaire_pour_devis = _monthly_consumption ; /proposition (astro dev, jeton interne) : barres consommation mois par mois 310x4 / 653x6 / 310x2, journée type janv 10 / avr 10,33 / juil 21,07 / nov 10,33 kWh ; rechargement identique. Captures : docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E3-proposition-mois-par-mois.png, docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E3-proposition-journee-type.png"
+    },
+    {
+      "id": "AGNR61-E4a",
+      "taches": [
+        "AGNR55",
+        "AGNR57"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E4a.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Générateur : « Facture réelle » 150 MAD ONEE => 1 282 kWh/an, créé (2519, conso_annuelle 1282) ; rouvert : 1 282 kWh/an, champ 106.83 ; « Enregistrer » sans toucher : PATCH conso_annuelle 1282, etude_params strictement identique, lignes identiques hors ids ; rechargé : 1 282. Captures : docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E4a-facture-reelle-150-creation.png, docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E4a-facture-reelle-150-reouvert.png"
+    },
+    {
+      "id": "AGNR61-E4b",
+      "taches": [
+        "AGNR56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E4b.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Devis 2516 : 12 x « Modules toiture sud » liés au produit « Panneau mono 550W » ; ligne servie produit_nom « Panneau mono 550W » ; rouvert : 12 panneaux, 550 W, 6,60 kWp ; ré-enregistré : lignes envoyées sans produit_nom, compte identique. Observation : ligne_composee null -> true et recommended_option ajouté au 1er ré-enregistrement d'un devis né par l'API. Capture : docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E4b-panneaux-renommes-reouvert.png"
+    },
+    {
+      "id": "AGNR61-E4c",
+      "taches": [
+        "AGNR58",
+        "AGNR59"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E4c.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Générateur démo après auto-remplissage : ligne composée « Câble de terre » passée à 0 => « 1 ligne à quantité 0 ne sera pas enregistrée : Câble de terre Nexans 6 mm² (au mètre) » avant tout envoi ; ligne libre « Câble » x2 sans produit => « 1 ligne sans produit ne sera pas enregistrée : Câble » ; création 2520 avec 13 lignes, aucune des deux stockée, réouverture identique. Captures : docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E4e-ligne-composee-quantite-0.png, docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E4c-ligne-libre-annoncee.png"
+    }
+  ]
+}

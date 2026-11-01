@@ -80,3 +80,22 @@ test('ordre du motif : avertissement, puis motivation, puis erreur, puis génér
 test('aucune réponse encore arrivée : on attend', () => {
   assert.equal(decisionSizing({ attente: true, cleCourante: CLE }).action, 'attendre')
 })
+
+// AGNR58 — `validate()` de usePersistanceDevis annonce la ligne sans produit
+// écartée par la SEULE définition de lignesEcran.js (le hook importe React :
+// vérifié par sa source + la fonction pure qu'il appelle).
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { lignesNonEnvoyees } from '../lignesEcran.js'
+
+test('validate_annonce_ligne_sans_produit', () => {
+  const src = readFileSync(fileURLToPath(new URL('./usePersistanceDevis.js', import.meta.url)), 'utf-8')
+  assert.match(src, /lignesNonEnvoyees\(lines\)/)
+  assert.match(src, /ligne sans produit ne sera pas enregistrée/)
+  assert.equal(/const usableLines = \(\) =>\s*lines\.filter/.test(src), false)
+  const { sansProduit } = lignesNonEnvoyees([
+    { produit: '', quantite: '2', prix_unit_ttc: '0', designation: 'Câble' },
+    { produit: '5', quantite: '1', designation: 'Panneau' },
+  ])
+  assert.deepEqual(sansProduit.map(l => l.designation), ['Câble'])
+})

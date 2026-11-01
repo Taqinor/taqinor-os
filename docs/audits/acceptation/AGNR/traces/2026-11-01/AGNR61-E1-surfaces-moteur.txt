@@ -1,0 +1,15 @@
+669 objects imported automatically (use -v 2 for details).
+
+regles_calcul 8 ttc 17000.00
+echeancier [{'type': 'acompte', 'jalon': 'commande', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 6000}, {'type': 'materiel', 'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40}, {'type': 'solde', 'jalon': 'mise_en_service', 'unite': 'pct', 'libelle': 'MES', 'pct_or_montant': 20}, {'type': '', 'jalon': 'reception_definitive', 'unite': 'pct', 'libelle': 'Réception', 'pct_or_montant': 10}]
+OPTS {'pdf_mode': 'full', 'devis_final': True}
+ bloc [(35.29, 5999.3), (40, 6800), (20, 3400), (4.71, 800.7)]
+ cgv {'titre': 'Conditions générales du devis', 'puces': ['Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au 01/12/2026', 'Échéancier de paiement&#160;: Commande : 35.29 % · 5\u202f999,30 MAD TTC ; Livraison : 40 % · 6\u202f800,00 MAD TTC ; MES : 20 % · 3\u202f400,00 MAD TTC ; Réception : 4.71 % · 800,70 MAD TTC', 'TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations']}
+ puce Échéancier de paiement&#160;: Commande : 35.29 % · 5 999,30 MAD TTC ; Livraison : 40 % · 6 800,00 MAD TTC ; MES : 20 % · 3 400,00 MAD TTC ; Réception : 4.71 % · 800,70 MAD TTC
+ regles_calcul_origine None cgv_ci None
+OPTS {'pdf_mode': 'full'}
+ bloc [(35.29, 5999.3), (40, 6800), (20, 3400), (4.71, 800.7)]
+ cgv {'titre': 'Conditions générales du devis', 'puces': ['Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au 01/12/2026', 'Échéancier de paiement&#160;: Commande : 35.29 % · 5\u202f999,30 MAD TTC ; Livraison : 40 % · 6\u202f800,00 MAD TTC ; MES : 20 % · 3\u202f400,00 MAD TTC ; Réception : 4.71 % · 800,70 MAD TTC', 'TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations']}
+ puce Échéancier de paiement&#160;: Commande : 35.29 % · 5 999,30 MAD TTC ; Livraison : 40 % · 6 800,00 MAD TTC ; MES : 20 % · 3 400,00 MAD TTC ; Réception : 4.71 % · 800,70 MAD TTC
+ regles_calcul_origine None cgv_ci None
+marqueur Commande : 35.29 % · 5 999,30 MAD TTC ; Livraison : 40 % · 6 800,00 MAD TTC ; MES : 20 % · 3 400,00 MAD TTC ; Réception : 4.71 % · 800,70 MAD TTC

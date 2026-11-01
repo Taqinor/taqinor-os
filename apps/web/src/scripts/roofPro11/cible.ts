@@ -56,3 +56,14 @@ export function repartirCibleVendue(entree: {
   }
   return { mode: 'imposer', cible: cibleVendue };
 }
+
+/**
+ * ERR-ACAL351 — le drapeau `neededAuto` d'un pan APRÈS reprise de son objectif conservé.
+ * Un pan enregistré en besoin AUTO dont l'objectif conservé est son propre besoin relu
+ * (même nombre) n'a subi AUCUN geste : le drapeau reste vrai, sinon le premier
+ * « Enregistrer » sans geste le faisait passer à faux (empreinte changée, version inutile).
+ * Un objectif différent (nombre posé, besoin choisi) fige le besoin comme avant.
+ */
+export function neededAutoApresConservation(pan: { neededPanels: number; neededAuto: boolean }, objectif: number): boolean {
+  return pan.neededAuto === true && Math.round(pan.neededPanels) === objectif;
+}

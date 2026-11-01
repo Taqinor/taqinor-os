@@ -1,0 +1,34 @@
+{
+  "sha": "154a1583cae8304064f3db40102bb949463e84cf",
+  "date": "2026-11-01",
+  "groupe": "AGNR",
+  "verdict": "FAIL",
+  "couvre": [
+    "AGNR60"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "AGNR61-E4d",
+      "taches": [
+        "AGNR60"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-11-01/AGNR61-E4d.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Devis 2518 à échéancier figé (fige_le sur les 3 tranches) rouvert dans le générateur et enregistré sans toucher : replace-lines envoie entete.echeancier sans fige_le ; relu : fige_le perdu sur les 3 tranches (+ ligne_composee null -> true, recommended_option ajouté) ; second enregistrement stable. FAIL attendu : AGNR60 non construit sur cette branche. Code rejoué = b4923c7f1 (154a1583c n'ajoute que l'enregistrement PASS, docs seulement)."
+    }
+  ]
+}
