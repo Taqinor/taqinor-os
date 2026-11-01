@@ -41,8 +41,8 @@ frontend/src/pages/crm/ParrainagePage.jsx::setStatut  1
 frontend/src/pages/crm/leads/AppointmentBooker.jsx::handleBook  1
 frontend/src/pages/crm/leads/AppointmentBooker.jsx::handleDownloadIcs  1
 frontend/src/pages/crm/leads/LeadDevisPanel.jsx::handleDownload  1
-frontend/src/pages/crm/leads/LeadsPage.jsx::LeadsPage  1
-frontend/src/pages/crm/leads/LeadsPage.jsx::onKey  2
+frontend/src/pages/crm/leads/LeadsPage.jsx::LeadsPage  3
+frontend/src/pages/crm/leads/LeadsPage.jsx::onKey  3
 frontend/src/pages/crm/leads/PerduPopover.jsx::confirm  1
 frontend/src/pages/installations/ChantierGateTimeline.jsx::genererPack  1
 frontend/src/pages/installations/ChantierPhotos.jsx::ChantierPhotos  1
