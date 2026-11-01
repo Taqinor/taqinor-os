@@ -78,15 +78,17 @@ MESSAGE_NOMENCLATURE_VIDE = (
     "positive — ajoutez-en avant de l'assembler.")
 
 
-def _exiger_nomenclature(kit, champ='kit'):
+def _exiger_nomenclature(kit, champ='kit', ordre=None):
     """ACHT25 (C-ACHT-023) — aucun composite n'entre en stock sans
     consommation : un kit sans composant EXPLOITABLE (produit catalogue et
     quantité > 0) refuse la création / la clôture d'un ordre et son
-    activation (409 : l'état du kit s'y oppose)."""
+    activation (409 : l'état du kit s'y oppose). ACHT119 : avec `ordre`, la
+    garde lit ses lignes RÉELLES (la consommation les lit) quand il en a."""
     if kit is None:
         return
-    if not kit.composants.filter(
-            produit__isnull=False, quantite__gt=0).exists():
+    source = (ordre.lignes if ordre is not None and ordre.lignes.exists()
+              else kit.composants)
+    if not source.filter(produit__isnull=False, quantite__gt=0).exists():
         raise ConflitEtat({champ: [MESSAGE_NOMENCLATURE_VIDE]})
 
 
@@ -583,6 +585,14 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 continue
             par_kit[kit_id] = par_kit.get(kit_id, 0) + qte
 
+        # ACHT119 — garde « Nomenclature vide » AVANT toute création d'ordre.
+        deja = set(OrdreAssemblage.objects.filter(
+            company=company, devis=devis, kit_id__in=par_kit
+        ).values_list('kit_id', flat=True))
+        for kit_id in par_kit:
+            if kit_id not in deja:
+                _exiger_nomenclature(kits_by_id[kit_id])
+
         ordres = []
         any_created = False
         for kit_id, quantite in par_kit.items():
@@ -920,7 +930,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             raise ValidationError({
                 'kit': "Ce kit n'a pas d'article composite "
                        "(produit_compose) : clôture impossible."})
-        _exiger_nomenclature(ordre.kit)  # ACHT25
+        _exiger_nomenclature(ordre.kit, ordre=ordre)  # ACHT25/ACHT119
 
         # XMFG13 — gate qualité : un kit avec modèle QC actif bloque la
         # clôture tant que la checklist n'est pas entièrement passée, sauf
