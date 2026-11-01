@@ -19,6 +19,12 @@ vi.mock('../../ui/confirm', () => ({
   }),
 }))
 
+// ASEC64 — déclarer / clôturer exigent `encaisser` (bascule par test).
+const droits = vi.hoisted(() => ({ encaisser: true }))
+vi.mock('../../hooks/useHasPermission', () => ({
+  useHasPermission: (c) => c === 'encaisser' && droits.encaisser,
+}))
+
 import api from '../../api/axios'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import RemisesEncaissementPage from './RemisesEncaissementPage'
@@ -43,10 +49,18 @@ const getFor = (rows) => (url) => {
   return Promise.resolve({ data: new Blob(['%PDF']) })
 }
 
-beforeEach(() => { api.get.mockImplementation(getFor([OUVERTE])) })
+beforeEach(() => { droits.encaisser = true; api.get.mockImplementation(getFor([OUVERTE])) })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('RemisesEncaissementPage (PACT46)', () => {
+  it('ASEC64 — sans `encaisser` : ni Déclarer ni Clôturer', async () => {
+    droits.encaisser = false
+    render(<RemisesEncaissementPage />)
+    expect(await screen.findByText('REM-2026-0003')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Déclarer une remise/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clôturer' })).toBeNull()
+  })
+
   it('affiche l\'écart de chaque remise sans jamais le masquer', async () => {
     render(<RemisesEncaissementPage />)
     await waitFor(() => expect(api.get)

@@ -11,7 +11,11 @@ import { dirname, join } from 'node:path'
    les contrats serveur (jamais une forme recopiée). */
 
 vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksVentesEcrans.js')).ventesApiPaiements())
-vi.mock('../../hooks/useHasPermission', async () => ({ ...(await import('../../test/mocksVentesEcrans.js')).permissionsRefusees() }))
+// ASEC64 — l'assistant d'import exige `encaisser` ; tout autre droit refusé.
+vi.mock('../../hooks/useHasPermission', async () => ({
+  ...(await import('../../test/mocksVentesEcrans.js')).permissionsRefusees(),
+  useHasPermission: (c) => c === 'encaisser',
+}))
 
 import ventesApi from '../../api/ventesApi'
 import PaiementsPage from './PaiementsPage'

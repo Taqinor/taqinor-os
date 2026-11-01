@@ -19,8 +19,10 @@ vi.mock('../../api/ventesApi', () => ({
 // AUD132 — l'écran gate le rejet sur le palier responsable/admin
 // (`useIsAdminOrResponsable` → `useSelector`) : sans store Redux ici, on mocke
 // le hook. Ce test-ci ne porte que sur l'assistant d'import (WIR265).
+// ASEC64 — l'import est un geste d'argent : droit `encaisser` (bascule par test).
+const droits = vi.hoisted(() => ({ encaisser: true }))
 vi.mock('../../hooks/useHasPermission', () => ({
-  useHasPermission: () => false,
+  useHasPermission: (c) => c === 'encaisser' && droits.encaisser,
   useHasRole: () => false,
   useIsAdmin: () => false,
   useIsAdminOrResponsable: () => false,
@@ -76,6 +78,7 @@ const deposer = (dialog) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  droits.encaisser = true
   ventesApi.getPaiements.mockResolvedValue({ data: [] })
 })
 
@@ -87,6 +90,14 @@ describe('PaiementsPage — WIR265 : import de relevé bancaire', () => {
     // l'en-tête : on vise le TITRE du dialogue, pas le texte nu.
     expect(within(dialog).getByRole('heading', { name: 'Importer un relevé bancaire' }))
       .toBeInTheDocument()
+  })
+
+  it('ASEC64 — sans `encaisser` : ni bouton ni route d’import', async () => {
+    droits.encaisser = false
+    renderPage()
+    await waitFor(() => expect(ventesApi.getPaiements).toHaveBeenCalled())
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Importer un relevé bancaire/ })).toBeNull()
   })
 
   it('l’écran des encaissements seul n’ouvre PAS l’assistant', async () => {

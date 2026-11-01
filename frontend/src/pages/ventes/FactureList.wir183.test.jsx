@@ -16,6 +16,13 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
   return { ...actual, fetchFactures: () => ({ type: 'ventes/fetchFactures/noop' }) }
 })
 
+// ASEC64 — gestes d'argent sur le droit `encaisser` (bascule par test).
+const droits = vi.hoisted(() => ({ encaisser: true }))
+vi.mock('../../hooks/useHasPermission', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useHasPermission: (c) => c === 'encaisser' && droits.encaisser,
+}))
+
 // Les fabriques de `vi.mock` sont HISSÉES au-dessus des `const` du module :
 // référencer `api` depuis la fabrique lèverait un ReferenceError et AUCUN test
 // ne s'exécuterait (le fichier entier tombe). `vi.hoisted` remonte la
@@ -317,7 +324,8 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
 })
 
 describe('WIR183 — gating de palier', () => {
-  it('un utilisateur du palier « normal » ne voit aucune des six actions', async () => {
+  it('un utilisateur du palier « normal » sans `encaisser` ne voit aucune des six actions', async () => {
+    droits.encaisser = false
     const user = userEvent.setup()
     renderList({ factures: [enRetard], role: 'normal' })
     expect(screen.queryByRole('button', { name: 'Consolider des devis' })).toBeNull()
@@ -326,6 +334,17 @@ describe('WIR183 — gating de palier', () => {
     expect(screen.queryByTestId('facturer-penalites')).toBeNull()
     expect(screen.queryByTestId('abandonner-solde')).toBeNull()
     expect(screen.queryByTestId('retour-client')).toBeNull()
+    droits.encaisser = true
+  })
+
+  it('ASEC64 — palier « normal » AVEC `encaisser` : les gestes d’argent, sans le palier', async () => {
+    const user = userEvent.setup()
+    renderList({ factures: [enRetard], role: 'normal' })
+    await ouvrirMenu(user, 'FAC-RETARD')
+    expect(screen.getByTestId('facturer-penalites')).toBeInTheDocument()
+    expect(screen.getByTestId('abandonner-solde')).toBeInTheDocument()
+    expect(screen.getByTestId('retour-client')).toBeInTheDocument()
+    expect(screen.queryByTestId('remettre-brouillon')).toBeNull()
   })
 })
 
