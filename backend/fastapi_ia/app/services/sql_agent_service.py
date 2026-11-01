@@ -240,35 +240,34 @@ utilise-la directement sans demander confirmation.
 GUIDE DES TABLES — utilise TOUJOURS la bonne table :
 
 Stock actuel des produits → stock_produit
-  - quantite       = quantite actuellement en stock
-  - prix_vente_ht  = prix de vente HT
-  - prix_achat_ht  = prix d'achat HT
+  - quantite_stock = quantite actuellement en stock
+  - prix_vente     = prix de vente catalogue
   - seuil_alerte   = seuil minimum avant rupture
   - categorie_id   = FK vers stock_categorie
   - fournisseur_id = FK vers stock_fournisseur
 
 Historique des entrees/sorties → stock_mouvementstock
   (NE PAS utiliser pour connaitre le stock actuel,
-   utiliser stock_produit.quantite a la place)
+   utiliser stock_produit.quantite_stock a la place)
   - type_mouvement = 'entree' ou 'sortie'
   - quantite       = quantite du mouvement (pas le stock actuel)
 
 Clients → crm_client (nom, prenom, email, telephone)
 
 Devis → ventes_devis + ventes_lignedevis
-  - statut : 'brouillon', 'accepte', 'refuse', 'expire'
-  - montant_total = montant total du devis
+  - statut : 'brouillon', 'envoye', 'accepte', 'refuse', 'expire'
+  (aucun montant stocke : SUM(ventes_lignedevis.quantite * ventes_lignedevis.prix_unitaire), remises en plus)
 
 Factures → ventes_facture + ventes_lignefacture
-  - statut_paiement : 'non_paye', 'partiel', 'paye'
-  - montant_ttc = montant total TTC
+  - statut : 'brouillon', 'emise', 'payee', 'en_retard', 'annulee'
+  - montant_ht / montant_ttc = montants HT / TTC ; reference, date_emission, date_echeance
 
 Chantiers (installations) → installations_installation
   - statut : 'signe', 'materiel_commande', 'planifie', 'en_cours',
     'installe', 'receptionne', 'cloture' (+ herites : 'a_planifier', 'pose',
     'mise_en_service'). Chantiers a planifier = statut 'a_planifier' OU 'planifie'.
   - client_id, devis_id, puissance_installee_kwc, type_installation
-  - dates : date_pose_prevue, date_reception, date_cloture
+  - date_pose_prevue, date_reception, date_cloture = dates cles
 
 Interventions terrain → installations_intervention
   - installation_id = FK vers le chantier
@@ -288,13 +287,13 @@ Contrats de maintenance → sav_contratmaintenance
   - periodicite, date_debut, derniere_visite, actif
 
 EXEMPLES DE REQUETES CORRECTES :
-- Stock actuel : SELECT nom, quantite FROM stock_produit ORDER BY quantite DESC
-- Ruptures : SELECT nom, quantite FROM stock_produit WHERE quantite <= seuil_alerte
-- CA factures : SELECT SUM(montant_ttc) FROM ventes_facture WHERE statut_paiement='paye'
+- Stock actuel : SELECT nom, quantite_stock FROM stock_produit ORDER BY quantite_stock DESC
+- Ruptures : SELECT nom, quantite_stock FROM stock_produit WHERE quantite_stock <= seuil_alerte
+- CA facturé HT : SELECT SUM(montant_ht) FROM ventes_facture WHERE statut IN ('emise','payee','en_retard')
 - Chantiers a planifier : SELECT reference FROM installations_installation \
 WHERE statut IN ('a_planifier','planifie')
-- Factures en retard : SELECT numero FROM ventes_facture \
-WHERE statut_paiement <> 'paye' AND date_echeance < CURRENT_DATE
+- Factures en retard : SELECT reference FROM ventes_facture \
+WHERE statut IN ('emise','en_retard') AND date_echeance < CURRENT_DATE
 - Garanties qui expirent : SELECT numero_serie, date_fin_garantie \
 FROM sav_equipement WHERE date_fin_garantie BETWEEN CURRENT_DATE AND \
 (CURRENT_DATE + INTERVAL '3 months')
