@@ -30,7 +30,7 @@ def _nxt():
     return _CTR[0]
 
 
-class MontantsFigesTests(TestCase):
+class _FactureFixture:
     def setUp(self):
         from apps.crm.models import Client
         from apps.stock.models import Produit
@@ -61,6 +61,8 @@ class MontantsFigesTests(TestCase):
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
         return facture
 
+
+class MontantsFigesTests(_FactureFixture, TestCase):
     def test_patch_montant_emise_refuse(self):
         from apps.ventes.models import Facture
         facture = self._facture(
@@ -184,6 +186,87 @@ class MontantsFigesTests(TestCase):
         self.assertEqual(Decimal(trace.old_value or '0'), Decimal('0'))
 
 
+class TotalStockeTests(_FactureFixture, TestCase):
+    """ATOT55 — ``total_ht_stocke`` / ``total_ttc_stocke`` = ``total_ht`` /
+    ``total_ttc`` après chaque écriture de ligne, de remise, de palier, et
+    après la migration de remplissage ; jamais écrits par l'API."""
+
+    def _relue(self, facture):
+        from apps.ventes.models import Facture
+        relue = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(relue.total_ht_stocke, relue.total_ht)
+        self.assertEqual(relue.total_ttc_stocke, relue.total_ttc)
+        return relue
+
+    def test_suit_lignes_et_remise(self):
+        from apps.ventes.models import Facture, LigneFacture
+        facture = self._facture(Facture.Statut.BROUILLON)
+        relue = self._relue(facture)
+        self.assertEqual((relue.total_ht_stocke, relue.total_ttc_stocke),
+                         (Decimal('1000.00'), Decimal('1200.00')))
+        ligne = LigneFacture.objects.create(
+            facture=facture, produit=self.produit, designation='Onduleur',
+            quantite=Decimal('3'), prix_unitaire=Decimal('333.33'),
+            remise=Decimal('7'), taux_tva=Decimal('10'))
+        self._relue(facture)
+        ligne.quantite = Decimal('2')
+        ligne.save()
+        self._relue(facture)
+        r = self.api.patch(f'/api/django/ventes/factures/{facture.id}/',
+                           {'remise_globale': '12.5'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        relue = self._relue(facture)
+        self.assertLess(relue.total_ht_stocke, Decimal('1619.99'))
+        ligne.delete()
+        relue = self._relue(facture)
+        self.assertEqual(relue.total_ht_stocke, Decimal('875.00'))
+
+    def test_tranche_et_palier_par_villa(self):
+        from apps.ventes.models import Facture, LigneFacture
+        tranche = self._facture(
+            Facture.Statut.BROUILLON, montant_ht=Decimal('1000.00'),
+            montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'),
+            type_facture=Facture.TypeFacture.ACOMPTE,
+            pourcentage=Decimal('30'))
+        self.assertEqual(self._relue(tranche).total_ttc_stocke,
+                         Decimal('1200.00'))
+        villas = self._facture(Facture.Statut.BROUILLON, arrondi_pas=100,
+                               arrondi_unites=2)
+        LigneFacture.objects.create(
+            facture=villas, produit=self.produit, designation='Pose',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1234.56'))
+        relue = self._relue(villas)
+        self.assertEqual(relue.total_ttc_stocke % 200, 0)
+
+    def test_lecture_seule_api(self):
+        from apps.ventes.models import Facture
+        facture = self._facture(Facture.Statut.BROUILLON)
+        r = self.api.patch(f'/api/django/ventes/factures/{facture.id}/',
+                           {'total_ht_stocke': '1.00',
+                            'total_ttc_stocke': '1.00'}, format='json')
+        self.assertIn(r.status_code, (200, 400), r.data)
+        relue = self._relue(facture)
+        self.assertEqual(relue.total_ttc_stocke, Decimal('1200.00'))
+        r = self.api.get(f'/api/django/ventes/factures/{facture.id}/')
+        self.assertEqual(r.data['total_ttc_stocke'], '1200.00')
+
+    def test_migration_remplit_les_factures_existantes(self):
+        import importlib
+
+        from django.apps import apps as registre
+
+        from apps.ventes.models import Facture
+        migration = importlib.import_module(
+            'apps.facturation.migrations.0024_atot55_facture_total_stocke')
+        facture = self._facture(Facture.Statut.EMISE, remise_globale=10)
+        Facture.objects.filter(pk=facture.pk).update(
+            total_ht_stocke=None, total_ttc_stocke=None)
+        migration.remplir(registre, None)
+        relue = self._relue(facture)
+        self.assertEqual((relue.total_ht_stocke, relue.total_ttc_stocke),
+                         (Decimal('900.00'), Decimal('1080.00')))
+
+
 class MontantTrancheBrouillonTests(TestCase):
     """VNT67 — ``factures/<id>/montant-tranche/`` : le brouillon d'acompte du
     388 (14 700) passe à 15 000 au prorata du plan, l'échéancier est réécrit
@@ -228,6 +311,10 @@ class MontantTrancheBrouillonTests(TestCase):
         self.assertEqual(
             [Decimal(str(e['pct_or_montant'])) for e in self.devis.echeancier],
             [Decimal('15000'), Decimal('60'), Decimal('4600')])
+        # ATOT55 — le total stocké de la tranche suit le montant réécrit.
+        self.assertEqual(
+            (self.brouillon.total_ht_stocke, self.brouillon.total_ttc_stocke),
+            (Decimal('12720.41'), Decimal('15000.00')))
 
     def test_facture_emise_409(self):
         from apps.ventes.models import Facture

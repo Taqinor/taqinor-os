@@ -76,6 +76,39 @@ def ventilation_document_fige(bases_par_taux, ttc, *, ht=None, tva=None):
              'montant': str(quantize_mad(tvas[t]))} for t in taux]
 
 
+#: ATOT55 — champs d'en-tête dont dépend le total d'une facture : un
+#: ``save(update_fields=…)`` qui n'en touche aucun ne recalcule rien.
+CHAMPS_DU_TOTAL = frozenset([
+    'remise_globale', 'taux_tva', 'arrondi_pas', 'arrondi_unites',
+    'montant_ht', 'montant_tva', 'montant_ttc', 'ventilation_tva',
+])
+
+
+def synchroniser_total_stocke(document):
+    """ATOT55 — LE point d'écriture unique de ``total_ht_stocke`` /
+    ``total_ttc_stocke`` : recopie ``total_ht`` / ``total_ttc`` (la chaîne
+    du mixin, rien de recalculé ailleurs) au centime, par ``QuerySet.update``
+    (aucun ``save`` : ni récursion, ni ``updated_at``, ni garde ATOT41 —
+    colonne serveur, jamais exposée en écriture). Appelé par
+    ``Facture.save`` et ``LigneFacture.save``/``delete`` ; le cache de
+    préchargement des lignes est vidé pour lire l'état en base."""
+    from decimal import Decimal
+
+    from core.money import quantize_mad
+
+    if document.pk is None:
+        return
+    cache = getattr(document, '_prefetched_objects_cache', None)
+    if cache:
+        cache.pop('lignes', None)
+    ht = quantize_mad(Decimal(str(document.total_ht or 0)))
+    ttc = quantize_mad(Decimal(str(document.total_ttc or 0)))
+    type(document)._base_manager.filter(pk=document.pk).update(
+        total_ht_stocke=ht, total_ttc_stocke=ttc)
+    document.total_ht_stocke = ht
+    document.total_ttc_stocke = ttc
+
+
 class TotauxDocumentMixin:
     """LE SEUL PROPRIÉTAIRE de la chaîne HT → remise globale → TVA par taux →
     TTC, partagé par ``Facture``, ``Avoir`` et ``NoteDebit``.
