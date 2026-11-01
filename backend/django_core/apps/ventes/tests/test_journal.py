@@ -181,6 +181,66 @@ class TestJournalExport(TestCase):
             f'&fmt=csv')
         self.assertNotIn('FAC-JR-DRAFT', resp.content.decode('utf-8'))
 
+    def test_export_comptable_inclut_avoirs_et_notes_de_debit(self):
+        """ATOT47 (D-ATOT-VER-1 = inclure) — l'export comptable par défaut
+        porte l'avoir émis en négatif et la note de débit émise en positif,
+        une ligne par taux ; brouillon/annulé(e) absents ; totaux réels."""
+        import csv
+        import io
+        from datetime import timedelta
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from apps.ventes.models import Avoir, LigneAvoir, NoteDebit
+        co = Company.objects.create(nom='JR Rect', slug='jr-rect')
+        u = User.objects.create_user(
+            username='jr_rect', password='x', role_legacy='responsable', company=co)
+        api = APIClient()
+        api.force_authenticate(u)
+        c = Client.objects.create(company=co, nom='R', ice='000333444')
+        p = Produit.objects.create(company=co, nom='Kit', sku='JR-R',
+                                   prix_vente=Decimal('100'), quantite_stock=5)
+        fac = Facture.objects.create(company=co, reference='FAC-JR-R', client=c,
+                                     statut='emise', taux_tva=Decimal('20'))
+        for pu, taux in (('400', '10'), ('600', '20')):
+            LigneFacture.objects.create(
+                facture=fac, produit=p, designation='L', quantite=Decimal('1'),
+                prix_unitaire=Decimal(pu), remise=Decimal('0'), taux_tva=Decimal(taux))
+        for ref, statut in (('AVO-JR-R', 'emise'), ('AVO-JR-AN', 'annulee')):
+            av = Avoir.objects.create(company=co, reference=ref, facture=fac, client=c,
+                                      statut=statut, taux_tva=Decimal('20'))
+            LigneAvoir.objects.create(
+                avoir=av, designation='Retour', quantite=Decimal('1'),
+                prix_unitaire=Decimal('200'), remise=Decimal('0'), taux_tva=Decimal('20'))
+        for ref, statut in (('ND-JR-R', 'emise'), ('ND-JR-BR', 'brouillon')):
+            NoteDebit.objects.create(
+                company=co, reference=ref, facture=fac, client=c, statut=statut,
+                taux_tva=Decimal('20'), montant_ht=Decimal('100'),
+                montant_tva=Decimal('20'), montant_ttc=Decimal('120'))
+        d = date.today()
+        q = (f'/api/django/ventes/export-comptable/?start={d:%Y-%m-01}'
+             f'&end={(d + timedelta(days=1)):%Y-%m-%d}')
+        resp = api.get(q + '&fmt=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        xlsx = [list(r) for r in load_workbook(BytesIO(body)).active.iter_rows(values_only=True)]
+        resp = api.get(q + '&fmt=csv')
+        self.assertEqual(resp.status_code, 200)
+        lignes_csv = list(csv.reader(io.StringIO(resp.content.decode('utf-8-sig')), delimiter=';'))
+        for rows in (xlsx, lignes_csv):
+            self.assertEqual(rows[0][:3], ['Facture', 'Date', 'Type'])
+            par_ref = {r[0]: r for r in rows[1:] if r}
+            self.assertEqual([float(x) for x in par_ref['AVO-JR-R'][8:12]],
+                             [-200.0, 20.0, -40.0, -240.0])
+            self.assertEqual(par_ref['AVO-JR-R'][2], 'Avoir')
+            self.assertEqual([float(x) for x in par_ref['ND-JR-R'][8:12]],
+                             [100.0, 20.0, 20.0, 120.0])
+            self.assertEqual(par_ref['ND-JR-R'][2], 'Note de débit')
+            self.assertNotIn('AVO-JR-AN', par_ref)
+            self.assertNotIn('ND-JR-BR', par_ref)
+            total = par_ref['TOTAL']
+            self.assertEqual([float(total[8]), float(total[10]), float(total[11])],
+                             [900.0, 140.0, 1040.0])
+
 
 class TestGrandLivreExport(TestCase):
     """FG49 — grand-livre codé par compte CGNC (3421 / 7111 / 4455)."""
@@ -332,6 +392,74 @@ class TestGrandLivreExport(TestCase):
         tot_credit = sum(r[10] for r in rows[1:]
                          if r[0] not in (None, '', 'TOTAL') and r[10])
         self.assertEqual(round(tot_debit, 2), round(tot_credit, 2))
+
+    def _resume_tva_20(self):
+        from datetime import date as _date
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from apps.ventes.exports import export_journal_ventes, period_bounds
+        debut, fin = period_bounds({'month': _date.today().strftime('%Y-%m')})
+        wb = load_workbook(BytesIO(export_journal_ventes(self.company, debut, fin).content))
+        resume = {r[0]: r for r in wb['Résumé TVA'].iter_rows(values_only=True)}
+        journal = [list(r) for r in wb['Journal des ventes'].iter_rows(values_only=True)]
+        return resume['20.00 %'][2], journal
+
+    def test_note_de_debit_au_grand_livre_et_au_journal(self):
+        """ATOT46 (C-ATOT-VER-006) — une note de débit ÉMISE (100 HT / 20 TVA)
+        entre au grand livre (+ IIF) et au journal au signe + ; brouillon et
+        annulée n'apparaissent nulle part."""
+        from datetime import date as _date
+        from apps.ventes.exports import (
+            _grand_livre_rows_as_entries, period_bounds)
+        from apps.ventes.models import NoteDebit
+        admin = User.objects.create_user(
+            username='gl_admin', password='x', role_legacy='admin',
+            company=self.company)
+        fac = Facture.objects.create(
+            company=self.company, reference='FAC-GL-ND', client=self.client_obj,
+            statut='emise', taux_tva=Decimal('20'))
+        LigneFacture.objects.create(
+            facture=fac, produit=Produit.objects.get(sku='GL-1'),
+            designation='Kit', quantite=Decimal('1'),
+            prix_unitaire=Decimal('1000'), remise=Decimal('0'),
+            taux_tva=Decimal('20'))
+        for statut, ref in (('brouillon', 'ND-GL-BR'), ('annulee', 'ND-GL-AN')):
+            NoteDebit.objects.create(
+                company=self.company, reference=ref, facture=fac,
+                client=self.client_obj, statut=statut, taux_tva=Decimal('20'),
+                montant_ht=Decimal('50'), montant_tva=Decimal('10'),
+                montant_ttc=Decimal('60'))
+        tva_avant, _journal = self._resume_tva_20()
+        api = APIClient()
+        api.force_authenticate(admin)
+        resp = api.post(
+            f'/api/django/ventes/factures/{fac.pk}/creer-note-debit/',
+            {'motif': 'Complément', 'montant': '100', 'taux_tva': '20'},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        ref = resp.data['reference']
+
+        rows = self._gl_rows()
+        nd = {(str(r[0]), r[9], r[10]) for r in rows[1:] if r[4] == ref}
+        self.assertEqual(nd, {('3421', 120.0, 0.0), ('7111', 0.0, 100.0),
+                              ('4455', 0.0, 20.0)})
+        ecritures = [r for r in rows[1:] if r[0] not in (None, '', 'TOTAL')]
+        self.assertEqual(round(sum(r[9] or 0 for r in ecritures), 2),
+                         round(sum(r[10] or 0 for r in ecritures), 2))
+        self.assertFalse([r for r in rows if r[4] in ('ND-GL-BR', 'ND-GL-AN')])
+
+        tva_apres, journal = self._resume_tva_20()
+        self.assertEqual(round(tva_apres - tva_avant, 2), 20.0)
+        lignes_nd = [r for r in journal if r[0] == ref]
+        self.assertEqual([(r[2], r[8], r[10]) for r in lignes_nd],
+                         [('Note de débit', 100.0, 20.0)])
+        self.assertFalse([r for r in journal if r[0] in ('ND-GL-BR', 'ND-GL-AN')])
+
+        debut, fin = period_bounds({'month': _date.today().strftime('%Y-%m')})
+        entries, _t = _grand_livre_rows_as_entries(self.company, debut, fin)
+        self.assertEqual(
+            round(sum(float(e.get('debit') or 0) for e in entries), 2),
+            round(sum(float(e.get('credit') or 0) for e in entries), 2))
 
 
 class TestQuickBooksIifExport(TestCase):

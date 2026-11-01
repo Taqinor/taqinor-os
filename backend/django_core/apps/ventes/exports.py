@@ -127,6 +127,42 @@ def lignes_ventilees(facture):
     return resultat
 
 
+def pieces_rectificatives(company, debut, fin):
+    """ATOT46 — pièces rectificatives ÉMISES de [debut, fin[ : avoirs (signe
+    −1) et notes de débit (signe +1), par date puis référence. Rend ``(pièce,
+    libellé, signe, [(taux, ht, tva)])`` NON signés, lus sur ``tva_par_taux``
+    (TotauxDocumentMixin) — la seule lecture des taux des trois exports."""
+    from apps.ventes.models import Avoir, NoteDebit
+    pieces = []
+    for modele, libelle, signe in ((Avoir, 'Avoir', -1), (NoteDebit, 'Note de débit', 1)):
+        qs = (modele.objects
+              .filter(company=company, statut=modele.Statut.EMISE,
+                      date_emission__gte=debut, date_emission__lt=fin)
+              .select_related('client', 'facture').prefetch_related('lignes'))
+        pieces += [(p, libelle, signe) for p in qs]
+    pieces.sort(key=lambda t: (t[0].date_emission, t[0].reference))
+    for p, libelle, signe in pieces:
+        yield p, libelle, signe, [
+            (Decimal(str(b['taux'] or 0)), _q2(b['base_ht']), _q2(b['montant']))
+            for b in p.tva_par_taux]
+
+
+def lignes_rectificatives(company, debut, fin):
+    """ATOT47 — lignes SIGNÉES (ordre ``_COMPTA_HEADERS``) des pièces
+    rectificatives, partagées par le journal et l'export comptable : rend
+    ``(ligne, taux, ht, tva, ttc)``, une par taux."""
+    for p, type_libelle, signe, paniers in pieces_rectificatives(company, debut, fin):
+        date_p = p.date_emission.isoformat() if p.date_emission else ''
+        nom = getattr(p.client, 'nom', '') or ''
+        ice = getattr(p.client, 'ice', '') or ''
+        desig = f'{type_libelle} sur {p.facture.reference}' if p.facture_id else type_libelle
+        for taux, ht, tva in paniers:
+            ht, tva = signe * ht, signe * tva
+            ttc = _q2(ht + tva)
+            yield ([p.reference, date_p, type_libelle, nom, ice, desig, '', '',
+                    float(ht), float(taux), float(tva), float(ttc)], taux, ht, tva, ttc)
+
+
 def valider_periode(params):
     """ENF11 (api-fuzz « accepted schema-violating ») — chaque paramètre de
     période RENSEIGNÉ a la forme publiée (``openapi_params.PERIODE``), même
@@ -187,7 +223,7 @@ def export_journal_ventes(company, debut, fin):
     """Construit le classeur .xlsx (journal + résumé TVA) pour [debut, fin[."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
-    from apps.ventes.models import Avoir, Facture
+    from apps.ventes.models import Facture
 
     factures = (Facture.objects
                 .filter(company=company, statut__in=ISSUED_STATUTS,
@@ -262,35 +298,17 @@ def export_journal_ventes(company, debut, fin):
                 tot_tva += tva
                 tot_ttc += ttc
 
-    # Avoirs (notes de crédit) émis sur la période : lignes NÉGATIVES pour
-    # réconcilier le CA. Ventilés par taux (10/20) comme les factures, et
-    # déduits du résumé TVA. Les avoirs annulés sont exclus.
-    avoirs = (Avoir.objects
-              .filter(company=company, statut=Avoir.Statut.EMISE,
-                      date_emission__gte=debut, date_emission__lt=fin)
-              .select_related('client', 'facture').prefetch_related('lignes')
-              .order_by('date_emission', 'reference'))
-    for a in avoirs:
-        date_a = a.date_emission.isoformat() if a.date_emission else ''
-        nom = getattr(a.client, 'nom', '') or ''
-        ice = getattr(a.client, 'ice', '') or ''
-        desig = f'Avoir sur {a.facture.reference}' if a.facture_id else 'Avoir'
-        for b in a.tva_par_taux:
-            taux = Decimal(b['taux'] or 0)
-            ht = -_q2(b['base_ht'])
-            tva = -_q2(b['montant'])
-            ttc = _q2(ht + tva)
-            _append_sur(ws, [
-                a.reference, date_a, 'Avoir', nom, ice,
-                desig, '', '',
-                float(ht), float(taux), float(tva), float(ttc),
-            ])
-            bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
-            bucket['ht'] += ht
-            bucket['tva'] += tva
-            tot_ht += ht
-            tot_tva += tva
-            tot_ttc += ttc
+    # Pièces rectificatives émises sur la période (ATOT46) : avoirs en
+    # NÉGATIF, notes de débit en POSITIF, ventilés par taux et reportés au
+    # résumé TVA. Brouillons et pièces annulées exclus.
+    for ligne, taux, ht, tva, ttc in lignes_rectificatives(company, debut, fin):
+        _append_sur(ws, ligne)
+        bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+        bucket['ht'] += ht
+        bucket['tva'] += tva
+        tot_ht += ht
+        tot_tva += tva
+        tot_ttc += ttc
 
     # Feuille résumé TVA.
     ws2 = wb.create_sheet('Résumé TVA')
@@ -317,8 +335,8 @@ def export_journal_ventes(company, debut, fin):
 
 # ── Export comptable DGI (groundwork) : factures VALIDÉES d'une plage from→to ──
 # Ventilation TVA par ligne, ICE client, totaux HT/TVA/TTC. Excel ET CSV.
-# Lecture seule, borné société, AUCUNE transmission. (Distinct du journal :
-# focalisé sur les factures validées, sans avoirs.)
+# Lecture seule, borné société, AUCUNE transmission. Avoirs (−) et notes de
+# débit (+) émis inclus (ATOT47).
 
 _COMPTA_HEADERS = [
     'Facture', 'Date', 'Type', 'Client', 'ICE client', 'Désignation',
@@ -371,6 +389,13 @@ def _compta_rows(company, debut, fin):
                 tot_ht += ht
                 tot_tva += tva
                 tot_ttc += ttc
+    # ATOT47 (D-ATOT-VER-1 = inclure) — avoirs émis en négatif, notes de débit
+    # émises en positif, une ligne par taux : CA et TVA réels de la période.
+    for ligne, _taux, ht, tva, ttc in lignes_rectificatives(company, debut, fin):
+        rows.append(ligne)
+        tot_ht += ht
+        tot_tva += tva
+        tot_ttc += ttc
     return rows, (tot_ht, tot_tva, tot_ttc)
 
 
@@ -533,7 +558,7 @@ def _grand_livre_rows_reconstitues(company, debut, fin):
     acomptes » au lieu de 71xx/4455 — CGNC : un acompte ne constate aucun
     produit avant livraison.
     """
-    from apps.ventes.models import Avoir, Facture
+    from apps.ventes.models import Facture
     codes = account_codes_for(company)
     c_clients = codes['clients']
     c_ventes = codes['ventes']
@@ -594,32 +619,24 @@ def _grand_livre_rows_reconstitues(company, debut, fin):
                 _emit(Decimal('0'), b['tva'], c_tva, taux, date_s, piece,
                       f'TVA {piece}', nom, ice)
 
-    avoirs = (Avoir.objects
-              .filter(company=company, statut=Avoir.Statut.EMISE,
-                      date_emission__gte=debut, date_emission__lt=fin)
-              .select_related('client', 'facture').prefetch_related('lignes')
-              .order_by('date_emission', 'reference'))
-    for a in avoirs:
-        date_s = a.date_emission.isoformat() if a.date_emission else ''
-        nom = getattr(a.client, 'nom', '') or ''
-        ice = getattr(a.client, 'ice', '') or ''
-        piece = a.reference
-        ttc_total = Decimal('0')
-        # Avoir = contre-passation : CRÉDIT 3421 Clients (TTC), DÉBIT
-        # 7111 Ventes (HT) + 4455 TVA (par taux).
-        for b in a.tva_par_taux:
-            taux = Decimal(b['taux'] or 0)
-            ht = _q2(b['base_ht'])
-            tva = _q2(b['montant'])
-            ttc_total += ht + tva
+    for p, libelle, signe, paniers in pieces_rectificatives(company, debut, fin):
+        date_s = p.date_emission.isoformat() if p.date_emission else ''
+        nom = getattr(p.client, 'nom', '') or ''
+        ice = getattr(p.client, 'ice', '') or ''
+        piece = p.reference
+        zero = Decimal('0')
+        ttc = sum((ht + tva for _t, ht, tva in paniers), zero)
+        # Note de débit (signe +, ATOT46) : sens d'une facture — DÉBIT 3421,
+        # CRÉDIT 7111/4455 ; avoir (signe −) : contre-passation.
+        _emit(*((ttc, zero) if signe > 0 else (zero, ttc)), c_clients, None,
+              date_s, piece, f'{libelle} {piece}', nom, ice)
+        for taux, ht, tva in paniers:
             if ht:
-                _emit(ht, Decimal('0'), c_ventes, taux, date_s, piece,
-                      f'Avoir {piece} (ventes)', nom, ice)
+                _emit(*((zero, ht) if signe > 0 else (ht, zero)), c_ventes, taux,
+                      date_s, piece, f'{libelle} {piece} (ventes)', nom, ice)
             if tva:
-                _emit(tva, Decimal('0'), c_tva, taux, date_s, piece,
-                      f'Avoir {piece} (TVA)', nom, ice)
-        _emit(Decimal('0'), ttc_total, c_clients, None, date_s, piece,
-              f'Avoir {piece}', nom, ice)
+                _emit(*((zero, tva) if signe > 0 else (tva, zero)), c_tva, taux,
+                      date_s, piece, f'{libelle} {piece} (TVA)', nom, ice)
 
     return rows, (tot_debit, tot_credit)
 
