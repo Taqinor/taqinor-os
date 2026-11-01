@@ -985,7 +985,8 @@ def resultats_devis_periode(company, lead_ids, *, depuis, depuis_jour):
     base = Devis.objects.filter(company=company, lead_id__in=lead_ids)
     return {
         'envoyes': base.filter(date_envoi__gte=depuis).count(),
-        'acceptes': base.filter(date_acceptation__gte=depuis_jour).count(),
+        'acceptes': devis_signes_en_vigueur(company, lead_ids=lead_ids).filter(
+            date_acceptation__gte=depuis_jour).count(),  # AANA68 : une vente par révision
     }
 
 
