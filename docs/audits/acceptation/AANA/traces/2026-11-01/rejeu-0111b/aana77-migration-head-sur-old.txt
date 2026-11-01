@@ -1,0 +1,3 @@
+  Applying semantic.0004_aana_ca_sans_brouillon... OK
+  Applying semantic.0005_aana_ca_total_ht... OK
+  No migrations to apply.

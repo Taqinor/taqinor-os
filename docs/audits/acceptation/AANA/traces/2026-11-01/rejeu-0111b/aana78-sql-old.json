@@ -1,0 +1,133 @@
+{
+ "toutes_societes": {
+  "devis": "242454.0000",
+  "facture": "38995.0000"
+ },
+ "societes": {
+  "A": {
+   "verite": {
+    "devis": "20.0000",
+    "facture": "1750.0000"
+   },
+   "requetes": {
+    "devis_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignedevis",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 5) AS ventes_lignedevis",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_join": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_devis d JOIN ventes_lignedevis l ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_devis WHERE company_id = 5) AS d JOIN (SELECT * FROM ventes_lignedevis WHERE company_id = 5) AS l ON l.devis_id = d.id",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_join_inverse": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_lignedevis l LEFT JOIN ventes_devis d ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 5) AS l LEFT JOIN (SELECT * FROM ventes_devis WHERE company_id = 5) AS d ON l.devis_id = d.id",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_sous_requete": {
+     "sql": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM ventes_lignedevis) t",
+     "execute": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 5) AS ventes_lignedevis) AS t",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_cte": {
+     "sql": "WITH x AS (SELECT * FROM ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "execute": "WITH x AS (SELECT * FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 5) AS ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_public_guillemets": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM public.\"ventes_lignedevis\"",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 5) AS ventes_lignedevis",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "facture_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE company_id = 5) AS ventes_lignefacture",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "facture_alias_join": {
+     "sql": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM ventes_lignefacture lf JOIN ventes_facture f ON f.id = lf.facture_id",
+     "execute": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE company_id = 5) AS lf JOIN (SELECT * FROM ventes_facture WHERE company_id = 5) AS f ON f.id = lf.facture_id",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "facture_in": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM ventes_lignefacture)",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE company_id = 5) AS ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM (SELECT * FROM ventes_lignefacture WHERE company_id = 5) AS ventes_lignefacture)",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    }
+   }
+  },
+  "B": {
+   "verite": {
+    "devis": "5000.0000",
+    "facture": "2100.0000"
+   },
+   "requetes": {
+    "devis_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignedevis",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 6) AS ventes_lignedevis",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_join": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_devis d JOIN ventes_lignedevis l ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_devis WHERE company_id = 6) AS d JOIN (SELECT * FROM ventes_lignedevis WHERE company_id = 6) AS l ON l.devis_id = d.id",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_join_inverse": {
+     "sql": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM ventes_lignedevis l LEFT JOIN ventes_devis d ON l.devis_id = d.id",
+     "execute": "SELECT SUM(l.quantite * l.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 6) AS l LEFT JOIN (SELECT * FROM ventes_devis WHERE company_id = 6) AS d ON l.devis_id = d.id",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_sous_requete": {
+     "sql": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM ventes_lignedevis) t",
+     "execute": "SELECT SUM(t.q) AS total FROM (SELECT quantite * prix_unitaire AS q FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 6) AS ventes_lignedevis) AS t",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_cte": {
+     "sql": "WITH x AS (SELECT * FROM ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "execute": "WITH x AS (SELECT * FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 6) AS ventes_lignedevis) SELECT SUM(quantite * prix_unitaire) AS total FROM x",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "devis_public_guillemets": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM public.\"ventes_lignedevis\"",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignedevis WHERE company_id = 6) AS ventes_lignedevis",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "facture_somme": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE company_id = 6) AS ventes_lignefacture",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "facture_alias_join": {
+     "sql": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM ventes_lignefacture lf JOIN ventes_facture f ON f.id = lf.facture_id",
+     "execute": "SELECT SUM(lf.quantite * lf.prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE company_id = 6) AS lf JOIN (SELECT * FROM ventes_facture WHERE company_id = 6) AS f ON f.id = lf.facture_id",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    },
+    "facture_in": {
+     "sql": "SELECT SUM(quantite * prix_unitaire) AS total FROM ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM ventes_lignefacture)",
+     "execute": "SELECT SUM(quantite * prix_unitaire) AS total FROM (SELECT * FROM ventes_lignefacture WHERE company_id = 6) AS ventes_lignefacture WHERE facture_id IN (SELECT facture_id FROM (SELECT * FROM ventes_lignefacture WHERE company_id = 6) AS ventes_lignefacture)",
+     "erreur_execution": "column \"company_id\" does not exist",
+     "egal_verite": false
+    }
+   }
+  }
+ },
+ "verdict": "FAIL"
+}

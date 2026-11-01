@@ -1,0 +1,12 @@
+# Rejeu 0111b — AANA79 : vérité terrain = Σ Facture.total_ht (propriété) par statut, société démo (lecture seule).
+import json
+from collections import defaultdict
+from decimal import Decimal
+from authentication.models import Company
+from apps.ventes.models import Facture
+co = Company.objects.get(slug='taqinor-demo')
+ht = defaultdict(Decimal); nb = defaultdict(int); fige = defaultdict(Decimal); nul = defaultdict(int)
+for f in Facture.objects.filter(company=co):
+    ht[f.statut] += f.total_ht or 0; nb[f.statut] += 1; fige[f.statut] += f.montant_ht or 0; nul[f.statut] += f.montant_ht is None
+print('@@V ' + json.dumps({'total_ht_par_statut': {k: str(v) for k, v in ht.items()}, 'nb': nb, 'montant_ht_fige_par_statut': {k: str(v) for k, v in fige.items()}, 'montant_ht_null': nul,
+      'emise_payee_retard_total_ht': str(sum(v for k, v in ht.items() if k in ('emise', 'payee', 'en_retard')))}))

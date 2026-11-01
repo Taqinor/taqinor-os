@@ -1,0 +1,57 @@
+{
+  "sha": "1681514e33cd195ca3d46d1d12f12b13a5083280",
+  "date": "2026-11-01",
+  "groupe": "AGNR",
+  "verdict": "PASS",
+  "couvre": [
+    "AGNR53",
+    "AGNR60"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P4.2",
+      "taches": [
+        "AGNR53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-11-01/rejeu-0111b/rejeu-head-1.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Pile native 0111b : Postgres pgvector pg16 :55490, Redis :56391, moto S3 :9191, Django runserver :8790 (code 1681514e3) et :8791 (contre-épreuve 80186d400b, base séparée erp_acc2_old), worker Celery, vite preview E2E_PROXY sur un build VITE_E2E=1 ; connexion demo_admin par /login (Playwright, Chromium headless). Devis 50 × 1 000 HT (60 000 TTC). Variante de gamme de [6 000 MAD ; 60 % ; 30 %] ⇒ sœur [6 000 MAD ; 60 % ; 18 000 MAD], Σ 60 000. Renouvellement : sources envoyées, date_validite 15/10, expirées par la vraie tâche planifiée expire_stale_devis, catalogue baissé à 500 : cas 1 ⇒ copie 30 000 TTC [6 000 MAD ; 60 % ; 6 000 MAD] (Σ 30 000), source intacte ; cas 2 [18 000 MAD ; 60 % ; 10 %] ⇒ 409 `somme_invalide` « L'acompte et les tranches recopiés dépassent le total de la copie (36 000 MAD pour 30 000 MAD). », aucune copie (devis_origine relu : 36 sans copie, agnr53-copies-relues.txt) ; tout en % ⇒ copie 30/60/10 inchangée ; copie ré-enregistrée sans toucher ⇒ PATCH 200, identique. Contre-épreuve 80186d400b : sœur [6 000 ; 60 % ; 30 %], copie cas 1 Σ 33 000 pour 30 000, cas 2 créé (201) à Σ 39 000. Révision V2 non jouée."
+    },
+    {
+      "id": "P5.1",
+      "taches": [
+        "AGNR60"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-11-01/rejeu-0111b/ACCEPTATION-AGNR-ALLER-RETOUR-2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Devis DEV-202611-0027 (id 43) : PATCH échéancier [{commande 30 %, fige_le 2026-10-02T09:00:00+00:00}, {Livraison 60 % sans type, x_inconnue 1}, {solde 10 %}] relu tel quel. Générateur /ventes/devis/nouveau?edit=43, « Enregistrer » sans toucher ⇒ POST replace-lines : entete.echeancier envoyé = objet serveur (fige_le, x_inconnue gardés, aucun type ajouté à la tranche 2) ; Devis.echeancier relu identique ; rouvert et ré-enregistré (tour 2) : identique (comparaison à clés triées — jsonb réordonne les clés). Contre-épreuve : fonctions réelles echeancierVersSaisie/saisieVersEcheancier de 80186d400b sur le même objet ⇒ fige_le et x_inconnue perdus, type « materiel » inventé (agnr51-60-fonctions-old.json) ; même étape FAIL au rejeu AGNR61-E4d (b4923c7f1)."
+    }
+  ]
+}
