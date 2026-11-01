@@ -147,6 +147,22 @@ def pieces_rectificatives(company, debut, fin):
             for b in p.tva_par_taux]
 
 
+def lignes_rectificatives(company, debut, fin):
+    """ATOT47 — lignes SIGNÉES (ordre ``_COMPTA_HEADERS``) des pièces
+    rectificatives, partagées par le journal et l'export comptable : rend
+    ``(ligne, taux, ht, tva, ttc)``, une par taux."""
+    for p, type_libelle, signe, paniers in pieces_rectificatives(company, debut, fin):
+        date_p = p.date_emission.isoformat() if p.date_emission else ''
+        nom = getattr(p.client, 'nom', '') or ''
+        ice = getattr(p.client, 'ice', '') or ''
+        desig = f'{type_libelle} sur {p.facture.reference}' if p.facture_id else type_libelle
+        for taux, ht, tva in paniers:
+            ht, tva = signe * ht, signe * tva
+            ttc = _q2(ht + tva)
+            yield ([p.reference, date_p, type_libelle, nom, ice, desig, '', '',
+                    float(ht), float(taux), float(tva), float(ttc)], taux, ht, tva, ttc)
+
+
 def valider_periode(params):
     """ENF11 (api-fuzz « accepted schema-violating ») — chaque paramètre de
     période RENSEIGNÉ a la forme publiée (``openapi_params.PERIODE``), même
@@ -285,25 +301,14 @@ def export_journal_ventes(company, debut, fin):
     # Pièces rectificatives émises sur la période (ATOT46) : avoirs en
     # NÉGATIF, notes de débit en POSITIF, ventilés par taux et reportés au
     # résumé TVA. Brouillons et pièces annulées exclus.
-    for p, type_libelle, signe, paniers in pieces_rectificatives(company, debut, fin):
-        date_a = p.date_emission.isoformat() if p.date_emission else ''
-        nom = getattr(p.client, 'nom', '') or ''
-        ice = getattr(p.client, 'ice', '') or ''
-        desig = f'{type_libelle} sur {p.facture.reference}' if p.facture_id else type_libelle
-        for taux, ht, tva in paniers:
-            ht, tva = signe * ht, signe * tva
-            ttc = _q2(ht + tva)
-            _append_sur(ws, [
-                p.reference, date_a, type_libelle, nom, ice,
-                desig, '', '',
-                float(ht), float(taux), float(tva), float(ttc),
-            ])
-            bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
-            bucket['ht'] += ht
-            bucket['tva'] += tva
-            tot_ht += ht
-            tot_tva += tva
-            tot_ttc += ttc
+    for ligne, taux, ht, tva, ttc in lignes_rectificatives(company, debut, fin):
+        _append_sur(ws, ligne)
+        bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+        bucket['ht'] += ht
+        bucket['tva'] += tva
+        tot_ht += ht
+        tot_tva += tva
+        tot_ttc += ttc
 
     # Feuille résumé TVA.
     ws2 = wb.create_sheet('Résumé TVA')
@@ -330,8 +335,8 @@ def export_journal_ventes(company, debut, fin):
 
 # ── Export comptable DGI (groundwork) : factures VALIDÉES d'une plage from→to ──
 # Ventilation TVA par ligne, ICE client, totaux HT/TVA/TTC. Excel ET CSV.
-# Lecture seule, borné société, AUCUNE transmission. (Distinct du journal :
-# focalisé sur les factures validées, sans avoirs.)
+# Lecture seule, borné société, AUCUNE transmission. Avoirs (−) et notes de
+# débit (+) émis inclus (ATOT47).
 
 _COMPTA_HEADERS = [
     'Facture', 'Date', 'Type', 'Client', 'ICE client', 'Désignation',
@@ -384,6 +389,13 @@ def _compta_rows(company, debut, fin):
                 tot_ht += ht
                 tot_tva += tva
                 tot_ttc += ttc
+    # ATOT47 (D-ATOT-VER-1 = inclure) — avoirs émis en négatif, notes de débit
+    # émises en positif, une ligne par taux : CA et TVA réels de la période.
+    for ligne, _taux, ht, tva, ttc in lignes_rectificatives(company, debut, fin):
+        rows.append(ligne)
+        tot_ht += ht
+        tot_tva += tva
+        tot_ttc += ttc
     return rows, (tot_ht, tot_tva, tot_ttc)
 
 
