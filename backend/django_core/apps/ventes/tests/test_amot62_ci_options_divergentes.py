@@ -56,9 +56,9 @@ class CiOptionsDivergentesTests(_BaseDevis):
         # les deux paniers existent : hybride + batterie côté « avec ».
         for nom, prix in (('Onduleur hybride Deye 50kW Triphasé', '60000'),
                           ('Batterie Dyness 10 kWh', '14000')):
-            produit = Produit.objects.create(
-                company=self.co, nom=nom, prix_vente=Decimal(prix),
-                prix_achat=Decimal('1'))
+            produit, _ = Produit.objects.get_or_create(
+                company=self.co, nom=nom, defaults={
+                    'prix_vente': Decimal(prix), 'prix_achat': Decimal('1')})
             LigneDevis.objects.create(
                 devis=devis, produit=produit, designation=nom,
                 quantite=Decimal('1'), prix_unitaire=Decimal(prix),
