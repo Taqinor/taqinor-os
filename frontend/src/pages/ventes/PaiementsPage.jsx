@@ -38,6 +38,7 @@ const STATUTS_RELEVE = {
   client_non_identifie: { label: 'Donneur d’ordre inconnu', tone: 'warning' },
   doublon_import: { label: 'Déjà importée', tone: 'info' },
   date_invalide: { label: 'Date illisible', tone: 'danger' },
+  mode_invalide: { label: 'Mode de paiement non reconnu', tone: 'warning' },
   // Statuts propres au bilan du commit (contrat releve_import_commit.json).
   non_selectionnee: { label: 'Non sélectionnée', tone: 'neutral' },
   created: { label: 'Créée', tone: 'success' },
@@ -449,6 +450,9 @@ export default function PaiementsPage() {
                           <Badge tone={STATUTS_RELEVE[l.statut]?.tone ?? 'neutral'}>
                             {STATUTS_RELEVE[l.statut]?.label ?? l.statut}
                           </Badge>
+                          {l.mode_par_defaut && (
+                            <span className="ml-2 text-xs text-muted-foreground">virement (supposé)</span>
+                          )}
                         </td>
                       </tr>
                     ))}

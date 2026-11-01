@@ -82,7 +82,7 @@ TOLERANCE_CENTIME = Decimal('0.01')
 
 # Statuts de ligne qui EXIGENT une décision humaine — la « file de revue ».
 # Aucune de ces lignes n'est jamais affectée automatiquement.
-STATUTS_REVUE = ('ambigu', 'client_non_identifie', 'date_invalide')
+STATUTS_REVUE = ('ambigu', 'client_non_identifie', 'date_invalide', 'mode_invalide')
 # AFAC5 — ligne déjà importée par un relevé antérieur (même clé
 # d'idempotence) : jamais importable, jamais en revue.
 STATUT_DOUBLON = 'doublon_import'
@@ -124,7 +124,8 @@ def _parse_montant(v):
     s = str(v).strip().replace(' ', '').replace('\xa0', '').replace(',', '.')
     try:
         d = Decimal(s)
-        return d if d > 0 else None
+        # AANA69 — plus de deux décimales (« 1200.005 ») : refusé, jamais arrondi en silence.
+        return d if d > 0 and d == d.quantize(Decimal('0.01')) else None
     except InvalidOperation:
         return None
 
@@ -254,7 +255,10 @@ def _match_facture(ref, montant, company, libelle='', ice=''):
 
 
 def _normaliser_mode(mode_raw):
-    """Normalise le libellé de mode du relevé vers un choix ``Paiement.Mode``."""
+    """Normalise le libellé de mode du relevé vers un choix ``Paiement.Mode``.
+
+    AANA69 — vide : « virement » (supposé, ``mode_par_defaut`` à l'aperçu) ;
+    valeur NON reconnue : ``None`` (ligne ``mode_invalide``, jamais écrite)."""
     mode_map = {
         'virement': 'virement', 'wire': 'virement',
         'cheque': 'cheque', 'chèque': 'cheque',
@@ -262,7 +266,7 @@ def _normaliser_mode(mode_raw):
         'carte': 'carte', 'card': 'carte',
         'prelevement': 'prelevement', 'prélèvement': 'prelevement',
     }
-    return mode_map.get((mode_raw or 'virement').strip().lower(), 'virement')
+    return mode_map.get((mode_raw or 'virement').strip().lower())
 
 
 def _marquer_doublons(decisions, company):
@@ -343,13 +347,15 @@ def dry_run(file_bytes, filename, company, max_preview=None, user=None):
         ref = (mapped.get('reference') or '').strip()
         libelle = (mapped.get('libelle') or '').strip()
         ice = (mapped.get('ice') or '').strip()
+        mode = _normaliser_mode(mapped.get('mode'))
+        mode_defaut = not str(mapped.get('mode') or '').strip()
 
         if montant is None:
             # Ligne sans montant valide — souvent une ligne de total/en-tête.
             decisions.append({
                 'ligne': i + 2, 'date': date, 'reference': ref,
                 'libelle': libelle, 'montant': None,
-                'mode': _normaliser_mode(mapped.get('mode')),
+                'mode': mode, 'mode_par_defaut': mode_defaut,
                 'statut': 'montant_invalide',
                 'facture_id': None, 'facture_reference': None,
                 'match_type': None, 'candidats': [],
@@ -363,7 +369,7 @@ def dry_run(file_bytes, filename, company, max_preview=None, user=None):
             decisions.append({
                 'ligne': i + 2, 'date': None, 'reference': ref,
                 'libelle': libelle, 'montant': str(montant),
-                'mode': _normaliser_mode(mapped.get('mode')),
+                'mode': mode, 'mode_par_defaut': mode_defaut,
                 'statut': STATUT_DATE_INVALIDE,
                 'facture_id': None, 'facture_reference': None,
                 'match_type': None, 'candidats': [],
@@ -372,6 +378,9 @@ def dry_run(file_bytes, filename, company, max_preview=None, user=None):
 
         facture, match_type, statut_match, candidats = _match_facture(
             ref, montant, company, libelle=libelle, ice=ice)
+        if mode is None:
+            # AANA69 — mode non reconnu : revue humaine, jamais « virement » muet.
+            facture, match_type, statut_match, candidats = None, None, 'mode_invalide', []
         if facture is not None:
             reste = facture.montant_du
             if reste <= TOLERANCE_CENTIME:
@@ -386,7 +395,7 @@ def dry_run(file_bytes, filename, company, max_preview=None, user=None):
         decisions.append({
             'ligne': i + 2, 'date': date, 'reference': ref,
             'libelle': libelle, 'montant': str(montant),
-            'mode': _normaliser_mode(mapped.get('mode')),
+            'mode': mode, 'mode_par_defaut': mode_defaut,
             'statut': statut,
             'facture_id': facture.id if facture else None,
             'facture_reference': facture.reference if facture else None,
