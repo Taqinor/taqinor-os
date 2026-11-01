@@ -146,13 +146,15 @@ class VentesBiDatasetsTests(TestCase):
         """AANA79 — HT du jeu = somme des ``Facture.total_ht`` (propriété),
         même quand ``montant_ht`` est NULL ; une tranche compte une fois."""
         from apps.ventes.models import LigneFacture
+        from testkit.factories import ProduitFactory
+        produit = ProduitFactory(company=self.company)
         attendus = []
         for i, ht in enumerate(('1000', '500', '250')):
             f = Facture.objects.create(
                 company=self.company, reference='F-AANA79-%d' % i,
                 client=self.client_obj, statut=Facture.Statut.EMISE)
             LigneFacture.objects.create(
-                facture=f, designation='L', quantite=1,
+                facture=f, produit=produit, designation='L', quantite=1,
                 prix_unitaire=Decimal(ht), taux_tva=Decimal('20'))
             attendus.append(f)
         tranche = Facture.objects.create(
