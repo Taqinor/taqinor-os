@@ -1,0 +1,309 @@
+{
+  "mode": "head",
+  "base": "http://127.0.0.1:8790",
+  "run": "head-mvyea9sr",
+  "taux": {
+    "defaut": {
+      "reporting_conversion": {
+        "nb_devis": 1,
+        "nb_acceptes": 0,
+        "nb_factures": 3,
+        "taux_acceptation_pct": null,
+        "nb_envoyes_periode": 0,
+        "nb_acceptes_periode": 0
+      },
+      "q2c_devis": {
+        "total": 1,
+        "envoyes": 0,
+        "acceptes": 0,
+        "refuses": 0,
+        "expires": 0,
+        "taux_acceptation_pct": null,
+        "envoyes_periode": 0,
+        "acceptes_periode": 0,
+        "valeur_pipeline": "0.0"
+      }
+    },
+    "2026-10-01..2026-11-01": {
+      "reporting_conversion": {
+        "nb_devis": 1,
+        "nb_acceptes": 0,
+        "nb_factures": 3,
+        "taux_acceptation_pct": null,
+        "nb_envoyes_periode": 0,
+        "nb_acceptes_periode": 0
+      },
+      "q2c_devis": {
+        "total": 1,
+        "envoyes": 0,
+        "acceptes": 0,
+        "refuses": 0,
+        "expires": 0,
+        "taux_acceptation_pct": null,
+        "envoyes_periode": 0,
+        "acceptes_periode": 0,
+        "valeur_pipeline": "0.0"
+      }
+    },
+    "2020-01-01..2020-01-31": {
+      "reporting_conversion": {
+        "nb_devis": 1,
+        "nb_acceptes": 0,
+        "nb_factures": 3,
+        "taux_acceptation_pct": null,
+        "nb_envoyes_periode": 0,
+        "nb_acceptes_periode": 0
+      },
+      "q2c_devis": {
+        "total": 0,
+        "envoyes": 0,
+        "acceptes": 0,
+        "refuses": 0,
+        "expires": 0,
+        "taux_acceptation_pct": null,
+        "envoyes_periode": 0,
+        "acceptes_periode": 0,
+        "valeur_pipeline": "0.0"
+      }
+    },
+    "ecran_tunnel": {
+      "texte": "Tunnel de conversion\nDevis créés\n1\nDevis acceptés\n0\nFactures émises\n3",
+      "barres": [
+        {
+          "now": "100",
+          "style": "transform: translateX(0%);"
+        },
+        {
+          "now": "0",
+          "style": "transform: translateX(-100%);"
+        },
+        {
+          "now": "100",
+          "style": "transform: translateX(0%);"
+        }
+      ],
+      "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AANA-REPORTING-tunnel.jpg"
+    },
+    "ecran_q2c": {
+      "texte": "Taux d'acceptation\n—\n0 / 0 devis envoyés",
+      "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AANA-Q2C-taux.jpg"
+    }
+  },
+  "incidents_taux": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "etapes": {
+    "TAUX": [
+      {
+        "nom": "defaut : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux",
+        "ok": true,
+        "detail": {
+          "reporting": [
+            null,
+            0,
+            0
+          ],
+          "q2c": [
+            null,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "nom": "2026-10-01..2026-11-01 : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux",
+        "ok": true,
+        "detail": {
+          "reporting": [
+            null,
+            0,
+            0
+          ],
+          "q2c": [
+            null,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "nom": "2020-01-01..2020-01-31 : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux",
+        "ok": true,
+        "detail": {
+          "reporting": [
+            null,
+            0,
+            0
+          ],
+          "q2c": [
+            null,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "nom": "aucun envoi dans la période ⇒ taux null",
+        "ok": true,
+        "detail": {
+          "nb_devis": 1,
+          "nb_acceptes": 0,
+          "nb_factures": 3,
+          "taux_acceptation_pct": null,
+          "nb_envoyes_periode": 0,
+          "nb_acceptes_periode": 0
+        }
+      }
+    ],
+    "TUNNEL": [
+      {
+        "nom": "tunnel : 3 factures pour 1 devis — aucun « 150 », aucun % dans les barres, seul % = taux servi",
+        "ok": true,
+        "detail": {
+          "pourcentages": [],
+          "tauxAffiche": null,
+          "servi": null,
+          "texte": "Tunnel de conversion\nDevis créés\n1\nDevis acceptés\n0\nFactures émises\n3"
+        }
+      },
+      {
+        "nom": "largeur des barres bornée à 100 %",
+        "ok": true,
+        "detail": [
+          {
+            "now": "100",
+            "style": "transform: translateX(0%);"
+          },
+          {
+            "now": "0",
+            "style": "transform: translateX(-100%);"
+          },
+          {
+            "now": "100",
+            "style": "transform: translateX(0%);"
+          }
+        ]
+      },
+      {
+        "nom": "cas réel : plus de factures émises que de devis créés",
+        "ok": true,
+        "detail": {
+          "nb_factures": 3,
+          "nb_devis": 1
+        }
+      },
+      {
+        "nom": "Q2C : hint = acceptes_periode / envoyes_periode servis",
+        "ok": true,
+        "detail": {
+          "texte": "Taux d'acceptation\n—\n0 / 0 devis envoyés",
+          "servi": [
+            0,
+            0,
+            null
+          ]
+        }
+      },
+      {
+        "nom": "persistance : Q2C rechargé identique",
+        "ok": true,
+        "detail": {
+          "tq2": "Taux d'acceptation\n—\n0 / 0 devis envoyés"
+        }
+      }
+    ]
+  },
+  "incidents": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "requetes": [
+    {
+      "m": "POST",
+      "url": "/api/django/token/",
+      "body": "<identifiants retirés>"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"apps\",\"ecran\":\"/apps\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/crm/appareils-equipe/ce-navigateur/",
+      "body": "{\"appareil_id\":\"\",\"navigateur\":\"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessC\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"reporting\",\"ecran\":\"/reporting\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"reporting\",\"ecran\":\"/reporting/quote-to-cash\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"reporting\",\"ecran\":\"/reporting/quote-to-cash\"}"
+    }
+  ]
+}

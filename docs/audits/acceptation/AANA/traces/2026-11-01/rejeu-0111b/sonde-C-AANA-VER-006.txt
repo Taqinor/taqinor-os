@@ -1,0 +1,6 @@
+== old
+{"repro":true,"barres":[{"label":"Devis créés","affiche":"100 %"},{"label":"Devis acceptés","affiche":"30 %"},{"label":"Factures émises","affiche":"150 %"}]}
+verdict : REPRO
+== head
+
+Node.js v22.23.4

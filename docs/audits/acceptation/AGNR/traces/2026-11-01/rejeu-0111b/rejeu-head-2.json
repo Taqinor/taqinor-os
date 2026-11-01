@@ -1,0 +1,719 @@
+{
+  "mode": "head",
+  "base": "http://127.0.0.1:8790",
+  "run": "head-mvye2vk8",
+  "acompte": {
+    "effectifs_industriel": [
+      {
+        "jalon": "commande",
+        "libelle": "Commande",
+        "pct": 30
+      },
+      {
+        "jalon": "livraison_materiel",
+        "libelle": "Livraison du matériel",
+        "pct": 40
+      },
+      {
+        "jalon": "mise_en_service",
+        "libelle": "Mise en service",
+        "pct": 20
+      },
+      {
+        "jalon": "reception_definitive",
+        "libelle": "Réception définitive",
+        "pct": 10
+      }
+    ],
+    "cas": {
+      "6000": {
+        "devis": 41,
+        "ref": "DEV-202611-0025",
+        "ttc": "17000.00",
+        "echeancier_depart": null,
+        "patch_envoye": {
+          "echeancier": [
+            {
+              "libelle": "Commande",
+              "type": "commande",
+              "unite": "montant",
+              "pct_or_montant": 6000,
+              "jalon": "commande"
+            },
+            {
+              "libelle": "Livraison du matériel",
+              "type": "livraison_materiel",
+              "unite": "pct",
+              "pct_or_montant": 40,
+              "jalon": "livraison_materiel"
+            },
+            {
+              "libelle": "Mise en service",
+              "type": "mise_en_service",
+              "unite": "pct",
+              "pct_or_montant": 20,
+              "jalon": "mise_en_service"
+            },
+            {
+              "libelle": "Réception définitive",
+              "type": "reception_definitive",
+              "unite": "montant",
+              "pct_or_montant": 800,
+              "jalon": "reception_definitive"
+            }
+          ]
+        },
+        "generer_pdf": true,
+        "capture_dialogue": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AGNR-ACOMPTE-6000-dialogue.jpg",
+        "ecran_apres": "Aller au contenu\nDevis\nTAQINOR Démo\nERP SOLAIRE\nVENTES\nADMINISTRATEUR\nCockpit\nDevis\nConception 3D\nBons de commande\nFactures\nAvoirs\nEncaissements\nImport relevé bancaire\nRelances / Impayés\nAction requise\nListes de prix\nDossiers réglementaires\nRemises d'encaissement\nToutes les apps\nDéconnexion\nVENTES\nVentes\nDevis\nDevis\n⌘K\n18\nFR\nClair\nSystème\nSombre\nD\ndemo_admin\nDevis\n\n32 devis\n\nExporter Excel\nImprimer\nNouveau devis\nBrouillon\n9\n420 800,00 MAD\nEnvoyé\n1\n80 400,00 MAD\nAccepté\n16\n355 800,00 MAD\nRefusé\n1\n20 000,00 MAD\nExpiré\n4\n208 900,00 MAD\n\nDevis acceptés — option choisie : 0 avec batterie · 14 sans batterie\n\nTous\nBrouillon\nEnvoyé\nAccepté\nRefusé\nExpiré\n⭐ Enregistrer cette vue\nVues\nVoir les versions remplacées (1)\nListe\nBoard\n\tRÉFÉRENCE\tCLIENT\tCRÉÉ LE\tVALIDITÉ\tTOTAL TTC\tSTATUT\tACTIONS\n\t\nDEV-202611-0025\n\t\nACC2 Industriel\n\t01/11/2026\t—\t17 000,00 MAD\nFacturé 0,00 MAD · Payé 0,00 MAD · Reste 17 000,00 MAD\n\t\nBrouillon\n\t\nPDF\nPDF toujours en cours…\nEnvoyer\nGénérer facture\nPassez le devis en « Accepté » pour générer les factures.\n\n\t\nDEV-202611-0024\n\t\nACC2 Copie\n\t01/11/2026\t—\t60 000,00 MAD\nFacturé 0,00 MAD · Payé 0,00 MAD · Reste 60 000,00 MAD\n\t\nBrouillon\n\t\nPDF\nEnvoyer\nGénérer facture\nPassez le devis en « Accepté » pour générer les factures.\n\n\t\nDEV-202611-0023\n\t\nACC2 Copie\n\t01/11/2026\t—\t60 000,00 MAD\nFacturé 0,00 MAD · Payé 0,00 MAD · Reste 60 000,00 MAD\n\t\nBrouillon\n\t\nPDF\nEnvoyer\nGénérer facture\nPassez le devis en « Accepté » pour générer les factures.\n\n\t\nDEV-202611-0022\n\t\nACC2 Copie\n\t01/11/2",
+        "capture_apres": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AGNR-ACOMPTE-6000-apres.jpg",
+        "echeancier_relu": [
+          {
+            "type": "commande",
+            "jalon": "commande",
+            "unite": "montant",
+            "libelle": "Commande",
+            "pct_or_montant": 6000
+          },
+          {
+            "type": "livraison_materiel",
+            "jalon": "livraison_materiel",
+            "unite": "pct",
+            "libelle": "Livraison du matériel",
+            "pct_or_montant": 40
+          },
+          {
+            "type": "mise_en_service",
+            "jalon": "mise_en_service",
+            "unite": "pct",
+            "libelle": "Mise en service",
+            "pct_or_montant": 20
+          },
+          {
+            "type": "reception_definitive",
+            "jalon": "reception_definitive",
+            "unite": "montant",
+            "libelle": "Réception définitive",
+            "pct_or_montant": 800
+          }
+        ],
+        "pdf_proposal": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/AGNR51-6000-proposal.pdf",
+        "pdf_texte": "4\nR É F. D E V I S\nDEV-202611-0025\n01/11/2026\nValable jusqu’au 01/12/2026\nP R O P O S I T I O N — A U T O C O N S O M M A T I O N S O L A I R E I N D U S T R I E L L E\nCentrale solaire 5,5 kWc — head-mvye2vk8 ACC2 Industriel\nRéduire votre coût de l'énergie\nSynthèse\nRentabilité\nÉconomies et retour sur investissement non chiffrés à ce stade : communiquez-nous vos\n12 dernières factures.\nDevis préliminaire — les prix pourront être ajustés après la visite technique\nVotre consommation et votre production\nFacture électrique actuelle non communiquée — transmettez 12 mois de factures et votre consommation de référence se chiffre.\n5,5 kWc\nPuissance crête\nL'installation vise l'autoconsommation : la valeur porte d'abord sur les heures pleines (production en journée). Le soir et la nuit,\nvotre consommation reste fournie par le réseau. \nInvestissement (TTC, clé en main)\n17 000,00 MAD\nProchaines étapes\n1 Visite technique de votre site  ·  2 Validation de l'offre définitive  ·  3 Pose et mise en service\nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nPage 1 / 4  ·  Réf. DEV-202611-0025\n\nV O T R E I N S T A L L A T I O N\nÉquipements & investissement\nDÉSIGNATION\nQTÉ\nP.U. HT\nTVA %\nTOTAL HT\nPanneau mono 550W\n10\n1 000,00\n10 %\n10 000,00\nOnduleur réseau 10kW\n1\n5 000,00\n20 %\n5 000,00\nSous-total HT\n15 000,00 MAD\nTotal HT\n15 000,00 MAD\nTVA\n2 000,00 MAD\nTotal TTC\n17 000,00 MAD\nVotre installation en bref\nModules\n10 × Panneau mono 550W · 550 Wc par module · 5,5 kWc au total\nOnduleurs\n1 × Onduleur réseau 10kW\nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nPage 2 / 4  ·  Réf. DEV-202611-0025\n\nA N A LY S E F I N A N C I È R E\nAucune rentabilité n'est publiée tant qu'elle n'est pas calculée sur vos données.\nRentabilité non chiffrée sur ce dossier\nLes économies annuelles de cette installation n'ont pas encore été calculées sur vos données. Nous préférons ne rien\nafficher plutôt que des flux annuels, un point mort ou un TRI qui ne reposeraient sur aucune mesure.\nÉconomies et retour sur investissement non chiffrés à ce stade : communiquez-nous vos 12 dernières factures.\nInvestissement (TTC, clé en main) : 17 000,00 MAD.\nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nPage 3 / 4  ·  Réf. DEV-202611-0025\n\nD É P L O I E M E N T & C O N D I T I O N S\nÉchéancier de paiement\n35,29 %\nÀ la commande\n5 999,30 MAD TTC\n40 %\nÀ la livraison\n6 800,00 MAD TTC\n20 %\nÀ la mise en service\n3 400,00 MAD TTC\n4,71 %\nÀ la réception définitive\n800,70 MAD TTC\nValeur pour l'entreprise\nISO 50001 — management de l'énergie\nBilan carbone de votre électricité\nGaranties\n2 ans\nInstallation\nDurées : garanties du fabricant (fiches produit) ; pose : engagement de l'installateur.\nServices\nSuivi de production inclus\nConditions générales du devis\nValidité de l’offre : jusqu’au 01/12/2026\nTVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations\nBON POUR ACCORD — POUR LA SOCIÉTÉ\nRaison sociale : \nNom et qualité du signataire : \nICE : \nDate : \nSignature\nCachet de la société\nLu et approuvé — Signature précédée de « Bon pour accord »\nPOUR TAQINOR DÉMO\nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nTAQINOR Démo · demo@taqinor.local · +212 5 22 00 00 00\nLes données de production et de consommation peuvent\nalimenter votre revue énergétique.\nVos clients vous demandent de plus en plus le bilan carbone\nde votre électricité : une part produite par le soleil sur votre\nsite est un élément de réponse.\n• \n• \nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nPage 4 / 4  ·  Réf. DEV-202611-0025\n\n"
+      },
+      "8500": {
+        "devis": 42,
+        "ref": "DEV-202611-0026",
+        "ttc": "17000.00",
+        "echeancier_depart": null,
+        "patch_envoye": {
+          "echeancier": [
+            {
+              "libelle": "Commande",
+              "type": "commande",
+              "unite": "montant",
+              "pct_or_montant": 8500,
+              "jalon": "commande"
+            },
+            {
+              "libelle": "Livraison du matériel",
+              "type": "livraison_materiel",
+              "unite": "pct",
+              "pct_or_montant": 40,
+              "jalon": "livraison_materiel"
+            },
+            {
+              "libelle": "Mise en service",
+              "type": "mise_en_service",
+              "unite": "pct",
+              "pct_or_montant": 20,
+              "jalon": "mise_en_service"
+            },
+            {
+              "libelle": "Réception définitive",
+              "type": "reception_definitive",
+              "unite": "pct",
+              "pct_or_montant": 10,
+              "jalon": "reception_definitive"
+            }
+          ]
+        },
+        "generer_pdf": true,
+        "capture_dialogue": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AGNR-ACOMPTE-8500-dialogue.jpg",
+        "ecran_apres": "Aller au contenu\nDevis\nTAQINOR Démo\nERP SOLAIRE\nVENTES\nADMINISTRATEUR\nCockpit\nDevis\nConception 3D\nBons de commande\nFactures\nAvoirs\nEncaissements\nImport relevé bancaire\nRelances / Impayés\nAction requise\nListes de prix\nDossiers réglementaires\nRemises d'encaissement\nToutes les apps\nDéconnexion\nVENTES\nVentes\nDevis\nDevis\n⌘K\n18\nFR\nClair\nSystème\nSombre\nD\ndemo_admin\nDevis\n\n33 devis\n\nExporter Excel\nImprimer\nNouveau devis\nBrouillon\n10\n437 800,00 MAD\nEnvoyé\n1\n80 400,00 MAD\nAccepté\n16\n355 800,00 MAD\nRefusé\n1\n20 000,00 MAD\nExpiré\n4\n208 900,00 MAD\n\nDevis acceptés — option choisie : 0 avec batterie · 14 sans batterie\n\nTous\nBrouillon\nEnvoyé\nAccepté\nRefusé\nExpiré\n⭐ Enregistrer cette vue\nVues\nVoir les versions remplacées (1)\nListe\nBoard\n\tRÉFÉRENCE\tCLIENT\tCRÉÉ LE\tVALIDITÉ\tTOTAL TTC\tSTATUT\tACTIONS\n\t\nDEV-202611-0026\n\t\nACC2 Industriel\n\t01/11/2026\t—\t17 000,00 MAD\nFacturé 0,00 MAD · Payé 0,00 MAD · Reste 17 000,00 MAD\n\t\nBrouillon\n\t\nPDF\nEnvoyer\nGénérer facture\nPassez le devis en « Accepté » pour générer les factures.\n\n\t\nDEV-202611-0025\n\t\nACC2 Industriel\n\t01/11/2026\t—\t17 000,00 MAD\nFacturé 0,00 MAD · Payé 0,00 MAD · Reste 17 000,00 MAD\n\t\nBrouillon\n\t\nPDF\nEnvoyer\nGénérer facture\nPassez le devis en « Accepté » pour générer les factures.\n\n\t\nDEV-202611-0024\n\t\nACC2 Copie\n\t01/11/2026\t—\t60 000,00 MAD\nFacturé 0,00 MAD · Payé 0,00 MAD · Reste 60 000,00 MAD\n\t\nBrouillon\n\t\nPDF\nEnvoyer\nGénérer facture\nPassez le devis en « Accepté » pour générer les factures.\n\n\t\nDEV-202611-0023\n\t\nACC2 Copie\n\t01/11/2026\t—\t60 000,00 M",
+        "capture_apres": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AGNR-ACOMPTE-8500-apres.jpg",
+        "echeancier_relu": [
+          {
+            "type": "commande",
+            "jalon": "commande",
+            "unite": "montant",
+            "libelle": "Commande",
+            "pct_or_montant": 8500
+          },
+          {
+            "type": "livraison_materiel",
+            "jalon": "livraison_materiel",
+            "unite": "pct",
+            "libelle": "Livraison du matériel",
+            "pct_or_montant": 40
+          },
+          {
+            "type": "mise_en_service",
+            "jalon": "mise_en_service",
+            "unite": "pct",
+            "libelle": "Mise en service",
+            "pct_or_montant": 20
+          },
+          {
+            "type": "reception_definitive",
+            "jalon": "reception_definitive",
+            "unite": "pct",
+            "libelle": "Réception définitive",
+            "pct_or_montant": 10
+          }
+        ],
+        "pdf_proposal": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/AGNR51-8500-proposal.pdf",
+        "pdf_texte": "4\nR É F. D E V I S\nDEV-202611-0026\n01/11/2026\nValable jusqu’au 01/12/2026\nP R O P O S I T I O N — A U T O C O N S O M M A T I O N S O L A I R E I N D U S T R I E L L E\nCentrale solaire 5,5 kWc — head-mvye2vk8 ACC2 Industriel\nRéduire votre coût de l'énergie\nSynthèse\nRentabilité\nÉconomies et retour sur investissement non chiffrés à ce stade : communiquez-nous vos\n12 dernières factures.\nDevis préliminaire — les prix pourront être ajustés après la visite technique\nVotre consommation et votre production\nFacture électrique actuelle non communiquée — transmettez 12 mois de factures et votre consommation de référence se chiffre.\n5,5 kWc\nPuissance crête\nL'installation vise l'autoconsommation : la valeur porte d'abord sur les heures pleines (production en journée). Le soir et la nuit,\nvotre consommation reste fournie par le réseau. \nInvestissement (TTC, clé en main)\n17 000,00 MAD\nProchaines étapes\n1 Visite technique de votre site  ·  2 Validation de l'offre définitive  ·  3 Pose et mise en service\nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nPage 1 / 4  ·  Réf. DEV-202611-0026\n\nV O T R E I N S T A L L A T I O N\nÉquipements & investissement\nDÉSIGNATION\nQTÉ\nP.U. HT\nTVA %\nTOTAL HT\nPanneau mono 550W\n10\n1 000,00\n10 %\n10 000,00\nOnduleur réseau 10kW\n1\n5 000,00\n20 %\n5 000,00\nSous-total HT\n15 000,00 MAD\nTotal HT\n15 000,00 MAD\nTVA\n2 000,00 MAD\nTotal TTC\n17 000,00 MAD\nVotre installation en bref\nModules\n10 × Panneau mono 550W · 550 Wc par module · 5,5 kWc au total\nOnduleurs\n1 × Onduleur réseau 10kW\nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nPage 2 / 4  ·  Réf. DEV-202611-0026\n\nA N A LY S E F I N A N C I È R E\nAucune rentabilité n'est publiée tant qu'elle n'est pas calculée sur vos données.\nRentabilité non chiffrée sur ce dossier\nLes économies annuelles de cette installation n'ont pas encore été calculées sur vos données. Nous préférons ne rien\nafficher plutôt que des flux annuels, un point mort ou un TRI qui ne reposeraient sur aucune mesure.\nÉconomies et retour sur investissement non chiffrés à ce stade : communiquez-nous vos 12 dernières factures.\nInvestissement (TTC, clé en main) : 17 000,00 MAD.\nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nPage 3 / 4  ·  Réf. DEV-202611-0026\n\nD É P L O I E M E N T & C O N D I T I O N S\nÉchéancier de paiement\n50 %\nÀ la commande\n8 500,00 MAD TTC\n40 %\nÀ la livraison\n6 800,00 MAD TTC\n20 %\nÀ la mise en service\n3 400,00 MAD TTC\n-10 %\nÀ la réception définitive\n-1 700,00 MAD TTC\nValeur pour l'entreprise\nISO 50001 — management de l'énergie\nBilan carbone de votre électricité\nGaranties\n2 ans\nInstallation\nDurées : garanties du fabricant (fiches produit) ; pose : engagement de l'installateur.\nServices\nSuivi de production inclus\nConditions générales du devis\nValidité de l’offre : jusqu’au 01/12/2026\nTVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations\nBON POUR ACCORD — POUR LA SOCIÉTÉ\nRaison sociale : \nNom et qualité du signataire : \nICE : \nDate : \nSignature\nCachet de la société\nLu et approuvé — Signature précédée de « Bon pour accord »\nPOUR TAQINOR DÉMO\nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nTAQINOR Démo · demo@taqinor.local · +212 5 22 00 00 00\nLes données de production et de consommation peuvent\nalimenter votre revue énergétique.\nVos clients vous demandent de plus en plus le bilan carbone\nde votre électricité : une part produite par le soleil sur votre\nsite est un élément de réponse.\n• \n• \nTAQINOR Démo  ·  demo@taqinor.local  ·  +212 5 22 00 00 00\nPage 4 / 4  ·  Réf. DEV-202611-0026\n\n"
+      }
+    }
+  },
+  "incidents_acompte": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "aller": {
+    "devis": 43,
+    "ref": "DEV-202611-0027",
+    "patch": 200,
+    "echeancier_servi_avant": [
+      {
+        "type": "commande",
+        "jalon": "commande",
+        "unite": "pct",
+        "fige_le": "2026-10-02T09:00:00+00:00",
+        "libelle": "Commande",
+        "pct_or_montant": 30
+      },
+      {
+        "jalon": "livraison_materiel",
+        "unite": "pct",
+        "libelle": "Livraison",
+        "x_inconnue": 1,
+        "pct_or_montant": 60
+      },
+      {
+        "type": "solde",
+        "unite": "pct",
+        "libelle": "Solde",
+        "pct_or_montant": 10
+      }
+    ],
+    "tour1": {
+      "requete": "/api/django/ventes/devis/43/replace-lines/",
+      "echeancier_envoye": [
+        {
+          "type": "commande",
+          "unite": "pct",
+          "fige_le": "2026-10-02T09:00:00+00:00",
+          "libelle": "Commande",
+          "pct_or_montant": 30,
+          "jalon": "commande"
+        },
+        {
+          "unite": "pct",
+          "libelle": "Livraison",
+          "x_inconnue": 1,
+          "pct_or_montant": 60,
+          "jalon": "livraison_materiel"
+        },
+        {
+          "type": "solde",
+          "unite": "pct",
+          "libelle": "Solde",
+          "pct_or_montant": 10
+        }
+      ],
+      "echeancier_relu": [
+        {
+          "type": "commande",
+          "jalon": "commande",
+          "unite": "pct",
+          "fige_le": "2026-10-02T09:00:00+00:00",
+          "libelle": "Commande",
+          "pct_or_montant": 30
+        },
+        {
+          "jalon": "livraison_materiel",
+          "unite": "pct",
+          "libelle": "Livraison",
+          "x_inconnue": 1,
+          "pct_or_montant": 60
+        },
+        {
+          "type": "solde",
+          "unite": "pct",
+          "libelle": "Solde",
+          "pct_or_montant": 10
+        }
+      ],
+      "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AGNR-ALLER-RETOUR-1.jpg",
+      "url_apres": "http://127.0.0.1:5190/ventes/devis/nouveau?edit=43"
+    },
+    "tour2": {
+      "requete": "/api/django/ventes/devis/43/replace-lines/",
+      "echeancier_envoye": [
+        {
+          "type": "commande",
+          "unite": "pct",
+          "fige_le": "2026-10-02T09:00:00+00:00",
+          "libelle": "Commande",
+          "pct_or_montant": 30,
+          "jalon": "commande"
+        },
+        {
+          "unite": "pct",
+          "libelle": "Livraison",
+          "x_inconnue": 1,
+          "pct_or_montant": 60,
+          "jalon": "livraison_materiel"
+        },
+        {
+          "type": "solde",
+          "unite": "pct",
+          "libelle": "Solde",
+          "pct_or_montant": 10
+        }
+      ],
+      "echeancier_relu": [
+        {
+          "type": "commande",
+          "jalon": "commande",
+          "unite": "pct",
+          "fige_le": "2026-10-02T09:00:00+00:00",
+          "libelle": "Commande",
+          "pct_or_montant": 30
+        },
+        {
+          "jalon": "livraison_materiel",
+          "unite": "pct",
+          "libelle": "Livraison",
+          "x_inconnue": 1,
+          "pct_or_montant": 60
+        },
+        {
+          "type": "solde",
+          "unite": "pct",
+          "libelle": "Solde",
+          "pct_or_montant": 10
+        }
+      ],
+      "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AGNR-ALLER-RETOUR-2.jpg",
+      "url_apres": "http://127.0.0.1:5190/ventes/devis/nouveau?edit=43"
+    }
+  },
+  "incidents_aller": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "etapes": {
+    "ACOMPTE": [
+      {
+        "nom": "6 000 : PATCH envoyé = [commande 6 000 MAD ; 40 % ; 20 % ; réception 800 MAD]",
+        "ok": true,
+        "detail": [
+          {
+            "libelle": "Commande",
+            "type": "commande",
+            "unite": "montant",
+            "pct_or_montant": 6000,
+            "jalon": "commande"
+          },
+          {
+            "libelle": "Livraison du matériel",
+            "type": "livraison_materiel",
+            "unite": "pct",
+            "pct_or_montant": 40,
+            "jalon": "livraison_materiel"
+          },
+          {
+            "libelle": "Mise en service",
+            "type": "mise_en_service",
+            "unite": "pct",
+            "pct_or_montant": 20,
+            "jalon": "mise_en_service"
+          },
+          {
+            "libelle": "Réception définitive",
+            "type": "reception_definitive",
+            "unite": "montant",
+            "pct_or_montant": 800,
+            "jalon": "reception_definitive"
+          }
+        ]
+      },
+      {
+        "nom": "6 000 : échéancier stocké = échéancier envoyé (serveur ne réécrit pas)",
+        "ok": false,
+        "detail": [
+          {
+            "type": "commande",
+            "jalon": "commande",
+            "unite": "montant",
+            "libelle": "Commande",
+            "pct_or_montant": 6000
+          },
+          {
+            "type": "livraison_materiel",
+            "jalon": "livraison_materiel",
+            "unite": "pct",
+            "libelle": "Livraison du matériel",
+            "pct_or_montant": 40
+          },
+          {
+            "type": "mise_en_service",
+            "jalon": "mise_en_service",
+            "unite": "pct",
+            "libelle": "Mise en service",
+            "pct_or_montant": 20
+          },
+          {
+            "type": "reception_definitive",
+            "jalon": "reception_definitive",
+            "unite": "montant",
+            "libelle": "Réception définitive",
+            "pct_or_montant": 800
+          }
+        ]
+      },
+      {
+        "nom": "6 000 : PDF (/proposal devis_final) imprime 6 000,00 et 800,00 MAD en dernière tranche",
+        "ok": false,
+        "detail": [
+          "6 800,00 MAD TTC"
+        ]
+      },
+      {
+        "nom": "8 500 : aucune tranche inventée — la sortie garde le % déclaré (10 %) en dernière tranche",
+        "ok": true,
+        "detail": {
+          "patch": [
+            {
+              "libelle": "Commande",
+              "type": "commande",
+              "unite": "montant",
+              "pct_or_montant": 8500,
+              "jalon": "commande"
+            },
+            {
+              "libelle": "Livraison du matériel",
+              "type": "livraison_materiel",
+              "unite": "pct",
+              "pct_or_montant": 40,
+              "jalon": "livraison_materiel"
+            },
+            {
+              "libelle": "Mise en service",
+              "type": "mise_en_service",
+              "unite": "pct",
+              "pct_or_montant": 20,
+              "jalon": "mise_en_service"
+            },
+            {
+              "libelle": "Réception définitive",
+              "type": "reception_definitive",
+              "unite": "pct",
+              "pct_or_montant": 10,
+              "jalon": "reception_definitive"
+            }
+          ],
+          "ecran": "Aller au contenu\nDevis\nTAQINOR Démo\nERP SOLAIRE\nVENTES\nADMINISTRATEUR\nCockpit\nDevis\nConception 3D\nBons de commande\nFactures\nAvoirs\nEncaissements\nImport relevé bancaire\nRelances / Impayés\nAction requise\nListes de prix\nDossiers réglementaires\nRemises d'encaissement\nToutes les apps\nDéconnexion\nVENTES\nV"
+        }
+      }
+    ],
+    "ALLER": [
+      {
+        "nom": "tour 1 : enregistrement envoyé (replace-lines)",
+        "ok": true,
+        "detail": {
+          "requete": "/api/django/ventes/devis/43/replace-lines/",
+          "url": "http://127.0.0.1:5190/ventes/devis/nouveau?edit=43"
+        }
+      },
+      {
+        "nom": "tour 1 : échéancier ENVOYÉ = objet serveur (fige_le, x_inconnue gardés, aucun type ajouté)",
+        "ok": false,
+        "detail": [
+          {
+            "type": "commande",
+            "unite": "pct",
+            "fige_le": "2026-10-02T09:00:00+00:00",
+            "libelle": "Commande",
+            "pct_or_montant": 30,
+            "jalon": "commande"
+          },
+          {
+            "unite": "pct",
+            "libelle": "Livraison",
+            "x_inconnue": 1,
+            "pct_or_montant": 60,
+            "jalon": "livraison_materiel"
+          },
+          {
+            "type": "solde",
+            "unite": "pct",
+            "libelle": "Solde",
+            "pct_or_montant": 10
+          }
+        ]
+      },
+      {
+        "nom": "tour 1 : Devis.echeancier relu identique",
+        "ok": true,
+        "detail": [
+          {
+            "type": "commande",
+            "jalon": "commande",
+            "unite": "pct",
+            "fige_le": "2026-10-02T09:00:00+00:00",
+            "libelle": "Commande",
+            "pct_or_montant": 30
+          },
+          {
+            "jalon": "livraison_materiel",
+            "unite": "pct",
+            "libelle": "Livraison",
+            "x_inconnue": 1,
+            "pct_or_montant": 60
+          },
+          {
+            "type": "solde",
+            "unite": "pct",
+            "libelle": "Solde",
+            "pct_or_montant": 10
+          }
+        ]
+      },
+      {
+        "nom": "tour 2 (rouvert, ré-enregistré) : identique",
+        "ok": false,
+        "detail": [
+          {
+            "type": "commande",
+            "jalon": "commande",
+            "unite": "pct",
+            "fige_le": "2026-10-02T09:00:00+00:00",
+            "libelle": "Commande",
+            "pct_or_montant": 30
+          },
+          {
+            "jalon": "livraison_materiel",
+            "unite": "pct",
+            "libelle": "Livraison",
+            "x_inconnue": 1,
+            "pct_or_montant": 60
+          },
+          {
+            "type": "solde",
+            "unite": "pct",
+            "libelle": "Solde",
+            "pct_or_montant": 10
+          }
+        ]
+      }
+    ]
+  },
+  "incidents": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "requetes": [
+    {
+      "m": "POST",
+      "url": "/api/django/token/",
+      "body": "<identifiants retirés>"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"apps\",\"ecran\":\"/apps\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/crm/appareils-equipe/ce-navigateur/",
+      "body": "{\"appareil_id\":\"\",\"navigateur\":\"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessC\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"ventes\",\"ecran\":\"/ventes/devis\"}"
+    },
+    {
+      "m": "PATCH",
+      "url": "/api/django/ventes/devis/41/",
+      "body": "{\"echeancier\":[{\"libelle\":\"Commande\",\"type\":\"commande\",\"unite\":\"montant\",\"pct_or_montant\":6000,\"jalon\":\"commande\"},{\"libelle\":\"Livraison du matériel\",\"type\":\"livraison_materiel\",\"unite\":\"pct\",\"pct_or_montant\":40,\"jalon\":\"livraison_materiel\"},{\"libelle\":\"Mise en service\",\"type\":\"mise_en_service\",\"unite\":\"pct\",\"pct_or_montant\":20,\"jalon\":\"mise_en_service\"},{\"libelle\":\"Réception définitive\",\"type\":\"reception_definitive\",\"unite\":\"montant\",\"pct_or_montant\":800,\"jalon\":\"reception_definitive\"}]}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/ventes/devis/41/generer-pdf/",
+      "body": "{\"pdf_mode\":\"full\",\"show_monthly\":true,\"devis_final\":true,\"include_etude\":false,\"include_calepinage\":null}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"ventes\",\"ecran\":\"/ventes/devis\"}"
+    },
+    {
+      "m": "PATCH",
+      "url": "/api/django/ventes/devis/42/",
+      "body": "{\"echeancier\":[{\"libelle\":\"Commande\",\"type\":\"commande\",\"unite\":\"montant\",\"pct_or_montant\":8500,\"jalon\":\"commande\"},{\"libelle\":\"Livraison du matériel\",\"type\":\"livraison_materiel\",\"unite\":\"pct\",\"pct_or_montant\":40,\"jalon\":\"livraison_materiel\"},{\"libelle\":\"Mise en service\",\"type\":\"mise_en_service\",\"unite\":\"pct\",\"pct_or_montant\":20,\"jalon\":\"mise_en_service\"},{\"libelle\":\"Réception définitive\",\"type\":\"reception_definitive\",\"unite\":\"pct\",\"pct_or_montant\":10,\"jalon\":\"reception_definitive\"}]}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/ventes/devis/42/generer-pdf/",
+      "body": "{\"pdf_mode\":\"full\",\"show_monthly\":true,\"devis_final\":true,\"include_etude\":false,\"include_calepinage\":null}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"ventes\",\"ecran\":\"/ventes/devis/nouveau\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/ventes/etude-horaire/preview/",
+      "body": "{\"dimensionner\":true,\"devis\":43}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/ventes/etude-horaire/preview/",
+      "body": "{\"dimensionner\":true,\"devis\":43,\"kwc\":4.4}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/onboarding/tours/devis/vu/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/ventes/devis/43/replace-lines/",
+      "body": "{\"lignes\":[{\"produit\":2,\"designation\":\"Panneau mono 550W\",\"quantite\":\"8\",\"prix_unitaire\":\"2290.00\",\"remise\":\"0\",\"taux_tva\":\"20\",\"groupe_index\":null,\"groupe_label\":\"\",\"optionnelle\":false,\"type_ligne\":\"produit\",\"ordre\":0,\"variante\":\"\",\"prix_manuel\":false,\"quantite_manuelle\":false,\"role_devis\":\"panneau\",\"lot\":null,\"ligne_composee\":true,\"tva_base_legale\":\"\"},{\"produit\":5,\"designation\":\"Onduleur réseau 10kW\",\"quantite\":\"1\",\"prix_unitaire\":\"18900.00\",\"remise\":\"0\",\"taux_tva\":\"20\",\"groupe_index\":null,\"groupe_label\":\"\",\"optionnelle\":false,\"type_ligne\":\"produit\",\"ordre\":1,\"variante\":\"\",\"prix_manuel\":false,\"quantite_manuelle\":false,\"role_devis\":\"onduleur_reseau\",\"lot\":null,\"ligne_composee\":true,\"tva_base_legale\":\"\"}],\"entete\":{\"date_validite\":null,\"note\":null,\"mode_installation\":\"residentiel\",\"taux_tva\":\"20.00\",\"remise_globale\":\"0\",\"prix_cible_kwc\":null,\"echeancier\":[{\"type\":\"commande\",\"unite\":\"pct\",\"fige_le\":\"2026-10-02T09:00:00+00:00\",\"libelle\":\"Commande\",\"pct_or_montant\":30,\"jalon\":\"commande\"},{\"unite\":\"pct\",\"libelle\":\"Livraison\",\"x_inconnue\":1,\"pct_or_montant\":60,\"jalon\":\"livraison_materiel\"},{\"type\":\"solde\",\"unite\":\"pct\",\"libelle\":\"Solde\",\"pct_or_montant\":10}]},\"etude_params\":{\"scenario\":\"Les deux (Sans + Avec)\",\"recommended_option\":\"Avec batterie\",\"nombre_proprietes\":null},\"expected_updated_at\":\"2026-11-01T22:18:55.499906Z\"}"
+    },
+    {
+      "m": "PATCH",
+      "url": "/api/django/ventes/devis/43/etude-params/",
+      "body": "{\"scenario\":\"Les deux (Sans + Avec)\",\"recommended_option\":\"Avec batterie\",\"nombre_proprietes\":null}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"ventes\",\"ecran\":\"/ventes/devis/nouveau\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/ventes/etude-horaire/preview/",
+      "body": "{\"dimensionner\":true,\"devis\":43}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/ventes/etude-horaire/preview/",
+      "body": "{\"dimensionner\":true,\"devis\":43,\"kwc\":4.4}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/ventes/devis/43/replace-lines/",
+      "body": "{\"lignes\":[{\"produit\":2,\"designation\":\"Panneau mono 550W\",\"quantite\":\"8\",\"prix_unitaire\":\"2290.00\",\"remise\":\"0\",\"taux_tva\":\"20\",\"groupe_index\":null,\"groupe_label\":\"\",\"optionnelle\":false,\"type_ligne\":\"produit\",\"ordre\":0,\"variante\":\"\",\"prix_manuel\":false,\"quantite_manuelle\":false,\"role_devis\":\"panneau\",\"lot\":null,\"ligne_composee\":true,\"tva_base_legale\":\"\"},{\"produit\":5,\"designation\":\"Onduleur réseau 10kW\",\"quantite\":\"1\",\"prix_unitaire\":\"18900.00\",\"remise\":\"0\",\"taux_tva\":\"20\",\"groupe_index\":null,\"groupe_label\":\"\",\"optionnelle\":false,\"type_ligne\":\"produit\",\"ordre\":1,\"variante\":\"\",\"prix_manuel\":false,\"quantite_manuelle\":false,\"role_devis\":\"onduleur_reseau\",\"lot\":null,\"ligne_composee\":true,\"tva_base_legale\":\"\"}],\"entete\":{\"date_validite\":null,\"note\":null,\"mode_installation\":\"residentiel\",\"taux_tva\":\"20.00\",\"remise_globale\":\"0\",\"prix_cible_kwc\":null,\"echeancier\":[{\"type\":\"commande\",\"unite\":\"pct\",\"fige_le\":\"2026-10-02T09:00:00+00:00\",\"libelle\":\"Commande\",\"pct_or_montant\":30,\"jalon\":\"commande\"},{\"unite\":\"pct\",\"libelle\":\"Livraison\",\"x_inconnue\":1,\"pct_or_montant\":60,\"jalon\":\"livraison_materiel\"},{\"type\":\"solde\",\"unite\":\"pct\",\"libelle\":\"Solde\",\"pct_or_montant\":10}]},\"etude_params\":{\"scenario\":\"Les deux (Sans + Avec)\",\"recommended_option\":\"Avec batterie\",\"nombre_proprietes\":null},\"expected_updated_at\":\"2026-11-01T22:19:01.473131Z\"}"
+    },
+    {
+      "m": "PATCH",
+      "url": "/api/django/ventes/devis/43/etude-params/",
+      "body": "{\"scenario\":\"Les deux (Sans + Avec)\",\"recommended_option\":\"Avec batterie\",\"nombre_proprietes\":null}"
+    }
+  ]
+}

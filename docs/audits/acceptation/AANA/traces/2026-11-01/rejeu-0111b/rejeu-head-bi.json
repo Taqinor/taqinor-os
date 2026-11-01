@@ -1,0 +1,266 @@
+{
+  "mode": "head",
+  "base": "http://127.0.0.1:8790",
+  "run": "head-mvydwz9d",
+  "bi": {
+    "run_total": {
+      "st": 200,
+      "body": {
+        "dataset": "ventes_factures",
+        "nb": 1,
+        "rows": [
+          {
+            "ht": 54340,
+            "ttc": 65168,
+            "nb": 13
+          }
+        ]
+      },
+      "ct": "application/json"
+    },
+    "run_montant_fige": {
+      "st": 200,
+      "body": {
+        "dataset": "ventes_factures",
+        "nb": 1,
+        "rows": [
+          {
+            "ht_fige": 20000,
+            "nb": 13
+          }
+        ]
+      },
+      "ct": "application/json"
+    },
+    "par_statut": {
+      "st": 200,
+      "body": {
+        "dataset": "ventes_factures",
+        "nb": 4,
+        "rows": [
+          {
+            "statut": "annulee",
+            "ht": 505,
+            "nb": 1
+          },
+          {
+            "statut": "brouillon",
+            "ht": 600,
+            "nb": 3
+          },
+          {
+            "statut": "emise",
+            "ht": 44520,
+            "nb": 10
+          },
+          {
+            "statut": "payee",
+            "ht": 9820,
+            "nb": 3
+          }
+        ]
+      },
+      "ct": "application/json"
+    },
+    "meta_champs": {
+      "name": "ventes_factures",
+      "label": "Factures",
+      "fields": [
+        "id",
+        "statut",
+        "type_facture",
+        "mois_emission",
+        "total_ht",
+        "total_tva",
+        "total_ttc",
+        "montant_ht",
+        "montant_tva",
+        "montant_ttc",
+        "montant_paye",
+        "reste_du",
+        "echue_bool",
+        "client",
+        "date_echeance"
+      ],
+      "champs": [
+        {
+          "name": "id",
+          "label": "Factures",
+          "type": "mesure"
+        },
+        {
+          "name": "statut",
+          "label": "Statut",
+          "type": "dimension"
+        },
+        {
+          "name": "type_facture",
+          "label": "Type de facture",
+          "type": "dimension"
+        },
+        {
+          "name": "mois_emission",
+          "label": "Mois d'émission",
+          "type": "temps"
+        },
+        {
+          "name": "total_ht",
+          "label": "Montant HT",
+          "type": "mesure"
+        },
+        {
+          "name": "total_tva",
+          "label": "TVA",
+          "type": "mesure"
+        },
+        {
+          "name": "total_ttc",
+          "label": "Montant TTC",
+          "type": "mesure"
+        },
+        {
+          "name": "montant_ht",
+          "label": "HT figé (échéancier)",
+          "type": "mesure"
+        },
+        {
+          "name": "montant_tva",
+          "label": "TVA figée (échéancier)",
+          "type": "mesure"
+        },
+        {
+          "name": "montant_ttc",
+          "label": "TTC figé (échéancier)",
+          "type": "mesure"
+        },
+        {
+          "name": "montant_paye",
+          "label": "Montant payé",
+          "type": "mesure"
+        },
+        {
+          "name": "reste_du",
+          "label": "Reste dû",
+          "type": "mesure"
+        },
+        {
+          "name": "echue_bool",
+          "label": "Échue",
+          "type": "dimension"
+        },
+        {
+          "name": "client",
+          "label": "Client (id)",
+          "type": "dimension"
+        },
+        {
+          "name": "date_echeance",
+          "label": "Date d'échéance",
+          "type": "temps"
+        }
+      ],
+      "mesures": [
+        "id",
+        "total_ht",
+        "total_tva",
+        "total_ttc",
+        "montant_ht",
+        "montant_tva",
+        "montant_ttc",
+        "montant_paye",
+        "reste_du"
+      ],
+      "dimensions": [
+        "statut",
+        "type_facture",
+        "echue_bool",
+        "client"
+      ],
+      "temps": [
+        "mois_emission",
+        "date_echeance"
+      ]
+    },
+    "ecran": "Aller au contenu\nExplorateur de données\nTAQINOR Démo\nERP SOLAIRE\nDONNÉES\nADMINISTRATEUR\nExplorateur\nToutes les apps\nDéconnexion\nDONNÉES\nDonnées\nExplorateur de données\nExplorateur de données\n⌘K\n10\nFR\nClair\nSystème\nSombre\nD\ndemo_admin\nExplorateur de données\n\nConstruisez une requête sur un jeu de données enregistré, exécutez-la et sauvegardez-la (FG382).\n\nJeux de données\n11 enregistré(s)\n\nLe catalogue ne contient que les jeux de données réellement déclarés par les modules ; il s'étoffera à mesure qu'ils en publient.\n\nChantiers\nClients\nPistes (leads)\nContrats de maintenance\nTickets SAV\nBons de commande fournisseur\nMouvements de stock\nProduits\nDevis\nFactures\nPaiements\nConstruire la requête\nChamps affichés\nid\nstatut\ntype_facture\nmois_emission\ntotal_ht\ntotal_tva\ntotal_ttc\nmontant_ht\nmontant_tva\nmontant_ttc\nmontant_paye\nreste_du\nechue_bool\nclient\ndate_echeance\nstatut\nSomme\ntotal_ht\nExécuter\nVisible par toute la société\nSauvegarder\nRésultat — 4 ligne(s)\nstatut\tsum_total_ht\nannulee\t505\nbrouillon\t600\nemise\t44520\npayee\t9820\nRequêtes sauvegardées\n\nAucune requête sauvegardée pour l'instant.",
+    "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AANA-BI-explorateur.jpg"
+  },
+  "incidents_bi": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "etapes": {
+    "BI": [
+      {
+        "nom": "explorateur : somme total_ht servie (factures émises/payées/en retard)",
+        "ok": true,
+        "detail": {
+          "st": 200,
+          "rows": [
+            {
+              "ht": 54340,
+              "ttc": 65168,
+              "nb": 13
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "incidents": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "requetes": [
+    {
+      "m": "POST",
+      "url": "/api/django/token/",
+      "body": "<identifiants retirés>"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"apps\",\"ecran\":\"/apps\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/crm/appareils-equipe/ce-navigateur/",
+      "body": "{\"appareil_id\":\"\",\"navigateur\":\"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessC\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"donnees\",\"ecran\":\"/donnees/explorateur\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/core/saved-queries/run/",
+      "body": "{\"dataset\":\"ventes_factures\",\"spec\":{\"group_by\":[\"statut\"],\"aggregates\":[{\"alias\":\"sum_total_ht\",\"fn\":\"sum\",\"field\":\"total_ht\"}],\"limit\":50}}"
+    }
+  ]
+}
