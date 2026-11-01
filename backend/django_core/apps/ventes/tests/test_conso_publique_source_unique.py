@@ -150,6 +150,56 @@ class ConsoPubliqueTests(_CJ2bBase):
         for saison, serie in courbes['consommation'].items():
             self.assertGreater(serie['kwh_jour'], 0, saison)
 
+    def test_factures_ecran_priment_comme_dans_l_etude(self):
+        """AGNR54 (C-AGNR-VER-007) — factures écran 500 / 1 200 ≠ lead 1 800 :
+        au niveau 8 les lecteurs publics servent la série de l'étude
+        (``profil_conso_du_devis``, source ``facture_hiver_ete``) ; au niveau
+        7 la lecture d'hier (factures du lead, nouveaux rendus seulement).
+        Mutant : remettre ``lead_bills_for_devis`` ⇒ [1023]×12, échec."""
+        from apps.ventes.domain.regles_calcul import (
+            REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_3110)
+        from apps.ventes.etude_horaire import (
+            _reglages_tarifaires, profil_conso_du_devis)
+        from apps.ventes.models import Devis
+        from apps.ventes.public.payload_horaire import (
+            _profil_horaire_pour_devis)
+        from apps.ventes.quote_engine.montants import arrondi_affichage
+
+        devis, _link = self._devis('conso-ecran', scenario='Sans batterie',
+                                   avec_batterie=False)
+        params = dict(devis.etude_params or {})
+        params['factures_hiver_ete'] = {
+            'hiver_mad': 500, 'ete_mad': 1200, 'ete_differente': True}
+        Devis.objects.filter(pk=devis.pk).update(
+            etude_params=params, regles_calcul=REGLES_CONSO_PUBLIQUE_0111)
+        devis.refresh_from_db()
+        tranches, charges = _reglages_tarifaires(devis.company)
+        etude, source, _detail = profil_conso_du_devis(
+            devis, tranches=tranches, charges_fixes_mad=charges)
+        self.assertEqual(source, 'facture_hiver_ete')
+        self.assertEqual([round(v) for v in etude],
+                         [310] * 4 + [653] * 6 + [310] * 2)
+        self.assertEqual(_profil_horaire_pour_devis(devis)[1], etude)
+        self.assertEqual(payload_economie._monthly_consumption(devis),
+                         [arrondi_affichage(v) for v in etude])
+        # Niveau 7 (devis envoyé avant AGNR54) : sa page d'hier, inchangée.
+        Devis.objects.filter(pk=devis.pk).update(
+            regles_calcul=REGLES_ECARTS_3110)
+        devis.refresh_from_db()
+        hier = _profil_horaire_pour_devis(devis)[1]
+        self.assertNotEqual(hier, etude)
+        self.assertEqual(len({round(v) for v in hier}), 1, hier)
+        # Second lead à kWh DÉCLARÉ (CAD166) : la priorité de l'étude.
+        from apps.crm.models import Lead
+        devis2, _l2 = self._devis('conso-cad166', scenario='Sans batterie',
+                                  avec_batterie=False)
+        Lead.objects.filter(pk=devis2.lead_id).update(conso_mensuelle_kwh=400)
+        tranches2, charges2 = _reglages_tarifaires(devis2.company)
+        attendu, source2, _d2 = profil_conso_du_devis(
+            devis2, tranches=tranches2, charges_fixes_mad=charges2)
+        self.assertEqual(source2, 'kwh_mensuel_saisi')
+        self.assertEqual(_profil_horaire_pour_devis(devis2)[1], attendu)
+
     def test_sans_lead_ni_facture_la_serie_reste_vide(self):
         """Comportement actuel INTACT : rien de réel, rien de servi (omission
         honnête, jamais une estimation inventée)."""

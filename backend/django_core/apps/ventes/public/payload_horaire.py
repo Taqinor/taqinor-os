@@ -153,6 +153,35 @@ def _profils_comparatifs_publique(etude_params,
     }
 
 
+def conso_publique_du_devis(devis):
+    """AGNR54 (C-AGNR-VER-007) — LA consommation (12 kWh/mois ou ``None``)
+    de tous les lecteurs publics d'un devis. Niveau 8 : la résolution de
+    l'étude, ``etude_horaire.profil_conso_du_devis`` au barème de la société
+    (factures écran ``factures_hiver_ete``, puis lead, kWh déclaré CAD166).
+    Niveau ≤ 7 (nouveaux rendus seulement) : la lecture d'hier, factures du
+    lead seules. Lecture pure, jamais une écriture vers le lead."""
+    from apps.crm.selectors import lead_bills_for_devis
+
+    from ..domain.regles_calcul import REGLES_CONSO_PUBLIQUE_0111, regles_au_moins
+    from ..horaire.conso import profil_depuis_factures
+
+    if regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111):
+        from ..etude_horaire import _reglages_tarifaires, profil_conso_du_devis
+        tranches, charges_fixes = _reglages_tarifaires(
+            getattr(devis, 'company', None))
+        return profil_conso_du_devis(
+            devis, tranches=tranches, charges_fixes_mad=charges_fixes)[0]
+    etude_params = getattr(devis, 'etude_params', None) or {}
+    bills = lead_bills_for_devis(devis) or {}
+    return profil_depuis_factures(
+        facture_hiver_mad=bills.get('facture_hiver'),
+        facture_ete_mad=bills.get('facture_ete'),
+        ete_differente=bills.get('ete_differente'),
+        factures_mensuelles_mad=etude_params.get(
+            'factures_mensuelles_reelles'),
+        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))[0]
+
+
 def _profil_horaire_pour_devis(devis):
     """L-BACK T4 — ``(kwc, conso, ville, lat, lon, occupation, equipements)``
     d'un devis, MÊME LECTURE que ``services.rafraichir_dimensionnement_devis``/
@@ -160,24 +189,18 @@ def _profil_horaire_pour_devis(devis):
     persisté — jamais une seconde dérivation depuis les lignes ici, cet
     endpoint est en lecture seule). ``kwc`` vaut ``None`` quand aucun bloc
     horaire n'est encore posé (devis non résidentiel, ou pas encore
-    rafraîchi) — l'appelant omet alors les clés qui en dépendent."""
-    from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
+    rafraîchi) — l'appelant omet alors les clés qui en dépendent.
+
+    AGNR54 (niveau 8, nouveaux rendus) — la consommation est CELLE de l'étude
+    (:func:`conso_publique_du_devis`) ; un devis de niveau ≤ 7 garde sa page."""
+    from apps.crm.selectors import site_location_for_devis
 
     from ..courbes_journalieres import equipements_du_devis, occupation_du_devis
-    from ..horaire.conso import profil_depuis_factures
 
     etude_params = getattr(devis, 'etude_params', None) or {}
     bloc_horaire = etude_params.get('etude_horaire') or {}
     kwc = bloc_horaire.get('kwc')
-
-    bills = lead_bills_for_devis(devis) or {}
-    conso, _source, _detail = profil_depuis_factures(
-        facture_hiver_mad=bills.get('facture_hiver'),
-        facture_ete_mad=bills.get('facture_ete'),
-        ete_differente=bills.get('ete_differente'),
-        factures_mensuelles_mad=etude_params.get(
-            'factures_mensuelles_reelles'),
-        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
+    conso = conso_publique_du_devis(devis)
 
     localisation = site_location_for_devis(devis) or {}
     ville = localisation.get('site_ville')
