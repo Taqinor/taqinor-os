@@ -1,0 +1,25 @@
+{
+  "endpoint": "GET /api/django/reporting/p2p/kpi/",
+  "pourquoi": "AANA45 / D-AANA-036-BRANCHER (C-AANA-036, PACT10) — contrat PARTAGE du bloc « Achats -> paiement » du tableau de bord /reporting. Le serveur (p2p_kpi.dashboard_p2p) sert exactement ces six cles ; l'ecran n'affiche que ce qui est servi et omet toute valeur null (jamais un 0 invente). `budgets_departement` est la liste d'AU PLUS UNE enveloppe de la societe (SOLMVP12 : plus de departement). Les montants (Decimal cote serveur) sont rendus en NOMBRES par le JSONRenderer DRF d une Response brute (float), comme taux_consommation_pct. `delai_demande_bcf_jours`, `conformite_fournisseur_moyenne` et `taux_conversion_pct` valent null quand aucune donnee ne permet de les calculer.",
+  "exemple": {
+    "debut": "2026-10-01",
+    "fin": "2026-10-31",
+    "delai_demande_bcf_jours": 3.5,
+    "budgets_departement": [
+      {
+        "budget_id": 4,
+        "periodicite": "mensuelle",
+        "annee": 2026,
+        "mois": 10,
+        "montant_alloue": 100000.0,
+        "engage": 12000.0,
+        "realise": 30000.0,
+        "consomme_total": 42000.0,
+        "restant": 58000.0,
+        "taux_consommation_pct": 42.0
+      }
+    ],
+    "conformite_fournisseur_moyenne": 70.0,
+    "taux_conversion_pct": 75.0
+  }
+}

@@ -28,6 +28,7 @@ from datetime import date
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
@@ -43,7 +44,6 @@ KPI_P2P_RESPONSE = inline_serializer('ReportingKpiP2p', {
     'budgets_departement': inline_serializer(
         'ReportingP2pBudgetDepartement', {
             'budget_id': serializers.IntegerField(),
-            'departement_id': serializers.IntegerField(),
             'periodicite': serializers.CharField(),
             'annee': serializers.IntegerField(),
             'mois': serializers.IntegerField(),
@@ -124,7 +124,10 @@ def dashboard_p2p(company, *, debut=None, fin=None):
 def kpi_p2p(request):
     """``GET reporting/p2p/kpi/?debut=&fin=`` — widget dashboard achats."""
     if not request.user.company_id:
-        return Response({'detail': 'Société requise.'}, status=400)
+        # Même corps 400 ``{'detail': ...}`` qu'avant, levé (et non retourné)
+        # pour que la forme 200 reste la seule « forme renvoyée » du contrat
+        # partagé kpi_p2p.json (check_api_shapes).
+        raise ParseError('Société requise.')
     debut = _qdate(request.query_params.get('debut'))
     fin = _qdate(request.query_params.get('fin'))
     return Response(

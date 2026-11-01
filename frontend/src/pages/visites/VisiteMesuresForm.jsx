@@ -122,6 +122,7 @@ function NonReleve({ id, motif, onChange, disabled, erreur }) {
 
 export default function VisiteMesuresForm({
   visiteId, categorie, libelle, valeurs, onSaved, lectureSeule, gabarit, nonReleves, declare,
+  baseUpdatedAt,
 }) {
   const schema = schemaMesures(categorie, gabarit)
   const ci = gabarit === GABARIT_CI
@@ -206,7 +207,8 @@ export default function VisiteMesuresForm({
     try {
       // VTA10 — même appel, mais via le branchement offline : hors réseau
       // l'op part dans la file de module `visites` et on le DIT.
-      const res = await enregistrerMesures(visiteId, categorie, payload(formCourant))
+      const res = await enregistrerMesures(
+        visiteId, categorie, payload(formCourant), baseUpdatedAt)
       if (res.queued) {
         toast.success('Mesures mises en file — elles partiront au retour du réseau.')
       } else {

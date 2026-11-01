@@ -24,8 +24,7 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { questionnaireEndpoint } from '../../lib/questionnaire';
-import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { preludeJeton } from '../../lib/apiPreludeJeton';
 import { jsonResponse as json } from '../../lib/apiJson';
 import { resolveApiBase } from './_apiBase';
 
@@ -33,26 +32,9 @@ const DETAIL_EXPIRE = 'Ce lien a expiré — demandez-en un nouveau à votre con
 const DETAIL_ECHEC = 'Cette réponse n’a pas pu être enregistrée. Réessayez dans un instant.';
 
 export const POST: APIRoute = async ({ request }) => {
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
-
-  const rl = rateLimit(`questionnaire-repondre:${clientIpFromRequest(request)}`, {
-    limit: 30, windowMs: 60_000,
-  });
-  if (!rl.allowed) {
-    return json({ ok: false, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
-      'retry-after': String(rl.retryAfterSec),
-    });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return json({ ok: false, detail: 'Requête invalide.' }, 400);
-  }
-
-  const token = typeof body.token === 'string' ? body.token.trim() : '';
-  if (!token) return json({ ok: false, detail: 'Lien de questionnaire manquant.' }, 400);
+  const pre = await preludeJeton(request, { scope: 'questionnaire-repondre', limit: 30, jetonManquant: 'Lien de questionnaire manquant.' });
+  if ('response' in pre) return pre.response;
+  const { body, token } = pre;
 
   // Le corps amont est celui du contrat (section/reponses/photo) — le token
   // voyage dans l'URL amont, jamais dupliqué dans le corps relayé.

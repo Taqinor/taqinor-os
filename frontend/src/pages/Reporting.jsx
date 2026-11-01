@@ -25,6 +25,7 @@ import {
 } from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { Table } from './reporting/Table'
+import KpiP2pCard from '../features/reporting/KpiP2pCard'
 
 // ── Formatage monétaire (DH, sans décimales — comme l'écran historique) ──────
 // K149 — toutes les figures passent par les utilitaires F19 (Intl fr-MA / MAD).
@@ -488,6 +489,9 @@ export function Component() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── AANA45 — Achats → paiement (KPI P2P, lecture seule, valeurs servies). ── */}
+      <KpiP2pCard />
 
       {/* ── Créances clients ── */}
       {creances.length > 0 && (

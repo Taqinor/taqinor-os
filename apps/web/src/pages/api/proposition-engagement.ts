@@ -23,33 +23,19 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { engagementEndpoint } from '../../lib/proposition';
-import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { preludeBalise } from '../../lib/apiPreludeJeton';
 import { isPlausibleUuid, lireCookie } from '../../lib/visite';
 import { jsonResponse as json } from '../../lib/apiJson';
 import { entetesJsonPreuve, resolveApiBase } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — refuse un POST cross-site forgé avant tout traitement.
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
-
   // W316 — bucket dédié, généreux (débounce ~4 s par section + flush au
   // pagehide : une page ouverte longtemps sur plusieurs sections poste
   // plusieurs fois, jamais un seul appel).
-  const rl = rateLimit(`proposition-engagement:${clientIpFromRequest(request)}`, {
-    limit: 40,
-    windowMs: 60_000,
-  });
-  if (!rl.allowed) {
-    return json({ ok: false }, 429, { 'retry-after': String(rl.retryAfterSec) });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return json({ ok: false }, 400);
-  }
+  const pre = await preludeBalise(request, { scope: 'proposition-engagement', limit: 40 });
+  if ('response' in pre) return pre.response;
+  const body = pre.body as Record<string, unknown>;
 
   const token = typeof body.token === 'string' ? body.token.trim() : '';
   const section = typeof body.section === 'string' ? body.section.trim() : '';

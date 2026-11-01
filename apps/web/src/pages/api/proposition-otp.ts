@@ -28,32 +28,16 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { otpLectureEndpoint, otpRequestEndpoint } from '../../lib/proposition';
-import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { appelAmontJson, preludeJeton } from '../../lib/apiPreludeJeton';
 import { jsonResponse as json } from '../../lib/apiJson';
 import { cookieDePreuve, entetesJsonPreuve, resolveApiBase } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
   // traitement (même garde-fou que les autres proxies same-origin).
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
-
-  const rl = rateLimit(`proposition-otp:${clientIpFromRequest(request)}`, { limit: 10, windowMs: 60_000 });
-  if (!rl.allowed) {
-    return json({ ok: false, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
-      'retry-after': String(rl.retryAfterSec),
-    });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return json({ ok: false, detail: 'Requête invalide.' }, 400);
-  }
-
-  const token = typeof body.token === 'string' ? body.token.trim() : '';
-  if (!token) return json({ ok: false, detail: 'Lien de proposition manquant.' }, 400);
+  const pre = await preludeJeton(request, { scope: 'proposition-otp', limit: 10, jetonManquant: 'Lien de proposition manquant.' });
+  if ('response' in pre) return pre.response;
+  const { body, token } = pre;
 
   // PREVIEW-V3 (16/09/2026) — DEUXIÈME MODE : l'OTP de LECTURE.
   //
@@ -73,32 +57,24 @@ export const POST: APIRoute = async ({ request }) => {
     ? otpLectureEndpoint(resolveApiBase(), token, code ? 'verifier' : 'demander')
     : otpRequestEndpoint(resolveApiBase(), token);
 
-  let upstreamStatus = 502;
-  let upstreamPayload: unknown = null;
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      // ASEC53 — en mode lecture, la preuve de CE navigateur (cookie httpOnly) : un navigateur
-      // déjà vérifié reçoit « aucun code requis » (ADEV97) au lieu d'un second code.
-      headers: entetesJsonPreuve(mode === 'lecture' ? request : null),
-      // PREVIEW-V3-FIX (16/09/2026, audit C5) — LE CHAMP S'APPELLE `otp_code`.
-      // `proposal_verify_otp_lecture` lit son corps avec
-      // `_texte_du_corps(request, 'otp_code')` : un corps `{code: "123456"}`
-      // était donc lu comme un code VIDE, et l'endpoint répondait « le code a
-      // expiré ou n'a pas été demandé » quel que soit le code saisi — le
-      // chemin de vérification n'aurait jamais pu aboutir.
-      body: JSON.stringify(mode === 'lecture' && code ? { otp_code: code } : {}),
-    });
-    upstreamStatus = res.status;
-    try {
-      upstreamPayload = await res.json();
-    } catch {
-      upstreamPayload = null;
-    }
-  } catch {
+  const amont = await appelAmontJson(url, {
+    method: 'POST',
+    // ASEC53 — en mode lecture, la preuve de CE navigateur (cookie httpOnly) : un navigateur
+    // déjà vérifié reçoit « aucun code requis » (ADEV97) au lieu d'un second code.
+    headers: entetesJsonPreuve(mode === 'lecture' ? request : null),
+    // PREVIEW-V3-FIX (16/09/2026, audit C5) — LE CHAMP S'APPELLE `otp_code`.
+    // `proposal_verify_otp_lecture` lit son corps avec
+    // `_texte_du_corps(request, 'otp_code')` : un corps `{code: "123456"}`
+    // était donc lu comme un code VIDE, et l'endpoint répondait « le code a
+    // expiré ou n'a pas été demandé » quel que soit le code saisi — le
+    // chemin de vérification n'aurait jamais pu aboutir.
+    body: JSON.stringify(mode === 'lecture' && code ? { otp_code: code } : {}),
+  });
+  if (!amont) {
     // Backend injoignable : erreur réseau propre, sans détail PII.
     return json({ ok: false, detail: 'Service momentanément indisponible. Veuillez réessayer.' }, 502);
   }
+  const { status: upstreamStatus, payload: upstreamPayload } = amont;
 
   const payload = (upstreamPayload ?? {}) as Record<string, unknown>;
   const detail = typeof payload.detail === 'string' ? payload.detail : '';

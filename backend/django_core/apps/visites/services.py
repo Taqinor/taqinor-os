@@ -1102,7 +1102,11 @@ def enregistrer_mesures(visite, categorie, valeurs):
     stockees = dict(stockees)
     stockees[categorie] = bloc
     visite.mesures = stockees
-    visite.save(update_fields=['mesures'])
+    # AANA42 — ``updated_at`` (auto_now) n'est rafraîchi par Django QUE s'il
+    # figure dans ``update_fields`` : sans lui, une mesure corrigée au bureau
+    # laissait la version de la visite figée et la file hors-ligne ne pouvait
+    # jamais détecter qu'elle écrasait cette correction (C-AANA-023).
+    visite.save(update_fields=['mesures', 'updated_at'])
     marquer_en_cours(visite)
     return visite, {}
 

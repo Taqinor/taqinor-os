@@ -2828,3 +2828,47 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT)"
     taches: [ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT]
+  - id: D-ENF-SEUILS-DEFAUT
+    question: "Les quatre défauts électriques de core/electrique/types.py (SpecModule.temp_coeff_voc_pct_c = -0,27 ; temp_coeff_pmax_pct_c = -0,35 ; TEMP_FROID_DEFAUT_C = -5 ; TEMP_CHAUD_DEFAUT_C = 70) n'ont pas de source citée : les garder tels quels (et enregistrer la décision comme source) ou les remplacer ?"
+    options:
+      - cle: a
+        texte: "garder les valeurs exactement ; leur source est cette décision fondateur datée ; utilisées seulement quand la fiche produit ou la météo du site manque"
+      - cle: b
+        texte: "les remplacer par des valeurs issues d'une fiche ou d'une norme, ou les rendre obligatoires"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, dette de scripts/seuils_electriques_exceptions.txt)"
+    taches: []
+  - id: D-ENF-SYMBOLES-8221
+    question: "Les constantes TSS_C_KWH, TURD_C_KWH et TURT_C_KWH de quote_engine/constants_82_21.py n'ont aucun lecteur (documentaires, jamais soustraites) : les garder pour affichage ou les supprimer ?"
+    options:
+      - cle: a
+        texte: "supprimer les trois constantes (et leurs entrées dans la liste des symboles sans lecteur) ; aucun chiffre client ne change"
+      - cle: b
+        texte: "les garder comme documentation de la décision ANRE"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, passif de scripts/symboles_moteur_allow.txt)"
+    taches: [AMOT47]
+  - id: D-ENF-ARRONDI-PDF
+    question: "Le moteur du PDF de devis arrondit encore l'argent affiché par round() (arrondi bancaire : 12,5 → 12, 51 232,50 → 51 232) sur 27 sites gelés dans scripts/money_rounding_allow.txt, contre la règle maison « moitié vers le haut » de core.money.quantize_mad (docs/money-convention.md) : basculer ?"
+    options:
+      - cle: a
+        texte: "basculer l'argent affiché sur moitié vers le haut (core.money.quantize_mad, même précision qu'aujourd'hui), nouveaux rendus seulement : un devis non brouillon garde l'arrondi que le client a reçu (niveau de règles 6, migration ventes 0145) ; aucune réparation ni re-rendu des devis envoyés ; seules les valeurs exactement à moitié bougent d'une unité"
+      - cle: b
+        texte: "garder round() et la dette gelée"
+    reponse: a
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (relayée par l'orchestrateur, lane w15-arrondi)"
+    taches: []
+  - id: D-AANA-036-BRANCHER
+    question: "AANA45 (C-AANA-036) : les deux routes backend sans écran, `reporting/p2p/kpi` (KPI achats → paiement) et `envois-rapports` (historique des envois de rapports programmés), doivent-elles être branchées à un écran ou supprimées ?"
+    options:
+      - cle: brancher
+        texte: "brancher : bloc « Achats → paiement » sur le tableau de bord /reporting (valeurs servies seulement) et écran « Envois programmés » (/reporting/envois-programmes : rapports programmés en création/modification/suppression par les méthodes existantes de saved-reports + historique des envois en lecture seule) ; contrats kpi_p2p.json et envois_programmes.json"
+      - cle: supprimer
+        texte: "supprimer les deux routes et leurs tests (zéro appelant)"
+    reponse: brancher
+    date: "2026-10-30"
+    source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; lane w15-reporting)"
+    taches: [AANA45]

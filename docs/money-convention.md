@@ -124,6 +124,23 @@ Depuis AUD189 :
   contre une **réintroduction** dès aujourd'hui, la reprise fichier par fichier
   se fait ensuite.
 
+### D-ENF-ARRONDI-PDF — l'argent AFFICHÉ par le moteur de devis (30/10/2026)
+
+Le moteur du PDF travaille en `float` et arrondissait par `round()` (bancaire :
+12,5 → 12) sur 27 sites gelés. Décision fondateur : moitié vers le haut,
+**nouveaux rendus seulement**. Point unique :
+`apps.ventes.quote_engine.montants.arrondi_affichage(x, ndigits)` — même
+signature et même type de retour que `round`, mais délègue à
+`core.money.quantize_mad(x, decimales=ndigits)` (le paramètre `decimales` garde la
+PRÉCISION d'un affichage existant — dirham entier, dixième d'un payback, six
+décimales d'un prix de tranche — sans changer la politique). Les ratios
+affichés dérivés d'argent (payback en années, MAD/kWc, kWh déduits d'une
+facture) suivent la même règle. Un devis envoyé avant le niveau de règles 6
+(`Devis.regles_calcul`, migration ventes 0145 ;
+`data['regles_arrondi_historique']`) garde `round` au caractère près : seules
+les valeurs exactement à moitié bougent, d'une unité, et seulement sur un
+nouveau rendu. `scripts/money_rounding_allow.txt` ne porte plus aucun site.
+
 ### Exemple
 
 ```python

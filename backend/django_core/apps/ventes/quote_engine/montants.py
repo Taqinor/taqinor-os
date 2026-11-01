@@ -1,6 +1,6 @@
 """Formateur monétaire UNIQUE du moteur de devis (QJR613).
 
-Stdlib seulement : importable par le moteur legacy vendorisé comme par les
+Stdlib seulement (plus ``core.money``, stdlib lui aussi) : importable par le moteur legacy vendorisé comme par les
 paquets premium (résidentiel / commercial / industriel), qui ne peuvent pas
 importer ``generate_devis_premium`` (matplotlib au chargement).
 """
@@ -25,13 +25,49 @@ _REGLES_ORIGINE = contextvars.ContextVar('regles_calcul_origine',
 #: s'appliquent qu'aux nouveaux rendus ; le client relit ce qu'il a reçu.
 _REGLES_AVANT_2710 = contextvars.ContextVar('regles_avant_2710', default=False)
 
+#: D-ENF-ARRONDI-PDF (fondateur 30/10/2026) — vrai pendant le rendu d'un devis
+#: envoyé avant le niveau 6 (``not regles_au_moins(devis, REGLES_ARRONDI_3010)``
+#: → ``data['regles_arrondi_historique']``) : ``arrondi_affichage`` y garde
+#: l'arrondi bancaire de ``round()`` que le client a reçu.
+_ARRONDI_HISTORIQUE = contextvars.ContextVar('arrondi_historique', default=False)
 
-def poser_regles_origine(valeur, avant_2710=False):
+
+def poser_regles_origine(valeur, avant_2710=False, arrondi_historique=None):
     """Pose les drapeaux « règles d'origine » et « avant le niveau 3 » du
     rendu en cours (un devis aux règles d'origine est aussi avant le niveau 3 :
-    le builder ne pose alors que ``regles_calcul_origine``)."""
+    le builder ne pose alors que ``regles_calcul_origine``).
+
+    ``arrondi_historique`` (D-ENF-ARRONDI-PDF) : devis avant le niveau 6 —
+    ``data['regles_arrondi_historique']``, que chaque renderer relaie (un devis
+    aux règles d'origine l'est aussi)."""
     _REGLES_ORIGINE.set(bool(valeur))
     _REGLES_AVANT_2710.set(bool(avant_2710 or valeur))
+    _ARRONDI_HISTORIQUE.set(bool(arrondi_historique or valeur))
+
+
+def arrondi_affichage(valeur, ndigits=None):
+    """D-ENF-ARRONDI-PDF — le ``round()`` de l'argent AFFICHÉ par le moteur.
+
+    Même signature et même type de retour que ``round`` (``int`` sans
+    ``ndigits``, sinon le type de l'entrée : ``float`` ou ``Decimal``), mais
+    MOITIÉ VERS LE HAUT par ``core.money.quantize_mad`` à la MÊME précision
+    (``ndigits`` ≥ 0) : 12,5 → 13 (``round`` : 12), 12,505 → 12,51. Seules les
+    valeurs exactement à moitié changent. Devis envoyé avant le niveau 6
+    (``_ARRONDI_HISTORIQUE``) : ``round`` d'hier, au caractère près. Un entier
+    (rien à arrondir), une entrée non finie ou non numérique suit ``round``
+    (même valeur, mêmes exceptions qu'avant)."""
+    if (_ARRONDI_HISTORIQUE.get() or isinstance(valeur, int)
+            or not isinstance(valeur, (float, Decimal))):
+        return round(valeur, ndigits)
+    exact = valeur if isinstance(valeur, Decimal) else Decimal(str(valeur))
+    if not exact.is_finite():
+        return round(valeur, ndigits)
+    # Même règle que ``core.money.quantize_mad`` (ce module reste stdlib seul).
+    arrondi = exact.quantize(Decimal(1).scaleb(-(ndigits or 0)),
+                             rounding=ROUND_HALF_UP)
+    if ndigits is None:
+        return int(arrondi)
+    return arrondi if isinstance(valeur, Decimal) else float(arrondi)
 
 
 def reinitialiser_regles(*_args, task=None, **_kwargs):
@@ -45,6 +81,7 @@ def reinitialiser_regles(*_args, task=None, **_kwargs):
         return
     _REGLES_ORIGINE.set(False)
     _REGLES_AVANT_2710.set(False)
+    _ARRONDI_HISTORIQUE.set(False)
 
 
 def regles_origine():

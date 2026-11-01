@@ -178,12 +178,18 @@ describe('pages/api/visite.ts — proxy same-origin, même discipline que les au
   const src = read('../src/pages/api/visite.ts');
 
   it('applique la garde same-origin + rejet cross-site (même chemin que le tunnel)', () => {
-    expect(src).toContain("import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';");
-    expect(src).toContain('if (!isSameOriginRequest(request)) return crossSiteRejection();');
+    // La garde vit désormais dans le prélude commun `preludeBalise` (lib/apiPreludeJeton).
+    const prelude = read('../src/lib/apiPreludeJeton.ts');
+    expect(src).toContain("import { preludeBalise } from '../../lib/apiPreludeJeton';");
+    expect(src).toContain("preludeBalise(request, { scope: 'visite'");
+    expect(prelude).toContain("import { crossSiteRejection, isSameOriginRequest } from './lead';");
+    expect(prelude).toContain('if (!isSameOriginRequest(request)) return { response: crossSiteRejection() };');
   });
 
   it('applique un rate-limit par IP dédié', () => {
-    expect(src).toMatch(/rateLimit\(`visite:\$\{clientIpFromRequest\(request\)\}`/);
+    const prelude = read('../src/lib/apiPreludeJeton.ts');
+    expect(src).toMatch(/preludeBalise\(request, \{ scope: 'visite', limit: 60 \}\)/);
+    expect(prelude).toMatch(/rateLimit\(`\$\{opts\.scope\}:\$\{clientIpFromRequest\(request\)\}`/);
   });
 
   it('relaie vers /api/django/crm/public/visite/ EN SIGNANT avec le secret du webhook de lead (recalage 25/08)', () => {

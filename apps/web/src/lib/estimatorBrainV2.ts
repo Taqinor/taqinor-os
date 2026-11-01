@@ -35,6 +35,7 @@
  */
 import { distToBoundary, geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
 import { PANEL2_WATT, PERIMETER_SETBACK_M, cotesDePavage, resolveSetbacks, extremityTotalM, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
+import { projectRingENU, ringUVBounds } from './roofGrid';
 import { YIELD_TABLE } from './yieldTable';
 import { PRODUCTION_NET_FACTOR } from './systemLoss';
 
@@ -871,18 +872,7 @@ export interface PackOptions {
  */
 export function roofDominantAzimuthDeg(ring: LngLat[]): number {
   if (!Array.isArray(ring) || ring.length < 3) return 180;
-  let olng = 0;
-  let olat = 0;
-  for (const [lng, lat] of ring) {
-    olng += lng;
-    olat += lat;
-  }
-  olng /= ring.length;
-  olat /= ring.length;
-  const cosLat = Math.cos(olat * DEG2RAD);
-  const pts = ring.map(
-    ([lng, lat]) => [(lng - olng) * DEG2M * cosLat, (lat - olat) * DEG2M] as [number, number],
-  );
+  const { ringENU: pts } = projectRingENU(ring);
   let bestLen = -1;
   let dirE = 1;
   let dirN = 0;
@@ -1042,17 +1032,7 @@ function packCells(
   const s = f; // empilement vers la visée
   const u: [number, number] = [-f[1], f[0]]; // axe long des rangées
 
-  const ringUV = ringENU.map(([x, y]) => [x * u[0] + y * u[1], x * s[0] + y * s[1]] as [number, number]);
-  let uMin = Infinity;
-  let uMax = -Infinity;
-  let vMin = Infinity;
-  let vMax = -Infinity;
-  for (const [uu, vv] of ringUV) {
-    if (uu < uMin) uMin = uu;
-    if (uu > uMax) uMax = uu;
-    if (vv < vMin) vMin = vv;
-    if (vv > vMax) vMax = vv;
-  }
+  const { uMin, uMax, vMin, vMax } = ringUVBounds(ringENU, u, s);
 
   const colPitch = p.rowWidthM + p.colGapM;
   // W108 — débord : on étend la fenêtre de balayage d'un nombre ENTIER de pas de
@@ -1197,17 +1177,7 @@ function packMixedCells(
   const u: [number, number] = [-f[1], f[0]];
   const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
 
-  const ringUV = ringENU.map(([x, y]) => [x * u[0] + y * u[1], x * s[0] + y * s[1]] as [number, number]);
-  let uMin = Infinity;
-  let uMax = -Infinity;
-  let vMin = Infinity;
-  let vMax = -Infinity;
-  for (const [uu, vv] of ringUV) {
-    if (uu < uMin) uMin = uu;
-    if (uu > uMax) uMax = uu;
-    if (vv < vMin) vMin = vv;
-    if (vv > vMax) vMax = vv;
-  }
+  const { uMin, uMax, vMin, vMax } = ringUVBounds(ringENU, u, s);
 
   const clearanceAt = (i: number): number => {
     const v = clearancesM?.[i];
@@ -1496,17 +1466,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   }
 
   // Projection ENU centrée sur le centroïde.
-  let olng = 0;
-  let olat = 0;
-  for (const [lng, lat] of ring) {
-    olng += lng;
-    olat += lat;
-  }
-  olng /= ring.length;
-  olat /= ring.length;
-  const cosLat = Math.cos(olat * DEG2RAD);
-  const toENU = ([lng, lat]: LngLat): [number, number] => [(lng - olng) * DEG2M * cosLat, (lat - olat) * DEG2M];
-  const ringENU = ring.map(toENU);
+  const { olng, olat, toENU, ringENU } = projectRingENU(ring);
   const obstructionsENU = obstructions.map((o) => o.map(toENU));
 
   const makeGrid = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number): PanelGrid => {

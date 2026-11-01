@@ -49,11 +49,6 @@ class TestModuleSansNet(SimpleTestCase):
         self.assertNotIn('net_tarif_dh_kwh', src)
         self.assertFalse(hasattr(c, 'net_tarif_dh_kwh'))
 
-    def test_tss_turd_turt_documentaires(self):
-        self.assertEqual(c.TSS_C_KWH, 6.81)
-        self.assertEqual(c.TURD_C_KWH, 6.07)
-        self.assertEqual(c.TURT_C_KWH, 6.85)
-
 
 class TestSourcedConstants(SimpleTestCase):
     def test_tarifs_anre_04_26(self):

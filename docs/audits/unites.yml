@@ -378,11 +378,11 @@ unites:
     statut: audité
     groupe: ACHT
     plan: docs/plans/PLAN_AUDIT_CHANTIERS.md
-    plans_alimentes: [docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    plans_alimentes: [docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_ANALYSE.md]
     pr: 871
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-chantiers.md
-    notes: "installations/services.py = 4 712 lignes : découpage par sous-flux (achats/réception, kitting/livraison, réception chantier → parc). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-chantiers.md) : 70 constats (4 S1 : double sortie de stock après pose terrain, saut d'« Installé » côté serveur, 2 fuites FK entre sociétés), 84 tâches ACHT ; contre-vérification sur origin/main : 40/40 tiennent."
+    notes: "vérifie ACHT du 30/10/2026 (clôture, 97/97 cochées ; dossier docs/audits/2026-10-30-chantiers-verifie.md) : 30 tâches échantillonnées (graine db8ca9670) — 16 ok, 13 partielles, 1 régression ; 5 écarts S2 reproduits par sonde (bouton mise en service masqué sur Réceptionné, nomenclature non réalignée à la ré-acceptation, contrôle qualité d'Ateliers refusé, intervention.completed rejoué, suppression de preuve sans motif depuis l'écran) + 5 S3 → ACHT113-ACHT123 (3 plans). installations/services.py = 4 712 lignes : découpage par sous-flux (achats/réception, kitting/livraison, réception chantier → parc). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-chantiers.md) : 70 constats (4 S1 : double sortie de stock après pose terrain, saut d'« Installé » côté serveur, 2 fuites FK entre sociétés), 84 tâches ACHT ; contre-vérification sur origin/main : 40/40 tiennent."
 
   - id: J3
     rang: 11

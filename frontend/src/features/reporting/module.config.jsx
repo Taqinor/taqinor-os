@@ -1,5 +1,5 @@
 import { createElement, lazy } from 'react'
-import { BarChart3, HardHat, Inbox, Tv, ScrollText } from 'lucide-react'
+import { BarChart3, HardHat, Inbox, Mail, Tv, ScrollText } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -50,6 +50,9 @@ const DashboardConfigPage = lazy(() => import('../../pages/reporting/DashboardCo
 const DashboardSharePage = lazy(() => import('../../pages/reporting/DashboardSharePage'))
 // PACT146 — générateur de rapports croisés (définitions NTEXT10 rejouables).
 const RapportBuilderPage = lazy(() => import('./RapportBuilderPage'))
+// AANA45 / D-AANA-036-BRANCHER — rapports envoyés automatiquement + historique
+// de diffusion (`reporting/saved-reports/` + `reporting/envois-rapports/`).
+const EnvoisProgrammesPage = lazy(() => import('./EnvoisProgrammesPage'))
 const ArchiveClientPage = lazy(() => import('../../pages/reporting/ArchiveClientPage'))
 const ArchiveChantierPage = lazy(() => import('../../pages/reporting/ArchiveChantierPage'))
 // XKB1/ZCTR7-9 — boîte d'approbations centralisée cross-app (4 sources).
@@ -119,6 +122,8 @@ const config = {
       { to: '/reporting/dashboards/partage', label: 'Partage de dashboards', k: 'nav.dashboards_partage', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // PACT146 — générateur de rapports croisés (définitions rejouables).
       { to: '/reporting/rapport-builder', label: 'Rapports croisés', k: 'nav.rapport_builder', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
+      // AANA45 — rapports envoyés automatiquement par email/WhatsApp + historique.
+      { to: '/reporting/envois-programmes', label: 'Envois programmés', k: 'nav.envois_programmes', icon: navIcon(Mail), roles: ['responsable','admin'] },
       // ODY23 — Journal d'activité rejoint l'app Rapports (route inchangée,
       // déclarée dans features/parametres/module.config.jsx). Gating IDENTIQUE
       // au littéral ADMINISTRATION historique de Sidebar.jsx : ouvert à tout
@@ -131,6 +136,7 @@ const config = {
   titles: [
     ['/reporting/rapport-builder', 'Générateur de rapports croisés'],
     ['/reporting/pilotage-chantiers', 'Pilotage chantiers'],
+    ['/reporting/envois-programmes', 'Envois programmés'],
   ],
   routes: [
     { path: '/reporting', component: Reporting, roles: RESPONSABLE_ADMIN },
@@ -142,6 +148,7 @@ const config = {
     { path: '/reporting/dashboards', component: DashboardConfigPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/dashboards/partage', component: DashboardSharePage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/rapport-builder', component: RapportBuilderPage, roles: RESPONSABLE_ADMIN },
+    { path: '/reporting/envois-programmes', component: EnvoisProgrammesPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/archive/client/:id', component: ArchiveClientPage },
     { path: '/reporting/archive/chantier/:id', component: ArchiveChantierPage },
     { path: '/approbations', component: ApprobationsPage },

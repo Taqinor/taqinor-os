@@ -1,0 +1,24 @@
+{
+  "endpoint": "GET /api/django/reporting/envois-rapports/",
+  "pourquoi": "AANA45 / D-AANA-036-BRANCHER (C-AANA-036, PACT10) — contrat PARTAGE de l'ecran « Envois programmes » (/reporting/envois-programmes), moitie « historique de diffusion » (EnvoiRapportSerializer, LECTURE SEULE, filtrable ?saved_report= et ?statut=). `exemple` est UNE ligne de la liste paginee : un echec d'envoi porte son motif en clair dans `erreur`. `choix.statut` reprend l'enumeration du modele (EnvoiRapport.Statut) : le test backend l'egale au modele, le test front l'egale a son libelle de statut. Pendant : rapports_programmes.json.",
+  "choix": {
+    "statut": [
+      ["envoye", "Envoyé"],
+      ["echec", "Échec"],
+      ["non_configure", "Canal non configuré"],
+      ["sans_destinataire", "Aucun destinataire"]
+    ]
+  },
+  "exemple": {
+    "id": 12,
+    "saved_report": 7,
+    "rapport_nom": "Ventes du lundi",
+    "canal": "email",
+    "canal_label": "Email",
+    "destinataires": "direction@exemple.ma",
+    "statut": "echec",
+    "statut_label": "Échec",
+    "erreur": "Backend email injoignable.",
+    "envoye_le": "2026-10-26T07:00:02Z"
+  }
+}
