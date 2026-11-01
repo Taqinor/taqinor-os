@@ -1,0 +1,72 @@
+ACHT123 — rejeu en direct (orchestrateur), pile locale http://localhost, 2026-11-01 03:18-03:40 UTC (enregistré au lot du 2026-10-30)
+Backend erp-agentique-django_core-1 monté sur 2f9b24150 (vérifié : kitting.py::_exiger_nomenclature(kit, champ, ordre=None),
+models_field.py ToolReturn.emplacement_retour présents dans le conteneur) ; front reconstruit (assets/index-D4-YPVQq.js).
+Navigateur : Playwright MCP, un seul onglet. Compte demo_admin (Directeur, société 2 « taqinor-demo ») ; compte Technicien
+« acht123.tech » (rôle système Technicien, société 2) créé pour ce rejeu (mot de passe de test hors dépôt).
+
+PRÉ-CONDITION mail : EMAIL_BACKEND = anymail.backends.sendgrid.EmailBackend (PAS console/locmem) ; SENDGRID_API_KEY présente
+mais NON conforme au format SendGrid réel (regex SG.<22>.<43> = False) => aucune remise réelle possible. Écart à la
+pré-condition consigné (aucun envoi observé ; aucun geste du rejeu n'envoie de mail par conception).
+
+DONNÉES posées (ORM, shell Django, préfixe « ACHT123 rejeu ») : chantiers 1005 (ACHT123-REJEU-R, receptionne),
+1006 (-C, cloture), 1007 (-I, installe), 1008 (-R6, receptionne) clonés du chantier 239 sans devis/lead ;
+lead 3791 + devis 2498 (DEV-ACHT123-REJEU-1, envoyé, 1 ligne produit 129 × 10) ; kit QC 2 items + ordre 63 (ASM-ACHT123-REJEU,
+en_cours) ; interventions 571/572/573/574 sur 1007 ; kit vide 56 + devis 2499 (DEV-ACHT123-REJEU-7, accepté) ; outil 101 au
+Dépôt principal + kit outillage 31 ; BCF 2579 (BCF-ACHT123-REJEU, envoyé : 3 onduleurs suivi série + 50 câble).
+Données conservées (base démo locale) pour relecture ; pas de nettoyage destructif.
+
+[E1] ACHT113 — /chantiers?id=1005 onglet « Jalons & gates » : bouton « Enregistrer la mise en service » PRÉSENT (Réceptionné).
+  Date 2026-10-07 + production 12.5 + tension 230 → POST chantiers/1005/mise-en-service/ 200 ; rechargement : « Mise en service
+  enregistrée le 07/10/2026. », #mes-date = 2026-10-07, API statut=mise_en_service date=2026-10-07, bouton toujours offert.
+  /chantiers?id=1006 (Clôturé) : 0 bouton, texte « Chantier clôturé : rouvrez-le d'abord avec un motif de réouverture. ».
+  Captures ACHT123-E1-receptionne-mes.jpg, ACHT123-E1-cloture-sans-bouton.jpg.
+[E1-DLG] FAIL oracle 3 (dialogue natif) — 1er enregistrement avec production/tension VIDES : window.confirm natif
+  « Champs non renseignés : test de production et tension. Enregistrer quand même la mise en service ? »
+  (frontend/src/pages/installations/InstallationDetail.jsx l.626-631, handler de mise en service). Accepté → POST 200, date 05/10 relue.
+[E2] ACHT114 — devis 2498 : « Accepter » (liste devis, dialogue, nom « ACHT123 rejeu ») → chantier 1009 créé (signe, bom PAN 10) ;
+  fiche lead 3791 : pastille « Signé » → « Devis envoyé » → « Ramener » (alertdialog applicatif) → devis envoye, chantier 1009
+  annule=true ; quantité corrigée 10→14 par PATCH /ventes/devis-lignes/15014/ (200, sous-geste API) ; « Accepter » à nouveau →
+  devis accepte ; UN seul chantier pour le devis (1009, annule=false) ; bom {129: 14} ; note chatter
+  « Matériel : nomenclature réalignée sur DEV-ACHT123-REJEU-1 à la ré-acceptation. » ; onglet « Matériel & BC » :
+  « Panneau mono 450W  requis 14  réservé 14 ». Capture ACHT123-E2-materiel-14.jpg.
+[E3] ACHT115 — /atelier, ordre ASM-ACHT123-REJEU : « Conforme » item 1 → POST controle-qualite/6/ {"resultat":"pass"} 200 ;
+  « Échec » item 2 → POST controle-qualite/7/ {"resultat":"fail"} 200 ; GET controle-qualite = [pass, fail] ; boutons
+  Conforme plein / Échec destructif lus sur pass/fail ; « Clôturer » → case « Forcer malgré une checklist qualité incomplète »
+  affichée (capture ACHT123-E3-forcer-visible.jpg) ; Annuler ; « Conforme » item 2 → message « Checklist incomplète » disparu ;
+  « Clôturer » sans case Forcer → POST terminer/ 200 ; ordre statut=termine, QC [pass, pass], pastilles « Conforme » ×2
+  (capture ACHT123-E3-ordre-termine.jpg).
+[E4] ACHT117 — intervention 571 terminée (photo, série ACHT123-SN-1, mémo audio posés par l'API puis PATCH terminee 200) ;
+  /interventions?id=571 : Photos → « Supprimer la photo » (vue d'ensemble) → 409 → texte « Intervention terminée : indiquez le motif
+  de la suppression. » + champ « Motif de la suppression » (composant, pas de prompt natif) → « Doublon » → « Confirmer la
+  suppression » → 204 ; idem N° série (supprimer-serial 409 puis 204) et Mémos (supprimer-memo 409 puis 204).
+  Relecture API : photos vue_ensemble 0, serials 0, memos 0 ; historique : « Photo supprimée — vue_ensemble — motif : Doublon — par
+  demo_admin », « N° de série ACHT123-SN-1 supprimé — motif : Doublon — par demo_admin », « Mémo vocal supprimé — motif : Doublon —
+  par demo_admin ». Capture ACHT123-E4-motif-photo.jpg. Les 3 « Failed to load resource 409 » en console sont les 409 attendus
+  du protocole (1er envoi sans motif), pas des erreurs applicatives.
+[E5] ACHT116 — intervention 572 : PATCH terminee 200 → sur_site 200 → terminee 200 ; ApiEvent (lecture seule, shell) société 2 :
+  UN seul intervention.completed {id: 572} (id 4444).
+[E6] ACHT118 — PATCH chantiers/1008/ {statut: signe} (Réceptionné) → 409 « Passage de Réceptionné à Signé refusé : un pas à la fois. » ;
+  relecture : statut receptionne, historique 0 → 0 note.
+[E7] ACHT119 — POST ordres-assemblage/depuis-devis/ {devis: 2499} → 409 {"kit": ["Nomenclature vide : ce kit n'a aucun composant
+  catalogue à quantité positive — ajoutez-en avant de l'assembler."]} ; OrdreAssemblage devis=2499 : 0, kit=56 : 0.
+[E8] ACHT121 — intervention 573 : kit outillage 31 posé par POST choisir-kit/ (200 — aucun sélecteur de kit à l'écran) ; onglet
+  Préparation : case « ACHT123 rejeu perceuse » cochée → POST cocher-outil/ 200 ; /outillage : ligne « ACHT123 rejeu perceuse —
+  Hors emplacement — En intervention » ; API outil 101 statut=en_intervention emplacement=null ; GET tool-return :
+  emplacement_retour=1 (Dépôt principal, emplacement quitté). Capture ACHT123-E8-outillage-en-intervention.jpg.
+[E9] ACHT122 — BLOQUÉ (environnement) : fiche BCF-ACHT123-REJEU ouverte, colonnes « À recevoir », « N° de série », « N° de lot »
+  présentes, mais AUCUN bouton « Recevoir les quantités » ni « Tout recevoir » : demo_admin (Directeur) n'a pas le code
+  achats_receptionner (auth/me : 135 codes, aucun achats_*) ; POST recevoir/ (3 séries pour 2) → 403 permission_denied, rien écrit.
+  Cause : base démo locale — aucun rôle de la société 2 ne porte achats_receptionner (registre : Directeur + Administrateur +
+  Technicien responsable par défaut ; la migration roles 0006 n'écrit aucun titulaire, `init_roles` — relancé à chaque deploy —
+  ne l'a pas été sur cette pile). Non rejoué : relancer `manage.py init_roles` (hors périmètre de cette session) puis rejouer.
+[E10] ACHT120 — PATCH interventions/574/ {devis_upsell_id: 1078 (société 4)} → 200, réponse null, relecture null (inchangé).
+[TECH] FAIL oracle 1/2 — compte Technicien sur /chantiers : GET /api/django/crm/assignable-users/ → 403 + console.error
+  « Failed to load resource … 403 » au montage (frontend/src/pages/installations/InstallationsPage.jsx l.287-289 appel sans garde ;
+  idem InstallationDetail.jsx l.420) — jumeau d'ERR-PARAM-ASSIGNABLE-USERS-403 (useCanListAssignableUsers non appliqué ici).
+[AUDIT] manage.py audit_coherence --company taqinor-demo --no-persist --json (sortie : ACHT123-audit_coherence.json) :
+  154 violations PRÉEXISTANTES sur la société démo (62 ETU_I5_FACTURE_ACTUELLE, 47 CAL_KWC…, etc.), AUCUNE sur un objet du rejeu
+  (une DOC_ACCEPTE_SANS_DATE sur DEV-ACHT123-REJEU-7 venait de la fixture ORM, date posée puis audit relancé : 0) ;
+  rule_errors QUOTE_BUILD sur DEV-ACHT123-REJEU-1/-7 (« aucune option ne contient d'onduleur ») = fixtures sans onduleur.
+  Oracle « audit_coherence sans violation sur la société démo » : FAIL (dette de données démo, pas une régression du lot).
+prix_achat : jamais affiché sur les écrans clients ; la colonne « TOTAL ACHAT HT (INTERNE) » de la liste BCF est l'écran achats
+interne (droit prix_achat_voir porté par demo_admin).
