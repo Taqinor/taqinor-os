@@ -636,6 +636,12 @@ class TestDC35FicheTechniqueAPI(DCBase):
             {'w_m2': 200, 'rendement_relatif_pct': 97}]}, format='json')
         self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('rendement_par_irradiance', r.data)
+        # Doublon de produit ET courbe qui recule (corps conforme) : deux refus
+        # d'état ensemble restent un 409, jamais un 400.
+        r = self.client.post(url, {'produit': self.produit.id, 'ond_courbe_rendement': [
+            {'charge_pct': 0, 'rendement_pct': 0}, {'charge_pct': 0, 'rendement_pct': 0}]},
+            format='json')
+        self.assertEqual(r.status_code, 409, r.content)
 
     def test_queryset_scoped_to_company(self):
         from apps.stock.models import FicheTechnique

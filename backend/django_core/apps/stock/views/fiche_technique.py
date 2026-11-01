@@ -65,9 +65,12 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
 
     def handle_exception(self, exc):
         """Refus d'état du sérialiseur (code ``refus_etat`` : courbe non croissante,
-        masse sans notice) → 409 ; toute autre erreur de corps reste 400."""
-        if isinstance(exc, serializers.ValidationError) and _codes(exc.get_codes()) == {CODE_REFUS_ETAT}:
-            exc = ConflitEtat(exc.detail)
+        masse sans notice), seul ou avec un doublon (``unique``) → 409 ; toute
+        autre erreur de corps reste 400."""
+        if isinstance(exc, serializers.ValidationError):
+            codes = _codes(exc.get_codes())
+            if CODE_REFUS_ETAT in codes and codes <= {CODE_REFUS_ETAT, 'unique'}:
+                exc = ConflitEtat(exc.detail)
         return super().handle_exception(exc)
 
     def get_permissions(self):
