@@ -1,6 +1,16 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import ForecastView from './ForecastView'
+import { formatMAD } from '../../../../features/crm/stages'
+// Contrat PARTAGÉ (AANA66) chargé tel quel depuis le dépôt.
+import contrat from '../../../../../../backend/django_core/apps/reporting/contract_samples/probabilites_etape.json'
+
+// AANA67 — la table est LUE de la réponse servie (contrat partagé AANA66).
+vi.mock('../../../../api/reportingApi', () => ({
+  default: { getProbabilitesEtape: vi.fn() },
+}))
+import reportingApi from '../../../../api/reportingApi'
+import { resetProbabilitesEtape } from '../useProbabilitesEtape'
 
 /* XSAL15 — Vue kanban « Prévision » : regroupement par mois de
    date_cloture_prevue + colonne Non daté + totaux brut/pondéré en tête.
@@ -13,6 +23,7 @@ vi.mock('./LeadCard', () => ({
   default: ({ lead }) => <div data-testid={`lead-${lead.id}`}>{lead.nom}</div>,
 }))
 
+beforeEach(() => { resetProbabilitesEtape() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 const now = new Date()
@@ -60,8 +71,15 @@ describe('ForecastView (XSAL15)', () => {
 
   it('affiche un total brut + prévisionnel pondéré en tête de colonne quand > 0', () => {
     render(<ForecastView leads={leads} users={[]} />)
-    // QUOTE_SENT → STAGE_PROBABILITY 0.5 × 100000 = 50000 pondéré.
-    expect(screen.getByText(/Prév\./)).toBeInTheDocument()
+    expect(screen.getAllByText(/Prév\./).length).toBeGreaterThan(0)
+  })
+
+  it('pondéré lu de la table servie', async () => {
+    // Contrat chargé tel quel : QUOTE_SENT = 0.4 ⇒ 100 000 MAD → 40 000.
+    reportingApi.getProbabilitesEtape.mockResolvedValue({ data: contrat.exemple })
+    render(<ForecastView leads={[leads[0]]} users={[]} />)
+    await waitFor(() => expect(screen.getByTitle(/Prévisionnel pondéré/).textContent)
+      .toBe(`Prév. ${formatMAD(40000)}`))
   })
 
   it('LB28 — affiche un EmptyState (plus le board) quand la liste de leads est vide', () => {
