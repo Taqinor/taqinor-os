@@ -2283,8 +2283,8 @@ class LigneInventaireSerializer(SameCompanyFKSerializerMixin,
             'quantite_theorique', 'quantite_comptee', 'ecart',
         ]
         # ASTK39 — théorique snapshoté SERVEUR (« stock à la saisie »), jamais du corps.
-        read_only_fields = ['quantite_theorique']
-        extra_kwargs = {'quantite_comptee': {'min_value': 0, 'max_value': QUANTITE_MAX}}  # sinon débord (500)
+        extra_kwargs = {'quantite_theorique': {'read_only': True},  # compté borné : sinon débord (500)
+                        'quantite_comptee': {'min_value': 0, 'max_value': QUANTITE_MAX}}
 
 
 def _poser_lignes_inventaire(session, lignes_data, anciennes=None):
