@@ -24,9 +24,8 @@ from ..serializers_facturation import (
     RetenueSubieSerializer,
 )
 from ..serializers_facturation import PaiementAvecRetenueEntreeSerializer  # ENF11 : utilisé par @extend_schema
-from authentication.permissions import (
-    IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
-)
+from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from .facture_gardes import PeutEncaisser
 from core.permissions import declared_action_permissions
 import logging
 
@@ -131,12 +130,11 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
-        # ASEC29 / D-ASEC-1 — enregistrer et ventiler une avance sont des
-        # gestes d'argent : code ``encaisser`` (seule source).
-        if self.action in ('enregistrer_avance', 'ventiler'):
-            return [HasPermissionOrLegacy('encaisser')()]
-        if self.action in ('rejeter', 'annuler_saisie', 'reaffecter'):
-            return [IsResponsableOrAdmin()]
+        # ASEC29 / ASEC56 / D-ASEC-1 — avance, ventilation, rejet, annulation
+        # de saisie et réaffectation sont des gestes d'argent : ``encaisser``.
+        if self.action in ('enregistrer_avance', 'ventiler', 'rejeter',
+                           'annuler_saisie', 'reaffecter'):
+            return [PeutEncaisser()]
         return [IsAnyRole()]
 
     @extend_schema(request=D.RejeterPaiementRequest,
@@ -382,7 +380,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     # puis abandonnait l'opération).
     @action(detail=False, methods=['post'],
             url_path=r'factures/(?P<facture_id>[^/.]+)/paiement-avec-retenue',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def paiement_avec_retenue(self, request, facture_id=None):
         """XFAC4 — enregistre un paiement PARTIEL + une retenue à la source
         (RAS TVA/RAS IS) qui, ENSEMBLE, soldent la facture. Corps :
@@ -441,7 +439,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         request=D.AttestationRecueRequest, responses=RetenueSubieSerializer)
     @action(detail=False, methods=['post'],
             url_path=r'retenues/(?P<retenue_id>[^/.]+)/attestation-recue',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def attestation_recue(self, request, retenue_id=None):
         """XFAC4 — coche la réception de l'attestation RAS (+ justificatif)."""
         try:

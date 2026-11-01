@@ -28,6 +28,12 @@ REFUSES = ('Commercial sans encaisser', 'Commercial terrain', 'Technicien',
            'Admin RH')
 GESTES = ('abandonner_solde', 'enregistrer_paiement', 'facturer_complet',
           'creer_avoir')
+#: ASEC56 — Admin Ventes et Responsable (sans ``encaisser``) refusés aussi.
+REFUSES_JUMELLES = REFUSES + ('Admin Ventes', 'Responsable')
+PORTES = ('paiement_avec_retenue', 'attestation_recue', 'rejeter',
+          'annuler_saisie', 'reaffecter', 'retour_client',
+          'facturer_penalites', 'liberer_retenue', 'lien_paiement',
+          'revoquer_lien_paiement', 'releve_dry_run', 'releve_commit')
 _CTR = [0]
 
 
@@ -52,7 +58,7 @@ class GestesArgentTests(TestCase):
                          if c != 'encaisser'])
         roles['Commercial sans encaisser'] = sans
         self.users = {}
-        for nom in AUTORISES + REFUSES:
+        for nom in AUTORISES + REFUSES_JUMELLES:
             self.users[nom] = User.objects.create_user(
                 username=f'asec29-{_nxt()}', password='x',
                 role_legacy='normal', role=roles[nom], company=self.company)
@@ -143,6 +149,97 @@ class GestesArgentTests(TestCase):
                     self.assertFalse(
                         Avoir.objects.filter(facture=objet).exists())
                     self.assertFalse(objet.abandon_montant)
+
+    def _objets(self, user):
+        """ASEC56 — facture émise (paiement 200, RAS sans attestation,
+        retenue de garantie non libérée) créée par ``user`` (portée)."""
+        from apps.ventes.models import Paiement, RetenueSubie
+        facture = self._facture(user)
+        facture.retenue_garantie_mad = Decimal('60')
+        facture.save(update_fields=['retenue_garantie_mad'])
+        paiement = Paiement.objects.create(
+            company=self.company, facture=facture, montant=Decimal('200'),
+            date_paiement=date.today(), mode='virement', created_by=user)
+        retenue = RetenueSubie.objects.create(
+            company=self.company, facture=facture, taux=Decimal('10'),
+            base=Decimal('500'), montant=Decimal('50'), created_by=user)
+        return {'facture': facture, 'paiement': paiement, 'retenue': retenue,
+                'autre': self._facture(user)}
+
+    def _porte(self, porte, user, o):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        api = self._api(user)
+        pai = '/api/django/ventes/paiements/'
+        fac = f"/api/django/ventes/factures/{o['facture'].id}/"
+        if porte == 'releve_dry_run':
+            fichier = SimpleUploadedFile(
+                'releve.csv', b'date;libelle;montant\n2026-11-01;VIR;200\n',
+                content_type='text/csv')
+            return api.post(pai + 'import-releve/dry-run/', {'file': fichier},
+                            format='multipart')
+        url, data = {
+            'paiement_avec_retenue': (
+                f"{pai}factures/{o['facture'].id}/paiement-avec-retenue/",
+                {'montant': '1000', 'date_paiement': date.today().isoformat(),
+                 'mode': 'virement', 'type_retenue': 'ras_tva', 'taux': '10'}),
+            'attestation_recue': (
+                f"{pai}retenues/{o['retenue'].id}/attestation-recue/", {}),
+            'rejeter': (f"{pai}{o['paiement'].id}/rejeter/",
+                        {'motif': 'Chèque impayé'}),
+            'annuler_saisie': (f"{pai}{o['paiement'].id}/annuler-saisie/",
+                               {'motif': 'Erreur de saisie'}),
+            'reaffecter': (f"{pai}{o['paiement'].id}/reaffecter/",
+                           {'facture': o['autre'].id}),
+            'retour_client': (fac + 'retour-client/', {
+                'motif': 'retour', 'restocker': False,
+                'lignes': [{'produit': self.produit.id, 'quantite': '1'}]}),
+            'facturer_penalites': (fac + 'facturer-penalites/', {}),
+            'liberer_retenue': (fac + 'liberer-retenue/',
+                                {'date': date.today().isoformat()}),
+            'lien_paiement': (fac + 'lien-paiement/', {}),
+            'revoquer_lien_paiement': (fac + 'revoquer-lien-paiement/', {}),
+            'releve_commit': (pai + 'import-releve/commit/',
+                              {'token': 'jeton-inconnu'}),
+        }[porte]
+        return api.post(url, data, format='json')
+
+    def _etat(self, o):
+        """Photo relue de tout ce qu'une porte d'argent peut écrire."""
+        from apps.ventes.models import (
+            Avoir, Facture, Paiement, PaymentLink, RetenueSubie)
+        f = Facture.objects.get(pk=o['facture'].pk)
+        p = Paiement.objects.get(pk=o['paiement'].pk)
+        r = RetenueSubie.objects.get(pk=o['retenue'].pk)
+        return (f.statut, f.montant_paye, f.abandon_montant,
+                f.retenue_liberee_le, p.statut, p.facture_id,
+                p.statut_affectation, r.attestation_recue,
+                Paiement.objects.filter(company=self.company).count(),
+                Avoir.objects.filter(company=self.company).count(),
+                RetenueSubie.objects.filter(company=self.company).count(),
+                Facture.objects.filter(company=self.company).count(),
+                PaymentLink.objects.count())
+
+    def test_matrice_portes_jumelles(self):
+        """ASEC56 (C-ASEC-VER-003, D-ASEC-VER-1) — les portes jumelles des
+        gestes d'argent exigent ``encaisser`` : 403 sans aucune écriture pour
+        les six rôles qui ne le portent pas ; Directeur et Commercial jamais
+        403 (réponse métier existante inchangée)."""
+        objets = self._objets(self.users['Directeur'])
+        avant = self._etat(objets)
+        for porte in PORTES:
+            for nom in REFUSES_JUMELLES:
+                with self.subTest(porte=porte, role=nom):
+                    r = self._porte(porte, self.users[nom], objets)
+                    self.assertEqual(r.status_code, 403,
+                                     getattr(r, 'data', None))
+                    self.assertEqual(self._etat(objets), avant)
+        for nom in AUTORISES:
+            for porte in PORTES:
+                with self.subTest(porte=porte, role=nom):
+                    o = self._objets(self.users[nom])
+                    r = self._porte(porte, self.users[nom], o)
+                    self.assertNotEqual(r.status_code, 403,
+                                        getattr(r, 'data', None))
 
     def test_get_permissions_respecte_action(self):
         from apps.ventes.views.facture import FactureViewSet

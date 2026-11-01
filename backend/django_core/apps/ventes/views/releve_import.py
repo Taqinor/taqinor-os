@@ -10,8 +10,8 @@ from rest_framework.decorators import api_view, permission_classes, parser_class
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.response import Response
 
-from authentication.permissions import IsResponsableOrAdmin
 from . import openapi_docs as D
+from .facture_gardes import PeutEncaisser
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def _read_file(request):
 @extend_schema(request={'multipart/form-data': D.ReleveDryRunRequest},
                responses=D.ReleveDryRunResponse)
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([PeutEncaisser])
 @parser_classes([MultiPartParser, FormParser])
 def releve_dry_run(request):
     """FG42 — Aperçu du relevé bancaire (dry-run, aucune écriture).
@@ -68,7 +68,7 @@ def releve_dry_run(request):
     200: D.ReleveCommitResponse, 201: D.ReleveCommitResponse},
     extensions=D.CORPS_RELEVE_LIGNES)
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([PeutEncaisser])
 @parser_classes([JSONParser])  # ENF11/D2 : le commit ne reçoit plus de fichier
 def releve_commit(request):
     """FG42 — Import effectif du relevé bancaire.

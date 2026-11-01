@@ -17,7 +17,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
+from authentication.permissions import IsAdminRole
 from . import openapi_docs as D
 from .facture_gardes import PeutEncaisser
 from ..models import Facture, LigneNoteDebit, NoteDebit
@@ -393,7 +393,7 @@ class FactureRectificatifsActionsMixin:
     @extend_schema(request=D.RetourClientRequest,
                    responses={201: AvoirSerializer, 409: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='retour-client',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def retour_client(self, request, pk=None):
         """XPOS7 — Retour client avec re-stockage (contre ticket/facture
         d'origine). Sélectionne des lignes + quantités retournées → crée
@@ -455,7 +455,7 @@ class FactureRectificatifsActionsMixin:
     @extend_schema(request=None,
                    responses={201: FactureListeSerializer, 403: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='facturer-penalites',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def facturer_penalites(self, request, pk=None):
         """XFAC6 — action OPTIONNELLE : crée une facture de frais dédiée pour
         la pénalité de retard calculée au niveau de relance courant. Ne
