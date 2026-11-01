@@ -93,8 +93,9 @@ services:
     #   SQL_AGENT_DB_USER / SQL_AGENT_DB_PASSWORD
     # AANA30 — Sans ces variables, l'agent est DESACTIVE en production (AANA6) et
     # ne retombe sur DATABASE_URL (proprietaire de la base) qu'en DEVELOPPEMENT.
-    # Provisionnement du role (a executer UNE fois, manuellement, par le founder,
-    # mot de passe robuste, jamais committe) : section 4 de backend/db/rls_roles.sql
+    # AANA64 — Provisionnement du role AUTOMATIQUE apres chaque migrate
+    # (backend/db/provision_sql_agent_ro.sh, idempotent ; mot de passe lu du .env,
+    # jamais committe) : rejoue la section 4 de backend/db/rls_roles.sql
     # (LOGIN NOSUPERUSER NOBYPASSRLS, SELECT sur les SEULES tables de la liste
     # blanche de l'agent — jamais « ALL TABLES » —, aucun droit d'ecriture/DDL).
     environment:

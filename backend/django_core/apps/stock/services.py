@@ -6977,21 +6977,28 @@ def export_prix_fournisseur_xlsx(company, fournisseur):
 
 def _parse_palier_cell(value):
     """XPUR14 — parse la cellule ``paliers`` (« qte_min:prix;qte_min:prix »)
-    en liste de tuples ``(qte_min:int, prix:Decimal)``. Ignore silencieusement
-    les segments malformés (rapport d'erreurs géré par l'appelant)."""
-    out = []
+    en ``(paliers, rejets)`` : ``paliers`` = liste de ``(qte_min:int,
+    prix:Decimal)`` ; ``rejets`` = messages des segments refusés (illisibles
+    ou prix à plus de 2 décimales), rapportés par l'appelant (AANA71)."""
+    out, rejets = [], []
     for segment in str(value or '').split(';'):
         segment = segment.strip()
-        if not segment or ':' not in segment:
+        if not segment:
             continue
-        qte_raw, prix_raw = segment.split(':', 1)
         try:
+            qte_raw, prix_raw = segment.split(':', 1)
             qte = int(qte_raw.strip())
             prix = Decimal(str(prix_raw.strip()))
+            if not prix.is_finite():
+                raise ValueError(segment)
         except (InvalidOperation, TypeError, ValueError):
+            rejets.append(f'palier illisible : « {segment} »')
+            continue
+        if prix.as_tuple().exponent < -2:
+            rejets.append(f'palier à plus de 2 décimales : « {segment} »')
             continue
         out.append((qte, prix))
-    return out
+    return out, rejets
 
 
 def _date_cellule_tarif(valeur):
@@ -7057,7 +7064,6 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
         appliquer_maj_import, diff_import, enregistrer_job)
     from .models import PrixFournisseur, PalierPrixFournisseur, Produit
 
-    CENT = Decimal('0.01')
     # Un tarif/palier à 0 n'est PAS un prix négocié : c'est le défaut modèle
     # (« prix à renseigner »). Le remplir est un remplissage, pas un écrasement.
     PRIX_VIDE = (0,)
@@ -7096,29 +7102,37 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
                 'conflits': [], 'ecrasements_total': 0,
                 'ecrasements_appliques': 0, 'refuses': [], 'job_id': None}
 
+    def _erreur(row_num, sku, message):
+        errors.append({'row': row_num, 'message': message})
+        lignes_job.append({'ligne': row_num, 'statut': 'erreur',
+                           'motif': message, 'donnees': {'sku': sku}})
+
     for row_num, row in enumerate(rows_iter, start=2):
         sku = str(row[idx_sku] or '').strip() if idx_sku < len(row) else ''
         if not sku:
+            if idx_prix < len(row) and row[idx_prix] not in (None, ''):
+                errors.append({'row': row_num, 'message': 'SKU manquant.'})
             continue
         produit = Produit.objects.filter(company=company, sku=sku).first()
         if produit is None:
-            message = f'SKU introuvable : {sku}.'
-            errors.append({'row': row_num, 'message': message})
-            lignes_job.append({'ligne': row_num, 'statut': 'erreur',
-                               'motif': message, 'donnees': {'sku': sku}})
+            _erreur(row_num, sku, f'SKU introuvable : {sku}.')
             continue
         prix_raw = row[idx_prix] if idx_prix < len(row) else None
         prix = _dec(prix_raw)
-        if prix is None:
-            message = f'Prix invalide pour {sku} : {prix_raw!r}.'
-            errors.append({'row': row_num, 'message': message})
-            lignes_job.append({'ligne': row_num, 'statut': 'erreur',
-                               'motif': message, 'donnees': {'sku': sku}})
+        if prix is None or not prix.is_finite():
+            _erreur(row_num, sku, f'Prix invalide pour {sku} : {prix_raw!r}.')
+            continue
+        paliers, rejets = _parse_palier_cell(
+            row[idx_paliers] if idx_paliers is not None and idx_paliers < len(row) else None)
+        rejets = ([f'prix à plus de 2 décimales : {prix_raw!r}']
+                  if prix.as_tuple().exponent < -2 else []) + rejets
+        if rejets:
+            _erreur(row_num, sku, f'{sku} : ' + ' ; '.join(rejets) + '.')
             continue
 
         # Champs FOURNIS par la ligne, valeurs vides ÉCARTÉES : ce qui n'est pas
         # dans le fichier ne peut ni être écrit ni effacer l'existant.
-        champs = {'prix_achat': prix.quantize(CENT)}
+        champs = {'prix_achat': prix}
         if idx_ref is not None and idx_ref < len(row):
             ref = str(row[idx_ref] or '').strip()
             if ref:
@@ -7131,11 +7145,6 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
             fin = _date_cellule_tarif(row[idx_fin])
             if fin is not None:
                 champs['date_fin'] = fin
-
-        paliers = []
-        if idx_paliers is not None and idx_paliers < len(row):
-            paliers = [(qte, montant.quantize(CENT))
-                       for qte, montant in _parse_palier_cell(row[idx_paliers])]
 
         pf = PrixFournisseur.objects.filter(
             produit=produit, fournisseur=fournisseur).first()

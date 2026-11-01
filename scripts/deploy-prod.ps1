@@ -254,6 +254,9 @@ if [ "$MIGRATE_RC" != "0" ]; then
   echo "ROLLBACK TERMINE (migrate). Code revenu a $PREV_SHA."
   exit 1
 fi
+# AANA64 - role Postgres lecture seule de l'agent SQL (idempotent ; mot de passe
+# lu du .env serveur, jamais du depot). Non bloquant : un echec n'annule pas le deploiement.
+COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.prod.yml" bash backend/db/provision_sql_agent_ro.sh || echo "AVERTISSEMENT : provisionnement sql_agent_ro en echec (agent SQL desactive en prod sans le role)."
 # WOW26 — verifie que TOUTES les migrations sont appliquees (un up -d partiel /
 # un set -e interrompu laissait des migrations non appliquees + un 502 silencieux).
 # ATTENTION `|| true` OBLIGATOIRE : `grep -c` sort en 1 quand il compte ZERO
