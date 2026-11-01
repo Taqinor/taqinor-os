@@ -82,31 +82,10 @@ RAW_TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts", "ci_shard_timings_raw.json
 CLASS_TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts",
                                   "ci_shard_class_timings.json")
 
-# Roots Django is asked to test: every package under apps/, plus the two
-# foundation packages that live at the django_core root.
-TOP_LEVEL = ("authentication", "core")
-# QAH4 (28/09/2026) — le paquet racine `tests/` de django_core N'EST PAS une
-# racine de decouverte : ses modules historiques n'ont JAMAIS tourne en CI et
-# avaient derive (mesure locale du 28/09 : 7 echecs sur les modules sans base
-# — cliquets YAPIC2/YAPIC11 perimes, garde AUD417 dont le plancher et les
-# cibles paie/rh etaient faux depuis le parcage SOLMVP, plus `test_schema` qui
-# exigeait encore /api/django/rh et /api/django/compta). Un module de `tests/`
-# rejoint donc le decoupage UNIQUEMENT s'il est liste ici, explicitement ; les
-# autres reviendront un par un, une fois remis au vert.
-# ERR-QAH-TESTS-RACINE (28/09/2026) — les 4 modules ci-dessus sont remis au
-# vert (baselines YAPIC2/YAPIC11 regenerees, plancher AUD417 realiste,
-# `test_schema` filtre sur `core.parked.est_parquee`) et rejoignent le
-# decoupage. `test_api_versioning`/`test_error_envelope`/
-# `test_request_id_middleware`/`test_url_mounting` restent HORS liste : non
-# audites par ce lot (aucun echec mesure ne les visait), ils reviendront un
-# par un comme les autres, une fois verifies.
-TOP_LEVEL_MODULES = (
-    "tests.test_tenant_sweep",
-    "tests.test_api_ordering_whitelist",
-    "tests.test_api_surface_parity",
-    "tests.test_aud417_admin_scoping_transverse",
-    "tests.test_schema",
-)
+# Roots Django is asked to test: every package under apps/, plus the packages
+# at the django_core root (`tests` = paquet racine : TOUT module `test*.py` y est
+# decouvert, ASEC57 ; plus aucune liste figee de modules).
+TOP_LEVEL = ("authentication", "core", "tests")
 # Directories that never carry runnable tests.
 SKIP_DIRS = {"__pycache__", "migrations", "node_modules", ".git"}
 
@@ -232,10 +211,6 @@ def _discover(repo_root: str) -> list[str]:
             top_dir = os.path.join(django_root, top)
             if os.path.isdir(top_dir):
                 units += [_dotted(p) for p in _walk_tests(top_dir)]
-        for label in TOP_LEVEL_MODULES:
-            if os.path.isfile(os.path.join(django_root,
-                                           *label.split(".")) + ".py"):
-                units.append(label)
         return sorted(set(units))
     finally:
         DJANGO_ROOT = previous
