@@ -260,12 +260,15 @@ class _EmplacementTiersNomme(OpenApiSerializerExtension):
     """ERR fuzz (PUT/POST emplacements) — règle croisée PUBLIÉE au schéma de
     requête : un emplacement non interne nomme son tiers (``tiers_nom`` non
     blanc), sinon 400 « Nommez le tiers… » sur un corps jugé conforme. Le
-    PATCH (partiel, type relu sur l'instance) garde le schéma brut."""
+    PATCH (partiel) publie la règle quand le corps porte un type de tiers :
+    ``tiers_nom``, s'il est envoyé, n'est pas blanc (api-fuzz PR #1184). Ce
+    que le corps laisse à l'instance (type ou nom absent) est un refus d'état
+    (409, ``EmplacementStockSerializer.validate``)."""
     target_class = 'apps.stock.serializers.EmplacementStockSerializer'
 
     def map_serializer(self, auto_schema, direction):
         schema = auto_schema._map_serializer(self.target, direction, bypass_extensions=True)
-        if direction != 'request' or auto_schema.method == 'PATCH':
+        if direction != 'request':
             return schema
         from .models import EmplacementStock
         interne = EmplacementStock.TypeProprietaire.INTERNE
@@ -273,11 +276,15 @@ class _EmplacementTiersNomme(OpenApiSerializerExtension):
         # Enums ENVELOPPÉS (``anyOf`` de propriété) : le post-traitement des
         # enums de drf-spectacular ne les voit pas — sinon il renomme le
         # composant ``TypeProprietaireEnum`` (collision de jeux de valeurs).
+        branche_tiers = {
+            'properties': {'type_proprietaire': {'anyOf': [{'enum': tiers}]},
+                           'tiers_nom': {'type': 'string', 'pattern': r'\S'}},
+            'required': ['type_proprietaire', 'tiers_nom']}
+        if auto_schema.method == 'PATCH':
+            branche_tiers['required'] = ['type_proprietaire']
         return {**schema, 'anyOf': [
             {'properties': {'type_proprietaire': {'anyOf': [{'enum': [interne]}]}}},
-            {'properties': {'type_proprietaire': {'anyOf': [{'enum': tiers}]},
-                            'tiers_nom': {'type': 'string', 'pattern': r'\S'}},
-             'required': ['type_proprietaire', 'tiers_nom']},
+            branche_tiers,
         ]}
 
 

@@ -309,6 +309,86 @@ class TestSaisieEtLecture(CIQ101Base):
                          {'document': '', 'date': None, 'page': None})
         self.assertIsNone(r.data['lim_phases'])
 
+    def test_struct_notice_multipart_et_forme_publiee(self):
+        """api-fuzz PR #1184 — en multipart, ``struct_notice`` (objet publié)
+        voyage en JSON : ``null`` et un objet sont lus ; une valeur hors forme
+        (texte non JSON, clé inconnue, caractère nul) reste un 400 ; le
+        formulaire urlencodé n'est plus accepté (non publié)."""
+        p = Produit.objects.create(
+            company=self.company, nom='Structure multipart', prix_vente=1)
+        api = api_for(self.user)
+        r = api.post(URL_FICHES, {'produit': p.pk, 'type_fiche': 'structure',
+                                  'struct_notice': 'null'},
+                     format='multipart')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['struct_notice'],
+                         {'document': '', 'date': None, 'page': None})
+        url = f"{URL_FICHES}{r.data['id']}/"
+        r = api.patch(url, {'struct_notice': json.dumps(
+            {'document': 'Notice Y', 'date': '2026-02-03', 'page': 4})},
+            format='multipart')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['struct_notice'],
+                         {'document': 'Notice Y', 'date': '2026-02-03',
+                          'page': 4})
+        for valeur in ('None', json.dumps({'autre': 1}),
+                       json.dumps({'document': 'a\u0000b'})):
+            r = api.patch(url, {'struct_notice': valeur}, format='multipart')
+            self.assertEqual(r.status_code, 400, (valeur, r.data))
+        r = api.patch(url, {'struct_notice': ''}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = api.generic('PATCH', url, 'type_fiche=structure',
+                        content_type='application/x-www-form-urlencoded')
+        self.assertEqual(r.status_code, 415, r.content)
+
+    def test_champs_json_forme_publiee(self):
+        """api-fuzz PR #1184 — champs JSON publiés avec leur FORME : une
+        valeur hors forme (``{}``, texte avec caractère nul, point non
+        numérique, liste vide) est un 400 ; une courbe de forme publiée dont
+        l'abscisse ne croît pas strictement est un refus de règle croisée,
+        409 ; une valeur conforme passe."""
+        p = Produit.objects.create(
+            company=self.company, nom='Onduleur JSON', prix_vente=1)
+        api = api_for(self.user)
+        r = api.post(URL_FICHES, {'produit': p.pk, 'type_fiche': 'onduleur'},
+                     format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        url = f"{URL_FICHES}{r.data['id']}/"
+        for corps in ({'log_marques': {}}, {'lim_marques': ['a\u0000b']},
+                      {'rendement_par_irradiance': []},
+                      {'rendement_par_irradiance': [{'w_m2': 'x',
+                                                     'rendement_relatif_pct': 1}]},
+                      {'ond_courbe_rendement': [{'charge_pct': 10}]}):
+            r = api.patch(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        for corps in ({'rendement_par_irradiance': [
+                          {'w_m2': 200, 'rendement_relatif_pct': 97},
+                          {'w_m2': 200, 'rendement_relatif_pct': 98}]},
+                      {'ond_courbe_rendement': [
+                          {'charge_pct': 50, 'rendement_pct': 97, 'tension_v': 360},
+                          {'charge_pct': 20, 'rendement_pct': 96, 'tension_v': 360}]}):
+            r = api.patch(url, corps, format='json')
+            self.assertEqual(r.status_code, 409, (corps, r.data))
+        # Doublon de produit ET courbe non croissante : deux refus d'état, 409.
+        autre = Produit.objects.create(
+            company=self.company, nom='Onduleur JSON bis', prix_vente=1)
+        r = api.post(URL_FICHES, {'produit': autre.pk}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = api.patch(url, {'produit': autre.pk, 'ond_courbe_rendement': [
+            {'charge_pct': 0, 'rendement_pct': 1},
+            {'charge_pct': 0, 'rendement_pct': 1}]}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        r = api.patch(url, {
+            'log_marques': ['Huawei'], 'ond_compteurs_compatibles': '',
+            'rendement_par_irradiance': [
+                {'w_m2': 200, 'rendement_relatif_pct': 97},
+                {'w_m2': 400, 'rendement_relatif_pct': 99}],
+            'ond_courbe_rendement': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['log_marques'], ['Huawei'])
+        self.assertEqual(r.data['ond_compteurs_compatibles'], [])
+        self.assertEqual(len(r.data['rendement_par_irradiance']), 2)
+
     def test_options_servent_les_libelles_fr_des_roles(self):
         """CIQ104 — l'écran lit les libellés par OPTIONS (aucun miroir JS)."""
         r = api_for(self.user).options(URL_PRODUITS)

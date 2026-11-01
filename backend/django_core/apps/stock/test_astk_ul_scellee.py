@@ -77,7 +77,9 @@ class UniteLogistiqueScelleeTests(TestCase):
         for corps in ({'poids_kg': '99'}, {'type_unite': 'palette'},
                       {'dimensions': '1 × 1 × 1'}, {'parent': self.v.id}):
             r = self.api.patch(f'{URL}{self.u.id}/', corps, format='json')
-            self.assertEqual(r.status_code, 400, (corps, r.content))
+            # Refus d'ÉTAT (corps conforme, unité scellée) : 409 — api-fuzz
+            # PR #1184, comme l'ajout de ligne sur une unité scellée.
+            self.assertEqual(r.status_code, 409, (corps, r.content))
             self.assertIn('scellée', str(r.data), (corps, r.content))
         r = self.api.patch(
             f'{URL}{self.u.id}/', {'parent': self.u.id}, format='json')

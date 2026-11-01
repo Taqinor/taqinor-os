@@ -1339,8 +1339,16 @@ class EmplacementStockSerializer(ChampsTexteBooleenStricts, serializers.ModelSer
                                       'interne.'})
         if (type_proprietaire != EmplacementStock.TypeProprietaire.INTERNE
                 and not tiers_nom.strip()):
-            raise serializers.ValidationError(
-                {'tiers_nom': 'Nommez le tiers concerné par cet emplacement.'})
+            erreur = {'tiers_nom': 'Nommez le tiers concerné par cet '
+                                   'emplacement.'}
+            # Le schéma de requête publie la règle quand le CORPS porte les
+            # deux clés (``_EmplacementTiersNomme``) : 400. Un PATCH qui n'en
+            # porte qu'une la complète par l'instance — refus d'ÉTAT, 409
+            # (api-fuzz PR #1184).
+            if (self.partial and not {'type_proprietaire',
+                                      'tiers_nom'} <= set(attrs)):
+                raise ConflitEtat(erreur)
+            raise serializers.ValidationError(erreur)
         return attrs
 
 
@@ -1971,8 +1979,8 @@ class LigneFactureFournisseurSerializer(ChampsLigneFactureFournisseur,
                                         serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
-    # produit est optionnel (ligne libre/service, XPUR16) — default=None
-    # évite une AttributeError DRF quand produit est vide.
+    # produit est optionnel (ligne libre/service, XPUR16) — ``produit_nom``
+    # est servi nul (``allow_null``) quand produit est vide.
     class Meta:
         model = LigneFactureFournisseur
         fields = [

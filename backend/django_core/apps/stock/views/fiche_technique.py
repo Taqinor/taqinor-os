@@ -1,13 +1,16 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, status
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import INT, OBJET, P, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..importers.fiche_pan_ond import FichierIllisible, champs_a_ecrire, parse_pan_ond_bytes
 from ..models import FicheTechnique, Produit
-from ..serializers_fiche_technique import FicheTechniqueSerializer
+from ..serializers_fiche_technique import (
+    FicheTechniqueMultipartSerializer, FicheTechniqueSerializer,
+)
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
@@ -18,7 +21,18 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('produit', INT)]))
+#: api-fuzz PR #1184 — le corps JSON porte toute la fiche ; le multipart (PDF
+#: constructeur) la publie SANS ses champs JSON (``CHAMPS_JSON_FICHE``).
+_CORPS_FICHE = {
+    'application/json': FicheTechniqueSerializer,
+    'multipart/form-data': FicheTechniqueMultipartSerializer,
+}
+
+
+@extend_schema_view(list=extend_schema(parameters=[P('produit', INT)]),
+                    create=extend_schema(request=_CORPS_FICHE),
+                    update=extend_schema(request=_CORPS_FICHE),
+                    partial_update=extend_schema(request=_CORPS_FICHE))
 class FicheTechniqueViewSet(CompanyScopedModelViewSet):
     """DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
 
@@ -28,6 +42,10 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
     selon la permission stock, suppression admin."""
     queryset = FicheTechnique.objects.select_related('produit').all()
     serializer_class = FicheTechniqueSerializer
+    # JSON (saisie) + multipart (PDF constructeur, import .PAN/.OND) : le
+    # formulaire urlencodé ne sait pas porter les champs JSON de la fiche
+    # (``struct_notice``…) — retiré, donc plus publié (api-fuzz PR #1184).
+    parser_classes = [JSONParser, MultiPartParser]
     filter_backends = [filters.OrderingFilter]
     ordering = ['-date_mise_a_jour']
     # YAPIC2 — whitelist explicite (jamais '__all__').

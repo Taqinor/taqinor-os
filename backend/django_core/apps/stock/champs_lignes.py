@@ -32,8 +32,12 @@ class ChampsLigneFactureFournisseur(serializers.Serializer):
     """Champs declares de ``LigneFactureFournisseurSerializer`` (lecture
     seule + ``taux_tva`` strict)."""
 
+    # api-fuzz PR #1184 (« Response violates schema », PATCH
+    # factures-fournisseur) : avec ``default=None`` DRF SAUTAIT la clé d'une
+    # ligne libre (produit vide) sur un PATCH partiel ; ``allow_null`` seul la
+    # sert toujours, nulle, comme sur un GET.
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None, allow_null=True)
+        source='produit.nom', read_only=True, allow_null=True)
     total_ht = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
     # XPUR17 — TVA par ligne (taux marocains). total_tva = 0 si taux_tva vide

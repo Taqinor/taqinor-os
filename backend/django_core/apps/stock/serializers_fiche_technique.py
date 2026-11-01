@@ -6,7 +6,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.records.storage import AttachmentSerializerMixin, attachment_url
-from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
+from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
 from .erreurs_achats import ConflitEtat
 
@@ -35,6 +35,27 @@ class FichierFacultatifField(serializers.FileField):
         return super().validate_empty_values(data)
 
 
+@extend_schema_field({
+    'type': 'object', 'nullable': True, 'additionalProperties': False,
+    'properties': {
+        'document': {'type': 'string', 'nullable': True,
+                     'pattern': MOTIF_SANS_NUL},
+        'date': {'type': 'string', 'format': 'date', 'nullable': True},
+        'page': {'type': 'integer', 'nullable': True},
+    },
+    'description': 'Provenance de la masse : {"document": "", "date": null, '
+                   '"page": null}.',
+})
+class NoticeStructureField(serializers.JSONField):
+    """api-fuzz PR #1184 (« API rejected schema-compliant request », POST/PUT/
+    PATCH ``fiches-techniques`` en multipart) — ``struct_notice`` était publié
+    SANS type : le fuzzeur envoyait alors ``null`` comme une pièce brute
+    (« None ») que le JSONField ne sait pas lire (« La valeur doit être un JSON
+    valide »). Le schéma dit maintenant la forme exacte que
+    ``validate_struct_notice`` accepte — un objet ``{document, date, page}``
+    ou ``null`` — et une partie multipart d'un objet part en JSON."""
+
+
 class FicheTechniqueSerializer(IdInconnu404Mixin,
                                UniciteEn409Mixin,
                                AttachmentSerializerMixin,
@@ -61,6 +82,7 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
     pdf = FichierFacultatifField(
         write_only=True, required=False, allow_null=True)
     pdf_url = serializers.SerializerMethodField()
+    struct_notice = NoticeStructureField(required=False, allow_null=True)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_marque = serializers.CharField(
         source='produit.marque', read_only=True, allow_null=True)
@@ -154,10 +176,13 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
         # validateur qui normalise. Sans `allow_null`, DRF refusait ce que le
         # code accepte (api-fuzz #997).
         extra_kwargs = {
+            # Validateurs de courbe du modèle rejoués par ``validate_<champ>``
+            # (``_courbe``) : la croissance de l'abscisse y devient un 409.
+            'rendement_par_irradiance': {'validators': []},
+            'ond_courbe_rendement': {'validators': []},
             'ond_compteurs_compatibles': {'allow_null': True},
             'lim_marques': {'allow_null': True},
             'log_marques': {'allow_null': True},
-            'struct_notice': {'allow_null': True},
         }
 
     @extend_schema_field(serializers.URLField(allow_null=True))
@@ -183,7 +208,68 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
                 isinstance(v, str) for v in value):
             raise serializers.ValidationError(
                 f"`{champ}` doit être une liste de textes.")
+        if any('\x00' in v for v in value):
+            # Motif publié (sans caractère nul) : jsonb le refuserait en 500.
+            raise serializers.ValidationError(
+                f"`{champ}` : un texte ne peut pas contenir de caractère nul.")
         return [v.strip() for v in value if v.strip()]
+
+    # ── CALX60 — courbes : forme 400, croissance de l'abscisse 409 ─────────
+    CODE_COURBE_NON_CROISSANTE = 'courbe_non_croissante'
+
+    def is_valid(self, *, raise_exception=False):
+        """Une requête dont les SEULS refus sont des refus d'état — la
+        croissance d'une courbe (règle croisée que le schéma ne dit pas, comme
+        ``courbe_pompe`` du produit), seule ou avec le doublon de ``produit``
+        (déjà 409 seul, ``UniciteEn409Mixin``) — répond 409 (api-fuzz PR
+        #1184). ``.errors`` reste le corps DRF ; sans ``raise_exception`` rien
+        ne change."""
+        valide = super().is_valid(raise_exception=False)
+        if not valide and raise_exception:
+            erreurs = self.errors
+            codes = {getattr(e, 'code', None)
+                     for liste in erreurs.values()
+                     for e in (liste if isinstance(liste, list) else [None])}
+            if (self.CODE_COURBE_NON_CROISSANTE in codes
+                    and codes <= {self.CODE_COURBE_NON_CROISSANTE, 'unique'}):
+                raise ConflitEtat(erreurs)
+            return super().is_valid(raise_exception=True)
+        return valide
+
+    def _courbe(self, champ, value, valider, cles, cle_serie=None):
+        """Le validateur du modèle (``valider_courbe_*``) tranche. Un refus
+        sur une courbe de FORME publiée (liste non vide de points aux clés
+        numériques) ne peut venir que de la croissance de l'abscisse : code
+        ``courbe_non_croissante`` (409 via ``is_valid``). Tout autre refus
+        reste un 400."""
+        from django.core.exceptions import ValidationError as ErreurModele
+        from .models_fiche_technique import _est_nombre
+        try:
+            valider(value)
+        except ErreurModele as exc:
+            forme_publiee = isinstance(value, list) and value and all(
+                isinstance(point, dict)
+                and all(_est_nombre(point.get(c)) for c in cles)
+                and (cle_serie is None or point.get(cle_serie) is None
+                     or _est_nombre(point.get(cle_serie)))
+                for point in value)
+            raise serializers.ValidationError(
+                exc.messages,
+                code=self.CODE_COURBE_NON_CROISSANTE if forme_publiee else None)
+        return value
+
+    def validate_rendement_par_irradiance(self, value):
+        from .models_fiche_technique import valider_courbe_irradiance
+        return self._courbe('rendement_par_irradiance', value,
+                            valider_courbe_irradiance,
+                            ('w_m2', 'rendement_relatif_pct'))
+
+    def validate_ond_courbe_rendement(self, value):
+        from .models_fiche_technique import valider_courbe_rendement_onduleur
+        return self._courbe('ond_courbe_rendement', value,
+                            valider_courbe_rendement_onduleur,
+                            ('charge_pct', 'rendement_pct'),
+                            cle_serie='tension_v')
 
     def validate_ond_compteurs_compatibles(self, value):
         return self._liste_de_textes('ond_compteurs_compatibles', value)
@@ -202,7 +288,7 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
 
     def validate_struct_notice(self, value):
         """Normalise en ``{document, date, page}`` ; vide = non publiée."""
-        if value in (None, {}, ''):
+        if value is None or value == {}:
             return {'document': '', 'date': None, 'page': None}
         if not isinstance(value, dict):
             raise serializers.ValidationError(
@@ -217,6 +303,11 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
         if not isinstance(document, str):
             raise serializers.ValidationError(
                 '`struct_notice.document` doit être un texte.')
+        if '\x00' in document:
+            # Motif publié (sans caractère nul) : jsonb le refuserait en 500.
+            raise serializers.ValidationError(
+                '`struct_notice.document` ne peut pas contenir de caractère '
+                'nul.')
         date = value.get('date') or None
         if date is not None:
             import datetime
@@ -268,3 +359,27 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             if cle in data and data[cle] is None:
                 data[cle] = []
         return data
+
+
+#: Champs JSON de la fiche (courbes, listes, notice). Une partie de
+#: formulaire multipart n'a pas de ``null`` ni de structure JSON : le fuzzeur
+#: les envoyait en pièce brute (« None ») que le JSONField refuse (« La valeur
+#: doit être un JSON valide ») — api-fuzz PR #1184, ``struct_notice`` puis
+#: ``log_marques``. Ils se saisissent en corps JSON (l'écran produit), le
+#: multipart ne sert qu'au PDF constructeur.
+CHAMPS_JSON_FICHE = (
+    'rendement_par_irradiance', 'ond_courbe_rendement',
+    'ond_compteurs_compatibles', 'lim_marques', 'log_marques',
+    'struct_notice',
+)
+
+
+class FicheTechniqueMultipartSerializer(FicheTechniqueSerializer):
+    """Corps ``multipart/form-data`` PUBLIÉ de la fiche (schéma seulement) :
+    les champs de ``FicheTechniqueSerializer`` moins ``CHAMPS_JSON_FICHE``."""
+
+    struct_notice = None
+
+    class Meta(FicheTechniqueSerializer.Meta):
+        fields = [nom for nom in FicheTechniqueSerializer.Meta.fields
+                  if nom not in CHAMPS_JSON_FICHE]

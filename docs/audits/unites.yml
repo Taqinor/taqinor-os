@@ -350,7 +350,7 @@ unites:
     pr: 868
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-moteur.md
-    notes: "Lanes de jugement en opus/high (règle #4). Manifeste de couverture obligatoire (lane QJR79 : constats dans des fichiers jamais lus avant ; chiffre 149 non re-vérifié). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-moteur.md) : 61 constats (14 S1), 75 tâches AMOT déposées + 1 tâche web (AMOT76, apps/web) gardée au dossier §7 en attente d'accord ; PDF public réel 3 pages, sans prix_achat."
+    notes: "vérifie AMOT du 31/10/2026 (clôture, 96/100 cochées ; dossier docs/audits/2026-10-31-moteur-verifie.md) : 42 tâches échantillonnées (graine d57c36964) — 35 ok, 6 partielles, 1 régression ; 1 S1 maintenu en seconde lentille (payback des paliers batterie du curseur public et de l'échelle ≠ roi_a du PDF) + 2 S2 (source de la consommation C&I mal étiquetée, provision d'onduleur non remisée à l'écran du générateur) → AMOT102-AMOT114 (4 plans) ; 1 critique Fable. Lanes de jugement en opus/high (règle #4). Manifeste de couverture obligatoire (lane QJR79 : constats dans des fichiers jamais lus avant ; chiffre 149 non re-vérifié). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-moteur.md) : 61 constats (14 S1), 75 tâches AMOT déposées + 1 tâche web (AMOT76, apps/web) gardée au dossier §7 en attente d'accord ; PDF public réel 3 pages, sans prix_achat."
 
   - id: J2
     rang: 10

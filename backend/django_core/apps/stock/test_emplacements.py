@@ -287,3 +287,29 @@ class TestEmplacementApi(EmplacementBase):
         r = self.api.get('/api/django/stock/emplacements/',
                          {'type_proprietaire': 'interne'})
         self.assertEqual(r.status_code, 200, r.content)
+
+    def test_patch_tiers_sans_nom(self):
+        """api-fuzz PR #1184 — le schéma PATCH publie la règle quand le corps
+        porte un type de tiers : nom blanc envoyé = corps non conforme (400) ;
+        nom laissé à l'instance (vide) = refus d'état (409) ; nom fourni = 200."""
+        emp = EmplacementStock.objects.create(
+            company=self.company, nom='Dépôt partenaire', ordre=800)
+        url = f'/api/django/stock/emplacements/{emp.id}/'
+        r = self.api.patch(url, {'nom': '0', 'ordre': 0, 'archived': False,
+                                 'type_proprietaire': 'de_tiers',
+                                 'tiers_nom': ''}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.patch(url, {'type_proprietaire': 'de_tiers'},
+                           format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = self.api.patch(url, {'type_proprietaire': 'de_tiers',
+                                 'tiers_nom': 'LogiPro'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        r = self.api.patch(url, {'tiers_nom': ' '}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        emp.refresh_from_db()
+        self.assertEqual(emp.tiers_nom, 'LogiPro')
+        r = self.api.post('/api/django/stock/emplacements/', {
+            'nom': 'Tiers sans nom', 'type_proprietaire': 'de_tiers'},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.content)
