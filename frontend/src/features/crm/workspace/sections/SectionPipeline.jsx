@@ -134,7 +134,7 @@ function RelanceCadenceControls({ leadId, onChanged }) {
       setMotif('')
       onChanged?.()
     } catch {
-      // toastPromise a déjà affiché l'erreur — rien de plus à faire ici.
+      console.warn("SectionPipeline (arreter) : toastPromise a déjà affiché l'erreur — rien de plus à faire ici.")
     } finally {
       setBusy(false)
     }

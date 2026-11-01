@@ -64,7 +64,7 @@ export default function Vue2DPlan({ plan, compte3d, titre, panId }) {
       try {
         if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen()
       } catch {
-        /* sortie refusée : le repli CSS ci-dessous suffit */
+        console.warn('Vue2DPlan (onChange) : sortie refusée : le repli CSS ci-dessous suffit')
       }
       setPleinEcran(false)
       return

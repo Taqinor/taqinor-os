@@ -1,0 +1,18 @@
+---
+// ENF19 : bloc partagé (formulaire WhatsApp de la modale de sortie) — mon-toit fr/en/ar.
+// Le libellé du bouton « Envoyer » (propre à chaque langue) passe par le slot.
+interface Props {
+  inputClass: string;
+  phoneDir?: string;
+}
+const { inputClass, phoneDir } = Astro.props;
+---
+<div class="mt-4 flex flex-col gap-2 sm:flex-row">
+  <input id="mt-exit-phone" type="tel" inputmode="tel" autocomplete="tel"
+    placeholder="06 XX XX XX XX" dir={phoneDir} class={inputClass} />
+  <a id="mt-exit-wa" href="#" target="_blank" rel="noopener"
+    class="inline-flex flex-none items-center justify-center gap-2 bg-ok-600 px-5 py-3 text-base font-bold text-white transition-opacity hover:opacity-90">
+    <slot />
+  </a>
+</div>
+<p id="mt-exit-err" hidden class="mt-2 text-xs text-alert-300" aria-live="polite"></p>

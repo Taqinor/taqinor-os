@@ -1,0 +1,9 @@
+---
+// ENF19 : bloc partagé (copies identiques) — contact.astro
+import { NAP } from '../../lib/nap';
+---
+<p class="mt-2">
+  <a href={`tel:${NAP.phone}`} dir="ltr" class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.phoneDisplayIntl}</a>
+  &nbsp;·&nbsp;
+  <a href={`mailto:${NAP.email}`} dir="ltr" class="underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.email}</a>
+</p>

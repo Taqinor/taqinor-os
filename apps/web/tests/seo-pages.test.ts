@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
 import { NAP } from '../src/lib/nap';
 
@@ -16,7 +17,7 @@ const read = (rel: string) =>
     ? [rel, '../src/components/CityPageBody.astro', '../src/components/V2Page.astro', '../src/lib/cityPageData.ts'].map(readSrc).join('\n')
     : rel.includes('realisations/[slug]')
       ? [rel, '../src/components/RealisationSlugBody.astro', '../src/components/V2Page.astro'].map(readSrc).join('\n')
-      : readSrc(rel);
+      : lireAstroAvecBlocs(fileURLToPath(new URL(rel, import.meta.url)));
 
 // Le filtre d'exclusion sitemap (copié depuis astro.config.mjs).
 const sitemapExcluded = (page: string) =>

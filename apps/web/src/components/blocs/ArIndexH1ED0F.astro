@@ -1,0 +1,8 @@
+---
+// ENF19 : bloc partagé (copies identiques) — index.astro
+const { heroFigure, heroSub, heroTitleSuffix } = Astro.props as Record<string, any>;
+---
+<h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch] [text-shadow:0_2px_28px_rgb(7_11_29/0.72)]">
+  <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
+</h1>
+<p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>

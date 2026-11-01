@@ -28,7 +28,6 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
-import RelatedLinks from '../../components/RelatedLinks.astro';
 import { REALISATIONS, standardCaption } from '../../lib/realisations';
 import { NAP } from '../../lib/nap';
 
@@ -71,6 +70,7 @@ const itemListJsonLd = {
 import RealisationsIndexSection9BE4 from '../../components/blocs/RealisationsIndexSection9BE4.astro';
 import PhotoLightbox from '../../components/PhotoLightbox.astro';
 import '../../styles/realisations-hover-zoom.css';
+import PourquoiTaqinorBlocA65D from '../../components/blocs/PourquoiTaqinorBlocA65D.astro';
 ---
 
 <Layout
@@ -189,10 +189,7 @@ import '../../styles/realisations-hover-zoom.css';
     <section class="section-tight px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
-        <RelatedLinks links={[
-          { href: '/production-mesuree', label: 'Notre production suivie, en continu' },
-          { href: '/impact-taqinor', label: 'Impact Taqinor (kWc, kWh, CO2 évité)' },
-        ]} />
+        <PourquoiTaqinorBlocA65D />
       </div>
     </section>
 

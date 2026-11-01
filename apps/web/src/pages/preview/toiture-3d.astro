@@ -23,6 +23,9 @@ import DiagnosticFormEnriched from '../../components/DiagnosticFormEnriched.astr
 const inputClass =
   'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
 import Toiture3dProOption4857 from '../../components/blocs/Toiture3dProOption4857.astro';
+import Toiture3dProButtonC44A from '../../components/blocs/Toiture3dProButtonC44A.astro';
+import '../../styles/preview-toiture-map.css';
+import Toiture3dProOption3967 from '../../components/blocs/Toiture3dProOption3967.astro';
 ---
 
 <Layout
@@ -92,10 +95,7 @@ import Toiture3dProOption4857 from '../../components/blocs/Toiture3dProOption485
               <label for="r3-address" class="sr-only">Votre adresse</label>
               <input id="r3-address" name="address" type="text" autocomplete="street-address"
                 placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
-              <button type="submit"
-                class="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-                Localiser mon toit
-              </button>
+              <Toiture3dProButtonC44A />
             </form>
 
             <!-- Conteneur carte — hauteur réservée (zéro saut de page) -->
@@ -140,9 +140,7 @@ import Toiture3dProOption4857 from '../../components/blocs/Toiture3dProOption485
               <div class="flex items-center gap-2">
                 <label for="r3-floors" class="text-sm text-lune-soft">Étages</label>
                 <select id="r3-floors" class="border border-white/15 bg-nuit-700 px-3 py-2 text-sm text-white outline-none focus:border-brass-400">
-                  <option value="1">1</option>
-                  <option value="2" selected>2</option>
-                  <option value="3">3 et +</option>
+                  <Toiture3dProOption3967 />
                 </select>
               </div>
               <label class="flex items-center gap-2 text-sm text-lune-soft">
@@ -214,16 +212,6 @@ import Toiture3dProOption4857 from '../../components/blocs/Toiture3dProOption485
   }
   @media (min-width: 1024px) {
     .r3-map { height: 560px; }
-  }
-  .r3-map-placeholder {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 1.5rem;
-    text-align: center;
   }
   /* Réserve la hauteur du panneau de résultats → aucun saut de page (CLS=0). */
   .r3-results { min-height: 360px; }

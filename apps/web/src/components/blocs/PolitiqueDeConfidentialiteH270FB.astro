@@ -1,0 +1,8 @@
+---
+// ENF19 : bloc partagé (copies identiques) — politique-de-confidentialite.astro
+const { gdprSection, sections } = Astro.props as Record<string, any>;
+---
+<h2 class="display flex items-baseline gap-4 text-xl">
+  <span class="fig text-lg text-azur-600">{String(sections.length + 1).padStart(2, '0')}</span>
+  {gdprSection.t}
+</h2>

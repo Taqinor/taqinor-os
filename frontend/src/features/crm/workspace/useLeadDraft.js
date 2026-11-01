@@ -169,7 +169,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
           })
           return false
         }
-      } catch { /* best-effort : ne jamais bloquer une sauvegarde légitime */ }
+      } catch { console.warn('useLeadDraft (setOpenedAt) : best-effort : ne jamais bloquer une sauvegarde légitime') }
     }
     const subset = {}
     for (const k of keys) subset[k] = st.draft[k]
@@ -306,7 +306,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       const res = (await crmApi.getLead(id)).data
       dispatch({ type: 'SET_SERVER', res })
       if (res && res.id === id) setOpenedAt(id, res.date_modification)
-    } catch { /* best-effort — le premier rendu (ligne/cache) reste affiché */ }
+    } catch { console.warn('useLeadDraft (setOpenedAt) : best-effort — le premier rendu (ligne/cache) reste affiché') }
   }, [])
 
   // Recharge la vérité serveur sans toucher au draft (après devis/facture/fusion).
@@ -318,7 +318,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       dispatch({ type: 'SET_SERVER', res })
       if (res) setOpenedAt(res.id, res.date_modification)
       onSavedRef.current?.()
-    } catch { /* best-effort */ }
+    } catch { console.warn('useLeadDraft (setOpenedAt) : best-effort') }
   }, [])
 
   // Écriture ponctuelle générique (ex. StageControl/point-write d'un autre lane).

@@ -1,0 +1,15 @@
+## manage.py audit_coherence --company taqinor-demo --json --no-persist (lecture seule)
+contrôlés : {'devis': 143, 'facture': 13} ; violations : 148 ; règles en erreur : 14 ; durée 75.694 s
+par règle : ETU_I5_FACTURE_ACTUELLE 60, CAL_KWC_DEVIS_VS_CALEPINAGE 47, CAL_MODULES_DEVIS_VS_CALEPINAGE 17, CAL_EMPREINTE_IMPRIMEE_PERIMEE 7, CRM_SIGNE_SANS_DEVIS_ACCEPTE 5, DOC_ACCEPTE_SANS_DATE 4, ETU_I7_BLOC_HORAIRE_PERIME 3, SEC_COMPTE_DEMO_ACTIF 2, DOC_VALIDITE_AVANT_CREATION 1, DOC_ECHEANCE_AVANT_EMISSION 1, FACTURE_STATUT_RESTE_INCOHERENT 1
+sur les devis de la passe (741, 461, 524, 445, 2506) :
+  - DEV-202610-0071 (id 741) CAL_MODULES_DEVIS_VS_CALEPINAGE [avertissement] : Le calepinage pose 12 modules, le devis en chiffre 14.
+  - DEV-202610-0071 (id 741) CAL_KWC_DEVIS_VS_CALEPINAGE [avertissement] : Le calepinage dessine 8.52 kWc, le devis en porte 7.70.
+règles en erreur sur ces devis : []
+
+## manage.py audit_coherence --company taqinor-anon --json --no-persist (lecture seule)
+contrôlés : {'devis': 334, 'facture': 7} ; violations : 146 ; règles en erreur : 2 ; durée 199.674 s
+par règle : ETU_I7_BLOC_HORAIRE_PERIME 64, DOC_RENDU_SANS_MARGE 63, ETU_I5_FACTURE_ACTUELLE 8, ETU_I2_REDUCTION_VS_COUVERTURE 3, DOC_ACCEPTE_SANS_DATE 1, DOC_VALIDITE_AVANT_CREATION 1, ETU_I6_ECONOMIES 1, ETU_I4_CONSO_REPLI 1, DOC_ECHEANCE_AVANT_EMISSION 1, FACTURE_STATUT_RESTE_INCOHERENT 1, CRM_SIGNE_SANS_DEVIS_ACCEPTE 1, SEC_COMPTE_DEMO_ACTIF 1
+sur les devis de la passe (741, 461, 524, 445, 2506) :
+  - DEV-202608-0001 (id 461) ETU_I5_FACTURE_ACTUELLE [critique] : « methode_facture_actuelle » imprime 39978 MAD pour des factures réelles de 48000 MAD (×0.83).
+  - DEV-202608-0001 (id 461) ETU_I5_FACTURE_ACTUELLE [critique] : « facture_sans_solaire » imprime 39978 MAD pour des factures réelles de 48000 MAD (×0.83).
+règles en erreur sur ces devis : []

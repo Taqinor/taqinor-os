@@ -127,7 +127,7 @@ export default function ChantierPhotos({ installationId }) {
     }
   })
   useEffect(() => {
-    try { localStorage.setItem(DENSITY_KEY, density) } catch { /* stockage indisponible */ }
+    try { localStorage.setItem(DENSITY_KEY, density) } catch { console.warn('ChantierPhotos (ChantierPhotos) : stockage indisponible') }
   }, [density])
   const thumbSize = THUMB_SIZE[density]
   const fileRefs = { avant: useRef(null), pendant: useRef(null), apres: useRef(null) }
@@ -218,7 +218,7 @@ export default function ChantierPhotos({ installationId }) {
 
   const remove = async () => {
     if (!toDelete) return
-    try { await recordsApi.deleteAttachment(toDelete.id); load() } catch { /* */ }
+    try { await recordsApi.deleteAttachment(toDelete.id); load() } catch { console.warn('ChantierPhotos (remove) : échec ignoré (dégradé)') }
     setToDelete(null)
   }
 

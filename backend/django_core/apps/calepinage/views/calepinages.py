@@ -51,6 +51,7 @@ from apps.records.serializers import ChatterActivitySerializer
 from apps.records.views import ChatterViewSetMixin
 from authentication.permissions import IsResponsableOrAdmin
 from core.champs_stricts import ChaineStricte
+from core.parseurs import ObjetJSON
 from core.idempotency import (
     IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
     _fingerprint,
@@ -873,15 +874,14 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         # en objets, ``retenir`` booleen.
         request=inline_serializer('CalepinageVarianteCorps', {
             'nom': ChaineStricte(max_length=160),
-            'roof_layout': drf_serializers.JSONField(required=False,
-                                                     allow_null=True),
+            'roof_layout': ObjetJSON(required=False, allow_null=True),
             'resultat': drf_serializers.JSONField(required=False,
                                                   allow_null=True),
             'retenir': drf_serializers.BooleanField(required=False)}),
         responses={201: CalepinageVarianteSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='variantes',
             permission_classes=[PeutLireOuEcrireCalepinage],
-            pagination_class=None)
+            pagination_class=None, parser_classes=[JSONParser])
     def variantes(self, request, pk=None):
         """CAL21 — liste (GET) ou crée (POST) une variante, la RETENUE en tête.
 
@@ -912,7 +912,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         responses={200: CalepinageVarianteSerializer, 204: None})
     @action(detail=True, methods=['get', 'patch', 'delete'],
             url_path=r'variantes/(?P<variante_id>[^/.]+)',
-            permission_classes=[PeutLireOuEcrireCalepinage])
+            permission_classes=[PeutLireOuEcrireCalepinage],
+            parser_classes=[JSONParser])  # conception/résultat : objets JSON
     def variante(self, request, pk=None, variante_id=None):
         """CAL21 — lit, édite ou retire UNE variante (jamais ``retenue``).
 

@@ -251,7 +251,7 @@ function ecrireBrouillon(id, brouillon) {
   try {
     window.sessionStorage.setItem(CLE_BROUILLON(id), JSON.stringify(brouillon))
   } catch {
-    // stockage plein ou interdit : la note reste à l'écran, simplement non gardée.
+    console.warn("RelanceEtapeRow (ecrireBrouillon) : stockage plein ou interdit : la note reste à l'écran, simplement non gardée.")
   }
 }
 
@@ -259,7 +259,7 @@ function effacerBrouillon(id) {
   try {
     window.sessionStorage.removeItem(CLE_BROUILLON(id))
   } catch {
-    // idem — rien à faire.
+    console.warn('RelanceEtapeRow (effacerBrouillon) : échec ignoré (dégradé)')
   }
 }
 
@@ -360,7 +360,7 @@ function TexteDeTouche({ etape, titre, ouvert, onBasculer, destinataire }) {
       await navigator.clipboard.writeText(texte)
       toastInfo('Texte copié.')
     } catch {
-      // best-effort — presse-papier indisponible : le texte reste lisible.
+      console.warn('RelanceEtapeRow (copier) : best-effort — presse-papier indisponible : le texte reste lisible.')
     }
   }
 

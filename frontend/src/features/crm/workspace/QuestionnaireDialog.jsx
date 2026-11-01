@@ -104,7 +104,7 @@ export default function QuestionnaireDialog({ lead, onClose }) {
       await navigator.clipboard?.writeText(url)
       setCopied(which)
       window.setTimeout(() => setCopied((cur) => (cur === which ? null : cur)), 2000)
-    } catch { /* presse-papier indisponible — le lien reste ouvrable */ }
+    } catch { console.warn('QuestionnaireDialog (copier) : presse-papier indisponible — le lien reste ouvrable') }
   }
 
   const ouvrir = (url) => {

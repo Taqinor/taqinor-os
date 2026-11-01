@@ -130,7 +130,7 @@ export function useAtelierBoot(ctx) {
             .find((p) => String(p?.id) === String(fond.photoSiteId))
           if (photo?.url) ressource = { url: urlFichierCalepinage(photo.url), calagePhoto: photo.calage }
         } catch {
-          /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
+          console.warn("useAtelierBoot (poserFondDuDocument) : pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché")
         }
       } else if (fond.kind === 'plan' && fond.attachmentId && calepinageId) {
         // CALX107 câblage — la pièce jointe du plan : URL servie + pixels naturels.
@@ -141,7 +141,7 @@ export function useAtelierBoot(ctx) {
             ressource = { url: urlFichierCalepinage(plan.url), tailleImage: tailleImagePlan(plan) }
           }
         } catch {
-          /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
+          console.warn("useAtelierBoot (poserFondDuDocument) : pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché")
         }
       }
       if (cancelled) return
@@ -214,7 +214,7 @@ export function useAtelierBoot(ctx) {
             setContourMessage(fp.data.message)
           }
         } catch {
-          /* repli silencieux : tracé manuel toujours disponible */
+          console.warn('useAtelierBoot (boot) : repli silencieux : tracé manuel toujours disponible')
         }
       }
       if (cancelled) return
@@ -229,7 +229,7 @@ export function useAtelierBoot(ctx) {
           mapboxToken = cfg.data.mapboxToken || undefined
         }
       } catch {
-        /* repli : message ci-dessous */
+        console.warn('useAtelierBoot (boot) : repli : message ci-dessous')
       }
       if (cancelled) return
       if (!maptilerKey) {

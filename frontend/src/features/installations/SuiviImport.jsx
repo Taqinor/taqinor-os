@@ -221,7 +221,7 @@ function CoutDebarqueTab({ dossierId }) {
     try {
       const res = await installationsApi.getLandedCostDossier(dossierId)
       setCalcul(res?.data ?? null)
-    } catch { /* affiché nulle part : le bouton reste disponible pour réessayer */ }
+    } catch { console.warn('SuiviImport (calculer) : affiché nulle part : le bouton reste disponible pour réessayer') }
     finally { setCalculBusy(false) }
   }
 

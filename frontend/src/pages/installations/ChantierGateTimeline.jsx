@@ -885,7 +885,7 @@ export default function ChantierGateTimeline({ installationId, installation, onA
     try {
       const r = await installationsApi.genererPackRemise(installationId)
       setPack(r.data)
-    } catch { /* 403 si non Responsable/Admin */ }
+    } catch { console.warn('ChantierGateTimeline (genererPack) : 403 si non Responsable/Admin') }
     finally { setPackBusy(false) }
   }
 

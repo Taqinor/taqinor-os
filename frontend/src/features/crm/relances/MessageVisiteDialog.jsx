@@ -70,8 +70,7 @@ export default function MessageVisiteDialog({
       await navigator.clipboard.writeText(message)
       toastSuccess('Message copié.')
     } catch {
-      // best-effort — le presse-papier peut être indisponible (contexte non
-      // sécurisé, permission refusée) : aucune action bloquante à proposer.
+      console.warn('MessageVisiteDialog (copier) : best-effort — le presse-papier peut être indisponible (contexte non sécurisé, permission refusée) : aucune action bloquante à proposer.')
     }
   }
 

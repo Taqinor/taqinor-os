@@ -341,7 +341,7 @@ export default function LeadWorkspace({
         }
         onSaved?.()
         onClose?.()
-      } catch { /* silencieux */ } finally { setArchiveBusy(false) }
+      } catch { console.warn('LeadWorkspace (relay) : silencieux') } finally { setArchiveBusy(false) }
     })
   }, [leadId, leadArchived, leadNom, confirmer, leaveGuard, dispatch, onSaved, onClose])
 

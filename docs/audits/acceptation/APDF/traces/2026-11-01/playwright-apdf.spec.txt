@@ -1,0 +1,55 @@
+
+Running 6 tests using 1 worker
+
+[1/6] [setup] › e2e\auth.setup.js:9:1 › authenticate
+[2/6] [acceptation] › e2e\acceptation\_oracles.js:116:5 › P1.1 — APDF99, APDF46, APDF49
+[acceptation] › e2e\acceptation\_oracles.js:116:5 › P1.1 — APDF99, APDF46, APDF49
+[P1.1] 741 residentiel defaut fr : 3 p. (attendu 3), arabe 0
+741 residentiel onepage fr : 1 p. (attendu 1), arabe 0
+741 residentiel include_etude fr : 4 p. (attendu 4 ou 5), arabe 0
+741 residentiel devis_final fr : 3 p. (attendu 3), arabe 0
+741 residentiel defaut en : 3 p. (attendu 3), arabe 0
+741 residentiel onepage en : 1 p. (attendu 1), arabe 0
+741 residentiel defaut ar : 3 p. (attendu 3), arabe 1223
+741 residentiel onepage ar : 1 p. (attendu 1), arabe 327
+461 commercial defaut fr : 3 p. (attendu 3), arabe 0
+461 commercial onepage fr : 1 p. (attendu 1), arabe 0
+461 commercial include_etude fr : 3 p. (attendu 3), arabe 0
+461 commercial devis_final fr : 3 p. (attendu 3), arabe 0
+461 commercial defaut en : 3 p. (attendu 3), arabe 0
+461 commercial onepage en : 1 p. (attendu 1), arabe 0
+461 commercial defaut ar : 3 p. (attendu 3), arabe 1231
+461 commercial onepage ar : 1 p. (attendu 1), arabe 418
+524 industriel defaut fr : 4 p. (attendu 4), arabe 0
+524 industriel onepage fr : 1 p. (attendu 1), arabe 0
+524 industriel include_etude fr : 4 p. (attendu 4), arabe 0
+524 industriel devis_final fr : 4 p. (attendu 4), arabe 0
+524 industriel defaut en : 4 p. (attendu 4), arabe 0
+524 industriel onepage en : 1 p. (attendu 1), arabe 0
+524 industriel defaut ar : 4 p. (attendu 4), arabe 1702
+524 industriel onepage ar : 1 p. (attendu 1), arabe 337
+445 agricole defaut fr : 3 p. (attendu 3), arabe 0
+445 agricole onepage fr : 1 p. (attendu 1), arabe 0
+445 agricole include_etude fr : 3 p. (attendu 3), arabe 0
+445 agricole devis_final fr : 3 p. (attendu 3), arabe 0
+445 agricole note_calcul fr : 4 p. (attendu 4), arabe 0
+445 agricole defaut en : 3 p. (attendu 3), arabe 0
+445 agricole onepage en : 1 p. (attendu 1), arabe 0
+445 agricole defaut ar : 3 p. (attendu 3), arabe 1916
+445 agricole onepage ar : 1 p. (attendu 1), arabe 349
+741 total_ttc 78900.00 statut brouillon -> brouillon
+461 total_ttc 89600.00 statut brouillon -> brouillon
+524 total_ttc 70800.00 statut brouillon -> brouillon
+445 total_ttc 15600.00 statut brouillon -> brouillon
+
+[3/6] [acceptation] › e2e\acceptation\_oracles.js:116:5 › P1.2 — APDF17
+[4/6] [acceptation] › e2e\acceptation\_oracles.js:116:5 › P2 — APDF99, APDF18
+[acceptation] › e2e\acceptation\_oracles.js:116:5 › P2 — APDF99, APDF18
+[P2] R_P2-pdf-public 3 p. arabe 1375 | R_P2-piece-jointe 3 p. arabe 1375 | R_P2-proposal 3 p. arabe 1375
+
+[5/6] [acceptation] › e2e\acceptation\_oracles.js:116:5 › P3 — APDF99, APDF36, APDF48
+[6/6] [acceptation] › e2e\acceptation\_oracles.js:116:5 › P7 — APDF22
+[acceptation] › e2e\acceptation\_oracles.js:116:5 › P7 — APDF22
+[acceptation] PASS — C:\dev\taqinor-os\.claude\worktrees\wt10\docs\audits\acceptation\APDF\2026-11-01-c0dde5cb8.md
+
+  6 passed (3.3m)

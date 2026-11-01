@@ -174,7 +174,7 @@ export default function LeadsPage() {
     try {
       sessionView = sessionStorage.getItem(VIEW_KEY) != null
       sessionFilters = sessionStorage.getItem(FILTERS_KEY) != null
-    } catch { /* stockage indisponible */ }
+    } catch { console.warn('LeadsPage (LeadsPage) : stockage indisponible') }
     return {
       url: !!readViewFromParams(searchParams) || hasUrlFilterState(searchParams),
       session: sessionView || sessionFilters,
@@ -191,7 +191,7 @@ export default function LeadsPage() {
     }
   })
   useEffect(() => {
-    try { sessionStorage.setItem(VIEW_KEY, view) } catch { /* stockage indisponible */ }
+    try { sessionStorage.setItem(VIEW_KEY, view) } catch { console.warn('LeadsPage (LeadsPage) : stockage indisponible') }
   }, [view])
 
   /* APX4 — « ⛶ Plein écran board ».
@@ -213,7 +213,7 @@ export default function LeadsPage() {
   const toggleBoardFullscreen = useCallback(() => {
     setBoardFullscreen((v) => {
       const next = !v
-      try { localStorage.setItem(BOARD_FULLSCREEN_KEY, next ? '1' : '0') } catch { /* no-op */ }
+      try { localStorage.setItem(BOARD_FULLSCREEN_KEY, next ? '1' : '0') } catch { console.warn('LeadsPage (LeadsPage) : échec ignoré (dégradé)') }
       return next
     })
   }, [])
@@ -224,7 +224,7 @@ export default function LeadsPage() {
     const onKey = (e) => {
       if (e.key === 'Escape') {
         setBoardFullscreen(false)
-        try { localStorage.setItem(BOARD_FULLSCREEN_KEY, '0') } catch { /* no-op */ }
+        try { localStorage.setItem(BOARD_FULLSCREEN_KEY, '0') } catch { console.warn('LeadsPage (onKey) : échec ignoré (dégradé)') }
       }
     }
     window.addEventListener('keydown', onKey)
@@ -258,13 +258,13 @@ export default function LeadsPage() {
     // au tout premier chargement (aucun filtre encore persisté) — un choix
     // déjà fait par l'utilisateur (y compris désactivé) n'est JAMAIS écrasé.
     let hasPersisted = false
-    try { hasPersisted = sessionStorage.getItem(FILTERS_KEY) != null } catch { /* no-op */ }
+    try { hasPersisted = sessionStorage.getItem(FILTERS_KEY) != null } catch { console.warn('LeadsPage (onKey) : échec ignoré (dégradé)') }
     return (!hasPersisted && roleTier === 'normal') ? { ...loaded, mesLeads: true } : loaded
   })
   useEffect(() => {
     try {
       sessionStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
-    } catch { /* stockage indisponible */ }
+    } catch { console.warn('LeadsPage (onKey) : stockage indisponible') }
   }, [filters])
   // LB22 — URL partageable (blueprint D5, invariant I7 : une seule écriture
   // d'URL) : chaque changement de filtres/vue réécrit l'URL en `replace`

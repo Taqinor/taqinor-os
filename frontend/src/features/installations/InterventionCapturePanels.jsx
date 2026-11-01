@@ -510,7 +510,7 @@ export function MemosPanel({ intervention, onChanged }) {
   useEffect(() => () => {
     const rec = recorder.current
     if (rec) {
-      try { if (rec.state !== 'inactive') rec.stop() } catch { /* déjà arrêté */ }
+      try { if (rec.state !== 'inactive') rec.stop() } catch { console.warn('InterventionCapturePanels (MemosPanel) : déjà arrêté') }
       rec.stream?.getTracks().forEach((t) => t.stop())
     }
   }, [])

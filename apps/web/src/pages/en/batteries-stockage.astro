@@ -22,7 +22,6 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import Faq from '../../components/Faq.astro';
-import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
@@ -138,6 +137,7 @@ const jsonLd = {
 };
 import BatteriesStockageDiv7684 from '../../components/blocs/BatteriesStockageDiv7684.astro';
 import BatteriesStockageDivE1BC from '../../components/blocs/BatteriesStockageDivE1BC.astro';
+import BatteriesStockageDiv1626 from '../../components/blocs/BatteriesStockageDiv1626.astro';
 ---
 
 <Layout
@@ -394,10 +394,7 @@ import BatteriesStockageDivE1BC from '../../components/blocs/BatteriesStockageDi
     </section>
 
     <!-- W263 — per-component warranty, BEFORE the final CTA. -->
-    <div class="v2-seam" aria-hidden="true"></div>
-    <section class="section-tight bg-blanc-azur px-4 text-encre">
-      <ServiceWarrantyTable />
-    </section>
+    <BatteriesStockageDiv1626 />
 
     <CtaBand title="Storage or not? Your consumption curve will say — free assessment." href={devisHref} />
 

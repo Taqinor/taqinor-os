@@ -72,6 +72,7 @@ publiée par ``core/electrique/schema.py::GEOMETRIE``), ni le placement (par
 fragment, aucun filtre de texte sur le SVG rendu.
 """
 from __future__ import annotations
+from types import SimpleNamespace
 
 from core.champs_stricts import non_blanc
 
@@ -481,11 +482,9 @@ def enregistrer_edition_sld(calepinage, corps, *, dessin=None):
     return modifier_resultat(calepinage, _poser)
 
 
-class _Porteur:
+def _Porteur(resultat):  # noqa: N802 — nom historique
     """Un ``resultat`` relu, présenté à :func:`edition_sld`."""
-
-    def __init__(self, resultat):
-        self.resultat = resultat
+    return SimpleNamespace(resultat=resultat)
 
 
 def _dessin_du_calepinage(calepinage):

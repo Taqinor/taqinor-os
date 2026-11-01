@@ -537,7 +537,7 @@ export default function InterventionsPage() {
     } catch { return 'kanban' }
   })
   useEffect(() => {
-    try { localStorage.setItem(VIEW_KEY, view) } catch { /* stockage indisponible */ }
+    try { localStorage.setItem(VIEW_KEY, view) } catch { console.warn('InterventionsPage (closeDetail) : stockage indisponible') }
   }, [view])
 
   // Récupère sans toucher `loading` de façon synchrone (compat règle hooks) :

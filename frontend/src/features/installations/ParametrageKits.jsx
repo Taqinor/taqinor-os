@@ -253,7 +253,7 @@ function ControleQualiteTab({ kitId }) {
         await installationsApi.createControleQualiteModele({ kit: kitId, active: true })
       }
       reload()
-    } catch { /* affiché nulle part : réessai possible depuis le bouton */ }
+    } catch { console.warn('ParametrageKits (activer) : affiché nulle part : réessai possible depuis le bouton') }
     finally { setBusy(false) }
   }
   const desactiver = async () => {

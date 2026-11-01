@@ -68,7 +68,7 @@ export default function DemarrageWizard() {
   const marquerFait = async (key) => {
     const id = itemIds[key]
     if (!id) return
-    try { await api.post(`/onboarding/progress/${id}/marquer-fait/`) } catch { /* non bloquant */ }
+    try { await api.post(`/onboarding/progress/${id}/marquer-fait/`) } catch { console.warn('DemarrageWizard (marquerFait) : non bloquant') }
   }
 
   const step = STEPS[stepIndex]
@@ -79,7 +79,7 @@ export default function DemarrageWizard() {
   const passer = async () => {
     const id = itemIds.assistant_demarrage
     if (id) {
-      try { await api.post(`/onboarding/progress/${id}/ignorer/`) } catch { /* non bloquant */ }
+      try { await api.post(`/onboarding/progress/${id}/ignorer/`) } catch { console.warn('DemarrageWizard (passer) : non bloquant') }
     }
     navigate('/dashboard')
   }
