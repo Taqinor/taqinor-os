@@ -175,7 +175,7 @@ describe('SerialsPanel — séries attendues (revue chantier 26/10/2026)', () =>
       'Intervention terminée : indiquez le motif de la suppression.')
     expect(api.supprimerSerial.mock.calls[0]).toEqual([12, 7, undefined])
     await user.type(screen.getByLabelText('Motif de la suppression'), 'Doublon')
-    await user.click(screen.getByRole('button', { name: 'Supprimer' }))
+    await user.click(screen.getByRole('button', { name: 'Supprimer avec ce motif' }))
     await waitFor(() => expect(api.supprimerSerial).toHaveBeenCalledTimes(2))
     expect(api.supprimerSerial.mock.calls[1]).toEqual([12, 7, 'Doublon'])
   })

@@ -767,6 +767,7 @@ export function CodePanel({ intervention }) {
  * affiché + champ de motif (composant, jamais window.prompt) → renvoi avec `motif`.
  * `supprimer(ref, motif?)` appelle le wrapper ; `apres()` recharge.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useSuppressionMotif({ supprimer, apres, setBusy }) {
   const [attente, setAttente] = useState(null) // { ref, message }
   const [motif, setMotif] = useState('')
@@ -792,7 +793,7 @@ export function useSuppressionMotif({ supprimer, apres, setBusy }) {
         value={motif} onChange={(e) => setMotif(e.target.value)} />
       <div className="flex gap-2">
         <Button size="sm" disabled={!motif.trim()}
-          onClick={() => envoyer(attente.ref, motif.trim())}>Supprimer</Button>
+          onClick={() => envoyer(attente.ref, motif.trim())}>Supprimer avec ce motif</Button>
         <Button size="sm" variant="outline"
           onClick={() => { setAttente(null); setMotif('') }}>Annuler</Button>
       </div>
