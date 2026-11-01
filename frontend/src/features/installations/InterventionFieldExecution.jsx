@@ -22,6 +22,7 @@ import {
   Button, Badge, Spinner, Checkbox, Progress, toast,
 } from '../../ui'
 import { formatDateTime, formatDate } from '../../lib/format'
+import { useSuppressionMotif } from './InterventionCapturePanels'
 import { telHref } from '../../lib/contactLinks'
 import { downloadVCard } from '../../lib/vcard'
 import {
@@ -618,11 +619,10 @@ export function PhotosPanel({ intervention, onChanged }) {
     e.target.value = ''
     await uploadPhoto(file, pendingSlot.current)
   }
-  const remove = async (photoId) => {
-    setBusy(true)
-    try { await installationsApi.supprimerPhoto(id, photoId); await load(); onChanged?.() }
-    catch { toast.error('Suppression impossible.') } finally { setBusy(false) }
-  }
+  const { remove, formulaire: motifForm } = useSuppressionMotif({
+    supprimer: (photoId, m) => installationsApi.supprimerPhoto(id, photoId, m),
+    apres: async () => { await load(); onChanged?.() }, setBusy,
+  })
 
   if (loading) return (
     <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
@@ -637,6 +637,7 @@ export function PhotosPanel({ intervention, onChanged }) {
 
   return (
     <div className="flex flex-col gap-4 py-2 text-sm">
+      {motifForm}
       {/* EZ8 — badge de synchro À L'ENDROIT où les photos partent en file :
           compteur exact (actions + photos) et bouton « Synchroniser ».
           Silencieux quand tout est envoyé. */}
