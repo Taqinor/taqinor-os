@@ -392,15 +392,29 @@ def cocher_outil_ligne(ligne, coche):
             raise OutilIndisponible('Outil en réparation.')
         if outil.statut == Outillage.Statut.EN_INTERVENTION:
             raise OutilIndisponible('Outil déjà sorti.')
+        # ACHT121 — l'emplacement quitté est mémorisé sur la ligne de retour
+        # (même clé/defaults que `_tool_return_response`), puis vidé.
+        interv = ligne.preparation.intervention
+        tr, cree = interv.tool_returns.get_or_create(
+            outil=outil, defaults={
+                'company': interv.company,
+                'emplacement_retour': outil.emplacement})
+        if not cree and tr.confirme_le is None:
+            tr.emplacement_retour = outil.emplacement
+            tr.save(update_fields=['emplacement_retour'])
         outil.statut = Outillage.Statut.EN_INTERVENTION
-        outil.save(update_fields=['statut'])
+        outil.emplacement = None
+        outil.save(update_fields=['statut', 'emplacement'])
     elif outil is not None and not coche and ligne.coche:
-        deja_confirme = ligne.preparation.intervention.tool_returns.filter(
+        retours = ligne.preparation.intervention.tool_returns
+        deja_confirme = retours.filter(
             outil=outil, confirme_le__isnull=False).exists()
         if outil.statut == Outillage.Statut.EN_INTERVENTION and (
                 not deja_confirme):
+            tr = retours.filter(outil=outil).first()
             outil.statut = Outillage.Statut.DISPONIBLE
-            outil.save(update_fields=['statut'])
+            outil.emplacement = tr.emplacement_retour if tr else None
+            outil.save(update_fields=['statut', 'emplacement'])
     ligne.coche = coche
     ligne.save(update_fields=['coche'])
     return ligne
