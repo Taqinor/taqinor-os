@@ -118,10 +118,32 @@ class TestLecteursSurLaVenteVNT87(TestCase):
         self.assertTrue(tranche_facturee(self.v1, 'acompte'))
         self.assertFalse(tranche_facturee(self.v1, 'solde'))
 
+    def _payer(self, facture, montant='120'):
+        from apps.ventes.models import Paiement
+        Paiement.objects.create(
+            company=self.company, facture=facture, montant=Decimal(montant),
+            date_paiement=facture.date_emission, mode='virement')
+
     def test_acompte_paye_lu_sur_la_chaine(self):
         from apps.ventes.selectors import acompte_paye_pour_devis
         self.assertFalse(acompte_paye_pour_devis(self.v1.id, self.company))
-        self._acompte(Facture.Statut.PAYEE)
+        self._payer(self._acompte(Facture.Statut.PAYEE))
         self.assertTrue(acompte_paye_pour_devis(self.v1.id, self.company))
         autre = make_company()
         self.assertFalse(acompte_paye_pour_devis(self.v1.id, autre))
+
+    def test_acompte_solde_par_avoir_n_ouvre_pas_la_planification(self):
+        """AARG3 — un acompte « payé » par un avoir total (0 encaissé)
+        n'ouvre pas la porte ; un second acompte réellement payé l'ouvre.
+        Mutant : revenir à ``statut=payee`` ⇒ échec."""
+        from apps.ventes.models import Avoir
+        from apps.ventes.selectors import acompte_paye_pour_devis
+        solde = self._acompte(Facture.Statut.PAYEE)
+        Avoir.objects.create(
+            company=self.company, reference=f'AV-AARG3-{next(_seq)}',
+            facture=solde, client=self.client_obj, statut=Avoir.Statut.EMISE,
+            taux_tva=Decimal('20'), montant_ht=Decimal('100'),
+            montant_tva=Decimal('20'), montant_ttc=Decimal('120'))
+        self.assertFalse(acompte_paye_pour_devis(self.v1.id, self.company))
+        self._payer(self._acompte(Facture.Statut.PAYEE))
+        self.assertTrue(acompte_paye_pour_devis(self.v1.id, self.company))
