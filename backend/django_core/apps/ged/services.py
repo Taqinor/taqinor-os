@@ -5069,16 +5069,19 @@ def matcher_depot_demandes(document):
         .order_by('created_at', 'id'))
     # ADOC12/ADOC177 — le dépôt ne solde que la demande de SA PROPRE pièce :
     # tous les mots du libellé (ou de son exigence) sont des mots entiers du
-    # nom, sans accents ni casse. Jamais de sous-chaîne ni de repli.
+    # nom, sans accents ni casse. Jamais de sous-chaîne ni de repli. ADOC188 :
+    # mots découpés sur TOUT non-alphanumérique (« CIN.pdf » → cin, pdf).
     from django.utils.text import slugify
-    mots_nom = set(slugify(document.nom or '').split('-'))
+
+    def mots(texte):
+        return set(re.split(r'[^a-z0-9]+', slugify(re.sub(r'[\W_]+', ' ', texte or '')))) - {''}
+    mots_nom = mots(document.nom)
     demande = None
     for candidate in en_attente:
         libelles = [candidate.libelle or '']
         if candidate.exigence_id:
             libelles.append(candidate.exigence.libelle or '')
-        if any(slugify(lib) and set(slugify(lib).split('-')) <= mots_nom
-               for lib in libelles):
+        if any(mots(lib) and mots(lib) <= mots_nom for lib in libelles):
             demande = candidate
             break
     if demande is None:
