@@ -355,3 +355,82 @@ class TestEtudeHoraireSansStockage(SimpleTestCase):
         from apps.ventes.quote_engine.builder import _etude_horaire_sans_stockage
         self.assertIsNone(_etude_horaire_sans_stockage(None))
         self.assertEqual(_etude_horaire_sans_stockage('x'), 'x')
+
+
+class TestMarqueFigeeDuNoyau(TestCase):
+    """ADVS7 × noyau monnaie — l'accessoire Huawei suit la marque FIGÉE à l'envoi,
+    comme le moteur PDF : corriger la marque au catalogue ne change pas le total
+    d'un envoyé. Sans instantané : la marque du jour, comme hier."""
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='opt-marque', defaults={'nom': 'Opt Marque'})
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='Marque')
+        self.onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau 5kW', sku='MQ-OND',
+            marque='Huawei', prix_vente=Decimal('9000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        self.compteur = Produit.objects.create(
+            company=self.company, nom='Smart Meter DTSU666', sku='MQ-SM',
+            prix_vente=Decimal('1500'), prix_achat=Decimal('1'),
+            quantite_stock=10)
+
+    def _devis(self, reference, *, statut='envoye', regles=10, fige=True):
+        clauses = [{'type': 'reglages_figes', 'produits': {
+            str(self.onduleur.pk): {
+                'marque': 'Huawei', 'description': '', 'garantie': '',
+                'garantie_mois': None, 'garantie_production_mois': None}}}]
+        devis = Devis.objects.create(
+            company=self.company, reference=reference, client=self.client_obj,
+            statut=statut, taux_tva=Decimal('20'), regles_calcul=regles,
+            clauses_appliquees=clauses if fige else [])
+        for produit in (self.onduleur, self.compteur):
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=produit.nom,
+                quantite=Decimal('1'), prix_unitaire=produit.prix_vente,
+                remise=Decimal('0'))
+        return devis
+
+    def _garde_le_compteur(self, devis):
+        """Lu sur une instance NEUVE : aucun cache de la ligne ou du produit."""
+        from apps.ventes.utils.options import lignes_avec_produit
+        frais = Devis.objects.get(pk=devis.pk)
+        return 'Smart Meter DTSU666' in [
+            li.designation for li in filter_lines_for_option(
+                lignes_avec_produit(frais), 'sans_batterie', devis=frais)]
+
+    def _corriger_la_marque(self):
+        Produit.objects.filter(pk=self.onduleur.pk).update(marque='Deye')
+
+    def test_envoye_fige_garde_son_panier(self):
+        devis = self._devis(f'DEV-{MONTH}-8101')
+        self.assertTrue(self._garde_le_compteur(devis))
+        self._corriger_la_marque()
+        self.assertTrue(self._garde_le_compteur(devis))
+
+    def test_noyau_et_moteur_lisent_la_meme_marque(self):
+        from apps.ventes.quote_engine.lignes_classement import (
+            _item_marque, _line_to_item, fiches_figees)
+        from apps.ventes.utils.options import _blob_marque, lignes_avec_produit
+        devis = self._devis(f'DEV-{MONTH}-8102')
+        self._corriger_la_marque()
+        frais = Devis.objects.get(pk=devis.pk)
+        for ligne in lignes_avec_produit(frais):
+            item = _line_to_item(ligne, Decimal('20'), fiches_figees(frais))
+            self.assertEqual(_blob_marque(ligne), _item_marque(item))
+        onduleur = next(li for li in lignes_avec_produit(frais)
+                        if li.produit_id == self.onduleur.pk)
+        self.assertIn('Huawei', _blob_marque(onduleur))
+
+    def test_envoye_sans_instantane_niveau_9_suit_le_catalogue(self):
+        """Tous les devis ≤ 9 d'avant ce gel : à l'octet, le comportement d'hier."""
+        devis = self._devis(f'DEV-{MONTH}-8103', regles=9, fige=False)
+        self.assertTrue(self._garde_le_compteur(devis))
+        self._corriger_la_marque()
+        self.assertFalse(self._garde_le_compteur(devis))
+
+    def test_brouillon_ignore_l_entree_heritee(self):
+        devis = self._devis(f'DEV-{MONTH}-8104', statut='brouillon')
+        self._corriger_la_marque()
+        self.assertFalse(self._garde_le_compteur(devis))

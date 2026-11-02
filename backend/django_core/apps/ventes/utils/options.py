@@ -24,7 +24,7 @@ from core.product_roles import role_va_dans_avec, role_va_dans_sans
 # Prédicats de classification — partagés avec le moteur de devis. Purs (chaînes).
 from apps.ventes.quote_engine.lignes_classement import (
     _is_battery, _is_hybrid_inverter, _is_inverter, _is_offgrid_inverter,
-    _is_reseau_inverter, _is_smart_meter, _is_wifi_dongle,
+    _is_reseau_inverter, _is_smart_meter, _is_wifi_dongle, fiches_figees,
 )
 import logging
 
@@ -121,10 +121,18 @@ def _variante(ligne) -> str:
 
 
 def _blob_marque(ligne) -> str:
-    """Adaptateur ``LigneDevis`` de :func:`texte_marque`."""
+    """Adaptateur ``LigneDevis`` de :func:`texte_marque`.
+
+    ADVS7 — la marque FIGÉE à l'envoi quand l'instantané porte ce produit, comme
+    ``_line_to_item`` côté moteur : sans quoi une marque corrigée au catalogue
+    ferait diverger le total imprimé d'un envoyé de celui du noyau. Sans
+    instantané (brouillon, envoyé d'avant ce gel, tous les devis ≤ 9) : la marque
+    du jour, à l'octet."""
     produit = getattr(ligne, 'produit', None)
-    return texte_marque(getattr(ligne, 'designation', ''),
-                        getattr(produit, 'marque', ''),
+    fiche = fiches_figees(getattr(ligne, 'devis', None)).get(
+        str(getattr(produit, 'pk', '')))
+    marque = fiche.get('marque') if fiche else getattr(produit, 'marque', '')
+    return texte_marque(getattr(ligne, 'designation', ''), marque,
                         getattr(produit, 'nom', ''))
 
 
