@@ -208,3 +208,4 @@
 - 2026-10-27 — CCAT102 (« État enregistré : N prestations sur 8 à régler · M sans article au catalogue » + avertissement par ligne) et CCAT103 (prestations C&I en tableau compact, intro du calcul et de la ligne client « Installation clé en main », effet de la bande prix/kWc).
 - 2026-10-30 — APAR45 — acceptation en direct (rejeu 30/10, SHA 6ce47c06f) : 19/19 étapes (P1.3, P3.2b, P4.1, P4.2b écrites ; P1.2 désormais vert) — docs/audits/acceptation/APAR/2026-10-30-6ce47c06f.md
 - 2026-11-01 — APAR85 — cochée : `_jour(n)` patche aussi `beat_tasks.date`, garantie rejouée sous `_jour(n)` (tests_apar8_marqueur_occurrence.py). Preuve en direct : n/a — test-du-test.
+- 2026-11-01 — APAR86 — NON cochée : migration de données 0008_reseed_libelle_premier_devis (rejoue seed_default_items) ; test_models.py::OnboardingModelsTest::test_migration_0008_porte_le_libelle_apar52. Code livré, preuve en direct due (pile locale migrée avant APAR52 puis migrate).

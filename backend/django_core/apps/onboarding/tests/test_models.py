@@ -25,6 +25,23 @@ class OnboardingModelsTest(TestCase):
         seed_default_items()
         self.assertEqual(OnboardingChecklistItem.objects.count(), n)
 
+    def test_migration_0008_porte_le_libelle_apar52(self):
+        """APAR86 — la migration 0008 rejoue le seed : un item à l'ancien
+        libellé reçoit « Envoyer votre 1er devis », rien d'autre ne change."""
+        import importlib
+        from django.apps import apps as django_apps
+        mig = importlib.import_module(
+            'apps.onboarding.migrations.0008_reseed_libelle_premier_devis')
+        OnboardingChecklistItem.objects.filter(key='premier_devis').update(
+            libelle='Créer votre 1er devis')
+        autres = dict(OnboardingChecklistItem.objects.exclude(
+            key='premier_devis').values_list('key', 'libelle'))
+        mig.reseed(django_apps, None)
+        item = OnboardingChecklistItem.objects.get(key='premier_devis')
+        self.assertEqual(item.libelle, 'Envoyer votre 1er devis')
+        self.assertEqual(autres, dict(OnboardingChecklistItem.objects.exclude(
+            key='premier_devis').values_list('key', 'libelle')))
+
     def test_progress_unique_per_user_item(self):
         item = OnboardingChecklistItem.objects.first()
         u = User.objects.create_user('u1', password='x', company=self.company)
