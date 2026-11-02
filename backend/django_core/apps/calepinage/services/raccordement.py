@@ -1020,6 +1020,20 @@ def _texte_saisi(valeur, champ):
     return valeur.strip() or None
 
 
+#: ERR-ENF11-FUZZ-CALEPINAGE - plafond de TOUT nombre saisi du raccordement
+#: (kVA, V, %, kW) : une valeur de l'ordre de 1e308 fait deborder les calculs
+#: aval (produit/puissance en flottants, 500) ; aucun branchement reel
+#: n'approche cette borne. Publiee en ``maximum`` sur le corps de l'API.
+SAISIE_MAXIMUM = 1e9
+
+
+def _refus_trop_grand(champ, nombre):
+    return _refus_saisie(
+        champ, "%s est trop grande (« %s » ; au plus %s)."
+               % (INTITULES_SAISIE[champ].capitalize(), fr(nombre),
+                  fr(SAISIE_MAXIMUM)))
+
+
 def _nombre_saisi(valeur, champ):
     """Un nombre STRICTEMENT positif, ``None``, ou un refus qui NOMME."""
     if valeur is None or valeur == '':
@@ -1035,6 +1049,8 @@ def _nombre_saisi(valeur, champ):
             champ, "%s doit être strictement positive : « %s » ne décrit "
                    "aucun branchement réel."
                    % (INTITULES_SAISIE[champ].capitalize(), fr(nombre)))
+    if nombre > SAISIE_MAXIMUM:
+        raise _refus_trop_grand(champ, nombre)
     return nombre
 
 
@@ -1057,6 +1073,8 @@ def _plafond_saisi(valeur):
         raise _refus_saisie(
             champ, "%s ne peut pas être négatif (« %s »)."
                    % (INTITULES_SAISIE[champ].capitalize(), fr(nombre)))
+    if nombre > SAISIE_MAXIMUM:
+        raise _refus_trop_grand(champ, nombre)
     return nombre
 
 
