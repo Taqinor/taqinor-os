@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 876b74335f1caf55830008b1ec40919e285fdc5ea73fac568abdf04f5c0ff43a
+Structure fingerprint: e95a9e2d979425904e87df3adf41175669a5c2e3d08e1bbf469476c46cb24f33
 Plan fingerprint: 03a7387dd68549e3bc80acff6e39b0b6ffc78855838c8cab2d31a37c2e0faf12
 
 
@@ -237,7 +237,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `ged` | `ged/` | 43 | Document management: `Cabinet`/`Folder`/`Document`/`DocumentVersion`, ACL, retention/legal hold, signature requests, public deposits, `Coffre`. |
 | `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). |
 | `adsengine` | `adsengine/` | 47 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree. **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). |
-| `reporting` | `reporting/` | 11 | Dashboards/KPIs/insights, federated KPI hub, `Classeur`, `RapportDefinition`, `KpiAlerte`, global search (`search.py`), stage-probability table (`GET reporting/probabilites-etape/`, AANA66) — the app owns no business data. |
+| `reporting` | `reporting/` | 13 | Dashboards/KPIs/insights, federated KPI hub, `Classeur`, `RapportDefinition`, `KpiAlerte`, global search (`search.py`), stage-probability table (`GET reporting/probabilites-etape/`, AANA66), real-field Web Vitals (`WebVitalMetric`, VX61) and the user-problem journal (`ProblemeClient`, YJPB1 — `POST reporting/problemes-client/` posted by `frontend/src/lib/journalProblemes.js`, read by `manage.py problemes_utilisateurs`; no screen, see `docs/journal-problemes-utilisateurs.md`) — the app owns no business data. |
 | `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`. |
 | `parametres` | `parametres/` | 18 | `CompanyProfile`, business settings, WhatsApp/email templates, `TauxTVA`/`ConditionPaiement`/`UniteMesure` referentials, `Realisation`, tax-ID validators, output-language resolver. |
 | `roles` | `roles/` | 1 | Per-company `Role` + permission lists (RBAC). |
