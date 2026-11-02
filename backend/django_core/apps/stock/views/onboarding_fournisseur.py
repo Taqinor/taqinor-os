@@ -259,8 +259,10 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
         infos, erreur = store_attachment(
             fichier, company=request.user.company)
         if erreur:
+            # ENF11 (api-fuzz) — format lu dans les octets / taille : règles
+            # que le schéma (« un fichier ») ne porte pas -> 409, pas 400.
             return Response({'detail': erreur},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         document.file_key = infos['file_key']
         document.filename = infos['filename']
         document.mime = infos['mime']

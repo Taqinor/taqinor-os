@@ -267,6 +267,17 @@ class ProgressionEtValidationTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn('file_key', resp.data)
 
+    def test_televerser_format_illisible_409(self):
+        """ENF11 (api-fuzz) — format lu dans les octets : règle hors schéma, 409."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        piece = poser_piece(self.company, self.dossier,
+                            DocumentFournisseur.Type.RC, avec_fichier=False)
+        resp = self.api.post(
+            f'{STOCK}/documents-fournisseur/{piece.pk}/televerser/',
+            {'file': SimpleUploadedFile('f', b'', 'application/pdf')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
     def test_document_dossier_inconnu_404_et_texte_strict(self):
         """CI #997 fuzz (4) : un dossier absent est une ressource qui manque
         (404) ; référence et note sont des textes JSON, jamais convertis."""
