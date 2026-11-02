@@ -59,7 +59,9 @@ def validate_dgi_conformity(facture, profile=None):
         problemes.append("Registre de commerce (RC) du vendeur manquant.")
 
     # ── Identité du client (+ ICE obligatoire en B2B) ──
-    client = facture.client
+    # AARG27 — l'acheteur du XML : l'identité figée à l'émission, pas le client vivant.
+    from apps.ventes.domain.instantanes_facture import acheteur_de_la_facture
+    client = acheteur_de_la_facture(facture)
     if client is None or not (getattr(client, 'nom', '') or '').strip():
         problemes.append("Identité du client manquante.")
     elif _est_pro(client) and not (getattr(client, 'ice', '') or '').strip():

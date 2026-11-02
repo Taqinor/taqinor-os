@@ -135,6 +135,24 @@ class PdfChaineTotauxTests(TestCase):
         texte = self._texte(generate_note_debit_pdf, note.id)
         self._verifier_chaine(texte, 'Total dû en supplément (TTC)')
 
+    def test_avoir_a_deux_taux_par_lignes_imprime_les_bases(self, _dl):
+        """AARG36 — un avoir réel à deux lignes 10 % / 20 %, sans
+        ``ventilation_tva`` : les deux bases s'impriment quand même."""
+        from apps.facturation.models import LigneAvoir
+        from apps.ventes.utils.pdf import generate_avoir_pdf
+        avoir = Avoir.objects.create(
+            company=self.company, client=self.client_obj, facture=self.facture,
+            reference='AV-DEMO-0004', taux_tva=Decimal('20.00'),
+            montant_ht=Decimal('2000.00'), montant_tva=Decimal('300.00'),
+            montant_ttc=Decimal('2300.00'))
+        for taux in ('10.00', '20.00'):
+            LigneAvoir.objects.create(
+                avoir=avoir, designation=f'Ligne {taux}', quantite=Decimal('1'),
+                prix_unitaire=Decimal('1000.00'), taux_tva=Decimal(taux))
+        texte = self._texte(generate_avoir_pdf, avoir.id)
+        self.assertIn('Base HT (10.00%) 1000.00 MAD', texte)
+        self.assertIn('Base HT (20.00%) 1000.00 MAD', texte)
+
     def test_avoir_et_note_debit_ventiles(self, _dl):
         """AARG36 (C-AARG-039) — la base HT par taux sur l'avoir et la note de
         débit ventilés ; l'avoir date la facture d'origine."""
