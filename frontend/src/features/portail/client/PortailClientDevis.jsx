@@ -92,6 +92,8 @@ export default function PortailClientDevis() {
     // ADOC114 — devis à deux options : le client choisit, le serveur
     // refuse (400) un corps sans `option`.
     if (aSigner.deux_options) corps.option = option
+    // ADVS20 — le serveur vérifie que le contenu signé est celui lu ici.
+    if (aSigner.empreinte_contenu) corps.empreinte_contenu = aSigner.empreinte_contenu
     if (exigeEntreprise) {
       corps.entreprise = Object.fromEntries(
         CHAMPS_ENTREPRISE.map(({ cle }) => [cle, entreprise[cle].trim()]))
@@ -107,6 +109,11 @@ export default function PortailClientDevis() {
         setErreurs({ [data.champ]: data.detail })
       } else {
         toast.error(data?.detail || "L'acceptation n'a pas abouti.")
+      }
+      // ADVS20 — corrigé depuis la lecture : relire le devis avant de signer.
+      if (data?.code === 'empreinte_perimee') {
+        setASigner(null)
+        charger()
       }
     } finally {
       setEnvoi(false)

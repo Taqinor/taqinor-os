@@ -91,7 +91,18 @@ def devis_du_client_portail(company, client_id, *, limit=200,
         # générales que le client accepte, lues par LA fonction de la page
         # publique /proposition.
         **(_conditions_portail(d) if avec_conditions else {}),
+        # ADVS20 (contrat ``mes_devis_liste.json``) — l'empreinte du contenu
+        # lu, renvoyée à l'acceptation ; None hors signable.
+        **({'empreinte_contenu': _empreinte_portail(d)} if avec_conditions else {}),
     } for d in qs]
+
+
+def _empreinte_portail(devis):
+    """ADVS20 — LA règle du lien public : l'empreinte du contenu signable,
+    ``None`` quand rien n'est signable (accepté, expiré, remplacé…)."""
+    from .public.signature_views import empreinte_contenu, signable_au_jeton
+
+    return empreinte_contenu(devis) if signable_au_jeton(devis) else None
 
 
 def _acceptable_portail(devis):

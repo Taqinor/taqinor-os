@@ -22,6 +22,7 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
+from apps.portail.tests import corps_acceptation
 from apps.ventes.models import Devis, DevisSignature
 from authentication.models import CustomUser
 
@@ -71,7 +72,7 @@ class AcceptationEntreprisePortail(TestCase):
     def _post(self, devis, corps, user=None):
         self.api.force_authenticate(user=user or self.user_a)
         # APDF35 — la case « conditions générales » est cochée (exigée).
-        corps = {'accepte_conditions': True, **corps}
+        corps = corps_acceptation(devis, accepte_conditions=True, **corps)
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
             return self.api.post(
                 f'/api/django/portail/mes-devis/{devis.id}/accepter/',

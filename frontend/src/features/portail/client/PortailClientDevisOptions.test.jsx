@@ -54,6 +54,27 @@ function renderPage() {
   )
 }
 
+describe('PortailClientDevis — ADVS20 empreinte du contenu lu', () => {
+  it('renvoie la clé lue ; 409 empreinte_perimee : message et liste relue', async () => {
+    const reponses = contrat.acceptation.reponses
+    const r = reponseContrat('portail', 'mes_devis_liste')
+    const mono = r.data.results[1]
+    r.data.results = [{ ...r.data.results[0], deux_options: mono.deux_options, options: mono.options, exige_identite_entreprise: false }]
+    portailApi.devis.liste.mockResolvedValue(r)
+    portailApi.devis.accepter.mockRejectedValue({ response: { status: 409, data: reponses['409_empreinte_perimee'] } })
+    renderPage()
+    await screen.findByText(r.data.results[0].reference)
+    fireEvent.click(screen.getByRole('button', { name: 'Accepter' }))
+    fireEvent.change(screen.getByLabelText('Votre nom'), { target: { value: 'K A' } })
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: /Confirmer l’acceptation/ }))
+    await waitFor(() => expect(portailApi.devis.accepter).toHaveBeenCalledTimes(1))
+    expect(portailApi.devis.accepter.mock.calls[0][1].empreinte_contenu).toBe(r.data.results[0].empreinte_contenu)
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledWith(reponses['409_empreinte_perimee'].detail))
+    await waitFor(() => expect(portailApi.devis.liste).toHaveBeenCalledTimes(2))
+  })
+})
+
 describe('PortailClientDevis — ADOC114 choix de l’option', () => {
   it('exige le choix, envoie option et recharge la liste « Accepté »', async () => {
     serveur()

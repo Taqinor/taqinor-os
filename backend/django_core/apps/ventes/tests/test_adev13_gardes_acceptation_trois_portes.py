@@ -28,6 +28,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
+from apps.portail.tests import corps_acceptation
 from apps.portail.tests.test_ntprt10_mes_devis import make_portal_user
 from apps.ventes.models import Devis, DevisSignature, ShareLink
 from authentication.models import Company, CustomUser
@@ -103,9 +104,9 @@ class _PortesBase(TestCase):
         api.force_authenticate(user=self.portail_user)
         return api.post(
             f'/api/django/portail/mes-devis/{devis.id}/accepter/',
-            {'nom': 'Client', 'option': 'sans_batterie',
-             'consent_esign': True,
-             'accepte_conditions': True}, format='json')
+            corps_acceptation(devis, nom='Client', option='sans_batterie',
+                              consent_esign=True, accepte_conditions=True),
+            format='json')
 
     def _assert_rien_ecrit(self, devis):
         devis.refresh_from_db()
