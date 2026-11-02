@@ -93,6 +93,43 @@ class TestNoteDebit(TestCase):
         self.assertEqual(r2.status_code, 201, r2.data)
         self.assertNotEqual(r1.data['reference'], r2.data['reference'])
 
+    def test_nd_annulee_ne_masque_pas_le_retard_de_la_facture(self):
+        """AARG53 — le crédit de l'avoir miroir d'une ND annulée ne solde pas la
+        part de la facture : 600 restent dus depuis 90 jours, pas à J+30."""
+        import datetime
+        from decimal import Decimal as D
+
+        from apps.ventes.domain.encaissements import recalculer_statut_paiement
+        from apps.ventes.models import Paiement
+        jour = datetime.date.today()
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-ND-0010', client=self.client_obj,
+            statut=Facture.Statut.EMISE, taux_tva=D('20.00'),
+            date_emission=jour - datetime.timedelta(days=120),
+            date_echeance=jour - datetime.timedelta(days=90))
+        LigneFacture.objects.create(
+            facture=facture, produit=self.panneau, designation='Panneau PV',
+            quantite=D('1'), prix_unitaire=D('1000'), taux_tva=D('20.00'))
+        Paiement.objects.create(
+            company=self.company, facture=facture, montant=D('600'),
+            date_paiement=jour - datetime.timedelta(days=85),
+            mode='virement', created_by=self.admin)
+        recalculer_statut_paiement(facture)
+        api = self._api(self.admin)
+        r = api.post(
+            f'/api/django/ventes/factures/{facture.id}/creer-note-debit/',
+            {'motif': 'Complément', 'montant': '500.00', 'taux_tva': '20'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = api.post(f"/api/django/ventes/notes-debit/{r.data['id']}/annuler/")
+        self.assertEqual(r.status_code, 201, r.data)
+        relue = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(relue.montant_du, D('600.00'))
+        self.assertEqual(relue.statut, Facture.Statut.EN_RETARD)
+        self.assertEqual(relue.jours_retard, 90)
+        self.assertEqual(relue.echeance_exigible,
+                         jour - datetime.timedelta(days=90))
+
     def test_nd_sur_facture_payee_a_sa_propre_echeance(self):
         """AARG53 (C-AARG-060) — une ND d'aujourd'hui sur une facture payée (échue
         depuis 90 j) n'est pas « en retard de 90 jours » : à J+31 de la ND,
