@@ -396,6 +396,15 @@
       ]
     },
     {
+      "nom": "prolonger_validite",
+      "url_path": "prolonger-validite",
+      "url_name": "prolonger-validite",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
       "nom": "proposal",
       "url_path": "proposal",
       "url_name": "proposal",
@@ -694,6 +703,7 @@
     "prefill_site",
     "prix_negocie",
     "proforma_pdf",
+    "prolonger_validite",
     "proposal",
     "queryset",
     "raise_uncaught_exception",
