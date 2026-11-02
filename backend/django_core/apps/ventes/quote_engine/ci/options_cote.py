@@ -20,6 +20,7 @@ from ..lecture_pure import nombre_ou_none
 from ..premium_base import kwc_str
 from . import couverture
 from .blocs import libelle
+from .mentions import economie_ttc_option_avec
 
 
 def deux_options(d, cle):
@@ -60,13 +61,16 @@ def _ligne_prix(d, synthese, ht, ttc, fmt_mad, ancrer):
                    + (ancre(cle_fig, texte) if ancrer else ""))
 
 
-def _ligne_economie(d, valeur, base, fmt, ancrer):
+def _ligne_economie(d, valeur, base, fmt, ancrer, ttc=""):
+    """AMOT115 — ``ttc`` : « soit N MAD TTC » sous la HT (base « deux »)."""
     texte = fmt(valeur)
     unite = f"&#160;{libelle(d, f'ci_{base.lower()}', base)}" \
         if base in ("HT", "TTC") else ""
+    soit = (f'<div style="font-size:6.3pt;font-weight:400;">{ttc}</div>'
+            if ttc and not d.get("regles_ecarts_0111_historique") else "")
     return (libelle(d, "ci_opt_economie_annuelle", "Économie annuelle"),
             f"{texte}&#160;MAD{unite}"
-            + (ancre("economie_annuelle", texte) if ancrer else ""))
+            + (ancre("economie_annuelle", texte) if ancrer else "") + soit)
 
 
 def _ligne_retour(d, ans_valeur, ancrer):
@@ -103,7 +107,8 @@ def lignes_sans(d, cle, fmt, fmt_mad, invest_ttc):
         economie = d.get(f"{cle}_economies")
         if economie is not None:
             lignes.append(_ligne_economie(
-                d, economie, d.get(f"{cle}_economie_base"), fmt, True))
+                d, economie, d.get(f"{cle}_economie_base"), fmt, True,
+                couverture.economie_ttc(d, cle, fmt)))
         retour = couverture.retour_affiche(d, cle)
         if retour is not None:
             lignes.append(_ligne_retour(d, retour, True))
@@ -129,7 +134,9 @@ def lignes_avec(d, cle, fmt, fmt_mad):
         # ``valeur_option_avec`` : l'économie annuelle HT de l'option.
         economie = nombre_ou_none(valeur.get("economie_annuelle_mad"))
         if economie:
-            lignes.append(_ligne_economie(d, economie, "HT", fmt, False))
+            ttc = economie_ttc_option_avec(d)
+            lignes.append(_ligne_economie(d, economie, "HT", fmt, False, couverture.economie_ttc(
+                d, cle, fmt, ttc) if ttc else ""))
         retour = nombre_ou_none(valeur.get("retour_simple_ans"))
         if retour:
             lignes.append(_ligne_retour(d, retour, False))

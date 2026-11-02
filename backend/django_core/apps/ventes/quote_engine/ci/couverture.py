@@ -336,12 +336,15 @@ def note_tva(d, base):
     return libelle(d, cle, i18n_labels.LIBELLES[cle]["fr"])
 
 
-def economie_ttc(d, cle, fmt):
+def economie_ttc(d, cle, fmt, valeur=None):
     """AMOT95 — base « deux » : « soit N MAD TTC », l'économie de l'année 1
-    TTC SERVIE (``chiffres_cles``) à côté de la HT ; '' sinon."""
+    TTC SERVIE (``chiffres_cles``) à côté de la HT ; '' sinon. AMOT115 —
+    ``valeur`` : la TTC servie d'une autre offre (carte « avec batterie »),
+    imprimée sous la même condition de base « deux »."""
     from .synthese import chiffres_cles
     ttc = chiffres_cles(d.get(f"{cle}_synthese") or {})[
         "economie_annuelle_ttc_mad"]
+    ttc = ttc if valeur is None or ttc is None else valeur
     if ttc is None:
         return ""
     return (f'{libelle(d, "ci_soit", "soit")} {fmt(ttc)}&nbsp;MAD&nbsp;'
