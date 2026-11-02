@@ -116,8 +116,8 @@ class DevisCalepinageActionsMixin:
         Corps : ``{layout, lead, client, taux_tva?, remise_globale?}``. Le
         ``layout`` est le JSON sérialisé tel que stocké par l'action ``layout``
         (AreaRecord[] + result + renderPlan). La société est TOUJOURS celle du
-        user (jamais lue du corps) ; lead et client sont résolus bornés à cette
-        société (404/400 si une autre société). Au moins un lead OU un client est
+        user (jamais lue du corps) ; le lead est borné à la portée du user, le
+        client à la société (404/400 sinon). Au moins un lead OU un client est
         requis. Aucun statut n'est touché : le service renvoie un brouillon
         (préservation des statuts, règle #4) et la numérotation anti-collision
         est gérée par le service.
@@ -173,8 +173,11 @@ class DevisCalepinageActionsMixin:
         lead_id = entier_ou_400(request.data.get('lead'), 'lead')
         client_id = entier_ou_400(request.data.get('client'), 'client')
         if lead_id:
-            from apps.crm.selectors import get_company_lead
-            lead_obj = get_company_lead(company, lead_id)
+            # ADVS44 — portée du rôle : le lead d'un collègue n'atteint jamais
+            # la dédup (ni son brouillon ni son jeton).
+            from apps.crm.selectors import leads_visibles
+            lead_obj = leads_visibles(request.user, company).filter(
+                pk=lead_id).first()
             if lead_obj is None:
                 return Response({'detail': 'Lead inconnu.'},
                                 status=status.HTTP_404_NOT_FOUND)
