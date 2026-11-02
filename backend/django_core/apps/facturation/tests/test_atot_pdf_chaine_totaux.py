@@ -142,9 +142,7 @@ class PdfChaineTotauxTests(TestCase):
         from apps.ventes.utils.pdf import generate_avoir_pdf
         avoir = Avoir.objects.create(
             company=self.company, client=self.client_obj, facture=self.facture,
-            reference='AV-DEMO-0004', taux_tva=Decimal('20.00'),
-            montant_ht=Decimal('2000.00'), montant_tva=Decimal('300.00'),
-            montant_ttc=Decimal('2300.00'))
+            reference='AV-DEMO-0004', taux_tva=Decimal('20.00'))
         for taux in ('10.00', '20.00'):
             LigneAvoir.objects.create(
                 avoir=avoir, designation=f'Ligne {taux}', quantite=Decimal('1'),
