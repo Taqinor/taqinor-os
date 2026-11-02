@@ -38,6 +38,11 @@ CHAMPS_FACTURER_VENTE = ('nature', 'montant_ttc', 'pourcentage',
                          'override_credit')
 
 
+def _passe_outre(user):  # AARG14 — override au seul palier ADEV14
+    from ..domain.cycle_vie import peut_passer_outre
+    return peut_passer_outre(user)
+
+
 def _texte(valeur):
     from decimal import Decimal
     return f'{Decimal(str(valeur)):.2f}'
@@ -80,7 +85,8 @@ def refus_avant_facturer(vue, request, devis, corps):
     from ..services import SaleWarningError, verifier_sale_warnings
     try:
         verifier_sale_warnings(
-            devis, override=bool(corps.get('override_avertissement')),
+            devis, override=bool(corps.get('override_avertissement'))
+            and _passe_outre(request.user),  # AARG14
             user=request.user, chatter_target=devis)
     except SaleWarningError as exc:
         return Response(
@@ -173,7 +179,8 @@ class DevisFacturationActionsMixin:
         company = request.user.company
         # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op.
         if devis.client_id is not None:
-            override = bool(corps.get('override_credit'))
+            override = bool(corps.get('override_credit')) and _passe_outre(
+                request.user)  # AARG14 — palier ADEV14, comme à l'acceptation
             try:
                 verifier_credit_hold(
                     devis.client, override=override, user=request.user,
@@ -189,7 +196,8 @@ class DevisFacturationActionsMixin:
         # ZSAL9 — avertissement de vente BLOQUANT (produit/client). Vide → no-op.
         try:
             verifier_sale_warnings(
-                devis, override=bool(corps.get('override_avertissement')),
+                devis, override=bool(corps.get('override_avertissement'))
+                and _passe_outre(request.user),  # AARG14
                 user=request.user, chatter_target=devis)
         except SaleWarningError as exc:
             return Response(
@@ -254,7 +262,8 @@ class DevisFacturationActionsMixin:
             try:
                 verifier_credit_hold(
                     devis.client,
-                    override=bool(request.data.get('override_credit')),
+                    override=bool(request.data.get('override_credit'))
+                    and _passe_outre(request.user),  # AARG14
                     user=request.user, chatter_target=devis,
                     contexte='facturation complète')
             except CreditHoldError as exc:
@@ -268,7 +277,8 @@ class DevisFacturationActionsMixin:
         try:
             verifier_sale_warnings(
                 devis,
-                override=bool(request.data.get('override_avertissement')),
+                override=bool(request.data.get('override_avertissement'))
+                and _passe_outre(request.user),  # AARG14
                 user=request.user, chatter_target=devis)
         except SaleWarningError as exc:
             return Response(
