@@ -46,6 +46,8 @@ FACTURE_CHAMPS_FINANCIERS = frozenset([
     'retenue_garantie_mad', 'devise', 'taux_change',
     # AARG28 — une facture émise ne quitte jamais sa vente (mise à nul comprise).
     'devis', 'bon_commande',
+    # AARG49 — imprimés sur le PDF envoyé (objet ; art. 145 CGI).
+    'libelle', 'date_livraison',
 ])
 MESSAGE_MONTANT_FIGE = (
     'Montant figé après émission : corrigez par un avoir '
@@ -275,7 +277,7 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         # Refus d'ÉTAT (facture non brouillon) : 409 ConflitEtat (ENF11).
         # ATOT41 — hors brouillon, tout champ de FACTURE_CHAMPS_FINANCIERS
         # dont la valeur change est refusé, quel que soit le réglage ; les
-        # champs non financiers (conditions, notes, livraison…) restent libres.
+        # champs non financiers (conditions, notes…) restent libres.
         facture = self.get_object()
         # AFAC66 / VNT89 — mêmes portes fermées en modification (BC d'un
         # devis, devis posé ou changé par le corps).

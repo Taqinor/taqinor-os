@@ -107,6 +107,41 @@ class XFAC24FactureImmuableTests(TestCase):
         self.assertIsNone(self.facture.devis_id)
         self.assertIsNone(self.facture.bon_commande_id)
 
+    def test_libelle_et_date_livraison_figes_apres_emission(self):
+        """AARG49 (C-AARG-052) — imprimés sur le PDF envoyé : 409 dès que la
+        valeur change hors brouillon ; le PUT du formulaire inchangé passe."""
+        from datetime import date
+        Facture.objects.filter(pk=self.facture.pk).update(
+            libelle='Installation 6 kWc', date_livraison=date(2026, 10, 20))
+        url = f'/api/django/ventes/factures/{self.facture.id}/'
+        for corps in ({'date_livraison': '2026-11-01'}, {'libelle': 'Autre'},
+                      {'date_livraison': None}):
+            with self.subTest(corps=corps):
+                r = self.api.patch(url, corps, format='json')
+                self.assertEqual(r.status_code, 409, r.data)
+                self.assertIn('Montant figé après émission', str(r.data))
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.libelle, 'Installation 6 kWc')
+        self.assertEqual(self.facture.date_livraison, date(2026, 10, 20))
+        # Forme de `FactureForm.jsx` : les valeurs relues, inchangées.
+        r = self.api.put(url, {
+            'client': self.client_obj.id, 'bon_commande': None,
+            'statut': self.facture.statut, 'date_echeance': None,
+            'taux_tva': '20.00', 'remise_globale': '0.00',
+            'statut_teledeclaration': self.facture.statut_teledeclaration,
+            'note': None, 'reference_commande_client': '',
+            'conditions_paiement': '', 'libelle': 'Installation 6 kWc',
+            'date_livraison': '2026-10-20'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        Facture.objects.filter(pk=self.facture.pk).update(
+            statut=Facture.Statut.BROUILLON)
+        for corps in ({'date_livraison': '2026-11-01'}, {'libelle': 'Autre'}):
+            r = self.api.patch(url, corps, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.libelle, 'Autre')
+        self.assertEqual(self.facture.date_livraison, date(2026, 11, 1))
+
     def test_flag_off_facture_freely_editable_byte_identical(self):
         # ATOT9 — comportement INVERSÉ par la tâche (D-ATOT-1) : flag OFF, un
         # champ d'ARGENT d'une facture émise reste figé (409, rien écrit) ;
