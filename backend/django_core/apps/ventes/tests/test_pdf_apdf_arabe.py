@@ -253,8 +253,9 @@ class ResidentielRtlTests(SimpleTestCase):
             # Page 2 : le titre traduit est calé à DROITE (page RTL).
             titre = 'تفاصيل مشروعكم'
             zones = doc[1].search_for(titre)
-            if zones:
-                self.assertGreater(zones[0].x1, doc[1].rect.width * 0.6)
+            # APDF115 — titre introuvable = échec nommé, jamais un saut muet.
+            self.assertTrue(zones, 'titre arabe de page 2 introuvable : contrôle RTL non joué')
+            self.assertGreater(zones[0].x1, doc[1].rect.width * 0.6)
         finally:
             doc.close()
 
