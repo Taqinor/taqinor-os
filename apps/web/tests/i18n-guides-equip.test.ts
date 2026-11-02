@@ -55,8 +55,10 @@ describe('W67 — EN/AR équipement, article-33 & guides : contrat de page', () 
   it.each(PAGES.map((p) => p.rel))('%s : route ses liens internes via localizeNavHref', (rel) => {
     const src = read(rel);
     // L'aide est importée ET appelée (jamais de préfixe /en /ar codé en dur).
-    expect(src).toContain('localizeNavHref');
-    expect(src).toMatch(/const\s+L\s*=\s*\(href[^)]*\)\s*=>\s*localizeNavHref/);
+    // (ENF19 : soit en ligne, soit via le helper partagé lib/pageCtx.ts qui l'encapsule.)
+    expect(src).toMatch(
+      /const\s+L\s*=\s*\(href[^)]*\)\s*=>\s*localizeNavHref|\bL\b[^=\n]*=\s*(pageLocale|articlePage|realisationsPage|caseStudyPage)\(/,
+    );
   });
 
   it.each(PAGES.map((p) => p.rel))('%s : pose un titre + une description traduits sur le Layout', (rel) => {
