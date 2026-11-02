@@ -496,6 +496,8 @@
     demandes_en_attente_anciennes:liste, detail:texte, documents_expires:inconnu, factures_en_exception:liste, nb_demandes_en_attente_anciennes:nombre, nb_documents_expires:nombre, nb_factures_en_exception:nombre, periode:inconnu, seuil_jours:nombre
 - frontend/src/api/stockApi.js :: getComptesAPayer -> /api/django/stock/factures-fournisseur/comptes-a-payer
     results:inconnu, total_du:texte
+- frontend/src/api/stockApi.js :: getDelaiMesureFournisseur -> /api/django/stock/fournisseurs/<>/delai-mesure
+    delai_annonce_jours:inconnu, delai_mesure_jours:inconnu, delai_retenu_jours:inconnu, ecart_jours:inconnu, ecart_pct:inconnu, ecart_type_jours:inconnu, fenetre_mois:inconnu, fournisseur_id:inconnu, nb_mesures:nombre, produit_id:inconnu, seuil_ecart_pct:inconnu, utiliser_delai_reel:inconnu
 - frontend/src/api/stockApi.js :: getFavorisCatalogueAchat -> /api/django/stock/catalogue-achat/favoris
     epingles:inconnu, produit_ids:inconnu, recents:inconnu
 - frontend/src/api/stockApi.js :: getKitDisponibilite -> /api/django/stock/kits/<>/disponibilite
@@ -506,6 +508,8 @@
     nb_obligatoires_manquants:inconnu, postes:inconnu, pret:booleen
 - frontend/src/api/stockApi.js :: getProduitUtiliseDans -> /api/django/stock/produits/<>/utilise-dans
     chantiers:inconnu, devis:inconnu, leads:inconnu, limite:inconnu
+- frontend/src/api/stockApi.js :: getValorisationADate -> /api/django/stock/produits/valorisation-a-date
+    date:texte, detail:texte, lignes:inconnu, total:inconnu
 - frontend/src/api/stockApi.js :: inventaire -> /api/django/stock/produits/inventaire
     ajustes:nombre, detail:texte, inchanges:nombre, mouvements:liste
 - frontend/src/api/stockApi.js :: prixEffectifFournisseur -> /api/django/stock/prix-fournisseurs/effectif

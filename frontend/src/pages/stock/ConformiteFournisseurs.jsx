@@ -34,7 +34,7 @@ function DocumentsExpirants() {
   const charger = useCallback(() => {
     setError(null)
     return stockApi.getDocumentsFournisseurExpirants(Number(within) || 0)
-      .then((r) => setRows(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
+      .then((r) => setRows(Array.isArray(r.data) ? r.data : []))
       .catch((err) => setError(frErr(err, 'Chargement des pièces impossible.')))
   }, [within])
 
@@ -96,7 +96,7 @@ function ListeConformite({ voitMontants }) {
     Promise.resolve().then(() => {
       setError(null)
       return stockApi.getConformiteFournisseurs(params)
-        .then((r) => { if (!annule) setRows(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])) })
+        .then((r) => { if (!annule) setRows(Array.isArray(r.data) ? r.data : []) })
         .catch((err) => { if (!annule) setError(frErr(err, 'Chargement de la conformité impossible.')) })
     })
     return () => { annule = true }

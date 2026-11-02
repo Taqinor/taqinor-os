@@ -31,7 +31,7 @@ export default function ReleveDeductionsTva() {
       const r = await stockApi.getReleveDeductionsTva({
         ...(debut ? { date_debut: debut } : {}), ...(fin ? { date_fin: fin } : {}),
       })
-      setLignes(Array.isArray(r.data) ? r.data : (r.data?.results ?? []))
+      setLignes(Array.isArray(r.data) ? r.data : [])
     } catch (err) {
       setLignes(null)
       setError(frErr(err, 'Relevé indisponible.'))
