@@ -140,14 +140,15 @@ class CalageDegenereTest(BasePhoto):
         self.url = ('/api/django/calepinage/calepinages/'
                     f'{self.calepinage.pk}/photos/{self.photo.pk}/calage/')
 
-    def test_calage_degenere_refuse_400(self):
+    def test_calage_degenere_refuse_409(self):
         for nom, coins in (('identiques', IDENTIQUES),
                            ('colineaires', COLINEAIRES),
                            ('croises', CROISES)):
             with self.subTest(nom):
                 reponse = self.api.patch(self.url, {'calage': {'coins': coins}},
                                          format='json')
-                self.assertEqual(reponse.status_code, 400, reponse.data)
+                # ENF11 : forme publiée respectée, géométrie refusée = 409.
+                self.assertEqual(reponse.status_code, 409, reponse.data)
                 self.assertIn('calage', reponse.data)
         self.photo.refresh_from_db()
         self.assertIsNone(self.photo.calage)

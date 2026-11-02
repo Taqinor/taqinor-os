@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, extend_schema, extend_schema_field, inline_serializer,
 )
 from rest_framework import serializers, status
 from rest_framework.decorators import action
@@ -102,6 +102,29 @@ class PhotoSiteChampsSerializer(serializers.Serializer):
         'null': ("La date de prise de vue est obligatoire : elle est "
                  "SAISIE, jamais déduite de la date d'import.")})
     legende = ChaineStricte(required=False, allow_blank=True)
+
+
+# ERR-ENF11-FUZZ-CALEPINAGE — la FORME du calage, publiée : un objet ``coins``
+# de 4 paires de 2 nombres (ou ``null`` pour effacer). L'amplitude GPS et la
+# géométrie (coins confondus, alignés, croisés) ne s'expriment pas au schéma :
+# refus d'ÉTAT, 409.
+@extend_schema_field({
+    'type': 'object', 'nullable': True, 'required': ['coins'],
+    'properties': {'coins': {
+        'type': 'array', 'minItems': 4, 'maxItems': 4,
+        'items': {'type': 'array', 'minItems': 2, 'maxItems': 2,
+                  'items': {'type': 'number'}}}}})
+class _CalageField(serializers.JSONField):
+    pass
+
+
+def _forme_calage_publiee(calage):
+    """Vrai si ``calage`` respecte la forme publiée par ``_CalageField``."""
+    coins = calage.get('coins') if isinstance(calage, dict) else None
+    return (isinstance(coins, list) and len(coins) == 4 and all(
+        isinstance(coin, list) and len(coin) == 2 and all(
+            isinstance(n, (int, float)) and not isinstance(n, bool)
+            for n in coin) for coin in coins))
 
 
 # Le corps publié du PATCH d'une photo : les mêmes prédicats, tous facultatifs
@@ -227,7 +250,7 @@ class PhotosSiteMixin:
             location=OpenApiParameter.PATH,
             description="Identifiant de la photo de site (sous-ressource du calepinage).")],
         request=inline_serializer('CalepinagePhotoCalageCorps', {
-            'calage': serializers.JSONField(allow_null=True)}),
+            'calage': _CalageField(allow_null=True)}),
         # ENF11 (nocturne 15/10) — un PATCH rend le corps partiel au schéma :
         # la clé ``calage``, OBLIGATOIRE (ACAL202), y est republiée requise.
         extensions={EXTENSION_CORPS_RESSERRE: {'required': ['calage']}},
@@ -270,8 +293,13 @@ class PhotosSiteMixin:
         try:
             calage_photo_site(photo, corps['calage'])
         except PhotoRefusee as refus:
+            # Forme publiée respectée ⇒ le refus vient de l'amplitude GPS ou de
+            # la géométrie (non exprimables au schéma) : 409 ; sinon 400.
+            conforme = corps['calage'] is None or _forme_calage_publiee(
+                corps['calage'])
             return Response({refus.champ or 'detail': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_409_CONFLICT if conforme
+                                    else status.HTTP_400_BAD_REQUEST))
         return Response({'photo': photo_en_ligne(photo),
                          'photos': photos_site(calepinage)})
 
