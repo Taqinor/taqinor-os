@@ -272,7 +272,8 @@ class NumeroInvalideTests(_Base):
         touche = self._touche()
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{touche.pk}/whatsapp/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data['detail'], 'Numéro de téléphone invalide.')
         touche.refresh_from_db()
         self.assertEqual(touche.statut, RelanceEtape.Statut.A_FAIRE)
 

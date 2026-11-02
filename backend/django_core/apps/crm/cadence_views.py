@@ -1165,7 +1165,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         ouvrir WhatsApp n'avance plus la touche — une activité « WhatsApp
         ouvert » entre dans l'historique, le premier contact est horodaté
         (MRY19) et la touche reste À FAIRE jusqu'à la réponse aux questions
-        « Fait ». Refusé (400) si le numéro est inexploitable — prétendre
+        « Fait ». Refusé (409) si le numéro est inexploitable — prétendre
         avoir contacté quelqu'un qu'on ne peut pas joindre fausserait aussi
         bien la file que le KPI.
 
@@ -1185,15 +1185,15 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                                    langue=langue or None)
         if rendu.get('preuve_manquante'):
             # CAD70 — sans réalisation publiée, le message J4 se réduit à une
-            # phrase orpheline : il n'est pas « ouvert ». Levée (même motif
-            # que la langue) : la forme versionnée reste celle du rendu.
+            # phrase orpheline : il n'est pas « ouvert ». ERR-ENF11-FUZZ-CRM —
+            # la fiche et le catalogue s'y opposent, pas le corps : 409.
             from .cadence_messages import REFUS_PREUVE_MANQUANTE
-            raise DRFValidationError(
+            raise ConflitEtat(
                 {'erreurs': {'preuve': REFUS_PREUVE_MANQUANTE}})
         if not rendu.get('wa_url'):
             return Response(
                 {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         journaliser_whatsapp_ouvert(etape, request.user)
         marquer_premier_contact(etape.lead)
 
