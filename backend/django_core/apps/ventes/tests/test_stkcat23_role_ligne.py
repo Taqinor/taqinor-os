@@ -163,9 +163,9 @@ class RepartitionDesOptionsTest(SimpleTestCase):
         with self.assertLogs('apps.ventes.quote_engine.builder',
                              level='WARNING') as journal:
             sans, avec = _paniers(paires)
-        # La ligne reste dans les DEUX paniers (son RÔLE décide) : aucune
-        # ligne, aucun dirham ne s'évapore entre le devis et son PDF.
-        self.assertEqual(sans, ['Batterie Dyness 10 kWh'])
+        # D-ADVS-3 (ADVS6) — un accessoire qui sert la batterie n'est que dans
+        # « avec » : la ligne reste au document, jamais perdue.
+        self.assertEqual(sans, [])
         self.assertEqual(avec, ['Batterie Dyness 10 kWh'])
         message = '\n'.join(journal.output)
         self.assertIn('accessoires', message)

@@ -186,6 +186,38 @@ class AvertissementInterneTests(_Base):
 class DeuxOptionsTemoinTests(_Base):
     """GARDE — un vrai devis à deux options garde ses deux paniers."""
 
+    def test_cable_batterie_seulement_dans_avec(self):
+        """ADVS6 — rouge (20 200) si le moteur garde le rôle seul : le PDF
+        « Sans batterie » vaut le TTC du noyau (19 200)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.utils.options import option_totaux
+        cable = 'Câble batterie DC 25 mm²'
+        devis = self._devis('advs6-cable', (
+            (PANNEAU, '8', '1000.00', ''), (RESEAU, '1', '8000.00', ''),
+            (HYBRIDE, '1', '12000.00', ''), (BATTERIE, '1', '15000.00', ''),
+            (cable, '6', '150.00', '')))
+        LigneDevis.objects.filter(devis=devis, designation=cable).update(
+            role_devis='cable_dc')
+        LigneDevis.objects.filter(devis=devis).update(taux_tva=Decimal('20'))
+        devis = Devis.objects.get(pk=devis.pk)
+        data = build_quote_data(devis)
+        self.assertEqual(Decimal(str(data['totaux_sans']['ttc'])), Decimal('19200'))
+        self.assertEqual(Decimal(str(data['totaux_sans']['ttc'])),
+                         Decimal(str(option_totaux(devis, 'sans_batterie')['ttc'])))
+        self.assertNotIn(cable, [it['designation'] for it in data['sans_items']])
+        self.assertIn(cable, [it['designation'] for it in data['avec_items']])
+
+    def test_contradiction_de_variante_toujours_remontee(self):
+        from apps.ventes.quote_engine.builder import _repartir_options
+        from types import SimpleNamespace as Ligne
+        cable = 'Câble batterie DC 25 mm²'
+        sans, avec, contradictions = _repartir_options([(
+            Ligne(role_devis='cable_dc', variante='sans', devis_id=1),
+            {'designation': cable, '_produit_nom': ''})])
+        self.assertEqual([it['designation'] for _, it in sans], [cable])
+        self.assertEqual(avec, [])
+        self.assertEqual(contradictions, [cable])
+
     def test_chaque_option_garde_ses_propres_panneaux(self):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = self._devis('deux-temoin', CHAMPS + (

@@ -190,13 +190,10 @@ def _repartir_options(paires):
     * variante ``'sans'`` / ``'avec'`` — la ligne n'entre QUE dans l'option
       déclarée. Une déclaration explicite du vendeur prime sur l'heuristique.
 
-    STKCAT23 — ENTRE LES DEUX, LE RÔLE STOCKÉ DE LA LIGNE. L'heuristique
-    « commune » ci-dessus ne s'applique plus à l'aveugle : quand la ligne porte
-    un ``role_devis`` (figé à sa création depuis le rôle DÉCLARÉ du produit),
-    c'est lui qui dit à quel panier elle appartient ; les mots-clés restent le
-    REPLI PERMANENT pour toute ligne sans rôle — toutes celles d'hier, et
-    toutes celles écrites hors de ``apps.ventes``. La ``variante`` DÉCLARÉE par
-    le vendeur reste au-dessus des deux.
+    ADVS6 (D-ADVS-3) — ENTRE LES DEUX, LE RÔLE STOCKÉ DE LA LIGNE : la règle est
+    ``utils.options.panier_de_ligne``, la MÊME que le noyau monnaie (tout
+    accessoire de batterie dans « avec » seulement, mots-clés en repli pour une
+    ligne sans rôle). La ``variante`` DÉCLARÉE reste au-dessus des deux.
 
     CEINTURE-BRETELLES, SANS PERTE DE LIGNE : la classification par mots-clés est
     quand même évaluée sur une ligne déclarée ; si elle CONTREDIT la déclaration
@@ -209,49 +206,29 @@ def _repartir_options(paires):
     Rend des listes de COUPLES : l'appelant a besoin des lignes ORM (pour lire la
     puissance panneau de chaque option) autant que des items de rendu.
     """
-    # QJR400 — L'ENSEMBLE D'EXCLUSION VIENT DU NOYAU, il n'est plus recopié
-    # ici : ``utils.options.blob_va_dans_sans`` / ``blob_va_dans_avec`` sont sa
-    # SEULE définition (S8-F5 : le panier « sans » du noyau excluait
-    # batterie + hybride mais PAS l'off-grid, contrairement à celui-ci).
     # Import fonction-local — ``utils.options`` importe ce module à son sommet.
-    from apps.ventes.utils.options import blob_va_dans_avec, blob_va_dans_sans
+    from apps.ventes.utils.options import (
+        blob_va_dans_avec, blob_va_dans_sans, panier_de_ligne)
     from core.product_roles import role_va_dans_avec, role_va_dans_sans
 
     sans, avec, contradictions = [], [], []
     for ligne, it in paires:
         variante = _variante_de_ligne(ligne)
         blob = _blob_item(it)
-        # QJR-OFFGRID — l'onduleur AUTONOME suit la règle de l'hybride : il est
-        # EXCLU du panier « sans » (une option « sans batterie » sur un système
-        # de site isolé n'existe pas) et INCLUS dans « avec ». Les panneaux,
-        # eux, continuent d'atterrir dans les DEUX paniers (invariant).
-        ok_sans_mots = blob_va_dans_sans(blob)
-        ok_avec_mots = blob_va_dans_avec(blob)
-        # STKCAT23 — LE RÔLE STOCKÉ D'ABORD, LES MOTS-CLÉS EN REPLI PERMANENT.
-        # Le rôle est figé à la CRÉATION de la ligne, depuis le rôle déclaré du
-        # produit (une donnée) ; les mots-clés, eux, relisent une désignation
-        # qu'un commercial peut avoir éditée depuis. Une ligne SANS rôle — toutes
-        # celles d'hier, et toutes celles écrites hors de ``apps.ventes`` —
-        # rend ``None`` des deux côtés et retombe MOT POUR MOT sur les mots-clés
-        # : aucun devis existant ne change de répartition.
         role = getattr(ligne, "role_devis", None)
-        ok_sans_role = role_va_dans_sans(role)
-        ok_avec_role = role_va_dans_avec(role)
-        ok_sans = ok_sans_mots if ok_sans_role is None else ok_sans_role
-        ok_avec = ok_avec_mots if ok_avec_role is None else ok_avec_role
-        # CEINTURE-BRETELLES, SANS PERTE DE LIGNE (même discipline que la
-        # ``variante`` plus bas) : quand le rôle stocké et la désignation ne
-        # disent pas la même chose, la ligne reste là où son RÔLE la met et la
-        # contradiction est JOURNALISÉE. Jamais un écrasement du rôle, jamais
-        # une ligne retirée d'un panier — un dirham ne s'évapore pas entre le
-        # devis et son PDF.
-        if ok_sans_role is not None and (ok_sans_role != ok_sans_mots
-                                         or ok_avec_role != ok_avec_mots):
+        # ADVS6 — LA règle du noyau, hors variante (traitée plus bas pour
+        # remonter les contradictions).
+        ok_sans, ok_avec = panier_de_ligne("", role, blob)
+        # Rôle stocké et désignation en désaccord : journalisé, le rôle n'est
+        # jamais réécrit.
+        if role_va_dans_sans(role) is not None and (
+                role_va_dans_sans(role) != blob_va_dans_sans(blob)
+                or role_va_dans_avec(role) != blob_va_dans_avec(blob)):
             logger.warning(
                 "Devis #%s — ligne « %s » : rôle stocké « %s » en désaccord "
                 "avec les mots-clés de sa désignation pour la répartition "
-                "d'options. Le rôle est CONSERVÉ et la ligne reste dans son "
-                "panier — rien n'est écrasé, aucune ligne n'est retirée.",
+                "d'options. Le rôle est CONSERVÉ, la ligne suit la règle "
+                "unique des paniers.",
                 getattr(ligne, "devis_id", "?"),
                 it.get("designation", ""), role)
         if variante == "sans":
