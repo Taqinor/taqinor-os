@@ -1,12 +1,47 @@
 {
   "endpoint": "GET /api/django/crm/leads/<id>/",
   "forme_serveur": "partielle",
-  "pourquoi": "AMET23 (D-PROVENANCE, C-AMET-025) — la fiche lead porte `saisies_humaines` : la liste TRIÉE, SANS DOUBLON, des noms de champs saisis par un humain (forme partagée avec apps/records/contract_samples/provenance.json). Lecture seule côté API : posée par le serveur (PATCH de la fiche = clés du corps ; rattrapage de la migration crm 0133 depuis LeadActivity avec utilisateur). Lue par `records.provenance.ecrire_si_libre`, qui refuse alors d'écraser. Échantillon partiel : seule la clé de provenance est figée ici.",
+  "pourquoi": "AMET23 (D-PROVENANCE, C-AMET-025) — la fiche lead porte `saisies_humaines` : la liste TRIÉE, SANS DOUBLON, des noms de champs saisis par un humain (forme partagée avec apps/records/contract_samples/provenance.json). Lecture seule côté API : posée par le serveur (PATCH de la fiche = clés du corps ; rattrapage de la migration crm 0133 depuis LeadActivity avec utilisateur). Lue par `records.provenance.ecrire_si_libre`, qui refuse alors d'écraser. Échantillon partiel : seule la clé de provenance est figée ici. CADV71 (M0, PACT10, D-CADV-4 : des champs, pas des tags) — le parcage du lead : `parc_etat` (standby / nurture / archive, ou null), `parc_raison` (un des 14 codes de `notes.codes_raison`, ou null) et `parc_jusqu_au` (date ISO de reprise, obligatoire en standby, null sinon), tous trois en LECTURE SEULE (écrits par le seul `parquer_lead`, CADV21). Producteur : CADV21 ; lecteurs : le parcage, le cockpit et l'écran lead chargent CE fichier.",
   "exemple": {
     "id": 1489,
     "saisies_humaines": [
       "email",
       "whatsapp"
-    ]
+    ],
+    "parc_etat": "nurture",
+    "parc_raison": "injoignable",
+    "parc_jusqu_au": null
+  },
+  "exemple_standby": {
+    "id": 1490,
+    "parc_etat": "standby",
+    "parc_raison": "plus_tard_date",
+    "parc_jusqu_au": "2026-12-15"
+  },
+  "exemple_vide": {
+    "id": 1491,
+    "parc_etat": null,
+    "parc_raison": null,
+    "parc_jusqu_au": null
+  },
+  "notes": {
+    "codes_raison": {
+      "injoignable": "nurture",
+      "pas_maintenant_sans_date": "nurture",
+      "plus_tard_date": "standby",
+      "budget": "nurture",
+      "trop_cher": "nurture",
+      "concurrent": "archive",
+      "achete_ailleurs": "archive",
+      "non_proprietaire": "archive",
+      "pas_de_toit": "archive",
+      "technique": "archive",
+      "faux_numero": "archive",
+      "doublon": "archive",
+      "test": "archive",
+      "archive_odoo": "archive"
+    },
+    "opposition": "PAS un code de parcage : l'opposition reste le drapeau `ne_plus_contacter` (ACRM17), qui prime sur tout état.",
+    "source": "docs/crm/cadence-v4-design-2026-11-01.md §2 (états et codes de raison)"
   }
 }

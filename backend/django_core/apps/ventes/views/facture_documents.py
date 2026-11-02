@@ -86,8 +86,8 @@ class FactureDocumentsActionsMixin:
         return response
 
     @extend_schema(responses=D.UblXml)
-    @action(detail=True, methods=['get'], url_path='ubl',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=True, methods=['get'], url_path='ubl',  # AARG40 — ``ventes_export`` comme dgi-export
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_export')])
     def ubl(self, request, pk=None):
         """N38 — aperçu BROUILLON UBL 2.1 de la facture (XML téléchargeable).
 
@@ -126,6 +126,8 @@ class FactureDocumentsActionsMixin:
             return Response(
                 {'detail': 'Introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
+        from apps.ventes.dgi.transmission import exiger_facture_emise
+        exiger_facture_emise(facture)  # AARG21 — 409 hors émise/payée/en retard
         xml_str = build_ubl_xml(facture)
         response = HttpResponse(xml_str, content_type='application/xml')
         response['Content-Disposition'] = (
@@ -134,8 +136,8 @@ class FactureDocumentsActionsMixin:
         return response
 
     @extend_schema(responses=D.DgiConformiteResponse)
-    @action(detail=True, methods=['get'], url_path='dgi-conformite',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=True, methods=['get'], url_path='dgi-conformite',  # AARG40 — ``ventes_export`` comme dgi-export
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_export')])
     def dgi_conformite(self, request, pk=None):
         """N105 — Contrôle de conformité DGI de la facture, à la demande.
 
@@ -153,8 +155,8 @@ class FactureDocumentsActionsMixin:
             {'conforme': not problemes, 'problemes': problemes})
 
     @extend_schema(request=None, responses=D.DgiTransmissionResponse)
-    @action(detail=True, methods=['post'], url_path='dgi-transmettre',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=True, methods=['post'], url_path='dgi-transmettre',  # AARG40 — ``ventes_export`` comme dgi-export
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_export')])
     def dgi_transmettre(self, request, pk=None):
         """XFAC29 — Transmet (ou retransmet) la facture à la plateforme DGI
         agréée configurée. GARDÉ par l'interrupteur maître

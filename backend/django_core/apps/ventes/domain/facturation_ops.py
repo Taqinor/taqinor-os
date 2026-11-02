@@ -1953,7 +1953,13 @@ def creer_bon_commande(devis, company, user=None, *, enregistrer=None):
                 statut=BonCommande.Statut.EN_ATTENTE, company=company)
     with transaction.atomic():
         if devis is not None:
-            Devis.objects.select_for_update().filter(pk=devis.pk).first()
+            verrou = Devis.objects.select_for_update().filter(pk=devis.pk).first()
+            if verrou is not None and not verrou.is_active:  # AARG18 : V1 remplacée
+                from core.conflit_etat import ConflitEtat
+                from .modifiabilite import corps_version_remplacee
+                conflit = ConflitEtat(corps := corps_version_remplacee(verrou))
+                conflit.detail = corps  # corps VNT24 tel quel (successeur.id entier)
+                raise conflit
             if BonCommande.objects.filter(devis=devis).exists():
                 raise BonCommandeExistant()
         bc = create_numbered(BonCommande, company, 'bon_commande', enregistrer)

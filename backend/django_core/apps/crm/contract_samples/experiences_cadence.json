@@ -1,0 +1,18 @@
+{
+  "endpoint": "GET /api/django/crm/experiences-cadence/",
+  "pourquoi": "CADV96 (M0, PACT10, conception v4 §7.7, D-CADV-1) — forme du registre des expériences de cadence, posée AVANT ses moitiés ; route non servie à ce jour (aucun `forme_serveur`). Tâche porteuse : CADV33 (modèle société `ExperienceCadence`, `apps/crm/experiences_cadence.py`, POST/GET/PATCH `crm/experiences-cadence/`). Liste triée par `date`, bornée à `request.user.company` (company forcée côté serveur, jamais lue du corps) ; `resultat` vide jusqu'au PATCH de la lecture ; un POST dont `date_lecture` précède `date` est refusé 400 nommant le champ. Lecteur à venir : CADV110 (courbe de cohorte).",
+  "exemple": {
+    "count": 1,
+    "results": [
+      {
+        "id": 7,
+        "date": "2026-11-16",
+        "changement": "gabarit contact v4",
+        "metrique": "joint ≤ 14 j",
+        "effet_attendu": "37 % → 45 %",
+        "date_lecture": "2026-12-14",
+        "resultat": ""
+      }
+    ]
+  }
+}

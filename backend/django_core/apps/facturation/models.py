@@ -231,6 +231,9 @@ class Facture(TotauxDocumentMixin, models.Model):
     # (comportement historique inchangé). Une promesse de paiement active
     # pose aussi cette date automatiquement (voir PromessePaiement).
     exclu_relances_jusquau = models.DateField(null=True, blank=True)
+    # AARG22 / D-AFAC-89 (a) — facture CONTESTÉE (date + motif) : aucune relance.
+    contestee_le = models.DateField(null=True, blank=True)
+    motif_contestation = models.CharField(max_length=255, blank=True, default='')
 
     # XFAC12 — escompte pour règlement anticipé (ex. 2/10 net 30). Les deux
     # champs sont nullable : NULL/absent = comportement actuel inchangé
