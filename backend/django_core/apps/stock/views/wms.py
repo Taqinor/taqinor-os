@@ -17,7 +17,7 @@ from ..openapi_helpers import (
 from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte, IdInconnu404Mixin, _ids_inconnus_seulement
 from core.viewsets import CompanyScopedModelViewSet
 from ..utils.params import (
-    ID_MAX, booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps,
+    ID_MAX, booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps, lignes_objets,
     id_requete_ou_400, statut_requete_ou_400, texte_sans_nul_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
 from ..corps_achats import UniteAjouterLigneCorps, UniteControlerScanCorps, valider_corps
@@ -1298,7 +1298,7 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_409_CONFLICT)
         try:
             inspecter_retour_client(
-                retour=retour, lignes=corps_objet(request).get('lignes'),
+                retour=retour, lignes=lignes_objets(corps_objet(request).get('lignes')),
                 user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},

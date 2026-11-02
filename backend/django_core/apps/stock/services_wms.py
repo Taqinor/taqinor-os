@@ -2407,12 +2407,6 @@ def inspecter_retour_client(*, retour, lignes=None, user=None):
                              RetourClient.Statut.INSPECTE):
         raise ValueError(
             'Le retour doit être réceptionné avant d\'être inspecté.')
-    # ENF11 fuzz : `lignes` est une liste d'OBJETS ; un élément scalaire
-    # (`false`) faisait lever TypeError sur `'bin' in e` (500).
-    if lignes is not None and not (
-            isinstance(lignes, list)
-            and all(isinstance(e, dict) for e in lignes)):
-        raise ValueError("« lignes » doit être une liste d'objets.")
     etats = {c for c, _ in LigneRetourClient.EtatConstate.choices}
     par_id = {ligne.id: ligne
               for ligne in retour.lignes.select_related('retour').all()}
@@ -2432,7 +2426,7 @@ def inspecter_retour_client(*, retour, lignes=None, user=None):
             if ligne is None:
                 continue
             etat = entree.get('etat_constate')
-            if not isinstance(etat, str) or etat not in etats:
+            if etat not in etats:
                 raise ValueError('État constaté invalide.')
             champs = ['etat_constate']
             ligne.etat_constate = etat

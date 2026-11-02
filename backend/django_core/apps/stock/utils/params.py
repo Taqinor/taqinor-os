@@ -92,6 +92,20 @@ def corps_objet(request):
     return donnees
 
 
+def lignes_objets(lignes):
+    """``lignes`` du corps : liste d'OBJETS dont ``etat_constate`` est un texte,
+    ou ``None``. ENF11 (fuzz) : ``false`` levait TypeError sur ``'bin' in e``, un
+    état non hachable sur ``etat not in etats`` (500). Refus = ValueError, 400
+    de la vue."""
+    if lignes is None:
+        return None
+    if not isinstance(lignes, list) or not all(isinstance(e, dict) for e in lignes):
+        raise ValueError("« lignes » doit être une liste d'objets.")
+    if any(not isinstance(e.get('etat_constate'), str) for e in lignes):
+        raise ValueError('État constaté invalide.')
+    return lignes
+
+
 #: Quantité comptée écrite en TEXTE (inventaire) : chiffres seuls, au plus
 #: ``QUANTITE_MAX`` (1 000 000) — la MÊME forme est publiée et lue.
 MOTIF_QUANTITE_COMPTEE = r'[0-9]{1,6}|1000000'

@@ -498,6 +498,19 @@ def _protections_dc_et_terre(catalogue, unitaires, lignes, alertes, *,
             'devis si nécessaire', champ='composition.mise_a_la_terre'))
 
 
+def prestations_manquantes(forfaits, articles, forfait_regle):
+    """``[(cle, article_manquant)]`` des prestations C&I que le moteur refuserait :
+    forfait non réglé (``False``) ou, forfait réglé, aucun article actif au rôle
+    (``True`` — ALEA56, refus CORC6 de ``_prestation``)."""
+    manques = []
+    for cle, _libelle in PRESTATIONS_CI:
+        if not forfait_regle(forfaits.get(cle), _d):
+            manques.append((cle, False))
+        elif _du_role(articles, cle) is None:
+            manques.append((cle, True))
+    return manques
+
+
 def _du_role_tous(catalogue, role):
     """Tous les articles ÉLIGIBLES du rôle, ordre déterministe (id)."""
     return [p for p in sorted(catalogue, key=lambda x: (x.get('id') or 0))
