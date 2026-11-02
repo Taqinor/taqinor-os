@@ -19,6 +19,7 @@ from .leads_consentement import (
     CONSENT_SOURCE_META_LEAD_ADS,
     CONSENT_SOURCE_WHATSAPP_ENTRANT,
     enregistrer_base_legale_lead,
+    enregistrer_consentement_lead,
 )
 from .leads_doublons import find_duplicates_by_contact
 from .leads_notifications import notify_new_lead
@@ -29,6 +30,10 @@ logger = logging.getLogger(__name__)
 
 
 _META_LEAD_ADS_SYSTEM = 'meta_lead_ads'
+
+# CADV113 — origine consignée au registre pour la case WhatsApp du formulaire.
+_CONSENT_SOURCE_META_CASE_WHATSAPP = (
+    'formulaire Meta Lead Ads — case WhatsApp')
 
 # Marqueur d'idempotence de la note « réponses du formulaire » (une seule note
 # par lead, quel que soit le nombre de retries webhook / passes du pull).
@@ -216,7 +221,14 @@ def _parse_meta_form_extras(field_data):
             continue
         q = _norm_form_text(raw_name)
         v = _norm_form_text(raw_value)
-        if 'facture' in q:
+        if 'consentement' in q and ('whatsapp' in q or 'telephone' in q):
+            # CADV113 — la case de consentement : oui/non explicite seulement
+            # (un libellé inconnu ne pose rien : un silence n'est pas un refus).
+            if _re.match(r'(oui|yes)\b', v):
+                extras['whatsapp_opt_in'] = True
+            elif _re.match(r'(non|no)\b', v):
+                extras['whatsapp_opt_in'] = False
+        elif 'facture' in q:
             # CIQ407 (D-CIQ-19) — une tranche OUVERTE (« plus de 4000 dh »)
             # n'est JAMAIS un montant : elle va dans la tranche déclarée,
             # la facture reste vide.
@@ -786,6 +798,18 @@ def create_lead_from_meta_lead_ads(
         lead, source=CONSENT_SOURCE_META_LEAD_ADS,
         base_legale=BASE_LEGALE_NON_COLLECTEE,
         occurred_at=moment_meta or lead.date_creation)
+    # CADV113 — la case WhatsApp du formulaire (D-CADV-5) : opt-in posé sur la
+    # fiche + entrée accordée/refusée au registre, datée de l'arrivée Meta.
+    if extras.get('whatsapp_opt_in') is not None:
+        opt_in = extras['whatsapp_opt_in']
+        horodatage = (moment_meta or lead.date_creation) if opt_in else None
+        Lead.objects.filter(pk=lead.pk).update(
+            whatsapp_opt_in=opt_in, consent_timestamp=horodatage)
+        lead.whatsapp_opt_in, lead.consent_timestamp = opt_in, horodatage
+        enregistrer_consentement_lead(
+            lead, purpose='whatsapp', granted=opt_in,
+            source=_CONSENT_SOURCE_META_CASE_WHATSAPP,
+            occurred_at=moment_meta or lead.date_creation)
     # D-CRX1 — signalement du doublon EN VISIBILITÉ (jamais une fusion), avec
     # la mention de l'héritage quand il a eu lieu. Réutilise ``dupes`` déjà
     # calculés (jamais une 2e requête). Best-effort, comme côté site : un

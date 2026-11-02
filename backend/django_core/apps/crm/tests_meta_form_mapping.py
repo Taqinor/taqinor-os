@@ -453,3 +453,50 @@ class MetaFormF6MappingTests(TestCase):
         self.assertEqual(again.contact_preference,
                          Lead.ContactPreference.WHATSAPP_ONLY)
         self.assertEqual(again.ownership, Lead.Ownership.LOCATAIRE)
+
+    def test_la_case_whatsapp_pose_l_opt_in_et_le_registre(self):
+        # CADV113 — case cochée / « non » / question absente ; rejeu = 1 entrée.
+        import time
+
+        from core.models import ConsentRecord
+        arrivee = int(time.time()) - 3600
+        case = {'name': 'consentement_whatsapp', 'values': [
+            'Oui, vous pouvez me contacter sur WhatsApp et par téléphone']}
+        base = _field_data_f6(phone='+212600000301')
+        lead = create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='cadv113-1',
+            field_data=base + [case], form_id='TQ-F6-HI-2610',
+            created_time=arrivee)
+        lead.refresh_from_db()
+        self.assertIs(lead.whatsapp_opt_in, True)
+        self.assertEqual(int(lead.consent_timestamp.timestamp()), arrivee)
+        qs = ConsentRecord.objects.filter(
+            company=self.company, purpose='whatsapp')
+        self.assertEqual(qs.count(), 1)
+        self.assertTrue(qs.get().granted)
+        self.assertEqual(qs.get().source, 'formulaire Meta Lead Ads — case WhatsApp')
+        # Rejeu du webhook : une seule entrée, champs identiques.
+        create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='cadv113-1',
+            field_data=base + [case], form_id='TQ-F6-HI-2610',
+            created_time=arrivee)
+        self.assertEqual(qs.count(), 1)
+        # Sans la question : None, aucune entrée whatsapp.
+        sans = create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='cadv113-2',
+            field_data=_field_data_f6(phone='+212600000302'),
+            form_id='TQ-F6-HI-2610')
+        sans.refresh_from_db()
+        self.assertIsNone(sans.whatsapp_opt_in)
+        self.assertIsNone(sans.consent_timestamp)
+        self.assertEqual(qs.count(), 1)
+        # Réponse « non » : False.
+        non = create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='cadv113-3',
+            field_data=_field_data_f6(phone='+212600000303') + [
+                {'name': 'consentement_whatsapp', 'values': ['Non merci']}],
+            form_id='TQ-F6-HI-2610')
+        non.refresh_from_db()
+        self.assertIs(non.whatsapp_opt_in, False)
+        self.assertIsNone(non.consent_timestamp)
+        self.assertFalse(qs.get(subject_identifier=non.telephone).granted)
