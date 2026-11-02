@@ -167,6 +167,9 @@ def _defaire_acceptation_on_acceptation_annulee(sender, devis, user,
                  statut=DealEnregistre.Statut.A_PAYER)
          .update(statut=DealEnregistre.Statut.APPROUVE,
                  montant_commission_du=None))
+        # CADV36 — confirmation et rappel d'acompte n'ont plus d'objet.
+        from .cadence_filet import retirer_chaine_apres_acceptation
+        retirer_chaine_apres_acceptation(lead_id, company)
 
     from django.db.models import Q
     appariement = Q(pk__in=[])

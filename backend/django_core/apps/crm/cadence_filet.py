@@ -35,6 +35,8 @@ from .cadence_plan import (
     materialiser_touche_suivante,
 )
 from .cadence_reperes import (
+    LIBELLE_CONFIRMER_SIGNATURE,
+    LIBELLE_RELANCE_ACOMPTE,
     VISITE_CADENCE,
     VISITE_ORDRE_FILET,
     _KINDS_MESSAGE,
@@ -679,6 +681,38 @@ def prochain_palier_sans_reponse(cle_touche_close, issue_touche_close,
     while cle is not None and not est_actif(cle):
         cle = _MARCHE_APRES_PALIER.get(cle)
     return cle
+
+
+def poser_chaine_apres_acceptation(devis, user):
+    """CADV36 (D-CADV-3) — devis accepté, cadences arrêtées : DEUX touches d'appel
+    pour le commercial, confirmation à J+2 et rappel d'acompte à J+7 (sauf
+    acompte déjà payé). Une étape déjà ouverte se déplace, jamais doublée
+    (``_poser_etape_de_filet``). Rien sur un lead opposé ou archivé."""
+    from apps.ventes.selectors import acompte_paye_pour_devis
+
+    lead = Lead.objects.filter(pk=getattr(devis, 'lead_id', None),
+                               company=devis.company).first()
+    if lead is None or lead.ne_plus_contacter or lead.is_archived:
+        return
+    note = 'Posée automatiquement : le devis est accepté.'
+    maintenant = timezone.now()
+    _poser_etape_de_filet(
+        lead, libelle=LIBELLE_CONFIRMER_SIGNATURE, canal='appel', note=note,
+        vise=maintenant + datetime.timedelta(days=2))
+    if not acompte_paye_pour_devis(devis.pk, devis.company):
+        _poser_etape_de_filet(
+            lead, libelle=LIBELLE_RELANCE_ACOMPTE, canal='appel', note=note,
+            vise=maintenant + datetime.timedelta(days=7))
+    _recaler_file(lead, user)
+
+
+def retirer_chaine_apres_acceptation(lead_id, company):
+    """CADV36 — l'acceptation est annulée : ses deux touches n'ont plus d'objet."""
+    return RelanceEtape.objects.filter(
+        company=company, lead_id=lead_id, cadence='generique', cle='',
+        statut=RelanceEtape.Statut.A_FAIRE,
+        libelle__in=(LIBELLE_CONFIRMER_SIGNATURE, LIBELLE_RELANCE_ACOMPTE),
+    ).update(statut=RelanceEtape.Statut.ANNULEE, note='acceptation annulée')
 
 
 def _poser_etape_de_filet(lead, *, note, cle='', libelle='', canal=None,

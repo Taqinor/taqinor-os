@@ -25,6 +25,7 @@ from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
 from .cadence_filet import (
     _poser_etape_de_filet,
     assurer_prochaine_etape_apres_succes,
+    poser_chaine_apres_acceptation,
     poser_filet_visite_a_planifier,
 )
 from .cadence_plan import (
@@ -86,6 +87,14 @@ def _arreter_cadence_on_devis_accepted(sender, devis, user, ancien_statut,
     arreter_cadence_du_lead_id(
         getattr(devis, 'lead_id', None), company=getattr(devis, 'company', None),
         user=user, motif='devis accepté')
+    # CADV36 — APRÈS l'arrêt, qui les annulerait. L'acceptation est déjà actée :
+    # une pose en échec ne la remet pas en cause, ni l'arrêt qui vient d'avoir lieu.
+    try:
+        with transaction.atomic():
+            poser_chaine_apres_acceptation(devis, user)
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+        logger.warning('CADV36: touches après acceptation non posées (devis #%s)',
+                       getattr(devis, 'pk', '?'), exc_info=True)
 
 
 def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,

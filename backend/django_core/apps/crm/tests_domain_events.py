@@ -14,6 +14,7 @@ Les clés d'étape ('QUOTE_SENT', 'SIGNED'…) suivent la convention des tests
 existants (cf. test_acceptation.py) ; la source canonique reste STAGES.py.
 """
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -24,7 +25,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity
 from apps.ventes.models import Devis
-from core.events import devis_accepted
+from core.events import devis_acceptation_annulee, devis_accepted
 import datetime
 import itertools
 from core.events import devis_sent
@@ -91,6 +92,71 @@ class TestDevisAcceptedAdvancesLeadStage(TestCase):
             sender=None, devis=devis, user=self.user, ancien_statut='envoye')
         lead.refresh_from_db()
         self.assertEqual(lead.stage, 'SIGNED')
+
+    def _lead_tazi(self):
+        return Lead.objects.create(
+            company=self.company, nom='Karim Tazi', stage='QUOTE_SENT',
+            owner=self.user, telephone='+212661778899')
+
+    def _chaine(self, lead):
+        return {e.libelle: e.due_date for e in lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE)}
+
+    def test_l_acceptation_pose_la_confirmation_j2_et_le_rappel_d_acompte_j7(self):
+        """CADV36. Mutant : poser les étapes AVANT l'arrêt ⇒
+        ``arreter_cadence_du_lead_id`` les annule et ce test échoue."""
+        lead = self._lead_tazi()
+        devis = self._devis(lead, num=21, statut=Devis.Statut.ACCEPTE)
+        with frozen(datetime.datetime(2026, 11, 9, 10, 0, tzinfo=horaires.CASABLANCA)):
+            for _second_signal in range(2):
+                devis_accepted.send(sender=None, devis=devis, user=self.user,
+                                    ancien_statut='envoye')
+        self.assertEqual(self._chaine(lead), {
+            'Confirmer la signature et la suite': datetime.date(2026, 11, 11),
+            'Acompte : relancer le client': datetime.date(2026, 11, 16)})
+        touche = lead.relance_etapes.get(libelle='Acompte : relancer le client')
+        self.assertEqual((touche.cadence, touche.canal), ('generique', 'appel'))
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, 'SIGNED')
+
+    def test_acompte_deja_paye_seule_la_confirmation(self):
+        lead = self._lead_tazi()
+        devis = self._devis(lead, num=22, statut=Devis.Statut.ACCEPTE)
+        with mock.patch('apps.ventes.selectors.acompte_paye_pour_devis',
+                        return_value=True):
+            devis_accepted.send(sender=None, devis=devis, user=self.user,
+                                ancien_statut='envoye')
+        self.assertEqual(list(self._chaine(lead)),
+                         ['Confirmer la signature et la suite'])
+
+    def test_rien_sur_un_lead_oppose(self):
+        lead = self._lead_tazi()
+        Lead.objects.filter(pk=lead.pk).update(ne_plus_contacter=True)
+        devis = self._devis(lead, num=23, statut=Devis.Statut.ACCEPTE)
+        devis_accepted.send(sender=None, devis=devis, user=self.user,
+                            ancien_statut='envoye')
+        self.assertEqual(self._chaine(lead), {})
+
+    def test_la_touche_close_ne_fait_naitre_aucun_barreau(self):
+        # Reconnue étape de filet : rien du gabarit « generique » ne suit.
+        lead = self._lead_tazi()
+        devis = self._devis(lead, num=24, statut=Devis.Statut.ACCEPTE)
+        devis_accepted.send(sender=None, devis=devis, user=self.user,
+                            ancien_statut='envoye')
+        touche = lead.relance_etapes.get(libelle='Confirmer la signature et la suite')
+        self.assertEqual(self.api.post(
+            f'/api/django/crm/relance-etapes/{touche.pk}/fait/', {},
+            format='json').status_code, 200)
+        self.assertEqual(list(self._chaine(lead)), ['Acompte : relancer le client'])
+
+    def test_l_acceptation_annulee_retire_les_deux_touches(self):
+        lead = self._lead_tazi()
+        devis = self._devis(lead, num=25, statut=Devis.Statut.ACCEPTE)
+        devis_accepted.send(sender=None, devis=devis, user=self.user,
+                            ancien_statut='envoye')
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        devis_acceptation_annulee.send(sender=None, devis=devis, user=self.user)
+        self.assertEqual(self._chaine(lead), {})
 
     def test_never_recedes_an_already_signed_lead(self):
         lead = Lead.objects.create(
