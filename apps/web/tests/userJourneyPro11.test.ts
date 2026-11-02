@@ -755,6 +755,33 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     for (const k of ['carte', 'zones', 'doc'] as const) expect(ombre[k] / reference[k]).toBeCloseTo(0.8, 3);
   }, 120000);
 
+  // ACAL366 — une section « zones » (onglet Pente, panneau Relevé) est posée sur le pan VIVANT :
+  // « Enregistrer » garde 35° (jamais l'ancienne pente sous un jeton neuf), puis rouvrir la relit.
+  it('section « zones » (pente 35°, azimut relevé) appliquée au pan vivant puis gardée par serializeLayout', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const base = copie(neuf().serializeLayout() as Doc) as Doc & { zones: Array<Record<string, unknown>> };
+    base.zones[0] = { ...base.zones[0], roofType: 'pitched', pitchDeg: 15, facingAzimuthDeg: 180 };
+    const api = await rouvrir(base, 11);
+    const z1 = String(base.zones[0].id);
+    const champs = {
+      pitchDeg: 35, pitchSource: { mode: 'degres', degres: 35 }, facingAzimuthDeg: 200, facingManual: true,
+      facingAzimuthSource: 'releve', facingAzimuthPrecisionDeg: 5, pitchSuggestion: { degres: 34, decision: 'refusee' },
+    };
+    const zonesRendues = base.zones.map((z) => (z.id === z1 ? { ...z, ...champs } : z));
+    api().appliquerSection('zones', zonesRendues);
+    const attendus = (doc: Doc) => {
+      const z = (doc.zones as Array<Record<string, unknown>>).find((x) => x.id === z1)!;
+      for (const [cle, valeur] of Object.entries(champs)) expect(z[cle]).toEqual(valeur);
+    };
+    const enregistre = copie(api().serializeLayout() as Doc);
+    attendus(enregistre);
+    expect(enregistre.result.annualKwh).toBeGreaterThan(0);
+    // Persistance : rouvert depuis l'enregistrement complet, la pente et ses provenances relues.
+    attendus((await rouvrir(enregistre, 11))().serializeLayout() as Doc);
+  }, 120000);
+
   it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
