@@ -621,8 +621,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # la journée de son équipe, il ne qualifie pas un client qu'il n'a pas vu.
     # Gelée par VT3 comme toute autre écriture.
 
+    # ERR-ENF11-FUZZ-VISITES — le corps est OBLIGATOIRE (six champs requis) :
+    # un dict ``request=`` ne pose pas ``required: true``, le fuzz omettait le
+    # corps (conforme) et recevait 400 « champ obligatoire ». L'extension
+    # (règle exigeante) rend le corps requis.
     @extend_schema(request={'application/json': _schema_qualification()},
-                   responses=_VISITE_CONTEXTE)
+                   responses=_VISITE_CONTEXTE,
+                   extensions={EXTENSION_CORPS_RESSERRE: {
+                       'required': list(vocabulaire_qualification.CHOIX)}})
     @action(detail=True, methods=['post'], url_path='qualification')
     def qualification(self, request, pk=None):
         """Enregistre la qualification de fin de visite (vocabulaire fermé)."""
