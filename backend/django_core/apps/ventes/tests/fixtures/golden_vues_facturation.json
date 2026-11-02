@@ -148,14 +148,16 @@
    "DroitDeLaGrille_ventes_supprimer"
   ],
   "dgi_conformite": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "DroitDeLaGrille_ventes_export"
   ],
   "dgi_export": [
    "IsResponsableOrAdmin",
    "DroitDeLaGrille_ventes_export"
   ],
   "dgi_transmettre": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "DroitDeLaGrille_ventes_export"
   ],
   "emails": [
    "LectureFactures"
@@ -237,7 +239,8 @@
    "IsResponsableOrAdmin"
   ],
   "ubl": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "DroitDeLaGrille_ventes_export"
   ],
   "update": [
    "IsResponsableOrAdmin"
