@@ -91,11 +91,11 @@ class RetardUniqueTests(TestCase):
                 self.company, self.meryem,
                 date_debut=VENDREDI - datetime.timedelta(days=3),
                 date_fin=today, statut=STATUT_EN_RETARD)
-            resume = api.get(f'/api/django/crm/leads/{self.lead.pk}/resume/')
-            self.assertEqual(resume.status_code, 200, resume.data)
+            fiche = api.get(f'/api/django/crm/leads/{self.lead.pk}/resume/')
+            self.assertEqual(fiche.status_code, 200, fiche.data)
             return {
                 'resume_assistant': (
-                    'relance_en_retard' in resume.data['alertes']),
+                    'relance_en_retard' in fiche.data['alertes']),
                 'badge': RelanceEtapeSerializer(etape).data['overdue'],
                 'drapeau_lead': ligne_lead['touche_en_retard'],
                 'scope_overdue': self.etape.pk in set(relance_etapes_dues(

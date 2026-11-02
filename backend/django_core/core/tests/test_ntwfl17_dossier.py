@@ -107,6 +107,12 @@ class DossierApiTests(TestCase):
         self.assertEqual(reponse.status_code, 201, reponse.data)
         return reponse.data['id']
 
+    def test_checklist_item_id_null_vaut_ajout(self):
+        dossier_id = self._creer_dossier()
+        reponse = CHECKLIST(
+            appeler(self.user, libelle='Etape', item_id=None), pk=dossier_id)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+
     def test_creer_lier_trois_objets_et_cocher_deux_items(self):
         dossier_id = self._creer_dossier()
         dossier = Dossier.objects.get(pk=dossier_id)

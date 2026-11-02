@@ -217,6 +217,16 @@ class TestDefinitionsStrictes(CFBase):
             '/api/django/custom-fields/permissions-role/?field_def=abc')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_permission_role_doublon_409(self):
+        defi = CustomFieldDef.objects.create(
+            company=self.company, module='lead', code='perm1', libelle='Perm',
+            type='text')
+        corps = {'field_def': defi.id, 'role_tier': '0', 'niveau': 'lecture'}
+        url = '/api/django/custom-fields/permissions-role/'
+        self.assertEqual(self.api.post(url, corps, format='json').status_code, 201)
+        resp = self.api.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
     def test_generer_corps_invalide_400(self):
         defi = CustomFieldDef.objects.create(
             company=self.company, module='lead', code='ia1', libelle='IA',

@@ -490,6 +490,7 @@ class TestCatalogueCiAlea50(TestCase):
         from apps.stock.models import Produit
         self._equiper(roles=('coffret_ac', 'protection_ac',
                              'compteur_injection'))
+        self._articles_prestations()
         Produit.objects.create(company=self.company, nom='Coffret DC sans prix',
                                role_ci='coffret_dc', prix_vente=Decimal('0'))
         Produit.objects.create(company=self.company, nom='Coffret DC archivé',

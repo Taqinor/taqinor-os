@@ -9,6 +9,7 @@ from core.champs_stricts import (
     MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ObjetJSON
+from core.unicite import UniciteEn409Mixin
 from .models import (
     CustomFieldDef, CustomObjectDef, CustomRecord, FieldRolePermission,
 )
@@ -565,7 +566,8 @@ def _validate_fichier_value(field_def, val):
     raise ValidationError({field_def.code: 'Fichier attendu.'})
 
 
-class FieldRolePermissionSerializer(IdInconnu404Mixin,
+class FieldRolePermissionSerializer(UniciteEn409Mixin,
+                                    IdInconnu404Mixin,
                                     SameCompanyFKSerializerMixin,
                                     serializers.ModelSerializer):
     """NTEXT9 — permission de champ par palier de rôle (admin)."""
