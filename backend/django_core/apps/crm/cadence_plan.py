@@ -400,6 +400,15 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             echeance = horaires.dimanche_le_plus_proche(
                 ancre + timedelta(days=gabarit.delai_jours), heure_dimanche,
                 plancher=ancre)
+        elif (samedi_ok and gabarit.delai_jours == 0 and not delai_minutes
+              and heure_cible is None and horaires.est_un_message(_canal(gabarit))
+              and (balayage := horaires.prochain_balayage_weekend(
+                  depart, lead.company, canal=_canal(gabarit))) is not None):
+            # CADV30 (D-CADV-6) — le message d'identité du lead du week-end part
+            # au balayage (samedi 10 h, dimanche 17 h), déjà dans sa fenêtre : le
+            # recalage du bas ne connaît pas le dimanche d'un barreau ordinaire.
+            echeances.append((gabarit, balayage))
+            continue
         elif gabarit.delai_jours == 0 and heure_cible is None:
             # Les touches DU JOUR MÊME s'enchaînent depuis l'origine ouvrable,
             # pas depuis l'heure brute d'arrivée du lead : les écarts du

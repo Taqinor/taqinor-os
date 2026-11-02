@@ -17,11 +17,13 @@ frontend IMPORTE — jamais un mock écrit à la main de chaque côté.
 import datetime
 import json
 import pathlib
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
+from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
@@ -149,6 +151,60 @@ class LeLeadDuVendrediSoirTests(_Base):
         self.assertEqual(echeance.astimezone(horaires.CASABLANCA).date(),
                          SAMEDI)
 
+    def _numero_mobile(self):
+        # CAD34 — sans numéro joignable, le message naîtrait en appel.
+        self.lead.telephone = '+212661234567'
+        self.lead.save(update_fields=['telephone'])
+
+    def _identite_et_appel(self, depart):
+        self._numero_mobile()
+        self._barreau(ordre=1, samedi_ok=True)
+        self._barreau(ordre=2, delai_minutes=3, canal=CanalRelance.APPEL,
+                      libelle="Appel d'ouverture",
+                      template_cle='appel_ouverture', samedi_ok=False)
+        return {g.ordre: e.astimezone(horaires.CASABLANCA)
+                for g, e in calculer_echeances_cadence(self.lead, 'contact', depart)}
+
+    def test_le_lead_du_week_end_part_au_balayage_du_samedi_10h_ou_du_dimanche_17h(self):
+        """CADV30 (D-CADV-6). Mutant : ignorer ``samedi_ok`` ⇒ le dimanche repart au
+        lundi."""
+        lundi = datetime.date(2026, 11, 16)
+        for depart, attendu in (
+                (_quand(datetime.date(2026, 11, 14), 3), (datetime.date(2026, 11, 14), 10)),
+                (_quand(datetime.date(2026, 11, 15), 11), (datetime.date(2026, 11, 15), 17)),
+                # Vendredi soir, fenêtre fermée : le balayage du lendemain.
+                (_quand(datetime.date(2026, 11, 13), 21), (datetime.date(2026, 11, 14), 10))):
+            with self.subTest(depart=depart):
+                CadenceRelanceEtape.objects.filter(company=self.company).delete()
+                touches = self._identite_et_appel(depart)
+                self.assertEqual((touches[1].date(), touches[1].hour, touches[1].minute),
+                                 (*attendu, 0))
+                self.assertEqual(touches[2].date(), lundi)
+
+    def test_la_semaine_garde_l_identite_immediate(self):
+        depart = _quand(datetime.date(2026, 11, 17), 11)  # mardi
+        self.assertEqual(self._identite_et_appel(depart)[1], depart)
+
+    def test_le_samedi_apres_10h_part_a_l_arrivee(self):
+        depart = _quand(datetime.date(2026, 11, 14), 11, 20)
+        self.assertEqual(self._identite_et_appel(depart)[1], depart)
+
+    def test_le_dimanche_soir_attend_le_lundi(self):
+        touches = self._identite_et_appel(_quand(datetime.date(2026, 11, 15), 21))
+        self.assertEqual(touches[1].date(), datetime.date(2026, 11, 16))
+
+    def test_la_touche_materialisee_garde_l_echeance_du_balayage(self):
+        from apps.crm.cadence_plan import initialiser_plan_relance
+        self._numero_mobile()
+        self._barreau(ordre=1, samedi_ok=True)
+        depart = _quand(datetime.date(2026, 11, 15), 11)
+        with frozen(depart):
+            [touche] = initialiser_plan_relance(self.lead, None, cadence='contact',
+                                                depart=depart)
+        touche.refresh_from_db()
+        locale = touche.due_at.astimezone(horaires.CASABLANCA)
+        self.assertEqual((locale.date(), locale.hour), (datetime.date(2026, 11, 15), 17))
+
     def test_sans_samedi_ok_le_message_attend_le_lundi(self):
         """Anti-faux-vert : c'est bien le drapeau qui ouvre la journée."""
         self._barreau(samedi_ok=False)
@@ -170,6 +226,37 @@ class LeLeadDuVendrediSoirTests(_Base):
                  for g, e in echeances}
         self.assertEqual(jours[1], SAMEDI)
         self.assertEqual(jours[2], LUNDI)
+
+
+class BalayageWeekendTests(_Base):
+    """CADV30 — les cas de fenêtre de ``horaires.prochain_balayage_weekend``."""
+    slug = 'cad43-balayage'
+
+    def _balayage(self, jour, heure):
+        return horaires.prochain_balayage_weekend(_quand(jour, heure), self.company)
+
+    def test_ramadan_l_ouverture_de_la_fenetre_du_mois(self):
+        samedi = datetime.date(2026, 11, 14)
+        with mock.patch('apps.crm.horaires.est_en_ramadan', return_value=True):
+            arrivee = self._balayage(samedi, 3).astimezone(horaires.CASABLANCA)
+        self.assertEqual(arrivee.date(), samedi)
+        self.assertEqual(arrivee.time(), datetime.time(9, 0))
+
+    def test_un_samedi_ferie_passe_au_dimanche(self):
+        samedi = datetime.date(2026, 11, 14)
+        with mock.patch('apps.crm.horaires._est_ferie',
+                        side_effect=lambda d, _company: d == samedi):
+            arrivee = self._balayage(samedi, 3).astimezone(horaires.CASABLANCA)
+        self.assertEqual((arrivee.date(), arrivee.hour),
+                         (datetime.date(2026, 11, 15), 17))
+
+    def test_le_vendredi_dans_sa_fenetre_et_la_semaine_ne_balaient_rien(self):
+        self.assertIsNone(self._balayage(datetime.date(2026, 11, 13), 11))
+        self.assertIsNone(self._balayage(datetime.date(2026, 11, 17), 3))
+
+    def test_une_societe_ouverte_le_samedi_garde_son_ouverture(self):
+        with mock.patch('apps.crm.horaires._jour_ouvre', return_value=True):
+            self.assertIsNone(self._balayage(datetime.date(2026, 11, 14), 3))
 
 
 class ApiEtIsolationTests(_Base):
