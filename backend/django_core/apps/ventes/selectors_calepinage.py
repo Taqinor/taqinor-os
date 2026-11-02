@@ -265,6 +265,13 @@ def peremption_layout_devis(devis, calepinage=None):
     }
 
 
+def controle_kwh_declare_du_devis(devis):
+    """ADVS26 — la garde kWh déclaré / factures, lue par le module calepinage
+    (une seule règle : ``etude_horaire.controle_kwh_declare_du_devis``)."""
+    from .etude_horaire import controle_kwh_declare_du_devis as controle
+    return controle(devis)
+
+
 def devis_brouillon_pour_layout(company, lead_id, empreinte):
     """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
 

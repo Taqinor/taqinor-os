@@ -80,6 +80,25 @@ def _ecrire_conception(devis, payload, request):
     return Response(resultat)
 
 
+def _creer_sous_garde_kwh(**champs):
+    """ADVS26 — la création et la garde d'``/atomic`` sous UNE transaction :
+    un kWh déclaré que les factures contredisent répond 409 ``{detail, code}``
+    et ne laisse aucun brouillon (règle fondateur du 30/09/2026)."""
+    from django.db import transaction
+    from rest_framework.exceptions import ValidationError
+    from core.conflit_etat import ConflitEtat
+    from ..services import build_devis_from_layout
+    from .devis_edition import _garde_kwh_declare
+
+    with transaction.atomic():
+        devis = build_devis_from_layout(**champs)
+        try:
+            _garde_kwh_declare(devis)
+        except ValidationError as refus:
+            raise ConflitEtat(refus.detail)
+    return devis
+
+
 class DevisCalepinageActionsMixin:
     """SPL140 — actions calepinage / conception de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -111,7 +130,7 @@ class DevisCalepinageActionsMixin:
         """
         from decimal import Decimal
         from ..services import (
-            AutoDevisError, build_devis_from_layout, layout_hash,
+            AutoDevisError, layout_hash,
             poser_layout_hash, validate_composition_for_layout)
         from ..selectors import devis_brouillon_pour_layout
         from ..models import ShareLink
@@ -260,7 +279,7 @@ class DevisCalepinageActionsMixin:
         # refusé de faire remonte dans la réponse (contrat devis_from_layout).
         journal = {}
         try:
-            devis = build_devis_from_layout(
+            devis = _creer_sous_garde_kwh(
                 layout=layout, user=request.user, company=company,
                 lead=lead_obj, client=client_obj, journal=journal,
                 **_composition)
