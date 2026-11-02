@@ -29,7 +29,7 @@ from .models import ShareLink
 from .public.noyau import (
     PublicLinkRateThrottle, _niveau_lien, _noindex, _not_found,
     _resolve_proposal_link, _resolve_share_link_by_token, _sans_cles_internes,
-    _rendu_memorise_du_lien, _section_servie, _sections_masquees, _strip_confidential_deep,
+    _rendu_memorise_du_lien, _section_servie, _sections_masquees, _strip_confidential_deep, lien_client_sur_brouillon,
 )
 from .public.lecture_views import _notify_open, _stamp_view_si_public
 from .public.payload_batterie import (
@@ -183,8 +183,10 @@ def public_document(request, token):
     # laisser ouvert aurait rendu la case décorative. Même 404 muet, posé AVANT
     # le stamp de vue. Borné au lien de DEVIS : un lien de facture ou de bon de
     # commande fournisseur ne porte aucune section (la case n'existe que sur la
-    # page devis).
-    if link.devis_id and not _section_servie(link, 'pdf'):
+    # page devis). ADVS30 (ADEV11, comme ses trois lectures sœurs) — idem au
+    # jeton CLIENT d'un brouillon ; le jeton d'aperçu interne reste servi.
+    if link.devis_id and (not _section_servie(link, 'pdf')
+                          or (not via_interne and lien_client_sur_brouillon(link))):
         return _not_found()
 
     # ── QJR417 (DR2, lectures) — LA FENÊTRE OUVERTE À CÔTÉ DE LA PORTE FERMÉE.

@@ -28,7 +28,7 @@ from apps.ventes.tests._gammes_offre_common import (
 class TestPayloadPublic(GammeBase):
 
     def test_les_deux_expose_la_soeur(self):
-        source, soeur = self._paire('DEV-GAM-030', nom='Premium')
+        source, soeur = self._paire_servie('DEV-GAM-030', nom='Premium')
         bloc = _gammes_public(source)
         self.assertIsNotNone(bloc)
         self.assertEqual(bloc['envoi'], GAMME_ENVOI_LES_DEUX)
@@ -41,7 +41,7 @@ class TestPayloadPublic(GammeBase):
     def test_ecart_en_mad_absolus_signe(self):
         """L'écart est un MONTANT signé en MAD (sœur − gamme affichée), jamais
         un pourcentage : la page l'affiche « + X MAD » / « − X MAD »."""
-        source, soeur = self._paire('DEV-GAM-031')
+        source, soeur = self._paire_servie('DEV-GAM-031')
         # La sœur est renchérie : son écart doit être POSITIF.
         for ligne in soeur.lignes.all():
             ligne.prix_unitaire = ligne.prix_unitaire + Decimal('1000')
@@ -64,7 +64,7 @@ class TestPayloadPublic(GammeBase):
         ``display_totals`` — donc, à composition identique, écart NUL."""
         from apps.ventes.quote_engine.builder import display_totals
 
-        source, soeur = self._paire('DEV-GAM-039')
+        source, soeur = self._paire_servie('DEV-GAM-039')
         bloc = _gammes_public(source)
         # Le total publié pour la gamme courante EST celui de display_totals.
         self.assertAlmostEqual(
@@ -78,7 +78,7 @@ class TestPayloadPublic(GammeBase):
         self.assertAlmostEqual(bloc['soeur']['ecart_ttc'], 0.0, places=2)
 
     def test_comparatif_ne_garde_que_les_lignes_qui_different(self):
-        source, soeur = self._paire('DEV-GAM-032')
+        source, soeur = self._paire_servie('DEV-GAM-032')
         ligne = soeur.lignes.filter(designation='Panneau 550W').first()
         ligne.quantite = Decimal('14')
         ligne.save(update_fields=['quantite'])
@@ -89,7 +89,7 @@ class TestPayloadPublic(GammeBase):
         self.assertEqual(bloc['comparatif'][0]['quantite_soeur'], 14.0)
 
     def test_comparatif_couvre_une_ligne_absente_dune_gamme(self):
-        source, soeur = self._paire('DEV-GAM-033')
+        source, soeur = self._paire_servie('DEV-GAM-033')
         batterie = make_produit(self.company, 'Batterie 5 kWh', 'BAT-GAM',
                                 '12000')
         add_ligne(soeur, batterie, qty='1', pu='12000')
@@ -103,7 +103,7 @@ class TestPayloadPublic(GammeBase):
         """Multi-villa (QJ29/QJ30) : la MÊME désignation apparaît une fois par
         groupe. Ne garder que la première publiait « 10 » là où le devis porte
         10 + 6 = 16 panneaux — un chiffre faux présenté comme la composition."""
-        source, soeur = self._paire('DEV-GAM-060')
+        source, soeur = self._paire_servie('DEV-GAM-060')
         # La gamme courante répartit ses panneaux sur DEUX villas (10 + 6).
         seconde = add_ligne(source, self.panneau, qty='6')
         seconde.groupe_index = 2
@@ -121,7 +121,7 @@ class TestPayloadPublic(GammeBase):
         self.assertNotIn('Panneau 550W', designations)
 
     def test_comparatif_agrege_et_publie_la_somme_quand_ca_differe(self):
-        source, soeur = self._paire('DEV-GAM-061')
+        source, soeur = self._paire_servie('DEV-GAM-061')
         seconde = add_ligne(source, self.panneau, qty='6')
         seconde.groupe_index = 2
         seconde.save(update_fields=['groupe_index'])
@@ -140,7 +140,7 @@ class TestPayloadPublic(GammeBase):
         """XSAL5 — un add-on est proposé HORS total. L'afficher à côté d'un
         ``total_ttc`` qui l'exclut faisait conclure au client que la gamme
         l'incluait à ce prix."""
-        source, soeur = self._paire('DEV-GAM-062')
+        source, soeur = self._paire_servie('DEV-GAM-062')
         batterie = make_produit(self.company, 'Batterie supplémentaire 5 kWh',
                                 'BAT-OPT-GAM', '12000')
         add_on = add_ligne(soeur, batterie, qty='1', pu='12000')
@@ -156,7 +156,7 @@ class TestPayloadPublic(GammeBase):
         """XSAL14 — un intertitre n'est pas un composant (et sa quantité est
         nulle : il entrait au comparatif comme une « différence de matériel »
         présente d'un seul côté)."""
-        source, soeur = self._paire('DEV-GAM-063')
+        source, soeur = self._paire_servie('DEV-GAM-063')
         LigneDevis.objects.create(
             devis=soeur, designation='Lot 1 — Toiture principale',
             type_ligne=LigneDevis.TypeLigne.SECTION,
@@ -166,6 +166,36 @@ class TestPayloadPublic(GammeBase):
 
         designations = [r['designation'] for r in bloc['comparatif']]
         self.assertNotIn('Lot 1 — Toiture principale', designations)
+
+    def test_soeur_brouillon_non_servie_et_aucun_lien_cree(self):
+        """ADVS16 (C-ADVS-022) — sœur brouillon : clé ``gammes`` absente, et la
+        lecture publique n'écrit rien (0 ``ShareLink`` avant et après)."""
+        source, soeur = self._paire('DEV-GAM-064', nom='Premium')
+        Devis.objects.filter(pk=source.pk).update(statut=Devis.Statut.ENVOYE)
+        link = ShareLink.for_devis(source)
+        resp = APIClient().get(url_proposal(link.token))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data.get('gammes'))
+        self.assertEqual(ShareLink.objects.filter(devis=soeur).count(), 0)
+
+    def test_soeur_envoyee_sans_lien_valide_non_servie(self):
+        """ADVS16 — sœur envoyée : sans lien, ou lien révoqué/expiré, bloc absent ;
+        lien vivant : ``proposition_path`` = SON jeton existant."""
+        from datetime import timedelta
+        from django.utils import timezone
+        source, soeur = self._paire('DEV-GAM-065', nom='Premium')
+        Devis.objects.filter(pk=soeur.pk).update(statut=Devis.Statut.ENVOYE)
+        soeur.refresh_from_db()
+        self.assertIsNone(_gammes_public(source))
+        self.assertEqual(ShareLink.objects.filter(devis=soeur).count(), 0)
+        lien = ShareLink.for_devis(soeur)
+        self.assertIn(lien.token, _gammes_public(source)['soeur']['proposition_path'])
+        ShareLink.objects.filter(pk=lien.pk).update(revoque_le=timezone.now())
+        self.assertIsNone(_gammes_public(source))
+        ShareLink.objects.filter(pk=lien.pk).update(
+            revoque_le=None, expires_at=timezone.now() - timedelta(days=1))
+        self.assertIsNone(_gammes_public(source))
+        self.assertEqual(ShareLink.objects.filter(devis=soeur).count(), 1)
 
     def test_mode_seule_ne_laisse_rien_passer(self):
         source, soeur = self._paire('DEV-GAM-034', nom='Premium')
@@ -184,10 +214,9 @@ class TestPayloadPublic(GammeBase):
         self.assertNotIn(soeur.reference, refs)
 
     def test_payload_public_expose_gammes_et_jamais_prix_achat(self):
-        source, soeur = self._paire('DEV-GAM-036', nom='Premium')
+        source, soeur = self._paire_servie('DEV-GAM-036', nom='Premium')
         # ADEV11 : un brouillon n'est jamais servi au jeton client -> envoyé.
-        Devis.objects.filter(pk__in=[source.pk, soeur.pk]).update(
-            statut=Devis.Statut.ENVOYE)
+        Devis.objects.filter(pk=source.pk).update(statut=Devis.Statut.ENVOYE)
         link = ShareLink.for_devis(source)
         anon = APIClient()
         resp = anon.get(url_proposal(link.token))

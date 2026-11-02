@@ -154,6 +154,9 @@ class TroisCheminsDeRendu(_BaseHuaweiDeye):
                 '.render_pdf_bytes', return_value=b'%PDF-1.4 test'),
             mock.patch('apps.ventes.utils.pdf._upload_pdf',
                        return_value='cle/test.pdf'),
+            # ADVS12 — la pièce jointe introuvable au stockage refuse l'envoi.
+            mock.patch('apps.ventes.utils.pdf.download_pdf',
+                       return_value=b'%PDF-1.4 test'),
         ]
         return vu, correctifs
 
