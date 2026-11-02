@@ -1,0 +1,411 @@
+{
+  "sha": "c6ab9b58edb530b990f5788fcfcc7e82b164bc38",
+  "date": "2026-11-01",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL351"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "S-A.premier-enregistrer-js",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § S-A.premier-enregistrer-js ; docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-S-A-premier-enregistrer-js.jpg — exemple du schéma semé (nombres JS), atelier ouvert, Enregistrer SANS geste : « Conception inchangée », document, layout_hash, empreinte et resultat identiques, versions 1 → 1, neededAuto reste true (défaut A1 du 30/10 corrigé)"
+    },
+    {
+      "id": "API.S-C.generer",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-C.generer ; generer-devis 201 : onduleur Huawei 10kW Triphasé (non monophasé), 10 panneaux 550W ; second appel 200 deduplique ; layout_stale false"
+    },
+    {
+      "id": "API.S-C.perime-planche",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-C.perime-planche ; 8 modules sans resynchro : layout_stale true ; /proposal?include_calepinage=1 divergent 3 p. sans planche ; sync-devis 200 (8 panneaux, 3 lignes) ; aligné 4 p. avec planche ; pas de prix_achat"
+    },
+    {
+      "id": "API.S-D.variantes",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-D.variantes ; variante créée 201, renommée 200, retenue 200 (retenue true, une seule)"
+    },
+    {
+      "id": "API.P6.3.approbation-perimee",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.P6.3.approbation-perimee ; approuver 200 puis modification : approbation perimee true"
+    },
+    {
+      "id": "API.P6.5.archiver-delete",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.P6.5.archiver-delete ; archiver un calepinage lié à un devis envoyé : 400 nommé ; DELETE 405"
+    },
+    {
+      "id": "API.P6.4.corriger-apres-envoi",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.P6.4.corriger-apres-envoi ; devis envoyé : écriture 200 + sync-devis 200 ; chatter « Corrigé après envoi — calepinage (lignes, conception). »"
+    },
+    {
+      "id": "API.P6.4.accepte-verrou",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.P6.4.accepte-verrou ; devis accepté : modifiable false, raison « Utilisez Réviser », POST layout 409 « Devis accepté : révisez-le »"
+    },
+    {
+      "id": "API.S-C.reviser",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-C.reviser ; reviser 201 V2 ; un seul calepinage re-lié à la V2 ; version « Version envoyée — DEV-202611-0002 »"
+    },
+    {
+      "id": "API.S-C.parite",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-C.parite ; docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-S-C-devis-design.jpg — page publique = PDF : 10 panneaux, 5,5 kWc, 8 796 kWh/an, 5 367 MAD/an, eco_s_ann présent, pas de prix_achat ; layout_nb_panneaux 10 ; /ventes/devis/2573/design sans erreur"
+    },
+    {
+      "id": "API.S-E.simulation",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-E.simulation ; PVGIS réel : job done, sans geste ne périme pas, perte saisie → simulation_perimee true, fenêtre 2014-2023 → 10 années, p50 année moyenne, mention borne haute, PR non publié, ombrage par pan sur 2 pans ; réglage restauré"
+    },
+    {
+      "id": "ECRAN.S-E.onglets",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § ECRAN.S-E.onglets ; docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-onglet-production.jpg ; docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-onglet-pertes.jpg — « simulation périmée » + Relancer ; cascade Salissure 3,3 % Saisie"
+    },
+    {
+      "id": "API.S-F.verdict",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-F.verdict ; verdicts servis, saisie électrique relue, schema-unifilaire.dxf 200 avec module désigné, 409 nommé sans ; écran verdict « Publiable »"
+    },
+    {
+      "id": "API.S-H.livrables",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-H.livrables ; export-csv 409 nommé avant simulation puis 200 text/csv horaire 8 795 lignes ; note-calcul, rapport-etude fr/en (borne haute), planche, plan-pose, DXF, export-projet, présentation compacte 200 ; aucun montant ni prix_achat"
+    },
+    {
+      "id": "API.S-H.pose-reelle",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-H.pose-reelle ; docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-onglet-pose-reelle.jpg — pose réelle 2 pans + correction, version des écarts 201 ; dossier de fin de chantier ×2 = même Document GED 262, 1 version ; as-built 200"
+    },
+    {
+      "id": "API.P8.4.export-import",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.P8.4.export-import ; export-projet 200 ; import aperçu 200 (rien écrit) ; import 201, document identique"
+    },
+    {
+      "id": "API.S-G.fusion-corbeille",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-G.fusion-corbeille ; depuis-lead ×2 = un calepinage ; fusion : le calepinage suit le survivant ; corbeille du lead porteur 409 nommé"
+    },
+    {
+      "id": "API.S-G.renommer-liste",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § API.S-G.renommer-liste ; second calepinage sur lead ouvert 409 ; renommer 200 relu ; liste ?q= et recherche globale trouvent le calepinage"
+    },
+    {
+      "id": "ACAL351.gardes",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § ACAL351.gardes ; check_calepinage_actions_consommees, check_services_appeles, check_api_shapes, check_dockerfile_context verts"
+    }
+  ]
+}
