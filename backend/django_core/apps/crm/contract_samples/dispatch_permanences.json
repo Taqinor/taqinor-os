@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/crm/dispatch/permanences/<equipe_id>/",
-  "pourquoi": "CADV96 (M0, PACT10, conception v4 §3, D-CADV-6 / D-CADV-7) — forme de la rota de permanence par demi-journée (week-end compris), posée AVANT ses moitiés ; route non servie à ce jour (aucun `forme_serveur`). Tâche porteuse : CADV104 (modèle `PermanenceEquipe` près d'`EquipeCommerciale`, route dans `dispatch_views.py`, lue par `dispatch.proposer` avant la rotation). Une ligne par (équipe, date, demi-journée) ; `demi_journee` ∈ `matin` / `apres_midi` ; `libelle` est le motif servi par la proposition (« Permanence samedi matin »). Bornée à la société. Lecteur à venir : CADV105 (écran « À prendre »).",
+  "pourquoi": "CADV96 (M0, PACT10, conception v4 §3, D-CADV-6 / D-CADV-7) — forme de la rota de permanence par demi-journée (week-end compris), posée AVANT ses moitiés ; route servie depuis CADV104 (`GET`, écriture `PUT {permanences:[{date, demi_journee, commercial|null}]}`). Tâche porteuse : CADV104 (modèle `PermanenceEquipe` près d'`EquipeCommerciale`, route dans `dispatch_views.py`, lue par `dispatch.proposer` avant la rotation). Une ligne par (équipe, date, demi-journée) ; `demi_journee` ∈ `matin` / `apres_midi` ; `libelle` est le motif servi par la proposition (« Permanence samedi matin »). Bornée à la société. Lecteur à venir : CADV105 (écran « À prendre »).",
   "exemple": {
     "equipe": 3,
     "permanences": [

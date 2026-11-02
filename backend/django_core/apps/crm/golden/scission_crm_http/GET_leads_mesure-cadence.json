@@ -1,6 +1,8 @@
 {
  "appel": "GET leads mesure-cadence",
  "corps": {
+  "cohorte": [],
+  "courbe_premier_joint": {},
   "gestes_par_appareil": [],
   "jours": 90,
   "par_segment": [

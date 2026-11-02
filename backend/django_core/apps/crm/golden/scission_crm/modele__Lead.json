@@ -600,6 +600,107 @@
    "args": [],
    "kwargs": {
     "blank": true,
+    "choices": [
+     [
+      "standby",
+      "Standby (reprise datée)"
+     ],
+     [
+      "nurture",
+      "Nurture (réveils espacés)"
+     ],
+     [
+      "archive",
+      "Archive"
+     ]
+    ],
+    "max_length": 10,
+    "null": true
+   },
+   "nom": "parc_etat",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "injoignable",
+      "Injoignable"
+     ],
+     [
+      "pas_maintenant_sans_date",
+      "Pas maintenant (sans date)"
+     ],
+     [
+      "plus_tard_date",
+      "Plus tard (date du client)"
+     ],
+     [
+      "budget",
+      "Budget"
+     ],
+     [
+      "trop_cher",
+      "Trop cher"
+     ],
+     [
+      "concurrent",
+      "Concurrent"
+     ],
+     [
+      "achete_ailleurs",
+      "Acheté ailleurs"
+     ],
+     [
+      "non_proprietaire",
+      "Non propriétaire"
+     ],
+     [
+      "pas_de_toit",
+      "Pas de toit"
+     ],
+     [
+      "technique",
+      "Raison technique"
+     ],
+     [
+      "faux_numero",
+      "Faux numéro"
+     ],
+     [
+      "doublon",
+      "Doublon"
+     ],
+     [
+      "test",
+      "Fiche de test"
+     ],
+     [
+      "archive_odoo",
+      "Contact Odoo froid archivé"
+     ]
+    ],
+    "max_length": 30,
+    "null": true
+   },
+   "nom": "parc_raison",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "parc_jusqu_au",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
     "default": "classe:list",
     "verbose_name": "Champs saisis par un humain"
    },

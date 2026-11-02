@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4888, operations: 7674, components: 3602}
+counts: {paths: 4894, operations: 7686, components: 3610}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -955,6 +955,8 @@ operations:
 - put /api/django/crm/defis/{id}/ -> django_crm_defis_update
 - get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_list
 - get /api/django/crm/dispatch/ -> django_crm_dispatch_retrieve
+- get /api/django/crm/dispatch/permanences/{equipe_id}/ -> django_crm_dispatch_permanences_retrieve
+- put /api/django/crm/dispatch/permanences/{equipe_id}/ -> django_crm_dispatch_permanences_update
 - patch /api/django/crm/dispatch/reglages/{equipe_id}/ -> django_crm_dispatch_reglages_partial_update
 - post /api/django/crm/dispatch/{lead_id}/attribuer/ -> django_crm_dispatch_attribuer_create
 - get /api/django/crm/equipes/ -> django_crm_equipes_list
@@ -964,6 +966,10 @@ operations:
 - get /api/django/crm/equipes/{id}/ -> django_crm_equipes_retrieve
 - patch /api/django/crm/equipes/{id}/ -> django_crm_equipes_partial_update
 - put /api/django/crm/equipes/{id}/ -> django_crm_equipes_update
+- get /api/django/crm/experiences-cadence/ -> django_crm_experiences_cadence_list
+- post /api/django/crm/experiences-cadence/ -> django_crm_experiences_cadence_create
+- get /api/django/crm/experiences-cadence/{id}/ -> django_crm_experiences_cadence_retrieve
+- patch /api/django/crm/experiences-cadence/{id}/ -> django_crm_experiences_cadence_partial_update
 - get /api/django/crm/forecast-entries/ -> django_crm_forecast_entries_list
 - post /api/django/crm/forecast-entries/ -> django_crm_forecast_entries_create
 - delete /api/django/crm/forecast-entries/{id}/ -> django_crm_forecast_entries_destroy
@@ -4832,6 +4838,8 @@ operations:
 - put /api/v1/crm/defis/{id}/ -> v1_crm_defis_update
 - get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_list
 - get /api/v1/crm/dispatch/ -> v1_crm_dispatch_retrieve
+- get /api/v1/crm/dispatch/permanences/{equipe_id}/ -> v1_crm_dispatch_permanences_retrieve
+- put /api/v1/crm/dispatch/permanences/{equipe_id}/ -> v1_crm_dispatch_permanences_update
 - patch /api/v1/crm/dispatch/reglages/{equipe_id}/ -> v1_crm_dispatch_reglages_partial_update
 - post /api/v1/crm/dispatch/{lead_id}/attribuer/ -> v1_crm_dispatch_attribuer_create
 - get /api/v1/crm/equipes/ -> v1_crm_equipes_list
@@ -4841,6 +4849,10 @@ operations:
 - get /api/v1/crm/equipes/{id}/ -> v1_crm_equipes_retrieve
 - patch /api/v1/crm/equipes/{id}/ -> v1_crm_equipes_partial_update
 - put /api/v1/crm/equipes/{id}/ -> v1_crm_equipes_update
+- get /api/v1/crm/experiences-cadence/ -> v1_crm_experiences_cadence_list
+- post /api/v1/crm/experiences-cadence/ -> v1_crm_experiences_cadence_create
+- get /api/v1/crm/experiences-cadence/{id}/ -> v1_crm_experiences_cadence_retrieve
+- patch /api/v1/crm/experiences-cadence/{id}/ -> v1_crm_experiences_cadence_partial_update
 - get /api/v1/crm/forecast-entries/ -> v1_crm_forecast_entries_list
 - post /api/v1/crm/forecast-entries/ -> v1_crm_forecast_entries_create
 - delete /api/v1/crm/forecast-entries/{id}/ -> v1_crm_forecast_entries_destroy
@@ -7874,6 +7886,7 @@ query_params:
   get /api/django/crm/defis/: actif ordering page page_size search
   get /api/django/crm/defis/{id}/classement/: ordering search
   get /api/django/crm/equipes/: ordering page page_size search
+  get /api/django/crm/experiences-cadence/: ordering page page_size search
   get /api/django/crm/forecast-entries/: categorie ordering owner page page_size periode search
   get /api/django/crm/forecast/historique/: owner semaines
   get /api/django/crm/forecast/rollup/: equipe periode
@@ -8667,6 +8680,7 @@ query_params:
   get /api/v1/crm/defis/: actif ordering page page_size search
   get /api/v1/crm/defis/{id}/classement/: ordering search
   get /api/v1/crm/equipes/: ordering page page_size search
+  get /api/v1/crm/experiences-cadence/: ordering page page_size search
   get /api/v1/crm/forecast-entries/: categorie ordering owner page page_size periode search
   get /api/v1/crm/forecast/historique/: owner semaines
   get /api/v1/crm/forecast/rollup/: equipe periode
@@ -10428,6 +10442,8 @@ components:
 - ExpeditionTransporteur
 - ExpeditionTransporteurRequest
 - ExpeditionTransporteurStatutEnum
+- ExperienceCadence
+- ExperienceCadenceRequest
 - Experiment
 - ExperimentArm
 - ExperimentArmRequest
@@ -10819,6 +10835,7 @@ components:
 - LigneInventaire
 - LigneInventaireRequest
 - LigneNoteDebit
+- LignePermanenceRequest
 - LignePicking
 - LignePickingRequest
 - LignePrixListe
@@ -11227,6 +11244,7 @@ components:
 - PaginatedEtapeAssemblageList
 - PaginatedExigenceDossierList
 - PaginatedExpeditionTransporteurList
+- PaginatedExperienceCadenceList
 - PaginatedExperimentArmList
 - PaginatedExperimentList
 - PaginatedFactEntryList
@@ -11471,6 +11489,8 @@ components:
 - ParametrageRelanceClientRequest
 - ParametresGammes
 - ParametresNegoce
+- ParcEtatEnum
+- ParcRaisonEnum
 - Parrainage
 - ParrainageRequest
 - ParrainageStatutEnum
@@ -11613,6 +11633,7 @@ components:
 - PatchedEtapeAssemblageRequest
 - PatchedExigenceDossierRequest
 - PatchedExpeditionTransporteurRequest
+- PatchedExperienceCadenceRequest
 - PatchedExperimentArmRequest
 - PatchedExperimentRequest
 - PatchedFactEntryRequest
@@ -11822,6 +11843,7 @@ components:
 - PdfTaskResponse
 - PeriodEnum
 - PeriodTypeEnum
+- PermanencesRequest
 - PermissionCatalogue
 - PermissionsDisponibles
 - PertesCalepinage

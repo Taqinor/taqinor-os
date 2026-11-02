@@ -6,7 +6,8 @@
     "equipe": {
       "id": 7,
       "nom": "Casa",
-      "delai_minutes": 5
+      "delai_minutes": 5,
+      "a_prendre": false
     },
     "en_attente": 1,
     "leads": [
@@ -96,7 +97,8 @@
     "equipe": {
       "id": 7,
       "nom": "Casa",
-      "delai_minutes": 5
+      "delai_minutes": 5,
+      "a_prendre": false
     },
     "en_attente": 0,
     "leads": [],
@@ -154,6 +156,7 @@
   },
   "notes": {
     "equipe": "L'équipe qui reçoit les nouveaux leads avec confirmation activée et dont l'appelant est le responsable (ou toute équipe de ce type pour Direction/Admin) ; null si aucune.",
+    "equipe.a_prendre": "CADV31 (D-CADV-7) — vrai quand l'équipe est en file « À prendre » (`EquipeCommerciale.file_a_prendre`) : la file est alors ouverte à TOUS les membres actifs, qui s'attribuent chacun un lead résidentiel par `POST crm/dispatch/<lead_id>/attribuer/` `{owner: <son id>}` (un membre ne s'attribue qu'à lui-même ; le second reçoit 409). Les leads pro n'y entrent jamais (responsable pro désigné, CIQ416).",
     "leads": "Leads en attente de décision, du plus ancien au plus récent. Champs absents du lead = null (jamais inventés). `attente_minutes` et `auto_le` en temps ouvré (horaires de la société).",
     "propose.raison": "Texte lisible de la règle appliquée, ou « Rotation équilibrée » quand aucune règle ne correspond.",
     "membres": "Membres ACTIFS de l'équipe, dans l'ordre d'affichage ; `leads_ouverts` = leads non signés/froids/perdus ; `au_plafond` selon le plafond de leads ouverts du profil. Le RESPONSABLE actif de l'équipe vient en premier avec `est_responsable: true` (il peut prendre un lead lui-même — fondateur, 28/10/2026) ; la rotation automatique reste entre les membres.",

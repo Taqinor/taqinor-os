@@ -1027,3 +1027,166 @@ class LotsTests(_PlacementBase):
         self.assertEqual(
             {self._premiere(lead).date() for lead in self.dormants},
             {MERCREDI.date()})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. CADV1 — réparation des rebonds Odoo (commandes de réparation du parc)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class CommandeReparationTests(_PlacementBase):
+    slug = 'cadv-reparation'
+
+    def _stage(self, lead, ancien, nouveau, user):
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.MODIFICATION, field='stage',
+            old_value=stages.STAGE_LABELS[ancien],
+            new_value=stages.STAGE_LABELS[nouveau])
+
+    def _rebondi(self, nom, *, devis=False):
+        lead = self._lead(nom, stage=stages.FOLLOW_UP)
+        self._stage(lead, stages.FOLLOW_UP, stages.COLD, self.acteur)
+        self._stage(lead, stages.COLD, stages.FOLLOW_UP, None)
+        if devis:
+            self._devis(lead)
+        return lead
+
+    def _appeler(self, nom, *args, **kw):
+        sortie = io.StringIO()
+        call_command(nom, '--company', self.company.slug, *args,
+                     stdout=sortie, **kw)
+        return sortie.getvalue()
+
+    def test_reparer_rebonds_froid_remet_au_froid_avec_raison(self):
+        l1 = self._rebondi('L1')
+        l2 = self._rebondi('L2', devis=True)
+        isole = self._lead('Normal', stage=stages.FOLLOW_UP)
+        texte = self._appeler('reparer_rebonds_froid')
+        self.assertIn(f'#{l1.pk}', texte)
+        self.assertIn(f'#{l2.pk}', texte)
+        self.assertNotIn(f'#{isole.pk}', texte)
+        l1.refresh_from_db()
+        self.assertEqual(l1.stage, stages.FOLLOW_UP, 'dry-run : rien écrit')
+        self._appeler('reparer_rebonds_froid', '--apply')
+        for lead in (l1, l2, isole):
+            lead.refresh_from_db()
+        self.assertEqual(l1.stage, stages.COLD)
+        self.assertEqual(l2.stage, stages.COLD)
+        self.assertEqual(isole.stage, stages.FOLLOW_UP)
+        self.assertIn('Parc — injoignable', l1.tags)
+        self.assertIn('Parc — pas maintenant (sans date)', l2.tags)
+        for lead in (l1, l2):
+            self.assertEqual(lead.activites.filter(
+                kind=LeadActivity.Kind.NOTE,
+                body__startswith='Réparation du').count(), 1)
+
+    def test_rejouer_apply_ne_retouche_aucun_lead(self):
+        self._rebondi('L1')
+        self._appeler('reparer_rebonds_froid', '--apply')
+        texte = self._appeler('reparer_rebonds_froid', '--apply')
+        self.assertIn('0 lead(s) rebondi(s)', texte)
+
+    def test_ids_restreint_le_perimetre(self):
+        l1 = self._rebondi('L1')
+        l2 = self._rebondi('L2')
+        self._appeler('reparer_rebonds_froid', '--apply', '--ids', str(l1.pk))
+        l1.refresh_from_db()
+        l2.refresh_from_db()
+        self.assertEqual((l1.stage, l2.stage),
+                         (stages.COLD, stages.FOLLOW_UP))
+
+    def test_normaliser_telephones_ramene_a_la_forme_canonique(self):
+        """CADV4 — « 06 12-34 56 78 » → 212612345678 ; l'étranger et le déjà
+        canonique ne bougent pas ; sans --apply, rien n'est écrit."""
+        l1, l2, l3, l4 = (self._lead(nom) for nom in ('L1', 'L2', 'L3', 'L4'))
+        # `_lead` impose un téléphone : on pose les valeurs brutes par UPDATE.
+        Lead.objects.filter(pk=l1.pk).update(telephone='06 12-34 56 78')
+        Lead.objects.filter(pk=l2.pk).update(telephone='+33612345678')
+        Lead.objects.filter(pk=l3.pk).update(telephone='212612345678')
+        Lead.objects.filter(pk=l4.pk).update(telephone='',
+                                             whatsapp='0612345678')
+        texte = self._appeler('normaliser_telephones_leads')
+        self.assertIn(f'#{l1.pk} telephone', texte)
+        l1.refresh_from_db()
+        self.assertEqual(l1.telephone, '06 12-34 56 78', 'dry-run')
+        self._appeler('normaliser_telephones_leads', '--apply')
+        for lead in (l1, l2, l3, l4):
+            lead.refresh_from_db()
+        self.assertEqual(l1.telephone, '212612345678')
+        self.assertEqual(l4.whatsapp, '212612345678')
+        self.assertEqual(l2.telephone, '+33612345678')
+        self.assertEqual(l3.telephone, '212612345678')
+        rejeu = self._appeler('normaliser_telephones_leads', '--apply')
+        self.assertIn('0 lead(s) à normaliser', rejeu)
+
+    def _poser_reveils(self, lead):
+        for ordre, canal in ((1, 'whatsapp'), (2, 'appel')):
+            RelanceEtape.objects.create(
+                company=self.company, lead=lead, cadence='reveil',
+                ordre=ordre, due_date=MERCREDI.date(), canal=canal,
+                libelle=f'Réveil J{30 * ordre}')
+
+    def test_reveils_aveugles_annules_les_autres_gardes(self):
+        """CADV3 — L1 jamais joint ni chiffré : réveils annulés ; L2 chiffré
+        et L3 joint gardent les leurs."""
+        l1 = self._lead('L1')
+        l2 = self._lead('L2')
+        l3 = self._lead('L3')
+        self._devis(l2)
+        LeadActivity.objects.create(
+            company=self.company, lead=l3, user=self.acteur,
+            kind=LeadActivity.Kind.APPEL, outcome='joint')
+        for lead in (l1, l2, l3):
+            self._poser_reveils(lead)
+        texte = self._appeler('reparer_rebonds_froid', '--population',
+                              'reveils')
+        self.assertIn(f'#{l1.pk}', texte)
+        self.assertNotIn(f'#{l2.pk}', texte)
+        self.assertNotIn(f'#{l3.pk}', texte)
+        self.assertEqual(l1.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).count(), 2, 'dry-run')
+        self._appeler('reparer_rebonds_froid', '--population', 'reveils',
+                      '--apply')
+        annulees = l1.relance_etapes.filter(
+            statut=RelanceEtape.Statut.ANNULEE)
+        self.assertEqual(annulees.count(), 2)
+        self.assertTrue(all('jamais joint ni chiffré' in e.note
+                            for e in annulees))
+        for lead in (l2, l3):
+            self.assertEqual(lead.relance_etapes.filter(
+                cadence='reveil', statut=RelanceEtape.Statut.A_FAIRE).count(), 2)
+        rejeu = self._appeler('reparer_rebonds_froid', '--population',
+                              'reveils', '--apply')
+        self.assertIn('0 lead(s) à réveil', rejeu)
+
+    def test_marquer_fiches_test_groupe_partage_et_signes_vides(self):
+        """CADV63 — dix fiches sur le même numéro + un Signé du site vide
+        sont étiquetées `test` ; le Signé réel (devis accepté) et le lead
+        isolé ne le sont pas."""
+        groupe = [self._lead(f'G{i}') for i in range(9)]
+        groupe.append(self._lead('GS', stage=stages.SIGNED))
+        Lead.objects.filter(pk__in=[x.pk for x in groupe]).update(
+            phone_normalise='212600000001')
+        vide = self._lead('Signe vide', stage=stages.SIGNED,
+                          source=Lead.Source.SITE_WEB)
+        reel = self._lead('Signe reel', stage=stages.SIGNED,
+                          source=Lead.Source.SITE_WEB)
+        self._devis(reel, statut='accepte')
+        isole = self._lead('Isole')
+        texte = self._appeler('marquer_fiches_test')
+        self.assertIn(f'#{vide.pk}', texte)
+        self.assertNotIn(f'#{reel.pk}', texte)
+        vide.refresh_from_db()
+        self.assertNotIn('test', vide.tags or '', 'dry-run')
+        self._appeler('marquer_fiches_test', '--apply')
+        for lead in groupe + [vide, reel, isole]:
+            lead.refresh_from_db()
+        for lead in groupe + [vide]:
+            self.assertIn('test', [t.strip() for t in lead.tags.split(',')])
+            self.assertTrue(lead.activites.filter(
+                kind=LeadActivity.Kind.NOTE,
+                body__contains='CADV63').exists())
+        for lead in (reel, isole):
+            self.assertNotIn('test', (lead.tags or '').split(', '))
+        rejeu = self._appeler('marquer_fiches_test', '--apply')
+        self.assertIn('0 fiche(s) à numéro partagé, 0 « Signé »', rejeu)
