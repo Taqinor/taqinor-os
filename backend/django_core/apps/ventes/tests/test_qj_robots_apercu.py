@@ -136,7 +136,10 @@ class TestRobotNeStampeJamais(TestCase):
             company=self.company, nom='Client QJR')[0]
         self.devis = Devis.objects.get_or_create(
             company=self.company, reference='DEV-QJR-S1',
-            defaults={'client': self.client_obj, 'taux_tva': Decimal('20')},
+            # ADVS30 — le jeton client d'un brouillon répond 404 sans rien
+            # compter : le comptage se prouve sur un devis envoyé.
+            defaults={'client': self.client_obj, 'taux_tva': Decimal('20'),
+                      'statut': 'envoye'},
         )[0]
         self.link = ShareLink.objects.create(
             company=self.company, devis=self.devis)
