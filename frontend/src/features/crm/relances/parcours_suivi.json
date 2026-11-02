@@ -175,9 +175,9 @@
         },
         {
           "modele": "pas_de_reponse",
-          "effet": "La touche suivante du protocole est programmée. Après la dernière touche : le dossier part au Froid (étiquette « Injoignable » — ou « Deuxième affaire sans réponse » quand c’est un client déjà signé qui revient) et ses réveils J30 / J60 sont programmés. S’il manque des appels tracés (5, ou le nombre d’appels du protocole s’il en compte moins ; au moins une touche pour un client déjà signé) : pas de Froid, l’écran dit le compte (« 3 appels sur 5 tracés ») et la suite est un autre appel, jamais le devis.",
+          "effet": "La touche suivante du protocole est programmée. Après la dernière touche : le dossier part au Froid (étiquette « Injoignable » — ou « Deuxième affaire sans réponse » quand c’est un client déjà signé qui revient) et ses réveils J30 / J60 sont programmés. S’il manque des appels tracés (5, ou le nombre d’appels du protocole s’il en compte moins ; au moins une touche pour un client déjà signé) : pas de Froid, l’écran dit le compte (« 3 appels sur 5 tracés ») et la suite est un autre appel, jamais le devis. Client commercial ou industriel : pas de Froid, le dossier se met en attente et « Appel trimestriel » est posé dans trois mois (le quatrième passage part au Froid).",
           "suite": { "type": "barreau_suivant" },
-          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }, { "contexte": "derniere_touche_appels_manquants", "suite": { "type": "barreau_suivant" } }]
+          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }, { "contexte": "derniere_touche_appels_manquants", "suite": { "type": "barreau_suivant" } }, { "contexte": "derniere_touche_pro", "suite": { "type": "barreau_suivant" } }]
         },
         { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée dans l’historique.", "suite": { "type": "barreau_suivant" } },
         { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée dans l’historique.", "suite": { "type": "barreau_suivant" } },
@@ -386,9 +386,9 @@
         },
         {
           "modele": "sans_reponse",
-          "effet": "La touche suivante du suivi est programmée. Après la dernière : le dossier part au Froid (« Devis sans suite ») et ses réveils sont programmés.",
+          "effet": "La touche suivante du suivi est programmée. Après la dernière : le dossier part au Froid (« Devis sans suite ») et ses réveils sont programmés. Client commercial ou industriel : pas de Froid, le dossier se met en attente et « Appel trimestriel » est posé dans trois mois (le quatrième passage part au Froid).",
           "suite": { "type": "barreau_suivant" },
-          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }]
+          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }, { "contexte": "derniere_touche_pro", "suite": { "type": "barreau_suivant" } }]
         },
         { "modele": "repondeur", "effet": "Comme « Sans réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "barreau_suivant" } },
         { "modele": "occupe", "effet": "Comme « Sans réponse » ; la note « Occupé » est gardée.", "suite": { "type": "barreau_suivant" } },

@@ -47,7 +47,8 @@ from apps.crm import cadence_config, horaires, stages, cadence_reperes
 from apps.crm.cadence_config import cle_de
 from apps.crm.models import LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.parcours_suivi_outils import (
-    CADENCE_DU_TYPE, CHEMINS, CHEMINS_SPECIAUX, CLES_RENDEZ_VOUS, CONTEXTES_VARIANTE,
+    CADENCE_DU_TYPE, CHEMINS, CHEMINS_SPECIAUX, CLES_RENDEZ_VOUS, CONTEXTES_DERNIERE_TOUCHE,
+    CONTEXTES_VARIANTE,
     ETATS_FIN, FAMILLES, GESTES_PLANIFICATION, JOURS, MOTIF_COMMERCIAL, ORDRE_AMENE,
     REPONSES_SPEC, TYPES_SUIVI, ParcoursBase, cas_de_la_famille, etapes_de_la_table,
     reponse_de, reponses, reponses_appel, table, type_de)
@@ -134,8 +135,7 @@ class TableParcoursTests(SimpleTestCase):
                     with self.subTest(etape=etape['id'], reponse=reponse['modele'],
                                       contexte=contexte):
                         self.assertIn(contexte, CONTEXTES_VARIANTE)
-                        if contexte in ('derniere_touche',
-                                        'derniere_touche_appels_manquants'):
+                        if contexte in CONTEXTES_DERNIERE_TOUCHE:
                             # Un barreau de protocole : la garde en fait la dernière touche
                             # par le gabarit de la société.
                             self.assertIn(etape['id'], ORDRE_AMENE)

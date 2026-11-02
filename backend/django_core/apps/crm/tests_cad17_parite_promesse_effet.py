@@ -49,7 +49,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, stages
+from apps.crm import activity, horaires, stages
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS, q_etape
 from apps.crm.models import Client, Lead, LeadActivity, MotifPerte, RelanceEtape
@@ -327,6 +327,16 @@ def _etape_appel_avant_froid(c):
         'le refus ne se lit pas au chatter')
 
 
+def _etape_appel_trimestriel(c):
+    # CADV102 — ni Froid, ni réveil : le Standby daté et son appel.
+    c.vrai(c.lead.stage != stages.COLD, 'le dossier est parti au Froid')
+    c.vrai(c.lead.parc_etat == 'standby', 'le dossier n’est pas en Standby')
+    c.vrai(not c.ouvertes(cadence='reveil').exists(), 'un réveil est programmé')
+    c.vrai(c.barreaux(c.ouvertes(cadence=c.etape.cadence, libelle='Appel trimestriel',
+                                 due_date=c.lead.parc_jusqu_au)).exists(),
+           'aucun appel trimestriel à la date de reprise')
+
+
 def _dernier_reveil(c):
     c.vrai(c.lead.stage == stages.COLD, 'le dossier n’est plus au Froid')
     c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
@@ -576,6 +586,7 @@ VERIFICATEURS = {
     st.TOUCHE_SUIVANTE_A_LA_DATE: _touche_suivante_a_la_date,
     st.DERNIERE_FROID_REVEILS: _derniere_froid_reveils,
     st.ETAPE_APPEL_AVANT_FROID: _etape_appel_avant_froid,
+    st.ETAPE_APPEL_TRIMESTRIEL: _etape_appel_trimestriel,
     st.DERNIER_REVEIL: _dernier_reveil,
     st.RESTE_AU_FROID: _reste_au_froid,
     st.SORT_DU_FROID: _sort_du_froid,
@@ -639,6 +650,12 @@ class VocabulaireTests(SimpleTestCase):
                 _etape_non_enregistree(derniere),
                 ordres=_ordres_defaut(derniere.cadence),
                 conditions={'non_joint': '1 appel sur 5 tracé'}).values():
+            produits.update(codes)
+        # CADV102 — le segment du lead : ce même barreau, client industriel.
+        pro = _etape_non_enregistree(derniere)
+        pro.lead.type_installation = 'industriel'
+        for codes in st.promesses_touche(
+                pro, ordres=_ordres_defaut(derniere.cadence)).values():
             produits.update(codes)
         self.assertEqual(produits, set(st.CODES))
 
@@ -742,6 +759,7 @@ class PariteBase(TestCase):
     slug = 'cad17'
     #: Appels tracés avant la dernière touche ; ``None`` : ceux qui parquent.
     appels_traces = None
+    type_installation = None
 
     def setUp(self):
         gel = frozen(GEL)
@@ -770,7 +788,7 @@ class PariteBase(TestCase):
         return Lead.objects.create(
             company=self.company, nom=f'CAD17 {scenario.nom} {n}',
             stage=scenario.stage, owner=self.acteur,
-            telephone=f'+21266{n:07d}')
+            telephone=f'+21266{n:07d}', type_installation=self.type_installation)
 
     def _devis(self, lead):
         n = next(_compteur)
@@ -1060,6 +1078,24 @@ class PariteFroidRefuseTests(PariteBase):
         self.assertEqual(lead.stage, stages.COLD)
         self.assertTrue(lead.relance_etapes.filter(
             cadence='reveil', statut=A_FAIRE).exists())
+
+
+class PariteStandbyProTests(PariteBase):
+    """CADV102 — la dernière touche d'un client commercial : Standby trimestriel
+    annoncé et constaté ; résidentiel inchangé (les autres classes)."""
+    slug = 'cad17-standby-pro'
+    type_installation = 'commercial'
+
+    def test_prise_de_contact_et_suivi(self):
+        self._garder('contact_derniere_appel', 'apres_devis_derniere_appel')
+
+    def test_une_fois_les_cycles_epuises_la_promesse_redevient_le_froid(self):
+        scenario = next(s for s in SCENARIOS if s.nom == 'apres_devis_derniere_appel')
+        lead, etape = self._fabriquer(scenario, 'base')
+        for _cycle in range(3):
+            activity.log_bulk_change(lead, self.acteur, 'parc_raison', None, 'plus_tard_date')
+        promesses = st.promesses_touche(etape)
+        self.assertEqual(promesses['non_joint'], [st.DERNIERE_FROID_REVEILS])
 
 
 class PariteJournalTests(PariteBase):

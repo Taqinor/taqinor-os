@@ -6,7 +6,8 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 import logging
 
 from . import activity, stages
-from .cadence_messages import _omettre_phrases_incompletes, langue_relance_du_lead
+from .cadence_messages import SEGMENTS_PRO, _omettre_phrases_incompletes, langue_relance_du_lead
+from .cadence_reperes import _CLOTURE_RAISONS
 from .leads_premier_contact import marquer_premier_contact
 from .models import Lead, LeadActivity
 from .visites_rdv import resoudre_lien_rdv
@@ -720,6 +721,23 @@ def cycles_standby(lead):
     return lead.activites.filter(
         field='parc_raison',
         new_value=Lead.ParcRaison.PLUS_TARD_DATE.label).count()
+
+
+#: CADV102 (D-CADV-10) — un lead commercial ou industriel au bout de sa cadence
+#: passe trois fois en Standby trimestriel ; le 4ᵉ bascule au Froid.
+CYCLES_STANDBY_PRO_MAX = 3
+RAISON_STANDBY_TRIMESTRIEL = 'plus_tard_date'
+
+
+def raison_fin_de_cadence(lead, cadence):
+    """CADV72 × CADV102 — la raison de parcage du lead au bout de ``cadence`` :
+    celle de la cadence pour un particulier, le Standby trimestriel pour un pro
+    (son cycle suit le budget annuel), le Froid une fois ses cycles épuisés."""
+    if getattr(lead, 'type_installation', None) not in SEGMENTS_PRO:
+        return _CLOTURE_RAISONS[cadence]
+    if lead.pk is None or cycles_standby(lead) < CYCLES_STANDBY_PRO_MAX:
+        return RAISON_STANDBY_TRIMESTRIEL
+    return 'pas_maintenant_sans_date'
 
 
 def assigner_lead_a(lead, user, owner_id):

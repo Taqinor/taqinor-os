@@ -153,6 +153,9 @@ ETAPE_PLANIFIER_DEMAIN = 'etape_planifier_demain'
 # (``cadence_plan._poser_touche_avant_froid``). ``conditions_de_parcage`` dit
 # le compte, servi à côté des codes (clé ``conditions_suite``).
 ETAPE_APPEL_AVANT_FROID = 'etape_appel_avant_froid'
+# CADV102 (D-CADV-10) — un lead commercial ou industriel au bout de sa cadence :
+# Standby daté et « Appel trimestriel », ni Froid ni réveils.
+ETAPE_APPEL_TRIMESTRIEL = 'etape_appel_trimestriel'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -170,7 +173,7 @@ CODES = frozenset({
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
     LEAD_PERDU, VISITE_ABANDONNEE, ETAPE_RAPPEL_CONVENU_A_LA_DATE,
-    ETAPE_PLANIFIER_DEMAIN, ETAPE_APPEL_AVANT_FROID,
+    ETAPE_PLANIFIER_DEMAIN, ETAPE_APPEL_AVANT_FROID, ETAPE_APPEL_TRIMESTRIEL,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -645,6 +648,12 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
         # SUIVI E26 (décision fondateur du 30/09/2026) — la deuxième affaire
         # aussi : c'est la prise de contact d'un client acquis, elle finit
         # comme elle (``services._CLOTURE_PLAFOND``).
+        # CADV102 — le pro part en Standby trimestriel tant qu'il a des cycles.
+        from .fiche_funnel import RAISON_STANDBY_TRIMESTRIEL, raison_fin_de_cadence
+
+        if (raison_fin_de_cadence(getattr(etape, 'lead', None), cadence)
+                == RAISON_STANDBY_TRIMESTRIEL):
+            return [ETAPE_APPEL_TRIMESTRIEL]
         return [DERNIERE_FROID_REVEILS]
     if cadence == 'reveil':
         # La cadence réveil ne se clôture jamais elle-même, et le filet ne
@@ -884,8 +893,8 @@ def conditions_de_parcage(etape, *, ordres=None, lecteur=None):
     dernière touche, une lecture en lot sur une liste (``LecteurParcage``).
     Un lead non enregistré (contrôles purs) n'a rien à compter."""
     from . import stages
-    from .cadence_reperes import _CLOTURE_PLAFOND, _CLOTURE_RAISONS
-    from .fiche_funnel import _rang_funnel, manque_au_parcage
+    from .cadence_reperes import _CLOTURE_PLAFOND
+    from .fiche_funnel import _rang_funnel, manque_au_parcage, raison_fin_de_cadence
     from .models import RelanceEtape
 
     lead = getattr(etape, 'lead', None)
@@ -902,7 +911,7 @@ def conditions_de_parcage(etape, *, ordres=None, lecteur=None):
             and _rang_funnel(lead.stage) > _rang_funnel(plafond))):
         return {}
     lecteur = lecteur or LecteurParcage()
-    raison = _CLOTURE_RAISONS[etape.cadence]
+    raison = raison_fin_de_cadence(lead, etape.cadence)
     exiges = lecteur.exiges(lead) if raison == 'injoignable' else None
     conditions = {}
     for cle in cles_de_reponse(etape):
@@ -987,7 +996,8 @@ def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None):
                 codes = _codes_barreau(
                     etape, issue, derniere=derniere, au_froid=au_froid,
                     est_actif=est_actif)
-        if cle in conditions and DERNIERE_FROID_REVEILS in codes:
+        if cle in conditions and (DERNIERE_FROID_REVEILS in codes
+                                  or ETAPE_APPEL_TRIMESTRIEL in codes):
             codes = [ETAPE_APPEL_AVANT_FROID]
         promesses[cle] = codes
     return promesses

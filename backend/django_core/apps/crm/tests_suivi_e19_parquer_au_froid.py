@@ -238,6 +238,53 @@ class ParquerAuFroidTests(TestCase):
         self.assertEqual(appels_exiges_injoignable(lead), APPELS_MIN_INJOIGNABLE)
         self.assertFalse(CadenceRelanceEtape.objects.filter(company=vierge).exists())
 
+    def _lead_pro_devis_envoye(self):
+        lead = self._lead_neuf(type_installation='industriel')
+        self._appels(lead, 1)
+        return lead
+
+    def test_un_lead_pro_en_fin_de_cadence_part_en_standby_trimestriel(self):
+        """CADV102 (D-CADV-10). Mutant : retirer le test de segment ⇒ un résidentiel
+        passe en Standby et ``test_sans_filet_les_reveils_sont_poses_comme_avant``
+        échoue."""
+        lead = self._lead_pro_devis_envoye()
+        with frozen(datetime.datetime(2026, 11, 30, 10, 0, tzinfo=horaires.CASABLANCA)):
+            cadence_plan.cloturer_cadence(lead, self.acteur, 'apres_devis')
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.CONTACTED)
+        self.assertEqual((lead.parc_etat, lead.parc_raison, lead.parc_jusqu_au),
+                         ('standby', 'plus_tard_date', datetime.date(2027, 3, 1)))
+        [appel] = lead.relance_etapes.filter(statut=A_FAIRE)
+        self.assertEqual((appel.libelle, appel.due_date, appel.cadence),
+                         ('Appel trimestriel', datetime.date(2027, 3, 1), 'apres_devis'))
+        self.assertFalse(lead.relance_etapes.filter(cadence='reveil').exists())
+
+    def test_l_appel_trimestriel_sans_reponse_consomme_un_cycle_le_quatrieme_part_au_froid(self):
+        from apps.crm.cadence_touche import marquer_etape_relance
+        lead = self._lead_pro_devis_envoye()
+        cadence_plan.cloturer_cadence(lead, self.acteur, 'apres_devis')
+        for cycle in (1, 2, 3):
+            lead.refresh_from_db()
+            self.assertEqual((lead.parc_etat, lead.stage),
+                             ('standby', stages.CONTACTED), f'cycle {cycle}')
+            ouverte = lead.relance_etapes.get(statut=A_FAIRE)
+            # Le trimestre suivant : une AUTRE date, donc un cycle de plus.
+            with frozen(GEL + datetime.timedelta(days=100 * cycle)):
+                marquer_etape_relance(ouverte, self.acteur, RelanceEtape.Statut.FAIT,
+                                      outcome='non_joint')
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertEqual((lead.parc_etat, lead.parc_raison),
+                         ('nurture', 'pas_maintenant_sans_date'))
+
+    def test_un_pro_sans_aucune_touche_ne_se_parque_pas(self):
+        lead = self._lead_neuf(type_installation='commercial')
+        cadence_plan.cloturer_cadence(lead, self.acteur, 'contact')
+        lead.refresh_from_db()
+        self.assertIsNone(lead.parc_etat)
+        self.assertEqual(lead.relance_etapes.get(statut=A_FAIRE).libelle,
+                         cadence_plan.LIBELLE_TOUCHE_AVANT_FROID)
+
     def test_les_appels_systeme_ne_comptent_pas(self):
         from apps.crm.fiche_funnel import nb_contacts_humains
         lead = self._lead_neuf()

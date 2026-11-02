@@ -28,7 +28,6 @@ from .cadence_reperes import (
     OUTCOME_VISITE_ACCEPTEE,
     PREFIXE_NOTE_REPORT,
     _CLOTURE_PLAFOND,
-    _CLOTURE_RAISONS,
     _CLOTURE_TAGS,
     _LIBELLES_FILET_HORS_GABARIT,
     _canal_effectif,
@@ -37,7 +36,14 @@ from .cadence_reperes import (
     q_visite,
     tag_injoignable,
 )
-from .fiche_funnel import ParcRefuse, _rang_funnel, parquer_lead, poser_tag_lead
+from .fiche_funnel import (
+    RAISON_STANDBY_TRIMESTRIEL,
+    ParcRefuse,
+    _rang_funnel,
+    parquer_lead,
+    poser_tag_lead,
+    raison_fin_de_cadence,
+)
 from .leads_doublons import find_duplicates_by_contact
 from .models import Lead, LeadActivity, RelanceEtape
 from .tasks import REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE
@@ -1068,33 +1074,51 @@ def _materialiser_touche_suivante(etape_close, user=None):
 #: D-CADV22-PROMESSE (Reda, 02/11/2026) — la touche posée quand la dernière
 #: touche d'une cadence ne peut pas parquer le lead.
 LIBELLE_TOUCHE_AVANT_FROID = 'Appeler le client — appel à tracer avant le Froid'
+#: CADV102 (D-CADV-10) — le lead pro au bout de sa cadence : un trimestre (13
+#: semaines) de Standby, puis cet appel.
+LIBELLE_APPEL_TRIMESTRIEL = 'Appel trimestriel'
+STANDBY_PRO_JOURS = 91
 
 
-def _poser_touche_avant_froid(lead, user, cadence):
-    """D-CADV22-PROMESSE — un AUTRE appel (un WhatsApp sur un lead « WhatsApp
-    uniquement », CAD32), jamais « Préparer et envoyer le devis ».
+def _canal_touche_de_plus(lead):
+    """Un appel, un WhatsApp sur un lead « WhatsApp uniquement » (CAD32)."""
+    return (RelanceEtape.Canal.WHATSAPP
+            if lead.contact_preference == Lead.ContactPreference.WHATSAPP_ONLY
+            else RelanceEtape.Canal.APPEL)
+
+
+def _creneau_dans(lead, jours):
+    from . import horaires
+
+    return horaires.prochain_creneau_appel(
+        timezone.now() + datetime.timedelta(days=jours), lead.company,
+        canal=_canal_touche_de_plus(lead))
+
+
+def _poser_touche_avant_froid(lead, user, cadence, *, libelle=LIBELLE_TOUCHE_AVANT_FROID,
+                              quand=None):
+    """D-CADV22-PROMESSE — un AUTRE appel (``_canal_touche_de_plus``), jamais
+    « Préparer et envoyer le devis ». CADV102 — ou l'« Appel trimestriel » d'un pro.
 
     La touche reste dans SA cadence, juste après le dernier barreau : hors
-    gabarit, sa clôture sans réponse donne ``FIN_GABARIT`` et rejoue donc la mise
-    au Froid. Ce n'est pas une boucle : chaque appel tracé rapproche le seuil
-    (et une touche SAUTÉE ne compte pas, elle reposera la même touche)."""
+    gabarit, sa clôture sans réponse donne ``FIN_GABARIT`` et rejoue donc la fin
+    de cadence. Ce n'est pas une boucle : chaque appel tracé rapproche le seuil
+    (et une touche SAUTÉE ne compte pas, elle reposera la même touche) ; chaque
+    trimestre consomme un cycle (``CYCLES_STANDBY_PRO_MAX``)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
 
     from . import horaires
 
     gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
-    canal = (RelanceEtape.Canal.WHATSAPP
-             if lead.contact_preference == Lead.ContactPreference.WHATSAPP_ONLY
-             else RelanceEtape.Canal.APPEL)
-    quand = horaires.prochain_creneau_appel(
-        timezone.now() + datetime.timedelta(days=1), lead.company, canal=canal)
+    canal = _canal_touche_de_plus(lead)
+    quand = quand or _creneau_dans(lead, 1)
     # Le suivi d'un devis garde son devis, comme ``materialiser_touche_suivante``.
     close = (lead.relance_etapes.filter(cadence=cadence, traite_le__isnull=False)
              .order_by('-traite_le').first())
     etape = RelanceEtape(
         company=lead.company, lead=lead, cadence=cadence,
         ordre=max((g.ordre for g in gabarits), default=0) + 1,
-        canal=canal, libelle=LIBELLE_TOUCHE_AVANT_FROID,
+        canal=canal, libelle=libelle,
         due_at=quand, due_initial_at=quand,
         due_date=quand.astimezone(horaires.CASABLANCA).date(),
         devis_id=close.devis_id if close else None,
@@ -1127,6 +1151,8 @@ def cloturer_cadence(lead, user, cadence):
         réveillé sans réponse rentrerait dans une boucle de réveils infinie.
 
     Best-effort : ne lève jamais."""
+    from . import horaires
+
     if cadence == 'reveil':
         return
     try:
@@ -1146,8 +1172,13 @@ def cloturer_cadence(lead, user, cadence):
             # Le lead a PROGRESSÉ pendant la cadence (devis envoyé, signé) :
             # la touche restée ouverte ne doit pas le faire retomber.
             return
+        raison = raison_fin_de_cadence(lead, cadence)
+        # CADV102 (D-CADV-10) — le pro : Standby daté, pas de Froid ni de réveil.
+        trimestre = (_creneau_dans(lead, STANDBY_PRO_JOURS)
+                     if raison == RAISON_STANDBY_TRIMESTRIEL else None)
         try:
-            parquer_lead(lead, _CLOTURE_RAISONS[cadence], None, user)
+            parquer_lead(lead, raison, (
+                trimestre.astimezone(horaires.CASABLANCA).date() if trimestre else None), user)
         except ParcRefuse as refus:
             # CADV22 — le lead reste à son étape, le refus se lit au chatter ;
             # D-CADV22-PROMESSE — la suite est un autre appel, jamais le devis.
@@ -1156,6 +1187,10 @@ def cloturer_cadence(lead, user, cadence):
                 kind=LeadActivity.Kind.NOTE,
                 body=f'Mise au Froid refusée : {refus}.')
             _poser_touche_avant_froid(lead, user, cadence)
+            return
+        if trimestre is not None:
+            _poser_touche_avant_froid(lead, user, cadence,
+                                      libelle=LIBELLE_APPEL_TRIMESTRIEL, quand=trimestre)
             return
         tag = (tag_injoignable(lead.company) if cadence == 'contact'
                else _CLOTURE_TAGS.get(cadence))
