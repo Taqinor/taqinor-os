@@ -144,7 +144,7 @@ def dupliquer_checklist_template(template, *, user=None):
     même clé sous un NOUVEAU template ne collisionne jamais)."""
     copie = ChecklistTemplate.objects.create(
         company=template.company,
-        nom=f'{template.nom} (copie)',
+        nom=f'{template.nom[:112]} (copie)',  # nom <= 120 (sinon DataError 500)
         type_installation=None,
         ordre=template.ordre,
         actif=template.actif,

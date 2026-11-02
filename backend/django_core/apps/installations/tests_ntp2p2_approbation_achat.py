@@ -87,6 +87,22 @@ class ApprobationAchatSansRegleTests(TestCase):
         self.assertEqual(resp.data['statut'], DemandeAchat.Statut.APPROUVEE)
 
 
+class DecisionEtapeCorpsAbsurdeTests(TestCase):
+    """ERR-ENF11-FUZZ-INSTALLATIONS : corps absurde = 400/404, jamais 500."""
+
+    def test_corps_non_objet_ou_etape_absurde(self):
+        company = make_company()
+        user = make_user(company)
+        api = auth(user)
+        da = make_demande(company, user, montant=99000)
+        url = f'{BASE}/demandes-achat/{da.pk}/rejeter-etape/'
+        for corps in (False, [1], {'etape': 'x'}, {'commentaire': 3}):
+            self.assertEqual(api.post(url, corps, format='json').status_code,
+                             400, corps)
+        self.assertEqual(
+            api.post(url, {'etape': 10 ** 12}, format='json').status_code, 404)
+
+
 class ApprobationAchatSequentielleTests(TestCase):
     """CRITÈRE D'ACCEPTATION — N approbateurs séquentiels au-delà du seuil."""
 

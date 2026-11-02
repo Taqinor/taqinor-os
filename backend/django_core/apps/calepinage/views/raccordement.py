@@ -54,7 +54,8 @@ from rest_framework.response import Response
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..serializers import forme_du_contrat
 from ..services.raccordement import (  # ACAL155 : clé + lecture uniques
-    CLE_SAISIE, PREFIXE_CHAMP, RaccordementInvalide, bloc_raccordement,
+    CLE_SAISIE, PREFIXE_CHAMP, RaccordementInvalide, SAISIE_MAXIMUM,
+    bloc_raccordement,
     proposition_du_lead, saisie_du_calepinage,
 )
 from .calepinages import CalepinageViewSet
@@ -140,17 +141,21 @@ _FORME_RACCORDEMENT = forme_du_contrat(
 @extend_schema(
     methods=['POST'],
     request=inline_serializer('CalepinageRaccordementCorps', {
-        'puissance_souscrite_kva': FlottantPositif(required=False),
+        'puissance_souscrite_kva': FlottantPositif(
+            required=False, max_value=SAISIE_MAXIMUM),
         # ENF11 — règle de ``_phases_saisies`` publiée : 1 ou 3 (ou vide).
         'phases': serializers.ChoiceField(choices=[1, 3], required=False,
                                           allow_null=True),
-        'tension_nominale_v': FlottantPositif(required=False),
-        'limite_elevation_pct': FlottantPositif(required=False),
+        'tension_nominale_v': FlottantPositif(
+            required=False, max_value=SAISIE_MAXIMUM),
+        'limite_elevation_pct': FlottantPositif(
+            required=False, max_value=SAISIE_MAXIMUM),
         'source_limite': serializers.CharField(required=False),
-        'cos_phi_impose': FlottantPositif(required=False),
+        'cos_phi_impose': FlottantPositif(
+            required=False, max_value=SAISIE_MAXIMUM),
         'source_cos_phi': serializers.CharField(required=False),
         'plafond_injection_kw': serializers.FloatField(
-            required=False, min_value=0),
+            required=False, min_value=0, max_value=SAISIE_MAXIMUM),
         'plafond_injection_justification': serializers.CharField(
             required=False)}),
     responses=_FORME_RACCORDEMENT)
