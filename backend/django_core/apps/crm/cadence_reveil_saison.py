@@ -88,6 +88,10 @@ def _motif_de_refus(lead, *, maintenant=None):
                 'agricole.')
     if getattr(lead, 'is_archived', False):
         return 'Le lead est archivé.'
+    # CADV28 (D-CADV-8) — l'état Archive du parcage : jamais recontacté (les
+    # contacts Odoo froids : la base légale la plus faible).
+    if getattr(lead, 'parc_etat', None) == 'archive':
+        return 'Lead à l’état Archive : jamais recontacté.'
     if getattr(lead, 'perdu', False):
         return 'Le lead est perdu — le réveil ne s’applique pas.'
     # ACRM16 — la porte unique de `reveil_b` respecte l'OPPOSITION : aucune
@@ -206,6 +210,7 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
                         is_archived=False, perdu=False,
                         ne_plus_contacter=False)
                 .exclude(type_installation='agricole')
+                .exclude(parc_etat='archive')
                 .annotate(
                     _deja_cette_annee=Exists(touches.filter(
                         template_cle=REVEIL_SAISON_CLE,
