@@ -103,6 +103,42 @@ class PlusTardTests(_Base):
         self.assertEqual(self._plus_tard().status_code, 200)
         self.assertEqual(self.lead.activites.filter(field='parc_raison').count(), 1)
 
+    def _deux_cycles(self):
+        for jour in ('2026-10-14', '2026-10-21'):
+            self.assertEqual(self._plus_tard(rappel_le=jour).status_code, 200)
+
+    def test_la_troisieme_reponse_plus_tard_range_au_froid(self):
+        """CADV78 — hors du trimestre en cours (gel au 23/09/2026) : Froid, sans
+        date, touche non déplacée ; le compte vient du chatter. Mutant :
+        plafond 2 → 3 ⇒ échec."""
+        self._deux_cycles()
+        self.etape.refresh_from_db()
+        date_touche = self.etape.due_date
+        self.assertEqual(self._plus_tard(rappel_le='2027-03-01').status_code, 200)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            (self.lead.parc_etat, self.lead.parc_raison, self.lead.parc_jusqu_au,
+             self.lead.stage),
+            ('nurture', 'pas_maintenant_sans_date', None, stages.COLD))
+        self.etape.refresh_from_db()
+        self.assertEqual(self.etape.due_date, date_touche)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, outcome='rappel',
+            body__contains='rangé au Froid').exists())
+
+    def test_une_date_du_trimestre_en_cours_reste_un_standby(self):
+        self._deux_cycles()
+        self.assertEqual(self._plus_tard(rappel_le='2026-09-29').status_code, 200)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.parc_etat, 'standby')
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+
+    def test_le_deuxieme_plus_tard_reste_un_standby(self):
+        self._deux_cycles()
+        self.lead.refresh_from_db()
+        self.assertEqual((self.lead.parc_etat, self.lead.stage),
+                         ('standby', stages.CONTACTED))
+
     def test_aucun_barreau_scripte_n_est_consomme(self):
         resp = self._plus_tard()
         self.assertEqual(resp.status_code, 200, resp.data)

@@ -58,7 +58,8 @@ from .cadence_plan import (
     reporter_prochaine_touche,
 )
 from .fiche_funnel import (
-    ParcRefuse, avancer_stage_lead_vers, parquer_lead, poser_tag_lead, retirer_tag_lead,
+    CYCLES_STANDBY_MAX, ParcRefuse, avancer_stage_lead_vers, cycles_standby, parquer_lead,
+    poser_tag_lead, retirer_tag_lead,
 )
 from .cadence_messages import ETIQUETTES_RAISON_ATTENTE, PREFIXE_LIEN_LOCATAIRE, RAISONS_ATTENTE
 from .cadence_reperes import (
@@ -828,17 +829,24 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
     spec = REPONSES_TOUCHE[REPONSE_PLUS_TARD]
     libelle = (etape.libelle or '').strip() or etape.get_canal_display()
     quand = _instant_de_veille(quand)
-    reprise = mettre_en_veille(lead, user, quand, etape=etape,
-                               journaliser=False)
-    if reprise is not None and reprise.pk == etape.pk:
+    jour_convenu = quand.astimezone(horaires.CASABLANCA).date()
+    # CADV78 — plafond : deux cycles, sauf une date du trimestre en cours.
+    aujourd_hui = aujourd_hui_local()
+    au_froid = (cycles_standby(lead) >= CYCLES_STANDBY_MAX
+                and (jour_convenu.year, (jour_convenu.month - 1) // 3)
+                != (aujourd_hui.year, (aujourd_hui.month - 1) // 3))
+    reprise = (None if au_froid else mettre_en_veille(
+        lead, user, quand, etape=etape, journaliser=False))
+    if au_froid:
+        suite = 'troisième « plus tard » hors du trimestre : dossier rangé au Froid'
+    elif reprise is not None and reprise.pk == etape.pk:
         suite = (f'dossier en veille jusqu’au {reprise.due_date:%d/%m/%Y}, '
                  'reprise à cette même touche — aucun barreau consommé')
     elif reprise is not None:
         suite = (f'plus d’un mois d’attente : la cadence est arrêtée et un '
                  f'réveil est daté du {reprise.due_date:%d/%m/%Y}')
     else:
-        jour = quand.astimezone(horaires.CASABLANCA).date()
-        suite = (f'veille demandée jusqu’au {jour:%d/%m/%Y}, aucune touche à '
+        suite = (f'veille demandée jusqu’au {jour_convenu:%d/%m/%Y}, aucune touche à '
                  'reprendre')
     corps = (f'Réponse du client sur la touche « {libelle} » : « '
              f'{spec["note"]} » — {suite}.')
@@ -853,8 +861,10 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
     # CADV77 (D-CADV-4) — l'état Standby se lit sur le lead, à la date du client.
     # Après la ligne de réponse : elle est la touche que CADV22 exige.
     try:
-        parquer_lead(lead, 'plus_tard_date',
-                     quand.astimezone(horaires.CASABLANCA).date(), user)
+        if au_froid:
+            parquer_lead(lead, 'pas_maintenant_sans_date', None, user)
+        else:
+            parquer_lead(lead, 'plus_tard_date', jour_convenu, user)
     except ParcRefuse as refus:
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,

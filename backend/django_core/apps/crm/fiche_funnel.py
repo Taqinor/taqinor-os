@@ -656,6 +656,19 @@ def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True):
     return lead
 
 
+#: CADV78 — au plus deux cycles de Standby ; le troisième « Plus tard » hors du
+#: trimestre en cours range le lead au Froid.
+CYCLES_STANDBY_MAX = 2
+
+
+def cycles_standby(lead):
+    """CADV78 — combien de fois ce lead est passé en Standby : le chatter de
+    ``parquer_lead`` fait foi, aucune colonne de plus."""
+    return lead.activites.filter(
+        field='parc_raison',
+        new_value=Lead.ParcRaison.PLUS_TARD_DATE.label).count()
+
+
 def assigner_lead_a(lead, user, owner_id):
     """XMKT19 — assigne (ou vide) le propriétaire du lead."""
     nouveau = _resolve_owner(lead.company, owner_id)
