@@ -365,8 +365,12 @@ class DateEmissionTests(_BaseEmission):
         self.aujourdhui = timezone.localdate()
 
     def _brouillon_ancien(self, **champs):
+        # Un brouillon né après ATOT27 porte une référence provisoire : c'est
+        # elle qui rend le redatage applicable (AARG23).
         facture = self._facture()
+        facture.reference = f'BROUILLON-{facture.pk}'
         Facture.objects.filter(pk=facture.pk).update(
+            reference=facture.reference,
             date_emission=self.aujourdhui - timedelta(days=37), **champs)
         return facture
 
@@ -390,20 +394,42 @@ class DateEmissionTests(_BaseEmission):
         self.assertEqual(
             Facture.objects.get(pk=relue.pk).statut, Facture.Statut.EMISE)
 
-    def test_reemission_redate(self):
+    def test_reemission_garde_date_et_refus_apres_envoi(self):
+        """AARG23 (D-AARG-4 = garder_date) — réémise : date, échéance et numéro
+        d'origine ; envoyée au client ou passée à la DGI : retour refusé."""
+        from apps.ventes.models import EmailLog
         facture = self._emettre(self._brouillon_ancien())
+        reference = facture.reference
         # « Un autre jour » : l'émission précédente remonte à 40 jours.
+        date_origine = self.aujourdhui - timedelta(days=40)
+        echeance_origine = self.aujourdhui - timedelta(days=10)
         Facture.objects.filter(pk=facture.pk).update(
-            date_emission=self.aujourdhui - timedelta(days=40),
-            date_echeance=self.aujourdhui - timedelta(days=10))
-        resp = self.api.post(
-            f'/api/django/ventes/factures/{facture.pk}/remettre-brouillon/',
-            {}, format='json')
+            date_emission=date_origine, date_echeance=echeance_origine)
+        url = f'/api/django/ventes/factures/{facture.pk}/remettre-brouillon/'
+        resp = self.api.post(url, {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         relue = self._emettre(facture)
-        self.assertEqual(relue.date_emission, self.aujourdhui)
-        self.assertEqual(
-            relue.date_echeance, self.aujourdhui + timedelta(days=30))
+        self.assertEqual(relue.date_emission, date_origine)
+        self.assertEqual(relue.date_echeance, echeance_origine)
+        self.assertEqual(relue.reference, reference)
+        # Déjà envoyée au client : 409, facture intacte.
+        envoi = EmailLog.objects.create(
+            company=self.company, direction=EmailLog.Direction.SORTANT,
+            statut=EmailLog.Statut.ENVOYE, facture=relue,
+            client=self.client_obj, to_email='aud101@example.com',
+            from_email='erp@example.com', sujet='Facture', corps='Ci-joint')
+        resp = self.api.post(url, {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('Facture déjà envoyée au client', str(resp.data))
+        self.assertEqual(Facture.objects.get(pk=facture.pk).statut,
+                         Facture.Statut.EMISE)
+        # Un envoi en échec n'a rien envoyé ; la DGI ferme aussi le retour.
+        EmailLog.objects.filter(pk=envoi.pk).update(
+            statut=EmailLog.Statut.ECHEC)
+        Facture.objects.filter(pk=facture.pk).update(
+            dgi_statut=Facture.DgiStatut.ACCEPTEE)
+        resp = self.api.post(url, {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_echeance_saisie_posterieure_conservee(self):
         saisie = self.aujourdhui + timedelta(days=60)

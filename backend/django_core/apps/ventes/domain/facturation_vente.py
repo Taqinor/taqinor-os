@@ -407,6 +407,10 @@ def _editer_brouillon(facture, tranche, user, libelle):
     facture.pourcentage = tranche['pourcentage']
     facture.libelle = libelle or libelle_tranche(tranche)
     facture.cle_tranche = tranche['cle']
+    # AARG26 — montant saisi à la main : plus un acompte automatique, la
+    # dés-acceptation ne le retire plus en silence (elle le nomme, 409).
+    if ancien != tranche['montant_ttc']:
+        facture.acompte_auto_le = None
     facture.save()
     if ancien == tranche['montant_ttc']:
         return facture

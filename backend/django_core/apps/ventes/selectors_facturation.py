@@ -25,14 +25,28 @@ def factures_echues(company, *, today=None):
     Lecture seule ; renvoie un QuerySet (peut être vide)."""
     from django.utils import timezone as _tz
 
+    from apps.facturation.selectors import factures_avec_montant_du
+
     from .models import Facture
     today = today or _tz.localdate()
-    return Facture.objects.filter(
+    # AARG53 — le balayage lit ``jours_retard`` : préchargé, pas N requêtes.
+    return factures_avec_montant_du(Facture.objects.filter(
         company=company, date_echeance__isnull=False,
         date_echeance__lt=today,
     ).exclude(
         statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE],
-    ).select_related('client', 'created_by')
+    ).select_related('client', 'created_by'))
+
+
+def cle_citee_par_une_identite_figee(company_id, cle):
+    """AARG48 — ``cle`` (logo, signature) figée par l'identité vendeur d'une
+    facture émise de la société (APAR61) : son PDF re-rendu la télécharge."""
+    from django.db.models import Q
+
+    from .models import Facture
+    return Facture.objects.filter(company_id=company_id).filter(
+        Q(identite_vendeur__logo_key=cle)
+        | Q(identite_vendeur__signature_key=cle)).exists()
 
 
 def get_facture_scoped(company, facture_id):
@@ -823,9 +837,12 @@ def porte_facture_bc(bc):
     if bc.statut not in (BonCommande.Statut.CONFIRME,
                          BonCommande.Statut.LIVRE):
         return {'ok': False, 'motif': 'Le BC doit être confirmé ou livré.'}
-    annote = getattr(bc, 'has_facture_annote', None)
+    # AARG30 — seule une facture VIVANTE bloque : l'annulée est détachée à la
+    # recréation (``detacher_factures_annulees_du_bc``).
+    annote = getattr(bc, 'facture_active_annote', None)
     deja = (bool(annote) if annote is not None
-            else Facture.objects.filter(bon_commande=bc).exists())
+            else Facture.objects.filter(bon_commande=bc).exclude(
+                statut=Facture.Statut.ANNULEE).exists())
     if deja:
         return {'ok': False, 'motif': 'Une facture existe déjà pour ce BC.'}
     if bc.devis_id:

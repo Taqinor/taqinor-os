@@ -551,7 +551,7 @@ class SweepLinkTests(TestCase):
         cl = Client.objects.create(company=self.company, nom='ClientOverdue')
         facture = Facture.objects.create(
             company=self.company, client=cl, reference='FA-WIR176-OV',
-            statut=Facture.Statut.EMISE,
+            statut=Facture.Statut.EMISE, montant_ttc=Decimal('1200'),
             date_echeance=date.today() - timedelta(days=10),
             created_by=self.manager)
 

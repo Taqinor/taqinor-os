@@ -133,10 +133,11 @@ class PortesFacturationTests(TestCase):
                     r3 = self.api.post(
                         f"/api/django/ventes/factures/{r1.data['id']}/"
                         'emettre/', {}, format='json')
-                    if porte_b == 'complete':
+                    if porte_b in ('complete', 'consolidee'):
                         # VNT65 — facturer-complet = facturer_vente(complete,
                         # remplacer_brouillons=True) : le brouillon de BC est
                         # REMPLACÉ (annulé, jamais supprimé), il ne s'émet plus.
+                        # AARG16 — la consolidation retire aussi les brouillons.
                         self.assertEqual(r3.status_code, 409, r3.data)
                         self.assertEqual(
                             [f.statut for f in self._actives(devis)

@@ -44,6 +44,10 @@ FACTURE_CHAMPS_FINANCIERS = frozenset([
     'taux_tva', 'escompte_pct', 'escompte_jours', 'pourcentage',
     'type_facture', 'arrondi_pas', 'arrondi_unites', 'ventilation_tva',
     'retenue_garantie_mad', 'devise', 'taux_change',
+    # AARG28 — une facture émise ne quitte jamais sa vente (mise à nul comprise).
+    'devis', 'bon_commande',
+    # AARG49 — imprimés sur le PDF envoyé (objet ; art. 145 CGI).
+    'libelle', 'date_livraison',
 ])
 MESSAGE_MONTANT_FIGE = (
     'Montant figé après émission : corrigez par un avoir '
@@ -273,7 +277,7 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         # Refus d'ÉTAT (facture non brouillon) : 409 ConflitEtat (ENF11).
         # ATOT41 — hors brouillon, tout champ de FACTURE_CHAMPS_FINANCIERS
         # dont la valeur change est refusé, quel que soit le réglage ; les
-        # champs non financiers (conditions, notes, livraison…) restent libres.
+        # champs non financiers (conditions, notes…) restent libres.
         facture = self.get_object()
         # AFAC66 / VNT89 — mêmes portes fermées en modification (BC d'un
         # devis, devis posé ou changé par le corps).
@@ -286,12 +290,19 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
                 'detail': MESSAGE_MONTANT_FIGE,
                 'champs_refuses': sorted(argent_touche),
             })
+        # AARG56 — l'échéance posée d'une émise se reporte, elle ne s'efface pas.
+        if (facture.statut != Facture.Statut.BROUILLON and facture.date_echeance
+                and serializer.validated_data.get(
+                    'date_echeance', facture.date_echeance) is None):
+            raise ConflitEtat("L'échéance d'une facture émise ne s'efface pas.")
         # ATOT9 — toute modification d'argent ACCEPTÉE (brouillon) laisse une
         # trace avant/après dans le chatter de la facture.
         avant = {champ: getattr(facture, champ) for champ in argent_touche}
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern created_by.
-        serializer.save(updated_by=self.request.user)
+        # AARG26 — édité à la main : le brouillon n'est plus « automatique ».
+        serializer.save(updated_by=self.request.user, **(
+            {'acompte_auto_le': None} if facture.acompte_auto_le else {}))
         if argent_touche:
             from ..models import FactureActivity
             instance = serializer.instance

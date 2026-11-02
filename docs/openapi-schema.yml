@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4894, operations: 7686, components: 3609}
+counts: {paths: 4902, operations: 7694, components: 3609}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1237,6 +1237,7 @@ operations:
 - get /api/django/facturation/avoirs/ -> django_facturation_avoirs_list
 - get /api/django/facturation/avoirs/{id}/ -> django_facturation_avoirs_retrieve
 - post /api/django/facturation/avoirs/{id}/annuler/ -> django_facturation_avoirs_annuler_create
+- get /api/django/facturation/avoirs/{id}/dgi-export/ -> django_facturation_avoirs_dgi_export_retrieve
 - get /api/django/facturation/avoirs/{id}/telecharger-pdf/ -> django_facturation_avoirs_telecharger_pdf_retrieve
 - get /api/django/facturation/balance-agee/ -> django_facturation_balance_agee_list
 - get /api/django/facturation/clients/{client_id}/releve-pdf/ -> django_facturation_clients_releve_pdf_retrieve
@@ -1299,6 +1300,7 @@ operations:
 - get /api/django/facturation/notes-debit/ -> django_facturation_notes_debit_list
 - get /api/django/facturation/notes-debit/{id}/ -> django_facturation_notes_debit_retrieve
 - post /api/django/facturation/notes-debit/{id}/annuler/ -> django_facturation_notes_debit_annuler_create
+- get /api/django/facturation/notes-debit/{id}/dgi-export/ -> django_facturation_notes_debit_dgi_export_retrieve
 - get /api/django/facturation/notes-debit/{id}/telecharger-pdf/ -> django_facturation_notes_debit_telecharger_pdf_retrieve
 - get /api/django/facturation/paiements/ -> django_facturation_paiements_list
 - get /api/django/facturation/paiements/attestations-ras-en-attente/ -> django_facturation_paiements_attestations_ras_en_attente_list
@@ -3533,6 +3535,7 @@ operations:
 - get /api/django/ventes/avoirs/ -> django_ventes_avoirs_list
 - get /api/django/ventes/avoirs/{id}/ -> django_ventes_avoirs_retrieve
 - post /api/django/ventes/avoirs/{id}/annuler/ -> django_ventes_avoirs_annuler_create
+- get /api/django/ventes/avoirs/{id}/dgi-export/ -> django_ventes_avoirs_dgi_export_retrieve
 - get /api/django/ventes/avoirs/{id}/telecharger-pdf/ -> django_ventes_avoirs_telecharger_pdf_retrieve
 - get /api/django/ventes/balance-agee/ -> django_ventes_balance_agee_list
 - get /api/django/ventes/bons-commande/ -> django_ventes_bons_commande_list
@@ -3743,6 +3746,7 @@ operations:
 - get /api/django/ventes/notes-debit/ -> django_ventes_notes_debit_list
 - get /api/django/ventes/notes-debit/{id}/ -> django_ventes_notes_debit_retrieve
 - post /api/django/ventes/notes-debit/{id}/annuler/ -> django_ventes_notes_debit_annuler_create
+- get /api/django/ventes/notes-debit/{id}/dgi-export/ -> django_ventes_notes_debit_dgi_export_retrieve
 - get /api/django/ventes/notes-debit/{id}/telecharger-pdf/ -> django_ventes_notes_debit_telecharger_pdf_retrieve
 - get /api/django/ventes/numerotation-audit/ -> django_ventes_numerotation_audit_retrieve
 - get /api/django/ventes/numerotation-preview/ -> django_ventes_numerotation_preview_retrieve
@@ -5120,6 +5124,7 @@ operations:
 - get /api/v1/facturation/avoirs/ -> v1_facturation_avoirs_list
 - get /api/v1/facturation/avoirs/{id}/ -> v1_facturation_avoirs_retrieve
 - post /api/v1/facturation/avoirs/{id}/annuler/ -> v1_facturation_avoirs_annuler_create
+- get /api/v1/facturation/avoirs/{id}/dgi-export/ -> v1_facturation_avoirs_dgi_export_retrieve
 - get /api/v1/facturation/avoirs/{id}/telecharger-pdf/ -> v1_facturation_avoirs_telecharger_pdf_retrieve
 - get /api/v1/facturation/balance-agee/ -> v1_facturation_balance_agee_list
 - get /api/v1/facturation/clients/{client_id}/releve-pdf/ -> v1_facturation_clients_releve_pdf_retrieve
@@ -5182,6 +5187,7 @@ operations:
 - get /api/v1/facturation/notes-debit/ -> v1_facturation_notes_debit_list
 - get /api/v1/facturation/notes-debit/{id}/ -> v1_facturation_notes_debit_retrieve
 - post /api/v1/facturation/notes-debit/{id}/annuler/ -> v1_facturation_notes_debit_annuler_create
+- get /api/v1/facturation/notes-debit/{id}/dgi-export/ -> v1_facturation_notes_debit_dgi_export_retrieve
 - get /api/v1/facturation/notes-debit/{id}/telecharger-pdf/ -> v1_facturation_notes_debit_telecharger_pdf_retrieve
 - get /api/v1/facturation/paiements/ -> v1_facturation_paiements_list
 - get /api/v1/facturation/paiements/attestations-ras-en-attente/ -> v1_facturation_paiements_attestations_ras_en_attente_list
@@ -7378,6 +7384,7 @@ operations:
 - get /api/v1/ventes/avoirs/ -> v1_ventes_avoirs_list
 - get /api/v1/ventes/avoirs/{id}/ -> v1_ventes_avoirs_retrieve
 - post /api/v1/ventes/avoirs/{id}/annuler/ -> v1_ventes_avoirs_annuler_create
+- get /api/v1/ventes/avoirs/{id}/dgi-export/ -> v1_ventes_avoirs_dgi_export_retrieve
 - get /api/v1/ventes/avoirs/{id}/telecharger-pdf/ -> v1_ventes_avoirs_telecharger_pdf_retrieve
 - get /api/v1/ventes/balance-agee/ -> v1_ventes_balance_agee_list
 - get /api/v1/ventes/bons-commande/ -> v1_ventes_bons_commande_list
@@ -7588,6 +7595,7 @@ operations:
 - get /api/v1/ventes/notes-debit/ -> v1_ventes_notes_debit_list
 - get /api/v1/ventes/notes-debit/{id}/ -> v1_ventes_notes_debit_retrieve
 - post /api/v1/ventes/notes-debit/{id}/annuler/ -> v1_ventes_notes_debit_annuler_create
+- get /api/v1/ventes/notes-debit/{id}/dgi-export/ -> v1_ventes_notes_debit_dgi_export_retrieve
 - get /api/v1/ventes/notes-debit/{id}/telecharger-pdf/ -> v1_ventes_notes_debit_telecharger_pdf_retrieve
 - get /api/v1/ventes/numerotation-audit/ -> v1_ventes_numerotation_audit_retrieve
 - get /api/v1/ventes/numerotation-preview/ -> v1_ventes_numerotation_preview_retrieve

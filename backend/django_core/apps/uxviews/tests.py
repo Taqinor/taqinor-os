@@ -968,7 +968,7 @@ class UxParametresApiTests(TestCase):
             'ecran': 'crm.leads', 'nom': 'Partagée', 'configuration': {},
             'visibilite': 'EQUIPE',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # refus d'état (api-fuzz)
         # Une vue PERSONNELLE reste évidemment créable.
         self.assertEqual(auth(self.commercial).post(self.VUES, {
             'ecran': 'crm.leads', 'nom': 'Perso', 'configuration': {},
@@ -1000,7 +1000,7 @@ class UxParametresApiTests(TestCase):
         resp = auth(self.directeur).post(
             f'{self.VUES}{vue.pk}/definir-par-defaut-role/',
             {'role': role.pk}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # refus d'état (api-fuzz)
 
     def test_roles_autorises_restreint_qui_pose_le_defaut(self):
         from apps.roles.models import Role

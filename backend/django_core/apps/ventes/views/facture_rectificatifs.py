@@ -19,6 +19,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
 from . import openapi_docs as D
+from .facture_cycle import PEUT_ANNULER
 from .facture_gardes import PeutEncaisser
 from ..models import Facture, LigneNoteDebit, NoteDebit
 from ..serializers_facturation import (
@@ -74,6 +75,82 @@ def _montants_ligne_corrective(i, ligne):
     return (qte, pu, remise, taux_tva), None
 
 
+def _bornes_lignes_facturees(facture):
+    """AARG38 — ce qu'une ligne d'avoir ne dépasse pas : taux facturés ; par
+    produit, quantité restante (facturée − créditée par les avoirs actifs) et
+    P.U. net maximal. ``None`` si le plafond est déjà épuisé : le refus d'état
+    (409, ``creer_avoir_facture``) passe avant le contrôle de la ligne."""
+    if facture.avoirs_total >= (facture.total_ttc + facture.notes_debit_total
+                                - (facture.abandon_montant or 0)):
+        return None
+    taux, restant, pu_net = set(), {}, {}
+    for ligne in facture.lignes.all():
+        taux.add(Decimal(str(ligne.taux_tva_effectif)))
+        restant[ligne.produit_id] = (restant.get(ligne.produit_id, 0)
+                                     + ligne.quantite)
+        pu_net[ligne.produit_id] = max(pu_net.get(ligne.produit_id, 0),
+                                       _pu_net(ligne.prix_unitaire, ligne.remise))
+    for avoir in facture.avoirs.exclude(statut='annulee').filter(note_debit=None):
+        for ligne in avoir.lignes.all():
+            if ligne.produit_id in restant:
+                restant[ligne.produit_id] -= ligne.quantite
+    if not taux:  # Facture sans ligne (acompte, tranche) : ses paniers figés.
+        taux = {Decimal(str(b['taux'])) for b in facture.ventilation_tva or []
+                } or {Decimal(str(facture.taux_tva))}
+    return {'taux': taux, 'restant': restant, 'pu_net': pu_net,
+            'taux_entete': Decimal(str(facture.taux_tva))}
+
+
+def _pu_net(prix_unitaire, remise):
+    return prix_unitaire * (1 - (remise or 0) / Decimal('100'))
+
+
+def _refus_borne(i, bornes, produit_id, montants):
+    """AARG38 — le motif (400) d'une ligne hors des lignes facturées, ou None.
+    Sans ligne produit sur la facture : le taux seul, le plafond borne le reste.
+    Une ligne sans taux crédite au taux d'en-tête : contrôlé dès que la facture
+    a des lignes (sans ligne, ses paniers figés peuvent ne pas le porter)."""
+    qte, pu, remise, taux_tva = montants
+    if taux_tva is None and bornes['restant']:
+        taux_tva = bornes['taux_entete']
+    if taux_tva is not None and taux_tva not in bornes['taux']:
+        return f'Ligne {i} : taux de TVA absent de la facture.'
+    if not bornes['restant']:
+        return None
+    restant = bornes['restant'].get(produit_id, Decimal('0'))
+    if qte > restant:
+        return (f'Ligne {i} : quantité créditée supérieure à la quantité '
+                f"facturée restante ({max(restant, Decimal('0')).normalize():f}).")
+    bornes['restant'][produit_id] = restant - qte
+    if _pu_net(pu, remise) > bornes['pu_net'][produit_id]:
+        return (f'Ligne {i} : prix unitaire supérieur au prix facturé '
+                f"({bornes['pu_net'][produit_id]:.2f}).")
+    return None
+
+
+def _avoir_cree(avoir):
+    """Réponse 201 de ``creer-avoir`` (hors du mixin : noms figés, VNT96)."""
+    # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
+    try:
+        from ..utils.pdf import generate_avoir_pdf
+        generate_avoir_pdf(avoir.id)
+        avoir.refresh_from_db()
+    except Exception:
+        logger.warning("facture.FactureViewSet.creer_avoir : erreur ignorée (mode dégradé)", exc_info=True)
+    return Response(AvoirSerializer(avoir).data,
+                    status=status.HTTP_201_CREATED)
+
+
+def _contre_passer_par_annulation(facture, user, motif):
+    """AARG39 — la contre-passation EST l'annulation sans directive."""
+    from ..domain.annulation_facture import AnnulationRefusee, annuler_facture
+    try:
+        facture = annuler_facture(facture, user=user, motif=motif)
+    except AnnulationRefusee as refus:
+        return Response(refus.corps, status=status.HTTP_409_CONFLICT)
+    return _avoir_cree(facture.avoir_annulation)
+
+
 def _montant_note_debit(donnees, facture):
     """AFAC32 — montant HT + taux saisis d'une note de débit SANS lignes.
     Rend ``((montant, taux), None)`` ou ``((None, None), message)`` — 400.
@@ -115,39 +192,30 @@ class FactureRectificatifsActionsMixin:
         facture d'origine ; le PDF reprend le style facture.
 
         ZFAC5 — ``mode`` ∈ {``correction`` (défaut, comportement ci-dessus
-        inchangé), ``contre_passation``} : en ``contre_passation`` l'avoir
-        reprend TOUTES les lignes de la facture à l'identique (les `lignes`
-        du corps sont ignorées) et, à son émission, la facture d'origine
-        passe ``annulee`` avec un ``FactureActivity`` liant les deux pièces.
-        Refusé (409) si la facture a déjà des paiements (dû négatif évité)."""
+        inchangé), ``contre_passation``}. AARG39 — ``contre_passation`` passe
+        par LA porte d'annulation ``annuler_facture`` : même facture annulée,
+        même avoir CORRECTION (`lignes` et `type` du corps ignorés), mêmes
+        refus (403 de ``PEUT_ANNULER``, 409, ``code`` de
+        ``facture_annulation.json``)."""
         facture = self.get_object()
         # Tour 3 M1 — corps validé (types, listes, enums) AVANT toute lecture.
         valider_corps_lignes(request, D.CreerAvoirRequest)
+        # `mode` ∈ enum garanti par le corps validé ; refus d'ÉTAT = 409 (ENF11).
+        mode = (request.data.get('mode') or 'correction').strip()
+        if mode == 'contre_passation':
+            for garde in PEUT_ANNULER:
+                if not garde().has_permission(request, self):
+                    self.permission_denied(request)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             return Response(
                 {'detail': 'Un avoir ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_409_CONFLICT)
-        # `mode` ∈ enum garanti par le corps validé ; refus d'ÉTAT = 409 (ENF11).
-        mode = (request.data.get('mode') or 'correction').strip()
-        if mode == 'contre_passation' and facture.montant_paye > 0:
-            return Response(
-                {'detail': ("Contre-passation refusée : cette facture a déjà "
-                            "des paiements enregistrés.")},
-                status=status.HTTP_409_CONFLICT)
-        # AFAC32 (D-AFAC-C4) — la contre-passation ANNULE la facture : ses
-        # notes de débit actives s'annulent d'abord (par avoir de ND).
-        from ..domain.facturation_ops import notes_debit_actives
-        if mode == 'contre_passation' and notes_debit_actives(facture):
-            return Response(
-                {'detail': ("Contre-passation refusée : la facture porte une "
-                            "note de débit active — annulez-la d'abord."),
-                 'code': 'note_debit_active'},
-                status=status.HTTP_409_CONFLICT)
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
-        lignes = None if mode == 'contre_passation' \
-            else request.data.get('lignes')
+        if mode == 'contre_passation':
+            return _contre_passer_par_annulation(facture, request.user, motif)
+        lignes = request.data.get('lignes')
         # Plafond : un avoir ne peut pas dépasser le reste créditable de la
         # facture (TTC − avoirs actifs déjà émis). AUD126 — il est désormais
         # mesuré SOUS LE VERROU de ligne, juste avant la création (voir le
@@ -170,6 +238,7 @@ class FactureRectificatifsActionsMixin:
             # pas. Dès qu'une ligne de la facture porte un produit, DC10 tient.
             facture_sans_produit = not facture.lignes.exclude(
                 produit=None).exists()
+            bornes = _bornes_lignes_facturees(facture)
             for i, ligne in enumerate(lignes, start=1):
                 designation = (ligne.get('designation') or '').strip()
                 if not designation:
@@ -200,6 +269,10 @@ class FactureRectificatifsActionsMixin:
                     return Response(
                         {'detail': f'Ligne {i} : produit inconnu.'},
                         status=status.HTTP_400_BAD_REQUEST)
+                refus = bornes and _refus_borne(i, bornes, produit_id, montants)
+                if refus:
+                    return Response({'detail': refus},
+                                    status=status.HTTP_400_BAD_REQUEST)
                 clean_lignes.append({
                     'produit_id': produit_id,
                     'designation': designation[:255],
@@ -216,7 +289,7 @@ class FactureRectificatifsActionsMixin:
         )
         try:
             avoir = creer_avoir_facture(
-                facture=facture, user=request.user, motif=motif, mode=mode,
+                facture=facture, user=request.user, motif=motif,
                 lignes_saisies=clean_lignes,
                 type_avoir=str(request.data.get('type') or '').strip() or None)
         except AvoirPlafondDepasse as exc:
@@ -228,15 +301,7 @@ class FactureRectificatifsActionsMixin:
             # Refus de VALEUR (ligne, type) : 400.
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
-        # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
-        try:
-            from ..utils.pdf import generate_avoir_pdf
-            generate_avoir_pdf(avoir.id)
-            avoir.refresh_from_db()
-        except Exception:
-            logger.warning("facture.FactureViewSet.creer_avoir : erreur ignorée (mode dégradé)", exc_info=True)
-        return Response(AvoirSerializer(avoir).data,
-                        status=status.HTTP_201_CREATED)
+        return _avoir_cree(avoir)
 
     @extend_schema(request=D.CreerNoteDebitRequest,
                    responses={201: NoteDebitSerializer},

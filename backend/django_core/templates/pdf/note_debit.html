@@ -209,7 +209,7 @@
          'arrondi': _L('Arrondi commercial'), 'total_ht': _L('Total HT'),
          'tva': _L('TVA'), 'total_ttc': _L('Total dû en supplément (TTC)'),
          'base_ht': _L('Base HT'),
-       }) }}
+       }, ventilation=(note_debit.ventilation_tva or totaux.tva_par_taux|length > 1)) }}
   </div>
 
   {# AFAC56 — conditions de paiement de la facture d'origine. #}

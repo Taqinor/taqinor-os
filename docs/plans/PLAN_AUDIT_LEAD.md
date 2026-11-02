@@ -491,3 +491,4 @@ Seconde contre-visite de clôture du groupe ALEA (dossier `docs/audits/2026-11-0
 - 2026-11-02 — ALEA57 — code livré (8c981ea0e), NON cochée : preuve en direct due (visite terminée, « Enregistrer » affiche le refus).
 - 2026-11-02 — ALEA58 — code livré (fdaa1f0f1 + 0d5a3eaca), NON cochée : `perform_destroy` passe par `supprimer_media` ; aucune garde n'existait sur `destroy` alors que la tâche dit « une visite validée reste refusée » → garde ajoutée (400, photos gardées). Preuve due : rejeu de la sonde C-ALEA-VER2-101.
 - 2026-11-02 — ALEA59 — cochée (cdb008e04) : `_alertes_lead` compare le prochain contact et `relance_date` à `seuil_retard` ; preuve en direct n/a.
+- 2026-11-02 — AARG47 — code livré (4852a7fa9), NON cochée : preuve en direct due (chatter du lead A, rejeu AARG50).

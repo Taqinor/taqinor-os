@@ -124,6 +124,27 @@ facture_strategie = st.fixed_dictionaries({
         [Decimal('0'), Decimal('3'), Decimal('10')]),
 })
 
+
+def ligne_avoir_partielle(facture, fraction):
+    """AARG38 — une ligne d'avoir conforme : ``fraction`` % de la première ligne
+    de la facture, bornée à la quantité restante du produit ; None s'il n'en
+    reste plus (lignes facturées déjà créditées)."""
+    source = facture.lignes.order_by('id').first()
+    meme_produit = facture.lignes.filter(produit_id=source.produit_id)
+    restant = sum((li.quantite for li in meme_produit), ZERO)
+    for avoir in facture.avoirs.exclude(statut='annulee'):
+        for li in avoir.lignes.filter(produit_id=source.produit_id):
+            restant -= li.quantite
+    quantite = max((source.quantite * fraction / 100).quantize(CENT), CENT)
+    quantite = min(quantite, restant)
+    if quantite <= 0:
+        return None
+    return {'designation': 'Avoir partiel', 'quantite': str(quantite),
+            'prix_unitaire': str(source.prix_unitaire),
+            'remise': str(source.remise), 'taux_tva': str(source.taux_tva),
+            'produit': source.produit_id}
+
+
 #: Fraction (en %) d'un montant appliquée par un geste (paiement, avoir).
 fraction_strategie = st.integers(min_value=5, max_value=100)
 

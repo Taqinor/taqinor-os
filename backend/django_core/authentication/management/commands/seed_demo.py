@@ -308,10 +308,12 @@ class Command(BaseCommand):
         )
 
         # ── Factures ───────────────────────────────────────────────────
-        def make_facture(ref, client, statut, lignes, bc=None, echeance=30):
+        def make_facture(ref, client, statut, lignes, bc=None, echeance=30,
+                         emission=0):
             facture = Facture.objects.create(
                 company=company, reference=ref, client=client, statut=statut,
                 bon_commande=bc, taux_tva=Decimal('20.00'),
+                date_emission=today + timedelta(days=emission),
                 date_echeance=today + timedelta(days=echeance),
                 created_by=resp,
             )
@@ -328,8 +330,15 @@ class Command(BaseCommand):
                      Facture.Statut.EMISE,
                      [('PAN-450M', '8'), ('OND-5KH', '1'), ('FIX-KIT', '2')],
                      bc=bc_confirme)
-        make_facture('FAC-DEMO-0002', clients[0], Facture.Statut.PAYEE,
-                     [('CAB-6MM', '3'), ('FIX-KIT', '5')], echeance=-5)
+        # AFAC106 — « payée » par un vrai paiement de son TTC (LE chemin de
+        # l'encaissement, bascule comprise) : l'oracle 10 reste muet sur la démo.
+        facture_payee = make_facture(
+            'FAC-DEMO-0002', clients[0], Facture.Statut.EMISE,
+            [('CAB-6MM', '3'), ('FIX-KIT', '5')], echeance=-5, emission=-35)
+        from apps.ventes.domain.encaissements import encaisser_sur_facture
+        encaisser_sur_facture(facture=facture_payee, user=resp, donnees={
+            'montant': facture_payee.montant_du, 'mode': 'virement',
+            'date_paiement': today - timedelta(days=10)})
 
         # ── Leads (native demo, distinct from any future Odoo test import) ──
         from apps.crm.stages import NEW

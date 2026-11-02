@@ -78,6 +78,32 @@ class CadenceUniqueTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         return next(x for x in r.data if x['id'] == facture.id)
 
+    def test_relance_automatique_joint_le_pdf(self):
+        """AARG58 (C-AARG-019) — le mail du beat part avec la facture en pièce
+        jointe ; PDF impossible : EmailLog en échec, niveau non consommé."""
+        from unittest.mock import patch
+
+        from django.core import mail
+
+        from apps.ventes.models import EmailLog, RelanceLog
+        from apps.ventes.scheduled import relance_reminders
+        f = self._facture(prochaine_relance=self.today)
+        relance_reminders()
+        self.assertEqual(len(mail.outbox), 1)
+        nom, _contenu, mime = mail.outbox[0].attachments[0]
+        self.assertEqual(nom, f'{f.reference}.pdf')
+        self.assertEqual(mime, 'application/pdf')
+        self.assertEqual(EmailLog.objects.get(facture=f).statut,
+                         EmailLog.Statut.ENVOYE)
+        panne = self._facture(prochaine_relance=self.today)
+        with patch('apps.ventes.email_service._document_pdf',
+                   return_value=(None, None)):
+            relance_reminders()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(EmailLog.objects.get(facture=panne).statut,
+                         EmailLog.Statut.ECHEC)
+        self.assertFalse(RelanceLog.objects.filter(facture=panne).exists())
+
     def test_manuel_niveau3_beat_n_envoie_pas_niveau1(self):
         from apps.ventes.models import RelanceLog
         from apps.ventes.scheduled import relance_reminders
