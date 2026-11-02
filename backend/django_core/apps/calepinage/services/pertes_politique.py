@@ -59,12 +59,15 @@ class PertesInvalides(ValueError):
     """Un jeu de postes de pertes refusé, avec un message FRANÇAIS.
 
     ``champ`` nomme le poste (ou la clé) fautif pour que l'écran pointe LE
-    champ concerné au lieu d'un « non enregistré » générique.
+    champ concerné au lieu d'un « non enregistré » générique. ``etat`` marque
+    un refus que la FORME du corps ne peut pas porter (règle liant plusieurs
+    champs ou postes) : 409 à l'API, jamais un 400.
     """
 
-    def __init__(self, message, *, champ=''):
+    def __init__(self, message, *, champ='', etat=False):
         super().__init__(message)
         self.champ = champ
+        self.etat = etat
 
 
 class PolitiquePertes:

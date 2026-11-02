@@ -184,7 +184,8 @@ def valider_postes(postes):
         if nom in vus:
             raise PertesInvalides(
                 f'Le poste de perte « {nom} » apparaît deux fois : la somme '
-                'passée à PVGIS le compterait deux fois.', champ=nom)
+                'passée à PVGIS le compterait deux fois.', champ=nom,
+                etat=True)
         vus.add(nom)
 
         source = brut.get('source')
@@ -204,6 +205,12 @@ def valider_postes(postes):
         if mensuel is not None:
             pct, mensuel = _moyenne_mensuelle(mensuel, champ=nom)
         else:
+            if brut.get('pct') is None or brut.get('pct') == '':
+                # « pct OU mensuel » : règle liant deux champs (409).
+                raise PertesInvalides(
+                    f'Le poste de perte « {nom} » doit porter un pourcentage '
+                    'chiffré : un poste sans valeur ne peut pas entrer dans '
+                    'la somme envoyée à PVGIS.', champ=nom, etat=True)
             pct = _pourcentage(brut.get('pct'), champ=nom)
 
         normalise = {
@@ -229,7 +236,7 @@ def valider_postes(postes):
                     f'Le poste « {nom} » est FORCÉ sans motif : un forçage '
                     'remplace une étape calculée, il se signe — écrivez '
                     'pourquoi (« motif_force »), ou retirez le forçage.',
-                    champ=f'{nom}.motif_force')
+                    champ=f'{nom}.motif_force', etat=True)
             normalise['force'] = True
             normalise['motif_force'] = motif_force
         normalises.append(normalise)
