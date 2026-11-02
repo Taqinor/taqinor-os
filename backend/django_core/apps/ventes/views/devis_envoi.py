@@ -130,10 +130,10 @@ class _EnvoiAvorte(Exception):
     """ADVS12 / ADVS13 — rendu ou envoi en échec : traverse le bloc atomique
     (tout est annulé) en portant la réponse et le motif à consigner."""
 
-    def __init__(self, http, corps, erreur, piece_jointe=''):
+    def __init__(self, http, detail, erreur, piece_jointe='', code=''):
         super().__init__(erreur)
-        self.http, self.corps, self.erreur = http, corps, erreur
-        self.piece_jointe = piece_jointe
+        self.http, self.detail, self.erreur = http, detail, erreur
+        self.piece_jointe, self.code = piece_jointe, code
 
 
 def _refus_rendu(exc):
@@ -141,9 +141,9 @@ def _refus_rendu(exc):
     NOMMÉ du moteur (409, le motif est montré) ; toute autre panne de rendu ou
     de stockage = 502."""
     if isinstance(exc, ValueError):
-        return _EnvoiAvorte(status.HTTP_409_CONFLICT, {'detail': str(exc), 'code': 'pdf_refuse'}, str(exc))
-    return _EnvoiAvorte(status.HTTP_502_BAD_GATEWAY, {'detail': PDF_INDISPONIBLE, 'code': 'pdf_indisponible'},
-                        f'{type(exc).__name__}: {exc}')
+        return _EnvoiAvorte(status.HTTP_409_CONFLICT, str(exc), str(exc), code='pdf_refuse')
+    return _EnvoiAvorte(status.HTTP_502_BAD_GATEWAY, PDF_INDISPONIBLE,
+                        f'{type(exc).__name__}: {exc}', code='pdf_indisponible')
 
 
 def _envoi_atomique(devis, user, dest, sujet, corps, pdf_mode, token):
@@ -170,7 +170,7 @@ def _envoi_atomique(devis, user, dest, sujet, corps, pdf_mode, token):
             raise _refus_rendu(exc) from exc
         ok, err = _send(dest, sujet, corps, attachment, nom)
         if not ok:
-            raise _EnvoiAvorte(status.HTTP_502_BAD_GATEWAY, {'detail': f'Échec envoi email : {err}'}, err, nom)
+            raise _EnvoiAvorte(status.HTTP_502_BAD_GATEWAY, f'Échec envoi email : {err}', err, nom)
     return nom
 
 
@@ -445,7 +445,12 @@ class DevisEnvoiActionsMixin:
             log.piece_jointe = avorte.piece_jointe[:255]
             log.save()
             _chatter_note(devis, f"Email du devis {reference} — échec d'envoi (à {dest}).", request.user)
-            return Response({**avorte.corps, 'log_id': log.id, 'email_statut': log.statut,
+            # Clés littérales : check_api_shapes lit la forme servie à ``envoyerEmailDevis``.
+            if avorte.code:
+                return Response({'detail': avorte.detail, 'code': avorte.code, 'log_id': log.id,
+                                 'email_statut': log.statut, 'devis_statut': devis.statut},
+                                status=avorte.http)
+            return Response({'detail': avorte.detail, 'log_id': log.id, 'email_statut': log.statut,
                              'devis_statut': devis.statut}, status=avorte.http)
         log.statut = EmailLog.Statut.ENVOYE
         log.save()
