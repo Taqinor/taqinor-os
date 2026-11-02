@@ -65,6 +65,18 @@ class ListePrixBornesTests(TestCase):
         self.assertTrue({'type_regle', 'valeur'} <= set(corps['regles/']['required']))
         self.assertNotIn('liste', corps['regles/'].get('required', []))
 
+    def test_corps_non_objet_400_pas_500(self):
+        # api-fuzz ERR-ENF11-FUZZ-VENTES : ``[null, null, null]`` sur regles/
+        # (``{**request.data}``) et sur lignes/ (``.get``) levait 500.
+        base = '/api/django/ventes/listes-prix/%s/' % self.liste.pk
+        for route in ('regles/', 'lignes/'):
+            for corps in ([None, None, None], 5):
+                with self.subTest(route=route, corps=corps):
+                    resp = self.api.post(base + route, corps, format='json')
+                    self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertFalse(LignePrixListe.objects.filter(
+            liste=self.liste).exists())
+
     def test_borne_haute_acceptee(self):
         resp = self._post('99999999.99')
         self.assertEqual(resp.status_code, 200, resp.content)

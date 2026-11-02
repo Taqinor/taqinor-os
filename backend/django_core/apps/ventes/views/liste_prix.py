@@ -97,6 +97,8 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
         from apps.stock.selectors import get_produit_scoped
 
         liste = self.get_object()
+        if not hasattr(request.data, 'keys'):  # ERR-ENF11-FUZZ-VENTES : tableau = 500
+            raise ValidationError({'detail': 'Un objet JSON est attendu.'})
         produit_id = request.data.get('produit')
         prix_unitaire = request.data.get('prix_unitaire')
         if not produit_id or prix_unitaire is None:
@@ -128,6 +130,10 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
     def regles(self, request, pk=None):
         """Ajoute une règle de prix/palier à cette liste (XSAL2)."""
         liste = self.get_object()
+        # ERR-ENF11-FUZZ-VENTES — un corps JSON tableau/scalaire ne se déplie
+        # pas en ``{**request.data}`` (TypeError, 500) : 400 nommé.
+        if not hasattr(request.data, 'keys'):
+            raise ValidationError({'detail': 'Un objet JSON est attendu.'})
         # ASEC22 — le ``request`` en contexte BORNE ``produit`` à la société
         # (SameCompanyFKSerializerMixin) : sans lui, aucune société de
         # référence et l'id d'une autre société passait (V5 : 201).

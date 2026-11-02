@@ -544,7 +544,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if refus is not None:
             return refus
 
-        categorie = (request.data.get('categorie') or '').strip()
+        # ERR-ENF11-FUZZ-VISITES — un corps tableau n'a pas de ``.get`` et une
+        # catégorie non texte pas de ``.strip`` (500) : 400 qui nomme le champ.
+        if not hasattr(request.data, 'get'):
+            return _erreur('corps', 'Un objet JSON est attendu.')
+        categorie = request.data.get('categorie') or ''
+        if not isinstance(categorie, str):
+            return _erreur('categorie', 'La catégorie doit être un texte.')
+        categorie = categorie.strip()
         visite, erreurs = services.enregistrer_mesures(
             visite, categorie, request.data.get('valeurs'))
         if erreurs:
