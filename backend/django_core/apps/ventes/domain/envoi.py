@@ -330,6 +330,7 @@ def mark_devis_sent(*, devis, user=None):
     Returns the (possibly unchanged) Devis. Tenant scoping is the caller's
     responsibility — the devis is always passed already company-resolved.
     """
+    from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from core.events import devis_sent
@@ -355,7 +356,14 @@ def mark_devis_sent(*, devis, user=None):
     # VNT57 — LA règle de gel du document engagé (T17, ``date_envoi``, marge,
     # CGV, barème), partagée avec l'acceptation d'un brouillon.
     ancien = devis.statut
-    geler_document_engage(devis, user, statut=Devis.Statut.ENVOYE)
+    # ADVS22 (C-ADVS-026) — statut relu SOUS VERROU : un devis accepté depuis la
+    # lecture de l'appelant est rendu tel quel, sans gel ni ``devis_sent``.
+    with transaction.atomic():
+        if (Devis.objects.select_for_update().get(pk=devis.pk).statut
+                != Devis.Statut.BROUILLON):
+            devis.refresh_from_db(fields=['statut'])
+            return devis
+        geler_document_engage(devis, user, statut=Devis.Statut.ENVOYE)
     activity.log_devis_sent(devis, user)
     devis_sent.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
