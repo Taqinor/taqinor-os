@@ -1082,14 +1082,12 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
             'nb_unites': serializers.IntegerField(),
             'poids_kg': serializers.FloatField(),
             'volume_m3': serializers.FloatField(),
-            'capacite_kg': serializers.DecimalField(
-                max_digits=12, decimal_places=2, allow_null=True),
-            'capacite_m3': serializers.DecimalField(
-                max_digits=12, decimal_places=3, allow_null=True),
-            'poids_utilise_pct': serializers.DecimalField(
-                max_digits=8, decimal_places=2, allow_null=True),
-            'volume_utilise_pct': serializers.DecimalField(
-                max_digits=8, decimal_places=2, allow_null=True),
+            # Nombres JSON (l'encodeur DRF rend un Decimal en flottant) :
+            # la réponse réelle, pas des chaînes décimales (api-fuzz ENF11).
+            'capacite_kg': serializers.FloatField(allow_null=True),
+            'capacite_m3': serializers.FloatField(allow_null=True),
+            'poids_utilise_pct': serializers.FloatField(allow_null=True),
+            'volume_utilise_pct': serializers.FloatField(allow_null=True),
             'depassement': serializers.BooleanField(),
             'avertissement': serializers.CharField(),
         }),
@@ -1107,9 +1105,8 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
             'depassement': serializers.BooleanField(),
             'avertissement': serializers.CharField(),
         }),
-        400: inline_serializer('StockPlanChargementErreur', {
-            'detail': serializers.CharField(),
-        }),
+        # ENF11 (api-fuzz) — pas de 400 propre : celui de l'enveloppe commune
+        # (``detail`` OU erreurs par champ, ex. ``unite_logistique`` non entier).
     })
     @action(detail=True, methods=['post'], url_path='unites')
     def ajouter_unite(self, request, pk=None):
