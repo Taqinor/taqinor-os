@@ -15,15 +15,11 @@ import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
 import StickyCta from '../components/StickyCta.astro';
-import { ficheBySlug } from '../lib/fiches';
+import { panneauCanadian, panneauJinko, onduleurHuawei, onduleurDeye } from '../lib/equipementFiches';
 
 // W326 — ONE tableau de comparaison : 2 marques de panneaux × 2 lignes
 // d'onduleurs, toutes les valeurs reprises telles quelles de fiches.ts (source
 // unique de vérité) — aucun chiffre nouveau saisi ici.
-const panneauCanadian = ficheBySlug('canadian-solar-710')!;
-const panneauJinko = ficheBySlug('jinko-710')!;
-const onduleurHuawei = ficheBySlug('onduleur-huawei-reseau')!;
-const onduleurDeye = ficheBySlug('onduleur-deye-hybride')!;
 
 const comparaisonPanneaux = [
   { critere: 'Modèle', a: panneauCanadian.modele, b: panneauJinko.modele },

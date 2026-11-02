@@ -47,8 +47,9 @@ describe('W67 — segments résidentiel/professionnel/marocains-du-monde en EN +
 
   it.each(ALL.map((p) => p.file))('%s localise ses liens via localizeNavHref (jamais de lien mort)', (file) => {
     const src = read(file);
-    expect(src).toContain('localizeNavHref');
-    expect(src).toContain('getLocaleFromPath');
+    // (ENF19 : en ligne, ou via le helper partagé lib/pageCtx.ts.)
+    expect(src).toMatch(/localizeNavHref|pageLocale\(|articlePage\(/);
+    expect(src).toMatch(/getLocaleFromPath|pageLocale\(|articlePage\(/);
   });
 
   it.each(EN_PAGES.map((p) => [p.file, p.phrase] as const))(

@@ -9,6 +9,7 @@
  * Shared component (WhatsAppMock) auto-detects locale. FR untouched.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -17,13 +18,10 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import MarocainsDuMondeDiv5A30 from '../../components/blocs/MarocainsDuMondeDiv5A30.astro';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-const devisHref = L('/devis/mon-toit');
+const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
 const wa = whatsappLink(WHATSAPP_LEADS, 'Hello, I am a Moroccan living abroad and I would like to study a solar installation for my villa in Morocco.');
 

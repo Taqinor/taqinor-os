@@ -6,6 +6,7 @@
  * links via localizeNavHref. FR untouched.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -14,14 +15,11 @@ import StickyCta from '../../components/StickyCta.astro';
 import FounderPortrait from '../../components/FounderPortrait.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { REALISATIONS } from '../../lib/realisations';
 import { NAP } from '../../lib/nap';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-const devisHref = L('/devis/mon-toit');
+const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
 /**
  * W345 — فيشة صحفية/شراكات مُشتقة (لا رقم مُدخَل يدوياً). انظر النسخة

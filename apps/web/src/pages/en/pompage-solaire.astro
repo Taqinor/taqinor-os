@@ -26,6 +26,7 @@
  * (W348) below, which assumes reading/writing measurements.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -35,14 +36,12 @@ import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import CarteAideEtat from '../../components/CarteAideEtat.astro';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = pageLocale(Astro.url.pathname);
 // AGW400 — le tunnel lit ?mode=agricole (AGW401) : la carte Agricole arrive présélectionnée.
 const devisHref = L('/devis/mon-toit') + '?mode=agricole';
 

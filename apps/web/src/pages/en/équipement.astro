@@ -1,5 +1,6 @@
 ---
 import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS, BATTERY_WARRANTY_YEARS } from '../../lib/warranty';
+import { pageLocale } from '../../lib/pageCtx';
 /**
  * EN — Equipment (W67). Faithful translation of /équipement ; no new figure or
  * claim. Internal links use localizeNavHref so they point to the EN page when it
@@ -13,19 +14,13 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import Picture from '../../components/Picture.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { ficheBySlug } from '../../lib/fiches';
+import { panneauCanadian, panneauJinko, onduleurHuawei, onduleurDeye } from '../../lib/equipementFiches';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = pageLocale(Astro.url.pathname);
 
 // W326 — ONE comparison table : 2 panel brands x 2 inverter lines, values
 // taken as-is from fiches.ts (single source of truth) — no new figure here.
-const panneauCanadian = ficheBySlug('canadian-solar-710')!;
-const panneauJinko = ficheBySlug('jinko-710')!;
-const onduleurHuawei = ficheBySlug('onduleur-huawei-reseau')!;
-const onduleurDeye = ficheBySlug('onduleur-deye-hybride')!;
 
 const comparaisonPanneaux = [
   { critere: 'Model', a: panneauCanadian.modele, b: panneauJinko.modele },

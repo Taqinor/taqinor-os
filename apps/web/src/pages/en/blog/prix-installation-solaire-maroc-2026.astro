@@ -11,6 +11,7 @@
  * available, else the existing FR page — never a dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
+import { pageLocale, blogBreadcrumbLd, articleMeta } from '../../../lib/pageCtx';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
@@ -18,13 +19,10 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { NAP } from '../../../lib/nap';
-import { estimateReadingTime } from '../../../lib/readingTime';
-import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
 import '../../../styles/prose.css';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = pageLocale(Astro.url.pathname);
 
 const pubDate = new Date('2026-06-21');
 const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -37,10 +35,7 @@ corrugated sheet +6,000-12,000 DH, steep slope over 30 degrees +4,000-8,000 DH. 
 5-15 kWh adds 22,000-60,000 MAD and stretches payback by 1 to 3 years. VAT at 20% on turnkey
 installs, panels alone exempt without input deduction. Payback 5 to 7 years residential.
 `;
-const readingMinutes = estimateReadingTime(bodyText);
-
-const url = new URL(Astro.url.pathname, Astro.site).href;
-const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
+const { readingMinutes, url, schemaImageUrl } = articleMeta(bodyText, Astro.url.pathname, Astro.site, '/og/accueil.png');
 const blogPosting = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
@@ -54,15 +49,7 @@ const blogPosting = {
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
 };
 
-const breadcrumbLd = {
-  '@context': 'https://schema.org',
-  '@type': 'BreadcrumbList',
-  itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Home', item: new URL(L('/'), Astro.site).href },
-    { '@type': 'ListItem', position: 2, name: 'Blog', item: new URL(L('/blog'), Astro.site).href },
-    { '@type': 'ListItem', position: 3, name: 'How much does a solar installation cost in Morocco in 2026?' },
-  ],
-};
+const breadcrumbLd = blogBreadcrumbLd(L, Astro.site, 'Home', 'Blog', 'How much does a solar installation cost in Morocco in 2026?');
 
 const fourchettes = [
   { kwc: '3 kWc', prix: '28,000 – 42,000 DH' },

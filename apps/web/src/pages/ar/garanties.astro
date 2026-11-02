@@ -1,5 +1,6 @@
 ---
 import { TABLEAU_GARANTIES_AR } from '../../lib/warranty';
+import { pageLocale } from '../../lib/pageCtx';
 /**
  * AR — Our warranties (W67, RTL). Faithful Arabic translation of /garanties ;
  * EVERY figure (12/30/10/20/2 years, 87.4 %) kept EXACT in Latin digits. No
@@ -24,14 +25,11 @@ import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-const devisHref = L('/devis/mon-toit');
+const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 const waClaim = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في تفعيل ضمان تاكينور الخاص بي.');
 
 const warranties = TABLEAU_GARANTIES_AR;

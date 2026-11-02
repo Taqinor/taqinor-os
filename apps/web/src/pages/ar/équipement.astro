@@ -1,5 +1,6 @@
 ---
 import { TABLEAU_GARANTIES_AR } from '../../lib/warranty';
+import { pageLocale } from '../../lib/pageCtx';
 /**
  * AR — Equipment (W67, RTL). Faithful Arabic translation of /équipement ; no
  * new figure or claim. Internal links use localizeNavHref (EN/AR if available,
@@ -12,19 +13,13 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import Picture from '../../components/Picture.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { ficheBySlug } from '../../lib/fiches';
+import { panneauCanadian, panneauJinko, onduleurHuawei, onduleurDeye } from '../../lib/equipementFiches';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = pageLocale(Astro.url.pathname);
 
 // W326 — جدول مقارنة واحد: علامتان للألواح × سلسلتا عاكسات، القيم كما هي من
 // fiches.ts (المصدر الوحيد للحقيقة) — لا رقم جديد هنا.
-const panneauCanadian = ficheBySlug('canadian-solar-710')!;
-const panneauJinko = ficheBySlug('jinko-710')!;
-const onduleurHuawei = ficheBySlug('onduleur-huawei-reseau')!;
-const onduleurDeye = ficheBySlug('onduleur-deye-hybride')!;
 
 const comparaisonPanneaux = [
   { critere: 'الطراز', a: panneauCanadian.modele, b: panneauJinko.modele },
