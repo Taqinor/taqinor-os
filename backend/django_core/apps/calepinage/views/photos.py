@@ -198,7 +198,7 @@ class PhotosSiteMixin:
             location=OpenApiParameter.PATH,
             description="Identifiant de la photo de site (sous-ressource du calepinage).")],
         request=inline_serializer('CalepinagePhotoModifCorps',
-                                  _CHAMPS_PHOTO),
+                                  dict(_CHAMPS_PHOTO)),  # copie : la métaclasse DRF vide le dict
         responses={200: _FORME_PHOTO})
     @action(detail=True, methods=['patch', 'delete'],
             url_path=r'photos/(?P<photo_id>[^/.]+)',
