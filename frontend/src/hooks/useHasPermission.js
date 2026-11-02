@@ -106,7 +106,7 @@ export function useCanListAssignableUsers() {
   return permissions.some((c) => typeof c === 'string' && c.startsWith('crm_'))
 }
 
-// ERR-ASEC11-LECTURE-FACTURES, ADVS23 — miroir de `LectureVentes`
+// ERR-ASEC11-LECTURE-FACTURES, ADVS23 — la règle de `LectureVentes`
 // (apps/ventes/gardes_lecture.py) : lire les devis et les factures exige, pour un
 // rôle fin, AU MOINS UN code du module `ventes` (`ventes_*` + `encaisser`,
 // apps/roles/permissions_registre.py) : Commercial terrain, Admin RH, Technicien
