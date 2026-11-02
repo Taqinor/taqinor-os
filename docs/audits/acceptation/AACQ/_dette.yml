@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: AACQ
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - AACQ2
   - AACQ3
@@ -29,12 +30,17 @@ ids:
   - AACQ31
   - AACQ32
   - AACQ33
+  - AACQ34
   - AACQ35
   - AACQ36
   - AACQ37
   - AACQ38
   - AACQ39
   - AACQ40
+  - AACQ41
+  - AACQ42
+  - AACQ43
+  - AACQ44
   - AACQ60
   - AACQ61
   - AACQ67
@@ -44,3 +50,4 @@ ids:
   - AACQ72
   - AACQ73
   - AACQ75
+  - AACQ78

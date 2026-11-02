@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: AGNR
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - AGNR11
   - AGNR18
@@ -12,3 +13,4 @@ ids:
   - AGNR35
   - AGNR38
   - AGNR45
+  - AGNR48
