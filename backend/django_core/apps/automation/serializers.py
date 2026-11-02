@@ -67,6 +67,15 @@ class SeuilDecimal(DecimalSouple):
 
 class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
                                serializers.ModelSerializer):
+    def _refus_config(self, champ, message):
+        """ENF11 — à la CRÉATION la règle tient au corps seul (publiée au schéma :
+        ``REGLE_CORPS_CREATION``) -> 400. À la MODIFICATION elle lit aussi la
+        règle ENREGISTRÉE (corps partiel, ``trigger_config`` omis) : le schéma ne
+        peut pas l'exprimer -> 409, jamais un 400."""
+        if self.instance is not None:
+            raise ConflitEtat(message)
+        raise serializers.ValidationError({champ: message})
+
     # ERR-ENF11-FUZZ-AUTOMATION — texte et booléens STRICTS (nom sans caractère
     # nul publié ; ``enabled: 0`` n'est plus lu « faux »). Le seuil décimal garde
     # son transport historique (nombre ou chaîne).
@@ -135,30 +144,25 @@ class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
         model = (config.get('model') or '').strip().lower()
         field = (config.get('field') or '').strip()
         if not model or not field:
-            raise serializers.ValidationError({
-                'trigger_config': (
-                    "Un déclencheur « changement d'état » exige un modèle et "
-                    "un champ (trigger_config['model'] / "
-                    "trigger_config['field'])."),
-            })
+            self._refus_config('trigger_config', (
+                "Un déclencheur « changement d'état » exige un modèle et "
+                "un champ (trigger_config['model'] / "
+                "trigger_config['field'])."))
         autorises = record_state_change_targets()
         if field not in autorises.get(model, set()):
             couples = ', '.join(
                 f'{m}.{f}' for m in sorted(autorises)
                 for f in sorted(autorises[m])) or 'aucun'
-            raise serializers.ValidationError({
-                'trigger_config': (
-                    f'Couple (modèle, champ) non autorisé : '
-                    f'« {model}.{field} ». Couples déclarés au registre '
-                    f'plateforme : {couples}.'),
-            })
+            self._refus_config('trigger_config', (
+                f'Couple (modèle, champ) non autorisé : '
+                f'« {model}.{field} ». Couples déclarés au registre '
+                f'plateforme : {couples}.'))
         conditions = config.get('conditions')
         if conditions:
             from core.rules import validate_condition_group
             erreurs = validate_condition_group(conditions)
             if erreurs:
-                raise serializers.ValidationError(
-                    {'trigger_config': erreurs})
+                self._refus_config('trigger_config', erreurs)
         return attrs
 
     def _valider_set_field(self, attrs):
@@ -189,11 +193,9 @@ class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
             config = {}
         field = str(config.get('field') or '').strip()
         if not field:
-            raise serializers.ValidationError({
-                'action_config': (
-                    "Une action « Mettre à jour un champ » exige "
-                    "action_config['field']."),
-            })
+            self._refus_config('action_config', (
+                "Une action « Mettre à jour un champ » exige "
+                "action_config['field']."))
         modele = str(config.get('model') or '').strip().lower()
         if modele:
             autorise = set_field_autorise(modele, field)
@@ -204,14 +206,12 @@ class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
                 f'{m}.{f}' for m in sorted(SET_FIELD_TARGETS)
                 for f in sorted(SET_FIELD_TARGETS[m])) or 'aucun'
             cible = f'{modele}.{field}' if modele else field
-            raise serializers.ValidationError({
-                'action_config': (
-                    f'Champ non assignable par une automatisation : '
-                    f'« {cible} ». Une automatisation n\'écrit jamais un champ '
-                    f'de machine à états ni un champ financier — elle doit '
-                    f'passer par le service métier. Champs déclarés : '
-                    f'{couples}.'),
-            })
+            self._refus_config('action_config', (
+                f'Champ non assignable par une automatisation : '
+                f'« {cible} ». Une automatisation n\'écrit jamais un champ '
+                f'de machine à états ni un champ financier — elle doit '
+                f'passer par le service métier. Champs déclarés : '
+                f'{couples}.'))
 
 
 class AutomationRuleVersionSerializer(SameCompanyFKSerializerMixin,
