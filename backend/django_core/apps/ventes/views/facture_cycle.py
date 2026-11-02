@@ -38,6 +38,11 @@ class FactureCycleActionsMixin:
             permission_classes=[IsResponsableOrAdmin])
     def emettre(self, request, pk=None):
         facture = self.get_object()
+        # AARG9 (D-AARG-3 = exiger_encaisser) — même garde que ``/facturer``.
+        from .facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
+        if not PeutEncaisser().has_permission(request, self):
+            return Response({'detail': MOTIF_SANS_ENCAISSER},
+                            status=status.HTTP_403_FORBIDDEN)
         if facture.statut != Facture.Statut.BROUILLON:
             return Response(
                 {'detail': 'Seule une facture brouillon peut être émise.'},

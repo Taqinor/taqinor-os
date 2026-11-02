@@ -285,6 +285,40 @@ class GestesArgentTests(TestCase):
         r = self._api(directeur).post(url, corps[0], format='json')
         self.assertNotEqual(r.status_code, 403, r.data)
 
+    def test_emettre_unitaire_et_lot_exigent_encaisser(self):
+        """AARG9 (D-AARG-3 = exiger_encaisser) — « Émettre » et le lot
+        ``emettre`` : refusés sans ``encaisser`` (Admin Ventes), brouillon
+        intact ; ``peut.emettre`` suit la même règle ; Directeur émet.
+        Mutant : retirer ``PeutEncaisser`` d'``emettre`` ⇒ échec."""
+        from apps.ventes.models import Facture
+        from apps.ventes.vente_facturation import peut_encaisser
+        motif = "Émettre ou encaisser une facture exige le droit d'encaissement."
+        directeur, admin_ventes = (self.users['Directeur'],
+                                   self.users['Admin Ventes'])
+        brouillon = self._facture(directeur)
+        Facture.objects.filter(pk=brouillon.pk).update(
+            statut=Facture.Statut.BROUILLON, reference=f'BROUILLON-{_nxt()}')
+        api = self._api(admin_ventes)
+        r = api.post(f'/api/django/ventes/factures/{brouillon.id}/emettre/')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data['detail'], motif)
+        r = api.post('/api/django/ventes/factures/bulk/',
+                     {'action': 'emettre', 'ids': [brouillon.id]},
+                     format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        resultat = r.data.get(brouillon.id) or r.data.get(str(brouillon.id))
+        self.assertEqual(resultat, {'ok': False, 'detail': motif})
+        relue = Facture.objects.get(pk=brouillon.pk)
+        self.assertEqual(relue.statut, Facture.Statut.BROUILLON)
+        self.assertTrue(relue.reference.startswith('BROUILLON-'))
+        self.assertFalse(peut_encaisser(admin_ventes))
+        self.assertTrue(peut_encaisser(directeur))
+        r = self._api(directeur).post(
+            f'/api/django/ventes/factures/{brouillon.id}/emettre/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Facture.objects.get(pk=brouillon.pk).statut,
+                         Facture.Statut.EMISE)
+
     def test_get_permissions_respecte_action(self):
         from apps.ventes.views.facture import FactureViewSet
         from apps.ventes.views.facture_gardes import PeutEncaisser
