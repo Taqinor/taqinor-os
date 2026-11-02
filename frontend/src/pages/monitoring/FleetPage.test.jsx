@@ -81,4 +81,32 @@ describe('FleetPage (WR6 — vue parc)', () => {
     await userEvent.click(buttons[0])
     expect(navigateMock).toHaveBeenCalledWith('/production/co2?installation=11')
   })
+
+  it('ASAV116 — un système sans attendu affiche « sans référence »', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    monitoringApi.getFleet.mockResolvedValueOnce({
+      data: {
+        window_days: 365,
+        systems_active: 2,
+        total_kwc: '17.10',
+        total_production_kwh: '21500.00',
+        fleet_pr_pct: '95.20',
+        open_alerts: 0,
+        systems: [
+          { installation: 11, reference: 'INST-2026-001', puissance_kwc: '9.90', production_kwh: '13200.00', pr_pct: '95.20' },
+          { installation: 13, reference: 'INST-2026-003', puissance_kwc: '7.20', production_kwh: '8300.00', pr_pct: null, sans_reference: true },
+        ],
+      },
+    })
+    renderPage(<FleetPage />)
+    await screen.findByText('Systèmes actifs')
+
+    // Mode tableau : la ligne du système sans attendu lit la clé servie.
+    expect((await screen.findAllByText('sans référence')).length).toBeGreaterThan(0)
+
+    // Mode grille : le badge de la carte aussi.
+    await userEvent.click(screen.getByRole('radio', { name: 'Cartes' }))
+    expect((await screen.findAllByText('sans référence')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/95,2/).length).toBeGreaterThan(0)
+  })
 })
