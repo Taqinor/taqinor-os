@@ -30,6 +30,7 @@ SOURCE_UNIQUE = "backend/django_core/apps/crm/controle_suivi.py"
 
 CHAMPS = {"due_date", "due_at"}
 KEYWORDS = {"due_date__lt", "due_at__lt"}
+CHAMPS_COMPARES = CHAMPS | {"relance_date"}
 MARQUEUR = "RelanceEtape"
 
 #: Exceptions : ``fichier::fonction`` -> raison propre (jamais un n° de ligne).
@@ -66,7 +67,16 @@ def _est_test(path: Path) -> bool:
 
 
 def _champ(node) -> bool:
-    return isinstance(node, ast.Attribute) and node.attr in CHAMPS
+    """``x.due_date`` / ``x.relance_date`` ou ``x['due_date']`` (clé constante, ALEA60)."""
+    if isinstance(node, ast.Attribute):
+        return node.attr in CHAMPS_COMPARES
+    return (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
+            and node.slice.value in CHAMPS_COMPARES)
+
+
+def _via_seuil(node) -> bool:
+    """Terme issu de la règle unique : ``seuil`` ou un appel ``seuil_retard``."""
+    return ast.unparse(node) == "seuil" or "seuil_retard" in ast.unparse(node)
 
 
 def analyser_source(source: str):
@@ -87,8 +97,8 @@ def analyser_source(source: str):
         elif isinstance(node, ast.Compare):
             termes = [node.left] + list(node.comparators)
             for i, op in enumerate(node.ops):
-                if isinstance(op, ast.Lt) and (_champ(termes[i])
-                                               or _champ(termes[i + 1])):
+                if (isinstance(op, ast.Lt) and (_champ(termes[i]) or _champ(termes[i + 1]))
+                        and not (_via_seuil(termes[i]) or _via_seuil(termes[i + 1]))):
                     out.append((node.lineno, ".".join(pile), "due_* <"))
                     break
         for enfant in ast.iter_child_nodes(node):
