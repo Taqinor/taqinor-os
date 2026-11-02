@@ -1,0 +1,33 @@
+{
+  "sha": "94ca76a516bc6bf6c356e55f42305680daf5783f",
+  "date": "2026-11-01",
+  "groupe": "ACAL",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACAL351"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "S-A.premier-enregistrer-flottants",
+      "taches": [
+        "ACAL351"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-rejeu.txt § S-A.premier-enregistrer-flottants ; docs/audits/acceptation/ACAL/traces/2026-11-01/ACAL351-S-A-premier-enregistrer.jpg — A2 : exemple du schéma semé par l API Python (flottants 15.0), Enregistrer SANS geste ⇒ « Conception enregistrée — version 191 », versions 1 → 2, layout_hash 6bd53ad2 → afef9b47 ; diff de valeurs vide, seuls 42 nombres 15.0 → 15 : l empreinte serveur distingue 15.0 de 15"
+    }
+  ]
+}
