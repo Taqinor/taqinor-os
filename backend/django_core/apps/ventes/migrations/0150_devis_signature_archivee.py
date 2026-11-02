@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('authentication', '0001_initial'),
-        ('ventes', '0148_regles_calcul_niveau_9'),
+        ('ventes', '0149_regles_calcul_niveau_10'),
     ]
 
     operations = [
