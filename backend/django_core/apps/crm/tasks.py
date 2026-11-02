@@ -172,7 +172,9 @@ def bilan_hebdo_relances_task():
 #: ALEA1 — plafond de dormants examinés par société et par passage (la touche
 #: reste UNE par an et par dormant ; ce plafond borne seulement le coût d'un
 #: passage, le reste est pris aux passages suivants de la saison).
-REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE = 200
+#: CADV91 (D-CADV-8) — 25 : une équipe à ≈ 124 touches par semaine ne traite pas
+#: 200 messages manuels par jour. Source unique (les deux défauts l'importent).
+REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE = 25
 
 
 @shared_task(name='crm.poser_reveils_saisonniers')

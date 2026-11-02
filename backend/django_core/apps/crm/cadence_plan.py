@@ -40,6 +40,7 @@ from .cadence_reperes import (
 from .fiche_funnel import ParcRefuse, _rang_funnel, parquer_lead, poser_tag_lead
 from .leads_doublons import find_duplicates_by_contact
 from .models import Lead, LeadActivity, RelanceEtape
+from .tasks import REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -1646,7 +1647,7 @@ def _poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
 
 
 def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
-                              limite=200):
+                              limite=REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE):
     """CAD74 — passe la fenêtre juin-septembre sur les dormants d'une société."""
     from .cadence_reveil_saison import poser_reveils_saisonniers as _tous
     return _tous(company, user, maintenant=maintenant, limite=limite)

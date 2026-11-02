@@ -27,6 +27,8 @@ rentrée scolaire n'est PAS une fenêtre de réveil (CAD76).
 """
 import logging
 
+from .tasks import REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE
+
 logger = logging.getLogger(__name__)
 
 #: Clé du texte validé, déjà présent au catalogue des messages.
@@ -188,7 +190,7 @@ def _poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
 
 
 def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
-                              limite=200):
+                              limite=REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE):
     """Passe la fenêtre sur les dormants d'une société : renvoie les touches
     posées. Best-effort lead par lead — un dormant en échec n'arrête pas les
     autres. Destinée au crochet planifié (qui n'existe pas encore : voir le
