@@ -341,6 +341,33 @@ class TestAvoirs(TestCase):
         r = api.post(url_acompte, {'lignes': [libre]}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
 
+    def test_ligne_sans_taux_controlee_au_taux_d_entete(self):
+        # AARG38 — lignes à 10 %, en-tête à 20 % : une ligne sans taux créditerait
+        # à 20 %, un taux que la facture n'a jamais porté ; le taux 10 passe.
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-TEST-0005',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(
+            facture=facture, produit=self.panneau, designation='Panneau',
+            quantite=Decimal('2'), prix_unitaire=Decimal('1000'),
+            taux_tva=Decimal('10.00'))
+        api = self._api(self.admin)
+        url = f'/api/django/ventes/factures/{facture.id}/creer-avoir/'
+        ligne = {'produit': self.panneau.id, 'designation': 'Panneau',
+                 'quantite': '1', 'prix_unitaire': '1000'}
+        r = api.post(url, {'lignes': [ligne]}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['detail'],
+                         'Ligne 1 : taux de TVA absent de la facture.')
+        self.assertEqual(Avoir.objects.filter(facture=facture).count(), 0)
+        r = api.post(url, {'lignes': [dict(ligne, taux_tva='10')]}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        # En-tête égal au taux des lignes : l'omission reste permise.
+        Facture.objects.filter(pk=facture.pk).update(taux_tva=Decimal('10.00'))
+        r = api.post(url, {'lignes': [ligne]}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_annuler_regenere_le_pdf_annule(self):
         # AARG37 — le PDF servi après annulation imprime « Annulé », et une
         # annulation rejouée ne refait ni rendu ni événement.

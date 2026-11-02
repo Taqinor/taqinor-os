@@ -96,7 +96,8 @@ def _bornes_lignes_facturees(facture):
     if not taux:  # Facture sans ligne (acompte, tranche) : ses paniers figés.
         taux = {Decimal(str(b['taux'])) for b in facture.ventilation_tva or []
                 } or {Decimal(str(facture.taux_tva))}
-    return {'taux': taux, 'restant': restant, 'pu_net': pu_net}
+    return {'taux': taux, 'restant': restant, 'pu_net': pu_net,
+            'taux_entete': Decimal(str(facture.taux_tva))}
 
 
 def _pu_net(prix_unitaire, remise):
@@ -105,8 +106,12 @@ def _pu_net(prix_unitaire, remise):
 
 def _refus_borne(i, bornes, produit_id, montants):
     """AARG38 — le motif (400) d'une ligne hors des lignes facturées, ou None.
-    Sans ligne produit sur la facture : le taux seul, le plafond borne le reste."""
+    Sans ligne produit sur la facture : le taux seul, le plafond borne le reste.
+    Une ligne sans taux crédite au taux d'en-tête : contrôlé dès que la facture
+    a des lignes (sans ligne, ses paniers figés peuvent ne pas le porter)."""
     qte, pu, remise, taux_tva = montants
+    if taux_tva is None and bornes['restant']:
+        taux_tva = bornes['taux_entete']
     if taux_tva is not None and taux_tva not in bornes['taux']:
         return f'Ligne {i} : taux de TVA absent de la facture.'
     if not bornes['restant']:
