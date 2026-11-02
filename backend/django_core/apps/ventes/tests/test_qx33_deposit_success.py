@@ -84,6 +84,29 @@ class Qx33DepositSuccessTests(TestCase):
         self.assertIsInstance(pay['pourcentage'], str)
         self.assertIsInstance(contrat['reponse_200']['paiement']['pourcentage'], str)
 
+    def test_pompage_acompte_apres_accord_fda(self):
+        # ADVS38 (D-AGQ-12=a) — le pompage dit la condition FDA ; le reste du
+        # bloc et les autres marchés : inchangés.
+        from apps.ventes.public.paiement_views import _deposit_success_payload
+        from apps.ventes.public.signature_views import empreinte_contenu
+        from apps.ventes.quote_engine.i18n_labels import libelle
+        condition = libelle('agr_acompte_apres_fda')
+        residentiel = _deposit_success_payload(self.devis, self.link.token)
+        self.assertNotIn(condition, residentiel['message'])
+        Devis.objects.filter(pk=self.devis.pk).update(mode_installation='agricole')
+        self.devis.refresh_from_db()
+        resp = self.api.post(
+            f'/api/django/public/proposal/{self.link.token}/accept/',
+            {'nom': 'Client', 'consent_esign': True,
+             'empreinte_contenu': empreinte_contenu(self.devis)},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        paiement = resp.data['paiement']
+        self.assertIn(condition, paiement['message'])
+        self.assertEqual(paiement['acompte_ttc'], residentiel['acompte_ttc'])
+        self.assertEqual(paiement['rib'], residentiel['rib'])
+        self.assertEqual(paiement['declare_url'], residentiel['declare_url'])
+
     @override_settings(PAYMENT_PROVIDER='hosted')
     def test_pas_de_card_payment_url(self):
         """ADEV53 (C-ADEV-023) — même avec un PSP déclaré, aucune clé

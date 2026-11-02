@@ -650,7 +650,23 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
         except EntrepriseInvalide as exc:
             return Response({'detail': exc.detail, 'champ': exc.champ},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ADVS21 — un ICE différent de celui du client : même refus qu'au lien.
+        from apps.ventes.domain.identite_entreprise import (
+            IceDivergent, _ice_du_client, divergence_ice,
+        )
+        if entreprise and divergence_ice(devis, entreprise['ice']):
+            divergent = IceDivergent(_ice_du_client(devis), entreprise['ice'])
+            return Response({'detail': divergent.detail, 'code': 'ice_divergent'},
+                            status=status.HTTP_409_CONFLICT)
 
+        # ADVS20 — ce que le client signe = ce qu'il a lu : même garde que le
+        # lien public, re-comparée sous le verrou d'``accept_devis``.
+        from apps.ventes.public.signature_views import (
+            _empreinte_recue, _refus_empreinte, signable_au_jeton,
+        )
+        refus = _refus_empreinte(request, devis)
+        if refus is not None:
+            return refus
         try:
             accept_devis(
                 devis=devis,
@@ -661,10 +677,13 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                 user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
                 consentement=True,
                 entreprise=entreprise,
+                empreinte_attendue=(_empreinte_recue(request)
+                                    if signable_au_jeton(devis) else None),
             )
         except AcceptError as exc:
+            perimee = exc.code == 'empreinte_perimee'
             return Response(
-                {'detail': exc.message},
+                {'detail': exc.message, **({'code': exc.code} if perimee else {})},
                 status=(status.HTTP_409_CONFLICT if exc.conflict
                         else status.HTTP_400_BAD_REQUEST))
 

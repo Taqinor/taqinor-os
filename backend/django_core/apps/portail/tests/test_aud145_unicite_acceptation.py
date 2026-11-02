@@ -31,6 +31,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
+from apps.portail.tests import corps_acceptation
 from apps.portail.models import AcceptationDevisPortail
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
@@ -86,8 +87,8 @@ class UniciteAcceptationPortailTests(TestCase):
     def test_double_clic_ne_produit_quune_seule_preuve(self):
         """Chemin nominal (séquentiel) : déjà vert avant AUD145, conservé comme
         garde de non-régression du rattrapage ``IntegrityError``."""
-        charge = {'nom': 'Client Alpha', 'consent_esign': True,
-                  'accepte_conditions': True}
+        charge = corps_acceptation(self.devis, nom='Client Alpha',
+                                   consent_esign=True, accepte_conditions=True)
         premier = self.api.post(self.url, charge, format='json')
         second = self.api.post(self.url, charge, format='json')
 
@@ -116,8 +117,8 @@ class UniciteAcceptationPortailTests(TestCase):
             1)
 
     def test_lhorodatage_de_la_premiere_signature_est_conserve(self):
-        charge = {'nom': 'Client Alpha', 'consent_esign': True,
-                  'accepte_conditions': True}
+        charge = corps_acceptation(self.devis, nom='Client Alpha',
+                                   consent_esign=True, accepte_conditions=True)
         self.api.post(self.url, charge, format='json')
         preuve = AcceptationDevisPortail.objects.get(
             company=self.company, devis=self.devis)

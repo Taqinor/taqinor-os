@@ -22,6 +22,8 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
+from apps.crm.models import Client
+from apps.portail.tests import corps_acceptation
 from apps.ventes.models import Devis, DevisSignature
 from authentication.models import CustomUser
 
@@ -71,7 +73,7 @@ class AcceptationEntreprisePortail(TestCase):
     def _post(self, devis, corps, user=None):
         self.api.force_authenticate(user=user or self.user_a)
         # APDF35 — la case « conditions générales » est cochée (exigée).
-        corps = {'accepte_conditions': True, **corps}
+        corps = corps_acceptation(devis, accepte_conditions=True, **corps)
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
             return self.api.post(
                 f'/api/django/portail/mes-devis/{devis.id}/accepter/',
@@ -130,6 +132,30 @@ class AcceptationEntreprisePortail(TestCase):
         self.assertEqual(sig.signataire_qualite,
                          ENTREPRISE['signataire_qualite'])
         self.assertEqual(sig.ice_declare, ENTREPRISE['ice'])
+
+    # ── ADVS21 : ICE différent de celui du client ─────────────────────────
+    def _client_a_ice(self, ice):
+        Client.objects.filter(pk=self.client_a.pk).update(ice=ice)
+
+    def test_ice_divergent_409_rien_signe(self):
+        self._client_a_ice('111111111111111')
+        devis = self._devis('industriel')
+        res = self._post(devis, self._corps(ice='222222222222222'))
+        self.assertEqual(res.status_code, 409, res.data)
+        self.assertEqual(res.data['code'], 'ice_divergent')
+        self.assertIn('222222222222222', res.data['detail'])
+        self.assertIn('111111111111111', res.data['detail'])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertFalse(DevisSignature.objects.filter(devis=devis).exists())
+        self.client_a.refresh_from_db()
+        self.assertEqual(self.client_a.ice, '111111111111111')
+
+    def test_meme_ice_forme_normalisee_200(self):
+        self._client_a_ice('111-111-111-111-111')
+        res = self._post(self._devis('industriel'),
+                         self._corps(ice='111111111111111'))
+        self.assertEqual(res.status_code, 200, res.data)
 
     def test_double_envoi_idempotent(self):
         devis = self._devis('commercial')

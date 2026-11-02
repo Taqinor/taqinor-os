@@ -80,6 +80,25 @@ def _ecrire_conception(devis, payload, request):
     return Response(resultat)
 
 
+def _creer_sous_garde_kwh(**champs):
+    """ADVS26 — la création et la garde d'``/atomic`` sous UNE transaction :
+    un kWh déclaré que les factures contredisent répond 409 ``{detail, code}``
+    et ne laisse aucun brouillon (règle fondateur du 30/09/2026)."""
+    from django.db import transaction
+    from rest_framework.exceptions import ValidationError
+    from core.conflit_etat import ConflitEtat
+    from ..services import build_devis_from_layout
+    from .devis_edition import _garde_kwh_declare
+
+    with transaction.atomic():
+        devis = build_devis_from_layout(**champs)
+        try:
+            _garde_kwh_declare(devis)
+        except ValidationError as refus:
+            raise ConflitEtat(refus.detail)
+    return devis
+
+
 class DevisCalepinageActionsMixin:
     """SPL140 — actions calepinage / conception de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -97,8 +116,8 @@ class DevisCalepinageActionsMixin:
         Corps : ``{layout, lead, client, taux_tva?, remise_globale?}``. Le
         ``layout`` est le JSON sérialisé tel que stocké par l'action ``layout``
         (AreaRecord[] + result + renderPlan). La société est TOUJOURS celle du
-        user (jamais lue du corps) ; lead et client sont résolus bornés à cette
-        société (404/400 si une autre société). Au moins un lead OU un client est
+        user (jamais lue du corps) ; le lead est borné à la portée du user, le
+        client à la société (404/400 sinon). Au moins un lead OU un client est
         requis. Aucun statut n'est touché : le service renvoie un brouillon
         (préservation des statuts, règle #4) et la numérotation anti-collision
         est gérée par le service.
@@ -111,7 +130,7 @@ class DevisCalepinageActionsMixin:
         """
         from decimal import Decimal
         from ..services import (
-            AutoDevisError, build_devis_from_layout, layout_hash,
+            AutoDevisError, layout_hash,
             poser_layout_hash, validate_composition_for_layout)
         from ..selectors import devis_brouillon_pour_layout
         from ..models import ShareLink
@@ -154,8 +173,11 @@ class DevisCalepinageActionsMixin:
         lead_id = entier_ou_400(request.data.get('lead'), 'lead')
         client_id = entier_ou_400(request.data.get('client'), 'client')
         if lead_id:
-            from apps.crm.selectors import get_company_lead
-            lead_obj = get_company_lead(company, lead_id)
+            # ADVS44 — portée du rôle : le lead d'un collègue n'atteint jamais
+            # la dédup (ni son brouillon ni son jeton).
+            from apps.crm.selectors import leads_visibles
+            lead_obj = leads_visibles(request.user, company).filter(
+                pk=lead_id).first()
             if lead_obj is None:
                 return Response({'detail': 'Lead inconnu.'},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -260,7 +282,7 @@ class DevisCalepinageActionsMixin:
         # refusé de faire remonte dans la réponse (contrat devis_from_layout).
         journal = {}
         try:
-            devis = build_devis_from_layout(
+            devis = _creer_sous_garde_kwh(
                 layout=layout, user=request.user, company=company,
                 lead=lead_obj, client=client_obj, journal=journal,
                 **_composition)

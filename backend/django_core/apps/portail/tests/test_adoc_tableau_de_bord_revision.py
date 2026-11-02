@@ -91,3 +91,34 @@ class TableauDeBordRevisionTests(TestCase):
         self.assertEqual(res.status_code, 404, res.content)
         self.d1.refresh_from_db()
         self.assertEqual(self.d1.statut, Devis.Statut.ENVOYE)
+
+    def _ids_listes(self):
+        reponse = self.api.get(LISTE)
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        return {d['id']: d for d in reponse.json()['results']}
+
+    def test_v1_acceptee_listee_pendant_la_revision(self):
+        # ADVS37 (D-ADEV-1=a) — la vente signée reste visible jusqu'à la V2 signée.
+        Devis.objects.filter(pk=self.d1.pk).update(statut=Devis.Statut.ACCEPTE)
+        self.d1.refresh_from_db()
+        v2 = reviser_devis(self.d1, user=self.commercial)
+        self.d1.refresh_from_db()
+        self.assertFalse(self.d1.is_active)
+
+        lignes = self._ids_listes()
+        self.assertEqual(set(lignes), {self.d1.pk})
+        self.assertIs(lignes[self.d1.pk]['accepte'], True)
+        self.assertIs(lignes[self.d1.pk]['acceptable'], False)
+        self.assertIsNone(lignes[self.d1.pk]['empreinte_contenu'])
+        # La V1 reste non acceptable au portail : aucune seconde signature.
+        res = self.api.post(
+            f'{LISTE}{self.d1.pk}/accepter/',
+            {'nom': 'Client', 'consent_esign': True,
+             'accepte_conditions': True}, format='json')
+        self.assertEqual(res.status_code, 404, res.content)
+
+        Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ENVOYE)
+        self.assertEqual(set(self._ids_listes()), {self.d1.pk, v2.pk})
+
+        Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ACCEPTE)
+        self.assertEqual(set(self._ids_listes()), {v2.pk})

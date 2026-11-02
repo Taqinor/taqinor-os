@@ -25,12 +25,12 @@ from ..serializers import (
     DevisSerializer, DevisActivitySerializer, DevisPresetSerializer,
 )
 from authentication.permissions import (
-    IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
     IsAdminOrResponsableTier,
     HasPermissionOrLegacy,
 )
+from ..gardes_lecture import LectureVentes
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
 
 
@@ -909,7 +909,7 @@ class DevisCycleActionsMixin:
 
     @extend_schema(responses=DevisActivitySerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='historique',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureVentes])  # ADVS23
     def historique(self, request, pk=None):
         """Chatter du devis (notes + acceptation)."""
         devis = self.get_object()

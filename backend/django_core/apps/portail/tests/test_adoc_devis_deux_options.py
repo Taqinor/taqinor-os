@@ -17,6 +17,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
+from apps.portail.tests import corps_acceptation
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
     PORTAIL_CLIENT_PERMISSIONS,
@@ -94,8 +95,8 @@ class DevisDeuxOptionsPortailTests(TestCase):
     def _accepter(self, **extra):
         return self.api.post(
             f'{LISTE}{self.deux.id}/accepter/',
-            {'nom': 'Karim Alaoui', 'consent_esign': True,
-             'accepte_conditions': True, **extra},
+            corps_acceptation(self.deux, nom='Karim Alaoui', consent_esign=True,
+                              accepte_conditions=True, **extra),
             format='json')
 
     def test_liste_conforme_au_contrat_deux_options(self):
