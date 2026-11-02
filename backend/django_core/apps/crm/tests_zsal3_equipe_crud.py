@@ -344,11 +344,11 @@ class TestDispatchLeads(TestCase):
                      format='json')
         self.assertEqual(len(self.api.get(url).json()['permanences']), 2)
         self.api.put(url, {'permanences': lignes[:1]}, format='json')
-        # Commercial hors équipe : 400.
+        # Commercial hors équipe : 409 (corps conforme, état refusé).
         r = self.api.put(url, {'permanences': [{
             'date': '2026-11-16', 'demi_journee': 'matin',
             'commercial': self.autre_chef.pk}]}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
 
         def a(jour, h):
             return datetime.datetime(2026, 11, jour, h, tzinfo=horaires.CASABLANCA)

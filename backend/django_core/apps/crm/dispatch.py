@@ -341,8 +341,9 @@ def permanences_equipe(user, equipe_id):
 
 def definir_permanences(user, equipe_id, lignes):
     """Pose / remplace / retire (``commercial`` nul) les permanences données —
-    une ligne par (équipe, date, demi-journée). 403 sans droit de réglage ; 400
-    si le commercial n'est pas un membre actif de l'équipe."""
+    une ligne par (équipe, date, demi-journée). 403 sans droit de réglage ; 409
+    si le commercial n'est pas un membre actif de l'équipe (corps conforme,
+    état refusé — même règle que l'attribution)."""
     equipe = (EquipeCommerciale.objects.select_related('departement').filter(
         pk=equipe_id, company_id=user.company_id).first()
         if user.company_id else None)
@@ -364,8 +365,7 @@ def definir_permanences(user, equipe_id, lignes):
                 continue
             membre = next((m for m in choix if m.pk == ligne['commercial']), None)
             if membre is None:
-                raise ValidationError(
-                    {'commercial': "Choisissez un membre actif de l'équipe."})
+                raise ConflitEtat("Ce commercial n'est pas un membre actif de l'équipe.")
             PermanenceEquipe.objects.update_or_create(
                 equipe=equipe, company_id=equipe.company_id, date=ligne['date'],
                 demi_journee=ligne['demi_journee'],
