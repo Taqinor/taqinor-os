@@ -291,7 +291,9 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         avant = {champ: getattr(facture, champ) for champ in argent_touche}
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern created_by.
-        serializer.save(updated_by=self.request.user)
+        # AARG26 — édité à la main : le brouillon n'est plus « automatique ».
+        serializer.save(updated_by=self.request.user, **(
+            {'acompte_auto_le': None} if facture.acompte_auto_le else {}))
         if argent_touche:
             from ..models import FactureActivity
             instance = serializer.instance
