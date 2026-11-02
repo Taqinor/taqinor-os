@@ -1094,3 +1094,27 @@ class CommandeReparationTests(_PlacementBase):
         l2.refresh_from_db()
         self.assertEqual((l1.stage, l2.stage),
                          (stages.COLD, stages.FOLLOW_UP))
+
+    def test_normaliser_telephones_ramene_a_la_forme_canonique(self):
+        """CADV4 — « 06 12-34 56 78 » → 212612345678 ; l'étranger et le déjà
+        canonique ne bougent pas ; sans --apply, rien n'est écrit."""
+        l1, l2, l3, l4 = (self._lead(nom) for nom in ('L1', 'L2', 'L3', 'L4'))
+        # `_lead` impose un téléphone : on pose les valeurs brutes par UPDATE.
+        Lead.objects.filter(pk=l1.pk).update(telephone='06 12-34 56 78')
+        Lead.objects.filter(pk=l2.pk).update(telephone='+33612345678')
+        Lead.objects.filter(pk=l3.pk).update(telephone='212612345678')
+        Lead.objects.filter(pk=l4.pk).update(telephone='',
+                                             whatsapp='0612345678')
+        texte = self._appeler('normaliser_telephones_leads')
+        self.assertIn(f'#{l1.pk} telephone', texte)
+        l1.refresh_from_db()
+        self.assertEqual(l1.telephone, '06 12-34 56 78', 'dry-run')
+        self._appeler('normaliser_telephones_leads', '--apply')
+        for lead in (l1, l2, l3, l4):
+            lead.refresh_from_db()
+        self.assertEqual(l1.telephone, '212612345678')
+        self.assertEqual(l4.whatsapp, '212612345678')
+        self.assertEqual(l2.telephone, '+33612345678')
+        self.assertEqual(l3.telephone, '212612345678')
+        rejeu = self._appeler('normaliser_telephones_leads', '--apply')
+        self.assertIn('0 lead(s) à normaliser', rejeu)
