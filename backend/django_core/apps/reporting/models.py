@@ -851,7 +851,10 @@ class ProblemeClient(TenantModel):
     ecran = models.CharField(max_length=255, blank=True, default='')
     #: Code HTTP reçu ; NUL quand il n'y a eu AUCUNE réponse (c'est tout le
     #: sujet de l'incident Meryem : nginx 499, aucun code vu du navigateur).
-    statut_http = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: PAS `statut_http` : `check_money_monodevise` (YDATA22) traite tout nom
+    #: contenant `_ht` comme un MONTANT, et ce journal technique serait entré
+    #: dans `docs/currency-audit.md` comme « modèle argent ».
+    statut_reponse = models.PositiveSmallIntegerField(null=True, blank=True)
     #: Code court et stable : 'ECONNABORTED', 'ERR_NETWORK', 'TypeError'…
     code = models.CharField(max_length=64, blank=True, default='')
     #: Message tronqué (jamais un corps de réponse, jamais une donnée client).
@@ -871,13 +874,13 @@ class ProblemeClient(TenantModel):
                 fields=['company', 'created_at'],
                 name='rpt_probcli_co_date_idx'),
             models.Index(
-                fields=['company', 'route', 'statut_http'],
+                fields=['company', 'route', 'statut_reponse'],
                 name='rpt_probcli_route_idx'),
         ]
 
     def __str__(self):
         cible = self.route or self.ecran or '?'
-        return f'{self.genre} {self.statut_http or "-"} [{cible}]'
+        return f'{self.genre} {self.statut_reponse or "-"} [{cible}]'
 
 
 class RapportDefinition(TenantModel):

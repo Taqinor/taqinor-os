@@ -168,4 +168,4 @@ sans aucune dépendance externe : la liste des problèmes vécus, par route, par
 | Points de câblage | `frontend/src/api/axios.js`, `frontend/src/lib/globalErrors.js` |
 | Journal d'accès chronométré | `backend/nginx/nginx.conf` (`log_format taqinor`) |
 | Rotation des journaux conteneurs | `docker-compose.prod.yml` (`x-journaux`) |
-| Tests | `apps/reporting/tests_yjpb1_journal_problemes.py`, `frontend/src/lib/journalProblemes.test.mjs` |
+| Tests | `apps/reporting/tests_vitals.py` (seconde moitié) et `frontend/src/lib/monitoring.test.mjs` (seconde moitié) — ajoutés aux modules de test EXISTANTS de la même surface, `check_test_placement` (AMET84) refusant un fichier de test neuf par tâche |

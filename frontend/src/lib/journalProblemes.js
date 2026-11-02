@@ -104,7 +104,7 @@ export function construireCorps({ genre, methode, route, statut, code, message }
     methode: String(methode || '').slice(0, 8).toUpperCase(),
     route: normaliserRoute(route),
     ecran: normaliserRoute(globalThis.location?.pathname || ''),
-    statut_http: typeof statut === 'number' && Number.isFinite(statut) ? statut : null,
+    statut_reponse: typeof statut === 'number' && Number.isFinite(statut) ? statut : null,
     code: String(code || '').slice(0, 64),
     message: String(message || '').slice(0, 255),
   }
@@ -112,7 +112,7 @@ export function construireCorps({ genre, methode, route, statut, code, message }
 
 /** Signature de dédoublonnage : le problème, pas son horodatage. */
 function signature(corps) {
-  return [corps.genre, corps.methode, corps.route, corps.statut_http, corps.code].join('|')
+  return [corps.genre, corps.methode, corps.route, corps.statut_reponse, corps.code].join('|')
 }
 
 /**

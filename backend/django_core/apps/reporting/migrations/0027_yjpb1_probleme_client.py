@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
                 ('methode', models.CharField(blank=True, default='', max_length=8)),
                 ('route', models.CharField(blank=True, default='', max_length=255)),
                 ('ecran', models.CharField(blank=True, default='', max_length=255)),
-                ('statut_http', models.PositiveSmallIntegerField(blank=True, null=True)),
+                ('statut_reponse', models.PositiveSmallIntegerField(blank=True, null=True)),
                 ('code', models.CharField(blank=True, default='', max_length=64)),
                 ('message', models.CharField(blank=True, default='', max_length=255)),
                 ('navigateur', models.CharField(blank=True, default='', max_length=40)),
@@ -35,7 +35,7 @@ class Migration(migrations.Migration):
                 'verbose_name': 'Problème vécu par un utilisateur',
                 'verbose_name_plural': 'Problèmes vécus par les utilisateurs',
                 'ordering': ['-created_at', '-id'],
-                'indexes': [models.Index(fields=['company', 'created_at'], name='rpt_probcli_co_date_idx'), models.Index(fields=['company', 'route', 'statut_http'], name='rpt_probcli_route_idx')],
+                'indexes': [models.Index(fields=['company', 'created_at'], name='rpt_probcli_co_date_idx'), models.Index(fields=['company', 'route', 'statut_reponse'], name='rpt_probcli_route_idx')],
             },
         ),
     ]

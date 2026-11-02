@@ -23,7 +23,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
-from core.champs_stricts import ChaineStricte, ChampsStrictsEntiersMixin
+from core.champs_stricts import (
+    ChaineStricte, ChampsStrictsEntiersMixin, EntierStrict,
+)
 from core.parseurs import PARSEURS_JSON
 from drf_spectacular.utils import extend_schema
 
@@ -96,12 +98,18 @@ class ProblemeClientSerializer(ChampsStrictsEntiersMixin,
     code = ChaineStricte(required=False, allow_blank=True)
     message = ChaineStricte(required=False, allow_blank=True)
     methode = ChaineStricte(required=False, allow_blank=True)
+    # Entier STRICT et SANS borne publiée : le champ de modèle est un
+    # `PositiveSmallIntegerField`, dont ModelSerializer tirerait
+    # `max_value=32767` — un statut aberrant répondrait alors 400 et le
+    # signalement serait PERDU. Ici il est simplement oublié par
+    # `validate_statut_reponse` (le genre porte déjà le sens).
+    statut_reponse = EntierStrict(required=False, allow_null=True)
 
     class Meta:
         model = ProblemeClient
         # company/utilisateur/navigateur : posés côté serveur dans la vue,
         # jamais lus du corps — absents des champs acceptés en écriture.
-        fields = ['genre', 'methode', 'route', 'ecran', 'statut_http', 'code',
+        fields = ['genre', 'methode', 'route', 'ecran', 'statut_reponse', 'code',
                   'message']
 
     def validate_methode(self, value):
@@ -119,7 +127,7 @@ class ProblemeClientSerializer(ChampsStrictsEntiersMixin,
     def validate_message(self, value):
         return (value or '')[:255]
 
-    def validate_statut_http(self, value):
+    def validate_statut_reponse(self, value):
         # Un statut hors plage HTTP n'est pas une raison de perdre la trace :
         # il est simplement oublié (le genre reste porteur du sens).
         return value if value is not None and 100 <= value <= 599 else None
@@ -140,10 +148,17 @@ class ProblemeClientRequeteSerializer(ProblemeClientSerializer):
 def signaler_probleme(request):
     """POST best-effort — une ligne par problème vécu. L'appelant n'attend
     jamais le corps de la réponse : un 201 minimal suffit."""
+    co = request.user.company
+    if co is None:
+        # Jamais un 500 sur l'endpoint du journal : un utilisateur sans
+        # société n'a pas de place où ranger la ligne (la FK est obligatoire,
+        # multi-tenant). On le DIT, au lieu de planter — l'appelant ignore de
+        # toute façon le corps de la réponse (miroir de `vitals_p75`).
+        return Response({'detail': 'Accès refusé.'}, status=403)
     serializer = ProblemeClientSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     serializer.save(
-        company=request.user.company,
+        company=co,
         utilisateur=request.user,
         navigateur=famille_navigateur(request.META.get('HTTP_USER_AGENT')))
     return Response(status=201)
@@ -170,7 +185,7 @@ def resume_problemes(jours=7, company=None, maintenant=None):
     if company is not None:
         qs = qs.filter(company=company)
     return list(
-        qs.values('genre', 'methode', 'route', 'statut_http')
+        qs.values('genre', 'methode', 'route', 'statut_reponse')
           .annotate(occurrences=Count('id'),
                     utilisateurs=Count('utilisateur', distinct=True),
                     dernier=Max('created_at'))

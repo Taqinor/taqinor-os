@@ -60,7 +60,7 @@ class Command(BaseCommand):
             f"{'occ':>5}  {'pers':>4}  {'statut':>6}  genre     "
             f"dernier cas       route")
         for ligne in lignes:
-            statut = ligne['statut_http']
+            statut = ligne['statut_reponse']
             self.stdout.write(
                 f"{ligne['occurrences']:>5}  {ligne['utilisateurs']:>4}  "
                 f"{(statut if statut is not None else '-'):>6}  "
