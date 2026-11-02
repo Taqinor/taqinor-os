@@ -214,7 +214,7 @@ class EtatVenteVNT23Tests(TestCase):
         return json.loads(chemin.read_text(encoding='utf-8'))
 
     def test_desacceptation_garde_l_acompte_saisi_a_la_main(self):
-        """AARG26 (C-AARG-020) — brouillon automatique porté à la main à 20 000 :
+        """AARG26 (C-AARG-020) — brouillon automatique porté à la main à 19 000 :
         la dés-acceptation le nomme (refus), il survit, le devis reste accepté.
         Une édition par l'écran facture retire aussi la marque."""
         from apps.ventes.domain.cycle_vie import (
@@ -227,7 +227,7 @@ class EtatVenteVNT23Tests(TestCase):
         self.assertIsNotNone(auto.acompte_auto_le)
         facture, _p = facturer_vente(
             devis, nature='acompte', user=self.user,
-            montant_ttc=Decimal('20000'), emettre=False)
+            montant_ttc=Decimal('19000'), emettre=False)
         self.assertEqual(facture.pk, auto.pk)
         devis.refresh_from_db()
         with self.assertRaises(AnnulationAcceptationBloquee) as ctx:
@@ -235,7 +235,7 @@ class EtatVenteVNT23Tests(TestCase):
         self.assertIn(f'{facture.reference} (brouillon)', str(ctx.exception))
         facture = Facture.objects.get(pk=facture.pk)
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
-        self.assertEqual(Decimal(str(facture.total_ttc)), Decimal('20000.00'))
+        self.assertEqual(Decimal(str(facture.total_ttc)), Decimal('19000.00'))
         self.assertEqual(Devis.objects.get(pk=devis.pk).statut, 'accepte')
 
         autre = acompte_a_l_acceptation(self._devis(), self.user)
