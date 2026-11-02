@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4894, operations: 7686, components: 3610}
+counts: {paths: 4894, operations: 7686, components: 3609}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -8424,7 +8424,7 @@ query_params:
   get /api/django/users/: ordering page page_size search
   get /api/django/users/avatar-image/: key
   get /api/django/uxviews/favoris/: ordering page page_size search
-  post /api/django/uxviews/favoris/{id}/reordonner/: ordering page page_size search
+  post /api/django/uxviews/favoris/{id}/reordonner/: ordering search
   get /api/django/uxviews/saved-views/: ecran ordering page page_size search
   get /api/django/uxviews/saved-views/toutes-company/: ordering search
   get /api/django/ventes/attestations-conformite/: chantier ordering page page_size search statut
@@ -9216,7 +9216,7 @@ query_params:
   get /api/v1/users/: ordering page page_size search
   get /api/v1/users/avatar-image/: key
   get /api/v1/uxviews/favoris/: ordering page page_size search
-  post /api/v1/uxviews/favoris/{id}/reordonner/: ordering page page_size search
+  post /api/v1/uxviews/favoris/{id}/reordonner/: ordering search
   get /api/v1/uxviews/saved-views/: ecran ordering page page_size search
   get /api/v1/uxviews/saved-views/toutes-company/: ordering search
   get /api/v1/ventes/attestations-conformite/: chantier ordering page page_size search statut
@@ -12543,7 +12543,6 @@ components:
 - StockHistoriqueCasier
 - StockPlanChargementAjout
 - StockPlanChargementCapacite
-- StockPlanChargementErreur
 - StockPortailCreneauReservationRequest
 - StockPortailCreneauReserve
 - StockPortailCreneauxDisponibles
