@@ -14,12 +14,15 @@ from .cadence_touche import reprendre_cadence_apres_reouverture
 from .cadence_filet import assurer_prochaine_etape_apres_succes
 from .cadence_plan import arreter_cadence, sync_relance_activity
 from .fiche_funnel import (
+    ETAT_PAR_RAISON,
+    ParcRefuse,
     SortieSigneBloquee,
     _bulk_stage_allowed,
     _corps_whatsapp_en_masse,
     _resolve_owner,
     appliquer_stage_lead,
     desaccepter_devis_du_lead,
+    parquer_lead,
 )
 from .cadence_reponses import reattribuer_lead
 from .leads_socle import MOTIF_BULK_CADENCE_ACTIVE, leads_avec_cadence_active
@@ -182,6 +185,13 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
         target_stage = params.get('stage')
         if target_stage not in stages.STAGES:
             raise ValueError("Étape cible invalide.")
+        # CADV73 (D-CADV-4) — le Froid en lot exige sa raison ; une raison à
+        # date (standby) ne s'applique pas à un lot sans date.
+        parc_raison = params.get('parc_raison')
+        if target_stage == stages.COLD and not (
+                isinstance(parc_raison, str)
+                and ETAT_PAR_RAISON.get(parc_raison) in ('nurture', 'archive')):
+            raise ValueError("Raison de mise au Froid obligatoire.")
     elif op == 'set_canal':
         target_canal = _texte(params.get('canal'))
         if not target_canal:
@@ -282,12 +292,19 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                         # ``lead_stage_changed`` (playbooks NTCRM12 +
                         # séquences compta XMKT1 partaient pour un PATCH
                         # unitaire, jamais pour un bulk).
-                        appliquer_stage_lead(lead, target_stage, user=user)
-                        activity.log_bulk_change(
-                            lead, user, 'stage', old, target_stage)
+                        if target_stage == stages.COLD:
+                            parquer_lead(lead, parc_raison, None, user)
+                        else:
+                            appliquer_stage_lead(lead, target_stage, user=user)
+                            activity.log_bulk_change(
+                                lead, user, 'stage', old, target_stage)
                 except SortieSigneBloquee as exc:
                     lead.stage = old
                     skip(lead, exc.message)
+                    continue
+                except ParcRefuse as exc:
+                    lead.refresh_from_db()
+                    skip(lead, str(exc))
                     continue
                 # QJ9 — entrée manuelle en masse dans SIGNED : pas de CAPI ici
                 # (pas de devis accepté associé ni d'attribution UTM disponible).

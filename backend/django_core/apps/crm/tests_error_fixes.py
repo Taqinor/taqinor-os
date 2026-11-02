@@ -853,11 +853,17 @@ class TestFuzzCrmCi997(TestCase):
         bulk = schema['paths']['/api/django/crm/leads/bulk/']['post'][
             'requestBody']['content']['application/json']['schema']
         branches = bulk['allOf'][1]['anyOf']
-        self.assertEqual(len(branches), 8)
-        etape = [b for b in branches
-                 if b['properties']['action']['enum'] == ['set_stage']][0]
+        self.assertEqual(len(branches), 9)
+        # CADV73 — deux branches `set_stage` : le Froid exige sa raison ; les
+        # deux ensemble couvrent toutes les étapes de STAGES.py.
+        etape, froid = [b for b in branches
+                        if b['properties']['action']['enum'] == ['set_stage']]
         self.assertEqual(etape['required'], ['stage'])
-        self.assertEqual(etape['properties']['stage']['enum'], stages.STAGES)
+        self.assertEqual(froid['required'], ['parc_raison', 'stage'])
+        self.assertEqual(froid['properties']['stage']['enum'], [stages.COLD])
+        self.assertEqual(
+            sorted(etape['properties']['stage']['enum'] + [stages.COLD]),
+            sorted(stages.STAGES))
 
     def test_bulk_parametres_valides_avant_la_selection(self):
         """Le paramètre de chaque action est validé MÊME pour une sélection

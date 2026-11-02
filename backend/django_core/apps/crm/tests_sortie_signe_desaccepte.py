@@ -218,9 +218,14 @@ class TestSortieSigneMasse(SortieSigneBase):
             statut=Facture.Statut.EMISE, type_facture='acompte',
             montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
             montant_ttc=Decimal('1200'), created_by=self.user)
+        # CADV22/CADV73 — le Froid en lot exige sa raison et une touche tracée.
+        for lead in (lead_ok, lead_ko):
+            LeadActivity.objects.create(
+                company=self.company, lead=lead, user=self.user,
+                kind=LeadActivity.Kind.APPEL, body='Appel.')
         r = self.api.post('/api/django/crm/leads/bulk/', {
             'action': 'set_stage', 'ids': [lead_ok.id, lead_ko.id],
-            'stage': stages.COLD}, format='json')
+            'stage': stages.COLD, 'parc_raison': 'budget'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['updated'], 1)
         sautes = {s['id']: s['reason'] for s in r.data['skipped']}
