@@ -586,10 +586,13 @@ def relances_du_jour(company, user, scope='today', today=None):
     # APRF18 — préchargement de ce que la sérialisation lit par lead
     # (responsable, client, devis et leurs lignes) : la file « Relances »
     # et « Ma file » ne paient plus une requête par carte. ERR-PERF-CRM-N1 —
-    # la MÊME liste que ``LeadViewSet.queryset`` (lignes AVEC produit).
-    from .lead_devis_payload import PREFETCH_DEVIS_LISTE_LEADS
-    return (qs.select_related('owner', 'client')
-            .prefetch_related(*PREFETCH_DEVIS_LISTE_LEADS)
+    # la MÊME liste que ``LeadViewSet.queryset`` (lignes AVEC produit, et
+    # AOOM1 : sans l'``etude_params`` complet). AOOM2 — ``updated_by``/
+    # ``archived_by`` en jointure (sources de ``updated_by_nom``/
+    # ``archived_by_nom`` : sinon une requête utilisateur par carte).
+    from .lead_devis_payload import prefetch_devis_liste_leads
+    return (qs.select_related('owner', 'client', 'updated_by', 'archived_by')
+            .prefetch_related(*prefetch_devis_liste_leads())
             .order_by('relance_date', 'nom'))
 
 
@@ -769,10 +772,23 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
     today = today or aujourd_hui_local()
     # ALEA32 — « en retard » = au moins un jour COMPTÉ depuis l'échéance.
     seuil = seuil_retard(company, today)
+    # AOOM3 — ``devis`` en jointure pour la SEULE ``reference`` que sert
+    # ``RelanceEtapeSerializer.get_devis_reference``, mais SANS son
+    # ``etude_params`` : mesuré en production le 02/11/2026, cette fenêtre de
+    # 62 jours chargeait 128,5 Mio de JSON d'études (631 de ses 1 837 touches
+    # portent un devis, et le même devis lourd — jusqu'à 1,45 Mio — est relu
+    # à chaque touche), décodés en centaines de Mio d'objets Python à chaque
+    # ouverture de l'écran « Suivi des relances ». C'est la rafale sur cette
+    # route qui a précédé le premier worker tué par le noyau (08:32 UTC).
+    # ``defer`` et non ``only`` : tout autre champ du devis reste lisible (au
+    # prix d'une requête, que le budget de
+    # ``tests_aprf21_relance_etapes_requetes.py`` ferait rougir).
     qs = RelanceEtape.objects.filter(
         company=company, lead__is_archived=False,
         due_date__gte=date_debut, due_date__lte=date_fin,
-    ).select_related('lead', 'lead__owner', 'devis', 'traite_par')
+    ).select_related(
+        'lead', 'lead__owner', 'devis', 'traite_par'
+    ).defer('devis__etude_params')
 
     # ACRM28 — portée propriétaire ET périmètre d'entités.
     visibles = leads_visibles(user, company)
@@ -898,8 +914,12 @@ def journal_relance(company, user, lead_id):
     if lead is None:
         return None
 
+    # AOOM3 — même jointure sans ``etude_params`` que la fenêtre de suivi
+    # ci-dessus : le journal d'un lead à 11 devis chargeait jusqu'à ~16 Mio de
+    # JSON d'études pour n'en servir que les références.
     etapes = list(lead.relance_etapes
                   .select_related('traite_par', 'devis')
+                  .defer('devis__etude_params')
                   .order_by('created_at', 'pk'))
     pertinentes = Q(kind=LeadActivity.Kind.MODIFICATION, field='stage')
     pertinentes |= Q(body__startswith='Touche « ')

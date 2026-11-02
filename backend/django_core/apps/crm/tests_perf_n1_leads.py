@@ -202,3 +202,155 @@ class TestLeadListeLignesProduitNPlusOne(TestCase):
         self.assertTrue(all(
             d['raison_non_modifiable'].startswith('Remplacé par')
             for d in remplaces))
+
+
+class TestLeadListeEtudeParamsNonChargee(TestCase):
+    """AOOM1/AOOM2 — la liste des leads ne charge NI l'``etude_params`` des
+    devis NI un utilisateur par ligne, et rend le MÊME payload.
+
+    Incident du 02/11/2026 (production) : ``?page_size=200`` chargeait les 225
+    devis de la page avec leur ``etude_params`` entier — 39,3 Mio de JSON,
+    jusqu'à 1,45 Mio pour un seul devis (étude horaire C&I) — décodés en
+    ~123 Mio d'objets Python pour n'en lire que trois petits chemins, et
+    payait en plus une requête ``authentication_customuser`` PAR LEAD
+    (``updated_by_nom``/``archived_by_nom``) : 155 des 177 requêtes. Chaque
+    requête laissait +254 Mio de RSS définitifs par worker ; le noyau a tué
+    les workers 17 fois dans la journée.
+
+    Test-du-test : retirer ``defer('etude_params')`` de
+    ``ventes.selectors_listes.prefetch_devis_liste_leads`` ⇒ le JSON
+    lourd est relu
+    (``test_etude_params_jamais_chargee`` échoue sur le compte de colonnes
+    chargées) ; retirer un chemin de ``ANNOTATION_PAR_CLE`` ⇒ une requête
+    ``etude_params`` par devis (``test_requetes_plates``) ; retirer
+    ``updated_by``/``archived_by`` du ``select_related`` ⇒ une requête
+    utilisateur par lead (même test).
+    """
+    BASE = '/api/django/crm/leads/?page=1&page_size=50'
+
+    #: Une étude VOLUMINEUSE, comme celles de la production (profil horaire).
+    ETUDE_LOURDE = {
+        'scenario': 'Avec batterie',
+        'nombre_proprietes': 3,
+        'resync_apres_envoi': {'date': '2026-10-30', 'par': 'reda'},
+        # Un profil horaire, ce qui pèse réellement en production (744 h =
+        # un mois ; la production en stocke 8 760, jusqu'à 1,45 Mio par devis).
+        # La taille ne change RIEN aux assertions, qui portent sur le SQL émis.
+        'profil_horaire': [round(i % 24 * 0.37, 3) for i in range(744)],
+    }
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='aoom-etude-co', defaults={'nom': 'AOOM Etude Co'})
+        self.admin = User.objects.create_user(
+            username='aoom_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.autre = User.objects.create_user(
+            username='aoom_modificateur', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = _auth(self.admin)
+        self.n = 0
+
+    def _leads(self, nombre):
+        from apps.stock.models import Produit
+        from apps.ventes.models import LigneDevis
+        for _ in range(nombre):
+            self.n += 1
+            client_obj = Client.objects.create(
+                company=self.company, nom=f'C{self.n}',
+                email=f'aoom-{self.n}@example.invalid')
+            lead = Lead.objects.create(
+                company=self.company, nom=f'L{self.n}', stage='NEW',
+                owner=self.admin, client=client_obj,
+                # AOOM2 — les deux FK utilisateur servies par le sérialiseur.
+                updated_by=self.autre, archived_by=self.autre)
+            devis = Devis.objects.create(
+                company=self.company, reference=f'DEV-AOOM-{self.n:04d}',
+                client=client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+                taux_tva=Decimal('20'), version=1,
+                etude_params=dict(self.ETUDE_LOURDE))
+            produit = Produit.objects.create(
+                company=self.company, nom='Panneau 550 W',
+                sku=f'AOOM-{self.n}', prix_vente=Decimal('1200'),
+                quantite_stock=10)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation='Panneau 550 W',
+                quantite=Decimal('2'), prix_unitaire=Decimal('1200'),
+                remise=Decimal('0'))
+
+    def _mesure(self):
+        with CaptureQueriesContext(connection) as ctx:
+            resp = self.api.get(self.BASE)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.data
+        lignes = data['results'] if isinstance(data, dict) else data
+        return ctx.captured_queries, lignes
+
+    def test_requetes_plates(self):
+        """5 puis 25 leads : le compte de requêtes ne bouge pas (±1)."""
+        self._leads(5)
+        self._mesure()  # échauffement des caches de processus
+        requetes_5, lignes_5 = self._mesure()
+        self.assertEqual(len(lignes_5), 5)
+        self._leads(20)
+        requetes_25, lignes_25 = self._mesure()
+        self.assertEqual(len(lignes_25), 25)
+        self.assertLessEqual(
+            abs(len(requetes_25) - len(requetes_5)), 1,
+            f'liste des leads : {len(requetes_5)} requêtes à 5 lignes, '
+            f'{len(requetes_25)} à 25')
+
+    def test_etude_params_jamais_chargee(self):
+        """Aucune requête de la liste ne lit la colonne ``etude_params``."""
+        self._leads(25)
+        self._mesure()  # échauffement
+        requetes, lignes = self._mesure()
+        self.assertEqual(len(lignes), 25)
+        fautives = [q['sql'] for q in requetes
+                    if '"etude_params"' in q['sql']
+                    and 'etude_params" ->' not in q['sql']
+                    and "etude_params' ->" not in q['sql']]
+        self.assertEqual(
+            fautives, [],
+            'la liste charge la colonne etude_params : '
+            f'{fautives[:1]}')
+
+    def test_payload_identique_au_chemin_non_optimise(self):
+        """Le payload ``devis[]`` est celui du chemin SANS préchargement.
+
+        L'oracle relit le lead SANS prefetch : aucune annotation n'est posée,
+        donc ``cle_etude`` descend dans le JSON complet — exactement le code
+        d'avant le correctif. Couvre ``scenario`` (option effective, donc
+        ``total_ttc``), ``nombre_proprietes`` (multiplicateur ×N, donc
+        ``total_ttc``) et ``resync_apres_envoi.date`` (``corrige_le``).
+        """
+        from apps.crm.lead_devis_payload import lignes_devis_du_lead
+        self._leads(5)
+        _, lignes = self._mesure()
+        self.assertEqual(len(lignes), 5)
+        for ligne in lignes:
+            lead = Lead.objects.get(pk=ligne['id'])
+            self.assertEqual(ligne['devis'], lignes_devis_du_lead(lead, {}))
+        # Les trois chemins annotés sont bien EXERCÉS par ce payload.
+        premier = lignes[0]['devis'][0]
+        self.assertEqual(premier['corrige_le'], '2026-10-30')
+        self.assertEqual(
+            premier['total_ttc'],
+            str(Lead.objects.get(pk=lignes[0]['id']).devis.first().total_ttc))
+        # ×3 villas : le total porte le multiplicateur lu par annotation.
+        # Dérivation : 2 × 1 200 = 2 400 HT → 2 880 TTC à 20 %, ramené
+        # au palier de 100 MAD INFÉRIEUR *par villa* (ARRONDI-100,
+        # décision fondateur 02/10/2026 — ``_absorber_arrondi``,
+        # ROUND_FLOOR) = 2 800, puis ×3 villas = 8 400. Une annotation
+        # qui retomberait à 1 villa rendrait 2 800,00 : c'est exactement
+        # ce que cette ligne épingle.
+        self.assertEqual(premier['total_ttc'], '8400.00')
+
+    def test_noms_utilisateur_servis(self):
+        """``updated_by_nom``/``archived_by_nom`` restent servis (jointure)."""
+        self._leads(3)
+        _, lignes = self._mesure()
+        self.assertTrue(lignes)
+        for ligne in lignes:
+            self.assertEqual(ligne['updated_by_nom'], 'aoom_modificateur')
+            self.assertEqual(ligne['archived_by_nom'], 'aoom_modificateur')
