@@ -13,7 +13,7 @@
 # préfixe+numéro quand le fichier n'en donne pas (D-ASEC-4, D-QJR5-659...) ; `ouverte` quand le fichier ne donne pas la réponse.
 
 version: 1
-date_maj: "2026-11-01"
+date_maj: "2026-11-02"
 
 decisions:
 
@@ -3279,3 +3279,30 @@ decisions:
     date: "2026-11-02"
     source: "audit parcours PA3 (C-ADVS-027), non posée au lot interactif (S3)"
     taches: [ADVS40]
+  - id: D-ENF15-STOCK-22
+    question: "22 endpoints stock sans écran (passif de check_calepinage_actions_consommees.py, ENF15) : un écran ou l'API seule ?"
+    options:
+      - cle: six_ecrans_seize_api_seule
+        texte: "Six reçoivent un écran (documents-expirants, export-conformite, delai-mesure, releve-deductions-tva, tracabilite, valorisation-a-date) ; les seize autres restent en API seule, marquées headless (lignes-import, ressource/engagements-budget, pesees, lignes/<id>/pesee, rapprocher-pesees, ressource/tolerances-rapprochement-categorie, depuis-ubl, importer-datasheet, decoupes, classe-abc, plan-picking, etiquettes-prix, suggestions-rangement, proposer-cross-dock, affecter-cross-dock, valider-scanne)"
+    reponse: six_ecrans_seize_api_seule
+    date: "2026-11-02"
+    source: "Reda, question interactive, session all-plans"
+    taches: [ENF15]
+  - id: D-CADV22-PROMESSE
+    question: "Le dernier parcage de contact est refusé par CADV22 (moins de 5 appels tracés, ou zéro touche) alors que l'écran promet Froid : que dit l'écran ?"
+    options:
+      - cle: dire_pourquoi_proposer_appel
+        texte: "L'écran énonce la condition (par exemple « 3 appels sur 5 tracés ») et l'étape suivante est un autre appel, jamais « Préparer et envoyer le devis »"
+    reponse: dire_pourquoi_proposer_appel
+    date: "2026-11-02"
+    source: "Reda, question interactive, session all-plans"
+    taches: [CADV22, CADV79]
+  - id: D-CADV22-GABARIT-COURT
+    question: "Un gabarit de moins de 5 appels ne peut jamais atteindre Froid avec la règle des 5 appels tracés : quelle règle ?"
+    options:
+      - cle: tous_les_appels_du_gabarit
+        texte: "Tous les appels du gabarit tracés, plafonnés à 5"
+    reponse: tous_les_appels_du_gabarit
+    date: "2026-11-02"
+    source: "Reda, question interactive, session all-plans"
+    taches: [CADV22]

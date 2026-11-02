@@ -15,6 +15,7 @@ vi.mock('../../api/stockApi', () => ({
     getInventairesAnnuels: vi.fn(),
     figerInventaireAnnuel: vi.fn(),
     exportInventaireAnnuelXlsx: vi.fn(),
+    getValorisationADate: vi.fn(),
   },
 }))
 
@@ -30,6 +31,33 @@ describe('InventairesAnnuels (WIR109)', () => {
     stockApi.getInventairesAnnuels.mockResolvedValue({ data: [] })
     renderPage(makeStore({ role: 'responsable' }))
     expect(await screen.findByText(/Réservé à l'administrateur/)).toBeInTheDocument()
+  })
+
+  it('valorise le stock à une date passée (ENF15)', async () => {
+    stockApi.getInventairesAnnuels.mockResolvedValue({ data: [] })
+    stockApi.getValorisationADate.mockResolvedValue({
+      data: {
+        date: '2026-10-30', total: '1000.00',
+        lignes: [{ produit_id: 1, sku: 'PAN-1', designation: 'Panneau 550W', quantite: 10,
+          cout_moyen: '100.00', valeur: '1000.00', source: 'cmp' }],
+      },
+    })
+    renderPage()
+    const champ = await screen.findByLabelText('Date')
+    await userEvent.clear(champ)
+    await userEvent.type(champ, '2026-10-30')
+    await userEvent.click(screen.getByRole('button', { name: 'Valoriser' }))
+    const grille = await screen.findByRole('grid', { name: 'Valorisation du stock à une date' })
+    expect(within(grille).getByText('Panneau 550W')).toBeInTheDocument()
+    expect(stockApi.getValorisationADate).toHaveBeenCalledWith('2026-10-30')
+  })
+
+  it('ne propose pas la valorisation sans le droit prix d\'achat (ENF15)', async () => {
+    stockApi.getInventairesAnnuels.mockResolvedValue({ data: [] })
+    // Admin à rôle fin SANS `prix_achat_voir` : coûts d'achat jamais affichés.
+    renderPage(makeStore({ permissions: ['stock_voir'] }))
+    await screen.findByText(/Aucun exercice figé/)
+    expect(screen.queryByRole('button', { name: 'Valoriser' })).toBeNull()
   })
 
   it('liste les exercices figés', async () => {

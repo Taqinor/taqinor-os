@@ -172,7 +172,7 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('budget', INT), P('statut', STR), P('demande', INT)]))
-class EngagementBudgetViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class EngagementBudgetViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):  # headless: API seule, décision fondateur 02/11/2026 (D-ENF15-STOCK-22)
     """NTP2P4 — engagements budgétaires, LECTURE SEULE.
 
     Un engagement n'est jamais créé par l'API : il naît de la soumission d'une
