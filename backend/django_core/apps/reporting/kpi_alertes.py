@@ -26,6 +26,7 @@ from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers, viewsets
 
 from authentication.permissions import IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin, TexteLie
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.mixins import TenantMixin
@@ -93,6 +94,15 @@ class KpiAlerteSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                 {'destinataires_utilisateurs': ['Une liste est attendue.']})
         return super().to_internal_value(data)
 
+    def _refus(self, champ, message):
+        """ERR-ENF11-FUZZ-REPORTING — sur une MODIFICATION PARTIELLE, la règle
+        croisée se lit sur la fiche ENREGISTRÉE (source, métrique, mode) : le
+        schéma d'un PATCH ne peut pas l'exprimer -> refus d'état 409. Création
+        et remplacement (corps complet, règle publiée) restent 400 au champ."""
+        if self.partial and getattr(self, 'instance', None) is not None:
+            raise ConflitEtat(message)
+        raise serializers.ValidationError({champ: message})
+
     def validate(self, attrs):
         """NTDATA13 — la même règle que ``KpiAlerte.clean()``, rendue au
         CHAMP fautif (le front sait alors lequel surligner).
@@ -108,9 +118,8 @@ class KpiAlerteSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         kpi = attrs.get('kpi', getattr(instance, 'kpi', ''))
         if source == KpiAlerte.Source.METRIQUE:
             if metrique is None:
-                raise serializers.ValidationError({
-                    'metric_definition':
-                        'Choisissez la métrique nommée à surveiller.'})
+                self._refus('metric_definition',
+                            'Choisissez la métrique nommée à surveiller.')
             requete = self.context.get('request')
             company = getattr(getattr(requete, 'user', None), 'company', None)
             if company is not None and metrique.company_id != company.id:
@@ -118,20 +127,19 @@ class KpiAlerteSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                     'metric_definition':
                         "Cette métrique appartient à une autre société."})
         elif not kpi:
-            raise serializers.ValidationError({
-                'kpi': 'Choisissez le KPI à surveiller.'})
+            self._refus('kpi', 'Choisissez le KPI à surveiller.')
         # NTDATA41 — même règle que `KpiAlerte.clean()`, portée au CHAMP.
         mode = attrs.get('mode_detection',
                          getattr(instance, 'mode_detection', None)
                          or KpiAlerte.ModeDetection.SEUIL)
         if (mode != KpiAlerte.ModeDetection.SEUIL
                 and source != KpiAlerte.Source.METRIQUE):
-            raise serializers.ValidationError({
-                'mode_detection':
-                    'La détection « %s » compare une trajectoire : elle exige '
-                    'une métrique nommée (les KPI du catalogue ne rendent que '
-                    'leur valeur du jour).'
-                    % dict(KpiAlerte.ModeDetection.choices)[mode]})
+            self._refus(
+                'mode_detection',
+                'La détection « %s » compare une trajectoire : elle exige '
+                'une métrique nommée (les KPI du catalogue ne rendent que '
+                'leur valeur du jour).'
+                % dict(KpiAlerte.ModeDetection.choices)[mode])
         return attrs
 
 
@@ -148,7 +156,8 @@ KPI_OU_METRIQUE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
 ]}}
 
 
-@extend_schema_view(create=extend_schema(extensions=KPI_OU_METRIQUE))
+@extend_schema_view(create=extend_schema(extensions=KPI_OU_METRIQUE),
+                    update=extend_schema(extensions=KPI_OU_METRIQUE))
 class KpiAlerteViewSet(TenantMixin, viewsets.ModelViewSet):
     """CRUD des alertes KPI, bornées à la société (réservé admin/responsable
     par cohérence avec les autres réglages de Paramètres)."""

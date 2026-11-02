@@ -201,3 +201,30 @@ class TestChampsStrictsFuzzR12(KpiAlerteBase):
         schema = chemins['/api/django/reporting/kpi-alertes/']['post'][
             'requestBody']['content']['application/json']['schema']
         self.assertIn('anyOf', schema['allOf'][1])
+
+    def test_regle_croisee_en_modification(self):
+        """ERR-ENF11-FUZZ-REPORTING — PATCH : la règle se lit sur la fiche
+        enregistrée -> 409 (plus 400) ; PUT : règle publiée au schéma, 400 au
+        champ."""
+        from drf_spectacular.generators import SchemaGenerator
+        from django.urls import include, path
+
+        from apps.reporting import urls as reporting_urls
+
+        alerte = self._alerte()
+        url = f'/api/django/reporting/kpi-alertes/{alerte.id}/'
+        resp = self.api.patch(url, {'mode_detection': 'variation'},
+                              format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        resp = self.api.patch(url, {'source': 'metrique'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        resp = self.api.put(url, {'source': 'metrique', 'seuil': '1',
+                                  'operateur': 'sup'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('metric_definition', resp.data)
+        chemins = SchemaGenerator(patterns=[
+            path('api/django/reporting/', include(reporting_urls)),
+        ]).get_schema(request=None, public=True)['paths']
+        schema = chemins['/api/django/reporting/kpi-alertes/{id}/']['put'][
+            'requestBody']['content']['application/json']['schema']
+        self.assertIn('anyOf', schema['allOf'][1])

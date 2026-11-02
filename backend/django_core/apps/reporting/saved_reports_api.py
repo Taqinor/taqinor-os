@@ -10,6 +10,7 @@ from rest_framework import serializers, viewsets
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 from core.champs_stricts import ChampsStrictsEntiersMixin
+from core.conflit_etat import ConflitEtat
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import ObjetJSON
 
@@ -59,10 +60,16 @@ class SavedReportSerializer(ChampsStrictsEntiersMixin,
         cible = attrs.get('cible_id', getattr(instance, 'cible_id', None))
         if kind in SavedReport.KINDS_AVEC_CIBLE:
             if cible is None:
-                raise serializers.ValidationError({
-                    'cible_id': 'Choisissez le %s à envoyer.'
-                                % dict(SavedReport.TargetKind.choices)[
-                                    kind].lower()})
+                message = ('Choisissez le %s à envoyer.'
+                           % dict(SavedReport.TargetKind.choices)[
+                               kind].lower())
+                # ERR-ENF11-FUZZ-REPORTING — modification PARTIELLE : la règle
+                # se lit sur la fiche enregistrée (type + cible), le schéma d'un
+                # PATCH ne peut pas l'exprimer -> refus d'état 409. Création et
+                # remplacement (règle publiée, ``CIBLE_SI_REQUISE``) : 400.
+                if self.partial and instance is not None:
+                    raise ConflitEtat(message)
+                raise serializers.ValidationError({'cible_id': message})
             requete = self.context.get('request')
             company = getattr(getattr(requete, 'user', None), 'company', None)
             if company is not None:
