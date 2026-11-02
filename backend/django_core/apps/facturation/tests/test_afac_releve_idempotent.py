@@ -136,8 +136,9 @@ class ReleveIdempotentTests(TestCase):
         self.assertEqual(len(nouveau), 1)
         self.assertEqual(nouveau[0].montant, Decimal('5000.00'))
         self.assertNotEqual(nouveau[0].pk, annule.pk)
-        # Un relevé qui porte encore la ligne : doublon.
-        dry, res = self._importer(_csv([ligne]))
+        # Un relevé qui porte encore la ligne : doublon. CRLF : les mêmes octets
+        # que le premier import seraient refusés par le hash de fichier consommé.
+        dry, res = self._importer(_csv([ligne], eol='\r\n'))
         self.assertEqual([d['statut'] for d in dry['preview']],
                          ['doublon_import'])
         self.assertEqual(res['created'], 0, res)
@@ -151,7 +152,7 @@ class ReleveIdempotentTests(TestCase):
         rejete.refresh_from_db()
         self.assertEqual(rejete.idempotency_key, cle_rejet)
         dry, res = self._importer(
-            _csv([f'2026-06-20;{autre.reference};5000;virement']))
+            _csv([f'2026-06-20;{autre.reference};5000;virement'], eol='\r\n'))
         self.assertEqual([d['statut'] for d in dry['preview']],
                          ['doublon_import'])
         self.assertEqual(res['created'], 0, res)
