@@ -67,6 +67,10 @@ def _deposit_success_payload(devis, token):
             payload['pourcentage'] = tr['pourcentage']
             payload['message'] = deposit_protection_message(
                 acompte, reference=devis.reference)
+            if devis.mode_installation == 'agricole':
+                # ADVS38 (D-AGQ-12=a) — le texte imprimé au PDF (AGQ30), un seul.
+                from ..quote_engine.i18n_labels import libelle
+                payload['message'] += ' ' + libelle('agr_acompte_apres_fda')
     except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_deposit_success_payload', exc_info=True)
     return payload
