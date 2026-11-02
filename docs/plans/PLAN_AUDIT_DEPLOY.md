@@ -465,3 +465,4 @@ Contre-visite `vérifie ACHT` du 01/11/2026 (dossier `docs/audits/2026-11-01-cha
 - 2026-11-01 — APAR89 — cochée : `a_preuve` ne exige plus d'id d'étape (toute preuve ni « n/a — » ni « API seulement — » compte) ; `_COCHEE` accepte un chiffre dans le préfixe (CE2E1 : sans cela 7 tâches CE2E déjà cochées sur la base échouaient). `--groupe APAR` : 63 cochées à preuve, 5 couvertes. Preuve en direct : n/a — garde CI.
 - 2026-11-02 — APAR89 : code livré (vague 15) mais tâche OUVERTE — sa preuve en direct reste due (la règle qu'elle pose elle-même l'exige).
 - 2026-11-01 — APDF116 : spec apdf.spec.js reprise de aa3f83030d ; corps de l'enregistrement c0dde5cb8 accordé à son en-tête.
+- 2026-11-01 — ADOC184 : code livré, preuve en direct due — SessionProvider dispatch(fetchMe()) après setCredentials ; test « ré-authentification portail : aucun appel » (non exécuté : pas de node_modules) ; preuve en direct due.

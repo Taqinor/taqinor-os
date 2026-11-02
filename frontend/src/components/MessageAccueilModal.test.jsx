@@ -237,3 +237,33 @@ describe('ADOC183 — transition de connexion', () => {
     await waitFor(() => expect(messagesAccueilALire).toHaveBeenCalledTimes(1))
   })
 })
+
+// ADOC184 — ré-authentification sur session expirée (modale « Session expirée »), SANS
+// rechargement : SessionProvider relit /auth/me/ comme la connexion (portee absente du stub).
+describe('ADOC184 — ré-authentification sur session expirée', () => {
+  it('ré-authentification portail : aucun appel', async () => {
+    const { default: authReducer, setCredentials } = await import('../features/auth/store/authSlice')
+    const { SessionProvider } = await import('../providers/SessionProvider')
+    const { SESSION_EXPIRED_EVENT } = await import('../providers/session-bridge')
+    const api = (await import('../api/axios')).default
+    api.post.mockResolvedValue({ data: { role: 'normal', permissions: [] } })
+    getMe.mockResolvedValue({ data: { username: 'client-294', portee: 'portail_client' } })
+    const store = configureStore({ reducer: { auth: authReducer } })
+    store.dispatch(setCredentials({ user: { username: 'client-294' } }))
+    render(
+      <Provider store={store}>
+        <SessionProvider>
+          <MessageAccueilModal />
+        </SessionProvider>
+      </Provider>,
+    )
+    await act(async () => { window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT)) })
+    await userEvent.type(screen.getByLabelText(/Nom d.utilisateur/), 'client-294')
+    await userEvent.type(screen.getByLabelText('Mot de passe'), 'secret')
+    await userEvent.click(screen.getByRole('button', { name: /Se reconnecter|Reconnecter|Connexion/i }))
+    await waitFor(() => expect(getMe).toHaveBeenCalled())
+    await act(async () => { await Promise.resolve() })
+    expect(store.getState().auth.user.portee).toBe('portail_client')
+    expect(messagesAccueilALire).not.toHaveBeenCalled()
+  })
+})
