@@ -221,7 +221,7 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
             option = AVEC_BATTERIE
             if est_mode_ci(devis) and regles_au_moins(devis, REGLES_CORRIGEES_2710):
                 option = option_effective(devis) or AVEC_BATTERIE
-            lignes_kwc = filter_lines_for_option(lignes, option)
+            lignes_kwc = filter_lines_for_option(lignes, option, devis=devis)
     except Exception:  # noqa: BLE001 — une lecture de kWc ne casse jamais (D-ENF22-BLE001)
         logger.warning("scenario.puissance_kwc_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         lignes_kwc = lignes

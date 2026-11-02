@@ -414,6 +414,21 @@ class TestSectionPdf(SectionsBase):
         self.assertEqual(link.view_count, 0)
         self.assertIsNone(link.first_viewed_at)
 
+    def test_sections_decochees_transmises_au_rendu(self):
+        """ADVS17 — rouge si ``_opts_pdf_public`` ne porte pas la clé."""
+        from apps.ventes.public_views import _opts_pdf_public
+        link = self._lien(self._devis(), {
+            'sld': False, 'economies': False, 'pdf': False, 'gammes': True})
+        self.assertEqual(_opts_pdf_public(link)['sections_masquees'],
+                         ['economies', 'sld'])
+
+    def test_aucune_section_masquee_sans_case_decochee_ni_sur_une_facture(self):
+        from apps.ventes.public_views import _opts_pdf_public
+        link = self._lien(self._devis())
+        self.assertEqual(_opts_pdf_public(link)['sections_masquees'], [])
+        facture = ShareLink(company=self.company, sections={'economies': False})
+        self.assertEqual(_opts_pdf_public(facture)['sections_masquees'], [])
+
     def test_pdf_false_ne_bloque_pas_la_page_elle_meme(self):
         """Seul le PDF part : la page devis reste consultable."""
         link = self._lien(self._devis(), {'pdf': False})

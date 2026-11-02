@@ -74,8 +74,15 @@ REGLES_CONSO_PUBLIQUE_0111 = 8
 #: 0148 laisse à 8 tout devis non brouillon (drapeau de rendu
 #: ``regles_ecarts_0111_historique``) : il garde la phrase et les cartes reçues.
 REGLES_ECARTS_0111 = 9
+#: Niveau 10 (ADVS5/ADVS6, D-ADVS-3, 02/11/2026, « nouveaux rendus seulement ») :
+#: UNE règle range chaque ligne dans ses options (``utils.options.panier_de_ligne`` :
+#: variante, rôle stocké, tout accessoire de batterie dans « avec » seulement,
+#: mots-clés en repli), pour le PDF, la page et l'argent du noyau. La migration
+#: 0149 laisse à 9 tout devis non brouillon : il garde ses deux répartitions
+#: d'hier (moteur : rôle seul ; noyau : variante puis mots-clés), écart compris.
+REGLES_PANIER_UNIQUE_0211 = 10
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_ECARTS_0111
+REGLES_COURANTES = REGLES_PANIER_UNIQUE_0211
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

@@ -95,6 +95,10 @@ LANGUES_SORTIE_PDF = ('fr', 'en', 'ar')
 #: reste retombe sur ``None``, c'est-à-dire le document complet du commercial).
 VARIANTES_PDF = ('sans', 'avec', 'les_deux')
 
+#: ADVS18 — les sections du lien public (``sections_masquees``, contrat
+#: ``contract_samples/sections_pdf_public.json``) que le moteur sait omettre.
+SECTIONS_PDF = ('economies',)
+
 # QRP1/A5 — forme admissible d'un jeton de ShareLink (garde de surface : la
 # VRAIE validation est la recherche en base, bornée au devis rendu).
 _SHARE_TOKEN_RE = re.compile(r'[A-Za-z0-9_\-]{8,128}')
@@ -123,6 +127,13 @@ def clean_pdf_options(raw) -> dict:
     # historique.
     if raw.get('variante_option') in VARIANTES_PDF:
         opts['variante_option'] = raw['variante_option']
+    # ADVS18 — liste blanche STRICTE, hors défauts : clé posée seulement quand
+    # une section connue est demandée (ne peut que retirer du détail).
+    _masquees = raw.get('sections_masquees')
+    if isinstance(_masquees, (list, tuple)):
+        _gardees = [s for s in SECTIONS_PDF if s in _masquees]
+        if _gardees:
+            opts['sections_masquees'] = _gardees
     if 'include_annexe_technique' in raw:
         _annexe = raw['include_annexe_technique']
         # Tri-état : ``None`` EXPLICITE vaut « auto » (le défaut), jamais un

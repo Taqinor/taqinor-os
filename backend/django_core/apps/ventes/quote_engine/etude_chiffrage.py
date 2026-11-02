@@ -250,6 +250,32 @@ def _conso_hiver_ete_niveau5(devis, mode, etude, tranches, charges_fixes):
     return total if total > 0 else None
 
 
+def _reglages_tarifaires_du_devis(devis):
+    """ADVS1 (D-ADVS-1) — ``(tranches, charges_fixes)`` : l'instantané de l'envoi
+    (même forme et même reconstruction que ``etude_horaire._reglages_tarifaires``)
+    ou, brouillon et envoyé d'avant ce gel, les réglages du jour."""
+    from apps.ventes.domain.envoi import reglages_figes
+    from apps.ventes.etude_horaire import _reglages_tarifaires
+    from .pricing import TrancheTable
+    fige = reglages_figes(devis)
+    if not fige:
+        return _reglages_tarifaires(getattr(devis, "company", None))
+    surcharge = fige.get("tranches")
+    tranches = surcharge and TrancheTable(
+        [tuple(paire) for paire in surcharge["pairs"]],
+        selective_threshold=surcharge["selective_threshold"],
+        boundary_tolerance=surcharge["boundary_tolerance"])
+    return tranches or None, fige.get("redevance_compteur_mad_mois")
+
+
+def _tarif_du_devis(devis):
+    """ADVS1 (D-ADVS-1) — les repères ROI figés à l'envoi, sinon ceux du jour."""
+    from apps.parametres.selectors import tariff_for
+    from apps.ventes.domain.envoi import reglages_figes
+    return reglages_figes(devis).get("tarif") or tariff_for(
+        getattr(devis, "company", None))
+
+
 def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
                    avec_items, avec_ok, avertissements_internes, deux_options,
                    devis, devis_etude_override, has_batterie, mode,
@@ -310,11 +336,10 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
     # AUCUN chemin jusqu'au modèle « factures », alors que le modèle « horaire »
     # l'honore depuis toujours : le même client voyait DEUX « Facture actuelle »
     # différentes selon le modèle qui gagne. Ne lève jamais.
+    # ADVS1 (D-ADVS-1) — un envoyé est chiffré sur les réglages FIGÉS à son envoi.
     _co_charges_fixes = None
     try:
-        from apps.ventes.etude_horaire import _reglages_tarifaires
-        _co_tranches, _co_charges_fixes = _reglages_tarifaires(
-            getattr(devis, "company", None))
+        _co_tranches, _co_charges_fixes = _reglages_tarifaires_du_devis(devis)
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici (D-ENF22-BLE001)
         logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         _co_tranches = None
@@ -350,8 +375,7 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
 
     _tariff = {}
     try:
-        from apps.parametres.selectors import tariff_for
-        _tariff = tariff_for(getattr(devis, "company", None))
+        _tariff = _tarif_du_devis(devis)
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici (D-ENF22-BLE001)
         # QJR158 (d) — CET ÉCHEC PARLE. Muet, il faisait retomber le document
         # sur le productible de repli SANS que rien, nulle part, n'indique que
@@ -661,6 +685,8 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
             _statut_ci == "calcule"
             and ((_economie_ci.get("tarif") or {}).get("contrat")
                  == "mt_general"))
+    # ADVS18 — lien public « Synthèse d'économies » décochée : même masque.
+    masquer_economies |= "economies" in opts.get("sections_masquees", ())
     if _dossier_mt and not masquer_economies:
         try:
             from .ci.mentions import mention_tarif_mt

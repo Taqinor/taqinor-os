@@ -29,7 +29,7 @@ from .models import ShareLink
 from .public.noyau import (
     PublicLinkRateThrottle, _niveau_lien, _noindex, _not_found,
     _resolve_proposal_link, _resolve_share_link_by_token, _sans_cles_internes,
-    _section_servie, _strip_confidential_deep,
+    _rendu_memorise_du_lien, _section_servie, _sections_masquees, _strip_confidential_deep,
 )
 from .public.lecture_views import _notify_open, _stamp_view_si_public
 from .public.payload_batterie import (
@@ -140,14 +140,14 @@ def _opts_pdf_public(link, variante=None):
     pas sur parole : il ne s'en sert que si un ShareLink de CE devis porte ce
     jeton et n'a pas expiré (sinon repli historique).
     """
-    opts = clean_pdf_options({'variante_option': variante})
+    opts = clean_pdf_options({**_rendu_memorise_du_lien(link), 'variante_option': variante})
     if _niveau_lien(link) == ShareLink.NIVEAU_STANDARD:
         opts['watermark'] = True
         opts['kit_agrege'] = True
     _token = (getattr(link, 'token', '') or '').strip()
     if _token:
         opts['share_token'] = _token
-    return opts
+    return dict(opts, sections_masquees=_sections_masquees(link))
 
 
 def _opts_quote_data_public(link):

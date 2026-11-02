@@ -848,17 +848,9 @@ class DevisCycleActionsMixin:
         if not geste_cycle_permis(devis, REFUSER)[0]:
             return Response(corps_version_remplacee(devis),
                             status=status.HTTP_409_CONFLICT)
-        if devis.statut not in (
-            Devis.Statut.BROUILLON, Devis.Statut.ENVOYE,
-        ):
-            return Response(
-                {'detail': (
-                    'Seul un devis en cours (brouillon ou envoyé) peut être '
-                    f'refusé ; statut actuel : '
-                    f'« {devis.get_statut_display()} ».'
-                ), 'code': 'statut'},
-                status=status.HTTP_409_CONFLICT,
-            )
+        conflit = _conflit_statut_refus(devis)
+        if conflit is not None:
+            return conflit
         # ADEV44 (contrat devis_refuser.json) — ``motif`` = le NOM d'un
         # MotifPerte ACTIF de la société, validé par le CRM (sans casse) et
         # rangé sous son libellé exact ; un nom inconnu/archivé ⇒ 400 et le
@@ -886,10 +878,17 @@ class DevisCycleActionsMixin:
         marquer_lead_perdu = bool(
             request.data.get('marquer_lead_perdu', False))
 
-        devis.statut = Devis.Statut.REFUSE
-        devis.date_refus = date_ref
-        devis.motif_refus = motif
-        devis.save(update_fields=['statut', 'date_refus', 'motif_refus'])
+        # ADVS22 (C-ADVS-026) — le statut est relu SOUS VERROU avant d'écrire :
+        # une acceptation commitée depuis le contrôle ci-dessus l'emporte.
+        with transaction.atomic():
+            devis = Devis.objects.select_for_update().get(pk=devis.pk)
+            conflit = _conflit_statut_refus(devis)
+            if conflit is not None:
+                return conflit
+            devis.statut = Devis.Statut.REFUSE
+            devis.date_refus = date_ref
+            devis.motif_refus = motif
+            devis.save(update_fields=['statut', 'date_refus', 'motif_refus'])
         activity.log_devis_refusal(devis, request.user, motif, date_ref,
                                    note=note)
         # VNT56 (D-ADEV-1) — une révision V2 refusée réactive la V1 acceptée.
@@ -932,3 +931,18 @@ class DevisCycleActionsMixin:
         act = activity.log_devis_note(devis, request.user, body)
         return Response(DevisActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+
+def _conflit_statut_refus(devis):
+    """ADVS22 — LE contrôle de statut du refus (lu avant la validation du corps,
+    relu sous verrou avant l'écriture) : la réponse 409, ou ``None``."""
+    if devis.statut in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+        return None
+    return Response(
+        {'detail': (
+            'Seul un devis en cours (brouillon ou envoyé) peut être '
+            f'refusé ; statut actuel : '
+            f'« {devis.get_statut_display()} ».'
+        ), 'code': 'statut'},
+        status=status.HTTP_409_CONFLICT,
+    )

@@ -123,9 +123,9 @@ def _options_piece_jointe(devis, pdf_mode, token):
     """AMOT117 — options de la pièce jointe : celles du dernier rendu persisté
     (``pdf_render_meta['options']``, même lecture que ``cle_pdf_a_jour``) ;
     ``pdf_mode`` explicite prime ; sans rendu mémorisé : « full »."""
+    from ..domain.pdf_signe import options_du_dernier_rendu
     from ..quote_engine import clean_pdf_options
-    meta = devis.pdf_render_meta if isinstance(devis.pdf_render_meta, dict) else {}
-    memo = meta.get('options') if isinstance(meta.get('options'), dict) else {}
+    memo = options_du_dernier_rendu(devis)
     return clean_pdf_options(dict(memo, share_token=token, **({'pdf_mode': pdf_mode} if pdf_mode else {})))
 
 

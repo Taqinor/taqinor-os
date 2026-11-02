@@ -978,9 +978,12 @@ def _store_signed_pdf(*, devis):
             return  # no signature record yet (shouldn't happen in normal flow)
         if sig.signed_pdf_key:
             return  # already stored — idempotent
+        from apps.ventes.domain.pdf_signe import options_du_dernier_rendu
         from apps.ventes.quote_engine import clean_pdf_options, generate_premium_devis_pdf
+        # ADVS15 — une page reste une page : le format du dernier rendu.
         key = generate_premium_devis_pdf(
-            devis.id, clean_pdf_options({}), persist=True)
+            devis.id, clean_pdf_options(options_du_dernier_rendu(devis)),
+            persist=True)
         key = _copier_exemplaire_signe(key, devis=devis)
         # ADEV96 — le SHA-256 des octets figés, posé avec la clé (certificat).
         DevisSignature.objects.filter(pk=sig.pk).update(
