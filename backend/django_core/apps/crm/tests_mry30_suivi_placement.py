@@ -1159,6 +1159,44 @@ class CommandeReparationTests(_PlacementBase):
                               'reveils', '--apply')
         self.assertIn('0 lead(s) à réveil', rejeu)
 
+    def test_archiver_froids_odoo_archive_et_etiquette(self):
+        """CADV5 — L1 archivé et étiqueté (étape Odoo citée) ; L2 (appel noté
+        par un humain) et L3 (en Relance) intacts ; L4 : sa touche ouverte est
+        annulée par CADV61. Mutant : inclure L2 ⇒ échec."""
+        odoo = {'source': Lead.Source.ODOO_IMPORT_TEST}
+        l1 = self._lead('L1', stage=stages.COLD, **odoo)
+        l2 = self._lead('L2', stage=stages.COLD, **odoo)
+        l3 = self._lead('L3', stage=stages.FOLLOW_UP, **odoo)
+        l4 = self._lead('L4', stage=stages.COLD, **odoo)
+        Lead.objects.filter(pk=l1.pk).update(note='Étape Odoo: Cold Lead')
+        LeadActivity.objects.create(
+            company=self.company, lead=l2, user=self.acteur,
+            kind=LeadActivity.Kind.APPEL, body='Appel noté')
+        touche = RelanceEtape.objects.create(
+            company=self.company, lead=l4, cadence='reveil', ordre=1,
+            due_date=MERCREDI.date(), canal=RelanceEtape.Canal.APPEL)
+        texte = self._appeler('archiver_froids_odoo')
+        self.assertIn(f'#{l1.pk} ', texte)
+        self.assertNotIn(f'#{l2.pk} ', texte)
+        self.assertNotIn(f'#{l3.pk} ', texte)
+        l1.refresh_from_db()
+        self.assertFalse(l1.is_archived, 'dry-run')
+        self._appeler('archiver_froids_odoo', '--apply')
+        for lead in (l1, l2, l3, l4):
+            lead.refresh_from_db()
+        self.assertTrue(l1.is_archived)
+        self.assertIsNotNone(l1.archived_at)
+        self.assertIn('archive_odoo', [t.strip() for t in l1.tags.split(',')])
+        self.assertTrue(l1.activites.filter(
+            kind=LeadActivity.Kind.NOTE, body__contains='Cold Lead').exists())
+        self.assertFalse(l2.is_archived)
+        self.assertFalse(l3.is_archived)
+        self.assertTrue(l4.is_archived)
+        touche.refresh_from_db()
+        self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+        rejeu = self._appeler('archiver_froids_odoo', '--apply')
+        self.assertIn('0 contact(s)', rejeu)
+
     def test_marquer_fiches_test_groupe_partage_et_signes_vides(self):
         """CADV63 — dix fiches sur le même numéro + un Signé du site vide
         sont étiquetées `test` ; le Signé réel (devis accepté) et le lead
