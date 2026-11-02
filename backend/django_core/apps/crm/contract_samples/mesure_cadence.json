@@ -285,7 +285,33 @@
           "jamais_joints": 1
         }
       }
-    }
+    },
+    "cohorte": [
+      {
+        "semaine": "2026-08-17",
+        "n": 24,
+        "joint_14j_pct": 37.5,
+        "devis_21j_pct": 12.5,
+        "cusum": 0.0,
+        "limite_h": 4.0,
+        "signal": false,
+        "controle": false,
+        "reperes": []
+      },
+      {
+        "semaine": "2026-08-24",
+        "n": 24,
+        "joint_14j_pct": 45.8,
+        "devis_21j_pct": 16.7,
+        "cusum": 0.31,
+        "limite_h": 4.0,
+        "signal": false,
+        "controle": true,
+        "reperes": [
+          7
+        ]
+      }
+    ]
   },
   "exemple_vide": {
     "jours": 90,
@@ -442,7 +468,8 @@
         "delais_signature_jours": []
       }
     ],
-    "courbe_premier_joint": {}
+    "courbe_premier_joint": {},
+    "cohorte": []
   },
   "notes": {
     "jours": "profondeur demandée, bornée par la vue à [1, 365] ; défaut 90 — un agrégat croisé (touche × heure × jour × canal) sur 30 jours n'a presque aucune case peuplée.",
@@ -452,7 +479,8 @@
     "part_contact_et_langue": "leads créés sur la période, miroir Odoo et archivés écartés : `contact_preference = whatsapp_only` (QW3, la question posée au client) et `langue_preferee = darija`.",
     "gestes_par_appareil": "CAD178 — une ligne par (geste × famille d'appareil) COMPTÉE sur la fenêtre ; `geste` ∈ `fait|reporter|appeler|whatsapp` (les 4 gestes clés des écrans de cadence), `famille_appareil` ∈ `mobile|tablette|ordinateur|inconnu` (classification GROSSIÈRE dérivée du User-Agent HTTP, `mesure_cadence.famille_appareil` — jamais l'IP ni le User-Agent brut, jamais un modèle d'appareil identifié). Liste VIDE tant qu'aucun geste n'a encore été compté — jamais une ligne à zéro inventée pour une combinaison qui n'existe pas encore. Compteur JOURNALIER agrégé (`crm.GesteRelanceAppareil`), écrit en BEST-EFFORT depuis les vues : un échec de comptage n'a jamais fait échouer le geste métier qu'il mesure.",
     "par_segment": "AGR502/AGR540 — liste — une entrée par valeur de `crm.Lead.type_installation` (residentiel, commercial, industriel, agricole) plus `non_renseigne`, toujours dans cet ordre, même à zéro. Lecture seule, bornée à la société de l'utilisateur, sur la même fenêtre `jours` que le reste de la réponse. Un taux ou un délai vaut `null` dès que son dénominateur vaut 0 — jamais 0 % ni 0 jour inventés. Aucun seuil, aucune couleur, aucun verdict. `taux_froid_pct` = leads passés en COLD ÷ nb_leads ; `taux_joint_pct` = touches jointes ÷ touches tentées (même définition que `taux_joint_par_creneau`). `dossiers_subvention` = {état : nombre} sur les valeurs de `dossier_subvention` (contrat `lead_dossier_subvention.json`, AGR501), null exclu. `incoherents` = nombre de leads NON agricoles portant un devis agricole (drapeau `incoherence_segment` du contrat `lead_pompage.json`, AGR1) ; l'entrée `agricole` vaut toujours 0 (par définition). Population : les leads créés sur la fenêtre (archivés et miroir Odoo écartés) ; `devis_envoyes` = devis sortis du brouillon de ces leads ; délais = médianes en jours (création → premier devis envoyé ; premier devis envoyé → signature) ; `signatures` = passages d'étape vers SIGNED (STAGES.py) sur la fenêtre ; `en_attente_accord` = leads portant l'étiquette d'AGR520. Commande de comptage en lecture seule : `manage.py mesurer_par_segment <slug> [--jours N]`.",
-    "courbe_premier_joint": "CADV7 (conception v4 §7.7) — la courbe CUMULÉE du PREMIER joint par rang de touche, par cadence puis par segment (`residentiel`, `commercial`, `industriel`, `agricole`, `non_renseigne` ; seuls les segments ayant au moins un lead figurent). `leads` = leads créés sur la fenêtre (archivés et miroir Odoo écartés) ayant au moins une touche close par un humain de la cadence ; `par_rang[]` = pour chaque rang (`ordre`) où au moins un lead a été joint pour la première fois : `premiers_joints`, `cumul`, `cumul_pct` (cumul / leads) ; `jamais_joints` = leads sans aucune issue `joint`/`interesse`. `{}` sans aucune touche close. Lecture seule, même définition de « joint » que `taux_joint_par_creneau`. Producteur : `mesure_cadence.courbe_premier_joint` ; aucun lecteur front avant 2.13."
+    "courbe_premier_joint": "CADV7 (conception v4 §7.7) — la courbe CUMULÉE du PREMIER joint par rang de touche, par cadence puis par segment (`residentiel`, `commercial`, `industriel`, `agricole`, `non_renseigne` ; seuls les segments ayant au moins un lead figurent). `leads` = leads créés sur la fenêtre (archivés et miroir Odoo écartés) ayant au moins une touche close par un humain de la cadence ; `par_rang[]` = pour chaque rang (`ordre`) où au moins un lead a été joint pour la première fois : `premiers_joints`, `cumul`, `cumul_pct` (cumul / leads) ; `jamais_joints` = leads sans aucune issue `joint`/`interesse`. `{}` sans aucune touche close. Lecture seule, même définition de « joint » que `taux_joint_par_creneau`. Producteur : `mesure_cadence.courbe_premier_joint` ; aucun lecteur front avant 2.13.",
+    "cohorte": "CADV110 (conception v4 §7.7, D-CADV-1 — cohorte hebdomadaire, pas de A/B) — la série hebdomadaire PRÉENREGISTRÉE, une entrée par semaine de création MÛRE (≥ 28 jours d'âge), du plus ancien au plus récent ; `[]` sans lead mûr. `n` = leads comptés de la semaine ; `joint_14j_pct` = part des leads dont une première issue `joint`/`interesse` tombe dans les 14 jours ; `devis_21j_pct` = part dont le premier devis est envoyé dans les 21 jours (`null` impossible : n ≥ 1). `cusum` = CUSUM haut sur le z-score binomial du taux de joint contre la base (les 12 premières semaines mûres), allocation k = 0,5 ; `limite_h` = 4,0 (constantes fixées une fois pour toutes dans `mesure_cadence.py`) ; `signal` = `cusum` > `limite_h` ET semaine ≥ 4 (premier point de contrôle : aucun signal avant) ; `controle` = semaine de rang 4, 8 ou 12 (points de lecture) ; `reperes` = ids des expériences du registre (`experiences_cadence.json`) datées dans la semaine. Lecture seule, même instant ⇒ même série. Producteur : `mesure_cadence.cohorte_hebdomadaire` ; aucun lecteur front avant le cockpit (hors plan v4)."
   },
   "ajout_ciq10_par_segment": {
     "pourquoi": "CIQ10 (Groupe CIQ, 05/10/2026 ; audit L3 C&I du 03/10/2026 ; D-CIQ-6, convention 8 « contact B2B sur fixe : la touche WhatsApp devient un e-mail quand une adresse existe — règle de DONNÉE, aucun axe segment », convention 10 « preuve J4 OMISE pour le C&I tant qu'aucune réalisation C&I n'est saisie ») — `mesure_cadence` (AGR502) ne comptait ni les raisons d'attente ni les touches converties.",
