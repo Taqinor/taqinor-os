@@ -777,4 +777,6 @@ class M10SectionsMasqueesTests(TestCase):
             {'sections_masquees': 'economies'}))
         rendu = build_quote_data(self.devis, {'pdf_mode': 'full'})
         self.assertIs(rendu['masquer_economies'], False)
-        self.assertIs(rendu['economies_masquees_lien'], False)
+        # Drapeau de GABARIT posé sur un lien décoché seul : un rendu sans option
+        # reste octet-identique (goldens du moteur, décision du 08/10/2026).
+        self.assertNotIn('economies_masquees_lien', rendu)

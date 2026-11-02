@@ -1674,7 +1674,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "savings_estimated": roi.get("savings_estimated", False),
         # QXMT — dossier MT sans économies d'étude : bloc ROI/économies OMIS.
         "masquer_economies": masquer_economies,
-        "economies_masquees_lien": "economies" in opts.get("sections_masquees", ()),  # ADVS18
         # QXMT — source du barème MT, à imprimer SOUS le bloc économies quand
         # les valeurs viennent bien de l'étude MT. '' hors dossier MT.
         "tarif_mt_mention": tarif_mt_mention,
@@ -2147,6 +2146,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Fondateur 08/10/2026 — drapeaux des GABARITS (devis envoyé avant les corrections : formats d'origine, AMOT19/24/
     # 26/33/35/45 ; CPDF — C&I sous le niveau 3 : chiffres corrigés aux nouveaux rendus) ; règles courantes : aucune.
     data.update({cle: True for cle, pose in (
+        ("economies_masquees_lien", "economies" in opts.get("sections_masquees", ())),  # ADVS18 : lien décoché seul
         ("regles_calcul_origine", not _corrige),
         ("regles_avant_2710", _corrige and not _regles_2710(devis)),
         ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)),  # AGNR52
