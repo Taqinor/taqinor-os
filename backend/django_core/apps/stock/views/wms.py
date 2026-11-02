@@ -379,7 +379,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
 
         ``{produit, quantite}``. Un produit qui n'appartient pas à la vague en
         cours d'emballage (ou une quantité supérieure au prélevé) est REFUSÉ en
-        400 — l'écran doit afficher l'alerte avant toute validation du colis.
+        409 — l'écran doit afficher l'alerte avant toute validation du colis.
         En cas de succès, la ligne est horodatée (audit `scanne_le`)."""
         from ..models import Produit
         from ..services import controler_scan_emballage
@@ -396,8 +396,9 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 quantite=saisie.get('quantite') or 1,
                 user=request.user)
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 (api-fuzz) — corps déjà validé : tout refus du service
+            # tient à l'état enregistré (vague, quantité prélevée, scellé).
+            raise ConflitEtat(str(exc))
         unite.refresh_from_db()
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
