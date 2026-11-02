@@ -33,19 +33,17 @@
  * ذلك عملاً خلفياً، خارج النطاق.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { DEYE_CLOUD_URL, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-const devisHref = L('/devis/mon-toit');
+const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
 // W340 — الخطوات الأربع لما بعد التركيب، بترتيب المسار الحقيقي. كل خطوة
 // تستند إلى قدرة منشورة فعلاً في هذه الصفحة (المتابعة) أو في مكان آخر من

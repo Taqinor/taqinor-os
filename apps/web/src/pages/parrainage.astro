@@ -36,19 +36,8 @@ import Breadcrumb from '../components/Breadcrumb.astro';
 import Callout from '../components/Callout.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 import StickyCta from '../components/StickyCta.astro';
-import { NAP, WHATSAPP_LEADS } from '../lib/nap';
-import { whatsappLink } from '../lib/whatsapp';
-
-// GATE WG14 — non tranché par le fondateur : ne JAMAIS inventer de chiffre.
-// Dès que WG14 est décidé, ces deux constantes portent la valeur réelle et
-// tout le reste de la page l'affiche automatiquement.
-const REWARD_AMOUNT_LABEL: string | null = null;
-const REWARD_MILESTONE_LABEL: string | null = null;
-
-const waParrainage = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, je souhaite parrainer un proche pour une installation solaire Taqinor.',
-);
+import { NAP } from '../lib/nap';
+import { REWARD_AMOUNT_LABEL, REWARD_MILESTONE_LABEL, waParrainage } from '../lib/parrainage';
 
 const steps = [
   {

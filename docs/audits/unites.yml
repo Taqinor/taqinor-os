@@ -118,7 +118,7 @@ unites:
     pr: 862
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-facturation.md
-    notes: "apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-facturation.md) : 63 constats (7 S1), 89 tâches AFAC dont 10 décisions fondateur M1 (AFAC80-89) ; lien « Payer en ligne » relatif vers une API JSON constaté en direct ; portes de facture SAV / intervention ajoutées aux deux chemins connus."
+    notes: "vérifie AFAC du 02/11/2026 (3ᵉ clôture, docs/audits/2026-11-02-facturation-verifie.md) : 32 tâches échantillonnées — 29 ok, 1 déjà-présent, 2 partielles S3 ; 0 S1-S2, le groupe reste vérifié hors cycle ; 4 S3 → AFAC103-106 (facturation 3, sécurité 1). apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-facturation.md) : 63 constats (7 S1), 89 tâches AFAC dont 10 décisions fondateur M1 (AFAC80-89) ; lien « Payer en ligne » relatif vers une API JSON constaté en direct ; portes de facture SAV / intervention ajoutées aux deux chemins connus."
 
   - id: D3
     rang: 3
@@ -220,7 +220,7 @@ unites:
     pr: 845
     date: 2026-10-10
     dossier: docs/audits/2026-10-07-lead.md
-    notes: "vérifie ALEA du 10/10/2026 (clôture, 40/41 cochées ; dossier docs/audits/2026-10-10-lead-verifie.md) : 10 tâches échantillonnées (graine 5ea32b58b) — 9 ok, 1 partielle (ALEA4, câblage gardé par expression régulière) → ALEA46 (S3) dans WEB_PLAN ; aucun écart S1-S2, aucune sonde, pas de Fable ; premier vérifie à zéro S1-S2 (sortie du cycle au second, en contre-visite par différence). Résiduel de apps/crm : crm/services.py, selectors.py, views.py sont à D1 ; webhooks.py, odoo_sync.py à J0. Mots v1 : leads (dédoublonnage/attribution/score), fiche, cadence, clients, visites. pages/activities : à confirmer par la session de propriété. Audit L2 du 07/10/2026 (dossier docs/audits/2026-10-07-lead.md) : 31 constats (+5 optionnels), 41 tâches ALEA ; boucle d'autosave GPS confirmée en direct."
+    notes: "vérifie ALEA du 02/11/2026 (2e clôture, 51/51 cochées ; dossier docs/audits/2026-11-02-lead-verifie.md) : 15 tâches échantillonnées (graine b01fa172f) — 11 ok, 3 partielles, 1 régression (ALEA32 par AIC31) ; aucun S1-S2, 4 écarts S3 → ALEA56 (TRANSVERSE, @atomique devis+lead), ALEA57-59 (LEAD), ALEA60 (DEPLOY) ; pas de Fable ; 2e vérifie consécutif à zéro S1-S2 → SORT DU CYCLE. vérifie ALEA du 10/10/2026 (clôture, 40/41 cochées ; dossier docs/audits/2026-10-10-lead-verifie.md) : 10 tâches échantillonnées (graine 5ea32b58b) — 9 ok, 1 partielle (ALEA4, câblage gardé par expression régulière) → ALEA46 (S3) dans WEB_PLAN ; aucun écart S1-S2, aucune sonde, pas de Fable ; premier vérifie à zéro S1-S2 (sortie du cycle au second, en contre-visite par différence). Résiduel de apps/crm : crm/services.py, selectors.py, views.py sont à D1 ; webhooks.py, odoo_sync.py à J0. Mots v1 : leads (dédoublonnage/attribution/score), fiche, cadence, clients, visites. pages/activities : à confirmer par la session de propriété. Audit L2 du 07/10/2026 (dossier docs/audits/2026-10-07-lead.md) : 31 constats (+5 optionnels), 41 tâches ALEA ; boucle d'autosave GPS confirmée en direct."
 
   - id: D1
     rang: 6
@@ -581,7 +581,7 @@ unites:
     pr: 873
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-deploy.md
-    notes: "vérifie ADEP du 11/10/2026 (clôture, 50/50 cochées ; dossier docs/audits/2026-10-11-deploy-verifie.md) : 16 tâches échantillonnées (graine 6f3191ad7) — 14 ok, 2 partielles (gardes de classe incomplètes, S3) → ADEP100-ADEP101 dans PLAN_AUDIT_DEPLOY ; aucun S1-S2, pas de Fable. Propriétaire de scripts/** : les gardes M3 (check_*.py) de n'importe quel audit sont routées ici sauf si elles ne touchent qu'une app. Audit L1 du 08/10/2026 (dossier docs/audits/2026-10-08-deploy.md) : 22 constats (1 S1 : pas de pg_dump/pg_restore dans l'image de prod), 50 tâches ADEP routées chez 10 propriétaires."
+    notes: "vérifie ADEP du 02/11/2026 (2e clôture, 55/55 cochées ; dossier docs/audits/2026-11-02-deploy-verifie.md) : 18 tâches échantillonnées (graine 1dfa7986c) — 15 ok, 3 partielles (ADEP21 inventaire par sous-chaîne S3 → ADEP105 dans PLAN_AUDIT_DEPLOY ; ADEP90/92 documentaires S4 non déposées) ; aucun S1-S2, pas de Fable ; 2e vérifie consécutif à zéro S1-S2 → SORT DU CYCLE. vérifie ADEP du 11/10/2026 (clôture, 50/50 cochées ; dossier docs/audits/2026-10-11-deploy-verifie.md) : 16 tâches échantillonnées (graine 6f3191ad7) — 14 ok, 2 partielles (gardes de classe incomplètes, S3) → ADEP100-ADEP101 dans PLAN_AUDIT_DEPLOY ; aucun S1-S2, pas de Fable. Propriétaire de scripts/** : les gardes M3 (check_*.py) de n'importe quel audit sont routées ici sauf si elles ne touchent qu'une app. Audit L1 du 08/10/2026 (dossier docs/audits/2026-10-08-deploy.md) : 22 constats (1 S1 : pas de pg_dump/pg_restore dans l'image de prod), 50 tâches ADEP routées chez 10 propriétaires."
 
   - id: J4
     rang: 17

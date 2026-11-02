@@ -26,6 +26,10 @@ TRACKED_FIELDS = {
     'tags': 'Tags',
     'perdu': 'Perdu',
     'motif_perte': 'Motif de perte',
+    # CADV21 — parcage (écrit par ``parquer_lead`` : une ligne de chatter).
+    'parc_etat': 'État de parcage',
+    'parc_raison': 'Raison de parcage',
+    'parc_jusqu_au': 'Parqué jusqu’au',
     # MRY5 — un « ne plus contacter » posé par erreur coupe toutes les
     # relances futures : il doit laisser une trace datée et nommée.
     'ne_plus_contacter': 'Ne plus contacter',
@@ -333,6 +337,8 @@ _CHOICE_FIELDS = {
     'tva_recuperable',
     # ALEA19 — préférence de contact (vocabulaire fermé).
     'contact_preference',
+    # CADV21 — vocabulaires fermés du parcage.
+    'parc_etat', 'parc_raison',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}

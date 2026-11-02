@@ -26,8 +26,8 @@ from django.utils import timezone
 
 from core.numbering import next_reference, create_with_reference
 
-MONTH = timezone.now().strftime('%Y%m')
-YEAR = timezone.now().strftime('%Y')
+MONTH = timezone.localdate().strftime('%Y%m')
+YEAR = timezone.localdate().strftime('%Y')
 
 
 def make_company(slug='core-num-co'):
@@ -106,6 +106,22 @@ class CoreNextReferenceTests(TestCase):
         self.assertEqual(
             next_reference(Devis, 'DEV', self.company, period='none'),
             'DEV-0001')
+
+    def test_periode_suit_la_date_locale(self):
+        """AARG54 — la période suit la date LOCALE (UTC+1 forcé ici, sans
+        dépendre du tzdata) : 30/06 23:30 UTC = 01/07 en local."""
+        import datetime
+        from unittest import mock
+        Devis = django_apps.get_model('ventes', 'Devis')
+        utc, plus1 = datetime.timezone.utc, datetime.timezone(datetime.timedelta(hours=1))
+        for instant, tz, period, attendu in (
+                (datetime.datetime(2026, 6, 30, 23, 30, tzinfo=utc), plus1, 'monthly', 'DEV-202607-0001'),
+                (datetime.datetime(2026, 12, 31, 23, 30, tzinfo=utc), plus1, 'yearly', 'DEV-2027-0001'),
+                (datetime.datetime(2026, 6, 30, 23, 30, tzinfo=utc), utc, 'monthly', 'DEV-202606-0001')):
+            horloge = mock.patch('django.utils.timezone.now', return_value=instant)
+            with self.subTest(instant=instant, tz=tz), timezone.override(tz), horloge:
+                self.assertEqual(
+                    next_reference(Devis, 'DEV', self.company, period=period), attendu)
 
 
 class CoreCreateWithReferenceRetryTests(TestCase):

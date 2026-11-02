@@ -25,6 +25,7 @@
  *  6. RTL-logical classes preserved throughout.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -40,7 +41,6 @@ import { BILL_RANGES, localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
 import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
@@ -49,8 +49,7 @@ import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.as
 import ProfessionnelBloc2CD6 from '../../components/blocs/ProfessionnelBloc2CD6.astro';
 import ProfessionnelA9585 from '../../components/blocs/ProfessionnelA9585.astro';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = pageLocale(Astro.url.pathname);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في دراسة لتركيبة شمسية.');
 

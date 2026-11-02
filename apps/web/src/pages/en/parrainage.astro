@@ -18,34 +18,20 @@
  * the customer portal), never a self-chosen one.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import Callout from '../../components/Callout.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
-import { whatsappLink } from '../../lib/whatsapp';
-import { getLocaleFromPath } from '../../i18n/utils';
+import { NAP } from '../../lib/nap';
+import { REWARD_AMOUNT_LABEL, REWARD_MILESTONE_LABEL, waParrainage } from '../../lib/parrainage';
 import { localizeNavHref } from '../../i18n/pages';
 
 // WB18 — same anti-dead-link helper as the rest of the EN/AR tree (this page
 // hardcoded `/en/...` literals instead, the only one to do so).
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-
-// GATE WG14 — not yet set by the founder: never invent a figure. Once WG14
-// is decided, these two constants carry the real value and the rest of the
-// page displays it automatically.
-const REWARD_AMOUNT_LABEL: string | null = null;
-const REWARD_MILESTONE_LABEL: string | null = null;
-
-// Pre-filled text stays French (it reaches the French-speaking sales team) —
-// same convention as every other WhatsApp deeplink on EN/AR pages.
-const waParrainage = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, je souhaite parrainer un proche pour une installation solaire Taqinor.',
-);
+const { locale, L } = pageLocale(Astro.url.pathname);
 
 const steps = [
   {

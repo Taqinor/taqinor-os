@@ -26,7 +26,9 @@ from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminRole, IsResponsableOrAdmin,
+)
 
 from . import services
 from .models import (
@@ -79,6 +81,7 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
     duplique aucune donnée métier (DC32)."""
     queryset = ComptePortailClient.objects.all()
     serializer_class = ComptePortailClientSerializer
+    permission_module = 'crm'  # AARG8 — écritures bornées au module (ASEC11)
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation']
     #: ADOC115 — DELETE → 405 : supprimer le compte emportait en CASCADE les
@@ -264,6 +267,7 @@ class AcceptationDevisPortailViewSet(_PortailBaseViewSet):
     """
     queryset = AcceptationDevisPortail.objects.all()
     serializer_class = AcceptationDevisPortailSerializer
+    permission_module = 'ventes'  # AARG8
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'signe_le']
     #: AUD140 — POST/PUT/PATCH/DELETE répondent 405 (aucune action d'écriture
@@ -288,6 +292,7 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
     """
     queryset = PaiementFacturePortail.objects.all()
     serializer_class = PaiementFacturePortailSerializer
+    permission_module = 'ventes'  # AARG8
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'paye_le']
     # ENF6 — lecture + action « rapprocher » : ni PUT/PATCH/DELETE ; le POST
@@ -345,7 +350,9 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
         self._refus_lecture_seule(request)
 
     @extend_schema(request=_RAPPROCHER, responses=PaiementFacturePortailSerializer)
-    @action(detail=True, methods=['post'])
+    # AARG8 (D-ASEC-VER-1) — crée un Paiement : exige en plus `encaisser`.
+    @action(detail=True, methods=['post'], permission_classes=[
+        IsResponsableOrAdmin, HasPermissionOrLegacy('encaisser')])
     def rapprocher(self, request, pk=None):
         from apps.ventes.services import AcompteAvantDelaiLegal
 
@@ -368,6 +375,7 @@ class DocumentClientPortailViewSet(_PortailBaseViewSet):
     qu'un document a été intégré à l'étude."""
     queryset = DocumentClientPortail.objects.all()
     serializer_class = DocumentClientPortailSerializer
+    permission_module = 'crm'  # AARG8
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_depot']
     # CI #997 fuzz (2) : un document se DÉPOSE avec son fichier — formulaire
@@ -401,6 +409,7 @@ class JalonChantierPortailViewSet(_PortailBaseViewSet):
     """
     queryset = JalonChantierPortail.objects.all()
     serializer_class = JalonChantierPortailSerializer
+    permission_module = 'installations'  # AARG8
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'date_jalon', 'chantier_id']
     http_method_names = ['get', 'patch', 'delete', 'post', 'head', 'options']
@@ -465,6 +474,7 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
     créé via son service, jamais importée ici)."""
     queryset = DemandeTicketPortail.objects.all()
     serializer_class = DemandeTicketPortailSerializer
+    permission_module = 'sav'  # AARG8
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation']
 

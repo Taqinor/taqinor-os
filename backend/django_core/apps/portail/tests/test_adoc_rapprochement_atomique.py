@@ -102,3 +102,77 @@ class RapprochementAtomiqueTests(TestCase):
             facture=self.facture).count(), 1)
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.montant_du, Decimal('0.00'))
+
+    def test_ecritures_portail_bornees_au_module_et_a_encaisser(self):
+        """AARG8 (C-AARG-007) — `permission_module` sur les six viewsets
+        d'écriture du portail admin, `rapprocher` exige en plus `encaisser`."""
+        from apps.roles import permissions_registre as reg
+        from apps.roles.models import Role
+
+        def acteur(nom, perms):
+            role = Role.objects.create(company=self.co, nom=nom,
+                                       permissions=list(perms))
+            u = CustomUser.objects.create_user(
+                username=f'aarg8-{self.co.id}-{role.id}',
+                password='motdepasse-test-1234', company=self.co, role=role)
+            api = APIClient()
+            api.force_authenticate(user=u)
+            return api
+
+        base = '/api/django/portail/'
+        ecritures = {
+            'comptes': ('comptes-portail/', {'client': None}),
+            'acceptations': ('acceptations-devis-portail/', {}),
+            # POST de collection (405 une fois la garde passée) : prouve le
+            # module `ventes` indépendamment de la garde `encaisser`.
+            'paiements': ('paiements-facture-portail/', {}),
+            'documents': ('documents-client-portail/999999/marquer_traite/', {}),
+            'jalons': ('jalons-chantier-portail/999999/marquer_atteint/', {}),
+            'tickets': ('demandes-ticket-portail/999999/prendre_en_charge/', {}),
+        }
+
+        def statut(api, cle):
+            chemin, corps = ecritures[cle]
+            return api.post(base + chemin, corps, format='json').status_code
+
+        # Technicien (installation_gerer / sav_gerer) garde jalons et tickets
+        # par le mapping de la tâche : seuls crm / ventes lui sont fermés.
+        refus = {
+            'Technicien': (reg.TECHNICIEN_PERMISSIONS,
+                           ('comptes', 'acceptations', 'paiements',
+                            'documents')),
+            'RH seul': (['rh_voir', 'rh_gerer'], tuple(ecritures)),
+            reg.ROLE_ADMIN_RH: (reg.ADMIN_RH_PERMISSIONS, tuple(ecritures)),
+            reg.ROLE_ADMIN_VENTES: (reg.ADMIN_VENTES_PERMISSIONS,
+                                    ('jalons', 'tickets')),
+        }
+        for nom, (perms, cles) in refus.items():
+            api = acteur(nom, perms)
+            with frozen('2026-10-09 10:00:00'):
+                res = api.post(self.url, {}, format='json')
+            self.assertEqual(res.status_code, 403, (nom, res.content))
+            for cle in cles:
+                self.assertEqual(statut(api, cle), 403, (nom, cle))
+        # Persistance : intention toujours initiée, aucun Paiement.
+        self.paiement.refresh_from_db()
+        self.assertEqual(self.paiement.statut,
+                         PaiementFacturePortail.Statut.INITIE)
+        self.assertFalse(Paiement.objects.filter(
+            facture=self.facture).exists())
+
+        # Commercial responsable (crm) : comptes et documents inchangés.
+        commercial = acteur('Commercial responsable',
+                            reg.COMMERCIAL_RESP_PERMISSIONS)
+        self.assertNotEqual(statut(commercial, 'comptes'), 403)
+        self.assertEqual(statut(commercial, 'documents'), 404)
+
+        # Directeur : rapproche, Paiement créé.
+        directeur = acteur('Directeur', reg.DIRECTEUR_PERMISSIONS)
+        with frozen('2026-10-09 10:00:00'):
+            res = directeur.post(self.url, {}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.paiement.refresh_from_db()
+        self.assertEqual(self.paiement.statut,
+                         PaiementFacturePortail.Statut.PAYE)
+        self.assertEqual(Paiement.objects.filter(
+            facture=self.facture).count(), 1)

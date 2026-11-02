@@ -320,7 +320,9 @@ UNGUARDED_ACTION_BASELINE = {
     # scoping société : le scanner ne crédite que les gardes PAR action, d'où la
     # dette APPARENTE. Leur coller un `permission_classes=` par action ferait
     # taire le scanner sans rien resserrer (règle du dépôt).
-    "portail": 4,
+    # AARG8 — 4 -> 3 : `rapprocher` porte désormais une garde PAR action qui
+    # RESSERRE vraiment (`encaisser` en plus, D-ASEC-VER-1).
+    "portail": 3,
     "pos": 5,
     # NTSEC — ServiceAccountViewSet ajoute 2 @action (rotate/… ) gardées au
     # niveau CLASSE par _IsAdminRole (5 → 7) ; coarse-guardé, company-scopé.

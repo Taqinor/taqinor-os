@@ -21,6 +21,7 @@
  *  5. RTL-logical classes preserved throughout.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 // CPRW20 — carte d'un type de site partagée FR/EN/AR (garde check_duplicats_litteraux).
 import CarteSegmentPro from '../../components/blocs/CarteSegmentPro.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -36,15 +37,13 @@ import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
 import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.astro';
 import ProfessionnelBloc2CD6 from '../../components/blocs/ProfessionnelBloc2CD6.astro';
 import ProfessionnelA9585 from '../../components/blocs/ProfessionnelA9585.astro';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = pageLocale(Astro.url.pathname);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في دراسة لتركيبة شمسية.');
 

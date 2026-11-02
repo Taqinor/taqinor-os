@@ -25,10 +25,10 @@ describe.each([
   });
 
   it('localise les liens internes via localizeNavHref', () => {
-    expect(src).toContain("import { localizeNavHref } from '../../i18n/pages'");
-    expect(src).toContain('localizeNavHref');
+    // ENF19 : le helper L() vient de lib/pageCtx.ts (pageLocale), qui encapsule localizeNavHref.
+    expect(src).toContain("import { pageLocale } from '../../lib/pageCtx'");
     // Le helper L() est appliqué aux liens internes du port.
-    expect(src).toContain('const L = (href: string) => localizeNavHref(href, locale)');
+    expect(src).toMatch(/const \{[^}]*\bL\b[^}]*\} = pageLocale\(Astro\.url\.pathname\)/);
   });
 
   it('monte <Faq> SANS FAQPage (schema={false}) — pas de doublon FAQPage', () => {

@@ -16,6 +16,7 @@
  *  7. RTL structural fixes preserved from original AR page.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -24,11 +25,9 @@ import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = pageLocale(Astro.url.pathname);
 
 const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
 

@@ -862,6 +862,10 @@ SPECTACULAR_SETTINGS = {
         # ROLES_AUTO_COMPOSITION : un seul nom de schéma, sinon drf-spectacular
         # signale « multiple names for the same choice set ». Nommage seulement.
         'RoleAutoCompositionEnum': 'apps.ventes.models.ROLES_AUTO_COMPOSITION',
+        # CADV104 (02/11/2026) — `demi_journee` des permanences d'équipe publie le
+        # MÊME jeu (matin / après-midi) que `visit_window_part` du lead : un seul
+        # nom de schéma, le nom historique. Nommage seulement.
+        'VisitWindowPartEnum': 'apps.crm.models.Lead.VisitWindowPart',
         'CodeRemiseDocumentEnum': 'apps.calepinage.views.remise_document.CODES_REMISE',
         # CI #997 (w4) — le dépôt d'une photo de site énumère ses genres
         # (drone / oblique / sol) ; `genre` de image-document (ombrage) et

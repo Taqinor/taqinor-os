@@ -10,6 +10,7 @@ from .views import (
 )
 # SPL74 — cadence de relance (cockpit des relances + modèles de message).
 from .cadence_views import MessageTemplateViewSet, RelanceEtapeViewSet
+from .experiences_cadence import ExperienceCadenceViewSet
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .webhooks import demande_rdv_webhook
 from .roof_views import lead_roof_footprint
@@ -39,7 +40,7 @@ from .clients_views import (
 from .leads_views import PointContactViewSet, rapport_attribution
 from .dispatch_views import (
     RegleAttributionViewSet, cockpit_equipe, dispatch_attribuer, dispatch_file,
-    dispatch_reglages)
+    dispatch_permanences, dispatch_reglages)
 # SPL79 — rendez-vous (visites).
 from .visites_views import AppointmentViewSet
 # SPL76 — sous-parcours clients : salle de vente, partenaires, apporteurs,
@@ -111,6 +112,9 @@ router.register(r'appareils-equipe', AppareilEquipeViewSet,
 # Attribution par le responsable (27/10/2026) — règles de Paramètres → Leads.
 router.register(r'regles-attribution', RegleAttributionViewSet,
                 basename='crm-regle-attribution')
+# CADV33 — registre des expériences de cadence (repères de la cohorte).
+router.register(r'experiences-cadence', ExperienceCadenceViewSet,
+                basename='crm-experience-cadence')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
@@ -146,6 +150,8 @@ urlpatterns = [
     path('dispatch/', dispatch_file, name='dispatch-leads'),
     path('dispatch/<int:lead_id>/attribuer/', dispatch_attribuer,
          name='dispatch-attribuer'),
+    path('dispatch/permanences/<int:equipe_id>/', dispatch_permanences,
+         name='dispatch-permanences'),
     path('dispatch/reglages/<int:equipe_id>/', dispatch_reglages,
          name='dispatch-reglages'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
