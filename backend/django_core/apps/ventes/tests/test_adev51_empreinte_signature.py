@@ -22,7 +22,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.stock.models import Produit
-from apps.ventes.models import Devis, DevisSignature, LigneDevis, ShareLink
+from apps.ventes.models import Devis, DevisActivity, DevisSignature, LigneDevis, ShareLink
 
 CONTRAT_ACCEPT = (Path(__file__).resolve().parent.parent
                   / 'contract_samples' / 'proposal_accept.json')
@@ -132,6 +132,103 @@ class EmpreinteSignatureTests(TestCase):
         Devis.objects.filter(pk=self.devis.pk).update(
             statut=Devis.Statut.ACCEPTE)
         self.assertNotIn('empreinte_contenu', self._lire())
+
+    # ── ADVS25 — l'étude SAISIE entre dans l'empreinte et dans la trace ────
+
+    def test_correction_etude_agricole_change_empreinte_et_trace(self):
+        """ADVS25 (C-ADVS-044) — HMT d'un agricole envoyé corrigée : empreinte
+        servie neuve, trace « corrigé après envoi : étude », signature à l'ancienne
+        empreinte 409 (fixture de la sonde : PVGIS/TMY simulés, patron AGR123)."""
+        from django.contrib.auth import get_user_model
+        from apps.stock.models import FicheTechnique
+        from apps.ventes.domain import pompage
+        from apps.ventes.domain.etudes import rafraichir_etudes_du_devis
+        co = self.company
+        jour = [0] * 6 + [100, 300, 500, 700, 850, 950, 1000, 950, 850, 700, 500, 300, 100] + [0] * 5
+        profils = [[g * (0.7 + 0.05 * i) for g in jour] for i in range(12)]
+
+        def produit(nom, **kw):
+            return Produit.objects.create(company=co, nom=nom, prix_vente=Decimal('1000'),
+                                          prix_achat=Decimal('600'), **kw)
+        pompe = produit('Pompe immergée OSP 30/8 7,5 CV 380V', role_pompage='pompe', type_pompe='immergee',
+                        alimentation='tri', pompe_kw=Decimal('5.5'), pompe_cv=Decimal('7.5'), tension_v=380,
+                        courbe_pompe={'debits_m3h': [0, 12, 24, 30, 36, 39], 'hmt_m': [91, 85, 70, 60, 43, 34]})
+        variateur = produit('VARIATEUR VEICHI SI23 5.5KW 380V', role_pompage='variateur_pompage',
+                            alimentation='tri', pompe_kw=Decimal('5.5'), tension_v=380)
+        FicheTechnique.objects.create(
+            company=co, produit=variateur, type_fiche='variateur_pompage', ond_mppt_v_min=Decimal('250'),
+            ond_mppt_v_max=Decimal('750'), ond_v_max_abs=Decimal('800'), ond_i_max_mppt_a=Decimal('20'),
+            ond_phases=3, var_v_sortie_v=Decimal('380'))
+        panneau = produit('Panneau 710W')
+        FicheTechnique.objects.create(
+            company=co, produit=panneau, type_fiche='module', pmax_wc=Decimal('710'), vmp_v=Decimal('40'),
+            voc_v=Decimal('48'), isc_a=Decimal('18'), imp_a=Decimal('17'))
+        devis = Devis.objects.create(
+            company=co, reference='DEV-ADVS25-0001', client=self.devis.client, statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal('20.00'), mode_installation='agricole',
+            etude_params={'mode_pompe': 'neuve', 'type_pompe': 'immergee', 'alim': 'tri',
+                          'besoin': {'mode': 'volume_declare', 'volume_m3_jour': 135},
+                          'hmt_entrees': {'saisie_m': 60},
+                          'localisation': {'ville': 'Taroudant', 'lat': 30.47, 'lon': -8.88}})
+        for ordre, (article, quantite) in enumerate(((pompe, 1), (variateur, 1), (panneau, 10))):
+            LigneDevis.objects.create(devis=devis, produit=article, designation=article.nom,
+                                      quantite=Decimal(quantite), prix_unitaire=Decimal('1000'),
+                                      remise=Decimal('0'), ordre=ordre)
+        api = APIClient()
+        api.force_authenticate(get_user_model().objects.create_user(
+            username='adev51-admin', password='x', role_legacy='admin', company=co))
+        with mock.patch.object(pompage, 'profils_horaires_site', return_value=profils), \
+                mock.patch.object(pompage, 'temperatures_du_site', return_value=None), \
+                mock.patch('apps.ventes.public_views._notify_open'), \
+                mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
+            rafraichir_etudes_du_devis(devis)
+            Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+            lien = ShareLink.objects.create(company=co, devis=devis, token=str(uuid.uuid4()))
+            donnees = f'/api/django/public/proposal/{lien.token}/data/'
+            e1 = self.api.get(donnees).json()['empreinte_contenu']
+            resp = api.patch(f'/api/django/ventes/devis/{devis.pk}/etude-params/',
+                             {'hmt_entrees': {'saisie_m': 80}}, format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertNotEqual(self.api.get(donnees).json()['empreinte_contenu'], e1)
+            signe = self.api.post(f'/api/django/public/proposal/{lien.token}/accept/',
+                                  {'nom': 'M. Agri', 'consent_esign': True, 'empreinte_contenu': e1},
+                                  format='json')
+        self.assertEqual(signe.status_code, 409, signe.data)
+        self.assertEqual(signe.data['code'], 'empreinte_perimee')
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertTrue(devis.etude_params.get('resync_apres_envoi'))
+        self.assertTrue(DevisActivity.objects.filter(
+            devis=devis, field='correction_apres_envoi', new_value__contains='étude').exists())
+
+    def _geste_sur_l_etude(self, **cles):
+        """Un geste réel : instantané, écriture sous le propriétaire, fin de geste."""
+        from apps.ventes.domain.etude_schema import ecrire
+        from apps.ventes.domain.modifiabilite import (
+            debut_de_geste_devis, empreinte_contenu_signable, fin_de_geste_devis)
+        devis = Devis.objects.get(pk=self.devis.pk)
+        avant = debut_de_geste_devis(devis)
+        e1 = empreinte_contenu_signable(devis)
+        ecrire(devis, **cles)
+        trace = fin_de_geste_devis(devis, avant=avant)
+        return e1, empreinte_contenu_signable(devis), trace
+
+    def test_factures_reelles_corrigees_tracees_en_residentiel(self):
+        """ADVS25 — résidentiel, ``factures_mensuelles_reelles`` : même effet."""
+        e1, e2, trace = self._geste_sur_l_etude(factures_mensuelles_reelles=[900] * 12)
+        self.assertNotEqual(e1, e2)
+        self.assertIsNotNone(trace)
+        self.devis.refresh_from_db()
+        self.assertTrue(self.devis.etude_params.get('resync_apres_envoi'))
+
+    def test_sortie_du_moteur_ou_attribution_ne_changent_rien(self):
+        """ADVS25 — clé dérivée du moteur, attribution : ni empreinte ni trace."""
+        from apps.ventes.domain.etude_schema import MOTEUR_HORAIRE
+        for cles in ({'proprietaire': MOTEUR_HORAIRE, 'etude_horaire': {'kwh': 1}},
+                     {'attribution': {'utm_source': 'facebook'}}):
+            e1, e2, trace = self._geste_sur_l_etude(**cles)
+            self.assertEqual(e1, e2, cles)
+            self.assertIsNone(trace, cles)
 
     # ── ADEV96 — le sceau couvre les chiffres de l'étude C&I lue ───────────
 
