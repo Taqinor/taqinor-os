@@ -73,3 +73,40 @@ class SlaHeuresTests(TestCase):
             self.company, self.client_obj, 'normale', JEUDI)
         self.assertIsNone(echeance)
         self.assertEqual(due, date(2026, 10, 15))
+
+    def test_balayage_heures_meme_jour(self):
+        """ASAV115 — le balayage retient le chemin heures le jour même."""
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+        from apps.sav.tasks import scan_sla_breaches
+
+        tech = User.objects.create_user(
+            username='asav115_tech', password='x', role_legacy='admin',
+            company=self.company)
+        tickets = []
+        for n, echeance in ((1, local(11, 0)), (2, local(13, 0))):
+            t = Ticket.objects.create(
+                company=self.company, reference=f'SAV-ASAV115-{n}',
+                client=self.client_obj, type=Ticket.Type.CORRECTIF,
+                priorite='urgente', statut=Ticket.Statut.EN_COURS,
+                date_ouverture=JEUDI, technicien_responsable=tech,
+                created_by=tech)
+            Ticket.objects.filter(pk=t.pk).update(
+                sla_due_at=JEUDI, sla_echeance_at=echeance, sla_breach=False)
+            tickets.append(t)
+        echu, pas_echu = tickets
+
+        def notifs(ticket):
+            return Notification.objects.filter(
+                event_type=EventType.SAV_TICKET_BREACHING,
+                link=f'/sav/tickets/{ticket.pk}').count()
+
+        with patch('django.utils.timezone.now', return_value=local(12, 0)):
+            for _ in range(2):
+                scan_sla_breaches()
+                echu.refresh_from_db()
+                pas_echu.refresh_from_db()
+                self.assertTrue(echu.sla_breach)
+                self.assertEqual(notifs(echu), 1)
+                self.assertFalse(pas_echu.sla_breach)
+                self.assertEqual(notifs(pas_echu), 0)
