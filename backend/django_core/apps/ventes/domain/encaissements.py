@@ -1151,8 +1151,11 @@ def enregistrer_paiement_avec_retenue(
         # reste en « RAS »).
         if type_retenue == RetenueSubie.TypeRetenue.RAS_IS:
             base = Decimal(str(locked.total_ht))
-        else:
-            base = Decimal(str(locked.total_tva))
+        else:  # AARG4 (D-AARG-2) — TVA NETTE : − avoirs actifs + ND émises
+            base = Decimal(str(locked.total_tva)) - sum(
+                (a.total_tva for a in locked.avoirs.all() if a.statut != 'annulee'),
+                Decimal('0')) + sum((n.total_tva for n in locked.notes_debit.all()
+                                     if n.statut == 'emise'), Decimal('0'))
         from core.money import quantize_mad
         due = quantize_mad(base * taux / Decimal('100'))
         deja = sum(
