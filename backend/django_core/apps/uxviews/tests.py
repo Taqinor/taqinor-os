@@ -179,6 +179,28 @@ class SavedViewApiTests(TestCase):
         # ERR-ENF11-FUZZ-UXVIEWS : vue sans rôle et aucun rôle fourni = 409.
         self.assertEqual(resp.status_code, 409)
 
+    def test_definir_par_defaut_role_corps_null_sans_500(self):
+        # ENF11 fuzz : corps JSON `null` -> request.data None -> AttributeError.
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='V',
+        )
+        resp = auth(self.directeur).post(
+            f'{self.BASE}{view.id}/definir-par-defaut-role/',
+            data='null', content_type='application/json')
+        self.assertEqual(resp.status_code, 409)
+
+    def test_patch_configuration_avec_nul_sans_500(self):
+        # ENF11 fuzz : un NUL (clé ou valeur) fait lever DataError à JSONB.
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='V',
+        )
+        resp = auth(self.directeur).patch(
+            f'{self.BASE}{view.id}/',
+            {'configuration': {'a\x00b': {'': 'x\x00y'}}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        view.refresh_from_db()
+        self.assertEqual(view.configuration, {'ab': {'': 'xy'}})
+
     # ── Suppression : garde-fous ────────────────────────────────────────────
     def test_delete_own_personal_view(self):
         view = SavedView.objects.create(
@@ -736,6 +758,21 @@ class FavoriUtilisateurApiTests(TestCase):
         self.assertEqual(
             [ligne['object_id'] for ligne in rows(api.get(self.BASE))],
             [self.cible2.pk, self.cible1.pk])
+
+    def test_reordonner_publie_un_tableau_nu(self):
+        # api-fuzz 01/11 : la liste rendue est un tableau NU, le schéma
+        # annonçait l'enveloppe paginée count/results.
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        doc = SchemaGenerator(patterns=[path(
+            'api/django/uxviews/', include('apps.uxviews.urls'))]).get_schema(
+                request=None, public=True)
+        operation = doc['paths'][
+            '/api/django/uxviews/favoris/{id}/reordonner/']['post']
+        schema = operation['responses']['200']['content'][
+            'application/json']['schema']
+        self.assertEqual(schema['type'], 'array')
 
     def test_reordonner_refuse_une_position_invalide(self):
         api = auth(self.com1)

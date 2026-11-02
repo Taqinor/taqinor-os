@@ -148,6 +148,16 @@ class ParametresRequeteTests(TestCase):
                  'drift_threshold_pct')):
             self._400(url, param)
 
+    def test_seuil_derive_borne_6_chiffres(self):
+        """ENF11 : seuil littéral démesuré -> 400 nommant le paramètre (le
+        ``quantize`` du service levait InvalidOperation -> 500) ; la forme
+        publiée (6 chiffres entiers) reste acceptée."""
+        base = f'warranties/{self.garantie.pk}/curve/?drift_threshold_pct='
+        self._400(base + '4' + '0' * 59, 'drift_threshold_pct')
+        self._400(base + '-1000000', 'drift_threshold_pct')
+        self.assertEqual(self._get(base + '999999.5').status_code, 200)
+        self.assertEqual(self._get(base + '-999999').status_code, 200)
+
     def test_borne_vide_reste_acceptee(self):
         self.assertEqual(self._get('configs/co2-fleet/?since=').status_code, 200)
 

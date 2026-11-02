@@ -827,6 +827,23 @@ class TestWarrantyCurveOverlay(TestCase):
         ov = warranty_curve_overlay(self.inst, today=self.today)
         self.assertFalse(ov['manufacturer_recourse'])
 
+    def test_forte_degradation_longue_duree_sans_500(self):
+        """ENF11 fuzz — taux de dégradation extrêmes (publiés jusqu'à
+        +-999,99 %) : ``status`` et ``curve`` répondent 200, jamais
+        InvalidOperation (500) sur ``quantize``."""
+        from apps.monitoring.models import ProductionWarranty
+        for pct in ('99.99', '-999.99', '999.99'):
+            ProductionWarranty.objects.filter(pk=self.warranty.pk).update(
+                degradation_pct_per_year=Decimal(pct), start_year=1900)
+            ProductionReading.objects.get_or_create(
+                company=self.company, installation=self.inst,
+                date=date(date.today().year, 1, 2),
+                defaults={'period_days': 30, 'energy_kwh': Decimal('500')})
+            base = f'/api/django/monitoring/warranties/{self.warranty.id}/'
+            self.assertEqual(self.api.get(base + 'curve/').status_code, 200, pct)
+            self.assertEqual(
+                self.api.get(base + 'status/?year=2200').status_code, 200, pct)
+
     def test_no_data_year_not_anomalous(self):
         from apps.monitoring.services import warranty_curve_overlay
         ov = warranty_curve_overlay(self.inst, today=self.today)
@@ -1329,7 +1346,8 @@ class TestAsav100Abonnements(TestCase):
         self.assertFalse(self.config.enabled)
         r = self.api.post(f'{self.URL}{ab_id}/resilier/',
                           {'motif': 'encore'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        # ENF11 : déjà résilié = refus d'ÉTAT -> 409 (plus 400).
+        self.assertEqual(r.status_code, 409)
 
     def test_autre_societe_404_et_normal_403(self):
         ab_id = self._creer().data['id']

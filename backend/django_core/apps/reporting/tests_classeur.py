@@ -147,6 +147,18 @@ class TestClasseurApi(ClasseurBase):
             f'/api/django/reporting/classeurs/{classeur_id}/rafraichir/')
         self.assertEqual(resp3.status_code, 200)
 
+    def test_rafraichir_cellules_non_objets_sans_500(self):
+        """ENF11 fuzz — ``cellules`` est un objet libre : une cellule scalaire
+        ou liste ne doit pas faire lever TypeError/AttributeError (500)."""
+        classeur = Classeur.objects.create(
+            company=self.company, proprietaire=self.owner, titre='G',
+            cellules={'A1': 5, 'A2': [1], 'A3': 'x', 'A4': {'valeur': 2}})
+        resp = self.api.get(
+            f'/api/django/reporting/classeurs/{classeur.pk}/rafraichir/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['cellules'],
+                         {'A1': 5, 'A2': 0, 'A3': 'x', 'A4': 2})
+
     def test_formule_non_evaluable_409_et_non_texte_400(self):
         """ERR-ENF11-FUZZ-REPORTING — une chaîne que la grammaire refuse est
         conforme au schéma (409) ; un non-texte est une faute de forme (400)."""

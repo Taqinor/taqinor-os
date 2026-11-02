@@ -41,7 +41,7 @@ from . import activity
 from .champs_corps import (
     CORPS_PIECE_RETIREE, QuantitePositive, TexteSansSubstitut, refus_stock_en_conflit,
 )
-from .validations_releve import exiger_objet
+from .validations_releve import date_du_corps, datetime_du_corps, exiger_objet
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
@@ -776,12 +776,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             dt = equipement.downtimes.get(pk=downtime_id)
         except (EquipementDowntime.DoesNotExist, ValueError):
             return Response({'detail': 'Immobilisation introuvable.'}, status=404)
-        fin_raw = request.data.get('fin')
-        fin = None
-        if fin_raw:
-            from django.utils.dateparse import parse_datetime
-            fin = parse_datetime(fin_raw)
-        dt.clore(fin=fin)
+        dt.clore(fin=datetime_du_corps(exiger_objet(request.data), 'fin'))
         return Response(EquipementDowntimeSerializer(dt).data)
 
     @extend_schema(
@@ -2403,14 +2398,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 pk=pret_id)
         except (PretEquipement.DoesNotExist, ValueError, TypeError):
             return Response({'detail': 'Introuvable.'}, status=404)
-        from datetime import date as _date
-        raw_date_retour = request.data.get('date_retour_reelle')
-        if raw_date_retour and not isinstance(raw_date_retour, _date):
-            try:
-                raw_date_retour = _date.fromisoformat(str(raw_date_retour))
-            except ValueError:
-                raw_date_retour = None
-        date_retour = raw_date_retour or timezone.localdate()
+        date_retour = (date_du_corps(exiger_objet(request.data), 'date_retour_reelle')
+                       or timezone.localdate())
         with transaction.atomic():
             pret = retourner_pret_equipement(
                 pret=pret, date_retour_reelle=date_retour, user=request.user)

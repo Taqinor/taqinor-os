@@ -15,3 +15,43 @@
   position: absolute;
   inset: 0;
 }
+
+/* Carte et colonne de résultats des pages privées preview/toiture, toiture-3d et
+   toiture-3d-pro (coque components/RoofPreviewShell.astro) : mêmes règles, seul le
+   préfixe change (rp9 : toiture-3d-pro-11, qui garde sa propre page). Globales (la coque est un composant : un <style> de page ne le
+   cible plus). */
+.rt-map,
+.r3-map,
+.rp-map,
+.rp9-map {
+  position: relative;
+  width: 100%;
+  height: 60vh;
+  min-height: 360px;
+  background: var(--color-nuit-700);
+}
+@media (min-width: 1024px) {
+  .rt-map,
+  .r3-map,
+  .rp-map,
+  .rp9-map {
+    height: 560px;
+  }
+}
+.rt-results,
+.r3-results,
+.rp-results {
+  min-height: 360px;
+}
+.rt-results--ready,
+.r3-results--ready,
+.rp-results--ready {
+  border-color: rgb(243 204 102 / 0.25);
+}
+.rt-map .maplibregl-map,
+.r3-map .maplibregl-map,
+.rp-map .maplibregl-map,
+.rp9-map .maplibregl-map {
+  position: absolute;
+  inset: 0;
+}

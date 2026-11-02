@@ -63,6 +63,11 @@ class ProductionWarranty(models.Model):
         factor = Decimal('1')
         rate = Decimal('1') - (Decimal(str(self.degradation_pct_per_year))
                                / Decimal('100'))
+        # Une dégradation GARANTIE ne fait ni croître le garanti ni le rendre
+        # négatif : taux borné à [0 ; 1]. Sans cela un pourcentage publié jusqu'à
+        # +-999,99 donnait (ex. 11^300) un nombre que ``quantize`` refuse
+        # (InvalidOperation -> 500 sur ``status`` / ``curve``).
+        rate = min(max(rate, Decimal('0')), Decimal('1'))
         for _ in range(elapsed):
             factor *= rate
         return Decimal(str(self.guaranteed_year1_kwh)) * factor
