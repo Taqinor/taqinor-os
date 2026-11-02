@@ -17,16 +17,20 @@ Run :
 from __future__ import annotations
 
 import copy
+from datetime import timedelta
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.selectors import resultat_servi
-from apps.calepinage.services.simulation import simuler_calepinage
+from apps.calepinage.services.simulation import (
+    lire_piece_meteo, simuler_calepinage,
+)
 from apps.records.models import Activity, Attachment
 from apps.trash.selectors import entree_active
-from apps.trash.services import restaurer
+from apps.trash.services import purger_expires, restaurer
 
 from .acal_livrables_helpers import patch_materiel
 from .test_api_liste import BaseApiCalepinage
@@ -166,6 +170,30 @@ class MeteoFichierRetraitTest(BaseApiCalepinage):
 
         servi = self.api.get(self.url)
         self.assertEqual(servi.data['piece_jointe'], piece.pk)
+
+    def test_retrait_survit_a_la_purge_de_la_corbeille(self):
+        """ACAL375 — retirer, purger la corbeille (J+31) : rien ne revient."""
+        depot = self._deposer(nom='site.csv')
+        piece = Attachment.objects.get(pk=depot['piece_jointe'])
+        self.assertEqual(self.api.delete(self.url).status_code, 204)
+
+        purge = purger_expires(now=timezone.now() + timedelta(days=31))
+
+        self.assertGreaterEqual(sum(purge.values()), 1)
+        self.assertIsNone(entree_active(piece))
+        self.calepinage.refresh_from_db()
+        self.assertIn(piece.pk, self.calepinage.meteo_retirees)
+        self.assertIsNone(lire_piece_meteo(self.calepinage))
+        self.assertIsNone(self.api.get(self.url).data)
+
+    def test_restauration_avant_purge_leve_le_marqueur(self):
+        depot = self._deposer(nom='site.csv')
+        piece = Attachment.objects.get(pk=depot['piece_jointe'])
+        self.api.delete(self.url)
+        restaurer(entree_active(piece), user=self.user)
+        self.calepinage.refresh_from_db()
+        self.assertNotIn(piece.pk, self.calepinage.meteo_retirees)
+        self.assertEqual(self.api.get(self.url).data['piece_jointe'], piece.pk)
 
     def test_retrait_d_un_calepinage_voisin_est_introuvable(self):
         self._deposer()
