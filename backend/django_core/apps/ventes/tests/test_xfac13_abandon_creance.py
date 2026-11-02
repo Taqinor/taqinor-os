@@ -179,3 +179,40 @@ class XFAC13AbandonCreanceTests(TestCase):
         self.assertEqual(self.facture.statut, Facture.Statut.EMISE)
         self.assertEqual(self.facture.montant_du, Decimal('0.50'))
         self.assertFalse(self.facture.abandon_auto)
+
+    def test_rejet_reprend_l_abandon_automatique(self):
+        """AARG55 — rejeter le paiement de 1 199,95 qui avait déclenché
+        l'abandon auto de 0,05 reprend cet abandon : dû 1 200, puis un
+        nouveau paiement de 1 200 est accepté."""
+        from apps.ventes.models import AbandonCreance
+        profile = CompanyProfile.get(company=self.company)
+        profile.tolerance_ecart_reglement = Decimal('0.10')
+        profile.save(update_fields=['tolerance_ecart_reglement'])
+        self.facture.montant_ht = Decimal('1000')
+        self.facture.montant_tva = Decimal('200')
+        self.facture.montant_ttc = Decimal('1200')
+        self.facture.save(update_fields=[
+            'montant_ht', 'montant_tva', 'montant_ttc'])
+        base = f'/api/django/ventes/factures/{self.facture.id}/'
+        jour = timezone.now().date().isoformat()
+        r = self.api.post(base + 'enregistrer-paiement/', {
+            'montant': '1199.95', 'date_paiement': jour, 'mode': 'virement'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.abandon_montant, Decimal('0.05'))
+        paiement = self.facture.paiements.get()
+        r = self.api.post(
+            f'/api/django/ventes/paiements/{paiement.id}/rejeter/',
+            {'motif': 'Chèque impayé'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.abandon_montant, Decimal('0'))
+        self.assertEqual(self.facture.montant_du, Decimal('1200'))
+        abandon = AbandonCreance.objects.get(facture=self.facture)
+        self.assertIsNotNone(abandon.annule_le)
+        self.assertEqual(abandon.motif_reprise, 'Paiement rejeté')
+        r = self.api.post(base + 'enregistrer-paiement/', {
+            'montant': '1200', 'date_paiement': jour, 'mode': 'virement'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
