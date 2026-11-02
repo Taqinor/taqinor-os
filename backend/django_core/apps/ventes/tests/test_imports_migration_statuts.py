@@ -44,3 +44,38 @@ class StatutsMigrationTests(TestCase):
         _, _, facture = creer_facture_import(self.company, self._ligne('paid'))
         self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
         self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+
+    def test_facture_importee_serie_configuree_et_echeance(self):
+        """AARG17 — une facture migrée « posted » prend le préfixe du profil,
+        une échéance appliquée et un ``facture_emise`` ; « paid » : numéro et
+        échéance sans événement ; brouillon : référence provisoire.
+        Mutant : remettre le préfixe 'FAC' ⇒ échec."""
+        from datetime import timedelta
+
+        from core.events import facture_emise
+
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company=self.company)
+        prof.doc_prefixes = {'facture': 'FA'}
+        prof.save(update_fields=['doc_prefixes'])
+        recus = []
+
+        def _capter(sender, instance, **kwargs):
+            recus.append(instance.pk)
+        facture_emise.connect(_capter, weak=False, dispatch_uid='aarg17')
+        self.addCleanup(facture_emise.disconnect, dispatch_uid='aarg17')
+
+        _, _, emise = creer_facture_import(
+            self.company, {**self._ligne('posted'), 'reference_source': 'OD-12'})
+        _, _, payee = creer_facture_import(self.company, self._ligne('paid'))
+        _, _, brouillon = creer_facture_import(self.company, self._ligne('draft'))
+
+        for facture in (emise, payee):
+            relue = Facture.objects.get(pk=facture.pk)
+            self.assertTrue(relue.reference.startswith('FA-'), relue.reference)
+            self.assertEqual(
+                relue.date_echeance, relue.date_emission + timedelta(days=30))
+        self.assertNotEqual(emise.reference, payee.reference)
+        self.assertEqual(recus, [emise.pk])
+        self.assertTrue(
+            Facture.objects.get(pk=brouillon.pk).reference.startswith('BROUILLON-'))

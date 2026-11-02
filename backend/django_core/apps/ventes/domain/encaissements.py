@@ -530,15 +530,15 @@ def affecter_encaissement_groupe(
             # Répartition explicite fournie par l'appelant. AUD120 — on
             # VALIDE tout avant d'écrire quoi que ce soit : aucune facture
             # ne doit voir un Paiement si une seule part est hors borne.
-            parts = []
+            cumul = {}  # AARG5 — parts additionnées PAR FACTURE avant la borne
             for fid, part in repartition.items():
                 facture = by_id.get(int(fid))
                 if facture is None:
                     raise ValueError(f"Facture {fid} inconnue dans ce lot.")
                 part = quantize_mad(part)
-                if part <= 0:
-                    continue
-                parts.append((facture, part))
+                if part > 0:
+                    cumul[facture] = cumul.get(facture, Decimal('0')) + part
+            parts = list(cumul.items())
             total_parts = quantize_mad(
                 sum((p for _, p in parts), Decimal('0')))
             if total_parts - montant > TOLERANCE_CENTIME:
@@ -1151,8 +1151,11 @@ def enregistrer_paiement_avec_retenue(
         # reste en « RAS »).
         if type_retenue == RetenueSubie.TypeRetenue.RAS_IS:
             base = Decimal(str(locked.total_ht))
-        else:
-            base = Decimal(str(locked.total_tva))
+        else:  # AARG4 (D-AARG-2) — TVA NETTE : − avoirs actifs + ND émises
+            base = Decimal(str(locked.total_tva)) - sum(
+                (a.total_tva for a in locked.avoirs.all() if a.statut != 'annulee'),
+                Decimal('0')) + sum((n.total_tva for n in locked.notes_debit.all()
+                                     if n.statut == 'emise'), Decimal('0'))
         from core.money import quantize_mad
         due = quantize_mad(base * taux / Decimal('100'))
         deja = sum(
@@ -1289,8 +1292,15 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
         raise ValidationError(
             {'devis_ids': 'Au moins 2 devis sont requis pour consolider.'})
 
-    devis_qs = list(Devis.objects.select_related('client').filter(
-        id__in=devis_ids, company=company).prefetch_related('lignes'))
+    devis_qs = Devis.objects.select_related('client').filter(
+        id__in=devis_ids, company=company).prefetch_related('lignes')
+    from authentication.scoping import visible_user_ids  # AARG13 — portée DevisViewSet
+    if (visibles := visible_user_ids(user)) is not None:
+        from django.db.models import Q
+        from apps.crm.selectors import lead_ids_du_responsable
+        devis_qs = devis_qs.filter(Q(created_by__in=visibles)
+                                   | Q(lead_id__in=lead_ids_du_responsable(user)))
+    devis_qs = list(devis_qs)
     if len(devis_qs) != len(set(devis_ids)):
         raise ValidationError({'devis_ids': 'Un ou plusieurs devis introuvables.'})
 

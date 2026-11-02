@@ -575,3 +575,22 @@ def doublons_foyer_probables(company, *, include_archived=False):
             ],
         })
     return sorties
+
+
+# -- CADV2 -- predicat unique de « lead compte » ------------------------------
+#: Etiquette qui marque une fiche interne / de test (posee par CADV63).
+TAG_TEST = 'test'
+
+
+def q_lead_compte():
+    """Q des leads A COMPTER dans les chiffres du funnel.
+
+    Exclut les fiches « ne plus contacter » et celles etiquetees ``test``
+    (``Lead.tags`` est un texte libre separe par des virgules : l'etiquette
+    est comparee en entier, jamais en sous-chaine). Seule definition de
+    « compte » : les tuiles KPI s'y appuient.
+    """
+    from django.db.models import Q
+
+    motif = r'(^|,) *%s *(,|$)' % TAG_TEST
+    return ~Q(ne_plus_contacter=True) & ~Q(tags__iregex=motif)

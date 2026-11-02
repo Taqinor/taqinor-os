@@ -144,6 +144,51 @@ class PorteeActionsPaiementsTests(TestCase):
         self.assertEqual(
             Paiement.objects.filter(facture=self.facture).count(), avant)
 
+    def test_import_bc_consolider_promesse_hors_portee(self):
+        """AARG13 — un Commercial « équipe » sans lien avec le créateur : le
+        relevé ne rapproche pas la facture d'un collègue (aperçu
+        ``non_trouve``, commit d'un jeton du collègue sans Paiement), le BC
+        du collègue répond 404, consolider ses devis 404, promettre sur sa
+        facture 400. Mutant : retirer le ``scope_queryset`` de
+        ``_match_facture`` ⇒ échec."""
+        from apps.ventes.models import (
+            BonCommande, Devis, Facture, Paiement, PromessePaiement)
+        from apps.ventes.paiement_import import commit, dry_run
+        csv = b'date;reference;montant\n2026-10-05;FAC-AFAC55-0001;300\n'
+        apercu = dry_run(csv, 'releve.csv', self.company, user=self.autre)
+        self.assertEqual(apercu['preview'][0]['statut'], 'non_trouve')
+        du_proprio = dry_run(csv, 'releve.csv', self.company, user=self.proprio)
+        self.assertEqual(du_proprio['preview'][0]['facture_id'], self.facture.id)
+        avant = Paiement.objects.filter(facture=self.facture).count()
+        commit(self.company, self.autre, du_proprio['token'])
+        self.assertEqual(
+            Paiement.objects.filter(facture=self.facture).count(), avant)
+        devis = [Devis.objects.create(
+            company=self.company, reference=f'DEV-AARG13-{n}',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'), created_by=self.proprio) for n in (1, 2)]
+        bc = BonCommande.objects.create(
+            company=self.company, reference='BC-AARG13-1',
+            client=self.client_obj, devis=devis[0],
+            statut=BonCommande.Statut.CONFIRME)
+        api = self._api(self.autre)
+        r = api.post(f'/api/django/ventes/bons-commande/{bc.id}/creer-facture/',
+                     {}, format='json')
+        self.assertEqual(r.status_code, 404, getattr(r, 'data', None))
+        r = api.post(f'{BASE}consolider/',
+                     {'devis_ids': [d.id for d in devis]}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        r = api.post('/api/django/ventes/promesses-paiement/', {
+            'facture': self.facture.id, 'montant_promis': '100.00',
+            'date_promise': str(date.fromordinal(
+                date.today().toordinal() + 15))}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(Facture.objects.filter(
+            company=self.company, bon_commande=bc).count(), 0)
+        self.assertFalse(PromessePaiement.objects.exists())
+        self.assertEqual(self._api(self.proprio).get(
+            f'/api/django/ventes/bons-commande/{bc.id}/').status_code, 200)
+
     def test_proprietaire_et_admin_inchanges(self):
         for user in (self.proprio, self.admin):
             api = self._api(user)

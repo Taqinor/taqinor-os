@@ -24,7 +24,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead
-from apps.ventes.models import Devis, Facture
+from apps.ventes.models import Devis, Facture, Paiement
 from apps.installations.models import Installation, InstallationActivity
 from apps.installations.services import create_installation_from_devis
 from apps.parametres.models import CompanyProfile
@@ -73,11 +73,16 @@ def make_chantier_avec_devis(company, user):
 
 
 def make_facture_acompte(company, devis, client, payee=True):
-    return Facture.objects.create(
+    facture = Facture.objects.create(
         company=company, devis=devis, client=client,
         type_facture=Facture.TypeFacture.ACOMPTE,
         statut=Facture.Statut.PAYEE if payee else Facture.Statut.EMISE,
         reference=f'FAC-{next(_seq)}', montant_ttc=Decimal('1000'))
+    if payee:  # AARG3 — « payée » = réellement encaissée (un Paiement réel)
+        Paiement.objects.create(
+            company=company, facture=facture, montant=Decimal('1000'),
+            date_paiement=facture.date_emission, mode='virement')
+    return facture
 
 
 class ToggleOffTests(TestCase):

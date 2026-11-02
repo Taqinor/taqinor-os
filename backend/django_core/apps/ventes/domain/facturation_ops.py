@@ -670,7 +670,7 @@ def valider_paiements_saisis(paiements, *, aujourdhui=None):
     return normalises
 
 
-def facturer_devis_complet(*, devis, user, company, paiements=None):
+def facturer_devis_complet(*, devis, user, company, paiements=None, override_credit=False):
     """« Facturer » un devis ACCEPTÉ en UN geste atomique (fondateur, 05/10) :
     la facture COMPLÈTE (100 %, lignes recopiées, rattachée au BC du devis
     s'il n'a encore aucune facture), émise, puis les paiements DÉJÀ reçus
@@ -692,7 +692,8 @@ def facturer_devis_complet(*, devis, user, company, paiements=None):
     try:
         facture, crees = facturer_vente(
             devis, nature='complete', user=user, emettre=True,
-            paiements=paiements or [], remplacer_brouillons=True)
+            paiements=paiements or [], remplacer_brouillons=True,
+            override_credit=override_credit)  # AARG15 — jusqu'à l'émission
     except FacturationVenteRefusee as exc:
         if exc.corps.get('code') == 'credit_hold':
             from apps.ventes.domain.recouvrement import CreditHoldError

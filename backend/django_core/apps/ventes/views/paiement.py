@@ -24,7 +24,8 @@ from ..serializers_facturation import (
     RetenueSubieSerializer,
 )
 from ..serializers_facturation import PaiementAvecRetenueEntreeSerializer  # ENF11 : utilisé par @extend_schema
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin
+from ..gardes_lecture import LectureFactures
 from .facture_gardes import PeutEncaisser
 from core.permissions import declared_action_permissions
 import logging
@@ -135,7 +136,8 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         if self.action in ('enregistrer_avance', 'ventiler', 'rejeter',
                            'annuler_saisie', 'reaffecter'):
             return [PeutEncaisser()]
-        return [IsAnyRole()]
+        # AARG12 — lecture de l'argent bornée au module Ventes, comme les factures.
+        return [LectureFactures()]
 
     @extend_schema(request=D.RejeterPaiementRequest,
                    responses=PaiementSerializer)
@@ -479,7 +481,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
                               409: D.ErreurDetail})
     @action(detail=True, methods=['get'], url_path='recu-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureFactures])
     def recu_pdf(self, request, pk=None):
         """XFAC9 — quittance (reçu de paiement) PDF pour CE paiement.
 

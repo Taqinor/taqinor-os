@@ -104,6 +104,44 @@ class PaiementRetenueTests(TestCase):
         self.assertEqual(facture.retenues_subies_total, Decimal('0'))
         self.assertEqual(facture.montant_du, Decimal('120000.00'))
 
+    def _avoir_moitie_et_nd(self, avec_nd):
+        from apps.ventes.models import Avoir, NoteDebit
+        commun = {'company': self.company, 'facture': self.facture,
+                  'client': self.facture.client, 'statut': 'emise'}
+        Avoir.objects.create(
+            reference=f'AV-AARG4-{_nxt()}', taux_tva=Decimal('20'),
+            montant_ht=Decimal('50000'), montant_tva=Decimal('10000'),
+            montant_ttc=Decimal('60000'), **commun)
+        if avec_nd:
+            NoteDebit.objects.create(
+                reference=f'ND-AARG4-{_nxt()}', motif='Complément',
+                montant_ht=Decimal('10000'), montant_tva=Decimal('2000'),
+                montant_ttc=Decimal('12000'), **commun)
+
+    def test_ras_tva_nette_des_avoirs_et_notes_debit(self):
+        """AARG4 (D-AARG-2) — assiette RAS-TVA = TVA − avoirs + ND : après un
+        avoir de la moitié, RAS 100 % = 10 000 (pas 20 000) et la facture est
+        soldée (50 000 + 10 000 = 60 000). Mutant : retirer la soustraction
+        ⇒ échec."""
+        from apps.ventes.models import RetenueSubie
+        self._avoir_moitie_et_nd(avec_nd=False)
+        r = self.api.post(self.url, self._corps(taux='100'), format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        retenue = RetenueSubie.objects.get(facture=self.facture)
+        self.assertEqual(retenue.base, Decimal('10000.00'))
+        self.assertEqual(retenue.montant, Decimal('10000.00'))
+        self.assertEqual(self._facture().statut, 'payee')
+
+    def test_ras_tva_nette_avec_note_de_debit(self):
+        """AARG4 — une ND émise (TVA 2 000) s'ajoute : assiette 12 000."""
+        from apps.ventes.models import RetenueSubie
+        self._avoir_moitie_et_nd(avec_nd=True)
+        r = self.api.post(self.url, self._corps(taux='100'), format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(
+            RetenueSubie.objects.get(facture=self.facture).base,
+            Decimal('12000.00'))
+
     def test_entrees_invalides_400(self):
         from apps.ventes.models import Paiement, RetenueSubie
         cas = [

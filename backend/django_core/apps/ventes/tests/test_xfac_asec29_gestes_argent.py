@@ -241,6 +241,113 @@ class GestesArgentTests(TestCase):
                     self.assertNotEqual(r.status_code, 403,
                                         getattr(r, 'data', None))
 
+    def test_directive_acompte_et_promesse_exigent_encaisser(self):
+        """AARG7 (D-ASEC-VER-1) — annuler avec directive d'acompte
+        (rembourser / transferer) et créer une promesse : 403 sans
+        ``encaisser`` (Admin Ventes), rien d'écrit ; Directeur jamais 403.
+        Mutant : retirer le contrôle ⇒ échec."""
+        from datetime import timedelta
+
+        from apps.ventes.models import Facture, Paiement, PromessePaiement
+        directeur, admin_ventes = (self.users['Directeur'],
+                                   self.users['Admin Ventes'])
+        acompte = self._facture(directeur)
+        Facture.objects.filter(pk=acompte.pk).update(
+            type_facture=Facture.TypeFacture.ACOMPTE)
+        Paiement.objects.create(
+            company=self.company, facture=acompte, montant=Decimal('200'),
+            date_paiement=date.today(), mode='virement', created_by=directeur)
+        cible = self._facture(directeur)
+        url = f'/api/django/ventes/factures/{acompte.id}/annuler/'
+        promesse = {'facture': acompte.id, 'montant_promis': '100.00',
+                    'date_promise': (date.today() + timedelta(days=15)
+                                     ).isoformat()}
+        corps = ({'acompte': {'action': 'rembourser'}},
+                 {'acompte': {'action': 'transferer',
+                              'facture_cible': cible.id}})
+        for c in corps:
+            with self.subTest(corps=c):
+                r = self._api(admin_ventes).post(url, c, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+                self.assertIn("droit d'encaissement", str(r.data['detail']))
+        r = self._api(admin_ventes).post(
+            '/api/django/ventes/promesses-paiement/', promesse, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.statut, Facture.Statut.EMISE)
+        self.assertEqual(
+            list(Paiement.objects.filter(facture__in=[acompte, cible])
+                 .values_list('montant', flat=True)), [Decimal('200.00')])
+        self.assertFalse(PromessePaiement.objects.exists())
+        r = self._api(directeur).post(
+            '/api/django/ventes/promesses-paiement/', promesse, format='json')
+        self.assertNotEqual(r.status_code, 403, r.data)
+        r = self._api(directeur).post(url, corps[0], format='json')
+        self.assertNotEqual(r.status_code, 403, r.data)
+
+    def test_emettre_unitaire_et_lot_exigent_encaisser(self):
+        """AARG9 (D-AARG-3 = exiger_encaisser) — « Émettre » et le lot
+        ``emettre`` : refusés sans ``encaisser`` (Admin Ventes), brouillon
+        intact ; ``peut.emettre`` suit la même règle ; Directeur émet.
+        Mutant : retirer ``PeutEncaisser`` d'``emettre`` ⇒ échec."""
+        from apps.ventes.models import Facture
+        from apps.ventes.vente_facturation import peut_encaisser
+        motif = "Émettre ou encaisser une facture exige le droit d'encaissement."
+        directeur, admin_ventes = (self.users['Directeur'],
+                                   self.users['Admin Ventes'])
+        brouillon = self._facture(directeur)
+        Facture.objects.filter(pk=brouillon.pk).update(
+            statut=Facture.Statut.BROUILLON, reference=f'BROUILLON-{_nxt()}')
+        api = self._api(admin_ventes)
+        r = api.post(f'/api/django/ventes/factures/{brouillon.id}/emettre/')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data['detail'], motif)
+        r = api.post('/api/django/ventes/factures/bulk/',
+                     {'action': 'emettre', 'ids': [brouillon.id]},
+                     format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        resultat = r.data.get(brouillon.id) or r.data.get(str(brouillon.id))
+        self.assertEqual(resultat, {'ok': False, 'detail': motif})
+        relue = Facture.objects.get(pk=brouillon.pk)
+        self.assertEqual(relue.statut, Facture.Statut.BROUILLON)
+        self.assertTrue(relue.reference.startswith('BROUILLON-'))
+        self.assertFalse(peut_encaisser(admin_ventes))
+        self.assertTrue(peut_encaisser(directeur))
+        r = self._api(directeur).post(
+            f'/api/django/ventes/factures/{brouillon.id}/emettre/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Facture.objects.get(pk=brouillon.pk).statut,
+                         Facture.Statut.EMISE)
+
+    def test_lecture_argent_bornee_au_module_ventes(self):
+        """AARG12 — paiements (+ reçu PDF), avoirs, notes de débit, bons de
+        commande et promesses : 403 pour Admin RH (aucun code ventes), comme
+        la liste des factures ; Commercial (``ventes_voir``) lit toujours.
+        Mutant : remettre ``IsAnyRole`` sur un viewset ⇒ échec."""
+        from apps.ventes.models import Paiement
+        facture = self._facture(self.users['Directeur'])
+        paiement = Paiement.objects.create(
+            company=self.company, facture=facture, montant=Decimal('300'),
+            date_paiement=date.today(), mode='virement',
+            created_by=self.users['Directeur'])
+        base = '/api/django/ventes/'
+        listes = [base + seg for seg in (
+            'paiements/', 'avoirs/', 'notes-debit/', 'bons-commande/',
+            'promesses-paiement/')]
+        rh = self._api(self.users['Admin RH'])
+        for url in listes + [f'{base}paiements/{paiement.id}/recu-pdf/']:
+            with self.subTest(role='Admin RH', url=url):
+                r = rh.get(url)
+                self.assertEqual(r.status_code, 403, getattr(r, 'data', None))
+                self.assertEqual(
+                    str(r.data['detail']),
+                    'Accès aux factures réservé aux rôles du module Ventes.')
+        commercial = self._api(self.users['Commercial'])
+        for url in listes:
+            with self.subTest(role='Commercial', url=url):
+                r = commercial.get(url)
+                self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+
     def test_get_permissions_respecte_action(self):
         from apps.ventes.views.facture import FactureViewSet
         from apps.ventes.views.facture_gardes import PeutEncaisser

@@ -13,7 +13,7 @@ from .facture_lot import FactureLotActionsMixin
 from .facture_recouvrement import FactureRecouvrementActionsMixin
 from .facture_rectificatifs import FactureRectificatifsActionsMixin
 from .facture_portes import refuser_portes_fermees  # AFAC66 / VNT89
-from .facture_gardes import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
+from ..gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,

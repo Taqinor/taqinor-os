@@ -192,7 +192,7 @@ def _cles_idempotence(decisions):
     return cles
 
 
-def _match_facture(ref, montant, company, libelle='', ice=''):
+def _match_facture(ref, montant, company, libelle='', ice='', user=None):
     """AUD121 — rapproche UNE ligne de relevé, ou refuse de trancher.
 
     Renvoie ``(facture, match_type, statut_match, candidats)`` :
@@ -217,6 +217,9 @@ def _match_facture(ref, montant, company, libelle='', ice=''):
     from .models import Facture
     OPEN_STATUTS = (Facture.Statut.EMISE.value, Facture.Statut.EN_RETARD.value)
     qs = Facture.objects.filter(company=company, statut__in=OPEN_STATUTS)
+    if user is not None:  # AARG13 — portée du rôle, comme la liste des factures
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(qs, user, ['created_by'])
 
     # 1) Référence exacte (insensible à la casse) — match sûr.
     if ref:
@@ -377,7 +380,7 @@ def dry_run(file_bytes, filename, company, max_preview=None, user=None):
             continue
 
         facture, match_type, statut_match, candidats = _match_facture(
-            ref, montant, company, libelle=libelle, ice=ice)
+            ref, montant, company, libelle=libelle, ice=ice, user=user)
         if mode is None:
             # AANA69 — mode non reconnu : revue humaine, jamais « virement » muet.
             facture, match_type, statut_match, candidats = None, None, 'mode_invalide', []
@@ -610,8 +613,10 @@ def commit(company, user, token, lignes=None):
             results.append({'ligne': i + 2, 'statut': STATUT_DOUBLON})
             continue
 
-        facture = Facture.objects.filter(
-            company=company, pk=decision.get('facture_id')).first()
+        from authentication.scoping import scope_queryset  # AARG13
+        facture = scope_queryset(Facture.objects.filter(
+            company=company, pk=decision.get('facture_id')), user,
+            ['created_by']).first()
         if facture is None:
             skipped += 1
             results.append({

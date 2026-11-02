@@ -62,6 +62,9 @@ GARDEES_409 = {
     'reappliquer_lead': [('post', {})],
     'acquitter_derive': [('post', {})],
     'offres_tailles_appliquer': [('post', {'cle': 'recommande'})],
+    # CADV82 — garde de statut propre (seul un ENVOYÉ se prolonge) : 409
+    # ``{detail, code: 'statut'}``, rien d'écrit.
+    'prolonger_validite': [('post', {'date': '2027-01-10'})],
 }
 
 #: Écritures LÉGITIMES sur un devis accepté (elles ne modifient pas son

@@ -121,11 +121,11 @@ class PaiementActionPermissionTierTests(TestCase):
             with self.subTest(action=name):
                 self.assertEqual(_tier_name(name), tier)
 
-    def test_recu_pdf_stays_is_any_role(self):
-        """Le durcissement ne doit PAS sur-restreindre : recu-pdf déclare
-        IsAnyRole et doit rester à IsAnyRole (preuve que le correctif ne
-        touche que ce qu'il doit)."""
-        self.assertEqual(_tier_name('recu_pdf'), 'IsAnyRole')
+    def test_recu_pdf_reste_en_lecture_ventes(self):
+        """Le durcissement ne doit PAS sur-restreindre : recu-pdf reste une
+        LECTURE — depuis AARG12, la garde de lecture du module Ventes
+        (``LectureFactures``), jamais le palier responsable des écritures."""
+        self.assertEqual(_tier_name('recu_pdf'), 'LectureFactures')
 
 
 class PaiementActionRoleGateHTTPTests(TestCase):

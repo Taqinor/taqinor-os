@@ -39,9 +39,13 @@ from django.test import SimpleTestCase, TestCase
 from authentication.models import Company
 
 from apps.parametres.models_messages import (
-    CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
-    PLACEHOLDERS_RELANCE, MessageTemplate,
+    CLES_REACTIVATION, CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS,
+    MESSAGE_TEMPLATE_DEFAULTS_DARIJA, PLACEHOLDERS_RELANCE, MessageTemplate,
 )
+
+#: CADV107 — seule exception nommée à la doctrine : la darija des textes de
+#: réactivation reste à écrire (CADM1), jamais traduite automatiquement.
+_CLES_DARIJA_DUES = [c for c in CLES_RELANCE if c not in CLES_REACTIVATION]
 
 #: Les 11 clés que CAD62 comble (Done de la tâche).
 CLES_CAD62 = [
@@ -117,7 +121,7 @@ class CouvertureDarijaCompleteTests(SimpleTestCase):
     équivalent darija."""
 
     def test_aucune_cle_fr_nest_sans_equivalent_darija(self):
-        manquantes = [c for c in CLES_RELANCE
+        manquantes = [c for c in _CLES_DARIJA_DUES
                       if c not in MESSAGE_TEMPLATE_DEFAULTS_DARIJA]
         self.assertEqual(
             manquantes, [],
@@ -134,16 +138,17 @@ class CouvertureDarijaCompleteTests(SimpleTestCase):
         ne bouge pas : TOUTE clé de `CLES_RELANCE`, présente comme future,
         porte son défaut darija non vide.
         """
-        for cle in CLES_RELANCE:
+        for cle in _CLES_DARIJA_DUES:
             with self.subTest(cle=cle):
                 self.assertTrue(
                     (MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(cle) or '').strip())
         # Anti-faux-vert : la couverture est ENTIÈRE, pas seulement non vide
         # sur les clés qui existent dans le dictionnaire darija.
         self.assertEqual(
-            len([c for c in CLES_RELANCE
+            len([c for c in _CLES_DARIJA_DUES
                  if (MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(c) or '').strip()]),
-            len(CLES_RELANCE))
+            len(_CLES_DARIJA_DUES))
+        self.assertEqual(len(_CLES_DARIJA_DUES) + 3, len(CLES_RELANCE))
 
     def test_les_11_cles_cad62_sont_bien_les_clés_qui_manquaient(self):
         """Anti-faux-vert : si CAD62 n'avait rien ajouté, ce test échouerait
