@@ -393,3 +393,87 @@ class TrancheParCleTests(TestCase):
         self.assertEqual(solde.pourcentage, Decimal('3.27'))
         self.assertEqual(solde.libelle, 'Solde')
         self.assertTrue(solde.libelle.startswith('Solde'))
+
+    # ── AMET4 (D-SIGN-AUTO, D-AMET4-PROVISOIRE) — acompte provisoire ─────────
+
+    def _accepter(self, devis):
+        from unittest import mock
+
+        from apps.ventes.domain.cycle_vie import accept_devis
+        from apps.ventes.models import Devis
+        Devis.objects.filter(pk=devis.pk).update(
+            statut=Devis.Statut.ENVOYE, date_acceptation=None)
+        devis.refresh_from_db()
+        # PDF signé / e-mails / CAPI (après commit) hors sujet ici.
+        with mock.patch(
+                'apps.ventes.domain.cycle_vie._apres_commit_acceptation'):
+            return accept_devis(devis=devis, user=self.user,
+                                nom='Client AMET4')
+
+    def test_acceptation_cree_le_brouillon_d_acompte(self):
+        """Échéancier figé 30/60/10 sur 150 000 : `devis_accepted` (abonné
+        facturation) pose UN brouillon d'acompte provisoire de 45 000 ; un
+        second événement n'en pose pas un deuxième ; le mail lit 45 000
+        (jamais la tranche suivante, 90 000) ; la dés-acceptation l'annule
+        tant qu'il est brouillon ; émis, il la bloque (409 côté vue)."""
+        from apps.ventes.domain.cycle_vie import (
+            AnnulationAcceptationBloquee, _acceptance_deposit_block,
+            annuler_acceptation)
+        from apps.ventes.models import Devis, Facture
+        from core.events import devis_accepted
+        devis = self._accepter(self._devis())
+        devis.refresh_from_db()
+        self.assertEqual([e['pct_or_montant'] for e in devis.echeancier],
+                         [30, 60, 10])
+        [acompte] = self._actives(devis)
+        self.assertEqual(acompte.statut, Facture.Statut.BROUILLON)
+        self.assertEqual(acompte.type_facture, 'acompte')
+        self.assertEqual(acompte.cle_tranche, 'acompte')
+        self.assertEqual(Decimal(str(acompte.total_ttc)), Decimal('45000.00'))
+        self.assertIsNotNone(acompte.acompte_auto_le)
+        # Idempotent : un second `devis_accepted` ne crée rien.
+        devis_accepted.send(sender=Devis, devis=devis, user=self.user,
+                            ancien_statut=Devis.Statut.ENVOYE)
+        self.assertEqual([f.pk for f in self._actives(devis)], [acompte.pk])
+        # Le mail d'acceptation lit la tranche figée, pas `next_tranche`.
+        self.assertIn('45 000.00 MAD', _acceptance_deposit_block(devis))
+        # Dés-acceptation tant que brouillon : annulé (jamais supprimé).
+        annuler_acceptation(devis=devis, user=self.user)
+        acompte.refresh_from_db()
+        devis.refresh_from_db()
+        self.assertEqual(acompte.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(self._actives(devis), [])
+        # Ré-acceptation : un brouillon neuf, que `generer-facture` émet.
+        self._accepter(devis)
+        [neuf] = self._actives(devis)
+        r = self._generer(devis)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['id'], neuf.pk)
+        devis.refresh_from_db()
+        with self.assertRaises(AnnulationAcceptationBloquee):
+            annuler_acceptation(devis=devis, user=self.user)
+
+    def test_brouillon_d_acompte_manuel_bloque_la_desacceptation(self):
+        """Seul le brouillon MARQUÉ provisoire est retiré : un brouillon
+        d'acompte sans `acompte_auto_le` (geste humain) bloque toujours."""
+        from apps.ventes.domain.cycle_vie import (
+            AnnulationAcceptationBloquee, annuler_acceptation)
+        from apps.ventes.models import Facture
+        devis = self._accepter(self._devis())
+        [acompte] = self._actives(devis)
+        Facture.objects.filter(pk=acompte.pk).update(acompte_auto_le=None)
+        devis.refresh_from_db()
+        with self.assertRaises(AnnulationAcceptationBloquee):
+            annuler_acceptation(devis=devis, user=self.user)
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.statut, Facture.Statut.BROUILLON)
+
+    def test_brouillon_provisoire_ne_ferme_pas_la_porte_bc(self):
+        """D-AMET4-PROVISOIRE : le brouillon provisoire ne ferme aucune
+        porte ATOT2 (la facture complète / de BC reste possible)."""
+        from apps.ventes.selectors_facturation import exiger_devis_facturable
+        devis = self._accepter(self._devis())
+        self.assertEqual(len(self._actives(devis)), 1)
+        for porte in ('tranche', 'bc', 'complete'):
+            exiger_devis_facturable(devis, porte)  # ne lève pas

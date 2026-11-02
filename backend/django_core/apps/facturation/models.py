@@ -194,6 +194,14 @@ class Facture(TotauxDocumentMixin, models.Model):
     cle_tranche = models.CharField(
         max_length=60, blank=True, default='',
         verbose_name="Clé de tranche d'échéancier")
+    # AMET4 (D-AMET4-PROVISOIRE) — horodatage du brouillon d'acompte créé
+    # AUTOMATIQUEMENT à l'acceptation (abonné ``facturation.receivers``) :
+    # PROVISOIRE, ne ferme aucune porte (un brouillon n'en ferme jamais,
+    # VNT20) et la dés-acceptation l'annule tant qu'il est brouillon.
+    # NULL = facture née d'un geste humain (jamais retirée seule).
+    acompte_auto_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Acompte provisoire créé à l'acceptation le")
     # CIQ216 — numéro de commande du client, hérité du devis (facture de BC,
     # facture de tranche) ; imprimé sous « Facturé à » quand il est rempli.
     reference_commande_client = models.CharField(

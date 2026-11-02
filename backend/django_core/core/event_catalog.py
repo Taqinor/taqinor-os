@@ -62,8 +62,10 @@ CATALOG = {
         ['lead', 'company']),
     'devis_accepted': _e(
         'Un devis passe à « accepté ». ``avenant_de`` (VNT51) : pk du '
-        'prédécesseur de révision déjà accepté (avenant), ou None.',
-        ['devis', 'user', 'ancien_statut', 'avenant_de']),
+        'prédécesseur de révision déjà accepté (avenant), ou None. '
+        '``canal`` (AMET4) : canal d\'acceptation (« avenant_negocie » '
+        'pour un avenant négocié, sinon vide ou le canal de signature).',
+        ['devis', 'user', 'ancien_statut', 'avenant_de', 'canal']),
     'devis_acceptation_annulee': _e(
         "L'acceptation d'un devis est annulée (le lead sort de « Signé ») : "
         'le devis repasse « envoyé ».',

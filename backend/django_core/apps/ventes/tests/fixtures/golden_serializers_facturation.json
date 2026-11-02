@@ -557,6 +557,13 @@
      null,
      false
     ],
+    "acompte_auto_le": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
     "arrondi_pas": [
      "IntegerField",
      true,

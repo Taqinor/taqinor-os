@@ -17,3 +17,8 @@ class FacturationConfig(AppConfig):
         ),
         'categorie': 'Ventes',
     }
+
+    def ready(self):
+        # AMET4 — abonnés du bus M6 (acompte provisoire à l'acceptation,
+        # retiré à la dés-acceptation). Import local, sans effet de bord.
+        from . import receivers  # noqa: F401
