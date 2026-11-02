@@ -292,6 +292,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         """Vrai si l'appelant porte ``visites_valider`` (ou en tient lieu)."""
         return _user_has_or_legacy(self.request.user, 'visites_valider')
 
+    def destroy(self, request, *args, **kwargs):
+        # ALEA58 — une visite validée reste refusée (VT3 : gelée).
+        return (self._refus_si_gelee(self.get_object())
+                or super().destroy(request, *args, **kwargs))
+
     def perform_destroy(self, instance):
         """ALEA58 — supprimer la visite retire ses photos par LE service
         unique (``services.supprimer_media`` : pièce jointe du lead + objet

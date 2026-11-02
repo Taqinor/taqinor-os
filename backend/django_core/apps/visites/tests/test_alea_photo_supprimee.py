@@ -120,3 +120,13 @@ class PhotoSupprimeeTests(VisiteTerrainBase):
         self.assertFalse(VisiteTerrain.objects.filter(pk=visite_id).exists())
         self.assertFalse(Attachment.objects.filter(pk=attachment_id).exists())
         self.assertFalse(self._pieces_du_lead().exists())
+
+    def test_delete_visite_validee_refusee_photos_gardees(self):
+        visite_id = self.creer_visite()
+        media = self._photo(visite_id)
+        VisiteTerrain.objects.filter(pk=visite_id).update(
+            statut=VisiteTerrain.Statut.VALIDEE)
+        resp = self.api.delete(f'/api/django/visites/visites/{visite_id}/')
+        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', None))
+        self.assertTrue(VisiteTerrain.objects.filter(pk=visite_id).exists())
+        self.assertTrue(Attachment.objects.filter(pk=media.attachment_id).exists())
