@@ -91,6 +91,59 @@ class StatutDeriveTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         return r.data['id']
 
+    def test_recalcul_sans_date_echeance_suit_le_beat(self):
+        """AARG56 (C-AARG-063) — émise il y a 45 j sans date d'échéance, payée
+        300 puis paiement rejeté : EN RETARD, comme le beat ; l'échéance posée
+        d'une émise ne s'efface pas (409) ; sur un brouillon : 200."""
+        import datetime
+
+        from apps.ventes.models import Facture, Paiement
+        from apps.ventes.scheduled import check_overdue_factures
+        aujourdhui = datetime.date.today()
+
+        def emise(**extra):
+            return Facture.objects.create(
+                company=self.company, reference=f'FAC-AARG56-{_nxt()}',
+                client=self.client_obj, statut=Facture.Statut.EMISE,
+                taux_tva=Decimal('20.00'), montant_ht=Decimal('1000.00'),
+                montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'),
+                date_emission=aujourdhui - datetime.timedelta(days=45), **extra)
+        facture = emise()
+        self.assertIsNone(facture.date_echeance)
+        paiement = Paiement.objects.create(
+            company=self.company, facture=facture, montant=Decimal('300'),
+            date_paiement=aujourdhui, mode='virement', created_by=self.admin)
+        r = self.api.post(f'/api/django/ventes/paiements/{paiement.id}/rejeter/',
+                          {'motif': 'Chèque impayé'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        facture = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(facture.statut, Facture.Statut.EN_RETARD)
+        # Le beat ne change plus rien : même statut.
+        check_overdue_factures()
+        self.assertEqual(Facture.objects.get(pk=facture.pk).statut,
+                         Facture.Statut.EN_RETARD)
+        self.assertIsNone(Facture.objects.get(pk=facture.pk).date_echeance)
+
+        echeance = aujourdhui + datetime.timedelta(days=10)
+        datee = emise(date_echeance=echeance)
+        url = f'/api/django/ventes/factures/{datee.id}/'
+        r = self.api.patch(url, {'date_echeance': None}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn("ne s'efface pas", str(r.data))
+        self.assertEqual(Facture.objects.get(pk=datee.pk).date_echeance, echeance)
+        # Reporter reste permis ; une émise sans date : rien à effacer.
+        r = self.api.patch(url, {'date_echeance': str(
+            echeance + datetime.timedelta(days=5))}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.patch(f'/api/django/ventes/factures/{facture.id}/',
+                           {'date_echeance': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        Facture.objects.filter(pk=datee.pk).update(
+            statut=Facture.Statut.BROUILLON)
+        r = self.api.patch(url, {'date_echeance': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(Facture.objects.get(pk=datee.pk).date_echeance)
+
     def test_avoir_qui_solde_passe_payee(self):
         from apps.ventes.models import Facture
         facture = self._facture(paiements=['120000'])

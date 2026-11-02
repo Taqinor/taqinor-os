@@ -290,6 +290,11 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
                 'detail': MESSAGE_MONTANT_FIGE,
                 'champs_refuses': sorted(argent_touche),
             })
+        # AARG56 — l'échéance posée d'une émise se reporte, elle ne s'efface pas.
+        if (facture.statut != Facture.Statut.BROUILLON and facture.date_echeance
+                and serializer.validated_data.get(
+                    'date_echeance', facture.date_echeance) is None):
+            raise ConflitEtat("L'échéance d'une facture émise ne s'efface pas.")
         # ATOT9 — toute modification d'argent ACCEPTÉE (brouillon) laisse une
         # trace avant/après dans le chatter de la facture.
         avant = {champ: getattr(facture, champ) for champ in argent_touche}
