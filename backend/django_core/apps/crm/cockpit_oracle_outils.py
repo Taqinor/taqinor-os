@@ -23,7 +23,7 @@ import datetime
 import statistics
 
 from apps.crm import horaires, stages
-from apps.crm.models import Lead, PeriodeAbsence, RelanceEtape
+from apps.crm.models import Lead, LeadActivity, PeriodeAbsence, RelanceEtape
 from apps.crm.parcours_suivi_outils import etapes_de_la_table, type_de
 from apps.notifications.calendar_utils import is_jour_ouvre
 
@@ -220,6 +220,7 @@ class Oracle:
         plusieurs_fois = sum(1 for _e, _l, nb, _o in reports if nb >= REPORTS_MIN)
 
         sans_etape = self._sans_prochaine_etape(owner)
+        standby_echus = self._standby_echus(owner)
         sla = self._delai_premier_contact()
         hors_delai = self._premier_contact_hors_delai(owner)
 
@@ -300,6 +301,7 @@ class Oracle:
             'reports': reports,
             'reports_plusieurs_fois': plusieurs_fois,
             'sans_prochaine_etape': sans_etape,
+            'standby_echus': standby_echus,
             'premier_contact_hors_delai': [(pk, heures)
                                            for _cree, pk, heures in hors_delai],
             'par_type': [
@@ -326,6 +328,27 @@ class Oracle:
     def _delai_premier_contact(self):
         from apps.crm.leads_premier_contact import lead_sla_hours
         return lead_sla_hours(self.company)
+
+    def _standby_echus(self, owner):
+        """CADV27 — ``[(lead, jours ouvrés de dépassement)]`` : Standby daté dépassé de
+        plus de 2 jours comptés, aucun appel humain à partir de la date."""
+        trouves = []
+        for pk, lead in self.leads.items():
+            if (lead.parc_etat != 'standby' or lead.parc_jusqu_au is None
+                    or lead.parc_jusqu_au >= self.today
+                    or lead.perdu or lead.ne_plus_contacter
+                    or lead.stage in (stages.SIGNED, stages.COLD)
+                    or (owner is not None and lead.owner_id != owner)):
+                continue
+            depuis = self.jours_comptes(lead.parc_jusqu_au, lead.owner_id)
+            appele = any(
+                _local(ligne.created_at) >= lead.parc_jusqu_au
+                for ligne in lead.activites.filter(
+                    kind=LeadActivity.Kind.APPEL, user__isnull=False))
+            if depuis > 2 and not appele:
+                trouves.append((pk, depuis))
+        trouves.sort(key=lambda t: (-t[1], t[0]))
+        return trouves
 
     def _sans_prochaine_etape(self, owner):
         """``[(lead, jours calendaires depuis sa dernière étape close, étape du funnel)]``,
@@ -438,6 +461,7 @@ def ecarts(attendu, servi):
             ('en_retard', ('etape', 'lead', 'jours_de_retard')),
             ('taches_en_attente', ('etape', 'lead', 'ouverte_depuis_jours')),
             ('sans_prochaine_etape', ('lead', 'depuis_jours', 'stage')),
+            ('standby_echus', ('lead', 'depuis_jours_ouvres')),
             ('premier_contact_hors_delai', ('lead', 'attend_depuis_heures'))):
         verifier(f'exceptions.{cle}.total', len(attendu[cle]),
                  exceptions[cle]['total'])

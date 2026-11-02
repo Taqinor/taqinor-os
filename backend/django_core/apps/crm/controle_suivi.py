@@ -542,6 +542,53 @@ def _sans_prochaine_etape(company, portee, today):
     return lignes
 
 
+#: CADV27 (D-CADV-4) — au-delà, un Standby daté dépassé est une exception.
+STANDBY_ECHU_JOURS = 2
+
+
+def _standby_candidats(portee, today):
+    """CADV27 — les leads Standby dont la date est passée, sans appel humain
+    depuis cette date : UNE requête (``Exists``), jamais une par lead."""
+    from django.db.models import Exists, OuterRef
+
+    from . import stages
+    from .models import LeadActivity
+
+    appel = LeadActivity.objects.filter(
+        lead_id=OuterRef('pk'), kind=LeadActivity.Kind.APPEL, user__isnull=False,
+        created_at__date__gte=OuterRef('parc_jusqu_au'))
+    return list(
+        portee.filter(parc_etat='standby', parc_jusqu_au__lt=today,
+                      perdu=False, ne_plus_contacter=False)
+        .exclude(stage__in=[stages.SIGNED, stages.COLD])
+        .annotate(_appele=Exists(appel)).filter(_appele=False)
+        # La portée d'un rôle restreint est un `DISTINCT` : on ne lit que les
+        # colonnes servies.
+        .select_related('owner')
+        .only('id', 'nom', 'prenom', 'parc_jusqu_au', 'owner', 'owner__username'))
+
+
+def _standby_echus(candidats, today, absences, ouvres):
+    """CADV27 — Standby dépassé de plus de ``STANDBY_ECHU_JOURS`` jours OUVRÉS (LA
+    règle du retard, ``_jours_comptes``) ; le plus ancien d'abord."""
+    from .serializers import nom_affichable_lead, nom_affichable_responsable
+
+    lignes = []
+    for lead in candidats:
+        depuis = _jours_comptes(lead.parc_jusqu_au, today, lead.owner_id,
+                                ouvres, absences)
+        if depuis > STANDBY_ECHU_JOURS:
+            lignes.append((lead.owner_id, {
+                'lead': lead.pk,
+                'lead_nom': nom_affichable_lead(lead),
+                'owner_nom': nom_affichable_responsable(lead.owner),
+                'parc_jusqu_au': lead.parc_jusqu_au.isoformat(),
+                'depuis_jours_ouvres': depuis,
+            }))
+    lignes.sort(key=lambda paire: (-paire[1]['depuis_jours_ouvres'], paire[1]['lead']))
+    return lignes
+
+
 def _candidats_premier_contact(company, portee_ids, maintenant, sla):
     """Le PRÉ-FILTRE de ``premier_contact_hors_delai`` : la règle de
     ``sla-breach`` (``selectors.leads_sla_depasse`` — heures calendaires,
@@ -947,6 +994,7 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
             company, portee_ids, today)
         candidats = _candidats_premier_contact(
             company, portee_ids, maintenant, sla)
+        standby = _standby_candidats(portee, today)
         # CAD35 + calendrier de la société — chargés UNE fois, EN LOT, sur la
         # fenêtre que les chiffres couvrent réellement : la plus ancienne des
         # deux périodes, la plus ancienne échéance en retard, la plus
@@ -955,7 +1003,8 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
         borne = min([debut_precedent]
                     + [e.due_date for e in etapes_echues]
                     + [_jour_local(t.created_at) for t in taches_anciennes]
-                    + [_jour_local(lead.date_creation) for lead in candidats])
+                    + [_jour_local(lead.date_creation) for lead in candidats]
+                    + [lead.parc_jusqu_au for lead in standby])
         absences = cadence_absence.couverture(company, borne, today)
         ouvres = jours_ouvres_entre(company, borne, today)
 
@@ -984,6 +1033,8 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
             'reports': _liste_reports(reports, owner),
             'sans_prochaine_etape': _liste(sans_etape, owner),
             'premier_contact_hors_delai': _liste(hors_delai, owner),
+            'standby_echus': _liste(
+                _standby_echus(standby, today, absences, ouvres), owner),
         }
         retard_alerte = any(
             ligne['jours_de_retard'] >= RETARD_ALERTE_JOURS
@@ -994,6 +1045,7 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
             niveau = NIVEAU_ALERTE
         elif (exceptions['en_retard']['total']
               or exceptions['taches_en_attente']['total']
+              or exceptions['standby_echus']['total']
               or exceptions['reports']['plusieurs_fois']):
             niveau = NIVEAU_ATTENTION
         elif (not any(case['du'] for case in cases.values())

@@ -602,6 +602,8 @@ class FormeTests(_Base):
         sorti = self._lead()
         self._fait(sorti, _jour(-8))                          # sans suite
         self._lead(stage=stages.NEW, cree_le=_a(_jour(-6)))   # hors délai
+        self._lead(parc_etat='standby', parc_raison='plus_tard_date',
+                   parc_jusqu_au=_jour(-9))                   # Standby échu
 
     def test_la_forme_est_celle_du_contrat(self):
         self._scenario()
@@ -951,6 +953,47 @@ class ExceptionsTests(_Base):
                          origine.astimezone(CASA).date().isoformat())
         self.assertNotEqual(ligne['due_date'], ligne['due_initial'])
 
+    def _standby(self, jour, **champs):
+        return self._lead(parc_etat='standby', parc_raison='plus_tard_date',
+                          parc_jusqu_au=jour, **champs)
+
+    def test_le_standby_echu_est_liste_en_jours_ouvres(self):
+        """CADV27. Gel : mercredi 30/09/2026. Dépassé de 4 jours ouvrés (jeudi 24/09 :
+        ven, lun, mar, mer), de 1 (mardi 29/09), à date future. Mutant : compter en
+        jours calendaires ⇒ ``depuis_jours_ouvres`` vaudrait 6."""
+        echu = self._standby(datetime.date(2026, 9, 24))
+        self._standby(datetime.date(2026, 9, 29))
+        self._standby(_jour(10))
+        controle = self._controle()
+        liste = controle['exceptions']['standby_echus']
+        self.assertEqual(liste['total'], 1)
+        [ligne] = liste['lignes']
+        self.assertEqual(ligne, {
+            'lead': echu.pk, 'lead_nom': ligne['lead_nom'],
+            'owner_nom': self.acteur.username, 'parc_jusqu_au': '2026-09-24',
+            'depuis_jours_ouvres': 4})
+        self.assertEqual(controle['verdict']['niveau'], cs.NIVEAU_ATTENTION)
+
+    def test_un_appel_humain_depuis_la_date_retire_la_ligne(self):
+        echu = self._standby(datetime.date(2026, 9, 24))
+        systeme = LeadActivity.objects.create(
+            company=self.company, lead=echu, user=None,
+            kind=LeadActivity.Kind.APPEL, body='Système.')
+        self.assertEqual(self._controle()['exceptions']['standby_echus']['total'], 1)
+        systeme.delete()
+        LeadActivity.objects.create(
+            company=self.company, lead=echu, user=self.acteur,
+            kind=LeadActivity.Kind.APPEL, body='Appel.')
+        self.assertEqual(self._controle()['exceptions']['standby_echus']['total'], 0)
+
+    def test_le_standby_echu_suit_le_commercial_lu(self):
+        autre = self._utilisateur('autre-standby')
+        self._standby(datetime.date(2026, 9, 24), owner=autre)
+        self.assertEqual(self._controle(owner=self.acteur.pk)['exceptions']
+                         ['standby_echus']['total'], 0)
+        self.assertEqual(self._controle(owner=autre.pk)['exceptions']
+                         ['standby_echus']['total'], 1)
+
     def test_sans_prochaine_etape(self):
         sorti = self._lead()
         self._fait(sorti, _jour(-3), heure=16)
@@ -1230,7 +1273,8 @@ class VolumeTests(_Base):
             {nom: liste['total']
              for nom, liste in controle['exceptions'].items()},
             {'en_retard': 12, 'taches_en_attente': 12, 'reports': 24,
-             'sans_prochaine_etape': 12, 'premier_contact_hors_delai': 12})
+             'sans_prochaine_etape': 12, 'standby_echus': 0,
+             'premier_contact_hors_delai': 12})
         self.assertEqual(controle['verdict']['du'], 12 * 4)
         # `par_commercial` est lu sur les mêmes données (aucune requête de
         # plus) et `en_retard_actuel` est le VRAI nombre, non plafonné à 10.
