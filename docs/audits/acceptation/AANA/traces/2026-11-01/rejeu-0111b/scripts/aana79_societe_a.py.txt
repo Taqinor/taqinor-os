@@ -1,0 +1,13 @@
+# Rejeu 0111b — AANA79 : jeu ventes_factures (core.data_explorer.run_query, moteur réel) sur la société ACC2 A (3 factures émises 1 000 / 500 / 250 HT).
+import json
+from django.contrib.auth import get_user_model
+from authentication.models import Company
+from core.data_explorer import run_query
+co = Company.objects.get(slug='acc2-0111b-a'); u = get_user_model().objects.get(username='acc2_dir_a')
+out = {}
+for champ in ('total_ht', 'montant_ht'):
+    try:
+        out[champ] = run_query('ventes_factures', co, u, {'aggregates': [{'fn': 'sum', 'field': champ, 'alias': 's'}, {'fn': 'count', 'field': 'id', 'alias': 'nb'}]})
+    except Exception as e:
+        out[champ] = 'ERREUR ' + repr(e)[:200]
+print('@@A ' + json.dumps(out, default=str, ensure_ascii=False))

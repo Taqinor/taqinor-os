@@ -128,7 +128,8 @@ def _lire_corps_replace_lines(devis, request):
                                   status=status.HTTP_400_BAD_REQUEST)
         entete = {k: v for k, v in entete_in.items()
                   if k not in ('statut', 'company')}
-        entete_ser = DevisWriteSerializer(devis, data=entete, partial=True)
+        entete_ser = DevisWriteSerializer(  # AGNR50 : hors périmètre (AGNR49)
+            devis, data=entete, partial=True, context={'ttc_apres_lignes': True})
         entete_ser.is_valid(raise_exception=True)
         _gardes_mise_a_jour(devis, entete_ser.validated_data,
                             request.user, t17=False)
@@ -362,6 +363,9 @@ class DevisEditionActionsMixin:
         # sous la MÊME transaction. Validés AVANT : un refus pointe le champ
         # ``etude_params`` et ne crée rien. Absents ⇒ comportement d'hier.
         from ..domain.etude_schema import ECRAN, ecrire
+        from ..domain.modifiabilite import echeancier_au_reste
+        from ..utils.echeancier import EcheancierIncoherent
+        from ..utils.options import option_totaux
         from core.conflit_etat import ConflitEtat
         etude_in = head.pop('etude_params', None)
         # CI #997 fuzz — ``etude_params`` est publié « objet libre » : un
@@ -425,6 +429,13 @@ class DevisEditionActionsMixin:
                         origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
                         company=company, user=request.user,
                         composition=lignes_in))
+                    # AGNR50 — LA règle d'AGNR49 au TTC des lignes créées.
+                    try:
+                        devis.echeancier = echeancier_au_reste(
+                            devis.echeancier, option_totaux(devis)['ttc'])
+                    except EcheancierIncoherent as exc:
+                        raise ConflitEtat({'echeancier': [str(exc)]})
+                    Devis.objects.filter(pk=devis.pk).update(echeancier=devis.echeancier)
                     _garde_capacite_totaux(devis)
                     return devis
                 create_numbered(Devis, company, 'devis', _save)

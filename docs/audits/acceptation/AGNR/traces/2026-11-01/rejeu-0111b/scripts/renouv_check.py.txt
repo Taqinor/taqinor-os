@@ -1,0 +1,1 @@
+from apps.ventes.models import Devis; print('@@R', [(d.pk, d.devis_origine_id) for d in Devis.objects.filter(devis_origine__isnull=False).order_by('pk')])

@@ -325,6 +325,47 @@ class EcheancierDUnDevis(TestCase):
                        echeancier='pas-une-liste')
         self.assertEqual(len(schedule_for_devis(devis)), 3)
 
+    def test_jalons_mixtes_impriment_les_montants_saisis(self):
+        """AGNR62 — [6 000 MAD ; 40 % ; 20 % ; 800 MAD] sur 17 000 TTC : le
+        PDF imprime 6 000 / 6 800 / 3 400 / 800 (LA règle d'AGNR49), jamais
+        des montants re-dérivés des % arrondis. ROUGE AVANT : « 5 999,30 » …
+        « 800,70 ». Une dernière stockée en % (donnée d'hier) vaut le reste ;
+        un échéancier tout en % reste imprimé comme avant."""
+        from apps.ventes.quote_engine.clauses_cgv import jalons_imprimes
+        from apps.ventes.utils.echeancier import jalons_paiement_devis
+        attendu = [Decimal('6000.00'), Decimal('6800.00'),
+                   Decimal('3400.00'), Decimal('800.00')]
+        for suffixe, derniere in (('Q62A', {'unite': 'montant',
+                                            'pct_or_montant': 800}),
+                                  ('Q62B', {'unite': 'pct',
+                                            'pct_or_montant': 10})):
+            devis = _devis(
+                self.company, self.client_obj, f'DEV-{MONTH}-{suffixe}',
+                echeancier=[
+                    {'libelle': 'Commande', 'type': 'acompte',
+                     'unite': 'montant', 'pct_or_montant': 6000},
+                    {'libelle': 'Livraison', 'jalon': 'livraison_materiel',
+                     'unite': 'pct', 'pct_or_montant': 40},
+                    {'libelle': 'MES', 'jalon': 'mise_en_service',
+                     'unite': 'pct', 'pct_or_montant': 20},
+                    dict({'libelle': 'Réception',
+                          'jalon': 'reception_definitive'}, **derniere)])
+            jalons = jalons_paiement_devis(devis)
+            self.assertEqual([j['montant_ttc'] for j in jalons], attendu,
+                             suffixe)
+            texte = ' ; '.join(jalons_imprimes(jalons))
+            self.assertIn('6\u202f000,00 MAD TTC', texte)
+            self.assertNotIn('5\u202f999,30', texte)
+            self.assertIn('Réception : 4.71 % · 800,00 MAD TTC', texte)
+        devis = _devis(
+            self.company, self.client_obj, f'DEV-{MONTH}-Q62C',
+            echeancier=[{'type': 'acompte', 'pct_or_montant': 30},
+                        {'type': 'materiel', 'pct_or_montant': 60},
+                        {'type': 'solde', 'pct_or_montant': 10}])
+        self.assertEqual(
+            [j['montant_ttc'] for j in jalons_paiement_devis(devis)],
+            [Decimal('5100.00'), Decimal('10200.00'), Decimal('1700.00')])
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. L'API REFUSE EN 400 — la garde à l'écriture
@@ -404,6 +445,70 @@ class ApiEcheancier(TestCase):
     def test_echeancier_vide_reste_accepte(self):
         reponse = self._patch(None)
         self.assertEqual(reponse.status_code, 200, reponse.data)
+
+    def test_patch_mixte_dernier_au_reste_et_depassement_409(self):
+        """AGNR50 (C-AGNR-VER-006) — corps EXACT du dialogue PDF (6 000 MAD +
+        40/20/10 % sur 17 000 TTC) : la dernière tranche est stockée au reste
+        (800 MAD) ; un acompte de 8 500 (Σ 18 700) répond 409 sans écriture ;
+        ``atomic`` applique la même règle APRÈS ses lignes. ROUGE AVANT :
+        PATCH 200, dernière « 10 % » (4,71 % des montants), atomic 201."""
+        from apps.ventes.utils.echeancier import jalons_paiement_devis
+        corps = [
+            {'libelle': 'Commande', 'type': 'acompte', 'unite': 'montant',
+             'pct_or_montant': 6000},
+            {'libelle': 'Livraison', 'jalon': 'livraison_materiel',
+             'unite': 'pct', 'pct_or_montant': 40},
+            {'libelle': 'MES', 'jalon': 'mise_en_service', 'unite': 'pct',
+             'pct_or_montant': 20},
+            {'libelle': 'Réception', 'jalon': 'reception_definitive',
+             'unite': 'pct', 'pct_or_montant': 10}]
+        reponse = self._patch(corps)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.devis.refresh_from_db()
+        stocke = self.devis.echeancier
+        self.assertEqual(stocke[-1], {
+            'libelle': 'Réception', 'jalon': 'reception_definitive',
+            'unite': 'montant', 'pct_or_montant': 800.0})
+        self.assertEqual(stocke[:-1], corps[:-1])
+        self.assertEqual(reponse.data['echeancier'], stocke)
+        jalons = jalons_paiement_devis(self.devis)
+        self.assertEqual(sum(j['montant_ttc'] for j in jalons),
+                         Decimal('17000.00'))
+        self.assertEqual(sum(j['pct'] for j in jalons), Decimal('100.00'))
+        # Idempotent : renvoyer le stocké sans toucher ⇒ objet identique.
+        self.assertEqual(self._patch(stocke).status_code, 200)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.echeancier, stocke)
+        # Acompte 8 500 : 8 500 + 6 800 + 3 400 = 18 700 > 17 000 ⇒ 409.
+        trop = [dict(corps[0], pct_or_montant=8500)] + corps[1:]
+        reponse = self._patch(trop)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('18 700 MAD', str(reponse.data['echeancier']))
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.echeancier, stocke)
+        # atomic : mêmes lignes + même échéancier.
+        lignes = [{'produit': ld.produit_id, 'designation': ld.designation,
+                   'quantite': str(ld.quantite),
+                   'prix_unitaire': str(ld.prix_unitaire), 'remise': '0',
+                   'taux_tva': str(ld.taux_tva), 'type_ligne': 'produit',
+                   'ordre': i, 'variante': ''}
+                  for i, ld in enumerate(self.devis.lignes.order_by('id'))]
+        avant = Devis.objects.count()
+
+        def _atomic(echeancier):
+            return self.api.post('/api/django/ventes/devis/atomic/', {
+                'client': self.client_obj.id, 'statut': 'brouillon',
+                'taux_tva': '20', 'mode_installation': 'industriel',
+                'lignes': lignes, 'echeancier': echeancier}, format='json')
+        reponse = _atomic(corps)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        cree = Devis.objects.get(pk=reponse.data['id'])
+        self.assertEqual(cree.echeancier[-1]['pct_or_montant'], 800.0)
+        self.assertEqual(cree.echeancier[-1]['unite'], 'montant')
+        reponse = _atomic(trop)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('echeancier', reponse.data)
+        self.assertEqual(Devis.objects.count(), avant + 1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,1288 @@
+{
+  "mode": "old",
+  "base": "http://127.0.0.1:8791",
+  "run": "old-mvyeat3z",
+  "bi": {
+    "run_total": {
+      "st": 400,
+      "body": {
+        "detail": "Champ non autorisé : 'total_ht'"
+      },
+      "ct": "application/json"
+    },
+    "run_montant_fige": {
+      "st": 200,
+      "body": {
+        "dataset": "ventes_factures",
+        "nb": 1,
+        "rows": [
+          {
+            "ht_fige": null,
+            "nb": 3
+          }
+        ]
+      },
+      "ct": "application/json"
+    },
+    "par_statut": {
+      "st": 200,
+      "body": {
+        "dataset": "ventes_factures",
+        "nb": 4,
+        "rows": [
+          {
+            "statut": "annulee",
+            "ht": null,
+            "nb": 1
+          },
+          {
+            "statut": "brouillon",
+            "ht": 300,
+            "nb": 3
+          },
+          {
+            "statut": "emise",
+            "ht": null,
+            "nb": 2
+          },
+          {
+            "statut": "payee",
+            "ht": null,
+            "nb": 1
+          }
+        ]
+      },
+      "ct": "application/json"
+    },
+    "meta_champs": {
+      "name": "ventes_factures",
+      "label": "Factures",
+      "fields": [
+        "id",
+        "statut",
+        "type_facture",
+        "mois_emission",
+        "montant_ht",
+        "montant_tva",
+        "montant_ttc",
+        "montant_paye",
+        "reste_du",
+        "echue_bool",
+        "client",
+        "date_echeance"
+      ],
+      "champs": [
+        {
+          "name": "id",
+          "label": "Factures",
+          "type": "mesure"
+        },
+        {
+          "name": "statut",
+          "label": "Statut",
+          "type": "dimension"
+        },
+        {
+          "name": "type_facture",
+          "label": "Type de facture",
+          "type": "dimension"
+        },
+        {
+          "name": "mois_emission",
+          "label": "Mois d'émission",
+          "type": "temps"
+        },
+        {
+          "name": "montant_ht",
+          "label": "Montant HT",
+          "type": "mesure"
+        },
+        {
+          "name": "montant_tva",
+          "label": "TVA",
+          "type": "mesure"
+        },
+        {
+          "name": "montant_ttc",
+          "label": "Montant TTC",
+          "type": "mesure"
+        },
+        {
+          "name": "montant_paye",
+          "label": "Montant payé",
+          "type": "mesure"
+        },
+        {
+          "name": "reste_du",
+          "label": "Reste dû",
+          "type": "mesure"
+        },
+        {
+          "name": "echue_bool",
+          "label": "Échue",
+          "type": "dimension"
+        },
+        {
+          "name": "client",
+          "label": "Client (id)",
+          "type": "dimension"
+        },
+        {
+          "name": "date_echeance",
+          "label": "Date d'échéance",
+          "type": "temps"
+        }
+      ],
+      "mesures": [
+        "id",
+        "montant_ht",
+        "montant_tva",
+        "montant_ttc",
+        "montant_paye",
+        "reste_du"
+      ],
+      "dimensions": [
+        "statut",
+        "type_facture",
+        "echue_bool",
+        "client"
+      ],
+      "temps": [
+        "mois_emission",
+        "date_echeance"
+      ]
+    }
+  },
+  "incidents_bi": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "bc": {
+    "B1": {
+      "id": 4,
+      "ref": "BC-202611-0002"
+    },
+    "B2": {
+      "id": 5,
+      "ref": "BC-202611-0003"
+    },
+    "B3": {
+      "id": 6,
+      "ref": "BC-202611-0004"
+    },
+    "creer_facture_B2": {
+      "st": 409,
+      "body": {
+        "detail": "Ce devis est déjà facturé par FAC-202611-0003 : corrigez-la par un avoir."
+      }
+    }
+  },
+  "incidents_bc": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "avoir": {
+    "cas1": {
+      "devis": 13,
+      "prix_negocie": {
+        "st": 201,
+        "body": {
+          "devis_v2": {
+            "id": 14,
+            "reference": "DEV-202611-0007",
+            "version": 2
+          },
+          "remise_pct": "25.00",
+          "total_ttc": "9000.00",
+          "factures_annulees": [],
+          "factures_reprises": [
+            {
+              "reference": "FAC-202611-0004",
+              "total_ttc": "2400.00"
+            },
+            {
+              "reference": "FAC-202611-0005",
+              "total_ttc": "2400.00"
+            },
+            {
+              "reference": "FAC-202611-0006",
+              "total_ttc": "2400.00"
+            },
+            {
+              "reference": "FAC-202611-0007",
+              "total_ttc": "2400.00"
+            },
+            {
+              "reference": "FAC-202611-0008",
+              "total_ttc": "2400.00"
+            }
+          ],
+          "ecart_ttc": "-3000.00",
+          "regularisation": {
+            "type": "avoir",
+            "montant": "3000.00"
+          },
+          "reste_a_facturer": "0.00"
+        }
+      },
+      "factures": [
+        {
+          "id": 21,
+          "ref": "FAC-202611-0004",
+          "ttc": "2400.00",
+          "avoirs_total": "0.00",
+          "du": "2400.00",
+          "statut": "emise"
+        },
+        {
+          "id": 22,
+          "ref": "FAC-202611-0005",
+          "ttc": "2400.00",
+          "avoirs_total": "0.00",
+          "du": "2400.00",
+          "statut": "emise"
+        },
+        {
+          "id": 23,
+          "ref": "FAC-202611-0006",
+          "ttc": "2400.00",
+          "avoirs_total": "0.00",
+          "du": "2400.00",
+          "statut": "emise"
+        },
+        {
+          "id": 24,
+          "ref": "FAC-202611-0007",
+          "ttc": "2400.00",
+          "avoirs_total": "0.00",
+          "du": "2400.00",
+          "statut": "emise"
+        },
+        {
+          "id": 25,
+          "ref": "FAC-202611-0008",
+          "ttc": "2400.00",
+          "avoirs_total": "3000.00",
+          "du": "0.00",
+          "statut": "emise"
+        }
+      ],
+      "avoirs": [
+        {
+          "id": 2,
+          "ref": "AVO-202611-0002",
+          "facture": 25,
+          "ttc": "3000.00",
+          "type": "correction"
+        }
+      ],
+      "somme_du": 9600,
+      "devis_relu": {
+        "statut": "accepte",
+        "total_ttc": "12000.00",
+        "solde": {
+          "total_ttc": "12000.00",
+          "facture": "9000.00",
+          "paye": "0.00",
+          "avoirs": "3000.00",
+          "restant": "12600.00",
+          "tranches_total": "5",
+          "tranches_facturees": "5",
+          "porte_facturation": "aucune",
+          "facturation_terminee": "True",
+          "emis": "12000.00",
+          "brouillons": "0.00",
+          "reste_a_facturer": "3000.00"
+        }
+      }
+    },
+    "cas2": {
+      "devis": 15,
+      "prix_negocie": {
+        "st": 201,
+        "body": {
+          "devis_v2": {
+            "id": 16,
+            "reference": "DEV-202611-0009",
+            "version": 2
+          },
+          "remise_pct": "25.00",
+          "total_ttc": "9000.00",
+          "factures_annulees": [],
+          "factures_reprises": [
+            {
+              "reference": "FAC-202611-0009",
+              "total_ttc": "2400.00"
+            },
+            {
+              "reference": "FAC-202611-0010",
+              "total_ttc": "2400.00"
+            },
+            {
+              "reference": "FAC-202611-0011",
+              "total_ttc": "2400.00"
+            },
+            {
+              "reference": "FAC-202611-0012",
+              "total_ttc": "2400.00"
+            },
+            {
+              "reference": "FAC-202611-0013",
+              "total_ttc": "2400.00"
+            }
+          ],
+          "ecart_ttc": "-3000.00",
+          "regularisation": {
+            "type": "avoir",
+            "montant": "3000.00"
+          },
+          "reste_a_facturer": "0.00"
+        }
+      },
+      "avoirs_avant": 4,
+      "avoirs_apres": 5,
+      "devis_statut": "accepte"
+    }
+  },
+  "incidents_avoir": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "copie": {
+    "gamme": {
+      "source": {
+        "id": 17,
+        "ttc": "60000.00",
+        "echeancier": [
+          {
+            "type": "acompte",
+            "unite": "montant",
+            "libelle": "Acompte",
+            "pct_or_montant": 6000
+          },
+          {
+            "type": "materiel",
+            "unite": "pct",
+            "libelle": "Livraison",
+            "pct_or_montant": 60
+          },
+          {
+            "type": "solde",
+            "unite": "pct",
+            "libelle": "Solde",
+            "pct_or_montant": 30
+          }
+        ]
+      },
+      "soeur": {
+        "id": 18,
+        "ttc": "60000.00",
+        "echeancier": [
+          {
+            "type": "acompte",
+            "unite": "montant",
+            "libelle": "Acompte",
+            "pct_or_montant": 6000
+          },
+          {
+            "type": "materiel",
+            "unite": "pct",
+            "libelle": "Livraison",
+            "pct_or_montant": 60
+          },
+          {
+            "type": "solde",
+            "unite": "pct",
+            "libelle": "Solde",
+            "pct_or_montant": 30
+          }
+        ],
+        "somme": 60000
+      }
+    },
+    "expiration": "@@EXP {'expired': 3, 'funnel_followup': 0, 'funnel_cold': 0}",
+    "renouv_cas1": {
+      "source": {
+        "id": 19,
+        "ttc": "60000.00",
+        "echeancier": [
+          {
+            "type": "acompte",
+            "unite": "montant",
+            "libelle": "Acompte",
+            "pct_or_montant": 6000
+          },
+          {
+            "type": "materiel",
+            "unite": "pct",
+            "libelle": "Livraison",
+            "pct_or_montant": 60
+          },
+          {
+            "type": "solde",
+            "unite": "pct",
+            "libelle": "Solde",
+            "pct_or_montant": 30
+          }
+        ]
+      },
+      "copie": {
+        "id": 22,
+        "ttc": "30000.00",
+        "echeancier": [
+          {
+            "type": "acompte",
+            "unite": "montant",
+            "libelle": "Acompte",
+            "pct_or_montant": 6000
+          },
+          {
+            "type": "materiel",
+            "unite": "pct",
+            "libelle": "Livraison",
+            "pct_or_montant": 60
+          },
+          {
+            "type": "solde",
+            "unite": "pct",
+            "libelle": "Solde",
+            "pct_or_montant": 30
+          }
+        ],
+        "somme": 33000
+      }
+    },
+    "renouv_cas2": {
+      "st": 201,
+      "body": {
+        "id": 23,
+        "ttc": "30000.00",
+        "echeancier": [
+          {
+            "type": "acompte",
+            "unite": "montant",
+            "libelle": "Acompte",
+            "pct_or_montant": 18000
+          },
+          {
+            "type": "materiel",
+            "unite": "pct",
+            "libelle": "Livraison",
+            "pct_or_montant": 60
+          },
+          {
+            "type": "solde",
+            "unite": "pct",
+            "libelle": "Solde",
+            "pct_or_montant": 10
+          }
+        ],
+        "somme": 39000
+      }
+    },
+    "renouv_pct": {
+      "copie": {
+        "ttc": "30000.00",
+        "echeancier": [
+          {
+            "type": "acompte",
+            "unite": "pct",
+            "libelle": "Acompte",
+            "pct_or_montant": 30
+          },
+          {
+            "type": "materiel",
+            "unite": "pct",
+            "libelle": "Livraison",
+            "pct_or_montant": 60
+          },
+          {
+            "type": "solde",
+            "unite": "pct",
+            "libelle": "Solde",
+            "pct_or_montant": 10
+          }
+        ]
+      }
+    }
+  },
+  "incidents_copie": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "releve": {
+    "factures": [
+      {
+        "id": 31,
+        "ref": "FAC-202611-0014",
+        "ttc": "1200.00"
+      },
+      {
+        "id": 32,
+        "ref": "FAC-202611-0015",
+        "ttc": "2400.00"
+      },
+      {
+        "id": 33,
+        "ref": "FAC-202611-0016",
+        "ttc": "3600.00"
+      },
+      {
+        "id": 34,
+        "ref": "FAC-202611-0017",
+        "ttc": "1200.00"
+      }
+    ],
+    "csv": "date;reference;montant;mode\n2026-10-20;FAC-202611-0014;1200.00;traite\n2026-10-20;FAC-202611-0015;2400.00;\n2026-10-20;FAC-202611-0016;3600.00;chèque\n2026-10-20;FAC-202611-0017;1200.005;virement\n",
+    "dry_run": {
+      "st": 200,
+      "preview": [
+        {
+          "ligne": 2,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0014",
+          "libelle": "",
+          "montant": "1200.00",
+          "mode": "virement",
+          "statut": "a_importer",
+          "facture_id": 31,
+          "facture_reference": "FAC-202611-0014",
+          "match_type": "reference",
+          "candidats": []
+        },
+        {
+          "ligne": 3,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0015",
+          "libelle": "",
+          "montant": "2400.00",
+          "mode": "virement",
+          "statut": "a_importer",
+          "facture_id": 32,
+          "facture_reference": "FAC-202611-0015",
+          "match_type": "reference",
+          "candidats": []
+        },
+        {
+          "ligne": 4,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0016",
+          "libelle": "",
+          "montant": "3600.00",
+          "mode": "cheque",
+          "statut": "a_importer",
+          "facture_id": 33,
+          "facture_reference": "FAC-202611-0016",
+          "match_type": "reference",
+          "candidats": []
+        },
+        {
+          "ligne": 5,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0017",
+          "libelle": "",
+          "montant": "1200.005",
+          "mode": "virement",
+          "statut": "a_importer",
+          "facture_id": 34,
+          "facture_reference": "FAC-202611-0017",
+          "match_type": "reference",
+          "candidats": []
+        }
+      ],
+      "revue": []
+    },
+    "commit": {
+      "st": 201,
+      "body": {
+        "token": "tQpdE0NmWjEbxZ3hGFK3fh4fuqxv9DKxQ8BtciXe_9o",
+        "created": 4,
+        "skipped": 0,
+        "errors": 0,
+        "results": [
+          {
+            "ligne": 2,
+            "statut": "created",
+            "facture": "FAC-202611-0014",
+            "facture_reference": "FAC-202611-0014",
+            "paiement_id": 1,
+            "montant": "1200.00",
+            "match_type": "reference"
+          },
+          {
+            "ligne": 3,
+            "statut": "created",
+            "facture": "FAC-202611-0015",
+            "facture_reference": "FAC-202611-0015",
+            "paiement_id": 2,
+            "montant": "2400.00",
+            "match_type": "reference"
+          },
+          {
+            "ligne": 4,
+            "statut": "created",
+            "facture": "FAC-202611-0016",
+            "facture_reference": "FAC-202611-0016",
+            "paiement_id": 3,
+            "montant": "3600.00",
+            "match_type": "reference"
+          },
+          {
+            "ligne": 5,
+            "statut": "created",
+            "facture": "FAC-202611-0017",
+            "facture_reference": "FAC-202611-0017",
+            "paiement_id": 4,
+            "montant": "1200.005",
+            "match_type": "reference"
+          }
+        ]
+      }
+    },
+    "paiements_relus": [
+      [
+        {
+          "montant": "1200.00",
+          "mode": "virement"
+        }
+      ],
+      [
+        {
+          "montant": "2400.00",
+          "mode": "virement"
+        }
+      ],
+      [
+        {
+          "montant": "3600.00",
+          "mode": "cheque"
+        }
+      ],
+      [
+        {
+          "montant": "1200.01",
+          "mode": "virement"
+        }
+      ]
+    ]
+  },
+  "incidents_releve": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "taux": {
+    "defaut": {
+      "reporting_conversion": {
+        "nb_devis": 22,
+        "nb_acceptes": 7,
+        "nb_factures": 18,
+        "taux_acceptation_pct": 31.8
+      },
+      "q2c_devis": {
+        "total": 20,
+        "envoyes": 1,
+        "acceptes": 7,
+        "refuses": 1,
+        "expires": 4,
+        "taux_acceptation_pct": 66.7,
+        "envoyes_periode": 9,
+        "acceptes_periode": 6,
+        "valeur_pipeline": "80400.0"
+      }
+    },
+    "2026-10-01..2026-11-01": {
+      "reporting_conversion": {
+        "nb_devis": 22,
+        "nb_acceptes": 7,
+        "nb_factures": 18,
+        "taux_acceptation_pct": 31.8
+      },
+      "q2c_devis": {
+        "total": 20,
+        "envoyes": 1,
+        "acceptes": 7,
+        "refuses": 1,
+        "expires": 4,
+        "taux_acceptation_pct": 66.7,
+        "envoyes_periode": 9,
+        "acceptes_periode": 6,
+        "valeur_pipeline": "80400.0"
+      }
+    },
+    "2020-01-01..2020-01-31": {
+      "reporting_conversion": {
+        "nb_devis": 22,
+        "nb_acceptes": 7,
+        "nb_factures": 18,
+        "taux_acceptation_pct": 31.8
+      },
+      "q2c_devis": {
+        "total": 0,
+        "envoyes": 0,
+        "acceptes": 0,
+        "refuses": 0,
+        "expires": 0,
+        "taux_acceptation_pct": null,
+        "envoyes_periode": 0,
+        "acceptes_periode": 0,
+        "valeur_pipeline": "0.0"
+      }
+    }
+  },
+  "incidents_taux": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "etapes": {
+    "BI": [
+      {
+        "nom": "explorateur : somme total_ht servie (factures émises/payées/en retard)",
+        "ok": false,
+        "detail": {
+          "st": 400
+        }
+      }
+    ],
+    "BC": [
+      {
+        "nom": "B2 : devis facturé en complet par une autre porte (201)",
+        "ok": true,
+        "detail": {
+          "st": 201,
+          "ref": "FAC-202611-0003"
+        }
+      },
+      {
+        "nom": "B3 : facturé par son BC (201)",
+        "ok": true,
+        "detail": {
+          "st": 201
+        }
+      },
+      {
+        "nom": "B1 facturable {ok: true, motif: \"\"} (fiche + liste)",
+        "ok": false,
+        "detail": {
+          "id": 4,
+          "ref": "BC-202611-0002"
+        }
+      },
+      {
+        "nom": "B2 facturable {ok: false, motif DevisDejaFacture}",
+        "ok": false,
+        "detail": {
+          "id": 5,
+          "ref": "BC-202611-0003"
+        }
+      },
+      {
+        "nom": "B3 facturable {ok: false, \"Une facture existe déjà pour ce BC.\"}",
+        "ok": false,
+        "detail": {
+          "id": 6,
+          "ref": "BC-202611-0004"
+        }
+      },
+      {
+        "nom": "creer-facture B2 : 409 au MÊME motif",
+        "ok": true,
+        "detail": {
+          "st": 409,
+          "body": {
+            "detail": "Ce devis est déjà facturé par FAC-202611-0003 : corrigez-la par un avoir."
+          }
+        }
+      }
+    ],
+    "AVOIR": [
+      {
+        "nom": "5 tranches émises de 2 400 TTC (12 000)",
+        "ok": true,
+        "detail": [
+          [
+            "FAC-202611-0004",
+            "2400.00",
+            "emise"
+          ],
+          [
+            "FAC-202611-0005",
+            "2400.00",
+            "emise"
+          ],
+          [
+            "FAC-202611-0006",
+            "2400.00",
+            "emise"
+          ],
+          [
+            "FAC-202611-0007",
+            "2400.00",
+            "emise"
+          ],
+          [
+            "FAC-202611-0008",
+            "2400.00",
+            "emise"
+          ]
+        ]
+      },
+      {
+        "nom": "prix-negocie 9 000 appliqué : 201",
+        "ok": true,
+        "detail": {
+          "st": 201
+        }
+      },
+      {
+        "nom": "deux avoirs 2 400 + 600 sur deux factures distinctes, chacun ≤ créditable",
+        "ok": false,
+        "detail": [
+          {
+            "id": 2,
+            "ref": "AVO-202611-0002",
+            "facture": 25,
+            "ttc": "3000.00",
+            "type": "correction"
+          }
+        ]
+      },
+      {
+        "nom": "Σ dû des factures = 9 000,00",
+        "ok": false,
+        "detail": {
+          "du": 9600
+        }
+      },
+      {
+        "nom": "statut recalculé de la facture créditée en entier (plus « émise » à dû 0)",
+        "ok": false
+      },
+      {
+        "nom": "persistance : factures relues identiques",
+        "ok": true,
+        "detail": {}
+      },
+      {
+        "nom": "écart 3 000 > créditable 2 400 : 409 avoir_au_dela_du_creditable, rien d'écrit",
+        "ok": false,
+        "detail": {
+          "devis": 15,
+          "prix_negocie": {
+            "st": 201,
+            "body": {
+              "devis_v2": {
+                "id": 16,
+                "reference": "DEV-202611-0009",
+                "version": 2
+              },
+              "remise_pct": "25.00",
+              "total_ttc": "9000.00",
+              "factures_annulees": [],
+              "factures_reprises": [
+                {
+                  "reference": "FAC-202611-0009",
+                  "total_ttc": "2400.00"
+                },
+                {
+                  "reference": "FAC-202611-0010",
+                  "total_ttc": "2400.00"
+                },
+                {
+                  "reference": "FAC-202611-0011",
+                  "total_ttc": "2400.00"
+                },
+                {
+                  "reference": "FAC-202611-0012",
+                  "total_ttc": "2400.00"
+                },
+                {
+                  "reference": "FAC-202611-0013",
+                  "total_ttc": "2400.00"
+                }
+              ],
+              "ecart_ttc": "-3000.00",
+              "regularisation": {
+                "type": "avoir",
+                "montant": "3000.00"
+              },
+              "reste_a_facturer": "0.00"
+            }
+          },
+          "avoirs_avant": 4,
+          "avoirs_apres": 5,
+          "devis_statut": "accepte"
+        }
+      }
+    ],
+    "COPIE": [
+      {
+        "nom": "gamme : échéancier de la sœur Σ = TTC (60 000), dernière tranche en MAD",
+        "ok": false,
+        "detail": {
+          "id": 18,
+          "ttc": "60000.00",
+          "echeancier": [
+            {
+              "type": "acompte",
+              "unite": "montant",
+              "libelle": "Acompte",
+              "pct_or_montant": 6000
+            },
+            {
+              "type": "materiel",
+              "unite": "pct",
+              "libelle": "Livraison",
+              "pct_or_montant": 60
+            },
+            {
+              "type": "solde",
+              "unite": "pct",
+              "libelle": "Solde",
+              "pct_or_montant": 30
+            }
+          ],
+          "somme": 60000
+        }
+      },
+      {
+        "nom": "sources expirées par la tâche planifiée expire_stale_devis",
+        "ok": true,
+        "detail": {
+          "exp": "@@EXP {'expired': 3, 'funnel_followup': 0, 'funnel_cold': 0}",
+          "statuts": [
+            "expire",
+            "expire",
+            "expire"
+          ]
+        }
+      },
+      {
+        "nom": "renouvellement cas 1 : copie à 30 000, [6 000 MAD ; 60 % ; 6 000 MAD], Σ = TTC",
+        "ok": false,
+        "detail": {
+          "id": 22,
+          "ttc": "30000.00",
+          "echeancier": [
+            {
+              "type": "acompte",
+              "unite": "montant",
+              "libelle": "Acompte",
+              "pct_or_montant": 6000
+            },
+            {
+              "type": "materiel",
+              "unite": "pct",
+              "libelle": "Livraison",
+              "pct_or_montant": 60
+            },
+            {
+              "type": "solde",
+              "unite": "pct",
+              "libelle": "Solde",
+              "pct_or_montant": 30
+            }
+          ],
+          "somme": 33000
+        }
+      },
+      {
+        "nom": "source jamais modifiée",
+        "ok": true,
+        "detail": {
+          "echeancier": [
+            {
+              "type": "acompte",
+              "unite": "montant",
+              "libelle": "Acompte",
+              "pct_or_montant": 6000
+            },
+            {
+              "type": "materiel",
+              "unite": "pct",
+              "libelle": "Livraison",
+              "pct_or_montant": 60
+            },
+            {
+              "type": "solde",
+              "unite": "pct",
+              "libelle": "Solde",
+              "pct_or_montant": 30
+            }
+          ]
+        }
+      },
+      {
+        "nom": "renouvellement cas 2 : 409 somme_invalide nommé en français, aucune copie",
+        "ok": false,
+        "detail": {
+          "st": 201,
+          "body": {
+            "id": 23,
+            "ttc": "30000.00",
+            "echeancier": [
+              {
+                "type": "acompte",
+                "unite": "montant",
+                "libelle": "Acompte",
+                "pct_or_montant": 18000
+              },
+              {
+                "type": "materiel",
+                "unite": "pct",
+                "libelle": "Livraison",
+                "pct_or_montant": 60
+              },
+              {
+                "type": "solde",
+                "unite": "pct",
+                "libelle": "Solde",
+                "pct_or_montant": 10
+              }
+            ],
+            "somme": 39000
+          }
+        }
+      },
+      {
+        "nom": "tout en % : copie inchangée (30/60/10)",
+        "ok": true,
+        "detail": {
+          "ttc": "30000.00",
+          "echeancier": [
+            {
+              "type": "acompte",
+              "unite": "pct",
+              "libelle": "Acompte",
+              "pct_or_montant": 30
+            },
+            {
+              "type": "materiel",
+              "unite": "pct",
+              "libelle": "Livraison",
+              "pct_or_montant": 60
+            },
+            {
+              "type": "solde",
+              "unite": "pct",
+              "libelle": "Solde",
+              "pct_or_montant": 10
+            }
+          ]
+        }
+      },
+      {
+        "nom": "persistance : copie relue, ré-enregistrée sans toucher ⇒ identique (PATCH accepté tel quel)",
+        "ok": true,
+        "detail": {
+          "st": 200,
+          "echeancier": [
+            {
+              "type": "acompte",
+              "unite": "montant",
+              "libelle": "Acompte",
+              "pct_or_montant": 6000
+            },
+            {
+              "type": "materiel",
+              "unite": "pct",
+              "libelle": "Livraison",
+              "pct_or_montant": 60
+            },
+            {
+              "type": "solde",
+              "unite": "pct",
+              "libelle": "Solde",
+              "pct_or_montant": 30
+            }
+          ]
+        }
+      }
+    ],
+    "RELEVE": [
+      {
+        "nom": "« traite » ⇒ mode_invalide, en file de revue",
+        "ok": false,
+        "detail": {
+          "ligne": 2,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0014",
+          "libelle": "",
+          "montant": "1200.00",
+          "mode": "virement",
+          "statut": "a_importer",
+          "facture_id": 31,
+          "facture_reference": "FAC-202611-0014",
+          "match_type": "reference",
+          "candidats": []
+        }
+      },
+      {
+        "nom": "mode vide ⇒ importable, virement supposé (mode_par_defaut)",
+        "ok": false,
+        "detail": {
+          "ligne": 3,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0015",
+          "libelle": "",
+          "montant": "2400.00",
+          "mode": "virement",
+          "statut": "a_importer",
+          "facture_id": 32,
+          "facture_reference": "FAC-202611-0015",
+          "match_type": "reference",
+          "candidats": []
+        }
+      },
+      {
+        "nom": "« chèque » ⇒ cheque",
+        "ok": false,
+        "detail": {
+          "ligne": 4,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0016",
+          "libelle": "",
+          "montant": "3600.00",
+          "mode": "cheque",
+          "statut": "a_importer",
+          "facture_id": 33,
+          "facture_reference": "FAC-202611-0016",
+          "match_type": "reference",
+          "candidats": []
+        }
+      },
+      {
+        "nom": "1200.005 ⇒ montant_invalide",
+        "ok": false,
+        "detail": {
+          "ligne": 5,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0017",
+          "libelle": "",
+          "montant": "1200.005",
+          "mode": "virement",
+          "statut": "a_importer",
+          "facture_id": 34,
+          "facture_reference": "FAC-202611-0017",
+          "match_type": "reference",
+          "candidats": []
+        }
+      },
+      {
+        "nom": "commit : 2 lignes écrites seulement (vide→virement, chèque→cheque), traite et 1200.005 jamais écrites",
+        "ok": false,
+        "detail": [
+          [
+            {
+              "montant": "1200.00",
+              "mode": "virement"
+            }
+          ],
+          [
+            {
+              "montant": "2400.00",
+              "mode": "virement"
+            }
+          ],
+          [
+            {
+              "montant": "3600.00",
+              "mode": "cheque"
+            }
+          ],
+          [
+            {
+              "montant": "1200.01",
+              "mode": "virement"
+            }
+          ]
+        ]
+      }
+    ],
+    "TAUX": [
+      {
+        "nom": "defaut : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux",
+        "ok": false,
+        "detail": {
+          "reporting": [
+            31.8,
+            null,
+            null
+          ],
+          "q2c": [
+            66.7,
+            6,
+            9
+          ]
+        }
+      },
+      {
+        "nom": "2026-10-01..2026-11-01 : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux",
+        "ok": false,
+        "detail": {
+          "reporting": [
+            31.8,
+            null,
+            null
+          ],
+          "q2c": [
+            66.7,
+            6,
+            9
+          ]
+        }
+      },
+      {
+        "nom": "2020-01-01..2020-01-31 : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux",
+        "ok": false,
+        "detail": {
+          "reporting": [
+            31.8,
+            null,
+            null
+          ],
+          "q2c": [
+            null,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "nom": "aucun envoi dans la période ⇒ taux null",
+        "ok": false,
+        "detail": {
+          "nb_devis": 22,
+          "nb_acceptes": 7,
+          "nb_factures": 18,
+          "taux_acceptation_pct": 31.8
+        }
+      }
+    ]
+  },
+  "incidents": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "requetes": []
+}
