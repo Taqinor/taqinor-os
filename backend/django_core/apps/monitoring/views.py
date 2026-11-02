@@ -885,7 +885,12 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter('years', _ENTIER_MIN_1, required=False),
-            OpenApiParameter('drift_threshold_pct', OpenApiTypes.NUMBER,
+            # Forme littérale EXACTE lue par ``decimal_param`` (pas d'exposant :
+            # « 4e+59 » est un ``number`` valide mais refusé), 6 chiffres
+            # entiers au plus (un seuil est un pourcentage) -> publiée.
+            OpenApiParameter('drift_threshold_pct',
+                             {'type': 'string',
+                              'pattern': r'^-?[0-9]{1,6}(\.[0-9]+)?$'},
                              required=False),
         ],
         responses=_VIEWS_PRODUCTION_WARRANTY_VIEW_SET_CURVE_REPONSE)
@@ -898,6 +903,9 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
         warranty = self.get_object()
         years = entier_borne(request, 'years', None, mini=1, maxi=100)
         threshold = decimal_param(request, 'drift_threshold_pct')
+        if threshold is not None and abs(threshold) >= 1000000:
+            raise serializers.ValidationError(
+                {'drift_threshold_pct': 'Nombre attendu.'})
         result = warranty_curve_overlay(
             warranty.installation, years=years,
             drift_threshold_pct=threshold)
