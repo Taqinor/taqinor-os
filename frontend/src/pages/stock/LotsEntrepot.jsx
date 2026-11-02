@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PackageMinus, Search, Layers,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import fetchAllPages from '../../utils/fetchAllPages'
+import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 import {
   Button, DataTable, Badge, Input, Checkbox, Dialog, FormField, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent,
@@ -175,8 +175,9 @@ export default function LotsEntrepot() {
   useEffect(() => { Promise.resolve().then(reload) }, [reload])
 
   useEffect(() => {
-    stockApi.getProduits({ ordering: 'nom' })
-      .then((r) => setProduits(r.data?.results ?? r.data ?? []))
+    // ENF15 — catalogue lu en entier (toutes les pages), jamais la page 1.
+    lireToutesLesPages((p) => stockApi.getProduits({ ordering: 'nom', ...p }))
+      .then(setProduits)
       .catch(() => {})
   }, [])
 

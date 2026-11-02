@@ -12,6 +12,7 @@ import {
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import stockApi from '../../api/stockApi'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { formatMAD, formatPercent } from '../../lib/format'
 import {
   Button, Badge, Switch,
@@ -652,10 +653,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
   useEffect(() => {
     if (!isEdit || !produit?.id) return undefined
     let active = true
-    stockApi.getFichesTechniques(produit.id)
-      .then((r) => {
+    // ENF15 — toutes les pages (jamais la seule page 1) ; la fiche la plus récente d'abord.
+    lireToutesLesPages((p) => stockApi.getFichesTechniques(produit.id, p))
+      .then((liste) => {
         if (!active) return
-        const liste = r.data?.results ?? r.data ?? []
         const f = liste[0] ?? null
         setFicheId(f?.id ?? null)
         setFicheTypeServeur(f?.type_fiche ?? '')

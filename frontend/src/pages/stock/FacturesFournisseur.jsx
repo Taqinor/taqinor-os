@@ -495,8 +495,9 @@ export default function FacturesFournisseur() {
   useEffect(() => { reload() }, [aPayerSeul, enExceptionSeul])
 
   useEffect(() => {
+    // getAllFournisseurs lit déjà toutes les pages (ASTK185) : `r.data` est le tableau complet.
     stockApi.getAllFournisseurs()
-      .then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
+      .then((r) => setFournisseurs(r.data ?? [])).catch(() => {})
     fetchAllPages((page) => stockApi.getBonsCommandeFournisseur({ page }).then((r) => r.data), { concurrency: 3 })
       .then((rows) => setBons(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
     stockApi.acomptesFournisseurOuverts()

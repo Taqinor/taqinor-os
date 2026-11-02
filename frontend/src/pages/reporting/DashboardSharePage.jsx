@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Copy, Link2, Plus, Ban, Users } from 'lucide-react'
 import coreApi from '../../api/coreApi'
-import fetchAllPages from '../../utils/fetchAllPages'
+import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 import {
   Badge, Button, DataTable, EmptyState, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem,
@@ -84,11 +84,16 @@ export default function DashboardSharePage() {
 
   useEffect(() => {
     let active = true
-    Promise.all([coreApi.dashboards.list(), coreApi.dashboardsPartages.list()])
+    // ENF15 — les liens de partage lisent TOUTES les pages ; la liste des dashboards
+    // est non paginée côté serveur (DashboardViewSet.pagination_class = None).
+    Promise.all([
+      coreApi.dashboards.list(),
+      lireToutesLesPages((q) => coreApi.dashboardsPartages.list(q)),
+    ])
       .then(([d, p]) => {
         if (!active) return
         setDashboards(d.data?.results ?? d.data ?? [])
-        setPartages(p.data?.results ?? p.data ?? [])
+        setPartages(p)
       })
       .catch(() => { if (active) { setDashboards([]); setPartages([]) } })
       .finally(() => { if (active) setLoading(false) })
@@ -122,13 +127,13 @@ export default function DashboardSharePage() {
   useEffect(() => {
     let active = true
     Promise.all([
-      coreApi.dashboardsPartagesInternes.list(),
-      coreApi.utilisateurs.list(),
+      lireToutesLesPages((q) => coreApi.dashboardsPartagesInternes.list(q)),
+      lireToutesLesPages((q) => coreApi.utilisateurs.list(q)),
     ])
       .then(([i, u]) => {
         if (!active) return
-        setInternes(i.data?.results ?? i.data ?? [])
-        setMembres(u.data?.results ?? u.data ?? [])
+        setInternes(i)
+        setMembres(u)
       })
       .catch(() => { if (active) { setInternes([]); setMembres([]) } })
     return () => { active = false }

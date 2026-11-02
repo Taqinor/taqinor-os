@@ -73,7 +73,7 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
                 imputer_acomptes_bcf(acompte.bon_commande)
 
     @extend_schema(responses=LISTE)
-    @action(detail=False, methods=['get'], url_path='ouverts')
+    @action(detail=False, methods=['get'], url_path='ouverts', pagination_class=None)
     def ouverts(self, request):
         """XPUR8 (AUDV04/DRAFT165-113) — acomptes fournisseur PARTIELLEMENT/
         NON consommés de la société, pour l'écran Achats/trésorerie. Sélecteur

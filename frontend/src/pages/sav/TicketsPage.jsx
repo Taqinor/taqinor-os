@@ -29,7 +29,7 @@ import api from '../../api/axios'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { formatMAD, timeAgo } from '../../lib/format'
 import installationsApi from '../../api/installationsApi'
-import { fetchAllPages } from '../../utils/fetchAllPages'
+import { fetchAllPages, lireToutesLesPages } from '../../utils/fetchAllPages'
 import TicketClotureWizard from '../../components/sav/TicketClotureWizard'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 // PACT174 — tags de l'enregistrement (records.TaggedItem, FG9), voisin direct
@@ -381,7 +381,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       const neuf = rr?.data?.equipement_neuf ?? null
       setEquipementNeuf(neuf)
       if (neuf && current.installation) {
-        lireTout((params) => savApi.getEquipements({ installation: current.installation, ...params }))
+        lireToutesLesPages((params) => savApi.getEquipements({ installation: current.installation, ...params }))
           .then(setEquipements).catch(() => {})
       }
       toast.success('Pièce retirée.')
@@ -413,8 +413,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     savApi.getTicketHistorique(id).then((r) => setHistorique(r.data)).catch(() => {})
   }
   const loadInterventions = () => {
-    installationsApi.getInterventions({ ticket: id })
-      .then((r) => setInterventions(r.data?.results ?? r.data ?? [])).catch(() => {})
+    // ENF15 — toutes les pages (jamais la seule page 1).
+    lireToutesLesPages((params) => installationsApi.getInterventions({ ticket: id, ...params }))
+      .then(setInterventions).catch(() => {})
   }
 
   const chargerFiche = useEffectEvent(() => {
@@ -432,11 +433,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       ?.then((r) => setPiecesCompatibles(r.data?.results ?? [])).catch?.(() => {})
     // Équipements du chantier concerné (pour lier l'équipement précis).
     if (current.installation) {
-      savApi.getEquipements({ installation: current.installation })
-        .then((r) => setEquipements(r.data?.results ?? r.data ?? [])).catch(() => {})
+      lireToutesLesPages((params) => savApi.getEquipements({ installation: current.installation, ...params }))
+        .then(setEquipements).catch(() => {})
     }
     // Liste des techniciens — best effort (réservé admin) ; sinon dropdown vide.
-    if (peutListerUsers) api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+    if (peutListerUsers) lireToutesLesPages((params) => api.get('/users/', { params })).then(setUsers).catch(() => {})
     // ASAV54 — référentiels cause / remède (tolère les mocks partiels).
     if (savApi.getCausesDefaillance) {
       lireTout(savApi.getCausesDefaillance).then(setCauses).catch(() => {})

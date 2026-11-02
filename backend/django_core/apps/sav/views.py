@@ -3644,7 +3644,7 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 'lie_le': drf_serializers.DateTimeField(),
             }, many=True),
         }))
-    @action(detail=True, methods=['get'], url_path='tickets',
+    @action(detail=True, methods=['get'], url_path='tickets', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def tickets(self, request, pk=None):
         """Tous les tickets rattachés à ce problème, en UN appel (« voir en
@@ -3695,7 +3695,7 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 }, many=True),
             }, many=True),
         }))
-    @action(detail=False, methods=['get'], url_path='regroupements-suggeres',
+    @action(detail=False, methods=['get'], url_path='regroupements-suggeres', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def regroupements_suggeres(self, request):
         """NTSRV17 — « Regroupements suggérés » : tickets ouverts qui
