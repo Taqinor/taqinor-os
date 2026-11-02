@@ -131,10 +131,13 @@ class TestAud130MessageRelance(TestCase):
         Paiement.objects.create(
             company=co, facture=facture, client=client, montant=Decimal('500'),
             date_paiement=jour - timedelta(days=5), mode='virement')
-        with override_settings(
-                EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'), \
-            patch('authentication.selectors.active_company_ids',
-                  return_value=[co.pk]):
+        locmem = override_settings(
+            EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+        societe = patch('authentication.selectors.active_company_ids',
+                        return_value=[co.pk])
+        pdf = patch('apps.ventes.email_service._document_pdf',
+                    return_value=(b'%PDF', 'FA-AARG24-0001.pdf'))
+        with locmem, societe, pdf:
             relance_reminders()
         envoyes = [m for m in mail.outbox if 'aarg24@example.com' in m.to]
         self.assertEqual(len(envoyes), 1)

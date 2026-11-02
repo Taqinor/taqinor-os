@@ -265,7 +265,8 @@ def _dispatch_relance_canal(facture, niveau, note, user=None):
     # rendu : un `EmailLog` en échec (adresse absente, SMTP en panne) ne
     # consomme pas le niveau (l'appelant reporte au prochain jour ouvré).
     log = send_relance_email(
-        facture, niveau_nom=niveau_nom, message=message, user=user)
+        facture, niveau_nom=niveau_nom, message=message, user=user,
+        attach_pdf=True)  # AARG58 — comme la relance manuelle
     return {'canal': FollowupLevel.Canal.EMAIL, 'courrier_pdf_key': '',
             'envoye': _email_parti(log)}
 
@@ -382,7 +383,8 @@ def relance_reminders():
         if not levels:
             # Aucun niveau configuré : envoi générique unique, puis stop.
             log = send_relance_email(
-                facture, niveau_nom='', message='', user=None)
+                facture, niveau_nom='', message='', user=None,
+                attach_pdf=True)  # AARG58 — comme la relance manuelle
             if not _email_parti(log):  # AFAC45 — retenté, jamais consommé
                 _reporter_relance(facture, today)
                 continue
