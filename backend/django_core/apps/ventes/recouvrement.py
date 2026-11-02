@@ -856,8 +856,11 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
         company = (self.request.user.company
                    if self.request.user.company_id else None)
         facture = serializer.validated_data.get('facture')
-        if facture is not None and company is not None and \
-                facture.company_id != company.id:
+        from authentication.scoping import scope_queryset  # AARG13 — portée
+        if facture is not None and company is not None and (
+                facture.company_id != company.id
+                or not scope_queryset(Facture.objects.filter(pk=facture.pk),
+                                      self.request.user, ['created_by']).exists()):
             raise ValidationError({'facture': 'Facture inconnue.'})
         promesse = serializer.save(
             company=company, created_by=self.request.user,

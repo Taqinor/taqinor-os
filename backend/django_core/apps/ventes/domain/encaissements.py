@@ -1292,8 +1292,15 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
         raise ValidationError(
             {'devis_ids': 'Au moins 2 devis sont requis pour consolider.'})
 
-    devis_qs = list(Devis.objects.select_related('client').filter(
-        id__in=devis_ids, company=company).prefetch_related('lignes'))
+    devis_qs = Devis.objects.select_related('client').filter(
+        id__in=devis_ids, company=company).prefetch_related('lignes')
+    from authentication.scoping import visible_user_ids  # AARG13 — portée DevisViewSet
+    if (visibles := visible_user_ids(user)) is not None:
+        from django.db.models import Q
+        from apps.crm.selectors import lead_ids_du_responsable
+        devis_qs = devis_qs.filter(Q(created_by__in=visibles)
+                                   | Q(lead_id__in=lead_ids_du_responsable(user)))
+    devis_qs = list(devis_qs)
     if len(devis_qs) != len(set(devis_ids)):
         raise ValidationError({'devis_ids': 'Un ou plusieurs devis introuvables.'})
 
