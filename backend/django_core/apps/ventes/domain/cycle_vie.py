@@ -788,6 +788,29 @@ def _send_otp_email(email, code, devis_ref, company=None):
         return False
 
 
+def _completer_client_signataire(devis, entreprise):
+    """CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent au
+    Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE différent déjà
+    présent n'est jamais écrasé (``divergence_ice``). Point de sauvegarde :
+    jamais une acceptation cassée pour ça. ADVS8 — ``devis.client`` est relu :
+    le sceau doit lire le Client COMPLÉTÉ, pas le cache de l'instance."""
+    from django.db import transaction
+    if not (isinstance(entreprise, dict) and devis.client_id):
+        return
+    try:
+        with transaction.atomic():
+            from apps.crm.services import completer_client_depuis_acceptation
+            completer_client_depuis_acceptation(
+                devis.client_id, devis.company,
+                raison_sociale=entreprise.get('raison_sociale'),
+                ice=entreprise.get('ice'))
+        devis.refresh_from_db(fields=['client'])
+    except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
+        logger.exception(
+            'CIQ319 : identité entreprise non remontée au client '
+            '(devis %s)', getattr(devis, 'reference', '?'))
+
+
 def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                          signature_image='', signed_at_client=None,
                          on_behalf_of='', lignes=None, entreprise=None,
@@ -873,8 +896,10 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
             langue_page=str(langue or '')[:5],
             # ADEV96 — les chiffres scellés, pour un sceau reproductible ;
             # ADEV104 — + le niveau du lien scellé (signature au jeton).
+            # ADVS8 — + l'identité client de CE sceau (la vérification la rejoue).
             figures_scellees=DevisSignature.contenu_scelle(
-                figures, lien_scelle(lien)),
+                figures, lien_scelle(lien),
+                client=DevisSignature._client_du_sceau(devis)),
         )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
@@ -1510,6 +1535,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             logger.warning('%s : échec ignoré (dégradé)', 'accept_devis', exc_info=True)
             lignes_devis = None
 
+        # ADVS8 — AVANT le sceau : c'est l'identité complétée qui est scellée.
+        _completer_client_signataire(devis, entreprise)
         # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
         # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
         # on ne crée pas de second enregistrement — la signature d'origine fait
@@ -1531,24 +1558,6 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                              if _acceptation_par_le_client(user)
                              else ETUDE_ILLISIBLE_REFUS_INTERNE),
             )
-        # CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent
-        # au Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE
-        # différent déjà présent n'est jamais écrasé (``divergence_ice``).
-        # Point de sauvegarde : jamais une acceptation cassée pour ça.
-        if isinstance(entreprise, dict) and devis.client_id:
-            try:
-                with transaction.atomic():
-                    from apps.crm.services import (
-                        completer_client_depuis_acceptation,
-                    )
-                    completer_client_depuis_acceptation(
-                        devis.client_id, devis.company,
-                        raison_sociale=entreprise.get('raison_sociale'),
-                        ice=entreprise.get('ice'))
-            except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
-                logger.exception(
-                    'CIQ319 : identité entreprise non remontée au client '
-                    '(devis %s)', getattr(devis, 'reference', '?'))
         # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers
         # etude_params du devis pour que l'attribution reste lossless même si
         # le lead est fusionné.

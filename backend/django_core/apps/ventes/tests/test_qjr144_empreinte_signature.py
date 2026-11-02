@@ -123,8 +123,8 @@ class LeVerificateurDitLaVerite(_BaseEmpreinte):
         rapport = verifier_empreinte_signature(self.devis)
         self.assertTrue(rapport['signee'])
         self.assertTrue(rapport['intacte'])
-        # ADEV96 — la version COURANTE (v3 : étude C&I comprise).
-        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V3)
+        # ADVS8 — la version COURANTE (v4 : identité client figée).
+        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V4)
         self.assertEqual(rapport['version'],
                          DevisSignature.CONTENT_HASH_VERSION)
 
@@ -151,6 +151,60 @@ class LeVerificateurDitLaVerite(_BaseEmpreinte):
         rapport = verifier_empreinte_signature(self.devis)
         self.assertTrue(rapport['signee'])
         self.assertIsNone(rapport['intacte'])
+
+    def test_renommer_le_client_ne_rompt_pas_le_sceau(self):
+        """ADVS8 (C-ADVS-020) — le sceau porte l'identité FIGÉE à la signature : un
+        renommage après coup ne le rompt pas ; une signature d'avant v4 le voit."""
+        from apps.ventes.domain.cycle_vie import _create_esign_record
+        _create_esign_record(devis=self.devis, nom='M. Client', ip='81.0.0.1')
+        Client.objects.filter(pk=self.client_obj.pk).update(nom='BEX')
+        devis = Devis.objects.select_related('client').get(pk=self.devis.pk)
+        rapport = verifier_empreinte_signature(devis)
+        self.assertTrue(rapport['intacte'], rapport)
+        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V4)
+
+    def test_renommer_le_client_rompt_toujours_un_sceau_v3(self):
+        """ADVS8 — signatures v1-v3 déjà posées : vérifiées comme hier."""
+        self._sceller(version=DevisSignature.CONTENT_HASH_V3)
+        self.assertEqual(verifier_empreinte_signature(self.devis)['version'],
+                         DevisSignature.CONTENT_HASH_V3)
+        Client.objects.filter(pk=self.client_obj.pk).update(nom='BEX')
+        devis = Devis.objects.select_related('client').get(pk=self.devis.pk)
+        self.assertFalse(verifier_empreinte_signature(devis)['intacte'])
+
+    def test_la_raison_sociale_completee_est_scellee(self):
+        """ADVS8 — C&I signé avec sa raison sociale : le Client est complété AVANT
+        le sceau ; renommé ensuite, le sceau reste intact et l'exemplaire se rend."""
+        from unittest import mock
+        from apps.ventes.domain import pdf_signe
+        from apps.ventes.services import accept_devis
+        onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 10kW Monophasé',
+            sku='QJR144-OND-%s' % self.company.pk, prix_vente=Decimal('15000'),
+            prix_achat=Decimal('1'), quantite_stock=5)
+        creer_ligne(self.devis, produit=onduleur, designation=onduleur.nom,
+                    quantite=Decimal('1'), prix_unitaire=Decimal('15000'), remise=Decimal('0'))
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            nom='Karim Exemple', raison_sociale_a_confirmer=True)
+        accept_devis(
+            devis=Devis.objects.get(pk=self.devis.pk), user=None, nom='Karim Exemple',
+            entreprise={'raison_sociale': 'Boulangerie Exemple SARL', 'signataire_qualite': 'Gérant',
+                        'ice': '001234567000089', 'signataire_nom': 'Karim Exemple',
+                        'signataire_email': 'karim@example.invalid', 'pouvoir_engager': True})
+        signature = DevisSignature.objects.get(devis=self.devis)
+        self.assertEqual(signature.client_scelle(),
+                         'Boulangerie Exemple SARL|%s' % self.client_obj.email)
+        Client.objects.filter(pk=self.client_obj.pk).update(nom='BEX')
+
+        def _stocker(*, devis):
+            DevisSignature.objects.filter(devis=devis).update(signed_pdf_key='cle__signe.pdf')
+
+        with mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf', side_effect=_stocker):
+            etat = pdf_signe.rendre_pdf_signe(self.devis.pk)
+        self.assertEqual(etat, pdf_signe.PRET)
+        rapport = verifier_empreinte_signature(Devis.objects.get(pk=self.devis.pk))
+        self.assertTrue(rapport['intacte'], rapport)
+        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V4)
 
 
 class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
@@ -242,9 +296,8 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
                 devis=self.devis, nom='M. Client', ip='81.0.0.1',
                 user_agent='pytest', consentement=True, lignes=None)
         signature = DevisSignature.objects.get(devis=self.devis)
-        self.assertEqual(signature.figures_scellees, {
-            'etude': DevisSignature.figures_canoniques(
-                figures_etude_scellees(etude))})
+        self.assertEqual(signature.figures_scellees['etude'], DevisSignature.figures_canoniques(
+            figures_etude_scellees(etude)))
         autre = copy.deepcopy(etude)
         autre['energie']['taux_autoconso_pct'] = 80
         with mock.patch(cible, return_value=autre):
@@ -252,9 +305,9 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
             intacte, version = DevisSignature.objects.get(
                 pk=signature.pk).verifier_contenu()
         self.assertTrue(rapport['intacte'], rapport)
-        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V3)
+        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V4)
         self.assertEqual((intacte, version),
-                         (True, DevisSignature.CONTENT_HASH_V3))
+                         (True, DevisSignature.CONTENT_HASH_V4))
 
     def test_le_pdf_signe_porte_son_empreinte_sha256(self):
         """ADEV96 — ``_store_signed_pdf`` pose le SHA-256 des octets remis ;
@@ -333,7 +386,7 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
                             DevisSignature.compute_content_hash(
                                 self.devis, figures=complet))
         self.assertEqual(signature.verifier_contenu(),
-                         (True, DevisSignature.CONTENT_HASH_V3))
+                         (True, DevisSignature.CONTENT_HASH_V4))
 
     def test_accept_devis_scelle_avec_le_lien_de_la_signature(self):
         """ADEV104 — ``accept_devis`` passe le lien signé au sceau
@@ -361,4 +414,4 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
         signature = DevisSignature.objects.get(devis=self.devis)
         intacte, version = signature.verifier_contenu()
         self.assertTrue(intacte)
-        self.assertEqual(version, DevisSignature.CONTENT_HASH_V3)
+        self.assertEqual(version, DevisSignature.CONTENT_HASH_V4)

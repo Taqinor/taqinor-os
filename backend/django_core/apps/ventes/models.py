@@ -1621,15 +1621,13 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
 
     @classmethod
     def _payload_content_hash(cls, devis, lignes=None, *, version=None,
-                              figures=None):
+                              figures=None, client=None):
         """Le payload canonique, dans la VERSION demandée (jamais du hash).
         ``figures`` — chiffres scellés de l'étude C&I (v3), fournis par
-        l'appelant (voir ``models_preuves._suffixe_sceau_etude``)."""
+        l'appelant (voir ``models_preuves._suffixe_sceau_etude``) ; ``client``
+        — l'identité scellée (v4, ``models_preuves._client_du_sceau``)."""
         version = version or cls.CONTENT_HASH_VERSION
-        client = getattr(devis, 'client', None)
-        client_str = ''
-        if client is not None:
-            client_str = f'{getattr(client, "nom", "")}|{getattr(client, "email", "")}'
+        client_str = cls._client_du_sceau(devis, version, client)
         lignes = cls._lignes_pour_empreinte(devis, lignes)
         # Tous les montants passent par ``_norme_decimale`` : le payload doit
         # être le MÊME que le devis vienne d'être créé en mémoire ou d'être
@@ -1667,7 +1665,7 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
 
     @classmethod
     def compute_content_hash(cls, devis, lignes=None, *, version=None,
-                             figures=None):
+                             figures=None, client=None):
         """SHA-256 du payload canonique du devis (sans aucune donnée interne).
 
         Le hash couvre : référence, client (nom/email), date_creation,
@@ -1688,7 +1686,7 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         ``None`` hors C&I. Le modèle ne relance JAMAIS le moteur lui-même.
         """
         payload = cls._payload_content_hash(devis, lignes, version=version,
-                                            figures=figures)
+                                            figures=figures, client=client)
         return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
     def verifier_contenu(self, lignes=None, figures=None):
@@ -1720,11 +1718,12 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         scelle = (self.content_hash or '').strip()
         if not scelle:
             return None, None
-        for version in (self.CONTENT_HASH_V3, self.CONTENT_HASH_V2,
-                        self.CONTENT_HASH_V1):
+        for version in (self.CONTENT_HASH_V4, self.CONTENT_HASH_V3,
+                        self.CONTENT_HASH_V2, self.CONTENT_HASH_V1):
             if self.compute_content_hash(
                     self.devis, lignes=lignes, version=version,
-                    figures=self.figures_a_rejouer(figures)) == scelle:
+                    figures=self.figures_a_rejouer(figures),
+                    client=self.client_scelle()) == scelle:
                 return True, version
         return False, None
 
