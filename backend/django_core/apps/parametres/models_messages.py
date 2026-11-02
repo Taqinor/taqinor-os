@@ -115,6 +115,25 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. "
         "Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre "
         "dernière facture, et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.",
+    # CADV107 (02/11/2026, D-CADV-8/11) — réactivation des dormants par seau
+    # (`crm.cadence_selectors.seaux_reactivation`) : même gabarit que
+    # `reveil_a2`, l'ORIGINE citée (`{mois_dossier}` + plateforme tapée à la
+    # main) et la ligne STOP. Messages tapés un à un ; darija à écrire (CADM1).
+    'reactivation_k3':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Suite à notre appel, je reviens vers vous au sujet de "
+        "votre demande de {mois_dossier} sur [plateforme]. Votre projet solaire pour votre maison à {ville} est-il "
+        "toujours d'actualité ? Si oui, je reprends votre dossier là où on l'a laissé. Répondez STOP et je "
+        "n'insiste plus.",
+    'reactivation_k6_p1':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je viens d'essayer de vous joindre au sujet de votre "
+        "demande de {mois_dossier} sur [plateforme]. Êtes-vous toujours à la recherche d'une solution solaire pour "
+        "votre maison à {ville} ? Si oui, une photo de votre dernière facture, et je vous envoie l'estimation. "
+        "Répondez STOP et je n'insiste plus.",
+    'reactivation_k6_p2':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je reviens vers vous suite à votre demande de "
+        "{mois_dossier} sur [plateforme]. Êtes-vous toujours à la recherche d'une solution solaire pour votre maison à "
+        "{ville} ? Si oui, une photo de votre dernière facture, et je vous envoie l'estimation. Répondez STOP et je "
+        "n'insiste plus.",
     'rappel_plus_tard':
         "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo "
         "m'aide à préparer l'estimation.",
@@ -598,7 +617,16 @@ CLES_RELANCE = [
     # CIQ503 — l'accusé « en attente d'un accord » (texte de RÉPONSE,
     # `CLES_MESSAGE_REPONSE`), neutre de segment, crochets à compléter.
     'attente_accord_accuse',
+    # CADV107 — réactivation des dormants (K3, K6 palier 1, K6 palier 2).
+    'reactivation_k3',
+    'reactivation_k6_p1',
+    'reactivation_k6_p2',
 ]
+
+#: CADV107 — les clés de réactivation : seule exception à la doctrine CAD62
+#: « darija COMPLÈTE » — leur darija n'est pas encore écrite (CADM1, jamais une
+#: traduction automatique) : `get_corps(..., 'darija')` retombe sur le FR.
+CLES_REACTIVATION = ('reactivation_k3', 'reactivation_k6_p1', 'reactivation_k6_p2')
 
 #: CAD60 (21/09/2026) — les textes à ENVOI MANUEL, hors cadence.
 #:
@@ -745,6 +773,12 @@ class MessageTemplate(models.Model):
         ATTENTE_ACCORD_ACCUSE = (
             'attente_accord_accuse',
             "Réponse — en attente d'un accord (accusé)")
+        # CADV107 — réactivation des dormants, par seau (D-CADV-8/11).
+        REACTIVATION_K3 = 'reactivation_k3', "Réactivation — K3, après appel"
+        REACTIVATION_K6_P1 = (
+            'reactivation_k6_p1', "Réactivation — K6 palier 1, après appel")
+        REACTIVATION_K6_P2 = (
+            'reactivation_k6_p2', "Réactivation — K6 palier 2, demande d'origine")
 
     company = models.ForeignKey(
         'authentication.Company',

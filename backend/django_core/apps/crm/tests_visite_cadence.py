@@ -1016,6 +1016,8 @@ class DeploiementSansEffetTests(VisiteCadenceBase):
         self.assertEqual(cles_stop, sorted([
             'je_classe_j7', 'cloture_j14', 'j13_dernier', 'j14_pause',
             'reveil_a1', 'reveil_a2', 'reveil_a3', 'reveil_b',
+            # CADV107 — les trois textes de réactivation des dormants.
+            'reactivation_k3', 'reactivation_k6_p1', 'reactivation_k6_p2',
         ]))
         # Les deux clés du lot visite sont AJOUTÉES ensemble, dans cet ordre,
         # juste après la dernière clé d'avant le lot.

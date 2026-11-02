@@ -22,8 +22,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.parametres.models_messages import (
-    CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
-    PLACEHOLDERS_RELANCE, MessageTemplate,
+    CLES_REACTIVATION, CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS,
+    MESSAGE_TEMPLATE_DEFAULTS_DARIJA, PLACEHOLDERS_RELANCE, MessageTemplate,
 )
 
 User = get_user_model()
@@ -164,6 +164,33 @@ class TextesFidelesALaSourceTests(TestCase):
         for cle in sans_darija:
             self.assertNotIn(cle, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
 
+    def test_les_textes_de_reactivation_sont_fideles_et_portent_stop(self):
+        """CADV107 — K3, K6 palier 1, K6 palier 2 : copiés du guide, l'origine
+        citée, une question, aucun chiffre, la ligne STOP ; darija non écrite
+        (CADM1) ⇒ repli sur le FR, jamais une traduction inventée."""
+        company = Company.objects.create(nom='CADV107', slug='cadv107')
+        stop = "Répondez STOP et je n'insiste plus."
+        self.assertEqual(sorted(CLES_REACTIVATION), sorted(
+            c for c in CLES_RELANCE if c.startswith('reactivation_')))
+        for cle in CLES_REACTIVATION:
+            with self.subTest(cle=cle):
+                corps = MessageTemplate.get_corps(company, cle, 'fr')
+                self.assertEqual(corps, self.source[cle]['fr'])
+                self.assertTrue(corps.endswith(stop),
+                                f'{cle} ne finit pas par la ligne STOP')
+                self.assertFalse(re.search(r'\d', corps), cle)
+                for morceau in ('{conseiller}', '{marque}',
+                                'votre demande de {mois_dossier} sur '
+                                '[plateforme]', ' ? '):
+                    self.assertIn(morceau, corps)
+                self.assertEqual(
+                    MessageTemplate.get_corps(company, cle, 'darija'), corps)
+                self.assertNotIn(cle, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
+        self.assertIn(
+            "toujours à la recherche d'une solution solaire pour votre "
+            "maison à {ville} ?",
+            MessageTemplate.get_corps(company, 'reactivation_k6_p2', 'fr'))
+
 
 class LAncreDuRepliDarijaTests(SimpleTestCase):
     """`CLE_SANS_DARIJA_VALIDEE` doit RESTER une clé sans darija validée.
@@ -185,7 +212,8 @@ class LAncreDuRepliDarijaTests(SimpleTestCase):
         """Une clé de `CLES_RELANCE` ne peut PAS servir d'ancre : la doctrine
         CAD62 garantit qu'elles ont TOUTES leur darija."""
         self.assertNotIn(CLE_SANS_DARIJA_VALIDEE, CLES_RELANCE)
-        for cle in CLES_RELANCE:
+        # CADV107 — seule exception : la darija de réactivation (CADM1).
+        for cle in set(CLES_RELANCE) - set(CLES_REACTIVATION):
             with self.subTest(cle=cle):
                 self.assertIn(cle, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
 
