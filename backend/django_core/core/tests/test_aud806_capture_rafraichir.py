@@ -155,6 +155,36 @@ class Aud806RafraichirCaptureTests(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(self.recus, [])
 
+    def test_creer_et_rafraichir_exigent_encaisser(self):
+        """AARG11 — sans ``encaisser`` (Admin Ventes, Admin RH) : création et
+        capture refusées, aucun ``payment_captured`` ; Directeur : capture."""
+        from django.apps import apps as django_apps
+        from django.core.management import call_command
+        Role = django_apps.get_model('roles', 'Role')  # core n'importe aucune app
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
+
+        def acteur(nom):
+            return User.objects.create_user(
+                username=f'aarg11_{nom.replace(" ", "_").lower()}',
+                password='x', company=self.company, role=roles[nom])
+        for nom in ('Admin Ventes', 'Admin RH'):
+            with self.subTest(role=nom):
+                user = acteur(nom)
+                req = self.factory.post('/paiements-en-ligne/', {
+                    'provider': 'cmi', 'montant': '1200.00'}, format='json')
+                force_authenticate(req, user=user)
+                resp = PaymentTransactionViewSet.as_view(
+                    {'post': 'create'})(req)
+                self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+                resp = self._rafraichir(user, _ProviderPaye())
+                self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(self.recus, [])
+        self.assertEqual(PaymentTransaction.objects.count(), 1)
+        resp = self._rafraichir(acteur('Directeur'), _ProviderPaye())
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(self.recus), 1)
+
     def test_la_lecture_reste_ouverte(self):
         req = self.factory.get('/paiements-en-ligne/')
         force_authenticate(req, user=self.simple)

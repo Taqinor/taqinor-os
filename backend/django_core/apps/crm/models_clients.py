@@ -1449,6 +1449,12 @@ class EquipeCommerciale(models.Model):
     # décision, le lead part automatiquement au membre proposé.
     delai_attribution_minutes = models.PositiveIntegerField(
         default=5, verbose_name="Délai avant attribution automatique (minutes ouvrées)")
+    # CADV31 (D-CADV-7) — file « À prendre » : un nouveau lead RÉSIDENTIEL
+    # attend, visible de tous les membres actifs, et le premier qui le prend
+    # (``dispatch.attribuer``) en devient le propriétaire. Les leads pro
+    # gardent leur responsable désigné (routage CIQ416, AVANT la file).
+    file_a_prendre = models.BooleanField(
+        default=False, verbose_name="File « À prendre » (tout membre prend un lead)")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1458,6 +1464,42 @@ class EquipeCommerciale(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+class PermanenceEquipe(TenantModel):
+    """CADV104 (D-CADV-6/7) — le commercial de PERMANENCE d'une équipe pour une
+    demi-journée (week-end compris) : ``dispatch.proposer`` le propose en
+    premier dans la file « À prendre », avant la rotation de charge. Une ligne
+    par (équipe, date, demi-journée) ; sans ligne, règles puis rotation comme
+    avant."""
+
+    class DemiJournee(models.TextChoices):
+        MATIN = 'matin', 'Matin'
+        APRES_MIDI = 'apres_midi', 'Après-midi'
+
+    equipe = models.ForeignKey(
+        # on_delete: la permanence n'existe que pour son équipe — supprimée avec elle
+        EquipeCommerciale, on_delete=models.CASCADE,
+        related_name='permanences')
+    date = models.DateField()
+    demi_journee = models.CharField(max_length=10, choices=DemiJournee.choices)
+    commercial = models.ForeignKey(
+        # on_delete: sans son commercial la permanence n'a plus d'objet (retour aux règles)
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='permanences_equipe')
+
+    class Meta:
+        verbose_name = "Permanence d'équipe"
+        verbose_name_plural = "Permanences d'équipe"
+        ordering = ['date', 'demi_journee', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['equipe', 'date', 'demi_journee'],
+                name='crm_permanence_equipe_demi_journee_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.equipe_id} {self.date} {self.demi_journee}'
 
 
 class RegleAttribution(TenantModel):

@@ -677,6 +677,19 @@ _MERGE_CLIENT_FILL_FIELDS = (
 CLE_EMAIL_AVANT_FUSION = 'email_avant_fusion'
 
 
+class FusionRefusee(ValueError):
+    """AARG51 — fusion refusée : une facture émise changerait d'entité légale."""
+
+
+def _refuser_factures_sous_autre_identite(survivor, others):
+    """AARG51 — doublon à factures émises (non brouillon) sous un autre ICE/IF/RC : refus."""
+    from apps.ventes.selectors import factures_du_client_portail
+    identite = lambda c: tuple((getattr(c, k) or '').strip() for k in ('ice', 'if_fiscal', 'rc'))  # noqa: E731
+    for d in others:
+        if identite(d) != identite(survivor) and factures_du_client_portail(survivor.company, d.pk, limit=1):
+            raise FusionRefusee(f'{d} porte des factures émises sous un autre ICE/IF/RC : fusion refusée.')
+
+
 def merge_clients(survivor, others, user):
     """Fusionne ``others`` dans ``survivor`` sans perte ni suppression.
 
@@ -701,6 +714,7 @@ def merge_clients(survivor, others, user):
                'repointes': {}, 'non_repointes': []}
     if not others:
         return rapport
+    _refuser_factures_sous_autre_identite(survivor, others)
 
     with transaction.atomic():
         for absorbed in others:

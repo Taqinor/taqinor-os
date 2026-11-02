@@ -595,6 +595,210 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
     return resultat
 
 
+def courbe_premier_joint(company, *, jours=JOURS_MESURE_DEFAUT):
+    """CADV7 — la courbe CUMULÉE « premier joint par rang de touche », par
+    cadence puis segment (contrat ``mesure_cadence.json``, clé
+    ``courbe_premier_joint``), en LECTURE SEULE.
+
+    Population : les leads créés sur la fenêtre (archivés et miroir Odoo
+    écartés, comme ``par_segment``) qui ont AU MOINS UNE touche close par un
+    humain de la cadence — c'est le dénominateur (``leads``). Pour chaque lead,
+    le RANG (``ordre``) de sa PREMIÈRE touche jointe (``ISSUES_JOINT``, même
+    définition que ``taux_joint_par_creneau``) ; ``cumul`` / ``cumul_pct`` sont
+    la part des leads déjà joints au plus tard à ce rang. Un lead jamais joint
+    reste au dénominateur (``jamais_joints``). ``{}`` sans aucune touche close ;
+    seuls les segments ayant au moins un lead figurent (aucun 0 % inventé).
+    """
+    from django.utils import timezone
+
+    from .models import Lead, RelanceEtape
+    from .suite_touche import q_barreau
+
+    depuis = timezone.now() - datetime.timedelta(days=int(jours))
+    touches = (RelanceEtape.objects
+               .filter(company=company, statut__in=STATUTS_CLOS_HUMAIN,
+                       lead__is_archived=False,
+                       lead__date_creation__gte=depuis)
+               .exclude(lead__source=Lead.Source.ODOO_IMPORT_TEST)
+               .filter(q_barreau()))
+    issues = _issues_par_touche(touches, company)
+    par_lead = {}
+    for ligne in touches.values('id', 'lead_id', 'cadence', 'ordre',
+                                'traite_le', 'lead__type_installation'):
+        cle = (ligne['cadence'], ligne['lead_id'])
+        entree = par_lead.setdefault(cle, {
+            'segment': _segment_de(ligne['lead__type_installation']),
+            'touches': []})
+        entree['touches'].append(ligne)
+
+    blocs = {}
+    for (cadence, _lead_id), entree in par_lead.items():
+        bloc = blocs.setdefault(cadence, {}).setdefault(
+            entree['segment'], {'leads': 0, 'rangs': {}, 'jamais': 0})
+        bloc['leads'] += 1
+        jointes = sorted(
+            (t for t in entree['touches']
+             if issues.get(t['id'], '') in ISSUES_JOINT),
+            key=lambda t: (t['traite_le'] is None, t['traite_le'],
+                           t['ordre']))
+        if not jointes:
+            bloc['jamais'] += 1
+            continue
+        rang = jointes[0]['ordre']
+        bloc['rangs'][rang] = bloc['rangs'].get(rang, 0) + 1
+
+    courbe = {}
+    for cadence in sorted(blocs):
+        courbe[cadence] = {}
+        for segment in SEGMENTS_MESURE + (SEGMENT_NON_RENSEIGNE,):
+            bloc = blocs[cadence].get(segment)
+            if bloc is None:
+                continue
+            cumul = 0
+            par_rang = []
+            for rang in sorted(bloc['rangs']):
+                cumul += bloc['rangs'][rang]
+                par_rang.append({
+                    'rang': rang, 'premiers_joints': bloc['rangs'][rang],
+                    'cumul': cumul,
+                    'cumul_pct': _pct(cumul, bloc['leads'])})
+            courbe[cadence][segment] = {
+                'leads': bloc['leads'], 'par_rang': par_rang,
+                'jamais_joints': bloc['jamais']}
+    return courbe
+
+
+# ── CADV110 — la cohorte hebdomadaire préenregistrée (décision D-CADV-1) ─────
+#
+# Cohorte hebdomadaire, pas de A/B : un lead est classé dans la SEMAINE de sa
+# création ; on lit « joint en 14 jours » et « chiffré en 21 jours ». Les
+# constantes ci-dessous sont PRÉENREGISTRÉES (jamais ajustées après lecture) :
+#   * base = les ``COHORTE_BASE_SEMAINES`` premières semaines MÛRES (≥ 28 jours
+#     d'âge : joint 14 j et devis 21 j sont alors connus) → taux de référence
+#     p0 (joints / leads cumulés) ;
+#   * CUSUM unilatéral haut sur le z-score binomial de chaque semaine :
+#     S_t = max(0, S_{t-1} + z_t - k), z_t = (p_t - p0) / sqrt(p0 (1-p0) / n_t),
+#     avec l'allocation ``COHORTE_CUSUM_K`` (k = 0,5 écart-type) et la limite
+#     ``COHORTE_CUSUM_H`` (h = 4 écarts-types : valeurs usuelles d'un CUSUM,
+#     fixées une fois pour toutes, jamais réglées sur les données) ;
+#   * points de contrôle aux semaines ``COHORTE_CONTROLES`` : aucun signal
+#     avant le premier (60 leads par bras ne détectent qu'un saut de 37 % à
+#     62 % : lire plus tôt, c'est lire du bruit) ;
+#   * repères = les dates du registre d'expériences (CADV33).
+COHORTE_BASE_SEMAINES = 12
+COHORTE_CUSUM_K = 0.5
+COHORTE_CUSUM_H = 4.0
+COHORTE_CONTROLES = (4, 8, 12)
+COHORTE_MURE_JOURS = 28
+COHORTE_JOINT_JOURS = 14
+COHORTE_DEVIS_JOURS = 21
+COHORTE_SEMAINES_MAX = 52
+
+
+def cohorte_hebdomadaire(company, maintenant=None):
+    """CADV110 — la série hebdomadaire de cohorte (contrat
+    ``mesure_cadence.json``, clé ``cohorte``), en LECTURE SEULE : une entrée
+    par semaine de création mûre ``{semaine, n, joint_14j_pct, devis_21j_pct,
+    cusum, limite_h, signal, controle, reperes}`` (``reperes`` = ids des
+    ``ExperienceCadence`` datées dans la semaine). Population : leads
+    comptés (``q_lead_compte``, CADV2), archivés et miroir Odoo écartés.
+    « Joint » = ``ISSUES_JOINT`` (une seule définition). ``[]`` sans lead mûr.
+    Même instant ⇒ même série."""
+    import math
+
+    from django.utils import timezone
+
+    from apps.ventes.selectors import devis_envoyes_par_lead
+
+    from . import horaires
+    from .leads_selectors import q_lead_compte
+    from .models import Lead, LeadActivity
+    from .models_cadence import ExperienceCadence
+
+    maintenant = maintenant or timezone.now()
+    jour = maintenant.astimezone(horaires.CASABLANCA).date()
+    mure_avant = jour - datetime.timedelta(days=COHORTE_MURE_JOURS)
+    depuis = jour - datetime.timedelta(weeks=COHORTE_SEMAINES_MAX)
+    debut = datetime.datetime.combine(
+        depuis, datetime.time(0), tzinfo=horaires.CASABLANCA)
+    leads = list(
+        Lead.objects.filter(company=company, is_archived=False,
+                            date_creation__gte=debut)
+        .filter(q_lead_compte())
+        .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
+        .only('id', 'date_creation'))
+    if not leads:
+        return []
+    ids = [lead.pk for lead in leads]
+    creation = {lead.pk: lead.date_creation for lead in leads}
+    joint_le = {}
+    for lead_id, instant in (
+            LeadActivity.objects
+            .filter(company=company, lead_id__in=ids,
+                    outcome__in=ISSUES_JOINT)
+            .order_by('created_at', 'pk')
+            .values_list('lead_id', 'created_at')):
+        joint_le.setdefault(lead_id, instant)
+    devis_le = {}
+    for ligne in devis_envoyes_par_lead(company, ids):
+        devis_le.setdefault(ligne['lead_id'], ligne['date_envoi'])
+
+    semaines = {}
+    for lead in leads:
+        local = lead.date_creation.astimezone(horaires.CASABLANCA).date()
+        lundi = local - datetime.timedelta(days=local.weekday())
+        if lundi > mure_avant:
+            continue                       # semaine pas encore mûre
+        bloc = semaines.setdefault(lundi, {'n': 0, 'joints': 0, 'devis': 0})
+        bloc['n'] += 1
+        age = creation[lead.pk]
+        joint = joint_le.get(lead.pk)
+        if joint is not None and joint - age <= datetime.timedelta(
+                days=COHORTE_JOINT_JOURS):
+            bloc['joints'] += 1
+        devis = devis_le.get(lead.pk)
+        if devis is not None and devis - age <= datetime.timedelta(
+                days=COHORTE_DEVIS_JOURS):
+            bloc['devis'] += 1
+    if not semaines:
+        return []
+    lundis = sorted(semaines)
+
+    base = lundis[:COHORTE_BASE_SEMAINES]
+    n_base = sum(semaines[m]['n'] for m in base)
+    p0 = sum(semaines[m]['joints'] for m in base) / n_base
+    p0 = min(max(p0, 0.01), 0.99)
+
+    reperes = {}
+    for exp_id, date in (ExperienceCadence.objects
+                         .filter(company=company)
+                         .order_by('date', 'id')
+                         .values_list('id', 'date')):
+        lundi = date - datetime.timedelta(days=date.weekday())
+        reperes.setdefault(lundi, []).append(exp_id)
+
+    serie = []
+    cusum = 0.0
+    for rang, lundi in enumerate(lundis, start=1):
+        bloc = semaines[lundi]
+        p = bloc['joints'] / bloc['n']
+        z = (p - p0) / math.sqrt(p0 * (1 - p0) / bloc['n'])
+        cusum = max(0.0, cusum + z - COHORTE_CUSUM_K)
+        serie.append({
+            'semaine': lundi.isoformat(),
+            'n': bloc['n'],
+            'joint_14j_pct': _pct(bloc['joints'], bloc['n']),
+            'devis_21j_pct': _pct(bloc['devis'], bloc['n']),
+            'cusum': round(cusum, 2),
+            'limite_h': COHORTE_CUSUM_H,
+            'signal': (rang >= COHORTE_CONTROLES[0]
+                       and cusum > COHORTE_CUSUM_H),
+            'controle': rang in COHORTE_CONTROLES,
+            'reperes': reperes.get(lundi, []),
+        })
+    return serie
+
+
 def mesure_cadence(company, *, jours=JOURS_MESURE_DEFAUT):
     """Les mesures de CAD87 (+ CAD178), en une seule lecture (forme du
     contrat).
@@ -618,4 +822,8 @@ def mesure_cadence(company, *, jours=JOURS_MESURE_DEFAUT):
         'gestes_par_appareil': gestes_par_appareil(company, jours=jours),
         # AGR540 — additif : les mêmes mesures découpées par segment.
         'par_segment': par_segment(company, jours=jours),
+        # CADV7 — additif : le premier joint, cumulé par rang de touche.
+        'courbe_premier_joint': courbe_premier_joint(company, jours=jours),
+        # CADV110 — additif : la cohorte hebdomadaire préenregistrée (CUSUM).
+        'cohorte': cohorte_hebdomadaire(company),
     }

@@ -433,6 +433,24 @@
    "required": false
   },
   {
+   "classe": "ChoiceField",
+   "nom": "parc_etat",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "parc_raison",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "parc_jusqu_au",
+   "read_only": true,
+   "required": false
+  },
+  {
    "classe": "JSONField",
    "nom": "saisies_humaines",
    "read_only": true,

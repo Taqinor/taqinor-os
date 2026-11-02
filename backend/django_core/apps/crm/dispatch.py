@@ -23,6 +23,7 @@ import logging
 import unicodedata
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
@@ -31,7 +32,8 @@ from core.conflit_etat import ConflitEtat
 from . import horaires
 from .leads_attribution import _leads_ouverts_count
 from .models import Lead
-from .models_clients import AttributionEnAttente, EquipeCommerciale, RegleAttribution
+from .models_clients import (
+    AttributionEnAttente, EquipeCommerciale, PermanenceEquipe, RegleAttribution)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,13 @@ MARQUE = '_dispatch_equipe_id'
 RAISON_ROTATION = 'Rotation équilibrée'
 RAISON_AUCUN = 'Aucun membre disponible'
 PLAFOND_DEFAUT = 20
+#: CADV115 — paliers de la file « À prendre », en minutes OUVRÉES depuis
+#: l'arrivée : (minutes, clé, marqueur de chatter d'idempotence).
+PALIERS_FILE = (
+    (5, 'equipe', 'auto — file À prendre T+5'),
+    (15, 'direction', 'auto — file À prendre T+15'),
+    (30, 'attribution', 'auto — file À prendre T+30'),
+)
 
 
 def nom_affiche(user):
@@ -81,7 +90,7 @@ def confirmation_active(equipe, instant=None):
     responsable et ne part tout seul qu'à l'ouverture)."""
     if equipe is None or not _chef_actif(equipe):
         return False
-    return bool(equipe.confirmation_responsable
+    return bool(equipe.confirmation_responsable or equipe.file_a_prendre
                 or hors_heures(equipe.company, instant))
 
 
@@ -174,16 +183,48 @@ def raison_regle(regle):
     return 'Règle : ' + (', '.join(morceaux) or 'tous les leads')
 
 
-def proposer(equipe, lead):
+_JOURS = ('lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche')
+
+
+def _demi_journee(instant):
+    """(date locale, ``matin`` | ``apres_midi``) de ``instant`` — coupure 13 h."""
+    local = instant.astimezone(horaires.CASABLANCA)
+    return local.date(), (PermanenceEquipe.DemiJournee.MATIN if local.hour < 13
+                          else PermanenceEquipe.DemiJournee.APRES_MIDI)
+
+
+def libelle_permanence(date, demi):
+    return (f'Permanence {_JOURS[date.weekday()]} '
+            f"{'matin' if demi == 'matin' else 'après-midi'}")
+
+
+def permanence_du_moment(equipe, instant=None):
+    """(membre de permanence, raison) pour la demi-journée de ``instant`` si
+    une ligne existe ET que son commercial est un membre actif ; sinon None
+    (CADV104 — retour aux règles puis à la rotation)."""
+    date, demi = _demi_journee(instant or timezone.now())
+    ligne = PermanenceEquipe.objects.filter(
+        equipe=equipe, company_id=equipe.company_id, date=date,
+        demi_journee=demi).select_related('commercial').first()
+    if ligne is None or not membre_actif(equipe, ligne.commercial):
+        return None
+    return ligne.commercial, libelle_permanence(date, demi)
+
+
+def proposer(equipe, lead, instant=None):
     """(membre proposé ou None, raison) — première règle active qui
-    correspond (son membre doit être un membre ACTIF de l'équipe), sinon la
-    rotation équilibrée existante."""
+    correspond (son membre doit être un membre ACTIF de l'équipe), puis le
+    commercial de PERMANENCE de la demi-journée (CADV104), sinon la rotation
+    équilibrée existante."""
     regles = RegleAttribution.objects.filter(
         equipe=equipe, company_id=equipe.company_id, actif=True,
     ).select_related('membre').order_by('ordre', 'id')
     for regle in regles:
         if membre_actif(equipe, regle.membre) and _regle_correspond(regle, lead):
             return regle.membre, raison_regle(regle)
+    permanent = permanence_du_moment(equipe, instant)
+    if permanent is not None:
+        return permanent
     membre = rotation(equipe)
     return (membre, RAISON_ROTATION) if membre is not None else (None, RAISON_AUCUN)
 
@@ -192,7 +233,12 @@ def echeance_pour(equipe, depuis):
     """L'instant où le délai de l'équipe, compté en minutes OUVRÉES (horaires
     de la société), est écoulé depuis ``depuis``. Lead arrivé hors heures :
     l'OUVERTURE suivante (fondateur 30/10/2026 — « à 8 h 30 si le
-    responsable ne l'a pas attribué »)."""
+    responsable ne l'a pas attribué »). File « À prendre » (CADV115) : le
+    dernier palier, T+30 minutes ouvrées, dans tous les cas."""
+    if equipe.file_a_prendre:
+        return horaires.echeance_en_temps_ouvre(
+            depuis, datetime.timedelta(minutes=PALIERS_FILE[-1][0]),
+            equipe.company, canal='whatsapp')
     if hors_heures(equipe.company, depuis):
         return horaires.prochain_creneau_appel(
             depuis, equipe.company, canal='whatsapp')
@@ -273,6 +319,58 @@ def equipes_reglables(user):
          'est_responsable': m.pk == e.responsable_id}
         for m in _choix_equipe(e, e.membres_actifs)]}
         for e in equipes if peut_regler(user, e)]
+
+
+def permanences_equipe(user, equipe_id):
+    """Rota de permanence d'une équipe (contrat ``dispatch_permanences.json``) ;
+    404 hors société."""
+    equipe = (EquipeCommerciale.objects.filter(
+        pk=equipe_id, company_id=user.company_id).first()
+        if user.company_id else None)
+    if equipe is None:
+        raise NotFound('Équipe introuvable.')
+    lignes = PermanenceEquipe.objects.filter(
+        equipe=equipe, company_id=equipe.company_id).select_related('commercial')
+    return {'equipe': equipe.pk, 'permanences': [
+        {'date': p.date.isoformat(), 'demi_journee': p.demi_journee,
+         'commercial': p.commercial_id,
+         'commercial_nom': nom_affiche(p.commercial),
+         'libelle': libelle_permanence(p.date, p.demi_journee)}
+        for p in lignes]}
+
+
+def definir_permanences(user, equipe_id, lignes):
+    """Pose / remplace / retire (``commercial`` nul) les permanences données —
+    une ligne par (équipe, date, demi-journée). 403 sans droit de réglage ; 409
+    si le commercial n'est pas un membre actif de l'équipe (corps conforme,
+    état refusé — même règle que l'attribution)."""
+    equipe = (EquipeCommerciale.objects.select_related('departement').filter(
+        pk=equipe_id, company_id=user.company_id).first()
+        if user.company_id else None)
+    if equipe is None:
+        raise NotFound('Équipe introuvable.')
+    if not peut_regler(user, equipe):
+        raise PermissionDenied(
+            "Seuls le responsable de l'équipe, le directeur commercial et "
+            "la Direction règlent sa permanence.")
+    choix = _choix_equipe(equipe, equipe.membres.filter(
+        is_active=True, company_id=equipe.company_id))
+    with transaction.atomic():
+        for ligne in lignes:
+            if ligne['commercial'] is None:
+                PermanenceEquipe.objects.filter(
+                    equipe=equipe, company_id=equipe.company_id,
+                    date=ligne['date'],
+                    demi_journee=ligne['demi_journee']).delete()
+                continue
+            membre = next((m for m in choix if m.pk == ligne['commercial']), None)
+            if membre is None:
+                raise ConflitEtat("Ce commercial n'est pas un membre actif de l'équipe.")
+            PermanenceEquipe.objects.update_or_create(
+                equipe=equipe, company_id=equipe.company_id, date=ligne['date'],
+                demi_journee=ligne['demi_journee'],
+                defaults={'commercial': membre})
+    return permanences_equipe(user, equipe_id)
 
 
 def reglage_equipe(equipe):
@@ -359,14 +457,25 @@ def _finaliser(attente, owner, acteur, corps):
     return lead
 
 
+def _equipes_a_prendre(user):
+    """Équipes ACTIVES de la société de ``user`` en file « À prendre » dont il
+    est membre (CADV31)."""
+    return EquipeCommerciale.objects.filter(
+        company_id=user.company_id, actif=True, file_a_prendre=True,
+        membres=user)
+
+
 def attribuer(user, lead_id, owner_id):
     """Décision du responsable (ou d'un admin). 404 hors société, 403 hors
     de son équipe, 409 si le lead n'attend plus, 400 si ``owner`` n'est ni un
     membre actif ni le responsable. Verrou de ligne : un double clic ou la
     tâche automatique ne peuvent pas écrire deux fois."""
     admin = bool(getattr(user, 'is_admin_role', False))
+    # CADV31 : un membre d'une équipe en file « À prendre » s'attribue lui-même
+    # un lead de la file ; tout autre non-responsable reste refusé.
     if not admin and not EquipeCommerciale.objects.filter(
-            company_id=user.company_id, responsable=user).exists():
+            company_id=user.company_id, responsable=user).exists() and not (
+            _equipes_a_prendre(user).exists()):
         raise PermissionDenied(
             "Seul le responsable de l'équipe attribue ses leads.")
     if not Lead.objects.filter(pk=lead_id, company_id=user.company_id).exists():
@@ -377,9 +486,15 @@ def attribuer(user, lead_id, owner_id):
         if attente is None or _deja_decide(attente):
             raise ConflitEtat("Ce lead n'attend plus d'attribution.")
         equipe = attente.equipe
+        prise = False
         if not (admin or equipe.responsable_id == user.pk):
-            raise PermissionDenied(
-                "Seul le responsable de l'équipe attribue ses leads.")
+            if not (equipe.file_a_prendre and membre_actif(equipe, user)):
+                raise PermissionDenied(
+                    "Seul le responsable de l'équipe attribue ses leads.")
+            if owner_id != user.pk:
+                raise PermissionDenied(
+                    "Un membre ne s'attribue un lead qu'à lui-même.")
+            prise = True
         owner = equipe.membres.filter(
             pk=owner_id, is_active=True, company_id=user.company_id).first()
         if owner is None and owner_id == equipe.responsable_id:
@@ -388,7 +503,9 @@ def attribuer(user, lead_id, owner_id):
             raise ValidationError(
                 {'owner': "Choisissez un membre actif de l'équipe."})
         corps = f'Attribué à {nom_affiche(owner)} par {nom_affiche(user)}'
-        if owner.pk == attente.proposee_id:
+        if prise:
+            corps = f'Pris par {nom_affiche(owner)}'
+        elif owner.pk == attente.proposee_id:
             corps += ' (proposition confirmée)'
         return _finaliser(attente, owner, user, corps)
 
@@ -399,8 +516,10 @@ def attribuer_echeances(maintenant=None):
     personne, le lead reste au responsable. ``skip_locked`` : une décision
     manuelle en cours n'est jamais doublée. Renvoie le nombre traité."""
     maintenant = maintenant or timezone.now()
+    # La file « À prendre » a ses propres paliers (``escalader_file``).
     ids = list(AttributionEnAttente.objects.filter(
-        echeance__lte=maintenant).values_list('pk', flat=True))
+        echeance__lte=maintenant, equipe__file_a_prendre=False,
+    ).values_list('pk', flat=True))
     traites = 0
     for pk in ids:
         try:
@@ -429,6 +548,94 @@ def attribuer_echeances(maintenant=None):
             logger.warning('dispatch : attribution automatique échouée '
                            '(attente #%s)', pk, exc_info=True)
     return traites
+
+
+def _destinataires_direction(company):
+    """Direction : managers de repli (Commercial responsable / Directeur) et
+    comptes d'administration actifs de la société, sans doublon."""
+    from django.contrib.auth import get_user_model
+    from .leads_socle import _company_fallback_managers
+    vus, out = set(), []
+    admins = get_user_model().objects.filter(
+        company=company, is_active=True, role_legacy='admin').order_by('id')
+    for u in [*_company_fallback_managers(company), *admins]:
+        if u.pk not in vus:
+            vus.add(u.pk)
+            out.append(u)
+    return out
+
+
+def escalader_file(maintenant=None):
+    """CADV115 — chaque minute, après ``attribuer_echeances`` : un lead resté
+    dans la file « À prendre » franchit T+5 (l'équipe est prévenue), T+15 (la
+    direction, ``PREMIER_CONTACT_DEPASSE``) puis T+30 minutes OUVRÉES (le
+    membre le moins chargé le reçoit, chatter « délai de prise dépassé »).
+    Un chatter marqueur par palier : un passage répété n'envoie rien. Renvoie
+    le nombre de paliers franchis sur ce passage."""
+    from apps.notifications.services import notify_many
+    from apps.notifications.types_evenements import EventType
+    from . import activity
+    from .models import LeadActivity
+    maintenant = maintenant or timezone.now()
+    franchis = 0
+    attentes = AttributionEnAttente.objects.filter(
+        equipe__file_a_prendre=True).select_related(
+        'lead', 'equipe', 'company').order_by('created_at', 'id')
+    for attente in list(attentes):
+        try:
+            if _deja_decide(attente):
+                continue
+            equipe, lead = attente.equipe, attente.lead
+            ecoulees = horaires.minutes_ouvrees_entre(
+                attente.created_at, maintenant, attente.company,
+                canal='whatsapp')
+            nom = ' '.join(p for p in (lead.prenom, lead.nom) if p) or 'Nouveau lead'
+            for minutes, palier, marqueur in PALIERS_FILE:
+                if ecoulees < minutes:
+                    break
+                if LeadActivity.objects.filter(
+                        lead=lead, kind=LeadActivity.Kind.NOTE,
+                        body__startswith=marqueur).exists():
+                    continue
+                if palier == 'attribution':
+                    with transaction.atomic():
+                        verrou = (AttributionEnAttente.objects
+                                  .select_for_update(skip_locked=True)
+                                  .filter(pk=attente.pk).first())
+                        if verrou is None or _deja_decide(verrou):
+                            continue
+                        # La proposition (comptée dans la charge par
+                        # ``rotation``) n'a plus d'objet : le lead s'en va.
+                        AttributionEnAttente.objects.filter(
+                            pk=verrou.pk).update(proposee=None)
+                        membre = rotation(equipe)
+                        corps = (f'{marqueur} — délai de prise dépassé : '
+                                 + (f'attribué à {nom_affiche(membre)}'
+                                    if membre is not None
+                                    else 'aucun membre disponible, reste au responsable'))
+                        _finaliser(verrou, membre, None, corps)
+                    franchis += 1
+                    break
+                activity.log_note(
+                    lead, None,
+                    f'{marqueur} — {ecoulees} minute(s) ouvrée(s) sans prise.')
+                if palier == 'equipe':
+                    destinataires = _choix_equipe(equipe, equipe.membres.filter(
+                        is_active=True, company_id=equipe.company_id))
+                    type_evenement = EventType.LEAD_NON_CONTACTE
+                else:
+                    destinataires = _destinataires_direction(equipe.company)
+                    type_evenement = EventType.PREMIER_CONTACT_DEPASSE
+                notify_many(
+                    destinataires, type_evenement,
+                    title=f'{nom} attend dans « À prendre » depuis {ecoulees} min ouvrées',
+                    body="Aucun commercial n'a encore pris ce lead.",
+                    link=f'/crm/leads?lead={lead.pk}', company=equipe.company)
+                franchis += 1
+        except Exception:  # noqa: BLE001 — une attente en échec ne bloque pas les suivantes (D-ENF22-BLE001)
+            logger.warning('dispatch : escalade de la file échouée '
+                           '(attente #%s)', attente.pk, exc_info=True)
+    return franchis
 
 
 def _iso(dt):
@@ -487,7 +694,9 @@ def file_attente(user):
     # Équipes archivées comprises : la tâche attribue aussi leurs leads.
     equipes = EquipeCommerciale.objects.filter(company_id=user.company_id)
     if not _peut_tout_voir(user):
-        equipes = equipes.filter(responsable=user)
+        equipes = equipes.filter(
+            Q(responsable=user)
+            | Q(actif=True, file_a_prendre=True, membres=user)).distinct()
     equipes = list(equipes)
     if not equipes:
         return vide
@@ -495,7 +704,8 @@ def file_attente(user):
         company_id=user.company_id, equipe__in=equipes,
     ).select_related('lead', 'proposee', 'company').order_by('created_at', 'id'))
     attentes = [a for a in attentes if not _deja_decide(a)]
-    confirmees = [e for e in equipes if e.confirmation_responsable and e.actif]
+    confirmees = [e for e in equipes
+                  if (e.confirmation_responsable or e.file_a_prendre) and e.actif]
     # Une équipe à la fois : ses leads ET ses membres (revue Fable 27/10 —
     # jamais le lead d'une équipe avec les membres d'une autre).
     affichee = attentes[0].equipe if attentes else next(
@@ -510,7 +720,8 @@ def file_attente(user):
         is_active=True, company_id=user.company_id).order_by('first_name', 'username', 'id')
     return {
         'equipe': {'id': affichee.pk, 'nom': affichee.nom,
-                   'delai_minutes': affichee.delai_attribution_minutes},
+                   'delai_minutes': affichee.delai_attribution_minutes,
+                   'a_prendre': affichee.file_a_prendre},
         'en_attente': len(attentes),
         'leads': [_ligne_lead(a, maintenant) for a in attentes],
         'membres': [_ligne_membre(m, plafond, affichee.responsable_id)
