@@ -34,6 +34,21 @@ BC_CHAMPS_FIGES = ('devis', 'client')
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+def _exiger_devis_du_bc(devis, client):
+    """AARG19 — un BC ne porte qu'un devis ACCEPTÉ (comme ``convertir_en_bc``)
+    de SON client : ``creer_facture`` recopie le panier du devis sur
+    ``bc.client``. Corps conforme, c'est l'état qui refuse : 409."""
+    from core.conflit_etat import ConflitEtat
+    from ..models import Devis
+    if devis is None:
+        return
+    if devis.statut != Devis.Statut.ACCEPTE:
+        raise ConflitEtat('Le devis doit être accepté.')
+    if client is None or client.pk != devis.client_id:
+        raise ConflitEtat(
+            'Le client du bon de commande doit être celui du devis.')
+
+
 def _reserver_stock_bc_actif(company):
     """YDOCF7 — état du toggle société `reserver_stock_bc` (défaut OFF).
 
@@ -252,6 +267,7 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
             raise ValidationError({'client': 'Client inconnu.'})
         if devis is not None and devis.company_id != company.id:
             raise ValidationError({'devis': 'Devis inconnu.'})
+        _exiger_devis_du_bc(devis, client)
         # AMET5 — même porte que `convertir_en_bc` : refus d'un second BC
         # pour le même devis + événement `bon_commande_cree`.
         from ..domain.facturation_ops import (
@@ -287,6 +303,11 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
                 if (BonCommande.objects.filter(devis=devis)
                         .exclude(pk=serializer.instance.pk).exists()):
                     raise ConflitEtat(MESSAGE_BC_EXISTANT)
+            if figes:
+                instance = serializer.instance
+                _exiger_devis_du_bc(
+                    serializer.validated_data.get('devis', instance.devis),
+                    serializer.validated_data.get('client', instance.client))
             super().perform_update(serializer)  # TenantMixin : société serveur
 
     @extend_schema(request=None, responses=BonCommandeSerializer)
