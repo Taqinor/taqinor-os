@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 vi.mock('../../api/stockApi', () => ({
@@ -9,13 +9,16 @@ vi.mock('../../api/stockApi', () => ({
     confirmerReceptionFournisseur: vi.fn(),
   },
 }))
+// `ReceptionDetail` lit le profil entreprise (useStockFlags) : lots/séries actifs.
+vi.mock('../../api/parametresApi', async (importOriginal) =>
+  (await import('../../test/mocksVentesEcrans.js')).parametresApiProfil(await importOriginal(), {}))
 vi.mock('../../ui', async (importOriginal) => ({
   ...(await importOriginal()),
   Combobox: ({ onChange }) => <button type="button" onClick={() => onChange('5')}>choisir-bon</button>,
 }))
 
 import stockApi from '../../api/stockApi'
-import { NouvelleReception } from './ReceptionsFournisseur.jsx'
+import { NouvelleReception, ReceptionDetail } from './ReceptionsFournisseur.jsx'
 import { parseSeries } from './numerosSerie.js'
 
 beforeEach(() => {
@@ -56,5 +59,26 @@ describe('Réception — n° de série', () => {
     expect((await screen.findAllByRole('alert'))[0].textContent).toMatch(/4 n° de série saisis pour 3/)
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer en brouillon/ }))
     expect(stockApi.createReceptionFournisseur).not.toHaveBeenCalled()
+  })
+})
+
+describe('Réception — détail enregistré (ACHT129)', () => {
+  it('le détail d\'une réception affiche séries et lot', () => {
+    const reception = {
+      id: 9, reference: 'REC-9', statut: 'confirme',
+      lignes: [
+        { id: 1, produit_nom: 'Onduleur', quantite: 3, numeros_serie: ['S1', 'S2', 'S3'], numero_lot: '' },
+        { id: 2, produit_nom: 'Câble', quantite: 100, numeros_serie: [], numero_lot: 'L-42' },
+        { id: 3, produit_nom: 'Vis', quantite: 10, numeros_serie: [], numero_lot: '' },
+      ],
+    }
+    render(<ThemeProvider>
+      <ReceptionDetail reception={reception} onClose={() => {}} onSaved={() => {}} />
+    </ThemeProvider>)
+    expect(screen.getByRole('columnheader', { name: 'Séries / Lot' })).toBeTruthy()
+    const ligne = (nom) => screen.getByText(nom).closest('tr')
+    expect(within(ligne('Onduleur')).getByText('S1, S2, S3')).toBeTruthy()
+    expect(within(ligne('Câble')).getByText('Lot L-42')).toBeTruthy()
+    expect(within(ligne('Vis')).getByText('—')).toBeTruthy()
   })
 })

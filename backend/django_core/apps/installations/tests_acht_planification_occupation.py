@@ -82,3 +82,16 @@ class OccupationTests(TestCase):
         self.assertIn((self.b.id, LUNDI.isoformat()), un_jour)
         self.assertNotIn((self.b.id, LUNDI.isoformat()), trois_jours)
         self.assertNotEqual(un_jour, trois_jours)
+
+    def test_jamais_de_depart_le_week_end(self):
+        samedi = datetime.date(2026, 11, 7)
+        for duree in (1, 3):
+            res = selectors.suggerer_creneau(
+                self.company, chantier_id=self.inst.id,
+                type_intervention='pose', duree_jours=duree,
+                date_cible=samedi, n=50)
+            dates = {p['date'] for p in res['propositions']}
+            for interdit in ('2026-11-07', '2026-11-08',
+                             '2026-11-14', '2026-11-15'):
+                self.assertNotIn(interdit, dates)
+            self.assertEqual(min(dates), '2026-11-09')

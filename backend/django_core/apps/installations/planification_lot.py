@@ -87,6 +87,8 @@ def propositions_chantier(chantier, ctx, date_cible, duree_jours, n):
     candidats = []
     for decalage in range(14):
         jour = date_cible + datetime.timedelta(days=decalage)
+        if jour.weekday() >= 5:  # ACHT127 — un départ = un jour ouvré
+            continue
         bloc = _bloc(jour, duree_jours)
         distance = _distance_au_site(chantier, ctx['par_jour'].get(jour, []))
         for tech in ctx['techniciens']:

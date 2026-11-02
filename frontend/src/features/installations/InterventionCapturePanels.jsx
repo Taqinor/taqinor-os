@@ -401,12 +401,13 @@ export function ConsommationPanel({ intervention, onChanged }) {
   // `intervention.consommation_ligne` existait côté serveur depuis N91, mais
   // cet appel partait en direct. Un 4xx APPLICATIF reste visible (il n'est
   // jamais enfilé) — seule une panne réseau met l'op en file.
-  const patchLigne = async (payload) => {
+  const patchLigne = async (li, payload) => {
     setBusy(true)
     try {
       const r = await withOfflineFallback(
         () => installationsApi.modifierLigneConsommation(id, payload),
-        FIELD_OPS.CONSOMMATION_LIGNE, { intervention: id, ...payload })
+        FIELD_OPS.CONSOMMATION_LIGNE, { intervention: id, ...payload },
+        { baseUpdatedAt: li.date_modification })
       if (r.queued) toast.success(QUEUED_MSG)
       else await load()
     } catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
@@ -450,7 +451,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
             <label className="text-[12px] text-muted-foreground">Utilisé</label>
             <Input className="w-24" type="number" step="any" defaultValue={li.quantite_utilisee}
               disabled={data.valide || busy}
-              onBlur={(e) => patchLigne({ ligne: li.id, quantite_utilisee: e.target.value })} />
+              onBlur={(e) => patchLigne(li, { ligne: li.id, quantite_utilisee: e.target.value })} />
             {li.justification_requise && (
               <Badge tone="danger" className="flex items-center gap-1">
                 <AlertTriangle className="size-3" aria-hidden="true" /> Justifier l'écart
@@ -459,7 +460,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
           {li.variance !== 0 && (
             <Textarea className="mt-1.5" rows={2} placeholder="Justification de l'écart"
               defaultValue={li.justification} disabled={data.valide || busy}
-              onBlur={(e) => patchLigne({ ligne: li.id, justification: e.target.value })} />
+              onBlur={(e) => patchLigne(li, { ligne: li.id, justification: e.target.value })} />
           )}
         </div>
       ))}

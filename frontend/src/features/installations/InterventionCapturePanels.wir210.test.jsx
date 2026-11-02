@@ -23,13 +23,13 @@ const outbox = vi.hoisted(() => {
     // Reproduit fidèlement la règle du vrai helper : pas de `response` axios
     // = panne réseau (on enfile) ; sinon c'est une erreur applicative (on
     // relance, jamais d'enfilage).
-    withOfflineFallback: async (onlineCall, opType, payload) => {
+    withOfflineFallback: async (onlineCall, opType, payload, meta) => {
       try {
         const data = await onlineCall()
         return { queued: false, data }
       } catch (err) {
         if (err?.response) throw err
-        const clientOpId = await enqueue(opType, payload)
+        const clientOpId = await enqueue(opType, payload, meta)
         return { queued: true, clientOpId }
       }
     },
@@ -102,9 +102,31 @@ describe('ConsommationPanel — WIR210 hors-ligne (F11)', () => {
     await waitFor(() => expect(outbox.enqueue).toHaveBeenCalledWith(
       'intervention.consommation_ligne',
       { intervention: 42, ligne: 5, quantite_utilisee: '12' },
+      { baseUpdatedAt: undefined },
     ))
     expect(toasts.success).toHaveBeenCalledWith(
       'Hors ligne — enregistré, synchro au retour du réseau.')
+  })
+
+  it('échec réseau → l'op enfilée porte la version lue', async () => {
+    const user = userEvent.setup()
+    api.getConsommation.mockResolvedValue({ data: {
+      ...CONSOMMATION,
+      lignes: [{ ...CONSOMMATION.lignes[0], date_modification: '2026-09-30T16:00:00Z' }],
+    } })
+    api.modifierLigneConsommation.mockRejectedValue(erreurReseau())
+    render(<ConsommationPanel intervention={INTERVENTION} />)
+
+    const champ = await screen.findByDisplayValue('10')
+    await user.clear(champ)
+    await user.type(champ, '8')
+    await user.tab()
+
+    await waitFor(() => expect(outbox.enqueue).toHaveBeenCalledWith(
+      'intervention.consommation_ligne',
+      { intervention: 42, ligne: 5, quantite_utilisee: '8' },
+      { baseUpdatedAt: '2026-09-30T16:00:00Z' },
+    ))
   })
 
   it('erreur applicative 4xx → JAMAIS enfilée, elle reste visible', async () => {

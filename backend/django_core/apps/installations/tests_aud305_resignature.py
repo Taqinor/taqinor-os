@@ -75,6 +75,8 @@ class ResignatureGardeeTests(TestCase):
         self.assertEqual(self._signer(SIG_A).status_code, 200)
         r = self._signer(SIG_B)
         self.assertEqual(r.status_code, 409, r.data)
+        self.assertNotIn('motif_override_signature', r.data['detail'])
+        self.assertIn('indiquez un motif', r.data['detail'])
         self.inst.refresh_from_db()
         self.assertEqual(self.inst.signature_client, SIG_A)
 

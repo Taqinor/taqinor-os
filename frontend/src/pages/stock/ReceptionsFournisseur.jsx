@@ -391,15 +391,20 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Produit</th>
                 <th className="px-3 py-2 text-left font-semibold">Quantité reçue</th>
+                <th className="px-3 py-2 text-left font-semibold">Séries / Lot</th>
               </tr>
             </thead>
           )}>
           {lignes.length === 0 && (
-            <tr><td colSpan={2} className="px-3 py-3 text-muted-foreground">Aucune ligne.</td></tr>
+            <tr><td colSpan={3} className="px-3 py-3 text-muted-foreground">Aucune ligne.</td></tr>
           )}
           {lignes.map((l) => (
             <tr key={l.id} className="border-t border-border">
               <CellulesProduitQuantite l={l} />
+              <td className="px-3 py-2">
+                {[(l.numeros_serie ?? []).join(', '), l.numero_lot ? `Lot ${l.numero_lot}` : '']
+                  .filter(Boolean).join(' · ') || '—'}
+              </td>
             </tr>
           ))}
         </TableauLignes>
