@@ -15,6 +15,7 @@ vi.mock('../../api/stockApi', () => ({
     getLotFefo: vi.fn(),
     sortirLotEntrepot: vi.fn(),
     getProduits: vi.fn(),
+    getTracabilite: vi.fn(),
   },
 }))
 
@@ -70,6 +71,42 @@ describe('LotsEntrepot (WIR109)', () => {
       expect(stockApi.sortirLotEntrepot).toHaveBeenCalledWith(
         5, expect.objectContaining({ quantite: 2 }))
     })
+  })
+
+  it('traçabilité (ENF15) : retrace un lot de la réception jusqu\'au chantier', async () => {
+    stockApi.getProduits.mockResolvedValue({ data: [] })
+    stockApi.getLotsEntrepot.mockResolvedValue({ data: [] })
+    stockApi.getTracabilite.mockResolvedValue({
+      data: {
+        lot: 'LOT-005', serie: '', produit: { id: 1, nom: 'Batterie 100Ah', sku: 'BAT-100' },
+        amont: [{ type: 'reception', reception_reference: 'REC-9', bcf_reference: 'BCF-3',
+          fournisseur_nom: 'Dyness', date: '2026-10-01', quantite: 10, produit_id: 1 }],
+        stock: { quantite_restante: 6, emplacement_nom: 'Dépôt A', casiers: [] },
+        aval: [{ type: 'picking', vague_reference: 'VAG-2', quantite_prelevee: 4,
+          chantier_id: 7, chantier_reference: 'CH-7' }],
+      },
+    })
+
+    renderPage()
+    await screen.findByRole('grid', { name: 'Lots en entrepôt' })
+    await userEvent.type(screen.getByLabelText('Numéro'), 'LOT-005')
+    await userEvent.click(screen.getByRole('button', { name: 'Tracer' }))
+
+    expect(await screen.findByText(/Réception REC-9/)).toBeInTheDocument()
+    expect(screen.getByText(/Prélèvement VAG-2/)).toBeInTheDocument()
+    expect(stockApi.getTracabilite).toHaveBeenCalledWith({ lot: 'LOT-005' })
+  })
+
+  it('traçabilité (ENF15) : un numéro inconnu (404) est dit clairement', async () => {
+    stockApi.getProduits.mockResolvedValue({ data: [] })
+    stockApi.getLotsEntrepot.mockResolvedValue({ data: [] })
+    stockApi.getTracabilite.mockRejectedValue({ response: { status: 404, data: { detail: 'x' } } })
+
+    renderPage()
+    await screen.findByRole('grid', { name: 'Lots en entrepôt' })
+    await userEvent.type(screen.getByLabelText('Numéro'), 'ZZZ')
+    await userEvent.click(screen.getByRole('button', { name: 'Tracer' }))
+    expect(await screen.findByText('Aucune traçabilité trouvée pour ce numéro.')).toBeInTheDocument()
   })
 
   it('suggestion FEFO : affiche le plan renvoyé par le serveur', async () => {

@@ -10,6 +10,7 @@ import {
 import { EnteteStock } from './EnteteStock'
 import { AlerteErreurStock } from './BandeauxListeStock'
 import usePeutEcrireStock from './usePeutEcrireStock'
+import TracabiliteLotSerie from './TracabiliteLotSerie'
 import { OptionsProduits } from './ComposantsStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
@@ -223,6 +224,8 @@ export default function LotsEntrepot() {
       <AlerteErreurStock error={error} />
 
       <OutilFefo produits={produits} />
+
+      <TracabiliteLotSerie />
 
       <label className="flex w-fit items-center gap-2 text-sm">
         <Checkbox checked={avecStock} onCheckedChange={(v) => setAvecStock(!!v)} />

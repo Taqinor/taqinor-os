@@ -12,6 +12,7 @@ import {
 } from '../../ui'
 import { EnteteStock, ReserveAdminStock } from './EnteteStock'
 import { ListeStock } from './BandeauxListeStock'
+import ValorisationADate from './ValorisationADate'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
@@ -143,6 +144,8 @@ export default function InventairesAnnuels() {
         </ul>
         )}
       </ListeStock>
+
+      <ValorisationADate />
 
       {showFiger && (
         <FigerDialog onClose={() => setShowFiger(false)} onDone={reload} />
