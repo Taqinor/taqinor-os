@@ -795,6 +795,13 @@
      null,
      false
     ],
+    "identite_acheteur": [
+     "JSONField",
+     true,
+     false,
+     null,
+     false
+    ],
     "identite_vendeur": [
      "JSONField",
      true,

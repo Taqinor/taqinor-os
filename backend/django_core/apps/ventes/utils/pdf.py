@@ -432,8 +432,12 @@ def generate_facture_pdf(facture_id):
         context, getattr(facture, 'identite_vendeur', None))
     _mention_capital(context, facture)
     context['facture'] = facture
+    # AARG27 — l'acheteur FIGÉ à l'émission (repli : le client vivant).
+    from apps.ventes.domain.instantanes_facture import acheteur_de_la_facture
+    acheteur = acheteur_de_la_facture(facture)
+    context['acheteur'] = acheteur
     # AFAC56 — ICE/IF/RC du client imprimés selon la règle B2B du modèle.
-    context['client_est_pro'] = Facture._client_est_pro(facture.client)
+    context['client_est_pro'] = Facture._client_est_pro(acheteur)
     # XFAC19 — QR paiement/vérification (PDF facture LEGACY uniquement, jamais
     # le moteur devis premium). Ajout silencieux : None → footer inchangé.
     try:
@@ -449,7 +453,8 @@ def generate_facture_pdf(facture_id):
     # construit) à la chaîne de résolution : sans effet tant que ce champ
     # n'existe pas, prêt dès qu'il arrivera.
     from .libelles_ar import document_langue, libelle, arabic_font_face_css
-    langue = document_langue(facture.client, company=facture.company)
+    langue = (getattr(acheteur, 'langue', None)
+              or document_langue(facture.client, company=facture.company))
     # APDF31 — une langue sans dictionnaire (« en ») rend le FRANÇAIS avec
     # une mention de repli imprimée (jamais silencieux).
     from .libelles_ar import mention_repli
@@ -803,6 +808,9 @@ def _facture_render_data(facture) -> dict:
         # seulement si présente : empreinte d'hier inchangée sans instantané).
         **({'identite_vendeur': facture.identite_vendeur}
            if getattr(facture, 'identite_vendeur', None) else {}),
+        # AARG27 — idem pour l'identité acheteur figée.
+        **({'identite_acheteur': facture.identite_acheteur}
+           if getattr(facture, 'identite_acheteur', None) else {}),
         # VNT42 — blocs de la vente et filigrane (clés posées seulement si
         # présentes : empreinte d'une facture émise sans devis inchangée).
         **_vente_empreinte(facture),

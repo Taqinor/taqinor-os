@@ -1512,6 +1512,8 @@ ConsoliderRequest = _ser('FactureConsoliderRequest', {
     # CI #997 fuzz — ids entiers JSON (``"5"`` était relu par ``int()``).
     'devis_ids': s.ListField(child=EntierStrict(min_value=1),
                              min_length=2),
+    # AARG32 — dérogation à un avertissement de vente bloquant (ADEV14).
+    'override_avertissement': s.BooleanField(required=False),
 })
 #: ENF11 — ``[5, 5]`` consolidait deux fois le même devis : ids DISTINCTS.
 CORPS_DEVIS_IDS_UNIQUES = corps_resserre({

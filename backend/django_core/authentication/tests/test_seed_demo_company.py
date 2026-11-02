@@ -203,6 +203,42 @@ class SeedDemoSavStockNTDMO5Test(TestCase):
 
 
 @override_settings(DEBUG=True)
+class SeedDemoFacturesCoherenceTest(TestCase):
+    """AFAC106 (C-AFAC-VER2-030) — `seed_demo` : l'auditeur de cohérence ne
+    relève aucune violation de facturation sur la société démo."""
+
+    def test_factures_demo_coherentes(self):
+        from datetime import timedelta
+        from decimal import Decimal
+
+        from django.utils import timezone
+
+        from apps.ventes.coherence.moteur import run_audit
+        from apps.ventes.models import Facture, Paiement
+        call_command('seed_demo', verbosity=0)
+        company = Company.objects.get(slug='taqinor-demo')
+        rapport = run_audit(company=company, persist=False).as_json()
+        self.assertEqual(
+            [v for v in rapport['violations']
+             if v.get('object_type') == 'facture'], [])
+        payee = Facture.objects.get(company=company, reference='FAC-DEMO-0002')
+        self.assertEqual(payee.statut, Facture.Statut.PAYEE)
+        self.assertEqual(payee.montant_du, Decimal('0'))
+        jour = timezone.now().date()  # le même « aujourd'hui » que le seed
+        self.assertEqual(payee.date_emission, jour - timedelta(days=35))
+        self.assertEqual(payee.date_echeance, jour - timedelta(days=5))
+        paiement = Paiement.objects.get(facture=payee)
+        self.assertEqual(paiement.statut, Paiement.Statut.ENCAISSE)
+        self.assertEqual(paiement.montant, payee.total_ttc)
+        self.assertEqual(
+            Facture.objects.get(company=company, reference='FAC-DEMO-0001'
+                                ).statut, Facture.Statut.EMISE)
+        # Rejoué : toujours un seul paiement.
+        call_command('seed_demo', verbosity=0)
+        self.assertEqual(Paiement.objects.filter(facture=payee).count(), 1)
+
+
+@override_settings(DEBUG=True)
 class SeedDemoPortailSavQAH12Test(TestCase):
     """QAH12 — `seed_demo` sème un compte portail client + tickets SAV."""
 

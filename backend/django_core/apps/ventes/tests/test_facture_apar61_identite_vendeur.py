@@ -79,6 +79,52 @@ class IdentiteVendeurFigeeTests(TestCase):
         self.profile.banque = banque
         self.profile.save()
 
+    def test_identite_acheteur_figee_a_l_emission(self):
+        """AARG27 (C-AARG-021) — après PATCH du client, le PDF et l'UBL d'une
+        facture émise gardent X / ICE A ; la suivante porte Y / ICE B."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.ventes.dgi.dgi_export import build_ubl_xml
+        from apps.ventes.models import Facture
+        ice_a, ice_b = '001234567000089', '002234567000089'
+        type(self.client_obj).objects.filter(pk=self.client_obj.pk).update(
+            nom='X SARL', prenom='', type_client='entreprise', ice=ice_a,
+            if_fiscal='IF-1', rc='RC-1', adresse='Casablanca')
+        self.client_obj.refresh_from_db()
+        emise = self._emettre(self._facture('FAC-APAR61-0300'))
+        self.assertEqual(emise.identite_acheteur['ice'], ice_a)
+        user = get_user_model().objects.create_user(
+            username='aarg27-resp', password='x', role_legacy='responsable',
+            company=self.company)
+        api = APIClient()
+        api.force_authenticate(user)
+        r = api.patch(f'/api/django/crm/clients/{self.client_obj.pk}/',
+                      {'nom': 'Y SARL', 'ice': ice_b}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.client_obj.refresh_from_db()
+        emise = Facture.objects.get(pk=emise.pk)
+        texte, ubl = self._pdf(emise), build_ubl_xml(emise)
+        for sortie in (texte, ubl):
+            self.assertIn('X SARL', sortie)
+            self.assertIn(ice_a, sortie)
+            self.assertNotIn(ice_b, sortie)
+        self.assertEqual(Facture.objects.get(pk=emise.pk).identite_acheteur['nom'],
+                         'X SARL')
+        suivante = self._emettre(self._facture('FAC-APAR61-0301'))
+        texte = self._pdf(suivante)
+        self.assertIn('Y SARL', texte)
+        self.assertIn(ice_b, texte)
+        # Facture historique sans instantané : lecture du client (repli).
+        Facture.objects.filter(pk=emise.pk).update(identite_acheteur=None)
+        self.assertIn(ice_b, build_ubl_xml(Facture.objects.get(pk=emise.pk)))
+        # Jamais envoyée, remise en brouillon : la réémission re-fige l'acheteur.
+        r = api.post(
+            f'/api/django/ventes/factures/{suivante.pk}/remettre-brouillon/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(
+            Facture.objects.get(pk=suivante.pk).identite_acheteur)
+
     def test_rib_fige_a_l_emission(self):
         f120 = self._emettre(self._facture('FAC-APAR61-0120'))
         self.assertIn(R1, self._pdf(f120))

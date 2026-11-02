@@ -108,7 +108,8 @@ ADMIN_FACTURE_ETAT = ('statut', 'abandon_motif', 'abandon_montant',
                       'abandon_date', 'abandon_auto', 'abandon_par')
 # ATOT54 — identité et rattachement : posés à la création, figés hors brouillon.
 ADMIN_FACTURE_IDENTITE = ('company', 'bon_commande', 'devis', 'lead',
-                          'identite_vendeur', 'created_by', 'entite')
+                          'identite_vendeur', 'identite_acheteur',
+                          'created_by', 'entite')
 
 
 @admin.register(Facture)
@@ -132,7 +133,9 @@ class FactureAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
             return champs
         from .views.facture import FACTURE_CHAMPS_FINANCIERS
         geles = tuple(sorted(FACTURE_CHAMPS_FINANCIERS)) + ADMIN_FACTURE_ETAT + ADMIN_FACTURE_IDENTITE
-        return champs + tuple(c for c in geles if c not in champs)
+        # AARG28 — `devis`, `bon_commande` sont dans les deux listes.
+        return champs + tuple(
+            c for c in dict.fromkeys(geles) if c not in champs)
 
     # ── Garde anti-suppression d'un document posté (voir le message ci-dessus)
     def has_delete_permission(self, request, obj=None):

@@ -95,6 +95,73 @@ class TestAud130MessageRelance(TestCase):
         self.assertNotIn('{', corps)
         self.assertIn('FAC-AUD130-0007', corps)
 
+    def test_niveaux_par_defaut_citent_montant_et_echeance(self):
+        """AARG24 (C-AARG-019) — le mail du beat, société aux 3 niveaux semés :
+        référence, dû et échéance cités, ni « ci-dessus » ni double salut ;
+        un niveau encore à l'ancien texte est réécrit, un personnalisé non."""
+        from importlib import import_module
+        from unittest.mock import patch
+
+        from django.apps import apps as registre
+        from django.test import override_settings
+
+        from apps.ventes.models import LigneFacture, Paiement
+        from apps.ventes.recouvrement import ensure_default_followup_levels
+        from apps.ventes.scheduled import casablanca_today, relance_reminders
+        from apps.stock.models import Produit
+        from authentication.models import Company
+        co = Company.objects.create(nom='AARG24 Co', slug='aarg24-co')
+        ensure_default_followup_levels(co)
+        client = Client.objects.create(
+            company=co, nom='Client', prenom='AARG24',
+            email='aarg24@example.com')
+        produit = Produit.objects.create(
+            company=co, nom='Kit', sku='AARG24-KIT',
+            prix_vente=Decimal('1000'), quantite_stock=0)
+        jour = casablanca_today()
+        echeance = jour - timedelta(days=10)
+        facture = Facture.objects.create(
+            company=co, reference='FA-AARG24-0001', client=client,
+            statut=Facture.Statut.EMISE, date_emission=jour - timedelta(days=40),
+            date_echeance=echeance, prochaine_relance=jour)
+        LigneFacture.objects.create(
+            facture=facture, produit=produit, designation='Kit',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            taux_tva=Decimal('20'))
+        Paiement.objects.create(
+            company=co, facture=facture, client=client, montant=Decimal('500'),
+            date_paiement=jour - timedelta(days=5), mode='virement')
+        locmem = override_settings(
+            EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+        societe = patch('authentication.selectors.active_company_ids',
+                        return_value=[co.pk])
+        pdf = patch('apps.ventes.email_service._document_pdf',
+                    return_value=(b'%PDF', 'FA-AARG24-0001.pdf'))
+        with locmem, societe, pdf:
+            relance_reminders()
+        envoyes = [m for m in mail.outbox if 'aarg24@example.com' in m.to]
+        self.assertEqual(len(envoyes), 1)
+        corps = envoyes[0].body
+        self.assertIn('FA-AARG24-0001', corps)
+        self.assertIn('700,00', corps)
+        self.assertIn(echeance.strftime('%d/%m/%Y'), corps)
+        self.assertNotIn('ci-dessus', corps)
+        self.assertEqual(corps.count('Bonjour'), 1)
+
+        migration = import_module(
+            'apps.facturation.migrations.0027_aarg24_niveaux_relance_defaut')
+        ancien, nouveau = migration.ANCIENS_NOUVEAUX[0]
+        vieux = FollowupLevel.objects.create(
+            company=co, ordre=8, nom='Ancien', delai_jours=1, message=ancien)
+        perso = FollowupLevel.objects.create(
+            company=co, ordre=9, nom='Perso', delai_jours=2,
+            message=ancien + ' Merci.')
+        migration.reecrire(registre, None)
+        vieux.refresh_from_db()
+        perso.refresh_from_db()
+        self.assertEqual(vieux.message, nouveau)
+        self.assertEqual(perso.message, ancien + ' Merci.')
+
     def test_lettre_pdf_rend_la_vraie_reference(self):
         from apps.ventes.utils.pdf import generate_lettre_relance_pdf
         niveau = {'ordre': 2, 'nom': 'Mise en demeure', 'delai_jours': 30}

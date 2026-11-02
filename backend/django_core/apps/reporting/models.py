@@ -800,6 +800,89 @@ class WebVitalMetric(TenantModel):
         return f'{self.metric}={self.value} [{self.route}] ({self.company_id})'
 
 
+class ProblemeClient(TenantModel):
+    """YJPB1 — JOURNAL DES PROBLÈMES VÉCUS PAR LES UTILISATEURS.
+
+    Ce qui manquait (incident Meryem du 02/11/2026 : « problème de connexion,
+    les prochaines étapes disparaissent, je dois me déconnecter/reconnecter »)
+    : rien ne gardait trace d'un problème vécu DANS LE NAVIGATEUR. L'enquête
+    n'a pu s'appuyer que sur le journal d'accès nginx (perdu au redéploiement)
+    et le toast « La connexion a expiré… » (`frontend/src/api/axios.js`) ne
+    laissait AUCUNE trace côté serveur. Sentry (VX72/QAH8,
+    `core/monitoring.py`) est câblé mais sans DSN en production : no-op total.
+
+    Une ligne = UN problème vécu par un utilisateur réel, posté par
+    `frontend/src/lib/journalProblemes.js` (best-effort, jamais bloquant) :
+    requête sans réponse (délai 20 s dépassé / réseau coupé), réponse 5xx,
+    erreur JavaScript non interceptée, écran tombé. Lisible en une commande
+    (`manage.py problemes_utilisateurs`), indépendamment de Sentry.
+
+    SANS DONNÉE PERSONNELLE : la route API est NORMALISÉE côté navigateur
+    (identifiants remplacés par `<id>`, chaîne de requête retirée), le
+    `message` est tronqué et ne porte jamais de corps de réponse, et
+    `navigateur` est la FAMILLE d'agent utilisateur recalculée CÔTÉ SERVEUR
+    (jamais l'agent brut, qui identifie un appareil). `company`/`utilisateur`
+    sont TOUJOURS posés côté serveur depuis `request.user`.
+
+    Croissance bornée par la politique de rétention `reporting_problemes_client`
+    (registre YOPSB10, `apps.py ready()` + `services.purge_problemes_client`).
+    """
+
+    class Genre(models.TextChoices):
+        RESEAU = 'reseau', 'Requête sans réponse (délai dépassé ou réseau)'
+        SERVEUR = 'serveur', 'Réponse serveur 5xx'
+        SCRIPT = 'script', 'Erreur JavaScript non interceptée'
+        ECRAN = 'ecran', 'Écran tombé (error boundary)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        related_name='reporting_problemes_client')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reporting_problemes_client')
+    genre = models.CharField(max_length=10, choices=Genre.choices)
+    #: Méthode HTTP de la requête fautive ('' pour une erreur de script).
+    methode = models.CharField(max_length=8, blank=True, default='')
+    #: Chemin API NORMALISÉ de la requête fautive (sans chaîne de requête,
+    #: identifiants remplacés par `<id>`) — '' pour une erreur de script.
+    route = models.CharField(max_length=255, blank=True, default='')
+    #: Écran où l'utilisateur se trouvait (`window.location.pathname`).
+    ecran = models.CharField(max_length=255, blank=True, default='')
+    #: Code HTTP reçu ; NUL quand il n'y a eu AUCUNE réponse (c'est tout le
+    #: sujet de l'incident Meryem : nginx 499, aucun code vu du navigateur).
+    #: PAS `statut_http` : `check_money_monodevise` (YDATA22) traite tout nom
+    #: contenant `_ht` comme un MONTANT, et ce journal technique serait entré
+    #: dans `docs/currency-audit.md` comme « modèle argent ».
+    statut_reponse = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: Code court et stable : 'ECONNABORTED', 'ERR_NETWORK', 'TypeError'…
+    code = models.CharField(max_length=64, blank=True, default='')
+    #: Message tronqué (jamais un corps de réponse, jamais une donnée client).
+    message = models.CharField(max_length=255, blank=True, default='')
+    #: Famille d'agent utilisateur, recalculée CÔTÉ SERVEUR ('Chrome Android',
+    #: 'Safari iOS'…) — jamais l'agent brut.
+    navigateur = models.CharField(max_length=40, blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Problème vécu par un utilisateur'
+        verbose_name_plural = 'Problèmes vécus par les utilisateurs'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            # Le regroupement de la commande de lecture : société + fenêtre,
+            # puis route/statut.
+            models.Index(
+                fields=['company', 'created_at'],
+                name='rpt_probcli_co_date_idx'),
+            models.Index(
+                fields=['company', 'route', 'statut_reponse'],
+                name='rpt_probcli_route_idx'),
+        ]
+
+    def __str__(self):
+        cible = self.route or self.ecran or '?'
+        return f'{self.genre} {self.statut_reponse or "-"} [{cible}]'
+
+
 class RapportDefinition(TenantModel):
     """NTEXT10 — définition de rapport croisé SAUVEGARDÉE (report builder).
 

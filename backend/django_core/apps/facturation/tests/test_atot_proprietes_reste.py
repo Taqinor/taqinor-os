@@ -27,7 +27,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.facturation.tests.oracles_argent import (
-    facture_strategie, gestes_strategie, relire, reste_brut,
+    facture_strategie, gestes_strategie, ligne_avoir_partielle, relire, reste_brut,
     verifier_chaine_document, verifier_reste_a_payer,
 )
 
@@ -129,12 +129,12 @@ class ProprietesResteTests(HypothesisDjangoTestCase):
                     avant + Decimal(str(paiement.montant))
                     + Decimal(str(paiement.escompte_montant or 0)))
             elif geste == 'avoir':
-                ht = max(_q(Decimal(str(f.total_ht)) * fraction / 200), CENT)
+                ligne = ligne_avoir_partielle(f, fraction)
+                if ligne is None:
+                    continue
                 r = api.post(
                     f'/api/django/ventes/factures/{f.id}/creer-avoir/',
-                    {'lignes': [{'designation': 'Avoir', 'quantite': '1',
-                                 'prix_unitaire': str(ht), 'taux_tva': '20',
-                                 'produit': produit.id}]}, format='json')
+                    {'lignes': [ligne]}, format='json')
                 # Seul refus possible : le plafond (état) — 409, CI #997.
                 self.assertIn(r.status_code, (201, 409), r.data)
                 if r.status_code == 201:

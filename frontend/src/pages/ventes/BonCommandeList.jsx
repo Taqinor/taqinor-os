@@ -362,7 +362,7 @@ export default function BonCommandeList() {
                       )}
                       {/* ATOT49 — la porte vient du SERVEUR (`facturable`, même
                           fonction que creer-facture) ; aucune règle locale. */}
-                      {bc.facturable?.ok && !bc.has_facture && (
+                      {bc.facturable?.ok && !bc.facture_active && (
                         <Button size="sm" variant="outline" loading={busy}
                                 onClick={() => handleCreerFacture(bc)}>
                           <FilePlus2 /> Facture

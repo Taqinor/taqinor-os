@@ -151,11 +151,14 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         # locale Casablanca), jamais la création du brouillon ; une échéance
         # antérieure à cette date est re-dérivée, une échéance saisie
         # postérieure est conservée. Une facture déjà émise n'est pas re-datée.
-        from django.utils import timezone
-        facture.date_emission = timezone.localdate()
-        if facture.date_echeance and (
-                facture.date_echeance < facture.date_emission):
-            facture.date_echeance = None
+        # AARG23 (D-AARG-4) — réémise (numéro légal déjà posé) : date gardée.
+        from core.numbering import est_reference_provisoire
+        if est_reference_provisoire(facture.reference):
+            from django.utils import timezone
+            facture.date_emission = timezone.localdate()
+            if facture.date_echeance and (
+                    facture.date_echeance < facture.date_emission):
+                facture.date_echeance = None
     if not facture.date_echeance:
         # AFAC48 — délai client (XFAC23), sinon LE repli émission + 30 j :
         # une facture émise porte toujours son échéance appliquée.
@@ -1676,8 +1679,8 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
     ATOT43 — ``montant_ventile`` (``{ht, tva, ttc, ventilation}``) : avoir
     d'ÉCART sans ligne, aux montants donnés (``crediter_ecart_de_vente``).
 
-    Appelé par ``creer-avoir`` (correction totale/partielle, contre-
-    passation) ET ``retour-client`` : il n'existe plus deux ``_create``
+    Appelé par ``creer-avoir`` (correction totale/partielle), ``retour-client``
+    et (AARG39 : seule voie) ``_contre_passer`` : il n'existe plus deux ``_create``
     locaux qui ne savaient pas la même chose (le retour ne reprenait ni la
     remise globale ni le palier d'arrondi de la facture, lisait son plafond
     hors transaction et n'émettait pas ``avoir_cree``).
@@ -1699,6 +1702,7 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
     from .. import activity
     from ..models import Avoir, Facture, LigneAvoir
     from ..utils.company_settings import create_numbered
+    from .encaissements import crediter_trop_percu_en_avance
     from .encaissements import recalculer_statut_paiement
 
     company = facture.company
@@ -1831,8 +1835,9 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
         # émis pour TOUT avoir, retour compris (il ne l'était pas).
         avoir_cree.send(sender=Avoir, instance=avoir, company=company)
         # ATOT8 / AFAC29 — le statut de paiement suit le reste dû (un retour
-        # qui solde la facture la passe PAYÉE).
+        # qui solde la facture la passe PAYÉE). AARG1 — au-delà du reste : avance.
         if mode != 'contre_passation':
+            crediter_trop_percu_en_avance(locked, avoir, user=user)
             recalculer_statut_paiement(locked, user=user, source='avoir')
     return avoir
 
@@ -1946,6 +1951,7 @@ def creer_bon_commande(devis, company, user=None, *, enregistrer=None):
     from core.events import bon_commande_cree
     from ..models import BonCommande, Devis
     from ..utils.company_settings import create_numbered
+    from .annulation_facture import detacher_bc_annules
     if enregistrer is None:
         def enregistrer(ref):
             return BonCommande.objects.create(
@@ -1960,8 +1966,10 @@ def creer_bon_commande(devis, company, user=None, *, enregistrer=None):
                 conflit = ConflitEtat(corps := corps_version_remplacee(verrou))
                 conflit.detail = corps  # corps VNT24 tel quel (successeur.id entier)
                 raise conflit
-            if BonCommande.objects.filter(devis=devis).exists():
+            if BonCommande.objects.filter(devis=devis).exclude(
+                    statut=BonCommande.Statut.ANNULE).exists():
                 raise BonCommandeExistant()
+            detacher_bc_annules(devis, user)  # AARG30
         bc = create_numbered(BonCommande, company, 'bon_commande', enregistrer)
     bon_commande_cree.send(sender=BonCommande, instance=bc, company=company)
     return bc

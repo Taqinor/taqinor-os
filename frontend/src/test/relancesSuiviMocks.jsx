@@ -25,6 +25,12 @@ export function crmApiSuivi(surcharge = {}) {
       reporterRelanceEtape: vi.fn(),
       getRelanceEtapeMessage: vi.fn(),
       whatsappRelanceEtape: vi.fn(),
+      // SUIVI-RELOAD (02/11/2026) — la relecture d'APRÈS-GESTE : les touches
+      // du seul lead concerné (`?lead=`), jamais plus la période entière. Par
+      // défaut « ce lead n'a aucune touche de plus à annoncer » : les suites
+      // qui prouvent une fusion la surchargent avec leurs propres lignes.
+      getRelanceEtapesDues: vi.fn(() => Promise.resolve(
+        { data: { count: 0, results: [] } })),
       // SUIVI-ÉQUIPE — la vue d'équipe (rôles responsable/admin) lit le contrat
       // `controle_suivi` ; par défaut la société vide (`exemple_vide`), jamais
       // une forme retapée à la main (PACT10).

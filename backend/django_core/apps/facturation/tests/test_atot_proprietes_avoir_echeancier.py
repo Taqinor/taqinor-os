@@ -28,7 +28,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.facturation.tests.oracles_argent import (
-    facture_strategie, fraction_strategie, relire, verifier_chaine_document,
+    facture_strategie, fraction_strategie, ligne_avoir_partielle, relire,
+    verifier_chaine_document,
     verifier_reste_a_payer,
 )
 
@@ -149,13 +150,12 @@ class ProprietesAvoirEcheancierTests(_Base):
 
         # Avoirs partiels successifs : Σ actifs ≤ TTC, refus en 409 au-delà.
         for fraction in fractions:
-            ht = max(_q(Decimal(str(relire(facture).total_ht))
-                        * fraction / 100), CENT)
+            ligne = ligne_avoir_partielle(relire(facture), fraction)
+            if ligne is None:
+                continue
             r = self.api.post(
                 f'/api/django/ventes/factures/{facture.id}/creer-avoir/',
-                {'lignes': [{'designation': 'Partiel', 'quantite': '1',
-                             'prix_unitaire': str(ht), 'taux_tva': '20',
-                             'produit': self.produit.id}]}, format='json')
+                {'lignes': [ligne]}, format='json')
             self.assertIn(r.status_code, (201, 409), r.data)
             actifs = sum((Decimal(str(a.total_ttc)) for a in
                           Avoir.objects.filter(facture=facture).exclude(

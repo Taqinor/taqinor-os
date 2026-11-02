@@ -157,8 +157,9 @@ def recalculer_statut_paiement(facture, *, user=None, source=''):
     if facture.montant_exigible <= 0:
         return facture.statut
     today = timezone.now().date()
-    nouveau = (Facture.Statut.EN_RETARD
-               if facture.date_echeance and facture.date_echeance < today
+    # AARG56/AARG53 — l'échéance de la part encore due, comme le beat.
+    echeance = facture.echeance_exigible
+    nouveau = (Facture.Statut.EN_RETARD if echeance and echeance < today
                else Facture.Statut.EMISE)
     if facture.statut != nouveau:
         facture.statut = nouveau
@@ -990,6 +991,37 @@ def enregistrer_avance(*, company, client, montant, date_paiement, mode,
     )
 
 
+def crediter_trop_percu_en_avance(facture, avoir, *, user=None):
+    """AARG1 (D-AARG-1 = avance_client) — la part encaissée que l'avoir
+    ``avoir`` rend excédentaire quitte la facture (Paiement négatif) et devient
+    une avance client non affectée, imputable ou remboursable : elle ne
+    disparaît plus sous un dû borné à 0. Rien si l'avoir tient dans le reste
+    dû, ni sans client. Appelé sous le verrou de la facture. Renvoie l'avance
+    ou None."""
+    from decimal import Decimal
+    from django.utils import timezone
+    from apps.facturation.models import decomposition_du
+    from ..models import Paiement
+
+    d = decomposition_du(facture)
+    trop_percu = (d['paye'] + d['retenues'] + d['avoirs'] + d['abandons']
+                  - d['facture'] - d['notes_debit'])
+    montant = min(trop_percu, d['paye'], Decimal(str(avoir.total_ttc)))
+    if montant <= Decimal('0.01') or facture.client_id is None:
+        return None
+    note = f'Trop-perçu après avoir {avoir.reference}'
+    jour = timezone.localdate()
+    Paiement.objects.create(
+        company=facture.company, facture=facture, client=facture.client,
+        montant=-montant, date_paiement=jour, mode=Paiement.Mode.AUTRE,
+        reference=avoir.reference, note=note, created_by=user)
+    return enregistrer_avance(
+        company=facture.company, client=facture.client, montant=montant,
+        date_paiement=jour, mode=Paiement.Mode.AUTRE,
+        reference=avoir.reference, note=f'{note} (facture {facture.reference})',
+        created_by=user)
+
+
 def ventiler_avance(*, paiement, facture, montant, user=None):
     """Ventile UN paiement non affecté (avance) sur UNE facture ouverte du
     même client, pour ``montant``. Peut être appelée plusieurs fois pour
@@ -1264,7 +1296,8 @@ def _entete_consolidee(facture, devis_qs):
         facture.save(update_fields=champs)
 
 
-def consolider_factures(*, company, devis_ids, user, created_by=None):
+def consolider_factures(*, company, devis_ids, user, created_by=None,
+                        override_avertissement=False):
     """Crée UNE Facture unique regroupant PLUSIEURS devis acceptés du MÊME
     client (ex. projet multi-sites : ferme à N forages, tranches). Chaque
     document source garde ses lignes (recopiées, groupées par ``source_devis``
@@ -1311,26 +1344,41 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
         raise ValidationError(
             {'devis_ids': 'Tous les devis doivent appartenir au même client.'})
 
-    for d in devis_qs:
-        if d.statut != Devis.Statut.ACCEPTE:
-            raise ValidationError({
-                'devis_ids': (
-                    f'Le devis {d.reference} doit être accepté pour être '
-                    f'consolidé.'),
-            })
-        # ATOT2 — LA garde unique des quatre portes (``factures_du_devis`` :
-        # échéancier, complète, BC ET consolidée active) ; une consolidée
-        # ANNULÉE ne bloque plus (elle bloquait à vie via FactureSource).
-        try:
-            exiger_devis_facturable(d, 'consolidee')
-        except DevisDejaFacture as exc:
-            raise ValidationError({
-                'devis_ids': f'{d.reference} — {exc.motif}',
-            })
-
     client = devis_qs[0].client
 
     with transaction.atomic():
+        # AARG16 — comme les portes BC et complète : ventes verrouillées (par
+        # pk), gardes relues SOUS le verrou, brouillons de la vente retirés.
+        from .annulation_facture import retirer_brouillons_de_la_vente
+        from .cycle_vie import peut_passer_outre
+        from .facturation_vente import verrouiller_vente
+        from .recouvrement import verifier_sale_warnings
+        for d in sorted(devis_qs, key=lambda devis: devis.pk):
+            verrouiller_vente(d)
+            d.refresh_from_db(fields=['statut'])
+            if d.statut != Devis.Statut.ACCEPTE:
+                raise ValidationError({
+                    'devis_ids': (
+                        f'Le devis {d.reference} doit être accepté pour être '
+                        f'consolidé.'),
+                })
+            # ATOT2 — LA garde unique des quatre portes (``factures_du_devis`` :
+            # échéancier, complète, BC ET consolidée active) ; une consolidée
+            # ANNULÉE ne bloque plus (elle bloquait à vie via FactureSource).
+            try:
+                exiger_devis_facturable(d, 'consolidee')
+            except DevisDejaFacture as exc:
+                raise ValidationError({
+                    'devis_ids': f'{d.reference} — {exc.motif}',
+                })
+            # AARG32 — avertissement de vente bloquant (ZSAL9) : lève
+            # ``SaleWarningError`` (la vue rend 403), sauf dérogation ADEV14.
+            verifier_sale_warnings(
+                d, override=bool(override_avertissement)
+                and peut_passer_outre(user), user=user, chatter_target=d)
+            retirer_brouillons_de_la_vente(
+                d, user=user, motif='Remplacé par la facture consolidée')
+
         def _create(ref):
             return Facture.objects.create(
                 reference=ref, company=company, client=client,
@@ -1581,8 +1629,12 @@ def annuler_saisie_paiement(*, paiement, motif, user=None):
         p.annule_par = user if getattr(user, 'is_authenticated', False) \
             else None
         p.motif_annulation = motif[:255]
+        # AFAC104 — la ligne de relevé redevient importable (contrainte unique
+        # sans condition de statut) ; clés PSP et manuelles inchangées (SCA45).
+        if (p.idempotency_key or '').startswith('releve:'):
+            p.idempotency_key = f'{p.idempotency_key}#annule-{p.pk}'
         p.save(update_fields=['statut', 'annule_le', 'annule_par',
-                              'motif_annulation'])
+                              'motif_annulation', 'idempotency_key'])
         touchees = []
         if p.facture_id:
             touchees.append(p.facture)

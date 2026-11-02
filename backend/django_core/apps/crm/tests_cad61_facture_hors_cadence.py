@@ -77,6 +77,36 @@ class UneTraceEtRienDAutreTests(_Base):
         self.assertFalse(
             RelanceEtape.objects.filter(lead=self.lead).exists())
 
+    def test_trace_sur_le_lead_de_la_facture(self):
+        """AARG47 (C-AARG-050) — deux leads au client : la trace va au lead de
+        la vente, pas au plus récent ; sans `lead` : repli sur le plus récent ;
+        lead de la facture archivé : repli aussi."""
+        recent = Lead.objects.create(
+            company=self.company, nom='Nouveau projet', owner=self.acteur,
+            client=self.client_obj, stage=stages.NEW)
+        Facture.objects.filter(pk=self.facture.pk).update(lead=self.lead)
+        self.facture.refresh_from_db()
+        trace = FACTURE_EMISE_TRACE.format(reference='FA-CAD61-0001')
+        self._emettre()
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.lead, body=trace).count(), 1)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=recent, body=trace).exists())
+
+        Lead.objects.filter(pk=self.lead.pk).update(is_archived=True)
+        self._emettre()
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=recent, body=trace).count(), 1)
+
+        Lead.objects.filter(pk=self.lead.pk).update(is_archived=False)
+        Facture.objects.filter(pk=self.facture.pk).update(lead=None)
+        self.facture.refresh_from_db()
+        self._emettre()
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=recent, body=trace).count(), 2)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.lead, body=trace).count(), 1)
+
     def test_elle_ne_deplace_PAS_l_etape_du_lead(self):
         """La note est SYSTÈME : elle ne compte pas comme un contact manuel
         (sinon un simple envoi de facture ferait bouger le funnel)."""

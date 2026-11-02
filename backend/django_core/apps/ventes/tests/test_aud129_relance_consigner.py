@@ -91,7 +91,8 @@ class TestAud129RelanceConsigner(TestCase):
         self.assertEqual(self.facture.prochaine_relance.isoformat(), nxt)
 
     def test_envoi_explicite_utilise_la_note_saisie(self):
-        """(b) Avec la case cochée, le corps porte EXACTEMENT la note saisie."""
+        """(b) Avec la case cochée, le corps porte la note saisie ; AARG25 : sa
+        salutation d'ouverture cède la place au « Bonjour <client>, » unique."""
         note = 'Bonjour, votre chèque du 12/08 est revenu impayé.'
         resp = self.api.post(
             self._url(),
@@ -100,7 +101,8 @@ class TestAud129RelanceConsigner(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(len(mail.outbox), 1)
         corps = mail.outbox[0].body
-        self.assertIn(note, corps)
+        self.assertIn('Votre chèque du 12/08 est revenu impayé.', corps)
+        self.assertEqual(corps.count('Bonjour'), 1)
         # Le message générique du niveau ne doit PAS remplacer la note.
         self.assertNotIn('Message générique du niveau configuré.', corps)
         self.assertIsNotNone(resp.data.get('email_log_id'))

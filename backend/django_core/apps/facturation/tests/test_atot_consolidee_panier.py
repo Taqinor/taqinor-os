@@ -84,6 +84,27 @@ class ConsolideePanierTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         return Facture.objects.get(pk=resp.data['id'])
 
+    def test_consolidee_annule_le_brouillon_d_acompte_auto(self):
+        """AARG16 (C-AARG-012) — le brouillon d'acompte automatique de A est
+        retiré : la consolidée reste la seule facture active de chaque devis."""
+        from apps.ventes.domain.facturation_vente import (
+            acompte_a_l_acceptation,
+        )
+        from apps.ventes.models import Facture
+        from apps.ventes.vente_facturation import factures_de_la_vente
+        a = self._devis([self._ligne('1000')])
+        b = self._devis([self._ligne('1000')])
+        brouillon = acompte_a_l_acceptation(a, self.user)
+        self.assertIsNotNone(brouillon)
+        facture = self._facture(self._consolider(a, b))
+        self.assertEqual(facture.statut, Facture.Statut.EMISE)
+        brouillon.refresh_from_db()
+        self.assertEqual(brouillon.statut, Facture.Statut.ANNULEE)
+        for devis in (a, b):
+            actives = [f.pk for f in factures_de_la_vente(devis)
+                       if f.statut != Facture.Statut.ANNULEE]
+            self.assertEqual(actives, [facture.pk])
+
     def test_remise_par_devis(self):
         d1 = self._devis([self._ligne('125000')], remise='10')
         d2 = self._devis([self._ligne('125000')], remise='10')

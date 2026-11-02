@@ -550,10 +550,13 @@ def _tracer_facture_emise_sur_le_lead(sender, instance, company, **kwargs):
     if not client_id or company is None:
         return
     try:
-        lead = (Lead.objects
-                .filter(company=company, client_id=client_id,
-                        is_archived=False)
-                .order_by('-date_creation', '-id').first())
+        leads = Lead.objects.filter(company=company, is_archived=False)
+        # AARG47 — le lead de la vente (`Facture.lead`) ; à défaut, le dernier
+        # lead du client.
+        lead_id = getattr(instance, 'lead_id', None)
+        lead = (leads.filter(pk=lead_id).first() if lead_id else None) or (
+            leads.filter(client_id=client_id)
+            .order_by('-date_creation', '-id').first())
         if lead is None:
             return
         LeadActivity.objects.create(

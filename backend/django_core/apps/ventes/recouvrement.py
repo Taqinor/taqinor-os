@@ -48,7 +48,8 @@ def _s(x):
 # dans les messages configurables et sont rendus ici — jamais ailleurs.
 
 #: Jeu de variables DÉCLARÉ, la seule chose qu'un message de relance peut citer.
-VARIABLES_RELANCE = ('reference', 'client', 'montant_du', 'jours_retard')
+VARIABLES_RELANCE = ('reference', 'client', 'montant_du', 'jours_retard',
+                     'date_echeance')
 
 #: Une accolade ouvrante suivie de n'importe quoi jusqu'à la fermante. Volontai-
 #: rement large : un `{ }` ou un `{variable_inexistante}` doit disparaître, pas
@@ -75,11 +76,16 @@ def variables_relance(facture):
         logger.warning("recouvrement.variables_relance : erreur ignorée (mode dégradé)", exc_info=True)
         montant = Decimal('0.00')
     jours = getattr(facture, 'jours_retard', 0) or 0
+    # AARG53 — l'échéance de la part encore due, celle de ``jours_retard``.
+    echeance = getattr(facture, 'echeance_exigible', None)
     return {
         'reference': getattr(facture, 'reference', '') or '',
         'client': nom_client,
         'montant_du': f'{montant:.2f}',
         'jours_retard': str(jours),
+        # AARG24 — ce que le client lit, jamais un champ vide dans la phrase.
+        'date_echeance': (echeance.strftime('%d/%m/%Y') if echeance
+                          else 'non précisée'),
     }
 
 
@@ -104,6 +110,8 @@ def rendre_message_relance(niveau, facture):
     if not message:
         return ''
     valeurs = variables_relance(facture)
+    # AARG24 — dans le texte client, le montant s'écrit à la française (700,00).
+    valeurs['montant_du'] = valeurs['montant_du'].replace('.', ',')
 
     def _remplacer(match):
         cle = match.group(0)[1:-1].strip()
@@ -170,16 +178,20 @@ def montant_exigible(facture):
 # (ordre 1-3, J+7 / J+15 / J+30, canal email par défaut). ``seed-defaults``
 # semait jusqu'ici un SECOND jeu divergent (Rappel / Relance / Mise en demeure,
 # ordre 0-2) : il lit désormais celui-ci. Une migration ne doit pas importer le
-# code de l'app (état figé) : 0010 garde sa copie, identique à celle-ci.
+# code de l'app (état figé) : 0010 garde sa copie de l'ancien texte, et
+# ``facturation/0027`` (AARG24) réécrit les niveaux encore à cet ancien texte.
 NIVEAUX_RELANCE_DEFAUT = (
     (1, 'Rappel courtois', 7,
-     "Bonjour, sauf erreur de notre part, la facture ci-dessus reste en "
-     "attente de règlement. Merci de votre retour."),
+     "Sauf erreur de notre part, la facture {reference} reste en attente de "
+     "règlement : {montant_du} MAD dus (échéance : {date_echeance}). "
+     "Merci de votre retour."),
     (2, 'Relance', 15,
-     "Malgré notre précédent rappel, votre facture demeure impayée. "
+     "Malgré notre précédent rappel, la facture {reference} demeure impayée : "
+     "{montant_du} MAD dus (échéance : {date_echeance}). "
      "Merci de procéder au règlement dans les meilleurs délais."),
     (3, 'Relance ferme', 30,
-     "Votre facture est en retard de paiement important. À défaut de "
+     "La facture {reference} est en retard de paiement important : "
+     "{montant_du} MAD dus (échéance : {date_echeance}). À défaut de "
      "règlement, nous serons contraints d'envisager des mesures de "
      "recouvrement."),
 )
@@ -477,6 +489,7 @@ def relances_list(request):
         # CIQ214 — le tableau des relances réclame l'EXIGIBLE.
         du = montant_exigible(f)
         jr = f.jours_retard
+        echeance = f.echeance_exigible  # AARG53 — celle de ``jr``.
         # XFAC5 — promesse de paiement active/rompue (priorité haute), servie
         # par le `Prefetch` filtré de `_facture_due_rows` (AUD158) : plus de
         # requête par ligne.
@@ -495,7 +508,7 @@ def relances_list(request):
             # L853 — téléphone client pour valider/désactiver le bouton WhatsApp
             # côté front (aucun envoi ici ; affichage/validation seulement).
             'client_telephone': f.client.telephone if f.client_id else None,
-            'date_echeance': f.date_echeance.isoformat() if f.date_echeance else None,
+            'date_echeance': echeance.isoformat() if echeance else None,
             'montant_du': _s(du),
             'jours_retard': jr,
             'niveau': _current_level(jr, levels, montant_du=du),
@@ -646,7 +659,9 @@ def _releve_data(client, user=None):
                 'mode': p.get_mode_display(),
                 'montant': _s(p.montant),
                 'type': 'paiement',
-                'libelle': p.get_mode_display(),
+                # AARG1 — la sortie d'un trop-perçu se nomme.
+                'libelle': (p.note if p.montant < 0 and p.note
+                            else p.get_mode_display()),
             })
             escompte = p.escompte_montant or Decimal('0')
             if escompte:
@@ -688,6 +703,21 @@ def _releve_data(client, user=None):
             })
     paiements.sort(key=lambda r: r['date'] or '')
     avoirs.sort(key=lambda r: r['date'] or '')
+    # AARG1 (D-AARG-1) — avances encore disponibles : `solde` = dû − avances
+    # dit le crédit du client ; `du` reste le terme de l'identité AFAC97.
+    avances_qs = Paiement.objects.filter(
+        client=client, facture__isnull=True,
+    ).exclude(statut__in=Paiement.STATUTS_NON_COMPTES).prefetch_related(
+        'affectations').order_by('date_paiement', 'id')
+    if user is not None:
+        from authentication.scoping import scope_queryset
+        avances_qs = scope_queryset(avances_qs, user, ['created_by'])
+    avances = [
+        {'date': p.date_paiement.isoformat() if p.date_paiement else None,
+         'reference': p.reference, 'libelle': p.note or 'Avance client',
+         'montant': _s(p.montant_disponible)}
+        for p in avances_qs if p.montant_disponible > 0]
+    total_avances = sum((Decimal(a['montant']) for a in avances), Decimal('0'))
     return {
         'client': {'id': client.id,
                    'nom': f"{client.nom} {client.prenom or ''}".strip(),
@@ -696,6 +726,7 @@ def _releve_data(client, user=None):
         'lignes': lignes,
         'paiements': paiements,
         'avoirs': avoirs,
+        'avances': avances,
         'totaux': {
             'facture': _s(total_facture),
             'notes_debit': _s(total_nd),
@@ -704,6 +735,8 @@ def _releve_data(client, user=None):
             'avoirs': _s(total_avoir),
             'abandons': _s(total_abandon),
             'du': _s(total_du),
+            'avances': _s(total_avances),
+            'solde': _s(total_du - total_avances),
         },
     }
 

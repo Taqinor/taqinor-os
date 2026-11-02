@@ -68,6 +68,59 @@ class ZSAL9SaleWarningTests(TestCase):
             f'/api/django/ventes/devis/{devis.id}/accepter/',
             {'nom': 'Client', **body}, format='json')
 
+    def test_facture_de_bc_et_consolidation_bloquees(self):
+        """AARG32 (C-AARG-034) — client sous avertissement bloquant : facture de
+        BC et consolidation 403 ; dérogation d'un admin 201 et journalisée ; le
+        drapeau d'un Commercial ne passe pas. Rien n'est créé sur un refus."""
+        from apps.ventes.models import BonCommande, Facture
+        p = Produit.objects.create(
+            company=self.company, nom='Kit', sku='ZSAL9-AARG32',
+            prix_vente=Decimal('1000'), quantite_stock=10)
+        d1, d2, d3 = [Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-93{i}',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'), created_by=self.admin)
+            for i in range(3)]
+        for devis in (d1, d2, d3):
+            LigneDevis.objects.create(
+                devis=devis, produit=p, designation='Kit',
+                quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+                taux_tva=Decimal('20.00'))
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-{MONTH}-9301', devis=d3,
+            client=self.client_obj, statut=BonCommande.Statut.CONFIRME)
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            avertissement_bloquant=True, avertissement_vente='Litige en cours')
+        url_bc = f'/api/django/ventes/bons-commande/{bc.id}/creer-facture/'
+        url_c = '/api/django/ventes/factures/consolider/'
+        ids = [d1.id, d2.id]
+        commercial = auth(User.objects.create_user(
+            username='zsal9_com', password='x', role_legacy='commercial',
+            company=self.company))
+        for api, url, corps in (
+                (self.api, url_bc, {}),
+                (self.api, url_c, {'devis_ids': ids}),
+                (commercial, url_bc, {'override_avertissement': True}),
+                (commercial, url_c, {'devis_ids': ids,
+                                     'override_avertissement': True})):
+            r = api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 403, r.data)
+        for corps_ok in ({'override_avertissement': False}, {}):
+            r = self.api.post(url_bc, corps_ok, format='json')
+            self.assertEqual(r.data.get('code'), 'sale_warning', r.data)
+        self.assertFalse(Facture.objects.filter(
+            company=self.company).exists())
+        r = self.api.post(url_bc, {'override_avertissement': True},
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.api.post(url_c, {'devis_ids': ids,
+                                  'override_avertissement': True},
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        for devis in (d1, d2, d3):
+            self.assertTrue(DevisActivity.objects.filter(
+                devis=devis, field='avertissement_vente').exists())
+
     def test_no_warning_accepter_passes(self):
         p = Produit.objects.create(
             company=self.company, nom='Panneau', sku='ZSAL9-NONE',

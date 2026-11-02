@@ -369,6 +369,11 @@ def _sweep_facture_overdue(company):
         count = 0
         for facture in qs:
             try:
+                # AARG53 — le retard de la part encore due, pas celui de la
+                # date brute. Avant le marqueur : rien à émettre, rien à poser.
+                jours = facture.jours_retard
+                if not jours:
+                    continue
                 # WIR176 — `/ventes/factures/<pk>` n'existe pas côté front ;
                 # FactureList consomme `?facture=<pk>`.
                 link = f'/ventes/factures?facture={facture.pk}'
@@ -379,12 +384,11 @@ def _sweep_facture_overdue(company):
                     getattr(facture.client, 'nom', '')
                     or str(facture.client_id)
                 )
-                delta = (today - facture.date_echeance).days
                 title = 'Facture en retard'
                 body = (
                     f"La facture « {facture.reference} » "
-                    f"(client : {client_nom}) est en retard de {delta} "
-                    f"jour(s) (échéance : {facture.date_echeance})."
+                    f"(client : {client_nom}) est en retard de {jours} "
+                    f"jour(s) (échéance : {facture.echeance_exigible})."
                 )
                 _notify_user_or_managers(
                     facture.created_by, company, EventType.FACTURE_OVERDUE,

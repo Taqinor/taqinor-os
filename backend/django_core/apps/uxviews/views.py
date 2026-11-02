@@ -187,9 +187,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             return
         parametres = UxParametres.get_or_default(self.request.user.company)
         if not parametres.permettre_vues_partagees_equipe:
-            raise ValidationError({'visibilite': (
-                "Le partage de vues à l'équipe est désactivé pour votre société."
-            )})
+            # api-fuzz : corps conforme, c'est le réglage STOCKÉ de la société
+            # qui s'y oppose (état) : 409, plus 400.
+            raise ConflitEtat(
+                "Le partage de vues à l'équipe est désactivé pour votre société.")
         # NTUX31 — permission fine EN PLUS du réglage société ci-dessus (jamais
         # à sa place) : un rôle fin doit porter `ux.vue.partager_equipe` pour
         # partager une vue ; un compte hérité sans rôle fin garde son accès
@@ -344,9 +345,8 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         # société a désactivé le partage d'équipe, on ne peut plus en poser.
         parametres = UxParametres.get_or_default(request.user.company)
         if not parametres.permettre_vues_partagees_equipe:
-            raise ValidationError({'detail': (
-                "Le partage de vues à l'équipe est désactivé pour votre société."
-            )})
+            raise ConflitEtat(
+                "Le partage de vues à l'équipe est désactivé pour votre société.")
         # NTUX27 — restriction FINE optionnelle : quand la société a nommé des
         # rôles autorisés, le Directeur/Admin ne suffit plus, il faut porter
         # l'un de ces rôles. Liste VIDE = comportement historique inchangé.

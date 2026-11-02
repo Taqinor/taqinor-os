@@ -235,6 +235,42 @@ class BcMachineEtatsTests(TestCase):
         self.assertEqual(BonCommande.objects.filter(devis=devis).count(), 1)
         self.assertEqual(len(recus), 1)
 
+    def test_bc_devis_non_accepte_ou_autre_client_refuse(self):
+        """AARG19 (C-AARG-015) — jamais les lignes d'un devis brouillon de Y
+        facturées à X : POST et PATCH répondent 409, rien n'est écrit."""
+        from apps.crm.models import Client
+        from apps.ventes.models import BonCommande, Devis
+        url = '/api/django/ventes/bons-commande/'
+        autre = Client.objects.create(
+            company=self.company, nom='Y', prenom='AFAC15',
+            email=f'afac15-{_nxt()}@example.invalid')
+        devis_y = self._devis_panneaux()
+        Devis.objects.filter(pk=devis_y.pk).update(
+            client=autre, statut=Devis.Statut.BROUILLON)
+        corps = {'client': self.client_obj.id, 'devis': devis_y.id}
+        r = self.api.post(url, corps, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('Le devis doit être accepté', str(r.data))
+        Devis.objects.filter(pk=devis_y.pk).update(statut=Devis.Statut.ACCEPTE)
+        r = self.api.post(url, corps, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('celui du devis', str(r.data))
+        self.assertFalse(BonCommande.objects.filter(devis=devis_y).exists())
+        # PATCH d'un BC en attente vers ce devis : même refus.
+        attente = BonCommande.objects.create(
+            company=self.company, reference=f'BC-AFAC15-{_nxt()}',
+            client=self.client_obj, statut='en_attente')
+        r = self.api.patch(f'{url}{attente.id}/', {'devis': devis_y.id},
+                           format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        attente.refresh_from_db()
+        self.assertIsNone(attente.devis_id)
+        # Témoin : devis accepté du bon client.
+        r = self.api.post(url, {'client': self.client_obj.id,
+                                'devis': self._devis_panneaux().id},
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_version_remplacee_refuse_un_bc(self):
         """AARG18 (C-AARG-014) — V1 révisée restée « accepté » (inactive,
         BC1 rattaché à V2) : la porte unique `creer_bon_commande` répond 409

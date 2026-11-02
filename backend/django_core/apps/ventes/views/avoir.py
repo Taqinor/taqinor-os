@@ -12,6 +12,7 @@ from apps.stock.services import (
 )
 from ..models import Facture, Avoir, NoteDebit
 from ..serializers_facturation import AvoirSerializer, NoteDebitSerializer
+from apps.roles.permissions import DroitDeLaGrille  # AARG41
 from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
@@ -26,6 +27,24 @@ logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+
+def _dgi_export_rectificatif(document, type_code):
+    """AARG41 — export DGI local d'un avoir (381) / d'une note de débit (383),
+    à la demande : même interrupteur et même réponse que la facture."""
+    from apps.ventes.dgi import build_ubl_xml, is_dgi_enabled
+    from core.conflit_etat import ConflitEtat
+    if not is_dgi_enabled(document.company):
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+    if document.statut == 'annulee':
+        raise ConflitEtat("Un document annulé ne s'exporte pas à la DGI.")
+    xml_str = build_ubl_xml(document, type_code=type_code,
+                            origine=document.facture)
+    response = HttpResponse(xml_str, content_type='application/xml')
+    response['Content-Disposition'] = (
+        f'attachment; filename="{document.reference}-dgi.xml"')
+    return response
 
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
@@ -62,6 +81,8 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             return [LectureFactures()]
         if self.action == 'annuler':
             return [IsAdminRole()]
+        if self.action == 'dgi_export':  # AARG41 — comme la facture (ASEC50)
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_export')()]
         return [IsResponsableOrAdmin()]
 
     @staticmethod
@@ -130,6 +151,11 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 created_by=user)
         return None
 
+    @extend_schema(responses=D.UblXml)
+    @action(detail=True, methods=['get'], url_path='dgi-export')
+    def dgi_export(self, request, pk=None):
+        return _dgi_export_rectificatif(self.get_object(), '381')
+
     @extend_schema(request=None, responses=AvoirSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
@@ -183,6 +209,11 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                         )},
                         status=status.HTTP_400_BAD_REQUEST)
                 if facture.statut == Facture.Statut.ANNULEE:
+                    # AARG2 — l'argent gardé en avance revient d'abord ; le
+                    # statut final se dérive du reste dû (recalcul ci-dessous).
+                    from ..domain.annulation_facture import rendre_avance_gardee
+                    rendre_avance_gardee(
+                        facture, avant_pk=trace.pk, user=request.user)
                     facture.statut = ancien
                     facture.save(update_fields=['statut'])
                     from ..models import FactureActivity
@@ -204,12 +235,19 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 sender=Avoir, instance=avoir, company=avoir.company)
             # ATOT8 — le reste dû remonte : une facture PAYÉE grâce à cet
             # avoir revient au recouvrement (statut dérivé du reste dû).
-            if trace is None:
-                from ..domain.encaissements import recalculer_statut_paiement
-                recalculer_statut_paiement(
-                    Facture.objects.get(
-                        pk=avoir.facture_id, company=avoir.company),
-                    user=request.user, source='annulation_avoir')
+            from ..domain.encaissements import recalculer_statut_paiement
+            recalculer_statut_paiement(
+                Facture.objects.get(
+                    pk=avoir.facture_id, company=avoir.company),
+                user=request.user, source='annulation_avoir')
+        # AARG37 — le PDF servi ne doit plus montrer un avoir actif (rendu hors
+        # transaction, best-effort comme NoteDebitViewSet.annuler).
+        try:
+            from ..utils.pdf import generate_avoir_pdf
+            generate_avoir_pdf(avoir.id)
+            avoir.refresh_from_db()
+        except Exception:  # noqa: BLE001 — PDF best-effort (D-ENF22-BLE001)
+            logger.warning("avoir.AvoirViewSet.annuler : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(AvoirSerializer(avoir).data)
 
     @extend_schema(responses=D.PdfBinaire)
@@ -266,7 +304,14 @@ class NoteDebitViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             return [LectureFactures()]
         if self.action == 'annuler':
             return [IsAdminRole()]
+        if self.action == 'dgi_export':  # AARG41 — comme la facture (ASEC50)
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_export')()]
         return [IsResponsableOrAdmin()]
+
+    @extend_schema(responses=D.UblXml)
+    @action(detail=True, methods=['get'], url_path='dgi-export')
+    def dgi_export(self, request, pk=None):
+        return _dgi_export_rectificatif(self.get_object(), '383')
 
     @extend_schema(request=None,
                    responses={200: D.NoteDebitAnnuleeResponse,

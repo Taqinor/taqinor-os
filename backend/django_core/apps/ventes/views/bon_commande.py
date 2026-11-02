@@ -34,6 +34,21 @@ BC_CHAMPS_FIGES = ('devis', 'client')
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+def _exiger_devis_du_bc(devis, client):
+    """AARG19 — un BC ne porte qu'un devis ACCEPTÉ (comme ``convertir_en_bc``)
+    de SON client : ``creer_facture`` recopie le panier du devis sur
+    ``bc.client``. Corps conforme, c'est l'état qui refuse : 409."""
+    from core.conflit_etat import ConflitEtat
+    from ..models import Devis
+    if devis is None:
+        return
+    if devis.statut != Devis.Statut.ACCEPTE:
+        raise ConflitEtat('Le devis doit être accepté.')
+    if client is None or client.pk != devis.client_id:
+        raise ConflitEtat(
+            'Le client du bon de commande doit être celui du devis.')
+
+
 def _reserver_stock_bc_actif(company):
     """YDOCF7 — état du toggle société `reserver_stock_bc` (défaut OFF).
 
@@ -252,6 +267,7 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
             raise ValidationError({'client': 'Client inconnu.'})
         if devis is not None and devis.company_id != company.id:
             raise ValidationError({'devis': 'Devis inconnu.'})
+        _exiger_devis_du_bc(devis, client)
         # AMET5 — même porte que `convertir_en_bc` : refus d'un second BC
         # pour le même devis + événement `bon_commande_cree`.
         from ..domain.facturation_ops import (
@@ -287,6 +303,11 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
                 if (BonCommande.objects.filter(devis=devis)
                         .exclude(pk=serializer.instance.pk).exists()):
                     raise ConflitEtat(MESSAGE_BC_EXISTANT)
+            if figes:
+                instance = serializer.instance
+                _exiger_devis_du_bc(
+                    serializer.validated_data.get('devis', instance.devis),
+                    serializer.validated_data.get('client', instance.client))
             super().perform_update(serializer)  # TenantMixin : société serveur
 
     @extend_schema(request=None, responses=BonCommandeSerializer)
@@ -659,6 +680,21 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         if not porte['ok']:
             return Response({'detail': porte['motif']},
                             status=status.HTTP_409_CONFLICT)
+        # AARG32 — avertissement de vente bloquant (ZSAL9), dérogation ADEV14 :
+        # comme les autres portes (`override_avertissement`, corps facultatif).
+        if bc.devis_id:
+            from ..domain.cycle_vie import peut_passer_outre
+            from ..services import SaleWarningError, verifier_sale_warnings
+            corps = request.data if isinstance(request.data, dict) else {}
+            try:
+                verifier_sale_warnings(
+                    bc.devis, override=bool(corps.get('override_avertissement'))
+                    and peut_passer_outre(request.user),
+                    user=request.user, chatter_target=bc.devis)
+            except SaleWarningError as exc:
+                return Response(
+                    {'detail': f'Avertissement de vente bloquant : {exc.motif}.',
+                     'code': 'sale_warning'}, status=status.HTTP_403_FORBIDDEN)
         company = bc.company
 
         def _create_facture(ref):
@@ -696,6 +732,9 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         # légal à l'émission) ; facture + lignes recopiées restent atomiques.
         from ..utils.company_settings import create_provisoire
         with transaction.atomic():
+            from ..domain.annulation_facture import (
+                detacher_factures_annulees_du_bc)
+            detacher_factures_annulees_du_bc(bc, request.user)  # AARG30
             # ERR-FACT-ACOMPTE-PLUS-BC-DOUBLE — la facture de BC est une
             # facture COMPLÈTE (même panier) : comme ``facturer-complet``
             # (VNT65), les brouillons de la vente (acompte auto VNT62) sont

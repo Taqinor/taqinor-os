@@ -157,6 +157,35 @@ class RetenueFactureTest(_Base):
         self.assertEqual(facture.montant_exigible, Decimal('100000.00'))
         self.assertEqual(r.data['montant_exigible'], '100000.00')
 
+    def test_liberation_rederive_le_statut(self):
+        """AARG53 — exigible soldé, statut resté « en retard » : la part libérée
+        court de sa date, la facture ne reste pas « En retard » à 0 jour."""
+        from datetime import date, timedelta
+
+        from apps.ventes.models import Facture, Paiement
+        jour = date.today()
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-CIQ214-0100',
+            client=self.client_obj, statut=Facture.Statut.EN_RETARD,
+            taux_tva=Decimal('20.00'), montant_ht=Decimal('1000.00'),
+            montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'),
+            date_emission=jour - timedelta(days=120),
+            date_echeance=jour - timedelta(days=90),
+            retenue_garantie_mad=Decimal('120.00'), created_by=self.user)
+        Paiement.objects.create(
+            company=self.company, facture=facture, montant=Decimal('1080.00'),
+            date_paiement=jour - timedelta(days=85), mode='virement',
+            created_by=self.user)
+        r = self.api.post(
+            f'/api/django/ventes/factures/{facture.id}/liberer-retenue/',
+            {'date': jour.isoformat()}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], Facture.Statut.EMISE)
+        relue = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(relue.statut, Facture.Statut.EMISE)
+        self.assertEqual(relue.jours_retard, 0)
+        self.assertEqual(relue.montant_exigible, Decimal('120.00'))
+
     def test_relance_avant_liberation_ne_reclame_que_95000(self):
         from apps.ventes.recouvrement import (
             apercu_relance, facture_relancable, variables_relance)

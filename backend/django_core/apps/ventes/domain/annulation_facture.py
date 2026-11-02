@@ -7,6 +7,7 @@ Comportement inchangé au caractère près : chaque ``return Response(..., 400)`
 de la vue est devenu ``raise AnnulationRefusee(<même corps>)`` ; la vue le
 renvoie tel quel en 400.
 """
+import json
 from decimal import Decimal
 
 from django.db import transaction
@@ -14,6 +15,8 @@ from django.db import transaction
 
 #: VNT12 — directive : les paiements deviennent une avance client (XFAC1).
 GARDER_EN_AVANCE = 'garder_en_avance'
+#: AARG2 — ``field_label`` de la trace de cette directive (relue à la restauration).
+LIBELLE_TRACE_AVANCE = 'Acompte gardé en avance'
 
 
 class AnnulationRefusee(Exception):
@@ -273,6 +276,8 @@ def _garder_en_avance(locked, paiements, net_acompte, user):
     elle sont DÉFAITES (l'affectation disparaît, l'avance retrouve son
     disponible). Jamais un paiement supprimé ni recréé : la trace reste."""
     from ..models import FactureActivity, Paiement
+    # AARG2 — ce qui est détaché reste écrit : annuler l'avoir miroir le rend.
+    detache = {'paiements': [p.pk for p in paiements], 'affectations': []}
     if net_acompte <= 0:
         raise AnnulationRefusee(
             {'detail': 'Aucun paiement à garder en avance sur cette facture.'},
@@ -297,15 +302,61 @@ def _garder_en_avance(locked, paiements, net_acompte, user):
         if a.paiement.statut in Paiement.STATUTS_NON_COMPTES:
             continue
         avance = a.paiement
+        detache['affectations'].append([avance.pk, str(a.montant)])
         a.delete()
         _reclasser_avance(avance)
     FactureActivity.objects.create(
         company=locked.company, facture=locked, user=user,
         kind=FactureActivity.Kind.MODIFICATION,
-        field='acompte', field_label='Acompte gardé en avance',
-        old_value=str(net_acompte),
+        field='acompte', field_label=LIBELLE_TRACE_AVANCE,
+        old_value=str(net_acompte), new_value=json.dumps(detache),
         body=(f'{net_acompte} MAD gardés en avance client (non affectée) à '
               "l'annulation de la facture."))
+
+
+def rendre_avance_gardee(facture, *, avant_pk, user):
+    """AARG2 — annuler l'avoir miroir d'une annulation ``garder_en_avance``
+    rend à ``facture`` (verrouillée) ce que ``_garder_en_avance`` a détaché ;
+    ``avant_pk`` = la trace de contre-passation de cet avoir. Sans garde en
+    avance dans ce cycle : rien. Avance déjà utilisée, ou trace d'une annulation
+    ancienne qui ne nomme rien : ``ConflitEtat`` (409, transaction annulée)."""
+    from core.conflit_etat import ConflitEtat
+    from ..models import (
+        AffectationPaiement, Facture, FactureActivity, Paiement,
+    )
+    traces = FactureActivity.objects.filter(facture=facture, pk__lt=avant_pk)
+    garde = traces.filter(
+        field_label=LIBELLE_TRACE_AVANCE).order_by('-pk').first()
+    if garde is None or traces.filter(
+            pk__gt=garde.pk, field='statut',
+            new_value=Facture.Statut.ANNULEE).exists():
+        return
+    if not garde.new_value:
+        raise ConflitEtat(
+            "Cette annulation est trop ancienne pour retrouver les paiements "
+            "gardés en avance : ventilez l'avance à la main.")
+    detache = json.loads(garde.new_value)
+    utilisee = ConflitEtat(
+        "L'avance issue de cette annulation a été utilisée : défaites cet "
+        "usage avant d'annuler l'avoir.")
+    paiements = list(Paiement.objects.select_for_update().filter(
+        pk__in=detache['paiements']))
+    if len(paiements) != len(detache['paiements']) or any(
+            p.facture_id is not None or p.affectations.exists()
+            for p in paiements):
+        raise utilisee
+    for p in paiements:
+        p.facture = facture
+        p.statut_affectation = Paiement.StatutAffectation.AFFECTE
+        p.save(update_fields=['facture', 'statut_affectation'])
+    for pk, montant in detache['affectations']:
+        avance = Paiement.objects.select_for_update().filter(pk=pk).first()
+        if avance is None or avance.montant_disponible < Decimal(montant):
+            raise utilisee
+        AffectationPaiement.objects.create(
+            company=avance.company, paiement=avance, facture=facture,
+            montant=Decimal(montant), created_by=user)
+        _reclasser_avance(avance)
 
 
 def _refuser_si_argent(locked, net_acompte):
@@ -466,6 +517,35 @@ def avoir_annulation_corps(facture):
         return None
     return {'id': avoir.pk, 'reference': avoir.reference,
             'montant': f'{Decimal(str(avoir.total_ttc)):.2f}'}
+
+
+def detacher_bc_annules(devis, user):
+    """AARG30 — un BC ANNULÉ ne bloque plus la chaîne : il rend le ``OneToOne``
+    de son devis (dans la transaction de la recréation), garde sa référence, et
+    le chatter du devis le dit."""
+    from .. import activity
+    from ..models import BonCommande
+    for bc in BonCommande.objects.filter(
+            devis=devis, statut=BonCommande.Statut.ANNULE):
+        bc.devis = None
+        bc.save(update_fields=['devis'])
+        activity.log_devis_note(
+            devis, user,
+            f'Bon de commande annulé {bc.reference} détaché à la recréation.')
+
+
+def detacher_factures_annulees_du_bc(bc, user):
+    """AARG30 — jumeau côté facture : la facture ANNULÉE rend le ``OneToOne``
+    de son BC, garde sa référence et son chatter le dit."""
+    from ..models import Facture, FactureActivity
+    for facture in Facture.objects.filter(
+            bon_commande=bc, statut=Facture.Statut.ANNULEE):
+        facture.bon_commande = None
+        facture.save(update_fields=['bon_commande'])
+        FactureActivity.objects.create(
+            company=facture.company, facture=facture, user=user,
+            kind=FactureActivity.Kind.NOTE,
+            body=f'Détachée du bon de commande {bc.reference} à la recréation.')
 
 
 def retirer_brouillons_de_la_vente(devis, *, user, motif=''):
