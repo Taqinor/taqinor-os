@@ -530,6 +530,9 @@ def _emettre(facture, user, override_credit=False):
     from .facturation_ops import (
         EmissionRefusee, StockInsuffisantError, emettre_facture)
     from .recouvrement import CreditHoldError, verifier_credit_hold
+    from .cycle_vie import peut_passer_outre
+    # AARG14 — l'override n'est honoré qu'au palier ADEV14 (comme à l'acceptation).
+    override_credit = bool(override_credit) and peut_passer_outre(user)
     try:
         if override_credit and facture.client_id:
             verifier_credit_hold(

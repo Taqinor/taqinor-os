@@ -59,7 +59,8 @@ class XFAC18RevueFactureTests(TestCase):
         # limité) tout en passant IsResponsableOrAdmin (is_responsable=True).
         commercial_role = Role.objects.create(
             company=self.company, nom='Commercial',
-            permissions=['ventes_creer', 'ventes_voir'],
+            # AARG9 (D-AARG-3) — émettre exige ``encaisser``.
+            permissions=['ventes_creer', 'ventes_voir', 'encaisser'],
         )
         self.commercial = User.objects.create_user(
             username='xfac18_commercial', password='x',

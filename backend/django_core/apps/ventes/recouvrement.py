@@ -843,17 +843,24 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
         )
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        if self.action in ('list', 'retrieve'):  # AARG12 — module Ventes
+            from .views.facture_gardes import LectureFactures
+            return [LectureFactures()]
+        # AARG7 (D-ASEC-VER-1) — une promesse suspend la relance : geste
+        # d'argent, la garde ``encaisser`` (ASEC29) s'ajoute au palier.
+        from .views.facture_gardes import PeutEncaisser
+        return [IsResponsableOrAdmin(), PeutEncaisser()]
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         company = (self.request.user.company
                    if self.request.user.company_id else None)
         facture = serializer.validated_data.get('facture')
-        if facture is not None and company is not None and \
-                facture.company_id != company.id:
+        from authentication.scoping import scope_queryset  # AARG13 — portée
+        if facture is not None and company is not None and (
+                facture.company_id != company.id
+                or not scope_queryset(Facture.objects.filter(pk=facture.pk),
+                                      self.request.user, ['created_by']).exists()):
             raise ValidationError({'facture': 'Facture inconnue.'})
         promesse = serializer.save(
             company=company, created_by=self.request.user,

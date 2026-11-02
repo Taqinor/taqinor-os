@@ -38,6 +38,11 @@ class FactureCycleActionsMixin:
             permission_classes=[IsResponsableOrAdmin])
     def emettre(self, request, pk=None):
         facture = self.get_object()
+        # AARG9 (D-AARG-3 = exiger_encaisser) — même garde que ``/facturer``.
+        from .facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
+        if not PeutEncaisser().has_permission(request, self):
+            return Response({'detail': MOTIF_SANS_ENCAISSER},
+                            status=status.HTTP_403_FORBIDDEN)
         if facture.statut != Facture.Statut.BROUILLON:
             return Response(
                 {'detail': 'Seule une facture brouillon peut être émise.'},
@@ -240,6 +245,16 @@ class FactureCycleActionsMixin:
         facture = self.get_object()
         directive = valider_corps(request, D.FactureAnnulerRequest).get(
             'acompte')
+        # AARG7 (D-ASEC-VER-1) — rendre ou re-pointer l'argent (directive
+        # d'acompte) est un geste d'argent : garde ``encaisser`` (ASEC29).
+        from .facture_gardes import PeutEncaisser
+        if directive and directive.get('action') in (
+                'rembourser', 'transferer') and not PeutEncaisser(
+                ).has_permission(request, self):
+            return Response(
+                {'detail': ("Rendre ou transférer l'argent d'une facture "
+                            "exige le droit d'encaissement.")},
+                status=status.HTTP_403_FORBIDDEN)
         # ENF11 — la seule règle d'ENTRÉE d'une directive que le sérialiseur
         # ne porte pas (publiée en ``anyOf``) : « transferer » exige sa cible.
         if directive and directive.get('action') == 'transferer' and not (

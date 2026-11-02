@@ -13,6 +13,11 @@ from authentication.permissions import (
 #: fin = palier responsable, comme ``HasPermissionOrLegacy``).
 PeutEncaisser = HasPermissionOrLegacy('encaisser')
 
+#: AARG9 (D-AARG-3) — refus d'une émission sans ``encaisser`` (même texte que
+#: ``devis_facturation.refus_avant_facturer``).
+MOTIF_SANS_ENCAISSER = ("Émettre ou encaisser une facture exige le droit "
+                        "d'encaissement.")
+
 
 class LectureFactures(IsAnyRole):
     """ERR-ASEC11-LISTE-FACTURES (C-ASEC-004, clause ASEC11 « la liste des

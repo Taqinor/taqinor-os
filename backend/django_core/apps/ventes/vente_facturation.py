@@ -512,6 +512,16 @@ def peut_gerer_la_vente(user) -> bool:
             and IsResponsableOrAdmin().has_permission(requete, vue))
 
 
+def peut_encaisser(user) -> bool:
+    """AARG9 (D-AARG-3) — le code ``encaisser`` (garde ``PeutEncaisser``,
+    ASEC29) : seul il ouvre « Émettre » ; même prédicat que les vues."""
+    from types import SimpleNamespace
+
+    from .views.facture_gardes import PeutEncaisser
+    return user is not None and PeutEncaisser().has_permission(
+        SimpleNamespace(user=user, method='POST'), None)
+
+
 def _nature(facture, ids) -> str:
     if facture.bon_commande_id:
         return 'bc'
@@ -655,10 +665,10 @@ def etat_vente(devis, user=None) -> dict:
     chaîne (+ BC + part de consolidée) ; ``peut`` = gestes autorisés pour
     ``user`` (palier :func:`peut_gerer_la_vente`) ; une version remplacée ou
     une révision en cours ferme tous les gestes de facturation."""
-    return _etat_vente(devis, peut_gerer_la_vente(user))
+    return _etat_vente(devis, peut_gerer_la_vente(user), peut_encaisser(user))
 
 
-def _etat_vente(devis, palier) -> dict:
+def _etat_vente(devis, palier, encaisse=False) -> dict:
     """:func:`etat_vente` pour un palier déjà résolu (une fois par liste)."""
     chaine = chaine_vente(devis)
     tete, revision = _tete_de_vente(chaine)
@@ -671,7 +681,7 @@ def _etat_vente(devis, palier) -> dict:
                       if t['statut'] == 'brouillon'), None)
     return {
         **_montants_vente(plan),
-        'factures': [_facture_etat(f, ids, palier, actionnable)
+        'factures': [_facture_etat(f, ids, palier, actionnable and encaisse)
                      for f, _r in plan['factures_parts']],
         'versions': [{'id': d.pk, 'reference': d.reference,
                       'version': d.version, 'statut': d.statut,
@@ -703,12 +713,12 @@ def etat_vente_map(rows, user=None, soldes=None) -> dict:
     texte — contrat ``devis_solde.json``) : un seul appel pour les deux."""
     from apps.ventes.utils.echeancier import solde_devis
     rows = list(rows)
-    palier = peut_gerer_la_vente(user)
+    palier, encaisse = peut_gerer_la_vente(user), peut_encaisser(user)
     with ventes_prechargees(rows):
         if soldes is not None:
             soldes.update({d.pk: {k: str(v) for k, v in solde_devis(d).items()}
                            for d in rows})
-        return {d.pk: _etat_vente(d, palier) for d in rows}
+        return {d.pk: _etat_vente(d, palier, encaisse) for d in rows}
 
 
 # ── Le lot d'une liste de devis (VNT68) ──────────────────────────────────────

@@ -151,6 +151,9 @@ class FactureLotActionsMixin:
         factures_by_id = {f.id: f for f in self.get_queryset().filter(
             id__in=[i for i in ids if abs(i) < 2 ** 31])}
 
+        # AARG9 (D-AARG-3) — émettre exige ``encaisser``, refus PAR facture.
+        from .facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
+        encaisse = PeutEncaisser().has_permission(request, self)
         results = {}
         for fid_int in ids:
             facture = factures_by_id.get(fid_int)
@@ -158,7 +161,10 @@ class FactureLotActionsMixin:
                 results[fid_int] = {'ok': False, 'detail': 'Introuvable.'}
                 continue
             try:
-                if action_name == 'emettre':
+                if action_name == 'emettre' and not encaisse:
+                    results[fid_int] = {'ok': False,
+                                        'detail': MOTIF_SANS_ENCAISSER}
+                elif action_name == 'emettre':
                     if facture.statut != Facture.Statut.BROUILLON:
                         results[fid_int] = {
                             'ok': False,

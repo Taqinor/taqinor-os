@@ -125,3 +125,45 @@ class XFAC28CreditHoldTests(TestCase):
             f'/api/django/ventes/devis/{devis2.id}/accepter/',
             {'nom': 'Client OK'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_override_transmis_a_l_emission(self):
+        """AARG15 — un override autorisé (admin) va jusqu'à l'émission de
+        ``generer-facture`` et ``facturer-complet`` : 201, facture émise
+        numérotée, UNE ligne « débloqué » par geste (jamais un « débloqué »
+        sans facture). Mutant : ne plus transmettre l'override ⇒ échec."""
+        from apps.parametres.models_audit import SettingsAuditLog
+        self._activate_hold()
+        echeancier = [
+            {'type': 'acompte', 'libelle': 'Acompte', 'unite': 'pct',
+             'pct_or_montant': 30},
+            {'type': 'solde', 'libelle': 'Solde', 'unite': 'pct',
+             'pct_or_montant': 70}]
+        Devis.objects.filter(pk=self.devis.pk).update(
+            statut=Devis.Statut.ACCEPTE, echeancier=echeancier)
+        complet = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-5003',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'), created_by=self.admin)
+        LigneDevis.objects.create(
+            devis=complet, produit=self.produit, designation='Panneau',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+
+        def debloques():
+            return SettingsAuditLog.objects.filter(
+                company=self.company,
+                new_value__startswith='débloqué').count()
+
+        for n, (devis, geste, corps) in enumerate((
+                (self.devis, 'generer-facture', {'override_credit': True}),
+                (complet, 'facturer-complet',
+                 {'paiements': [], 'override_credit': True})), start=1):
+            with self.subTest(geste=geste):
+                r = self.api.post(
+                    f'/api/django/ventes/devis/{devis.id}/{geste}/', corps,
+                    format='json')
+                self.assertEqual(r.status_code, 201, r.data)
+                facture = Facture.objects.filter(devis=devis).exclude(
+                    statut=Facture.Statut.BROUILLON).get()
+                self.assertEqual(facture.statut, Facture.Statut.EMISE)
+                self.assertFalse(facture.reference.startswith('BROUILLON-'))
+                self.assertEqual(debloques(), n)

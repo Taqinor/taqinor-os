@@ -468,11 +468,13 @@ def acompte_paye_pour_devis(devis_id, company):
              if devis_id else None)
     if devis is None:
         return False
-    return Facture.objects.filter(
+    # AARG3 — « payée » se lit aussi après un avoir total : seul un acompte
+    # réellement encaissé (``montant_paye`` > 0, reste dû nul) ouvre la porte.
+    acomptes = Facture.objects.filter(
         devis_id__in=[d.pk for d in chaine_vente(devis)], company=company,
         type_facture=Facture.TypeFacture.ACOMPTE,
-        statut=Facture.Statut.PAYEE,
-    ).exists()
+    ).exclude(statut=Facture.Statut.ANNULEE)
+    return any(f.montant_paye > 0 and not f.montant_du for f in acomptes)
 
 
 def etat_recouvrement_client(company, client_id):

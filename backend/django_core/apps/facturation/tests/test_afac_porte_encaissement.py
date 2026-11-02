@@ -257,3 +257,56 @@ class PorteEncaissementTests(TestCase):
         self.assertFalse(par_id[acompte.id]['encaissable'])
         self.assertIn('Acompte non encaissable avant le',
                       par_id[acompte.id]['motif_non_encaissable'])
+
+    # ── AARG14 — override aux portes de facturation : palier ADEV14 ─────
+    def test_commercial_override_ignore_aux_portes_de_facturation(self):
+        """AARG14 — un Commercial (``encaisser``, palier normal) qui envoie
+        ``override_credit`` ne passe pas le blocage crédit : 403 à
+        ``/facturer``, ``generer-facture`` et ``facturer-complet``, aucune
+        ligne « débloqué », aucune facture émise ; un admin émet. Mutant :
+        retirer ``peut_passer_outre`` de ``_emettre`` ⇒ échec."""
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_audit import SettingsAuditLog
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        from apps.ventes.models import Devis, Facture
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.tests.test_facturer_complet import (
+            ECHEANCIER_30_60_10)
+        commercial = User.objects.create_user(
+            username=f'aarg14_com_{_nxt()}', password='x',
+            role_legacy='normal', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom=f'Commercial AARG14 {_nxt()}',
+                permissions=list(COMMERCIAL_PERMISSIONS) + ['encaisser']))
+        self.assertNotIn(commercial.menu_tier, ('admin', 'responsable'))
+        profile = CompanyProfile.get(company=self.company)
+        profile.credit_hold_actif = True
+        profile.save(update_fields=['credit_hold_actif'])
+        self.client_obj.plafond_credit = Decimal('1')
+        self.client_obj.save(update_fields=['plafond_credit'])
+        self._facture(Facture.Statut.EMISE, ttc=Decimal('60000'))
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-AARG14-{_nxt()}', ECHEANCIER_30_60_10)
+        Devis.objects.filter(pk=devis.pk).update(created_by=commercial)
+        api = APIClient()
+        api.force_authenticate(commercial)
+        corps = {'nature': 'acompte', 'montant_ttc': '15000.00',
+                 'emettre': True, 'override_credit': True}
+        base = f'/api/django/ventes/devis/{devis.id}/'
+        r = api.post(base + 'facturer/', corps, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data.get('code'), 'credit_hold')
+        for geste, data in (('generer-facture/', {'override_credit': True}),
+                            ('facturer-complet/', {'paiements': [],
+                                                   'override_credit': True})):
+            with self.subTest(geste=geste):
+                r = api.post(base + geste, data, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+        self.assertFalse(SettingsAuditLog.objects.filter(
+            new_value__startswith='débloqué').exists())
+        self.assertFalse(Facture.objects.filter(devis=devis).exclude(
+            statut=Facture.Statut.BROUILLON).exists())
+        r = self.api.post(base + 'facturer/', corps, format='json')
+        self.assertEqual(r.status_code, 201, r.data)

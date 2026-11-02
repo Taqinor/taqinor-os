@@ -15,10 +15,10 @@ from apps.stock.services import (
 from ..models import BonCommande, Facture
 from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
 from authentication.permissions import (
-    IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from .facture_gardes import LectureFactures  # AARG12
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.viewsets import CompanyScopedModelViewSet  # noqa: ARC5 — exception documentée (D-ENF22)
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
@@ -191,9 +191,16 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
     ]
     ordering = ['-date_creation', '-id']  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 
+    def get_queryset(self):
+        # AARG13 — portée du rôle (BC du devis créé par soi / l'équipe), en
+        # plus de la société : un BC d'un collègue répond 404 sur TOUTE action.
+        from authentication.scoping import scope_queryset
+        return scope_queryset(super().get_queryset(), self.request.user,
+                              ['devis__created_by'])
+
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['pdf']:
-            return [IsAnyRole()]
+            return [LectureFactures()]
         elif self.action in WRITE_ACTIONS + [
             'confirmer', 'marquer_livre', 'annuler', 'creer_facture',
             'livrer_partiel',
