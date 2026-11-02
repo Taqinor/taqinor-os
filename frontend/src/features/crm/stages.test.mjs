@@ -222,6 +222,17 @@ test('filterLeads : inclure / exclure / seulement les perdus', () => {
   assert.deepEqual(filterLeads(leads, { perdus: 'seuls' }).map((l) => l.id), [1])
 })
 
+test('filterLeads : sans perdus écarte aussi les opposés (CADV62, défaut)', () => {
+  const leads = [
+    { id: 1, stage: 'FOLLOW_UP', nom: 'A' },
+    { id: 2, stage: 'FOLLOW_UP', nom: 'B', perdu: true },
+    { id: 3, stage: 'FOLLOW_UP', nom: 'C', ne_plus_contacter: true },
+  ]
+  assert.equal(EMPTY_FILTERS.perdus, 'sans')
+  assert.deepEqual(filterLeads(leads, {}).map((l) => l.id), [1])
+  assert.deepEqual(filterLeads(leads, { perdus: 'avec' }).map((l) => l.id), [1, 2, 3])
+})
+
 test('filterLeads : recherche WhatsApp distinct du téléphone', () => {
   const leads = [
     { id: 1, stage: 'NEW', nom: 'A', telephone: '0611111111', whatsapp: '0622222222' },

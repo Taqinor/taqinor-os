@@ -86,6 +86,9 @@ export const PRIORITE_STARS = { basse: 0, normale: 1, haute: 2 }
 // Le lead reste dans son étape avec le style perdu.
 export const isPerdu = (lead) => Boolean(lead && lead.perdu)
 
+// « Ne plus contacter » : clé servie par le serveur (jamais redéfinie ici).
+export const estOppose = (lead) => Boolean(lead && lead.ne_plus_contacter)
+
 // Tags libres, séparés par des virgules → liste propre.
 export const tagList = (lead) =>
   String(lead?.tags ?? '')
@@ -244,7 +247,7 @@ export const EMPTY_FILTERS = {
   // dimension déclarée ailleurs, le Segmented relance de FilterBar.jsx gagne
   // la même option.
   relance: '', // '' | 'aujourdhui' | 'retard' (en retard) | 'semaine' (cette semaine)
-  perdus: 'avec', // 'avec' | 'sans' | 'seuls'
+  perdus: 'sans', // 'avec' | 'sans' | 'seuls' (CADV62 : perdus et opposés masqués par défaut)
   archived: 'actifs', // 'actifs' | 'tous' | 'seuls' — dimension serveur (refetch)
   // QW3 — préférence de contact explicite ('' = toutes | 'phone_ok' | 'whatsapp_only')
   contact_preference: '',
@@ -329,7 +332,7 @@ export function filterLeads(leads, filters, { myUsername } = {}) {
         return false
       }
     }
-    if (f.perdus === 'sans' && isPerdu(l)) return false
+    if (f.perdus === 'sans' && (isPerdu(l) || estOppose(l))) return false
     if (f.perdus === 'seuls' && !isPerdu(l)) return false
     if (f.contact_preference && l.contact_preference !== f.contact_preference) {
       return false
