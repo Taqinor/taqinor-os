@@ -128,7 +128,9 @@ class Ciq331SansArgent(SimpleTestCase):
     def test_motif_et_aucun_zero(self):
         html = _html(_data(argent=False))
         p1 = html.split('class="page"')[1]
-        self.assertIn("vos 12 dernières factures", p1)
+        # AMOT116 — consommation connue : aucune demande de factures.
+        self.assertIn("non chiffrés à ce stade.", p1)
+        self.assertNotIn("12 dernières factures", p1)
         self.assertNotIn("0&nbsp;MAD", p1)
         self.assertNotIn(">0<", p1)
         cles = _cles(html)

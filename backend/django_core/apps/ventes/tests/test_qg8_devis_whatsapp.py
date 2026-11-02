@@ -148,6 +148,30 @@ class BuildSingleDevisWhatsappTests(TestCase):
         self.assertIn(link['token'], message)
         self.assertTrue(link['token'])
 
+    def test_lien_rdv_resolu_pour_un_devis_de_lead(self):
+        """APAR84 (C-APAR-VER-030) — ``{lien_rdv}`` du modèle « devis
+        unique » est résolu (lien de réservation du lead), comme la voie lead ;
+        sans lead : vide, jamais l'accolade littérale."""
+        from apps.crm.models import BookingLink
+        from apps.parametres.models import MessageTemplate
+        MessageTemplate.objects.create(
+            company=self.company, cle='devis_unique',
+            corps_fr='Devis {reference} : {lien} Prenez RDV : {lien_rdv}')
+        rf = RequestFactory().get('/')
+        message, _link = build_single_devis_whatsapp(rf, self.devis, 'fr')
+        self.assertNotIn('{lien_rdv}', message)
+        self.assertTrue(message.rstrip().endswith('Prenez RDV :'))
+        self.assertEqual(BookingLink.objects.count(), 0)
+        lead = Lead.objects.create(company=self.company, nom='Naciri',
+                                   prenom='Sara', stage=stages.NEW)
+        Devis.objects.filter(pk=self.devis.pk).update(lead=lead)
+        self.devis.refresh_from_db()
+        message, _link = build_single_devis_whatsapp(rf, self.devis, 'fr')
+        self.assertNotIn('{lien_rdv}', message)
+        booking = BookingLink.objects.get()
+        self.assertEqual(booking.lead_id, lead.pk)
+        self.assertIn(booking.token, message)
+
     def test_expiry_and_reuse_of_link(self):
         rf = RequestFactory().get('/')
         _, link1 = build_single_devis_whatsapp(rf, self.devis, 'fr')

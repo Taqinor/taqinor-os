@@ -119,6 +119,16 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
         raise _RemiseEnvoiRefusee(erreur.message)
 
 
+def _options_piece_jointe(devis, pdf_mode, token):
+    """AMOT117 — options de la pièce jointe : celles du dernier rendu persisté
+    (``pdf_render_meta['options']``, même lecture que ``cle_pdf_a_jour``) ;
+    ``pdf_mode`` explicite prime ; sans rendu mémorisé : « full »."""
+    from ..quote_engine import clean_pdf_options
+    meta = devis.pdf_render_meta if isinstance(devis.pdf_render_meta, dict) else {}
+    memo = meta.get('options') if isinstance(meta.get('options'), dict) else {}
+    return clean_pdf_options(dict(memo, share_token=token, **({'pdf_mode': pdf_mode} if pdf_mode else {})))
+
+
 class DevisEnvoiActionsMixin:
     """SPL138 — actions d'envoi de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -263,7 +273,8 @@ class DevisEnvoiActionsMixin:
           - ``to_email``  : adresse destinataire (défaut : client.email)
           - ``sujet``     : objet de l'email (défaut : modèle FR)
           - ``corps``     : corps de l'email (défaut : modèle FR)
-          - ``pdf_mode``  : « full » | « onepage » (défaut : « full »)
+          - ``pdf_mode``  : « full » | « onepage » (défaut : le format du
+            dernier rendu persisté, sinon « full » — AMOT117)
 
         Idempotent : un devis déjà « envoyé » (ou plus avancé) ne régresse pas
         — l'email est tout de même envoyé mais mark_devis_sent ne re-stampe pas.
@@ -272,7 +283,7 @@ class DevisEnvoiActionsMixin:
         """
         from ..models import ShareLink
         from ..services import mark_devis_sent
-        from ..quote_engine import clean_pdf_options, generate_premium_devis_pdf
+        from ..quote_engine import generate_premium_devis_pdf
         from ..utils.pdf import download_pdf
 
         devis = self.get_object()
@@ -284,7 +295,7 @@ class DevisEnvoiActionsMixin:
         to_email = (request.data.get('to_email') or '').strip() or None
         sujet = (request.data.get('sujet') or '').strip() or None
         corps = (request.data.get('corps') or '').strip() or None
-        pdf_mode = (request.data.get('pdf_mode') or 'full').strip()
+        pdf_mode = (request.data.get('pdf_mode') or '').strip()
         # GAMME — mode d'envoi « à la carte », réglé au moment de l'envoi.
         # UN PDF = UNE GAMME : la pièce jointe reste le PDF de CE devis, jamais
         # un PDF fusionné des deux gammes (chaque gamme a le sien).
@@ -305,8 +316,7 @@ class DevisEnvoiActionsMixin:
         # moteur ne frappe plus de lien pour un brouillon.
         link = ShareLink.for_devis(devis)
         try:
-            opts = clean_pdf_options({'pdf_mode': pdf_mode,
-                                      'share_token': link.token})
+            opts = _options_piece_jointe(devis, pdf_mode, link.token)
             key = generate_premium_devis_pdf(devis.id, opts, persist=False)
             attachment = download_pdf(key)
             attachment_name = f'Devis_{devis.reference}.pdf'

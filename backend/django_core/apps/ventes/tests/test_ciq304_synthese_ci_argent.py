@@ -23,6 +23,8 @@ from apps.ventes.economie_ci import (
 )
 from apps.ventes.quote_engine.ci.synthese import (
     MOTIF_ARGENT_BT,
+    MOTIF_ARGENT_CONTRAT,
+    MOTIF_ARGENT_HORAIRES,
     MOTIF_ARGENT_MT,
     synthese_ci,
 )
@@ -107,11 +109,16 @@ class TestSyntheseCiArgent(SimpleTestCase):
                          CONTRAT["exemple"]["motif_base"])
 
     def test_bloc_absent_ou_omis_motif_bt(self):
+        # AMOT116 — sous le niveau 9 (drapeau) ou consommation non résolue :
+        # la demande des 12 factures reste.
         for economie in (None, _economie("exemple_omis")):
-            s = synthese_ci(_data(_etude_ci(), economie_ci=economie))
-            self.assertNotIn("argent", s)
-            self.assertIn({"bloc": "argent", "motif": MOTIF_ARGENT_BT},
-                          s["omissions"])
+            for data in (_data(_etude_ci(), economie_ci=economie,
+                               regles_ecarts_0111_historique=True),
+                         _data(_etude_ci(entrees_resolues={}), economie_ci=economie)):
+                s = synthese_ci(data)
+                self.assertNotIn("argent", s)
+                self.assertIn({"bloc": "argent", "motif": MOTIF_ARGENT_BT},
+                              s["omissions"])
 
     def test_bloc_absent_motif_mt(self):
         etude = _etude_ci()
@@ -239,8 +246,44 @@ class TestAmot80TuilesArgent(SimpleTestCase):
         ligne = couverture.ligne_non_chiffre(d, "com", "c1c")
         self.assertNotIn("12 dernières factures", ligne)
         self.assertIn("Investissement non encore chiffré", ligne)
-        # Argent absent (consommation non chiffrée) : la demande reste.
-        absent = synthese_ci(_data(_etude_ci(), economie_ci=None))
+        # Argent absent, devis sous le niveau 9 (drapeau) : la demande reste.
+        absent = synthese_ci(_data(_etude_ci(), economie_ci=None,
+                                   regles_ecarts_0111_historique=True))
         d, _tuiles_ = _tuiles(absent)
         self.assertIn("vos 12 dernières factures",
                       couverture.ligne_non_chiffre(d, "com", "c1c"))
+
+    def test_conso_connue_motif_du_manque_reel(self):
+        """AMOT116 (C-AMOT-VER-040) — baseline « factures » servie : le motif
+        nomme le manque réel, jamais « vos 12 dernières factures »."""
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.quote_engine.ci import couverture
+
+        def ligne(s):
+            return couverture.ligne_non_chiffre(_tuiles(s)[0], "com", "c1c")
+
+        etude = _etude_ci()
+        economie = eco.assembler_economie_ci(copy.deepcopy(etude), tarif_declare={},
+                                             mode_installation="commercial")
+        s = synthese_ci(_data(etude, economie_ci=economie))
+        self.assertEqual(s["baseline"]["source"], "factures")
+        self.assertIn({"bloc": "argent", "motif": MOTIF_ARGENT_CONTRAT}, s["omissions"])
+        texte = ligne(s)
+        self.assertIn("votre contrat d'électricité (tarif, puissance souscrite)", texte)
+        self.assertNotIn("12 dernières factures", texte)
+        # Matrice horaire absente ⇒ les horaires d'activité.
+        horaire = dict(_economie("exemple_omis"), motifs_omission=[eco.MOTIF_SANS_HORAIRE])
+        s = synthese_ci(_data(_etude_ci(), economie_ci=horaire))
+        self.assertIn({"bloc": "argent", "motif": MOTIF_ARGENT_HORAIRES}, s["omissions"])
+        self.assertIn("vos horaires d'activité", ligne(s))
+        # Bloc absent ⇒ la phrase sans motif, aucune demande.
+        texte = ligne(synthese_ci(_data(_etude_ci(), economie_ci=None)))
+        self.assertIn("non chiffrés à ce stade.", texte)
+        self.assertNotIn("communiquez-nous", texte)
+        # Drapeau ⇒ la phrase d'avant le niveau 9 ; MT inchangé.
+        s = synthese_ci(_data(etude, economie_ci=economie, regles_ecarts_0111_historique=True))
+        self.assertIn("vos 12 dernières factures", ligne(s))
+        mt = _etude_ci()
+        mt["entrees_resolues"]["tension"]["valeur"] = "mt"
+        s = synthese_ci(_data(mt, economie_ci=None))
+        self.assertIn({"bloc": "argent", "motif": MOTIF_ARGENT_MT}, s["omissions"])
