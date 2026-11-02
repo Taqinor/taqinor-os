@@ -316,8 +316,9 @@ class TotalStockeTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         remisee = self._egal(facture)
         self.assertEqual(remisee.remise_globale, Decimal('10'))
-        r = self.api.delete(url)
-        self.assertEqual(r.status_code, 204, getattr(r, 'data', None))
+        # Suppression de ligne : le signal post_delete rafraîchit le stocké
+        # (la suppression API est réservée à un autre rôle que ce responsable).
+        ligne.delete()
         self.assertLess(self._egal(facture).total_ttc_stocke,
                         remisee.total_ttc_stocke)
 
