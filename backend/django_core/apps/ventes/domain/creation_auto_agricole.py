@@ -24,7 +24,8 @@ def _fr_nombre(valeur):
 
 
 def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
-                               journal_auto=None, target_kwc=None):
+                               remise_globale=Decimal('0'), journal_auto=None,
+                               target_kwc=None):
     """AGR124 — devis automatique AGRICOLE (pompage) par le serveur.
 
     Entrées : ``crm.selectors.entrees_pompage_du_lead`` (AGR404), lues par
@@ -187,7 +188,7 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
             company=company, reference=ref, client=client, lead=lead,
             statut=Devis.Statut.BROUILLON, created_by=user,
             taux_tva=taux_tva, devise=devise_par_defaut(company),
-            mode_installation='agricole',
+            remise_globale=remise_globale, mode_installation='agricole',
             etude_params=etude)
 
     with etude_precalculee(lead, sortie):
