@@ -72,6 +72,41 @@ class RelanceEchecEnvoiTests(TestCase):
         self.assertEqual(EmailLog.objects.filter(
             facture=f, statut=EmailLog.Statut.ECHEC).count(), 3)
 
+    def test_trois_echecs_arretent_et_notifient(self):
+        """AARG42 (C-AARG-045) — 3 échecs consécutifs : `prochaine_relance`
+        à None et UNE notification au créateur ; 4e jour : rien ; un envoi
+        réussi remet le compteur à zéro."""
+        from django.contrib.auth import get_user_model
+        from apps.notifications.models import Notification
+        from apps.ventes.models import EmailLog
+        from apps.ventes.scheduled import relance_reminders
+        createur = get_user_model().objects.create_user(
+            username=f'aarg42-{_nxt()}', password='x',
+            role_legacy='responsable', company=self.company)
+        f = self._facture(self._client(email=''), created_by=createur,
+                          prochaine_relance=self.today)
+        for jour in range(4):
+            relance_reminders()
+            if jour < 2:
+                self._remettre_a_aujourdhui(f)
+        f.refresh_from_db()
+        self.assertIsNone(f.prochaine_relance)
+        self.assertEqual(EmailLog.objects.filter(
+            facture=f, statut=EmailLog.Statut.ECHEC).count(), 3)
+        notes = Notification.objects.filter(
+            recipient=createur,
+            title='Relance impossible : adresse e-mail du client à corriger')
+        self.assertEqual(notes.count(), 1)
+        # Un envoi réussi remet le compteur à zéro : un nouvel échec reporte.
+        EmailLog.objects.create(
+            company=self.company, facture=f, statut=EmailLog.Statut.ENVOYE,
+            to_email='ok@example.invalid')
+        self._remettre_a_aujourdhui(f)
+        relance_reminders()
+        f.refresh_from_db()
+        self.assertGreater(f.prochaine_relance, self.today)
+        self.assertEqual(notes.count(), 1)
+
     def test_report_au_jour_suivant(self):
         from apps.ventes.scheduled import relance_reminders
         f = self._facture(self._client(email=''),

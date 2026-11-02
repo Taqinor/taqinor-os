@@ -108,3 +108,20 @@ class TestFactureSocieteDuBonCommande(TestCase):
             {}, format='json')
         self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertFalse(Facture.objects.filter(bon_commande=bc).exists())
+
+    def test_convertir_bc_prend_la_societe_du_devis(self):
+        """AARG31 (C-AARG-033) — convertir-bc crée le BC dans la société du
+        DEVIS, jamais dans celle de l'utilisateur (ici : aucune)."""
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{self.devis_a2.id}/convertir-bc/')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        bc = BonCommande.objects.get(devis=self.devis_a2)
+        self.assertEqual(bc.company_id, self.a.id)
+        devis = Devis.objects.create(
+            company=None, client=self.client_a,
+            reference=f'DEV-AUD117-{_nxt()}',
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
+        resp = self.api.post(f'/api/django/ventes/devis/{devis.id}/convertir-bc/')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('impossible de créer un bon de commande', resp.data['detail'])
+        self.assertFalse(BonCommande.objects.filter(devis=devis).exists())

@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Banknote, Download, Plus, PiggyBank } from 'lucide-react'
 import api from '../../api/axios'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { downloadBlob, filenameFromResponse } from '../../api/importApi'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toast } from '../../ui/confirm'
@@ -91,9 +92,11 @@ export default function PaiementsFournisseurLedgerPage() {
   // XPUR6 — pourcentage d'escompte disponible sur le dernier paiement saisi.
   const [escompte, setEscompte] = useState(null)
 
-  const charger = useCallback(() => api.get('/stock/paiements-fournisseur/')
-    .then((res) => {
-      setPaiements(res.data?.results ?? res.data ?? [])
+  // ENF15 — toutes les pages (jamais la seule page 1) : le registre et ses totaux
+  // portent sur l'ensemble des paiements.
+  const charger = useCallback(() => lireToutesLesPages((p) => api.get('/stock/paiements-fournisseur/', { params: p }))
+    .then((rows) => {
+      setPaiements(rows)
       setLoadError(false)
     })
     .catch(() => setLoadError(true))
@@ -104,10 +107,9 @@ export default function PaiementsFournisseurLedgerPage() {
   // Factures ouvertes, pour la saisie. Leur absence ne casse pas le registre.
   useEffect(() => {
     let annule = false
-    api.get('/stock/factures-fournisseur/')
-      .then((res) => {
+    lireToutesLesPages((p) => api.get('/stock/factures-fournisseur/', { params: p }))
+      .then((rows) => {
         if (annule) return
-        const rows = res.data?.results ?? res.data ?? []
         setFactures(Array.isArray(rows) ? rows : [])
       })
       .catch(() => { if (!annule) setFactures([]) })

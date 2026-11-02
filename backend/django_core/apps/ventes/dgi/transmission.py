@@ -36,6 +36,8 @@ from __future__ import annotations
 import logging
 import uuid
 
+from core.conflit_etat import ConflitEtat
+
 logger = logging.getLogger(__name__)
 
 
@@ -128,11 +130,22 @@ def _provider_key_for(company):
         return 'noop'
 
 
+class TransmissionRefusee(ConflitEtat):  # AARG21 — 409 {detail[, problemes]}
+    def __init__(self, detail, problemes=()):
+        super().__init__()
+        self.detail = {'detail': detail, **({'problemes': list(problemes)} if problemes else {})}
+
+
+def exiger_facture_emise(facture):
+    if facture.statut not in ('emise', 'payee', 'en_retard'):  # AARG21
+        raise TransmissionRefusee('Seule une facture émise se transmet à la DGI.')
+
+
 def transmettre_facture(facture):
     """Transmet (ou retransmet) une facture au provider DGI configuré.
 
-    Renvoie le dict `Facture` mis à jour (dgi_statut/dgi_reference/
-    dgi_motif_rejet) SANS jamais lever. Garde l'unicité : n'autorise jamais
+    Renvoie la `Facture` mise à jour (dgi_statut/dgi_reference/dgi_motif_rejet) ;
+    non émise / non conforme ⇒ ``TransmissionRefusee`` (AARG21), rien n'est écrit. Garde l'unicité : n'autorise jamais
     deux transmissions ACCEPTÉES pour la même facture (idempotent) — un rejet
     peut être rejoué (nouvelle tentative), une facture déjà acceptée renvoie
     son état sans re-transmettre.
@@ -148,6 +161,10 @@ def transmettre_facture(facture):
         # touche à aucun champ de statut.
         return facture
 
+    exiger_facture_emise(facture)  # AARG21 — puis conformité N105
+    from .dgi_validator import validate_dgi_conformity
+    if problemes := validate_dgi_conformity(facture):
+        raise TransmissionRefusee('Facture non conforme : transmission DGI refusée.', problemes)
     from .dgi_export import build_ubl_xml
     xml_str = build_ubl_xml(facture)
 

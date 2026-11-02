@@ -194,6 +194,40 @@ class TestAud131PredicatPartage(_Base):
             self.assertFalse(ok, statut)
             self.assertTrue(motif)
 
+    def test_facture_contestee_n_est_pas_relancee(self):
+        """AARG22 (D-AFAC-89 a) — PATCH contestée (date + motif) : ni le beat
+        ni « Relancer » (409 ENF11, motif dédié) ; contestation levée ⇒
+        relançable de nouveau."""
+        from apps.ventes.recouvrement import _facture_due_rows
+        from apps.ventes.scheduled import relance_reminders
+        FollowupLevel.objects.create(
+            company=self.company, ordre=1, nom='Rappel', delai_jours=7,
+            message='Rappel pour {reference}.')
+        facture = self._facture()
+        Facture.objects.filter(pk=facture.pk).update(
+            prochaine_relance=date.today())
+        url = f'/api/django/ventes/factures/{facture.id}/'
+        resp = self.api.patch(url, {
+            'contestee_le': date.today().isoformat(),
+            'motif_contestation': 'Panneau livré cassé'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        facture.refresh_from_db()
+        self.assertEqual(facture.contestee_le, date.today())
+        self.assertEqual(facture.motif_contestation, 'Panneau livré cassé')
+        self.assertEqual(relance_reminders(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertFalse(RelanceLog.objects.filter(facture=facture).exists())
+        self.assertNotIn(facture, _facture_due_rows(self.user))
+        resp = self.api.post(f'{url}relancer/', {'niveau': 1}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['detail'],
+                         'Facture contestée : la relance est suspendue.')
+        resp = self.api.patch(url, {'contestee_le': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn(facture, _facture_due_rows(self.user))
+        resp = self.api.post(f'{url}relancer/', {'niveau': 1}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     def test_facture_soldee_n_est_pas_relancable(self):
         from apps.ventes.recouvrement import facture_relancable
         facture = self._facture()

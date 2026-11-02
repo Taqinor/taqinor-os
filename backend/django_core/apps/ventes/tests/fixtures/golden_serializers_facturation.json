@@ -648,6 +648,13 @@
      null,
      false
     ],
+    "contestee_le": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
     "created_by": [
      "PrimaryKeyRelatedField",
      true,
@@ -874,6 +881,13 @@
     ],
     "montant_tva": [
      "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "motif_contestation": [
+     "CharField",
      false,
      false,
      null,
@@ -1212,6 +1226,13 @@
      null,
      false
     ],
+    "contestee_le": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
     "created_by": [
      "PrimaryKeyRelatedField",
      true,
@@ -1354,6 +1375,13 @@
     ],
     "montant_tva": [
      "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "motif_contestation": [
+     "ChaineStricte",
      false,
      false,
      null,

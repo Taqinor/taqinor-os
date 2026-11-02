@@ -1386,7 +1386,7 @@ export default function BonsCommandeFournisseur() {
     reloadEnRetard()
     reloadSuggestions()
     // getAllFournisseurs lit déjà toutes les pages (ASTK185) ; produits : fetchAllPages.
-    stockApi.getAllFournisseurs().then((r) => setFournisseurs(Array.isArray(r.data) ? r.data : (r.data?.results ?? []))).catch(() => {})
+    stockApi.getAllFournisseurs().then((r) => setFournisseurs(r.data ?? [])).catch(() => {})
     fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data), { concurrency: 3 })
       .then((rows) => setProduits(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
   }, [])

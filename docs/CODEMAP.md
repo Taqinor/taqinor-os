@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: c3528b37b11bce7dfea9de1115122583b10bdd423ca19e5d3fd5cb32ffd46b44
-Plan fingerprint: 0c8965a79f3f6102656b845bd2efc2426d248450c32b89c90b0fa02f2d24b547
+Structure fingerprint: e1f444553f5fb11116de25d0cd9d3377779667457ffb9cacaddfd4c5a47dad03
+Plan fingerprint: 03a7387dd68549e3bc80acff6e39b0b6ffc78855838c8cab2d31a37c2e0faf12
 
 
 
@@ -592,7 +592,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1302)**
+**Done (1303)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1221,6 +1221,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF36` — ENF15, tranche 30/10 (3)
 - `ENF37` — ENF19, tranche 30/10 (2)
 - `ENF38` — ENF19, tranche 30/10 (3)
+- `ENF39` — ENF15, tranche 02/11 (liste_page1)
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé

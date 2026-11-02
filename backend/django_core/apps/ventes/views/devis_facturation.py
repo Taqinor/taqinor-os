@@ -140,8 +140,11 @@ class DevisFacturationActionsMixin:
         # (YEVNT6) partagés avec la création manuelle.
         from ..domain.facturation_ops import (
             BonCommandeExistant, creer_bon_commande)
+        if devis.company_id is None:  # AARG31 — la société DU DEVIS (AUD117)
+            return Response({'detail': 'Aucune société : impossible de créer un bon de commande.'},
+                            status=status.HTTP_409_CONFLICT)
         try:
-            bc = creer_bon_commande(devis, request.user.company, request.user)
+            bc = creer_bon_commande(devis, devis.company, request.user)
         except BonCommandeExistant as exc:
             return Response({'detail': exc.message},
                             status=status.HTTP_409_CONFLICT)

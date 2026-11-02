@@ -62,7 +62,7 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
   it('affiche les champs ONDULEUR et l\'indicateur « Non chiffrable » quand tout manque', async () => {
     renderEdit()
     await screen.findByText(/Éditer/)
-    await waitFor(() => expect(getFichesTechniques).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(getFichesTechniques).toHaveBeenCalledWith(7, expect.objectContaining({ page: 1 })))
     expect(await screen.findByText('Fiche technique')).toBeInTheDocument()
     expect(screen.getByLabelText('Puissance AC (kW)')).toBeInTheDocument()
     expect(screen.getByLabelText("Nombre d'entrées MPPT")).toBeInTheDocument()

@@ -141,6 +141,23 @@ class AudienceView(APIView):
         self.assertEqual(reader.shape_of_route(route, "get"), {"presets": shapes.LISTE})
         self.assertIsNone(reader.shape_of_route(route, "post"))
 
+    def test_echantillons_cadv_connus(self):
+        # CADV96 (PACT10) — les quatre contrats CADV vivent sur main AVANT
+        # leurs moitiés : forme seule, porteur nommé, et SANS `forme_serveur`
+        # tant que la route n'est pas servie (sinon la garde rougit).
+        dossier = ROOT / "backend" / "django_core" / "apps" / "crm" / "contract_samples"
+        for nom, porteur in (("dispatch_permanences", "CADV104"),
+                             ("experiences_cadence", "CADV33"),
+                             ("lead_recontact", "CADV35"),
+                             ("reactivation_seaux", "CADV32")):
+            with self.subTest(nom=nom):
+                document = json.loads(
+                    (dossier / f"{nom}.json").read_text(encoding="utf-8"))
+                self.assertRegex(document["endpoint"], shapes._ENDPOINT)
+                self.assertIsInstance(document["exemple"], dict)
+                self.assertIn(porteur, document["pourquoi"])
+                self.assertNotIn(shapes.FORME_SERVEUR, document)
+
 
 class JsObjectTests(unittest.TestCase):
     def _shape(self, source):

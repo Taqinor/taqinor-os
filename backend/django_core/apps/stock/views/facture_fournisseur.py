@@ -443,7 +443,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses=corps('FactureComptesAPayer', results=FactureFournisseurSerializer(many=True),
                                    total_du=serializers.CharField()))
-    @action(detail=False, methods=['get'], url_path='comptes-a-payer')
+    @action(detail=False, methods=['get'], url_path='comptes-a-payer', pagination_class=None)
     def comptes_a_payer(self, request):
         """Liste des factures fournisseur NON soldées (à payer ou
         partiellement payées), triées par échéance puis date. INTERNE."""

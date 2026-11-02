@@ -25,6 +25,10 @@ from datetime import timedelta
 
 from celery import shared_task
 
+# AARG43 — UN préchargement de module pour les trois beats de recouvrement :
+# tout ce que lisent `montant_exigible` / `jours_retard` (APRF11, survivant).
+from apps.facturation.selectors import RELATIONS_MONTANT_DU
+
 logger = logging.getLogger(__name__)
 
 # Toute la logique de dates de ces jobs raisonne en heure du Maroc.
@@ -95,7 +99,7 @@ def check_overdue_factures():
         statut=Facture.Statut.EMISE,
         company_id__in=active_company_ids(),
     ).select_related('client').prefetch_related(
-        'lignes', 'paiements', 'avoirs')
+        *RELATIONS_MONTANT_DU)
     for facture in candidates:
         # CIQ214 — en retard seulement si l'EXIGIBLE reste dû (une retenue de
         # garantie non libérée n'est pas un retard).
@@ -275,7 +279,24 @@ def _email_parti(log):
 
 def _reporter_relance(facture, today):
     """AFAC45 — envoi en échec : le niveau n'est PAS consommé, la relance
-    est retentée au prochain jour ouvré de la société."""
+    est retentée au prochain jour ouvré de la société. AARG42 — au 3e échec
+    consécutif (EmailLog ECHEC depuis le dernier ENVOYE), la relance s'arrête
+    et le créateur de la facture est prévenu UNE fois."""
+    from .models import EmailLog
+    logs = EmailLog.objects.filter(company=facture.company, facture=facture)
+    dernier = logs.filter(statut=EmailLog.Statut.ENVOYE).order_by(
+        '-created_at').values_list('created_at', flat=True).first()
+    if logs.filter(statut=EmailLog.Statut.ECHEC, **(
+            {'created_at__gt': dernier} if dernier else {})).count() >= 3:
+        facture.prochaine_relance = None
+        facture.save(update_fields=['prochaine_relance'])
+        if facture.created_by_id:
+            from apps.notifications.services import notify
+            from apps.notifications.types_evenements import EventType
+            notify(facture.created_by, EventType.FACTURE_OVERDUE,
+                   'Relance impossible : adresse e-mail du client à corriger',
+                   body=f'Facture {facture.reference}', company=facture.company)
+        return
     cible = today + timedelta(days=1)
     try:
         from apps.notifications.calendar_utils import prochain_jour_ouvre
@@ -335,7 +356,7 @@ def relance_reminders():
     ).exclude(
         exclu_relances_jusquau__gte=today,
     ).select_related('client', 'company').prefetch_related(
-        'lignes', 'paiements', 'avoirs')
+        *RELATIONS_MONTANT_DU)
 
     from .recouvrement import ensure_default_followup_levels
     societes_pourvues = set()
@@ -510,7 +531,7 @@ def pre_echeance_reminders():
         date_echeance__isnull=False,
         company_id__in=active_company_ids(),
     ).select_related('client', 'company').prefetch_related(
-        'lignes', 'paiements', 'avoirs')
+        *RELATIONS_MONTANT_DU)
 
     profiles_cache = {}
     for facture in candidates:

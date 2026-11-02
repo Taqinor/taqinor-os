@@ -234,3 +234,37 @@ class BcMachineEtatsTests(TestCase):
                       str(r2.data))
         self.assertEqual(BonCommande.objects.filter(devis=devis).count(), 1)
         self.assertEqual(len(recus), 1)
+
+    def test_version_remplacee_refuse_un_bc(self):
+        """AARG18 (C-AARG-014) — V1 révisée restée « accepté » (inactive,
+        BC1 rattaché à V2) : la porte unique `creer_bon_commande` répond 409
+        `version_remplacee` (corps VNT24) par convertir-bc ET par la création
+        manuelle ; V2 garde son 409 « BC existant » ; 1 BC, stock intact."""
+        from apps.ventes.models import BonCommande, Devis
+        v1 = self._devis_panneaux('3')
+        v2 = Devis.objects.create(
+            company=self.company, reference=f'DEV-AFAC15-{_nxt()}',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'), mode_installation='residentiel')
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        self._bc(v2, statut='livre')
+        stock = self._stock(self.panneau)
+        r = self.api.post(f'/api/django/ventes/devis/{v1.id}/convertir-bc/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'version_remplacee')
+        self.assertEqual(r.data['successeur'],
+                         {'id': v2.id, 'reference': v2.reference})
+        self.assertEqual(
+            r.data['detail'],
+            f'Cette proposition a été remplacée par {v2.reference}.')
+        r = self.api.post('/api/django/ventes/bons-commande/', {
+            'client': self.client_obj.id, 'devis': v1.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'version_remplacee')
+        r = self.api.post(f'/api/django/ventes/devis/{v2.id}/convertir-bc/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('Un bon de commande existe déjà', str(r.data))
+        self.assertEqual(BonCommande.objects.filter(
+            devis__in=[v1, v2]).count(), 1)
+        self.assertEqual(self._stock(self.panneau), stock)

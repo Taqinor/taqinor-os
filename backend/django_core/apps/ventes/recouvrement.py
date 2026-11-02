@@ -149,6 +149,8 @@ def facture_relancable(facture):
         return False, (
             f'Statut {libelle} : la relance ne concerne qu\'une facture '
             f'ouverte et due.')
+    if getattr(facture, 'contestee_le', None):  # AARG22 — D-AFAC-89 (a)
+        return False, 'Facture contestée : la relance est suspendue.'
     if (montant_exigible(facture) or 0) <= 0:
         return False, 'Facture soldée : plus rien à relancer.'
     return True, ''

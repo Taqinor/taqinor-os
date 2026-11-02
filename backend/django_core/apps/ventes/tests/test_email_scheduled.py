@@ -276,6 +276,53 @@ class TestScheduledJobs(TestCase):
         # Idempotence : la date consommée → pas de second envoi.
         self.assertEqual(relance_reminders(), 0)
 
+    def test_beats_recouvrement_requetes_constantes(self):
+        """AARG43 (C-AARG-046) — les trois beats de recouvrement préchargent
+        tout ce que lit `montant_exigible` : les lectures des notes de débit,
+        retenues et affectations ne grandissent plus avec le nombre de
+        factures (2 puis 5)."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.ventes.scheduled import (
+            check_overdue_factures, pre_echeance_reminders, relance_reminders,
+        )
+        tables = ('ventes_notedebit', 'ventes_retenuesubie',
+                  'ventes_affectationpaiement')
+        FollowupLevel.objects.create(
+            company=self.company, ordre=1, nom='Rappel', delai_jours=7,
+            message='Merci de régler.')
+        n_ref = [0]
+
+        def _lectures(beat, nb, statut, echeance, relance=None):
+            # Les factures du tour précédent sortent des trois beats.
+            Facture.objects.filter(company=self.company).update(
+                statut=Facture.Statut.ANNULEE)
+            for _ in range(nb):
+                n_ref[0] += 1
+                f = self._facture(f'FAC-AARG43-{n_ref[0]:04d}', echeance,
+                                  statut=statut)
+                if relance:
+                    Facture.objects.filter(pk=f.pk).update(
+                        prochaine_relance=relance)
+            with CaptureQueriesContext(connection) as ctx:
+                beat()
+            return sum(1 for q in ctx.captured_queries
+                       if any(t in q['sql'] for t in tables))
+
+        passe = date.today() - timedelta(days=20)
+        cas = (
+            (check_overdue_factures, Facture.Statut.EMISE, passe, None),
+            (relance_reminders, Facture.Statut.EN_RETARD, passe,
+             date.today() - timedelta(days=1)),
+            (pre_echeance_reminders, Facture.Statut.EMISE,
+             date.today() + timedelta(days=40), None),
+        )
+        for beat, statut, echeance, relance in cas:
+            with self.subTest(beat=beat.__name__):
+                self.assertEqual(
+                    _lectures(beat, 2, statut, echeance, relance),
+                    _lectures(beat, 5, statut, echeance, relance))
+
     def test_casablanca_today_is_a_date(self):
         from apps.ventes.scheduled import casablanca_today, CASABLANCA_TZ
         self.assertEqual(CASABLANCA_TZ, 'Africa/Casablanca')
