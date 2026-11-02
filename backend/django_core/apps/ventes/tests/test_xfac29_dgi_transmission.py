@@ -154,6 +154,40 @@ class TestMockProviderTransmission(Xfac29TestBase):
         facture.refresh_from_db()
         self.assertEqual(facture.dgi_statut, Facture.DgiStatut.ACCEPTEE)
 
+    def test_brouillon_annulee_et_non_conforme_refuses(self):
+        """AARG21 (C-AARG-017) — brouillon / annulée : 409 à la transmission
+        ET à l'export ; émise sans ICE client (B2B) : 409 avec ses problèmes ;
+        `dgi_statut` reste `a_transmettre` ; émise conforme : 200."""
+        self.profile.dgi_export_actif = True
+        self.profile.save()
+        facture = self._facture()
+        base = f'/api/django/ventes/factures/{facture.id}'
+        for statut in (Facture.Statut.BROUILLON, Facture.Statut.ANNULEE):
+            Facture.objects.filter(pk=facture.pk).update(statut=statut)
+            for r in (self.api.post(f'{base}/dgi-transmettre/'),
+                      self.api.get(f'{base}/dgi-export/')):
+                self.assertEqual(r.status_code, 409, r.data)
+                self.assertEqual(
+                    r.data['detail'],
+                    'Seule une facture émise se transmet à la DGI.')
+            facture.refresh_from_db()
+            self.assertEqual(facture.dgi_statut,
+                             Facture.DgiStatut.A_TRANSMETTRE)
+        Facture.objects.filter(pk=facture.pk).update(
+            statut=Facture.Statut.EMISE)
+        Client.objects.filter(pk=self.client_b2b.pk).update(ice='')
+        r = self.api.post(f'{base}/dgi-transmettre/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('ICE du client manquant (client professionnel/B2B).',
+                      r.data['problemes'])
+        facture.refresh_from_db()
+        self.assertEqual(facture.dgi_statut, Facture.DgiStatut.A_TRANSMETTRE)
+        Client.objects.filter(pk=self.client_b2b.pk).update(
+            ice='ICE-CLIENT-XFAC29')
+        r = self.api.post(f'{base}/dgi-transmettre/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['dgi_statut'], 'acceptee')
+
     def test_never_two_transmissions_for_same_facture(self):
         facture = self._facture()
         first = transmettre_facture(facture)

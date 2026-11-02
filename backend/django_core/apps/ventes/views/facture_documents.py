@@ -126,6 +126,8 @@ class FactureDocumentsActionsMixin:
             return Response(
                 {'detail': 'Introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
+        from apps.ventes.dgi.transmission import exiger_facture_emise
+        exiger_facture_emise(facture)  # AARG21 — 409 hors émise/payée/en retard
         xml_str = build_ubl_xml(facture)
         response = HttpResponse(xml_str, content_type='application/xml')
         response['Content-Disposition'] = (
