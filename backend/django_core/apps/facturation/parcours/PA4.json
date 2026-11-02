@@ -656,6 +656,10 @@
     "etape": "PA4.07"
    },
    {
+    "source": "backend/django_core/apps/ventes/domain/encaissements.py::crediter_trop_percu_en_avance",
+    "etape": "PA4.09"
+   },
+   {
     "source": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement_avec_retenue",
     "etape": "PA4.11"
    },
