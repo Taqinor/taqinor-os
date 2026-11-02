@@ -8,18 +8,21 @@ import re
 from django.utils import timezone
 
 from . import activity, stages
-from .models import Canal, Lead
+from .models import Canal, Lead, LeadActivity
 from .leads_fusion import raison_refus_suppression
 from .cadence_touche import reprendre_cadence_apres_reouverture
 from .cadence_filet import assurer_prochaine_etape_apres_succes
 from .cadence_plan import arreter_cadence, sync_relance_activity
 from .fiche_funnel import (
+    ETAT_PAR_RAISON,
+    ParcRefuse,
     SortieSigneBloquee,
     _bulk_stage_allowed,
     _corps_whatsapp_en_masse,
     _resolve_owner,
     appliquer_stage_lead,
     desaccepter_devis_du_lead,
+    parquer_lead,
 )
 from .cadence_reponses import reattribuer_lead
 from .leads_socle import MOTIF_BULK_CADENCE_ACTIVE, leads_avec_cadence_active
@@ -121,6 +124,80 @@ def coerce_id_list(raw):
     return out
 
 
+#: CADV10 (conception v4 §5.2) — au plus 25 préparations WhatsApp en masse par
+#: jour et par utilisateur ; le compte se lit sur la trace laissée au chatter.
+PREPARER_WHATSAPP_PLAFOND_PAR_JOUR = 25
+TRACE_WHATSAPP_PREPARE = 'WhatsApp préparé en lot'
+
+
+def _preparations_whatsapp_du_jour(company, user):
+    """CADV10 — traces « WhatsApp préparé en lot » de ``user`` aujourd'hui
+    (jour de Casablanca) : aucun modèle, aucune migration."""
+    import datetime
+
+    from core.dates import aujourd_hui_local
+
+    from . import horaires
+    minuit = datetime.datetime.combine(
+        aujourd_hui_local(), datetime.time(0), tzinfo=horaires.CASABLANCA)
+    return LeadActivity.objects.filter(
+        company=company, user=user, created_at__gte=minuit,
+        body__startswith=TRACE_WHATSAPP_PREPARE).count()
+
+
+def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
+    """FG33 — la file de click-through WhatsApp, ordonnée : gardes ACRM15,
+    plafond et trace CADV10. Sortie de ``apply_bulk_action`` (C20)."""
+    from apps.ventes.utils.whatsapp import build_wa_url
+    template_id = params.get('template_id')
+    body_tpl = params.get('body') or ''
+    tpl = None
+    if template_id:
+        try:
+            from .models import MessageTemplate
+            tpl = MessageTemplate.objects.filter(
+                company=company, id=template_id).first()
+        except (ValueError, TypeError):  # id illisible : corps direct
+            tpl = None
+    queue = []
+    deja = _preparations_whatsapp_du_jour(company, user)
+    for lead in leads:
+        # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
+        # ``message_pour_etape`` / ``_lead_relancable``) : une personne
+        # qui a demandé à ne plus être contactée, un lead perdu ou
+        # archivé ne reçoit AUCUN message — sortis avec leur motif.
+        if getattr(lead, 'ne_plus_contacter', False):
+            skip(lead, 'ne plus contacter')
+            continue
+        if getattr(lead, 'perdu', False) or getattr(
+                lead, 'is_archived', False):
+            skip(lead, 'perdu/archivé')
+            continue
+        phone = lead.whatsapp or lead.telephone
+        if not phone:
+            continue
+        if deja + len(queue) >= PREPARER_WHATSAPP_PLAFOND_PAR_JOUR:
+            skip(lead, 'plafond journalier atteint '
+                       f'({PREPARER_WHATSAPP_PLAFOND_PAR_JOUR})')
+            continue
+        corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
+        wa_url = build_wa_url(phone, corps)
+        queue.append({
+            'lead_id': lead.id,
+            'nom': str(lead),
+            'phone': phone,
+            'wa_url': wa_url,
+        })
+        activity.log_bulk_note(lead, user, TRACE_WHATSAPP_PREPARE)
+    return {
+        'ok': True,
+        'op': 'prepare_whatsapp',
+        'queue': queue,
+        'count': len(queue),
+        'skipped': skipped,
+    }
+
+
 def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     """Applique une action en masse à une sélection de leads de la société.
 
@@ -161,6 +238,13 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
         target_stage = params.get('stage')
         if target_stage not in stages.STAGES:
             raise ValueError("Étape cible invalide.")
+        # CADV73 (D-CADV-4) — le Froid en lot exige sa raison ; une raison à
+        # date (standby) ne s'applique pas à un lot sans date.
+        parc_raison = params.get('parc_raison')
+        if target_stage == stages.COLD and not (
+                isinstance(parc_raison, str)
+                and ETAT_PAR_RAISON.get(parc_raison) in ('nurture', 'archive')):
+            raise ValueError("Raison de mise au Froid obligatoire.")
     elif op == 'set_canal':
         target_canal = _texte(params.get('canal'))
         if not target_canal:
@@ -261,12 +345,19 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                         # ``lead_stage_changed`` (playbooks NTCRM12 +
                         # séquences compta XMKT1 partaient pour un PATCH
                         # unitaire, jamais pour un bulk).
-                        appliquer_stage_lead(lead, target_stage, user=user)
-                        activity.log_bulk_change(
-                            lead, user, 'stage', old, target_stage)
+                        if target_stage == stages.COLD:
+                            parquer_lead(lead, parc_raison, None, user)
+                        else:
+                            appliquer_stage_lead(lead, target_stage, user=user)
+                            activity.log_bulk_change(
+                                lead, user, 'stage', old, target_stage)
                 except SortieSigneBloquee as exc:
                     lead.stage = old
                     skip(lead, exc.message)
+                    continue
+                except ParcRefuse as exc:
+                    lead.refresh_from_db()
+                    skip(lead, str(exc))
                     continue
                 # QJ9 — entrée manuelle en masse dans SIGNED : pas de CAPI ici
                 # (pas de devis accepté associé ni d'attribution UTM disponible).
@@ -429,53 +520,12 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
             # FG33 — Préparer la file WhatsApp en masse (pas d'envoi auto)
             elif op == 'prepare_whatsapp':
                 # Pas de décompte updated/unchanged — cette action retourne
-                # directement en dehors de la boucle (pas de side-effect).
+                # directement en dehors de la boucle.
                 pass
 
     # FG33 — Résultat spécial : file de click-through WhatsApp ordonné
     if op == 'prepare_whatsapp':
-        from apps.ventes.utils.whatsapp import build_wa_url
-        template_id = params.get('template_id')
-        body_tpl = params.get('body') or ''
-        tpl = None
-        if template_id:
-            try:
-                from .models import MessageTemplate
-                tpl = MessageTemplate.objects.filter(
-                    company=company, id=template_id).first()
-            except (ValueError, TypeError):  # id illisible : corps direct
-                tpl = None
-        queue = []
-        for lead in leads:
-            # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
-            # ``message_pour_etape`` / ``_lead_relancable``) : une personne
-            # qui a demandé à ne plus être contactée, un lead perdu ou
-            # archivé ne reçoit AUCUN message — sortis avec leur motif.
-            if getattr(lead, 'ne_plus_contacter', False):
-                skip(lead, 'ne plus contacter')
-                continue
-            if getattr(lead, 'perdu', False) or getattr(
-                    lead, 'is_archived', False):
-                skip(lead, 'perdu/archivé')
-                continue
-            phone = lead.whatsapp or lead.telephone
-            if not phone:
-                continue
-            corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
-            wa_url = build_wa_url(phone, corps)
-            queue.append({
-                'lead_id': lead.id,
-                'nom': str(lead),
-                'phone': phone,
-                'wa_url': wa_url,
-            })
-        return {
-            'ok': True,
-            'op': 'prepare_whatsapp',
-            'queue': queue,
-            'count': len(queue),
-            'skipped': skipped,
-        }
+        return _file_whatsapp_en_masse(company, user, leads, params, skip, skipped)
 
     return {
         'ok': True,

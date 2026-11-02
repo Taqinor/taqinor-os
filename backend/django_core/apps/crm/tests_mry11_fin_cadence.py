@@ -23,10 +23,11 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm import horaires, stages
-from apps.crm.models import Lead, RelanceEtape
+from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.cadence_touche import marquer_etape_relance
-from apps.crm.cadence_plan import arreter_cadence
+from apps.crm.cadence_plan import arreter_cadence, cloturer_cadence
 from apps.parametres.models import CompanyProfile
+from apps.parametres.models_relance import CadenceRelanceEtape
 
 User = get_user_model()
 
@@ -126,6 +127,24 @@ class ClotureContactTests(_Base):
         # Le Protocole v3 compte SIX appels : l'ancien « 7 tentatives » ne
         # correspondait à rien dans la cadence réelle (migration crm.0093).
         self.assertNotIn('7 tentatives', self.lead.tags or '')
+
+    def test_l_etiquette_dit_le_vrai_nombre_d_appels(self):
+        """CADV80 — une société à 5 appels étiquette « 5 » ; rejouer ne double
+        rien. Mutant : renvoyer 6 en dur ⇒ échec."""
+        gabarits = CadenceRelanceEtape.cadence_pour(self.company, 'contact')
+        appels = [g for g in gabarits if g.canal == 'appel']
+        self.assertEqual(len(appels), 6)
+        CadenceRelanceEtape.objects.filter(pk=appels[-1].pk).update(actif=False)
+        LeadActivity.objects.bulk_create([
+            LeadActivity(company=self.company, lead=self.lead, user=self.acteur,
+                         kind=LeadActivity.Kind.APPEL, body='Pas de réponse.')
+            for _ in range(5)])
+        cloturer_cadence(self.lead, self.acteur, 'contact')
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.tags, 'Injoignable 5 appels')
+        cloturer_cadence(self.lead, self.acteur, 'contact')
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.tags, 'Injoignable 5 appels')
 
     def test_deux_reveils_sont_poses(self):
         self._epuiser('contact')

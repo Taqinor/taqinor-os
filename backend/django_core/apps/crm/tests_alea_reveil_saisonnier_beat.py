@@ -82,6 +82,30 @@ class ReveilSaisonnierBeatTests(TestCase):
         self.assertEqual(poser_reveils_saisonniers_task.name,
                          'crm.poser_reveils_saisonniers')
 
+    def test_le_passage_quotidien_est_plafonne_a_25(self):
+        """CADV91 — 27 dormants : 25 au 1er passage, 2 au 2e, aucun servi deux
+        fois. Mutant : 25 → 26 ⇒ échec."""
+        from apps.crm.tasks import poser_reveils_saisonniers_task
+        from testkit.time import frozen
+
+        company, owner = self._societe('cadv91-plafond')
+        for rang in range(27):
+            self._dormant(company, owner, nom=f'Dormant {rang}')
+        cles = RelanceEtape.objects.filter(
+            company=company, template_cle=REVEIL_SAISON_CLE)
+        gel = frozen(JUIN_2026)
+        gel.start()
+        try:
+            poser_reveils_saisonniers_task()
+            self.assertEqual(cles.count(), 25)
+            poser_reveils_saisonniers_task()
+            self.assertEqual(cles.count(), 27)
+            poser_reveils_saisonniers_task()
+        finally:
+            gel.stop()
+        self.assertEqual(cles.count(), 27)
+        self.assertEqual(cles.values('lead_id').distinct().count(), 27)
+
     def test_une_touche_par_an(self):
         from apps.crm.tasks import poser_reveils_saisonniers_task
 

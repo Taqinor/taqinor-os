@@ -524,6 +524,11 @@ def _dispatch_mise_en_attente(sender, instance, **kwargs):
             getattr(instance, 'pk', '?'), exc_info=True)
 
 
+@receiver(post_save, sender=Lead, dispatch_uid='crm_stop_cadence_on_archive')
+def _relais_arreter_cadence_on_archive(**kwargs):
+    return receivers_cadence._arreter_cadence_on_archive(**kwargs)
+
+
 # ── VTA5 — LE FEU VERT D'UNE VISITE TERRAIN REDESCEND SUR LE LEAD ────────────
 #
 # ``apps.visites`` a émis ``visite_validee`` ; c'est ICI que le CRM décide ce

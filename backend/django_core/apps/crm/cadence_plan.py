@@ -28,16 +28,19 @@ from .cadence_reperes import (
     OUTCOME_VISITE_ACCEPTEE,
     PREFIXE_NOTE_REPORT,
     _CLOTURE_PLAFOND,
+    _CLOTURE_RAISONS,
     _CLOTURE_TAGS,
     _LIBELLES_FILET_HORS_GABARIT,
     _canal_effectif,
     _lead_porte_tag,
     est_etape_de_visite,
     q_visite,
+    tag_injoignable,
 )
-from .fiche_funnel import _rang_funnel, avancer_stage_lead_vers, poser_tag_lead
+from .fiche_funnel import ParcRefuse, _rang_funnel, parquer_lead, poser_tag_lead
 from .leads_doublons import find_duplicates_by_contact
 from .models import Lead, LeadActivity, RelanceEtape
+from .tasks import REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -795,48 +798,29 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # ``relance_date`` déjà passée n'est plus conservée — le lead n'apparaît
     # plus « en retard » alors que sa première touche est à venir.
     _recaler_file(lead, user)
-    # VALID1 (fondateur 07/09/2026) — le plan après-devis POSE la validité
-    # de la proposition (si vide) : valable jusqu'à la DERNIÈRE touche du
-    # plan — une date dérivée des cadences du fondateur, jamais inventée.
-    # Les messages « validité de la proposition » cessent d'omettre leur
-    # phrase. Frontière M3 : écriture via la façade services de ventes.
+    # CADV81 (D-CADV-3, remplace VALID1 et CAD57) — le plan après-devis POSE la
+    # validité de la proposition (si vide) : le réglage société depuis l'envoi,
+    # pour tous, jamais lue sur ses barreaux. Les messages « validité de la
+    # proposition » cessent d'omettre leur phrase. Frontière M3 : écriture via
+    # la façade services de ventes.
     if cadence == 'apres_devis' and devis is not None:
         try:
-            from apps.ventes.services import poser_validite_devis
-            # CKP2 — la validité se lit sur la DERNIÈRE échéance de la
-            # PARTITION, jamais sur la dernière ligne matérialisée : depuis la
-            # cadence réactive, celle-ci est la PREMIÈRE touche, et la
-            # proposition aurait expiré le jour même de son envoi.
-            derniere = echeances[-1][1].astimezone(horaires.CASABLANCA).date()
-            # CAD57 — un PARTICULIER financé à crédit ne peut pas, légalement,
-            # boucler dans cette fenêtre : la loi 31-08 (consommateur) impose
-            # 10 jours de réflexion PUIS 7 jours de rétractation une fois
-            # l'offre de crédit émise. CIQ510 — un PROFESSIONNEL n'est pas
-            # visé par la loi 31-08 : c'est le délai d'instruction de sa
-            # banque ou de l'organisme (financement pro déclaré) ou l'attente
-            # d'un accord déclarée qui allonge — sans conclusion juridique.
-            # Décision fondateur du 21/09/2026 : validité distincte et plus
-            # longue (le réglage société), J+14 sinon.
-            fin_du_plan = derniere
-            derniere = _validite_selon_financement(lead, devis, derniere)
-            # AGR523 — la note dit d'où vient une validité allongée par un
-            # dossier de subvention en instruction (le crédit garde la sienne).
-            # CIQ510 — idem pour une attente d'accord déclarée.
-            if derniere == fin_du_plan or lead_finance_a_credit(lead) \
-                    or lead_financement_pro_declare(lead):
-                motif = 'fin du plan de suivi'
-            elif lead_en_attente_d_accord(lead):
-                motif = MOTIF_VALIDITE_ATTENTE
-            elif lead_dossier_subvention_en_instruction(lead):
-                motif = MOTIF_VALIDITE_SUBVENTION
-            else:
-                motif = 'fin du plan de suivi'
-            if poser_validite_devis(devis, derniere):
+            from apps.ventes.services import jours_validite_societe, poser_validite_devis
+            validite = _validite_selon_financement(devis)
+            motif = f"{jours_validite_societe(lead.company)} jours depuis l'envoi"
+            # AGR523 / CIQ510 — la note garde le contexte d'une subvention en
+            # instruction ou d'une attente d'accord (la date reste la même).
+            if not (lead_finance_a_credit(lead)
+                    or lead_financement_pro_declare(lead)):
+                if lead_en_attente_d_accord(lead):
+                    motif = MOTIF_VALIDITE_ATTENTE
+                elif lead_dossier_subvention_en_instruction(lead):
+                    motif = MOTIF_VALIDITE_SUBVENTION
+            if poser_validite_devis(devis, validite):
                 LeadActivity.objects.create(
                     company=lead.company, lead=lead, user=None,
                     kind=LeadActivity.Kind.NOTE,
-                    body=(f'Validité de la proposition posée au '
-                          f'{derniere:%d/%m/%Y} — {motif}.'))
+                    body=f'Validité posée au {validite:%d/%m/%Y} — {motif}.')
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', 'initialiser_plan_relance', exc_info=True)
     return resultats
@@ -1101,14 +1085,26 @@ def cloturer_cadence(lead, user, cadence):
         # l'étape courante avant d'en juger — même précaution que
         # `avancer_stage_new_vers_contacted`.
         if lead.pk:
-            lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived'])
+            lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived',
+                                         'parc_etat', 'parc_raison',
+                                         'parc_jusqu_au'])
         if lead.stage != stages.COLD and (
                 _rang_funnel(lead.stage) > _rang_funnel(plafond)):
             # Le lead a PROGRESSÉ pendant la cadence (devis envoyé, signé) :
             # la touche restée ouverte ne doit pas le faire retomber.
             return
-        avancer_stage_lead_vers(lead, user, stages.COLD)
-        tag = _CLOTURE_TAGS.get(cadence)
+        try:
+            parquer_lead(lead, _CLOTURE_RAISONS[cadence], None, user)
+        except ParcRefuse as refus:
+            # CADV22 — le lead reste à son étape, le refus se lit au chatter ;
+            # le filet QJ-INVARIANT de ``marquer_etape_relance`` pose sa suite.
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body=f'Mise au Froid refusée : {refus}.')
+            return
+        tag = (tag_injoignable(lead.company) if cadence == 'contact'
+               else _CLOTURE_TAGS.get(cadence))
         if tag:
             poser_tag_lead(lead, user, tag)
         # SUIVI E19 (30/09/2026) — une étape de FILET encore ouverte (cadence
@@ -1413,6 +1409,11 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     ancien = cible.due_at
     delta = (nouveau - ancien) if ancien else None
     deplacer_echeance_etape(cible, nouveau, report_humain=compter_report)
+    # CADV11 — seul un geste humain écrit la date convenue ; c'est celle de la
+    # touche recalée sur la fenêtre (la date que le client verra tenue).
+    if compter_report:
+        cible.rappel_convenu_le = nouveau.astimezone(horaires.CASABLANCA).date()
+        cible.save(update_fields=['rappel_convenu_le'])
     # ERR-ALEA-RELANCE-DIMANCHE — la date de relance SAISIE pour ce report
     # (AMET20 la protège de ``_recaler_file``) suit le recalage de SA touche :
     # un dimanche ou un férié visé glisse au même jour ouvré que la touche
@@ -1646,7 +1647,7 @@ def _poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
 
 
 def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
-                              limite=200):
+                              limite=REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE):
     """CAD74 — passe la fenêtre juin-septembre sur les dormants d'une société."""
     from .cadence_reveil_saison import poser_reveils_saisonniers as _tous
     return _tous(company, user, maintenant=maintenant, limite=limite)

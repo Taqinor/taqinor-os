@@ -883,39 +883,17 @@ def lead_en_attente_d_accord(lead):
                for tag in ETIQUETTES_RAISON_ATTENTE)
 
 
-def _validite_selon_financement(lead, devis, date_fin_de_suivi):
-    """La date de validité à POSER sur ce devis.
+def _validite_selon_financement(devis):
+    """CADV81 (D-CADV-3, 01/11/2026) — la date de validité à POSER sur ce
+    devis : l'envoi + le réglage société, comptant, indécis ou financé.
 
-    Comptant / indécis : la fin du plan de suivi (comportement VALID1
-    inchangé — une date dérivée des cadences du fondateur, jamais inventée).
-    Crédit : la date du réglage société, si elle est PLUS LOINTAINE — on ne
-    raccourcit jamais une validité déjà plus longue, et une société qui règle
-    sa validité à 10 jours ne se retrouve pas avec un devis financé qui expire
-    AVANT la fin de son propre suivi.
+    DÉCOUPLÉE du plan de suivi (VALID1 la liait à sa dernière touche, CAD57 la
+    ramenait à J+14 hors financement : ≈ 50 des devis expirés avaient 13-14
+    jours, et un plan à J90 aurait donné 90 jours). Le nom reste celui du
+    golden de scission ; ``None`` si aucune date n'est connue (rien de posé).
     """
-    # AGR523 — un dossier de subvention DÉPOSÉ (en instruction) reçoit la
-    # MÊME règle que le crédit : le réglage société, s'il est plus lointain.
-    # Aucun nouveau nombre, aucune durée propre à la FDA.
-    # CIQ510 — même règle pour un financement PRO déclaré (contrat CIQ1) et
-    # pour un lead qui porte une étiquette d'attente d'accord (CIQ508).
-    if not (lead_finance_a_credit(lead)
-            or lead_financement_pro_declare(lead)
-            or lead_en_attente_d_accord(lead)
-            or lead_dossier_subvention_en_instruction(lead)):
-        return date_fin_de_suivi
-    try:
-        from apps.ventes.services import date_validite_credit
-        candidate = date_validite_credit(devis)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-        logger.warning(
-            'CAD57 : validité crédit illisible (devis #%s)',
-            getattr(devis, 'pk', '?'), exc_info=True)
-        return date_fin_de_suivi
-    if candidate is None:
-        return date_fin_de_suivi
-    if date_fin_de_suivi is None:
-        return candidate
-    return max(candidate, date_fin_de_suivi)
+    from apps.ventes.services import date_validite_credit
+    return date_validite_credit(devis)
 
 
 # ── CAD-E ── CAD59 — le message J9 et le PDF disent la MÊME date ───────────

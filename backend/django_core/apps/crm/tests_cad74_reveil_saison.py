@@ -190,6 +190,37 @@ class PoseDuReveilSaisonnierTests(_Base):
         self.assertIsNone(_poser_reveil_saisonnier(lead, self.acteur))
         self.assertIn('Froid', _motif_de_refus(lead))
 
+    def test_un_lead_archive_ne_recoit_pas_le_reveil_saisonnier(self):
+        """CADV28 — Nurture servi, Archive jamais, par la porte ET par la
+        requête. Mutant : retirer le filtre de la requête ⇒ échec."""
+        nurture = self._dormant(nom='Nurture', parc_etat='nurture',
+                                parc_raison='injoignable')
+        archive = self._dormant(nom='Archive', parc_etat='archive',
+                                parc_raison='archive_odoo')
+        self.assertEqual(_motif_de_refus(archive),
+                         'Lead à l’état Archive : jamais recontacté.')
+        posees = poser_reveils_saisonniers(self.company, self.acteur)
+        self.assertEqual([e.lead_id for e in posees], [nurture.pk])
+        self.assertEqual(poser_reveils_saisonniers(self.company, self.acteur), [])
+        self.assertEqual(RelanceEtape.objects.filter(
+            template_cle=REVEIL_SAISON_CLE).count(), 1)
+
+    def test_un_perdu_prix_recoit_le_reveil_pas_un_perdu_concurrent(self):
+        """CADV90 — liste fermée, sans casse ; un perdu archivé ou opposé reste
+        refusé. Mutant : élargir la liste à « Concurrent » ⇒ échec."""
+        prix = self._dormant(nom='Prix', perdu=True, motif_perte='prix')
+        for nom, champs in (
+                ('Concurrent', {'motif_perte': 'Concurrent'}),
+                ('Sans motif', {}),
+                ('Archive', {'motif_perte': 'Prix', 'is_archived': True}),
+                ('Oppose', {'motif_perte': 'Prix', 'ne_plus_contacter': True})):
+            self._dormant(nom=nom, perdu=True, **champs)
+        posees = poser_reveils_saisonniers(self.company, self.acteur)
+        self.assertEqual([e.lead_id for e in posees], [prix.pk])
+        self.assertEqual(poser_reveils_saisonniers(self.company, self.acteur), [])
+        self.assertEqual(RelanceEtape.objects.filter(
+            template_cle=REVEIL_SAISON_CLE).count(), 1)
+
     def test_un_archive_ou_un_perdu_ne_recoit_rien(self):
         archive = self._dormant(nom='Archive', is_archived=True)
         self._reveil_pose_le(archive, datetime.date(2026, 3, 2))

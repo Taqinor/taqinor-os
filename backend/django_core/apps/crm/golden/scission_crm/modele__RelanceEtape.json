@@ -280,6 +280,16 @@
    },
    "nom": "nb_reports",
    "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Date de rappel convenue"
+   },
+   "nom": "rappel_convenu_le",
+   "type": "DateField"
   }
  ],
  "db_table": "crm_relanceetape",

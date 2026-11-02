@@ -90,6 +90,16 @@ class ExportLeadsPorteeTests(Crx16Base):
             "L'export .xlsx contourne la portée de visibilité du rôle : un "
             'lead hors portée est sorti en clair dans le fichier.')
 
+    def test_un_lead_oppose_n_est_pas_exporte(self):
+        """CADV67 — sélection de deux ids dont un opposé : une seule ligne."""
+        Lead.objects.filter(pk=self.lead_autre.pk).update(ne_plus_contacter=True)
+        self.auth(self.autre)
+        resp = self.api.post(
+            '/api/django/crm/leads/export-xlsx/',
+            {'ids': [self.lead_mien.pk, self.lead_autre.pk]}, format='json')
+        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
+        self.assertEqual(_lignes_xlsx(resp), ['Lead Mien'])
+
     def test_role_sans_portee_exporte_tout(self):
         """Non-régression : une portée « all » exporte comme avant."""
         self.auth(self.autre)

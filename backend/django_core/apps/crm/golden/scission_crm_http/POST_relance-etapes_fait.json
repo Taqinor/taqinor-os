@@ -39,6 +39,7 @@
    "due_date": "2026-10-01",
    "libelle": "Préparer et envoyer le devis (ou fixer un rappel)"
   },
+  "rappel_convenu_le": null,
   "statut": "fait",
   "statut_libelle": "Fait",
   "suites": {},
