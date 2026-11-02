@@ -13,11 +13,10 @@
  * rendered it.
  */
 import RealisationSlugBody from '../../../components/RealisationSlugBody.astro';
+import { caseStudyPage } from '../../../lib/realisationsView';
 import Layout from '../../../layouts/Layout.astro';
 import { REALISATIONS, CITIES } from '../../../lib/realisations';
-import { caseStudyBySlug } from '../../../lib/caseStudies';
 import { NAP } from '../../../lib/nap';
-import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
 
 export function getStaticPaths() {
@@ -25,10 +24,8 @@ export function getStaticPaths() {
 }
 
 const { r } = Astro.props;
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L, cs } = caseStudyPage(Astro.url.pathname, r.slug);
 
-const cs = caseStudyBySlug(r.slug, locale);
 
 // Nom de ville en arabe (pour les villes de la zone de service).
 const AR_CITY_NAME: Record<string, string> = {

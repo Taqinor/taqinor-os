@@ -5,20 +5,18 @@
  * 9 June 2026 kept exact). Internal links via localizeNavHref. FR untouched.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 import PourquoiTaqinorBloc4D73 from '../../components/blocs/PourquoiTaqinorBloc4D73.astro';
 import PourquoiTaqinorP8D8E from '../../components/blocs/PourquoiTaqinorP8D8E.astro';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-const devisHref = L('/devis/mon-toit');
+const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
 // WB4 (2026-07-04) — derived instead of a hand-typed literal, mirroring FR.
 // The aggregate installed-kWc total (sum across projects) is no longer shown

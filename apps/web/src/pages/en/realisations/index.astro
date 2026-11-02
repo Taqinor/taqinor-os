@@ -22,39 +22,27 @@ import StickyCta from '../../../components/StickyCta.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import BrandStrip from '../../../components/BrandStrip.astro';
 import { REALISATIONS, standardCaption } from '../../../lib/realisations';
-import { caseStudyBySlug } from '../../../lib/caseStudies';
-import { getLocaleFromPath } from '../../../i18n/utils';
+import { realisationsItemListJsonLd, realisationsPage, villesUniques } from '../../../lib/realisationsView';
 import { localizeNavHref } from '../../../i18n/pages';
-import { NAP } from '../../../lib/nap';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L, altOf } = realisationsPage(Astro.url.pathname);
 
 // WC5 (2026-07-05) — the aggregate "kWc installed" figure (sum across all
 // installations) is removed site-wide; only per-installation power remains.
 // WN2 (2026-07-05) — a city count (~3) rendered as a monumental figure reads
 // as a small, underwhelming number; a qualitative list of real city names
 // (derived from REALISATIONS) carries the same information without a badge.
-const villesUniques = [...new Set(REALISATIONS.map((r) => r.ville))];
 
 // alt localisé (repli FR si absent dans la map de l'étude).
-const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale).alts[r.photos[0].name] ?? r.photos[0].alt;
 
 // W289 — ItemList schema, same shape as FR, English name/description.
-const itemListJsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'ItemList',
-  name: 'Taqinor solar installations — viewable, tracked production',
-  description:
-    'Solar installations actually fitted by Taqinor, viewable on request, with real-time production monitoring.',
-  itemListElement: REALISATIONS.map((r, i) => ({
-    '@type': 'ListItem',
-    position: i + 1,
-    url: new URL(L(`/realisations/${r.slug}`), Astro.site).href,
-    name: `Solar installation${r.kwc ? ` ${r.kwc}` : ''} in ${r.ville} — ref. ${r.ref}`,
-  })),
-  provider: { '@type': 'LocalBusiness', name: NAP.name, url: NAP.url },
-};
+const itemListJsonLd = realisationsItemListJsonLd(
+  L,
+  Astro.site,
+  'Taqinor solar installations — viewable, tracked production',
+  'Solar installations actually fitted by Taqinor, viewable on request, with real-time production monitoring.',
+  (r) => `Solar installation${r.kwc ? ` ${r.kwc}` : ''} in ${r.ville} — ref. ${r.ref}`,
+);
 import RealisationsIndexSection9BE4 from '../../../components/blocs/RealisationsIndexSection9BE4.astro';
 import PhotoLightbox from '../../../components/PhotoLightbox.astro';
 import '../../../styles/realisations-hover-zoom.css';

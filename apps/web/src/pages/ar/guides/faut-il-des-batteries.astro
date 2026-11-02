@@ -7,25 +7,21 @@
  * page — never a dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
+import { articlePage } from '../../../lib/pageCtx';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import { NAP } from '../../../lib/nap';
-import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
 // W310 — يعيد كتلتَي KeyFigure و Callout الموجودتين في النسخة الفرنسية
 // (إحصائية 6000 دورة + نصيحة «الانعكاس الصحيح») واللتين سقطتا صامتتين من هذه المرآة.
 import Callout from '../../../components/Callout.astro';
 import KeyFigure from '../../../components/KeyFigure.astro';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-
-const url = new URL(Astro.url.pathname, Astro.site).href;
 // W291 — صورة OG (نفس الرابط المُمرَّر إلى ogSlug أدناه)، لأهلية Article rich results.
-const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const { locale, L, url, schemaImageUrl } = articlePage(Astro.url.pathname, Astro.site, '/og/equipement.png');
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
