@@ -19,7 +19,8 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.crm import stages
 from apps.crm.activity import log_bulk_note
-from apps.crm.cadence_plan import ISSUES_CLIENT_JOINT
+from apps.crm.cadence_plan import ISSUES_CLIENT_JOINT, arreter_cadence
+from apps.crm.cadence_selectors import leads_reveil_sans_historique
 from apps.crm.fiche_funnel import avancer_stage_lead_vers, poser_tag_lead
 from apps.crm.management.commands.placer_anciens_leads import (
     _resoudre_company,
@@ -29,6 +30,7 @@ from apps.ventes.selectors import leads_ayant_recu_un_devis
 
 TAG_INJOIGNABLE = 'Parc — injoignable'
 TAG_PAS_MAINTENANT = 'Parc — pas maintenant (sans date)'
+MOTIF_REVEIL_AVEUGLE = 'réveil sans historique : jamais joint ni chiffré'
 
 
 def _est_froid(valeur):
@@ -76,6 +78,32 @@ class Command(BaseCommand):
         parser.add_argument('--limite', type=int, default=None)
         parser.add_argument('--ids', default='',
                             help='Ids de leads séparés par des virgules.')
+        parser.add_argument(
+            '--population', choices=('rebonds', 'reveils'), default='rebonds',
+            help="rebonds (défaut) : remise au Froid ; reveils (CADV3) : "
+                 "annule les réveils ouverts des leads jamais joints ni "
+                 "chiffrés.")
+
+    def _reveils(self, company, ids, options):
+        """CADV3 — annule les touches ``reveil`` des réveils « aveugles »."""
+        leads = leads_reveil_sans_historique(company)
+        if ids:
+            leads = leads.filter(pk__in=ids)
+        leads = list(leads)
+        if options.get('limite'):
+            leads = leads[:max(1, options['limite'])]
+        self.stdout.write(
+            f'{len(leads)} lead(s) à réveil sans historique à arrêter.')
+        for lead in leads:
+            self.stdout.write(f'  #{lead.pk} {lead.nom}')
+        if not options['apply']:
+            self.stdout.write("Dry-run — rien n'est écrit (--apply).")
+            return
+        for lead in leads:
+            arreter_cadence(lead, user=None, motif=MOTIF_REVEIL_AVEUGLE,
+                            cadences=['reveil'])
+        self.stdout.write(self.style.SUCCESS(
+            f'{len(leads)} lead(s) : réveils annulés.'))
 
     def handle(self, *args, **options):
         company = _resoudre_company(options.get('company'))
@@ -83,6 +111,8 @@ class Command(BaseCommand):
             ids = [int(i) for i in options['ids'].split(',') if i.strip()]
         except ValueError:
             raise CommandError('--ids : entiers séparés par des virgules.')
+        if options['population'] == 'reveils':
+            return self._reveils(company, ids, options)
         leads = _rebonds(company, ids or None)
         if options.get('limite'):
             leads = leads[:max(1, options['limite'])]

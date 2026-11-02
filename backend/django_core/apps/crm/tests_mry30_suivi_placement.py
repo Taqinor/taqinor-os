@@ -1118,3 +1118,43 @@ class CommandeReparationTests(_PlacementBase):
         self.assertEqual(l3.telephone, '212612345678')
         rejeu = self._appeler('normaliser_telephones_leads', '--apply')
         self.assertIn('0 lead(s) à normaliser', rejeu)
+
+    def _poser_reveils(self, lead):
+        for ordre, canal in ((1, 'whatsapp'), (2, 'appel')):
+            RelanceEtape.objects.create(
+                company=self.company, lead=lead, cadence='reveil',
+                ordre=ordre, due_date=MERCREDI.date(), canal=canal,
+                libelle=f'Réveil J{30 * ordre}')
+
+    def test_reveils_aveugles_annules_les_autres_gardes(self):
+        """CADV3 — L1 jamais joint ni chiffré : réveils annulés ; L2 chiffré
+        et L3 joint gardent les leurs."""
+        l1 = self._lead('L1')
+        l2 = self._lead('L2')
+        l3 = self._lead('L3')
+        self._devis(l2)
+        LeadActivity.objects.create(
+            company=self.company, lead=l3, user=self.acteur,
+            kind=LeadActivity.Kind.APPEL, outcome='joint')
+        for lead in (l1, l2, l3):
+            self._poser_reveils(lead)
+        texte = self._appeler('reparer_rebonds_froid', '--population',
+                              'reveils')
+        self.assertIn(f'#{l1.pk}', texte)
+        self.assertNotIn(f'#{l2.pk}', texte)
+        self.assertNotIn(f'#{l3.pk}', texte)
+        self.assertEqual(l1.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).count(), 2, 'dry-run')
+        self._appeler('reparer_rebonds_froid', '--population', 'reveils',
+                      '--apply')
+        annulees = l1.relance_etapes.filter(
+            statut=RelanceEtape.Statut.ANNULEE)
+        self.assertEqual(annulees.count(), 2)
+        self.assertTrue(all('jamais joint ni chiffré' in e.note
+                            for e in annulees))
+        for lead in (l2, l3):
+            self.assertEqual(lead.relance_etapes.filter(
+                statut=RelanceEtape.Statut.A_FAIRE).count(), 2)
+        rejeu = self._appeler('reparer_rebonds_froid', '--population',
+                              'reveils', '--apply')
+        self.assertIn('0 lead(s) à réveil', rejeu)
