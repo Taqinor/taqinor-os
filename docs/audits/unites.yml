@@ -691,3 +691,24 @@ unites:
     date: 2026-11-02
     dossier: docs/audits/2026-11-02-parcours-PA4.md
     notes: "Premier audit de PARCOURS (L3, 02/11/2026) : 51 constats dont 22 prouvés par sonde (6 S1 argent : avoir sur facture payée, annulation d'avoir miroir, RAS après avoir, gestes d'argent sans `encaisser` dont cause racine `module_de_la_vue`, facture émise détachée de sa vente ⇒ double facturation ; 13 S2) ; parcours heureux rejoué par l'API sans écart ; D-AARG-1..5 ; 1 critique Fable (5 écarts, 4 sondés). Tâches AARG1-58."
+  - id: PA3
+    rang: 21
+    declencheur: devis-signature
+    titre: "Parcours PA3 « Devis → signature » : /ventes/devis/nouveau → envoi → /proposal (moteur, règle #4) → /proposition/<token> → signature (3 portes) → devis_accepted → refus / expiration / révision V2 / désacceptation (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "table backend/django_core/apps/ventes/parcours/PA3.json (pilote devis) ; apps/ventes (vues devis, domain, public, quote_engine, utils), portail/views_client.py, crm (receivers, fiche_selectors), installations/receivers.py, calepinage/services/devis.py, frontend pages/features ventes"
+    coutures:
+      - "passages de main générateur↔serveur↔moteur↔page publique↔signature↔chantier/lead ; rôles × portes du devis ; sorties client (PDF /proposal, PDF public, page publique, e-mail et WhatsApp d'envoi, exemplaire signé)"
+    P: 4
+    I: 5
+    score: 20
+    niveau: L3
+    statut: audité
+    groupe: ADVS
+    plan: docs/plans/PLAN_AUDIT_DEVIS.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md]
+    pr: 1227
+    date: 2026-11-02
+    dossier: docs/audits/2026-11-02-parcours-PA3.md
+    notes: "Deuxième audit de PARCOURS (L3, 02/11/2026) : 38 constats dont 26 prouvés par sonde (7 S1 : arrondi −100 MAD sur prix tapé, garde kWh absente au calepinage, envoyé re-rendu aux réglages courants, sceau C&I rompu, re-signature qui garde la 1re preuve, option « sans batterie » PDF ≠ serveur/acompte, étude agricole corrigée hors empreinte ; 15 S2) ; parcours heureux rejoué par l'API sans écart ; D-ADVS-1..4 répondues, D-ADVS-5 ouverte ; 1 critique Fable (2 trous sondés). Tâches ADVS1-44."
