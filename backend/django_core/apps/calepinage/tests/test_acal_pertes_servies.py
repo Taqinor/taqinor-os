@@ -23,6 +23,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.calepinage.models import Calepinage
+from apps.calepinage.serializers_pertes import PostesDePertesSerializer
 from apps.crm.models import Lead
 from apps.roles.models import Role
 from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
@@ -101,6 +102,27 @@ class PertesServiesTest(TestCase):
         self.assertEqual(servi['pertes'], publie['pertes'])
         self.assertEqual([p['poste'] for p in servi['pertes']],
                          ['iam', 'salissure'])
+
+    def test_regles_liees_409_forme_publiee_400(self):
+        """ENF11 (fuzz 01/11) : doublon, poste sans valeur, forçage sans motif
+        = 409 (le schéma ne les dit pas) ; 11 mois, pct >= 100, source
+        inconnue = 400 (publiés)."""
+        url = f'{BASE}{self.calepinage.pk}/enregistrer-pertes/'
+        for postes in (
+                [dict(IAM), dict(IAM)],
+                [{'poste': 'iam'}],
+                [{'poste': 'iam', 'pct': 1.0, 'force': True}]):
+            reponse = self.api.post(url, {'pertes': postes}, format='json')
+            self.assertEqual(reponse.status_code, 409, (postes, reponse.data))
+        for postes in (
+                [{'poste': 'salissure', 'mensuel': [1.0] * 11}],
+                [{'poste': 'iam', 'pct': 100}],
+                [{'poste': 'iam', 'pct': 1.0, 'source': 'inconnue'}]):
+            reponse = self.api.post(url, {'pertes': postes}, format='json')
+            self.assertEqual(reponse.status_code, 400, (postes, reponse.data))
+        schema = PostesDePertesSerializer().fields['pertes'].child.fields
+        self.assertEqual(schema['mensuel'].min_length, 12)
+        self.assertEqual(schema['mensuel'].max_length, 12)
 
     def test_corps_formulaire_refuse_415_pas_400_trompeur(self):
         # CI #997 fuzz : le schéma ne déclare que du JSON (liste d'objets) ;

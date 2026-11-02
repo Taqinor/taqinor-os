@@ -97,6 +97,21 @@ class CrudVarianteTest(BaseVariantes):
         self.assertEqual(variante.nom, 'A bis')
         self.assertFalse(variante.retenue)
 
+    def test_edition_nom_publie_sans_nul(self):
+        """ENF11 (fuzz 01/11) : le nom d'une variante est un texte strict
+        publié sans NUL ; un NUL reste refusé 400 en nommant `nom`."""
+        from core.champs_stricts import ChaineStricte
+        from apps.calepinage.serializers import CalepinageVarianteSerializer
+        self.assertIsInstance(
+            CalepinageVarianteSerializer().fields['nom'], ChaineStricte)
+        variante = CalepinageVariante.objects.create(
+            company=self.company, calepinage=self.calepinage, nom='A')
+        reponse = self.api.patch(
+            url_variante(self.calepinage.pk, variante.pk),
+            {'nom': 'a\x00b'}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('nom', reponse.data)
+
     def test_edition_du_layout_recalcule_l_empreinte(self):
         variante = CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='A')

@@ -68,10 +68,18 @@ class EditionPhotoTest(BasePhoto):
     def test_patch_date_future_refusee_comme_a_la_creation(self):
         reponse = self.api.patch(self.url, {'prise_le': DEMAIN.isoformat()},
                                  format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # ENF11 : dépend du jour
         self.assertIn('prise_le', reponse.data)
         self.photo.refresh_from_db()
         self.assertEqual(self.photo.prise_le, HIER)
+
+    def test_patch_corps_publie_date_et_genre_stricts(self):
+        """ENF11 (fuzz 01/11) : le corps publié du PATCH porte les prédicats
+        exécutés (date AAAA-MM-JJ, genre énuméré), plus du texte libre."""
+        from core.champs_stricts import DateStricte
+        from apps.calepinage.views.photos import _CHAMPS_PHOTO
+        self.assertIsInstance(_CHAMPS_PHOTO['prise_le'], DateStricte)
+        self.assertTrue(_CHAMPS_PHOTO['genre'].choices)
 
     def test_patch_genre_inconnu_refuse(self):
         reponse = self.api.patch(self.url, {'genre': 'satellite'},
@@ -132,14 +140,15 @@ class CalageDegenereTest(BasePhoto):
         self.url = ('/api/django/calepinage/calepinages/'
                     f'{self.calepinage.pk}/photos/{self.photo.pk}/calage/')
 
-    def test_calage_degenere_refuse_400(self):
+    def test_calage_degenere_refuse_409(self):
         for nom, coins in (('identiques', IDENTIQUES),
                            ('colineaires', COLINEAIRES),
                            ('croises', CROISES)):
             with self.subTest(nom):
                 reponse = self.api.patch(self.url, {'calage': {'coins': coins}},
                                          format='json')
-                self.assertEqual(reponse.status_code, 400, reponse.data)
+                # ENF11 : forme publiée respectée, géométrie refusée = 409.
+                self.assertEqual(reponse.status_code, 409, reponse.data)
                 self.assertIn('calage', reponse.data)
         self.photo.refresh_from_db()
         self.assertIsNone(self.photo.calage)

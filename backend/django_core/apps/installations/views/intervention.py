@@ -1347,7 +1347,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                 getattr(interv, 'consommation', None)):
             return Response(
                 {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         cons = field_capture.ensure_consommation(interv)
         # api-fuzz-full 27/10 (ENF11) : `designation` obligatoire PUBLIÉE et
         # validée par le même champ (non blanche, sans NUL, ≤ 255) — 400 dans
@@ -1388,7 +1388,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if not field_capture.consommation_modifiable(cons):  # ACHT30
             return Response(
                 {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         ligne = cons.lignes.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
@@ -1421,7 +1421,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if not field_capture.consommation_modifiable(cons):  # ACHT30
             return Response(
                 {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # api-fuzz-full 27/10 (ENF11) : ligne inconnue → 404 (id entier) ;
         # ligne de la nomenclature = refus d'ÉTAT → 409 (les deux faisaient 400).
         ligne = cons.lignes.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
@@ -2177,9 +2177,9 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         try:
             facture = generer_facture_intervention(
                 intervention=interv, user=request.user)
-        except ValueError as exc:
+        except ValueError as exc:  # ENF11 : requête sans corps, refus d'ÉTAT
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         deja_existant = (prev_facture_id == facture.id)
         return Response({
             'intervention': interv.id, 'facture_id': facture.id,

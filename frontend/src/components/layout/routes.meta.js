@@ -20,6 +20,7 @@ const BASE_PAGE_TITLES = [
   ['/stock/receptions-fournisseur', 'Réceptions fournisseur'],
   ['/stock/factures-fournisseur', 'Factures fournisseur'],
   ['/stock/retours-fournisseur', 'Retours fournisseur'],
+  ['/stock/fournisseurs/conformite', 'Conformité fournisseurs'],
   ['/stock/fournisseurs', 'Fournisseurs'],
   ['/stock/categories', 'Catégories & marques'],
   ['/stock/ocr-import', 'Import OCR'],

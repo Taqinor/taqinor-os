@@ -581,7 +581,7 @@ class PorteInterventionTicketTests(TestCase):
             Decimal('1200'))
         interv = self._intervention(onduleur, ticket=ticket)
         resp = self._generer(interv)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # ENF11 : refus d'état
         self.assertEqual(
             resp.data['detail'],
             'Intervention rattachée à un ticket SAV : facturez depuis le '

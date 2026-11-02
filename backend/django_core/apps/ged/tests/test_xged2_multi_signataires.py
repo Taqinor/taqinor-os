@@ -315,6 +315,17 @@ class ScopingApiTests(XGed2Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['statut'], SIGNATURE_ANNULE)
 
+    def test_annuler_demande_deja_signee_409(self):
+        """ENF11 (fuzz 01/11) : annuler une demande signée = refus d'état."""
+        demande = services.demander_signature(
+            self.doc_a, signataire_nom='X', signataire_email='x@x.com',
+            company=self.co_a)
+        type(demande).objects.filter(pk=demande.pk).update(
+            statut=SIGNATURE_SIGNE)
+        resp = auth(self.admin_a).post(
+            f'/api/django/ged/demandes-signature/{demande.id}/annuler/')
+        self.assertEqual(resp.status_code, 409, resp.data)
+
     def test_public_signataire_endpoint_get(self):
         demande = services.creer_demande_multi_signataires(
             self.doc_a, destinataires=self._destinataires(),

@@ -326,6 +326,20 @@ class TestFG291LinkViewSets(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['count'], 0)
 
+    def test_libelle_publie_sans_nul(self):
+        """ERR-ENF11-FUZZ-INSTALLATIONS (fuzz 01/11) : `libelle` est un texte
+        STRICT dont le motif publié exclut le NUL (plus conforme puis 400)."""
+        from core.champs_stricts import ChaineStricte
+        from apps.installations.serializers import ProjetChantierSerializer
+        champ = ProjetChantierSerializer().fields['libelle']
+        self.assertIsInstance(champ, ChaineStricte)
+        inst, _ = make_chantier(self.company, self.user, self.client_obj)
+        r = self.api.post(f'{BASE}/programme-chantiers/', {
+            'projet': self.projet.id, 'installation': inst.id,
+            'libelle': 'a\x00b'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('libelle', r.data)
+
     def test_rattachement_en_double_409_et_programme_absent_404(self):
         """ERR-ENF11-FUZZ-INSTALLATIONS — le même chantier deux fois dans un
         programme = conflit (409), un programme sans ligne = 404 (pas 400)."""

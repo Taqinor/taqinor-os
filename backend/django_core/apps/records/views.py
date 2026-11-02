@@ -130,7 +130,11 @@ _SNOOZE_APPRO_CORPS = _S('SnoozeApprobationCorps', {
 _OK = _S('Ok', {'ok': drf.BooleanField()})
 
 _NOTE_CORPS = _S('ChatterNoteCorps', {
-    'body': drf.RegexField(r'\S', help_text='Texte de la note (non vide).'),
+    # ERR-ENF11-FUZZ-INSTALLATIONS : motif publié = non vide ET sans caractère
+    # nul (le simple motif \S laissait passer le NUL, refusé 400 ensuite).
+    'body': drf.RegexField(
+        r'^[^\u0000]*\S[^\u0000]*$',
+        help_text='Texte de la note (non vide, sans caractère nul).'),
 })
 
 _COMMENT_CREATION = _S('CommentaireCreation', {

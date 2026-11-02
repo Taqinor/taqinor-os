@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 1606ae7683a438e82fd9775746d8bbbf4b2c5ccece2d7f86531c22c22279b72d
+Structure fingerprint: 4ca463e272279796aa42b4c2b2c56041d5c909e84329c06a2c5fa39bb3ab7be5
 Plan fingerprint: 03a7387dd68549e3bc80acff6e39b0b6ffc78855838c8cab2d31a37c2e0faf12
 
 
@@ -437,7 +437,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 | `visites` | `/visites`, `/visites/toutes`, `/visites/planifier`, `/visites/revue`, `/visites/:id`, `/visites/:id/calage` |
 | `calepinage` | `/calepinage`, `/calepinage/nouveau`, `/calepinage/bibliotheque`, `/calepinage/sources`, `/calepinage/:id` + 36 onglets du rail `atelier/onglets.js` (`?onglet=<clé>`) + 15 routes profondes `/calepinage/:id/<segment>` de `module.config.jsx` (variantes, fiches, pompage, plan, photos, pente, terrain, ombriere, schema, production, pertes, horizon, course-soleil, dossiers, affectation) |
 | `ventes` | `/ventes/cockpit`, `/ventes/devis`, `/ventes/devis/action-requise`, `/ventes/devis/nouveau`, `/ventes/conception-3d`, `/ventes/bons-commande`, `/ventes/factures`, `/ventes/avoirs`, `/ventes/relances`, `/ventes/paiements`, `/ventes/paiements/import-releve`, `/ventes/listes-prix`, `/ventes/dossiers-reglementaires`, `/ventes/mandats-paiement`, `/ventes/remises-encaissement` |
-| `stock` | `/stock`, `/stock/mouvements`, `/stock/categories`, `/stock/fournisseurs` (+`/:id/360`), `/stock/bons-commande-fournisseur`, `/stock/modeles-bcf`, `/stock/receptions-fournisseur`, `/stock/factures-fournisseur`, `/stock/retours-fournisseur`, `/stock/paiements-fournisseur`, `/stock/ocr-import`, `/stock/lots-entrepot`, `/stock/inventaires-annuels`, `/stock/revalorisations`, `/stock/conditionnements`, `/stock/entrepot` |
+| `stock` | `/stock`, `/stock/mouvements`, `/stock/categories`, `/stock/fournisseurs` (+`/:id/360`, +`/conformite` ENF15), `/stock/bons-commande-fournisseur`, `/stock/modeles-bcf`, `/stock/receptions-fournisseur`, `/stock/factures-fournisseur`, `/stock/retours-fournisseur`, `/stock/paiements-fournisseur`, `/stock/ocr-import`, `/stock/lots-entrepot`, `/stock/inventaires-annuels`, `/stock/revalorisations`, `/stock/conditionnements`, `/stock/entrepot` |
 | `installations` | `/chantiers`, `/chantiers/demandes-achat`, `/chantiers/approvisionnement`, `/chantiers/import`, `/interventions`, `/planification`, `/planification/suivi-gps`, `/ma-journee`, `/parc`, `/atelier`, `/atelier/kits`, `/production` (+`/parc`, `/analytique`, `/garanties`, `/co2`, `/nettoyages`, `/rapports`, `/portail-client`), `/outillage` |
 | `sav` | `/sav/cockpit`, `/sav`, `/equipements`, `/sav/contrats`, `/sav/warranty-claims`, `/sav/parametres`, `/sav/sla-rapport`, `/sav/alarmes`, `/sav/action-requise`, `/sav/kb`, `/sav/problemes` |
 | `ged` | `/ged/numeriser`, `/ged/checklist`, `/ged/approbation`, `/ged/retention`, `/ged/tags`, `/ged/corbeille`, `/ged/coffres`, `/ged/regles-dossier`, `/ged/regles-acl`, `/ged/routages`, `/ged/planifications` |

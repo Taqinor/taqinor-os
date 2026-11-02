@@ -100,7 +100,7 @@ class SimulerVarianteTest(BaseApiCalepinage):
             company=self.company, calepinage=self.calepinage, nom='Vide',
             roof_layout=None)
         reponse = self.api.get(f'{self.base}resultat/', {'variante': vide.pk})
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)  # ENF11
         self.assertIn('variante', reponse.data)
 
     def test_simuler_variante_sans_conception_409_avant_la_file(self):

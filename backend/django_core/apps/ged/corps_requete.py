@@ -195,6 +195,12 @@ class GedMotifCorps(drf_serializers.Serializer):
     motif = ChaineStricte(required=False, allow_blank=True)
 
 
+class GedProlongerCorps(drf_serializers.Serializer):
+    # Date-heure ISO 8601 (DRF : refuse le non-texte, l'illisible et le
+    # débordement de fuseau en 400 au lieu de laisser lever ValueError).
+    expires_at = drf_serializers.DateTimeField()
+
+
 class GedVerrouCorps(drf_serializers.Serializer):
     # `Document.verrou_avertissement_motif` est un CharField(max_length=300).
     motif = ChaineStricte(required=False, allow_blank=True, max_length=300)

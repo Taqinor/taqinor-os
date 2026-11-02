@@ -93,7 +93,7 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
                                                          file=serializers.FileField(),
                                                          confirmer=serializers.BooleanField(required=False))},
                    responses=OBJET)
-    @action(detail=False, methods=['post'], url_path='importer-datasheet')
+    @action(detail=False, methods=['post'], url_path='importer-datasheet')  # headless: D-ENF15-STOCK-22
     def importer_datasheet(self, request):
         """CAL117 — import OPTIONNEL d'une fiche constructeur .PAN/.OND.
 

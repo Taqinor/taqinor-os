@@ -15,6 +15,7 @@ import {
 import { TableauStock, SelectFournisseur } from './ComposantsStock'
 
 import { EnteteStock } from './EnteteStock'
+import ReleveDeductionsTva from './ReleveDeductionsTva'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
@@ -559,6 +560,8 @@ export default function FacturesFournisseur() {
           </Button>
         ) : null}
       />
+
+      <ReleveDeductionsTva />
 
       <div className="flex flex-wrap items-center gap-2">
         {voitPrix && (<>
