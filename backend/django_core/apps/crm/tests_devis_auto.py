@@ -438,6 +438,13 @@ class TestCatalogueCiAlea50(TestCase):
                 company=self.company, nom='Poste %s' % role, role_ci=role,
                 prix_vente=Decimal('900'), prix_achat=Decimal('400'))
 
+    def _articles_prestations(self, roles=None):
+        from apps.stock.models import Produit
+        for cle in self.FORFAITS if roles is None else roles:
+            Produit.objects.create(
+                company=self.company, nom='Prestation %s' % cle, role_ci=cle,
+                prix_vente=Decimal('500'))
+
     def _bloc(self, **kw):
         lead = Lead.objects.create(company=self.company, nom='Usine',
                                    **{'type_installation': 'commercial', **kw})
@@ -455,14 +462,28 @@ class TestCatalogueCiAlea50(TestCase):
         self.assertIn("Compteur d'injection ou contrôleur / limiteur "
                       "d'injection C&I (fiche produit)", bloc['manquants'])
 
+    def test_prestation_sans_article_pas_pret(self):
+        # ALEA56 : 8 forfaits réglés + 4 postes, mais aucun article de
+        # prestation => le moteur refuserait (CORC6) ; « prêt » aussi.
+        self._equiper()
+        bloc = self._bloc(type_installation='industriel')
+        self.assertFalse(bloc['pret'])
+        self.assertEqual(len(bloc['manquants']), 8)
+        self.assertIn('Article « Transport C&I » (fiche produit)',
+                      bloc['manquants'])
+        self._articles_prestations()
+        self.assertEqual(self._bloc(), {'pret': True, 'manquants': []})
+
     def test_catalogue_complet_est_pret(self):
         self._equiper()
+        self._articles_prestations()
         bloc = self._bloc(type_installation='industriel')
         self.assertEqual(bloc, {'pret': True, 'manquants': []})
 
     def test_un_controleur_tarife_vaut_le_compteur(self):
         self._equiper(roles=('coffret_dc', 'coffret_ac', 'protection_ac',
                              'controleur_injection'))
+        self._articles_prestations()
         self.assertTrue(self._bloc()['pret'])
 
     def test_article_sans_prix_ou_archive_ne_compte_pas(self):
@@ -479,6 +500,7 @@ class TestCatalogueCiAlea50(TestCase):
 
     def test_forfait_incomplet_manque(self):
         self._equiper(forfaits=self.FORFAITS[:7])
+        self._articles_prestations()
         bloc = self._bloc()
         self.assertEqual(bloc['manquants'], [
             'Forfait « Transport C&I » (Paramètres › Devis › Prestations C&I)'])
@@ -493,6 +515,7 @@ class TestCatalogueCiAlea50(TestCase):
         from unittest import mock
         from apps.ventes import selectors
         self._equiper()
+        self._articles_prestations()
         with mock.patch.object(selectors, '_calculer_catalogue_ci_pret',
                                wraps=selectors._calculer_catalogue_ci_pret
                                ) as calcul:
@@ -516,6 +539,8 @@ class TestCatalogueCiAlea50(TestCase):
             company=self.company, defaults={'forfaits_ci': {
                 cle: {'fixe_ht': '500', 'source': 'grille de test'}
                 for cle in self.FORFAITS}})
+        self.assertEqual(len(self._bloc()['manquants']), 4 + 8)
+        self._articles_prestations()
         self.assertEqual(len(self._bloc()['manquants']), 4)
         for role in ('coffret_dc', 'coffret_ac', 'protection_ac',
                      'compteur_injection'):

@@ -1990,15 +1990,19 @@ def _calculer_catalogue_ci_pret(company_id):
     from core.product_roles import LIBELLES_ROLES_CI
 
     from .domain.etude_ci import _reglages_societe
-    from .moteur_ci.composition import PRESTATIONS_CI, _d
+    from .moteur_ci.composition import PRESTATIONS_CI, _d, _du_role
 
     company = Company.objects.get(pk=company_id)
     manquants = []
     forfaits = getattr(_reglages_societe(company), 'forfaits_ci', None) or {}
+    articles = produits_ci(company)
     for cle, _libelle in PRESTATIONS_CI:
         if not _forfait_regle(forfaits.get(cle), _d):
             manquants.append('Forfait « %s » (Paramètres › Devis › Prestations '
                              'C&I)' % LIBELLES_ROLES_CI[cle])
+        elif _du_role(articles, cle) is None:  # ALEA56 : refus CORC6 du moteur
+            manquants.append('Article « %s » (fiche produit)'
+                             % LIBELLES_ROLES_CI[cle])
     tarifes = {role for p in produits_ci(company, avec_prix=True)
                if p.get('eligible_ci') is not False
                for role in (p.get('role_ci'), p.get('role_devis'))}
