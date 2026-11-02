@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4890, operations: 7678, components: 3604}
+counts: {paths: 4894, operations: 7686, components: 3610}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -966,6 +966,10 @@ operations:
 - get /api/django/crm/equipes/{id}/ -> django_crm_equipes_retrieve
 - patch /api/django/crm/equipes/{id}/ -> django_crm_equipes_partial_update
 - put /api/django/crm/equipes/{id}/ -> django_crm_equipes_update
+- get /api/django/crm/experiences-cadence/ -> django_crm_experiences_cadence_list
+- post /api/django/crm/experiences-cadence/ -> django_crm_experiences_cadence_create
+- get /api/django/crm/experiences-cadence/{id}/ -> django_crm_experiences_cadence_retrieve
+- patch /api/django/crm/experiences-cadence/{id}/ -> django_crm_experiences_cadence_partial_update
 - get /api/django/crm/forecast-entries/ -> django_crm_forecast_entries_list
 - post /api/django/crm/forecast-entries/ -> django_crm_forecast_entries_create
 - delete /api/django/crm/forecast-entries/{id}/ -> django_crm_forecast_entries_destroy
@@ -4845,6 +4849,10 @@ operations:
 - get /api/v1/crm/equipes/{id}/ -> v1_crm_equipes_retrieve
 - patch /api/v1/crm/equipes/{id}/ -> v1_crm_equipes_partial_update
 - put /api/v1/crm/equipes/{id}/ -> v1_crm_equipes_update
+- get /api/v1/crm/experiences-cadence/ -> v1_crm_experiences_cadence_list
+- post /api/v1/crm/experiences-cadence/ -> v1_crm_experiences_cadence_create
+- get /api/v1/crm/experiences-cadence/{id}/ -> v1_crm_experiences_cadence_retrieve
+- patch /api/v1/crm/experiences-cadence/{id}/ -> v1_crm_experiences_cadence_partial_update
 - get /api/v1/crm/forecast-entries/ -> v1_crm_forecast_entries_list
 - post /api/v1/crm/forecast-entries/ -> v1_crm_forecast_entries_create
 - delete /api/v1/crm/forecast-entries/{id}/ -> v1_crm_forecast_entries_destroy
@@ -7878,6 +7886,7 @@ query_params:
   get /api/django/crm/defis/: actif ordering page page_size search
   get /api/django/crm/defis/{id}/classement/: ordering search
   get /api/django/crm/equipes/: ordering page page_size search
+  get /api/django/crm/experiences-cadence/: ordering page page_size search
   get /api/django/crm/forecast-entries/: categorie ordering owner page page_size periode search
   get /api/django/crm/forecast/historique/: owner semaines
   get /api/django/crm/forecast/rollup/: equipe periode
@@ -8671,6 +8680,7 @@ query_params:
   get /api/v1/crm/defis/: actif ordering page page_size search
   get /api/v1/crm/defis/{id}/classement/: ordering search
   get /api/v1/crm/equipes/: ordering page page_size search
+  get /api/v1/crm/experiences-cadence/: ordering page page_size search
   get /api/v1/crm/forecast-entries/: categorie ordering owner page page_size periode search
   get /api/v1/crm/forecast/historique/: owner semaines
   get /api/v1/crm/forecast/rollup/: equipe periode
@@ -10432,6 +10442,8 @@ components:
 - ExpeditionTransporteur
 - ExpeditionTransporteurRequest
 - ExpeditionTransporteurStatutEnum
+- ExperienceCadence
+- ExperienceCadenceRequest
 - Experiment
 - ExperimentArm
 - ExperimentArmRequest
@@ -11232,6 +11244,7 @@ components:
 - PaginatedEtapeAssemblageList
 - PaginatedExigenceDossierList
 - PaginatedExpeditionTransporteurList
+- PaginatedExperienceCadenceList
 - PaginatedExperimentArmList
 - PaginatedExperimentList
 - PaginatedFactEntryList
@@ -11476,6 +11489,8 @@ components:
 - ParametrageRelanceClientRequest
 - ParametresGammes
 - ParametresNegoce
+- ParcEtatEnum
+- ParcRaisonEnum
 - Parrainage
 - ParrainageRequest
 - ParrainageStatutEnum
@@ -11618,6 +11633,7 @@ components:
 - PatchedEtapeAssemblageRequest
 - PatchedExigenceDossierRequest
 - PatchedExpeditionTransporteurRequest
+- PatchedExperienceCadenceRequest
 - PatchedExperimentArmRequest
 - PatchedExperimentRequest
 - PatchedFactEntryRequest
