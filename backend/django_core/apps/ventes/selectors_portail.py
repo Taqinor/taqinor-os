@@ -111,6 +111,20 @@ def _empreinte_portail(devis):
     return empreinte_contenu(devis) if signable_au_jeton(devis) else None
 
 
+def garde_empreinte_portail(request, devis):
+    """ADVS20 — LA garde du lien public pour l'acceptation au portail :
+    ``(refus, empreinte_attendue)``. ``refus`` est la réponse 409 à rendre telle
+    quelle, ``None`` sinon ; l'empreinte reçue n'est attendue que si le devis est
+    signable."""
+    from .public.signature_views import (
+        _empreinte_recue, _refus_empreinte, signable_au_jeton,
+    )
+    refus = _refus_empreinte(request, devis)
+    if refus is not None:
+        return refus, None
+    return None, (_empreinte_recue(request) if signable_au_jeton(devis) else None)
+
+
 def _acceptable_portail(devis):
     """Vrai si ``accept_devis`` accepterait ce devis (ERR33 : brouillon /
     envoyé ; ADEV52 : pas expiré). Une seule source pour l'écran portail."""

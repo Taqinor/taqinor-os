@@ -660,11 +660,12 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                             status=status.HTTP_409_CONFLICT)
 
         # ADVS20 — ce que le client signe = ce qu'il a lu : même garde que le
-        # lien public, re-comparée sous le verrou d'``accept_devis``.
-        from apps.ventes.public.signature_views import (
-            _empreinte_recue, _refus_empreinte, signable_au_jeton,
-        )
-        refus = _refus_empreinte(request, devis)
+        # lien public, re-comparée sous le verrou d'``accept_devis``. Lue par
+        # le sélecteur portail de ``ventes``, jamais la vue publique en direct
+        # (l'empreinte attendue vaut ``None`` hors signable).
+        from apps.ventes.selectors_portail import garde_empreinte_portail
+
+        refus, empreinte_attendue = garde_empreinte_portail(request, devis)
         if refus is not None:
             return refus
         try:
@@ -677,8 +678,7 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                 user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
                 consentement=True,
                 entreprise=entreprise,
-                empreinte_attendue=(_empreinte_recue(request)
-                                    if signable_au_jeton(devis) else None),
+                empreinte_attendue=empreinte_attendue,
             )
         except AcceptError as exc:
             perimee = exc.code == 'empreinte_perimee'
