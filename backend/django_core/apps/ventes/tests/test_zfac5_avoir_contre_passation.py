@@ -154,6 +154,35 @@ class TestAvoirContrePassation(TestCase):
         self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(annulees, [self.facture.id])
 
+    def test_contre_passation_meme_permission_qu_annuler(self):
+        # AARG39 — un Commercial (palier limité) qui porte ``encaisser`` crédite,
+        # mais n'annule pas une facture, par aucune des deux portes.
+        from django.core.management import call_command
+
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        role = Role.objects.get(company=self.company, nom='Commercial')
+        self.assertIn('encaisser', role.permissions)
+        commercial = User.objects.create_user(
+            username='zfac5_commercial', password='x', role=role,
+            role_legacy='normal', company=self.company)
+        # SA facture : sinon la portée répondrait 404 avant la garde.
+        Facture.objects.filter(pk=self.facture.pk).update(created_by=commercial)
+        api = self._api(commercial)
+        base = f'/api/django/ventes/factures/{self.facture.id}'
+        r = api.post(f'{base}/annuler/', {'motif': 'Erreur'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        r = api.post(f'{base}/creer-avoir/',
+                     {'mode': 'contre_passation', 'motif': 'Erreur'},
+                     format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.statut, Facture.Statut.EMISE)
+        self.assertEqual(Avoir.objects.filter(facture=self.facture).count(), 0)
+        # Le geste d'argent ordinaire lui reste ouvert (ASEC29).
+        r = api.post(f'{base}/creer-avoir/', {'motif': 'Geste'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_invalid_mode_rejected(self):
         api = self._api(self.admin)
         resp = api.post(

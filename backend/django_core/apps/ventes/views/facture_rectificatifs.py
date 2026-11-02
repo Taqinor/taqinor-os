@@ -19,6 +19,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
 from . import openapi_docs as D
+from .facture_cycle import PEUT_ANNULER
 from .facture_gardes import PeutEncaisser
 from ..models import Facture, LigneNoteDebit, NoteDebit
 from ..serializers_facturation import (
@@ -194,17 +195,22 @@ class FactureRectificatifsActionsMixin:
         inchangé), ``contre_passation``}. AARG39 — ``contre_passation`` passe
         par LA porte d'annulation ``annuler_facture`` : même facture annulée,
         même avoir CORRECTION (`lignes` et `type` du corps ignorés), mêmes
-        refus (409, ``code`` de ``facture_annulation.json``)."""
+        refus (403 de ``PEUT_ANNULER``, 409, ``code`` de
+        ``facture_annulation.json``)."""
         facture = self.get_object()
         # Tour 3 M1 — corps validé (types, listes, enums) AVANT toute lecture.
         valider_corps_lignes(request, D.CreerAvoirRequest)
+        # `mode` ∈ enum garanti par le corps validé ; refus d'ÉTAT = 409 (ENF11).
+        mode = (request.data.get('mode') or 'correction').strip()
+        if mode == 'contre_passation':
+            for garde in PEUT_ANNULER:
+                if not garde().has_permission(request, self):
+                    self.permission_denied(request)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             return Response(
                 {'detail': 'Un avoir ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_409_CONFLICT)
-        # `mode` ∈ enum garanti par le corps validé ; refus d'ÉTAT = 409 (ENF11).
-        mode = (request.data.get('mode') or 'correction').strip()
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
         if mode == 'contre_passation':
