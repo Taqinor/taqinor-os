@@ -1638,6 +1638,11 @@ jobs:
       - name: Check Dockerfile.prod copies every out-of-frontend import
         working-directory: frontend
         run: npm run check-dockerfile-context
+      # APAR88 — test-du-test d'APAR64 : échoue si la règle ESLint `no-alert`
+      # n'est plus une erreur dans les dossiers Paramètres/Approbations.
+      - name: Check no-alert guard (Paramètres)
+        working-directory: frontend
+        run: npm run check-no-alert-parametres
       # YHARD7 — budget de performance du bundle SPA ERP : échoue si un chunk
       # (ou le total gzippé) dépasse son budget. Dev-only
       # (frontend/scripts/check_bundle_budget.mjs, Node stdlib pur).
