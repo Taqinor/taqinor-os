@@ -348,15 +348,15 @@ const p2 = {}
 
 /** Connexion JWT du compte portail (comme `helpers.connecterPortail` : mot de passe
  *  temporaire changé, AUD139/N96) — mais un 429 du throttle `login` (5/min PAR IP, que la
- *  rejouée concurrente partage) est ATTENDU 65 s puis rejoué, jamais compté en échec. */
+ *  rejouée concurrente partage) est ATTENDU 65 s puis rejoué (toPass), jamais compté en échec. */
 async function connexionPortail(playwright, baseURL, username, motDePasse) {
   const jeton = async (ctx, password) => {
-    for (let essai = 0; essai < 5; essai += 1) {
-      const r = await ctx.post(`${API}/token/`, { ...T, data: { username, password } })
-      if (r.status() !== 429) return r
-      await new Promise((ok) => { setTimeout(ok, 65_000) })
-    }
-    return ctx.post(`${API}/token/`, { ...T, data: { username, password } })
+    let r
+    await expect(async () => {
+      r = await ctx.post(`${API}/token/`, { ...T, data: { username, password } })
+      expect(r.status(), 'throttle login (429) : rejouée').not.toBe(429)
+    }).toPass({ intervals: [65_000], timeout: 330_000 })
+    return r
   }
   const premier = await playwright.request.newContext({ baseURL })
   expect((await jeton(premier, motDePasse)).status(), 'connexion du client portail').toBe(200)

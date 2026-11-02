@@ -15,7 +15,7 @@ import { EnteteStock } from './EnteteStock'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { AlerteErreurStock } from './BandeauxListeStock'
-import CellulesProduitQuantite from './CellulesProduitQuantite'
+import CellulesProduitQuantite, { EnteteProduitQuantite } from './CellulesProduitQuantite'
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
 
@@ -84,15 +84,7 @@ export function RetourDetail({ retour, onClose, onAvoirGenere, peutPayer = true 
         )}
 
         <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[28rem] text-sm"
-          tete={(
-            <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 text-left font-semibold">Produit</th>
-                <th className="px-3 py-2 text-left font-semibold">Quantité</th>
-                <th className="px-3 py-2 text-left font-semibold">Motif</th>
-              </tr>
-            </thead>
-          )}>
+          tete={<EnteteProduitQuantite quantite="Quantité" troisieme="Motif" />}>
           {lignes.length === 0 && (
             <tr><td colSpan={3} className="px-3 py-3 text-muted-foreground">Aucune ligne.</td></tr>
           )}
