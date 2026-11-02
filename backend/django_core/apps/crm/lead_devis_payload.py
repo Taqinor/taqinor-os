@@ -13,14 +13,16 @@ def prefetch_devis_liste_leads():
     sérialisés par ``lignes_devis_du_lead`` (``LeadViewSet.queryset`` et
     ``relances_du_jour``).
 
-    Délégué à ``apps.ventes.selectors`` (frontière M3 : aucun import de
+    Délégué à ``apps.ventes.selectors_listes`` (frontière M3 : aucun import de
     ``apps.ventes.models`` ici), qui seul sait quels champs de SES devis la
     liste a besoin : les lignes AVEC produit, le successeur d'une V1
     remplacée, et SURTOUT pas l'``etude_params`` complet (39,3 Mio de JSON
     pour une page de 200 leads → workers tués par le noyau, incident du
     02/11/2026).
     """
-    from apps.ventes.selectors import prefetch_devis_liste_leads as _ventes
+    from apps.ventes.selectors_listes import (
+        prefetch_devis_liste_leads as _ventes,
+    )
     return _ventes('devis')
 
 
