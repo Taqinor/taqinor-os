@@ -767,6 +767,8 @@ def _par_commercial(periode_tous, en_retard, today, absences, proprietaire,
     aujourd'hui, tous statuts (annulations du moteur déjà exclues de
     ``periode_tous``). Pur : aucune requête. Trié par ``en_retard_actuel``
     décroissant, puis ``ouvert`` décroissant, puis ``nom``, puis ``id``."""
+    from .models import RelanceEtape
+
     etapes_par_commercial = {}
     for etape in periode_tous:
         etapes_par_commercial.setdefault(
@@ -780,6 +782,12 @@ def _par_commercial(periode_tous, en_retard, today, absences, proprietaire,
         etapes = etapes_par_commercial.get(commercial['id'], [])
         verdict = _mesure_de_la_periode(
             etapes, today, absences, proprietaire, ouvres)[2]
+        # CADV66 — le volume de travail PAR DOSSIER : touches faites et
+        # leads distincts portant une étape due sur la période (lus sur les
+        # mêmes étapes, aucune requête).
+        faites = [e for e in etapes
+                  if e.statut == RelanceEtape.Statut.FAIT]
+        travailles = len({e.lead_id for e in etapes})
         lignes.append({
             'id': commercial['id'],
             'nom': commercial['nom'],
@@ -793,11 +801,91 @@ def _par_commercial(periode_tous, en_retard, today, absences, proprietaire,
             'en_retard_actuel': retard_actuel.get(commercial['id'], 0),
             'aujourdhui': sum(1 for etape in etapes
                               if etape.due_date == today),
+            'touches_faites': len(faites),
+            'leads_travailles': travailles,
+            'touches_par_lead': (round(len(faites) / travailles, 1)
+                                 if faites else None),
         })
     lignes.sort(key=lambda ligne: (-ligne['en_retard_actuel'],
                                    -ligne[OUVERT], ligne['nom'],
                                    ligne['id']))
     return lignes
+
+
+#: CADV65 — fenêtres de la cohorte hebdomadaire (conception v4 §7.7) : « joint
+#: en 14 jours », « chiffré en 21 jours » après la création du lead.
+COHORTE_JOINT_JOURS = 14
+COHORTE_DEVIS_JOURS = 21
+
+
+def _cohorte_hebdo(company, portee, owner, debut):
+    """CADV65 — ``cohorte_hebdo`` (contrat, ``notes.cohorte_hebdo``) : une
+    ligne par SEMAINE de création (lundi local) des leads de la portée créés
+    depuis ``debut`` : ``crees``, médiane des heures jusqu'au 1er contact,
+    ``joints_14j``, ``devis_21j``, ``acceptes``. Lecture seule : trois requêtes
+    en lot (activités jointes, devis envoyés/acceptés par les sélecteurs de
+    ``ventes``), aucune règle de retard recopiée. ``[]`` sans lead."""
+    import statistics
+
+    from apps.ventes.selectors import (
+        devis_envoyes_par_lead, leads_avec_devis_accepte,
+    )
+
+    from .cadence_plan import ISSUES_CLIENT_JOINT
+    from .models import LeadActivity
+
+    leads = portee if owner is None else portee.filter(owner_id=owner)
+    leads = list(leads.filter(date_creation__gte=_debut_du_jour(debut))
+                 .only('id', 'date_creation', 'first_contacted_at'))
+    if not leads:
+        return []
+    ids = [lead.pk for lead in leads]
+    creation = {lead.pk: lead.date_creation for lead in leads}
+    premier_joint = {}
+    for lead_id, instant in (
+            LeadActivity.objects
+            .filter(company=company, lead_id__in=ids,
+                    outcome__in=ISSUES_CLIENT_JOINT)
+            .order_by('created_at', 'pk')
+            .values_list('lead_id', 'created_at')):
+        premier_joint.setdefault(lead_id, instant)
+    premier_devis = {}
+    for ligne in devis_envoyes_par_lead(company, ids):
+        premier_devis.setdefault(ligne['lead_id'], ligne['date_envoi'])
+    acceptes = leads_avec_devis_accepte(company, ids)
+
+    semaines = {}
+    for lead in leads:
+        lundi = _jour_local(lead.date_creation)
+        lundi -= datetime.timedelta(days=lundi.weekday())
+        bloc = semaines.setdefault(lundi, {
+            'crees': 0, 'delais': [], 'joints': 0, 'devis': 0,
+            'acceptes': 0})
+        bloc['crees'] += 1
+        if lead.first_contacted_at is not None:
+            bloc['delais'].append(max(0.0, (
+                lead.first_contacted_at - lead.date_creation
+            ).total_seconds() / 3600.0))
+        joint = premier_joint.get(lead.pk)
+        if joint is not None and joint - creation[lead.pk] <= (
+                datetime.timedelta(days=COHORTE_JOINT_JOURS)):
+            bloc['joints'] += 1
+        devis = premier_devis.get(lead.pk)
+        if devis is not None and devis - creation[lead.pk] <= (
+                datetime.timedelta(days=COHORTE_DEVIS_JOURS)):
+            bloc['devis'] += 1
+        if lead.pk in acceptes:
+            bloc['acceptes'] += 1
+    return [{
+        'semaine': lundi.isoformat(),
+        'crees': bloc['crees'],
+        'premier_contact_median_h': (
+            round(statistics.median(bloc['delais']), 1)
+            if bloc['delais'] else None),
+        'joints_14j': bloc['joints'],
+        'devis_21j': bloc['devis'],
+        'acceptes': bloc['acceptes'],
+    } for lundi, bloc in sorted(semaines.items())]
 
 
 # ── LA lecture ───────────────────────────────────────────────────────────────
@@ -982,4 +1070,6 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
         'par_type': _lignes_par_type(par_type),
         'premier_contact': premier_contact,
         'resultats': _resultats(company, portee, owner, debut),
+        # CADV65 — additif : la cohorte hebdomadaire (créés → joints → devis).
+        'cohorte_hebdo': _cohorte_hebdo(company, portee, owner, debut),
     }

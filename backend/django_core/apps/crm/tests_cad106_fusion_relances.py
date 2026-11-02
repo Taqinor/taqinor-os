@@ -116,6 +116,54 @@ class LesRelancesSuiventLeDossierTests(_Base):
             any('2 relance(s) reprise(s)' in (b or '') for b in notes),
             notes)
 
+    def test_commande_fusionner_doublons_vrais_garde_l_historique(self):
+        """CADV64 — D1 (Nouveau) est archivé dans S1 (Relance) avec ses
+        activités et son devis ; le groupe `test` est ignoré ; dry-run sans
+        écriture ; rejouer = 0 groupe."""
+        import io
+        from decimal import Decimal
+
+        from django.core.management import call_command
+
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+
+        Lead.objects.filter(pk=self.survivant.pk).update(
+            stage=stages.FOLLOW_UP)
+        for corps in ('Appel 1', 'Appel 2'):
+            LeadActivity.objects.create(
+                company=self.company, lead=self.absorbe, user=self.acteur,
+                kind=LeadActivity.Kind.NOTE, body=corps)
+        client = Client.objects.create(
+            company=self.company, nom='Client', email='c@example.com')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-CADV64-0001', client=client,
+            lead=self.absorbe, statut='brouillon', taux_tva=Decimal('20.00'))
+        groupe_test = [self._lead(f'T{i}', nom='Interne', telephone='+212600000099',
+                                  tags='test') for i in range(3)]
+
+        def appeler(*args):
+            sortie = io.StringIO()
+            call_command('fusionner_doublons_vrais', '--company',
+                         self.company.slug, *args, stdout=sortie)
+            return sortie.getvalue()
+
+        texte = appeler()
+        self.assertIn(f'survivant #{self.survivant.pk}', texte)
+        self.absorbe.refresh_from_db()
+        self.assertFalse(self.absorbe.is_archived, 'dry-run')
+        appeler('--apply')
+        self.absorbe.refresh_from_db()
+        devis.refresh_from_db()
+        self.assertTrue(self.absorbe.is_archived)
+        self.assertEqual(devis.lead_id, self.survivant.pk)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.survivant, body__in=('Appel 1', 'Appel 2')).count(), 2)
+        for lead in groupe_test:
+            lead.refresh_from_db()
+            self.assertFalse(lead.is_archived)
+        self.assertIn('0 groupe(s)', appeler('--apply'))
+
 
 class CeQueLaFusionNeCassePasTests(_Base):
     """Les garde-fous."""
