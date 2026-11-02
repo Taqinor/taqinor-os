@@ -277,6 +277,52 @@ class FireCapiSignedQuoteTests(TestCase):
 
     @override_settings(META_CAPI_ACCESS_TOKEN='TEST_TOKEN',
                        META_CAPI_PIXEL_ID='123456789')
+    @override_settings(META_CAPI_ACCESS_TOKEN='TEST_TOKEN',
+                       META_CAPI_PIXEL_ID='123456789')
+    def test_une_seule_conversion_par_devis(self):
+        """ADVS34 (C-ADVS-034) — dés-accepter puis ré-accepter n'envoie pas une
+        seconde conversion ; HTTP en échec : aucun marqueur, la suivante réessaie."""
+        from apps.crm.models import Client
+        from apps.ventes import services
+        from apps.ventes.domain.capi_signee import MARQUEUR_CAPI
+        from apps.ventes.models import Devis
+        company = _make_company('co-advs34')
+        user = _make_user(company, 'v-advs34')
+        devis = Devis.objects.create(
+            company=company, reference='DEV-ADVS34-1', statut=Devis.Statut.ENVOYE,
+            client=Client.objects.create(company=company, nom='Client ADVS34'),
+            etude_params={'autre': 1})
+
+        def accepter():
+            with self.captureOnCommitCallbacks(execute=True):
+                services.accept_devis(devis=devis, user=user, nom='M. Client',
+                                      option=Devis.OptionAcceptee.SANS_BATTERIE)
+            devis.refresh_from_db()
+
+        def desaccepter():
+            services.annuler_acceptation(devis=devis, user=user)
+            devis.refresh_from_db()
+
+        reponse = mock.MagicMock()
+        reponse.__enter__ = lambda s: s
+        reponse.__exit__ = mock.Mock(return_value=False)
+        reponse.read.return_value = b'{"events_received": 1}'
+        with mock.patch('apps.ventes.domain.pdf_signe.planifier_pdf_signe'):
+            with mock.patch('urllib.request.urlopen', side_effect=OSError('muet')) as en_echec:
+                accepter()
+            en_echec.assert_called_once()
+            self.assertNotIn('attribution', devis.etude_params)
+            desaccepter()
+            with mock.patch('urllib.request.urlopen', return_value=reponse) as envoi:
+                accepter()
+                envoi.assert_called_once()
+                marqueur = devis.etude_params['attribution'][MARQUEUR_CAPI]
+                self.assertEqual(devis.etude_params['autre'], 1)
+                desaccepter()
+                accepter()
+                envoi.assert_called_once()
+        self.assertEqual(devis.etude_params['attribution'][MARQUEUR_CAPI], marqueur)
+
     def test_http_failure_never_propagates(self):
         """Une erreur HTTP vers Meta ne doit jamais remonter à accept_devis."""
         from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
