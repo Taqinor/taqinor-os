@@ -20,34 +20,20 @@
  * برمز يختاره المستخدم بنفسه.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import Callout from '../../components/Callout.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
-import { whatsappLink } from '../../lib/whatsapp';
-import { getLocaleFromPath } from '../../i18n/utils';
+import { NAP } from '../../lib/nap';
+import { REWARD_AMOUNT_LABEL, REWARD_MILESTONE_LABEL, waParrainage } from '../../lib/parrainage';
 import { localizeNavHref } from '../../i18n/pages';
 
 // WB18 — نفس أداة الربط المضادة للروابط الميتة المستعملة في بقية شجرة EN/AR
 // (هذه الصفحة وحدها كانت تكتب `/ar/...` مباشرة).
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-
-// GATE WG14 — لم يُحسم بعد من طرف المؤسّس: لا نخترع أي رقم أبداً. عند حسم
-// WG14، يكفي ملء هذين الثابتين بالقيمة الحقيقية ليظهر الرقم تلقائياً في كل
-// مكان يُستعمَل فيه.
-const REWARD_AMOUNT_LABEL: string | null = null;
-const REWARD_MILESTONE_LABEL: string | null = null;
-
-// النص مُعبَّأ مسبقاً بالفرنسية (يصل إلى فريق البيع الناطق بالفرنسية) — نفس
-// اتفاقية باقي روابط واتساب في صفحات EN/AR.
-const waParrainage = whatsappLink(
-  WHATSAPP_LEADS,
-  'Bonjour, je souhaite parrainer un proche pour une installation solaire Taqinor.',
-);
+const { locale, L } = pageLocale(Astro.url.pathname);
 
 const steps = [
   {

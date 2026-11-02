@@ -28,10 +28,9 @@ import Callout from '../components/Callout.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
-import { YIELD_TABLE } from '../lib/yieldTable';
+import { AZIMUTHS, ensoleillementData } from '../lib/ensoleillement';
 import EnsoleillementVille from '../components/blocs/EnsoleillementVille.astro';
 
-const AZIMUTHS = ['-90', '-45', '0', '45', '90'] as const;
 const AZIMUTH_LABELS: Record<string, string> = {
   '-90': 'Est',
   '-45': 'Sud-Est',
@@ -59,23 +58,7 @@ const VILLE_CFG = {
   captionSuffix: ', par inclinaison et orientation',
 };
 
-// Ordre par latitude croissante (Sud → Nord), comme dans estimatorBrain.ts.
-const cities = Object.entries(YIELD_TABLE)
-  .map(([slug, data]) => ({ slug, label: CITY_LABELS[slug] ?? slug, ...data }))
-  .sort((a, b) => a.lat - b.lat);
-
-const tilts = Object.keys(cities[0].grid['0']).map(Number).sort((a, b) => a - b);
-
-// Meilleur couple (inclinaison, orientation) par ville — pour le résumé en tête de page.
-const bestByCity = cities.map((c) => {
-  let best = { tilt: 0, azimuth: '0', value: 0 };
-  for (const az of AZIMUTHS) {
-    for (const [tiltStr, value] of Object.entries(c.grid[az] ?? {})) {
-      if (value > best.value) best = { tilt: Number(tiltStr), azimuth: az, value };
-    }
-  }
-  return { ...c, best };
-});
+const { cities, tilts, bestByCity } = ensoleillementData(CITY_LABELS);
 
 const jsonLd = {
   '@context': 'https://schema.org',

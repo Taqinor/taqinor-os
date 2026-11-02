@@ -25,6 +25,7 @@
  * fera ce câblage dans une passe séparée.
  */
 import Layout from '../layouts/Layout.astro';
+import { impactFigures } from '../lib/impactFigures';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
@@ -33,7 +34,7 @@ import Callout from '../components/Callout.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../lib/realisations';
+import { REALISATIONS } from '../lib/realisations';
 import { FACTS_GENERATED_AT } from '../lib/facts';
 
 // ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
@@ -48,11 +49,8 @@ import { FACTS_GENERATED_AT } from '../lib/facts';
 // de production réel est le CUMUL mesuré de la flotte suivie en temps réel
 // (MEASURED_FLEET, realisations.ts) — cumul « depuis la mise en service »,
 // JAMAIS annualisé.
-const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
-const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
+const { productionTotal, productionTotalLabel, generatedDateLabel } = impactFigures('fr-FR');
 
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
 
 const jsonLd = {
   '@context': 'https://schema.org',

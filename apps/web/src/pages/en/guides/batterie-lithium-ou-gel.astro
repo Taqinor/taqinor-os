@@ -8,6 +8,7 @@
  * else the existing FR page — never a dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
+import { articlePage } from '../../../lib/pageCtx';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
@@ -15,14 +16,9 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import { NAP } from '../../../lib/nap';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
-import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-
-const url = new URL(Astro.url.pathname, Astro.site).href;
-const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const { locale, L, url, schemaImageUrl } = articlePage(Astro.url.pathname, Astro.site, '/og/equipement.png');
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',

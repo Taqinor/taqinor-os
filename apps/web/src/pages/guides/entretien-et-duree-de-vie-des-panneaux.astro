@@ -7,6 +7,7 @@
  * Aucun prix inventé, aucun chiffre de marché.
  */
 import Layout from '../../layouts/Layout.astro';
+import { articleMeta } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -14,7 +15,6 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
-import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
 import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuGelPCFC9.astro';
 
@@ -34,11 +34,8 @@ const guideBodyText = `
   87,4 % de sa puissance initiale. L'onduleur, lui, vit moins longtemps : il tient typiquement 10 à 15
   ans. Votre meilleur outil de maintenance n'est pas une éponge, c'est la courbe de production.
 `;
-const readingMinutes = estimateReadingTime(guideBodyText);
-
-const url = new URL(Astro.url.pathname, Astro.site).href;
 // W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
-const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
+const { readingMinutes, url, schemaImageUrl } = articleMeta(guideBodyText, Astro.url.pathname, Astro.site, '/og/accueil.png');
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',

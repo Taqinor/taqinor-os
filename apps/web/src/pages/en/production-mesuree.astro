@@ -12,6 +12,8 @@
  * renders correctly and is a real, indexable page.
  */
 import Layout from '../../layouts/Layout.astro';
+import { impactFigures } from '../../lib/impactFigures';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -20,14 +22,11 @@ import Callout from '../../components/Callout.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
+import { REALISATIONS } from '../../lib/realisations';
 import { FACTS_GENERATED_AT } from '../../lib/facts';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-const devisHref = L('/devis/mon-toit');
+const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
 // ── Derived figures — nothing hand-typed ─────────────────────────────────────
 // RULE B (2026-07-04): the raw install count is no longer featured in user
@@ -41,11 +40,8 @@ const devisHref = L('/devis/mon-toit');
 // only real production figure is the CUMULATIVE tally of the fleet monitored
 // in real time (MEASURED_FLEET, realisations.ts) — cumulative "since
 // commissioning", NEVER annualized.
-const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
-const productionTotalLabel = productionTotal.toLocaleString('en-US');
+const { productionTotal, productionTotalLabel, generatedDateLabel } = impactFigures('en-US');
 
-const dateFmt = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
-const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
 
 const jsonLd = {
   '@context': 'https://schema.org',

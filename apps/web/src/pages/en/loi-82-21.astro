@@ -8,6 +8,7 @@
  * the FR page — never a dead link). FR untouched.
  */
 import Layout from '../../layouts/Layout.astro';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -17,11 +18,9 @@ import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { regimesFor } from '../../lib/regime';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = pageLocale(Astro.url.pathname);
 const REGIMES = regimesFor(locale);
 import Loi8221DivBD31 from '../../components/blocs/Loi8221DivBD31.astro';
 import Loi8221MxAutoCF28 from '../../components/blocs/Loi8221MxAutoCF28.astro';

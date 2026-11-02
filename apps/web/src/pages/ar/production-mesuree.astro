@@ -11,6 +11,8 @@
  * للفهرسة.
  */
 import Layout from '../../layouts/Layout.astro';
+import { impactFigures } from '../../lib/impactFigures';
+import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -18,14 +20,11 @@ import KeyFigure from '../../components/KeyFigure.astro';
 import Callout from '../../components/Callout.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
+import { REALISATIONS } from '../../lib/realisations';
 import { FACTS_GENERATED_AT } from '../../lib/facts';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
-const devisHref = L('/devis/mon-toit');
+const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
 // ── أرقام مُشتَقّة — لا شيء مكتوب يدوياً ─────────────────────────────────────
 // القاعدة ب (2026-07-04): العدد الخام للتركيبات لم يعد يُبرَز في نص المستخدم
@@ -38,11 +37,8 @@ const devisHref = L('/devis/mon-toit');
 // معامل المردود عبر عدة مواقع — مستحيل). الرقم الحقيقي الوحيد للإنتاج هو
 // الحصيلة التراكمية للأسطول المتابَع في الوقت الحقيقي (MEASURED_FLEET،
 // realisations.ts) — تراكمي "منذ التشغيل"، أبداً سنوي.
-const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
-const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
+const { productionTotal, productionTotalLabel, generatedDateLabel } = impactFigures('fr-FR');
 
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
 
 const jsonLd = {
   '@context': 'https://schema.org',
