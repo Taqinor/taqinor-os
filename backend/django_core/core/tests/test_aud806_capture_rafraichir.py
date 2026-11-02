@@ -158,8 +158,9 @@ class Aud806RafraichirCaptureTests(TestCase):
     def test_creer_et_rafraichir_exigent_encaisser(self):
         """AARG11 — sans ``encaisser`` (Admin Ventes, Admin RH) : création et
         capture refusées, aucun ``payment_captured`` ; Directeur : capture."""
+        from django.apps import apps as django_apps
         from django.core.management import call_command
-        from apps.roles.models import Role
+        Role = django_apps.get_model('roles', 'Role')  # core n'importe aucune app
         call_command('init_roles', verbosity=0)
         roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
 
