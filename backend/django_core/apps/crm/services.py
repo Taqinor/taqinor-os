@@ -55,6 +55,7 @@ from .fiche_funnel import (  # façade
     assigner_lead_a,
     avancer_stage_lead_vers,
     creer_relance_lead,
+    parquer_lead,
     poser_tag_lead,
     retirer_tag_lead,
 )
@@ -202,7 +203,7 @@ __all__ = [
     'noter_devis_corrige', 'noter_devis_envoye', 'noter_devis_ouvert', 'noter_devis_reouvert',
     'noter_touche_marketing', 'noter_version_remplacee_ouverte', 'notifier_signal_lecture',
     'notify_client_contact_request', 'notify_devis_opened', 'notify_lead_callback_requested',
-    'notify_new_lead', 'poser_compteur_deploiements', 'poser_tache_avenant', 'poser_tag_lead',
+    'notify_new_lead', 'parquer_lead', 'poser_compteur_deploiements', 'poser_tache_avenant', 'poser_tag_lead',
     'poser_touche_signal_du_lead_id', 'public_booking_url', 'rattacher_visites_au_lead',
     'reactivate_lead_on_new_touch', 'recompute_lead_score', 'requete_marquee_equipe',
     'resolve_client_for_lead', 'resolve_or_create_lead_from_whatsapp', 'resume_historique_fr',

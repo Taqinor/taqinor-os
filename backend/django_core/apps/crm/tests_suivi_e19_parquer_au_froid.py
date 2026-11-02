@@ -117,3 +117,61 @@ class ParquerAuFroidTests(TestCase):
         self.assertTrue(self._reveils().exists())
         self.assertFalse(self.lead.relance_etapes.filter(
             cadence='generique', statut=A_FAIRE).exists())
+
+    # ── CADV21 — parquer_lead : le point d'écriture unique ──
+
+    def test_parquer_lead_pose_l_etat_la_raison_et_le_froid(self):
+        from apps.crm.fiche_funnel import parquer_lead
+        parquer_lead(self.lead, 'injoignable', None, self.acteur)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            (self.lead.parc_etat, self.lead.parc_raison,
+             self.lead.parc_jusqu_au), ('nurture', 'injoignable', None))
+        self.assertEqual(self.lead.stage, stages.COLD)
+        self.assertEqual(self.lead.activites.filter(
+            field='parc_raison').count(), 1)
+
+    def test_parquer_en_standby_garde_l_etape_et_la_date(self):
+        from apps.crm.fiche_funnel import parquer_lead
+        jour = datetime.date(2026, 12, 15)
+        parquer_lead(self.lead, 'plus_tard_date', jour, self.acteur)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            (self.lead.parc_etat, self.lead.parc_raison,
+             self.lead.parc_jusqu_au), ('standby', 'plus_tard_date', jour))
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+
+    def test_parquer_refuse_raison_inconnue_et_standby_sans_date(self):
+        from apps.crm.fiche_funnel import parquer_lead
+        with self.assertRaises(ValueError):
+            parquer_lead(self.lead, 'pas_envie', None, self.acteur)
+        with self.assertRaises(ValueError):
+            parquer_lead(self.lead, 'plus_tard_date', None, self.acteur)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.parc_etat)
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+
+    def test_la_table_des_raisons_est_celle_du_contrat(self):
+        import json
+        from pathlib import Path
+        from apps.crm.fiche_funnel import ETAT_PAR_RAISON
+        contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'lead.json').read_text(encoding='utf-8'))
+        self.assertEqual(ETAT_PAR_RAISON, contrat['notes']['codes_raison'])
+        self.assertEqual({r.value for r in Lead.ParcRaison},
+                         set(ETAT_PAR_RAISON))
+
+    def test_un_patch_portant_parc_etat_est_ignore_et_la_fiche_le_sert(self):
+        reponse = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.pk}/',
+            {'parc_etat': 'archive', 'parc_raison': 'doublon',
+             'parc_jusqu_au': '2026-12-31'}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.parc_etat)
+        self.assertIsNone(self.lead.parc_raison)
+        lu = self.api.get(f'/api/django/crm/leads/{self.lead.pk}/').data
+        for cle in ('parc_etat', 'parc_raison', 'parc_jusqu_au'):
+            self.assertIn(cle, lu)
+            self.assertIsNone(lu[cle])

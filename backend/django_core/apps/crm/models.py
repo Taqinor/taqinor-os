@@ -279,6 +279,32 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
         NORMALE = 'normale', 'Normale'
         HAUTE = 'haute', 'Haute'
 
+    # CADV21 (D-CADV-4 : des champs, pas des tags) — le PARCAGE d'un lead :
+    # état (standby daté / nurture / archive) et raison, posés par le seul
+    # point d'écriture ``fiche_funnel.parquer_lead`` ; couche SÉPARÉE de
+    # l'étape du funnel (STAGES.py), jamais une étape de plus.
+    class ParcEtat(models.TextChoices):
+        STANDBY = 'standby', 'Standby (reprise datée)'
+        NURTURE = 'nurture', 'Nurture (réveils espacés)'
+        ARCHIVE = 'archive', 'Archive'
+
+    class ParcRaison(models.TextChoices):
+        INJOIGNABLE = 'injoignable', 'Injoignable'
+        PAS_MAINTENANT_SANS_DATE = (
+            'pas_maintenant_sans_date', 'Pas maintenant (sans date)')
+        PLUS_TARD_DATE = 'plus_tard_date', 'Plus tard (date du client)'
+        BUDGET = 'budget', 'Budget'
+        TROP_CHER = 'trop_cher', 'Trop cher'
+        CONCURRENT = 'concurrent', 'Concurrent'
+        ACHETE_AILLEURS = 'achete_ailleurs', 'Acheté ailleurs'
+        NON_PROPRIETAIRE = 'non_proprietaire', 'Non propriétaire'
+        PAS_DE_TOIT = 'pas_de_toit', 'Pas de toit'
+        TECHNIQUE = 'technique', 'Raison technique'
+        FAUX_NUMERO = 'faux_numero', 'Faux numéro'
+        DOUBLON = 'doublon', 'Doublon'
+        TEST = 'test', 'Fiche de test'
+        ARCHIVE_ODOO = 'archive_odoo', 'Contact Odoo froid archivé'
+
     class TypeInstallation(models.TextChoices):
         RESIDENTIEL = 'residentiel', 'Résidentiel'
         COMMERCIAL = 'commercial', 'Commercial'
@@ -849,6 +875,12 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
     # forcément perdu ; un lead à « Devis envoyé » peut l'être.
     perdu = models.BooleanField(default=False)
     motif_perte = models.CharField(max_length=255, blank=True, null=True)
+    # CADV21 — parcage (lecture seule côté API ; écrit par ``parquer_lead``).
+    parc_etat = models.CharField(
+        max_length=10, choices=ParcEtat.choices, null=True, blank=True)
+    parc_raison = models.CharField(
+        max_length=30, choices=ParcRaison.choices, null=True, blank=True)
+    parc_jusqu_au = models.DateField(null=True, blank=True)
     # AMET23 (D-PROVENANCE) — noms des champs saisis par un HUMAIN (liste
     # triée, sans doublon), lus par ``records.provenance.ecrire_si_libre`` :
     # un écrivain automatique ne l'écrase jamais. Posé côté serveur seulement.
@@ -3022,4 +3054,4 @@ from .models_clients import (  # noqa: E402,F401 — fin de module (anti-cycle),
     RevueCompte, SalleVente, SalleVenteItem, SalleVenteVue,
     SoumissionLeadPartenaire, VisiteExterne)
 from .models_cadence import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
-    ExperienceCadence, GesteRelanceAppareil, MessageTemplate, PeriodeAbsence, RelanceEtape)
+    GesteRelanceAppareil, MessageTemplate, PeriodeAbsence, RelanceEtape)

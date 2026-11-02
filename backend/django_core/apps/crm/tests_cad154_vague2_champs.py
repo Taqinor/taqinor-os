@@ -183,3 +183,23 @@ class OuChaqueQuestionSePose(SimpleTestCase):
         champs = [q['champ'] for q in panneau_appel.questions_a_poser(
             Lead(nom='Prospect'))]
         self.assertNotIn('budget_client_mad', champs)
+
+
+class CadvParcSixEndroitsTests(SimpleTestCase):
+    """CADV21 — les six endroits CAD149 pour les colonnes de parcage : seuls
+    les deux premiers les concernent (colonnes serveur, jamais écrites par le
+    client)."""
+
+    CHAMPS_PARC = ('parc_etat', 'parc_raison', 'parc_jusqu_au')
+
+    def test_le_chatter_journalise_le_parcage(self):
+        for nom in self.CHAMPS_PARC:
+            self.assertIn(nom, activity.TRACKED_FIELDS, nom)
+        for nom in ('parc_etat', 'parc_raison'):
+            self.assertIn(nom, activity._CHOICE_FIELDS, nom)
+
+    def test_le_client_n_ecrit_jamais_le_parcage(self):
+        for nom in self.CHAMPS_PARC:
+            self.assertNotIn(nom, webhooks._QUEST_NETTOYEURS_HORS_SITE, nom)
+            for colonnes in questionnaire.CHAMPS_PAR_SECTION.values():
+                self.assertNotIn(nom, colonnes, nom)

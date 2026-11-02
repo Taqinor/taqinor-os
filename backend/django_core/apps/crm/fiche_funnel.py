@@ -564,6 +564,54 @@ def avancer_stage_lead_vers(lead, user, stage_cible):
     return True
 
 
+#: CADV21 — état de parcage dicté par la RAISON (conception v4 §2, mêmes 14
+#: codes que ``contract_samples/lead.json::notes.codes_raison``). Une raison
+#: ne se déduit jamais de l'état : c'est elle qui est saisie.
+ETAT_PAR_RAISON = {
+    'injoignable': 'nurture',
+    'pas_maintenant_sans_date': 'nurture',
+    'plus_tard_date': 'standby',
+    'budget': 'nurture',
+    'trop_cher': 'nurture',
+    'concurrent': 'archive',
+    'achete_ailleurs': 'archive',
+    'non_proprietaire': 'archive',
+    'pas_de_toit': 'archive',
+    'technique': 'archive',
+    'faux_numero': 'archive',
+    'doublon': 'archive',
+    'test': 'archive',
+    'archive_odoo': 'archive',
+}
+
+
+def parquer_lead(lead, raison, jusqu_au, user):
+    """CADV21 — LE point d'écriture unique du parcage d'un lead : pose
+    ``parc_etat`` (dicté par ``raison``, table ``ETAT_PAR_RAISON``),
+    ``parc_raison`` et ``parc_jusqu_au``, range le lead au Froid
+    (``stages.COLD``) sauf en standby (étape inchangée : le lead attend une
+    date, il n'est pas refroidi) et trace UNE ligne de chatter ``parc_raison``.
+
+    ``raison`` inconnue ⇒ ``ValueError`` ; ``standby`` sans date de reprise ⇒
+    ``ValueError`` (``jusqu_au`` est ignorée hors standby). Renvoie ``lead``.
+    Les refus métier (appels tracés, 0 touche) sont CADV22, pas ici."""
+    etat = ETAT_PAR_RAISON.get(raison)
+    if etat is None:
+        raise ValueError(f'Raison de parcage inconnue : {raison!r}.')
+    if etat == 'standby' and jusqu_au is None:
+        raise ValueError('Un parcage en standby exige une date de reprise.')
+    jusqu_au = jusqu_au if etat == 'standby' else None
+    ancienne = lead.parc_raison
+    lead.parc_etat = etat
+    lead.parc_raison = raison
+    lead.parc_jusqu_au = jusqu_au
+    lead.save(update_fields=['parc_etat', 'parc_raison', 'parc_jusqu_au'])
+    activity.log_bulk_change(lead, user, 'parc_raison', ancienne, raison)
+    if etat != 'standby':
+        avancer_stage_lead_vers(lead, user, stages.COLD)
+    return lead
+
+
 def assigner_lead_a(lead, user, owner_id):
     """XMKT19 — assigne (ou vide) le propriétaire du lead."""
     nouveau = _resolve_owner(lead.company, owner_id)
