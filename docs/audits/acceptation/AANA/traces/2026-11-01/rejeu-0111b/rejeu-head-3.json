@@ -1,0 +1,336 @@
+{
+  "mode": "head",
+  "base": "http://127.0.0.1:8790",
+  "run": "head-mvye8dkv",
+  "incidents_releve": {
+    "1": [],
+    "2": [
+      "API POST /ventes/factures-lignes/ -> 400 {\"produit\":[\"Ce champ est obligatoire.\"],\"error\":{\"code\":\"validation_error\",\"message\":\"{'produit': [ErrorDetail(string='Ce champ est obligatoire.', code='required')]}\",\"fields\":{\"produit\":[\"Ce champ e"
+    ],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "taux": {
+    "defaut": {
+      "reporting_conversion": {
+        "nb_devis": 34,
+        "nb_acceptes": 16,
+        "nb_factures": 26,
+        "taux_acceptation_pct": 81.2,
+        "nb_envoyes_periode": 16,
+        "nb_acceptes_periode": 13
+      },
+      "q2c_devis": {
+        "total": 33,
+        "envoyes": 1,
+        "acceptes": 16,
+        "refuses": 1,
+        "expires": 4,
+        "taux_acceptation_pct": 81.2,
+        "envoyes_periode": 16,
+        "acceptes_periode": 13,
+        "valeur_pipeline": "80400.0"
+      }
+    },
+    "2026-10-01..2026-11-01": {
+      "reporting_conversion": {
+        "nb_devis": 34,
+        "nb_acceptes": 16,
+        "nb_factures": 26,
+        "taux_acceptation_pct": 81.2,
+        "nb_envoyes_periode": 16,
+        "nb_acceptes_periode": 13
+      },
+      "q2c_devis": {
+        "total": 33,
+        "envoyes": 1,
+        "acceptes": 16,
+        "refuses": 1,
+        "expires": 4,
+        "taux_acceptation_pct": 81.2,
+        "envoyes_periode": 16,
+        "acceptes_periode": 13,
+        "valeur_pipeline": "80400.0"
+      }
+    },
+    "2020-01-01..2020-01-31": {
+      "reporting_conversion": {
+        "nb_devis": 34,
+        "nb_acceptes": 16,
+        "nb_factures": 26,
+        "taux_acceptation_pct": null,
+        "nb_envoyes_periode": 0,
+        "nb_acceptes_periode": 0
+      },
+      "q2c_devis": {
+        "total": 0,
+        "envoyes": 0,
+        "acceptes": 0,
+        "refuses": 0,
+        "expires": 0,
+        "taux_acceptation_pct": null,
+        "envoyes_periode": 0,
+        "acceptes_periode": 0,
+        "valeur_pipeline": "0.0"
+      }
+    },
+    "ecran_tunnel": {
+      "texte": "Tunnel de conversion\nDevis créés\n34\nDevis acceptés\n16\nFactures émises\n26\nDevis acceptés / envoyés : 81 %",
+      "barres": [
+        {
+          "now": "100",
+          "style": "transform: translateX(0%);"
+        },
+        {
+          "now": "47.05882352941176",
+          "style": "transform: translateX(-52.9412%);"
+        },
+        {
+          "now": "76.47058823529412",
+          "style": "transform: translateX(-23.5294%);"
+        }
+      ],
+      "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AANA-REPORTING-tunnel.jpg"
+    },
+    "ecran_q2c": {
+      "texte": "Taux d'acceptation\n81.2 %\n13 / 16 devis envoyés",
+      "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AANA-Q2C-taux.jpg"
+    }
+  },
+  "incidents_taux": {
+    "1": [],
+    "2": [
+      "API POST /ventes/factures-lignes/ -> 400 {\"produit\":[\"Ce champ est obligatoire.\"],\"error\":{\"code\":\"validation_error\",\"message\":\"{'produit': [ErrorDetail(string='Ce champ est obligatoire.', code='required')]}\",\"fields\":{\"produit\":[\"Ce champ e"
+    ],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "etapes": {
+    "RELEVE": [
+      {
+        "nom": "étape releve exécutée sans erreur",
+        "ok": false,
+        "detail": "Error: POST /ventes/factures-lignes/ -> 400 {\"produit\":[\"Ce champ est obligatoire.\"],\"error\":{\"code\":\"validation_error\",\"message\":\"{'produit': [ErrorDetail(string='Ce champ est obligatoire.', code='required')]}\",\"fields\":{\"produit\":[\"Ce champ est obligatoire.\"]},\"request_id\":\"f81b4b3f35864461aa64736f357e73d4\"}}"
+      }
+    ],
+    "TAUX": [
+      {
+        "nom": "defaut : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux",
+        "ok": true,
+        "detail": {
+          "reporting": [
+            81.2,
+            13,
+            16
+          ],
+          "q2c": [
+            81.2,
+            13,
+            16
+          ]
+        }
+      },
+      {
+        "nom": "2026-10-01..2026-11-01 : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux",
+        "ok": true,
+        "detail": {
+          "reporting": [
+            81.2,
+            13,
+            16
+          ],
+          "q2c": [
+            81.2,
+            13,
+            16
+          ]
+        }
+      },
+      {
+        "nom": "2020-01-01..2020-01-31 : conversion.taux_acceptation_pct = Q2C devis.taux_acceptation_pct, effectifs servis égaux",
+        "ok": true,
+        "detail": {
+          "reporting": [
+            null,
+            0,
+            0
+          ],
+          "q2c": [
+            null,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "nom": "aucun envoi dans la période ⇒ taux null",
+        "ok": true,
+        "detail": {
+          "nb_devis": 34,
+          "nb_acceptes": 16,
+          "nb_factures": 26,
+          "taux_acceptation_pct": null,
+          "nb_envoyes_periode": 0,
+          "nb_acceptes_periode": 0
+        }
+      }
+    ],
+    "TUNNEL": [
+      {
+        "nom": "tunnel : 26 factures pour 34 devis — aucun « 150 », aucun % dans les barres, seul % = taux servi",
+        "ok": true,
+        "detail": {
+          "pourcentages": [
+            "81 %"
+          ],
+          "tauxAffiche": "81 %",
+          "servi": 81.2,
+          "texte": "Tunnel de conversion\nDevis créés\n34\nDevis acceptés\n16\nFactures émises\n26\nDevis acceptés / envoyés : 81 %"
+        }
+      },
+      {
+        "nom": "largeur des barres bornée à 100 %",
+        "ok": true,
+        "detail": [
+          {
+            "now": "100",
+            "style": "transform: translateX(0%);"
+          },
+          {
+            "now": "47.05882352941176",
+            "style": "transform: translateX(-52.9412%);"
+          },
+          {
+            "now": "76.47058823529412",
+            "style": "transform: translateX(-23.5294%);"
+          }
+        ]
+      },
+      {
+        "nom": "cas réel : plus de factures émises que de devis créés",
+        "ok": false,
+        "detail": {
+          "nb_factures": 26,
+          "nb_devis": 34
+        }
+      },
+      {
+        "nom": "Q2C : hint = acceptes_periode / envoyes_periode servis",
+        "ok": true,
+        "detail": {
+          "texte": "Taux d'acceptation\n81.2 %\n13 / 16 devis envoyés",
+          "servi": [
+            13,
+            16,
+            81.2
+          ]
+        }
+      },
+      {
+        "nom": "persistance : Q2C rechargé identique",
+        "ok": true,
+        "detail": {
+          "tq2": "Taux d'acceptation\n81.2 %\n13 / 16 devis envoyés"
+        }
+      }
+    ]
+  },
+  "incidents": {
+    "1": [],
+    "2": [
+      "API POST /ventes/factures-lignes/ -> 400 {\"produit\":[\"Ce champ est obligatoire.\"],\"error\":{\"code\":\"validation_error\",\"message\":\"{'produit': [ErrorDetail(string='Ce champ est obligatoire.', code='required')]}\",\"fields\":{\"produit\":[\"Ce champ e"
+    ],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "requetes": [
+    {
+      "m": "POST",
+      "url": "/api/django/token/",
+      "body": "<identifiants retirés>"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"apps\",\"ecran\":\"/apps\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/crm/appareils-equipe/ce-navigateur/",
+      "body": "{\"appareil_id\":\"\",\"navigateur\":\"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessC\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"reporting\",\"ecran\":\"/reporting\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"reporting\",\"ecran\":\"/reporting/quote-to-cash\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"reporting\",\"ecran\":\"/reporting/quote-to-cash\"}"
+    }
+  ]
+}

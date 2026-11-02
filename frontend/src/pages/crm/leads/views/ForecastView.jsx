@@ -1,7 +1,7 @@
 // XSAL15 — Vue kanban « Prévision » : les leads OUVERTS groupés par MOIS de
 // `date_cloture_prevue` (posée par XSAL7), colonnes total brut + pondéré en
-// tête (MÊME calcul que KanbanView : STAGE_PROBABILITY × total devis — jamais
-// une seconde table de probabilités déclarée ici), glisser une carte vers un
+// tête (MÊME calcul que KanbanView : probabilité SERVIE × total devis — jamais
+// une table de probabilités locale, AANA67), glisser une carte vers un
 // autre mois PATCHe `date_cloture_prevue` via l'endpoint existant. Colonne
 // « Non daté » pour les leads sans date. L'équivalent de la forecast view
 // d'Odoo — réutilise @dnd-kit déjà installé (aucune nouvelle dépendance).
@@ -19,7 +19,7 @@ import { usePanScroll } from '../../../../features/kanban/usePanScroll'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { toast } from '../../../../ui/confirm'
 import { EmptyState } from '../../../../ui'
-import { STAGE_PROBABILITY } from './KanbanView'
+import { useProbabilitesEtape, ponderer } from '../useProbabilitesEtape'
 import LeadCard from './LeadCard'
 import BoutonChargerPlus from './BoutonChargerPlus'
 
@@ -67,9 +67,9 @@ function upcomingMonthKeys(n = 6) {
 }
 
 // Regroupe les leads ouverts par mois de date_cloture_prevue (+ colonne
-// « Non daté ») ; total brut (dernier devis) + pondéré (STAGE_PROBABILITY ×
+// « Non daté ») ; total brut (dernier devis) + pondéré (probabilité servie ×
 // brut, même calcul que KanbanView) en tête de chaque colonne.
-function groupByMonth(leads) {
+function groupByMonth(leads, probas) {
   const open = (leads ?? []).filter(isOpenLead)
   const byMonth = new Map()
   const ensure = (key) => {
@@ -87,13 +87,13 @@ function groupByMonth(leads) {
   const columns = monthKeys.map((key) => {
     const inMonth = byMonth.get(key)
     const totalBrut = inMonth.reduce((s, l) => s + latestDevisTotal(l), 0)
-    const totalPondere = inMonth.reduce(
-      (s, l) => s + latestDevisTotal(l) * (STAGE_PROBABILITY[l.stage] ?? 0), 0)
+    const totalPondere = probas && inMonth.reduce(
+      (s, l) => s + ponderer(probas, l.stage, latestDevisTotal(l)), 0)
     return { key, label: monthLabel(key), leads: inMonth, totalBrut, totalPondere }
   })
   const undatedTotalBrut = undated.reduce((s, l) => s + latestDevisTotal(l), 0)
-  const undatedTotalPondere = undated.reduce(
-    (s, l) => s + latestDevisTotal(l) * (STAGE_PROBABILITY[l.stage] ?? 0), 0)
+  const undatedTotalPondere = probas && undated.reduce(
+    (s, l) => s + ponderer(probas, l.stage, latestDevisTotal(l)), 0)
   columns.push({
     key: UNDATED_KEY, label: 'Non daté', leads: undated,
     totalBrut: undatedTotalBrut, totalPondere: undatedTotalPondere,
@@ -226,7 +226,7 @@ function MonthColumn({ col, children }) {
             className="kb-col-forecast block text-[11px] text-muted-foreground"
             title="Prévisionnel pondéré (probabilité par étape)"
           >
-            Prév. {formatMAD(col.totalPondere)}
+            Prév. {col.totalPondere == null ? '—' : formatMAD(col.totalPondere)}
           </span>
         )}
       </header>
@@ -265,7 +265,8 @@ export default function ForecastView({
   // `.kb-board`, le hook attache lui-même ses écouteurs natifs par nœud
   // (donc survit au démontage/remontage du board sur un état vide).
   const boardRef = usePanScroll()
-  const columns = useMemo(() => groupByMonth(leads), [leads])
+  const probas = useProbabilitesEtape()
+  const columns = useMemo(() => groupByMonth(leads, probas), [leads, probas])
   // LB28 — options du <select> mois (MonthMover), calculées UNE fois pour
   // toutes les cartes (jamais une seconde table de mois par carte) ; exclut
   // « Non daté » (jamais une cible valide, même règle que le glisser).

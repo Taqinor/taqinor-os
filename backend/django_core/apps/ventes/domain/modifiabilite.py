@@ -237,7 +237,6 @@ def corps_version_remplacee(devis, detail=None):
 CODE_SOMME_INVALIDE = 'somme_invalide'
 CODE_TRANCHE_FACTUREE = 'tranche_facturee'
 CODE_ECHEANCIER_INVALIDE = 'echeancier_invalide'
-_DETAIL_SOMME = 'Les tranches ne totalisent pas le prix convenu.'
 
 
 class EcheancierRefuse(Exception):
@@ -270,30 +269,34 @@ def _entree_stockee(entree):
 
 
 def regle_somme_vente(tranches, prix_convenu):
-    """PURE — ``(montants TTC des tranches NON dernières, reste de la
-    dernière)`` en ``Decimal`` ; lève :class:`EcheancierRefuse`
-    ``somme_invalide``. Tout en % : total 100 (AGNR12) ; toujours Σ des non
-    dernières ≤ prix convenu et un acompte < prix convenu."""
-    from decimal import Decimal, ROUND_HALF_UP
-
+    """PURE — délégué de LA règle d'AGNR49 (``utils.echeancier.
+    regle_somme_echeancier``) : ``(montants des NON dernières, reste)`` ; son
+    refus devient :class:`EcheancierRefuse` ``somme_invalide`` (VNT66)."""
     from apps.ventes.utils.echeancier import (
-        UNITE_MONTANT, UNITE_PCT, EcheancierInvalide, controler_somme_echeancier)
-    prix = Decimal(str(prix_convenu))
-    if not tranches:
-        raise EcheancierRefuse(_DETAIL_SOMME, code=CODE_SOMME_INVALIDE)
-    if all(t['unite'] == UNITE_PCT for t in tranches):
-        try:
-            controler_somme_echeancier(None, tranches)
-        except EcheancierInvalide as exc:
-            raise EcheancierRefuse(str(exc), code=CODE_SOMME_INVALIDE)
-    montants = [(Decimal(str(t['valeur'])) if t['unite'] == UNITE_MONTANT
-                 else prix * Decimal(str(t['valeur'])) / 100).quantize(
-                     Decimal('0.01'), rounding=ROUND_HALF_UP)
-                for t in tranches[:-1]]
-    total = sum(montants, Decimal('0'))
-    if total > prix or (montants and montants[0] >= prix):
-        raise EcheancierRefuse(_DETAIL_SOMME, code=CODE_SOMME_INVALIDE)
-    return montants, prix - total
+        EcheancierIncoherent, regle_somme_echeancier)
+    try:
+        return regle_somme_echeancier(tranches, prix_convenu)
+    except EcheancierIncoherent as exc:
+        raise EcheancierRefuse(str(exc), code=CODE_SOMME_INVALIDE)
+
+
+def echeancier_au_reste(entrees, total_ttc):
+    """AGNR50 — LA règle d'AGNR49 sur des entrées STOCKÉES (PATCH/PUT,
+    ``atomic``) : dès qu'une tranche est en MAD, la dernière devient le reste
+    en MAD (autres clés gardées) ; lève ``EcheancierIncoherent`` (409). Tout
+    en %, vide, illisible ou TTC nul : entrées rendues telles quelles."""
+    from apps.ventes.utils.echeancier import (
+        UNITE_MONTANT, UNITE_PCT, EcheancierInvalide, regle_somme_echeancier,
+        valider_echeancier)
+    try:
+        tranches = valider_echeancier(entrees, controler_somme=False)
+    except EcheancierInvalide:
+        return entrees
+    if not total_ttc or all(t['unite'] == UNITE_PCT for t in tranches):
+        return entrees
+    _montants, reste = regle_somme_echeancier(tranches, total_ttc)
+    return list(entrees[:-1]) + [dict(
+        entrees[-1], pct_or_montant=float(reste), unite=UNITE_MONTANT)]
 
 
 def _exiger_couvertes_inchangees(plan, tranches, figer_brouillons):

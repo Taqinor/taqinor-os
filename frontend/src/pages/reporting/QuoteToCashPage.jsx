@@ -106,7 +106,7 @@ export default function QuoteToCashPage() {
               icon={<Percent size={18} aria-hidden="true" />}
               label="Taux d'acceptation"
               value={pct(dash.devis?.taux_acceptation_pct)}
-              hint={`${dash.devis?.acceptes ?? 0} / ${dash.devis?.envoyes ?? 0} devis`}
+              hint={`${dash.devis?.acceptes_periode ?? 0} / ${dash.devis?.envoyes_periode ?? 0} devis envoyés`}
             />
             <KpiCard
               icon={<TrendingUp size={18} aria-hidden="true" />}

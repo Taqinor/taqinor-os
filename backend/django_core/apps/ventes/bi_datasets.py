@@ -28,9 +28,21 @@ globale réconciliée au centime. Aucune de ces règles n'est exprimable en SQL 
 une annotation ORM rendrait un nombre DIFFÉRENT de celui que le devis imprime.
 La règle du dépôt est explicite — un agrégat vient des données réelles ou il
 est OMIS, jamais approché. Les montants sont donc exposés là où ils sont
-RÉELLEMENT stockés : ``ventes_factures`` (``montant_ht``/``montant_tva``/
-``montant_ttc``, colonnes du modèle) et ``ventes_paiements`` (``montant``).
+RÉELLEMENT disponibles : ``ventes_factures`` (``total_ht``/``total_tva``/
+``total_ttc``, voir ci-dessous) et ``ventes_paiements`` (``montant``).
 Le jour où un total HT net est dénormalisé sur ``Devis``, ce dataset l'expose.
+
+POURQUOI ``ventes_factures`` SERT ``total_*`` ET NON ``montant_*`` (AANA79,
+D-AANA-6). ``Facture.total_ht`` / ``total_tva`` / ``total_ttc`` sont des
+PROPRIÉTÉS (``facturation.totaux.TotauxDocumentMixin``) ; les colonnes
+``montant_ht`` / ``montant_tva`` / ``montant_ttc`` ne sont stockées QUE sur
+les factures d'échéancier (montants figés) et sont NULL sur une facture
+classique (rejeu AANA74 : 18 sur 18). Le noyau canonique n'est pas
+exprimable en SQL : le fournisseur calcule donc les propriétés en Python
+(même lecture que ``reporting.metriques_ca``, AANA77) puis les injecte comme
+annotations ``total_*`` — sommables par l'explorateur. Une annotation ne peut
+pas porter le nom d'une colonne, d'où ``total_*``; ``montant_*`` restent
+listés (colonnes brutes, rétro-compatibilité des métriques déjà définies).
 """
 from __future__ import annotations
 
@@ -44,8 +56,9 @@ DEVIS_FIELDS = [
 # ── ventes_factures ─────────────────────────────────────────────────────────
 FACTURES_DATASET = 'ventes_factures'
 FACTURES_FIELDS = [
-    'id', 'statut', 'type_facture', 'mois_emission', 'montant_ht',
-    'montant_tva', 'montant_ttc', 'montant_paye', 'reste_du', 'echue_bool',
+    'id', 'statut', 'type_facture', 'mois_emission', 'total_ht', 'total_tva',
+    'total_ttc', 'montant_ht', 'montant_tva', 'montant_ttc', 'montant_paye',
+    'reste_du', 'echue_bool',
     # NTDATA16 — champs du score de COMPLÉTUDE : une facture sans client ni
     # échéance n'est pas recouvrable.
     'client', 'date_echeance',
@@ -74,9 +87,12 @@ FACTURES_FIELD_META = {
     'statut': {'label': 'Statut', 'type': 'dimension'},
     'type_facture': {'label': 'Type de facture', 'type': 'dimension'},
     'mois_emission': {'label': "Mois d'émission", 'type': 'temps'},
-    'montant_ht': {'label': 'Montant HT', 'type': 'mesure'},
-    'montant_tva': {'label': 'TVA', 'type': 'mesure'},
-    'montant_ttc': {'label': 'Montant TTC', 'type': 'mesure'},
+    'total_ht': {'label': 'Montant HT', 'type': 'mesure'},
+    'total_tva': {'label': 'TVA', 'type': 'mesure'},
+    'total_ttc': {'label': 'Montant TTC', 'type': 'mesure'},
+    'montant_ht': {'label': 'HT figé (échéancier)', 'type': 'mesure'},
+    'montant_tva': {'label': 'TVA figée (échéancier)', 'type': 'mesure'},
+    'montant_ttc': {'label': 'TTC figé (échéancier)', 'type': 'mesure'},
     'montant_paye': {'label': 'Montant payé', 'type': 'mesure'},
     'reste_du': {'label': 'Reste dû', 'type': 'mesure'},
     'echue_bool': {'label': 'Échue', 'type': 'dimension'},
@@ -145,8 +161,38 @@ def devis_queryset(company, user):
     )
 
 
+def _total_calcule(valeurs):
+    """Annotation SQL ``{pk: montant}`` → décimal (NULL si pk absent)."""
+    import json
+
+    from django.db.models import DecimalField, F, Func, TextField, Value
+    from django.db.models.functions import Cast
+
+    return Func(
+        Value(json.dumps(valeurs), output_field=TextField()),
+        Cast(F('pk'), TextField()),
+        template='((%(expressions)s)::numeric)', arg_joiner='::jsonb ->> ',
+        output_field=DecimalField(max_digits=14, decimal_places=2))
+
+
+def _annotations_totaux(company):
+    """AANA79 — ``total_ht/tva/ttc`` = propriétés ``Facture.total_*``."""
+    from apps.reporting.metriques_ca import _factures
+
+    factures = _factures(company, None, None)
+    return {
+        'total_' + cle: _total_calcule(
+            {str(f.pk): str(getattr(f, 'total_' + cle) or 0)
+             for f in factures})
+        for cle in ('ht', 'tva', 'ttc')
+    }
+
+
 def factures_queryset(company, user):
     """Queryset ``facturation.Facture`` DÉJÀ scopé société.
+
+    ``total_ht/total_tva/total_ttc`` portent les montants REMPLIS de toute
+    facture (propriétés calculées, AANA79) ; ``reste_du`` part de ``total_ttc``.
 
     ``montant_paye`` = somme des paiements ENCAISSÉS (un paiement rejeté sort
     du calcul, comme partout ailleurs dans le dépôt) via une sous-requête
@@ -176,11 +222,13 @@ def factures_queryset(company, user):
     )
     aujourdhui = date.today()
     return Facture.objects.filter(company=company).annotate(
+        **_annotations_totaux(company),
+    ).annotate(
         mois_emission=TruncMonth('date_emission'),
         montant_paye=Coalesce(paye, Value(Decimal('0'), montant_field),
                               output_field=montant_field),
     ).annotate(
-        reste_du=Coalesce(F('montant_ttc'), Value(Decimal('0'), montant_field))
+        reste_du=Coalesce(F('total_ttc'), Value(Decimal('0'), montant_field))
         - F('montant_paye'),
         echue_bool=Case(
             When(Q(date_echeance__lt=aujourdhui)

@@ -65,7 +65,7 @@ test('taux_acceptation_servi', async () => {
   // L'écran lit la clé servie, sous le libellé attendu…
   assert.ok(reporting.includes('formatPercent(conversion.taux_acceptation_pct)'),
     'Reporting.jsx doit afficher conversion.taux_acceptation_pct tel quel')
-  assert.ok(reporting.includes('Devis acceptés / créés'))
+  assert.ok(reporting.includes('Devis acceptés / envoyés'))
   // …et ne recalcule plus aucun taux à partir des compteurs.
   assert.ok(!/nb_factures\s*\/\s*conversion\.nb_devis/.test(reporting),
     'la formule nb_factures ÷ nb_devis (> 100 %) doit avoir disparu')

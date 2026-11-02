@@ -1,0 +1,16 @@
+{
+ "sum_montant_ht_comme_exemple": false,
+ "puce_factures": "Factures → ventes_facture + ventes_lignefacture\n  - statut : 'brouillon', 'emise', 'payee', 'en_retard', 'annulee'\n  - montant_ht / montant_ttc = montants figes des SEULES factures d echeancier,\n    NULL sur une facture classique : le CA facture HT/TTC n est stocke dans\n    aucune colonne, ne le calcule JAMAIS par SUM(montant_ht) ou SUM(montant_ttc)\n    et reponds qu il se lit dans l ecran Rapports ; reference, date_emission, date_echeance\n",
+ "exemples": [
+  {
+   "libelle": "Nombre de factures emises",
+   "sql": "SELECT COUNT(id) FROM ventes_facture WHERE statut IN ('emise','payee','en_retard')",
+   "resultat": "[(3,)]"
+  },
+  {
+   "libelle": "Factures en retard",
+   "sql": "SELECT reference FROM ventes_facture WHERE statut IN ('emise','en_retard') AND date_echeance < CURRENT_DATE",
+   "resultat": "[]"
+  }
+ ]
+}

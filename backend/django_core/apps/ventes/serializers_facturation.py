@@ -96,6 +96,9 @@ class BonCommandeSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True)
     has_facture = serializers.SerializerMethodField()
+    # ATOT49 — porte de facturation `{ok, motif}` (même fonction que
+    # `creer-facture`) : l'écran n'affiche « Facture » que si `ok`.
+    facturable = serializers.SerializerMethodField()
     # AUD118 — DISTINCT de `has_facture` : une facture ANNULÉE ne bloque plus
     # rien. `has_facture` reste le prédicat « une facture a déjà été émise »
     # (il gouverne le bouton « Facture », dont la garde serveur ne filtre pas
@@ -141,6 +144,11 @@ class BonCommandeSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         if annote is not None:
             return bool(annote)
         return Facture.objects.filter(bon_commande=obj).exists()
+
+    @extend_schema_field(serializers.DictField())
+    def get_facturable(self, obj):
+        from .selectors_facturation import porte_facture_bc
+        return porte_facture_bc(obj)
 
     @extend_schema_field(serializers.BooleanField())
     def get_facture_active(self, obj):

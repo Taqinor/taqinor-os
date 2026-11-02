@@ -1,0 +1,36 @@
+# Rejeu 0111b — données PROPRES (sociétés « ACC2 A » / « ACC2 B », préfixe ACC2), posées par l'ORM.
+# A : 1 devis (2 × 10 HT) + 3 factures classiques émises 1 000 / 500 / 250 HT ; B : 1 devis (50 × 100) + 1 facture émise (7 × 300).
+import json
+from decimal import Decimal
+from django.contrib.auth import get_user_model
+from authentication.models import Company
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+from apps.crm.models import Client
+from apps.stock.models import Produit
+from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture
+U = get_user_model()
+PWD = 'Acc2-0111b-Rejeu!'
+out = {}
+for k, dev, facs in (('A', ('2', '10'), ('1000', '500', '250')), ('B', ('50', '100'), ('2100',))):
+    co, _ = Company.objects.get_or_create(slug=f'acc2-0111b-{k.lower()}', defaults={'nom': f'ACC2 0111b {k}'})
+    rd, _ = Role.objects.get_or_create(company=co, nom='Directeur', defaults={'permissions': list(DIRECTEUR_PERMISSIONS), 'est_systeme': True})
+    un = f'acc2_dir_{k.lower()}'
+    u = U.objects.filter(username=un).first() or U.objects.create_user(username=un, password=PWD, company=co, role=rd, role_legacy='admin', email=f'{un}@example.invalid')
+    cl, _ = Client.objects.get_or_create(company=co, email=f'cli-acc2-{k.lower()}@example.invalid', defaults={'nom': f'Cli ACC2 {k}', 'prenom': 'X'})
+    p, _ = Produit.objects.get_or_create(company=co, sku=f'ACC2-KIT-{k}', defaults={'nom': 'Kit ACC2', 'prix_vente': Decimal('10'), 'quantite_stock': 0})
+    d = Devis.objects.filter(company=co, reference=f'DEV-ACC2-{k}').first()
+    if not d:
+        d = Devis.objects.create(company=co, reference=f'DEV-ACC2-{k}', client=cl, statut='brouillon', created_by=u)
+        LigneDevis.objects.create(devis=d, produit=p, designation='Kit', quantite=Decimal(dev[0]), prix_unitaire=Decimal(dev[1]))
+    fids = []
+    for i, pu in enumerate(facs):
+        ref = f'FAC-ACC2-{k}-{i+1}'
+        f = Facture.objects.filter(company=co, reference=ref).first()
+        if not f:
+            f = Facture.objects.create(company=co, reference=ref, client=cl, statut='emise', taux_tva=Decimal('20.00'))
+            q, pu2 = (('7', '300') if k == 'B' else ('1', pu))
+            LigneFacture.objects.create(facture=f, produit=p, designation='Kit', quantite=Decimal(q), prix_unitaire=Decimal(pu2), remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        fids.append(f.pk)
+    out[k] = {'company_id': co.pk, 'dir': un, 'devis': d.pk, 'factures': fids}
+print('@@SETUP ' + json.dumps(out))

@@ -324,7 +324,7 @@ export default function BonCommandeList() {
                       ? <Badge tone="warning">Partiel</Badge>
                       : <span className="text-muted-foreground">—</span>}
                   </td>
-                  <td>
+                  <td title={bc.facturable && !bc.facturable.ok ? bc.facturable.motif : undefined}>
                     {bc.has_facture
                       ? <Badge tone="success">Oui</Badge>
                       : <span className="text-muted-foreground">—</span>}
@@ -360,7 +360,9 @@ export default function BonCommandeList() {
                           Livrer partiellement
                         </Button>
                       )}
-                      {(bc.statut === 'confirme' || bc.statut === 'livre') && !bc.has_facture && (
+                      {/* ATOT49 — la porte vient du SERVEUR (`facturable`, même
+                          fonction que creer-facture) ; aucune règle locale. */}
+                      {bc.facturable?.ok && !bc.has_facture && (
                         <Button size="sm" variant="outline" loading={busy}
                                 onClick={() => handleCreerFacture(bc)}>
                           <FilePlus2 /> Facture

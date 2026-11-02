@@ -1,0 +1,324 @@
+{
+  "mode": "head",
+  "base": "http://127.0.0.1:8790",
+  "run": "head-mvye8z4r",
+  "releve": {
+    "factures": [
+      {
+        "id": 60,
+        "ref": "FAC-202611-0026",
+        "ttc": "1200.00"
+      },
+      {
+        "id": 61,
+        "ref": "FAC-202611-0027",
+        "ttc": "2400.00"
+      },
+      {
+        "id": 62,
+        "ref": "FAC-202611-0028",
+        "ttc": "3600.00"
+      },
+      {
+        "id": 63,
+        "ref": "FAC-202611-0029",
+        "ttc": "1200.00"
+      }
+    ],
+    "csv": "date;reference;montant;mode\n2026-10-20;FAC-202611-0026;1200.00;traite\n2026-10-20;FAC-202611-0027;2400.00;\n2026-10-20;FAC-202611-0028;3600.00;chèque\n2026-10-20;FAC-202611-0029;1200.005;virement\n",
+    "ecran_apercu": "Aller au contenu\nEncaissements\nTAQINOR Démo\nERP SOLAIRE\nVENTES\nADMINISTRATEUR\nCockpit\nDevis\nConception 3D\nBons de commande\nFactures\nAvoirs\nEncaissements\nImport relevé bancaire\nRelances / Impayés\nAction requise\nListes de prix\nDossiers réglementaires\nRemises d'encaissement\nToutes les apps\nDéconnexion\nVENTES\nVentes\nEncaissements\nEncaissements\n⌘K\n20\nFR\nClair\nSystème\nSombre\nD\ndemo_admin\nEncaissements\n\nTous les paiements reçus, par facture et par mode\n\nImporter un relevé bancaire\nFACTURE\tCLIENT\tMONTANT\tDATE\tMODE\tSTATUT\tPAR QUI\t\n\n\nAucun encaissement\n\nAucun paiement n’a encore été enregistré.\n\nBienvenue chez Taqinor\n\nIci, chaque devis, chaque chantier et chaque mise en service font avancer le solaire au Maroc. On s’occupe de la paperasse — vous, des panneaux.\n\nCommencer\nPlus tard\nImporter un relevé bancaire\n\nÉtape 1 — l’aperçu n’écrit RIEN : il montre les colonnes reconnues, le statut de chaque ligne et les totaux. Étape 2 — l’import crée les encaissements manquants. Fichier XLSX ou CSV, 5 Mo maximum.\n\nFichier du relevé\n4 ligne(s) lue(s)\n2 rapprochée(s)\n0 déjà réglée(s)\n\nColonnes reconnues\n\ndate → date\nreference → reference\nmontant → montant\nmode → mode\nLIGNE\tDATE\tRÉFÉRENCE\tMONTANT\tFACTURE\tIMPORTER\tIMPUTER À\tSTATUT\n2\t2026-10-20\tFAC-202611-0026\t1 200,00 MAD\t—\t\t\tMode de paiement non reconnu\n3\t2026-10-20\tFAC-202611-0027\t2 400,00 MAD\tFAC-202611-0027\t\t\tÀ importervirement (supposé)\n4\t2026-10-20\tFAC-202611-0028\t3 600,00 MAD\tFAC-202611-0028\t\t\tÀ importer\n5\t2026-10-20\tFAC-202611-0029\t—\t—\t\t\tMontant invalide\nAnnuler\nAperçu (sans écrire)\nImporter",
+    "capture": "/tmp/claude-0/-home-user-taqinor-os/c35db629-a2a7-533a-80d5-b9cfa8551a66/scratchpad/acc2/traces/head/ACCEPTATION-AANA-RELEVE-apercu.jpg",
+    "dry_run": {
+      "st": 200,
+      "preview": [
+        {
+          "ligne": 2,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0026",
+          "libelle": "",
+          "montant": "1200.00",
+          "mode": null,
+          "mode_par_defaut": false,
+          "statut": "mode_invalide",
+          "facture_id": null,
+          "facture_reference": null,
+          "match_type": null,
+          "candidats": []
+        },
+        {
+          "ligne": 3,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0027",
+          "libelle": "",
+          "montant": "2400.00",
+          "mode": "virement",
+          "mode_par_defaut": true,
+          "statut": "a_importer",
+          "facture_id": 61,
+          "facture_reference": "FAC-202611-0027",
+          "match_type": "reference",
+          "candidats": []
+        },
+        {
+          "ligne": 4,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0028",
+          "libelle": "",
+          "montant": "3600.00",
+          "mode": "cheque",
+          "mode_par_defaut": false,
+          "statut": "a_importer",
+          "facture_id": 62,
+          "facture_reference": "FAC-202611-0028",
+          "match_type": "reference",
+          "candidats": []
+        },
+        {
+          "ligne": 5,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0029",
+          "libelle": "",
+          "montant": null,
+          "mode": "virement",
+          "mode_par_defaut": false,
+          "statut": "montant_invalide",
+          "facture_id": null,
+          "facture_reference": null,
+          "match_type": null,
+          "candidats": []
+        }
+      ],
+      "revue": [
+        {
+          "ligne": 2,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0026",
+          "libelle": "",
+          "montant": "1200.00",
+          "mode": null,
+          "mode_par_defaut": false,
+          "statut": "mode_invalide",
+          "facture_id": null,
+          "facture_reference": null,
+          "match_type": null,
+          "candidats": []
+        }
+      ]
+    },
+    "commit": {
+      "st": 201,
+      "body": {
+        "token": "lIxCaacD-4WpX97JMheVp5u8W0PIZoDoA5kXgYAPOnU",
+        "created": 2,
+        "skipped": 2,
+        "errors": 0,
+        "results": [
+          {
+            "ligne": 2,
+            "statut": "mode_invalide"
+          },
+          {
+            "ligne": 3,
+            "statut": "created",
+            "facture": "FAC-202611-0027",
+            "facture_reference": "FAC-202611-0027",
+            "paiement_id": 1,
+            "montant": "2400.00",
+            "match_type": "reference"
+          },
+          {
+            "ligne": 4,
+            "statut": "created",
+            "facture": "FAC-202611-0028",
+            "facture_reference": "FAC-202611-0028",
+            "paiement_id": 2,
+            "montant": "3600.00",
+            "match_type": "reference"
+          },
+          {
+            "ligne": 5,
+            "statut": "montant_invalide"
+          }
+        ]
+      }
+    },
+    "paiements_relus": [
+      [],
+      [
+        {
+          "montant": "2400.00",
+          "mode": "virement"
+        }
+      ],
+      [
+        {
+          "montant": "3600.00",
+          "mode": "cheque"
+        }
+      ],
+      []
+    ]
+  },
+  "incidents_releve": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "etapes": {
+    "RELEVE": [
+      {
+        "nom": "écran : « Mode de paiement non reconnu » et « virement (supposé) » affichés",
+        "ok": true,
+        "detail": {}
+      },
+      {
+        "nom": "« traite » ⇒ mode_invalide, en file de revue",
+        "ok": true,
+        "detail": {
+          "ligne": 2,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0026",
+          "libelle": "",
+          "montant": "1200.00",
+          "mode": null,
+          "mode_par_defaut": false,
+          "statut": "mode_invalide",
+          "facture_id": null,
+          "facture_reference": null,
+          "match_type": null,
+          "candidats": []
+        }
+      },
+      {
+        "nom": "mode vide ⇒ importable, virement supposé (mode_par_defaut)",
+        "ok": true,
+        "detail": {
+          "ligne": 3,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0027",
+          "libelle": "",
+          "montant": "2400.00",
+          "mode": "virement",
+          "mode_par_defaut": true,
+          "statut": "a_importer",
+          "facture_id": 61,
+          "facture_reference": "FAC-202611-0027",
+          "match_type": "reference",
+          "candidats": []
+        }
+      },
+      {
+        "nom": "« chèque » ⇒ cheque",
+        "ok": true,
+        "detail": {
+          "ligne": 4,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0028",
+          "libelle": "",
+          "montant": "3600.00",
+          "mode": "cheque",
+          "mode_par_defaut": false,
+          "statut": "a_importer",
+          "facture_id": 62,
+          "facture_reference": "FAC-202611-0028",
+          "match_type": "reference",
+          "candidats": []
+        }
+      },
+      {
+        "nom": "1200.005 ⇒ montant_invalide",
+        "ok": true,
+        "detail": {
+          "ligne": 5,
+          "date": "2026-10-20",
+          "reference": "FAC-202611-0029",
+          "libelle": "",
+          "montant": null,
+          "mode": "virement",
+          "mode_par_defaut": false,
+          "statut": "montant_invalide",
+          "facture_id": null,
+          "facture_reference": null,
+          "match_type": null,
+          "candidats": []
+        }
+      },
+      {
+        "nom": "commit : 2 lignes écrites seulement (vide→virement, chèque→cheque), traite et 1200.005 jamais écrites",
+        "ok": true,
+        "detail": [
+          [],
+          [
+            {
+              "montant": "2400.00",
+              "mode": "virement"
+            }
+          ],
+          [
+            {
+              "montant": "3600.00",
+              "mode": "cheque"
+            }
+          ],
+          []
+        ]
+      }
+    ]
+  },
+  "incidents": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "8": []
+  },
+  "requetes": [
+    {
+      "m": "POST",
+      "url": "/api/django/token/",
+      "body": "<identifiants retirés>"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"apps\",\"ecran\":\"/apps\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/crm/appareils-equipe/ce-navigateur/",
+      "body": "{\"appareil_id\":\"\",\"navigateur\":\"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessC\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/reporting/vitals/",
+      "body": null
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/adminops/tracker-usage/",
+      "body": "{\"module\":\"ventes\",\"ecran\":\"/ventes/paiements/import-releve\"}"
+    },
+    {
+      "m": "POST",
+      "url": "/api/django/ventes/paiements/import-releve/dry-run/",
+      "body": null
+    }
+  ]
+}

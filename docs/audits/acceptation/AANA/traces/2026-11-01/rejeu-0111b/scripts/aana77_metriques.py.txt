@@ -1,0 +1,37 @@
+# Rejeu 0111b — AANA77 : métriques cœur ca_ht / ca_ttc / panier_moyen résolues par le VRAI moteur
+# (apps.semantic.services.resolve_metric) sur la base locale, confrontées à Σ Facture.total_ht|ttc
+# (propriétés) des factures émises/payées/en retard. Env SEED=1 : sème seed_metriques pour les sociétés
+# sans définition. Env MODE=… libre (étiquette).
+import json, os
+from decimal import Decimal
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.db.migrations.recorder import MigrationRecorder
+from authentication.models import Company
+from apps.semantic.models import MetricDefinition, MetricDefinitionVersion
+from apps.semantic.services import resolve_metric
+from apps.ventes.models import Facture
+U = get_user_model()
+out = {'mode': os.environ.get('MODE'), 'migrations_semantic': list(MigrationRecorder.Migration.objects.filter(app='semantic').order_by('name').values_list('name', flat=True))}
+for slug, un in (('acc2-0111b-a', 'acc2_dir_a'), ('taqinor-demo', 'demo_admin')):
+    co = Company.objects.get(slug=slug); u = U.objects.get(username=un)
+    avant = MetricDefinition.objects.filter(company=co, cle__in=('ca_ht', 'ca_ttc', 'panier_moyen')).count()
+    if os.environ.get('SEED') == '1' and not avant:
+        call_command('seed_metriques', company=co.pk)
+    fs = list(Facture.objects.filter(company=co, statut__in=('emise', 'payee', 'en_retard')))
+    ht = sum((f.total_ht or Decimal('0')) for f in fs); ttc = sum((f.total_ttc or Decimal('0')) for f in fs)
+    n_montant_null = sum(1 for f in fs if f.montant_ht is None)
+    r = {}
+    for cle in ('ca_ht', 'ca_ttc', 'panier_moyen'):
+        try:
+            v = resolve_metric(co, u, cle); r[cle] = str(v.get('valeur') if isinstance(v, dict) else v)
+        except Exception as e:
+            r[cle] = 'ERREUR ' + repr(e)[:200]
+    defs = {d.cle: {'dataset': d.dataset, 'mesure': getattr(d, 'mesure', None), 'filtres': d.filtres,
+                    'versions': list(MetricDefinitionVersion.objects.filter(metric_definition=d).order_by('pk').values_list('version', flat=True))}
+            for d in MetricDefinition.objects.filter(company=co, cle__in=('ca_ht', 'ca_ttc', 'panier_moyen'))}
+    out[slug] = {'definitions_avant_seed': avant, 'nb_factures_emises_payees_retard': len(fs), 'dont_montant_ht_null': n_montant_null,
+                 'verite_somme_total_ht': str(ht), 'verite_somme_total_ttc': str(ttc),
+                 'verite_panier_moyen_ht': str((ht / len(fs)).quantize(Decimal('0.01'))) if fs else None,
+                 'resolu': r, 'definitions': defs}
+print('@@M ' + json.dumps(out, ensure_ascii=False, default=str))
