@@ -148,7 +148,7 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...,
     """
     from apps.ventes.services import layout_hash
 
-    from .layout import empreinte_document
+    from .layout import empreinte_document, garder_types_numeriques
 
     if variante is None or not getattr(variante, 'pk', None):
         raise VarianteRefusee(
@@ -180,6 +180,9 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...,
             raise VarianteRefusee(
                 "La conception de la variante doit être un objet "
                 f"(reçu : {type(roof_layout).__name__}).", champ='roof_layout')
+        # ERR-ACAL351 — 15 reçu sur 15.0 stocké n'est pas un changement.
+        roof_layout = garder_types_numeriques(variante.roof_layout,
+                                              roof_layout)
         if (empreinte_document(roof_layout)
                 != empreinte_document(variante.roof_layout)
                 or (roof_layout is None) != (variante.roof_layout is None)):
