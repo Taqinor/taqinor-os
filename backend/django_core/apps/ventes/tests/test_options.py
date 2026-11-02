@@ -5,7 +5,10 @@ doit facturer et gélifier la nomenclature SUR LES SEULES lignes sans batterie ;
 « Avec batterie » sur les seules lignes avec batterie ; un devis à option unique
 reste strictement inchangé.
 """
+import json
 from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -16,7 +19,7 @@ from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.utils.options import (
-    filter_lines_for_option, option_lines, option_totaux,
+    filter_lines_for_option, option_lines, option_totaux, panier_de_ligne,
 )
 from apps.ventes.utils.echeancier import next_tranche
 from apps.installations.services import _freeze_bom
@@ -61,6 +64,45 @@ class TestPureFilter(SimpleTestCase):
 
     def test_empty_option_keeps_all(self):
         self.assertEqual(len(filter_lines_for_option(self.lignes, '')), 5)
+
+    def test_classement_suit_le_contrat_classement_options(self):
+        """ADVS5 — rouge si le noyau ignore le rôle (Dyness dans « sans »)."""
+        cas = json.loads(
+            (Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'classement_options.json').read_text(encoding='utf-8')
+        )['exemple']['cas']
+        self.assertTrue(cas)
+        for c in cas:
+            attendu = (c['sans'], c['avec'])
+            ligne = SimpleNamespace(
+                designation=c['designation'], produit=None,
+                role_devis=c['role_devis'], variante=c['variante'])
+            with self.subTest(designation=c['designation'],
+                              role=c['role_devis'], variante=c['variante']):
+                self.assertEqual(panier_de_ligne(
+                    c['variante'], c['role_devis'], c['designation']), attendu)
+                self.assertEqual(
+                    (bool(filter_lines_for_option([ligne], 'sans_batterie')),
+                     bool(filter_lines_for_option([ligne], 'avec_batterie'))),
+                    attendu)
+
+    def test_batterie_et_son_cable_dans_avec_seulement(self):
+        lignes = [
+            SimpleNamespace(designation=nom, produit=None, role_devis=role,
+                            variante='')
+            for nom, role in (
+                ('Panneau Jinko 550W', 'panneau'),
+                ('Onduleur réseau 5kW', 'onduleur_reseau'),
+                ('Onduleur hybride 5kW', 'onduleur_hybride'),
+                ('Dyness BX51100', 'batterie'),
+                ('Câble batterie DC 25 mm²', 'cable_dc'))]
+        self.assertEqual(
+            self._names(filter_lines_for_option(lignes, 'sans_batterie')),
+            ['Panneau Jinko 550W', 'Onduleur réseau 5kW'])
+        self.assertEqual(
+            self._names(filter_lines_for_option(lignes, 'avec_batterie')),
+            ['Panneau Jinko 550W', 'Onduleur hybride 5kW', 'Dyness BX51100',
+             'Câble batterie DC 25 mm²'])
 
 
 class TestOptionDownstream(TestCase):

@@ -1,0 +1,102 @@
+{
+  "endpoint": "GET /ventes/classement-options",
+  "pourquoi": "ADVS5 (C-ADVS-040, D-ADVS-3 = suit_la_batterie, PACT10) — dans quelle option du devis entre une ligne. LA règle est apps.ventes.utils.options.panier_de_ligne(variante, role, blob) : variante déclarée, puis rôle stocké (tout accessoire de batterie dans « Avec batterie » seulement), mots-clés en repli. `endpoint` n'est PAS une route Django : aucune vue ne sert cette table, scripts/check_api_shapes.py ne compare rien ici. Lecteurs : tests/test_options.py (noyau, ADVS5), tests/test_pdf_mono_option_lignes_variantees.py (moteur PDF, ADVS6).",
+  "notes": {
+    "colonnes": "`designation` = texte de classement ; `role_devis` = rôle stocké de la ligne (null : ligne d'hier) ; `variante` = '' (commune), 'sans' ou 'avec' ; `sans` / `avec` = la ligne entre-t-elle dans ce panier."
+  },
+  "exemple": {
+    "cas": [
+      {
+        "designation": "Panneau Canadien Solar 710W",
+        "role_devis": "panneau",
+        "variante": "",
+        "sans": true,
+        "avec": true
+      },
+      {
+        "designation": "Onduleur réseau Huawei 5kW Monophasé",
+        "role_devis": "onduleur_reseau",
+        "variante": "",
+        "sans": true,
+        "avec": false
+      },
+      {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "role_devis": "onduleur_hybride",
+        "variante": "",
+        "sans": false,
+        "avec": true
+      },
+      {
+        "designation": "Dyness BX51100",
+        "role_devis": "batterie",
+        "variante": "",
+        "sans": false,
+        "avec": true
+      },
+      {
+        "designation": "Câble batterie DC 25 mm²",
+        "role_devis": "cable_dc",
+        "variante": "",
+        "sans": false,
+        "avec": true
+      },
+      {
+        "designation": "Câble solaire Nexans 6 mm²",
+        "role_devis": "cable_dc",
+        "variante": "",
+        "sans": true,
+        "avec": true
+      },
+      {
+        "designation": "Batterie Dyness 5 kWh",
+        "role_devis": "batterie",
+        "variante": "sans",
+        "sans": true,
+        "avec": false
+      },
+      {
+        "designation": "Panneau Canadien Solar 710W",
+        "role_devis": "panneau",
+        "variante": "avec",
+        "sans": false,
+        "avec": true
+      },
+      {
+        "designation": "Batterie Dyness 5 kWh",
+        "role_devis": null,
+        "variante": "",
+        "sans": false,
+        "avec": true
+      },
+      {
+        "designation": "Onduleur réseau Huawei 5kW Monophasé",
+        "role_devis": null,
+        "variante": "",
+        "sans": true,
+        "avec": false
+      },
+      {
+        "designation": "Onduleur hors réseau Deye 5kW",
+        "role_devis": null,
+        "variante": "",
+        "sans": false,
+        "avec": true
+      },
+      {
+        "designation": "Dyness BX51100",
+        "role_devis": null,
+        "variante": "",
+        "sans": true,
+        "avec": true
+      },
+      {
+        "designation": "Structures acier",
+        "role_devis": null,
+        "variante": "",
+        "sans": true,
+        "avec": true
+      }
+    ]
+  }
+}

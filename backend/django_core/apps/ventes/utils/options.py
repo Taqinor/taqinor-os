@@ -19,6 +19,8 @@ factures existantes ; on ne réimplémente aucun calcul d'argent à la main.
 """
 from __future__ import annotations
 
+from core.product_roles import role_va_dans_avec, role_va_dans_sans
+
 # Prédicats de classification — partagés avec le moteur de devis. Purs (chaînes).
 from apps.ventes.quote_engine.lignes_classement import (
     _is_battery, _is_hybrid_inverter, _is_inverter, _is_offgrid_inverter,
@@ -212,33 +214,41 @@ def blob_va_dans_avec(blob) -> bool:
     return not _is_reseau_inverter(blob)
 
 
-def _garder_dans_sans(li) -> bool:
-    """True si ``li`` appartient au panier « sans batterie ».
+def panier_de_ligne(variante, role, blob) -> tuple:
+    """ADVS5 (D-ADVS-3) — ``(sans, avec)`` : LA règle de classement d'une ligne,
+    contrat ``contract_samples/classement_options.json``.
 
-    F14 — la variante déclarée est EXCLUSIVE et TRANCHE SEULE : une ligne
-    ``variante='sans'`` reste dans son panier déclaré MÊME quand son
-    ``_blob`` la classerait batterie/hybride par mots-clés (ceinture-bretelles
-    du moteur PDF, ``builder._repartir_options`` — la contradiction est
-    remontée là-bas en avertissement interne, jamais en retrait de ligne).
-    Miroir exact : seule une ligne SANS variante ('') retombe sur les mots-clés.
+    F14 — la variante déclarée est EXCLUSIVE et tranche seule (une contradiction
+    est remontée par le moteur PDF en avertissement interne, jamais en retrait
+    de ligne). Puis le rôle stocké ; tout accessoire de batterie (rôle des deux
+    paniers, mot « batterie » au texte) n'est que dans « avec ». Une ligne sans
+    rôle garde les mots-clés d'hier.
     """
-    v = _variante(li)
-    if v == VARIANTE_AVEC:
-        return False
-    if v == VARIANTE_SANS:
-        return True
-    return blob_va_dans_sans(_blob(li))
+    if variante == VARIANTE_SANS:
+        return True, False
+    if variante == VARIANTE_AVEC:
+        return False, True
+    role_sans, role_avec = role_va_dans_sans(role), role_va_dans_avec(role)
+    if role_sans is None:
+        return blob_va_dans_sans(blob), blob_va_dans_avec(blob)
+    if role_sans and role_avec and _is_battery(blob):
+        return False, True
+    return role_sans, role_avec
+
+
+def _panier_de(li) -> tuple:
+    return panier_de_ligne(
+        _variante(li), getattr(li, 'role_devis', None), _blob(li))
+
+
+def _garder_dans_sans(li) -> bool:
+    """True si ``li`` appartient au panier « sans batterie »."""
+    return _panier_de(li)[0]
 
 
 def _garder_dans_avec(li) -> bool:
-    """True si ``li`` appartient au panier « avec batterie » — miroir de
-    ``_garder_dans_sans`` (F14)."""
-    v = _variante(li)
-    if v == VARIANTE_SANS:
-        return False
-    if v == VARIANTE_AVEC:
-        return True
-    return blob_va_dans_avec(_blob(li))
+    """True si ``li`` appartient au panier « avec batterie »."""
+    return _panier_de(li)[1]
 
 
 def filter_lines_for_option(lignes, option):
