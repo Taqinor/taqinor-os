@@ -674,6 +674,21 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         if not porte['ok']:
             return Response({'detail': porte['motif']},
                             status=status.HTTP_409_CONFLICT)
+        # AARG32 — avertissement de vente bloquant (ZSAL9), dérogation ADEV14 :
+        # comme les autres portes (`override_avertissement`, corps facultatif).
+        if bc.devis_id:
+            from ..domain.cycle_vie import peut_passer_outre
+            from ..services import SaleWarningError, verifier_sale_warnings
+            corps = request.data if isinstance(request.data, dict) else {}
+            try:
+                verifier_sale_warnings(
+                    bc.devis, override=bool(corps.get('override_avertissement'))
+                    and peut_passer_outre(request.user),
+                    user=request.user, chatter_target=bc.devis)
+            except SaleWarningError as exc:
+                return Response(
+                    {'detail': f'Avertissement de vente bloquant : {exc.motif}.',
+                     'code': 'sale_warning'}, status=status.HTTP_403_FORBIDDEN)
         company = bc.company
 
         def _create_facture(ref):

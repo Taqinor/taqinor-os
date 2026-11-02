@@ -1295,7 +1295,8 @@ def _entete_consolidee(facture, devis_qs):
         facture.save(update_fields=champs)
 
 
-def consolider_factures(*, company, devis_ids, user, created_by=None):
+def consolider_factures(*, company, devis_ids, user, created_by=None,
+                        override_avertissement=False):
     """Crée UNE Facture unique regroupant PLUSIEURS devis acceptés du MÊME
     client (ex. projet multi-sites : ferme à N forages, tranches). Chaque
     document source garde ses lignes (recopiées, groupées par ``source_devis``
@@ -1348,7 +1349,9 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
         # AARG16 — comme les portes BC et complète : ventes verrouillées (par
         # pk), gardes relues SOUS le verrou, brouillons de la vente retirés.
         from .annulation_facture import retirer_brouillons_de_la_vente
+        from .cycle_vie import peut_passer_outre
         from .facturation_vente import verrouiller_vente
+        from .recouvrement import verifier_sale_warnings
         for d in sorted(devis_qs, key=lambda devis: devis.pk):
             verrouiller_vente(d)
             d.refresh_from_db(fields=['statut'])
@@ -1367,6 +1370,11 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
                 raise ValidationError({
                     'devis_ids': f'{d.reference} — {exc.motif}',
                 })
+            # AARG32 — avertissement de vente bloquant (ZSAL9) : lève
+            # ``SaleWarningError`` (la vue rend 403), sauf dérogation ADEV14.
+            verifier_sale_warnings(
+                d, override=bool(override_avertissement)
+                and peut_passer_outre(user), user=user, chatter_target=d)
             retirer_brouillons_de_la_vente(
                 d, user=user, motif='Remplacé par la facture consolidée')
 
