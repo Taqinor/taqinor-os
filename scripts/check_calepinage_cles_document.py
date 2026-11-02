@@ -7,7 +7,8 @@ ou sans AUCUN écrivain est perdue au prochain « Enregistrer ». La garde lit
 `apps/calepinage/contract_samples/roof_layout_v2.schema.json` et échoue en
 nommant la clé si :
 
-  (a) une clé racine de `properties` manque à `exemple`  -> `exemple::<clé>` ;
+  (a) une clé racine de `properties` manque à `exemple`  -> `exemple::<clé>`
+      (jamais une dette ; seule `"x-hors-exemple": true` dans le schéma l'exempte) ;
   (b) une clé racine n'a aucun écrivain : ni `serializeLayout` / `prefill.ts`
       / un onglet de `frontend/src/features/calepinage`, ni un service
       d'`apps/calepinage` qui la nomme                      -> `ecrivain::<clé>`.
@@ -58,7 +59,10 @@ def _est_test(p: Path) -> bool:
 
 def lire_schema(root: Path = ROOT) -> tuple:
     doc = json.loads((root / SCHEMA).read_text(encoding="utf-8"))
-    return list(doc.get("properties", {})), doc.get("exemple") or {}
+    props = doc.get("properties", {})
+    # ACAL371 : seule une propriété marquée `x-hors-exemple` dans le schéma est exemptée de (a).
+    return (list(props), doc.get("exemple") or {},
+            {k for k, v in props.items() if v.get("x-hors-exemple")})
 
 
 def corpus_ecrivains(root: Path = ROOT) -> tuple:
@@ -82,11 +86,11 @@ def corpus_ecrivains(root: Path = ROOT) -> tuple:
 
 def analyser(root: Path = ROOT) -> tuple:
     """(ensemble de dettes, nombre de sources lues)."""
-    cles, exemple = lire_schema(root)
+    cles, exemple, hors_exemple = lire_schema(root)
     texte, n = corpus_ecrivains(root)
     dettes = set()
     for cle in cles:
-        if cle not in exemple:
+        if cle not in exemple and cle not in hors_exemple:
             dettes.add(f"exemple::{cle}")
         c = re.escape(cle)
         # clé de document : chaîne littérale, propriété (`.clé`), clé d'objet
@@ -94,6 +98,10 @@ def analyser(root: Path = ROOT) -> tuple:
         if not re.search(r"""['"]%s['"]|\.%s\b|(?<![\w])%s\s*[:=,}]""" % (c, c, c), texte):
             dettes.add(f"ecrivain::{cle}")
     return dettes, n
+
+
+def _non_rattachees(dettes: set) -> str:
+    return ", ".join(sorted(d for d in dettes if d.startswith("ecrivain::"))) or "aucune"
 
 
 def decrire(cle: str) -> str:
@@ -106,9 +114,13 @@ def decrire(cle: str) -> str:
 
 
 def verifier(dettes: set, base: set) -> list:
-    return _cliquet.comparer(dettes, base,
-                             nom_fichier="cles_document_sans_ecrivain_allow.txt",
-                             decrire=decrire)
+    # ACAL371 : (a) n'est JAMAIS une dette — une clé absente de `exemple` échoue même en base.
+    refus = [decrire(c) + " (jamais en liste blanche)" for c in sorted(set(dettes) | set(base))
+             if c.startswith("exemple::")]
+    dettes = {c for c in dettes if not c.startswith("exemple::")}
+    base = {c for c in base if not c.startswith("exemple::")}
+    return refus + _cliquet.comparer(
+        dettes, base, nom_fichier="cles_document_sans_ecrivain_allow.txt", decrire=decrire)
 
 
 def main(argv=None) -> int:
@@ -133,11 +145,12 @@ def main(argv=None) -> int:
     erreurs = verifier(dettes, _cliquet.charger(BASELINE))
     if erreurs:
         print(f"check_calepinage_cles_document: ÉCHEC ({n} source(s) lue(s))")
+        print("  clés non rattachées : " + _non_rattachees(dettes))
         for e in erreurs:
             print("  - " + e)
         return 1
     print(f"check_calepinage_cles_document: OK — {n} source(s) lue(s), "
-          f"{len(dettes)} dette(s) gelée(s).")
+          f"{len(dettes)} dette(s) gelée(s) ; clés non rattachées : {_non_rattachees(dettes)}.")
     return 0
 
 
