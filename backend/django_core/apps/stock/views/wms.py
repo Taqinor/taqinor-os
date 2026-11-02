@@ -1298,7 +1298,7 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_409_CONFLICT)
         try:
             inspecter_retour_client(
-                retour=retour, lignes=request.data.get('lignes'),
+                retour=retour, lignes=corps_objet(request).get('lignes'),
                 user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
