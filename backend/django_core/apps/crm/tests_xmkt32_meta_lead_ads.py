@@ -257,6 +257,81 @@ class MetaLeadAdsIngestTests(TestCase):
             LeadActivity.objects.filter(
                 lead=existing, body__startswith='Doublon possible').exists())
 
+    def _lead_froid(self, **kw):
+        from django.contrib.auth import get_user_model
+
+        from apps.crm import stages
+        meryem, _creee = get_user_model().objects.get_or_create(
+            username='meta_cadv101_owner',
+            defaults={'company': self.company, 'role_legacy': 'responsable'})
+        valeurs = dict(company=self.company, nom='Yassine Ennaji',
+                       telephone='+212661445566', canal=Lead.Canal.TELEPHONE,
+                       owner=meryem, stage=stages.COLD, parc_etat='nurture',
+                       parc_raison='injoignable', ville='Rabat')
+        return Lead.objects.create(**{**valeurs, **kw})
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_contact_froid_parque_est_rouvert_au_lieu_d_un_doublon(self, fetch_mock):
+        """CADV101 (D-CADV-12). Mutant : retirer ``stage == COLD`` ⇒ un doublon
+        vivant est absorbé et ``test_contact_connu_cree_toujours_un_nouveau_lead``
+        échoue."""
+        from apps.crm import stages
+        from apps.crm.models import LeadActivity, RelanceEtape
+        froid = self._lead_froid()
+        fetch_mock.return_value = _lead_data(
+            leadgen_id='7002', telephone='+212661445566', ville='Casablanca')
+        for _rejeu in range(2):
+            resp = self._post(_notification_payload(leadgen_id='7002'))
+            self.assertEqual(resp.status_code, 200)
+
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
+        froid.refresh_from_db()
+        self.assertEqual(froid.stage, stages.CONTACTED)
+        self.assertIsNone(froid.parc_etat)
+        self.assertIsNone(froid.parc_raison)
+        # Enrichi sans écraser : la ville saisie reste.
+        self.assertEqual(froid.ville, 'Rabat')
+        # Le rejeu ne rouvre rien : un chatter, une étape, un passage.
+        self.assertEqual(froid.activites.filter(
+            body='Nouvelle demande Meta (leadgen 7002).').count(), 1)
+        self.assertEqual(froid.activites.filter(
+            field='stage').count(), 1)
+        self.assertEqual(froid.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).count(), 1)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=froid, body__contains='formulaire Meta').exists())
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_froid_oppose_perdu_ou_archive_reste_d_crx1(self, fetch_mock):
+        # Une opposition ne se lève jamais par une reprise automatique.
+        from apps.crm import stages
+        for n, marque in enumerate(({'ne_plus_contacter': True}, {'perdu': True},
+                                    {'is_archived': True})):
+            with self.subTest(marque=marque):
+                telephone = f'+21266144556{n}'
+                froid = self._lead_froid(telephone=telephone, **marque)
+                leadgen = f'710{n}'
+                fetch_mock.return_value = _lead_data(
+                    leadgen_id=leadgen, telephone=telephone)
+                self.assertEqual(self._post(
+                    _notification_payload(leadgen_id=leadgen)).status_code, 200)
+                froid.refresh_from_db()
+                self.assertEqual(froid.stage, stages.COLD)
+                self.assertEqual(Lead.objects.filter(
+                    company=self.company, external_id=leadgen).count(), 1)
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_seul_le_meme_telephone_rouvre_pas_le_meme_email(self, fetch_mock):
+        from apps.crm import stages
+        froid = self._lead_froid(telephone='+212661990011', email='yassine@example.com')
+        fetch_mock.return_value = _lead_data(
+            leadgen_id='7200', telephone='+212661445566', email='yassine@example.com')
+        self.assertEqual(self._post(
+            _notification_payload(leadgen_id='7200')).status_code, 200)
+        froid.refresh_from_db()
+        self.assertEqual(froid.stage, stages.COLD)
+        self.assertTrue(Lead.objects.filter(external_id='7200').exists())
+
     @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
     def test_contact_archive_cree_aussi_un_nouveau_lead(self, fetch_mock):
         """D-CRX1 — cas explicitement refusé à l'adoucissement : un contact
