@@ -232,6 +232,21 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
             'date_depot',
         ]
 
+    def _router_pieces_jointes(self, validated_data, instance=None):
+        """ERR-ENF11-FUZZ-PORTAIL — un fichier remplacé dont les OCTETS ne sont
+        ni PDF, ni PNG, ni JPEG, ni WebP (lus par le serveur, inexprimables au
+        schéma ``binary``) est un refus d'état : 409 à la modification (comme
+        les fichiers illisibles des autres modules) ; le dépôt garde son 400."""
+        from core.conflit_etat import ConflitEtat
+        try:
+            return super()._router_pieces_jointes(validated_data, instance)
+        except serializers.ValidationError as exc:
+            if instance is None or not isinstance(exc.detail, dict):
+                raise
+            raise ConflitEtat(' '.join(
+                str(m) for v in exc.detail.values()
+                for m in (v if isinstance(v, list) else [v])))
+
     @extend_schema_field(serializers.BooleanField())
     def get_fichier_present(self, obj):
         """Y a-t-il un binaire déposé ? (sans jamais publier son URL brute)

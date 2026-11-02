@@ -280,7 +280,12 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         Création / remplacement : publiée (``corps_definition_resserre``) →
         400. PATCH : le type ou le champ peut venir de la définition STOCKÉE,
         inexprimable au schéma → refus d'état 409, même corps."""
-        if self.partial:
+        brut = getattr(self, 'initial_data', None)
+        # PUT sans ``type`` : le type vient aussi de la définition STOCKÉE (la
+        # branche « type absent » du schéma publié ne porte aucune exigence).
+        type_stocke = (self.instance is not None
+                       and not (hasattr(brut, 'get') and 'type' in brut))
+        if self.partial or type_stocke:
             from core.conflit_etat import ConflitEtat
             raise ConflitEtat(erreur)
         raise serializers.ValidationError(erreur)
@@ -361,7 +366,9 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
             from .services import valider_formule_definition
             ok, erreur = valider_formule_definition(formule, sibling_codes)
             if not ok:
-                raise serializers.ValidationError({'formule': erreur})
+                # La syntaxe ne s'exprime pas au schéma de PATCH (type/formule
+                # possiblement stockés) : refus d'état 409 (ENF11).
+                self._refus_selon_type({'formule': erreur})
 
         # XPLT15 — valide la STRUCTURE des arbres de conditions à la
         # définition (jamais évaluée ici — juste refusée si mal formée).
