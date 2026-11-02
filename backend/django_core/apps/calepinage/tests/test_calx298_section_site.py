@@ -81,6 +81,31 @@ class SourceDIrradianceTest(unittest.TestCase):
         html = html_de_section(contexte(resultat_de_base()))
         self.assertIn('PVGIS', html)
 
+    def test_fichier_depose_nomme_le_fournisseur_jamais_pvgis(self):
+        """ACAL376 — rejoue la sonde VER2-72 : base puis section."""
+        from apps.calepinage.services.chaine_pertes import _base_production
+        resultat = resultat_de_base()
+        resultat['meteo'].update({
+            'service': 'fichier', 'fournisseur': 'Meteonorm',
+            'fichier': {'nom': 'site.csv'}})
+        resultat['production'].pop('base', None)
+        base = _base_production(resultat['production'], resultat)
+        self.assertEqual(base['source'], 'fichier')
+        resultat['production']['base'] = base
+        html = html_de_section(contexte(resultat))
+        ligne = re.search(r"<tr><th>Base d&#x27;irradiance</th>.*?</tr>",
+                          html).group(0)
+        self.assertIn('fichier météo déposé — Meteonorm (site.csv)', ligne)
+        self.assertNotIn('PVGIS', ligne)
+
+    def test_service_pvgis_reste_pvgis(self):
+        from apps.calepinage.services.chaine_pertes import _base_production
+        resultat = resultat_de_base()
+        resultat['meteo']['service'] = 'pvgis'
+        self.assertEqual(_base_production({}, resultat)['source'], 'pvgis')
+        resultat['meteo']['service'] = None
+        self.assertIsNone(_base_production({}, resultat)['source'])
+
 
 class HorizonTest(unittest.TestCase):
     def test_absence_de_profil_imprime_le_motif_pas_un_horizon_plat(self):

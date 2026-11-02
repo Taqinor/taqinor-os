@@ -1751,7 +1751,7 @@ def _base_production(production, resultat):
         return existante
     meteo = resultat.get('meteo') or {}
     return {
-        'source': 'pvgis' if meteo.get('service') else None,
+        'source': meteo.get('service') and ('fichier' if meteo['service'] == 'fichier' else 'pvgis') or None,
         'base_rayonnement': meteo.get('base_rayonnement'),
         'fenetre_annees': meteo.get('fenetre_annees'),
         # D-CALX 4 : avec ``pvcalculation=0``, AUCUNE perte n'est passée à
