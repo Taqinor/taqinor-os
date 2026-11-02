@@ -209,6 +209,9 @@ CLES_HORS_RENDU_ORIGINE = (
     # AGNR52 (01/11/2026) — drapeau de GABARIT du niveau 8, posé sur tout devis
     # avant ce niveau : son échéancier s'imprime comme hier (aucun chiffre).
     ('regles_echeancier_historique',),
+    # AMOT115/AMOT116 (01/11/2026) — drapeau de GABARIT du niveau 9 (phrase
+    # « non chiffré » et carte d'option TTC d'hier) : aucun chiffre.
+    ('regles_ecarts_0111_historique',),
     ('libelles_document', 'agr_base_besoin_agronomique'),
     # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
     ('libelles_document', 'ci_cgv_suite'),
@@ -230,6 +233,8 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_src_onduleur', 'ci_src_production', 'ci_suivi_production_inclus',
         'op_reserve_visite', 'op_unite_ans', 'lg_prix_onee_hausse',
         'ci_confirmer_etude_ci', 'ci_etape_installation_s',
+        # AMOT116 (01/11/2026) — motif « non chiffré » nommé (contrat, horaires).
+        'ci_motif_argent_contrat', 'ci_motif_argent_horaires',
         # AMOT85 (rejeu humain) — « à compléter après la visite ».
         'ci_invest_apres_visite_1', 'ci_invest_apres_visite_n',
         # AMOT86-94 (lane document C&I, 24/10/2026) — libellés AJOUTÉS au
