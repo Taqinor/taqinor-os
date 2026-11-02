@@ -602,8 +602,10 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         request=inline_serializer('FavoriReordonnerRequete', {
             'ordre': drf_serializers.IntegerField()}),
         responses=FavoriUtilisateurSerializer(many=True))
+    # ERR-ENF11-FUZZ-UXVIEWS — la réponse est un tableau NU : sans
+    # `pagination_class=None` le schéma annonçait PaginatedFavoriUtilisateurList.
     @action(detail=True, methods=['post'], url_path='reordonner',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole], pagination_class=None)
     def reordonner(self, request, pk=None):
         """NTUX21 — déplace CE favori à la position `ordre` (0 = en tête) et
         renumérote la liste de l'utilisateur de façon contiguë.
