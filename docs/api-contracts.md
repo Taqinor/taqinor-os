@@ -108,6 +108,8 @@
     avertissement_sans_devis:inconnu, rappel_juridique:inconnu, visites:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
     count:nombre, results:inconnu
+- frontend/src/api/crmApi.js :: getPermanences -> /api/django/crm/dispatch/permanences/<>
+    equipe:inconnu, permanences:liste
 - frontend/src/api/crmApi.js :: getRelanceEtapeMessage -> /api/django/crm/relance-etapes/<>/message
     crochets:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapeMessageLangue -> /api/django/crm/relance-etapes/<>/message
@@ -136,6 +138,8 @@
     record:inconnu, restored:booleen
 - frontend/src/api/crmApi.js :: resumeAssocie -> /api/django/crm/leads/<>/resume-associe
     accord_client:liste, contact_secondaire_telephone:liste, detail:texte, devis_id:liste, message:inconnu, phone:inconnu, wa_url:inconnu
+- frontend/src/api/crmApi.js :: savePermanences -> /api/django/crm/dispatch/permanences/<>
+    equipe:inconnu, permanences:liste
 - frontend/src/api/crmApi.js :: saveReglagesDispatch -> /api/django/crm/dispatch/reglages/<>
     confirmation_responsable:inconnu, delai_minutes:inconnu, id:inconnu, nom:inconnu
 - frontend/src/api/crmApi.js :: scanCarteVisite -> /api/django/crm/leads/scan-carte
@@ -759,6 +763,8 @@
     raccordement ∈ {aucun, inconnu, monophase, triphase}
     type_installation ∈ {agricole, commercial, industriel, residentiel}
     type_toiture ∈ {autre, bac_acier, fibrociment, terrasse_beton, tole_metal, tuiles}
+- frontend/src/api/crmApi.js :: creerExperienceCadence -> /api/django/crm/experiences-cadence  [ExperienceCadenceSerializer]
+    champs: changement, date, date_lecture, effet_attendu, id, metrique, resultat
 - frontend/src/api/crmApi.js :: deleteAppointment -> /api/django/crm/appointments/<>  [AppointmentSerializer]
     champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
     statut ∈ {annule, confirme, effectue, no_show, planifie}
@@ -783,6 +789,8 @@
     metrique ∈ {ca_signe, nb_contacts, nb_devis, nb_leads, nb_rdv}
 - frontend/src/api/crmApi.js :: getEquipes -> /api/django/crm/equipes  [EquipeCommercialeSerializer]
     champs: actif, company, confirmation_responsable, date_creation, delai_attribution_minutes, departement, file_a_prendre, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
+- frontend/src/api/crmApi.js :: getExperiencesCadence -> /api/django/crm/experiences-cadence  [ExperienceCadenceSerializer]
+    champs: changement, date, date_lecture, effet_attendu, id, metrique, resultat
 - frontend/src/api/crmApi.js :: getMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
 - frontend/src/api/crmApi.js :: getMessageTemplates -> /api/django/crm/message-templates  [MessageTemplateSerializer]
@@ -809,6 +817,8 @@
     source ∈ {meta_lead_ads, website}
 - frontend/src/api/crmApi.js :: listSavedViews -> /api/django/crm/vues-enregistrees  [SavedViewSerializer]
     champs: created_at, id, name, page, payload, rank, user
+- frontend/src/api/crmApi.js :: majExperienceCadence -> /api/django/crm/experiences-cadence/<>  [ExperienceCadenceSerializer]
+    champs: changement, date, date_lecture, effet_attendu, id, metrique, resultat
 - frontend/src/api/crmApi.js :: updateAppointment -> /api/django/crm/appointments/<>  [AppointmentSerializer]
     champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
     statut ∈ {annule, confirme, effectue, no_show, planifie}

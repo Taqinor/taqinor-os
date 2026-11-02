@@ -350,6 +350,10 @@ const crmApi = {
   // CADV104 — permanences d'équipe (demi-journée, week-end compris) proposées en premier.
   getPermanences: (equipeId, params) => api.get(`/crm/dispatch/permanences/${equipeId}/`, { params }),
   savePermanences: (equipeId, data) => api.put(`/crm/dispatch/permanences/${equipeId}/`, data),
+  // CADV33 — journal des changements de cadence (repères de la courbe hebdomadaire).
+  getExperiencesCadence: (params) => api.get('/crm/experiences-cadence/', { params }),
+  creerExperienceCadence: (data) => api.post('/crm/experiences-cadence/', data),
+  majExperienceCadence: (id, data) => api.patch(`/crm/experiences-cadence/${id}/`, data),
   getReglesAttribution: (equipe, params = {}) =>
     api.get('/crm/regles-attribution/', { params: { equipe, ...params } }),
   saveRegleAttribution: (id, data) =>
