@@ -82,8 +82,14 @@ TYPE_BAREMES_GELES = 'baremes_forfaits_geles'
 #: ``{'type': 'doc_texts_geles', 'textes': {<DEVIS_TEXT_KEYS>}, 'version': int}``.
 TYPE_DOC_TEXTS_GELES = 'doc_texts_geles'
 
-TYPES_GELS_INTERNES = frozenset(
-    {TYPE_CGV_GELEES, TYPE_BAREMES_GELES, TYPE_DOC_TEXTS_GELES})
+#: ADVS2 (C-ADVS-011+060, D-ADVS-1) — type de l'entrée qui porte les réglages de
+#: rendu de la société et les fiches produit des lignes, figés à l'envoi. Forme
+#: = ``contract_samples/reglages_figes_envoi.json``. Jamais imprimée.
+TYPE_REGLAGES_FIGES = 'reglages_figes'
+
+TYPES_GELS_INTERNES = frozenset({
+    TYPE_CGV_GELEES, TYPE_BAREMES_GELES, TYPE_DOC_TEXTS_GELES,
+    TYPE_REGLAGES_FIGES})
 
 
 def est_gel_interne(entree):
@@ -141,6 +147,58 @@ def baremes_forfaits_geles(devis):
         if isinstance(c, dict) and c.get('type') == TYPE_BAREMES_GELES:
             produits = c.get('produits')
             return produits if isinstance(produits, dict) else {}
+    return {}
+
+
+def figer_reglages_rendu(devis):
+    """ADVS2 (D-ADVS-1) — FIGE au passage vers envoyé (un seul appelant :
+    :func:`geler_document_engage`) les réglages que le rendu relit (tarif,
+    tranches, redevance : mêmes lectures que le moteur) et la fiche des produits
+    des lignes. Une entrée héritée d'une V1 est REMPLACÉE : une révision prend
+    les réglages de SON envoi. Ne touche jamais au statut (règle #4)."""
+    from apps.parametres.models_tariff import TariffSettings
+    from apps.parametres.selectors import residential_tranches_for, tariff_for
+    from apps.ventes.models import LigneDevis
+
+    company = devis.company
+    redevance = TariffSettings.get(company=company).redevance_compteur_mad_mois
+    produits = {}
+    lignes = (LigneDevis.objects.filter(devis_id=devis.pk, type_ligne='produit')
+              .select_related('produit'))
+    for ligne in lignes:
+        produit = ligne.produit
+        if produit is None:
+            continue
+        produits[str(produit.pk)] = {
+            'marque': produit.marque or '',
+            'description': produit.description or '',
+            'garantie': produit.garantie or '',
+            'garantie_mois': produit.garantie_mois,
+            'garantie_production_mois': produit.garantie_production_mois,
+        }
+    devis.clauses_appliquees = [
+        c for c in (devis.clauses_appliquees or [])
+        if not (isinstance(c, dict) and c.get('type') == TYPE_REGLAGES_FIGES)
+    ] + [{
+        'type': TYPE_REGLAGES_FIGES,
+        'tarif': tariff_for(company),
+        'tranches': residential_tranches_for(company),
+        'redevance_compteur_mad_mois': (
+            None if redevance is None else float(redevance)),
+        'produits': produits,
+    }]
+    devis.save(update_fields=['clauses_appliquees'])
+
+
+def reglages_figes(devis):
+    """ADVS2 — l'instantané de l'envoi (forme de l'échantillon, sans ``type``),
+    ou ``{}`` : brouillon (réglages du jour, même sur une V2 qui a hérité de
+    l'entrée) ou devis envoyé avant ce gel."""
+    if getattr(devis, 'statut', None) == 'brouillon':
+        return {}
+    for c in (getattr(devis, 'clauses_appliquees', None) or []):
+        if isinstance(c, dict) and c.get('type') == TYPE_REGLAGES_FIGES:
+            return {k: v for k, v in c.items() if k != 'type'}
     return {}
 
 
@@ -315,7 +373,8 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
        ``AcceptError`` 400 ``approbation_requise``) et rien n'est écrit ;
     2. ``date_envoi`` horodatée (avec ``statut`` quand l'appelant le passe,
        dans la même écriture) ;
-    3. marge interne figée, clauses / CGV gelées, barème des forfaits figé.
+    3. marge interne figée, clauses / CGV gelées, barème des forfaits figé,
+       réglages de rendu et fiches produit figés (ADVS2).
 
     Le statut n'est écrit QUE s'il est passé par l'appelant (règle #4 : la
     bascule reste celle de ``mark_devis_sent`` / ``accept_devis``)."""
@@ -341,6 +400,8 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
     figer_clauses_devis(devis)
     # ADEV30 — fige le barème des forfaits au panneau (D-ASTK-1).
     figer_baremes_forfaits(devis)
+    # ADVS2 — fige les réglages de rendu et les fiches produit (D-ADVS-1).
+    figer_reglages_rendu(devis)
 
 
 def poser_validite_devis(devis, date_validite):

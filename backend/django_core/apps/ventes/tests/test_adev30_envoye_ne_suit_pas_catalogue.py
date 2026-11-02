@@ -149,3 +149,73 @@ class BaremeGeleEnvoiTests(q220._Base):
         devis = self._envoyer(self._devis(9, pose_a=9))
         data = build_quote_data(devis)
         self.assertFalse(data.get('clauses_cgv'))
+
+    def _devis_a_figer(self):
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_tariff import TariffSettings
+        profil = CompanyProfile.get(self.company)
+        profil.productible_kwh_kwc = None
+        profil.save()
+        tarif = TariffSettings.get(company=self.company)
+        tarif.redevance_compteur_mad_mois = Decimal('95')
+        tarif.save()
+        self.panneau.garantie = '25 ans'
+        self.panneau.garantie_mois = 300
+        self.panneau.save()
+        return self._devis(9, pose_a=9), profil, tarif
+
+    def test_reglages_et_fiches_figes_a_l_envoi(self):
+        """ADVS2 — rouge sans l'appel dans ``geler_document_engage``."""
+        import json
+        from pathlib import Path
+
+        from apps.ventes.domain.envoi import reglages_figes
+        devis, profil, tarif = self._devis_a_figer()
+        self.assertEqual(reglages_figes(devis), {})
+        devis = self._envoyer(devis)
+        fige = reglages_figes(devis)
+        exemple = json.loads(
+            (Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'reglages_figes_envoi.json').read_text(encoding='utf-8')
+        )['exemple']
+        self.assertEqual(set(fige), set(exemple))
+        self.assertEqual(set(fige['tarif']), set(exemple['tarif']))
+        self.assertIsNone(fige['tarif']['productible_kwh_kwc'])
+        self.assertEqual(fige['redevance_compteur_mad_mois'], 95.0)
+        fiche = fige['produits'][str(self.panneau.pk)]
+        self.assertEqual(set(fiche), set(exemple['produits']['412']))
+        self.assertEqual(fiche['garantie'], '25 ans')
+        self.assertEqual(fiche['garantie_mois'], 300)
+
+        profil.productible_kwh_kwc = 1200
+        profil.save()
+        tarif.redevance_compteur_mad_mois = Decimal('120')
+        tarif.save()
+        self.panneau.garantie = '10 ans'
+        self.panneau.garantie_mois = 120
+        self.panneau.save()
+        # CLAUSE PERSISTANCE — relu en base : l'instantané de l'envoi.
+        devis.refresh_from_db()
+        self.assertEqual(reglages_figes(devis), fige)
+        # Gel interne : jamais imprimé comme clause particulière.
+        from apps.ventes.quote_engine.builder import build_quote_data
+        self.assertFalse(build_quote_data(devis).get('clauses_cgv'))
+
+    def test_v2_refigee_a_son_propre_envoi(self):
+        from apps.ventes.domain.envoi import (
+            TYPE_REGLAGES_FIGES, reglages_figes)
+        devis, _profil, tarif = self._devis_a_figer()
+        devis = self._envoyer(devis)
+        # V2 : brouillon qui a hérité de l'entrée de la V1.
+        v2 = self._devis(9, pose_a=9)
+        v2.clauses_appliquees = list(devis.clauses_appliquees)
+        v2.save(update_fields=['clauses_appliquees'])
+        self.assertEqual(reglages_figes(v2), {})
+        tarif.redevance_compteur_mad_mois = Decimal('120')
+        tarif.save()
+        v2 = self._envoyer(v2)
+        self.assertEqual(
+            reglages_figes(v2)['redevance_compteur_mad_mois'], 120.0)
+        self.assertEqual(
+            [c.get('type') for c in v2.clauses_appliquees].count(
+                TYPE_REGLAGES_FIGES), 1)
