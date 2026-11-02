@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   detectors: vi.fn(),
   // WIR272/PUB91 — rejeu historique d'une règle.
   backtest: vi.fn(),
+  // AACQ108 — devise du compte (connexion Meta).
+  connectionGet: vi.fn(),
   permissions: ['adsengine_view', 'adsengine_manage'],
 }))
 
@@ -37,6 +39,7 @@ vi.mock('./adsengineApi', () => ({
       detectors: mocks.detectors,
     },
     alerts: { history: mocks.history },
+    connection: { get: mocks.connectionGet },
   },
 }))
 
@@ -64,6 +67,7 @@ beforeEach(() => {
   ] })
   mocks.permissions = ['adsengine_view', 'adsengine_manage']
   mocks.policies.mockResolvedValue({ data: [] })
+  mocks.connectionGet.mockResolvedValue({ data: { currency: 'MAD' } })
   mocks.policyCreate.mockResolvedValue({ data: { id: 1, template_key: 'overlap', enabled: true, dry_run: false } })
   mocks.policyUpdate.mockResolvedValue({ data: { id: 2, template_key: 'fatigue', enabled: false, dry_run: true } })
   mocks.dryRun.mockResolvedValue({ data: {
@@ -185,6 +189,44 @@ describe('RulesScreen (ENG43)', () => {
     renderScreen()
     await waitFor(() => expect(screen.getByTestId('ae-rule-state-fatigue')).toHaveTextContent('Armée ·'))
     expect(screen.queryByTestId('ae-rule-threshold-currency-fatigue')).toBeNull()
+  })
+
+  it('AACQ108 — seuil saisi → rules.update avec params.threshold_mad', async () => {
+    mocks.templates.mockResolvedValue({ data: [
+      { key: 'stop_loss_cpl', nom: 'Stop-loss — coût par lead au plafond', cadence: 'daily',
+        condition_fr: 'Stop-loss', action_fr: 'Mise en pause proposée.',
+        editable_params: ['threshold_mad', 'window_days', 'min_samples'],
+        default_params: { threshold_mad: 250, window_days: 7, min_samples: 3 } },
+      { key: 'fatigue', nom: 'Fatigue créative', cadence: 'critical',
+        condition_fr: 'la fréquence dépasse 3', action_fr: 'proposer une rotation',
+        editable_params: ['frequency_max'], default_params: { frequency_max: 3 } },
+    ] })
+    mocks.connectionGet.mockResolvedValue({ data: { currency: 'USD' } })
+    const page = (regle) => ({ data: { count: 1, next: null, previous: null, results: regle } })
+    mocks.policies.mockResolvedValue(page([
+      exempleContrat('adsengine', 'regle_policy', 'armee_sans_seuil'),
+      { id: 2, template_key: 'fatigue', enabled: true, dry_run: false, params: {}, threshold_currency: '' },
+    ]))
+    mocks.policyUpdate.mockResolvedValue({ data: exempleContrat('adsengine', 'regle_policy') })
+    renderScreen()
+    const champ = await screen.findByTestId('ae-rule-threshold-input-stop_loss_cpl')
+    await waitFor(() => expect(screen.getByLabelText('Seuil (USD)')).toBe(champ))
+    expect(champ).toHaveAttribute('step', 'any')
+    expect(screen.queryByTestId('ae-rule-threshold-input-fatigue')).toBeNull()
+    // Vide : rien n'est envoyé, message.
+    fireEvent.click(screen.getByTestId('ae-rule-threshold-save-stop_loss_cpl'))
+    expect(await screen.findByTestId('ae-rules-arm-err')).toHaveTextContent('rien n'a été envoyé')
+    expect(mocks.policyUpdate).not.toHaveBeenCalled()
+    mocks.policies.mockResolvedValue(page([
+      exempleContrat('adsengine', 'regle_policy'),
+    ]))
+    fireEvent.change(champ, { target: { value: '40' } })
+    fireEvent.click(screen.getByTestId('ae-rule-threshold-save-stop_loss_cpl'))
+    await waitFor(() => expect(mocks.policyUpdate).toHaveBeenCalledWith(
+      exempleContrat('adsengine', 'regle_policy', 'armee_sans_seuil').id,
+      { params: { threshold_mad: 40 } }))
+    expect(await screen.findByTestId('ae-rule-threshold-currency-stop_loss_cpl'))
+      .toHaveTextContent('Seuil en USD')
   })
 
   describe('PUB23 — armer/désarmer une règle', () => {

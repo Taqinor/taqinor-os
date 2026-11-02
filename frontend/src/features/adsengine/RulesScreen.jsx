@@ -14,6 +14,7 @@ import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
 import { useAdsPermissions } from './useAdsPermissions'
 import LoadErrorNotice from './LoadErrorNotice'
+import { chargerDevise } from './devise'
 import { markLoadError } from './loadErrors'
 
 /* ============================================================================
@@ -116,6 +117,9 @@ export default function RulesScreen() {
   // WIR272/PUB91 — backtest historique par gabarit (key → réponse serveur).
   const [backtests, setBacktests] = useState({})
   const [backtestBusyKey, setBacktestBusyKey] = useState(null)
+  // AACQ108 — seuil `*_mad` tapé (key → texte brut), libellé en devise du compte.
+  const [currency, setCurrency] = useState('MAD')
+  const [seuils, setSeuils] = useState({})
 
   const reloadPolicies = useCallback(() => (
     fetchAllPages((page) => adsengineApi.rules.list({ page }).then(r => r.data), { concurrency: 3 })
@@ -136,9 +140,12 @@ export default function RulesScreen() {
     setLoading(true)
     adsengineApi.rules.templates()
       .then(r => setTemplates((Array.isArray(r.data) ? r.data : (r.data?.results || []))
-        // AACQ102 — gabarit à seuil monétaire (`*_mad` éditable, catalogue servi).
-        .map(raw => ({ ...normalizeRuleTemplate(raw),
-          monetaire: (raw?.editable_params || []).some(k => String(k).endsWith('_mad')) }))))
+        // AACQ102 — gabarit à seuil monétaire (`*_mad` éditable, catalogue servi) ;
+        // AACQ108 — sa clé et son défaut, lus du catalogue (aucune liste figée).
+        .map(raw => {
+          const cleSeuil = (raw?.editable_params || []).find(k => String(k).endsWith('_mad')) || ''
+          return { ...normalizeRuleTemplate(raw), monetaire: !!cleSeuil, cleSeuil, seuilDefaut: raw?.default_params?.[cleSeuil] }
+        })))
       .catch(() => { setTemplates([]); setLoadErrors(markLoadError("les gabarits")) })
     adsengineApi.anomalies.list()
       .then(r => {
@@ -162,6 +169,7 @@ export default function RulesScreen() {
       .then(r => setJournal(Array.isArray(r.data?.results) ? r.data.results : []))
       .catch(() => { setJournal([]); setLoadErrors(markLoadError("le journal")) })
     reloadPolicies()
+    chargerDevise(setCurrency)
   }, [reloadPolicies, reloadDetectors])
 
   /* WIR209/PUB90 — vote HUMAIN sur une anomalie. Le serveur pose l'acteur et
@@ -220,6 +228,27 @@ export default function RulesScreen() {
       await reloadPolicies()
     } catch {
       setArmErr("Désarmement refusé (permission « adsengine_manage » ?).")
+    } finally {
+      setArmBusyKey(null)
+    }
+  }
+
+  // AACQ108 — PATCH `params` ENTIER (autres clés renvoyées) ; devise posée par le serveur.
+  const doSeuil = async (t) => {
+    const policy = policyFor(t.key)
+    const brut = seuils[t.key] ?? policy?.params?.[t.cleSeuil]
+    const valeur = Number(brut)
+    if (!policy || brut == null || String(brut).trim() === '' || !Number.isFinite(valeur)) {
+      setArmErr("Seuil vide ou non numérique : rien n'a été envoyé.")
+      return
+    }
+    setArmBusyKey(t.key); setArmErr('')
+    try {
+      await adsengineApi.rules.update(policy.id, { params: { ...(policy.params || {}), [t.cleSeuil]: valeur } })
+      setSeuils(s => { const c = { ...s }; delete c[t.key]; return c })
+      await reloadPolicies()
+    } catch {
+      setArmErr("Seuil refusé (permission « adsengine_manage » ?).")
     } finally {
       setArmBusyKey(null)
     }
@@ -310,6 +339,17 @@ export default function RulesScreen() {
                             <span className="badge" data-testid={`ae-rule-threshold-currency-${t.key}`}
                               style={{ background: '#f1f5f9', color: '#475569' }}>
                               Seuil en {policy.threshold_currency || 'MAD'}</span>)}
+                          {armed && t.monetaire && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                              <label htmlFor={`ae-rule-threshold-input-${t.key}`}>Seuil ({currency})</label>
+                              <input id={`ae-rule-threshold-input-${t.key}`} type="number" step="any"
+                                data-testid={`ae-rule-threshold-input-${t.key}`} style={{ width: '7rem' }}
+                                placeholder={t.seuilDefaut != null ? String(t.seuilDefaut) : ''}
+                                value={seuils[t.key] ?? (policy.params?.[t.cleSeuil] ?? '')}
+                                onChange={e => setSeuils(s => ({ ...s, [t.key]: e.target.value }))} />
+                              <button type="button" className="btn btn-light" data-testid={`ae-rule-threshold-save-${t.key}`}
+                                disabled={armBusyKey === t.key} onClick={() => doSeuil(t)}>Enregistrer le seuil</button>
+                            </span>)}
                           <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
                             {armed ? (
                               <button type="button" className="btn btn-danger-outline ae-rule-disarm"
