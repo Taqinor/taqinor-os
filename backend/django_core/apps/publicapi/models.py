@@ -170,7 +170,9 @@ class ApiKey(models.Model):
         import datetime
         new_instance, raw_key = ApiKey.issue(
             company=self.company,
-            label=f'{self.label} (rotation)',
+            # label est borné à 120 : un libellé déjà long (ou une clé tournée
+            # plusieurs fois) faisait lever DataError (500) a la rotation.
+            label=f'{self.label[:109]} (rotation)',
             scopes=self.scopes,
             created_by=created_by or self.created_by,
             environnement=self.environnement,
