@@ -69,11 +69,36 @@ services:
     # surchargeables sans éditer ce compose. Défauts = valeurs ACTUELLES
     # (3/4) : comportement byte-identique sans .env posé. Formule de
     # dimensionnement : docs/scale-runway.md section SCA16.
+    #
+    # AOOM4 — RECYCLAGE DES WORKERS, surchargeable de la même façon. Défauts
+    # ``0/0`` = le défaut de gunicorn = AUCUN recyclage = comportement
+    # ACTUEL, byte-identique sans .env posé : ce merge ne change rien tout
+    # seul, c'est un interrupteur que Reda arme quand il veut.
+    #
+    # À QUOI ÇA SERT (incident du 02/11/2026) : un worker ne rend JAMAIS au
+    # système la mémoire qu'il a touchée une fois (arènes glibc, une par
+    # thread). Mesuré sur la copie anonymisée de la production, un worker
+    # neuf à 246 Mio montait DÉFINITIVEMENT à ~500 Mio dès la première
+    # ouverture de la liste des leads : 3 workers × 4 threads ont ainsi
+    # atteint 1,27 / 1,20 / 0,68 Gio et saturé le ``mem_limit: 3g``
+    # ci-dessous — 17 workers tués par le noyau dans la journée. Les
+    # correctifs AOOM1-3 divisent ce pic par ~7 (168 → 24 Mio par requête),
+    # donc le recyclage n'est PLUS nécessaire ; il reste la ceinture de
+    # sécurité contre le prochain chemin gourmand, et il est gratuit :
+    # ``--preload`` fait que le fork d'un worker neuf partage la mémoire du
+    # maître. POUR L'ARMER, DEUX lignes dans le ``.env`` DU SERVEUR puis un
+    # deploy :
+    #     GUNICORN_MAX_REQUESTS=300
+    #     GUNICORN_MAX_REQUESTS_JITTER=60
+    # Le jitter est ce qui évite que les 3 workers se recyclent au même
+    # instant (une micro-coupure visible) : il le décale de 0 à 60 requêtes.
     command: >
       sh -c "python manage.py collectstatic --noinput
       && gunicorn erp_agentique.wsgi:application
       --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-3}
-      --threads ${GUNICORN_THREADS:-4} --preload --timeout 120"
+      --threads ${GUNICORN_THREADS:-4} --preload --timeout 120
+      --max-requests ${GUNICORN_MAX_REQUESTS:-0}
+      --max-requests-jitter ${GUNICORN_MAX_REQUESTS_JITTER:-0}"
     # SCA8 — 3 workers × 4 threads = 12 connexions/requêtes concurrentes ;
     # WeasyPrint + matplotlib chargés au --preload (mémoire partagée entre
     # workers forkés, pas de fuite connue). Recalibrer si les valeurs sont

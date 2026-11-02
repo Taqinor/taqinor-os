@@ -24,6 +24,8 @@ from apps.ventes.quote_engine.lignes_classement import (
     _is_battery, _is_hybrid_inverter, _is_inverter, _is_offgrid_inverter,
     _is_reseau_inverter, _is_smart_meter, _is_wifi_dongle,
 )
+# AOOM1 — clés d'``etude_params`` annotables (module feuille, sans import).
+from apps.ventes.utils.annotations_devis import cle_etude
 import logging
 
 logger = logging.getLogger(__name__)
@@ -590,8 +592,14 @@ def scenario_declare(devis):
     à celui qui a écrit ``etude_params`` en dernier. Aucun override posé ⇒ la
     valeur stockée, à l'octet. Ne lève jamais (un registre illisible ne décide
     rien).
+
+    AOOM1 — la valeur STOCKÉE passe par ``annotations_devis.cle_etude`` :
+    ``etude_params ->> 'scenario'`` quand la liste a déferré le champ, le JSON
+    sinon. Le texte rendu est le MÊME que ``.get('scenario')`` pour les
+    libellés de ``SCENARIOS_ALTERNATIVE``/``SCENARIOS_MONO``, les seuls que
+    l'aval compare, et une clé absente rend ``None`` comme ``.get``.
     """
-    stocke = (getattr(devis, 'etude_params', None) or {}).get('scenario')
+    stocke = cle_etude(devis, 'scenario')
     try:
         from apps.ventes.domain.lecture_overrides import effectif
         impose, source = effectif(devis, 'scenario', stocke)
