@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 
+from apps.ventes.domain.reglages_figes_lecture import reglages_figes
 from core.money import quantize_mad
 
 from .montants import arrondi_affichage  # D-ENF-ARRONDI-PDF — moitié vers le haut (niveau 6)
@@ -254,7 +255,6 @@ def _reglages_tarifaires_du_devis(devis):
     """ADVS1 (D-ADVS-1) — ``(tranches, charges_fixes)`` : l'instantané de l'envoi
     (même forme et même reconstruction que ``etude_horaire._reglages_tarifaires``)
     ou, brouillon et envoyé d'avant ce gel, les réglages du jour."""
-    from apps.ventes.domain.reglages_figes_lecture import reglages_figes
     from apps.ventes.etude_horaire import _reglages_tarifaires
     from .pricing import TrancheTable
     fige = reglages_figes(devis)
@@ -368,7 +368,6 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
     _tariff = {}
     try:
         from apps.parametres.selectors import tariff_for
-        from apps.ventes.domain.reglages_figes_lecture import reglages_figes
         # ADVS1 (D-ADVS-1) — les repères figés à l'envoi, sinon ceux du jour.
         _tariff = reglages_figes(devis).get("tarif") or tariff_for(
             getattr(devis, "company", None))

@@ -52,8 +52,8 @@ def _sans_gels_internes(clauses):
     """APDF20 — les entrées de ``clauses_appliquees`` hors gels internes
     (``doc_texts_geles`` est désormais posé à chaque gel, défauts compris ;
     ADVS2 : ``reglages_figes`` à chaque envoi)."""
-    from apps.ventes.domain.envoi import (
-        TYPE_DOC_TEXTS_GELES, TYPE_REGLAGES_FIGES)
+    from apps.ventes.domain.envoi import TYPE_DOC_TEXTS_GELES
+    from apps.ventes.domain.reglages_figes_lecture import TYPE_REGLAGES_FIGES
     return [c for c in (clauses or [])
             if not (isinstance(c, dict) and c.get('type') in (
                 TYPE_DOC_TEXTS_GELES, TYPE_REGLAGES_FIGES))]

@@ -169,7 +169,7 @@ class BaremeGeleEnvoiTests(q220._Base):
         import json
         from pathlib import Path
 
-        from apps.ventes.domain.envoi import reglages_figes
+        from apps.ventes.domain.reglages_figes_lecture import reglages_figes
         devis, profil, tarif = self._devis_a_figer()
         self.assertEqual(reglages_figes(devis), {})
         devis = self._envoyer(devis)
@@ -202,7 +202,7 @@ class BaremeGeleEnvoiTests(q220._Base):
         self.assertFalse(build_quote_data(devis).get('clauses_cgv'))
 
     def test_v2_refigee_a_son_propre_envoi(self):
-        from apps.ventes.domain.envoi import (
+        from apps.ventes.domain.reglages_figes_lecture import (
             TYPE_REGLAGES_FIGES, reglages_figes)
         devis, _profil, tarif = self._devis_a_figer()
         devis = self._envoyer(devis)

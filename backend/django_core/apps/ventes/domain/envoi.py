@@ -10,6 +10,8 @@ octet-identiques, prouvé par ``tests/golden/split_dm_envoi.json``.
 """
 import logging
 
+from apps.ventes.domain.reglages_figes_lecture import TYPE_REGLAGES_FIGES
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -81,13 +83,6 @@ TYPE_BAREMES_GELES = 'baremes_forfaits_geles'
 #: ``tests/test_apdf_gel_textes.py`` (lu par APDF14) :
 #: ``{'type': 'doc_texts_geles', 'textes': {<DEVIS_TEXT_KEYS>}, 'version': int}``.
 TYPE_DOC_TEXTS_GELES = 'doc_texts_geles'
-
-#: ADVS2 (C-ADVS-011+060, D-ADVS-1) — les réglages de rendu figés à l'envoi : le
-#: type de l'entrée et sa lecture vivent dans une feuille pure (le moteur la lit
-#: sans tirer ce module).
-from apps.ventes.domain.reglages_figes_lecture import (  # noqa: E402,F401 — feuille pure, réexport (ADVS2)
-    TYPE_REGLAGES_FIGES, reglages_figes,
-)
 
 TYPES_GELS_INTERNES = frozenset({
     TYPE_CGV_GELEES, TYPE_BAREMES_GELES, TYPE_DOC_TEXTS_GELES,
