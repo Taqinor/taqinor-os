@@ -35,6 +35,7 @@ Run :
         -Modules "apps.ventes.tests.test_qjr_serializer_surface"
 """
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -45,7 +46,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.ventes.models import Devis
+from apps.stock.models import Produit
+from apps.ventes.models import Devis, ShareLink
 from apps.ventes.serializers import DevisWriteSerializer
 
 User = get_user_model()
@@ -113,6 +115,14 @@ class SurfaceDeclaree(SimpleTestCase):
                 champs[nom].read_only,
                 '%s doit être en lecture seule : il a un endpoint dédié et '
                 'gardé, le corps du devis n\'en est pas un.' % nom)
+
+    def test_conception_et_meta_pdf_en_lecture_seule(self):
+        """ADVS11 — posés par le serveur (conception, rendu), jamais du corps."""
+        champs = DevisWriteSerializer().fields
+        for nom in ('electrical_design', 'electrical_design_hash',
+                    'pdf_render_meta'):
+            self.assertIn(nom, champs, nom)
+            self.assertTrue(champs[nom].read_only, nom)
 
     def test_cycle_de_vie_en_lecture_seule_is_active_ecrivable(self):
         """QJR541 — statut et champs de cycle de vie ignorés au PATCH/POST ;
@@ -294,6 +304,74 @@ class PatchBrutIgnore(TestCase):
         self.assertEqual(self.devis.etude_params['puissance_kwc'], 6.6)
         self.assertEqual(
             self.devis.etude_params['factures_mensuelles_reelles'], [820] * 12)
+
+
+class ConceptionForgeeIgnoree(TestCase):
+    """ADVS11 (C-ADVS-005) — rejeu de la sonde : brouillon, PATCH forgé, envoi,
+    page publique. Rien du forgé n'est persisté ni servi au client."""
+
+    FORGE = {
+        'electrical_design': {
+            'chaines': [{'pan': 'Pan forgé', 'mppt': 9, 'nb_modules': 99}],
+            'protections': [{'repere': 'QF-SONDE', 'calibre': '999 A',
+                             'designation': 'Disjoncteur forgé',
+                             'quantite': 1, 'cote': 'ac'}],
+            'cables': [{'liaison': 'Liaison forgée', 'section_mm2': 1,
+                        'longueur_m': 1}]},
+        'electrical_design_hash': 'forge',
+        'pdf_render_meta': {'options': {'pdf_mode': 'onepage'}},
+    }
+
+    def setUp(self):
+        self.company = _company()
+        self.api = APIClient()
+        self.api.credentials(HTTP_AUTHORIZATION=(
+            f'Bearer {AccessToken.for_user(_user(self.company))}'))
+        panneau = Produit.objects.create(
+            company=self.company, nom='Panneau Canadien Solar 710W',
+            sku='ADVS11-P', prix_vente=Decimal('1166.67'), tva=Decimal('20'),
+            quantite_stock=100)
+        onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 10kW Monophasé',
+            sku='ADVS11-O', prix_vente=Decimal('14000'), tva=Decimal('20'),
+            quantite_stock=100)
+        cree = self.api.post('/api/django/ventes/devis/atomic/', {
+            'client': _client_obj(self.company).id, 'taux_tva': '20.00',
+            'lignes': [
+                {'produit': panneau.id, 'designation': panneau.nom,
+                 'quantite': '12', 'prix_unitaire': '1166.67', 'taux_tva': '20'},
+                {'produit': onduleur.id, 'designation': onduleur.nom,
+                 'quantite': '1', 'prix_unitaire': '14000.00', 'taux_tva': '20'},
+            ]}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.content)
+        self.devis = Devis.objects.get(pk=cree.data['id'])
+        self.url = f'/api/django/ventes/devis/{self.devis.id}/'
+
+    def _valeurs(self):
+        self.devis.refresh_from_db()
+        return {nom: getattr(self.devis, nom) for nom in self.FORGE}
+
+    def test_patch_forge_ne_change_rien_et_n_atteint_pas_la_page_publique(self):
+        # Témoin : un PATCH sans champ forgé fixe ce que le SERVEUR recalcule.
+        temoin = self.api.patch(self.url, {'note': 'témoin'}, format='json')
+        self.assertEqual(temoin.status_code, 200, temoin.content)
+        avant = self._valeurs()
+
+        reponse = self.api.patch(self.url, self.FORGE, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertEqual(self._valeurs(), avant)
+        self.assertNotIn('QF-SONDE', str(self.devis.electrical_design))
+
+        with mock.patch('apps.ventes.public_views._notify_open'):
+            envoi = self.api.post(f'{self.url}share-link/', {'envoi': True},
+                                  format='json')
+            self.assertLess(envoi.status_code, 300, envoi.content)
+            lien = ShareLink.objects.filter(
+                devis=self.devis, revoque_le__isnull=True).latest('id')
+            page = APIClient().get(
+                f'/api/django/public/proposal/{lien.token}/data/')
+        self.assertEqual(page.status_code, 200, page.content)
+        self.assertNotIn('QF-SONDE', page.content.decode('utf-8', 'replace'))
 
 
 class EcheancierResteEcrivable(TestCase):
