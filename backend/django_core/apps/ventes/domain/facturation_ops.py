@@ -1679,8 +1679,8 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
     ATOT43 — ``montant_ventile`` (``{ht, tva, ttc, ventilation}``) : avoir
     d'ÉCART sans ligne, aux montants donnés (``crediter_ecart_de_vente``).
 
-    Appelé par ``creer-avoir`` (correction totale/partielle, contre-
-    passation) ET ``retour-client`` : il n'existe plus deux ``_create``
+    Appelé par ``creer-avoir`` (correction totale/partielle), ``retour-client``
+    et (AARG39 : seule voie) ``_contre_passer`` : il n'existe plus deux ``_create``
     locaux qui ne savaient pas la même chose (le retour ne reprenait ni la
     remise globale ni le palier d'arrondi de la facture, lisait son plafond
     hors transaction et n'émettait pas ``avoir_cree``).

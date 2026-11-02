@@ -107,8 +107,52 @@ class TestAvoirContrePassation(TestCase):
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'mode': 'contre_passation'}, format='json')
         self.assertEqual(resp.status_code, 409)
+        # AARG39 — le refus de LA porte d'annulation, tel quel.
+        self.assertEqual(resp.data['code'], 'directive_acompte_requise')
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.statut, Facture.Statut.EMISE)
+
+    def test_contre_passation_passe_par_annuler_facture(self):
+        # AARG39 — même avoir CORRECTION, même événement, mêmes refus.
+        from core.events import facture_annulee
+        annulees = []
+
+        def recepteur(instance, **kw):
+            annulees.append(instance.pk)
+        facture_annulee.connect(recepteur)
+        self.addCleanup(facture_annulee.disconnect, recepteur)
+        api = self._api(self.admin)
+        url = f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/'
+        # Un avoir actif refuse d'abord, comme ``annuler``.
+        actif = api.post(url, {'motif': 'Partiel', 'lignes': [
+            {'produit': self.panneau.id, 'designation': 'Panneau PV',
+             'quantite': '1', 'prix_unitaire': '1000', 'taux_tva': '20'}]},
+            format='json')
+        self.assertEqual(actif.status_code, 201, actif.data)
+        r = api.post(url, {'mode': 'contre_passation'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'avoir_actif')
+        self.assertEqual(annulees, [])
+        rendu = api.post(
+            f"/api/django/ventes/avoirs/{actif.data['id']}/annuler/")
+        self.assertEqual(rendu.status_code, 200, rendu.data)
+
+        resp = api.post(url, {'mode': 'contre_passation', 'motif': 'Erreur',
+                              'type': 'geste_commercial'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        avoir = Avoir.objects.get(pk=resp.data['id'])
+        self.assertEqual(avoir.type, Avoir.Type.CORRECTION)
+        self.assertEqual(avoir.motif, 'Erreur')
+        self.assertEqual(annulees, [self.facture.id])
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(
+            Avoir.objects.filter(facture=self.facture).exclude(
+                statut=Avoir.Statut.ANNULEE).count(), 1)
+        # Rejouée : déjà annulée, rien de plus.
+        r = api.post(url, {'mode': 'contre_passation'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(annulees, [self.facture.id])
 
     def test_invalid_mode_rejected(self):
         api = self._api(self.admin)

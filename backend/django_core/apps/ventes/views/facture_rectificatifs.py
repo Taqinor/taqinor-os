@@ -163,11 +163,10 @@ class FactureRectificatifsActionsMixin:
         facture d'origine ; le PDF reprend le style facture.
 
         ZFAC5 — ``mode`` ∈ {``correction`` (défaut, comportement ci-dessus
-        inchangé), ``contre_passation``} : en ``contre_passation`` l'avoir
-        reprend TOUTES les lignes de la facture à l'identique (les `lignes`
-        du corps sont ignorées) et, à son émission, la facture d'origine
-        passe ``annulee`` avec un ``FactureActivity`` liant les deux pièces.
-        Refusé (409) si la facture a déjà des paiements (dû négatif évité)."""
+        inchangé), ``contre_passation``}. AARG39 — ``contre_passation`` passe
+        par LA porte d'annulation ``annuler_facture`` : même facture annulée,
+        même avoir CORRECTION (`lignes` et `type` du corps ignorés), mêmes
+        refus (409, ``code`` de ``facture_annulation.json``)."""
         facture = self.get_object()
         # Tour 3 M1 — corps validé (types, listes, enums) AVANT toute lecture.
         valider_corps_lignes(request, D.CreerAvoirRequest)
@@ -178,24 +177,11 @@ class FactureRectificatifsActionsMixin:
                 status=status.HTTP_409_CONFLICT)
         # `mode` ∈ enum garanti par le corps validé ; refus d'ÉTAT = 409 (ENF11).
         mode = (request.data.get('mode') or 'correction').strip()
-        if mode == 'contre_passation' and facture.montant_paye > 0:
-            return Response(
-                {'detail': ("Contre-passation refusée : cette facture a déjà "
-                            "des paiements enregistrés.")},
-                status=status.HTTP_409_CONFLICT)
-        # AFAC32 (D-AFAC-C4) — la contre-passation ANNULE la facture : ses
-        # notes de débit actives s'annulent d'abord (par avoir de ND).
-        from ..domain.facturation_ops import notes_debit_actives
-        if mode == 'contre_passation' and notes_debit_actives(facture):
-            return Response(
-                {'detail': ("Contre-passation refusée : la facture porte une "
-                            "note de débit active — annulez-la d'abord."),
-                 'code': 'note_debit_active'},
-                status=status.HTTP_409_CONFLICT)
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
-        lignes = None if mode == 'contre_passation' \
-            else request.data.get('lignes')
+        if mode == 'contre_passation':
+            return self._contre_passer_par_annulation(facture, request, motif)
+        lignes = request.data.get('lignes')
         # Plafond : un avoir ne peut pas dépasser le reste créditable de la
         # facture (TTC − avoirs actifs déjà émis). AUD126 — il est désormais
         # mesuré SOUS LE VERROU de ligne, juste avant la création (voir le
@@ -269,7 +255,7 @@ class FactureRectificatifsActionsMixin:
         )
         try:
             avoir = creer_avoir_facture(
-                facture=facture, user=request.user, motif=motif, mode=mode,
+                facture=facture, user=request.user, motif=motif,
                 lignes_saisies=clean_lignes,
                 type_avoir=str(request.data.get('type') or '').strip() or None)
         except AvoirPlafondDepasse as exc:
@@ -281,6 +267,21 @@ class FactureRectificatifsActionsMixin:
             # Refus de VALEUR (ligne, type) : 400.
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
+        return self._avoir_cree(avoir)
+
+    def _contre_passer_par_annulation(self, facture, request, motif):
+        """AARG39 — la contre-passation EST l'annulation sans directive."""
+        from ..domain.annulation_facture import (
+            AnnulationRefusee, annuler_facture,
+        )
+        try:
+            facture = annuler_facture(facture, user=request.user, motif=motif)
+        except AnnulationRefusee as refus:
+            return Response(refus.corps, status=status.HTTP_409_CONFLICT)
+        return self._avoir_cree(facture.avoir_annulation)
+
+    @staticmethod
+    def _avoir_cree(avoir):
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf
