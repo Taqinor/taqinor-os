@@ -294,6 +294,10 @@
         "annualKwh": {
           "type": "number"
         },
+        "signatureOmbrage": {
+          "description": "ACAL367 / D-ACAL-VER2-1 — signature (FNV-1a des entrées d'ombrage `horizonProfile`, `shading12x24`, `shadeObstructions`, clés triées) des entrées avec lesquelles la production a été dératée ; écrite par l'atelier, absente sans ombrage. À la réouverture, signature absente ou différente ⇒ l'atelier recalcule la production dératée ; égale ⇒ document réémis tel quel (ACAL31).",
+          "type": "string"
+        },
         "savings": {
           "description": "Économies annuelles (MAD) telles qu'AFFICHÉES par la page, ou `null` si l'appelant ne les fournit pas. JAMAIS recalculées ni sommées zone à zone (une somme sur-compte le plafond facture). Retirées de la charge utile publique par `_safe_roof_layout`.",
           "type": [
@@ -2629,7 +2633,8 @@
       "panels": 20,
       "kwc": 14.4,
       "annualKwh": 18771,
-      "savings": null
+      "savings": null,
+      "signatureOmbrage": "fnv1a-246faea0"
     },
     "scenario": "reseau",
     "panelWatt": 720,

@@ -755,6 +755,56 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     for (const k of ['carte', 'zones', 'doc'] as const) expect(ombre[k] / reference[k]).toBeCloseTo(0.8, 3);
   }, 120000);
 
+  // ACAL367 — rouvert AVEC sa production enregistrée (document NON dépouillé de `result`) puis
+  // ombré : le document baisse du facteur de la carte ; D-ACAL-VER2-1 : un document stocké
+  // déjà ombré sans signature de dérate est dératé au prochain enregistrement.
+  const horizon25 = { source: 'saisie', points: [0, 60, 120, 180, 240, 300].map((azimuthDeg) => ({ azimuthDeg, heightDeg: 25 })) };
+  const kwhDesPans = (d: Doc) => (d.zones as Array<{ result?: { annualKwh?: number } }>).map((z) => z.result?.annualKwh ?? 0);
+  async function rouvrirAvecGeste(doc: Doc, id: number): Promise<() => Api> {
+    const a = await rouvrir(doc, id);
+    vi.useFakeTimers();
+    setBill('3000');
+    vi.advanceTimersByTime(321); // la facture est débattue (320 ms) avant le recalcul
+    vi.useRealTimers();
+    return a;
+  }
+  async function enregistreAvecProduction(): Promise<Doc> {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    return copie(neuf().serializeLayout() as Doc);
+  }
+
+  it('rouvert AVEC sa production enregistrée puis horizon 25° : le document baisse du facteur de la carte', async () => {
+    const enregistre = await enregistreAvecProduction();
+    expect(enregistre.result.annualKwh).toBeGreaterThan(0);
+    const api = await rouvrirAvecGeste(enregistre, 9);
+    const avant = lecture(api());
+    const pansAvant = kwhDesPans(api().serializeLayout() as Doc);
+    api().appliquerSection('horizonProfile', horizon25);
+    const apres = lecture(api());
+    const f = apres.carte / avant.carte;
+    expect(f).toBeLessThan(0.99);
+    expect(apres.zones / avant.zones).toBeCloseTo(f, 3);
+    expect(apres.doc / avant.doc).toBeCloseTo(f, 3);
+    const derate = copie(api().serializeLayout() as Doc);
+    kwhDesPans(derate).forEach((kwh, i) => { if (pansAvant[i] > 0) expect(kwh / pansAvant[i]).toBeCloseTo(f, 3); });
+    expect(typeof (derate.result as Record<string, unknown>).signatureOmbrage).toBe('string');
+    // Persistance : rouvert sans geste, la production dératée est relue telle quelle.
+    expect(lecture((await rouvrir(derate, 9))()).doc).toBe(apres.doc);
+  }, 120000);
+
+  it('D-ACAL-VER2-1 — document stocké avec un horizon et sans signature : production dératée au prochain enregistrement', async () => {
+    const enregistre = await enregistreAvecProduction();
+    expect((enregistre.result as Record<string, unknown>).signatureOmbrage).toBeUndefined(); // aucun ombrage ⇒ aucune signature
+    const ancien = { ...enregistre, horizonProfile: horizon25 } as Doc; // ombré par section, production jamais dératée
+    const sortie = copie((await rouvrirAvecGeste(ancien, 10))().serializeLayout() as Doc);
+    expect(sortie.result.annualKwh).toBeLessThan(enregistre.result.annualKwh * 0.99);
+    expect(typeof (sortie.result as Record<string, unknown>).signatureOmbrage).toBe('string');
+    // Signature égale : rouvert sans geste, le dératé est réémis tel quel (ACAL31 conservé).
+    expect(lecture((await rouvrir(sortie, 10))()).doc).toBe(sortie.result.annualKwh);
+  }, 120000);
+
   // ACAL366 — une section « zones » (onglet Pente, panneau Relevé) est posée sur le pan VIVANT :
   // « Enregistrer » garde 35° (jamais l'ancienne pente sous un jeton neuf), puis rouvrir la relit.
   it('section « zones » (pente 35°, azimut relevé) appliquée au pan vivant puis gardée par serializeLayout', async () => {
