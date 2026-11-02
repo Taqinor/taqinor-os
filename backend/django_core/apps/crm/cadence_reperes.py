@@ -179,6 +179,18 @@ _CLOTURE_TAGS = {
     'deuxieme_affaire': _CLOTURE_TAG_DEUXIEME_AFFAIRE,
 }
 
+
+def tag_injoignable(company):
+    """CADV80 (D-CADV-1) — « Injoignable N appels », N lu sur le gabarit actif
+    de prise de contact de la société : l'étiquette dit ce que SA cadence a
+    fait (le « 6 » de ``_CLOTURE_TAG_INJOIGNABLE`` reste le défaut livré)."""
+    appels = sum(
+        1 for gabarit in gabarit_relance.CadenceRelanceEtape.cadence_pour(
+            company, 'contact')
+        if gabarit.canal == gabarit_relance.CanalRelance.APPEL)
+    return f'Injoignable {appels} appel{"s" if appels > 1 else ""}'
+
+
 #: CADV72 (D-CADV-4) — la RAISON de parcage de la fin de gabarit, en champ
 #: (``parquer_lead``) ; l'étiquette ci-dessus reste, c'est l'affichage.
 _CLOTURE_RAISONS = {

@@ -35,6 +35,7 @@ from .cadence_reperes import (
     _lead_porte_tag,
     est_etape_de_visite,
     q_visite,
+    tag_injoignable,
 )
 from .fiche_funnel import ParcRefuse, _rang_funnel, parquer_lead, poser_tag_lead
 from .leads_doublons import find_duplicates_by_contact
@@ -1101,7 +1102,8 @@ def cloturer_cadence(lead, user, cadence):
                 kind=LeadActivity.Kind.NOTE,
                 body=f'Mise au Froid refusée : {refus}.')
             return
-        tag = _CLOTURE_TAGS.get(cadence)
+        tag = (tag_injoignable(lead.company) if cadence == 'contact'
+               else _CLOTURE_TAGS.get(cadence))
         if tag:
             poser_tag_lead(lead, user, tag)
         # SUIVI E19 (30/09/2026) — une étape de FILET encore ouverte (cadence
