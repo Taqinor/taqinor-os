@@ -322,6 +322,39 @@ class TotalStockeTests(TestCase):
         self.assertLess(self._egal(facture).total_ttc_stocke,
                         remisee.total_ttc_stocke)
 
+    def test_tranche_d_echeancier_suit_ses_montants_figes(self):
+        """Le « Given » d'échéancier : une ligne écrite ne bouge pas le total
+        d'une tranche (ses montants figés SONT le total), une réécriture des
+        montants le suit, et le remplissage reprend les montants figés."""
+        import importlib
+
+        from django.apps import apps as registre
+
+        from apps.ventes.models import Facture
+        migration = importlib.import_module(
+            'apps.facturation.migrations.0024_atot55_total_stocke')
+        tranche = self._facture(
+            Facture.Statut.BROUILLON, montant_ht=Decimal('1000.00'),
+            montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'),
+            type_facture=Facture.TypeFacture.ACOMPTE,
+            pourcentage=Decimal('30'))
+        self._ligne(tranche, '499.99', Decimal('10'))
+        self.assertEqual(self._egal(tranche).total_ttc_stocke,
+                         Decimal('1200.00'))
+        tranche.montant_ht = Decimal('1500.00')
+        tranche.montant_tva = Decimal('300.00')
+        tranche.montant_ttc = Decimal('1800.00')
+        tranche.save(
+            update_fields=['montant_ht', 'montant_tva', 'montant_ttc'])
+        relue = self._egal(tranche)
+        self.assertEqual(relue.total_ht_stocke, Decimal('1500.00'))
+        self.assertEqual(relue.total_ttc_stocke, Decimal('1800.00'))
+        Facture.objects.filter(pk=tranche.pk).update(
+            total_ht_stocke=None, total_ttc_stocke=None)
+        migration.remplir(registre, None)
+        self.assertEqual(self._egal(tranche).total_ttc_stocke,
+                         Decimal('1800.00'))
+
     def test_migration_0024_remplit_les_existantes(self):
         import importlib
 

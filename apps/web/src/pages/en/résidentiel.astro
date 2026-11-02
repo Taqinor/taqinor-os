@@ -40,7 +40,7 @@ import Testimonials from '../../components/Testimonials.astro';
 import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
-import { BILL_RANGES, localEstimateBand } from '../../lib/billRange';
+import { buildBrackets } from '../../lib/residentielBrackets';
 import { formatMAD } from '../../lib/format';
 import { localizeNavHref } from '../../i18n/pages';
 import { WHATSAPP_LEADS } from '../../lib/nap';
@@ -54,8 +54,6 @@ const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a
 // W263 — shared FAQ + per-component warranty, EN.
 const faqItems = serviceFaqItems('residentiel', 'en');
 
-const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
-const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
 
 const EXEMPLES_REELS: Record<string, string> = {
   '1000-1500': 'Real example: ref. NC-10/25 — 3,72 kWc, Nouaceur, October 2025',
@@ -64,18 +62,7 @@ const EXEMPLES_REELS: Record<string, string> = {
   '5000-10000': 'Real example: ref. 468 — 17,04 kWc, El Jadida, April 2026',
 };
 
-const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').map((r) => {
-  const band = localEstimateBand(r.id);
-  return {
-    bill: r.label,
-    kwc: band.kwcLabel,
-    payback: band.paybackLabel,
-    investLow: arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas),
-    investHigh: arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut),
-    invest: `${formatMAD(arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
-    exemple: EXEMPLES_REELS[r.id] ?? null,
-  };
-});
+const brackets = buildBrackets(EXEMPLES_REELS);
 
 // WB14 (2026-07-04) — bounds DERIVED from the brackets table above (already
 // published) for the extractable AEO answer; no new figure.

@@ -51,6 +51,15 @@ class Ntapi23KeyRotationTests(TestCase):
         self.assertEqual(new_key.scopes, self.old_key.scopes)
         self.assertNotEqual(new_raw, self.old_raw)
 
+    def test_rotate_libelle_long_ou_repete_sans_depasser_la_colonne(self):
+        # ENF11 fuzz : "<label> (rotation)" dépassait max_length=120 -> 500.
+        cle, _ = ApiKey.issue(
+            company=self.co, label='x' * 120, scopes=[SCOPE_READ_LEADS])
+        for _ in range(3):
+            cle, _ = cle.rotate()
+            self.assertLessEqual(len(cle.label), 120)
+        self.assertTrue(cle.label.endswith(' (rotation)'))
+
     def test_both_keys_work_during_grace_period(self):
         new_key, new_raw = self.old_key.rotate(grace_jours=7)
         resp_old = _key_client(self.old_raw).get('/api/public/v1/leads/')

@@ -292,6 +292,21 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         """Vrai si l'appelant porte ``visites_valider`` (ou en tient lieu)."""
         return _user_has_or_legacy(self.request.user, 'visites_valider')
 
+    def destroy(self, request, *args, **kwargs):
+        # ALEA58 — une visite validée reste refusée (VT3 : gelée).
+        return (self._refus_si_gelee(self.get_object())
+                or super().destroy(request, *args, **kwargs))
+
+    def perform_destroy(self, instance):
+        """ALEA58 — supprimer la visite retire ses photos par LE service
+        unique (``services.supprimer_media`` : pièce jointe du lead + objet
+        de stockage après commit), jamais par la seule cascade."""
+        from django.db import transaction
+        with transaction.atomic():
+            for media in list(instance.medias.select_related('attachment')):
+                services.supprimer_media(media)
+            instance.delete()
+
     def get_queryset(self):
         qs = super().get_queryset()
         if not self._voit_toute_l_equipe():
@@ -529,7 +544,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if refus is not None:
             return refus
 
-        categorie = (request.data.get('categorie') or '').strip()
+        # ERR-ENF11-FUZZ-VISITES — un corps tableau n'a pas de ``.get`` et une
+        # catégorie non texte pas de ``.strip`` (500) : 400 qui nomme le champ.
+        if not hasattr(request.data, 'get'):
+            return _erreur('corps', 'Un objet JSON est attendu.')
+        categorie = request.data.get('categorie') or ''
+        if not isinstance(categorie, str):
+            return _erreur('categorie', 'La catégorie doit être un texte.')
+        categorie = categorie.strip()
         visite, erreurs = services.enregistrer_mesures(
             visite, categorie, request.data.get('valeurs'))
         if erreurs:
@@ -614,8 +636,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # la journée de son équipe, il ne qualifie pas un client qu'il n'a pas vu.
     # Gelée par VT3 comme toute autre écriture.
 
+    # ERR-ENF11-FUZZ-VISITES — le corps est OBLIGATOIRE (six champs requis) :
+    # un dict ``request=`` ne pose pas ``required: true``, le fuzz omettait le
+    # corps (conforme) et recevait 400 « champ obligatoire ». L'extension
+    # (règle exigeante) rend le corps requis.
     @extend_schema(request={'application/json': _schema_qualification()},
-                   responses=_VISITE_CONTEXTE)
+                   responses=_VISITE_CONTEXTE,
+                   extensions={EXTENSION_CORPS_RESSERRE: {
+                       'required': [*vocabulaire_qualification.CHOIX]}})
     @action(detail=True, methods=['post'], url_path='qualification')
     def qualification(self, request, pk=None):
         """Enregistre la qualification de fin de visite (vocabulaire fermé)."""

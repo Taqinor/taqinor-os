@@ -257,6 +257,16 @@ class CompletudeTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('type_alimentation', resp.data['erreurs'])
 
+    def test_mesures_corps_non_objet_ou_categorie_non_texte_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-VISITES : un corps tableau (``.get``) ou une
+        # catégorie numérique (``.strip``) levait 500.
+        visite_id = self.creer_visite()
+        url = f'/api/django/visites/visites/{visite_id}/mesures/'
+        for corps in ([[{}, {}], [], 1.5], 7, {'categorie': 12, 'valeurs': {}},
+                      {'categorie': ['toiture'], 'valeurs': {}}):
+            resp = self.api.patch(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
     def test_un_toit_plat_dispense_de_la_pente(self):
         visite_id = self.creer_visite()
         valeurs = dict(MESURES_COMPLETES['toiture'])
@@ -777,6 +787,13 @@ class SchemaVisitesPublieTests(SimpleTestCase):
             set(entete['properties']),
             {'id', 'lead', 'commercial', 'statut', 'date_prevue',
              'date_realisee', 'notes'})
+
+    def test_la_qualification_publie_un_corps_obligatoire(self):
+        # api-fuzz 01/11 : POST sans corps (« conforme » car facultatif au
+        # schéma) refusé 400 « champ obligatoire » ×6.
+        operation = self.schema['paths'][
+            '/api/django/visites/visites/{id}/qualification/']['post']
+        self.assertTrue(operation['requestBody'].get('required'))
 
     def test_le_motif_de_renvoi_publie_non_blanc_sans_nul(self):
         # api-fuzz-full 27/10 : « /@Bl\x00 » était publié conforme puis

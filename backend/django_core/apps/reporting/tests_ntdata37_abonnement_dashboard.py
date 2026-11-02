@@ -198,3 +198,23 @@ class AbonnementDashboardTests(TestCase):
         rapport = SavedReport(company=self.company, name='Ventes',
                               target_kind=SavedReport.TargetKind.SALES)
         rapport.clean()  # ne lève pas
+
+    def test_patch_sans_cible_en_modification_409(self):
+        """ERR-ENF11-FUZZ-REPORTING — PATCH : la cible requise se lit sur la
+        fiche enregistrée -> 409 (plus 400) ; création sans cible : 400 au
+        champ."""
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        rapport = self._rapport(
+            name='Ventes', target_kind=SavedReport.TargetKind.SALES)
+        url = f'/api/django/reporting/saved-reports/{rapport.pk}/'
+        resp = api.patch(url, {'target_kind': 'dashboard'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        resp = api.post('/api/django/reporting/saved-reports/', {
+            'name': 'X', 'target_kind': 'dashboard'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('cible_id', resp.data)

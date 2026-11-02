@@ -78,6 +78,12 @@ def _cell_value(classeur, ref, *, user, _visiting=None):
     cell = (classeur.cellules or {}).get(ref)
     if cell is None:
         return 0
+    if not isinstance(cell, dict):
+        # La grille est un objet JSON libre (ERR-ENF11-FUZZ-REPORTING) : une
+        # cellule scalaire vaut sa valeur, toute autre forme (liste…) vaut 0 —
+        # ``'valeur' in 5`` / ``[].get`` levaient TypeError/AttributeError (500
+        # sur ``rafraichir``).
+        return cell if isinstance(cell, (int, float, str)) else 0
     if 'valeur' in cell:
         return cell['valeur']
     formule = cell.get('formule')

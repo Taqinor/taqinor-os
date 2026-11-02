@@ -254,3 +254,19 @@ class XSAV16DowntimeTest(TestCase):
             composants['SavDowntimeRequeteRequest']['properties']['motif']))
         self.assertIn('u0000', json.dumps(
             composants['TicketRequest']['properties']['instructions']))
+
+    def test_api_cloturer_downtime_corps_non_objet_et_fin_invalide_400(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV (500 : corps entier -> ``int`` sans
+        # ``.get``) : un corps non objet ou une ``fin`` illisible = 400.
+        dt = ouvrir_downtime(
+            company=self.company, equipement=self.equip,
+            debut=timezone.now() - timedelta(hours=2))
+        api = auth(self.admin)
+        url = (f'/api/django/sav/equipements/{self.equip.id}'
+               f'/downtime/{dt.id}/cloturer/')
+        for corps in (-4611686018427387905, [1], {'fin': 'pas-une-date'},
+                      {'fin': 12}, {'fin': '2026-13-45T00:00:00'}):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        dt.refresh_from_db()
+        self.assertIsNone(dt.fin)

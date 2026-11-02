@@ -359,6 +359,12 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         signataire = (request.data.get('signataire') or '').strip()
         note_pv = (request.data.get('note_pv') or '').strip()
         upload = request.FILES.get('pv') or request.FILES.get('file')
+        # ERR-ENF11-FUZZ-VENTES — un part fichier de 0 octet (champ de
+        # formulaire laissé vide) est « pas de pièce » : la preuve est
+        # facultative et il n'y a rien à stocker. Tout fichier NON vide reste
+        # contrôlé (PDF/PNG/JPEG/WebP) par ``store_attachment``.
+        if upload is not None and not upload.size:
+            upload = None
         pv = {}
         if signataire:
             pv['signataire'] = signataire[:150]

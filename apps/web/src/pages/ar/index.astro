@@ -37,7 +37,8 @@ import ZelligeSignature from '../../components/ZelligeSignature.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS, realisationBySlug, MEASURED_FLEET_LIFETIME_MWH_FR } from '../../lib/realisations';
+import { buildGallery } from '../../lib/homeGallery';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR } from '../../lib/realisations';
 import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -104,21 +105,9 @@ const galleryRaw = [
   // (العلامات مؤكدة على الصورة)، أبداً عدد ألواح مُخمَّن.
   { name: 'bouskoura-toit', alt: 'سطح فيلا مغطى بالكامل بألواح شمسية، بوسكورة', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'عاكس Deye · تخزين DYNESS', slug: 'bouskoura-villa-2026' },
 ];
-const gallery = galleryRaw.map((g) => {
-  const r = realisationBySlug(g.slug);
-  const ville = CITY_AR[r?.ville ?? ''] ?? r?.ville ?? '';
-  const kwc = r?.kwc ?? '';
-  const prod = g.showProd ? (r?.production?.replace('/an', '/سنة') ?? null) : null;
-  // (2026-09) قد يكون `kwc` فارغاً (ورش صُوِّر قبل أي قراءة للقدرة، مثال
-  // بوسكورة): جمع مُصفَّى بدل فاصل مُعلَّق على لا شيء.
-  return {
-    ...g,
-    ville,
-    kwc,
-    prod,
-    caption: [ville, kwc, prod].filter(Boolean).join(' · '),
-    ariaLabel: [ville, kwc, prod].filter(Boolean).join(', '),
-  };
+const gallery = buildGallery(galleryRaw, {
+  cityName: (v) => CITY_AR[v] ?? v,
+  prodLabel: (p) => p.replace('/an', '/سنة'),
 });
 
 // W271 — شقائق فلترة المدينة: «الكل» + المدن الموجودة فعلاً في `gallery`
@@ -199,6 +188,7 @@ import ArIndexPicture8B05 from '../../components/blocs/ArIndexPicture8B05.astro'
 import { solutionIcons } from '../../lib/solutionIcons';
 import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.astro';
 import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
+import IndexBloc1A99 from '../../components/blocs/IndexBloc1A99.astro';
 ---
 
 <Layout
@@ -504,10 +494,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
             </p>
             {/* نص مقترن بالمرحلة النشِطة — مخفي افتراضيًا؛ لا يُظهره السكربت
                 إلا إذا كان التثبيت مفعَّلًا (حاسوب، حركة مسموحة). */}
-            <p class="v2-body mt-5 max-w-md journey-active-caption" data-journey-caption hidden></p>
-            <div class="mt-6">
-              <WhatsAppMock />
-            </div>
+            <IndexBloc1A99 />
           </div>
           {/* شريط المسار الحقيقي — من التشخيص إلى المراقبة */}
           <ol class="journey-steps mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:mt-0 lg:grid-cols-1 lg:gap-y-16" data-stagger data-journey-steps>

@@ -1406,6 +1406,32 @@ class ContratWmsExpeditionTests(ContratListeMixin, WmsBase):
             self.api.get(f'{self.BASE}/retours-client/'), contrat,
             'retours_client')
 
+    def test_retours_client_inspecter_corps_invalide_400_sans_500(self):
+        """ENF11 fuzz - `lignes` d'elements scalaires (`false`), etat non
+        texte ou corps scalaire : 400, jamais TypeError/AttributeError (500)."""
+        from apps.crm.models import Client
+        from apps.stock.models import RetourClient
+        client = Client.objects.create(
+            company=self.company, nom='Client', prenom='Fuzz',
+            email='enf11-inspecter@example.invalid')
+        retour = self.api.post(f'{self.BASE}/retours-client/', {
+            'client': client.id, 'motif': 'm',
+            'lignes': [{'produit': self.produit.id, 'quantite': 1,
+                        'etat_constate': 'revendable'}]},
+            format='json').json()
+        self.api.post(
+            f'{self.BASE}/retours-client/{retour["id"]}/receptionner/', {},
+            format='json')
+        url = f'{self.BASE}/retours-client/{retour["id"]}/inspecter/'
+        ligne = RetourClient.objects.get(pk=retour['id']).lignes.first()
+        for corps in ({'lignes': [False, True]},
+                      {'lignes': [{'ligne': ligne.id, 'etat_constate': ['x']}]},
+                      {'lignes': 'abc'}):
+            rep = self.api.post(url, corps, format='json')
+            self.assertEqual(rep.status_code, 400, (corps, rep.content))
+        rep = self.api.post(url, data='true', content_type='application/json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+
 
 class ContratWmsRappelsQualiteTests(ContratListeMixin, WmsBase):
     """ASTK165 — wms_rappels_qualite.json."""

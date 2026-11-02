@@ -574,6 +574,20 @@ class TestDC35FicheTechniqueAPI(DCBase):
         self.assertFalse(notice['additionalProperties'])
         self.assertEqual(set(notice['properties']), {'document', 'date', 'page'})
 
+    def test_quantite_stock_reponse_sans_minimum_requete_avec(self):
+        """ENF11 (api-fuzz) — le stock servi peut être négatif : ``minimum: 0``
+        reste publié sur la requête (stock initial), pas sur la réponse."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.stock import urls as stock_urls
+        schemas = SchemaGenerator(patterns=[
+            path('api/django/stock/', include(stock_urls)),
+        ]).get_schema(request=None, public=True)['components']['schemas']
+        self.assertNotIn('minimum', schemas['Produit']['properties']['quantite_stock'])
+        self.assertEqual(
+            schemas['ProduitRequest']['properties']['quantite_stock']['minimum'], 0)
+
     def test_notice_publiee_doublon_seul_409(self):
         """api-fuzz stock (vague 8, rerun) — ``struct_notice`` conforme à sa
         forme publiée passe la validation : le doublon de produit reste SEUL
