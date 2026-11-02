@@ -128,4 +128,4 @@ Porte : 3 réfutés partiels / 57 bruts · seconde lentille : 6 S1 → maintenus
 
 ## 9. Coût et routage
 Coût : H0 S3 O18 F1 · jetons sous-agents ≈ 4,6 M · tâches 58 (M0 0 M1 0 M2 20 M3 37 GATED 0) + acceptation AARG50.
-Routage : `PLAN_AUDIT_FACTURATION.md` 47 · `PLAN_AUDIT_SECURITE.md` 3 · `PLAN_AUDIT_DEVIS.md` 2 · `PLAN_AUDIT_LEAD.md` 2 · `PLAN_AUDIT_DOCUMENTS.md` 1 · `PLAN_AUDIT_DEPLOY.md` 1 · `PLAN_AUDIT_CHANTIERS.md` 1 · `PLAN_AUDIT_PARAMETRES.md` 1 · acceptation AARG50 · PR à venir.
+Routage : `PLAN_AUDIT_FACTURATION.md` 47 · `PLAN_AUDIT_SECURITE.md` 3 · `PLAN_AUDIT_DEVIS.md` 2 · `PLAN_AUDIT_LEAD.md` 2 · `PLAN_AUDIT_DOCUMENTS.md` 1 · `PLAN_AUDIT_DEPLOY.md` 1 · `PLAN_AUDIT_CHANTIERS.md` 1 · `PLAN_AUDIT_PARAMETRES.md` 1 · acceptation AARG50 · PR #1213.
