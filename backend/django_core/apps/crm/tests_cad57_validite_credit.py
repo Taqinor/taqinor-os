@@ -1,10 +1,9 @@
-"""CAD57 — validité J+30 pour un dossier financé, J+14 sinon.
+"""CADV81 (D-CADV-3, 01/11/2026, remplace CAD57 et VALID1) — validité = l'envoi
++ le réglage société, pour TOUS les devis, découplée du plan de suivi.
 
-[TRANCHÉ 21/09/2026] La validité était posée sur la DERNIÈRE touche de la
-cadence, c'est-à-dire J+14 : le devis expirait le jour exact où le suivi
-s'arrête. Or la loi 31-08 impose, une fois l'offre de crédit émise, 10 jours
-de réflexion PUIS 7 jours de rétractation avant déblocage — un client qui
-finance ne peut pas, légalement, boucler dans cette fenêtre.
+[TRANCHÉ 21/09/2026, CAD57] La validité était posée sur la DERNIÈRE touche de
+la cadence, J+14 hors financement : ≈ 50 des 63-70 devis expirés avaient 13-14
+jours, et le plan v4 (jusqu'à J90) aurait donné 90 jours.
 
 Garde-fou vérifié ici : la DURÉE vient d'un réglage société
 (``CompanyProfile.quote_validity_days``), jamais d'un nombre écrit dans le
@@ -23,9 +22,11 @@ from authentication.models import Company
 from core.events import devis_sent
 
 from apps.crm import horaires
-from apps.crm.models import Client, Lead, RelanceEtape
+from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
+from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.cadence_messages import lead_finance_a_credit
 from apps.parametres.models import CompanyProfile
+from apps.parametres.models_relance import CadenceRelanceEtape
 from apps.ventes.models import Devis
 from apps.ventes.services import jours_validite_societe
 
@@ -41,8 +42,12 @@ ENVOI = datetime.datetime(2026, 9, 7, 10, 0, tzinfo=horaires.CASABLANCA)
 #: créneaux par type de touche), et la règle « jamais plus d'un message par
 #: jour » (CAD20) pousse alors la touche J+14 au mardi 22/09. Le protocole
 #: n'a ni gagné ni perdu de touche : seule la DATE de la dernière a bougé.
-#: VALID1 pose la validité sur cette date — la fin du suivi, pas un J+N.
+#: CADV81 : la validité ne se lit plus sur cette date ; elle sert à simuler un
+#: devis envoyé avant la bascule (validité courte déjà posée).
 FIN_DU_SUIVI = datetime.date(2026, 9, 22)
+
+#: L'envoi + le réglage société par défaut (30 jours).
+ENVOI_PLUS_30 = datetime.date(2026, 10, 7)
 
 
 def _liberer_barreau_j9(lead, devis):
@@ -93,21 +98,29 @@ class ComptantTests(_Base):
     slug = 'cad57-comptant'
     financement = 'cash'
 
-    def test_un_devis_comptant_expire_a_la_FIN_DU_SUIVI(self):
-        """Comportement VALID1 inchangé — la DERNIÈRE touche du suivi.
-
-        L'attente était écrite « ENVOI + 14 jours », un raccourci qui a cessé
-        d'être vrai le jour même : voir ``FIN_DU_SUIVI``. Ce qui est vérifié
-        reste exactement la règle CAD57 — un dossier NON financé garde la fin
-        du suivi, jamais la validité allongée du réglage société.
-        """
+    def test_la_validite_est_de_30_jours_quel_que_soit_le_plan(self):
+        """Un plan jusqu'à J90 ne change pas la date ; la note dit d'où elle
+        vient. Mutant : revenir à la dernière échéance du plan ⇒ échec."""
+        CadenceRelanceEtape.objects.create(
+            company=self.company, cadence='apres_devis', ordre=90,
+            delai_jours=90, canal='appel', libelle='Appel J90', actif=True)
+        CadenceRelanceEtape.seed_cadence(self.company, 'apres_devis')
+        fin = calculer_echeances_cadence(self.lead, 'apres_devis', ENVOI)[-1][1]
+        self.assertGreater(fin.date(), ENVOI_PLUS_30)
         devis = self._envoyer()
-        self.assertIsNotNone(devis.date_validite)
-        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
-        self.assertNotEqual(
-            devis.date_validite,
-            ENVOI.date() + datetime.timedelta(
-                days=jours_validite_societe(self.company)))
+        self.assertEqual(devis.date_validite, ENVOI_PLUS_30)
+        self.assertEqual(devis.statut, 'envoye')
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead,
+            body="Validité posée au 07/10/2026 — 30 jours depuis l'envoi."
+        ).exists())
+
+    def test_rejouer_le_plan_ne_change_pas_la_date(self):
+        devis = self._envoyer()
+        initialiser_plan_relance(
+            self.lead, self.acteur, cadence='apres_devis', devis=devis)
+        devis.refresh_from_db()
+        self.assertEqual(devis.date_validite, ENVOI_PLUS_30)
 
     def test_le_lead_comptant_n_est_pas_un_dossier_finance(self):
         self.assertFalse(lead_finance_a_credit(self.lead))
@@ -117,18 +130,10 @@ class IndecisTests(_Base):
     slug = 'cad57-indecis'
     financement = 'indecis'
 
-    def test_pas_encore_decide_ne_declenche_RIEN(self):
-        """On n'allonge pas une validité sur une supposition.
-
-        Même correction d'attente que ci-dessus : la fin du suivi
-        (``FIN_DU_SUIVI``), pas le raccourci « ENVOI + 14 jours ».
-        """
+    def test_indecis_meme_regle_que_le_comptant(self):
+        """CADV81 — plus aucune branche selon le financement."""
         devis = self._envoyer()
-        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
-        self.assertNotEqual(
-            devis.date_validite,
-            ENVOI.date() + datetime.timedelta(
-                days=jours_validite_societe(self.company)))
+        self.assertEqual(devis.date_validite, ENVOI_PLUS_30)
         self.assertFalse(lead_finance_a_credit(self.lead))
 
 
@@ -156,13 +161,14 @@ class CreditTests(_Base):
         self.assertEqual(
             devis.date_validite, ENVOI.date() + datetime.timedelta(days=45))
 
-    def test_un_reglage_plus_COURT_que_le_suivi_ne_raccourcit_rien(self):
-        """Une société qui règle 10 jours ne se retrouve pas avec un devis
-        financé qui expire AVANT la fin de son propre suivi."""
+    def test_un_reglage_plus_COURT_s_applique_tel_quel(self):
+        """CADV81 — découplée du suivi : le réglage fait foi, même plus court
+        que le plan (avant : « jamais avant la fin du suivi »)."""
         self.profil.quote_validity_days = 10
         self.profil.save(update_fields=['quote_validity_days'])
         devis = self._envoyer('DEV-CAD57-0010')
-        self.assertEqual(devis.date_validite, self._fin_du_suivi())
+        self.assertEqual(
+            devis.date_validite, ENVOI.date() + datetime.timedelta(days=10))
 
     def test_une_validite_deja_SAISIE_a_la_main_n_est_jamais_ecrasee(self):
         devis = Devis.objects.create(
@@ -229,22 +235,22 @@ class SubventionADeposerTests(_SubventionBase):
     slug = 'agr523-a-deposer'
     dossier = 'a_deposer'
 
-    def test_a_deposer_garde_la_fin_du_plan(self):
+    def test_a_deposer_meme_regle(self):
         self.profil.quote_validity_days = 30
         self.profil.save(update_fields=['quote_validity_days'])
         devis = self._envoyer('DEV-AGR523-ADEP')
-        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+        self.assertEqual(devis.date_validite, ENVOI_PLUS_30)
 
 
 class SubventionVideTests(_SubventionBase):
     slug = 'agr523-vide'
     dossier = None
 
-    def test_sans_dossier_garde_la_fin_du_plan(self):
+    def test_sans_dossier_meme_regle(self):
         self.profil.quote_validity_days = 30
         self.profil.save(update_fields=['quote_validity_days'])
         devis = self._envoyer('DEV-AGR523-VIDE')
-        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+        self.assertEqual(devis.date_validite, ENVOI_PLUS_30)
 
 
 class MessageJ9Tests(_Base):
@@ -320,14 +326,15 @@ class ResidentielComptantInchangeTests(_ProBase):
     segment = 'residentiel'
     financement = 'cash'
 
-    def test_f_residentiel_comptant_inchange(self):
+    def test_f_residentiel_comptant_meme_regle(self):
         devis = self._envoyer('DEV-CIQ510-0030')
-        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+        self.assertEqual(devis.date_validite, ENVOI_PLUS_30)
 
 
 class AttenteApresEnvoiTests(_ProBase):
-    """(b)-(e) — l'attente déclarée à J+3 sur un devis ENVOYÉ valable
-    jusqu'à la fin du plan."""
+    """(b)-(e) — l'attente déclarée à J+3 sur un devis ENVOYÉ. CADV81 : un
+    devis neuf porte déjà l'envoi + le réglage ; le (b) simule un devis envoyé
+    avant la bascule, encore valable jusqu'à la fin de l'ancien plan."""
     slug = 'ciq510-attente'
     financement = 'indecis'
 
@@ -346,7 +353,8 @@ class AttenteApresEnvoiTests(_ProBase):
     def test_b_attente_a_j3_porte_a_envoi_plus_reglage(self):
         from apps.crm.models import LeadActivity
         devis = self._envoyer('DEV-CIQ510-0040')
-        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+        self.assertEqual(devis.date_validite, ENVOI_PLUS_30)
+        Devis.objects.filter(pk=devis.pk).update(date_validite=FIN_DU_SUIVI)
         self._repondre_attente()
         devis.refresh_from_db()
         attendu = ENVOI.date() + datetime.timedelta(days=30)

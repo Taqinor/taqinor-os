@@ -795,48 +795,29 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # ``relance_date`` déjà passée n'est plus conservée — le lead n'apparaît
     # plus « en retard » alors que sa première touche est à venir.
     _recaler_file(lead, user)
-    # VALID1 (fondateur 07/09/2026) — le plan après-devis POSE la validité
-    # de la proposition (si vide) : valable jusqu'à la DERNIÈRE touche du
-    # plan — une date dérivée des cadences du fondateur, jamais inventée.
-    # Les messages « validité de la proposition » cessent d'omettre leur
-    # phrase. Frontière M3 : écriture via la façade services de ventes.
+    # CADV81 (D-CADV-3, remplace VALID1 et CAD57) — le plan après-devis POSE la
+    # validité de la proposition (si vide) : le réglage société depuis l'envoi,
+    # pour tous, jamais lue sur ses barreaux. Les messages « validité de la
+    # proposition » cessent d'omettre leur phrase. Frontière M3 : écriture via
+    # la façade services de ventes.
     if cadence == 'apres_devis' and devis is not None:
         try:
-            from apps.ventes.services import poser_validite_devis
-            # CKP2 — la validité se lit sur la DERNIÈRE échéance de la
-            # PARTITION, jamais sur la dernière ligne matérialisée : depuis la
-            # cadence réactive, celle-ci est la PREMIÈRE touche, et la
-            # proposition aurait expiré le jour même de son envoi.
-            derniere = echeances[-1][1].astimezone(horaires.CASABLANCA).date()
-            # CAD57 — un PARTICULIER financé à crédit ne peut pas, légalement,
-            # boucler dans cette fenêtre : la loi 31-08 (consommateur) impose
-            # 10 jours de réflexion PUIS 7 jours de rétractation une fois
-            # l'offre de crédit émise. CIQ510 — un PROFESSIONNEL n'est pas
-            # visé par la loi 31-08 : c'est le délai d'instruction de sa
-            # banque ou de l'organisme (financement pro déclaré) ou l'attente
-            # d'un accord déclarée qui allonge — sans conclusion juridique.
-            # Décision fondateur du 21/09/2026 : validité distincte et plus
-            # longue (le réglage société), J+14 sinon.
-            fin_du_plan = derniere
-            derniere = _validite_selon_financement(lead, devis, derniere)
-            # AGR523 — la note dit d'où vient une validité allongée par un
-            # dossier de subvention en instruction (le crédit garde la sienne).
-            # CIQ510 — idem pour une attente d'accord déclarée.
-            if derniere == fin_du_plan or lead_finance_a_credit(lead) \
-                    or lead_financement_pro_declare(lead):
-                motif = 'fin du plan de suivi'
-            elif lead_en_attente_d_accord(lead):
-                motif = MOTIF_VALIDITE_ATTENTE
-            elif lead_dossier_subvention_en_instruction(lead):
-                motif = MOTIF_VALIDITE_SUBVENTION
-            else:
-                motif = 'fin du plan de suivi'
-            if poser_validite_devis(devis, derniere):
+            from apps.ventes.services import jours_validite_societe, poser_validite_devis
+            validite = _validite_selon_financement(devis)
+            motif = f"{jours_validite_societe(lead.company)} jours depuis l'envoi"
+            # AGR523 / CIQ510 — la note garde le contexte d'une subvention en
+            # instruction ou d'une attente d'accord (la date reste la même).
+            if not (lead_finance_a_credit(lead)
+                    or lead_financement_pro_declare(lead)):
+                if lead_en_attente_d_accord(lead):
+                    motif = MOTIF_VALIDITE_ATTENTE
+                elif lead_dossier_subvention_en_instruction(lead):
+                    motif = MOTIF_VALIDITE_SUBVENTION
+            if poser_validite_devis(devis, validite):
                 LeadActivity.objects.create(
                     company=lead.company, lead=lead, user=None,
                     kind=LeadActivity.Kind.NOTE,
-                    body=(f'Validité de la proposition posée au '
-                          f'{derniere:%d/%m/%Y} — {motif}.'))
+                    body=f'Validité posée au {validite:%d/%m/%Y} — {motif}.')
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', 'initialiser_plan_relance', exc_info=True)
     return resultats

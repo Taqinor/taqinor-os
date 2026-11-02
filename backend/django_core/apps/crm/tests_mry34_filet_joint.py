@@ -306,11 +306,10 @@ class FiletJointTests(_Base):
             statut=RelanceEtape.Statut.A_FAIRE).exists())
 
     def test_le_plan_apres_devis_pose_la_validite_de_la_proposition(self):
-        """VALID1 (07/09/2026) — le démarrage du plan après-devis pose
-        ``Devis.date_validite`` (si vide) à la date de la DERNIÈRE touche du
-        plan : la phrase « validité de la proposition » des messages
-        WhatsApp cesse d'être omise. Une validité déjà posée n'est jamais
-        écrasée."""
+        """CADV81 (remplace VALID1) — le démarrage du plan après-devis pose
+        ``Devis.date_validite`` (si vide) à l'envoi (ici la création, le devis
+        n'étant pas envoyé) + le réglage société : la phrase « validité de la
+        proposition » des messages WhatsApp cesse d'être omise."""
         self._fait(self.etapes[2], outcome='joint')
         filet = self._filets().get()
         from apps.crm.models import Client as ClientCrm
@@ -324,19 +323,13 @@ class FiletJointTests(_Base):
         marquer_etape_relance(
             filet, self.acteur, RelanceEtape.Statut.FAIT)
         devis.refresh_from_db()
-        # CKP2 — la validité se lit sur la dernière échéance de la PARTITION,
-        # pas sur la dernière ligne matérialisée : depuis la cadence réactive
-        # celle-ci est la PREMIÈRE touche, et la proposition aurait expiré le
-        # jour même de son envoi.
-        from apps.crm.cadence_plan import calculer_echeances_cadence
+        from apps.ventes.services import jours_validite_societe
         premiere_apres = (self.lead.relance_etapes
                           .filter(cadence='apres_devis')
                           .order_by('ordre').first())
         self.assertIsNotNone(premiere_apres)
-        partition = calculer_echeances_cadence(
-            self.lead, 'apres_devis', premiere_apres.cadence_depart)
-        attendue = partition[-1][1].astimezone(horaires.CASABLANCA).date()
-        self.assertIsNotNone(devis.date_validite)
+        attendue = devis.date_creation.date() + datetime.timedelta(
+            days=jours_validite_societe(self.company))
         self.assertEqual(devis.date_validite, attendue)
         self.assertGreater(attendue, premiere_apres.due_date)
 
