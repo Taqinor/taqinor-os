@@ -238,3 +238,29 @@ class TestAUD120BornesRepartition(TestEncaissementGroupe):
         self.assertEqual(
             avances.first().statut_affectation,
             Paiement.StatutAffectation.NON_AFFECTE)
+
+    def test_cles_doublons_meme_facture_refusees(self):
+        """AARG5 — « <id> » et « 0<id> » désignent la même facture : 409,
+        0 Paiement (vue) ; le service additionne les parts par facture avant
+        la borne « reste à payer ». Mutant : retirer le dédoublonnage ⇒ échec."""
+        api = self._api(self.resp)
+        resp = api.post(
+            '/api/django/ventes/factures/encaissement-groupe/',
+            {'client': self.client_obj.id, 'montant': '4000',
+             'mode': 'virement', 'date': str(timezone.now().date()),
+             'factures': [self.f3.id],
+             'repartition': {str(self.f3.id): '2000',
+                             f'0{self.f3.id}': '2000'}},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('en double', str(resp.data['detail']))
+        self.assertEqual(Paiement.objects.filter(facture=self.f3).count(), 0)
+        from apps.ventes.services import affecter_encaissement_groupe
+        with self.assertRaises(ValueError):
+            affecter_encaissement_groupe(
+                company=self.company, client=self.client_obj,
+                montant=Decimal('4000'), mode='virement',
+                date_paiement=timezone.now().date(), user=self.resp,
+                factures=[self.f3], repartition={
+                    str(self.f3.id): '2000', f'0{self.f3.id}': '2000'})
+        self.assertEqual(Paiement.objects.filter(facture=self.f3).count(), 0)

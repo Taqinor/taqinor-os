@@ -424,6 +424,16 @@ class FactureEncaissementActionsMixin:
             return Response(
                 {'detail': f'Facture {hors_lot} inconnue dans ce lot.'},
                 status=status.HTTP_409_CONFLICT)
+        # AARG5 — clés normalisées en int UNE fois : « 5 » et « 05 » sont la
+        # même facture, un doublon est refusé avant toute écriture.
+        cles = [int(cle) for cle in (repartition or {})]
+        if len(cles) != len(set(cles)):
+            double = next(c for c in cles if cles.count(c) > 1)
+            return Response(
+                {'detail': f'Facture {double} en double dans la répartition.'},
+                status=status.HTTP_409_CONFLICT)
+        if repartition:
+            repartition = {int(c): v for c, v in repartition.items()}
 
         from ..services import affecter_encaissement_groupe
 

@@ -530,15 +530,15 @@ def affecter_encaissement_groupe(
             # Répartition explicite fournie par l'appelant. AUD120 — on
             # VALIDE tout avant d'écrire quoi que ce soit : aucune facture
             # ne doit voir un Paiement si une seule part est hors borne.
-            parts = []
+            cumul = {}  # AARG5 — parts additionnées PAR FACTURE avant la borne
             for fid, part in repartition.items():
                 facture = by_id.get(int(fid))
                 if facture is None:
                     raise ValueError(f"Facture {fid} inconnue dans ce lot.")
                 part = quantize_mad(part)
-                if part <= 0:
-                    continue
-                parts.append((facture, part))
+                if part > 0:
+                    cumul[facture] = cumul.get(facture, Decimal('0')) + part
+            parts = list(cumul.items())
             total_parts = quantize_mad(
                 sum((p for _, p in parts), Decimal('0')))
             if total_parts - montant > TOLERANCE_CENTIME:
