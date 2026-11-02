@@ -480,7 +480,10 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
             installation=installation, date__year=year).exists()
         drift_pct = None
         anomalous = False
-        if has_data and guaranteed > 0:
+        # Garanti < 0,01 kWh (arrondi à 0,00) : dérive non définie. Un garanti
+        # infinitésimal (forte dégradation sur des décennies) donnait une dérive
+        # démesurée que ``quantize`` refuse (InvalidOperation -> 500).
+        if has_data and guaranteed >= Decimal('0.01'):
             # Dérive = (garanti - réel) / garanti × 100 (positive = sous-prod).
             drift_pct = ((guaranteed - actual) / guaranteed) * Decimal('100')
             anomalous = drift_pct > threshold

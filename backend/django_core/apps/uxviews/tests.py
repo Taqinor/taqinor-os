@@ -179,6 +179,28 @@ class SavedViewApiTests(TestCase):
         # ERR-ENF11-FUZZ-UXVIEWS : vue sans rôle et aucun rôle fourni = 409.
         self.assertEqual(resp.status_code, 409)
 
+    def test_definir_par_defaut_role_corps_null_sans_500(self):
+        # ENF11 fuzz : corps JSON `null` -> request.data None -> AttributeError.
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='V',
+        )
+        resp = auth(self.directeur).post(
+            f'{self.BASE}{view.id}/definir-par-defaut-role/',
+            data='null', content_type='application/json')
+        self.assertEqual(resp.status_code, 409)
+
+    def test_patch_configuration_avec_nul_sans_500(self):
+        # ENF11 fuzz : un NUL (clé ou valeur) fait lever DataError à JSONB.
+        view = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='V',
+        )
+        resp = auth(self.directeur).patch(
+            f'{self.BASE}{view.id}/',
+            {'configuration': {'a\x00b': {'': 'x\x00y'}}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        view.refresh_from_db()
+        self.assertEqual(view.configuration, {'ab': {'': 'xy'}})
+
     # ── Suppression : garde-fous ────────────────────────────────────────────
     def test_delete_own_personal_view(self):
         view = SavedView.objects.create(

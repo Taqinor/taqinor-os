@@ -270,7 +270,10 @@ class PlanComptageTournantSerializer(ChampsTexteBooleenStricts, CompanyScopedRel
     # ERR fuzz : borne PUBLIÉE au schéma (``minimum: 1``) — 0 passait pour
     # conforme puis était refusé ; le refus reste celui de
     # ``validate_frequence_jours`` (message et code du contrat).
-    frequence_jours = EntierBornePublie('min', min_value=1, required=False)
+    # ENF11 fuzz : 388403799212530865 débordait la colonne entière (500) puis
+    # ``timedelta`` de ``est_du`` ; borne haute PUBLIÉE et appliquée (100 ans).
+    frequence_jours = EntierBornePublie(
+        'min', min_value=1, max_value=36500, required=False)
 
     class Meta:
         model = PlanComptageTournant

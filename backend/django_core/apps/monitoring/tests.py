@@ -827,6 +827,23 @@ class TestWarrantyCurveOverlay(TestCase):
         ov = warranty_curve_overlay(self.inst, today=self.today)
         self.assertFalse(ov['manufacturer_recourse'])
 
+    def test_forte_degradation_longue_duree_sans_500(self):
+        """ENF11 fuzz — taux de dégradation extrêmes (publiés jusqu'à
+        +-999,99 %) : ``status`` et ``curve`` répondent 200, jamais
+        InvalidOperation (500) sur ``quantize``."""
+        from apps.monitoring.models import ProductionWarranty
+        for pct in ('99.99', '-999.99', '999.99'):
+            ProductionWarranty.objects.filter(pk=self.warranty.pk).update(
+                degradation_pct_per_year=Decimal(pct), start_year=1900)
+            ProductionReading.objects.get_or_create(
+                company=self.company, installation=self.inst,
+                date=date(date.today().year, 1, 2),
+                defaults={'period_days': 30, 'energy_kwh': Decimal('500')})
+            base = f'/api/django/monitoring/warranties/{self.warranty.id}/'
+            self.assertEqual(self.api.get(base + 'curve/').status_code, 200, pct)
+            self.assertEqual(
+                self.api.get(base + 'status/?year=2200').status_code, 200, pct)
+
     def test_no_data_year_not_anomalous(self):
         from apps.monitoring.services import warranty_curve_overlay
         ov = warranty_curve_overlay(self.inst, today=self.today)
