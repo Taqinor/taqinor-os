@@ -1008,6 +1008,8 @@ class AbonnementMonitoringViewSet(CompanyScopedModelViewSet):
                 abonnement, motif=request.data.get('motif'),
                 user=request.user)
         except AbonnementMonitoringError as exc:
+            if exc.etat:
+                raise ConflitEtat(exc.message)
             raise serializers.ValidationError(_erreur_service(exc))
         return Response(self.get_serializer(abonnement).data)
 

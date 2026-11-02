@@ -668,7 +668,8 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
 
     motif = (motif or '').strip()
     if abonnement.statut == AbonnementMonitoring.Statut.RESILIE:
-        raise AbonnementMonitoringError('Abonnement déjà résilié.')
+        raise AbonnementMonitoringError(
+            'Abonnement déjà résilié.', etat=True)
     if not motif:
         raise AbonnementMonitoringError(
             'Indiquez le motif de résiliation.', champ='motif')
@@ -678,7 +679,8 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
         verrou = (AbonnementMonitoring.objects.select_for_update()
                   .only('statut').get(pk=abonnement.pk))
         if verrou.statut == AbonnementMonitoring.Statut.RESILIE:
-            raise AbonnementMonitoringError('Abonnement déjà résilié.')
+            raise AbonnementMonitoringError(
+                'Abonnement déjà résilié.', etat=True)
         abonnement.statut = AbonnementMonitoring.Statut.RESILIE
         abonnement.motif_resiliation = motif[:255]
         abonnement.save(update_fields=['statut', 'motif_resiliation'])

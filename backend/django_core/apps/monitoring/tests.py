@@ -1346,7 +1346,8 @@ class TestAsav100Abonnements(TestCase):
         self.assertFalse(self.config.enabled)
         r = self.api.post(f'{self.URL}{ab_id}/resilier/',
                           {'motif': 'encore'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        # ENF11 : déjà résilié = refus d'ÉTAT -> 409 (plus 400).
+        self.assertEqual(r.status_code, 409)
 
     def test_autre_societe_404_et_normal_403(self):
         ab_id = self._creer().data['id']
