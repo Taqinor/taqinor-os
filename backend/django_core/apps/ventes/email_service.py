@@ -285,9 +285,12 @@ def _modele_email_personnalise(company, cle, client, reference, **contexte):
         ligne = EmailTemplate.objects.filter(company=company, cle=cle).first()
         if ligne is None:
             return {}
+        # APAR83 — un champ qui porte ``{lien}`` sans lien fourni (défaut
+        # « Réinitialiser ») retombe sur le texte codé « ci-joint ».
         personnalise = {
             champ for champ in ('sujet', 'corps')
-            if (getattr(ligne, champ, '') or '').strip()}
+            if (getattr(ligne, champ, '') or '').strip()
+            and not ('{lien}' in getattr(ligne, champ) and not contexte.get('lien'))}
         if not personnalise:
             return {}
         nom_client = civilite = ''

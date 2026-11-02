@@ -114,6 +114,23 @@ class ModelesEmailLusTests(TestCase):
         self.assertTrue(mail.outbox[0].body.startswith(
             'Bonjour Alaoui Karim,\n\nVeuillez trouver ci-joint votre facture'))
 
+    def test_modele_reinitialise_garde_le_ci_joint(self):
+        """APAR83 (C-APAR-VER-020) — un modèle « Réinitialiser » (défaut à
+        ``{lien}``) sans lien fourni retombe sur le texte codé « ci-joint »,
+        jamais « au lien suivant : » suivi de rien ; idem relance."""
+        from apps.parametres.models_email import EMAIL_TEMPLATE_DEFAULTS
+        from apps.ventes.email_service import composer_relance_email
+        for cle in ('facture', 'relance'):
+            self._modele(cle, EMAIL_TEMPLATE_DEFAULTS[cle]['corps'],
+                         sujet=EMAIL_TEMPLATE_DEFAULTS[cle]['sujet'])
+        log = self._envoyer_facture()
+        log.refresh_from_db()
+        self.assertIn('Veuillez trouver ci-joint votre facture', log.corps)
+        self.assertNotIn('au lien suivant :', log.corps)
+        _sujet, corps = composer_relance_email(self.facture)
+        self.assertNotIn('Petit rappel concernant', corps)
+        self.assertIn('FAC-APAR59-0001', corps)
+
     def test_corps_explicite_de_l_appelant_prime(self):
         self._modele('facture', 'CORPS-PROBE {reference}')
         resp = self.api.post(
