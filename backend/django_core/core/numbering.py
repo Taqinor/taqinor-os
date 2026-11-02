@@ -64,11 +64,11 @@ def reserver_id(model, using=None):
 def _period_segment(period):
     """Segment de date pour la période de remise à zéro. Défaut mensuel (historique)."""
     if period == 'yearly':
-        return timezone.now().strftime('%Y')
+        return timezone.localdate().strftime('%Y')
     if period == 'none':
         return ''
     # 'monthly' (et toute valeur inconnue) = comportement historique YYYYMM.
-    return timezone.now().strftime('%Y%m')
+    return timezone.localdate().strftime('%Y%m')
 
 
 def _bucket_prefix(doc_prefix, period):

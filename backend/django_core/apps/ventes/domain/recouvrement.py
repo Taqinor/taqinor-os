@@ -197,6 +197,7 @@ def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None)
 
         facture = paiement.facture
         if facture is not None:
+            _reprendre_abandon_auto(facture, paiement, user)
             _rouvrir_facture_apres_rejet(facture, user=user)
             from .. import activity
             activity.log_facture_paiement_rejete(facture, user, paiement, motif)
@@ -220,6 +221,17 @@ def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None)
             sender=Paiement, paiement=paiement, facture=facture,
             montant=paiement.montant, company=paiement.company)
     return paiement
+
+
+def _reprendre_abandon_auto(facture, paiement, user):
+    """AARG55 — reprend l'abandon AUTO déclenché par ce paiement (jamais un manuel)."""
+    from ..models import AbandonCreance, Facture
+    abandon = AbandonCreance.objects.filter(
+        facture=facture, auto=True, annule_le__isnull=True,
+        date_abandon__gte=paiement.date_creation).order_by('date_abandon').first()
+    if abandon is not None and facture.statut != Facture.Statut.ANNULEE:
+        reprendre_abandon_creance(facture, user=user, motif='Paiement rejeté',
+                                  abandon_id=abandon.pk)
 
 
 def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
