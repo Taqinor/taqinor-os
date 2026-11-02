@@ -133,7 +133,9 @@ class FactureAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
             return champs
         from .views.facture import FACTURE_CHAMPS_FINANCIERS
         geles = tuple(sorted(FACTURE_CHAMPS_FINANCIERS)) + ADMIN_FACTURE_ETAT + ADMIN_FACTURE_IDENTITE
-        return champs + tuple(c for c in geles if c not in champs)
+        # AARG28 — `devis`, `bon_commande` sont dans les deux listes.
+        return champs + tuple(
+            c for c in dict.fromkeys(geles) if c not in champs)
 
     # ── Garde anti-suppression d'un document posté (voir le message ci-dessus)
     def has_delete_permission(self, request, obj=None):

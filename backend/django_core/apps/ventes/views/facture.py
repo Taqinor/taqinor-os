@@ -44,6 +44,8 @@ FACTURE_CHAMPS_FINANCIERS = frozenset([
     'taux_tva', 'escompte_pct', 'escompte_jours', 'pourcentage',
     'type_facture', 'arrondi_pas', 'arrondi_unites', 'ventilation_tva',
     'retenue_garantie_mad', 'devise', 'taux_change',
+    # AARG28 — une facture émise ne quitte jamais sa vente (mise à nul comprise).
+    'devis', 'bon_commande',
 ])
 MESSAGE_MONTANT_FIGE = (
     'Montant figé après émission : corrigez par un avoir '
