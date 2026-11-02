@@ -8,9 +8,9 @@ ordinaire confiée à des lanes sans pile (CLAUDE.md étape 3-bis, METHODE §C.4
 
 TÂCHES À COUVRIR — ligne `- [x] <ID> — …` d'un `docs/plans/PLAN_AUDIT_*.md` (lue
 par `check_taches_cablage.lire_taches`) qui porte le tag `(@acceptation)`, ou un
-titre « Acceptation live … », ou dont la clause « Preuve en direct : … » cite une
-étape `P<n>[.<m>]` ou de parcours `PA<n>` (« n/a — … » et « API seulement — … »
-ne comptent jamais). Groupe <G> = préfixe alphabétique de l'id (ADEP16 → ADEP).
+titre « Acceptation live … », ou dont la clause « Preuve en direct : … » n'est ni
+« n/a — … » ni « API seulement — … » (APAR89 : même sans id d'étape `P<n>`/`PA<n>`,
+une preuve « pile locale — … » compte). Groupe <G> = préfixe alphabétique de l'id (ADEP16 → ADEP).
 
 CONTRAT PARTAGÉ — un enregistrement (écrit à la main par l'orchestrateur, ou par
 la spec Playwright d'AMET90) = deux fichiers frères :
@@ -91,7 +91,6 @@ ORACLES = tuple(str(i) for i in range(1, 11))
 _PREUVE = re.compile(r"Preuve en direct\s*:\s*(?P<v>.*?)"
                      r"(?=Hors p[ée]rim[èe]tre\s*:|\(gen\b|\bFiles?\s*:|$)", re.I)
 _SANS_PREUVE = re.compile(r"\s*(?:n/a|API seulement)", re.I)
-_ETAPE = re.compile(r"\bPA?\d")
 # Tag NU seulement (un `(@acceptation)` cité entre backticks dans une tâche qui en PARLE ne
 # compte pas) : lecteur unique `plan_lanes._AT_ACCEPTATION_RE` (AMET89).
 _TAG = re.compile(plan_lanes._AT_ACCEPTATION_RE.pattern
@@ -134,8 +133,7 @@ def _rel(chemin) -> str:
 def a_preuve(texte: str) -> bool:
     if _TAG.search(texte):
         return True
-    return any(not _SANS_PREUVE.match(m.group("v")) and _ETAPE.search(m.group("v"))
-               for m in _PREUVE.finditer(texte))
+    return any(not _SANS_PREUVE.match(m.group("v")) for m in _PREUVE.finditer(texte))
 
 
 def _taches_des_plans() -> list:
@@ -409,7 +407,7 @@ def _mode_baseline(restants: dict, dette: dict) -> int:
     return 0
 
 
-_COCHEE = re.compile(r"^- \[[xX]\] ([A-Z]+[0-9]+)\b", re.M)
+_COCHEE = re.compile(r"^- \[[xX]\] ([A-Z][A-Z0-9]*[0-9])\b", re.M)  # CE2E1 : chiffre dans le préfixe
 
 
 def coches_a_la_base(base: str) -> set:

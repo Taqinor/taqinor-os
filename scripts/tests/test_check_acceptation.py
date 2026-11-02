@@ -153,7 +153,22 @@ class AcceptationTests(unittest.TestCase):
                         ligne("x", "ATST3", "pile locale — sans etape"),
                         ligne("x", "ATST4", "n/a — orchestrateur (@acceptation)"),
                         ligne("x", "ATST5", "rejeu de PA3 étape 2"))
-        self.assertEqual(sorted(cacc.taches_a_preuve()), ["ATST4", "ATST5"])
+        # APAR89 : « pile locale — sans etape » (ATST3) compte désormais, même sans id d'étape.
+        self.assertEqual(sorted(cacc.taches_a_preuve()), ["ATST3", "ATST4", "ATST5"])
+
+    def test_preuve_sans_etape_deja_cochee_n_echoue_pas(self):
+        # APAR89 : une preuve « pile locale — … » déjà cochée à la base, sans dette, est un
+        # avis non bloquant ; la même coche apportée par la PR est reprochée.
+        self.depot.plan(ligne("x", "ATST1", "pile locale — accueil relu"), ligne(" ", "ATST2"))
+        base = self.depot.commit_base()
+        code, sortie = self.lancer("--base", base)
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("Avis : ATST1 déjà cochée sur la base", sortie)
+        self.depot.plan(ligne("x", "ATST1", "pile locale — accueil relu"),
+                        ligne("x", "ATST2", "pile locale — écran relu"))
+        code, sortie = self.lancer("--base", base)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("ATST2 (", sortie)
 
     def test_enregistrement_fail_ne_couvre_pas(self):
         self.depot.plan(ligne("x", "ATST1"))
