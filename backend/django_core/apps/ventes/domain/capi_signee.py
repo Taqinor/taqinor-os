@@ -177,18 +177,18 @@ def _conversion_deja_emise(devis):
 
 
 def _marquer_conversion_emise(devis):
-    """Pose le marqueur sur le bloc RELU en base (aucune autre clé écrasée). Un
-    objet sans pk entier (stub de test) n'est jamais marqué."""
+    """Pose le marqueur sur le bloc RELU en base, par l'écrivain unique (QJR105 :
+    aucune autre clé écrasée). Un objet sans pk entier (stub de test) n'est
+    jamais marqué."""
     if not isinstance(getattr(devis, 'pk', None), int):
         return
     from django.utils import timezone
+    from apps.ventes.domain.etude_schema import ecrire
     from apps.ventes.models import Devis
-    lignes = Devis.objects.filter(pk=devis.pk)
-    params = dict(lignes.values_list('etude_params', flat=True).first() or {})
-    params['attribution'] = {**(params.get('attribution') or {}),
-                             MARQUEUR_CAPI: timezone.now().isoformat()}
-    lignes.update(etude_params=params)
-    devis.etude_params = params
+    relu = Devis.objects.get(pk=devis.pk)
+    attribution = (relu.etude_params or {}).get('attribution') or {}
+    ecrire(relu, attribution={**attribution, MARQUEUR_CAPI: timezone.now().isoformat()})
+    devis.refresh_from_db(fields=['etude_params'])
 
 
 def _est_un_avenant(devis):

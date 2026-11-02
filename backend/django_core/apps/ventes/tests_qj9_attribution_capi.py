@@ -277,8 +277,6 @@ class FireCapiSignedQuoteTests(TestCase):
 
     @override_settings(META_CAPI_ACCESS_TOKEN='TEST_TOKEN',
                        META_CAPI_PIXEL_ID='123456789')
-    @override_settings(META_CAPI_ACCESS_TOKEN='TEST_TOKEN',
-                       META_CAPI_PIXEL_ID='123456789')
     def test_une_seule_conversion_par_devis(self):
         """ADVS34 (C-ADVS-034) — dés-accepter puis ré-accepter n'envoie pas une
         seconde conversion ; HTTP en échec : aucun marqueur, la suivante réessaie."""
@@ -323,6 +321,8 @@ class FireCapiSignedQuoteTests(TestCase):
                 envoi.assert_called_once()
         self.assertEqual(devis.etude_params['attribution'][MARQUEUR_CAPI], marqueur)
 
+    @override_settings(META_CAPI_ACCESS_TOKEN='TEST_TOKEN',
+                       META_CAPI_PIXEL_ID='123456789')
     def test_http_failure_never_propagates(self):
         """Une erreur HTTP vers Meta ne doit jamais remonter à accept_devis."""
         from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
