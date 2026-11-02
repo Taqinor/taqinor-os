@@ -169,9 +169,11 @@ def build_single_devis_whatsapp(request, devis, langue='fr'):
     link = ShareLink.for_devis(devis)
     url = public_document_url(request, link.token)
     tpl = MessageTemplate.get_corps(company, 'devis_unique', langue)
+    # APAR84 — ``{lien_rdv}`` résolu comme la voie lead ; vide sans lead.
+    lien_rdv = _lien_rdv_for(lead, request) if lead is not None and '{lien_rdv}' in tpl else ''
     message = render_message_template(tpl, {
         'civilite': '', 'nom': nom,
-        'reference': devis.reference, 'lien': url,
+        'reference': devis.reference, 'lien': url, 'lien_rdv': lien_rdv,
         'marque': marque_societe(company)})
     return message, {'token': link.token, 'url': url}
 
