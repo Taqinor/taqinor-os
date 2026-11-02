@@ -555,7 +555,7 @@
       "id": "generique",
       "famille": "Autres étapes",
       "nom": "Étape générique (ancien plan J+2…J+35, passation, rappel demandé, signal, après acceptation)",
-      "exemples": ["Passation — prévenir le client du changement de conseiller", "Rappeler le client (il l’a demandé)", "Premier rappel", "Relance WhatsApp", "Confirmer la signature et la suite", "Acompte : relancer le client"],
+      "exemples": ["Passation — prévenir le client du changement de conseiller", "Rappeler le client (il l’a demandé)", "Premier rappel", "Relance WhatsApp", "Pièces reçues ? (lead pro sans facture)", "Confirmer la signature et la suite", "Acompte : relancer le client"],
       "reconnaissance": { "cadences": ["generique"] },
       "question": "Où en est ce dossier ?",
       "reponses": [

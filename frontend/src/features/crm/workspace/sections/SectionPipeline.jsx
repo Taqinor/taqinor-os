@@ -327,6 +327,17 @@ function ResumeAssocie({ leadId, devis, erreurs, setErreurs }) {
   )
 }
 
+// CADV26 — vocabulaires alignés sur le serveur (garde `check_choices_declares.py`).
+// source-choix: crm.Lead.frein_principal
+const FREINS_PRINCIPAUX = {
+  aucun: 'Aucun frein', prix: 'Prix', compare: 'Compare d’autres devis',
+  timing: 'Timing', technique: 'Technique', confiance: 'Confiance',
+}
+// source-choix: crm.Lead.declencheur
+const DECLENCHEURS = {
+  economies: 'Les économies', coupures: 'Les coupures / l’autonomie',
+  ecologie: 'L’écologie', technologie: 'La technologie',
+}
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
 
@@ -532,6 +543,25 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
             value={v('canal')} onChange={(e) => setField('canal', e.target.value)}
           >
             {enumOptions(canalLabels)}
+          </select>
+        </FormField>
+        {/* CADV26 — réponses orales de l'appel : vide = « pas encore posée ». */}
+        <FormField label="Frein principal" htmlFor="lf-frein-principal" error={errors.frein_principal}>
+          <select
+            id="lf-frein-principal" className={errors.frein_principal ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.frein_principal ? true : undefined}
+            value={v('frein_principal')} onChange={(e) => setField('frein_principal', e.target.value)}
+          >
+            {enumOptions(FREINS_PRINCIPAUX)}
+          </select>
+        </FormField>
+        <FormField label="Ce qui a accroché" htmlFor="lf-declencheur" error={errors.declencheur}>
+          <select
+            id="lf-declencheur" className={errors.declencheur ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.declencheur ? true : undefined}
+            value={v('declencheur')} onChange={(e) => setField('declencheur', e.target.value)}
+          >
+            {enumOptions(DECLENCHEURS)}
           </select>
         </FormField>
         {/* CAD65 — la civilité est une DONNÉE, plus un « M. » codé en dur
