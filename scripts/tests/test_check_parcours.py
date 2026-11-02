@@ -225,6 +225,31 @@ class RejeuTests(unittest.TestCase):
         self.assertIn("set_rollback(True)", prog)
         self.assertIn(rp.MARQUE, prog)
 
+    def test_programme_ne_compte_que_les_tables_du_parcours(self):
+        """AARG45 — l'en-tête de sonde porte `modeles` (clés de `portes` + `--modele`), jamais « tous »."""
+        table = dict(_table(ETAPE_B, portes=False), portes={"Facture": [], "Paiement": []})
+        prog = rp.programme(table, {"modele": "ventes.Devis", "enregistrement": "1"}, 60)
+        self.assertIn("'modeles': ['Facture', 'Paiement', 'ventes.Devis']", prog)
+        prog = rp.programme(_table(ETAPE_B), {"modele": "fac.Facture", "enregistrement": "1"}, 60)
+        self.assertIn("'modeles': ['fac.Facture']", prog)
+
+    def test_echec_imprime_l_exception_pas_la_queue_des_avertissements(self):
+        """AARG45 — un rejeu qui lève nomme l'exception (ligne `ERREUR`/`Traceback`)."""
+        d = _Depot()
+        self.addCleanup(d.tmp.cleanup)
+        d.ecrire(_table(ETAPE_B))
+        argv = ["PA9", "--enregistrement", "1", "--modele", "fac.Facture", "--racine", str(d.racine)]
+        bruit = "\n".join(f"UserWarning: DRF avertissement {i}" for i in range(40))
+        observe = "ERREUR : Traceback (most recent call last):\n  File \"sonde\", line 3\nLookupError: App 'kb' ko"
+        sortie = sonde.MARQUE + json.dumps({"verdict": "ECART", "base_inchangee": True, "observe": observe})
+        brut = "Traceback (most recent call last):\n  File \"x\", line 1\nValueError: étape cassée\n" + bruit
+        for executer, attendu in (((lambda *a: (1, sortie, bruit)), "LookupError: App 'kb' ko"),
+                                  ((lambda *a: (1, "", brut)), "ValueError: étape cassée")):
+            with self.subTest(attendu=attendu), contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(rp.main(argv, executer=executer, appelants=lambda *a: []), 1)
+            self.assertIn(attendu, out.getvalue())
+            self.assertNotIn("DRF avertissement 39", out.getvalue())
+
     def test_source_envoyee_au_conteneur_autonome(self):
         """Les fonctions envoyées en ligne ne lisent aucun nom du module hors du programme lui-même."""
         import builtins
