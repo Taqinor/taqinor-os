@@ -1072,6 +1072,10 @@ SPECTACULAR_SETTINGS = {
             'apps.installations.models_installation.Installation.Raccordement',
         'Regime8221Enum': 'apps.ventes.models_regulatory.REGIME_CHOICES',
         'LeadSourceEnum': 'apps.crm.models.Lead.Source',
+        # W20 (fuzz calepinage/pertes) — la `source` d'un poste de pertes
+        # (pvgis / fiche / societe / …) : nom propre, sinon collision « source »
+        # avec LeadSourceEnum. Nommage de schéma uniquement.
+        'SourcePertesEnum': 'apps.calepinage.services.pertes_politique.SOURCES_ADMISES',
         # Clés de `_SOURCE_LOADERS` (déjà triées : le ChoiceField les trie).
         'SourceApprobationEnum': 'apps.reporting.approbations._SOURCE_LOADERS',
         'TypeInstallationLeadEnum': 'apps.crm.models.Lead.TypeInstallation',
