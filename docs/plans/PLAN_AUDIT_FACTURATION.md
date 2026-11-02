@@ -509,3 +509,4 @@ scénario mono + variantes du pro-forma ; prévalence prod de C-ATOT-009 et C-AT
 - 2026-11-02 — AARG55 (cochée : « Preuve en direct : API seulement ») — `recouvrement.py::rejeter_paiement` appelle `_reprendre_abandon_auto` : l'abandon `auto=True` actif daté au plus tôt de `paiement.date_creation` est repris par `reprendre_abandon_creance` (motif « Paiement rejeté ») avant la réouverture ; un abandon manuel reste ; test `test_xfac13_abandon_creance.py::XFAC13AbandonCreanceTests::test_rejet_reprend_l_abandon_automatique`.
 - 2026-11-02 — ATOT55 — déjà construite (colonnes + 0024_atot55_total_stocke) ; test ajouté 54b371f8e pour la tranche d'échéancier. NON cochée : preuve due, rejeu ATOT53.
 - 2026-11-02 — CADV84 — BLOQUÉE tant que CADV22 (`parquer_lead(..., exiger_touche=False)`) n'est pas sur main.
+- 2026-11-02 — CADV84 — code livré (8a16e0435), NON cochée : preuve API due ; `parquer_lead` écrit 2 lignes de chatter (`parc_raison`, `stage`), le texte en dit une.
