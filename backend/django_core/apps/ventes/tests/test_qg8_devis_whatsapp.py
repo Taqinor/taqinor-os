@@ -19,7 +19,7 @@ from apps.crm import stages
 from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.utils.whatsapp import (
-    build_single_devis_whatsapp, devis_recipient_phone,
+    build_devis_whatsapp, build_single_devis_whatsapp, devis_recipient_phone,
 )
 
 User = get_user_model()
@@ -147,6 +147,20 @@ class BuildSingleDevisWhatsappTests(TestCase):
         self.assertIn('DEV-QG8-B1', message)
         self.assertIn(link['token'], message)
         self.assertTrue(link['token'])
+
+    def test_lien_vise_la_page_proposition(self):
+        # ADVS42 — la page (code d'accès, sections, signer), jamais le PDF brut.
+        rf = RequestFactory().get('/')
+        message, link = build_single_devis_whatsapp(rf, self.devis, 'fr')
+        self.assertIn('/proposition/%s' % link['token'], link['url'])
+        self.assertIn(link['url'], message)
+        self.assertNotIn('/public/document/', message)
+        # Même jeton, et voie lead (CRM) : même lien.
+        lead = Lead.objects.create(company=self.company, nom='Naciri')
+        message_lead, liens = build_devis_whatsapp(rf, lead, [self.devis], 'fr')
+        self.assertEqual(liens[0]['token'], link['token'])
+        self.assertEqual(liens[0]['url'], link['url'])
+        self.assertNotIn('/public/document/', message_lead)
 
     def test_lien_rdv_resolu_pour_un_devis_de_lead(self):
         """APAR84 (C-APAR-VER-030) — ``{lien_rdv}`` du modèle « devis
