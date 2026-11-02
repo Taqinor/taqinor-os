@@ -142,7 +142,10 @@ def corps_confirmation(devis, sig, *, acompte_bloc='', langue='fr',
         exemplaire_joint = preuve and bool(sig.signed_pdf_key)
     return (
         f"{salut}\n\n{t['recu'].format(ref=devis.reference)}\n\n"
-        + (f"{t['signature']}\n\n{_bloc_preuve(sig, t)}" if preuve else '')
+        # ADVS19 — « signature électronique, loi 43-20 » : seulement si le client
+        # y a consenti (lien, portail), jamais pour une acceptation interne.
+        + (f"{t['signature']}\n\n" if preuve and sig.consent_esign else '')
+        + (_bloc_preuve(sig, t) if preuve else '')
         + (acompte_bloc or '')
         + (f"{t['exemplaire']}\n\n" if exemplaire_joint else '')
         + f"{t['merci']}\n\n{t['cordialement']}\n{_signature_societe(devis.company)}"

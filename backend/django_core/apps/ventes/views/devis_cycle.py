@@ -778,9 +778,11 @@ class DevisCycleActionsMixin:
             # bloquant (ZSAL9) : la garde vit DANS ``accept_devis`` (une seule
             # règle pour les trois portes) ; cette vue ne fait que transmettre
             # les drapeaux d'override et traduire le refus en 403 détaillé.
+            # ADVS19 — ``consentement=False`` : geste du commercial, pas une
+            # e-signature du client (aucune preuve loi 43-20 fabriquée).
             devis = accept_devis(
                 devis=devis, user=request.user, nom=nom,
-                date_acceptation=date_acc, option=option,
+                date_acceptation=date_acc, option=option, consentement=False,
                 idempotent_reaccept=False, entreprise=entreprise,
                 override_credit=bool(request.data.get('override_credit')),
                 override_avertissement=bool(

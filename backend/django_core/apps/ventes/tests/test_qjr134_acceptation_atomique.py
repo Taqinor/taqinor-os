@@ -44,6 +44,17 @@ RESEAU = 'Onduleur réseau Huawei 10kW Monophasé'
 PANNEAU = 'Panneau Canadian Solar 710W'
 
 
+def _api_commercial(company):
+    """Le client HTTP d'un responsable de ``company`` (ADVS19, ADVS31)."""
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    api = APIClient()
+    api.force_authenticate(get_user_model().objects.create_user(
+        username=f'commercial-{company.slug}', password='x', company=company,
+        role_legacy='responsable'))
+    return api
+
+
 class _BaseAcceptation(TestCase):
     """Un groupe de VARIANTES : la racine et sa sœur, toutes deux envoyées."""
 
@@ -350,6 +361,29 @@ class LEmailNePromentQueLaPreuveQuiExiste(_BaseAcceptation):
         self.assertNotIn('exemplaire signé', corps)
         # Le reste de l'email — l'accusé de réception — part comme avant.
         self.assertIn('Nous avons bien reçu votre acceptation', corps)
+
+    def test_acceptation_interne_sans_esign_ni_43_20(self):
+        """ADVS19 (C-ADVS-024) — « Marquer accepté » par le commercial : preuve
+        sans consentement d'e-signature, mail client sans « signature
+        électronique » ni « 43-20 », en français comme en anglais."""
+        from apps.ventes.domain.confirmation_acceptation import corps_confirmation
+        with pdf_signe_en_ligne(self):
+            resp = _api_commercial(self.company).post(
+                f'/api/django/ventes/devis/{self.racine.pk}/accepter/',
+                {'nom': 'Commercial'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], Devis.Statut.ACCEPTE)
+        sig = DevisSignature.objects.get(devis=self.racine)
+        self.assertFalse(sig.consent_esign)
+        self.assertFalse(sig.consentement_explicite)
+        corps = EmailLog.objects.filter(
+            devis=self.racine, to_email=self.client_obj.email).latest('id').corps
+        self.assertIn('Nous avons bien reçu votre acceptation', corps)
+        anglais = corps_confirmation(self.racine, sig, langue='en')
+        self.assertNotIn('electronic signature', anglais)
+        self.assertNotIn('43-20', anglais)
+        for mention in ('signature électronique', '43-20'):
+            self.assertNotIn(mention, corps)
 
 
 class LaConfirmationVaAuxDeuxParties(_BaseAcceptation):
