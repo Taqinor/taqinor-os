@@ -26,7 +26,7 @@ from .lignes_classement import (
     _LigneArgentPdf, _is_battery,
     _is_hybrid_inverter, _is_offgrid_inverter, _is_panel, _is_reseau_inverter,
     _item_classement, _item_marque, _line_to_item, _parse_marque,
-    panneaux_et_watt_lu,
+    fiches_figees, panneaux_et_watt_lu,
 )
 # SPL163 — la phase D1 (chiffrage de l'étude) vit dans ``etude_chiffrage``
 # (move only) ; builder n'importe ici que ce qu'il utilise lui-même.
@@ -572,7 +572,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     option_lignes = [li for li in lignes if getattr(li, "optionnelle", False)]
     lignes = [li for li in lignes if not getattr(li, "optionnelle", False)]
 
-    items = [_line_to_item(li, taux_tva) for li in lignes]
+    items = [_line_to_item(li, taux_tva, fiches_figees(devis)) for li in lignes]
     # Mode « réforme » dès qu'une ligne porte son propre taux ; un devis
     # historique (toutes lignes NULL) reste rendu strictement comme avant.
     per_line_tva = any(getattr(li, "taux_tva", None) is not None for li in lignes)
@@ -2087,7 +2087,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                                 lignes=_comptees)
         _opts = []
         for li in option_lignes:
-            it = _line_to_item(li, taux_tva)
+            it = _line_to_item(li, taux_tva, fiches_figees(devis))
             it.pop("_produit_nom", None)
             it.pop("_sans_quantite", None)
             qte = float(li.quantite or 0)
