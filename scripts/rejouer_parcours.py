@@ -306,8 +306,20 @@ def programme(table: dict, params: dict, timeout: int) -> str:
     source = (EN_TETE_CONTENEUR + "\n\n".join(inspect.getsource(f) for f in _CONTENEUR)
               + f"\n\nP = __import__('json').loads({json.dumps(P, ensure_ascii=True)!r})\n"
               "\n\ndef sonde(ctx):\n    return _jouer(P)\n")
-    entete = {"constat": "C-AMET-025", "sha": "rejeu", "attendu": f"rejeu {cp.identifiant(table)}"}
+    portes = table.get("portes")  # AARG45 : `modeles` = tables du parcours (clés de `portes` + modèle suivi)
+    entete = {"constat": "C-AMET-025", "sha": "rejeu", "attendu": f"rejeu {cp.identifiant(table)}",
+              "modeles": sorted(set(portes if isinstance(portes, dict) else ()) | {params.get("modele")} - {None})}
     return sonde.programme(source, entete, timeout)
+
+
+def ligne_erreur(*textes) -> str:
+    """AARG45 — l'exception (type + message) : fin du bloc `ERREUR : ` de sonde.py, sinon 1re après `Traceback`."""
+    for texte in filter(None, textes):
+        for marque, rang in (("ERREUR : ", -1), ("Traceback (most recent call last):", 0)):
+            lignes = [x for x in texte.rsplit(marque, 1)[-1].splitlines() if x.strip() and not x[0].isspace()]
+            if marque in texte and lignes:
+                return lignes[rang]
+    return ""
 
 
 def _notes(res: dict) -> str:
@@ -400,8 +412,8 @@ def main(argv=None, executer=sonde.executer_docker, ecrire=ecrire_enregistrement
     brut = next((x[len(MARQUE):] for x in lignes if x.startswith(MARQUE)), None)
     bilan = next((json.loads(x[len(sonde.MARQUE):]) for x in lignes if x.startswith(sonde.MARQUE)), {})
     if brut is None or bilan.get("verdict") != "REPRO" or bilan.get("base_inchangee") is not True:
-        print(f"ÉCHEC : rejeu incomplet ou base modifiée (code {rc}) {bilan.get('observe', '')} "
-              f"{(erreur or sortie).strip()[-600:]}")
+        print(f"ÉCHEC : rejeu incomplet ou base modifiée (code {rc}) "
+              f"{ligne_erreur(bilan.get('observe'), erreur, sortie) or (erreur or sortie).strip()[-600:]}")
         return 1
     resultats = json.loads(brut)
     for r in resultats:
