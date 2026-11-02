@@ -135,6 +135,31 @@ class PdfChaineTotauxTests(TestCase):
         texte = self._texte(generate_note_debit_pdf, note.id)
         self._verifier_chaine(texte, 'Total dû en supplément (TTC)')
 
+    def test_avoir_et_note_debit_ventiles(self, _dl):
+        """AARG36 (C-AARG-039) — la base HT par taux sur l'avoir et la note de
+        débit ventilés ; l'avoir date la facture d'origine."""
+        from apps.ventes.utils.pdf import (
+            generate_avoir_pdf, generate_note_debit_pdf,
+        )
+        ventilation = [
+            {'taux': '10.00', 'base_ht': '1000.00', 'montant': '100.00'},
+            {'taux': '20.00', 'base_ht': '1000.00', 'montant': '200.00'},
+        ]
+        montants = dict(
+            company=self.company, client=self.client_obj, facture=self.facture,
+            taux_tva=Decimal('20.00'), montant_ht=Decimal('2000.00'),
+            montant_tva=Decimal('300.00'), montant_ttc=Decimal('2300.00'),
+            ventilation_tva=ventilation)
+        avoir = Avoir.objects.create(reference='AV-DEMO-0003', **montants)
+        note = NoteDebit.objects.create(reference='ND-DEMO-0003', **montants)
+        date_origine = self.facture.date_emission.strftime('%d/%m/%Y')
+        texte_avoir = self._texte(generate_avoir_pdf, avoir.id)
+        self.assertIn(f'FAC-DEMO-0002 du {date_origine}', texte_avoir)
+        for texte in (texte_avoir,
+                      self._texte(generate_note_debit_pdf, note.id)):
+            self.assertIn('Base HT (10.00%) 1000.00 MAD', texte)
+            self.assertIn('Base HT (20.00%) 1000.00 MAD', texte)
+
 
 @patch('apps.ventes.utils.pdf._download', return_value=None)
 class ObjetDeLaVenteTests(TestCase):
