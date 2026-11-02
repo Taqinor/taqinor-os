@@ -197,9 +197,9 @@ class LignePermanenceSerializer(serializers.Serializer):
 
 class PermanencesSerializer(serializers.Serializer):
     """Corps de ``PUT crm/dispatch/permanences/<equipe_id>/`` : ``commercial``
-    nul retire la permanence de la demi-journée."""
-    permanences = LignePermanenceSerializer(many=True, allow_empty=False,
-                                            max_length=200)
+    nul retire la permanence de la demi-journée ; liste vide = rien à changer
+    (le schéma ne déclare pas de minimum)."""
+    permanences = LignePermanenceSerializer(many=True, max_length=200)
 
 
 @extend_schema(methods=['PUT'], request=PermanencesSerializer, responses=sd.OBJ)

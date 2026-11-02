@@ -1401,16 +1401,17 @@ class ResultatsTests(_Base):
         self.assertEqual(self._controle()['cohorte_hebdo'], [])
         lundi = _a(datetime.date(2026, 9, 21), 9)
         l1, l2, l3 = (self._lead(cree_le=lundi) for _ in range(3))
-        Lead.objects.filter(pk=l1.pk).update(
-            first_contacted_at=lundi + datetime.timedelta(hours=1))
-        Lead.objects.filter(pk=l2.pk).update(
-            first_contacted_at=lundi + datetime.timedelta(hours=3))
         for lead, jours in ((l1, 2), (l2, 20)):
             activite = LeadActivity.objects.create(
                 company=self.company, lead=lead, user=self.acteur,
                 kind=LeadActivity.Kind.APPEL, outcome='joint')
             LeadActivity.objects.filter(pk=activite.pk).update(
                 created_at=lundi + datetime.timedelta(days=jours))
+        # Après les activités : une activité « joint » pose elle-même le 1er contact.
+        Lead.objects.filter(pk=l1.pk).update(
+            first_contacted_at=lundi + datetime.timedelta(hours=1))
+        Lead.objects.filter(pk=l2.pk).update(
+            first_contacted_at=lundi + datetime.timedelta(hours=3))
         self._client_devis(
             l1, statut=Devis.Statut.ACCEPTE,
             date_envoi=lundi + datetime.timedelta(days=10),
