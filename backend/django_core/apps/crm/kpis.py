@@ -26,9 +26,11 @@ def kpi_crm(company):
     Contrat de tuile : ``{id, label, valeur, unite?}``. Le hub résout ce
     callable par son chemin dotted déclaré dans ``apps/crm/platform.py``.
     """
+    from .leads_selectors import q_lead_compte
     from .models import Lead
 
-    actifs = Lead.objects.filter(company=company, is_archived=False)
+    actifs = Lead.objects.filter(
+        company=company, is_archived=False).filter(q_lead_compte())
     tuiles = [
         {'id': 'crm_leads_actifs', 'label': 'Leads actifs',
          'valeur': actifs.filter(perdu=False).count()},
