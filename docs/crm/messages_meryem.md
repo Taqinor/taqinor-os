@@ -313,6 +313,24 @@ pression sur les finances des ménages ». Le montant par enfant parfois cité (
 contesté entre relecteurs : il n'est PAS un chiffre de référence et ne part dans aucun message client. La fenêtre
 porteuse reste juillet-août, à l'intérieur de la saison ci-dessus.
 
+## Réactivation des dormants, par seau (CADV107, 02/11/2026 — décisions D-CADV-8 et D-CADV-11)
+
+Les dormants sont rangés dans UN seau (`apps/crm/cadence_selectors.seaux_reactivation`, CADV32) : K3 (joint, puis
+devis), K6 palier 1 et K6 palier 2 (Meta jamais joints de mai-août). Messages tapés un à un (D-CADV-11), jamais en
+envoi automatique. Même gabarit que `reveil_a2` : l'ORIGINE du contact est citée — `[mois du dossier]` →
+`{mois_dossier}` (mois de création de la fiche, phrase omise s'il manque) et `[plateforme]` (Facebook, Instagram…)
+tapée à la main au moment de l'envoi —, une question, aucun chiffre, et la ligne STOP (CAD110). ✎ Darija à écrire
+(CADM1) : pas de ligne DARIJA, le lead darija reçoit le français — jamais une traduction automatique.
+
+### reactivation_k3 — K3, après appel (lead déjà joint, devis reçu)
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Suite à notre appel, je reviens vers vous au sujet de votre demande de [mois du dossier] sur [plateforme]. Votre projet solaire pour votre maison à {ville} est-il toujours d'actualité ? Si oui, je reprends votre dossier là où on l'a laissé. Répondez STOP et je n'insiste plus.
+
+### reactivation_k6_p1 — K6 palier 1, après appel (Meta jamais joint)
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je viens d'essayer de vous joindre au sujet de votre demande de [mois du dossier] sur [plateforme]. Êtes-vous toujours à la recherche d'une solution solaire pour votre maison à {ville} ? Si oui, une photo de votre dernière facture, et je vous envoie l'estimation. Répondez STOP et je n'insiste plus.
+
+### reactivation_k6_p2 — K6 palier 2, depuis la demande d'origine (interrupteur `REACTIVATION_K6_PALIER2`)
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je reviens vers vous suite à votre demande de [mois du dossier] sur [plateforme]. Êtes-vous toujours à la recherche d'une solution solaire pour votre maison à {ville} ? Si oui, une photo de votre dernière facture, et je vous envoie l'estimation. Répondez STOP et je n'insiste plus.
+
 ## Dossiers institutionnels, par segment (CAD125, 21/09/2026)
 
 Ces deux textes ne sont PAS des barreaux de cadence : ils sont posés comme TÂCHE d'un playbook conditionné sur
