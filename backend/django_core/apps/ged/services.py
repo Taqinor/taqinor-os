@@ -5198,8 +5198,11 @@ _re_mod = re  # alias local de la section XGED9 auto-contenue.
 # import email — ancre d'idempotence (un même message retraité ne duplique pas).
 MAIL_INTAKE_MESSAGE_ID_KEY = 'ged_mail_intake_message_id'
 
-_ALIAS_PLUS_RE = _re_mod.compile(r'\+([\w\-]+)@')
-_ALIAS_SUBJECT_RE = _re_mod.compile(r'\[([\w\-]+)\]')
+# ADOC187 — classe de caractères d'alias UNIQUE : extraction ET validation
+# (`serializers.MOTIF_ALIAS_EMAIL`) acceptent les mêmes alias (point compris).
+ALIAS_EMAIL_CARACTERES = 'A-Za-z0-9._-'
+_ALIAS_PLUS_RE = _re_mod.compile(rf'\+([{ALIAS_EMAIL_CARACTERES}]+)@')
+_ALIAS_SUBJECT_RE = _re_mod.compile(rf'\[([{ALIAS_EMAIL_CARACTERES}]+)\]')
 
 
 def mail_intake_enabled():
