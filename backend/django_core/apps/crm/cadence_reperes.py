@@ -463,6 +463,11 @@ def prefixe_activite_touche(etape):
 #: ``marquer_etape_relance``, relu par ``touche_close_de``.
 _ATTRIBUT_TOUCHE_CLOSE = '_touche_close'
 
+#: CADV9 — même mécanisme : le type que la touche close aurait porté, quand sa
+#: ligne de réponse est devenue une note parce que le clic « WhatsApp ouvert »
+#: est déjà la tentative. La suite (« il a répondu → l'appeler ») en dépend.
+_ATTRIBUT_KIND_TOUCHE = '_kind_touche'
+
 
 def touche_close_de(activite):
     """SUIVI E22 — la touche dont ``activite`` est la ligne de CLÔTURE, telle
@@ -470,6 +475,12 @@ def touche_close_de(activite):
     autre ligne (journal d'appel de la fiche, note, ligne relue en base) —
     le récepteur retombe alors sur son comportement ordinaire."""
     return getattr(activite, _ATTRIBUT_TOUCHE_CLOSE, None)
+
+
+def kind_de_la_touche(activite):
+    """CADV9 — le type RÉEL de la touche que cette ligne clôt (``kind`` de la
+    ligne pour toute autre activité)."""
+    return getattr(activite, _ATTRIBUT_KIND_TOUCHE, activite.kind)
 
 
 def est_cloture_d_etape_visite(activite):

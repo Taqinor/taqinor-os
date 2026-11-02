@@ -169,6 +169,44 @@ class ToucheTypeeTests(_Base):
         self.assertEqual(len(lignes), 1)
         self.assertEqual(lignes[0].kind, LeadActivity.Kind.WHATSAPP)
 
+    def test_clic_puis_fait_ecrit_une_seule_ligne_whatsapp(self):
+        """CADV9 — le clic est LA ligne ``whatsapp`` ; la réponse est une note
+        d'issue, la suite reste celle d'un message répondu. Mutant : ignorer
+        la ligne de clic ⇒ deux lignes, ``nb_tentatives`` = 2."""
+        from apps.crm.cadence_reperes import prefixe_activite_touche
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Prospect WA', owner=self.acteur,
+            telephone='+212661112233')
+        etape = next(
+            e for e in _materialiser_tout(
+                lead, self.acteur, depart=LUNDI, cadence='contact')
+            if e.canal == RelanceEtape.Canal.WHATSAPP)
+        base = f'/api/django/crm/relance-etapes/{etape.pk}'
+        clic = self.api.post(f'{base}/whatsapp/', {}, format='json')
+        self.assertEqual(clic.status_code, 200, clic.data)
+        resp = self.api.post(
+            f'{base}/fait/', {'outcome': 'joint'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        whatsapp = LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.WHATSAPP)
+        self.assertEqual(whatsapp.count(), 1)
+        self.assertIn('WhatsApp ouvert', whatsapp.get().body)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE, outcome='joint',
+            body__startswith=prefixe_activite_touche(etape)).exists())
+        fiche = self.api.get(f'/api/django/crm/leads/{lead.pk}/')
+        self.assertEqual(fiche.data['nb_tentatives'], 1)
+        lead.refresh_from_db()
+        self.assertIsNotNone(lead.first_contacted_at)
+        etape.refresh_from_db()
+        self.assertEqual(etape.statut, RelanceEtape.Statut.FAIT)
+        self.assertFalse(lead.relance_etapes.filter(
+            cadence='contact', statut=RelanceEtape.Statut.A_FAIRE).exists())
+        self.assertEqual(
+            lead.relance_etapes.get(statut=RelanceEtape.Statut.A_FAIRE).cle,
+            'appel_apres_reponse')
+
     def test_une_touche_sautee_reste_une_note(self):
         """Sauter n'est PAS un contact : la ligne ne doit pas gonfler le
         compteur de tentatives."""

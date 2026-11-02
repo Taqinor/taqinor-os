@@ -37,6 +37,7 @@ from .cadence_reperes import (
     OUTCOME_VISITE_ACCEPTEE,
     annuler_etapes_moteur_ouvertes,
     est_cloture_d_etape_visite,
+    kind_de_la_touche,
     q_visite,
     touche_close_de,
 )
@@ -320,7 +321,7 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
                 visite = est_cloture_d_etape_visite(instance)
                 assurer_prochaine_etape_apres_succes(
                     instance.lead, instance.user,
-                    canal_touche=None if visite else instance.kind,
+                    canal_touche=None if visite else kind_de_la_touche(instance),
                     demarrer_plan=not visite)
         elif issue == 'refuse':
             # SUIVI E21 (30/09/2026) — le refus arrête les relances ET le

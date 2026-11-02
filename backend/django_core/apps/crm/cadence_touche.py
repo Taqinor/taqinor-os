@@ -26,10 +26,12 @@ from .cadence_plan import (
 from .cadence_reperes import (
     OUTCOME_VISITE_ACCEPTEE,
     VERBE_TOUCHE_SAUTEE,
+    _ATTRIBUT_KIND_TOUCHE,
     _ATTRIBUT_TOUCHE_CLOSE,
     _CANAL_VERS_KIND,
     _OUTCOMES_SANS_CLOTURE,
     est_etape_de_visite,
+    prefixe_activite_message_ouvert,
     prefixe_activite_touche,
     touche_traitee_en_avance,
 )
@@ -196,6 +198,14 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
                                  LeadActivity.Kind.NOTE)
             if statut == RelanceEtape.Statut.FAIT
             else LeadActivity.Kind.NOTE)
+    kind_touche = kind
+    # CADV9 — le clic « WhatsApp ouvert » de CETTE touche est DÉJÀ sa ligne
+    # ``whatsapp`` : la réponse est une note, sinon ``nb_tentatives`` compte
+    # deux tentatives pour un seul message (1 392 lignes pour 708 touches).
+    if kind == LeadActivity.Kind.WHATSAPP and LeadActivity.objects.filter(
+            lead=etape.lead, kind=LeadActivity.Kind.WHATSAPP,
+            body__startswith=prefixe_activite_message_ouvert(etape)).exists():
+        kind = LeadActivity.Kind.NOTE
     ligne = LeadActivity(
         company=etape.company, lead=etape.lead, user=user,
         kind=kind, body=corps, outcome=(outcome or ''))
@@ -206,6 +216,7 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # suivi de proposition, il pose « Décider la suite », jamais l'étape
     # devis d'un devis déjà parti.
     setattr(ligne, _ATTRIBUT_TOUCHE_CLOSE, etape)
+    setattr(ligne, _ATTRIBUT_KIND_TOUCHE, kind_touche)
     ligne.save(force_insert=True)
 
     lead = etape.lead
