@@ -37,9 +37,9 @@ Contrat de sortie : ``contract_samples/calepinage_raccordement.json``
 (CALX205) — trois blocs ``saisie`` / ``calcul`` / ``verdicts``, cinq verdicts
 TOUJOURS présents. Aucun prix, aucun kWh (D-CALX 5, W3).
 """
-import sys
 from __future__ import annotations
 
+import sys
 import math
 
 from core.electrique.cables import RHO_CUIVRE_20C, chute_tension_v
