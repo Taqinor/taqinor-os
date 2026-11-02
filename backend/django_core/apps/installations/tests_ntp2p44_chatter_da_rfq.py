@@ -111,3 +111,16 @@ class DemandeAchatAutoLogChatterTests(TestCase):
             {'body': 'Fournisseur relancé par téléphone.'})
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['kind'], 'note')
+
+    def test_noter_motif_publie_refuse_le_caractere_nul(self):
+        """ENF11 (fuzz 01/11) : le corps publié exclut le NUL (plus « conforme »
+        puis refusé) ; la note reste refusée 400 à l'exécution."""
+        from apps.records.views import _NOTE_CORPS
+        champ = type(_NOTE_CORPS)().fields['body']
+        self.assertTrue(champ.run_validation('note') == 'note')
+        for mauvais in ('a\x00b', '   '):
+            self.assertFalse(type(_NOTE_CORPS)(data={'body': mauvais}).is_valid())
+        r = self.api.post(
+            f'{BASE}/demandes-achat/{self.da.id}/chatter/noter/',
+            {'body': 'a\x00b'})
+        self.assertEqual(r.status_code, 400, r.data)

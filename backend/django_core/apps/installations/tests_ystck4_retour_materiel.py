@@ -197,6 +197,10 @@ class TestRetourMaterielEndpoint(TestCase):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, Decimal('3'))
 
+        # ENF11 (fuzz 01/11) : ré-validation = refus d'état, 409.
+        r4 = self.api.post(f'{BASE}/retours-materiel/{retour_id}/valider/')
+        self.assertEqual(r4.status_code, 409, r4.data)
+
     def test_cross_company_installation_refusee(self):
         other_inst = make_installation(self.other_company)
         r = self.api.post(

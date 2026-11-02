@@ -227,9 +227,10 @@ class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMi
         da = self.get_object()
         if da.statut not in (DemandeAchat.Statut.BROUILLON,
                              DemandeAchat.Statut.SOUMISE):
+            # ENF11 : statut courant = état stocké, pas une saisie invalide.
             return Response(
                 {'detail': "Seule une demande brouillon peut être soumise."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         regle = services.resoudre_regle_approbation_achat(da)
         try:
             services.controler_budget_demande_achat(da, regle=regle)
@@ -246,7 +247,7 @@ class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMi
                 champs={'archivee': False, 'date_archivage': None})
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         services.lancer_workflow_approbation_achat(da, regle=regle)
         return Response(self.get_serializer(da).data)
 

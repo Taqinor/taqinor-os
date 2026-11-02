@@ -129,6 +129,12 @@ class TestLifecycle(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['statut'], 'commandee')
 
+    def test_soumettre_hors_brouillon_409(self):
+        """ENF11 (fuzz 01/11) : statut incompatible = refus d'état, 409."""
+        DemandeAchat.objects.filter(pk=self.da.id).update(statut='approuvee')
+        r = self.api.post(f'{BASE}/demandes-achat/{self.da.id}/soumettre/')
+        self.assertEqual(r.status_code, 409, r.data)
+
     def test_cannot_approve_unsubmitted(self):
         r = self.api.post(f'{BASE}/demandes-achat/{self.da.id}/approuver/')
         self.assertEqual(r.status_code, 409, r.data)

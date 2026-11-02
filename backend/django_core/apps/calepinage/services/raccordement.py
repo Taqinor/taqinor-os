@@ -119,11 +119,15 @@ MOTIF_SANS_TENSION_NOMINALE = (
 
 
 class RaccordementInvalide(ValueError):
-    """Refus métier sur la saisie de raccordement — champ fautif NOMMÉ."""
+    """Refus métier sur la saisie de raccordement — champ fautif NOMMÉ.
 
-    def __init__(self, message, *, champ=''):
+    ``etat`` marque une règle qui LIE plusieurs champs (une valeur sans sa
+    source) : le schéma ne la dit pas, l'API la refuse en 409 (ENF11)."""
+
+    def __init__(self, message, *, champ='', etat=False):
         super().__init__(message)
         self.champ = champ
+        self.etat = etat
 
 
 # ── lectures tolérantes (aucune valeur substituée, jamais) ────────────────
@@ -278,7 +282,8 @@ def _limite_saisie(injection):
         if isinstance(injection.get('source_limite'), str) else ''
     if limite is not None and not source:
         raise RaccordementInvalide(REFUS_LIMITE_SANS_SOURCE,
-                                   champ='raccordement.source_limite')
+                                   champ='raccordement.source_limite',
+                                   etat=True)
     return (limite, source or None)
 
 
@@ -491,7 +496,8 @@ def _cos_phi_saisi(saisie):
     source = brut.strip() if isinstance(brut, str) else ''
     if cos_phi is not None and not source:
         raise RaccordementInvalide(REFUS_COS_PHI_SANS_SOURCE,
-                                   champ='raccordement.source_cos_phi')
+                                   champ='raccordement.source_cos_phi',
+                                   etat=True)
     return (cos_phi, source or None)
 
 
@@ -1005,8 +1011,9 @@ STATUT_PUBLIE_OMIS = 'omis'
 PREFIXE_CHAMP = 'raccordement.'
 
 
-def _refus_saisie(champ, phrase):
-    return RaccordementInvalide(phrase, champ=PREFIXE_CHAMP + champ)
+def _refus_saisie(champ, phrase, etat=False):
+    return RaccordementInvalide(phrase, champ=PREFIXE_CHAMP + champ,
+                                etat=etat)
 
 
 def _texte_saisi(valeur, champ):
@@ -1018,6 +1025,10 @@ def _texte_saisi(valeur, champ):
             champ, "La provenance doit être un texte : indiquez le document "
                    "qui fixe cette valeur (texte réglementaire, contrat de "
                    "raccordement ou prescription du gestionnaire de réseau).")
+    if '\x00' in valeur:  # ne se range pas en JSONB (500) ; publié sans NUL
+        raise _refus_saisie(
+            champ, "La provenance contient un caractère interdit (caractère "
+                   "nul) : corrigez la saisie.")
     return valeur.strip() or None
 
 
@@ -1120,7 +1131,7 @@ def _saisie_publiee(brute):
     if (saisie['plafond_injection_kw'] is not None
             and not saisie['plafond_injection_justification']):
         raise _refus_saisie('plafond_injection_justification',
-                            REFUS_PLAFOND_SANS_JUSTIFICATION)
+                            REFUS_PLAFOND_SANS_JUSTIFICATION, etat=True)
     return {champ: saisie[champ] for champ in CHAMPS_SAISIE}
 
 

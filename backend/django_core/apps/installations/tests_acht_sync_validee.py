@@ -83,13 +83,26 @@ class SyncValideeTests(TestCase):
         self.assertFalse(Reserve.objects.filter(
             intervention=self.iv).exists())
 
+    def test_vues_ajout_et_suppression_ligne_409(self):
+        """ENF11 (fuzz 01/11) : ajout/suppression sur réconciliation validée =
+        refus d'état, 409 (comme la modification)."""
+        base = f'/api/django/installations/interventions/{self.iv.id}/'
+        r = self.api.post(
+            base + 'ajouter-ligne-consommation/',
+            {'designation': 'Vis', 'quantite_utilisee': '1'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        r = self.api.post(
+            base + 'supprimer-ligne-consommation/',
+            {'ligne': self.ligne.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+
     def test_vue_meme_garde(self):
         r = self.api.post(
             f'/api/django/installations/interventions/{self.iv.id}/'
             'modifier-ligne-consommation/',
             {'ligne': self.ligne.id, 'quantite_utilisee': '3'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : refus d'état
         self.assertIn('Réconciliation déjà validée.', str(r.data))
         self.ligne.refresh_from_db()
         self.assertEqual(self.ligne.quantite_utilisee, Decimal('10'))

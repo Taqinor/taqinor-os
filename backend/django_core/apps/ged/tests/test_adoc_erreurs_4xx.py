@@ -199,6 +199,24 @@ class ErreursMetierTests(TestCase):
         self.assertTrue(ArchivageLegal.objects.filter(document=archive).exists())
         self.assertEqual(DemandeDisposition.objects.count(), 1)
 
+    def test_disposition_deja_decidee_ou_non_approuvee_409(self):
+        """ENF11 (fuzz 01/11) : refus d'ÉTAT (non approuvée / déjà décidée) = 409."""
+        PolitiqueRetention.objects.create(
+            company=self.co, nom='Globale', duree_conservation_jours=30)
+        vieux = Document.objects.create(company=self.co, folder=self.folder,
+                                        nom='vieux2.pdf')
+        Document.objects.filter(pk=vieux.pk).update(
+            created_at=timezone.now() - timedelta(days=400))
+        demande = services.creer_demande_disposition(
+            self.co, libelle='x', document_ids=[vieux.pk], user=self.admin)
+        base = f'{BASE}demandes-disposition/{demande.pk}/'
+        resp = auth(self.admin2).post(base + 'executer/')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        services.rejeter_demande_disposition(demande, user=self.admin2)
+        for action in ('rejeter/', 'approuver/'):
+            resp = auth(self.admin2).post(base + action)
+            self.assertEqual(resp.status_code, 409, (action, resp.content))
+
     def test_disposition_archiver_ignore_corbeille(self):
         """ADOC179 (sonde C-ADOC-VER-005) — « archiver » sur un document mis
         en corbeille entre-temps : compté ignoré, jamais un 500 ; le lot
