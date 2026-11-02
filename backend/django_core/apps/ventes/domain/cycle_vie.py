@@ -1,12 +1,10 @@
 """Cycle de vie du devis — envoi, signature, acceptation, renouvellement.
 
-Ce que le devis TRAVERSE entre sa composition et sa suite : l'envoi
-(`mark_devis_sent`), l'OTP d'e-signature et l'OTP de LECTURE (demande,
-validation, envois wa.me/e-mail), l'acceptation (`accept_devis`, dépôt,
-e-mails, notification vendeur), l'attribution marketing et la Conversions
-API Meta, les liens de partage (proposition, bon de commande,
-installation), les clauses figées, le cliché de configuration et son diff,
-l'activation d'une ligne optionnelle et le renouvellement.
+Ce que le devis TRAVERSE entre sa composition et sa suite : l'OTP d'e-signature
+et l'OTP de LECTURE (demande, validation, envois wa.me/e-mail), l'acceptation
+(`accept_devis` : preuve, PDF scellé, e-mails et bloc d'acompte, notification
+vendeur, attribution, Conversions API Meta, ``devis_accepted``), la
+dés-acceptation (`annuler_acceptation`) et l'activation d'une ligne optionnelle.
 
 AVERTISSEMENT DE LECTURE (R4-B1). Les corps e-signature / OTP /
 `accept_devis` et la synchronisation Meta n'ont JAMAIS été audités : ce
@@ -1113,7 +1111,7 @@ def _persist_attribution(*, devis):
 
 
 def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
-                                 groupe=None):
+                                 groupe=None, canal=''):
     """QJR134 — L'AVAL D'UNE ACCEPTATION, dans la transaction de l'appelant.
 
     YDOCF3 — variantes (QJ15 dupliquer-variante) : accepter l'une d'elles doit
@@ -1122,10 +1120,11 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
     du funnel). Ne touche jamais un devis d'un autre groupe ni les révisions
     déjà terminales. Un devis sans variante est inchangé.
 
-    M6 — puis PUBLIE ``devis_accepted`` : c'est cet événement qui déclenche la
-    chaîne bon-commande / facture / chantier. Il vit ici, avec l'effondrement,
-    parce que les deux forment UNE seule vente : les séparer, c'est exactement
-    l'état partiel qu'ES3 décrit.
+    M6 — puis PUBLIE ``devis_accepted`` : ses abonnés (crm, installations,
+    sav, onboarding, automation, facturation — brouillon d'acompte PROVISOIRE,
+    AMET4) font l'aval ; jamais de BC (D-SIGN-AUTO). Il vit ici, avec
+    l'effondrement, parce que les deux forment UNE seule vente : les séparer,
+    c'est exactement l'état partiel qu'ES3 décrit.
 
     ``groupe`` — les devis du groupe DÉJÀ verrouillés par l'appelant (il les a
     lus sous ``select_for_update``, dans l'ordre des ``pk``). Absent, ils sont
@@ -1178,7 +1177,7 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
     pred = predecesseur_accepte(devis)
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien,
-        avenant_de=pred.pk if pred is not None else None)
+        avenant_de=pred.pk if pred is not None else None, canal=canal)
 
 
 def _option_offerte(option, *, qd, nb_options, scenario):
@@ -1218,9 +1217,10 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     Shared by the in-app viewset action (N25) and the tokenized web proposal
     (Q7): records the stamp (typed name + date [+ IP in the chatter]), sets the
     accepted option, writes the acceptance activity and emits the
-    ``devis_accepted`` domain event — so the downstream BonCommande/Facture
-    chain is preserved 1:1 (rule #4). The engine only RENDERS elsewhere; this
-    is the single place a quote document changes status to accepté.
+    ``devis_accepted`` domain event (subscribers: chantier, SAV, lead, the
+    PROVISIONAL deposit draft — AMET4; never a BC, D-SIGN-AUTO). The engine
+    only RENDERS elsewhere; this is the single place a quote document changes
+    status to accepté.
 
     With ``idempotent_reaccept=True`` (default) a re-submit on an
     already-accepted devis is returned unchanged (no second stamp, no second
@@ -1278,7 +1278,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # accepté (``of=('self',)``), et l'effondrement des sœurs s'exécutait
         # hors de lui, sans ``select_for_update`` : deux POST concurrents sur
         # DEUX jetons du MÊME groupe de variantes basculaient TOUS DEUX en
-        # « accepté » — deux événements, deux chaînes bon-commande/facture pour
+        # « accepté » — deux événements, deux avals (chantier, acompte…) pour
         # une seule vente.
         #
         # On verrouille donc TOUT le groupe (la racine et ses variantes), et
@@ -1470,7 +1470,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # s'exécutaient hors transaction et hors verrou, sans
         # ``ATOMIC_REQUESTS`` (vérifié : absent des settings). Un échec chez
         # UN abonné (``send()`` propage la première exception) laissait un
-        # devis « accepté » SANS bon de commande ni facture — et la garde
+        # devis « accepté » SANS son aval (chantier, étape du lead…) — et la garde
         # d'idempotence rendait le rejeu impossible : l'état partiel était
         # PERMANENT et SILENCIEUX.
         #
@@ -1587,7 +1587,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # l'événement, sous le verrou du groupe pris plus haut.
         _effondrer_soeurs_et_publier(
             devis=devis, user=user, date_acc=date_acc, ancien=ancien,
-            groupe=groupe)
+            groupe=groupe, canal=canal)
 
     # ── APRÈS LE COMMIT — entrées-sorties best-effort, jamais bloquantes ────
     if not avenant:
@@ -1612,12 +1612,11 @@ def _rattacher_revision_au_mieux(devis, *, user):
 
 
 def _apres_commit_acceptation(devis, *, user, ip, user_agent, lignes):
-    """L'APRÈS-COMMIT d'une acceptation (hors avenant négocié, VNT59) :
-    échéancier figé + brouillon d'acompte (VNT62, D-SIGN-AUTO = a), PDF
-    signé, e-mails et CAPI — entrées-sorties best-effort, jamais bloquantes.
+    """L'APRÈS-COMMIT d'une acceptation (hors avenant négocié, VNT59) : PDF
+    signé, e-mails et CAPI — entrées-sorties best-effort, jamais bloquantes
+    (le brouillon d'acompte provisoire est déjà né DANS la transaction, par
+    l'abonné facturation de ``devis_accepted`` — AMET4).
     Les noms restent lus sur CE module (``mock.patch`` des tests)."""
-    from apps.ventes.domain.facturation_vente import acompte_a_l_acceptation
-    acompte_a_l_acceptation(devis, user)
     # QJ22 / QJ10 — exemplaire signé PUIS confirmation (exemplaire joint) :
     # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE (fondateur 28/10, option a) — mis en
     # file Celery APRÈS le commit, plus jamais rendus dans la requête
@@ -1641,7 +1640,7 @@ def _apres_commit_acceptation(devis, *, user, ip, user_agent, lignes):
 # unitaire ou en masse) dés-accepte son devis : le devis repasse « envoyé »,
 # les tampons d'acceptation sont effacés, les variantes sœurs refusées PAR
 # cette acceptation reviennent, et ce que l'acceptation a créé
-# AUTOMATIQUEMENT (chantier, contrat SAV, commission, parrainage) est défait
+# AUTOMATIQUEMENT (chantier, contrat SAV, commission, parrainage, acompte provisoire) est défait
 # par les abonnés de ``devis_acceptation_annulee``. Si quelque chose de RÉEL
 # existe en aval (facture, bon de commande, chantier avancé, contrat SAV
 # facturé…), RIEN n'est écrit et la raison est rendue en français.
@@ -1669,14 +1668,16 @@ def raison_blocage_annulation_acceptation(devis):
     ``devis``, ou ``None`` si l'annulation est permise. Lecture seule.
 
     Bloquent : une facture non annulée liée au devis (directement, par son bon
-    de commande ou par une facture consolidée — brouillon compris, hors l'acompte
-    automatique qu'``annuler_acceptation`` retire d'abord, VNT62), un BC non annulé, un
+    de commande ou par une facture consolidée — brouillon compris, hors le
+    brouillon d'acompte PROVISOIRE (AMET4, ``acomptes_provisoires``) que
+    l'abonné facturation de ``devis_acceptation_annulee`` annule), un BC non annulé, un
     dossier 82-21 sorti de « En constitution », puis ce que disent les
     sélecteurs des apps propriétaires (chantier avancé, contrat SAV engagé)."""
     from django.db.models import Q
     from apps.ventes.models import (
         BonCommande, Facture, RegulatoryDossier,
     )
+    from apps.ventes.domain.facturation_vente import acomptes_provisoires
 
     company_id = devis.company_id
     facture = (Facture.objects
@@ -1685,6 +1686,7 @@ def raison_blocage_annulation_acceptation(devis):
                        | Q(bon_commande__devis_id=devis.pk)
                        | Q(sources__devis_id=devis.pk))
                .exclude(statut=Facture.Statut.ANNULEE)
+               .exclude(pk__in=[f.pk for f in acomptes_provisoires(devis)])
                .order_by('pk').distinct().first())
     if facture is not None:
         if facture.statut == Facture.Statut.BROUILLON:
@@ -1765,8 +1767,6 @@ def annuler_acceptation(*, devis, user, motif=''):
             return courant or devis
         devis = courant
 
-        from apps.ventes.domain.facturation_vente import retirer_acompte_automatique  # VNT62
-        retirer_acompte_automatique(devis, user=user)  # brouillon d'acompte auto annulé, sans avoir
         raison = raison_blocage_annulation_acceptation(devis)
         if raison:
             raise AnnulationAcceptationBloquee(raison)

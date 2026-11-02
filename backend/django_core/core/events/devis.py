@@ -13,7 +13,10 @@ les émetteurs et abonnés continuent d'importer ``core.events``.
 
     * ``devis`` — l'instance ``Devis`` acceptée ;
     * ``user`` — l'utilisateur qui accepte (peut être ``None``) ;
-    * ``ancien_statut`` — le statut du devis avant l'acceptation.
+    * ``ancien_statut`` — le statut du devis avant l'acceptation ;
+    * ``avenant_de`` — pk du prédécesseur de révision accepté (ou ``None``) ;
+    * ``canal`` — le canal d'acceptation (``'avenant_negocie'`` pour un
+      avenant VNT59, sinon vide ou le canal de signature) — AMET4.
 
 ``devis_acceptation_annulee``
     Émis quand l'acceptation d'un devis est ANNULÉE (« dés-acceptation ») :
@@ -22,7 +25,8 @@ les émetteurs et abonnés continuent d'importer ``core.events``.
     ``apps.ventes.domain.cycle_vie.annuler_acceptation`` : les écritures des
     abonnés tiennent ou tombent avec elle. Abonnés : ``installations``
     (annule le chantier auto-créé), ``sav`` (désactive le contrat
-    auto-créé), ``crm`` (commission, parrainage, notes de chatter).
+    auto-créé), ``crm`` (commission, parrainage, notes de chatter),
+    ``facturation`` (annule le brouillon d'acompte provisoire, AMET4).
     Arguments du signal :
 
     * ``devis`` — l'instance ``Devis`` désormais ``envoye`` ;
@@ -63,7 +67,9 @@ import django.dispatch
 
 
 # Émis à l'acceptation d'un devis.
-# Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
+# Abonnés dans ce repo : crm (avance l'étape du lead → SIGNED), installations,
+# sav, onboarding, automation, facturation (brouillon d'acompte provisoire,
+# AMET4 — best-effort sous point de sauvegarde).
 # ADEV54 — CONTRAT TRANSACTIONNEL : émis DANS la transaction d'acceptation.
 # Un abonné OBLIGATOIRE (création du chantier, avance d'étape) qui lève annule
 # la signature ; un abonné BEST-EFFORT (SAV, onboarding, automatisation,
@@ -76,7 +82,8 @@ devis_accepted = django.dispatch.Signal()
 # Émis à l'ANNULATION de l'acceptation d'un devis (décision fondateur du
 # 08/10/2026 : un lead qui sort de « Signé » dés-accepte son devis).
 # Arguments : devis, user, option_acceptee, date_acceptation, motif.
-# Abonnés : installations, sav, crm (chacun défait SON effet d'acceptation).
+# Abonnés : installations, sav, crm, facturation (chacun défait SON effet
+# d'acceptation).
 devis_acceptation_annulee = django.dispatch.Signal()
 
 # Émis à l'ENVOI d'un devis (U4) — passage brouillon → envoyé déclenché par un
