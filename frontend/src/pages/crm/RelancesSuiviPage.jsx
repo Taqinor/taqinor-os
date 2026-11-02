@@ -13,6 +13,8 @@ import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
 import ArretCadenceChamps from '../../features/crm/relances/ArretCadenceChamps'
 import { PARCOURS } from '../../features/crm/relances/parcours'
 import { traiterGesteTouche } from '../../features/crm/relances/refusGeste'
+// SUIVI-RELOAD — la fusion des touches servies + la définition « en retard ».
+import { estEnRetard, fusionnerLignes } from '../../features/crm/relances/fusionSuivi'
 import ToucheMessageDialog from './ToucheMessageDialog'
 import RelancesEquipePanel from './RelancesEquipePanel'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -45,6 +47,22 @@ import { TableauLignes } from '../../ui/TableauDefilant'
    serveur ; le choix vit dans l'URL (`?statut=a_faire&statut=en_retard`) pour
    être rechargé et partagé. SUIVI-ÉQUIPE : les rôles responsable/admin ont en
    tête de page la « Vue d'équipe » (`RelancesEquipePanel.jsx`).
+
+   SUIVI-RELOAD (02/11/2026) — DEUX règles de rafraîchissement, nées d'un
+   incident de production : la commerciale ouvrait WhatsApp, revenait cocher
+   « Fait », et recevait un « problème de connexion » puis un écran sans
+   aucune suite — elle se déconnectait et se reconnectait pour retrouver sa
+   file. Relevé dans les journaux du serveur : CHAQUE geste (y compris la
+   simple ouverture de WhatsApp) relisait la période entière — jusqu'à 62
+   jours, ~1,5 Mo — et cette relecture dépassait le délai d'attente du
+   navigateur (20 s, `api/axios.js`) pendant que les ouvriers du serveur
+   redémarraient ; l'écran remplaçait alors TOUTE la liste par « Indisponible
+   pour le moment. ». Donc : (1) un geste ne relit plus la période, mais la
+   touche rendue par sa propre réponse puis les touches du SEUL lead concerné
+   (`?lead=`, quelques Ko) — `fusionnerLignes` ci-dessous ; (2) un
+   rafraîchissement en échec n'efface JAMAIS la liste déjà servie : elle reste
+   affichée, dite « non rafraîchie », avec « Réessayer ». Seul un chargement
+   de nouvelle fenêtre (onglet, responsable) peut encore tomber en erreur.
    ========================================================================== */
 
 // Bornes Casablanca — même trick que `LeadCard.jsx estAujourdhuiCasa` : `en-CA`
@@ -115,12 +133,6 @@ function visiblesPourOnglet(onglet, results, today) {
   return results.filter((e) => e.due_date === today || estEnRetard(e, today))
 }
 
-// « En retard » = à faire ET échue strictement avant aujourd'hui — la définition
-// du contrat `relance_etapes_suivi` (`resume.en_retard`), écrite UNE fois.
-function estEnRetard(etape, today) {
-  return etape.statut === 'a_faire' && etape.due_date < today
-}
-
 // SUIVI-FILTRE — les cinq cases à cocher, dans l'ordre des compteurs ; `cle`
 // = la clé du `resume` serveur (le compteur affiché), `retient` = la règle
 // d'écran qui garde une ligne servie. « En retard » est un sous-ensemble de
@@ -148,6 +160,7 @@ function visiblesPourStatuts(coches, results, today) {
   const regles = STATUTS_FILTRE.filter((s) => coches.has(s.cle))
   return results.filter((e) => regles.some((s) => s.retient(e, today)))
 }
+
 
 // CAD100 (moitié écran de CAD87) — canal/jour en clair, mêmes clés que le
 // serveur (jamais un vocabulaire inventé ici). `jour_semaine` : 0 = lundi
@@ -530,6 +543,10 @@ export default function RelancesSuiviPage() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(false)
+  // SUIVI-RELOAD — « la liste affichée n'est pas forcément à jour » : un
+  // rafraîchissement a échoué alors que des touches étaient déjà à l'écran.
+  // Distinct de `erreur`, qui dit « rien à montrer pour cette fenêtre ».
+  const [pasAJour, setPasAJour] = useState(false)
   const [donnees, setDonnees] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [messageEtape, setMessageEtape] = useState(null)
@@ -570,6 +587,9 @@ export default function RelancesSuiviPage() {
   const owner = ownerFiltre === 'moi'
     ? currentUserId
     : (ownerFiltre === 'tous' ? '' : ownerFiltre)
+  // La fenêtre SERVEUR de l'onglet courant : celle qui est demandée, et celle
+  // que `resume` compte (lue aussi par `fusionnerLignes`).
+  const bornes = useMemo(() => bornesOnglet(onglet, today), [onglet, today])
 
   // SUIVI-BLOCAGE — `enPlace` : relecture SANS spinner après un geste (Fait,
   // Sauter, Reporter, visite…). Avant, chaque geste remplaçait toute la carte
@@ -578,7 +598,7 @@ export default function RelancesSuiviPage() {
   // que pour un onglet ou un filtre qui change.
   const charger = ({ enPlace = false } = {}) => {
     let active = true
-    const { date_debut, date_fin } = bornesOnglet(onglet, today)
+    const { date_debut, date_fin } = bornes
     // setState différé au prochain microtask (jamais synchrone dans l'effet) —
     // évite react-hooks/set-state-in-effect, même patron que
     // `RelancesDuJourWidget.jsx`/`KpiRelancesPanel.jsx`.
@@ -586,8 +606,21 @@ export default function RelancesSuiviPage() {
     const params = { date_debut, date_fin }
     if (owner) params.owner = owner
     crmApi.getRelanceEtapesSuivi(params)
-      .then((r) => { if (active) setDonnees(r.data) })
-      .catch(() => { if (active) setErreur(true) })
+      .then((r) => { if (active) { setDonnees(r.data); setPasAJour(false) } })
+      // SUIVI-RELOAD (02/11/2026) — une relecture EN PLACE qui échoue ne VIDE
+      // plus l'écran. Mesuré en production ce jour-là : la relecture de la
+      // période (~1,5 Mo) dépassait le délai d'attente du navigateur pendant
+      // que les ouvriers du serveur redémarraient, et la file de travail de
+      // la commerciale était remplacée en pleine séance par « Indisponible
+      // pour le moment. » — d'où le « problème de connexion » et la
+      // reconnexion pour retrouver ses touches. La liste déjà servie reste
+      // donc affichée, simplement dite « non rafraîchie ». Seul un chargement
+      // de NOUVELLE fenêtre (onglet, responsable) tombe en erreur : les
+      // lignes de l'ancienne fenêtre ne répondraient pas à la question posée.
+      .catch(() => {
+        if (!active) return
+        if (enPlace) setPasAJour(true); else setErreur(true)
+      })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }
@@ -596,20 +629,72 @@ export default function RelancesSuiviPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `charger` recrée une fermeture à chaque rendu (owner/today/onglet la referment déjà) ; l'ajouter provoquerait un rechargement à chaque frappe sans rien changer aux dépendances réelles. (D-ENF22)
     [onglet, owner, today])
 
+  /** Le lead d'une touche AFFICHÉE (jamais un aller-retour pour le savoir). */
+  const leadDeLaTouche = (id) => donnees?.results?.find((e) => e.id === id)?.lead
+
+  /** SUIVI-RELOAD — la touche que le serveur vient de rendre, fusionnée dans
+   *  la liste affichée. Renvoie `true` si la réponse portait bien une ligne :
+   *  l'écran dit alors la vérité du serveur SANS une requête de plus. */
+  const fusionnerUneLigne = (ligne) => {
+    if (ligne?.id == null) return false
+    setDonnees((prev) => (prev
+      ? fusionnerLignes(prev, new Set([ligne.id]), [ligne], bornes, today)
+      : prev))
+    return true
+  }
+
+  /** SUIVI-RELOAD (02/11/2026) — après un geste, on ne relit plus la PÉRIODE
+   *  ENTIÈRE (jusqu'à 62 jours, ~1,5 Mo mesurés en production) : on relit les
+   *  touches du SEUL lead concerné (`?lead=`, quelques Ko, tous statuts,
+   *  MÊME sérialiseur) et on les fusionne. C'est ce qui garde exactes les
+   *  touches SŒURS que le moteur vient d'annuler, de faire naître ou de
+   *  décaler (l'action `reporter` décale les suivantes du même delta).
+   *
+   *  Son échec ne défait rien et ne TOASTE rien (`suppressErrorToast`) : le
+   *  geste est déjà enregistré et sa ligne déjà fusionnée depuis sa réponse —
+   *  un toast d'erreur ici ferait croire le geste perdu. La liste est
+   *  seulement dite « non rafraîchie ». */
+  const rafraichirLead = (leadId) => {
+    if (!leadId) return Promise.resolve()
+    return crmApi.getRelanceEtapesDues({ lead: leadId }, { suppressErrorToast: true })
+      .then((r) => {
+        const servies = r?.data?.results
+        if (!Array.isArray(servies)) return
+        setDonnees((prev) => {
+          if (!prev?.results) return prev
+          const ids = new Set(prev.results
+            .filter((e) => e.lead === leadId).map((e) => e.id))
+          return fusionnerLignes(
+            prev, ids, servies.filter((e) => e.lead === leadId), bornes, today)
+        })
+      })
+      .catch(() => setPasAJour(true))
+  }
+
   // CKP4 / SUIVI-REFUS — voir `traiterGesteTouche` (`features/crm/relances/
   // refusGeste.js`) : un refus NOMMÉ (400/409 `erreurs`/`detail`, 403 rôle)
   // s'affiche sous le geste, le toast ne reste que pour réseau/5xx.
-  const traiter = (id, action, payload) => traiterGesteTouche({
-    action, id, payload, setBusyId,
-    surSucces: () => charger({ enPlace: true }),
-  })
+  const traiter = (id, action, payload) => {
+    const leadId = leadDeLaTouche(id)
+    return traiterGesteTouche({
+      action, id, payload, setBusyId,
+      // SUIVI-RELOAD — la touche d'abord (depuis la réponse du geste, donc
+      // sans attendre le réseau), puis les touches sœurs du lead.
+      surSucces: (res) => {
+        fusionnerUneLigne(res?.data)
+        rafraichirLead(leadId)
+      },
+    })
+  }
 
-  // CAD50 — retour arrière (24h, refus motivé du serveur au-delà). Un
-  // refetch fait réapparaître la touche redevenue `a_faire`.
+  // CAD50 — retour arrière (24h, refus motivé du serveur au-delà). La touche
+  // redevenue `a_faire` est reprise de la réponse, puis du lead.
   const annulerTouche = async (id) => {
+    const leadId = leadDeLaTouche(id)
     try {
-      await crmApi.annulerRelanceEtape(id)
-      charger({ enPlace: true })
+      const res = await crmApi.annulerRelanceEtape(id)
+      fusionnerUneLigne(res?.data)
+      await rafraichirLead(leadId)
     } catch {
       toastError('Annulation impossible pour le moment.')
     }
@@ -621,7 +706,8 @@ export default function RelancesSuiviPage() {
   const arreterCadenceLead = async (leadId, motif) => {
     try {
       await crmApi.arreterCadence(leadId, { motif })
-      charger({ enPlace: true })
+      // Un arrêt annule PLUSIEURS touches du lead : c'est le lead qu'on relit.
+      await rafraichirLead(leadId)
       return true
     } catch {
       toastError('Arrêt de la cadence impossible pour le moment.')
@@ -717,6 +803,27 @@ export default function RelancesSuiviPage() {
 
       <Card className="mt-3">
         <CardContent className="pt-4">
+          {/* SUIVI-RELOAD — le serveur n'a pas répondu, mais les touches
+              affichées restent : on le DIT au lieu de vider l'écran, et on
+              offre de réessayer. « Réessayer » relit la période en place. */}
+          {pasAJour && !erreur && (
+            <div
+              className="mb-3 flex flex-wrap items-center gap-2"
+              role="status" data-testid="suivi-pas-a-jour"
+            >
+              <span className="text-sm text-muted-foreground">
+                Liste non rafraîchie — le serveur n’a pas répondu. Les touches
+                affichées datent du dernier chargement réussi ; vos gestes
+                enregistrés, eux, sont bien partis.
+              </span>
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => charger({ enPlace: true })}
+              >
+                Réessayer
+              </Button>
+            </div>
+          )}
           {loading ? (
             <Spinner />
           ) : erreur ? (
@@ -741,10 +848,11 @@ export default function RelancesSuiviPage() {
                           onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
                           onOuvrirMessage={setMessageEtape}
                           // SUIVI-BLOCAGE — visite planifiée / déplacée / abandonnée,
-                          // pièce reçue, réponse écrite sur la fiche : relecture EN PLACE.
-                          onVisiteChanged={() => charger({ enPlace: true })}
-                          onPieceRecue={() => charger({ enPlace: true })}
-                          onLeadEcrit={() => charger({ enPlace: true })}
+                          // pièce reçue, réponse écrite sur la fiche : les touches du
+                          // LEAD sont relues (SUIVI-RELOAD), jamais toute la période.
+                          onVisiteChanged={() => rafraichirLead(etape.lead)}
+                          onPieceRecue={() => rafraichirLead(etape.lead)}
+                          onLeadEcrit={() => rafraichirLead(etape.lead)}
                         />
                         <AnnulerArreterControl
                           etape={etape} onAnnuler={annulerTouche} onArreter={arreterCadenceLead}
@@ -761,11 +869,21 @@ export default function RelancesSuiviPage() {
 
       <MesureCadencePanel />
 
+      {/* SUIVI-RELOAD — le clic « Ouvrir WhatsApp » (POST `whatsapp/`) renvoie
+          DÉJÀ la touche à jour (`etape` de la forme rendue, RLC3 « message
+          ouvert ») : elle est fusionnée, et ce geste — le plus fréquent de la
+          journée — ne coûte plus AUCUNE lecture de liste. Sans cette ligne
+          (réponse d'une forme inattendue), on retombe sur la relecture du
+          lead, jamais sur celle de la période. */}
       <ToucheMessageDialog
         etape={messageEtape}
         open={!!messageEtape}
         onOpenChange={(o) => { if (!o) setMessageEtape(null) }}
-        onSent={() => { setMessageEtape(null); charger({ enPlace: true }) }}
+        onSent={(id, data) => {
+          const leadId = messageEtape?.lead
+          setMessageEtape(null)
+          if (!fusionnerUneLigne(data?.etape)) rafraichirLead(leadId)
+        }}
       />
     </div>
   )
