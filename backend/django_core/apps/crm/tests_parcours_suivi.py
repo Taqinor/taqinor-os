@@ -425,7 +425,9 @@ class ParcoursCompletsTests(ParcoursBase):
     def test_a_message_appel_devis_envoye_depuis_l_erp_puis_accepte(self):
         """Message sans réponse → appel → client joint → étape devis (datée de DEMAIN, traitée
         le jour même : le devis part aujourd'hui depuis l'ERP et l'étape se ferme d'elle-même)
-        → suivi de proposition → client joint → … → devis accepté → SIGNÉ, zéro touche.
+        → suivi de proposition → client joint → … → devis accepté → SIGNÉ, tout le protocole
+        arrêté, restent les deux appels du commercial (CADV36, table « devis_accepte ») ; les
+        clore ne fait rien naître : zéro touche, toujours Signé.
         (« Fait » sur l'étape devis le jour même : histoire f.)"""
         lead, message = self.amener('contact_message')
         self.jouer(lead, message, 'pas_de_reponse')
@@ -456,6 +458,19 @@ class ParcoursCompletsTests(ParcoursBase):
         self.verifier_invariants(lead)
         lead.refresh_from_db()
         self.assertEqual(lead.stage, stages.SIGNED, self.msg('le lead n’est pas signé', lead))
+        touches = self.ouvertes(lead)
+        self.assertEqual(
+            [(e.cadence, e.canal, e.cle, e.libelle, e.due_date) for e in touches],
+            [('generique', 'appel', '', cadence_reperes.LIBELLE_CONFIRMER_SIGNATURE,
+              self.aujourdhui() + datetime.timedelta(days=2)),
+             ('generique', 'appel', '', cadence_reperes.LIBELLE_RELANCE_ACOMPTE,
+              self.aujourdhui() + datetime.timedelta(days=7))],
+            self.msg('après l’acceptation, les deux appels du commercial et rien d’autre', lead))
+        for touche in touches:
+            self.appel('post', f'/api/django/crm/relance-etapes/{touche.pk}/fait/', {})
+            self.verifier_invariants(lead)
+            self.assertEqual(lead.stage, stages.SIGNED,
+                             self.msg('clore une touche a sorti le lead de Signé', lead))
         self.assertEqual(self.ouvertes(lead), [], self.msg('une relance survit au devis signé', lead))
 
     def test_b_visite_confirmee_retour_terrain_puis_devis_envoye(self):

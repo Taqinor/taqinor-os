@@ -5,7 +5,7 @@
 <title>Guide — Le suivi commercial&nbsp;: étapes, réponses et suites</title>
 <meta name="generator" content="scripts/generer_guide_suivi.py">
 <meta name="table-version" content="1.2">
-<meta name="table-sha256" content="8db8ee8633b1b892bd0b3ef08369615ab642b2212352cda5429b81ad510e19e5">
+<meta name="table-sha256" content="48152dfeb76a35eb3a2d615fb47efae4d2c46013947c42b5955a93cd01dd3328">
 <!-- Fichier GÉNÉRÉ : ne pas modifier à la main. Relancer `python scripts/generer_guide_suivi.py` après tout changement de la table du parcours. -->
 <style>
 @page { size: A4; margin: 18mm; @bottom-center { content: "TAQINOR OS — Guide interne · page " counter(page) "/" counter(pages); font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8pt; color: #888; } }
@@ -399,7 +399,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <h4>Appel de suivi de la proposition</h4>
 <p class="exemples">Exemples : Appel de suivi (J+2, J+7, J+11)</p>
 <p class="question"><span class="q">Question posée</span> — Réponse du client sur la proposition&nbsp;?</p>
-<p class="aide">Le client accepte&nbsp;? Marque le devis ACCEPTÉ (Ventes → Devis)&nbsp;: le dossier passe en Signé et toutes les relances s’arrêtent. Devis parti hors ERP&nbsp;? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.</p>
+<p class="aide">Le client accepte&nbsp;? Marque le devis ACCEPTÉ (Ventes → Devis)&nbsp;: le dossier passe en Signé, toutes les relances s’arrêtent et deux appels vous restent (confirmer la signature à J+2, rappeler l’acompte à J+7). Devis parti hors ERP&nbsp;? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.</p>
 </div>
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
@@ -426,7 +426,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <h4>Message de suivi de la proposition</h4>
 <p class="exemples">Exemples : Le PDF s’ouvre bien&nbsp;? · Dimanche famille · Preuve — chantier comparable · Garanties fabricants · Validité de la proposition · Dernier message · Mise en pause</p>
 <p class="question"><span class="q">Question posée</span> — Le message est parti — le client a-t-il répondu&nbsp;?</p>
-<p class="aide">Le client accepte&nbsp;? Marque le devis ACCEPTÉ (Ventes → Devis)&nbsp;: le dossier passe en Signé et toutes les relances s’arrêtent. Devis parti hors ERP&nbsp;? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.</p>
+<p class="aide">Le client accepte&nbsp;? Marque le devis ACCEPTÉ (Ventes → Devis)&nbsp;: le dossier passe en Signé, toutes les relances s’arrêtent et deux appels vous restent (confirmer la signature à J+2, rappeler l’acompte à J+7). Devis parti hors ERP&nbsp;? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.</p>
 </div>
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
@@ -573,13 +573,13 @@ table.touches td:nth-child(3) { width: 17%; }
 <h3 class="famille-titre">Autres étapes</h3>
 <div class="fiche">
 <div class="fiche-tete">
-<h4>Étape générique (ancien plan J+2…J+35, passation, rappel demandé, signal)</h4>
-<p class="exemples">Exemples : Passation — prévenir le client du changement de conseiller · Rappeler le client (il l’a demandé) · Premier rappel · Relance WhatsApp</p>
+<h4>Étape générique (ancien plan J+2…J+35, passation, rappel demandé, signal, après acceptation)</h4>
+<p class="exemples">Exemples : Passation — prévenir le client du changement de conseiller · Rappeler le client (il l’a demandé) · Premier rappel · Relance WhatsApp · Confirmer la signature et la suite · Acompte&nbsp;: relancer le client</p>
 <p class="question"><span class="q">Question posée</span> — Où en est ce dossier&nbsp;?</p>
 </div>
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
-<tr><td><strong>Fait — passer à la suite</strong></td><td>Sur un barreau de l’ancien plan&nbsp;: la touche suivante est programmée à son délai. Sur une étape posée par l’ERP&nbsp;: un suivi de proposition pendant reprend, sinon <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée pour demain.</td></tr>
+<tr><td><strong>Fait — passer à la suite</strong></td><td>Sur un barreau de l’ancien plan&nbsp;: la touche suivante est programmée à son délai. Sur une étape posée par l’ERP&nbsp;: un suivi de proposition pendant reprend, sinon <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée pour demain. Sur un dossier Signé&nbsp;: rien d’autre n’est posé.</td></tr>
 <tr><td><strong>Répondeur</strong><span class="pastille">sur un appel</span></td><td>Comme <span class="ecran">«&nbsp;Fait — passer à la suite&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Répondeur&nbsp;»</span> est gardée dans l’historique.</td></tr>
 <tr><td><strong>Occupé</strong><span class="pastille">sur un appel</span></td><td>Comme <span class="ecran">«&nbsp;Fait — passer à la suite&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Occupé&nbsp;»</span> est gardée dans l’historique.</td></tr>
 <tr><td><strong>Numéro invalide</strong><span class="pastille">sur un appel</span></td><td>Comme <span class="ecran">«&nbsp;Fait — passer à la suite&nbsp;»</span>, avec la note <span class="ecran">«&nbsp;Numéro invalide&nbsp;»</span>. Case cochée&nbsp;: le lead passe Perdu (motif junk) et tout s’arrête.</td></tr>
@@ -598,7 +598,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><th style="width:34%">Quand</th><th>Ce que fait l’ERP</th></tr>
 <tr><td>Un lead arrive (site, Meta, saisie) avec un numéro</td><td>La prise de contact démarre seule&nbsp;: <span class="ecran">«&nbsp;Message d’identité&nbsp;»</span> puis <span class="ecran">«&nbsp;Appel d’ouverture&nbsp;»</span>.</td></tr>
 <tr><td>Un devis est envoyé depuis l’ERP</td><td>Le dossier passe <span class="ecran">«&nbsp;Devis envoyé&nbsp;»</span>. La prise de contact et les étapes <span class="ecran">«&nbsp;avant devis&nbsp;»</span> se ferment&nbsp;; le suivi de proposition démarre, daté de l’envoi — même si une étape de visite est encore ouverte.</td></tr>
-<tr><td>Le devis est marqué accepté (Ventes → Devis)</td><td>Le dossier passe <span class="ecran">«&nbsp;Signé&nbsp;»</span>&nbsp;: toutes les relances s’arrêtent.</td></tr>
+<tr><td>Le devis est marqué accepté (Ventes → Devis)</td><td>Le dossier passe <span class="ecran">«&nbsp;Signé&nbsp;»</span>&nbsp;: toutes les relances s’arrêtent, puis deux appels sont posés pour le commercial&nbsp;: <span class="ecran">«&nbsp;Confirmer la signature et la suite&nbsp;»</span> à J+2 et <span class="ecran">«&nbsp;Acompte&nbsp;: relancer le client&nbsp;»</span> à J+7 (pas de rappel si l’acompte est déjà payé). Les touches encore ouvertes sont annulées dès que l’acompte est reçu ou que l’acceptation est annulée&nbsp;; les clore ne pose rien d’autre.</td></tr>
 <tr><td>Le devis est marqué refusé</td><td>Le suivi de proposition s’arrête&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td>Une visite est planifiée (ou déplacée)</td><td>Les relances en attente sont décalées à deux jours après la visite&nbsp;; <span class="ecran">«&nbsp;Confirmer la visite (veille)&nbsp;»</span> et <span class="ecran">«&nbsp;Débrief visite&nbsp;»</span> sont posées. Sans devis envoyé&nbsp;: <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est mise en attente de la visite.</td></tr>
 <tr><td>Le technicien saisit son retour de visite</td><td>Le retour descend dans l’historique du lead. Sans devis envoyé&nbsp;: <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée (demain). Avec un devis&nbsp;: le débrief est calé sur le retour, et devient <span class="ecran">«&nbsp;Préparer le devis modifié&nbsp;»</span> si le terrain le demande.</td></tr>
