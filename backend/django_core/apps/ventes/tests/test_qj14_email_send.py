@@ -213,6 +213,88 @@ class TestEnvoyerEmailAction(TestCase):
                              ShareLink.objects.filter(devis=devis).latest('created_at').token)
             self.assertIs(rendu.call_args.kwargs.get('persist'), False)
 
+    def _devis_de_lead_cree_il_y_a_20_jours(self, reference):
+        """Un brouillon chiffré d'un lead, sans validité : le repli du moteur
+        (création + délai) diffère de la date que l'envoi pose."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.crm.models import Lead
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.tests._quote_engine_common import make_devis as devis_chiffre
+        profil = CompanyProfile.get(self.company)
+        profil.quote_validity_days = 30
+        profil.save()
+        lead = Lead.objects.create(
+            company=self.company, nom='Validite', prenom=reference, ville='Casablanca',
+            telephone='+2126000130' + reference[-2:], email='validite@test.ma')
+        devis = devis_chiffre(self.company, self.user, self.client_obj, [
+            ('Panneau mono 450W', '12', '1166.67', '20'),
+            ('Onduleur réseau 5kW', '1', '14000', '20'),
+        ], reference=reference)
+        Devis.objects.filter(pk=devis.pk).update(
+            lead=lead, date_validite=None,
+            date_creation=timezone.now() - timedelta(days=20))
+        devis.refresh_from_db()
+        return devis
+
+    def test_piece_jointe_imprime_la_validite_posee(self):
+        """ADVS13 (C-ADVS-010) — le rendu suit la pose de la validité : le PDF
+        joint imprime ``date_validite`` relue, pas le repli du moteur."""
+        from apps.ventes.quote_engine import builder
+        devis = self._devis_de_lead_cree_il_y_a_20_jours('DEV-QJ14-V01')
+        vu = {}
+        vrai = builder.build_quote_data
+
+        def _batir(d, options=None, *a, **kw):
+            data = vrai(d, options, *a, **kw)
+            vu['valid_until'] = data['valid_until']
+            return data
+
+        with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                        side_effect=builder.generate_premium_devis_pdf), \
+                mock.patch.object(builder, 'build_quote_data', side_effect=_batir), \
+                mock.patch('apps.ventes.quote_engine.residential.renderer.render_pdf_bytes',
+                           return_value=b'%PDF-1.4 test'), \
+                mock.patch('apps.ventes.utils.pdf._upload_pdf', return_value='cle/test.pdf'):
+            resp = self.api.post(url(devis.id), {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'envoye')
+        self.assertIsNotNone(devis.date_validite)
+        self.assertEqual(vu['valid_until'], devis.date_validite.strftime('%d/%m/%Y'))
+
+    def test_renvoi_d_un_envoye_ne_change_pas_la_validite(self):
+        """ADVS13 — devis déjà envoyé : date inchangée."""
+        from datetime import date
+        devis = make_devis(self.company, self.user, self.client_obj, 'envoye', 'DEV-QJ14-V02')
+        Devis.objects.filter(pk=devis.pk).update(date_validite=date(2031, 1, 15))
+        resp = self.api.post(url(devis.id), {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        devis.refresh_from_db()
+        self.assertEqual(devis.date_validite, date(2031, 1, 15))
+
+    def test_rendu_ou_envoi_en_echec_annule_tout(self):
+        """ADVS13 — rendu ou envoi en échec : brouillon, validité vide, aucun
+        plan de relance, aucune note « envoyé » ; l'EmailLog ``echec`` reste."""
+        from apps.crm.models import LeadActivity
+        cas = (('V03', {'side_effect': ValueError('refus du moteur')}, None, 409),
+               ('V04', {'return_value': 'k.pdf'}, (False, 'boom'), 502))
+        for suffixe, rendu, envoi, attendu in cas:
+            devis = self._devis_de_lead_cree_il_y_a_20_jours(f'DEV-QJ14-{suffixe}')
+            with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf', **rendu), \
+                    mock.patch('apps.ventes.email_service._send', return_value=envoi):
+                resp = self.api.post(url(devis.id), {}, format='json')
+            self.assertEqual(resp.status_code, attendu, resp.data)
+            self.assertEqual(resp.data['devis_statut'], 'brouillon')
+            devis.refresh_from_db()
+            self.assertEqual(devis.statut, 'brouillon')
+            self.assertIsNone(devis.date_envoi)
+            self.assertIsNone(devis.date_validite)
+            self.assertFalse(LeadActivity.objects.filter(
+                lead_id=devis.lead_id, body__icontains='Plan de relance').exists())
+            self.assertFalse(DevisActivity.objects.filter(devis=devis, body__icontains='envoyé (à').exists())
+            self.assertEqual(EmailLog.objects.get(devis=devis).statut, EmailLog.Statut.ECHEC)
+
     def test_corps_mal_type_400_sans_envoi(self):
         """ENF11 — un champ de mauvais type (entier, null) ou un corps non
         objet est refusé (400) AVANT tout effet : pas d'EmailLog, pas d'envoi."""
