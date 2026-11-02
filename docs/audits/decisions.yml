@@ -3222,3 +3222,60 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA4 (critique de complétude)"
     taches: [AARG57]
+  - id: D-ADVS-1
+    question: "Un devis envoyé, rendu à nouveau (PDF /proposal, page publique), relit les réglages actuels de la société (productible, barème, redevance) et les fiches produit (garantie) : que voit le client ?"
+    options:
+      - cle: figer_a_l_envoi
+        texte: "Réglages et fiches lus au premier envoi figés dans le devis ; un nouveau réglage ne vaut que pour les nouveaux envois ou une révision"
+      - cle: reglages_actuels
+        texte: "Le rendu suit les réglages du jour ; la modification change l'empreinte et force la relecture (409)"
+    reponse: figer_a_l_envoi
+    date: "2026-11-02"
+    source: "Reda, question interactive, audit parcours PA3"
+    taches: [ADVS1, ADVS2]
+  - id: D-ADVS-2
+    question: "Une vente dés-acceptée, corrigée puis signée une seconde fois garde la première preuve et le premier exemplaire signé : que faire ?"
+    options:
+      - cle: nouvelle_preuve
+        texte: "La seconde signature crée une nouvelle preuve et un nouvel exemplaire ; l'ancienne preuve et l'ancien PDF restent archivés à l'historique"
+      - cle: interdire
+        texte: "Un devis dés-accepté ne se re-signe plus : 409, réviser en V2"
+    reponse: nouvelle_preuve
+    date: "2026-11-02"
+    source: "Reda, question interactive, audit parcours PA3"
+    taches: [ADVS4]
+  - id: D-ADVS-3
+    question: "Un accessoire de batterie (câble batterie classé cable_dc) et une batterie au nom sans « batterie » : dans quelle option les compter ?"
+    options:
+      - cle: suit_la_batterie
+        texte: "Une seule règle partout : tout ce qui sert la batterie n'est que dans « Avec batterie » ; rôle stocké de la ligne d'abord, mots-clés en repli"
+      - cle: role_stocke_seul
+        texte: "Une seule règle partout, par le rôle stocké : un câble cable_dc reste dans les deux options"
+    reponse: suit_la_batterie
+    date: "2026-11-02"
+    source: "Reda, question interactive, audit parcours PA3"
+    taches: [ADVS5, ADVS6]
+  - id: D-ADVS-4
+    question: "Un prix tapé TTC × quantité perd des centimes en HT, puis l'arrondi à la centaine vers le bas retire 100 MAD (3 × 1 000 TTC → 2 900) : que faire ?"
+    options:
+      - cle: tolerance_un_dirham
+        texte: "Un total à moins d'1 MAD sous une centaine remonte à cette centaine ; l'arrondi à la centaine reste pour les autres totaux"
+      - cle: jamais_sur_prix_tape
+        texte: "Aucun arrondi à la centaine dès qu'une ligne a un prix saisi"
+      - cle: supprimer
+        texte: "Plus aucun arrondi à la centaine"
+    reponse: tolerance_un_dirham
+    date: "2026-11-02"
+    source: "Reda, question interactive, audit parcours PA3"
+    taches: [ADVS3]
+  - id: D-ADVS-5
+    question: "Désacceptation d'une vente dont le chantier a déjà un bon de commande fournisseur envoyé (ou une DA commandée) : bloquer ou laisser passer ?"
+    options:
+      - cle: refuser_409
+        texte: "409 nommant le BCF tant qu'il n'est pas annulé chez le fournisseur"
+      - cle: avertir
+        texte: "La désacceptation passe ; le BCF ouvert est signalé à l'acheteur (tâche ou alerte)"
+    reponse: ouverte
+    date: "2026-11-02"
+    source: "audit parcours PA3 (C-ADVS-027), non posée au lot interactif (S3)"
+    taches: [ADVS40]
