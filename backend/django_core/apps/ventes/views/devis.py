@@ -28,6 +28,7 @@ from apps.roles.permissions import (
     DroitDeLaGrille, is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
+from ..gardes_lecture import LectureVentes  # ADVS23
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 # AUD403 — brique UNIQUE du dépôt pour qu'un ``get_permissions()`` par action
 # ne jette pas en silence la garde qu'une ``@action`` déclare elle-même.
@@ -268,9 +269,12 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
-        if self.action in ('list', 'retrieve', 'variante_config'):
-            # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE
-            # (PUT) est re-vérifiée DANS l'action.
+        if self.action in ('list', 'retrieve'):
+            # ADVS23 — bornée aux rôles du module Ventes, comme les factures.
+            return [LectureVentes()]
+        if self.action == 'variante_config':
+            # La LECTURE est ouverte à tous ; l'ÉCRITURE (PUT) est re-vérifiée
+            # DANS l'action.
             return [IsAnyRole()]
         if self.action in ('create', 'update', 'partial_update'):
             return [IsResponsableOrAdmin()]
@@ -787,7 +791,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         parameters=[OpenApiParameter('client', OpenApiTypes.INT, required=True)],
         responses=D.PrefillSiteResponse)
     @action(detail=False, methods=['get'], url_path='prefill-site',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureVentes])
     def prefill_site(self, request):
         """WIR99 — pré-remplissage du générateur pour un devis SANS LEAD.
 

@@ -517,8 +517,9 @@ export function Component() {
   const reload = useCallback(() => {
     dispatch(fetchProduits())
     dispatch(fetchClients())
-    dispatch(fetchDevis())
-    // ERR-ASEC11-LECTURE-FACTURES — jamais d'appel voué au 403 (console).
+    // ERR-ASEC11-LECTURE-FACTURES, ADVS23 — jamais d'appel voué au 403 (console) :
+    // sans ce garde, le 403 des devis remplirait l'erreur du tableau de bord.
+    if (peutListerFactures) dispatch(fetchDevis())
     if (peutListerFactures) dispatch(fetchFactures())
     dispatch(fetchInstallations())
     dispatch(fetchLeads())
