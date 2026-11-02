@@ -13,7 +13,7 @@
 # préfixe+numéro quand le fichier n'en donne pas (D-ASEC-4, D-QJR5-659...) ; `ouverte` quand le fichier ne donne pas la réponse.
 
 version: 1
-date_maj: "2026-10-09"
+date_maj: "2026-11-01"
 
 decisions:
 
@@ -2965,6 +2965,39 @@ decisions:
     date: "2026-11-01"
     source: "Reda, question interactive, contre-visite vérifie ATOT"
     taches: [ATOT44, ATOT45]
+  - id: D-ASAV-VER2-1
+    question: "Quels tickets consomment le quota inclus (déplacements / visites) d'un contrat de maintenance ?"
+    options:
+      - cle: couverts_seuls
+        texte: "Seuls les tickets que le contrat couvre : ouverts à partir de date_debut, sur un équipement du registre du contrat, pas déjà couverts par la garantie constructeur"
+      - cle: tous_depuis_debut
+        texte: "Tous les tickets depuis date_debut (garantie et hors registre compris)"
+    reponse: couverts_seuls
+    date: "2026-11-02"
+    source: "Reda, question interactive, contre-visite vérifie ASAV du 01/11/2026"
+    taches: [ASAV122]
+  - id: D-ASAV-VER2-2
+    question: "Le quota d'un contrat se remet-il à zéro chaque année civile ou à l'anniversaire du contrat ?"
+    options:
+      - cle: annee_civile
+        texte: "Année civile (1er janvier - 31 décembre), bornée par date_debut l'année de départ"
+      - cle: annee_contrat
+        texte: "Année de contrat (fenêtres de 12 mois depuis date_debut)"
+    reponse: annee_civile
+    date: "2026-11-02"
+    source: "Reda, question interactive, contre-visite vérifie ASAV du 01/11/2026"
+    taches: [ASAV122]
+  - id: D-ASAV-VER2-3
+    question: "Corriger l'angle mort de la garde d'acceptation fait apparaître ≈ 134 tâches déjà cochées qui doivent une preuve en direct : regel unique de cette dette ?"
+    options:
+      - cle: regel_unique
+        texte: "Oui : les ids entrent une fois dans la dette gelée de chaque groupe (--reamorcer), qui ne fait ensuite que rétrécir"
+      - cle: preuves_dabord
+        texte: "Non : preuves en direct d'abord, garde bloquante avant le correctif"
+    reponse: regel_unique
+    date: "2026-11-02"
+    source: "Reda, question interactive, contre-visite vérifie ASAV du 01/11/2026"
+    taches: [ASAV120]
   - id: D-ACAL-VER2-1
     question: "Un calepinage enregistré puis ombré (horizon, ombre, matrice) garde une production stockée jamais dératée, que l'atelier réémet à la réouverture : quelle règle ?"
     options:
@@ -2978,3 +3011,153 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, contre-visite vérifie ACAL du 01/11/2026"
     taches: [ACAL367]
+
+  - id: D-CADV-1
+    question: "Protocole de contact résidentiel : garder les 11 touches sur 14 j (règle du 21/09 « ni nombre ni ordre ni J+N », CAD25) ou passer à la v4 (5 appels + 3 WhatsApp sur 7 j, fenêtres 10-14 h / 16-18 h, sans barreau dimanche ni heure 17:30-18:30) ?"
+    options:
+      - cle: v4
+        texte: "5 appels + 3 WhatsApp sur 7 jours, fenêtres 10-14 h et 16-18 h, barreaux J5 dimanche / J10 / J14 retirés, étiquette de clôture dynamique"
+      - cle: v3
+        texte: "garder les 11 touches sur 14 jours et mesurer 8-12 semaines de plus"
+    reponse: v4
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV23, CADV79, CADV80]
+
+  - id: D-CADV-2
+    question: "Réveils : garder J30/J60 pour tout lead parqué, ou les conditionner à l'historique (aucun barreau individuel pour un lead jamais joint ni chiffré ; appel humain J30 + message J60 pour un lead joint ou chiffré ; pilote d'appel sur les jamais-joints à facture ≥ 2 000 MAD) ?"
+    options:
+      - cle: historique
+        texte: "réveils selon l'historique : rien d'individuel pour les jamais joints / jamais chiffrés (liste saisonnière), appel J30 + message J60 pour les joints ou chiffrés, pilote facture ≥ 2 000"
+      - cle: aveugles
+        texte: "garder les réveils J30/J60 posés d'office pour tous"
+    reponse: historique
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV25, CADV28, CADV85, CADV86, CADV90, CADV91]
+
+  - id: D-CADV-3
+    question: "Après-devis : garder les 10 touches / 14 j et la validité CAD57 (J+14, J+30 si financé, liée au dernier barreau par VALID1), ou passer à la v4 (J1 WA, J2 appel, J3 conditionnel, J7 appel, J10 contenu, J14 appel, J28 appel, J60, J90 ; validité 30 j depuis l'envoi, découplée de la cadence ; J28 = point de prolongation) ?"
+    options:
+      - cle: v4
+        texte: "six touches sur 14 jours puis J28/J60/J90 ; validité 30 jours depuis l'envoi, découplée du dernier barreau ; prolongation à J28 tant que le devis est « envoyé » ; expiré = révision"
+      - cle: v3
+        texte: "garder les 10 touches et la validité CAD57 / VALID1"
+    reponse: v4
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV24, CADV81, CADV82, CADV83, CADV84, CADV87]
+
+  - id: D-CADV-4
+    question: "Modèle de parcage : raison et date obligatoires, états Standby / Nurture / Archive portés par des CHAMPS Lead (parc_etat, parc_raison, parc_jusqu_au, contrat d'abord) ou par des tags gérés ?"
+    options:
+      - cle: champs
+        texte: "trois champs Lead avec contrat lead.json livré seul d'abord, point d'écriture unique parquer_lead, invariants nocturnes"
+      - cle: tags
+        texte: "tags gérés sans migration (non requêtables, non contraignables)"
+      - cle: rien
+        texte: "ne rien changer : Froid sans raison"
+    reponse: champs
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV21, CADV22, CADV27, CADV71, CADV72, CADV73, CADV74, CADV75, CADV76, CADV77, CADV78, CADV88, CADV89]
+
+  - id: D-CADV-5
+    question: "Accusé de réception automatique hors heures : WhatsApp Business Platform avec gabarit UTILITAIRE (≈ 2 $/mois) après la case d'opt-in sur le formulaire Meta, ou WhatsApp entièrement manuel (balayages seuls) ?"
+    options:
+      - cle: api_utilitaire
+        texte: "gabarit utilitaire seulement, après la case d'opt-in nommant WhatsApp et téléphone sur le formulaire Meta ; test click-to-WhatsApp optionnel"
+      - cle: manuel
+        texte: "aucune API : les balayages du week-end et le lot de 09:00 sont toute la réponse"
+    reponse: api_utilitaire
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV41, CADV43, CADV113]
+
+  - id: D-CADV-6
+    question: "Couverture du week-end : deux balayages WhatsApp-first de 60 min (samedi 10:00, dimanche 17:00), un week-end sur deux et compensés, ou programmation des annonces Meta en heures ouvrées ?"
+    options:
+      - cle: balayages
+        texte: "deux balayages de 60 minutes, un week-end sur deux, compensés ; samedi_ok sur le seul WhatsApp d'identité"
+      - cle: dayparting
+        texte: "programmer les annonces Meta en heures ouvrées (budget à vie)"
+    reponse: balayages
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV30]
+
+  - id: D-CADV-7
+    question: "Routage des nouveaux leads résidentiels : file partagée « À prendre » avec commercial de permanence et propriété après le premier contact (les C&I gardent le propriétaire pro nommé, D-CIQ-20 ; les leads de Reda entrent dans la file ; Asmaa ≥ 0,8 siège), ou tout le flux Meta à Meryem seule ?"
+    options:
+      - cle: file_partagee
+        texte: "file partagée + permanence + échelle T+5 / T+15 / T+30 ; propriété après le premier contact ; C&I au propriétaire pro nommé"
+      - cle: meryem_seule
+        texte: "un seul propriétaire ; le budget Meta suit sa capacité (≈ 12-13 leads par semaine en v4)"
+    reponse: file_partagee
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV31, CADV104, CADV105, CADV115]
+
+  - id: D-CADV-8
+    question: "Liste Odoo (519 contacts sans historique ERP) : étiquette archive_odoo sur les 423 froids/perdus dans Odoo + pilote de 50 appels humains sur les 96 dossiers avancés dans Odoo, ou une diffusion WhatsApp en juin, ou rien ?"
+    options:
+      - cle: archive_pilote
+        texte: "étiquette archive_odoo (étape Odoo conservée) + pilote de 50 appels humains ; extension aux 120 « Devis Cold » si ≥ 5 intérêts, clôture si < 2"
+      - cle: diffusion_juin
+        texte: "une diffusion WhatsApp à toute la liste Odoo en juin"
+      - cle: rien
+        texte: "aucune action"
+    reponse: archive_pilote
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV5, CADV32, CADV106, CADV108, CADV109]
+
+  - id: D-CADV-9
+    question: "Réparation unique des données : 125 leads rebondis par l'alignement Odoo ramenés en Froid avec raison, perdus / archivés / opposés sortis des comptages vivants, ~160 réveils aveugles annulés — avec dry-run, liste d'ids validée par le fondateur, puis --apply ?"
+    options:
+      - cle: oui
+        texte: "dry-run, diff validé, puis une seule commande --apply ; une ligne de chatter par lead touché"
+      - cle: non
+        texte: "laisser les données en l'état"
+    reponse: oui
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV1, CADV2, CADV3, CADV4, CADV61, CADV62, CADV63, CADV64]
+
+  - id: D-CADV-10
+    question: "Chemins par segment : parcours C&I (pièces → devis, second contact, veille trimestrielle, jamais Froid à J14) et agricole en veille aux dates du client, via chaînes moteur et règles de veille sans second gabarit (CAD124 reste fermée ; rouvre CAD52 et B2B7), ou un seul chemin résidentiel pour tous ?"
+    options:
+      - cle: chemins
+        texte: "parcours C&I et agricole par chaînes moteur et règles de veille, aucun second gabarit, aucune saison inventée (AGR512)"
+      - cle: unique
+        texte: "un seul chemin résidentiel pour tous les segments"
+    reponse: chemins
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV29, CADV102, CADV103]
+
+  - id: D-CADV-11
+    question: "Les 155 leads Meta mai-août jamais joints (K6 palier 2) : un WhatsApp 1:1 tapé à la main citant leur demande, avec ligne STOP et 20-25 par jour, SEULEMENT après le récépissé F211 et la lecture du disclaimer du formulaire Meta ; ou appels seuls ; ou rien ?"
+    options:
+      - cle: messages_conditionnes
+        texte: "un message 1:1 chacun, après le récépissé F211 et la vérification du disclaimer ; appels seuls sinon ; arrêt du lot à 2 blocages sur 20 ou < 2 réponses sur 100"
+      - cle: appels_seuls
+        texte: "aucun message : appels sur la marge de capacité ou rien"
+      - cle: rien
+        texte: "aucune action sur ce palier"
+    reponse: messages_conditionnes
+    date: "2026-11-01"
+    source: "Reda, 01/11/2026, quatre questions interactives groupées (AskUserQuestion) en session cadence-suivi-clients ; conception docs/crm/cadence-v4-design-2026-11-01.md §9"
+    taches: [CADV32, CADV107, CADV109]
+
+  - id: D-CADV-12
+    question: "Un lead déjà parqué en Froid renvoie le formulaire Meta : rouvrir ce lead chez son propriétaire (conception v4 §4.5 ; revient sur D-CRX1 du 02/09 pour le SEUL cas Froid) ou garder D-CRX1 (toujours un nouveau lead) ?"
+    options:
+      - cle: rouvrir
+        texte: "le lead Froid repasse en Live chez son propriétaire, historique sur une seule fiche ; les leads vivants, signés ou archivés gardent D-CRX1 (nouveau lead)"
+      - cle: nouveau_lead
+        texte: "toujours un nouveau lead qui hérite du propriétaire du lead Froid, avec une ligne de chatter reliant les deux fiches"
+    reponse: rouvrir
+    date: "2026-11-02"
+    source: "Reda, 02/11/2026, question interactive (AskUserQuestion) en session cadence-suivi-clients, posée par le drafter CADV101 (conflit avec D-CRX1)"
+    taches: [CADV101]
