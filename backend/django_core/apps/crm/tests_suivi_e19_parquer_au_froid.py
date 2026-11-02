@@ -118,6 +118,27 @@ class ParquerAuFroidTests(TestCase):
         self.assertFalse(self.lead.relance_etapes.filter(
             cadence='generique', statut=A_FAIRE).exists())
 
+    def test_la_fin_de_gabarit_ecrit_la_raison(self):
+        """CADV72 — contact : injoignable ; après-devis : sans date ; étiquette
+        gardée, rejouer n'écrit aucune seconde ligne. Mutant : ne plus appeler
+        ``parquer_lead`` ⇒ ``parc_raison`` vide."""
+        cadence_plan.cloturer_cadence(self.lead, self.acteur, 'contact')
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.COLD)
+        self.assertEqual((self.lead.parc_etat, self.lead.parc_raison),
+                         ('nurture', 'injoignable'))
+        self.assertIn('Injoignable', self.lead.tags)
+        cadence_plan.cloturer_cadence(self.lead, self.acteur, 'contact')
+        self.assertEqual(self.lead.activites.filter(
+            field='parc_raison').count(), 1)
+        autre = Lead.objects.create(
+            company=self.company, nom='Apres devis', stage=stages.FOLLOW_UP,
+            owner=self.acteur, telephone='+212662190001')
+        cadence_plan.cloturer_cadence(autre, self.acteur, 'apres_devis')
+        autre.refresh_from_db()
+        self.assertEqual((autre.parc_etat, autre.parc_raison, autre.stage),
+                         ('nurture', 'pas_maintenant_sans_date', stages.COLD))
+
     # ── CADV21 — parquer_lead : le point d'écriture unique ──
 
     def test_parquer_lead_pose_l_etat_la_raison_et_le_froid(self):

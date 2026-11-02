@@ -179,6 +179,14 @@ _CLOTURE_TAGS = {
     'deuxieme_affaire': _CLOTURE_TAG_DEUXIEME_AFFAIRE,
 }
 
+#: CADV72 (D-CADV-4) — la RAISON de parcage de la fin de gabarit, en champ
+#: (``parquer_lead``) ; l'étiquette ci-dessus reste, c'est l'affichage.
+_CLOTURE_RAISONS = {
+    'contact': 'injoignable',
+    'apres_devis': 'pas_maintenant_sans_date',
+    'deuxieme_affaire': 'pas_maintenant_sans_date',
+}
+
 #: MRY11 — étape la plus AVANCÉE qu'une cadence puisse encore parquer.
 #: `_bulk_stage_allowed` autorise « vers COLD » depuis N'IMPORTE OÙ (c'est
 #: voulu pour une mise au parking manuelle) : sans ce plafond, épuiser une

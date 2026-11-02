@@ -602,6 +602,9 @@ def parquer_lead(lead, raison, jusqu_au, user):
         raise ValueError('Un parcage en standby exige une date de reprise.')
     jusqu_au = jusqu_au if etat == 'standby' else None
     ancienne = lead.parc_raison
+    # CADV72 — rejouer le MÊME parcage n'écrit aucune seconde ligne.
+    if (ancienne, lead.parc_etat, lead.parc_jusqu_au) == (raison, etat, jusqu_au):
+        return lead
     lead.parc_etat = etat
     lead.parc_raison = raison
     lead.parc_jusqu_au = jusqu_au

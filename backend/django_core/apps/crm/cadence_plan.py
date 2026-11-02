@@ -28,6 +28,7 @@ from .cadence_reperes import (
     OUTCOME_VISITE_ACCEPTEE,
     PREFIXE_NOTE_REPORT,
     _CLOTURE_PLAFOND,
+    _CLOTURE_RAISONS,
     _CLOTURE_TAGS,
     _LIBELLES_FILET_HORS_GABARIT,
     _canal_effectif,
@@ -35,7 +36,7 @@ from .cadence_reperes import (
     est_etape_de_visite,
     q_visite,
 )
-from .fiche_funnel import _rang_funnel, avancer_stage_lead_vers, poser_tag_lead
+from .fiche_funnel import _rang_funnel, parquer_lead, poser_tag_lead
 from .leads_doublons import find_duplicates_by_contact
 from .models import Lead, LeadActivity, RelanceEtape
 
@@ -1082,13 +1083,15 @@ def cloturer_cadence(lead, user, cadence):
         # l'étape courante avant d'en juger — même précaution que
         # `avancer_stage_new_vers_contacted`.
         if lead.pk:
-            lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived'])
+            lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived',
+                                         'parc_etat', 'parc_raison',
+                                         'parc_jusqu_au'])
         if lead.stage != stages.COLD and (
                 _rang_funnel(lead.stage) > _rang_funnel(plafond)):
             # Le lead a PROGRESSÉ pendant la cadence (devis envoyé, signé) :
             # la touche restée ouverte ne doit pas le faire retomber.
             return
-        avancer_stage_lead_vers(lead, user, stages.COLD)
+        parquer_lead(lead, _CLOTURE_RAISONS[cadence], None, user)
         tag = _CLOTURE_TAGS.get(cadence)
         if tag:
             poser_tag_lead(lead, user, tag)
