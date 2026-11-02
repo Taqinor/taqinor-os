@@ -179,6 +179,53 @@ class PremierRunTests(PublicationMeryemTestsBase):
         # Seul le document changé renotifie (2 destinataires).
         self.assertEqual(Notification.objects.count(), notifs_avant + 2)
 
+    def _ids_recherche(self, q):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+        resp = api.get(f'/api/django/ged/documents/recherche/?q={q}')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.data['results'] if isinstance(resp.data, dict) \
+            and 'results' in resp.data else resp.data
+        return [d['id'] for d in data]
+
+    def test_republication_met_a_jour_description_et_recherche(self):
+        """ADOC186 (sonde C-ADOC-VER-020) — la description du manifeste fait
+        foi à chaque republication et le mot ajouté sort de la recherche GED,
+        avec ou sans nouveau PDF ; un passage identique n'écrit rien."""
+        call_command('publier_documents_meryem', company=self.company.slug)
+        guide = Document.objects.get(folder=self._dossier(), nom='Guide de Meryem')
+        self.assertNotIn(guide.pk, self._ids_recherche('forage'))
+
+        manifeste = [dict(e) for e in MANIFEST]
+        manifeste[0]['description'] = 'Guide de vente, forage immergé.'
+        self._ecrire_manifeste(
+            manifeste, {'guide.pdf': b'%PDF-1.4 guide v2 (forage)'})
+        call_command('publier_documents_meryem', company=self.company.slug)
+        guide.refresh_from_db()
+        self.assertEqual(guide.description, 'Guide de vente, forage immergé.')
+        self.assertIsNotNone(guide.search_vector)
+        self.assertEqual(guide.versions.count(), 2)
+        self.assertIn(guide.pk, self._ids_recherche('forage'))
+
+        # Description seule changée (même PDF) : écrite et réindexée aussi.
+        manifeste[1]['description'] = 'Cadence des relances, irrigation.'
+        self._ecrire_manifeste(manifeste, {})
+        call_command('publier_documents_meryem', company=self.company.slug)
+        protocole = Document.objects.get(
+            folder=self._dossier(), nom='Protocole de rappel')
+        self.assertEqual(
+            protocole.description, 'Cadence des relances, irrigation.')
+        self.assertEqual(protocole.versions.count(), 1)
+        self.assertIn(protocole.pk, self._ids_recherche('irrigation'))
+
+        # Passage identique : rien n'est réécrit.
+        avant = Document.objects.get(pk=guide.pk).updated_at
+        call_command('publier_documents_meryem', company=self.company.slug)
+        self.assertEqual(Document.objects.get(pk=guide.pk).updated_at, avant)
+
     def test_force_republie_et_renotifie_meme_sans_changement(self):
         call_command('publier_documents_meryem', company=self.company.slug)
         notifs_avant = Notification.objects.count()
