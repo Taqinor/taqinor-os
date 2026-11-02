@@ -1006,3 +1006,41 @@ def lot_reactivation(company, maintenant=None, *, seau=None):
         traite_le__gte=debut, traite_le__lt=fin).count()
     taille = max(0, min(CAPACITE_HEBDO_COMMERCIAL * commerciaux - faites, LOT_PLAFOND))
     return {'taille': taille, 'motif_arret': None if taille else 'marge_nulle'}
+
+
+def releve_reactivation(company, semaine):
+    """CADV108 — les sept chiffres du lundi (conception v4 §5.4), par seau (contrat
+    ``reactivation_seaux.json``, clé ``releve``), en LECTURE SEULE, pour la semaine
+    du jour ``semaine``. ``contacts`` = les leads préparés cette semaine (marqueur de
+    CADV109) ; le reste = les leads d'un seau dont l'événement tombe cette semaine,
+    après leur premier message de ce seau : un lead sans marqueur n'est dans aucun
+    seau, un seau vide n'est pas servi. Même date ⇒ mêmes sept nombres."""
+    from apps.ventes.selectors import devis_envoyes_par_lead
+
+    debut, fin = _bornes_semaine(semaine)
+    premiers, contactes = {}, set()
+    for lead_id, seau, instant in _messages_reactivation(company, avant=fin):
+        premiers.setdefault((seau, lead_id), instant)
+        if instant >= debut:
+            contactes.add((seau, lead_id))
+    ids = {lead_id for _seau, lead_id in premiers}
+    reactions = _reactions_reactivation(company, ids)
+    for ligne in devis_envoyes_par_lead(company, ids):
+        reactions.setdefault(ligne['lead_id'], []).append((ligne['date_envoi'], 'devis'))
+    releve = {}
+    for cle, premier in premiers.items():
+        natures = {nature for quand, nature in reactions.get(cle[1], ())
+                   if debut <= quand < fin and quand >= premier}
+        if cle not in contactes and not natures:
+            continue
+        bloc = releve.setdefault(cle[0], {
+            'contacts': 0, 'reponses': 0, 'conversations': 0, 'devis': 0,
+            'signatures': 0, 'stop': 0, 'blocs': 0})
+        bloc['contacts'] += cle in contactes
+        bloc['reponses'] += _a_repondu(natures)
+        bloc['conversations'] += 'conversation' in natures
+        bloc['devis'] += 'devis' in natures
+        bloc['signatures'] += 'signature' in natures
+        bloc['stop'] += 'stop' in natures
+        bloc['blocs'] += 'bloc' in natures
+    return releve
