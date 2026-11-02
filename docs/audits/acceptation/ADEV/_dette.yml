@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ADEV
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - ADEV7
   - ADEV8
@@ -39,5 +40,7 @@ ids:
   - ADEV51
   - ADEV52
   - ADEV58
+  - ADEV63
   - ADEV67
   - ADEV68
+  - ADEV90

@@ -329,7 +329,8 @@ test('5xx et réseau : réessai sans marque (ADEP18)', async () => {
     const res = await ob.flush()
     assert.equal(res.remaining, 1)
     assert.equal((await ob.failed()).length, 0, 'aucune marque')
-    assert.equal((await ob.pending())[0].attempts, undefined)
+    // ACHT128 : un 503 est réessayé et COMPTÉ (attempts 1, aucune marque) ; 401/429/réseau : non comptés.
+    assert.equal((await ob.pending())[0].attempts, erreur.response?.status === 503 ? 1 : undefined)
   }
 })
 

@@ -1,0 +1,16 @@
+# Dette d'acceptation GELÉE du groupe CE (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: CE
+amorce: 9f7cc5de4
+reamorce: 9f7cc5de4
+ids:
+  - CE2E1
+  - CE2E2
+  - CE2E3
+  - CE2E4
+  - CE2E5
+  - CE2E7
+  - CE2E8
+  - CE2E9

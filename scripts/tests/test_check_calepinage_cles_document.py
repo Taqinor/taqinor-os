@@ -12,11 +12,12 @@ import _cliquet  # noqa: E402 — après sys.path/setup() (D-ENF22)
 import check_calepinage_cles_document as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
-def _repo(proprietes, exemple, ecrivain_js):
+def _repo(proprietes, exemple, ecrivain_js, hors_exemple=()):
     tmp = Path(tempfile.mkdtemp())
     schema = tmp / guard.SCHEMA
     schema.parent.mkdir(parents=True)
-    schema.write_text(json.dumps({"properties": {k: {} for k in proprietes},
+    schema.write_text(json.dumps({"properties": {k: ({"x-hors-exemple": True} if k in hors_exemple else {})
+                                                 for k in proprietes},
                                   "exemple": exemple}), encoding="utf-8")
     js = tmp / "frontend" / "src" / "features" / "calepinage" / "ecrit.js"
     js.parent.mkdir(parents=True)
@@ -31,6 +32,30 @@ class ClesDocumentTests(unittest.TestCase):
         self.assertEqual(dettes, {"exemple::poseSurfaces"})
         erreurs = guard.verifier(dettes, set())
         self.assertIn("poseSurfaces", erreurs[0])
+
+    def test_cle_absente_de_l_exemple_refusee_meme_en_base(self):
+        root = _repo(["poseSurfaces", "pin"], {"pin": 1}, "o = { poseSurfaces: 1, pin: 2 }")
+        dettes, _n = guard.analyser(root)
+        erreurs = guard.verifier(dettes, {"exemple::poseSurfaces"})
+        self.assertEqual(len(erreurs), 1)
+        self.assertIn("poseSurfaces", erreurs[0])
+
+    def test_marqueur_hors_exemple_exempte(self):
+        root = _repo(["repere", "pin"], {"pin": 1}, "o = { repere: 1, pin: 2 }", hors_exemple=("repere",))
+        dettes, _n = guard.analyser(root)
+        self.assertEqual(dettes, set())
+        self.assertEqual(guard.verifier(dettes, set()), [])
+
+    def test_sortie_liste_les_cles_non_rattachees(self):
+        self.assertEqual(guard._non_rattachees({"ecrivain::b", "ecrivain::a", "exemple::c"}),
+                         "ecrivain::a, ecrivain::b")
+        self.assertEqual(guard._non_rattachees(set()), "aucune")
+
+    def test_schema_reel_modepose_dans_exemple_et_repere_exempte(self):
+        cles, exemple, hors = guard.lire_schema()
+        self.assertEqual(exemple.get("modePoseDeclare"), "sol")
+        self.assertEqual(hors, {"repere"})
+        self.assertNotIn("repere", exemple)
 
     def test_cle_sans_ecrivain_est_refusee_hors_liste_blanche(self):
         root = _repo(["parcelle", "pin"], {"parcelle": 1, "pin": 1}, "o = { pin: 2 }")

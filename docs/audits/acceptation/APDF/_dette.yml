@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: APDF
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - APDF2
   - APDF6
@@ -18,3 +19,12 @@ ids:
   - APDF41
   - APDF43
   - APDF44
+  - APDF50
+  - APDF101
+  - APDF102
+  - APDF104
+  - APDF105
+  - APDF107
+  - APDF108
+  - APDF109
+  - APDF111

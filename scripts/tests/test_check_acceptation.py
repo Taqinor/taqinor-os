@@ -302,6 +302,60 @@ class AcceptationTests(unittest.TestCase):
         self.assertIn("déjà amorcée", sortie)
         self.assertEqual(cacc.dettes(), {"ATST": {"ATST2"}})
 
+    # -- ASAV120 : preuve sans etape, tag nu, WEB_PLAN, re-amorcage unique ---------------
+    def test_preuve_sans_etape_et_tag_nu_comptent(self):
+        self.depot.plan(ligne("x", "ATST1", "parcours Playwright demo_admin"),
+                        "- [x] ATST2 — **Tache** : Given x. Preuve en direct : n/a — garde. "
+                        "Files: `s.py` @acceptation\n",
+                        "- [x] ATST3 — **Tache** : Given x. Preuve en direct : n/a — garde. "
+                        "Files: `s.py` cite `@acceptation`\n")
+        self.assertEqual(sorted(cacc.taches_a_preuve()), ["ATST1", "ATST2"])
+
+    def test_web_plan_scanne(self):
+        self.depot.plan()
+        (self.depot.racine / "docs" / "WEB_PLAN.md").write_text(
+            ligne("x", "ATST7", "pile locale — page relue"), encoding="utf-8")
+        self.assertEqual(sorted(cacc.taches_a_preuve()), ["ATST7"])
+
+    def _depot_a_reamorcer(self):
+        self.depot.plan(ligne("x", "ATST1"), ligne("x", "ATST2"), ligne("x", "AUTR1"))
+        self.depot.dette("AUTR", "AUTR1")
+        return self.depot.commit_base()
+
+    def test_reamorcer_puis_la_dette_ne_fait_que_retrecir(self):
+        base = self._depot_a_reamorcer()
+        self.assertEqual(self.lancer("--reamorcer", "--base", base)[0], 0)
+        self.assertEqual(cacc.dettes()["ATST"], {"ATST1", "ATST2"})
+        code, sortie = self.lancer("--base", base)
+        self.assertEqual(code, 0, sortie)
+        chemin = self.depot.racine / cacc.DOSSIER / "ATST" / "_dette.yml"
+        avant = chemin.read_text(encoding="utf-8")
+        self.assertIn("reamorce:", avant)
+        self.lancer("--reamorcer", "--base", base)  # idempotent
+        self.assertEqual(chemin.read_text(encoding="utf-8"), avant)
+        # mutant : sans l'en-tête `reamorce:` l'ajout est une croissance reprochée
+        chemin.write_text("\n".join(ln for ln in avant.splitlines() if not ln.startswith("reamorce:")) + "\n",
+                          encoding="utf-8")
+        self.depot.git("add", "-A")
+        self.depot.git("commit", "-q", "-m", "reamorce")
+        chemin.write_text(avant.replace("  - ATST2\n", "  - ATST2\n  - ATST3\n"), encoding="utf-8")
+        self.depot.plan(ligne("x", "ATST1"), ligne("x", "ATST2"), ligne("x", "AUTR1"), ligne("x", "ATST3"))
+        code, sortie = self.lancer("--base", "HEAD")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("a GROSSI", sortie)
+        # `--write-baseline` conserve l'en-tête
+        self.lancer("--write-baseline", "--base", "HEAD")
+        self.assertIn("reamorce:", chemin.read_text(encoding="utf-8"))
+
+    def test_reamorcer_vide_les_avis(self):
+        base = self._depot_a_reamorcer()
+        code, sortie = self.lancer("--base", base)
+        self.assertIn("Avis : ATST1 déjà cochée sur la base", sortie)
+        self.lancer("--reamorcer", "--base", base)
+        code, sortie = self.lancer("--base", base)
+        self.assertEqual(code, 0, sortie)
+        self.assertNotIn("Avis : ATST", sortie)
+
     def test_rapport_ne_bloque_jamais(self):
         self.depot.plan(ligne("x", "ATST1"))
         code, sortie = self.lancer("--rapport", "--base", "AUCUNE-BASE")

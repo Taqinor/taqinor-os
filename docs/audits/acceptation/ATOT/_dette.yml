@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ATOT
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - ATOT2
   - ATOT3
@@ -15,11 +16,17 @@ ids:
   - ATOT9
   - ATOT10
   - ATOT11
+  - ATOT12
   - ATOT20
   - ATOT21
   - ATOT22
   - ATOT24
   - ATOT25
+  - ATOT27
   - ATOT28
   - ATOT31
+  - ATOT32
   - ATOT33
+  - ATOT34
+  - ATOT42
+  - ATOT44

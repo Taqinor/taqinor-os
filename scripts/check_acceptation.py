@@ -65,6 +65,7 @@ Usage :
   python scripts/check_acceptation.py [--base REF]   # garde (exit 1 si rouge)
   python scripts/check_acceptation.py --rapport      # mêmes lignes, exit 0
   python scripts/check_acceptation.py --amorcer      # amorce les dettes absentes
+  python scripts/check_acceptation.py --reamorcer    # regèle UNE fois la dette rendue visible (ASAV120)
   python scripts/check_acceptation.py --write-baseline  # rétrécit les dettes
   python scripts/check_acceptation.py --parcours     # tables PA* valides (AMET98, parcours_tables.py)
 """
@@ -136,9 +137,13 @@ def a_preuve(texte: str) -> bool:
     return any(not _SANS_PREUVE.match(m.group("v")) for m in _PREUVE.finditer(texte))
 
 
+def _plans() -> list:
+    """ASAV120 : PLAN_AUDIT_*.md + docs/WEB_PLAN.md (APDF107/112 y vivent) — une seule liste."""
+    return sorted((ROOT / "docs" / "plans").glob("PLAN_AUDIT_*.md")) + [ROOT / "docs" / "WEB_PLAN.md"]
+
+
 def _taches_des_plans() -> list:
-    plans = sorted((ROOT / "docs" / "plans").glob("PLAN_AUDIT_*.md"))
-    return ctc.lire_taches([str(p) for p in plans])
+    return ctc.lire_taches([str(p) for p in _plans()])
 
 
 def taches_a_preuve() -> dict:
@@ -311,12 +316,17 @@ def dettes() -> dict:
             for d in _dossiers_groupes() if (d / "_dette.yml").is_file()}
 
 
-def ecrire_dette(groupe: str, ids: set, amorce: str):
+def _entete_dette(texte: str, cle: str):
+    return plan_lanes._MiniYamlParser(texte).parse().get(cle)
+
+
+def ecrire_dette(groupe: str, ids: set, amorce: str, reamorce=None):
     chemin = ROOT / DOSSIER / groupe / "_dette.yml"
     chemin.parent.mkdir(parents=True, exist_ok=True)
     corps = "".join(f"  - {i}\n" for i in sorted(ids, key=_cle)) if ids else ""
+    re_ligne = f"reamorce: {reamorce}\n" if reamorce else ""
     chemin.write_text(ENTETE_DETTE.format(g=groupe) + f"groupe: {groupe}\n"
-                      f"amorce: {amorce}\nids:{'' if ids else ' []'}\n{corps}",
+                      f"amorce: {amorce}\n{re_ligne}ids:{'' if ids else ' []'}\n{corps}",
                       encoding="utf-8", newline="\n")
 
 
@@ -339,16 +349,20 @@ def base_disponible(base: str) -> bool:
     return False
 
 
-def croissances(base: str, actuelles: dict) -> list:
+def croissances(base: str, actuelles: dict, deja=frozenset()) -> list:
     noms = (_git("ls-tree", "-r", "--name-only", base, "--", DOSSIER) or "").splitlines()
     a_la_base = {n.strip() for n in noms if n.strip().endswith("/_dette.yml")}
     erreurs = []
     for groupe, ids in sorted(actuelles.items()):
         rel = f"{DOSSIER}/{groupe}/_dette.yml"
-        if rel in a_la_base:
-            neufs = ids - _ids_dette(_git("show", f"{base}:{rel}") or "")
-        else:
-            neufs = ids if a_la_base else set()
+        texte_base = _git("show", f"{base}:{rel}") or "" if rel in a_la_base else ""
+        neufs = ids - _ids_dette(texte_base) if rel in a_la_base else (ids if a_la_base else set())
+        # ASAV120 : ré-amorçage UNIQUE — admis si l'en-tête `reamorce:` a changé ET que chaque id
+        # ajouté était déjà coché sur la base ; sinon « a GROSSI » comme avant.
+        actuel = (ROOT / rel).read_text(encoding="utf-8") if (ROOT / rel).is_file() else ""
+        if neufs and _entete_dette(actuel, "reamorce") not in (None, _entete_dette(texte_base, "reamorce")) \
+                and neufs <= deja:
+            neufs = set()
         if neufs:
             erreurs.append(f"dette {groupe} : a GROSSI par rapport à {base} "
                            f"(+{', '.join(sorted(neufs, key=_cle))}) — la dette ne fait "
@@ -363,6 +377,9 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--rapport", action="store_true", help="affiche seulement (exit 0)")
     ap.add_argument("--amorcer", action="store_true",
                     help="amorce UNE fois la dette des groupes qui n'en ont pas")
+    ap.add_argument("--reamorcer", action="store_true",
+                    help="regèle UNE fois la dette rendue visible : ids cochés sur la base, à preuve, "
+                         "non couverts et hors dette (idempotent) ; écrit `reamorce: <sha9>`")
     ap.add_argument("--write-baseline", action="store_true",
                     help="retire de la dette les ids couverts ou plus cochés à preuve")
     ap.add_argument("--groupe", metavar="G",
@@ -395,13 +412,26 @@ def _mode_amorcer(restants: dict, dette: dict) -> int:
     return 0
 
 
+def _mode_reamorcer(restants: dict, dette: dict, deja: set) -> int:
+    sha = (_git("rev-parse", "--short=9", "HEAD") or "inconnu").strip()
+    for groupe, ids in sorted(restants.items()):
+        ajouts = {i for i in ids if i in deja and i not in dette.get(groupe, set())}
+        if not ajouts:
+            continue
+        chemin = ROOT / DOSSIER / groupe / "_dette.yml"
+        amorce = _entete_dette(chemin.read_text(encoding="utf-8"), "amorce") if chemin.is_file() else None
+        ecrire_dette(groupe, dette.get(groupe, set()) | ajouts, str(amorce or sha), reamorce=sha)
+        print(f"{groupe} : dette ré-amorcée à {sha} (+{len(ajouts)} id(s))")
+    return 0
+
+
 def _mode_baseline(restants: dict, dette: dict) -> int:
     for groupe, ids in sorted(dette.items()):
         garde = ids & restants.get(groupe, set())
         if garde != ids:
             amorce = plan_lanes._MiniYamlParser((ROOT / DOSSIER / groupe / "_dette.yml")
                                                 .read_text(encoding="utf-8")).parse()
-            ecrire_dette(groupe, garde, str(amorce.get("amorce") or "inconnu"))
+            ecrire_dette(groupe, garde, str(amorce.get("amorce") or "inconnu"), amorce.get("reamorce"))
             print(f"{groupe} : dette rétrécie de {len(ids) - len(garde)} id(s) "
                   f"→ {len(garde)}")
     return 0
@@ -416,7 +446,7 @@ def coches_a_la_base(base: str) -> set:
     if not base_disponible(base):
         return set()
     ids = set()
-    for plan in sorted((ROOT / "docs" / "plans").glob("PLAN_AUDIT_*.md")):
+    for plan in _plans():
         texte = _git("show", f"{base}:{_rel(plan)}") or ""
         ids |= set(_COCHEE.findall(texte))
     return ids
@@ -445,7 +475,7 @@ def _erreurs_garde(a_couvrir: dict, couverts: set, dette: dict, restants: dict,
                            f"à preuve ({', '.join(sorted(perimes, key=_cle))}) — lancez "
                            "`python scripts/check_acceptation.py --write-baseline`")
     if base_disponible(base):
-        erreurs += croissances(base, dette)
+        erreurs += croissances(base, dette, deja)
     else:
         print(f"Avis : base « {base} » indisponible — croissance de la dette non "
               "vérifiée.")
@@ -486,6 +516,8 @@ def main(argv=None) -> int:
         return _mode_groupe(args.groupe, a_couvrir, couverts, dette)
     if args.amorcer:
         return _mode_amorcer(restants, dette)
+    if args.reamorcer:
+        return _mode_reamorcer(restants, dette, coches_a_la_base(args.base))
     if args.write_baseline:
         return _mode_baseline(restants, dette)
 
