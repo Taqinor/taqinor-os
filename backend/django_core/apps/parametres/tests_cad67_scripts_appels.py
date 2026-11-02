@@ -30,7 +30,7 @@ from apps.parametres.models_relance import (
     CADENCE_CONTACT_DEFAUT, CanalRelance,
 )
 
-#: Barreaux d'ordre 3/4 AVANT CAD67 (6 et 10 : remplacés par CADV23) (référence figée pour prouver que
+#: Barreaux d'ordre 3/4/6/10 AVANT CAD67 (référence figée pour prouver que
 #: seules les clés de gabarit ont changé — jamais l'ordre, le jour ou le
 #: canal).
 _ORDRES_AVANT = {
@@ -38,6 +38,10 @@ _ORDRES_AVANT = {
         'canal': CanalRelance.APPEL},
     4: {'delai_jours': 1, 'delai_minutes': 0,
         'heure_cible': datetime.time(10, 30), 'canal': CanalRelance.APPEL},
+    6: {'delai_jours': 2, 'delai_minutes': 0,
+        'heure_cible': datetime.time(18, 0), 'canal': CanalRelance.APPEL},
+    10: {'delai_jours': 10, 'delai_minutes': 0,
+         'heure_cible': datetime.time(15, 0), 'canal': CanalRelance.APPEL},
 }
 
 
@@ -50,7 +54,7 @@ class BarreauxInchangesTests(SimpleTestCase):
     changent (garde-fou explicite de la tâche)."""
 
     def test_meme_nombre_de_barreaux(self):
-        self.assertEqual(len(CADENCE_CONTACT_DEFAUT), 8)
+        self.assertEqual(len(CADENCE_CONTACT_DEFAUT), 11)
 
     def test_ordre_jour_canal_inchanges_pour_les_barreaux_touches(self):
         par_ordre = _par_ordre()
@@ -93,14 +97,13 @@ class RepondeurBienEspaceTests(SimpleTestCase):
                       if e['template_cle'] == 'repondeur']
         self.assertEqual(len(repondeurs), 2)
 
-    def test_repondeur_est_sur_les_ordres_3_et_5(self):
+    def test_repondeur_est_sur_les_ordres_3_et_6(self):
         """Les libellés le disent : « Appel 2 » (ordre 3) et « Appel 4 »
-        (ordre 5 depuis CADV23) — le document réserve `repondeur` à ces
-        deux-là."""
+        (ordre 6) — le document réserve `repondeur` à ces deux-là."""
         repondeurs = [e for e in CADENCE_CONTACT_DEFAUT
                       if e['template_cle'] == 'repondeur']
         ordres = sorted(e['ordre'] for e in repondeurs)
-        self.assertEqual(ordres, [3, 5])
+        self.assertEqual(ordres, [3, 6])
 
     def test_repondeur_najamais_moins_de_24h_decart(self):
         repondeurs = [e for e in CADENCE_CONTACT_DEFAUT
@@ -116,7 +119,7 @@ class RepondeurBienEspaceTests(SimpleTestCase):
         test échouerait sur le code d'avant le correctif."""
         par_ordre = _par_ordre()
         self.assertNotEqual(par_ordre[4]['template_cle'], 'repondeur')
-        self.assertNotEqual(par_ordre[7]['template_cle'], '')
+        self.assertNotEqual(par_ordre[10]['template_cle'], '')
 
 
 class NouvellesClesTests(SimpleTestCase):
@@ -146,7 +149,7 @@ class NouvellesClesTests(SimpleTestCase):
     def test_les_cles_sont_bien_celles_posees_sur_les_barreaux(self):
         par_ordre = _par_ordre()
         self.assertEqual(par_ordre[4]['template_cle'], 'appel_relance')
-        self.assertEqual(par_ordre[7]['template_cle'], 'appel_dernier')
+        self.assertEqual(par_ordre[10]['template_cle'], 'appel_dernier')
 
     def test_aucun_prenom_code_en_dur(self):
         for cle in self.NOUVELLES_CLES:

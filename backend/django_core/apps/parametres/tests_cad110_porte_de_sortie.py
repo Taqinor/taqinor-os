@@ -23,9 +23,8 @@ import re
 from django.test import SimpleTestCase
 
 from apps.parametres.models_messages import (
-    CLES_PORTE_DE_SORTIE_CADV34, CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS,
-    MESSAGE_TEMPLATE_DEFAULTS_DARIJA, MESSAGE_TEMPLATE_VARIANTES_SEGMENT,
-    MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA, PLACEHOLDERS_RELANCE,
+    CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+    PLACEHOLDERS_RELANCE,
 )
 
 #: Les 4 familles / 8 clés que CAD110 complète.
@@ -35,17 +34,9 @@ CLES_PORTE_DE_SORTIE = [
     'reveil_a1', 'reveil_a2', 'reveil_a3', 'reveil_b',  # tous les réveils
 ]
 
-#: Les scripts d'appel (et le message de répondeur) se DISENT à voix haute :
-#: ils ne portent pas la phrase STOP (CADV34 : tout message ÉCRIT la porte).
-CLES_SCRIPTS_A_VOIX_HAUTE = [
-    'appel_ouverture', 'repondeur', 'appel_relance', 'appel_dernier',
-    'appel_dimanche', 'appel_suivi_j2', 'appel_suivi_j7', 'appel_suivi_j11',
-]
-
-#: CADV34 — les 8 clés de CAD110 + les 14 que CADV34 complète : TOUT message
-#: WhatsApp écrit des cadences contact, après-devis, deuxième affaire, visite.
-CLES_ECRITES_CADV34 = CLES_PORTE_DE_SORTIE + list(CLES_PORTE_DE_SORTIE_CADV34)
-PHRASE_STOP_FR = "Répondez STOP et je n'insiste plus."
+#: Les trois PREMIERS messages de la cadence contact — le garde-fou dit
+#: explicitement de ne PAS les alourdir.
+CLES_TROIS_PREMIERS = ['identite', 'appel_ouverture', 'repondeur']
 
 _CROCHETS = [
     (r'\[Prénom\]', '{prenom}'),
@@ -119,60 +110,18 @@ class QuatreFamillesPortentLaMentionTests(SimpleTestCase):
             self.assertIn(cle, CLES_RELANCE)
 
 
-class ToutMessageEcritPorteLaPorteDeSortieTests(SimpleTestCase):
-    """CADV34 — le garde-fou « ne pas alourdir les trois premiers messages »
-    de CAD110 est INVERSÉ : le cadre légal v4 (loi 09-08 art. 10 al. 5)
-    exige la porte de sortie partout, identité comprise."""
+class TroisPremiersMessagesNonAlourdisTests(SimpleTestCase):
+    """Garde-fou explicite : ne pas alourdir les trois premiers messages —
+    c'est le suivi long qui expose."""
 
-    def _phrase_darija(self):
-        # Mot pour mot la phrase de `je_classe_j7` : jamais une darija inventée.
-        return MESSAGE_TEMPLATE_DEFAULTS_DARIJA['je_classe_j7'].rsplit(
-            '. ', 1)[1]
-
-    def test_tous_les_messages_ecrits_portent_la_porte_de_sortie(self):
-        darija = self._phrase_darija()
-        self.assertIn('STOP', darija)  # anti-faux-vert de l'extraction
-        for cle in CLES_ECRITES_CADV34:
-            with self.subTest(cle=cle, langue='fr'):
-                self.assertTrue(
-                    MESSAGE_TEMPLATE_DEFAULTS[cle].endswith(PHRASE_STOP_FR),
-                    f'{cle} (FR) ne finit pas par la phrase STOP')
-            with self.subTest(cle=cle, langue='darija'):
-                self.assertTrue(
-                    MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle].endswith(darija),
-                    f'{cle} (darija) ne finit pas par la phrase STOP')
-
-    def test_la_phrase_n_est_posee_qu_une_fois(self):
-        for cle in CLES_ECRITES_CADV34:
-            with self.subTest(cle=cle):
-                self.assertEqual(MESSAGE_TEMPLATE_DEFAULTS[cle].count('STOP'), 1)
-                self.assertEqual(
-                    MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle].count('STOP'), 1)
-
-    def test_les_variantes_de_segment_des_cles_porteuses_aussi(self):
-        darija = self._phrase_darija()
-        for table, phrase in (
-                (MESSAGE_TEMPLATE_VARIANTES_SEGMENT, PHRASE_STOP_FR),
-                (MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA, darija)):
-            for segment, textes in table.items():
-                for cle, texte in textes.items():
-                    if cle in CLES_PORTE_DE_SORTIE_CADV34:
-                        with self.subTest(segment=segment, cle=cle):
-                            self.assertTrue(texte.endswith(phrase))
-
-    def test_aucun_script_a_voix_haute_ne_porte_stop(self):
-        for cle in CLES_SCRIPTS_A_VOIX_HAUTE:
+    def test_les_trois_premiers_ne_portent_pas_stop(self):
+        for cle in CLES_TROIS_PREMIERS:
             with self.subTest(cle=cle):
                 self.assertNotIn('STOP', MESSAGE_TEMPLATE_DEFAULTS[cle])
-                self.assertNotIn('STOP', MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle])
 
-    def test_aucun_chevauchement_entre_ecrites_et_scripts(self):
+    def test_aucun_chevauchement_entre_les_deux_listes(self):
         self.assertEqual(
-            set(CLES_ECRITES_CADV34) & set(CLES_SCRIPTS_A_VOIX_HAUTE), set())
-
-    def test_les_cles_cadv34_sont_au_catalogue(self):
-        for cle in CLES_PORTE_DE_SORTIE_CADV34:
-            self.assertIn(cle, CLES_RELANCE)
+            set(CLES_PORTE_DE_SORTIE) & set(CLES_TROIS_PREMIERS), set())
 
 
 class FideliteALaSourceTests(SimpleTestCase):
