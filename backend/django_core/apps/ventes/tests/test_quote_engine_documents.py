@@ -145,6 +145,33 @@ class TestDocLiteralTemplates(TestCase):
         self.assertEqual(html.count(f'jusqu&#8217;au {echeance}'), 1)
         self.assertNotIn('Validit&#233;&#160;: 30 jours', html)
 
+    def test_la_validite_dit_prix_revisable_au_dela(self):
+        """CADV83 (D-CADV-3) — le badge de validité de la page 1 porte la date
+        DU DEVIS et la réserve « prix révisable au-delà », dans les trois
+        langues (le nombre de pages reste celui de ``test_quote_engine``)."""
+        import datetime
+        import html as html_module
+
+        from django.utils import timezone
+        # Jamais une date fixe (elle passerait dans le passé) : création + 60 j.
+        echeance = (timezone.localdate() + datetime.timedelta(days=60))
+        Devis.objects.filter(pk=self.devis.pk).update(
+            statut=Devis.Statut.ENVOYE, date_validite=echeance)
+        self.devis.refresh_from_db()
+        date = echeance.strftime('%d/%m/%Y')
+        attendus = {
+            'fr': f"Validité : jusqu'au {date} · prix révisable au-delà",
+            'en': f'Valid until {date} · price may be revised after',
+            'ar': f'صالح إلى غاية {date} · السعر قابل للمراجعة بعد ذلك',
+        }
+        for langue, attendu in attendus.items():
+            with self.subTest(langue=langue):
+                doc = html_module.unescape(
+                    self._render({'langue_sortie': langue}))
+                doc = (doc.replace(' ', ' ').replace(' ', ' ')
+                          .replace('’', "'"))
+                self.assertIn(attendu, doc)
+
     def test_editing_templates_changes_rendered_html(self):
         from apps.parametres.models_documents import DocumentTemplates
         tpl = DocumentTemplates.get(company=self.company)
