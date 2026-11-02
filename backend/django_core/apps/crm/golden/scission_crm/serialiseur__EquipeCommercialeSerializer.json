@@ -77,6 +77,12 @@
    "nom": "delai_attribution_minutes",
    "read_only": false,
    "required": false
+  },
+  {
+   "classe": "BooleenStrict",
+   "nom": "file_a_prendre",
+   "read_only": false,
+   "required": false
   }
  ]
 }

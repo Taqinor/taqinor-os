@@ -23,6 +23,7 @@ import logging
 import unicodedata
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
@@ -81,7 +82,7 @@ def confirmation_active(equipe, instant=None):
     responsable et ne part tout seul qu'à l'ouverture)."""
     if equipe is None or not _chef_actif(equipe):
         return False
-    return bool(equipe.confirmation_responsable
+    return bool(equipe.confirmation_responsable or equipe.file_a_prendre
                 or hors_heures(equipe.company, instant))
 
 
@@ -359,14 +360,25 @@ def _finaliser(attente, owner, acteur, corps):
     return lead
 
 
+def _equipes_a_prendre(user):
+    """Équipes ACTIVES de la société de ``user`` en file « À prendre » dont il
+    est membre (CADV31)."""
+    return EquipeCommerciale.objects.filter(
+        company_id=user.company_id, actif=True, file_a_prendre=True,
+        membres=user)
+
+
 def attribuer(user, lead_id, owner_id):
     """Décision du responsable (ou d'un admin). 404 hors société, 403 hors
     de son équipe, 409 si le lead n'attend plus, 400 si ``owner`` n'est ni un
     membre actif ni le responsable. Verrou de ligne : un double clic ou la
     tâche automatique ne peuvent pas écrire deux fois."""
     admin = bool(getattr(user, 'is_admin_role', False))
+    # CADV31 : un membre d'une équipe en file « À prendre » s'attribue lui-même
+    # un lead de la file ; tout autre non-responsable reste refusé.
     if not admin and not EquipeCommerciale.objects.filter(
-            company_id=user.company_id, responsable=user).exists():
+            company_id=user.company_id, responsable=user).exists() and not (
+            _equipes_a_prendre(user).exists()):
         raise PermissionDenied(
             "Seul le responsable de l'équipe attribue ses leads.")
     if not Lead.objects.filter(pk=lead_id, company_id=user.company_id).exists():
@@ -377,9 +389,15 @@ def attribuer(user, lead_id, owner_id):
         if attente is None or _deja_decide(attente):
             raise ConflitEtat("Ce lead n'attend plus d'attribution.")
         equipe = attente.equipe
+        prise = False
         if not (admin or equipe.responsable_id == user.pk):
-            raise PermissionDenied(
-                "Seul le responsable de l'équipe attribue ses leads.")
+            if not (equipe.file_a_prendre and membre_actif(equipe, user)):
+                raise PermissionDenied(
+                    "Seul le responsable de l'équipe attribue ses leads.")
+            if owner_id != user.pk:
+                raise PermissionDenied(
+                    "Un membre ne s'attribue un lead qu'à lui-même.")
+            prise = True
         owner = equipe.membres.filter(
             pk=owner_id, is_active=True, company_id=user.company_id).first()
         if owner is None and owner_id == equipe.responsable_id:
@@ -388,7 +406,9 @@ def attribuer(user, lead_id, owner_id):
             raise ValidationError(
                 {'owner': "Choisissez un membre actif de l'équipe."})
         corps = f'Attribué à {nom_affiche(owner)} par {nom_affiche(user)}'
-        if owner.pk == attente.proposee_id:
+        if prise:
+            corps = f'Pris par {nom_affiche(owner)}'
+        elif owner.pk == attente.proposee_id:
             corps += ' (proposition confirmée)'
         return _finaliser(attente, owner, user, corps)
 
@@ -487,7 +507,9 @@ def file_attente(user):
     # Équipes archivées comprises : la tâche attribue aussi leurs leads.
     equipes = EquipeCommerciale.objects.filter(company_id=user.company_id)
     if not _peut_tout_voir(user):
-        equipes = equipes.filter(responsable=user)
+        equipes = equipes.filter(
+            Q(responsable=user)
+            | Q(actif=True, file_a_prendre=True, membres=user)).distinct()
     equipes = list(equipes)
     if not equipes:
         return vide
@@ -495,7 +517,8 @@ def file_attente(user):
         company_id=user.company_id, equipe__in=equipes,
     ).select_related('lead', 'proposee', 'company').order_by('created_at', 'id'))
     attentes = [a for a in attentes if not _deja_decide(a)]
-    confirmees = [e for e in equipes if e.confirmation_responsable and e.actif]
+    confirmees = [e for e in equipes
+                  if (e.confirmation_responsable or e.file_a_prendre) and e.actif]
     # Une équipe à la fois : ses leads ET ses membres (revue Fable 27/10 —
     # jamais le lead d'une équipe avec les membres d'une autre).
     affichee = attentes[0].equipe if attentes else next(
@@ -510,7 +533,8 @@ def file_attente(user):
         is_active=True, company_id=user.company_id).order_by('first_name', 'username', 'id')
     return {
         'equipe': {'id': affichee.pk, 'nom': affichee.nom,
-                   'delai_minutes': affichee.delai_attribution_minutes},
+                   'delai_minutes': affichee.delai_attribution_minutes,
+                   'a_prendre': affichee.file_a_prendre},
         'en_attente': len(attentes),
         'leads': [_ligne_lead(a, maintenant) for a in attentes],
         'membres': [_ligne_membre(m, plafond, affichee.responsable_id)

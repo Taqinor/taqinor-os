@@ -1449,6 +1449,12 @@ class EquipeCommerciale(models.Model):
     # décision, le lead part automatiquement au membre proposé.
     delai_attribution_minutes = models.PositiveIntegerField(
         default=5, verbose_name="Délai avant attribution automatique (minutes ouvrées)")
+    # CADV31 (D-CADV-7) — file « À prendre » : un nouveau lead RÉSIDENTIEL
+    # attend, visible de tous les membres actifs, et le premier qui le prend
+    # (``dispatch.attribuer``) en devient le propriétaire. Les leads pro
+    # gardent leur responsable désigné (routage CIQ416, AVANT la file).
+    file_a_prendre = models.BooleanField(
+        default=False, verbose_name="File « À prendre » (tout membre prend un lead)")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

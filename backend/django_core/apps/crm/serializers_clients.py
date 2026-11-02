@@ -739,7 +739,7 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
             'id', 'company', 'nom', 'responsable', 'responsable_nom',
             'membres', 'nb_membres', 'actif', 'recoit_leads', 'date_creation',
             'departement', 'confirmation_responsable',
-            'delai_attribution_minutes',
+            'delai_attribution_minutes', 'file_a_prendre',
         ]
         read_only_fields = ['company', 'date_creation']
 

@@ -327,6 +327,50 @@ class AttributionParResponsableTests(TestCase):
         second = self._nouveau().attribution_en_attente.proposee
         self.assertEqual({premier, second}, {self.a, self.b})
 
+    def test_la_file_a_prendre_se_prend_une_seule_fois(self):
+        # CADV31 (D-CADV-7) : équipe en file « À prendre » (sans confirmation) —
+        # un nouveau lead résidentiel attend, tout membre actif se l'attribue,
+        # le second reçoit 409 ; un membre ne s'attribue qu'à lui-même ; le
+        # lead industriel va au responsable pro sans entrer dans la file.
+        from rest_framework.exceptions import PermissionDenied
+        from apps.crm import dispatch
+        from apps.crm.models import LeadActivity
+        from apps.crm.models_clients import AttributionEnAttente
+        from core.conflit_etat import ConflitEtat
+        self.equipe.confirmation_responsable = False
+        self.equipe.file_a_prendre = True
+        self.equipe.save(update_fields=['confirmation_responsable',
+                                        'file_a_prendre'])
+        pro = make_commercial(self.company, 'disp_pro', self.role)
+        profil = CompanyProfile.objects.get(company=self.company)
+        profil.responsable_leads_pro = pro
+        profil.save()
+        lead = self._nouveau_a(self._a(29, 10), type_installation='residentiel')
+        industriel = self._nouveau_a(self._a(29, 10),
+                                     type_installation='industriel')
+        industriel.refresh_from_db()
+        self.assertEqual(industriel.owner, pro)
+        self.assertFalse(
+            AttributionEnAttente.objects.filter(lead=industriel).exists())
+        self.assertTrue(AttributionEnAttente.objects.filter(lead=lead).exists())
+        # La file est listée aux trois membres (responsable compris).
+        for user in (self.chef, self.a, self.b):
+            fichier = dispatch.file_attente(user)
+            self.assertEqual(fichier['en_attente'], 1, user.username)
+            self.assertTrue(fichier['equipe']['a_prendre'])
+        # Un membre ne s'attribue qu'à lui-même.
+        with self.assertRaises(PermissionDenied):
+            dispatch.attribuer(self.a, lead.pk, self.b.pk)
+        dispatch.attribuer(self.a, lead.pk, self.a.pk)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.a)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, body=f'Pris par {dispatch.nom_affiche(self.a)}').exists())
+        with self.assertRaises(ConflitEtat):
+            dispatch.attribuer(self.b, lead.pk, self.b.pk)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.a)
+
     def test_on_sans_responsable_actif_rotation_directe(self):
         self.chef.is_active = False
         self.chef.save(update_fields=['is_active'])
