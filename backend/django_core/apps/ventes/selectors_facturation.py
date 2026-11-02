@@ -25,14 +25,17 @@ def factures_echues(company, *, today=None):
     Lecture seule ; renvoie un QuerySet (peut être vide)."""
     from django.utils import timezone as _tz
 
+    from apps.facturation.selectors import factures_avec_montant_du
+
     from .models import Facture
     today = today or _tz.localdate()
-    return Facture.objects.filter(
+    # AARG53 — le balayage lit ``jours_retard`` : préchargé, pas N requêtes.
+    return factures_avec_montant_du(Facture.objects.filter(
         company=company, date_echeance__isnull=False,
         date_echeance__lt=today,
     ).exclude(
         statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE],
-    ).select_related('client', 'created_by')
+    ).select_related('client', 'created_by'))
 
 
 def cle_citee_par_une_identite_figee(company_id, cle):

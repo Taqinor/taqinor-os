@@ -76,7 +76,8 @@ def variables_relance(facture):
         logger.warning("recouvrement.variables_relance : erreur ignorée (mode dégradé)", exc_info=True)
         montant = Decimal('0.00')
     jours = getattr(facture, 'jours_retard', 0) or 0
-    echeance = getattr(facture, 'date_echeance', None)
+    # AARG53 — l'échéance de la part encore due, celle de ``jours_retard``.
+    echeance = getattr(facture, 'echeance_exigible', None)
     return {
         'reference': getattr(facture, 'reference', '') or '',
         'client': nom_client,
@@ -488,6 +489,7 @@ def relances_list(request):
         # CIQ214 — le tableau des relances réclame l'EXIGIBLE.
         du = montant_exigible(f)
         jr = f.jours_retard
+        echeance = f.echeance_exigible  # AARG53 — celle de ``jr``.
         # XFAC5 — promesse de paiement active/rompue (priorité haute), servie
         # par le `Prefetch` filtré de `_facture_due_rows` (AUD158) : plus de
         # requête par ligne.
@@ -506,7 +508,7 @@ def relances_list(request):
             # L853 — téléphone client pour valider/désactiver le bouton WhatsApp
             # côté front (aucun envoi ici ; affichage/validation seulement).
             'client_telephone': f.client.telephone if f.client_id else None,
-            'date_echeance': f.date_echeance.isoformat() if f.date_echeance else None,
+            'date_echeance': echeance.isoformat() if echeance else None,
             'montant_du': _s(du),
             'jours_retard': jr,
             'niveau': _current_level(jr, levels, montant_du=du),
