@@ -43,6 +43,13 @@ describe('TicketDetail — ASAV45 garantie effective servie', () => {
     expect(screen.queryByText(/Garantie expirée/)).toBeNull()
     expect(screen.getAllByRole('combobox').some((c) => c.textContent === 'Oui')).toBe(true)
   })
+
+  it('ASAV117 — garantie de chantier à confirmer affichée', async () => {
+    const { sous_garantie_effectif, sous_garantie_effectif_display } = CONTRAT.exemple_sans_equipement
+    renderDetail({ equipement: null, equipement_fin_garantie: null,
+      equipement_fin_garantie_effective: null, sous_garantie_effectif, sous_garantie_effectif_display })
+    expect((await screen.findAllByText(/Sous garantie : À confirmer \(garantie de chantier\)/)).length).toBeGreaterThan(0)
+  })
 })
 
 describe('TicketDetail — ASAV110 mise en attente client réservée aux tickets ouverts', () => {

@@ -147,10 +147,10 @@ export function StatutPill({ statut }) {
 }
 
 const GARANTIE_TONES = { oui: 'success', non: 'danger', a_determiner: 'neutral' }
-function GarantieIndicator({ value }) {
+function GarantieIndicator({ value, display }) {
   return (
     <Badge tone={GARANTIE_TONES[value] ?? 'neutral'}>
-      Sous garantie : {SOUS_GARANTIE_LABELS[value] ?? value}
+      Sous garantie : {display ?? SOUS_GARANTIE_LABELS[value] ?? value}
     </Badge>
   )
 }
@@ -958,7 +958,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               </Select>
             </FormField>
             <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
-              <GarantieIndicator value={current.sous_garantie_effectif} />
+              <GarantieIndicator value={current.sous_garantie_effectif} display={current.sous_garantie_effectif_display} />
               {linkedEquip && (
                 <span className="text-xs text-muted-foreground">
                   {finGarantie
@@ -2121,7 +2121,7 @@ export default function TicketsPage() {
       header: 'Garantie',
       width: 120,
       searchable: false,
-      accessor: (r) => SOUS_GARANTIE_LABELS[r.sous_garantie_effectif] ?? '—',
+      accessor: (r) => r.sous_garantie_effectif_display ?? SOUS_GARANTIE_LABELS[r.sous_garantie_effectif] ?? '—',
     },
     { id: 'technicien_nom', header: 'Technicien', width: 140, accessor: (r) => r.technicien_nom ?? '—' },
   ], [])

@@ -648,6 +648,8 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     @extend_schema_field(serializers.CharField())
     def get_sous_garantie_effectif_display(self, obj):
+        if obj.garantie_chantier_a_confirmer:  # ASAV117 (D-ASAV-2 a)
+            return 'À confirmer (garantie de chantier)'
         return dict(Ticket.SousGarantie.choices).get(
             obj.sous_garantie_calcule, obj.sous_garantie_calcule)
 
