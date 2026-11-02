@@ -157,8 +157,8 @@ def recalculer_statut_paiement(facture, *, user=None, source=''):
     if facture.montant_exigible <= 0:
         return facture.statut
     today = timezone.now().date()
-    # AARG56 — l'échéance APPLIQUÉE, comme le beat (jamais `date_echeance` brute).
-    echeance = facture.echeance_appliquee
+    # AARG56/AARG53 — l'échéance de la part encore due, comme le beat.
+    echeance = facture.echeance_exigible
     nouveau = (Facture.Statut.EN_RETARD if echeance and echeance < today
                else Facture.Statut.EMISE)
     if facture.statut != nouveau:

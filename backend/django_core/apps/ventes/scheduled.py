@@ -53,7 +53,13 @@ def _echeance_effective(facture, today):
     """Échéance retenue : ``date_echeance`` si posée (jamais écrasée — input
     freedom), sinon dérivée des conditions de paiement du client (XFAC23 —
     délai négocié 30/60/90 j, fin de mois), sinon repli émission + 30 j
-    (comportement historique inchangé pour un client sans réglage)."""
+    (comportement historique inchangé pour un client sans réglage).
+
+    AARG53 — une part plus récente que la facture reste seule due (note de débit,
+    retenue libérée) : son échéance à elle."""
+    part_due = facture.echeance_exigible
+    if part_due and part_due != facture.echeance_appliquee:
+        return part_due
     if facture.date_echeance:
         return facture.date_echeance
     base = facture.date_emission or today

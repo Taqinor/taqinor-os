@@ -678,10 +678,16 @@ class Facture(TotauxDocumentMixin, models.Model):
         return self.date_emission + timedelta(days=DEFAULT_ECHEANCE_DAYS)
 
     @property
+    def echeance_exigible(self):
+        """AARG53 — l'échéance de la part la plus ancienne encore due."""
+        return echeance_de_la_part_due(self)
+
+    @property
     def jours_retard(self):
         """Jours de retard si l'EXIGIBLE reste dû (AFAC25 : jamais la retenue),
-        comptés depuis l'échéance APPLIQUÉE (AFAC48 : repli émission + 30 j)."""
-        echeance = self.echeance_appliquee
+        comptés depuis l'échéance de la part encore due (AARG53 ; AFAC48 : repli
+        émission + 30 j)."""
+        echeance = self.echeance_exigible
         if not echeance or self.statut in ('payee', 'annulee'):
             return 0
         if self.montant_exigible <= 0:
@@ -1397,6 +1403,35 @@ def decomposition_du(facture):
         'avoirs': facture.avoirs_total,
         'abandons': facture.abandon_montant or Decimal('0'),
     }
+
+
+def echeance_de_la_part_due(facture):
+    """AARG53 (C-AARG-060) — une note de débit ou une retenue libérée n'hérite
+    pas de l'échéance d'origine : chacune court de sa date + le délai de la
+    facture. Les crédits (payé, RAS, avoirs, abandon) soldent les parts de la
+    plus ancienne à la plus récente ; rend l'échéance de la première non soldée
+    (la retenue NON libérée n'est pas exigible : pas une part)."""
+    from datetime import timedelta
+    from decimal import Decimal
+    base = facture.echeance_appliquee
+    if base is None:
+        return None
+    d = decomposition_du(facture)
+    credit = d['paye'] + d['retenues'] + d['avoirs'] + d['abandons']
+    delai = DEFAULT_ECHEANCE_DAYS
+    if facture.date_echeance and facture.date_emission:
+        delai = max((facture.date_echeance - facture.date_emission).days, 0)
+    retenue = facture.retenue_garantie_mad or Decimal('0')
+    parts = [(base, d['facture'] - retenue)]
+    if retenue and facture.retenue_liberee_le:
+        parts.append((facture.retenue_liberee_le + timedelta(days=delai), retenue))
+    parts += [(n.date_emission + timedelta(days=delai), n.total_ttc)
+              for n in facture.notes_debit.all() if n.statut == 'emise']
+    for echeance, montant in sorted(parts, key=lambda part: part[0]):
+        if montant - credit > Decimal('0.01'):
+            return echeance
+        credit -= montant
+    return base
 
 
 def _ligne_facture_ecrite(sender, instance, raw=False, **kwargs):
