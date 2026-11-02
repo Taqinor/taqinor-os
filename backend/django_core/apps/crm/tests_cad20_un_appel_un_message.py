@@ -151,7 +151,7 @@ class UnSeulGestePaJourTests(_Base):
     def test_le_nombre_et_lordre_des_touches_ne_changent_pas(self):
         for jour in JOURS_DARRIVEE:
             ordres = [g.ordre for g, _e in self._partition(_a(jour))]
-            self.assertEqual(ordres, list(range(1, 12)), jour)
+            self.assertEqual(ordres, list(range(1, 9)), jour)  # gabarit v4 (CADV23)
 
 
 class LesExemptionsTests(_Base):
@@ -186,18 +186,20 @@ class UneToucheEnTropGlisseDunJourTests(_Base):
     slug = 'cad20-glisse'
 
     def test_deux_appels_pousses_sur_le_meme_lundi_sont_separes(self):
-        """Lead du vendredi : le J+1 (samedi) et le J+2 (dimanche) sont tous
-        deux des APPELS recalés sur le lundi. Le second glisse au mardi."""
+        """Lead du vendredi : le J+1 (samedi, barreau 4) et le J+2 (dimanche,
+        barreau 5) sont tous deux des APPELS recalés sur le lundi. Le second
+        glisse au mardi (gabarit v4, CADV23)."""
         plan = self._par_ordre(_a(VENDREDI))
         self.assertEqual(plan[4].date(), datetime.date(2026, 9, 14))
-        self.assertEqual(plan[6].date(), datetime.date(2026, 9, 15))
+        self.assertEqual(plan[5].date(), datetime.date(2026, 9, 15))
 
-    def test_les_deux_derniers_messages_apres_devis_sont_separes(self):
-        """J+13 tombe un dimanche, recalé au lundi — le J+14 est déjà ce
-        lundi-là. Le second glisse au mardi."""
+    def test_les_appels_apres_devis_du_week_end_vont_au_lundi(self):
+        """Gabarit après devis v4 (CADV24) : devis du samedi, l'appel J+14 et
+        l'appel J+28 tombent un samedi et sont recalés au lundi — plus de
+        collision J+13/J+14 (le J13 v3 n'existe plus)."""
         plan = self._par_ordre(_a(SAMEDI), 'apres_devis')
-        self.assertEqual(plan[9].date(), datetime.date(2026, 9, 28))
-        self.assertEqual(plan[10].date(), datetime.date(2026, 9, 29))
+        self.assertEqual(plan[8].date(), datetime.date(2026, 9, 28))
+        self.assertEqual(plan[9].date(), datetime.date(2026, 10, 12))
 
     def test_la_touche_glissee_reste_dans_la_fenetre_de_son_canal(self):
         for cadence in ('contact', 'apres_devis'):
