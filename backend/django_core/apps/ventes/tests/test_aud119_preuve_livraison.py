@@ -85,6 +85,24 @@ class TestPreuveLivraisonBonCommande(TestCase):
         self.assertEqual(self.bc.statut, BonCommande.Statut.LIVRE)
         self.assertFalse(self.bc.has_proof_of_delivery)
 
+    def test_part_fichier_vide_ignore_mais_fichier_invalide_refuse(self):
+        """ERR-ENF11-FUZZ-VENTES — un part ``pv`` de 0 octet = pas de pièce
+        (200) ; des octets non PDF/image restent refusés (400)."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        resp = self.api.post(
+            self._url(), {'note_pv': '', 'pv': SimpleUploadedFile('pv', b'')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.bc.refresh_from_db()
+        self.assertEqual(self.bc.statut, BonCommande.Statut.LIVRE)
+        self.assertFalse(self.bc.has_proof_of_delivery)
+        self.bc.statut = BonCommande.Statut.CONFIRME
+        self.bc.save()
+        resp = self.api.post(
+            self._url(), {'pv': SimpleUploadedFile('pv', b'pas un pdf')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
     def test_avertissement_de_facturation_disparait_avec_la_preuve(self):
         """L'avertissement FG51 n'est plus permanent : il répond enfin à un
         chemin produit réel."""
