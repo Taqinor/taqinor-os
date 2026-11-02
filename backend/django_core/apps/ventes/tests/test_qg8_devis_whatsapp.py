@@ -66,7 +66,8 @@ class DevisWhatsappActionTests(TestCase):
         resp = self._post(devis)
         self.assertEqual(resp.status_code, 200)
         self.assertIn('wa.me/212612345678', resp.data['wa_url'])
-        self.assertIn('/document/', resp.data['url'])
+        # ADVS42 — le lien vise la page, plus le PDF brut.
+        self.assertIn('/proposition/', resp.data['url'])
         self.assertIn('DEV-QG8', resp.data['message'])
         self.assertEqual(resp.data['devis_statut'], Devis.Statut.ENVOYE)
         devis.refresh_from_db()
