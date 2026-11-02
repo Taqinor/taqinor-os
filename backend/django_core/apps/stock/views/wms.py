@@ -1276,8 +1276,8 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         try:
             receptionner_retour_client(retour=retour, user=request.user)
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 (api-fuzz) — seul l'état enregistré refuse ici : 409.
+            raise ConflitEtat(str(exc))
         retour.refresh_from_db()
         return Response(self.get_serializer(retour).data)
 

@@ -444,7 +444,7 @@ class LigneRetourClientSerializer(CompanyScopedRelationsMixin,
 
 
 class RetourClientSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
-                             serializers.ModelSerializer):
+                             ChampsStrictsMixin, serializers.ModelSerializer):
     """NTWMS23 — retour client (RMA). Référence et statut posés côté
     serveur ; les lignes sont fournies à la création."""
 
