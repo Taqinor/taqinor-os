@@ -257,3 +257,20 @@ class CiblesReellesTests(TestCase):
             self.assertTrue(
                 ContentType.objects.filter(
                     app_label=app_label, model=model).exists(), cle)
+
+
+class ChecklistCorpsRequisTests(SimpleTestCase):
+    """api-fuzz 01/11 (ENF11) — ``POST dossiers/{id}/checklist/`` : le corps
+    polymorphe (ajout OU coche) est publié OBLIGATOIRE, sinon le fuzz l'omet et
+    reçoit 400 « libelle obligatoire » sur une requête « conforme »."""
+
+    def test_corps_publie_obligatoire(self):
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[
+            path('', include('core.urls_dossiers'))]
+        ).get_schema(request=None, public=True)
+        operation = next(
+            chemin['post'] for url, chemin in schema['paths'].items()
+            if url.endswith('/checklist/'))
+        self.assertTrue(operation['requestBody'].get('required'), operation)

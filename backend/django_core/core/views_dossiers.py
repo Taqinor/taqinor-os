@@ -38,6 +38,7 @@ from . import dossiers as dossiers_service
 from .champs_stricts import (
     BooleenStrict, ChaineStricte, ChampsStrictsMixin, IdInconnu404Mixin, TexteLie)
 from .mixins import SameCompanyFKSerializerMixin
+from .openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from .parseurs import corps_valide
 from .models import (
     Dossier, DossierActivity, DossierChecklistItem, DossierLien,
@@ -340,7 +341,12 @@ class DossierViewSet(CompanyScopedModelViewSet):
         responses={
             200: DossierWorkflowChecklistItemSerializer,
             201: DossierWorkflowChecklistItemSerializer,
-        })
+        },
+        # api-fuzz 01/11 : un ``request`` polymorphe n'est jamais publié
+        # « requis » par drf-spectacular -> le fuzz omettait le corps, « conforme »
+        # puis refusé (« libelle obligatoire »). L'une OU l'autre forme est exigée.
+        extensions={EXTENSION_CORPS_RESSERRE: {'anyOf': [
+            {'required': ['libelle']}, {'required': ['item_id']}]}})
     @action(detail=True, methods=['get', 'post'], pagination_class=None)
     def checklist(self, request, pk=None):
         """Lit la checklist, ou ajoute/coche une étape.
