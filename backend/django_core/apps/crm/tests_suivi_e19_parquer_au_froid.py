@@ -161,6 +161,21 @@ class ParquerAuFroidTests(TestCase):
         self.assertEqual(self.lead.activites.filter(
             field='parc_raison').count(), 1)
 
+    def test_un_lead_sorti_du_froid_se_range_a_nouveau(self):
+        """CADV72 — le no-op de rejeu ne vaut que pour un lead DÉJÀ au Froid :
+        sorti depuis (colonnes gardées), le même parcage le range encore.
+        Mutant : retirer la condition sur l'étape ⇒ échec."""
+        from apps.crm.fiche_funnel import parquer_lead
+        parquer_lead(self.lead, 'injoignable', None, self.acteur)
+        parquer_lead(self.lead, 'injoignable', None, self.acteur)
+        self.assertEqual(self.lead.activites.filter(
+            field='parc_raison').count(), 1)
+        Lead.objects.filter(pk=self.lead.pk).update(stage=stages.CONTACTED)
+        self.lead.refresh_from_db()
+        parquer_lead(self.lead, 'injoignable', None, self.acteur)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.COLD)
+
     def _lead_neuf(self, **kw):
         return Lead.objects.create(
             company=self.company, nom='Neuf', stage=stages.CONTACTED,

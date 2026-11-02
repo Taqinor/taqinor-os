@@ -640,8 +640,11 @@ def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True):
         raise ValueError('Un parcage en standby exige une date de reprise.')
     jusqu_au = jusqu_au if etat == 'standby' else None
     ancienne = lead.parc_raison
-    # CADV72 — rejouer le MÊME parcage n'écrit aucune seconde ligne.
-    if (ancienne, lead.parc_etat, lead.parc_jusqu_au) == (raison, etat, jusqu_au):
+    # CADV72 — rejouer le MÊME parcage sur un lead déjà rangé n'écrit aucune
+    # seconde ligne. Sorti du Froid depuis (réveil joint, colonnes gardées), il
+    # se range à nouveau : sinon ses réveils partiraient sur un lead hors Froid.
+    if ((ancienne, lead.parc_etat, lead.parc_jusqu_au) == (raison, etat, jusqu_au)
+            and (etat == 'standby' or lead.stage == stages.COLD)):
         return lead
     refus = _refus_parcage(lead, raison, exiger_touche)
     if refus:
