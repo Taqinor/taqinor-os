@@ -104,10 +104,10 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/ventes/models.py:100` | Devis.taux_tva | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:103` | Devis.remise_globale | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:207` | Devis.remise_approuvee_pct | 5 | 2 |
-| `backend/django_core/apps/ventes/models.py:618` | LigneDevis.prix_unitaire | 10 | 2 |
-| `backend/django_core/apps/ventes/models.py:621` | LigneDevis.remise | 5 | 2 |
-| `backend/django_core/apps/ventes/models.py:642` | LigneDevis.taux_tva | 5 | 2 |
-| `backend/django_core/apps/ventes/models.py:949` | AvenantDevis.taux_remise_global | 6 | 2 |
+| `backend/django_core/apps/ventes/models.py:619` | LigneDevis.prix_unitaire | 10 | 2 |
+| `backend/django_core/apps/ventes/models.py:622` | LigneDevis.remise | 5 | 2 |
+| `backend/django_core/apps/ventes/models.py:643` | LigneDevis.taux_tva | 5 | 2 |
+| `backend/django_core/apps/ventes/models.py:950` | AvenantDevis.taux_remise_global | 6 | 2 |
 | `backend/django_core/apps/ventes/models.py:1773` | DevisPreset.taux_tva | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:1777` | DevisPreset.remise_globale | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:2092` | LignePrixListe.prix_unitaire | 10 | 2 |
