@@ -9,6 +9,7 @@ SONDE = {"constat": "C-AARG-003", "sha": "56d5b623a",
 
 
 def sonde(ctx):
+    from apps.crm import stages
     from decimal import Decimal
     from django.contrib.auth import get_user_model
     from django.utils import timezone
@@ -22,7 +23,7 @@ def sonde(ctx):
     co = Company.objects.create(nom='Sonde AARG 003', slug='sonde-aarg-003')
     u = get_user_model().objects.create_user(username='sonde_aarg_003', password='x', role_legacy='admin', company=co)
     cl = Client.objects.create(company=co, nom='Client', prenom='AARG003', email='sonde-aarg-003@example.invalid')
-    lead = Lead.objects.create(company=co, nom='Client', prenom='AARG003', stage='SIGNED')
+    lead = Lead.objects.create(company=co, nom='Client', prenom='AARG003', stage=stages.SIGNED)
     dv = Devis.objects.create(company=co, reference='DEV-SONDE-AARG-003', client=cl, lead=lead,
                               statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
     inst, _ = create_installation_from_devis(dv, u, co)
