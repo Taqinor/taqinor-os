@@ -110,7 +110,7 @@ class ElectriqueActionsMixin:
                 return Response(
                     {'variante': "La variante n'a pas de conception : "
                                  "dessinez-la avant de l'évaluer."},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)  # ENF11 : état stocké
         try:
             if variante is None:
                 return Response(resultat_calepinage(calepinage))
