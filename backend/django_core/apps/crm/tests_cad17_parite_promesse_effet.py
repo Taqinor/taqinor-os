@@ -74,6 +74,7 @@ from apps.crm.cadence_reperes import (
     q_visite,
 )
 from apps.crm.cadence_reponses import PASSATION_ORDRE, REPONSES_TOUCHE, TAG_DECISION_A_PLUSIEURS
+from apps.crm.fiche_funnel import APPELS_MIN_INJOIGNABLE
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
 from apps.ventes.models import Devis
@@ -229,6 +230,14 @@ def _cles_servies(scenario):
 
 def _ordres_defaut(cadence):
     return frozenset(e['ordre'] for e in CADENCES_DEFAUT.get(cadence, []))
+
+
+#: CADV22 — la fin de gabarit ne parque au Froid (la promesse jouée ici) que sur
+#: un lead déjà touché : cinq appels pour « injoignable », une touche humaine
+#: sinon, « Sauter » n'en étant pas une. Le scénario ne fabrique que la dernière
+#: touche : ce sont les barreaux d'avant, faits, que ces lignes représentent.
+_APPELS_TRACES_AVANT_LA_FIN = {'contact': APPELS_MIN_INJOIGNABLE,
+                               'apres_devis': 1, 'deuxieme_affaire': 1}
 
 
 def _libelle_du_gabarit(scenario):
@@ -772,14 +781,12 @@ class PariteBase(TestCase):
     def _fabriquer(self, scenario, variante):
         """Le lead et la touche du scénario, dans la branche ``variante``."""
         lead = self._lead(scenario)
-        if scenario.cadence == 'contact' and scenario.ordre == max(
-                _ordres_defaut('contact')):
-            # CADV22 — la dernière touche ne parque au Froid (la promesse
-            # jouée ici) qu'après cinq appels tracés.
+        appels = _APPELS_TRACES_AVANT_LA_FIN.get(scenario.cadence)
+        if appels and scenario.ordre == max(_ordres_defaut(scenario.cadence)):
             LeadActivity.objects.bulk_create([
                 LeadActivity(company=lead.company, lead=lead, user=lead.owner,
                              kind=LeadActivity.Kind.APPEL, body='Pas de réponse.')
-                for _ in range(5)])
+                for _ in range(appels)])
         devis = None
         if scenario.devis or scenario.famille == A_COTE or variante in (
                 'devis_ouvert', 'devis_epuise'):
