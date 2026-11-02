@@ -151,11 +151,14 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         # locale Casablanca), jamais la création du brouillon ; une échéance
         # antérieure à cette date est re-dérivée, une échéance saisie
         # postérieure est conservée. Une facture déjà émise n'est pas re-datée.
-        from django.utils import timezone
-        facture.date_emission = timezone.localdate()
-        if facture.date_echeance and (
-                facture.date_echeance < facture.date_emission):
-            facture.date_echeance = None
+        # AARG23 (D-AARG-4) — réémise (numéro légal déjà posé) : date gardée.
+        from core.numbering import est_reference_provisoire
+        if est_reference_provisoire(facture.reference):
+            from django.utils import timezone
+            facture.date_emission = timezone.localdate()
+            if facture.date_echeance and (
+                    facture.date_echeance < facture.date_emission):
+                facture.date_echeance = None
     if not facture.date_echeance:
         # AFAC48 — délai client (XFAC23), sinon LE repli émission + 30 j :
         # une facture émise porte toujours son échéance appliquée.

@@ -14,7 +14,7 @@ from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsResponsableOrAdmin,
 )
 from . import openapi_docs as D
-from ..models import Avoir, Facture
+from ..models import Avoir, EmailLog, Facture
 from ..serializers_facturation import FactureListeSerializer, FactureSerializer
 from ..utils.corps import valider_corps
 
@@ -137,6 +137,17 @@ class FactureCycleActionsMixin:
                         "pour cette société — corrigez par un avoir puis une "
                         "nouvelle facture."
                     )},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            # AARG23 (D-AARG-4 = garder_date) — envoyée au client ou passée à
+            # la DGI : le retour en brouillon est fermé.
+            if (facture.dgi_statut != Facture.DgiStatut.A_TRANSMETTRE
+                    or EmailLog.objects.filter(
+                        facture=facture, direction=EmailLog.Direction.SORTANT,
+                        statut=EmailLog.Statut.ENVOYE).exists()):
+                return Response(
+                    {'detail': 'Facture déjà envoyée au client : corrigez par '
+                               'un avoir.'},
                     status=status.HTTP_409_CONFLICT,
                 )
             ancien = facture.statut
