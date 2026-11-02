@@ -406,3 +406,40 @@ class PeriodeAbsence(TenantModel):
     def __str__(self):
         qui = self.utilisateur_id or 'société'
         return f'{qui} — {self.date_debut} → {self.date_fin}'
+
+
+# ── CADV33 — registre des expériences de cadence (conception v4 §7.7) ────────
+#
+# Sans repère de changement, un mouvement du taux de joint du lundi ne
+# s'attribue à aucun changement de gabarit ou de campagne : on note ici, AVANT
+# le changement, ce qu'on change et ce qu'on attend (décision D-CADV-1 :
+# cohorte hebdomadaire, pas de A/B). Lecture du lundi = ``date_lecture`` ;
+# ``resultat`` s'écrit à ce moment-là. Lu par CADV110 (courbe de cohorte).
+class ExperienceCadence(TenantModel):
+    date = models.DateField(verbose_name='Date du changement')
+    changement = models.CharField(max_length=255, verbose_name='Changement')
+    metrique = models.CharField(max_length=120, verbose_name='Métrique')
+    effet_attendu = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Effet attendu')
+    date_lecture = models.DateField(
+        null=True, blank=True, verbose_name='Date de lecture')
+    resultat = models.TextField(
+        blank=True, default='', verbose_name='Résultat')
+
+    class Meta:
+        ordering = ['date', 'id']
+        verbose_name = 'Expérience de cadence'
+        verbose_name_plural = 'Expériences de cadence'
+        indexes = [models.Index(fields=['company', 'date'],
+                                name='crm_expcad_company_date_idx')]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (self.date and self.date_lecture
+                and self.date_lecture < self.date):
+            raise ValidationError({
+                'date_lecture': 'La date de lecture ne peut pas précéder la '
+                                'date du changement.'})
+
+    def __str__(self):
+        return f'{self.date} — {self.changement}'

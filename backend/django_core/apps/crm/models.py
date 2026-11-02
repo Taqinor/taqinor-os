@@ -3022,4 +3022,4 @@ from .models_clients import (  # noqa: E402,F401 — fin de module (anti-cycle),
     RevueCompte, SalleVente, SalleVenteItem, SalleVenteVue,
     SoumissionLeadPartenaire, VisiteExterne)
 from .models_cadence import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
-    GesteRelanceAppareil, MessageTemplate, PeriodeAbsence, RelanceEtape)
+    ExperienceCadence, GesteRelanceAppareil, MessageTemplate, PeriodeAbsence, RelanceEtape)

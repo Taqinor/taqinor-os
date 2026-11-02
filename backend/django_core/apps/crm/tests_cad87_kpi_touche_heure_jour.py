@@ -302,6 +302,49 @@ class IsolationEtContratTests(_Base):
             set(resp.data['part_contact_et_langue']),
             set(echantillon['exemple']['part_contact_et_langue']))
 
+    def test_registre_des_experiences_isole_par_societe_et_valide_les_dates(self):
+        """CADV33 — T poste une expérience ; T la lit (société forcée côté
+        serveur, même si le corps en nomme une autre) ; U lit une liste vide ;
+        un PATCH renseigne `resultat` ; `date_lecture` avant `date` → 400
+        nommant le champ."""
+        import json
+        from pathlib import Path
+        echantillon = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'experiences_cadence.json').read_text(encoding='utf-8'))
+        autre = _company('cad87-experiences-autre')
+        intrus = User.objects.create_user(
+            username='cad87-intrus', password='x',
+            role_legacy='responsable', company=autre)
+        url = '/api/django/crm/experiences-cadence/'
+        corps = {'date': '2026-11-16', 'changement': 'gabarit contact v4',
+                 'metrique': 'joint ≤ 14 j', 'effet_attendu': '37 % → 45 %',
+                 'date_lecture': '2026-12-14', 'company': autre.pk}
+        resp = self._api().post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        from apps.crm.models_cadence import ExperienceCadence
+        ligne = ExperienceCadence.objects.get()
+        self.assertEqual(ligne.company_id, self.company.pk)
+        lu = self._api().get(url).data
+        self.assertEqual(lu['count'], 1)
+        self.assertEqual(
+            set(lu['results'][0]),
+            set(echantillon['exemple']['results'][0]))
+        self.assertEqual(self._api(intrus).get(url).data['count'], 0)
+        self.assertEqual(
+            self._api(intrus).patch(f'{url}{ligne.pk}/', {'resultat': 'x'},
+                                    format='json').status_code, 404)
+        resp = self._api().patch(f'{url}{ligne.pk}/',
+                                 {'resultat': '37 % → 41 %'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.resultat, '37 % → 41 %')
+        mauvais = dict(corps, date_lecture='2026-11-01')
+        resp = self._api().post(url, mauvais, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('date_lecture', resp.data)
+        self.assertEqual(ExperienceCadence.objects.count(), 1)
+
     def test_endpoint_borne_le_parametre_jours(self):
         resp = self._api().get(MESURE_URL, {'jours': '9999'})
         self.assertEqual(resp.status_code, 200, resp.data)

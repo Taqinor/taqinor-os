@@ -10,6 +10,7 @@ from .views import (
 )
 # SPL74 — cadence de relance (cockpit des relances + modèles de message).
 from .cadence_views import MessageTemplateViewSet, RelanceEtapeViewSet
+from .experiences_cadence import ExperienceCadenceViewSet
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .webhooks import demande_rdv_webhook
 from .roof_views import lead_roof_footprint
@@ -111,6 +112,9 @@ router.register(r'appareils-equipe', AppareilEquipeViewSet,
 # Attribution par le responsable (27/10/2026) — règles de Paramètres → Leads.
 router.register(r'regles-attribution', RegleAttributionViewSet,
                 basename='crm-regle-attribution')
+# CADV33 — registre des expériences de cadence (repères de la cohorte).
+router.register(r'experiences-cadence', ExperienceCadenceViewSet,
+                basename='crm-experience-cadence')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
