@@ -84,6 +84,7 @@ describe('PortailClientDevis — CIQ322 identité d’entreprise', () => {
       consent_esign: CORPS_PORTAIL.consent_esign,
       accepte_conditions: true,
       entreprise,
+      empreinte_contenu: envoye.empreinte_contenu,
     })
   })
 
@@ -123,6 +124,7 @@ describe('PortailClientDevis — CIQ322 identité d’entreprise', () => {
       nom: CORPS_PORTAIL.nom,
       consent_esign: true,
       accepte_conditions: true,
+      empreinte_contenu: liste.data.results[0].empreinte_contenu,
     })
   })
 })

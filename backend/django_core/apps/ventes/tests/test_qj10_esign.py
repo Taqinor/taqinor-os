@@ -175,6 +175,50 @@ class TestDevisSignatureIdempotency(TestCase):
         self.assertEqual(sig.signed_at, first_sig.signed_at)
         self.assertEqual(sig.signataire_nom, 'Alice')
 
+    def test_resignature_apres_desacceptation_preuve_neuve(self):
+        """ADVS4 (C-ADVS-021, D-ADVS-2) — dés-acceptée, corrigée, re-signée : preuve
+        et exemplaire neufs au nom de B ; la preuve de A reste lisible dans l'archive."""
+        from apps.ventes.domain import pdf_signe
+        from apps.ventes.models_preuves import DevisSignatureArchivee
+        from apps.ventes.services import annuler_acceptation
+
+        def rendre():
+            with patch('apps.ventes.quote_engine.generate_premium_devis_pdf', return_value='devis/1/D.pdf'), \
+                    patch('apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF'), \
+                    patch('apps.ventes.utils.pdf._upload_pdf') as envoi:
+                self.assertEqual(pdf_signe.rendre_pdf_signe(devis.pk), pdf_signe.PRET)
+            return envoi
+
+        devis = _make_devis_with_ligne(self.company, self.client_obj, 'DEV-QJ10-B02')
+        accept_devis(devis=devis, user=self.user, nom='Ahmed A', ip='1.1.1.1')
+        rendre()
+        preuve_a = DevisSignature.objects.get(devis=devis)
+        annuler_acceptation(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        LigneDevis.objects.filter(devis=devis).update(prix_unitaire=Decimal('4000'))
+
+        accept_devis(devis=devis, user=self.user, nom='Ahmed B', ip='2.2.2.2')
+        # Re-soumission d'un devis accepté : aucune écriture.
+        accept_devis(devis=devis, user=self.user, nom='Ahmed C', ip='3.3.3.3', idempotent_reaccept=True)
+
+        relue = Devis.objects.select_related('client').get(pk=devis.pk)
+        preuve_b = DevisSignature.objects.get(devis=relue)
+        self.assertEqual(preuve_b.signataire_nom, 'Ahmed B')
+        self.assertGreater(preuve_b.signed_at, preuve_a.signed_at)
+        self.assertFalse(preuve_b.signed_pdf_key)  # null=True : neuve = None
+        self.assertEqual(preuve_b.verifier_contenu()[0], True)
+        envoi = rendre()
+        preuve_b.refresh_from_db()
+        self.assertTrue(preuve_b.signed_pdf_key)
+        self.assertNotEqual(preuve_b.signed_pdf_key, preuve_a.signed_pdf_key)
+        envoi.assert_called_once_with(b'%PDF', preuve_b.signed_pdf_key)
+        archive = DevisSignatureArchivee.objects.get(devis=relue)
+        self.assertEqual(archive.company_id, self.company.pk)
+        self.assertEqual(archive.preuve['signataire_nom'], 'Ahmed A')
+        self.assertEqual(archive.preuve['signed_pdf_key'], preuve_a.signed_pdf_key)
+        self.assertEqual(archive.preuve['content_hash'], preuve_a.content_hash)
+        self.assertEqual(archive.preuve['ip_address'], '1.1.1.1')
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # (c) Company scoping

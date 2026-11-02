@@ -24,7 +24,8 @@ def _fr_nombre(valeur):
 
 
 def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
-                               journal_auto=None, target_kwc=None):
+                               remise_globale=Decimal('0'), journal_auto=None,
+                               target_kwc=None):
     """AGR124 — devis automatique AGRICOLE (pompage) par le serveur.
 
     Entrées : ``crm.selectors.entrees_pompage_du_lead`` (AGR404), lues par
@@ -186,7 +187,8 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
         return Devis.objects.create(
             company=company, reference=ref, client=client, lead=lead,
             statut=Devis.Statut.BROUILLON, created_by=user,
-            taux_tva=taux_tva, mode_installation='agricole',
+            taux_tva=taux_tva, devise=devise_par_defaut(company),
+            remise_globale=remise_globale, mode_installation='agricole',
             etude_params=etude)
 
     with etude_precalculee(lead, sortie):
@@ -217,3 +219,4 @@ from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cy
 from apps.ventes.domain.creation_auto import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _ecrire_devis_auto_par_pipeline,
 )
+from apps.ventes.domain.creation import devise_par_defaut  # noqa: E402 — anti-cycle (D-ENF22)

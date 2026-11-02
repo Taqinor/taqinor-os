@@ -788,11 +788,39 @@ def _send_otp_email(email, code, devis_ref, company=None):
         return False
 
 
+def _completer_client_signataire(devis, entreprise):
+    """CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent au
+    Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE différent déjà
+    présent n'est jamais écrasé (``divergence_ice``). Point de sauvegarde :
+    jamais une acceptation cassée pour ça. ADVS8 — ``devis.client`` est relu :
+    le sceau doit lire le Client COMPLÉTÉ, pas le cache de l'instance."""
+    from django.db import transaction
+    if not (isinstance(entreprise, dict) and devis.client_id):
+        return
+    try:
+        with transaction.atomic():
+            from apps.crm.services import completer_client_depuis_acceptation
+            completer_client_depuis_acceptation(
+                devis.client_id, devis.company,
+                raison_sociale=entreprise.get('raison_sociale'),
+                ice=entreprise.get('ice'))
+        devis.refresh_from_db(fields=['client'])
+    except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
+        logger.exception(
+            'CIQ319 : identité entreprise non remontée au client '
+            '(devis %s)', getattr(devis, 'reference', '?'))
+
+
 def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                          signature_image='', signed_at_client=None,
                          on_behalf_of='', lignes=None, entreprise=None,
-                         langue='', refus_etude=None, lien=None):
+                         langue='', refus_etude=None, lien=None, remplacer=False):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
+
+    ADVS4 (D-ADVS-2) — ``remplacer`` (vraie bascule d'``accept_devis``) : une
+    preuve laissée par une dés-acceptation est copiée dans
+    ``DevisSignatureArchivee`` puis remplacée, dans le même point de sauvegarde ;
+    un échec garde l'ancienne intacte.
 
     ADEV96 — les chiffres de l'étude C&I scellés sont lus ici et stockés sur
     la signature (``figures_scellees``) : la vérification rejoue le sceau
@@ -820,7 +848,9 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     migrera jamais vers ``core.esign``. Voir ``core/esign.py`` et
     ``docs/esign-socle.md``.
     """
+    from django.db import transaction
     from apps.ventes.models import DevisSignature
+    from apps.ventes.models_preuves import DevisSignatureArchivee
     from apps.ventes.domain.modifiabilite import (
         SyntheseCiIllisible, figures_sceau, lien_scelle)
     figures = None
@@ -832,7 +862,7 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     porte_etude = isinstance(
         (getattr(devis, 'etude_params', None) or {}).get('etude_ci'), dict)
     if refus_etude is not None and porte_etude \
-            and not DevisSignature.objects.filter(devis=devis).exists():
+            and (remplacer or not DevisSignature.objects.filter(devis=devis).exists()):
         try:
             figures = figures_sceau(devis, strict=True, link=lien)
         except SyntheseCiIllisible:
@@ -840,7 +870,8 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                               code='validation_requise') from None
     try:
         from django.utils import timezone
-        if DevisSignature.objects.filter(devis=devis).exists():
+        existante = DevisSignature.objects.filter(devis=devis).first()
+        if existante is not None and not remplacer:
             return
         # NPLUS1 — lignes déjà chargées par l'appelant quand il les a (le hash
         # est identique : elles sont retriées par ``id`` côté modèle).
@@ -854,28 +885,34 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
         img = (signature_image or '')
         if len(img) > 200000:
             img = img[:200000]
-        DevisSignature.objects.create(
-            company=devis.company,
-            devis=devis,
-            signataire_nom=(nom or '')[:150],
-            consentement_explicite=bool(consentement),
-            ip_address=ip or None,
-            user_agent=(user_agent or '')[:512],
-            content_hash=content_hash,
-            signed_at=timezone.now(),
-            signature_image=img,
-            consent_esign=bool(consentement),
-            signed_at_client=signed_at_client or None,
-            on_behalf_of=(on_behalf_of or '')[:150],
-            # CIQ319 — identité de l'entreprise signataire (vide hors C&I).
-            **_champs_signature_entreprise(entreprise),
-            # ADEV99 — langue de la page (confirmation FR, EN si 'en').
-            langue_page=str(langue or '')[:5],
-            # ADEV96 — les chiffres scellés, pour un sceau reproductible ;
-            # ADEV104 — + le niveau du lien scellé (signature au jeton).
-            figures_scellees=DevisSignature.contenu_scelle(
-                figures, lien_scelle(lien)),
-        )
+        with transaction.atomic():
+            if existante is not None:
+                DevisSignatureArchivee.archiver(existante)
+                existante.delete()
+            DevisSignature.objects.create(
+                company=devis.company,
+                devis=devis,
+                signataire_nom=(nom or '')[:150],
+                consentement_explicite=bool(consentement),
+                ip_address=ip or None,
+                user_agent=(user_agent or '')[:512],
+                content_hash=content_hash,
+                signed_at=timezone.now(),
+                signature_image=img,
+                consent_esign=bool(consentement),
+                signed_at_client=signed_at_client or None,
+                on_behalf_of=(on_behalf_of or '')[:150],
+                # CIQ319 — identité de l'entreprise signataire (vide hors C&I).
+                **_champs_signature_entreprise(entreprise),
+                # ADEV99 — langue de la page (confirmation FR, EN si 'en').
+                langue_page=str(langue or '')[:5],
+                # ADEV96 — les chiffres scellés, pour un sceau reproductible ;
+                # ADEV104 — + le niveau du lien scellé (signature au jeton).
+                # ADVS8 — + l'identité client de CE sceau (la vérification la rejoue).
+                figures_scellees=DevisSignature.contenu_scelle(
+                    figures, lien_scelle(lien),
+                    client=DevisSignature._client_du_sceau(devis)),
+            )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
             devis.reference, content_hash[:16])
@@ -932,7 +969,9 @@ def _copier_exemplaire_signe(cle_rendu, *, devis):
     if not cle_rendu:
         return cle_rendu
     base = cle_rendu[:-4] if cle_rendu.lower().endswith('.pdf') else cle_rendu
-    cle_signee = f'{base}{SUFFIXE_EXEMPLAIRE_SIGNE}.pdf'
+    # ADVS4 — une re-signature ne réécrit jamais l'exemplaire de la preuve archivée.
+    rang = devis.signatures_archivees.count()
+    cle_signee = f'{base}{f"-{rang + 1}" if rang else ""}{SUFFIXE_EXEMPLAIRE_SIGNE}.pdf'
     try:
         from apps.ventes.utils.pdf import _upload_pdf, download_pdf
         _upload_pdf(download_pdf(cle_rendu), cle_signee)
@@ -978,9 +1017,12 @@ def _store_signed_pdf(*, devis):
             return  # no signature record yet (shouldn't happen in normal flow)
         if sig.signed_pdf_key:
             return  # already stored — idempotent
+        from apps.ventes.domain.pdf_signe import options_du_dernier_rendu
         from apps.ventes.quote_engine import clean_pdf_options, generate_premium_devis_pdf
+        # ADVS15 — une page reste une page : le format du dernier rendu.
         key = generate_premium_devis_pdf(
-            devis.id, clean_pdf_options({}), persist=True)
+            devis.id, clean_pdf_options(options_du_dernier_rendu(devis)),
+            persist=True)
         key = _copier_exemplaire_signe(key, devis=devis)
         # ADEV96 — le SHA-256 des octets figés, posé avec la clé (certificat).
         DevisSignature.objects.filter(pk=sig.pk).update(
@@ -1510,6 +1552,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             logger.warning('%s : échec ignoré (dégradé)', 'accept_devis', exc_info=True)
             lignes_devis = None
 
+        # ADVS8 — AVANT le sceau : c'est l'identité complétée qui est scellée.
+        _completer_client_signataire(devis, entreprise)
         # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
         # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
         # on ne crée pas de second enregistrement — la signature d'origine fait
@@ -1527,28 +1571,13 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
                 # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
                 entreprise=entreprise, langue=langue, lien=lien,
+                # ADVS4 — vraie bascule : une preuve d'avant la dés-acceptation
+                # s'archive ; la re-soumission d'un accepté est sortie plus haut.
+                remplacer=True,
                 refus_etude=(ETUDE_ILLISIBLE_REFUS
                              if _acceptation_par_le_client(user)
                              else ETUDE_ILLISIBLE_REFUS_INTERNE),
             )
-        # CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent
-        # au Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE
-        # différent déjà présent n'est jamais écrasé (``divergence_ice``).
-        # Point de sauvegarde : jamais une acceptation cassée pour ça.
-        if isinstance(entreprise, dict) and devis.client_id:
-            try:
-                with transaction.atomic():
-                    from apps.crm.services import (
-                        completer_client_depuis_acceptation,
-                    )
-                    completer_client_depuis_acceptation(
-                        devis.client_id, devis.company,
-                        raison_sociale=entreprise.get('raison_sociale'),
-                        ice=entreprise.get('ice'))
-            except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
-                logger.exception(
-                    'CIQ319 : identité entreprise non remontée au client '
-                    '(devis %s)', getattr(devis, 'reference', '?'))
         # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers
         # etude_params du devis pour que l'attribution reste lossless même si
         # le lead est fusionné.
@@ -1749,11 +1778,14 @@ def annuler_acceptation(*, devis, user, motif=''):
     Un devis qui n'est pas « accepté » est rendu tel quel (no-op). La preuve
     e-signature (``DevisSignature``, PDF scellé) n'est jamais touchée.
     """
+    from datetime import timedelta
     from django.db import transaction
     from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
+    from apps.ventes.domain.envoi import jours_validite_societe, prolonger_validite_devis
     from apps.ventes.selectors import groupe_proposition
+    from apps.ventes.utils.expiry import is_expired
     from core.events import devis_acceptation_annulee
 
     with transaction.atomic():
@@ -1781,6 +1813,16 @@ def annuler_acceptation(*, devis, user, motif=''):
         devis.save(update_fields=[
             'statut', 'date_acceptation', 'accepte_par_nom',
             'option_acceptee'])
+        # ADVS32 — le lien redevient celui d'un envoyé : il expire à sa date
+        # (``ouvrir_suivi`` le prolongera de nouveau à la ré-acceptation).
+        from apps.ventes.domain.suivi import lever_suivi
+        lever_suivi([devis.pk])
+        # ADVS33 — validité dépassée : reportée (délai société), sinon la
+        # ré-acceptation serait refusée ``expiree`` au lien.
+        reportee = None
+        if is_expired(devis):
+            reportee = prolonger_validite_devis(devis, timezone.localdate() + timedelta(
+                days=jours_validite_societe(devis.company)))
 
         # Sœurs refusées PAR cette acceptation — et elles seules.
         restaurees = []
@@ -1826,6 +1868,8 @@ def annuler_acceptation(*, devis, user, motif=''):
             corps += f' Motif : {motif}.'
         if restaurees:
             corps += f' Variante(s) rétablie(s) : {", ".join(restaurees)}.'
+        if reportee:
+            corps += f' Offre à nouveau signable : validité reportée au {reportee:%d/%m/%Y}.'
         corps += ' La preuve de signature du client est conservée.'
         activity.log_devis_note(devis, user, corps)
 

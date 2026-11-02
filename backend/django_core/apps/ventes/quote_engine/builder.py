@@ -26,7 +26,7 @@ from .lignes_classement import (
     _LigneArgentPdf, _is_battery,
     _is_hybrid_inverter, _is_offgrid_inverter, _is_panel, _is_reseau_inverter,
     _item_classement, _item_marque, _line_to_item, _parse_marque,
-    panneaux_et_watt_lu,
+    fiches_figees, panneaux_et_watt_lu,
 )
 # SPL163 — la phase D1 (chiffrage de l'étude) vit dans ``etude_chiffrage``
 # (move only) ; builder n'importe ici que ce qu'il utilise lui-même.
@@ -178,7 +178,7 @@ def _variante_de_ligne(ligne) -> str:
 _blob_item = _item_classement
 
 
-def _repartir_options(paires):
+def _repartir_options(paires, devis=None):
     """``(sans, avec, contradictions)`` — LA VARIANTE D'ABORD, LES MOTS-CLÉS APRÈS.
 
     ``paires`` est la liste ordonnée des couples ``(ligne, item)``. Chaque couple
@@ -190,13 +190,10 @@ def _repartir_options(paires):
     * variante ``'sans'`` / ``'avec'`` — la ligne n'entre QUE dans l'option
       déclarée. Une déclaration explicite du vendeur prime sur l'heuristique.
 
-    STKCAT23 — ENTRE LES DEUX, LE RÔLE STOCKÉ DE LA LIGNE. L'heuristique
-    « commune » ci-dessus ne s'applique plus à l'aveugle : quand la ligne porte
-    un ``role_devis`` (figé à sa création depuis le rôle DÉCLARÉ du produit),
-    c'est lui qui dit à quel panier elle appartient ; les mots-clés restent le
-    REPLI PERMANENT pour toute ligne sans rôle — toutes celles d'hier, et
-    toutes celles écrites hors de ``apps.ventes``. La ``variante`` DÉCLARÉE par
-    le vendeur reste au-dessus des deux.
+    ADVS6 (D-ADVS-3) — ENTRE LES DEUX, LE RÔLE STOCKÉ DE LA LIGNE : au niveau de
+    règles 10, ``utils.options.panier_de_ligne``, la MÊME que le noyau monnaie ;
+    un ``devis`` plus ancien garde sa répartition (``panier_du_moteur``). La
+    ``variante`` DÉCLARÉE reste au-dessus des deux.
 
     CEINTURE-BRETELLES, SANS PERTE DE LIGNE : la classification par mots-clés est
     quand même évaluée sur une ligne déclarée ; si elle CONTREDIT la déclaration
@@ -209,49 +206,29 @@ def _repartir_options(paires):
     Rend des listes de COUPLES : l'appelant a besoin des lignes ORM (pour lire la
     puissance panneau de chaque option) autant que des items de rendu.
     """
-    # QJR400 — L'ENSEMBLE D'EXCLUSION VIENT DU NOYAU, il n'est plus recopié
-    # ici : ``utils.options.blob_va_dans_sans`` / ``blob_va_dans_avec`` sont sa
-    # SEULE définition (S8-F5 : le panier « sans » du noyau excluait
-    # batterie + hybride mais PAS l'off-grid, contrairement à celui-ci).
     # Import fonction-local — ``utils.options`` importe ce module à son sommet.
-    from apps.ventes.utils.options import blob_va_dans_avec, blob_va_dans_sans
+    from apps.ventes.utils.options import (
+        blob_va_dans_avec, blob_va_dans_sans, panier_du_moteur)
     from core.product_roles import role_va_dans_avec, role_va_dans_sans
 
     sans, avec, contradictions = [], [], []
     for ligne, it in paires:
         variante = _variante_de_ligne(ligne)
         blob = _blob_item(it)
-        # QJR-OFFGRID — l'onduleur AUTONOME suit la règle de l'hybride : il est
-        # EXCLU du panier « sans » (une option « sans batterie » sur un système
-        # de site isolé n'existe pas) et INCLUS dans « avec ». Les panneaux,
-        # eux, continuent d'atterrir dans les DEUX paniers (invariant).
-        ok_sans_mots = blob_va_dans_sans(blob)
-        ok_avec_mots = blob_va_dans_avec(blob)
-        # STKCAT23 — LE RÔLE STOCKÉ D'ABORD, LES MOTS-CLÉS EN REPLI PERMANENT.
-        # Le rôle est figé à la CRÉATION de la ligne, depuis le rôle déclaré du
-        # produit (une donnée) ; les mots-clés, eux, relisent une désignation
-        # qu'un commercial peut avoir éditée depuis. Une ligne SANS rôle — toutes
-        # celles d'hier, et toutes celles écrites hors de ``apps.ventes`` —
-        # rend ``None`` des deux côtés et retombe MOT POUR MOT sur les mots-clés
-        # : aucun devis existant ne change de répartition.
         role = getattr(ligne, "role_devis", None)
-        ok_sans_role = role_va_dans_sans(role)
-        ok_avec_role = role_va_dans_avec(role)
-        ok_sans = ok_sans_mots if ok_sans_role is None else ok_sans_role
-        ok_avec = ok_avec_mots if ok_avec_role is None else ok_avec_role
-        # CEINTURE-BRETELLES, SANS PERTE DE LIGNE (même discipline que la
-        # ``variante`` plus bas) : quand le rôle stocké et la désignation ne
-        # disent pas la même chose, la ligne reste là où son RÔLE la met et la
-        # contradiction est JOURNALISÉE. Jamais un écrasement du rôle, jamais
-        # une ligne retirée d'un panier — un dirham ne s'évapore pas entre le
-        # devis et son PDF.
-        if ok_sans_role is not None and (ok_sans_role != ok_sans_mots
-                                         or ok_avec_role != ok_avec_mots):
+        # ADVS6 — LA règle du noyau, hors variante (traitée plus bas pour
+        # remonter les contradictions).
+        ok_sans, ok_avec = panier_du_moteur(role, blob, devis)
+        # Rôle stocké et désignation en désaccord : journalisé, le rôle n'est
+        # jamais réécrit.
+        if role_va_dans_sans(role) is not None and (
+                role_va_dans_sans(role) != blob_va_dans_sans(blob)
+                or role_va_dans_avec(role) != blob_va_dans_avec(blob)):
             logger.warning(
                 "Devis #%s — ligne « %s » : rôle stocké « %s » en désaccord "
                 "avec les mots-clés de sa désignation pour la répartition "
-                "d'options. Le rôle est CONSERVÉ et la ligne reste dans son "
-                "panier — rien n'est écrasé, aucune ligne n'est retirée.",
+                "d'options. Le rôle est CONSERVÉ, la ligne suit la règle "
+                "unique des paniers.",
                 getattr(ligne, "devis_id", "?"),
                 it.get("designation", ""), role)
         if variante == "sans":
@@ -572,7 +549,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     option_lignes = [li for li in lignes if getattr(li, "optionnelle", False)]
     lignes = [li for li in lignes if not getattr(li, "optionnelle", False)]
 
-    items = [_line_to_item(li, taux_tva) for li in lignes]
+    items = [_line_to_item(li, taux_tva, fiches_figees(devis)) for li in lignes]
     # Mode « réforme » dès qu'une ligne porte son propre taux ; un devis
     # historique (toutes lignes NULL) reste rendu strictement comme avant.
     per_line_tva = any(getattr(li, "taux_tva", None) is not None for li in lignes)
@@ -601,7 +578,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # sur les LIGNES de chaque panier, jamais sur le devis entier.
     _blob = _blob_item
     _sans_paires, _avec_paires, _variante_contradictions = _repartir_options(
-        list(zip(lignes, items)))
+        list(zip(lignes, items)), devis)
 
     # ── QF9 — Smart Meter + Clé Wifi (dongle) uniquement si onduleur Huawei ───
     # Ces accessoires sont propres à l'onduleur Huawei ; sur une option dont
@@ -1695,8 +1672,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "net_gain_avec": roi.get("net_gain_avec"),
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
         "savings_estimated": roi.get("savings_estimated", False),
-        # QXMT — dossier MT sans économies d'étude : le bloc ROI/économies est
-        # OMIS du document (jamais un chiffre calculé au barème BT).
+        # QXMT — dossier MT sans économies d'étude : bloc ROI/économies OMIS.
         "masquer_economies": masquer_economies,
         # QXMT — source du barème MT, à imprimer SOUS le bloc économies quand
         # les valeurs viennent bien de l'étude MT. '' hors dossier MT.
@@ -2081,13 +2057,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         )
         from apps.ventes.utils.options import option_effective as _option_eff
         _opt_eff = _option_eff(devis)
-        _comptees = (_filtrer_opt(lignes, _opt_eff) if _opt_eff
+        _comptees = (_filtrer_opt(lignes, _opt_eff, devis=devis) if _opt_eff
                      else list(lignes))
         _base_opt = _totaux_opt(devis, vue=_VueOpt.AFFICHAGE,
                                 lignes=_comptees)
         _opts = []
         for li in option_lignes:
-            it = _line_to_item(li, taux_tva)
+            it = _line_to_item(li, taux_tva, fiches_figees(devis))
             it.pop("_produit_nom", None)
             it.pop("_sans_quantite", None)
             qte = float(li.quantite or 0)
@@ -2170,6 +2146,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Fondateur 08/10/2026 — drapeaux des GABARITS (devis envoyé avant les corrections : formats d'origine, AMOT19/24/
     # 26/33/35/45 ; CPDF — C&I sous le niveau 3 : chiffres corrigés aux nouveaux rendus) ; règles courantes : aucune.
     data.update({cle: True for cle, pose in (
+        ("economies_masquees_lien", "economies" in opts.get("sections_masquees", ())),  # ADVS18 : lien décoché seul
         ("regles_calcul_origine", not _corrige),
         ("regles_avant_2710", _corrige and not _regles_2710(devis)),
         ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)),  # AGNR52

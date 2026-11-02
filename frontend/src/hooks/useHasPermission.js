@@ -106,19 +106,22 @@ export function useCanListAssignableUsers() {
   return permissions.some((c) => typeof c === 'string' && c.startsWith('crm_'))
 }
 
-// ERR-ASEC11-LECTURE-FACTURES — `GET /ventes/factures/` (liste/fiche) exige
-// `ventes_voir` pour un rôle fin (apps/ventes/views/facture.py::get_permissions) :
-// Commercial terrain et Admin RH → 403. Palier admin et compte hérité sans rôle
-// fin (aucun role_nom, aucune permission) passent, comme côté serveur.
-export const FACTURES_LECTURE_PERMISSION = 'ventes_voir'
-
-export function useCanListFactures() {
+// ERR-ASEC11-LECTURE-FACTURES, ADVS23 — la règle de `LectureVentes`
+// (apps/ventes/gardes_lecture.py) : lire les devis et les factures exige, pour un
+// rôle fin, AU MOINS UN code du module `ventes` (`ventes_*` + `encaisser`,
+// apps/roles/permissions_registre.py) : Commercial terrain, Admin RH, Technicien
+// → 403. Palier admin et compte hérité sans rôle fin (aucun role_nom, aucune
+// permission) passent, comme côté serveur.
+export function useCanLireVentes() {
   const role = useSelector((s) => s.auth.role)
   const roleNom = useSelector((s) => s.auth.role_nom)
   const permissions = useSelector((s) => s.auth.permissions) || []
   if (role === 'admin') return true
   if (!roleNom && permissions.length === 0) return true
-  return permissions.includes(FACTURES_LECTURE_PERMISSION)
+  return permissions.some((c) => typeof c === 'string'
+    && (c.startsWith('ventes_') || c === 'encaisser'))
 }
+
+export const useCanListFactures = useCanLireVentes
 
 export default useHasPermission

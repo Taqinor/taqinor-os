@@ -90,7 +90,10 @@ MATRIX: tuple[MatrixEntry, ...] = (
     MatrixEntry(
         app="ventes", label="Liste des devis",
         method="GET", path="/api/django/ventes/devis/",
-        verdicts=_all(ALLOW),  # IsAnyRole
+        # ADVS23 — même règle que les factures (``LectureVentes``) : les rôles
+        # techniciens canoniques ne portent aucun code Ventes → 403.
+        verdicts=_only("Directeur", "Administrateur", "Commercial responsable",
+                       "Commercial", "Viewer"),
     ),
     MatrixEntry(
         app="ventes", label="Liste des factures",

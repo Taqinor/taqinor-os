@@ -415,6 +415,27 @@ class TestFormeDeLaChargeUtileVivante(TestCase):
         self.assertNotIn('synthese_agricole',
                          self._payload(self.devis, ShareLink.NIVEAU_CONFIANCE))
 
+    def test_synthese_agricole_sert_le_debit_declare(self):
+        # ADVS39 (D-AMOT-7 = a) — rouge si la clé manque ou vaut toujours faux.
+        from apps.ventes.quote_engine.agricole.synthese import synthese_agricole
+
+        def eau(mode, courbe):
+            return synthese_agricole({
+                'etude': {'production': {'mode': mode}, 'm3_jour': 20,
+                          'heures_pompage': 7},
+                'all_items': [{'designation': 'Pompe immergée', 'quantite': 1,
+                               'role_pompage': 'pompe',
+                               'courbe_pompe': courbe}],
+            })['eau']
+
+        self.assertIs(eau('debit_declare', None)['debit_declare'], True)
+        self.assertIs(eau('courbe', None)['debit_declare'], False)
+        self.assertIs(eau('debit_declare', {
+            'debits_m3h': [0, 30], 'hmt_m': [80, 50]})['debit_declare'], False)
+        servie = self._payload(self.devis_agricole, ShareLink.NIVEAU_CONFIANCE)[
+            'synthese_agricole']['eau']
+        self.assertIn('debit_declare', servie)
+
     def test_synthese_ci_conforme_aux_fragments_commercial_et_industriel(self):
         # CIQ306 — le test de forme s'étend aux fragments `exemple_commercial`
         # et `exemple_industriel` : chaque sous-clé servie de `synthese_ci`

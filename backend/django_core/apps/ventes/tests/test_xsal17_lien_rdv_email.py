@@ -18,6 +18,7 @@ from apps.crm import stages
 from apps.crm.models import BookingLink, Client, Lead
 from apps.parametres.models_email import EmailTemplate
 from apps.ventes.models import Devis
+from apps.ventes.tests.test_qj14_email_send import rendu_ok
 
 User = get_user_model()
 
@@ -47,6 +48,7 @@ class LienRdvEmailTests(TestCase):
             company=self.company, nom='Tahiri', email='yasmine@test.ma')
         self.lead = Lead.objects.create(
             company=self.company, nom='Tahiri', stage=stages.NEW)
+        rendu_ok(self)
 
     def _devis(self):
         return Devis.objects.create(

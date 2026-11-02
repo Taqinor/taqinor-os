@@ -20,7 +20,7 @@ import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
 import { toast, useConfirmDialog } from '../../ui/confirm'
-import { useCanListAssignableUsers } from '../../hooks/useHasPermission'
+import { useCanListAssignableUsers, useCanLireVentes } from '../../hooks/useHasPermission'
 // VX156 — le moment « chantier terminé » (mise en service) porte la voix Taqinor.
 import { voice } from '../../lib/voice'
 import { telHref } from '../../lib/contactLinks'
@@ -285,6 +285,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [editIntervBusy, setEditIntervBusy] = useState(false)
   const [users, setUsers] = useState([])
   const peutListerUsers = useCanListAssignableUsers()
+  const peutLireVentes = useCanLireVentes() // ADVS23 — jamais un lien vers un refus
   const { confirm: confirmerMes } = useConfirmDialog()
   const startEditInterv = (iv) => setEditInterv({
     id: iv.id,
@@ -1029,11 +1030,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             )}
             {/* ── Liens ── */}
             <Section icon={Link2} title="Liens">
-              {/* VX216(c) — chaîne de responsabilité cliquable : personne ne
-                  voyait « Lead : A · Devis : B · Chantier : C · SAV : D » d'un
-                  coup d'œil quand le client rappelle. Maillons = deep-links
-                  RÉELS existants (VX79 ?id=/?lead=/?devis=) ; un maillon sans
-                  id connu est simplement absent. */}
+              {/* VX216(c) — chaîne de responsabilité cliquable (« Lead : A ·
+                  Devis : B · Chantier : C · SAV : D ») : quand le client rappelle.
+                  Maillons = deep-links RÉELS (VX79 ?id=/?lead=/?devis=) ; un
+                  maillon sans id connu est simplement absent. */}
               <OwnerChain
                 className="mb-2"
                 lead={current.lead ? { id: current.lead, nom: current.lead_nom } : null}
@@ -1042,7 +1042,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 sav={latestTicket ? { id: latestTicket.id, nom: latestTicket.reference } : null}
               />
               <div className="flex flex-wrap gap-2">
-                {current.devis && (
+                {current.devis && peutLireVentes && (
                   <Button size="sm" variant="outline"
                           onClick={() => navigate(`/ventes/devis?devis=${current.devis}`)}>
                     Voir le devis{current.devis_reference ? ` (${current.devis_reference})` : ''}

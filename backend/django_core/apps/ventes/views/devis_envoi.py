@@ -6,6 +6,7 @@ Les imports function-locaux des corps restent dans les corps (les
 ``mock.patch`` ``apps.ventes.services.*`` / ``apps.ventes.utils.pdf.*``
 n'interceptent qu'ainsi).
 """
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from rest_framework import status
@@ -119,13 +120,67 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
         raise _RemiseEnvoiRefusee(erreur.message)
 
 
+#: ADVS12 — message d'une panne de rendu ou de stockage (le motif technique
+#: reste dans l'``EmailLog``, jamais montré au commercial).
+PDF_INDISPONIBLE = ("Le PDF du devis n'a pas pu être produit : l'e-mail n'est "
+                    "pas parti. Réessayez dans un instant.")
+
+
+class _EnvoiAvorte(Exception):
+    """ADVS12 / ADVS13 — rendu ou envoi en échec : traverse le bloc atomique
+    (tout est annulé) en portant la réponse et le motif à consigner."""
+
+    def __init__(self, http, detail, erreur, piece_jointe='', code=''):
+        super().__init__(erreur)
+        self.http, self.detail, self.erreur = http, detail, erreur
+        self.piece_jointe, self.code = piece_jointe, code
+
+
+def _refus_rendu(exc):
+    """ADVS12 — le refus d'un rendu de pièce jointe : ``ValueError`` = refus
+    NOMMÉ du moteur (409, le motif est montré) ; toute autre panne de rendu ou
+    de stockage = 502."""
+    if isinstance(exc, ValueError):
+        return _EnvoiAvorte(status.HTTP_409_CONFLICT, str(exc), str(exc), code='pdf_refuse')
+    return _EnvoiAvorte(status.HTTP_502_BAD_GATEWAY, PDF_INDISPONIBLE,
+                        f'{type(exc).__name__}: {exc}', code='pdf_indisponible')
+
+
+def _envoi_atomique(devis, user, dest, sujet, corps, pdf_mode, token):
+    """ADVS13 (C-ADVS-010) — ``mark_devis_sent`` (seul chemin brouillon → envoyé,
+    règle #4 ; idempotent, ne régresse rien), PUIS le rendu, PUIS ``_send``, sous
+    UNE transaction : les receveurs synchrones de ``devis_sent`` ont posé
+    ``date_validite`` quand le moteur la lit, le PDF joint imprime donc la date
+    de la fiche ; QJR668 / ADVS29 — les CGV du jour, gelées par ``mark_devis_sent``,
+    y figurent ; toute panne annule tout (brouillon, aucune validité, aucun plan de
+    relance, aucun gel). Rendu à la volée (persist=False). Rend le nom de la pièce."""
+    from ..email_service import _send
+    from ..quote_engine import generate_premium_devis_pdf
+    from ..services import mark_devis_sent
+    from ..utils.pdf import download_pdf
+
+    nom = f'Devis_{devis.reference}.pdf'
+    with transaction.atomic():
+        mark_devis_sent(devis=devis, user=user)
+        try:
+            opts = _options_piece_jointe(devis, pdf_mode, token)
+            attachment = download_pdf(generate_premium_devis_pdf(devis.id, opts, persist=False))
+        except Exception as exc:  # noqa: BLE001 — traduit en refus nommé (D-ENF22-BLE001)
+            logger.warning("devis_envoi._envoi_atomique : pièce jointe non rendue", exc_info=True)
+            raise _refus_rendu(exc) from exc
+        ok, err = _send(dest, sujet, corps, attachment, nom)
+        if not ok:
+            raise _EnvoiAvorte(status.HTTP_502_BAD_GATEWAY, f'Échec envoi email : {err}', err, nom)
+    return nom
+
+
 def _options_piece_jointe(devis, pdf_mode, token):
     """AMOT117 — options de la pièce jointe : celles du dernier rendu persisté
     (``pdf_render_meta['options']``, même lecture que ``cle_pdf_a_jour``) ;
     ``pdf_mode`` explicite prime ; sans rendu mémorisé : « full »."""
+    from ..domain.pdf_signe import options_du_dernier_rendu
     from ..quote_engine import clean_pdf_options
-    meta = devis.pdf_render_meta if isinstance(devis.pdf_render_meta, dict) else {}
-    memo = meta.get('options') if isinstance(meta.get('options'), dict) else {}
+    memo = options_du_dernier_rendu(devis)
     return clean_pdf_options(dict(memo, share_token=token, **({'pdf_mode': pdf_mode} if pdf_mode else {})))
 
 
@@ -282,9 +337,6 @@ class DevisEnvoiActionsMixin:
         Retourne l'EmailLog id + statut + le statut courant du devis.
         """
         from ..models import ShareLink
-        from ..services import mark_devis_sent
-        from ..quote_engine import generate_premium_devis_pdf
-        from ..utils.pdf import download_pdf
 
         devis = self.get_object()
         valider_corps(request, D.EnvoyerEmailRequest)
@@ -300,29 +352,11 @@ class DevisEnvoiActionsMixin:
         # UN PDF = UNE GAMME : la pièce jointe reste le PDF de CE devis, jamais
         # un PDF fusionné des deux gammes (chaque gamme a le sien).
         _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
-        # QJR668 — la pièce jointe est rendue AVANT ``mark_devis_sent`` : les
-        # clauses/CGV de l'affaire sont gelées dès maintenant pour y figurer.
-        if devis.statut == devis.Statut.BROUILLON:
-            from ..domain.envoi import figer_clauses_devis
-            figer_clauses_devis(devis)
 
-        # Génère le PDF premium (persist=False — rendu à la volée, pas de
-        # remplacement du fichier stocké : le moteur rend seulement).
-        attachment = None
-        attachment_name = None
         # ADEV68 — le lien de proposition est créé AVANT le rendu et son jeton
-        # passé au moteur : la pièce jointe d'un devis encore brouillon (rendue
-        # juste avant ``mark_devis_sent``) imprime CE lien, alors que le
-        # moteur ne frappe plus de lien pour un brouillon.
+        # passé au moteur : la pièce jointe imprime CE lien, le moteur ne
+        # frappant plus de lien pour un brouillon.
         link = ShareLink.for_devis(devis)
-        try:
-            opts = _options_piece_jointe(devis, pdf_mode, link.token)
-            key = generate_premium_devis_pdf(devis.id, opts, persist=False)
-            attachment = download_pdf(key)
-            attachment_name = f'Devis_{devis.reference}.pdf'
-        except Exception:  # noqa: BLE001 — PDF indisponible n'empêche pas l'envoi (D-ENF22-BLE001)
-            logger.warning(
-                "devis_envoi.DevisEnvoiActionsMixin.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
 
         # Ajoute le lien de proposition tokenisé dans le corps si fourni.
         proposal_url = chemin_proposition(devis, link.token)
@@ -368,7 +402,7 @@ class DevisEnvoiActionsMixin:
 
         # Envoi + EmailLog via le service centralisé. attach_pdf=False car on
         # a déjà le contenu — on passe attachment/attachment_name directement.
-        from ..email_service import _send, _from_email, _chatter_note
+        from ..email_service import _from_email, _chatter_note
         from ..models import EmailLog
 
         client = devis.client
@@ -385,7 +419,6 @@ class DevisEnvoiActionsMixin:
             to_email=dest, from_email=_from_email(),
             sujet=(sujet or '')[:300], corps=corps,
             reference=reference[:80],
-            piece_jointe=(attachment_name or '')[:255],
             created_by=request.user if getattr(request.user, 'is_authenticated', False) else None,
         )
 
@@ -399,33 +432,33 @@ class DevisEnvoiActionsMixin:
                 # c'est la FICHE (ni client ni adresse) qui s'y oppose = 409.
                 status=status.HTTP_409_CONFLICT)
 
-        ok, err = _send(dest, sujet, corps, attachment, attachment_name)
-        log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
-        log.erreur = err
+        # ADVS13 — bascule, rendu et envoi sous UNE transaction (voir
+        # ``_envoi_atomique``). QJR519 / ADVS12 — un échec ne marque JAMAIS le
+        # devis envoyé (ni date_envoi, ni devis_sent → funnel, ni cadence) :
+        # EmailLog ECHEC et note chatter écrits HORS de la transaction annulée.
+        try:
+            log.piece_jointe = _envoi_atomique(
+                devis, request.user, dest, sujet, corps, pdf_mode, link.token)
+        except _EnvoiAvorte as avorte:
+            devis.refresh_from_db()
+            log.statut, log.erreur = EmailLog.Statut.ECHEC, avorte.erreur
+            log.piece_jointe = avorte.piece_jointe[:255]
+            log.save()
+            _chatter_note(devis, f"Email du devis {reference} — échec d'envoi (à {dest}).", request.user)
+            # Clés littérales : check_api_shapes lit la forme servie à ``envoyerEmailDevis``.
+            if avorte.code:
+                return Response({'detail': avorte.detail, 'code': avorte.code, 'log_id': log.id,
+                                 'email_statut': log.statut, 'devis_statut': devis.statut},
+                                status=avorte.http)
+            return Response({'detail': avorte.detail, 'log_id': log.id, 'email_statut': log.statut,
+                             'devis_statut': devis.statut}, status=avorte.http)
+        log.statut = EmailLog.Statut.ENVOYE
         log.save()
-
-        etat = 'envoyé' if ok else "échec d'envoi"
-        _chatter_note(devis, f"Email du devis {reference} — {etat} (à {dest}).", request.user)
-
-        # QJR519 — un email en ÉCHEC ne marque JAMAIS le devis envoyé (ni
-        # date_envoi, ni devis_sent → funnel, ni cadence) : 502 explicite,
-        # EmailLog ECHEC et note chatter ci-dessus conservés.
-        if not ok:
-            devis.refresh_from_db(fields=['statut'])
-            return Response({
-                'detail': f'Échec envoi email : {err}',
-                'log_id': log.id,
-                'email_statut': log.statut,
-                'devis_statut': devis.statut,
-            }, status=status.HTTP_502_BAD_GATEWAY)
-
-        # Marque le devis « envoyé » via le seul chemin autorisé (règle #4).
-        # Idempotent : un devis déjà envoyé/accepté/refusé n'est pas régressé.
-        mark_devis_sent(devis=devis, user=request.user)
+        _chatter_note(devis, f"Email du devis {reference} — envoyé (à {dest}).", request.user)
 
         # ZSAL5 — reflet de l'envoi dans le chatter du LEAD lié (best-effort,
         # jamais un import des models crm depuis ventes).
-        if ok and devis.lead_id:
+        if devis.lead_id:
             try:
                 from apps.crm.services import noter_devis_envoye
                 noter_devis_envoye(reference, devis.lead)
@@ -434,7 +467,7 @@ class DevisEnvoiActionsMixin:
                     "devis_envoi.DevisEnvoiActionsMixin.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
 
         return Response({
-            'detail': f'Email envoyé à {dest}.' if ok else f'Échec envoi email : {err}',
+            'detail': f'Email envoyé à {dest}.',
             'log_id': log.id,
             'email_statut': log.statut,
             'devis_statut': devis.statut,

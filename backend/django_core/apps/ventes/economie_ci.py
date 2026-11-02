@@ -1901,7 +1901,7 @@ def lignes_pour_economie_ci(devis, option=None):
     if has_two_options(devis):
         option = option or option_effective(devis)
         if option:
-            lignes = filter_lines_for_option(lignes, option)
+            lignes = filter_lines_for_option(lignes, option, devis=devis)
     remise_globale = _f(getattr(devis, 'remise_globale', 0))
     facteur = 1.0 - remise_globale / 100.0
     sorties = []

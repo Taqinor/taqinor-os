@@ -559,7 +559,7 @@
 - frontend/src/api/ventesApi.js :: dupliquerVarianteGamme -> /api/django/ventes/devis/<>/dupliquer-variante-gamme
     detail:texte, gamme:inconnu, gammes:liste, source:inconnu
 - frontend/src/api/ventesApi.js :: envoyerEmailDevis -> /api/django/ventes/devis/<>/envoyer-email
-    detail:inconnu, devis_statut:inconnu, email_statut:inconnu, log_id:inconnu, proposal_path:inconnu, statut:texte
+    code:inconnu, detail:inconnu, devis_statut:inconnu, email_statut:inconnu, log_id:inconnu, proposal_path:inconnu, statut:texte
 - frontend/src/api/ventesApi.js :: envoyerEmailFacture -> /api/django/ventes/factures/<>/envoyer-email
     detail:texte, email_log_id:inconnu, to_email:inconnu
 - frontend/src/api/ventesApi.js :: etatPdfDevis -> /api/django/ventes/devis/<>/etat-pdf

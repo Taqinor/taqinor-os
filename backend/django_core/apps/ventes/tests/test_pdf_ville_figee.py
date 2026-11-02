@@ -125,3 +125,66 @@ class VilleFigeeAuChiffrage(TestCase):
         self.assertEqual(data['client_city'], 'Settat')
         self.assertEqual(data['client_ville_libelle'],
                          'Douar X, près de Settat')
+
+    def _chiffres(self, devis):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(Devis.objects.get(pk=devis.pk))
+        return {
+            'productible': (data.get('hypotheses') or {}).get(
+                'productible_kwh_kwc'),
+            'prod_kwh': data.get('prod_kwh'),
+            'economie': (data.get('savings_method') or {}).get('economie'),
+            'roi_s': data.get('roi_s'),
+        }
+
+    def _changer_reglages(self):
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_tariff import TariffSettings
+        profil = CompanyProfile.get(self.company)
+        profil.productible_kwh_kwc = 1200
+        profil.save()
+        tarif = TariffSettings.get(company=self.company)
+        tarif.redevance_compteur_mad_mois = Decimal('120')
+        tarif.save()
+
+    def _devis_sans_bloc_horaire(self, statut):
+        """Sans ``rafraichir_etudes`` : aucun bloc ``etude_horaire`` rangé. Un
+        bloc rangé fixe ``prod_kwh`` à lui seul, quels que soient les réglages :
+        le chemin qui les lit à chaque rendu (celui d'ADVS1) ne serait pas
+        exercé et ces trois tests ne prouveraient rien."""
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(self.company)
+        profil.productible_kwh_kwc = None
+        profil.save()
+        _lead, devis = self._devis('Casablanca', '', statut=statut)
+        return devis
+
+    def _assert_sans_bloc_horaire(self, devis):
+        etude = Devis.objects.get(pk=devis.pk).etude_params or {}
+        self.assertNotIn('etude_horaire', etude)
+
+    def test_envoye_garde_productible_et_redevance_figes(self):
+        """ADVS1 — rouge si le rendu relit ``tariff_for`` vivant."""
+        from apps.ventes.domain.envoi import mark_devis_sent
+        devis = self._devis_sans_bloc_horaire('brouillon')
+        mark_devis_sent(devis=devis, user=self.user)
+        self._assert_sans_bloc_horaire(devis)
+        avant = self._chiffres(devis)
+        self.assertNotEqual(avant['productible'], 1200)
+        self._changer_reglages()
+        self.assertEqual(self._chiffres(devis), avant)
+
+    def test_brouillon_suit_les_reglages_du_jour(self):
+        devis = self._devis_sans_bloc_horaire('brouillon')
+        self._assert_sans_bloc_horaire(devis)
+        avant = self._chiffres(devis)
+        self._changer_reglages()
+        self.assertNotEqual(self._chiffres(devis)['prod_kwh'], avant['prod_kwh'])
+
+    def test_envoye_sans_instantane_suit_les_reglages_du_jour(self):
+        """Un envoyé d'AVANT le gel se rend comme hier (aucun instantané)."""
+        devis = self._devis_sans_bloc_horaire('envoye')
+        self._assert_sans_bloc_horaire(devis)
+        avant = self._chiffres(devis)
+        self._changer_reglages()
+        self.assertNotEqual(self._chiffres(devis)['prod_kwh'], avant['prod_kwh'])

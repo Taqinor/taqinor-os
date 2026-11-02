@@ -135,7 +135,7 @@ class AcceptationEntreprise(TestCase):
         sig = DevisSignature.objects.get(devis=devis)
         self.assertIn('etude', sig.figures_scellees)
         self.assertEqual(sig.verifier_contenu(),
-                         (True, DevisSignature.CONTENT_HASH_V3))
+                         (True, DevisSignature.CONTENT_HASH_V4))
 
     def test_ci_bloc_absent_nomme_le_premier_champ(self):
         resp = self._post(self._devis())

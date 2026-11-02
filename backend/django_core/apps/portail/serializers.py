@@ -361,6 +361,7 @@ class MesDevisPortailLigneSerializer(serializers.Serializer):
     exige_identite_entreprise = serializers.BooleanField()
     conditions_titre = serializers.CharField(allow_blank=True)
     conditions = serializers.ListField(child=serializers.JSONField())
+    empreinte_contenu = serializers.CharField(allow_null=True)
 
 
 class MesFacturesPortailLigneSerializer(serializers.Serializer):
@@ -414,6 +415,7 @@ class AccepterDevisPortailRequeteSerializer(serializers.Serializer):
     accepte_conditions = serializers.BooleanField()
     option = serializers.CharField(required=False, allow_blank=True)
     entreprise = serializers.DictField(required=False, allow_null=True)
+    empreinte_contenu = serializers.CharField(required=False, allow_blank=True)
 
 
 class AccepterDevisPortailReponseSerializer(serializers.Serializer):

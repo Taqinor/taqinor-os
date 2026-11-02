@@ -194,9 +194,23 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     return devis, cree
 
 
+def _garde_kwh_declare(devis):
+    """ADVS26 — même refus qu'``/atomic`` : un kWh déclaré que les factures
+    contredisent annule la création (409 ``{detail, code}``, sous sa
+    transaction)."""
+    from apps.ventes.selectors_calepinage import refus_kwh_declare_du_devis
+
+    refus = refus_kwh_declare_du_devis(devis)
+    if refus is not None:
+        raise DevisRefuse(refus['detail'], champ='conso_mensuelle_kwh',
+                          statut=409, donnees=refus)
+
+
 def _generer(calepinage, layout, company, lead, client, montants, *, user,
              journal):
     """CAL24 — la création (ou la dédup) APRÈS toutes les gardes."""
+    from django.db import transaction
+
     from apps.ventes.services import (
         AutoDevisError, build_devis_from_layout, layout_hash,
         poser_layout_hash, validate_composition_for_layout,
@@ -236,9 +250,11 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
 
     journal_composition = {}
     try:
-        devis = build_devis_from_layout(
-            layout=layout, user=user, company=company, lead=lead,
-            client=client, journal=journal_composition, **montants)
+        with transaction.atomic():
+            devis = build_devis_from_layout(
+                layout=layout, user=user, company=company, lead=lead,
+                client=client, journal=journal_composition, **montants)
+            _garde_kwh_declare(devis)
     except AutoDevisError as refus:
         # ACAL32 — phase / site isolé du lead déduits par la création ; son
         # refus NOMMÉ (``hors_reseau``) remonte en 422, jamais un 500.

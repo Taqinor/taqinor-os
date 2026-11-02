@@ -1,0 +1,13 @@
+{
+  "endpoint": "GET /api/django/public/proposal/<token>/pdf/",
+  "pourquoi": "ADVS17 (C-ADVS-023, PACT10) — contrat posé seul d'abord : les sections qu'un lien public décoche voyagent jusqu'au moteur PDF. `exemple` n'est PAS le corps de la réponse (un PDF) : c'est l'option `sections_masquees` que `public_views._opts_pdf_public` passe au rendu, pour `proposal_pdf` et `public_document`. Liste triée ⊂ `ShareLink.SECTIONS_CLES` hors `pdf`, source `public/noyau.py::_sections_masquees` ; lien sans case décochée ou lien de facture : `exemple_vide`. Lecteur : le moteur (ADVS18, `quote_engine/options_pdf.py::clean_pdf_options` garde ce qu'il sait omettre).",
+  "exemple": {
+    "sections_masquees": [
+      "economies",
+      "sld"
+    ]
+  },
+  "exemple_vide": {
+    "sections_masquees": []
+  }
+}

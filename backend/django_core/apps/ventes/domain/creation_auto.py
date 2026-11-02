@@ -95,7 +95,8 @@ def _alertes_brouillons_ci_du_lead(devis):
 
 
 def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
-                         journal_auto=None, target_kwc=None):
+                         remise_globale=Decimal('0'), journal_auto=None,
+                         target_kwc=None):
     """CIQ120 — devis automatique COMMERCIAL / INDUSTRIEL par le serveur.
 
     Chaîne : ``etude_ci.etudier_ci`` (entrées du lead, CIQ405 ; garde
@@ -115,6 +116,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     from apps.ventes.domain.etude_ci import (
         CLE_TAILLE_CREATION, entrees_pour_etude_params, etudier_ci, refus_devis_auto_ci,
         verdict_taille_creation)
+    from apps.ventes.domain.creation import devise_par_defaut
     from apps.ventes.domain.etude_ci_batterie import lignes_des_options
     from apps.ventes.models import Devis
 
@@ -163,7 +165,9 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         return Devis.objects.create(
             company=company, reference=ref, client=client, lead=lead,
             statut=Devis.Statut.BROUILLON, created_by=user,
-            taux_tva=taux_tva, mode_installation=lead.type_installation,
+            taux_tva=taux_tva, devise=devise_par_defaut(company),
+            remise_globale=remise_globale,
+            mode_installation=lead.type_installation,
             etude_params=entrees)
 
     devis = _ecrire_devis_auto_par_pipeline(
@@ -264,8 +268,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
                 "commercial et à l'industriel : le commercial le lance depuis "
                 "la fiche lead.", field='type_installation')
         return _build_devis_auto_ci(lead=lead, user=user, company=company,
-                                    taux_tva=taux_tva, journal_auto=journal_auto,
-                                    target_kwc=target_kwc)
+                                    taux_tva=taux_tva, remise_globale=remise_globale,
+                                    journal_auto=journal_auto, target_kwc=target_kwc)
     if marche == 'agricole':
         # AGR124 — l'agricole passe par LE moteur serveur (D-AGR-1), origine
         # « auto » seulement : le tunnel du site reste refusé.
@@ -276,7 +280,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
                 field='type_installation')
         return _build_devis_auto_agricole(
             lead=lead, user=user, company=company, taux_tva=taux_tva,
-            journal_auto=journal_auto, target_kwc=target_kwc)
+            remise_globale=remise_globale, journal_auto=journal_auto,
+            target_kwc=target_kwc)
     if marche and marche != 'residentiel':
         raise AutoDevisError(
             "L'auto-devis ne gère que le résidentiel pour l'instant. Pour "

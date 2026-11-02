@@ -969,6 +969,55 @@ class GelCompletLectureTests(TestCase):
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.clauses_appliquees, avant)
 
+    def _panneau_du_catalogue(self):
+        from decimal import Decimal
+
+        from apps.stock.models import Produit
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau Canadien Solar 710W',
+            sku='APDF14-PAN', prix_vente=Decimal('1272.73'),
+            quantite_stock=10, marque='Canadian Solar', description='Fiche A',
+            garantie='25 ans', garantie_mois=300)
+        self.devis.lignes.filter(designation__startswith='Panneau').update(
+            produit=produit)
+        return produit
+
+    def _item_panneau(self):
+        data = build_quote_data(Devis.objects.get(pk=self.devis.pk), {})
+        return next(it for it in data['sans_items']
+                    if it['designation'].startswith('Panneau'))
+
+    def _retoucher_fiche(self, produit):
+        produit.garantie = '10 ans'
+        produit.garantie_mois = 120
+        produit.description = 'Fiche B'
+        produit.marque = 'Autre marque'
+        produit.save()
+
+    def test_envoye_garde_la_fiche_produit_de_l_envoi(self):
+        """ADVS7 — rouge si ``_line_to_item`` ignore ``fiches``."""
+        produit = self._panneau_du_catalogue()
+        self._envoyer()
+        self._retoucher_fiche(produit)
+        item = self._item_panneau()
+        self.assertEqual(item['garantie'], '25 ans')
+        self.assertEqual(item['garantie_mois'], 300)
+        self.assertEqual(item['description'], 'Fiche A')
+        self.assertEqual(item['marque'], 'Canadian Solar')
+
+    def test_brouillon_lit_la_fiche_du_jour(self):
+        produit = self._panneau_du_catalogue()
+        self._retoucher_fiche(produit)
+        item = self._item_panneau()
+        self.assertEqual(item['garantie'], '10 ans')
+        self.assertEqual(item['garantie_mois'], 120)
+
+    def test_produit_absent_de_l_instantane_lit_la_fiche_du_jour(self):
+        self._envoyer()
+        produit = self._panneau_du_catalogue()
+        self._retoucher_fiche(produit)
+        self.assertEqual(self._item_panneau()['garantie'], '10 ans')
+
     def test_brouillon_lit_vif(self):
         self._textes(TEXTES_B)
         data = build_quote_data(self.devis, {})
