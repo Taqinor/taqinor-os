@@ -13,10 +13,10 @@ from apps.stock.services import (
 from ..models import Facture, Avoir, NoteDebit
 from ..serializers_facturation import AvoirSerializer, NoteDebitSerializer
 from authentication.permissions import (
-    IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from .facture_gardes import LectureFactures  # AARG12
 from authentication.scoping import scope_queryset
 from core.mixins import company_qs
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
@@ -59,7 +59,7 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
+            return [LectureFactures()]
         if self.action == 'annuler':
             return [IsAdminRole()]
         return [IsResponsableOrAdmin()]
@@ -263,7 +263,7 @@ class NoteDebitViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
+            return [LectureFactures()]
         if self.action == 'annuler':
             return [IsAdminRole()]
         return [IsResponsableOrAdmin()]

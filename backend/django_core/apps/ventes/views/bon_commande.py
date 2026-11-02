@@ -15,10 +15,10 @@ from apps.stock.services import (
 from ..models import BonCommande, Facture
 from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
 from authentication.permissions import (
-    IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from .facture_gardes import LectureFactures  # AARG12
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.viewsets import CompanyScopedModelViewSet  # noqa: ARC5 — exception documentée (D-ENF22)
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
@@ -193,7 +193,7 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['pdf']:
-            return [IsAnyRole()]
+            return [LectureFactures()]
         elif self.action in WRITE_ACTIONS + [
             'confirmer', 'marquer_livre', 'annuler', 'creer_facture',
             'livrer_partiel',

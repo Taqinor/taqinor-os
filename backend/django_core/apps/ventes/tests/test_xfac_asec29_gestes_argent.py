@@ -319,6 +319,35 @@ class GestesArgentTests(TestCase):
         self.assertEqual(Facture.objects.get(pk=brouillon.pk).statut,
                          Facture.Statut.EMISE)
 
+    def test_lecture_argent_bornee_au_module_ventes(self):
+        """AARG12 — paiements (+ reçu PDF), avoirs, notes de débit, bons de
+        commande et promesses : 403 pour Admin RH (aucun code ventes), comme
+        la liste des factures ; Commercial (``ventes_voir``) lit toujours.
+        Mutant : remettre ``IsAnyRole`` sur un viewset ⇒ échec."""
+        from apps.ventes.models import Paiement
+        facture = self._facture(self.users['Directeur'])
+        paiement = Paiement.objects.create(
+            company=self.company, facture=facture, montant=Decimal('300'),
+            date_paiement=date.today(), mode='virement',
+            created_by=self.users['Directeur'])
+        base = '/api/django/ventes/'
+        listes = [base + seg for seg in (
+            'paiements/', 'avoirs/', 'notes-debit/', 'bons-commande/',
+            'promesses-paiement/')]
+        rh = self._api(self.users['Admin RH'])
+        for url in listes + [f'{base}paiements/{paiement.id}/recu-pdf/']:
+            with self.subTest(role='Admin RH', url=url):
+                r = rh.get(url)
+                self.assertEqual(r.status_code, 403, getattr(r, 'data', None))
+                self.assertEqual(
+                    str(r.data['detail']),
+                    'Accès aux factures réservé aux rôles du module Ventes.')
+        commercial = self._api(self.users['Commercial'])
+        for url in listes:
+            with self.subTest(role='Commercial', url=url):
+                r = commercial.get(url)
+                self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+
     def test_get_permissions_respecte_action(self):
         from apps.ventes.views.facture import FactureViewSet
         from apps.ventes.views.facture_gardes import PeutEncaisser
