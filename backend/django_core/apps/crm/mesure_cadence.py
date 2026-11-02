@@ -827,3 +827,220 @@ def mesure_cadence(company, *, jours=JOURS_MESURE_DEFAUT):
         # CADV110 — additif : la cohorte hebdomadaire préenregistrée (CUSUM).
         'cohorte': cohorte_hebdomadaire(company),
     }
+
+
+# ── CADV106 — le lot hebdomadaire de réactivation (D-CADV-8, D-CADV-11) ──────
+#
+# Conception v4 §7.3 et §5.4 : le lot de la semaine = min(marge mesurée la
+# semaine passée, 40), nul quand une règle d'arrêt tombe. La semaine est celle du
+# calendrier (lundi-dimanche, Casablanca) : le lot ne bouge pas d'un jour à l'autre.
+CAPACITE_HEBDO_COMMERCIAL = 112    # §7.2 : 5 jours × 25 touches × 0,9
+LOT_PLAFOND = 40
+PONCTUALITE_MIN_PCT = 90
+HOSTILES_FENETRE = 20
+HOSTILES_MAX = 2
+ATTENTE_LEAD_NEUF_MINUTES = 15
+PALIER_2_MESSAGES = 100
+PALIER_2_REPONSES_MIN = 2
+#: Les seaux de ``cadence_selectors.seaux_reactivation``, dans le nom du chatter.
+SEAUX_REACTIVATION = {'k3': 'K3', 'k5': 'K5', 'k6_p1': 'K6 palier 1',
+                      'k6_p2': 'K6 palier 2'}
+#: La note typée de la réponse « A bloqué » (``parcours_suivi.json``, ``bloque``).
+NOTE_A_BLOQUE = 'A bloqué / signalé'
+
+
+def trace_reactivation(seau):
+    """La ligne de chatter d'un message de réactivation préparé (CADV109)."""
+    return f'Réactivation {SEAUX_REACTIVATION[seau]} — message préparé'
+
+
+def _bornes_semaine(jour):
+    """``(lundi, lundi suivant)`` de la semaine de ``jour``, en instants locaux."""
+    from . import horaires
+
+    lundi = jour - datetime.timedelta(days=jour.weekday())
+    return tuple(
+        datetime.datetime.combine(d, datetime.time(0), tzinfo=horaires.CASABLANCA)
+        for d in (lundi, lundi + datetime.timedelta(days=7)))
+
+
+def _messages_reactivation(company, *, depuis=None, avant=None):
+    """``[(lead_id, seau, instant)]`` des messages préparés, du plus ancien au
+    plus récent, bornés à la société."""
+    from .models import LeadActivity
+
+    seau_de = {trace_reactivation(s): s for s in SEAUX_REACTIVATION}
+    lignes = LeadActivity.objects.filter(
+        company=company, kind=LeadActivity.Kind.NOTE, body__in=list(seau_de))
+    if depuis is not None:
+        lignes = lignes.filter(created_at__gte=depuis)
+    if avant is not None:
+        lignes = lignes.filter(created_at__lt=avant)
+    return [(lead_id, seau_de[corps], instant) for lead_id, corps, instant in
+            lignes.order_by('created_at', 'pk')
+            .values_list('lead_id', 'body', 'created_at')]
+
+
+def _reactions_reactivation(company, lead_ids):
+    """``{lead_id: [(instant, nature)]}`` : ``conversation`` (``ISSUES_JOINT``, une
+    seule définition), ``reponse`` (autre issue dite par la personne), ``stop``
+    (opposition cochée), ``bloc`` (« A bloqué »), ``signature`` (passage à Signé)."""
+    from django.db.models import Q
+
+    from . import activity, stages
+    from .models import LeadActivity
+
+    par_lead = {}
+    for lead_id, instant, issue, champ in (
+            LeadActivity.objects.filter(company=company, lead_id__in=list(lead_ids))
+            .filter(Q(outcome__in=ISSUES_JOINT + ('rappel', 'refuse', 'visite_acceptee'))
+                    | Q(outcome='non_joint', body__contains=NOTE_A_BLOQUE)
+                    | Q(field='ne_plus_contacter', new_value=activity._BOOL_LABELS[True])
+                    | Q(field='stage', new_value=stages.STAGE_LABELS[stages.SIGNED]))
+            .values_list('lead_id', 'created_at', 'outcome', 'field')):
+        nature = ({'ne_plus_contacter': 'stop', 'stage': 'signature'}.get(champ)
+                  or ('conversation' if issue in ISSUES_JOINT else None)
+                  or ('bloc' if issue == 'non_joint' else 'reponse'))
+        par_lead.setdefault(lead_id, []).append((instant, nature))
+    return par_lead
+
+
+def _natures_apres(reactions, lead_id, instant):
+    return {nature for quand, nature in reactions.get(lead_id, ()) if quand >= instant}
+
+
+def _a_repondu(natures):
+    """Un STOP n'est pas une réponse, même clos sur l'issue « refus » (CAD5)."""
+    return ('conversation' in natures
+            or ('reponse' in natures and 'stop' not in natures))
+
+
+def _palier_2_arrete(company):
+    """D-CADV-11 — les 100 premiers messages du palier 2 ont fait moins de 2
+    réponses : le palier s'arrête pour de bon."""
+    premiers = {}
+    for lead_id, seau, instant in _messages_reactivation(company):
+        if seau == 'k6_p2' and len(premiers) < PALIER_2_MESSAGES:
+            premiers.setdefault(lead_id, instant)
+    if len(premiers) < PALIER_2_MESSAGES:
+        return False
+    reactions = _reactions_reactivation(company, premiers)
+    return PALIER_2_REPONSES_MIN > sum(
+        _a_repondu(_natures_apres(reactions, lead_id, instant))
+        for lead_id, instant in premiers.items())
+
+
+def _motif_arret_lot(company, maintenant, debut, fin):
+    """Le motif de la première règle d'arrêt tombée (§5.4, §7.3), ou ``None``.
+    ``debut``/``fin`` bornent la semaine passée. Une mesure sans dénominateur
+    (``None``) n'arrête rien : ni échec ni réussite, rien à mesurer."""
+    from apps.notifications.calendar_utils import jours_ouvres_entre
+    from core.dates import aujourd_hui_local
+
+    from . import cadence_absence, horaires, stages
+    from .controle_suivi import _a_temps_pct, _premier_contact
+    from .leads_selectors import _objectif_premier_contact
+    from .models import Lead, RelanceEtape
+
+    today = aujourd_hui_local(maintenant)
+    leads = Lead.objects.filter(company=company, is_archived=False)
+    with horaires.cache_local():
+        ouvres = jours_ouvres_entre(company, debut.date(), today)
+        etapes = list(
+            RelanceEtape.objects
+            .filter(company=company, cadence='contact', lead__is_archived=False,
+                    due_date__gte=debut.date(), due_date__lt=fin.date())
+            .exclude(statut=RelanceEtape.Statut.ANNULEE).select_related('lead'))
+        ponctualite = _a_temps_pct(
+            etapes, today, cadence_absence.couverture(company, debut.date(), today),
+            {e.lead_id: e.lead.owner_id for e in etapes}, ouvres)
+        if ponctualite is not None and ponctualite < PONCTUALITE_MIN_PCT:
+            return 'ponctualite'
+        mediane = _premier_contact(
+            leads.filter(date_creation__lt=fin), None, debut.date(), maintenant,
+            None, company, ouvres)['mediane_minutes']
+        if mediane is not None and mediane > _objectif_premier_contact(company):
+            return 'premier_contact'
+        attente = (leads.filter(stage=stages.NEW, perdu=False, ne_plus_contacter=False,
+                                first_contacted_at__isnull=True,
+                                date_creation__lte=maintenant)
+                   .exclude(source=Lead.Source.ODOO_IMPORT_TEST).only('date_creation'))
+        if any(horaires.minutes_ouvrees_entre(lead.date_creation, maintenant, company)
+               > ATTENTE_LEAD_NEUF_MINUTES for lead in attente):
+            return 'lead_neuf_sans_prise'
+    # Depuis le lundi de la semaine passée : un lot arrêté repart la semaine
+    # d'après (§5.4), sinon la fenêtre ne bougerait plus jamais.
+    messages = _messages_reactivation(company, depuis=debut)[-HOSTILES_FENETRE:]
+    reactions = _reactions_reactivation(company, {m[0] for m in messages})
+    hostiles = sum(bool(_natures_apres(reactions, lead_id, instant) & {'stop', 'bloc'})
+                   for lead_id, _seau, instant in messages)
+    return 'reponses_hostiles' if hostiles >= HOSTILES_MAX else None
+
+
+def lot_reactivation(company, maintenant=None, *, seau=None):
+    """CADV106 — ``{taille, motif_arret}`` (contrat ``reactivation_seaux.json``,
+    clé ``lot``), en LECTURE SEULE : taille = min(marge, 40), où marge = 112 touches
+    par commercial actif (rôle « Commercial », comme l'attribution) moins les touches
+    faites la semaine passée ; 0 avec son motif nommé dès qu'une règle d'arrêt tombe,
+    ou ``marge_nulle``. ``seau='k6_p2'`` ajoute l'arrêt définitif du palier 2.
+    Même instant ⇒ même lot."""
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+
+    from core.dates import aujourd_hui_local
+
+    from .models import RelanceEtape
+
+    if seau == 'k6_p2' and _palier_2_arrete(company):
+        return {'taille': 0, 'motif_arret': 'palier_2_arrete'}
+    maintenant = maintenant or timezone.now()
+    debut, fin = _bornes_semaine(
+        aujourd_hui_local(maintenant) - datetime.timedelta(days=7))
+    motif = _motif_arret_lot(company, maintenant, debut, fin)
+    if motif:
+        return {'taille': 0, 'motif_arret': motif}
+    commerciaux = get_user_model().objects.filter(
+        company=company, is_active=True, role__nom='Commercial').count()
+    faites = RelanceEtape.objects.filter(
+        company=company, statut=RelanceEtape.Statut.FAIT,
+        traite_le__gte=debut, traite_le__lt=fin).count()
+    taille = max(0, min(CAPACITE_HEBDO_COMMERCIAL * commerciaux - faites, LOT_PLAFOND))
+    return {'taille': taille, 'motif_arret': None if taille else 'marge_nulle'}
+
+
+def releve_reactivation(company, semaine):
+    """CADV108 — les sept chiffres du lundi (conception v4 §5.4), par seau (contrat
+    ``reactivation_seaux.json``, clé ``releve``), en LECTURE SEULE, pour la semaine
+    du jour ``semaine``. ``contacts`` = les leads préparés cette semaine (marqueur de
+    CADV109) ; le reste = les leads d'un seau dont l'événement tombe cette semaine,
+    après leur premier message de ce seau : un lead sans marqueur n'est dans aucun
+    seau, un seau vide n'est pas servi. Même date ⇒ mêmes sept nombres."""
+    from apps.ventes.selectors import devis_envoyes_par_lead
+
+    debut, fin = _bornes_semaine(semaine)
+    premiers, contactes = {}, set()
+    for lead_id, seau, instant in _messages_reactivation(company, avant=fin):
+        premiers.setdefault((seau, lead_id), instant)
+        if instant >= debut:
+            contactes.add((seau, lead_id))
+    ids = {lead_id for _seau, lead_id in premiers}
+    reactions = _reactions_reactivation(company, ids)
+    for ligne in devis_envoyes_par_lead(company, ids):
+        reactions.setdefault(ligne['lead_id'], []).append((ligne['date_envoi'], 'devis'))
+    releve = {}
+    for cle, premier in premiers.items():
+        natures = {nature for quand, nature in reactions.get(cle[1], ())
+                   if debut <= quand < fin and quand >= premier}
+        if cle not in contactes and not natures:
+            continue
+        bloc = releve.setdefault(cle[0], {
+            'contacts': 0, 'reponses': 0, 'conversations': 0, 'devis': 0,
+            'signatures': 0, 'stop': 0, 'blocs': 0})
+        bloc['contacts'] += cle in contactes
+        bloc['reponses'] += _a_repondu(natures)
+        bloc['conversations'] += 'conversation' in natures
+        bloc['devis'] += 'devis' in natures
+        bloc['signatures'] += 'signature' in natures
+        bloc['stop'] += 'stop' in natures
+        bloc['blocs'] += 'bloc' in natures
+    return releve

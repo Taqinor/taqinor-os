@@ -1125,6 +1125,25 @@ class TestFuzzCrmNocturne2410(TestCase):
             url, {'date_prevue': '2999-01-01', 'etape': 'abc'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_planifier_visite_publie_ses_textes_sans_caractere_nul(self):
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.crm import urls as crm_urls
+        from core.champs_stricts import MOTIF_SANS_NUL
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/crm/', include(crm_urls)),
+        ]).get_schema(request=None, public=True)
+        corps = schema['components']['schemas']['CrmPlanifierVisiteRequestRequest']
+        url = f'/api/django/crm/leads/{self.lead.pk}/visites/planifier/'
+        for champ in ('notes', 'note_etape'):
+            self.assertEqual(corps['properties'][champ]['pattern'], MOTIF_SANS_NUL)
+            resp = self.api.post(
+                url, {'date_prevue': '2999-01-01', champ: 'a\x00b'}, format='json')
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertIn(champ, resp.data)
+
     def test_reporter_echeance_obligatoire_publiee(self):
         from django.urls import include, path
         from drf_spectacular.generators import SchemaGenerator

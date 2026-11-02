@@ -5,6 +5,7 @@ aucun module de type (a) ne l'importe et ``services`` ne le réexporte pas.
 """
 import re
 
+from django.db.models import Q
 from django.utils import timezone
 
 from . import activity, stages
@@ -26,6 +27,7 @@ from .fiche_funnel import (
 )
 from .cadence_reponses import reattribuer_lead
 from .leads_socle import MOTIF_BULK_CADENCE_ACTIVE, leads_avec_cadence_active
+from .mesure_cadence import SEAUX_REACTIVATION, trace_reactivation
 
 
 BULK_ACTIONS = {
@@ -130,19 +132,79 @@ PREPARER_WHATSAPP_PLAFOND_PAR_JOUR = 25
 TRACE_WHATSAPP_PREPARE = 'WhatsApp préparé en lot'
 
 
-def _preparations_whatsapp_du_jour(company, user):
-    """CADV10 — traces « WhatsApp préparé en lot » de ``user`` aujourd'hui
-    (jour de Casablanca) : aucun modèle, aucune migration."""
+def _minuit_local():
     import datetime
 
     from core.dates import aujourd_hui_local
 
     from . import horaires
-    minuit = datetime.datetime.combine(
+    return datetime.datetime.combine(
         aujourd_hui_local(), datetime.time(0), tzinfo=horaires.CASABLANCA)
+
+
+def _preparations_whatsapp_du_jour(company, user):
+    """CADV10 — traces « WhatsApp préparé en lot » de ``user`` aujourd'hui
+    (jour de Casablanca) : aucun modèle, aucune migration. CADV109 — une
+    préparation de réactivation en est une, sous son propre marqueur."""
     return LeadActivity.objects.filter(
-        company=company, user=user, created_at__gte=minuit,
-        body__startswith=TRACE_WHATSAPP_PREPARE).count()
+        Q(body__startswith=TRACE_WHATSAPP_PREPARE)
+        | Q(body__in=[trace_reactivation(s) for s in SEAUX_REACTIVATION]),
+        company=company, user=user, created_at__gte=_minuit_local()).count()
+
+
+def _reactivation_demandee(company, params, leads):
+    """CADV109 (D-CADV-11) — ``None`` hors réactivation, sinon le seau demandé :
+    ``ferme`` (palier 2 sans son interrupteur), ``membres`` (lus sur
+    ``seaux_reactivation``), ``deja`` (leads déjà tracés aujourd'hui, rejouer le
+    même jour n'ajoute rien). Seau ou gabarit inconnus : refus (400)."""
+    from django.conf import settings
+
+    from apps.parametres.models_messages import CLES_REACTIVATION
+
+    from .cadence_selectors import seaux_reactivation
+
+    seau = _texte(params.get('seau'))
+    if not seau:
+        return None
+    if seau not in SEAUX_REACTIVATION:
+        raise ValueError("Seau de réactivation inconnu.")
+    cle = _texte(params.get('template_cle'))
+    if cle and cle not in CLES_REACTIVATION:
+        raise ValueError("Gabarit de réactivation inconnu.")
+    ferme = seau == 'k6_p2' and not getattr(settings, 'REACTIVATION_K6_PALIER2', False)
+    return {
+        'seau': seau, 'cle': cle, 'ferme': ferme,
+        'membres': [] if ferme else seaux_reactivation(company)[seau.capitalize()],
+        'deja': set(LeadActivity.objects.filter(
+            company=company, lead__in=leads, body=trace_reactivation(seau),
+            created_at__gte=_minuit_local()).values_list('lead_id', flat=True)),
+    }
+
+
+def _lien_reactivation(lead, user, cle):
+    """CADV109 — le lien wa.me du gabarit ``cle`` : la machinerie des touches
+    (``message_pour_etape``), sur une touche NON enregistrée, jamais un second rendu."""
+    from core.dates import aujourd_hui_local
+
+    from .cadence_messages import message_pour_etape
+    from .models import RelanceEtape
+
+    touche = RelanceEtape(company=lead.company, lead=lead, due_date=aujourd_hui_local(),
+                          canal=RelanceEtape.Canal.WHATSAPP)
+    return message_pour_etape(touche, user=user, cle=cle)['wa_url']
+
+
+def _tracer_reactivation(lead, user, seau):
+    """CADV109 — UNE ligne de chatter et UNE entrée de registre par préparation."""
+    from .leads_consentement import (
+        BASE_LEGALE_SOLLICITATION, CONSENT_SOURCE_REACTIVATION,
+        enregistrer_base_legale_lead,
+    )
+
+    activity.log_bulk_note(lead, user, trace_reactivation(seau))
+    enregistrer_base_legale_lead(
+        lead, base_legale=BASE_LEGALE_SOLLICITATION,
+        source=CONSENT_SOURCE_REACTIVATION.format(seau=SEAUX_REACTIVATION[seau]))
 
 
 def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
@@ -161,6 +223,8 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
             tpl = None
     queue = []
     deja = _preparations_whatsapp_du_jour(company, user)
+    nouvelles = 0
+    reactivation = _reactivation_demandee(company, params, leads)
     for lead in leads:
         # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
         # ``message_pour_etape`` / ``_lead_relancable``) : une personne
@@ -173,22 +237,37 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
                 lead, 'is_archived', False):
             skip(lead, 'perdu/archivé')
             continue
+        if reactivation and reactivation['ferme']:
+            skip(lead, 'palier2_ferme')
+            continue
+        if reactivation and lead.id not in reactivation['membres']:
+            skip(lead, 'hors seau')
+            continue
         phone = lead.whatsapp or lead.telephone
         if not phone:
             continue
-        if deja + len(queue) >= PREPARER_WHATSAPP_PLAFOND_PAR_JOUR:
+        nouvelle = not (reactivation and lead.id in reactivation['deja'])
+        if nouvelle and deja + nouvelles >= PREPARER_WHATSAPP_PLAFOND_PAR_JOUR:
             skip(lead, 'plafond journalier atteint '
                        f'({PREPARER_WHATSAPP_PLAFOND_PAR_JOUR})')
             continue
-        corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
-        wa_url = build_wa_url(phone, corps)
+        if reactivation and reactivation['cle']:
+            wa_url = _lien_reactivation(lead, user, reactivation['cle'])
+        else:
+            wa_url = build_wa_url(phone, _corps_whatsapp_en_masse(lead, tpl, body_tpl))
         queue.append({
             'lead_id': lead.id,
             'nom': str(lead),
             'phone': phone,
             'wa_url': wa_url,
         })
-        activity.log_bulk_note(lead, user, TRACE_WHATSAPP_PREPARE)
+        if not nouvelle:
+            continue
+        nouvelles += 1
+        if reactivation:
+            _tracer_reactivation(lead, user, reactivation['seau'])
+        else:
+            activity.log_bulk_note(lead, user, TRACE_WHATSAPP_PREPARE)
     return {
         'ok': True,
         'op': 'prepare_whatsapp',
