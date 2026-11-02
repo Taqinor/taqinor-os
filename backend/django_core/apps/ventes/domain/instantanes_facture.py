@@ -102,6 +102,27 @@ def garanties_du_devis(devis, langue='fr') -> list:
             if (g.get('duree') or '').strip()]
 
 
+def identite_acheteur_courante(facture) -> dict:
+    """AARG27 — ce que le PDF et l'UBL impriment de l'acheteur, lu du client
+    (langue du document comprise) au moment de l'émission."""
+    from apps.ventes.utils.libelles_ar import document_langue
+    client = facture.client
+    return {**{champ: getattr(client, champ, '') or ''
+               for champ in ('nom', 'prenom', 'type_client', 'ice', 'if_fiscal',
+                             'rc', 'adresse', 'email', 'telephone')},
+            'langue': document_langue(client, company=facture.company)}
+
+
+def acheteur_de_la_facture(facture):
+    """AARG27 — L'acheteur imprimé : l'instantané figé à l'émission, sinon
+    (brouillon, facture antérieure) le client vivant. Mêmes attributs."""
+    from types import SimpleNamespace
+    figee = getattr(facture, 'identite_acheteur', None)
+    if isinstance(figee, dict) and figee:
+        return SimpleNamespace(**figee)
+    return facture.client
+
+
 def figer_a_l_emission(facture):
     """Fige les blocs de la vente sur ``facture`` (appelée par
     ``emettre_facture``, dans sa transaction, avant le ``save``).
@@ -112,7 +133,11 @@ def figer_a_l_emission(facture):
     dans la langue imprimée (``[]`` = aucune garantie connue). Un instantané
     déjà posé n'est jamais réécrit. Ne sauve rien : l'appelant fait le
     ``save``.
+
+    AARG27 — ``identite_acheteur`` : toute facture à client, devis ou non.
     """
+    if not facture.identite_acheteur and facture.client_id:
+        facture.identite_acheteur = identite_acheteur_courante(facture)
     if not facture.devis_id:
         return None
     devis = devis_de_la_vente(facture.devis)

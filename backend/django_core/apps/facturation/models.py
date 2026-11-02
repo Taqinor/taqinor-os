@@ -333,6 +333,8 @@ class Facture(TotauxDocumentMixin, models.Model):
     # PDF d'une facture émise se rend depuis cet instantané, jamais depuis le
     # profil vivant. NULL (facture antérieure, brouillon) = profil vivant.
     identite_vendeur = models.JSONField(null=True, blank=True)
+    # AARG27 — identité ACHETEUR figée à l'émission (même geste) ; NULL = client.
+    identite_acheteur = models.JSONField(null=True, blank=True)
     # VNT15 (Groupe VNT) — « Objet de la vente » et « Garanties » FIGÉS à
     # l'émission (même geste qu'APAR61, ``instantanes_facture``) : une facture
     # ÉMISE garde ce que le client a reçu. NULL (brouillon, facture

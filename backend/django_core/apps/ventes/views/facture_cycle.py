@@ -152,7 +152,10 @@ class FactureCycleActionsMixin:
                 )
             ancien = facture.statut
             facture.statut = Facture.Statut.BROUILLON
-            facture.save(update_fields=['statut'])
+            # AARG27 — jamais envoyée (refus ci-dessus) : la réémission re-fige
+            # l'acheteur, un client corrigé entre-temps est pris en compte.
+            facture.identite_acheteur = None
+            facture.save(update_fields=['statut', 'identite_acheteur'])
             revoquer_lien_paiement(facture=facture, user=request.user)
         from .. import activity
         activity.log_facture_remise_brouillon(facture, request.user, ancien)

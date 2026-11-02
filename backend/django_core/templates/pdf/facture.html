@@ -218,27 +218,30 @@
     </div>
     <div class="partie-block">
       <div class="partie-label">{{ _L('facture_a') }}</div>
+      {# AARG27 — l'acheteur figé à l'émission (``generate_facture_pdf``) ; rendu
+         direct du gabarit sans ce contexte : le client de la facture. #}
+      {% set acheteur = acheteur or facture.client %}
       {# CIQ217 — client ENTREPRISE : raison sociale (``client.nom``), ICE, IF
          et RC, chacun omis s'il est vide (jamais un tiret). #}
-      {% if facture.client.type_client == 'entreprise' %}
-      <div class="partie-nom">{{ facture.client.nom }}</div>
+      {% if acheteur.type_client == 'entreprise' %}
+      <div class="partie-nom">{{ acheteur.nom }}</div>
       {% else %}
-      <div class="partie-nom">{{ facture.client.nom }} {{ facture.client.prenom or '' }}</div>
+      <div class="partie-nom">{{ acheteur.nom }} {{ acheteur.prenom or '' }}</div>
       {% endif %}
       {# AFAC56 — ICE/IF/RC imprimés dès qu'ils sont renseignés (même règle
          B2B que ``Facture._client_est_pro``), même pour un client de type
          particulier. #}
-      {% if client_est_pro or facture.client.type_client == 'entreprise' or facture.client.ice or facture.client.if_fiscal or facture.client.rc %}
+      {% if client_est_pro or acheteur.type_client == 'entreprise' or acheteur.ice or acheteur.if_fiscal or acheteur.rc %}
       <div class="partie-detail">
-        {% if facture.client.ice %}ICE : {{ facture.client.ice }}<br />{% endif %}
-        {% if facture.client.if_fiscal %}IF : {{ facture.client.if_fiscal }}<br />{% endif %}
-        {% if facture.client.rc %}RC : {{ facture.client.rc }}<br />{% endif %}
+        {% if acheteur.ice %}ICE : {{ acheteur.ice }}<br />{% endif %}
+        {% if acheteur.if_fiscal %}IF : {{ acheteur.if_fiscal }}<br />{% endif %}
+        {% if acheteur.rc %}RC : {{ acheteur.rc }}<br />{% endif %}
       </div>
       {% endif %}
       <div class="partie-detail">
-        {% if facture.client.email %}{{ facture.client.email }}<br />{% endif %}
-        {% if facture.client.telephone %}{{ facture.client.telephone }}<br />{% endif %}
-        {% if facture.client.adresse %}{{ facture.client.adresse }}{% endif %}
+        {% if acheteur.email %}{{ acheteur.email }}<br />{% endif %}
+        {% if acheteur.telephone %}{{ acheteur.telephone }}<br />{% endif %}
+        {% if acheteur.adresse %}{{ acheteur.adresse }}{% endif %}
         {# CIQ216 — numéro de commande du client, seulement s'il est rempli. #}
         {% if facture.reference_commande_client %}<br />{{ _L('votre_commande') }} : {{ facture.reference_commande_client }}{% endif %}
       </div>

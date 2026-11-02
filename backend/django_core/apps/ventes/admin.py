@@ -108,7 +108,8 @@ ADMIN_FACTURE_ETAT = ('statut', 'abandon_motif', 'abandon_montant',
                       'abandon_date', 'abandon_auto', 'abandon_par')
 # ATOT54 — identité et rattachement : posés à la création, figés hors brouillon.
 ADMIN_FACTURE_IDENTITE = ('company', 'bon_commande', 'devis', 'lead',
-                          'identite_vendeur', 'created_by', 'entite')
+                          'identite_vendeur', 'identite_acheteur',
+                          'created_by', 'entite')
 
 
 @admin.register(Facture)

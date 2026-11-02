@@ -117,7 +117,9 @@ def build_ubl_xml(facture, profile=None, currency=None):
         el(s_addr, 'StreetName', text=profile.adresse)
 
     # ── Client (AccountingCustomerParty) — ICE obligatoire en B2B ──
-    client = facture.client
+    # AARG27 — l'acheteur figé à l'émission (repli : le client vivant).
+    from apps.ventes.domain.instantanes_facture import acheteur_de_la_facture
+    client = acheteur_de_la_facture(facture)
     customer = ET.SubElement(root, f'{{{cac}}}AccountingCustomerParty')
     c_party = ET.SubElement(customer, f'{{{cac}}}Party')
     c_name = ET.SubElement(c_party, f'{{{cac}}}PartyName')

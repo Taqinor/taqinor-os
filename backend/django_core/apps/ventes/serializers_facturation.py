@@ -600,6 +600,8 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
                             'acompte_auto_le',
                             # APAR61 — identité vendeur figée à l'émission.
                             'identite_vendeur',
+                            # AARG27 — identité acheteur figée à l'émission.
+                            'identite_acheteur',
                             # VNT15 — blocs figés à l'émission par le serveur.
                             'objet_vente', 'garanties']
         # VNT15 — ``devis`` facultatif malgré ``uq_facture_tranche_vivante``.
