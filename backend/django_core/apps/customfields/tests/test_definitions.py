@@ -106,6 +106,24 @@ class TestDefinitions(CFBase):
         defn.refresh_from_db()
         self.assertEqual(defn.type, 'text')
 
+    def test_put_sans_type_ou_patch_formule_invalide_409(self):
+        # api-fuzz 01/11 (ENF11) : PUT sans ``type`` -> le type (choix) vient de
+        # la définition STOCKÉE ; PATCH ``formula`` + syntaxe invalide -> non
+        # publiable : 409. PUT avec ``type`` dans le corps garde son 400.
+        defn = CustomFieldDef.objects.create(
+            company=self.company, module='lead', code='p_cho', libelle='C',
+            type='choice', options=['A'])
+        url = f'/api/django/custom-fields/definitions/{defn.pk}/'
+        corps = {'module': 'lead', 'code': 'p_cho', 'libelle': 'C',
+                 'options': None}
+        resp = self.api.put(url, corps, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        resp = self.api.put(url, {**corps, 'type': 'choice'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.patch(
+            url, {'type': 'formula', 'formule': 'a\x07b'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
     def test_module_et_regle_de_type_publies_sans_empilement(self):
         # api-fuzz-full 24/10 (« Too many generated examples are filtered
         # out ») : ``module`` = UN motif borné (plus anyOf + énumération +
