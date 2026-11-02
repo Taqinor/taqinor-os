@@ -170,6 +170,12 @@
   },
   {
    "classe": "SerializerMethodField",
+   "nom": "conditions_suite",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
    "nom": "lead_contact_preference",
    "read_only": true,
    "required": false

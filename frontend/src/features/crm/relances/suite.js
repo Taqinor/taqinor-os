@@ -81,6 +81,10 @@ export function suiteJournal(outcome) {
  *  est proposé juste après », « cochez ci-dessous… »). */
 export function suiteAnnoncee(etape, reponse) {
   const morceaux = codesSuite(etape, reponse).map(phraseEffet).filter(Boolean)
+  // D-CADV22-PROMESSE — le compte qui empêche la mise au Froid (« 3 appels sur
+  // 5 tracés ») : une phrase du SERVEUR, jamais recalculée ici.
+  const condition = etape?.conditions_suite?.[cleSuite(reponse)]
+  if (condition) morceaux.push(`${condition}.`)
   if (reponse?.precision) morceaux.push(reponse.precision)
   return morceaux.join(' ')
 }

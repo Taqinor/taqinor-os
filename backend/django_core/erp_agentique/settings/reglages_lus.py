@@ -9,6 +9,8 @@ Importé par `base.py` (`from .reglages_lus import *`) : `dev.py` et `prod.py` e
 """
 import os
 
+# apps.crm.cadence_selectors (CADV32, D-CADV-11) : K6 palier 2, après le récépissé F211 et la relecture Meta.
+REACTIVATION_K6_PALIER2 = os.environ.get('REACTIVATION_K6_PALIER2', '0') == '1'
 # apps.notifications.sweeps (_sweep_hot_leads) : seuils du filet « lead chaud non contacté ».
 HOT_LEAD_SCORE_THRESHOLD = 60
 HOT_LEAD_MINUTES_OUVREES = 30

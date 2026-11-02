@@ -157,7 +157,10 @@ GESTES_SANS_CLE = frozenset({'planification_seule', 'replanification'})
 #: point d'eau est inconnu (groupe hydraulique manquant) — la suite annoncée
 #: « devis » devient « Planifier la visite — relevé du point d'eau ».
 CONTEXTE_AGRICOLE_SANS_RELEVE_EAU = 'agricole_sans_releve_eau'
-CONTEXTES_VARIANTE = frozenset({'derniere_touche', 'perdu_junk',
+#: Les contextes où la touche amenée est rendue DERNIÈRE de sa cadence.
+CONTEXTES_DERNIERE_TOUCHE = ('derniere_touche', 'derniere_touche_appels_manquants',
+                             'derniere_touche_pro')
+CONTEXTES_VARIANTE = frozenset({*CONTEXTES_DERNIERE_TOUCHE, 'perdu_junk',
                                 CONTEXTE_AGRICOLE_SANS_RELEVE_EAU})
 JOURS = frozenset({'aujourdhui', 'demain', 'date_choisie'})
 ETATS_FIN = frozenset({'froid', 'perdu', 'ne_plus_contacter'})
@@ -810,7 +813,7 @@ class ParcoursBase(TestCase):
         cadence, ordre = CADENCE_DU_TYPE[type_id], ORDRE_AMENE[type_id]
         suivants = CadenceRelanceEtape.objects.filter(
             company=self.company, cadence=cadence, actif=True, ordre__gt=ordre)
-        if contexte == 'derniere_touche':
+        if contexte in CONTEXTES_DERNIERE_TOUCHE:
             suivants.update(actif=False)
         elif not suivants.exists():
             # Le gabarit livré fait de ce barreau le dernier (le réveil J60) : un barreau de
@@ -1087,6 +1090,17 @@ class ParcoursBase(TestCase):
                 LeadActivity(company=lead.company, lead=lead, user=lead.owner,
                              kind=LeadActivity.Kind.APPEL, body='Pas de réponse.')
                 for _ in range(5)])
+        if cas.contexte == 'derniere_touche_appels_manquants':
+            # D-CADV22-PROMESSE — le protocole de la société compte deux appels et
+            # l'historique n'en trace aucun : cette touche en fait 1 sur 2.
+            LeadActivity.objects.filter(lead=lead, kind=LeadActivity.Kind.APPEL).delete()
+            CadenceRelanceEtape.objects.filter(
+                company=self.company, cadence=CADENCE_DU_TYPE[cas.type_id],
+                actif=True, ordre__lt=etape.ordre).update(canal='appel')
+        if cas.contexte == 'derniere_touche_pro':
+            # CADV102 — le même dossier, client industriel : Standby trimestriel.
+            Lead.objects.filter(pk=lead.pk).update(type_installation='industriel')
+            lead.refresh_from_db()
         if cas.contexte == CONTEXTE_AGRICOLE_SANS_RELEVE_EAU:
             # AGR530 — le même dossier, devenu un pompage au point d'eau
             # inconnu (aucune donnée hydraulique) : la seule différence.

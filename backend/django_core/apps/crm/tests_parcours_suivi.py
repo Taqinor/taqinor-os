@@ -47,7 +47,8 @@ from apps.crm import cadence_config, horaires, stages, cadence_reperes
 from apps.crm.cadence_config import cle_de
 from apps.crm.models import LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.parcours_suivi_outils import (
-    CADENCE_DU_TYPE, CHEMINS, CHEMINS_SPECIAUX, CLES_RENDEZ_VOUS, CONTEXTES_VARIANTE,
+    CADENCE_DU_TYPE, CHEMINS, CHEMINS_SPECIAUX, CLES_RENDEZ_VOUS, CONTEXTES_DERNIERE_TOUCHE,
+    CONTEXTES_VARIANTE,
     ETATS_FIN, FAMILLES, GESTES_PLANIFICATION, JOURS, MOTIF_COMMERCIAL, ORDRE_AMENE,
     REPONSES_SPEC, TYPES_SUIVI, ParcoursBase, cas_de_la_famille, etapes_de_la_table,
     reponse_de, reponses, reponses_appel, table, type_de)
@@ -134,7 +135,7 @@ class TableParcoursTests(SimpleTestCase):
                     with self.subTest(etape=etape['id'], reponse=reponse['modele'],
                                       contexte=contexte):
                         self.assertIn(contexte, CONTEXTES_VARIANTE)
-                        if contexte == 'derniere_touche':
+                        if contexte in CONTEXTES_DERNIERE_TOUCHE:
                             # Un barreau de protocole : la garde en fait la dernière touche
                             # par le gabarit de la société.
                             self.assertIn(etape['id'], ORDRE_AMENE)
@@ -424,7 +425,9 @@ class ParcoursCompletsTests(ParcoursBase):
     def test_a_message_appel_devis_envoye_depuis_l_erp_puis_accepte(self):
         """Message sans réponse → appel → client joint → étape devis (datée de DEMAIN, traitée
         le jour même : le devis part aujourd'hui depuis l'ERP et l'étape se ferme d'elle-même)
-        → suivi de proposition → client joint → … → devis accepté → SIGNÉ, zéro touche.
+        → suivi de proposition → client joint → … → devis accepté → SIGNÉ, tout le protocole
+        arrêté, restent les deux appels du commercial (CADV36, table « devis_accepte ») ; les
+        clore ne fait rien naître : zéro touche, toujours Signé.
         (« Fait » sur l'étape devis le jour même : histoire f.)"""
         lead, message = self.amener('contact_message')
         self.jouer(lead, message, 'pas_de_reponse')
@@ -455,6 +458,19 @@ class ParcoursCompletsTests(ParcoursBase):
         self.verifier_invariants(lead)
         lead.refresh_from_db()
         self.assertEqual(lead.stage, stages.SIGNED, self.msg('le lead n’est pas signé', lead))
+        touches = self.ouvertes(lead)
+        self.assertEqual(
+            [(e.cadence, e.canal, e.cle, e.libelle, e.due_date) for e in touches],
+            [('generique', 'appel', '', cadence_reperes.LIBELLE_CONFIRMER_SIGNATURE,
+              self.aujourdhui() + datetime.timedelta(days=2)),
+             ('generique', 'appel', '', cadence_reperes.LIBELLE_RELANCE_ACOMPTE,
+              self.aujourdhui() + datetime.timedelta(days=7))],
+            self.msg('après l’acceptation, les deux appels du commercial et rien d’autre', lead))
+        for touche in touches:
+            self.appel('post', f'/api/django/crm/relance-etapes/{touche.pk}/fait/', {})
+            self.verifier_invariants(lead)
+            self.assertEqual(lead.stage, stages.SIGNED,
+                             self.msg('clore une touche a sorti le lead de Signé', lead))
         self.assertEqual(self.ouvertes(lead), [], self.msg('une relance survit au devis signé', lead))
 
     def test_b_visite_confirmee_retour_terrain_puis_devis_envoye(self):

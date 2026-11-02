@@ -123,6 +123,21 @@ describe('CAD17 RelanceEtapeRow — le panneau « Fait » affiche la suite DU SE
       .not.toHaveTextContent(phraseEffet('touche_suivante'))
   })
 
+  it('D-CADV22-PROMESSE : la dernière touche qui ne peut pas parquer dit le compte et l’appel de plus', () => {
+    const derniere = {
+      ...ETAPE_APPEL, ordre: 11,
+      suites: { ...ETAPE_APPEL.suites, non_joint: ['etape_appel_avant_froid'] },
+      conditions_suite: { non_joint: '3 appels sur 5 tracés' },
+    }
+    ouvrirFait(derniere)
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    const suite = screen.getByTestId('suite-reponse')
+    expect(suite).toHaveTextContent(phraseEffet('etape_appel_avant_froid'))
+    expect(suite).toHaveTextContent('3 appels sur 5 tracés.')
+    expect(suite).not.toHaveTextContent(phraseEffet('derniere_froid_reveils'))
+    expect(suite).not.toHaveTextContent('Préparer et envoyer le devis')
+  })
+
   it('Répondeur / Occupé annoncent la suite de « non_joint » (même issue serveur)', () => {
     ouvrirFait(ETAPE_APPEL)
     fireEvent.click(screen.getByRole('button', { name: 'Répondeur' }))

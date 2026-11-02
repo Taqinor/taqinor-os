@@ -35,6 +35,7 @@
         "lead_est_junk": false,
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
+        "conditions_suite": {},
         "suites": {
           "joint": [
             "contact_arretee",
@@ -110,6 +111,7 @@
         "lead_est_junk": false,
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
+        "conditions_suite": {},
         "suites": {
           "joint": [
             "touche_suivante"
@@ -215,6 +217,7 @@
         "lead_est_junk": false,
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
+        "conditions_suite": {},
         "suites": {
           "sans_issue": [
             "touche_suivante"
@@ -283,6 +286,7 @@
         "lead_est_junk": false,
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
+        "conditions_suite": {},
         "suites": {
           "perdu": [
             "lead_perdu"
@@ -345,6 +349,7 @@
         "lead_est_junk": false,
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
+        "conditions_suite": {},
         "suites": {
           "joint": [
             "sort_du_froid",
@@ -433,6 +438,7 @@
         "lead_est_junk": false,
         "lead_contact_preference": "",
         "lead_pii_masquee": true,
+        "conditions_suite": {},
         "suites": {
           "joint": [
             "contact_arretee",
@@ -513,6 +519,7 @@
         "lead_est_junk": false,
         "lead_contact_preference": "whatsapp_only",
         "lead_pii_masquee": false,
+        "conditions_suite": {},
         "suites": {
           "joint": [
             "contact_arretee",
@@ -597,6 +604,7 @@
         "lead_est_junk": false,
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
+        "conditions_suite": {},
         "suites": {
           "joint": [
             "suite_si_plus_rien_ouvert"
@@ -651,6 +659,7 @@
     ]
   },
   "notes": {
+    "conditions_suite": "D-CADV22-PROMESSE — `{cle: phrase}` : sur la dernière touche, le compte qui empêche la mise au Froid (« 3 appels sur 5 tracés », « Aucune touche tracée »), pour les réponses qui annoncent `etape_appel_avant_froid`. `{}` partout ailleurs. Phrase du serveur, l'écran ne recalcule rien.",
     "rappel_convenu_le": "CADV11 — la date de rappel convenue par un report HUMAIN (`POST relance-etapes/<id>/reporter/`) : AAAA-MM-JJ de la touche recalée sur la fenêtre. null tant qu’aucun humain n’a convenu de date, et pour un déplacement du moteur. Aucun écran ne la lit avant la vague 2.",
     "exemple_debrief_visite": "CAD2 — un AUTRE ÉTAT du serveur, même forme : l'étape « Débrief visite — rappeler le client » (VISITE-CADENCE, ordre 91 hors gabarit, cadence `apres_devis` pour vivre dans la même frise). Sa nature se lit sur son LIBELLÉ, jamais sur sa cadence : les quatre libellés de visite (« Planifier la visite technique convenue », « Confirmer la visite (veille) », « Débrief visite — rappeler le client », « Préparer le devis modifié — rappeler le client ») portent leur PROPRE jeu de questions à l'écran (« la visite a-t-elle eu lieu ? reportée ? devis à modifier ? ») — patron « libellé + note » de Répondeur/Occupé, sur les issues EXISTANTES, aucune valeur d'énumération neuve. Côté moteur : une étape de visite close ne DÉMARRE jamais le suivi de proposition (`joint` → `suite_si_plus_rien_ouvert` : il le POURSUIT s'il a déjà servi, sinon une étape de suite est posée — jamais « Le PDF s'ouvre bien ? » après une visite). Décision fondateur du 24/09/2026 : `non_joint` et `sauter` n'envoient plus JAMAIS le dossier au Froid (code `visite_froid_si_seule` retiré) — même suite `suite_si_plus_rien_ouvert` ; pour le débrief, l'étape de suite est « Rappeler — dernier essai avant de chiffrer », puis « Préparer et envoyer le devis ».",
     "lead_contact_preference": "CAD82 — préférence de contact du CLIENT (`Lead.contact_preference` : `whatsapp_only` | `phone_ok`), chaîne VIDE — jamais null — quand rien n'est posé. La ligne l'écrit en clair (« joint par écrit seulement ») au lieu de proposer Appeler et WhatsApp à égalité (`exemple_whatsapp_uniquement`).",
@@ -719,6 +728,7 @@
         "lead_est_junk": false,
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
+        "conditions_suite": {},
         "suites": {
           "joint": [
             "contact_arretee",

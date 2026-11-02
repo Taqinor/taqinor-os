@@ -1,7 +1,7 @@
 {
   "_doc": "SUIVI-PARCOURS (30/09/2026) — LA TABLE UNIQUE du suivi commercial : pour chaque ÉTAPE, sa question, ses réponses, ce que chaque réponse ENVOIE au serveur, ce qui SE PASSE ENSUITE et ce qui est seulement STOCKÉ. Trois lecteurs, une seule source : (1) l'écran (`RelanceEtapeRow.jsx` y lit question et réponses — plus aucune liste écrite à la main par cadence) ; (2) la garde de parcours (`backend/django_core/apps/crm/tests_parcours_suivi.py` rejoue chaque réponse par l'API réelle et vérifie `suite`) ; (3) le guide PDF publié dans la GED (`docs/meryem/`, généré par `scripts/generer_guide_suivi.py`). Modifier une réponse ici sans que le moteur suive casse la garde ; modifier le moteur sans cette table aussi. Les PHRASES affichées sous une réponse choisie restent celles du serveur (`etape.suites` → `suite_phrases.json`, garde CAD17) : `effet` est le texte du GUIDE.",
-  "version": "1.1",
-  "maj": "2026-09-30",
+  "version": "1.2",
+  "maj": "2026-11-02",
   "legende_suite": {
     "etape": "Une étape de clé `cle` est ouverte ensuite (`jour` : aujourdhui | demain | date_choisie).",
     "barreau_suivant": "La touche suivante du même protocole est ouverte (à son délai prévu, ou `jour: date_choisie`).",
@@ -175,9 +175,9 @@
         },
         {
           "modele": "pas_de_reponse",
-          "effet": "La touche suivante du protocole est programmée. Après la dernière touche : le dossier part au Froid (étiquette « Injoignable » — ou « Deuxième affaire sans réponse » quand c’est un client déjà signé qui revient) et ses réveils J30 / J60 sont programmés.",
+          "effet": "La touche suivante du protocole est programmée. Après la dernière touche : le dossier part au Froid (étiquette « Injoignable » — ou « Deuxième affaire sans réponse » quand c’est un client déjà signé qui revient) et ses réveils J30 / J60 sont programmés. S’il manque des appels tracés (5, ou le nombre d’appels du protocole s’il en compte moins ; au moins une touche pour un client déjà signé) : pas de Froid, l’écran dit le compte (« 3 appels sur 5 tracés ») et la suite est un autre appel, jamais le devis. Client commercial ou industriel : pas de Froid, le dossier se met en attente et « Appel trimestriel » est posé dans trois mois (le quatrième passage part au Froid).",
           "suite": { "type": "barreau_suivant" },
-          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }]
+          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }, { "contexte": "derniere_touche_appels_manquants", "suite": { "type": "barreau_suivant" } }, { "contexte": "derniere_touche_pro", "suite": { "type": "barreau_suivant" } }]
         },
         { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée dans l’historique.", "suite": { "type": "barreau_suivant" } },
         { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée dans l’historique.", "suite": { "type": "barreau_suivant" } },
@@ -247,7 +247,7 @@
         },
         {
           "modele": "pas_de_reponse",
-          "effet": "La touche suivante du protocole est programmée. Après la dernière (« Clôture ») : le dossier part au Froid et ses réveils sont programmés.",
+          "effet": "La touche suivante du protocole est programmée. Après la dernière (« Clôture ») : le dossier part au Froid et ses réveils sont programmés. S’il manque des appels tracés : pas de Froid, l’écran dit le compte et la suite est un autre appel.",
           "suite": { "type": "barreau_suivant" },
           "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }]
         },
@@ -370,7 +370,7 @@
       "exemples": ["Appel de suivi (J+2, J+7, J+11)"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["appel"] },
       "question": "Réponse du client sur la proposition ?",
-      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent. Devis parti hors ERP ? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.",
+      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé, toutes les relances s’arrêtent et deux appels vous restent (confirmer la signature à J+2, rappeler l’acompte à J+7). Devis parti hors ERP ? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.",
       "reponses": [
         {
           "modele": "joint",
@@ -386,9 +386,9 @@
         },
         {
           "modele": "sans_reponse",
-          "effet": "La touche suivante du suivi est programmée. Après la dernière : le dossier part au Froid (« Devis sans suite ») et ses réveils sont programmés.",
+          "effet": "La touche suivante du suivi est programmée. Après la dernière : le dossier part au Froid (« Devis sans suite ») et ses réveils sont programmés. Client commercial ou industriel : pas de Froid, le dossier se met en attente et « Appel trimestriel » est posé dans trois mois (le quatrième passage part au Froid).",
           "suite": { "type": "barreau_suivant" },
-          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }]
+          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }, { "contexte": "derniere_touche_pro", "suite": { "type": "barreau_suivant" } }]
         },
         { "modele": "repondeur", "effet": "Comme « Sans réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "barreau_suivant" } },
         { "modele": "occupe", "effet": "Comme « Sans réponse » ; la note « Occupé » est gardée.", "suite": { "type": "barreau_suivant" } },
@@ -412,7 +412,7 @@
       "exemples": ["Le PDF s’ouvre bien ?", "Dimanche famille", "Preuve — chantier comparable", "Garanties fabricants", "Validité de la proposition", "Dernier message", "Mise en pause"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
-      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent. Devis parti hors ERP ? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.",
+      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé, toutes les relances s’arrêtent et deux appels vous restent (confirmer la signature à J+2, rappeler l’acompte à J+7). Devis parti hors ERP ? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.",
       "reponses": [
         { "modele": "a_repondu", "effet": "Le dossier passe « Relance ». Le suivi continue : sa touche suivante est programmée. Sur la dernière touche du suivi : « Décider la suite » est posée pour demain (le devis est déjà parti : aucune étape devis).", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }] },
         { "modele": "joint_telephone", "effet": "Client eu au téléphone : même suite, l’historique garde un appel abouti. Sur la dernière touche du suivi : « Décider la suite » est posée pour demain.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }] },
@@ -554,12 +554,12 @@
     {
       "id": "generique",
       "famille": "Autres étapes",
-      "nom": "Étape générique (ancien plan J+2…J+35, passation, rappel demandé, signal)",
-      "exemples": ["Passation — prévenir le client du changement de conseiller", "Rappeler le client (il l’a demandé)", "Premier rappel", "Relance WhatsApp"],
+      "nom": "Étape générique (ancien plan J+2…J+35, passation, rappel demandé, signal, après acceptation)",
+      "exemples": ["Passation — prévenir le client du changement de conseiller", "Rappeler le client (il l’a demandé)", "Premier rappel", "Relance WhatsApp", "Confirmer la signature et la suite", "Acompte : relancer le client"],
       "reconnaissance": { "cadences": ["generique"] },
       "question": "Où en est ce dossier ?",
       "reponses": [
-        { "modele": "fait", "effet": "Sur un barreau de l’ancien plan : la touche suivante est programmée à son délai. Sur une étape posée par l’ERP : un suivi de proposition pendant reprend, sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
+        { "modele": "fait", "effet": "Sur un barreau de l’ancien plan : la touche suivante est programmée à son délai. Sur une étape posée par l’ERP : un suivi de proposition pendant reprend, sinon « Préparer et envoyer le devis » est posée pour demain. Sur un dossier Signé : rien d’autre n’est posé.", "suite": { "type": "reprise" } },
         { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
         { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie (sur un barreau de l’ancien plan : la touche suivante est programmée à cette date).", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
@@ -586,7 +586,7 @@
   "evenements": [
     { "id": "lead_cree", "quand": "Un lead arrive (site, Meta, saisie) avec un numéro", "effet": "La prise de contact démarre seule : « Message d’identité » puis « Appel d’ouverture »." },
     { "id": "devis_envoye", "quand": "Un devis est envoyé depuis l’ERP", "effet": "Le dossier passe « Devis envoyé ». La prise de contact et les étapes « avant devis » se ferment ; le suivi de proposition démarre, daté de l’envoi — même si une étape de visite est encore ouverte." },
-    { "id": "devis_accepte", "quand": "Le devis est marqué accepté (Ventes → Devis)", "effet": "Le dossier passe « Signé » : toutes les relances s’arrêtent." },
+    { "id": "devis_accepte", "quand": "Le devis est marqué accepté (Ventes → Devis)", "effet": "Le dossier passe « Signé » : toutes les relances s’arrêtent, puis deux appels sont posés pour le commercial : « Confirmer la signature et la suite » à J+2 et « Acompte : relancer le client » à J+7 (pas de rappel si l’acompte est déjà payé). Les touches encore ouvertes sont annulées dès que l’acompte est reçu ou que l’acceptation est annulée ; les clore ne pose rien d’autre." },
     { "id": "devis_refuse", "quand": "Le devis est marqué refusé", "effet": "Le suivi de proposition s’arrête ; étape « Décider la suite »." },
     { "id": "visite_planifiee", "quand": "Une visite est planifiée (ou déplacée)", "effet": "Les relances en attente sont décalées à deux jours après la visite ; « Confirmer la visite (veille) » et « Débrief visite » sont posées. Sans devis envoyé : « Préparer et envoyer le devis » est mise en attente de la visite." },
     { "id": "retour_visite", "quand": "Le technicien saisit son retour de visite", "effet": "Le retour descend dans l’historique du lead. Sans devis envoyé : « Préparer et envoyer le devis » est posée (demain). Avec un devis : le débrief est calé sur le retour, et devient « Préparer le devis modifié » si le terrain le demande." },

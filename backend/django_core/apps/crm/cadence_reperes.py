@@ -289,9 +289,14 @@ QUESTION_PRIX_LIBELLE = (
 #: PARAM-CADENCE — les deux étapes HORS gabarit (passation, question de prix)
 #: n'ont pas de clé : elles restent reconnues par leur libellé, qui n'est pas
 #: réglable.
+#: CADV36 (D-CADV-3) — les deux touches du commercial après l'acceptation.
+LIBELLE_CONFIRMER_SIGNATURE = 'Confirmer la signature et la suite'
+LIBELLE_RELANCE_ACOMPTE = 'Acompte : relancer le client'
 _LIBELLES_FILET_HORS_GABARIT = frozenset({
     PASSATION_LIBELLE,  # CAD54
     QUESTION_PRIX_LIBELLE,  # CAD7
+    LIBELLE_CONFIRMER_SIGNATURE,  # CADV36
+    LIBELLE_RELANCE_ACOMPTE,  # CADV36
 })
 #: Les libellés PAR DÉFAUT des étapes de filet (les étapes posées avant la
 #: clé en portent un) — un lecteur ne s'en sert plus pour RECONNAÎTRE une

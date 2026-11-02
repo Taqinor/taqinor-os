@@ -1201,6 +1201,61 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
     return out
 
 
+#: CADV32 (D-CADV-8, conception v4 §5.1) — l'ère du moteur des leads Meta, et le
+#: palier 1 de K6 : facture d'au moins 2 000 MAD ou projet à moins de 3 mois.
+REACTIVATION_ERE_MOTEUR = datetime.date(2026, 9, 6)
+REACTIVATION_K6_FACTURE_MIN = 2000
+
+
+def seaux_reactivation(company, maintenant=None):
+    """CADV32 — chaque dormant (Froid) de la société dans UN seul seau, dans l'ordre
+    de précédence du §5.1 : K3 (joint et chiffré), K5 (Meta jamais joint, ère du
+    moteur), K6 palier 1, K6 palier 2 (Meta jamais joint, avant). Opposés, archivés
+    et perdus écartés d'abord (``motif_exclu_du_contact``). D-CADV-11 — le palier 2
+    reste vide tant que ``REACTIVATION_K6_PALIER2`` est faux. Lecture pure, une
+    requête par nature de donnée, jamais une par lead ; forme :
+    ``contract_samples/reactivation_seaux.json`` (``seaux``)."""
+    from django.conf import settings
+    from django.utils import timezone
+
+    from apps.ventes.selectors import devis_envoyes_par_lead
+
+    from . import horaires, stages
+    from .cadence_reveil_saison import motif_exclu_du_contact
+    from .mesure_cadence import ISSUES_JOINT
+    from .models import Lead, LeadActivity
+
+    leads = list(Lead.objects.filter(
+        company=company, stage=stages.COLD,
+        date_creation__lte=maintenant or timezone.now()).order_by('pk'))
+    ids = [lead.pk for lead in leads]
+    joints = set(LeadActivity.objects.filter(
+        company=company, lead_id__in=ids, outcome__in=ISSUES_JOINT,
+    ).values_list('lead_id', flat=True))
+    chiffres = {ligne['lead_id'] for ligne in devis_envoyes_par_lead(company, ids)}
+    seaux = {'K3': [], 'K5': [], 'K6_p1': [], 'K6_p2': []}
+    palier_2 = bool(getattr(settings, 'REACTIVATION_K6_PALIER2', False))
+    for lead in leads:
+        if motif_exclu_du_contact(lead):
+            continue
+        if lead.pk in joints:
+            if lead.pk in chiffres:
+                seaux['K3'].append(lead.pk)
+            continue
+        if Lead.Source.META_LEAD_ADS not in (lead.source,) and lead.canal != Lead.Canal.META_ADS:
+            continue
+        cree_le = lead.date_creation.astimezone(horaires.CASABLANCA).date()
+        if cree_le >= REACTIVATION_ERE_MOTEUR:
+            seaux['K5'].append(lead.pk)
+        elif ((lead.facture_hiver or 0) >= REACTIVATION_K6_FACTURE_MIN
+              or lead.project_timeline in (Lead.ProjectTimeline.IMMEDIAT,
+                                           Lead.ProjectTimeline.MOINS_3_MOIS)):
+            seaux['K6_p1'].append(lead.pk)
+        elif palier_2:
+            seaux['K6_p2'].append(lead.pk)
+    return seaux
+
+
 def leads_rappel_demande(company, user):
     """VX223 — Leads ayant demandé un RAPPEL téléphonique
     (``contact_preference=='phone_ok'``), le signal le plus chaud du pipeline

@@ -319,6 +319,44 @@ def _heure_visee(heure_cible, debut, fin, pause):
     return heure_cible
 
 
+#: CADV30 (D-CADV-6) — les deux balayages du week-end du message d'identité.
+BALAYAGE_SAMEDI = datetime.time(10, 0)
+BALAYAGE_DIMANCHE = datetime.time(17, 0)
+
+
+def prochain_balayage_weekend(dt, company, canal='whatsapp'):
+    """CADV30 — l'instant où part le message d'identité (barreau ``samedi_ok``) d'un
+    lead arrivé entre le vendredi soir et le dimanche : samedi 10 h, dimanche 17 h,
+    ou dès l'arrivée si le balayage du jour est passé et la fenêtre encore ouverte.
+    ``None`` en dehors (le créneau ordinaire s'applique) : en semaine, le vendredi
+    dans sa fenêtre, dimanche après la fenêtre, et quand la société travaille le
+    samedi. Férié : ce jour-là est sauté ; Ramadan : l'ouverture de la fenêtre."""
+    tz_entree = dt.tzinfo or datetime.timezone.utc
+    local = _local(dt)
+    jour = local.date()
+    if jour.weekday() == 4:
+        fenetre = fenetre_du_jour(jour, company, canal=canal)
+        if fenetre is not None and local.time() < fenetre[1]:
+            return None
+        jour += datetime.timedelta(days=1)
+    while jour.weekday() in (5, 6):
+        samedi = jour.weekday() == 5
+        if samedi and _jour_ouvre(jour, company):
+            return None
+        fenetre = fenetre_du_jour(jour, company, samedi=samedi,
+                                  dimanche=not samedi, canal=canal)
+        if fenetre is not None:
+            debut, fin, _pause = fenetre
+            heure = (debut if est_en_ramadan(jour, company)
+                     else max(debut, BALAYAGE_SAMEDI if samedi else BALAYAGE_DIMANCHE))
+            if jour == local.date():
+                heure = max(heure, local.time())
+            if heure < fin:
+                return _combiner(jour, heure).astimezone(tz_entree)
+        jour += datetime.timedelta(days=1)
+    return None
+
+
 def prochain_creneau_appel(dt, company, *, dimanche=False, samedi=False,
                            canal='appel', heure_cible=None):
     """Le prochain instant JOIGNABLE à partir de `dt` (inclus), pour `canal`.

@@ -35,6 +35,8 @@ from .cadence_plan import (
     materialiser_touche_suivante,
 )
 from .cadence_reperes import (
+    LIBELLE_CONFIRMER_SIGNATURE,
+    LIBELLE_RELANCE_ACOMPTE,
     VISITE_CADENCE,
     VISITE_ORDRE_FILET,
     _KINDS_MESSAGE,
@@ -679,6 +681,109 @@ def prochain_palier_sans_reponse(cle_touche_close, issue_touche_close,
     while cle is not None and not est_actif(cle):
         cle = _MARCHE_APRES_PALIER.get(cle)
     return cle
+
+
+def poser_chaine_apres_acceptation(devis, user):
+    """CADV36 (D-CADV-3) — devis accepté, cadences arrêtées : DEUX touches d'appel
+    pour le commercial, confirmation à J+2 et rappel d'acompte à J+7 (sauf
+    acompte déjà payé). Une étape déjà ouverte se déplace, jamais doublée
+    (``_poser_etape_de_filet``). Rien sur un lead opposé ou archivé."""
+    from apps.ventes.selectors import acompte_paye_pour_devis
+
+    lead = Lead.objects.filter(pk=getattr(devis, 'lead_id', None),
+                               company=devis.company).first()
+    if lead is None or lead.ne_plus_contacter or lead.is_archived:
+        return
+    note = 'Posée automatiquement : le devis est accepté.'
+    maintenant = timezone.now()
+    _poser_etape_de_filet(
+        lead, libelle=LIBELLE_CONFIRMER_SIGNATURE, canal='appel', note=note,
+        vise=maintenant + datetime.timedelta(days=2))
+    if not acompte_paye_pour_devis(devis.pk, devis.company):
+        _poser_etape_de_filet(
+            lead, libelle=LIBELLE_RELANCE_ACOMPTE, canal='appel', note=note,
+            vise=maintenant + datetime.timedelta(days=7))
+    _recaler_file(lead, user)
+
+
+def _q_chaine_ouverte():
+    from django.db.models import Q
+
+    return Q(cadence='generique', cle='', statut=RelanceEtape.Statut.A_FAIRE,
+             libelle__in=(LIBELLE_CONFIRMER_SIGNATURE, LIBELLE_RELANCE_ACOMPTE))
+
+
+def retirer_chaine_apres_acceptation(lead_id, company, motif='acceptation annulée'):
+    """CADV36 — l'acceptation est annulée (CADV112 : l'acompte est reçu) : ses deux
+    touches n'ont plus d'objet, la file pointe la suivante."""
+    lead = Lead.objects.filter(pk=lead_id, company=company).first()
+    if lead is None:
+        return 0
+    annulees = lead.relance_etapes.filter(_q_chaine_ouverte()).update(
+        statut=RelanceEtape.Statut.ANNULEE, note=motif)
+    if annulees:
+        _recaler_file(lead, None)
+    return annulees
+
+
+#: CADV112 — l'escalade part à J+14 et jusqu'à J+21 si le beat a manqué un passage :
+#: jamais sur l'historique des ventes (22 signés, aucun n'a demandé à être rejoué).
+_ESCALADE_ACOMPTE_JOURS = 14
+_ESCALADE_ACOMPTE_FENETRE_JOURS = 7
+
+
+def _marqueur_escalade_acompte(devis):
+    return f'Acompte non reçu à J+14 — direction prévenue (devis {devis.reference}).'
+
+
+def traiter_chaine_acceptation(maintenant=None):
+    """CADV112 (D-CADV-3) — le passage quotidien : la direction est prévenue UNE
+    fois d'un devis accepté sans acompte payé à J+14 (marqueur au chatter), et
+    les touches de la chaîne d'un acompte reçu sont annulées. Rend les compteurs."""
+    from authentication.selectors import active_companies
+
+    from apps.notifications.services import notify_many
+    from apps.notifications.types_evenements import EventType
+    from apps.ventes.selectors import (
+        acompte_paye_pour_devis, devis_acceptes_actifs, devis_signes_en_vigueur)
+
+    from . import horaires
+    from .dispatch import _destinataires_direction
+
+    jour = (maintenant or timezone.now()).astimezone(horaires.CASABLANCA).date()
+    seuil = jour - datetime.timedelta(days=_ESCALADE_ACOMPTE_JOURS)
+    bilan = {'escalades': 0, 'annulees': 0}
+    for company in active_companies():
+        ouverts = set(RelanceEtape.objects.filter(
+            _q_chaine_ouverte(), company=company).values_list('lead_id', flat=True))
+        for lead_id in ouverts:
+            if any(acompte_paye_pour_devis(devis.pk, company) for devis in
+                   devis_acceptes_actifs(company, lead_id=lead_id)):
+                bilan['annulees'] += retirer_chaine_apres_acceptation(
+                    lead_id, company, motif='acompte reçu')
+        echus = devis_signes_en_vigueur(company).filter(
+            lead__isnull=False, date_acceptation__lte=seuil,
+            date_acceptation__gte=seuil - datetime.timedelta(
+                days=_ESCALADE_ACOMPTE_FENETRE_JOURS)).select_related('lead')
+        for devis in echus:
+            marqueur = _marqueur_escalade_acompte(devis)
+            if (acompte_paye_pour_devis(devis.pk, company)
+                    or devis.lead.activites.filter(body=marqueur).exists()):
+                continue
+            destinataires = _destinataires_direction(company)
+            if not destinataires:
+                continue
+            notify_many(
+                destinataires, EventType.DEVIS_ACCEPTED,
+                title=f'Acompte non reçu à J+14 — {devis.lead.nom}',
+                body=f'Devis {devis.reference} accepté le '
+                     f'{devis.date_acceptation:%d/%m/%Y}, aucun acompte payé.',
+                link=f'/crm/leads?lead={devis.lead_id}', company=company)
+            LeadActivity.objects.create(
+                company=company, lead=devis.lead, user=None,
+                kind=LeadActivity.Kind.NOTE, body=marqueur)
+            bilan['escalades'] += 1
+    return bilan
 
 
 def _poser_etape_de_filet(lead, *, note, cle='', libelle='', canal=None,

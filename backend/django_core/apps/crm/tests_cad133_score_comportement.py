@@ -26,7 +26,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, scoring, services, signaux, stages
 from apps.crm import devis_chatter
-from apps.crm.models import Lead, LeadActivity
+from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -217,6 +217,68 @@ class RecalculImmediatTests(TestCase):
         with patch.object(devis_chatter, 'recompute_lead_score') as recalcul:
             devis_chatter.noter_devis_reouvert('DV-1', self.lead, vues=3)
         recalcul.assert_called_once_with(self.lead)
+
+    def _parque(self, *, il_y_a, **champs):
+        """Un lead au Froid (Nurture, 5 appels tracés) dont la dernière ouverture de
+        la proposition date de ``il_y_a`` jours."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Parqué', telephone='0600000065',
+            **{'stage': stages.COLD, 'parc_etat': 'nurture',
+               'parc_raison': 'injoignable', **champs})
+        note = LeadActivity.objects.create(
+            company=self.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body='Le client a ouvert le devis DV-9')
+        LeadActivity.objects.filter(pk=note.pk).update(
+            created_at=MAINTENANT - datetime.timedelta(days=il_y_a))
+        return lead
+
+    def _ouvertes(self, lead):
+        return list(lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
+                    .values_list('libelle', flat=True))
+
+    def test_la_reouverture_tardive_reveille_le_lead_parque(self):
+        """CADV89. Mutant : seuil 30 → 3 jours ⇒ le cas à 10 jours échoue."""
+        lead = self._parque(il_y_a=40)
+        reveil = RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='reveil', ordre=1,
+            canal=RelanceEtape.Canal.APPEL, libelle='Réveil J30',
+            due_at=MAINTENANT, due_date=MAINTENANT.date())
+        devis_chatter.noter_devis_reouvert('DV-9', lead)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.FOLLOW_UP)
+        self.assertIsNone(lead.parc_etat)
+        self.assertIsNone(lead.parc_raison)
+        self.assertEqual(self._ouvertes(lead), ['Proposition rouverte — appeler'])
+        reveil.refresh_from_db()
+        self.assertEqual(reveil.statut, RelanceEtape.Statut.ANNULEE)
+        # Rejouer le même jour : aucune seconde touche.
+        devis_chatter.noter_devis_reouvert('DV-9', lead)
+        self.assertEqual(self._ouvertes(lead), ['Proposition rouverte — appeler'])
+
+    def test_une_reouverture_sous_30_jours_laisse_le_lead_parque(self):
+        lead = self._parque(il_y_a=10)
+        devis_chatter.noter_devis_reouvert('DV-9', lead)
+        lead.refresh_from_db()
+        self.assertEqual((lead.stage, lead.parc_etat), (stages.COLD, 'nurture'))
+        self.assertEqual(self._ouvertes(lead), [])
+        self.assertTrue(lead.activites.filter(
+            body='Le client a rouvert le devis DV-9').exists())
+
+    def test_le_standby_se_reveille_aussi_pas_l_archive_ni_l_oppose(self):
+        standby = self._parque(il_y_a=40, stage=stages.CONTACTED, parc_etat='standby',
+                               parc_raison='plus_tard_date')
+        devis_chatter.noter_devis_reouvert('DV-9', standby)
+        standby.refresh_from_db()
+        self.assertIsNone(standby.parc_etat)
+        for champs in ({'parc_etat': 'archive', 'parc_raison': 'concurrent'},
+                       {'ne_plus_contacter': True}):
+            with self.subTest(champs=champs):
+                lead = self._parque(il_y_a=40, **champs)
+                devis_chatter.noter_devis_reouvert('DV-9', lead)
+                lead.refresh_from_db()
+                self.assertEqual(lead.stage, stages.COLD)
+                self.assertIsNotNone(lead.parc_etat)
+                self.assertEqual(self._ouvertes(lead), [])
 
     def test_le_score_persiste_monte_apres_une_reouverture(self):
         with patch.object(signaux, '_engagement_proposition',

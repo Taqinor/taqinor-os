@@ -33,6 +33,7 @@
     "lead_est_junk": false,
     "lead_contact_preference": "",
     "lead_pii_masquee": false,
+    "conditions_suite": {},
     "suites": {},
     "cle": "",
     "type_etape": "suivi_message",

@@ -967,7 +967,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 {'contact_secondaire_telephone': [
                     'Aucun numéro valide pour le contact secondaire : '
                     'renseignez-le sur la fiche.']},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)  # donnée de la fiche : refus d'état
         brut = str(request.data.get('devis_id') or '').strip()
         devis = (devis_for_lead(lead, [int(brut)]) if brut.isdigit() else [])
         if not devis or devis[0].statut == 'brouillon':
