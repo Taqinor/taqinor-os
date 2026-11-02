@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4888, operations: 7674, components: 3602}
+counts: {paths: 4890, operations: 7678, components: 3604}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -955,6 +955,8 @@ operations:
 - put /api/django/crm/defis/{id}/ -> django_crm_defis_update
 - get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_list
 - get /api/django/crm/dispatch/ -> django_crm_dispatch_retrieve
+- get /api/django/crm/dispatch/permanences/{equipe_id}/ -> django_crm_dispatch_permanences_retrieve
+- put /api/django/crm/dispatch/permanences/{equipe_id}/ -> django_crm_dispatch_permanences_update
 - patch /api/django/crm/dispatch/reglages/{equipe_id}/ -> django_crm_dispatch_reglages_partial_update
 - post /api/django/crm/dispatch/{lead_id}/attribuer/ -> django_crm_dispatch_attribuer_create
 - get /api/django/crm/equipes/ -> django_crm_equipes_list
@@ -4832,6 +4834,8 @@ operations:
 - put /api/v1/crm/defis/{id}/ -> v1_crm_defis_update
 - get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_list
 - get /api/v1/crm/dispatch/ -> v1_crm_dispatch_retrieve
+- get /api/v1/crm/dispatch/permanences/{equipe_id}/ -> v1_crm_dispatch_permanences_retrieve
+- put /api/v1/crm/dispatch/permanences/{equipe_id}/ -> v1_crm_dispatch_permanences_update
 - patch /api/v1/crm/dispatch/reglages/{equipe_id}/ -> v1_crm_dispatch_reglages_partial_update
 - post /api/v1/crm/dispatch/{lead_id}/attribuer/ -> v1_crm_dispatch_attribuer_create
 - get /api/v1/crm/equipes/ -> v1_crm_equipes_list
@@ -10819,6 +10823,7 @@ components:
 - LigneInventaire
 - LigneInventaireRequest
 - LigneNoteDebit
+- LignePermanenceRequest
 - LignePicking
 - LignePickingRequest
 - LignePrixListe
@@ -11822,6 +11827,7 @@ components:
 - PdfTaskResponse
 - PeriodEnum
 - PeriodTypeEnum
+- PermanencesRequest
 - PermissionCatalogue
 - PermissionsDisponibles
 - PertesCalepinage
