@@ -171,8 +171,6 @@ def creer_facture_import(company, ligne, *, external_system=None, user=None):
     l'EN-TÊTE facture est reconstituée) — ``devis``/``bon_commande`` restent
     ``None``, un lien optionnel additif que rien n'exige ici.
     """
-    from core.numbering import create_with_reference
-
     from apps.ventes.models import Facture
 
     from ..utils.company_settings import create_provisoire
@@ -198,11 +196,23 @@ def creer_facture_import(company, ligne, *, external_system=None, user=None):
 
     # ATOT27 (D-ATOT-5) — un brouillon migré reste hors série (numéro à
     # l'émission) ; une facture migrée déjà émise/payée/annulée l'a été à la
-    # source : elle reçoit son numéro à l'import, comme avant.
-    if statut == Facture.Statut.BROUILLON:
-        facture = create_provisoire(_create)
-    else:
-        facture = create_with_reference(Facture, 'FAC', company, _create)
+    # source : AARG17 — numéro de la SÉRIE CONFIGURÉE (même compteur que les
+    # émises) et échéance appliquée (délai client, repli 30 j), comme
+    # l'émission ; ``facture_emise`` pour une facture ouverte seulement.
+    facture = create_provisoire(_create)
+    if statut != Facture.Statut.BROUILLON:
+        from datetime import timedelta
+        from apps.facturation.models import DEFAULT_ECHEANCE_DAYS
+        from ..utils.company_settings import numeroter_a_l_emission
+        from .facturation_ops import calculer_date_echeance
+        numeroter_a_l_emission(facture)
+        facture.date_echeance = calculer_date_echeance(
+            client=client, date_emission=facture.date_emission,
+        ) or facture.date_emission + timedelta(days=DEFAULT_ECHEANCE_DAYS)
+        facture.save(update_fields=['date_echeance'])
+        if statut == Facture.Statut.EMISE:
+            from core.events import facture_emise
+            facture_emise.send(sender=Facture, instance=facture, company=company)
     return ('cree', '', facture)
 
 
