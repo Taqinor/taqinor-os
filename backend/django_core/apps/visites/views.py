@@ -643,7 +643,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     @extend_schema(request={'application/json': _schema_qualification()},
                    responses=_VISITE_CONTEXTE,
                    extensions={EXTENSION_CORPS_RESSERRE: {
-                       'required': list(vocabulaire_qualification.CHOIX)}})
+                       'required': [*vocabulaire_qualification.CHOIX]}})
     @action(detail=True, methods=['post'], url_path='qualification')
     def qualification(self, request, pk=None):
         """Enregistre la qualification de fin de visite (vocabulaire fermé)."""
