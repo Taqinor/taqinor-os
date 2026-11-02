@@ -48,6 +48,8 @@ class EquipementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     produit_nom = serializers.CharField(source='produit.nom', read_only=True, allow_null=True)
     produit_marque = serializers.CharField(source='produit.marque', read_only=True, allow_null=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True, allow_null=True)
+    produit_fournisseur = serializers.IntegerField(
+        source='produit.fournisseur_id', read_only=True, allow_null=True)
     installation_reference = serializers.CharField(
         source='installation.reference', read_only=True, allow_null=True)
     client_nom = serializers.SerializerMethodField()
