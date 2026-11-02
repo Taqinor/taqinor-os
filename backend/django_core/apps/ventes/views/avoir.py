@@ -16,7 +16,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
 )
-from .facture_gardes import LectureFactures  # AARG12
+from ..gardes_lecture import LectureFactures  # AARG12
 from authentication.scoping import scope_queryset
 from core.mixins import company_qs
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE

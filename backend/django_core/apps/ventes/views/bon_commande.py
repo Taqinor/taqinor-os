@@ -18,7 +18,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
 )
-from .facture_gardes import LectureFactures  # AARG12
+from ..gardes_lecture import LectureFactures  # AARG12
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.viewsets import CompanyScopedModelViewSet  # noqa: ARC5 — exception documentée (D-ENF22)
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE

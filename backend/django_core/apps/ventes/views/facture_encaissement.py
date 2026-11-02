@@ -13,7 +13,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from . import openapi_docs as D
-from .facture_gardes import LectureFactures, PeutEncaisser
+from ..gardes_lecture import LectureFactures
+from .facture_gardes import PeutEncaisser
 from ..domain.encaissements import proposer_arrondi_caisse
 from ..models import Facture, Paiement
 from ..openapi_params import qstr

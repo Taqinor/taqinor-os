@@ -517,7 +517,8 @@ def peut_encaisser(user) -> bool:
     ASEC29) : seul il ouvre « Émettre » ; même prédicat que les vues."""
     from types import SimpleNamespace
 
-    from .views.facture_gardes import PeutEncaisser
+    from authentication.permissions import HasPermissionOrLegacy
+    PeutEncaisser = HasPermissionOrLegacy('encaisser')
     return user is not None and PeutEncaisser().has_permission(
         SimpleNamespace(user=user, method='POST'), None)
 

@@ -25,7 +25,8 @@ from ..serializers_facturation import (
 )
 from ..serializers_facturation import PaiementAvecRetenueEntreeSerializer  # ENF11 : utilisé par @extend_schema
 from authentication.permissions import IsResponsableOrAdmin
-from .facture_gardes import LectureFactures, PeutEncaisser
+from ..gardes_lecture import LectureFactures
+from .facture_gardes import PeutEncaisser
 from core.permissions import declared_action_permissions
 import logging
 

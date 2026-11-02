@@ -14,7 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
-from .facture_gardes import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
+from ..gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from . import openapi_docs as D
 from ..models import Facture
 from ..serializers_facturation import FactureListeSerializer, FactureSerializer

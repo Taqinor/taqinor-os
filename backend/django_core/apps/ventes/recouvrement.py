@@ -844,11 +844,12 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):  # AARG12 — module Ventes
-            from .views.facture_gardes import LectureFactures
+            from .gardes_lecture import LectureFactures
             return [LectureFactures()]
         # AARG7 (D-ASEC-VER-1) — une promesse suspend la relance : geste
         # d'argent, la garde ``encaisser`` (ASEC29) s'ajoute au palier.
-        from .views.facture_gardes import PeutEncaisser
+        from authentication.permissions import HasPermissionOrLegacy
+        PeutEncaisser = HasPermissionOrLegacy('encaisser')
         return [IsResponsableOrAdmin(), PeutEncaisser()]
 
     def perform_create(self, serializer):
