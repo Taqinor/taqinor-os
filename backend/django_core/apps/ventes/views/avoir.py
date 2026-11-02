@@ -12,6 +12,7 @@ from apps.stock.services import (
 )
 from ..models import Facture, Avoir, NoteDebit
 from ..serializers_facturation import AvoirSerializer, NoteDebitSerializer
+from apps.roles.permissions import DroitDeLaGrille  # AARG41
 from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
@@ -26,6 +27,24 @@ logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+
+def _dgi_export_rectificatif(document, type_code):
+    """AARG41 — export DGI local d'un avoir (381) / d'une note de débit (383),
+    à la demande : même interrupteur et même réponse que la facture."""
+    from apps.ventes.dgi import build_ubl_xml, is_dgi_enabled
+    from core.conflit_etat import ConflitEtat
+    if not is_dgi_enabled(document.company):
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+    if document.statut == 'annulee':
+        raise ConflitEtat("Un document annulé ne s'exporte pas à la DGI.")
+    xml_str = build_ubl_xml(document, type_code=type_code,
+                            origine=document.facture)
+    response = HttpResponse(xml_str, content_type='application/xml')
+    response['Content-Disposition'] = (
+        f'attachment; filename="{document.reference}-dgi.xml"')
+    return response
 
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
@@ -62,6 +81,8 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             return [LectureFactures()]
         if self.action == 'annuler':
             return [IsAdminRole()]
+        if self.action == 'dgi_export':  # AARG41 — comme la facture (ASEC50)
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_export')()]
         return [IsResponsableOrAdmin()]
 
     @staticmethod
@@ -129,6 +150,11 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 note=f"Annulation de l'avoir de retour {avoir.reference}",
                 created_by=user)
         return None
+
+    @extend_schema(responses=D.UblXml)
+    @action(detail=True, methods=['get'], url_path='dgi-export')
+    def dgi_export(self, request, pk=None):
+        return _dgi_export_rectificatif(self.get_object(), '381')
 
     @extend_schema(request=None, responses=AvoirSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
@@ -278,7 +304,14 @@ class NoteDebitViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             return [LectureFactures()]
         if self.action == 'annuler':
             return [IsAdminRole()]
+        if self.action == 'dgi_export':  # AARG41 — comme la facture (ASEC50)
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_export')()]
         return [IsResponsableOrAdmin()]
+
+    @extend_schema(responses=D.UblXml)
+    @action(detail=True, methods=['get'], url_path='dgi-export')
+    def dgi_export(self, request, pk=None):
+        return _dgi_export_rectificatif(self.get_object(), '383')
 
     @extend_schema(request=None,
                    responses={200: D.NoteDebitAnnuleeResponse,

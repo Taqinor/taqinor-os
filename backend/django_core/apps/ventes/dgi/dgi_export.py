@@ -52,8 +52,13 @@ def _client_nom(client):
     return plein or (getattr(client, 'nom', '') or '')
 
 
-def build_ubl_xml(facture, profile=None, currency=None):
+def build_ubl_xml(facture, profile=None, currency=None, type_code='380',
+                  origine=None):
     """Construit le XML UBL 2.1 conforme DGI d'une facture. Renvoie une str.
+
+    AARG41 — un rectificatif passe par le même corps : ``facture`` est alors
+    l'avoir (``type_code`` 381) ou la note de débit (383) et ``origine`` sa
+    facture, nommée en ``BillingReference``, dont il reprend acheteur et devise.
 
     ``profile`` (CompanyProfile vendeur) est optionnel : s'il est absent, il
     est résolu depuis la société de la facture. La portée société est garantie
@@ -69,7 +74,7 @@ def build_ubl_xml(facture, profile=None, currency=None):
     if currency is None:
         # DC25 — plus de « MAD » codé en dur : on prend la devise du document,
         # puis celle par défaut de la société, et seulement en dernier « MAD ».
-        currency = (getattr(facture, 'devise', None)
+        currency = (getattr(origine or facture, 'devise', None)
                     or getattr(profile, 'devise_defaut', None)
                     or 'MAD')
     for prefix, uri in NS.items():
@@ -92,10 +97,14 @@ def build_ubl_xml(facture, profile=None, currency=None):
         el(root, 'IssueDate', text=facture.date_emission.isoformat())
     if getattr(facture, 'date_livraison', None):
         el(root, 'TaxPointDate', text=facture.date_livraison.isoformat())
-    el(root, 'InvoiceTypeCode', text='380')
+    el(root, 'InvoiceTypeCode', text=type_code)
     el(root, 'DocumentCurrencyCode', text=currency)
     if getattr(facture, 'conditions_paiement', ''):
         el(root, 'Note', text=facture.conditions_paiement)
+    if origine is not None:
+        reference = ET.SubElement(root, f'{{{cac}}}BillingReference')
+        doc = ET.SubElement(reference, f'{{{cac}}}InvoiceDocumentReference')
+        el(doc, 'ID', text=origine.reference or '')
 
     # ── Vendeur (AccountingSupplierParty) ──
     supplier = ET.SubElement(root, f'{{{cac}}}AccountingSupplierParty')
@@ -119,7 +128,7 @@ def build_ubl_xml(facture, profile=None, currency=None):
     # ── Client (AccountingCustomerParty) — ICE obligatoire en B2B ──
     # AARG27 — l'acheteur figé à l'émission (repli : le client vivant).
     from apps.ventes.domain.instantanes_facture import acheteur_de_la_facture
-    client = acheteur_de_la_facture(facture)
+    client = acheteur_de_la_facture(origine or facture)
     customer = ET.SubElement(root, f'{{{cac}}}AccountingCustomerParty')
     c_party = ET.SubElement(customer, f'{{{cac}}}Party')
     c_name = ET.SubElement(c_party, f'{{{cac}}}PartyName')
