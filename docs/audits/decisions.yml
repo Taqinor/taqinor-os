@@ -2999,3 +2999,16 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA4"
     taches: [AARG23]
+  - id: D-AARG-5
+    question: "Escompte pour paiement anticipé appliqué à l'encaissement sans avoir (journal des ventes, TVA et UBL au montant plein) : comment le comptabiliser ?"
+    options:
+      - cle: par_avoir
+        texte: "Chaque escompte accordé génère un avoir qui réduit HT et TVA ; journal, TVA et UBL suivent l'encaissé réel"
+      - cle: hors_tva
+        texte: "Escompte financier hors TVA (comportement actuel), libellé « Escompte » et non « règlement » au relevé"
+      - cle: retirer
+        texte: "Retirer la fonction d'escompte (aucun usage MVP)"
+    reponse: par_avoir
+    date: "2026-11-02"
+    source: "Reda, question interactive, audit parcours PA4 (critique de complétude)"
+    taches: [AARG57]
