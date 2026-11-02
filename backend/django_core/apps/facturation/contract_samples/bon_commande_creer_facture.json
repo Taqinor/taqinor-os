@@ -1,0 +1,11 @@
+{
+  "endpoint": "POST /api/django/ventes/bons-commande/<int:pk>/creer-facture/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AFAC105 (C-AFAC-VER2-020, C1, S3) — la réponse de `creer-facture` est la facture de lignes : le total servi est `total_ttc` (somme des lignes) ; `montant_ttc` est le figé des tranches d'échéancier, NUL sur une facture de lignes. L'écran « Nouvelle facture » lisait `montant_ttc` et affichait « Total TTC — ». Il lit `total_ttc`.",
+  "exemple": {
+    "id": 90,
+    "reference": "BROUILLON-90",
+    "total_ttc": "12000.00",
+    "montant_ttc": null
+  }
+}
