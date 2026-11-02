@@ -217,18 +217,18 @@ def _equipements_produit(company, installation, produit):
 def _balayer_produit(*, company, installation, produit, quantite_ligne,
                      date_pose, created_by):
     """ACHT46 — état cible du parc d'un (chantier, produit) à la réception,
-    indépendant de l'ordre réception / relevé : les équipements à série
-    relevés AVANT la réception (datés du jour du relevé) sont recalés à la
-    date de réception, et un placeholder sans série existe tant que les séries
+    indépendant de l'ordre réception / relevé : les séries relevées AVANT la
+    réception (datées du jour du relevé ou de la pose réelle — ACHT125) sont
+    recalées à la réception, et un placeholder sans série existe tant que les séries
     relevées sont moins nombreuses que la quantité de la ligne. Renvoie True
     si un équipement a été créé."""
     series, placeholders = _equipements_produit(company, installation, produit)
     nb_series = series.count()
     if date_pose:
         for eq in series:
-            cree_le = (timezone.localtime(eq.date_creation).date()
-                       if eq.date_creation else None)
-            if eq.date_pose == cree_le and eq.date_pose != date_pose:
+            machine = {getattr(installation, 'date_pose_reelle', None),  # ACHT125
+                       eq.date_creation and timezone.localtime(eq.date_creation).date()}
+            if eq.date_pose and eq.date_pose in machine and eq.date_pose != date_pose:
                 eq.date_pose = date_pose
                 eq.recompute_garanties()
                 eq.save(update_fields=[

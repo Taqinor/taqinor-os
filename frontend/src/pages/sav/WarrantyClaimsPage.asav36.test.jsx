@@ -68,4 +68,29 @@ describe('WarrantyClaimsPage — ASAV36 fournisseur', () => {
     expect('fournisseur_id_ext' in serveur.corps[0]).toBe(false)
     await waitFor(() => expect(screen.getAllByText('non renseigné').length).toBeGreaterThan(0))
   }, 60000)
+
+  it('ASAV118 — l\'équipement préremplit le fournisseur de son produit', async () => {
+    const savApi = (await import('../../api/savApi')).default
+    savApi.getEquipements.mockResolvedValueOnce({ data: [
+      { id: 1, produit_nom: 'Onduleur', numero_serie: 'SN-1', produit_fournisseur: 6 },
+      { id: 2, produit_nom: 'Panneau', numero_serie: 'SN-2', produit_fournisseur: null },
+    ] })
+    const user = userEvent.setup()
+    rendre()
+    const fournisseur = () => screen.getByRole('combobox', { name: 'Fournisseur' })
+    const equipement = async (nom) => {
+      await user.click(screen.getAllByRole('combobox').find((c) => /Équipement|SN-/.test(c.textContent)))
+      await user.click(await screen.findByRole('option', { name: nom }))
+    }
+    await equipement('Onduleur — SN-1')
+    await waitFor(() => expect(fournisseur().textContent).toBe('VEICHI'))
+    await equipement('Panneau — SN-2')
+    expect(fournisseur().textContent).toBe('VEICHI')
+    await equipement('Onduleur — SN-1')
+    await user.click(fournisseur())
+    await user.click(await screen.findByRole('option', { name: 'Huawei Maroc' }))
+    await user.click(screen.getByRole('button', { name: /Créer/ }))
+    await waitFor(() => expect(serveur.corps).toHaveLength(1))
+    expect(serveur.corps[0].fournisseur_id_ext).toBe(5)
+  }, 60000)
 })

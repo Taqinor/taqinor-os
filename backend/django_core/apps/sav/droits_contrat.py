@@ -6,19 +6,55 @@ qui permet à ``Ticket.couverture`` (sav/models.py) de l'appeler sans passer par
 ``core-domain-models-decoupled`` : un models.py ne tire jamais son selectors).
 ``sav.selectors`` ré-exporte ``droits_restants`` pour ses appelants historiques.
 """
+from datetime import date as _date
+
+from django.db.models import DateField
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 
 from .models import Ticket
 
 
-def droits_restants(contrat, annee=None, *, ticket=None, cache=None):
+def tickets_dates(*args, **filtres):
+    """ASAV122 — tickets non annulés annotés de leur date de référence
+    ``date_ref_couverture`` (même règle que ``Ticket.date_reference_couverture``,
+    D-ASAV-6 : l'ouverture, à défaut le jour de création), équipement joint."""
+    return (Ticket.objects.filter(*args, annule=False, **filtres)
+            .annotate(date_ref_couverture=Coalesce(
+                'date_ouverture', TruncDate('date_creation'),
+                output_field=DateField()))
+            .select_related('equipement'))
+
+
+def lignes_consommatrices(contrat, annee, tickets, registre_cache=None):
+    """ASAV122 (D-ASAV-VER2-1/2) — ``(type, date_ref, pk)`` des tickets qui
+    CONSOMMENT un droit du contrat sur l'année civile ``annee`` : rattachés à
+    son chantier (sinon son client), datés de ``max(1er janvier, date_debut)``
+    au 31 décembre, couverts par son registre et pas sous garantie constructeur.
+    Partagée par ``droits_restants`` et la liste (``TicketListSerializer``)."""
+    debut = max(_date(annee, 1, 1), contrat.date_debut or _date(annee, 1, 1))
+    fin = _date(annee, 12, 31)
+    registre_cache = {} if registre_cache is None else registre_cache
+    return [
+        (t.type, t.date_ref_couverture, t.pk) for t in tickets
+        if t.company_id == contrat.company_id
+        and ((t.installation_id == contrat.installation_id)
+             if contrat.installation_id else t.client_id == contrat.client_id)
+        and debut <= t.date_ref_couverture <= fin
+        and t.sous_garantie_calcule != Ticket.SousGarantie.OUI
+        and contrat.couvre_equipement(t.equipement, cache=registre_cache)]
+
+
+def droits_restants(contrat, annee=None, *, ticket=None, cache=None,
+                    registre_cache=None):
     """XCTR3 — Compteurs de droits inclus (entitlements) consommés/restants
     pour ``contrat`` sur l'année civile ``annee`` (défaut : année courante).
 
     Compte les tickets PREVENTIF (visites) et CORRECTIF (déplacements) NON
-    ANNULÉS dont ``date_ouverture`` tombe dans l'année demandée, rattachés au
-    contrat par son chantier, ou — ASAV5 — par son CLIENT quand le contrat n'a
-    pas de chantier. Un quota NULL sur le contrat = illimité : le champ
+    ANNULÉS que le contrat COUVRE (ASAV122 : ``lignes_consommatrices`` — date
+    de référence dans l'année et pas avant ``date_debut``, registre, hors
+    garantie constructeur), rattachés au contrat par son chantier, ou — ASAV5 —
+    par son CLIENT quand le contrat n'a pas de chantier. Un quota NULL sur le contrat = illimité : le champ
     ``restant`` renvoie ``None`` (pas de division/quota calculée).
 
     ASAV5 — avec ``ticket`` (le ticket ÉVALUÉ) on ne compte que les tickets
@@ -31,26 +67,21 @@ def droits_restants(contrat, annee=None, *, ticket=None, cache=None):
     liste) : les tickets de l'année du contrat sont lus UNE fois par page et
     comptés en Python — jamais deux ``count()`` par ticket.
     """
-    from datetime import date as _date
-
     annee = annee or timezone.localdate().year
-    debut = _date(annee, 1, 1)
-    fin = _date(annee, 12, 31)
-
     cle = (contrat.pk, annee)
     lignes = cache.get(cle) if cache is not None else None
     if lignes is None:
-        base_qs = Ticket.objects.filter(
-            company_id=contrat.company_id, annule=False,
-            date_ouverture__gte=debut, date_ouverture__lte=fin,
-        )
+        base_qs = tickets_dates(
+            company_id=contrat.company_id,
+            date_ref_couverture__gte=_date(annee, 1, 1),
+            date_ref_couverture__lte=_date(annee, 12, 31))
         if contrat.installation_id:
             base_qs = base_qs.filter(installation_id=contrat.installation_id)
         elif contrat.client_id:
             base_qs = base_qs.filter(client_id=contrat.client_id)
         else:
             base_qs = base_qs.none()
-        lignes = list(base_qs.values_list('type', 'date_ouverture', 'pk'))
+        lignes = lignes_consommatrices(contrat, annee, base_qs, registre_cache)
         if cache is not None:
             cache[cle] = lignes
     if ticket is not None:

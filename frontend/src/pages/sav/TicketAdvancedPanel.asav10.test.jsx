@@ -57,6 +57,8 @@ describe('TicketDetail — ASAV10 série du neuf au retrait', () => {
     await user.type(screen.getByLabelText(/N° de série du neuf/), 'DEYE-SUN8K-2609-0031', { delay: null })
     await user.click(screen.getByRole('button', { name: /Retirer une pièce/ }))
     expect(await screen.findByTestId('equipement-neuf')).toHaveTextContent('DEYE-SUN8K-2609-0031')
+    // ASAV119 — fin de garantie du neuf servie par le contrat, au format jj/mm/aaaa.
+    expect(screen.getByTestId('equipement-neuf')).toHaveTextContent("garantie jusqu'au 08/10/2027")
     await waitFor(() => expect(serveur.parc).toHaveLength(1))
   }, 60000)
 

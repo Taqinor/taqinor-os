@@ -85,3 +85,21 @@ class GarantieChantierTests(TestCase):
         ticket = self._ticket('SAV-A11-4', chantier, equipement=eq)
         self.assertEqual(ticket.couverture_calculee(),
                          Ticket.Couverture.FACTURABLE)
+
+    def test_fiche_sert_garantie_a_confirmer(self):
+        """ASAV117 (D-ASAV-2 a) — la fiche dit « à confirmer » avant le 409."""
+        recent = self._ticket('SAV-A11-5', self._chantier('CHT-A11-5', 3, 24))
+        ancien = self._ticket('SAV-A11-6', self._chantier('CHT-A11-6', 30))
+        for _ in range(2):  # relue après rechargement ⇒ même mention
+            r = self.api.get(f'/api/django/sav/tickets/{recent.pk}/')
+            self.assertEqual(r.status_code, 200, r.content)
+            self.assertEqual(r.data['sous_garantie_effectif'], 'a_determiner')
+            self.assertEqual(r.data['sous_garantie_effectif_display'],
+                             'À confirmer (garantie de chantier)')
+        r = self.api.post(f'/api/django/sav/tickets/{recent.pk}/facturer/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = self.api.get(f'/api/django/sav/tickets/{ancien.pk}/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['sous_garantie_effectif_display'],
+                         'À déterminer')
