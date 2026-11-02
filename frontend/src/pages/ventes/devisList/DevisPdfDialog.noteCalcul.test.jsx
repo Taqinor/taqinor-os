@@ -28,9 +28,8 @@ vi.mock('../../../api/axios', () => ({
   },
 }))
 // Seul `fetchDevis` est neutralisé : le thunk `genererPdfDevis` reste celui du module.
-vi.mock('../../../features/ventes/store/ventesSlice', async (importOriginal) => ({
-  ...(await importOriginal()), fetchDevis: vi.fn(() => ({ type: 'ventes/fetchDevis/noop' })),
-}))
+vi.mock('../../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../../test/mocksVentesEcrans.js')).ventesSliceSansFetch(await importOriginal()))
 vi.mock('../../../api/uxviewsApi', async () =>
   (await import('../../../test/mocksVentesEcrans.js')).uxviewsApiVide({ id: 1, ecran: 'ventes.devis' }))
 
@@ -51,18 +50,17 @@ const RESIDENTIEL = {
   lignes: [{ id: 1, designation: 'Onduleur hybride 5kW', quantite: '1', prix_unitaire: '24000' }],
 }
 
+const ETAT_INITIAL = {
+  ventes: { devis: [AGRICOLE, RESIDENTIEL], loading: false, error: null },
+  auth: { role: 'admin', role_nom: 'Directeur', permissions: [] },
+}
+
 function rendrePage() {
-  const store = configureStore({
-    reducer: {
-      ventes: (state = { devis: [AGRICOLE, RESIDENTIEL], loading: false, error: null }) => state,
-      auth: (state = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => state,
-    },
-  })
+  const reducer = Object.fromEntries(
+    Object.entries(ETAT_INITIAL).map(([cle, initial]) => [cle, (s = initial) => s]))
   render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/devis']}>
-        <ThemeProvider><DevisList /></ThemeProvider>
-      </MemoryRouter>
+    <Provider store={configureStore({ reducer })}>
+      <MemoryRouter initialEntries={['/ventes/devis']}><ThemeProvider><DevisList /></ThemeProvider></MemoryRouter>
     </Provider>,
   )
 }
