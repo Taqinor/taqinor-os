@@ -758,8 +758,9 @@ class M10SectionsMasqueesTests(TestCase):
             self.assertTrue(self._montant_present(montant, texte_temoin), montant)
         self.assertRegex(texte_temoin, pct)
 
-        self.assertIs(
-            build_quote_data(self.devis, masque)['masquer_economies'], True)
+        rendu_masque = build_quote_data(self.devis, masque)
+        self.assertIs(rendu_masque['masquer_economies'], True)
+        self.assertIs(rendu_masque['economies_masquees_lien'], True)
         texte = self._texte(masque)
         for montant in montants:
             self.assertFalse(self._montant_present(montant, texte), montant)
@@ -774,5 +775,6 @@ class M10SectionsMasqueesTests(TestCase):
             {'sections_masquees': []}))
         self.assertNotIn('sections_masquees', clean_pdf_options(
             {'sections_masquees': 'economies'}))
-        self.assertIs(build_quote_data(
-            self.devis, {'pdf_mode': 'full'})['masquer_economies'], False)
+        rendu = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        self.assertIs(rendu['masquer_economies'], False)
+        self.assertIs(rendu['economies_masquees_lien'], False)

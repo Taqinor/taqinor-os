@@ -1672,9 +1672,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "net_gain_avec": roi.get("net_gain_avec"),
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
         "savings_estimated": roi.get("savings_estimated", False),
-        # QXMT — dossier MT sans économies d'étude : le bloc ROI/économies est
-        # OMIS du document (jamais un chiffre calculé au barème BT).
+        # QXMT — dossier MT sans économies d'étude : bloc ROI/économies OMIS.
         "masquer_economies": masquer_economies,
+        "economies_masquees_lien": "economies" in opts.get("sections_masquees", ()),  # ADVS18
         # QXMT — source du barème MT, à imprimer SOUS le bloc économies quand
         # les valeurs viennent bien de l'étude MT. '' hors dossier MT.
         "tarif_mt_mention": tarif_mt_mention,

@@ -122,6 +122,22 @@ class Ciq331DocumentChiffre(SimpleTestCase):
                         p3.index("Bon pour accord"))
 
 
+class Advs18EconomiesDecochees(SimpleTestCase):
+    """ADVS18 — économies calculées, décochées au lien : tuiles omises et AUCUNE
+    phrase « non chiffrés » ; un vrai masque (dossier MT) garde son motif."""
+
+    def test_decochees_aucune_phrase_ni_tuile(self):
+        data = dict(_data(), masquer_economies=True, economies_masquees_lien=True)
+        p1 = _html(data).split('class="page"')[1]
+        self.assertNotIn("non chiffrés", p1)
+        self.assertNotIn("Retour estimé", p1)
+
+    def test_vrai_masque_garde_son_motif(self):
+        data = dict(_data(argent=False), masquer_economies=True)
+        p1 = _html(data).split('class="page"')[1]
+        self.assertIn("non chiffrés à ce stade.", p1)
+
+
 @tag("weasyprint")  # rendu PDF réel
 class Ciq331SansArgent(SimpleTestCase):
 
