@@ -9,7 +9,7 @@ attente » existantes :
     ``apps.automation.services.decider_approval`` ;
   * ``ged.DemandeApprobation`` (statut en_attente) — via
     ``apps.ged.selectors.demandes_approbation_en_attente`` +
-    ``apps.ged.services.approve_demande``/``reject_demande`` ;
+    ``apps.ged.services.avancer_chaine_approbation_ged``/``reject_demande`` ;
   * ``installations.DemandeAchat`` (statut soumise, FG310 — vit dans
     installations, PAS stock) — via
     ``apps.installations.selectors.demandes_achat_en_attente`` +
@@ -417,7 +417,7 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
             if demande is None:
                 return 404, {'detail': 'Introuvable.'}
             if approve:
-                ged_services.approve_demande(
+                ged_services.avancer_chaine_approbation_ged(
                     demande, user=user, commentaire=motif)
             else:
                 ged_services.reject_demande(
