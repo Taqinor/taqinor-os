@@ -64,6 +64,14 @@ class ListePrixBornesTests(TestCase):
         self.assertEqual(set(corps['lignes/']['required']), {'produit', 'prix_unitaire'})
         self.assertTrue({'type_regle', 'valeur'} <= set(corps['regles/']['required']))
         self.assertNotIn('liste', corps['regles/'].get('required', []))
+        # ERR-ENF11-FUZZ-VENTES — le prix publié exclut le signe moins
+        # (« -28 » était conforme au schéma, refusé 400).
+        import re
+        motif = corps['lignes/']['properties']['prix_unitaire']['pattern']
+        for accepte in ('0', '12.5', '99999999.99', '.5'):
+            self.assertTrue(re.search(motif, accepte), accepte)
+        for refuse in ('-28', '-0', '', '.', '123456789'):
+            self.assertFalse(re.search(motif, refuse), refuse)
 
     def test_corps_non_objet_400_pas_500(self):
         # api-fuzz ERR-ENF11-FUZZ-VENTES : ``[null, null, null]`` sur regles/
