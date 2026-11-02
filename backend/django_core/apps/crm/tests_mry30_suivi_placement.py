@@ -1158,3 +1158,35 @@ class CommandeReparationTests(_PlacementBase):
         rejeu = self._appeler('reparer_rebonds_froid', '--population',
                               'reveils', '--apply')
         self.assertIn('0 lead(s) à réveil', rejeu)
+
+    def test_marquer_fiches_test_groupe_partage_et_signes_vides(self):
+        """CADV63 — dix fiches sur le même numéro + un Signé du site vide
+        sont étiquetées `test` ; le Signé réel (devis accepté) et le lead
+        isolé ne le sont pas."""
+        groupe = [self._lead(f'G{i}') for i in range(9)]
+        groupe.append(self._lead('GS', stage=stages.SIGNED))
+        Lead.objects.filter(pk__in=[x.pk for x in groupe]).update(
+            phone_normalise='212600000001')
+        vide = self._lead('Signe vide', stage=stages.SIGNED,
+                          source=Lead.Source.SITE_WEB)
+        reel = self._lead('Signe reel', stage=stages.SIGNED,
+                          source=Lead.Source.SITE_WEB)
+        self._devis(reel, statut='accepte')
+        isole = self._lead('Isole')
+        texte = self._appeler('marquer_fiches_test')
+        self.assertIn(f'#{vide.pk}', texte)
+        self.assertNotIn(f'#{reel.pk}', texte)
+        vide.refresh_from_db()
+        self.assertNotIn('test', vide.tags or '', 'dry-run')
+        self._appeler('marquer_fiches_test', '--apply')
+        for lead in groupe + [vide, reel, isole]:
+            lead.refresh_from_db()
+        for lead in groupe + [vide]:
+            self.assertIn('test', [t.strip() for t in lead.tags.split(',')])
+            self.assertTrue(lead.activites.filter(
+                kind=LeadActivity.Kind.NOTE,
+                body__contains='CADV63').exists())
+        for lead in (reel, isole):
+            self.assertNotIn('test', (lead.tags or '').split(', '))
+        rejeu = self._appeler('marquer_fiches_test', '--apply')
+        self.assertIn('0 fiche(s) à numéro partagé, 0 « Signé »', rejeu)
