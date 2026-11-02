@@ -4,8 +4,10 @@ PARITÉ calepinage ↔ devis, en lecture seule.
 * ``CAL_MODULES_DEVIS_VS_CALEPINAGE`` — modules POSÉS du document de
   conception (``geometrie.pans_du_document``, la primitive de C-ACAL-035) ≠
   quantité de panneaux de l'option retenue du devis ;
-* ``CAL_KWC_DEVIS_VS_CALEPINAGE`` — kWc dessiné ≠ ``puissance_kwc_du_devis``
-  au-delà de ``TOLERANCES['kwc_calepinage_ratio']`` ;
+* ``CAL_KWC_DEVIS_VS_CALEPINAGE`` — kWc des FICHES posées
+  (``apps.calepinage.selectors.mesures_du_calepinage``, ACAL372 — jamais le
+  wattage outil ``geometry.kwc``) ≠ ``puissance_kwc_du_devis`` au-delà de
+  ``TOLERANCES['kwc_calepinage_ratio']`` ; sans fiche, aucune violation ;
 * ``CAL_EMPREINTE_IMPRIMEE_PERIMEE`` — empreinte imprimée du calepinage
   (``geometrie.layout_hash``, D-ACAL-4) ≠ ``Devis.layout_hash`` : le document
   a bougé sans resynchronisation.
@@ -36,10 +38,13 @@ def _calepinage_lie(devis):
 
 
 def _mesures_document(calepinage):
+    from apps.calepinage.selectors import mesures_du_calepinage
     from apps.ventes.domain.geometrie import pans_du_document
     pans = pans_du_document(calepinage.roof_layout)
     modules = sum(int(p.get('modules') or 0) for p in pans)
-    kwc = sum(float(p.get('kwc') or 0) for p in pans)
+    # ACAL372 — kWc des FICHES déclarées par le document (ACAL259/273),
+    # jamais ``geometry.kwc`` (wattage outil) ; inconnu ⇒ 0 ⇒ aucune violation.
+    kwc = float(mesures_du_calepinage(calepinage).get('kwc') or 0)
     return modules, kwc
 
 
