@@ -310,11 +310,15 @@ class MesurePureTests(SimpleTestCase):
         self.assertEqual(commerciale, {
             'id': 7, 'nom': 'commerciale', 'du': 6, 'a_temps': 2,
             'en_retard': 1, 'sautees': 1, 'ouvert': 2, 'reportees': 1,
-            'a_temps_pct': 33.3, 'en_retard_actuel': 2, 'aujourdhui': 2})
+            'a_temps_pct': 33.3, 'en_retard_actuel': 2, 'aujourdhui': 2,
+            'touches_faites': 3, 'leads_travailles': 1,
+            'touches_par_lead': 3.0})
         self.assertEqual(responsable, {
             'id': 3, 'nom': 'responsable', 'du': 2, 'a_temps': 2,
             'en_retard': 0, 'sautees': 0, 'ouvert': 0, 'reportees': 0,
-            'a_temps_pct': 100.0, 'en_retard_actuel': 0, 'aujourdhui': 0})
+            'a_temps_pct': 100.0, 'en_retard_actuel': 0, 'aujourdhui': 0,
+            'touches_faites': 2, 'leads_travailles': 1,
+            'touches_par_lead': 2.0})
         for ligne in lignes:
             with self.subTest(commercial=ligne['id']):
                 self.assertEqual(
@@ -330,6 +334,31 @@ class MesurePureTests(SimpleTestCase):
                 self.assertEqual(sum(ligne[cle] for ligne in lignes),
                                  verdict[cle])
 
+    def test_par_commercial_touches_par_lead(self):
+        """CADV66 — 6 touches faites sur 3 leads donnent 2,0 ; 2 touches faites
+        sur 3 leads donnent 0,7 ; sans touche faite : ``null``."""
+        etapes = []
+        for lead_id in (1, 2, 3):                 # Meryem (7) : 6 faites
+            for jour in (-3, -2):
+                etapes.append(self._etape(_jour(jour), FAIT, fait=_jour(jour),
+                                          lead_id=lead_id))
+        etapes += [                               # Asmaa (3) : 2 faites, 3 leads
+            self._etape(_jour(-3), FAIT, fait=_jour(-3), lead_id=4),
+            self._etape(_jour(-2), FAIT, fait=_jour(-2), lead_id=5),
+            self._etape(_jour(-2), A_FAIRE, lead_id=6),
+            self._etape(_jour(-2), A_FAIRE, lead_id=7),    # sans touche faite
+        ]
+        proprietaire = {1: 7, 2: 7, 3: 7, 4: 3, 5: 3, 6: 3, 7: 9}
+        commerciaux = [{'id': 3, 'nom': 'asmaa'}, {'id': 7, 'nom': 'meryem'},
+                       {'id': 9, 'nom': 'sans'}]
+        lignes = {ligne['id']: ligne for ligne in cs._par_commercial(
+            etapes, [], AUJOURDHUI, cadence_absence.CouvertureAbsences(),
+            proprietaire, OUVRES, commerciaux)}
+        trio = ('touches_faites', 'leads_travailles', 'touches_par_lead')
+        self.assertEqual([lignes[7][c] for c in trio], [6, 3, 2.0])
+        self.assertEqual([lignes[3][c] for c in trio], [2, 3, 0.7])
+        self.assertEqual([lignes[9][c] for c in trio], [0, 1, None])
+
     def test_par_commercial_sans_etape_due_pct_null(self):
         [ligne] = cs._par_commercial(
             [], [], AUJOURDHUI, cadence_absence.CouvertureAbsences(),
@@ -337,7 +366,9 @@ class MesurePureTests(SimpleTestCase):
         self.assertEqual(ligne, {
             'id': 7, 'nom': 'commerciale', 'du': 0, 'a_temps': 0,
             'en_retard': 0, 'sautees': 0, 'ouvert': 0, 'reportees': 0,
-            'a_temps_pct': None, 'en_retard_actuel': 0, 'aujourdhui': 0})
+            'a_temps_pct': None, 'en_retard_actuel': 0, 'aujourdhui': 0,
+            'touches_faites': 0, 'leads_travailles': 0,
+            'touches_par_lead': None})
         self.assertEqual(
             cs._par_commercial([], [], AUJOURDHUI,
                                cadence_absence.CouvertureAbsences(), {},

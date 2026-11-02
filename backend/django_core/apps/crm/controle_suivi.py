@@ -767,6 +767,8 @@ def _par_commercial(periode_tous, en_retard, today, absences, proprietaire,
     aujourd'hui, tous statuts (annulations du moteur déjà exclues de
     ``periode_tous``). Pur : aucune requête. Trié par ``en_retard_actuel``
     décroissant, puis ``ouvert`` décroissant, puis ``nom``, puis ``id``."""
+    from .models import RelanceEtape
+
     etapes_par_commercial = {}
     for etape in periode_tous:
         etapes_par_commercial.setdefault(
@@ -780,6 +782,12 @@ def _par_commercial(periode_tous, en_retard, today, absences, proprietaire,
         etapes = etapes_par_commercial.get(commercial['id'], [])
         verdict = _mesure_de_la_periode(
             etapes, today, absences, proprietaire, ouvres)[2]
+        # CADV66 — le volume de travail PAR DOSSIER : touches faites et
+        # leads distincts portant une étape due sur la période (lus sur les
+        # mêmes étapes, aucune requête).
+        faites = [e for e in etapes
+                  if e.statut == RelanceEtape.Statut.FAIT]
+        travailles = len({e.lead_id for e in etapes})
         lignes.append({
             'id': commercial['id'],
             'nom': commercial['nom'],
@@ -793,6 +801,10 @@ def _par_commercial(periode_tous, en_retard, today, absences, proprietaire,
             'en_retard_actuel': retard_actuel.get(commercial['id'], 0),
             'aujourdhui': sum(1 for etape in etapes
                               if etape.due_date == today),
+            'touches_faites': len(faites),
+            'leads_travailles': travailles,
+            'touches_par_lead': (round(len(faites) / travailles, 1)
+                                 if faites else None),
         })
     lignes.sort(key=lambda ligne: (-ligne['en_retard_actuel'],
                                    -ligne[OUVERT], ligne['nom'],
