@@ -1480,18 +1480,35 @@ def reglages_economiques(company):
     """Les grandeurs du flux que la SOCIÉTÉ a saisies, en ``{valeur, source}``.
 
     Lit ``TariffSettings`` sans jamais le créer (une lecture n'écrit pas).
-    L'indexation est lue sur les champs que CALX279 déclare
-    (``indexation_tarif_pct_an`` + ``indexation_source``) : tant qu'ils
-    n'existent pas ou ne sont pas saisis AVEC leur source, rien n'est rendu —
-    et le flux publie l'omission.
+    L'indexation saisie par la société (champs CALX279 ``indexation_tarif_pct_an``
+    + ``indexation_source``, source obligatoire) l'emporte ; sinon, comme
+    l'horizon (25 ans) et la dégradation (0,5 %/an), elle est l'hypothèse de
+    référence du document (``pricing``, AMOT54) avec sa source dite. Le taux
+    d'actualisation reste omis tant que la société ne l'a pas saisi.
     """
+    from .quote_engine import pricing
+    # AMOT54 (D-AMOT-4 = a) — l'horizon, la dégradation et l'indexation sont les
+    # hypothèses de référence du DOCUMENT (``pricing``), étiquetées comme telles :
+    # le flux du panneau interne est construit avec les mêmes que le PDF.
+    origine = "hypothèse de référence du document (quote_engine.pricing"
+    reglages = {
+        'horizon_ans': {
+            'valeur': pricing.CASHFLOW_YEARS,
+            'source': f"{origine}.CASHFLOW_YEARS)", 'saisie_le': None},
+        'degradation_pct': {
+            'valeur': round(pricing.PANEL_DEGRADATION * 100.0, 4),
+            'source': f"{origine}.PANEL_DEGRADATION)", 'saisie_le': None},
+        'indexation_pct': {
+            'valeur': round(pricing.TARIFF_ESCALATION * 100.0, 4),
+            'source': f"{origine}.TARIFF_ESCALATION — tarif constant, QRES54)",
+            'saisie_le': None},
+    }
     if company is None:
-        return {}
+        return reglages
     from apps.parametres.models_tariff import TariffSettings
     reglage = TariffSettings.objects.filter(company=company).first()
     if reglage is None:
-        return {}
-    reglages = {}
+        return reglages
     indexation = getattr(reglage, 'indexation_tarif_pct_an', None)
     source = str(getattr(reglage, 'indexation_source', '') or '').strip()
     if indexation is not None and source:
@@ -1540,11 +1557,28 @@ def _donnees_du_devis(devis):
         'production_annee1_kwh': lu(
             data.get('prod_kwh'), "production annuelle (moteur de devis)"),
     }
+    # AMOT54 — la provision de remplacement de l'onduleur du document (prix réel
+    # de la ligne, année 12) est portée au flux : même cumul que le PDF.
+    cfa = data.get('cashflow_assumptions') or {}
+    cout_onduleur = cfa.get('inverter_replace_cost')
+    annee_onduleur = cfa.get('inverter_replace_year')
+    omissions = []
+    if cout_onduleur and annee_onduleur:
+        entrees['remplacements'] = [{
+            'equipement': 'onduleur', 'annee': int(annee_onduleur),
+            'mode': 'remplacer', 'montant_mad': float(cout_onduleur),
+            'source': f"{moteur} — provision de remplacement de l'onduleur "
+                      f"(cashflow du document)"}]
+    if option == 'avec':
+        omissions.append(_omission(
+            'rendement_batterie',
+            "le rendement aller-retour de la batterie du document n'est pas "
+            "appliqué à l'économie de ce flux"))
     hypothese_option = _hypothese(
         'option_devis', option,
         f"{moteur} — option retenue par le moteur de devis "
         f"(build_quote_data.scenario)")
-    return entrees, [hypothese_option], []
+    return entrees, [hypothese_option], omissions
 
 
 def economie_pour_devis(devis_id, company, *, reglages=None):
