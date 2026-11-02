@@ -755,6 +755,83 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     for (const k of ['carte', 'zones', 'doc'] as const) expect(ombre[k] / reference[k]).toBeCloseTo(0.8, 3);
   }, 120000);
 
+  // ACAL367 — rouvert AVEC sa production enregistrée (document NON dépouillé de `result`) puis
+  // ombré : le document baisse du facteur de la carte ; D-ACAL-VER2-1 : un document stocké
+  // déjà ombré sans signature de dérate est dératé au prochain enregistrement.
+  const horizon25 = { source: 'saisie', points: [0, 60, 120, 180, 240, 300].map((azimuthDeg) => ({ azimuthDeg, heightDeg: 25 })) };
+  const kwhDesPans = (d: Doc) => (d.zones as Array<{ result?: { annualKwh?: number } }>).map((z) => z.result?.annualKwh ?? 0);
+  async function rouvrirAvecGeste(doc: Doc, id: number): Promise<() => Api> {
+    const a = await rouvrir(doc, id);
+    vi.useFakeTimers();
+    setBill('3000');
+    vi.advanceTimersByTime(321); // la facture est débattue (320 ms) avant le recalcul
+    vi.useRealTimers();
+    return a;
+  }
+  async function enregistreAvecProduction(): Promise<Doc> {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    return copie(neuf().serializeLayout() as Doc);
+  }
+
+  it('rouvert AVEC sa production enregistrée puis horizon 25° : le document baisse du facteur de la carte', async () => {
+    const enregistre = await enregistreAvecProduction();
+    expect(enregistre.result.annualKwh).toBeGreaterThan(0);
+    const api = await rouvrirAvecGeste(enregistre, 9);
+    const avant = lecture(api());
+    const pansAvant = kwhDesPans(api().serializeLayout() as Doc);
+    api().appliquerSection('horizonProfile', horizon25);
+    const apres = lecture(api());
+    const f = apres.carte / avant.carte;
+    expect(f).toBeLessThan(0.99);
+    expect(apres.zones / avant.zones).toBeCloseTo(f, 3);
+    expect(apres.doc / avant.doc).toBeCloseTo(f, 3);
+    const derate = copie(api().serializeLayout() as Doc);
+    kwhDesPans(derate).forEach((kwh, i) => { if (pansAvant[i] > 0) expect(kwh / pansAvant[i]).toBeCloseTo(f, 3); });
+    expect(typeof (derate.result as Record<string, unknown>).signatureOmbrage).toBe('string');
+    // Persistance : rouvert sans geste, la production dératée est relue telle quelle.
+    expect(lecture((await rouvrir(derate, 9))()).doc).toBe(apres.doc);
+  }, 120000);
+
+  it('D-ACAL-VER2-1 — document stocké avec un horizon et sans signature : production dératée au prochain enregistrement', async () => {
+    const enregistre = await enregistreAvecProduction();
+    expect((enregistre.result as Record<string, unknown>).signatureOmbrage).toBeUndefined(); // aucun ombrage ⇒ aucune signature
+    const ancien = { ...enregistre, horizonProfile: horizon25 } as Doc; // ombré par section, production jamais dératée
+    const sortie = copie((await rouvrirAvecGeste(ancien, 10))().serializeLayout() as Doc);
+    expect(sortie.result.annualKwh).toBeLessThan(enregistre.result.annualKwh * 0.99);
+    expect(typeof (sortie.result as Record<string, unknown>).signatureOmbrage).toBe('string');
+    // Signature égale : rouvert sans geste, le dératé est réémis tel quel (ACAL31 conservé).
+    expect(lecture((await rouvrir(sortie, 10))()).doc).toBe(sortie.result.annualKwh);
+  }, 120000);
+
+  // ACAL366 — une section « zones » (onglet Pente, panneau Relevé) est posée sur le pan VIVANT :
+  // « Enregistrer » garde 35° (jamais l'ancienne pente sous un jeton neuf), puis rouvrir la relit.
+  it('section « zones » (pente 35°, azimut relevé) appliquée au pan vivant puis gardée par serializeLayout', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const base = copie(neuf().serializeLayout() as Doc) as Doc & { zones: Array<Record<string, unknown>> };
+    base.zones[0] = { ...base.zones[0], roofType: 'pitched', pitchDeg: 15, facingAzimuthDeg: 180 };
+    const api = await rouvrir(base, 11);
+    const z1 = String(base.zones[0].id);
+    const champs = {
+      pitchDeg: 35, pitchSource: { mode: 'degres', degres: 35 }, facingAzimuthDeg: 200, facingManual: true,
+      facingAzimuthSource: 'releve', facingAzimuthPrecisionDeg: 5, pitchSuggestion: { degres: 34, decision: 'refusee' },
+    };
+    const zonesRendues = base.zones.map((z) => (z.id === z1 ? { ...z, ...champs } : z));
+    api().appliquerSection('zones', zonesRendues);
+    const attendus = (doc: Doc) => {
+      const z = (doc.zones as Array<Record<string, unknown>>).find((x) => x.id === z1)!;
+      for (const [cle, valeur] of Object.entries(champs)) expect(z[cle]).toEqual(valeur);
+    };
+    const enregistre = copie(api().serializeLayout() as Doc);
+    attendus(enregistre);
+    expect(enregistre.result.annualKwh).toBeGreaterThan(0);
+    // Persistance : rouvert depuis l'enregistrement complet, la pente et ses provenances relues.
+    attendus((await rouvrir(enregistre, 11))().serializeLayout() as Doc);
+  }, 120000);
+
   it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');

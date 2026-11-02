@@ -439,6 +439,26 @@ def devis_concevables(qs):
                 devis=OuterRef('pk'), groupe_index__gte=1))))
 
 
+def raison_lecture_seule_conception(devis):
+    """ACAL373 — raison de lecture seule de la conception toiture (``''`` si
+    modifiable) : UNE règle (``devis_concevables``, QJR636), les branches la
+    NOMMENT. Lue par l'écran (``contexte_conception_devis``) ET par la porte
+    d'écriture du calepinage (``verrou.verifier_ecriture_autorisee``)."""
+    from .domain.modifiabilite import CALEPINAGE, verdict as _verdict
+    from .models import Devis
+    if devis_concevables(Devis.objects.filter(pk=devis.pk)).exists():
+        return ''
+    if not _verdict(devis, CALEPINAGE)['modifiable']:
+        return ('Devis « %s » : le calepinage n\'est plus modifiable. Utilisez '
+                '« Réviser » pour en créer une nouvelle version.'
+                % devis.get_statut_display())
+    if devis.mode_installation == Devis.ModeInstallation.AGRICOLE:
+        return ('Devis agricole (pompage) — le calepinage de toiture ne '
+                's\'applique pas.')
+    return ('Devis multi-villa : chaque villa porte son propre '
+            'calepinage — cet écran ne peut pas en modifier une seule.')
+
+
 def contexte_conception_devis(devis, company):
     """PV17 — tout ce que l'écran de conception toiture doit savoir d'un devis.
 
@@ -487,7 +507,6 @@ def contexte_conception_devis(devis, company):
     multi-villa. ``raison_lecture_seule`` vaut ``''`` quand le devis est
     modifiable, jamais ``None``.
     """
-    from .models import Devis
     from .services import cible_depuis_lignes, option_avec_servable
 
     if devis is None:
@@ -587,26 +606,9 @@ def contexte_conception_devis(devis, company):
         if source == 'none':
             source = 'lead'
 
-    # ── Modifiable ? Trois raisons de LECTURE SEULE, toutes en français ──
-    # QJR636 — UNE règle (devis_concevables, qui lit le geste CALEPINAGE de
-    # la table de modifiabilité) ; les branches ci-dessous ne font que NOMMER
-    # la raison d'un refus.
-    from .domain.modifiabilite import CALEPINAGE, verdict as _verdict
-    concevable = devis_concevables(
-        Devis.objects.filter(pk=devis.pk)).exists()
-    if concevable:
-        raison = ''
-    elif not _verdict(devis, CALEPINAGE)['modifiable']:
-        raison = (
-            'Devis « %s » : le calepinage n\'est plus modifiable. Utilisez '
-            '« Réviser » pour en créer une nouvelle version.'
-            % devis.get_statut_display())
-    elif devis.mode_installation == Devis.ModeInstallation.AGRICOLE:
-        raison = ('Devis agricole (pompage) — le calepinage de toiture ne '
-                  's\'applique pas.')
-    else:
-        raison = ('Devis multi-villa : chaque villa porte son propre '
-                  'calepinage — cet écran ne peut pas en modifier une seule.')
+    # ── Modifiable ? UNE raison de lecture seule (ACAL373), partagée avec la
+    # porte d'écriture du calepinage ──
+    raison = raison_lecture_seule_conception(devis)
 
     avertissements = list(cible['avertissements'])
     if source == 'none':

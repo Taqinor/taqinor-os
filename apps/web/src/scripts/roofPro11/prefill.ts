@@ -1309,6 +1309,11 @@ const CLES_PAN_ATELIER = new Set([
 
 const memeJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 const copieJson = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+/** ACAL367 / D-ACAL-VER2-1 — entrées d'ombrage (clés triées) et signature de la production émise (`result.signatureOmbrage`, aucune sans ombrage). */
+const ombrageCanon = (d: Record<string, unknown>): string => JSON.stringify([d.horizonProfile ?? null, d.shading12x24 ?? null, d.shadeObstructions ?? null],
+  (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([p], [q]) => (p < q ? -1 : 1))) : x));
+const signatureOmbrage = (d: Record<string, unknown>, c = ombrageCanon(d)): string | undefined => (c === '[null,null,null]' ? undefined
+  : `fnv1a-${[...c].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0, 0x811c9dc5).toString(16)}`);
 
 /**
  * ACAL31 — réconcilie le document émis avec le document RELU, sans rien inventer :
@@ -1321,9 +1326,11 @@ const copieJson = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
  *  - `modules[]` relu gardé quand aucun pan n'en désigne (catalogue du document intact).
  */
 function reconcilierAvecDocumentRelu<T extends SerializedLayout>(layout: T, ctx: Ctx): T {
+  const sortie = layout as unknown as Record<string, unknown>;
+  const signature = signatureOmbrage(sortie); // D-ACAL-VER2-1 — la production émise porte la signature de son dérate
+  if (signature && layout.result) Object.assign(layout.result, { signatureOmbrage: signature });
   const relu = ctx.documentRelu;
   if (!relu || typeof relu !== 'object') return layout;
-  const sortie = layout as unknown as Record<string, unknown>;
   for (const [cle, valeur] of Object.entries(relu)) {
     if (!CLES_RACINE_ATELIER.has(cle) && !(cle in sortie)) sortie[cle] = copieJson(valeur);
   }
@@ -1362,8 +1369,10 @@ function reconcilierAvecDocumentRelu<T extends SerializedLayout>(layout: T, ctx:
     if ('pin' in relu) sortie.pin = copieJson(relu.pin);
     if ('outline' in relu) sortie.outline = copieJson(relu.outline);
   }
-  if (geometriesIntactes && relu.result && typeof relu.result === 'object') sortie.result = copieJson(relu.result);
-  for (const zone of geometriesIntactes ? layout.zones : []) { // ACAL355 — production de pan : celle LUE (ou aucune)
+  const relue = geometriesIntactes && ombrageCanon(sortie) === ombrageCanon(relu) // ACAL367 — ombrage émis = relu, signature égale
+    && (relu.result as { signatureOmbrage?: string } | null | undefined)?.signatureOmbrage === signature;
+  if (relue && relu.result && typeof relu.result === 'object') sortie.result = copieJson(relu.result);
+  for (const zone of relue ? layout.zones : []) { // ACAL355 — production de pan : celle LUE (ou aucune)
     const rz = parId.get(zone.id);
     if (rz && 'result' in rz) zone.result = copieJson(rz.result) as SerializedZone['result'];
     else delete zone.result;
