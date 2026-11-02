@@ -337,7 +337,13 @@ class TestLeadListeEtudeParamsNonChargee(TestCase):
             premier['total_ttc'],
             str(Lead.objects.get(pk=lignes[0]['id']).devis.first().total_ttc))
         # ×3 villas : le total porte le multiplicateur lu par annotation.
-        self.assertEqual(premier['total_ttc'], '8640.00')
+        # Dérivation : 2 × 1 200 = 2 400 HT → 2 880 TTC à 20 %, ramené
+        # au palier de 100 MAD INFÉRIEUR *par villa* (ARRONDI-100,
+        # décision fondateur 02/10/2026 — ``_absorber_arrondi``,
+        # ROUND_FLOOR) = 2 800, puis ×3 villas = 8 400. Une annotation
+        # qui retomberait à 1 villa rendrait 2 800,00 : c'est exactement
+        # ce que cette ligne épingle.
+        self.assertEqual(premier['total_ttc'], '8400.00')
 
     def test_noms_utilisateur_servis(self):
         """``updated_by_nom``/``archived_by_nom`` restent servis (jointure)."""
