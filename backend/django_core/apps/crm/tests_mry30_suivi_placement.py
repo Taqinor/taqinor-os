@@ -1027,3 +1027,70 @@ class LotsTests(_PlacementBase):
         self.assertEqual(
             {self._premiere(lead).date() for lead in self.dormants},
             {MERCREDI.date()})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. CADV1 — réparation des rebonds Odoo (commandes de réparation du parc)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class CommandeReparationTests(_PlacementBase):
+    slug = 'cadv-reparation'
+
+    def _stage(self, lead, ancien, nouveau, user):
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.MODIFICATION, field='stage',
+            old_value=stages.STAGE_LABELS[ancien],
+            new_value=stages.STAGE_LABELS[nouveau])
+
+    def _rebondi(self, nom, *, devis=False):
+        lead = self._lead(nom, stage=stages.FOLLOW_UP)
+        self._stage(lead, stages.FOLLOW_UP, stages.COLD, self.acteur)
+        self._stage(lead, stages.COLD, stages.FOLLOW_UP, None)
+        if devis:
+            self._devis(lead)
+        return lead
+
+    def _appeler(self, nom, *args, **kw):
+        sortie = io.StringIO()
+        call_command(nom, '--company', self.company.slug, *args,
+                     stdout=sortie, **kw)
+        return sortie.getvalue()
+
+    def test_reparer_rebonds_froid_remet_au_froid_avec_raison(self):
+        l1 = self._rebondi('L1')
+        l2 = self._rebondi('L2', devis=True)
+        isole = self._lead('Normal', stage=stages.FOLLOW_UP)
+        texte = self._appeler('reparer_rebonds_froid')
+        self.assertIn(f'#{l1.pk}', texte)
+        self.assertIn(f'#{l2.pk}', texte)
+        self.assertNotIn(f'#{isole.pk}', texte)
+        l1.refresh_from_db()
+        self.assertEqual(l1.stage, stages.FOLLOW_UP, 'dry-run : rien écrit')
+        self._appeler('reparer_rebonds_froid', '--apply')
+        for lead in (l1, l2, isole):
+            lead.refresh_from_db()
+        self.assertEqual(l1.stage, stages.COLD)
+        self.assertEqual(l2.stage, stages.COLD)
+        self.assertEqual(isole.stage, stages.FOLLOW_UP)
+        self.assertIn('Parc — injoignable', l1.tags)
+        self.assertIn('Parc — pas maintenant (sans date)', l2.tags)
+        for lead in (l1, l2):
+            self.assertEqual(lead.activites.filter(
+                kind=LeadActivity.Kind.NOTE,
+                body__startswith='Réparation du').count(), 1)
+
+    def test_rejouer_apply_ne_retouche_aucun_lead(self):
+        self._rebondi('L1')
+        self._appeler('reparer_rebonds_froid', '--apply')
+        texte = self._appeler('reparer_rebonds_froid', '--apply')
+        self.assertIn('0 lead(s) rebondi(s)', texte)
+
+    def test_ids_restreint_le_perimetre(self):
+        l1 = self._rebondi('L1')
+        l2 = self._rebondi('L2')
+        self._appeler('reparer_rebonds_froid', '--apply', '--ids', str(l1.pk))
+        l1.refresh_from_db()
+        l2.refresh_from_db()
+        self.assertEqual((l1.stage, l2.stage),
+                         (stages.COLD, stages.FOLLOW_UP))
