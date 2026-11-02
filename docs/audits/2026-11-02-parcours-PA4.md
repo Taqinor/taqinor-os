@@ -1,15 +1,15 @@
 # Audit PA4 « argent » — 2026-11-02 — L3
-<!-- dossier-v3 | groupe: AARG | base: 56d5b62 | fraicheur: 56d5b62 | constats: 51 | taches: 57 | decisions: 5 -->
+<!-- dossier-v3 | groupe: AARG | base: 56d5b62 | fraicheur: 56d5b62 | constats: 51 | taches: 58 | decisions: 5 -->
 
 ## 1. Charte
 | Champ | Valeur |
 |---|---|
-| Périmètre | parcours PA4 (pilote facturation) : lu `backend/django_core/apps/ventes/**` (BC, factures, paiements, import de relevé, RAS, avoirs, notes de débit, pro-forma, DGI/UBL, relances, beats), `apps/facturation/**`, `apps/portail/views.py`, `core/views.py`, `core/payment.py`, `core/numbering.py`, `authentication/permissions.py`, `apps/crm/clients_identite.py`, `apps/crm/receivers_cadence.py`, `apps/installations/services.py`, `frontend/src/pages/ventes/**` ; table `apps/facturation/parcours/PA4.json` |
+| Périmètre | parcours PA4 (pilote facturation) : lu `apps/ventes/**`, `apps/facturation/**`, `apps/portail/views.py`, `core/views.py`, `core/payment.py`, `core/numbering.py`, `authentication/permissions.py`, `apps/crm/clients_identite.py`, `apps/crm/receivers_cadence.py`, `apps/installations/services.py`, `frontend/src/pages/ventes/**` ; table `PA4.json` |
 | Niveau | L3 — argent + sorties client (PDF, UBL, relances) + multi-société et rôles + parcours chaud |
 | Données | demo ; anon : non requis (chaque sonde crée sa société) ; prod lecture seule : aucune |
 | Critères retenus | C1, C2, C3, C4, C5, C6, C7, C9, C10, C14, C15, C16, C17, C19, C20 |
 | Étapes | PA4.01 convertir en BC · PA4.02 confirmer · PA4.03 livrer · PA4.04 facture de BC · PA4.05 facturer par tranche · PA4.06 émettre · PA4.07 paiement · PA4.08 import de relevé · PA4.09 avoir · PA4.10 note de débit · PA4.11 RAS · PA4.12 mandat (parqué) · PA4.13 pro-forma · PA4.14 UBL/DGI · PA4.15 relances · PA4.16 autres portes de facture |
-| NE PAS REFAIRE | ATOT40-53 (ligne déplacée, client/retenue modifiables, avoir de révision, TVA de complément, ND absentes du grand livre) ; AGNR49-61 ; ASEC55-64 (11 portes `encaisser` d'ASEC56) ; ATOT49 (bouton facture de BC) ; AFAC5/AFAC96 (doublon de ligne de relevé) ; AFAC9 (porte d'encaissement) ; AFAC55 (portée des portes groupées) ; ADEV14 (overrides à l'acceptation) ; VNT89 ; ATOT41/ATOT54 |
+| NE PAS REFAIRE | ATOT40-53 (ligne déplacée, client/retenue modifiables, avoir de révision, TVA de complément, ND hors grand livre) ; AGNR49-61 ; ASEC55-64 (11 portes `encaisser` d'ASEC56) ; ATOT49 (bouton facture de BC) ; AFAC5/AFAC96 (doublon de ligne de relevé) ; AFAC9 (porte d'encaissement) ; AFAC55 (portée des portes groupées) ; ADEV14 (overrides à l'acceptation) ; VNT89 ; ATOT41/ATOT54 |
 | Non-objectifs | mandat de paiement (parqué, aucune route) ; commissions (parquées, D-ACRM-6) ; compta (parquée) ; écrans hors API (l'acceptation en direct joue l'API) |
 
 ## 2. Couverture
@@ -45,7 +45,7 @@ Live : parcours heureux PA4 par l'API réelle sur un enregistrement (sonde `docs
 | C-AARG-013 | PA4.16 | C6 | S3 | `apps/ventes/domain/imports.py::creer_facture_import` | import : FAC- hors série configurée, aucun `facture_emise` → `create_numbered` + émission | `docs/audits/sondes/AARG/C-AARG-013.py` | AARG17 |
 | C-AARG-014 | PA4.01 | C17 | S2 | `apps/ventes/views/devis_facturation.py::DevisFacturationActionsMixin.convertir_en_bc` | V1 remplacée encore acceptée → 2e BC → stock sorti 6 pour une vente de 3 → 409 | `docs/audits/sondes/AARG/C-AARG-014.py` | AARG18 |
 | C-AARG-015 | PA4.04 | C6 | S2 | `apps/ventes/views/bon_commande.py::BonCommandeViewSet.perform_create` | BC client X + devis brouillon de Y → facture émise à X avec les lignes de Y → 409 | `docs/audits/sondes/AARG/C-AARG-015.py` | AARG19 |
-| C-AARG-016 | PA4.14 | C3 | S2 | `apps/ventes/dgi/dgi_export.py::build_ubl_xml` | UBL transmis : en-tête 900, ligne 1 000, sans remise ; le correctif QX2 est sur le jumeau aperçu → un constructeur | `docs/audits/sondes/AARG/C-AARG-016.py` | AARG20 |
+| C-AARG-016 | PA4.14 | C3 | S2 | `apps/ventes/dgi/dgi_export.py::build_ubl_xml` | UBL transmis : 900, ligne 1 000, sans remise ; le correctif QX2 est sur le jumeau aperçu → un constructeur | `docs/audits/sondes/AARG/C-AARG-016.py` | AARG20 |
 | C-AARG-017 | PA4.14 | C6 | S3 | `apps/ventes/dgi/transmission.py::transmettre_facture` | brouillon et facture annulée transmis « acceptée », conformité jamais appelée (dormant : interrupteur coupé) → 409 | `docs/audits/sondes/AARG/C-AARG-017.py` | AARG21 |
 | C-AARG-018 | PA4.15 | C7 | S3 | `apps/ventes/recouvrement.py::facture_relancable` | D-AFAC-89 (a) jamais construite : facture contestée relancée → drapeau qui suspend | `docs/audits/sondes/AARG/C-AARG-018.py` | AARG22 |
 | C-AARG-019 | PA4.15 | C1 | S2 | `apps/ventes/email_service.py::composer_relance_email` | mail de relance : ni montant (700) ni échéance, « ci-dessus », double « Bonjour » → montant dû et échéance | `docs/audits/sondes/AARG/C-AARG-019.py` | AARG24, AARG25 |
@@ -99,7 +99,7 @@ Porte : 3 réfutés partiels / 57 bruts · seconde lentille : 6 S1 → maintenus
 | Zone | Preuve | Valide tant que |
 |---|---|---|
 | parcours heureux devis → avoir | `docs/audits/sondes/AARG/C-AARG-000.py` : 9 étapes 2xx, TTC au centime, dû exact | `copier_devis_sur_facture` et `TotauxDocumentMixin` restent la chaîne unique |
-| `prix_achat` hors sorties PA4 | C-AARG-000 (aucune réponse ne le porte) ; `templates/pdf/proforma.html`, constructeurs UBL lus | aucun serializer facture ne passe à `fields='__all__'` sur Produit |
+| `prix_achat` hors sorties PA4 | parcours-PA4 (aucune réponse ne le porte) ; `templates/pdf/proforma.html`, constructeurs UBL lus | aucun serializer facture ne passe à `fields='__all__'` sur Produit |
 | doublon de ligne de relevé | AFAC5/AFAC96 (idempotence par ligne) | `ReleveLigne` garde sa clé |
 | totaux multi-taux | `apps/facturation/totaux.py` noyau unique (critique de complétude) | un seul noyau |
 | relances : statuts exclus, avoirs déduits | `recouvrement.py::STATUTS_NON_RELANCABLES`, `decomposition_du` | — |
@@ -127,5 +127,5 @@ Porte : 3 réfutés partiels / 57 bruts · seconde lentille : 6 S1 → maintenus
 - Incident prod : aucun.
 
 ## 9. Coût et routage
-Coût : H0 S3 O17 F1 · jetons sous-agents ≈ 4,5 M · tâches 57 (M0 0 M1 6 M2 14 M3 36 GATED 0).
-Routage : `PLAN_AUDIT_FACTURATION.md` 49 · `PLAN_AUDIT_DEVIS.md` 2 · `PLAN_AUDIT_SECURITE.md` 3 · `PLAN_AUDIT_DOCUMENTS.md` 1 · `PLAN_AUDIT_DEPLOY.md` 1 · `PLAN_AUDIT_CHANTIERS.md` 1 · `PLAN_AUDIT_LEAD.md` 2 · `PLAN_AUDIT_PARAMETRES.md` 1 · acceptation AARG50 · PR #<n>.
+Coût : H0 S3 O18 F1 · jetons sous-agents ≈ 4,6 M · tâches 58 (M0 0 M1 0 M2 20 M3 37 GATED 0) + acceptation AARG50.
+Routage : `PLAN_AUDIT_FACTURATION.md` 47 · `PLAN_AUDIT_SECURITE.md` 3 · `PLAN_AUDIT_DEVIS.md` 2 · `PLAN_AUDIT_LEAD.md` 2 · `PLAN_AUDIT_DOCUMENTS.md` 1 · `PLAN_AUDIT_DEPLOY.md` 1 · `PLAN_AUDIT_CHANTIERS.md` 1 · `PLAN_AUDIT_PARAMETRES.md` 1 · acceptation AARG50 · PR à venir.

@@ -4,7 +4,7 @@
 {"<A>": 1200, "00<A>": 1200} (zéros de tête : la garde `cle.isdigit() and int(cle) in ids_lot` l'accepte).
 Mesure : A reçoit-elle 2 × 1 200 (sur-paiement) pendant que B reste due ? Témoin : la même répartition construite
 par l'écran (`Object.fromEntries` sur les ids, clés uniques) ne peut pas porter deux fois A. Transaction annulée."""
-SONDE = {"constat": "C-AARG-104", "sha": "56d5b623a",
+SONDE = {"constat": "C-AARG-004-L2", "sha": "56d5b623a",
          "attendu": "répartition {'<A>':'1200', '00<A>':'1200'} → refus 409/400, jamais 2 paiements sur A",
          "modeles": ["ventes.Facture", "ventes.LigneFacture", "ventes.Paiement"]}
 

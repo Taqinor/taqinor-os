@@ -4,7 +4,7 @@ PRODUIT. (1) facture 1 200 TTC soldée par `enregistrer-paiement` ; `POST factur
 `garder_en_avance` (route, pas le service) ; `POST avoirs/<avoir>/annuler/`. (2) ÉLARGISSEMENT : même chose avec la
 directive `rembourser` (paiement négatif). On relit statut / reste dû / avance libre, la règle nocturne
 `FACTURE_STATUT_RESTE_INCOHERENT` (oracle du dépôt) et le relevé `clients/<id>/releve/`. Transaction annulée."""
-SONDE = {"constat": "C-AARG-102", "sha": "56d5b623a",
+SONDE = {"constat": "C-AARG-002-L2", "sha": "56d5b623a",
          "attendu": "après annulation de l'avoir de contre-passation : jamais « payée » avec un reste dû > 0 "
                     "(règle FACTURE_STATUT_RESTE_INCOHERENT muette) — refus, ou argent ré-attaché / statut dérivé",
          "modeles": ["ventes.Facture", "ventes.LigneFacture", "ventes.Avoir", "ventes.Paiement"]}

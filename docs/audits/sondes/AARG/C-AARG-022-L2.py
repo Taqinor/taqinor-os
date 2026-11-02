@@ -6,7 +6,7 @@ devis accepté à ligne produit → `devis/<id>/convertir-bc/` → BC confirmé 
 nouvel essai (la garde ATOT2 `exiger_devis_facturable` lit les factures par `devis_id`). Mesure : deux factures
 ÉMISES pour la même vente ? `refuser_portes_fermees` ne refuse que si la valeur posée est non nulle. Transaction
 annulée."""
-SONDE = {"constat": "C-AARG-122", "sha": "56d5b623a",
+SONDE = {"constat": "C-AARG-022-L2", "sha": "56d5b623a",
          "attendu": "PATCH {bon_commande:null} / {devis:null} sur une facture ÉMISE → 409 (rattachement figé), "
                     "jamais une 2e facture émise pour le même BC",
          "modeles": ["ventes.Devis", "ventes.LigneDevis", "ventes.BonCommande", "ventes.Facture"]}

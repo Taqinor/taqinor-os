@@ -5,7 +5,7 @@ Intention de paiement initiée par le vrai service portail (`portail.services.in
 `POST portail/paiements-facture-portail/<id>/rapprocher/` (garde `IsResponsableOrAdmin` ; la vue relève de
 `apps.portail`, que `authentication.permissions.module_de_la_vue` ne résout pas → contrôle de module ASEC11 sauté).
 Témoin pour chacun : `factures/<id>/enregistrer-paiement/` (PeutEncaisser) → 403. Transaction annulée."""
-SONDE = {"constat": "C-AARG-107", "sha": "56d5b623a",
+SONDE = {"constat": "C-AARG-007-L2", "sha": "56d5b623a",
          "attendu": "Technicien / rôle « RH seul » (sans `encaisser`) : enregistrer-paiement 403 ET rapprocher 403, "
                     "aucun Paiement (D-ASEC-VER-1 = tout l'argent exige `encaisser`)",
          "modeles": ["roles.Role", "ventes.Facture", "ventes.LigneFacture", "ventes.Paiement",

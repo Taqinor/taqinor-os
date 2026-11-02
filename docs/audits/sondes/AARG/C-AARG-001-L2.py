@@ -4,7 +4,7 @@ soldée par la vraie route `enregistrer-paiement`, puis RETOUR CLIENT d'une unit
 explicitement une facture « payée »), le tout par un rôle canonique Directeur (porteur d'`encaisser`, pas l'admin
 hérité). On mesure : avoir créé ? reste dû négatif ? avance / trop-perçu ? relevé client par la vraie route
 `clients/<id>/releve/` ? Transaction annulée."""
-SONDE = {"constat": "C-AARG-101", "sha": "56d5b623a",
+SONDE = {"constat": "C-AARG-001-L2", "sha": "56d5b623a",
          "attendu": "facture 2 400 TTC payée 2 400, retour 1 unité (1 200 TTC) → refusé, OU 1 200 dus au client visibles "
                     "(avance / trop-perçu / solde négatif au relevé)",
          "modeles": ["ventes.Facture", "ventes.LigneFacture", "ventes.Avoir", "ventes.Paiement"]}

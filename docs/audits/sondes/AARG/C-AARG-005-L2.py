@@ -4,7 +4,7 @@ RETOUR CLIENT d'une unité (`retour-client` → 600 TTC / TVA 100), puis paiemen
 ROUTE `paiements/factures/<id>/paiement-avec-retenue/`, rôle canonique Directeur (porteur d'`encaisser`).
 Attendu fiscal : la TVA restant due par le client après l'avoir = 100 → RAS 100, 100 encore dus. D-ASTK-171 (« toute
 la TVA de la facture », acompte compris) ne dit rien des avoirs. Transaction annulée."""
-SONDE = {"constat": "C-AARG-105", "sha": "56d5b623a",
+SONDE = {"constat": "C-AARG-005-L2", "sha": "56d5b623a",
          "attendu": "RAS-TVA 100 % après retour de 600 TTC (TVA 100) = 100 ; facture non soldée (100 dus)",
          "modeles": ["ventes.Facture", "ventes.LigneFacture", "ventes.Avoir", "ventes.Paiement", "ventes.RetenueSubie"]}
 

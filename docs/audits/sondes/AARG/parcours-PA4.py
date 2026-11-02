@@ -3,7 +3,7 @@
 confirmer → creer-facture → emettre → enregistrer-paiement (moitié) → creer-avoir (une ligne) → relecture.
 Oracles : aucune réponse ≥ 500 ; TTC facture = TTC devis au centime ; montant dû = TTC − payé − avoir ;
 `prix_achat` absent des réponses facture / BC. Société neuve, transaction annulée."""
-SONDE = {"constat": "C-AARG-000", "sha": "56d5b623a",
+SONDE = {"constat": "parcours-PA4", "sha": "56d5b623a",
          "attendu": "chaque étape 2xx ; TTC facture = TTC devis ; dû = TTC − 50 % − avoir ; aucun prix_achat",
          "modeles": ["ventes.Devis", "ventes.BonCommande", "ventes.Facture", "ventes.Paiement", "ventes.Avoir"]}
 
