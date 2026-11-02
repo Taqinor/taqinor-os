@@ -31,7 +31,7 @@ def marquer_acomptes_automatiques(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('facturation', '0023_vnt15_tranche_vivante_instantanes'),
+        ('facturation', '0024_atot55_total_stocke'),
     ]
 
     operations = [
