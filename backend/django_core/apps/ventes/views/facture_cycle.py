@@ -240,6 +240,16 @@ class FactureCycleActionsMixin:
         facture = self.get_object()
         directive = valider_corps(request, D.FactureAnnulerRequest).get(
             'acompte')
+        # AARG7 (D-ASEC-VER-1) — rendre ou re-pointer l'argent (directive
+        # d'acompte) est un geste d'argent : garde ``encaisser`` (ASEC29).
+        from .facture_gardes import PeutEncaisser
+        if directive and directive.get('action') in (
+                'rembourser', 'transferer') and not PeutEncaisser(
+                ).has_permission(request, self):
+            return Response(
+                {'detail': ("Rendre ou transférer l'argent d'une facture "
+                            "exige le droit d'encaissement.")},
+                status=status.HTTP_403_FORBIDDEN)
         # ENF11 — la seule règle d'ENTRÉE d'une directive que le sérialiseur
         # ne porte pas (publiée en ``anyOf``) : « transferer » exige sa cible.
         if directive and directive.get('action') == 'transferer' and not (

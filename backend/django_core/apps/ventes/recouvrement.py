@@ -845,7 +845,10 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # AARG7 (D-ASEC-VER-1) — une promesse suspend la relance : geste
+        # d'argent, la garde ``encaisser`` (ASEC29) s'ajoute au palier.
+        from .views.facture_gardes import PeutEncaisser
+        return [IsResponsableOrAdmin(), PeutEncaisser()]
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError

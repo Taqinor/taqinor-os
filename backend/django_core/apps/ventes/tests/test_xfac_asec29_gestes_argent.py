@@ -241,6 +241,50 @@ class GestesArgentTests(TestCase):
                     self.assertNotEqual(r.status_code, 403,
                                         getattr(r, 'data', None))
 
+    def test_directive_acompte_et_promesse_exigent_encaisser(self):
+        """AARG7 (D-ASEC-VER-1) — annuler avec directive d'acompte
+        (rembourser / transferer) et créer une promesse : 403 sans
+        ``encaisser`` (Admin Ventes), rien d'écrit ; Directeur jamais 403.
+        Mutant : retirer le contrôle ⇒ échec."""
+        from datetime import timedelta
+
+        from apps.ventes.models import Facture, Paiement, PromessePaiement
+        directeur, admin_ventes = (self.users['Directeur'],
+                                   self.users['Admin Ventes'])
+        acompte = self._facture(directeur)
+        Facture.objects.filter(pk=acompte.pk).update(
+            type_facture=Facture.TypeFacture.ACOMPTE)
+        Paiement.objects.create(
+            company=self.company, facture=acompte, montant=Decimal('200'),
+            date_paiement=date.today(), mode='virement', created_by=directeur)
+        cible = self._facture(directeur)
+        url = f'/api/django/ventes/factures/{acompte.id}/annuler/'
+        promesse = {'facture': acompte.id, 'montant_promis': '100.00',
+                    'date_promise': (date.today() + timedelta(days=15)
+                                     ).isoformat()}
+        corps = ({'acompte': {'action': 'rembourser'}},
+                 {'acompte': {'action': 'transferer',
+                              'facture_cible': cible.id}})
+        for c in corps:
+            with self.subTest(corps=c):
+                r = self._api(admin_ventes).post(url, c, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+                self.assertIn("droit d'encaissement", str(r.data['detail']))
+        r = self._api(admin_ventes).post(
+            '/api/django/ventes/promesses-paiement/', promesse, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.statut, Facture.Statut.EMISE)
+        self.assertEqual(
+            list(Paiement.objects.filter(facture__in=[acompte, cible])
+                 .values_list('montant', flat=True)), [Decimal('200.00')])
+        self.assertFalse(PromessePaiement.objects.exists())
+        r = self._api(directeur).post(
+            '/api/django/ventes/promesses-paiement/', promesse, format='json')
+        self.assertNotEqual(r.status_code, 403, r.data)
+        r = self._api(directeur).post(url, corps[0], format='json')
+        self.assertNotEqual(r.status_code, 403, r.data)
+
     def test_get_permissions_respecte_action(self):
         from apps.ventes.views.facture import FactureViewSet
         from apps.ventes.views.facture_gardes import PeutEncaisser
