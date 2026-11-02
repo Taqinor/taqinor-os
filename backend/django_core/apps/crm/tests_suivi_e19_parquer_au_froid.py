@@ -175,3 +175,28 @@ class ParquerAuFroidTests(TestCase):
         for cle in ('parc_etat', 'parc_raison', 'parc_jusqu_au'):
             self.assertIn(cle, lu)
             self.assertIsNone(lu[cle])
+
+    def test_le_froid_sans_raison_est_liste(self):
+        """CADV75 — trois COLD (un avec parc_raison, un sans, un perdu), un
+        CONTACTED sans raison, un COLD d'une autre société : seul le COLD natif,
+        vivant et sans raison est listé, sans donnée personnelle."""
+        from apps.crm.fiche_funnel import parquer_lead
+        from apps.crm.selectors import leads_froid_sans_raison
+
+        def froid(nom, **champs):
+            return Lead.objects.create(
+                company=self.company, nom=nom, stage=stages.COLD,
+                owner=self.acteur, **champs)
+
+        avec = froid('Avec raison')
+        parquer_lead(avec, 'budget', None, self.acteur)
+        sans = froid('Sans raison')
+        froid('Perdu', perdu=True, motif_perte='Prix')
+        froid('Opposé', ne_plus_contacter=True)
+        froid('Archivé', is_archived=True)
+        autre = Company.objects.create(nom='Autre froid', slug='autre-froid')
+        Lead.objects.create(company=autre, nom='Froid ailleurs',
+                            stage=stages.COLD)
+        self.assertEqual(leads_froid_sans_raison(self.company), [
+            {'id': sans.pk, 'stage': stages.COLD, 'source': sans.source}])
+        self.assertEqual(self.lead.stage, stages.CONTACTED)

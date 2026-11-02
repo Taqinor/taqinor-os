@@ -97,7 +97,7 @@ from .fiche_selectors import (
     lead_current_stage, lead_criteria_for_territoire, leads_recents_pour_couverture,
     leads_export_rows, dernier_contact_lead, leads_signes_sans_devis_accepte,
     champs_devis_auto_manquants, lead_en_attente_ou_veille,
-    visite_point_eau_du_lead,
+    visite_point_eau_du_lead, leads_froid_sans_raison,
 )
 
 # Noms ré-exportés volontairement (façade) : pas la surface complète du module.
@@ -148,7 +148,8 @@ __all__ = [
     'lead_known_field_codes', 'lead_merge_fields', 'lead_provenance_champs_energie_toit',
     'lead_provenance_omissions', 'lead_provenance_stamp', 'lead_signe_q',
     'lead_touchpoints_attribution', 'lead_values_changed_since', 'leads_callback_sla_depasse',
-    'leads_chauds_non_contactes', 'leads_en_portee', 'leads_export_rows', 'leads_matching_regles',
+    'leads_chauds_non_contactes', 'leads_en_portee', 'leads_export_rows',
+    'leads_froid_sans_raison', 'leads_matching_regles',
     'leads_meta_sla_depasse', 'leads_rappel_demande', 'leads_recents_pour_couverture',
     'leads_response_time_rows', 'leads_signes_sans_devis_accepte', 'leads_sla_depasse',
     'leads_source_campagne', 'leads_utilisant_produit', 'leads_ville_rows', 'leads_visibles',
