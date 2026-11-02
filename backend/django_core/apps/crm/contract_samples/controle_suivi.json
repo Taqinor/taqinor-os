@@ -247,7 +247,17 @@
       "visites_planifiees": 3,
       "devis_envoyes": 4,
       "devis_acceptes": 1
-    }
+    },
+    "cohorte_hebdo": [
+      {
+        "semaine": "2026-10-12",
+        "crees": 3,
+        "premier_contact_median_h": 2.0,
+        "joints_14j": 1,
+        "devis_21j": 1,
+        "acceptes": 1
+      }
+    ]
   },
   "exemple_vide": {
     "periode_jours": 14,
@@ -308,7 +318,8 @@
       "visites_planifiees": 0,
       "devis_envoyes": 0,
       "devis_acceptes": 0
-    }
+    },
+    "cohorte_hebdo": []
   },
   "exemple_alerte": {
     "periode_jours": 14,
@@ -565,7 +576,17 @@
       "visites_planifiees": 3,
       "devis_envoyes": 4,
       "devis_acceptes": 1
-    }
+    },
+    "cohorte_hebdo": [
+      {
+        "semaine": "2026-10-12",
+        "crees": 3,
+        "premier_contact_median_h": 2.0,
+        "joints_14j": 1,
+        "devis_21j": 1,
+        "acceptes": 1
+      }
+    ]
   },
   "notes": {
     "retard": "LA règle, écrite une fois : un JOUR COMPTÉ est un jour ouvré de la société (`ouvre`) que n'excuse aucune absence déclarée du responsable du lead. Le retard d'une étape OUVERTE = le nombre de jours comptés STRICTEMENT après son échéance courante, aujourd'hui compris (échéance vendredi, lue lundi, samedi et dimanche non ouvrés → 1). À 0 l'étape n'est pas encore en retard : elle n'est ni dans `exceptions.en_retard`, ni dans `verdict`/`par_type` (non jugée, comme une étape d'aujourd'hui), et la case de son jour est `en_cours`. Une étape CLOSE reste jugée sur son jour : « à temps » = close au plus tard le jour de son échéance (ou excusée : née en retard, ou échue un jour d'absence déclarée), « en retard » = close après. L'ancienneté d'une TÂCHE (`ouverte_depuis_jours`) se compte de la même façon depuis le jour où elle a été posée.",
@@ -578,6 +599,7 @@
     "premier_contact": "Leads CRÉÉS sur la période : `dans_le_delai` = premier contact humain posé avant le délai, sur la MÊME horloge que l'exception (heures d'horloge, jours non ouvrés retirés) ; `mediane_minutes` = médiane du délai création → premier contact en minutes OUVRÉES (le KPI « rappelé en moins de 5 min ouvrées » — jamais la moyenne : week-ends et fériés la faussent) ; `plus_longue_attente_heures` = le lead encore jamais contacté qui attend depuis le plus longtemps (horloge du délai), `null` s'il n'y en a pas.",
     "resultats": "Sur la période et la même portée : visites techniques planifiées, devis passés « envoyé », devis passés « accepté » — trois résultats à lire À CÔTÉ de l'effort, jamais un classement.",
     "erreurs": "400 `{\"erreurs\": {champ: message}}` — `jours` (hors 7/14/30), `owner` (non numérique) ; `owner` entier inconnu ou hors portée : 404, même corps. AGR542 — `segment` (valeur inconnue) : « Segment inconnu : « fellah ». Valeurs admises : residentiel, commercial, industriel, agricole, non_renseigne. »",
-    "segment": "AGR503/AGR542 — `?segment=` ∈ residentiel, commercial, industriel, agricole, non_renseigne ; absent = tous les segments (comportement actuel, inchangé). `segment` servi = texte ou null — ÉCHO du paramètre reçu (null quand le paramètre est absent). Le filtre porte sur `crm.Lead.type_installation` du lead de chaque étape (`non_renseigne` = vide) : toutes les listes et tous les compteurs se restreignent aux leads de ce segment ; TOUTES les règles de mesure restent IDENTIQUES (jours ouvrés, reports comptés, même page pour tous les rôles), aucun seuil propre à un segment. Exemple : GET /api/django/crm/relance-etapes/controle/?jours=14&owner=7&segment=agricole."
+    "segment": "AGR503/AGR542 — `?segment=` ∈ residentiel, commercial, industriel, agricole, non_renseigne ; absent = tous les segments (comportement actuel, inchangé). `segment` servi = texte ou null — ÉCHO du paramètre reçu (null quand le paramètre est absent). Le filtre porte sur `crm.Lead.type_installation` du lead de chaque étape (`non_renseigne` = vide) : toutes les listes et tous les compteurs se restreignent aux leads de ce segment ; TOUTES les règles de mesure restent IDENTIQUES (jours ouvrés, reports comptés, même page pour tous les rôles), aucun seuil propre à un segment. Exemple : GET /api/django/crm/relance-etapes/controle/?jours=14&owner=7&segment=agricole.",
+    "cohorte_hebdo": "CADV65 (conception v4 §7.7) — une ligne par semaine (lundi local, Africa/Casablanca) de CRÉATION des leads de la portée (archivés écartés, filtre `owner`/`segment` appliqué) sur la fenêtre `periode_jours`, du plus ancien au plus récent ; `[]` sans lead. `crees` = leads créés cette semaine ; `premier_contact_median_h` = médiane en heures entre la création et `first_contacted_at` des seuls leads contactés (`null` si aucun) ; `joints_14j` = leads dont une première issue jointe (`joint`, `interesse`, `visite_acceptee`) est tombée dans les 14 jours suivant la création ; `devis_21j` = leads dont le premier devis a été envoyé dans les 21 jours ; `acceptes` = leads portant au moins un devis accepté. Lecture seule, aucun seuil ni verdict. Producteur : `controle_suivi._cohorte_hebdo` ; affichage en vague 2 (2.13)."
   }
 }

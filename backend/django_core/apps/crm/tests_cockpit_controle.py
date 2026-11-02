@@ -50,7 +50,9 @@ from apps.crm import controle_suivi as cs
 from apps.crm import horaires, stages, cadence_plan
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS
-from apps.crm.models import Client, Lead, PeriodeAbsence, RelanceEtape
+from apps.crm.models import (
+    Client, Lead, LeadActivity, PeriodeAbsence, RelanceEtape,
+)
 from apps.notifications.calendar_utils import jours_ouvres_entre
 from apps.notifications.models import Holiday
 from apps.parametres.models import CompanyProfile
@@ -1360,6 +1362,32 @@ class ResultatsTests(_Base):
         self.assertEqual(self._controle()['resultats'], {
             'visites_planifiees': 1, 'devis_envoyes': 2,
             'devis_acceptes': 1})
+
+    def test_cohorte_hebdo_une_ligne_par_semaine(self):
+        """CADV65 — trois leads du même lundi (21/09) : L1 contacté à +1 h,
+        joint à J2, devis envoyé à J10, accepté ; L2 contacté à +3 h, joint à
+        J20 (hors 14 j) ; L3 jamais contacté. Société vide : ``[]``."""
+        self.assertEqual(self._controle()['cohorte_hebdo'], [])
+        lundi = _a(datetime.date(2026, 9, 21), 9)
+        l1, l2, l3 = (self._lead(cree_le=lundi) for _ in range(3))
+        Lead.objects.filter(pk=l1.pk).update(
+            first_contacted_at=lundi + datetime.timedelta(hours=1))
+        Lead.objects.filter(pk=l2.pk).update(
+            first_contacted_at=lundi + datetime.timedelta(hours=3))
+        for lead, jours in ((l1, 2), (l2, 20)):
+            activite = LeadActivity.objects.create(
+                company=self.company, lead=lead, user=self.acteur,
+                kind=LeadActivity.Kind.APPEL, outcome='joint')
+            LeadActivity.objects.filter(pk=activite.pk).update(
+                created_at=lundi + datetime.timedelta(days=jours))
+        self._client_devis(
+            l1, statut=Devis.Statut.ACCEPTE,
+            date_envoi=lundi + datetime.timedelta(days=10),
+            date_acceptation=_jour(-5))
+        self.assertEqual(self._controle()['cohorte_hebdo'], [{
+            'semaine': '2026-09-21', 'crees': 3,
+            'premier_contact_median_h': 2.0, 'joints_14j': 1,
+            'devis_21j': 1, 'acceptes': 1}])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
