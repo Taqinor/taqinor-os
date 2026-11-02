@@ -169,9 +169,12 @@ def _alertes_lead(lead, devis, touche, today):
     alertes = []
     if any(d['statut'] == 'expire' for d in devis):
         alertes.append('devis_expire')
+    # ALEA59 : règle unique du retard (même borne que badge, cockpit, filtres).
+    from .controle_suivi import seuil_retard
+    seuil = seuil_retard(lead.company, today)
     due = touche and touche['due_date']
-    if (due and due < today.isoformat()) or (
-            lead.relance_date and lead.relance_date < today):
+    if (due and datetime.date.fromisoformat(str(due)[:10]) < seuil) or (
+            lead.relance_date and lead.relance_date < seuil):
         alertes.append('relance_en_retard')
     return alertes
 
