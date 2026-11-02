@@ -216,3 +216,19 @@ class TranslationOverrideEnf11Test(TestCase):
         r = self.api.put(BASE + 'bulk/', {'items': [
             {'locale': 'fr', 'key': 'k' * 121, 'value': 'x'}]}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
+
+    def test_cle_longue_ecrit_l_audit_sans_500(self):
+        # ENF11 fuzz : locale + clé de 120 signes dépassait SettingsAuditLog.field
+        # (100) → DataError → 500 sur PATCH/DELETE.
+        from apps.parametres.models_audit import SettingsAuditLog
+        cle = 'k' * 120
+        r = self.api.post(BASE, {'locale': 'en', 'key': cle, 'value': 'a'},
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.api.patch(f"{BASE}{r.data['id']}/", {'value': 'b'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.delete(f"{BASE}{TranslationOverride.objects.get().pk}/")
+        self.assertEqual(r.status_code, 204)
+        self.assertTrue(SettingsAuditLog.objects.filter(
+            company=self.company, section='traductions').exists())
