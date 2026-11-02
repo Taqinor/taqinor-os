@@ -57,7 +57,7 @@ export default function TracabiliteLotSerie() {
     setError(null)
     setIntrouvable(false)
     try {
-      const r = await stockApi.getTracabilite({ [mode]: n })
+      const r = await stockApi.getTracabilite(mode === 'lot' ? { lot: n } : { serie: n })
       setChaine(r.data)
     } catch (err) {
       setChaine(null)

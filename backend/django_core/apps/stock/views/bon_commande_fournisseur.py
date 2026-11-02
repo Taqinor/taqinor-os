@@ -819,7 +819,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return response
 
     @extend_schema(responses=LISTE)
-    @action(detail=True, methods=['get'], url_path='lignes-import')  # headless: API seule, décision fondateur 02/11/2026 (D-ENF15-STOCK-22)
+    @action(detail=True, methods=['get'], url_path='lignes-import')  # headless: D-ENF15-STOCK-22
     def lignes_import(self, request, pk=None):
         """XSTK19 — lignes candidates pour un dossier d'import ADII,
         pré-remplies (code SH + pays d'origine) depuis les SKUs de ce BCF."""

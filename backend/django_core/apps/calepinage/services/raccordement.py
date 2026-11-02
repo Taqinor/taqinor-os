@@ -37,6 +37,7 @@ Contrat de sortie : ``contract_samples/calepinage_raccordement.json``
 (CALX205) — trois blocs ``saisie`` / ``calcul`` / ``verdicts``, cinq verdicts
 TOUJOURS présents. Aucun prix, aucun kWh (D-CALX 5, W3).
 """
+import sys
 from __future__ import annotations
 
 import math
@@ -1020,11 +1021,11 @@ def _texte_saisi(valeur, champ):
     return valeur.strip() or None
 
 
-#: ERR-ENF11-FUZZ-CALEPINAGE - plafond de TOUT nombre saisi du raccordement
-#: (kVA, V, %, kW) : une valeur de l'ordre de 1e308 fait deborder les calculs
-#: aval (produit/puissance en flottants, 500) ; aucun branchement reel
-#: n'approche cette borne. Publiee en ``maximum`` sur le corps de l'API.
-SAISIE_MAXIMUM = 1e9
+#: ERR-ENF11-FUZZ-CALEPINAGE - plafond de TOUT nombre saisi du raccordement :
+#: la racine 4e du plus grand flottant, pour que les produits aval (kVA, V, %, kW)
+#: ne débordent pas (500 sur 1e308). Borne de FORME, calculée, jamais une limite
+#: électrique. Publiée en ``maximum`` sur le corps de l'API.
+SAISIE_MAXIMUM = sys.float_info.max ** 0.25
 
 
 def _refus_trop_grand(champ, nombre):

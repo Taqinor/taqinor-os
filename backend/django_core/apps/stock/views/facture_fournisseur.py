@@ -385,7 +385,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         request={'multipart/form-data': corps('FactureDepuisUblMultipart', file=serializers.FileField())},
         responses={201: FactureFournisseurSerializer})
-    @action(detail=False, methods=['post'], url_path='depuis-ubl',  # headless: API seule, décision fondateur 02/11/2026 (D-ENF15-STOCK-22)
+    @action(detail=False, methods=['post'], url_path='depuis-ubl',  # headless: D-ENF15-STOCK-22
             parser_classes=[MultiPartParser, JSONParser])
     def depuis_ubl(self, request):
         """XPUR26 — préparation mandat DGI 2026 (e-facturation ENTRANTE) :
