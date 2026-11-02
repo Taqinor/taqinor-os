@@ -960,8 +960,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     + (f" par {inst.signataire_nom}"
                        if inst.signataire_nom else "")
                     + f" le {timezone.localtime(inst.signe_le):%d/%m/%Y à %H:%M}"
-                    ". Une re-signature exige un motif explicite "
-                    "(`motif_override_signature`) — il sera journalisé.")},
+                    ". Pour le signer à nouveau, indiquez un motif : "
+                    "il sera journalisé.")},
                 status=status.HTTP_409_CONFLICT)
         old = Installation.objects.get(pk=inst.pk)
         inst.signature_client = sig
