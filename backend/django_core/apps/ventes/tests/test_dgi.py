@@ -95,6 +95,44 @@ class TestToggleOffInvisible(DgiTestBase):
         self.assertFalse(prof.dgi_export_actif)
         self.assertFalse(is_dgi_enabled(fresh))
 
+    def test_ubl_conformite_transmettre_exigent_ventes_export(self):
+        """AARG40 (C-AARG-043) — `ubl`, `dgi-conformite`, `dgi-transmettre`
+        exigent `ventes_export` comme `dgi-export` : 403 sans le droit (rien
+        n'est écrit), 200 avec."""
+        from apps.roles.models import Role
+        seller_profile(self.company, dgi_export_actif=True)
+        CompanyProfile.objects.filter(company=self.company).update(
+            dgi_transmission_actif=True, dgi_transmission_provider='mock')
+        facture = self._facture()
+        base = f'/api/django/ventes/factures/{facture.id}'
+
+        def _api(avec):
+            role = Role.objects.create(
+                company=self.company, nom=f'AARG40 {avec}',
+                permissions=['ventes_voir', 'ventes_modifier']
+                + (['ventes_export'] if avec else []))
+            user = User.objects.create_user(
+                username=f'aarg40-{avec}', password='x',
+                company=self.company, role=role, role_legacy='responsable')
+            return auth(user)
+        sans, avec = _api(False), _api(True)
+        for verbe, url in (('get', f'{base}/ubl/'),
+                           ('get', f'{base}/dgi-conformite/'),
+                           ('post', f'{base}/dgi-transmettre/')):
+            with self.subTest(url=url):
+                r = getattr(sans, verbe)(url)
+                self.assertEqual(r.status_code, 403, r.content)
+                facture.refresh_from_db()
+                self.assertFalse(facture.fichier_ubl)
+                self.assertEqual(facture.dgi_statut,
+                                 Facture.DgiStatut.A_TRANSMETTRE)
+        for verbe, url in (('get', f'{base}/ubl/'),
+                           ('get', f'{base}/dgi-conformite/'),
+                           ('post', f'{base}/dgi-transmettre/')):
+            with self.subTest(url=url, droit=True):
+                r = getattr(avec, verbe)(url)
+                self.assertEqual(r.status_code, 200, r.content)
+
     def test_facture_serializer_has_no_dgi_field(self):
         facture = self._facture()
         r = self.api.get(f'/api/django/ventes/factures/{facture.id}/')
