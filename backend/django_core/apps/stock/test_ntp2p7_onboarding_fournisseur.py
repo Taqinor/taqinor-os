@@ -235,7 +235,7 @@ class ProgressionEtValidationTests(TestCase):
         resp = self.api.post(
             f'{STOCK}/dossiers-onboarding-fournisseur/{self.dossier.pk}/'
             'valider-dossier/', {'valider': True}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)  # ENF11 : refus d'etat
         self.dossier.refresh_from_db()
         self.assertNotEqual(self.dossier.statut,
                             DossierOnboardingFournisseur.Statut.VALIDE)
@@ -266,6 +266,17 @@ class ProgressionEtValidationTests(TestCase):
         resp = self.api.get(f'{STOCK}/documents-fournisseur/{piece.pk}/')
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn('file_key', resp.data)
+
+    def test_televerser_format_illisible_409(self):
+        """ENF11 (api-fuzz) — format lu dans les octets : règle hors schéma, 409."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        piece = poser_piece(self.company, self.dossier,
+                            DocumentFournisseur.Type.RC, avec_fichier=False)
+        resp = self.api.post(
+            f'{STOCK}/documents-fournisseur/{piece.pk}/televerser/',
+            {'file': SimpleUploadedFile('f', b'', 'application/pdf')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_document_dossier_inconnu_404_et_texte_strict(self):
         """CI #997 fuzz (4) : un dossier absent est une ressource qui manque

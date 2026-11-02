@@ -282,7 +282,17 @@ class ResolutionEtConsommationTests(TestCase):
             'periodicite': 'mensuelle',
             'annee': self.annee, 'mois': 0, 'montant_alloue': '500.00',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ENF11 (api-fuzz) : règle croisée périodicité × mois -> 409, plus 400.
+        self.assertEqual(resp.status_code, 409)
+
+    def test_put_mois_zero_sur_budget_mensuel_enregistre_409(self):
+        budget = BudgetDepartement.objects.create(
+            company=self.company,
+            periodicite=BudgetDepartement.Periodicite.MENSUELLE,
+            annee=self.annee, mois=self.mois, montant_alloue=5)
+        resp = self.api.put(f'{STOCK}/budgets-departement/{budget.pk}/', {
+            'annee': self.annee, 'mois': 0}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_engagements_en_lecture_seule(self):
         resp = self.api.post(f'{STOCK}/engagements-budget/',

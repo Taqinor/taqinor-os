@@ -233,6 +233,26 @@ class TestEndpointsRetourClient(Ntwms23Base):
                          'etat_constate': 'a_reparer'}]}, format='json')
         self.assertEqual(reponse.status_code, 409, reponse.content)
 
+    def test_receptionner_deux_fois_est_un_conflit_409(self):
+        # ENF11 (api-fuzz) — refus d'ETAT (retour deja receptionne) : 409.
+        retour = self._retour(etat='revendable', quantite=1)
+        receptionner_retour_client(retour=retour, user=self.admin)
+        reponse = self.api.post(
+            f'{self.URL}{retour.id}/receptionner/', {}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+
+    def test_motif_avec_nul_publie_au_schema(self):
+        # ENF11 (api-fuzz) — le motif est une chaine stricte : le schema
+        # publie « sans caractere nul » (PATCH) ; le 400 reste le refus.
+        from apps.stock.serializers_wms import RetourClientSerializer
+        from core.champs_stricts import ChaineStricte
+        self.assertIsInstance(
+            RetourClientSerializer().fields['motif'], ChaineStricte)
+        retour = self._retour(etat='revendable', quantite=1)
+        reponse = self.api.patch(
+            f'{self.URL}{retour.id}/', {'motif': 'a\x00b'}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+
     def test_inspecter_via_api(self):
         retour = self._retour(etat='revendable', quantite=1)
         receptionner_retour_client(retour=retour, user=self.admin)

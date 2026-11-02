@@ -152,11 +152,12 @@ class TestEndpointControleScan(Ntwms11Base):
         self.assertEqual(resp.data['lignes'][0]['quantite'], 2)
         self.assertIsNotNone(resp.data['lignes'][0]['scanne_le'])
 
-    def test_scan_intrus_refus_bloquant_400(self):
+    def test_scan_intrus_refus_bloquant_409(self):
+        # ENF11 (api-fuzz) : refus d'ETAT (vague en cours), plus 400.
         resp = self.api.post(
             self._url(), {'produit': self.intrus.id, 'quantite': 1},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('vague', str(resp.data).lower())
         self.assertEqual(
             UniteLogistiqueLigne.objects.filter(unite=self.colis).count(), 0)

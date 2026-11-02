@@ -379,7 +379,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
 
         ``{produit, quantite}``. Un produit qui n'appartient pas à la vague en
         cours d'emballage (ou une quantité supérieure au prélevé) est REFUSÉ en
-        400 — l'écran doit afficher l'alerte avant toute validation du colis.
+        409 — l'écran doit afficher l'alerte avant toute validation du colis.
         En cas de succès, la ligne est horodatée (audit `scanne_le`)."""
         from ..models import Produit
         from ..services import controler_scan_emballage
@@ -396,8 +396,9 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 quantite=saisie.get('quantite') or 1,
                 user=request.user)
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 (api-fuzz) — corps déjà validé : tout refus du service
+            # tient à l'état enregistré (vague, quantité prélevée, scellé).
+            raise ConflitEtat(str(exc))
         unite.refresh_from_db()
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
@@ -1081,14 +1082,12 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
             'nb_unites': serializers.IntegerField(),
             'poids_kg': serializers.FloatField(),
             'volume_m3': serializers.FloatField(),
-            'capacite_kg': serializers.DecimalField(
-                max_digits=12, decimal_places=2, allow_null=True),
-            'capacite_m3': serializers.DecimalField(
-                max_digits=12, decimal_places=3, allow_null=True),
-            'poids_utilise_pct': serializers.DecimalField(
-                max_digits=8, decimal_places=2, allow_null=True),
-            'volume_utilise_pct': serializers.DecimalField(
-                max_digits=8, decimal_places=2, allow_null=True),
+            # Nombres JSON (l'encodeur DRF rend un Decimal en flottant) :
+            # la réponse réelle, pas des chaînes décimales (api-fuzz ENF11).
+            'capacite_kg': serializers.FloatField(allow_null=True),
+            'capacite_m3': serializers.FloatField(allow_null=True),
+            'poids_utilise_pct': serializers.FloatField(allow_null=True),
+            'volume_utilise_pct': serializers.FloatField(allow_null=True),
             'depassement': serializers.BooleanField(),
             'avertissement': serializers.CharField(),
         }),
@@ -1106,9 +1105,8 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
             'depassement': serializers.BooleanField(),
             'avertissement': serializers.CharField(),
         }),
-        400: inline_serializer('StockPlanChargementErreur', {
-            'detail': serializers.CharField(),
-        }),
+        # ENF11 (api-fuzz) — pas de 400 propre : celui de l'enveloppe commune
+        # (``detail`` OU erreurs par champ, ex. ``unite_logistique`` non entier).
     })
     @action(detail=True, methods=['post'], url_path='unites')
     def ajouter_unite(self, request, pk=None):
@@ -1276,8 +1274,8 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         try:
             receptionner_retour_client(retour=retour, user=request.user)
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 (api-fuzz) — seul l'état enregistré refuse ici : 409.
+            raise ConflitEtat(str(exc))
         retour.refresh_from_db()
         return Response(self.get_serializer(retour).data)
 

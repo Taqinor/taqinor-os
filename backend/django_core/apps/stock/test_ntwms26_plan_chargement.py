@@ -159,6 +159,16 @@ class TestEndpointsPlanChargement(Ntwms26Base):
         self.assertEqual(reponse.status_code, 200)
         self.assertEqual(reponse.data['nb_unites'], 1)
 
+    def test_verifier_capacite_nombres_json_comme_le_schema_publie(self):
+        # ENF11 (api-fuzz) — le schéma publiait des chaînes décimales alors que
+        # la réponse porte des NOMBRES JSON.
+        plan = self._plan(capacite_m3='12')
+        ajouter_unite_plan_chargement(plan=plan, unite=self._palette('200'))
+        corps = self.api.get(f'{self.URL}{plan.id}/verifier-capacite/').json()
+        for cle in ('poids_kg', 'volume_m3', 'capacite_kg', 'capacite_m3',
+                    'poids_utilise_pct', 'volume_utilise_pct'):
+            self.assertIsInstance(corps[cle], (int, float), cle)
+
     def test_unite_inconnue_refusee(self):
         # ENF11 (nocturne 15/10) — une unité inconnue de la société est une
         # ressource qui manque (404, plus 400) ; une unité d'une AUTRE société
