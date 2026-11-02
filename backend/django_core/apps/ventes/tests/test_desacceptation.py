@@ -147,6 +147,53 @@ class TestAnnulerAcceptation(TestCase):
         lien.refresh_from_db()
         self.assertIsNotNone(lien.suivi_prolonge_le)
 
+    def test_validite_depassee_reportee_a_la_desacceptation(self):
+        """ADVS33 (C-ADVS-033) — dés-accepté après sa date de validité : reportée à
+        aujourd'hui + délai société, tracée au chatter, et le devis se re-signe au lien."""
+        from rest_framework.test import APIClient
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.public.signature_views import empreinte_contenu
+        from apps.ventes.tests._quote_engine_common import make_devis
+        profil = CompanyProfile.get(self.company)
+        profil.quote_validity_days = 30
+        profil.save()
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadian Solar 710W', '10', '1166.67', '20'),
+            ('Onduleur réseau Huawei 10kW Monophasé', '1', '15000', '20'),
+        ], reference=f'DEV-{MONTH}-9133')
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE, date_envoi=timezone.now())
+        devis.refresh_from_db()
+        lien = ShareLink.for_devis(devis)
+        self._accepter(devis)
+        aujourd_hui = timezone.localdate()
+        Devis.objects.filter(pk=devis.pk).update(date_validite=aujourd_hui - timedelta(days=1))
+
+        services.annuler_acceptation(devis=devis, user=self.user)
+
+        devis.refresh_from_db()
+        attendue = aujourd_hui + timedelta(days=30)
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(devis.date_validite, attendue)
+        self.assertTrue(DevisActivity.objects.filter(
+            devis=devis, body__contains=f'validité reportée au {attendue:%d/%m/%Y}').exists())
+        resp = APIClient().post(f'/api/django/public/proposal/{lien.token}/accept/', {
+            'nom': 'M. Variante', 'consent_esign': True, 'option': Devis.OptionAcceptee.SANS_BATTERIE,
+            'empreinte_contenu': empreinte_contenu(devis),
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_validite_non_depassee_inchangee_sans_note(self):
+        """ADVS33 — validité encore courante : date inchangée, aucune note."""
+        devis = self._devis(22)
+        self._accepter(devis)
+        echeance = timezone.localdate() + timedelta(days=5)
+        Devis.objects.filter(pk=devis.pk).update(date_validite=echeance)
+        services.annuler_acceptation(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        self.assertEqual(devis.date_validite, echeance)
+        self.assertFalse(DevisActivity.objects.filter(
+            devis=devis, body__contains='validité reportée').exists())
+
     def test_reacceptation_est_fraiche(self):
         devis = self._devis(13)
         self._accepter(devis)

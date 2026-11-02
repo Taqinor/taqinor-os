@@ -1749,11 +1749,14 @@ def annuler_acceptation(*, devis, user, motif=''):
     Un devis qui n'est pas « accepté » est rendu tel quel (no-op). La preuve
     e-signature (``DevisSignature``, PDF scellé) n'est jamais touchée.
     """
+    from datetime import timedelta
     from django.db import transaction
     from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
+    from apps.ventes.domain.envoi import jours_validite_societe, prolonger_validite_devis
     from apps.ventes.selectors import groupe_proposition
+    from apps.ventes.utils.expiry import is_expired
     from core.events import devis_acceptation_annulee
 
     with transaction.atomic():
@@ -1785,6 +1788,12 @@ def annuler_acceptation(*, devis, user, motif=''):
         # (``ouvrir_suivi`` le prolongera de nouveau à la ré-acceptation).
         from apps.ventes.domain.suivi import lever_suivi
         lever_suivi([devis.pk])
+        # ADVS33 — validité dépassée : reportée (délai société), sinon la
+        # ré-acceptation serait refusée ``expiree`` au lien.
+        reportee = None
+        if is_expired(devis):
+            reportee = prolonger_validite_devis(devis, timezone.localdate() + timedelta(
+                days=jours_validite_societe(devis.company)))
 
         # Sœurs refusées PAR cette acceptation — et elles seules.
         restaurees = []
@@ -1830,6 +1839,8 @@ def annuler_acceptation(*, devis, user, motif=''):
             corps += f' Motif : {motif}.'
         if restaurees:
             corps += f' Variante(s) rétablie(s) : {", ".join(restaurees)}.'
+        if reportee:
+            corps += f' Offre à nouveau signable : validité reportée au {reportee:%d/%m/%Y}.'
         corps += ' La preuve de signature du client est conservée.'
         activity.log_devis_note(devis, user, corps)
 
