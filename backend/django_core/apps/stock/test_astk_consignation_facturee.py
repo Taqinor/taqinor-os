@@ -143,6 +143,37 @@ class ConsignationTests(TestCase):
         self.assertIn('facturé 2', html)
         self.assertIn('Facturée', html)
 
+    def test_releve_apres_emission_porte_le_numero_courant(self):
+        # ASTK256 — après émission, liste, relevé JSON et HTML portent
+        # « FAC-… » (jamais « BROUILLON-<id> ») ; `facture_id` survit.
+        from apps.stock.utils.pdf_consignation import (
+            render_releve_consignation_html,
+        )
+        from apps.ventes.services import emettre_facture
+
+        corps = self._declarer(2).json()
+        facture = self._factures().get()
+        self.assertTrue(corps['facture_reference'].startswith('BROUILLON-'))
+        emettre_facture(facture, user=self.resp, verifier_credit=False)
+        facture.refresh_from_db()
+        self.assertFalse(facture.reference.startswith('BROUILLON-'))
+
+        api = auth(self.resp)
+        liste = api.get(URL).json()
+        lignes = liste['results'] if isinstance(liste, dict) else liste
+        decl = lignes[0]['declarations'][0]
+        self.assertEqual(decl['facture_reference'], facture.reference)
+        self.assertEqual(decl['document_reference'], facture.reference)
+        self.assertEqual(decl['facture_id'], facture.pk)
+        releve = api.get(f'{URL}{self.depot.id}/releve/').json()
+        self.assertEqual(releve['declarations'][0]['document_reference'],
+                         facture.reference)
+        self.depot.refresh_from_db()
+        self.assertIn(facture.reference,
+                      render_releve_consignation_html(self.depot))
+        self.assertNotIn('BROUILLON-',
+                         render_releve_consignation_html(self.depot))
+
     def test_aucun_prix_achat(self):
         self._declarer(2)
         facture = self._factures().get()

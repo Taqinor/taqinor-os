@@ -115,8 +115,15 @@ class AchatsParametresViewSet(viewsets.ViewSet):
         seuil_jours = entier_ou_400(
             request.query_params.get('seuil_jours'), 'seuil_jours', 15, 0,
             3650)
-        return Response(checklist_cloture_achats(
-            request.user.company, periode, seuil_jours=seuil_jours))
+        data = checklist_cloture_achats(
+            request.user.company, periode, seuil_jours=seuil_jours)
+        # ASTK255 — sans `prix_achat_voir`, ni montant ni motif chiffré du
+        # rapprochement 3 voies (même règle que FactureFournisseurSerializer).
+        if not getattr(request.user, 'can_view_buy_prices', True):
+            for ligne in data['factures_en_exception']:
+                ligne.pop('montant_ttc', None)
+                ligne.pop('motif_ecart', None)
+        return Response(data)
 
 
 class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):

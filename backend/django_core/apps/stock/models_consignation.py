@@ -93,6 +93,11 @@ class DeclarationConsommation(TenantModel):
     document_reference = models.CharField(
         max_length=80, blank=True, default='',
         help_text='Référence du document de vente émis (NTDST4).')
+    facture = models.ForeignKey(
+        # on_delete: SET_NULL — la facture reste la source de vérité côté ventes ; sans lien,
+        # `document_reference` reste le repli (ASTK256)
+        'facturation.Facture', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
     declaree_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True,
@@ -110,3 +115,10 @@ class DeclarationConsommation(TenantModel):
 
     def __str__(self):
         return f'{self.depot_id} × {self.quantite} ({self.statut})'
+
+    def numero_courant(self):
+        """ASTK256 — n° COURANT de la facture liée (« FAC-… » après émission) ;
+        sans lien, repli sur la référence figée à la facturation."""
+        if self.facture_id:
+            return self.facture.reference
+        return self.document_reference

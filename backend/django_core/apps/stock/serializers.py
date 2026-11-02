@@ -1966,6 +1966,7 @@ CHAMPS_MONTANTS_FACTURE_FOURNISSEUR = (
     'montant_ht', 'montant_tva', 'montant_ttc', 'montant_ttc_devise',
     'total_paye', 'solde_du', 'total_acomptes_imputes',
     'total_avoirs_imputes', 'sous_totaux_par_taux', 'echeances',
+    'motif_ecart',
 )
 
 
