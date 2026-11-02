@@ -669,3 +669,25 @@ unites:
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-performance.md
     notes: "Tâches routées vers les propriétaires des fichiers touchés. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-performance.md) : 33 constats C14 mesurés (21 S2, 12 S3), 42 tâches APRF (en-tête du groupe dans PLAN_AUDIT_TRANSVERSE) ; tests de budget de requêtes désactivés alors que déclarés appliqués."
+
+  - id: PA4
+    rang: 20
+    declencheur: argent
+    titre: "Parcours PA4 « Argent » : devis accepté → BC → facture → paiements / relevé / RAS → avoirs / ND → pro-forma / UBL-DGI → relances (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "table backend/django_core/apps/facturation/parcours/PA4.json (pilote facturation) ; apps/ventes, apps/facturation, portail, core (paiement, numérotation), authentication/permissions.py"
+    coutures:
+      - "passages de main devis↔facturation↔stock↔chantiers↔lead ; rôles × portes d'argent ; sorties client (PDF facture/avoir, UBL, mails de relance)"
+    P: 4
+    I: 5
+    score: 20
+    niveau: L3
+    statut: audité
+    groupe: AARG
+    plan: docs/plans/PLAN_AUDIT_FACTURATION.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_PARAMETRES.md]
+    pr: 1213
+    date: 2026-11-02
+    dossier: docs/audits/2026-11-02-parcours-PA4.md
+    notes: "Premier audit de PARCOURS (L3, 02/11/2026) : 51 constats dont 22 prouvés par sonde (6 S1 argent : avoir sur facture payée, annulation d'avoir miroir, RAS après avoir, gestes d'argent sans `encaisser` dont cause racine `module_de_la_vue`, facture émise détachée de sa vente ⇒ double facturation ; 13 S2) ; parcours heureux rejoué par l'API sans écart ; D-AARG-1..5 ; 1 critique Fable (5 écarts, 4 sondés). Tâches AARG1-58."
