@@ -82,6 +82,14 @@ def _detect_image_type(header: bytes) -> str | None:
     return None
 
 
+def _cle_citee_par_une_identite_figee(company_id, key):
+    """AARG48 — l'objet reste au bucket tant qu'une facture émise le cite."""
+    from apps.ventes.selectors_facturation import (
+        cle_citee_par_une_identite_figee,
+    )
+    return cle_citee_par_une_identite_figee(company_id, key)
+
+
 def _upload_image(request, field, prefix):
     file = request.FILES.get('file')
     if not file:
@@ -123,9 +131,10 @@ def _upload_image(request, field, prefix):
     old_key = getattr(profile, field)
     if old_key:
         try:
-            client.delete_object(
-                Bucket=settings.MINIO_BUCKET_UPLOADS, Key=old_key
-            )
+            if not _cle_citee_par_une_identite_figee(profile.company_id, old_key):
+                client.delete_object(
+                    Bucket=settings.MINIO_BUCKET_UPLOADS, Key=old_key
+                )
         except Exception:
             logger.warning("_upload_image : erreur absorbée, repli dégradé", exc_info=True)
 
@@ -171,10 +180,11 @@ def _delete_image(request, field):
     key = getattr(profile, field)
     if key:
         try:
-            client = get_minio_client()
-            client.delete_object(
-                Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key
-            )
+            if not _cle_citee_par_une_identite_figee(profile.company_id, key):
+                client = get_minio_client()
+                client.delete_object(
+                    Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key
+                )
         except Exception:
             logger.warning("_delete_image : erreur absorbée, repli dégradé", exc_info=True)
         setattr(profile, field, '')

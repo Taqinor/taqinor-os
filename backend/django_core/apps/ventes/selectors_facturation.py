@@ -35,6 +35,17 @@ def factures_echues(company, *, today=None):
     ).select_related('client', 'created_by')
 
 
+def cle_citee_par_une_identite_figee(company_id, cle):
+    """AARG48 — ``cle`` (logo, signature) figée par l'identité vendeur d'une
+    facture émise de la société (APAR61) : son PDF re-rendu la télécharge."""
+    from django.db.models import Q
+
+    from .models import Facture
+    return Facture.objects.filter(company_id=company_id).filter(
+        Q(identite_vendeur__logo_key=cle)
+        | Q(identite_vendeur__signature_key=cle)).exists()
+
+
 def get_facture_scoped(company, facture_id):
     """XFAC14 — Facture (AR) scopée société par id, ou ``None``. Point
     d'entrée cross-app (compensation AR/AP) : lire une facture client sans
