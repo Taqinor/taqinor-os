@@ -2,6 +2,7 @@
   "endpoint": "GET /ventes/classement-options",
   "pourquoi": "ADVS5 (C-ADVS-040, D-ADVS-3 = suit_la_batterie, PACT10) — dans quelle option du devis entre une ligne. LA règle est apps.ventes.utils.options.panier_de_ligne(variante, role, blob) : variante déclarée, puis rôle stocké (tout accessoire de batterie dans « Avec batterie » seulement), mots-clés en repli. `endpoint` n'est PAS une route Django : aucune vue ne sert cette table, scripts/check_api_shapes.py ne compare rien ici. Lecteurs : tests/test_options.py (noyau, ADVS5), tests/test_pdf_mono_option_lignes_variantees.py (moteur PDF, ADVS6).",
   "notes": {
+    "niveau": "Règle du niveau de règles 10 (Devis.regles_calcul, nouveaux rendus seulement) : un devis marqué 9 ou moins garde ses répartitions d'hier (utils.options.panier_du_moteur pour le PDF, variante puis mots-clés pour le noyau). Les cas ci-dessous sont lus sans devis, donc aux règles courantes.",
     "colonnes": "`designation` = texte de classement ; `role_devis` = rôle stocké de la ligne (null : ligne d'hier) ; `variante` = '' (commune), 'sans' ou 'avec' ; `sans` / `avec` = la ligne entre-t-elle dans ce panier."
   },
   "exemple": {

@@ -151,6 +151,17 @@ class RepartitionDesOptionsTest(SimpleTestCase):
         self.assertEqual(_paniers([_paire('Structures acier')]),
                          (['Structures acier'], ['Structures acier']))
 
+    def test_niveau_9_garde_la_ligne_dans_les_deux_paniers(self):
+        # ADVS5/ADVS6 — un envoyé du niveau 9 garde la répartition du PDF reçu.
+        from types import SimpleNamespace
+        sans, avec, _ = _repartir_options(
+            [_paire('Batterie Dyness 10 kWh', role='accessoires')],
+            SimpleNamespace(regles_calcul=9))
+        self.assertEqual([it['designation'] for _, it in sans],
+                         ['Batterie Dyness 10 kWh'])
+        self.assertEqual([it['designation'] for _, it in avec],
+                         ['Batterie Dyness 10 kWh'])
+
     def test_le_role_exclut_du_panier_sans_ce_que_les_mots_ne_voient_pas(self):
         # Désignation muette, rôle batterie : la ligne ne peut pas servir
         # l'option « sans batterie ».

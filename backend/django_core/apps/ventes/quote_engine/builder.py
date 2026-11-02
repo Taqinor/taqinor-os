@@ -178,7 +178,7 @@ def _variante_de_ligne(ligne) -> str:
 _blob_item = _item_classement
 
 
-def _repartir_options(paires):
+def _repartir_options(paires, devis=None):
     """``(sans, avec, contradictions)`` — LA VARIANTE D'ABORD, LES MOTS-CLÉS APRÈS.
 
     ``paires`` est la liste ordonnée des couples ``(ligne, item)``. Chaque couple
@@ -190,10 +190,10 @@ def _repartir_options(paires):
     * variante ``'sans'`` / ``'avec'`` — la ligne n'entre QUE dans l'option
       déclarée. Une déclaration explicite du vendeur prime sur l'heuristique.
 
-    ADVS6 (D-ADVS-3) — ENTRE LES DEUX, LE RÔLE STOCKÉ DE LA LIGNE : la règle est
-    ``utils.options.panier_de_ligne``, la MÊME que le noyau monnaie (tout
-    accessoire de batterie dans « avec » seulement, mots-clés en repli pour une
-    ligne sans rôle). La ``variante`` DÉCLARÉE reste au-dessus des deux.
+    ADVS6 (D-ADVS-3) — ENTRE LES DEUX, LE RÔLE STOCKÉ DE LA LIGNE : au niveau de
+    règles 10, ``utils.options.panier_de_ligne``, la MÊME que le noyau monnaie ;
+    un ``devis`` plus ancien garde sa répartition (``panier_du_moteur``). La
+    ``variante`` DÉCLARÉE reste au-dessus des deux.
 
     CEINTURE-BRETELLES, SANS PERTE DE LIGNE : la classification par mots-clés est
     quand même évaluée sur une ligne déclarée ; si elle CONTREDIT la déclaration
@@ -208,7 +208,7 @@ def _repartir_options(paires):
     """
     # Import fonction-local — ``utils.options`` importe ce module à son sommet.
     from apps.ventes.utils.options import (
-        blob_va_dans_avec, blob_va_dans_sans, panier_de_ligne)
+        blob_va_dans_avec, blob_va_dans_sans, panier_du_moteur)
     from core.product_roles import role_va_dans_avec, role_va_dans_sans
 
     sans, avec, contradictions = [], [], []
@@ -218,7 +218,7 @@ def _repartir_options(paires):
         role = getattr(ligne, "role_devis", None)
         # ADVS6 — LA règle du noyau, hors variante (traitée plus bas pour
         # remonter les contradictions).
-        ok_sans, ok_avec = panier_de_ligne("", role, blob)
+        ok_sans, ok_avec = panier_du_moteur(role, blob, devis)
         # Rôle stocké et désignation en désaccord : journalisé, le rôle n'est
         # jamais réécrit.
         if role_va_dans_sans(role) is not None and (
@@ -578,7 +578,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # sur les LIGNES de chaque panier, jamais sur le devis entier.
     _blob = _blob_item
     _sans_paires, _avec_paires, _variante_contradictions = _repartir_options(
-        list(zip(lignes, items)))
+        list(zip(lignes, items)), devis)
 
     # ── QF9 — Smart Meter + Clé Wifi (dongle) uniquement si onduleur Huawei ───
     # Ces accessoires sont propres à l'onduleur Huawei ; sur une option dont
@@ -2058,7 +2058,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         )
         from apps.ventes.utils.options import option_effective as _option_eff
         _opt_eff = _option_eff(devis)
-        _comptees = (_filtrer_opt(lignes, _opt_eff) if _opt_eff
+        _comptees = (_filtrer_opt(lignes, _opt_eff, devis=devis) if _opt_eff
                      else list(lignes))
         _base_opt = _totaux_opt(devis, vue=_VueOpt.AFFICHAGE,
                                 lignes=_comptees)

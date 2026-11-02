@@ -5,6 +5,7 @@ doit facturer et gélifier la nomenclature SUR LES SEULES lignes sans batterie ;
 « Avec batterie » sur les seules lignes avec batterie ; un devis à option unique
 reste strictement inchangé.
 """
+import ast
 import json
 from decimal import Decimal
 from pathlib import Path
@@ -20,6 +21,7 @@ from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.utils.options import (
     filter_lines_for_option, option_lines, option_totaux, panier_de_ligne,
+    panier_du_moteur,
 )
 from apps.ventes.utils.echeancier import next_tranche
 from apps.installations.services import _freeze_bom
@@ -86,8 +88,9 @@ class TestPureFilter(SimpleTestCase):
                      bool(filter_lines_for_option([ligne], 'avec_batterie'))),
                     attendu)
 
-    def test_batterie_et_son_cable_dans_avec_seulement(self):
-        lignes = [
+    @staticmethod
+    def _lignes_a_roles():
+        return [
             SimpleNamespace(designation=nom, produit=None, role_devis=role,
                             variante='')
             for nom, role in (
@@ -96,6 +99,60 @@ class TestPureFilter(SimpleTestCase):
                 ('Onduleur hybride 5kW', 'onduleur_hybride'),
                 ('Dyness BX51100', 'batterie'),
                 ('Câble batterie DC 25 mm²', 'cable_dc'))]
+
+    def test_niveau_9_garde_le_noyau_d_hier(self):
+        """ADVS5/ADVS6 — nouveaux rendus seulement : au niveau 9 le noyau ne lit
+        pas le rôle (Dyness, sans mot-clé, reste dans « sans » : l'acompte reçu)."""
+        envoye = SimpleNamespace(regles_calcul=9)
+        lignes = self._lignes_a_roles()
+        self.assertEqual(
+            self._names(filter_lines_for_option(lignes, 'sans_batterie', devis=envoye)),
+            ['Panneau Jinko 550W', 'Onduleur réseau 5kW', 'Dyness BX51100'])
+        self.assertEqual(
+            self._names(filter_lines_for_option(lignes, 'avec_batterie', devis=envoye)),
+            ['Panneau Jinko 550W', 'Onduleur hybride 5kW', 'Dyness BX51100',
+             'Câble batterie DC 25 mm²'])
+
+    def test_niveau_10_prend_la_regle_unique(self):
+        neuf = SimpleNamespace(regles_calcul=10)
+        self.assertEqual(
+            self._names(filter_lines_for_option(
+                self._lignes_a_roles(), 'sans_batterie', devis=neuf)),
+            ['Panneau Jinko 550W', 'Onduleur réseau 5kW'])
+
+    def test_moteur_niveau_9_role_seul_niveau_10_regle_unique(self):
+        """Le PDF reçu au niveau 9 gardait le câble dans les deux options."""
+        cable = 'Câble batterie DC 25 mm²'
+        envoye = SimpleNamespace(regles_calcul=9)
+        self.assertEqual(panier_du_moteur('cable_dc', cable, envoye), (True, True))
+        self.assertEqual(panier_du_moteur('batterie', 'Dyness BX51100', envoye),
+                         (False, True))
+        self.assertEqual(panier_du_moteur(None, cable, envoye), (False, True))
+        self.assertEqual(
+            panier_du_moteur('cable_dc', cable, SimpleNamespace(regles_calcul=10)),
+            (False, True))
+
+    def test_tout_appelant_passe_le_niveau_du_devis(self):
+        """Un appel de production sans ``devis=`` classerait un envoyé sur la
+        règle courante : son total d'option changerait au re-rendu."""
+        vus = 0
+        for chemin in Path(__file__).resolve().parents[2].rglob('*.py'):
+            if ('tests' in chemin.parts or 'migrations' in chemin.parts
+                    or chemin.name.startswith('test')):
+                continue
+            source = chemin.read_text(encoding='utf-8')
+            if 'filter_lines_for_option' not in source:
+                continue
+            for noeud in ast.walk(ast.parse(source)):
+                if (isinstance(noeud, ast.Call) and getattr(noeud.func, 'id', '')
+                        in ('filter_lines_for_option', '_filtrer_opt')):
+                    vus += 1
+                    self.assertIn('devis', [k.arg for k in noeud.keywords],
+                                  f'{chemin}:{noeud.lineno}')
+        self.assertGreaterEqual(vus, 8)
+
+    def test_batterie_et_son_cable_dans_avec_seulement(self):
+        lignes = self._lignes_a_roles()
         self.assertEqual(
             self._names(filter_lines_for_option(lignes, 'sans_batterie')),
             ['Panneau Jinko 550W', 'Onduleur réseau 5kW'])

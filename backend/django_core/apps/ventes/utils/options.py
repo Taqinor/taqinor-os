@@ -236,23 +236,48 @@ def panier_de_ligne(variante, role, blob) -> tuple:
     return role_sans, role_avec
 
 
-def _panier_de(li) -> tuple:
-    return panier_de_ligne(
-        _variante(li), getattr(li, 'role_devis', None), _blob(li))
+def panier_unique(devis) -> bool:
+    """Niveau 10 (ADVS5/ADVS6, « nouveaux rendus seulement ») — ce devis suit-il
+    :func:`panier_de_ligne` ? Un devis marqué ≤ 9 garde ce que le client a reçu ;
+    ``None`` et une doublure sans le champ suivent les règles courantes."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_PANIER_UNIQUE_0211, regles_au_moins)
+    return regles_au_moins(devis, REGLES_PANIER_UNIQUE_0211)
 
 
-def _garder_dans_sans(li) -> bool:
+def panier_du_moteur(role, blob, devis=None) -> tuple:
+    """``(sans, avec)`` d'une ligne pour ``builder._repartir_options``, variante
+    à part. Niveau ≤ 9 : la répartition d'hier du PDF, le rôle stocké seul (un
+    câble batterie ``cable_dc`` reste dans les deux), mots-clés en repli."""
+    if panier_unique(devis):
+        return panier_de_ligne('', role, blob)
+    role_sans, role_avec = role_va_dans_sans(role), role_va_dans_avec(role)
+    return (blob_va_dans_sans(blob) if role_sans is None else role_sans,
+            blob_va_dans_avec(blob) if role_avec is None else role_avec)
+
+
+def _panier_de(li, unique=True) -> tuple:
+    # Niveau ≤ 9 : le noyau d'hier ne lisait jamais le rôle (variante, mots-clés).
+    role = getattr(li, 'role_devis', None) if unique else None
+    return panier_de_ligne(_variante(li), role, _blob(li))
+
+
+def _garder_dans_sans(li, unique=True) -> bool:
     """True si ``li`` appartient au panier « sans batterie »."""
-    return _panier_de(li)[0]
+    return _panier_de(li, unique)[0]
 
 
-def _garder_dans_avec(li) -> bool:
+def _garder_dans_avec(li, unique=True) -> bool:
     """True si ``li`` appartient au panier « avec batterie »."""
-    return _panier_de(li)[1]
+    return _panier_de(li, unique)[1]
 
 
-def filter_lines_for_option(lignes, option):
+def filter_lines_for_option(lignes, option, devis=None):
     """Filtre PUR d'une liste de lignes selon l'option (testable sans Django).
+
+    ADVS5/ADVS6 — ``devis`` porte le niveau de règles (:func:`panier_unique`) :
+    TOUT appelant de production le passe (garde dans ``tests/test_options.py``),
+    sans quoi un devis envoyé changerait de total à son re-rendu.
 
     Miroir exact du split de ``build_quote_data`` : « sans » = ni batterie ni
     onduleur hybride ; « avec » = pas d'onduleur réseau. Toute autre valeur
@@ -295,12 +320,13 @@ def filter_lines_for_option(lignes, option):
     plus QF9 que dans le cas DEUX-OPTIONS, comme ici. Une ligne accessoire d'un
     devis mono-option ou d'une liste libre est donc IMPRIMÉE **et** FACTURÉE.
     """
+    unique = panier_unique(devis)
     if option == SANS_BATTERIE:
         return retirer_accessoires_huawei(
-            [li for li in lignes if _garder_dans_sans(li)])
+            [li for li in lignes if _garder_dans_sans(li, unique)])
     if option == AVEC_BATTERIE:
         return retirer_accessoires_huawei(
-            [li for li in lignes if _garder_dans_avec(li)])
+            [li for li in lignes if _garder_dans_avec(li, unique)])
     return list(lignes)
 
 
@@ -413,7 +439,7 @@ def option_lines(devis, option=None):
               if li.compte_dans_totaux]
     if not option or not has_two_options(devis):
         return lignes
-    return filter_lines_for_option(lignes, option)
+    return filter_lines_for_option(lignes, option, devis=devis)
 
 
 def _totaux_canoniques(devis, lignes) -> dict:
@@ -486,7 +512,7 @@ def option_totaux(devis, option=None, lignes=None) -> dict:
     else:
         lignes = list(lignes)
     if option and has_two_options(devis):
-        lignes = filter_lines_for_option(lignes, option)
+        lignes = filter_lines_for_option(lignes, option, devis=devis)
     return _totaux_canoniques(devis, lignes)
 
 
@@ -708,9 +734,9 @@ def totaux_affichage_repli(devis) -> dict:
         return {'total': float(devis.total_ttc), 'nb_options': 1}
     lignes = lignes_avec_produit(devis)
     sans = _totaux_canoniques(
-        devis, filter_lines_for_option(lignes, SANS_BATTERIE))
+        devis, filter_lines_for_option(lignes, SANS_BATTERIE, devis=devis))
     avec = _totaux_canoniques(
-        devis, filter_lines_for_option(lignes, AVEC_BATTERIE))
+        devis, filter_lines_for_option(lignes, AVEC_BATTERIE, devis=devis))
     # QJR401 / DR1 — le repli suit lui aussi l'option SIGNÉE : sans cela, le
     # jour où le moteur lève, la liste réafficherait le prix de l'option NON
     # signée sur un devis déjà accepté.
