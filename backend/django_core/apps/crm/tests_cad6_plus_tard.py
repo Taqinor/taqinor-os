@@ -87,6 +87,22 @@ class _Base(TestCase):
 class PlusTardTests(_Base):
     slug = 'cad6-base'
 
+    def test_plus_tard_ecrit_l_etat_standby(self):
+        """CADV77 — la touche reste déplacée au même barreau ET le lead porte
+        Standby jusqu'à la date ; rejouer la même date n'ajoute aucune ligne.
+        Mutant : retirer ``parquer_lead`` ⇒ ``parc_etat`` vide."""
+        self.assertEqual(self._plus_tard().status_code, 200)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            (self.lead.parc_etat, self.lead.parc_raison, self.lead.parc_jusqu_au),
+            ('standby', 'plus_tard_date', datetime.date.fromisoformat(DATE_CONVENUE)))
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+        self.etape.refresh_from_db()
+        self.assertEqual(self.etape.ordre, 4)
+        self.assertEqual(self.lead.activites.filter(field='parc_raison').count(), 1)
+        self.assertEqual(self._plus_tard().status_code, 200)
+        self.assertEqual(self.lead.activites.filter(field='parc_raison').count(), 1)
+
     def test_aucun_barreau_scripte_n_est_consomme(self):
         resp = self._plus_tard()
         self.assertEqual(resp.status_code, 200, resp.data)

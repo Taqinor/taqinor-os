@@ -57,7 +57,9 @@ from .cadence_plan import (
     initialiser_plan_relance,
     reporter_prochaine_touche,
 )
-from .fiche_funnel import avancer_stage_lead_vers, poser_tag_lead, retirer_tag_lead
+from .fiche_funnel import (
+    ParcRefuse, avancer_stage_lead_vers, parquer_lead, poser_tag_lead, retirer_tag_lead,
+)
 from .cadence_messages import ETIQUETTES_RAISON_ATTENTE, PREFIXE_LIEN_LOCATAIRE, RAISONS_ATTENTE
 from .cadence_reperes import (
     FILET_JOINT_DELAI_JOURS,
@@ -848,6 +850,15 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
         company=lead.company, lead=lead, user=user,
         kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
         body=corps, outcome=spec['outcome'])
+    # CADV77 (D-CADV-4) — l'état Standby se lit sur le lead, à la date du client.
+    # Après la ligne de réponse : elle est la touche que CADV22 exige.
+    try:
+        parquer_lead(lead, 'plus_tard_date',
+                     quand.astimezone(horaires.CASABLANCA).date(), user)
+    except ParcRefuse as refus:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=f'Standby refusé : {refus}.')
     if reprise is None:
         etape.refresh_from_db()
         return etape
