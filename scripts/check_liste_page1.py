@@ -57,6 +57,11 @@ _HTTP_RE = re.compile(
     r"\.get\(|\bapi\.\w+\(|\baxios\b|\bapiGet\(|\.then\(|\bawait\b")
 _PAGINE_RE = re.compile(
     r"fetchAllPages|lireToutesLesPages|chargerToutesLesPages|toutesLesPages|\.next\b|\bnext\s*[:=]|\bnext\?\.")
+# ADOC190 : pagination jugée par APPEL (enveloppe `toutesLesPages(` autour de CET appel), plus par corps.
+_ENVELOPPE_RE = re.compile(r"(?:fetchAllPages|lireToutesLesPages|chargerToutesLesPages|toutesLesPages)\s*\(")
+_NEXT_RE = re.compile(r"\.next\b|\bnext\s*[:=]|\bnext\?\.")
+_APPEL_RE = re.compile(r"\b(?:api|\w+Api|axios\w*)(?:\.\w+)+\s*\(|\bapiGet\(")
+_IMPORT_RE = re.compile(r"import\s*\{([^}]*)\}\s*from\s*['\"](\.[^'\"]*)['\"]")
 
 # ENF15 : écran qui pagine lui-même — envoie `page` ET lit `count` (total affiché).
 _PAGE_PARAM_RE = re.compile(r"[{,]\s*page\s*[,}:]|\.page\s*=")
@@ -138,6 +143,59 @@ def segments_non_pagines() -> set:
             if cls in classes}
 
 
+def _portee(texte: str, debut: int) -> int:
+    """Index de la parenthèse fermante qui équilibre celle ouverte avant ``debut``."""
+    prof = 1
+    for i in range(debut, len(texte)):
+        prof += (texte[i] == "(") - (texte[i] == ")")
+        if prof == 0:
+            return i
+    return len(texte)
+
+
+def _appels_non_exemptes(corps: str, non_pagines: set):
+    """None s'il n'y a aucun appel d'API reconnaissable (repli : jugement par corps) ;
+    sinon les appels ni enveloppés par `toutesLesPages(` ni vers un segment non paginé."""
+    appels = [(m.start(), _portee(corps, m.end())) for m in _APPEL_RE.finditer(corps)]
+    if not appels:
+        return None
+    enveloppes = [(m.start(), _portee(corps, m.end())) for m in _ENVELOPPE_RE.finditer(corps)]
+    reste = []
+    for debut, fin in appels:
+        if any(d < debut < f for d, f in enveloppes):
+            continue
+        args = corps[debut:fin]
+        if any(re.search(r"(?<![\w-])" + re.escape(seg) + r"/?['\"`?]", args) for seg in non_pagines):
+            continue
+        reste.append(debut)
+    return reste
+
+
+def _helpers_importes(path: Path, texte: str) -> list:
+    """ADOC190 : helpers `{ rows }` importés d'un module local qui lisent `.results` sans appel HTTP."""
+    out = []
+    for m in _IMPORT_RE.finditer(texte):
+        cible = (path.parent / m.group(2)).resolve()
+        for cand in (cible, cible.with_name(cible.name + ".js"), cible.with_name(cible.name + ".jsx"),
+                     cible / "index.js"):
+            if not cand.is_file():
+                continue
+            try:
+                ls = cand.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeDecodeError):
+                break
+            ds = _declarations(ls)
+            bs = [i for i, _ in ds] + [len(ls)]
+            corps = ["\n".join(ls[d:bs[n + 1]]) for n, (d, _) in enumerate(ds)]
+            noms = {nom for (_, nom), c in zip(ds, corps) if _RESULTS_RE.search(c) and not _HTTP_RE.search(c)}
+            for brut in m.group(1).split(","):
+                orig, _, alias = brut.strip().partition(" as ")
+                if orig.strip() in noms:
+                    out.append((alias or orig).strip())
+            break
+    return out
+
+
 def analyser() -> dict:
     """{cle 'fichier::fonction': ligne} des fonctions qui lisent la page 1."""
     non_pagines = segments_non_pagines()
@@ -153,18 +211,23 @@ def analyser() -> dict:
         # ADOC182 : helpers locaux (`unpage`, `rows`) qui lisent `.results` sans appel HTTP
         helpers = [nom for (_, nom), c in zip(decls, corps_de)
                    if _RESULTS_RE.search(c) and not _HTTP_RE.search(c)]
+        helpers += _helpers_importes(path, "\n".join(lignes))
         for n, (debut, nom) in enumerate(decls):
             corps = corps_de[n]
             lit = _RESULTS_RE.search(corps) or any(
-                re.search(r"\b" + re.escape(h) + r"\(\s*\w+\??\.data\b", corps) for h in helpers)
+                re.search(r"\b" + re.escape(h) + r"\(\s*\w+(?:\??\.data\b|\s*\))", corps) for h in helpers)
             if not lit or not _HTTP_RE.search(corps):
                 continue
-            if _PAGINE_RE.search(corps):
+            if _NEXT_RE.search(corps):
                 continue
             if _PAGE_PARAM_RE.search(corps) and _COUNT_RE.search(corps):
                 continue
-            if any(re.search(r"(?<![\w-])" + re.escape(seg) + r"/?['\"`?]",
-                             corps) for seg in non_pagines):
+            reste = _appels_non_exemptes(corps, non_pagines)
+            if reste is None:
+                if _PAGINE_RE.search(corps) or any(re.search(
+                        r"(?<![\w-])" + re.escape(seg) + r"/?['\"`?]", corps) for seg in non_pagines):
+                    continue
+            elif not reste:
                 continue
             ligne = debut + 1
             for k in range(debut, bornes[n + 1]):

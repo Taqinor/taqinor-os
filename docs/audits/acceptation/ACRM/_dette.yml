@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ACRM
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - ACRM9
   - ACRM16
@@ -17,4 +18,9 @@ ids:
   - ACRM43
   - ACRM44
   - ACRM47
+  - ACRM56
   - ACRM58
+  - ACRM63
+  - ACRM70
+  - ACRM73
+  - ACRM75

@@ -129,6 +129,58 @@ class LigneParModele(TestCase):
         self.assertEqual(self._panneaux(devis_id),
                          {self.p550.pk: 8, self.p450.pk: 6})
 
+    def _mixte(self, n450, inverse=False):
+        """Sonde VER2-61 : pan sans ``moduleId`` (450 W annoncé) listé AVANT
+        le pan à fiche désignée 550 W (ou après, ``inverse``)."""
+        pans = [_pan('B', n450, None), _pan('A', 8, 'm550')]
+        del pans[0]['geometry']['moduleId']
+        return {'scenario': 'reseau', 'panelWatt': 450,
+                'modules': [_module('m550', self.p550, 550)],
+                'zones': pans[::-1] if inverse else pans}
+
+    def _lignes_panneau(self, devis_id):
+        devis = Devis.objects.get(pk=devis_id)
+        return sorted((li.produit_id, int(li.quantite))
+                      for li in devis.lignes.all()
+                      if _classe_ligne(li, _is_panel)), devis.total_ttc
+
+    def test_resynchro_modele_sans_fiche_avant_fiche_designee(self):
+        # ACAL374 (C-ACAL-VER2-61) — l'ordre du document ne vole plus la
+        # ligne de la fiche désignée ; sync-layout puis sync-devis du module.
+        api_module = self._api_directeur()
+        etats = []
+        for inverse in (False, True):
+            r = self._from_layout(self._mixte(4, inverse))
+            self.assertEqual(r.status_code, 201, r.data)
+            devis_id = r.data['id']
+            if inverse:
+                calepinage, _ = Calepinage.objects.update_or_create(
+                    company=self.company, devis_id=devis_id,
+                    defaults={'client': self.client_obj,
+                              'roof_layout': self._mixte(5, inverse)})
+                sync = api_module.post(
+                    f'/api/django/calepinage/calepinages/{calepinage.pk}'
+                    '/sync-devis/', {}, format='json')
+            else:
+                sync = self.api.post(
+                    f'/api/django/ventes/devis/{devis_id}/sync-layout/',
+                    self._mixte(5), format='json')
+            self.assertEqual(sync.status_code, 200, sync.data)
+            self.assertEqual(self._panneaux(devis_id),
+                             {self.p550.pk: 8, self.p450.pk: 5})
+            lignes, ttc = self._lignes_panneau(devis_id)
+            produits = [p for p, _ in lignes]
+            self.assertEqual(len(produits), len(set(produits)), lignes)
+            etats.append((lignes, ttc))
+        # Même document, ordre inverse : mêmes lignes, même TTC.
+        self.assertEqual(etats[0], etats[1])
+        # Persistance : une seconde resynchro du même document est inchangée.
+        sync = self.api.post(
+            f'/api/django/ventes/devis/{devis_id}/sync-layout/',
+            self._mixte(5, True), format='json')
+        self.assertEqual(sync.status_code, 200, sync.data)
+        self.assertEqual(self._lignes_panneau(devis_id), etats[1])
+
     def test_produit_non_tarife_refuse(self):
         Produit.objects.filter(pk=self.p550_premium.pk).update(
             prix_vente=Decimal('0'))

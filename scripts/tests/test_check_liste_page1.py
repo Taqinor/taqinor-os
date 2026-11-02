@@ -91,6 +91,46 @@ export default function Coffres() {
 HELPER_TOUTES_LES_PAGES = HELPER_UNPAGE.replace(
     "gedApi.getCoffres()", "toutesLesPages(gedApi.getCoffres)")
 
+# ADOC190 — un appel voisin qui pagine ne masque pas un appel non paginé du même corps,
+# et la colonne `id: 'documents'` ne vaut pas segment non paginé.
+VOISIN_PAGINE = """
+export default function Coffres() {
+  const load = async () => {
+    const [c, cl] = await Promise.all([
+      gedApi.getCoffres(),
+      toutesLesPages(crmApi.getClients),
+    ])
+    const cols = [{ id: 'documents', label: 'Documents' }]
+    setCoffres(c.data.results)
+  }
+  return null
+}
+"""
+
+HELPER_REPONSE_ENTIERE = """
+const rows = (r) => r?.data?.results ?? []
+
+export default function Numeriser() {
+  const charger = async () => {
+    const r = await gedApi.getTags()
+    setTags(rows(r))
+  }
+  return null
+}
+"""
+
+LISTES_JS = """export const rows = (r) => r?.data?.results ?? []
+"""
+SEARCH_JSX = """import { rows } from './listes'
+export default function G() {
+  const charger = async () => {
+    const r = await gedApi.getTags()
+    setTags(rows(r))
+  }
+  return null
+}
+"""
+
 
 class Depot(unittest.TestCase):
     def _monter(self, fichiers, backend=None, allow="", dossier="features",
@@ -146,6 +186,27 @@ class TestDetection(Depot):
         self.assertEqual(code, 1, out)
         self.assertIn("Coffres.jsx", out)
         self.assertIn("load lit la page 1", out)
+
+    def test_detecte_helper_appel_voisin_pagine(self):
+        self._monter({"ged/CoffresPage.jsx": VOISIN_PAGINE},
+                     backend={"views.py": BACKEND_NON_PAGINE_VIEWS.replace("ToutEnUn", "Documents"),
+                              "urls.py": "router.register(r'documents', DocumentsViewSet)"})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("CoffresPage.jsx", out)
+        self.assertIn("load lit la page 1", out)
+
+    def test_detecte_helper_sur_reponse_entiere(self):
+        self._monter({"ged/NumeriserPage.jsx": HELPER_REPONSE_ENTIERE})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("NumeriserPage.jsx", out)
+
+    def test_detecte_helper_importe_d_un_module_local(self):
+        self._monter({"ged/listes.js": LISTES_JS, "ged/GedSearch.jsx": SEARCH_JSX})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("GedSearch.jsx", out)
 
     def test_helper_unpage_avec_toutes_les_pages_ne_rougit_pas(self):
         self._monter({"ged/Coffres.jsx": HELPER_TOUTES_LES_PAGES})

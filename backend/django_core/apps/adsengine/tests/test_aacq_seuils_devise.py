@@ -193,6 +193,54 @@ class SeuilsDeviseTests(TestCase):
         self.assertTrue(f['fired'])
         self.assertNotIn('blocked_fr', f)
 
+    def test_ressaisir_meme_valeur_pose_la_devise(self):
+        """AACQ107 — sonde VER-301 : un montant SOUMIS pose la devise du compte
+        même quand sa valeur est inchangée (écran Connexion « ressaisissez-le »
+        → ``saveGuard`` renvoie tout le formulaire) ; même règle côté règles."""
+        company, conn, api = self._societe('aacq107-usd')
+        url = '/api/django/adsengine/guardrail/'
+        corps = dict(api.get(url).data)
+        self.assertEqual(corps['ceiling_currency'], '')
+        resp = api.patch(url, corps, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(api.get(url).data['ceiling_currency'], 'USD')
+        # Règle antérieure '' {threshold_mad: 30} ressaisie à 30 → 'USD'.
+        ancienne = RulePolicy.objects.create(
+            company=company, template_key='stop_loss_cpl', enabled=True,
+            dry_run=False, mode=RulePolicy.Mode.PROPOSE,
+            params={'threshold_mad': 30})
+        rurl = f'/api/django/adsengine/regles/{ancienne.pk}/'
+        resp = api.patch(rurl, {'params': {'threshold_mad': 30}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(api.get(rurl).data['threshold_currency'], 'USD')
+        ancienne.refresh_from_db()
+        camp31 = self._campagne_cpl(company, 31, 'r31')
+        self.assertTrue(self._eval(company, ancienne)[0]['fired'])
+        camp31.delete()
+        self._campagne_cpl(company, 29, 'r29')
+        self.assertFalse(self._eval(company, ancienne)[0]['fired'])
+        # Aucun montant soumis : aucune devise changée.
+        RulePolicy.objects.filter(pk=ancienne.pk).update(threshold_currency='')
+        for body in ({'enabled': False}, {'cooldown_hours': 4}):
+            self.assertEqual(api.patch(rurl, body, format='json').status_code, 200)
+            self.assertEqual(api.get(rurl).data['threshold_currency'], '')
+        GuardrailConfig.objects.filter(company=company).update(ceiling_currency='USD')
+        resp = api.patch(url, {'weekly_change_pct_max': 20}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(api.get(url).data['ceiling_currency'], 'USD')
+        # Compte passé en EUR : la même ressaisie pose 'EUR'.
+        conn.currency = 'EUR'
+        conn.save(update_fields=['currency'])
+        api.patch(rurl, {'params': {'threshold_mad': 30}}, format='json')
+        self.assertEqual(api.get(rurl).data['threshold_currency'], 'EUR')
+        api.patch(url, dict(api.get(url).data), format='json')
+        self.assertEqual(api.get(url).data['ceiling_currency'], 'EUR')
+        # Société neuve : plafond seul → 'USD'.
+        _c2, _conn2, api2 = self._societe('aacq107-neuve')
+        resp = api2.patch(url, {'max_daily_budget_mad': 120}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(api2.get(url).data['ceiling_currency'], 'USD')
+
     def test_guardrail_sert_sa_devise(self):
         """AACQ100 — ``guardrail/`` sert ``ceiling_currency`` (vide tant
         qu'aucun plafond n'est saisi, devise du compte ensuite, jamais celle

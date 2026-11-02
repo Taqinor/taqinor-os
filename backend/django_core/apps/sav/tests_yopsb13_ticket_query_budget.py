@@ -172,3 +172,34 @@ class TicketListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
             self.assertEqual(
                 {k: r[k] for k in champs},
                 {k: detail.data[k] for k in champs}, r['reference'])
+
+    def test_parite_liste_fiche_contrat_signe_en_cours_d_annee(self):
+        """ASAV122 — contrat signé en cours d'année : le ticket antérieur ne
+        consomme pas le quota, ni dans la liste (droits préchargés) ni dans la
+        fiche ; les deux disent la même couverture."""
+        from datetime import date
+        from django.utils import timezone
+
+        annee = timezone.localdate().year
+        ContratMaintenance.objects.create(
+            company=self.company, client=self.client_obj, actif=True,
+            date_debut=date(annee, 3, 1), deplacements_inclus_an=1)
+        for ref, jour in (('TCA-0', date(annee, 2, 1)),
+                          ('TCA-1', date(annee, 4, 1)),
+                          ('TCA-2', date(annee, 5, 1))):
+            Ticket.objects.create(
+                company=self.company, reference=ref, client=self.client_obj,
+                type=Ticket.Type.CORRECTIF, date_ouverture=jour)
+        resp = self.api.get(TICKETS_URL)
+        self.assertEqual(resp.status_code, 200)
+        rows = (resp.data['results'] if isinstance(resp.data, dict)
+                else resp.data)
+        par_ref = {r['reference']: r for r in rows}
+        self.assertEqual(
+            {ref: par_ref[ref]['couverture_proposee']
+             for ref in ('TCA-0', 'TCA-1', 'TCA-2')},
+            {'TCA-0': 'facturable', 'TCA-1': 'contrat', 'TCA-2': 'facturable'})
+        for ref in ('TCA-0', 'TCA-1', 'TCA-2'):
+            detail = self.api.get(f"{TICKETS_URL}{par_ref[ref]['id']}/")
+            self.assertEqual(detail.data['couverture_proposee'],
+                             par_ref[ref]['couverture_proposee'], ref)

@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ADOC
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - ADOC1
   - ADOC2
@@ -80,6 +81,8 @@ ids:
   - ADOC129
   - ADOC130
   - ADOC131
+  - ADOC132
+  - ADOC133
   - ADOC134
   - ADOC135
   - ADOC136
@@ -93,3 +96,10 @@ ids:
   - ADOC144
   - ADOC145
   - ADOC171
+  - ADOC172
+  - ADOC173
+  - ADOC174
+  - ADOC177
+  - ADOC178
+  - ADOC180
+  - ADOC181

@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ASAV
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - ASAV2
   - ASAV3
@@ -75,3 +76,7 @@ ids:
   - ASAV71
   - ASAV73
   - ASAV74
+  - ASAV100
+  - ASAV101
+  - ASAV102
+  - ASAV103

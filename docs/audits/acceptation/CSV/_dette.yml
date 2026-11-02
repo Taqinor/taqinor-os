@@ -1,0 +1,9 @@
+# Dette d'acceptation GELÉE du groupe CSV (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: CSV
+amorce: 9f7cc5de4
+reamorce: 9f7cc5de4
+ids:
+  - CSV7

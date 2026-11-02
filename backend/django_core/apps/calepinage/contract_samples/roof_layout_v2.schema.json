@@ -240,7 +240,8 @@
     },
     "repere": {
       "$ref": "#/$defs/repere",
-      "description": "ACAL2 — repère local (document anonymisé). Absent = géographique. SEULE propriété racine volontairement ABSENTE de l'`exemple` (celui-ci est géographique)."
+      "description": "ACAL2 — repère local (document anonymisé). Absent = géographique. SEULE propriété racine volontairement ABSENTE de l'`exemple` (celui-ci est géographique).",
+      "x-hors-exemple": true
     }
   },
   "$defs": {
@@ -2363,6 +2364,7 @@
   },
   "exemple": {
     "version": 2,
+    "modePoseDeclare": "sol",
     "pin": {
       "lat": 33.5,
       "lng": -7.6

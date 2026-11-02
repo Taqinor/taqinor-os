@@ -4,4 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ADEP
 amorce: 3a7c3b882
-ids: []
+reamorce: 9f7cc5de4
+ids:
+  - ADEP102
+  - ADEP103

@@ -4,4 +4,13 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ASEC
 amorce: 3a7c3b882
-ids: []
+reamorce: 9f7cc5de4
+ids:
+  - ASEC16
+  - ASEC25
+  - ASEC42
+  - ASEC47
+  - ASEC48
+  - ASEC51
+  - ASEC52
+  - ASEC57
