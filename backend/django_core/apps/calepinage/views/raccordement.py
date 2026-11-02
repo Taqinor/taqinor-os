@@ -51,6 +51,8 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import ChaineStricte
+
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..serializers import forme_du_contrat
 from ..services.raccordement import (  # ACAL155 : clé + lecture uniques
@@ -150,13 +152,13 @@ _FORME_RACCORDEMENT = forme_du_contrat(
             required=False, max_value=SAISIE_MAXIMUM),
         'limite_elevation_pct': FlottantPositif(
             required=False, max_value=SAISIE_MAXIMUM),
-        'source_limite': serializers.CharField(required=False),
+        'source_limite': ChaineStricte(required=False),
         'cos_phi_impose': FlottantPositif(
             required=False, max_value=SAISIE_MAXIMUM),
-        'source_cos_phi': serializers.CharField(required=False),
+        'source_cos_phi': ChaineStricte(required=False),
         'plafond_injection_kw': serializers.FloatField(
             required=False, min_value=0, max_value=SAISIE_MAXIMUM),
-        'plafond_injection_justification': serializers.CharField(
+        'plafond_injection_justification': ChaineStricte(
             required=False)}),
     responses=_FORME_RACCORDEMENT)
 @action(detail=True, methods=['get', 'post'], url_path='raccordement',
@@ -165,7 +167,8 @@ def raccordement(self, request, pk=None):
     """CALX244 — ``{saisie, calcul, verdicts}`` du point de raccordement.
 
     ``GET`` republie la saisie enregistrée ; ``POST`` valide, enregistre et
-    rend le MÊME document recalculé. Un refus est 400 et NOMME son champ.
+    rend le MÊME document recalculé. Un refus est 400 et NOMME son champ ;
+    une valeur sans sa source (règle liant deux champs) est un 409 (ENF11).
     """
     from ..services.electrique import TemperaturesInvalides
 
@@ -183,7 +186,8 @@ def raccordement(self, request, pk=None):
         bloc = _bloc_du_calepinage(calepinage, saisie)
     except RaccordementInvalide as refus:
         return Response({champ_du_refus(refus.champ): str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=(status.HTTP_409_CONFLICT if refus.etat
+                                else status.HTTP_400_BAD_REQUEST))
     except TemperaturesInvalides as refus:
         return Response(
             {getattr(refus, 'champ', '') or 'temperatures': str(refus)},
