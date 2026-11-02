@@ -162,12 +162,18 @@ class TestAvoirs(TestCase):
     def test_avoir_exceeding_remaining_rejected(self):
         # Une ligne d'avoir à 20 000 HT (24 000 TTC) dépasse les 17 000 TTC
         # créditables de la facture → 409 (refus d'état, CI #997), aucun
-        # avoir persisté.
+        # avoir persisté. AARG38 — sur une facture à lignes le P.U. est borné
+        # d'abord : ce plafond se lit sur un acompte (ligne libre).
+        acompte = Facture.objects.create(
+            company=self.company, reference='FAC-TEST-0002',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), montant_ht=Decimal('14166.67'),
+            montant_tva=Decimal('2833.33'), montant_ttc=Decimal('17000.00'))
         api = self._api(self.admin)
         resp = api.post(
-            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            f'/api/django/ventes/factures/{acompte.id}/creer-avoir/',
             {'motif': 'Trop gros',
-             'lignes': [{'produit': self.onduleur.id, 'designation': 'X',
+             'lignes': [{'produit': None, 'designation': 'X',
                          'quantite': '1', 'prix_unitaire': '20000',
                          'taux_tva': '20'}]},
             format='json')
@@ -272,6 +278,68 @@ class TestAvoirs(TestCase):
             resp = api.post(url, corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.data))
         self.assertEqual(Avoir.objects.count(), 0)
+
+    def test_lignes_correction_bornees_aux_lignes_facturees(self):
+        # AARG38 — ni un taux, ni une quantité, ni un P.U. jamais facturés.
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-TEST-0003',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(
+            facture=facture, produit=self.onduleur, designation='Panneau',
+            quantite=Decimal('2'), prix_unitaire=Decimal('1000'),
+            taux_tva=Decimal('20.00'))
+        api = self._api(self.admin)
+        url = f'/api/django/ventes/factures/{facture.id}/creer-avoir/'
+        ligne = {'produit': self.onduleur.id, 'designation': 'Panneau',
+                 'quantite': '1', 'prix_unitaire': '1000', 'taux_tva': '20'}
+
+        def poster(**champs):
+            return api.post(url, {'lignes': [dict(ligne, **champs)]},
+                            format='json')
+        for champs, motif in (
+                ({'quantite': '3'}, 'Ligne 1 : quantité créditée supérieure à '
+                 'la quantité facturée restante (2).'),
+                ({'taux_tva': '10'}, 'Ligne 1 : taux de TVA absent de la facture.'),
+                ({'prix_unitaire': '1200'}, 'Ligne 1 : prix unitaire supérieur '
+                 'au prix facturé (1000.00).'),
+                ({'produit': self.panneau.id}, 'Ligne 1 : quantité créditée '
+                 'supérieure à la quantité facturée restante (0).')):
+            with self.subTest(champs=champs):
+                r = poster(**champs)
+                self.assertEqual(r.status_code, 400, r.data)
+                self.assertEqual(r.data['detail'], motif)
+        self.assertEqual(Avoir.objects.filter(facture=facture).count(), 0)
+        # Deux lignes du même produit se cumulent dans le même corps.
+        r = api.post(url, {'lignes': [dict(ligne, quantite='2'),
+                                      dict(ligne, quantite='1')]}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('Ligne 2', r.data['detail'])
+        # Une quantité créditée par un avoir actif ne se crédite plus ; rendue
+        # par son annulation, elle redevient créditable.
+        premier = poster(quantite='2')
+        self.assertEqual(premier.status_code, 201, premier.data)
+        self.assertEqual(
+            api.post(f"/api/django/ventes/avoirs/{premier.data['id']}/annuler/"
+                     ).status_code, 200)
+        self.assertEqual(poster().status_code, 201)
+        r = poster(quantite='2')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('(1)', r.data['detail'])
+        # Facture sans ligne produit : ligne libre au plafond, au taux porté.
+        acompte = Facture.objects.create(
+            company=self.company, reference='FAC-TEST-0004',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), montant_ht=Decimal('1000.00'),
+            montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'))
+        libre = {'produit': None, 'designation': 'Acompte', 'quantite': '1',
+                 'prix_unitaire': '1000', 'taux_tva': '20'}
+        url_acompte = f'/api/django/ventes/factures/{acompte.id}/creer-avoir/'
+        r = api.post(url_acompte, {'lignes': [dict(libre, taux_tva='10')]},
+                     format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = api.post(url_acompte, {'lignes': [libre]}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
 
     def test_annuler_regenere_le_pdf_annule(self):
         # AARG37 — le PDF servi après annulation imprime « Annulé », et une

@@ -87,7 +87,7 @@ class StatutDeriveTests(TestCase):
             f'/api/django/ventes/factures/{facture.id}/creer-avoir/',
             {'lignes': [{'designation': 'Avoir partiel', 'quantite': '1',
                          'prix_unitaire': ht, 'taux_tva': '20',
-                         'produit': self.produit.id}]}, format='json')
+                         'produit': self.kit.id}]}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         return r.data['id']
 

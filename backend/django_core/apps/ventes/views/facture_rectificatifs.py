@@ -74,6 +74,54 @@ def _montants_ligne_corrective(i, ligne):
     return (qte, pu, remise, taux_tva), None
 
 
+def _bornes_lignes_facturees(facture):
+    """AARG38 — ce qu'une ligne d'avoir ne dépasse pas : taux facturés ; par
+    produit, quantité restante (facturée − créditée par les avoirs actifs) et
+    P.U. net maximal. ``None`` si le plafond est déjà épuisé : le refus d'état
+    (409, ``creer_avoir_facture``) passe avant le contrôle de la ligne."""
+    if facture.avoirs_total >= (facture.total_ttc + facture.notes_debit_total
+                                - (facture.abandon_montant or 0)):
+        return None
+    taux, restant, pu_net = set(), {}, {}
+    for ligne in facture.lignes.all():
+        taux.add(Decimal(str(ligne.taux_tva_effectif)))
+        restant[ligne.produit_id] = (restant.get(ligne.produit_id, 0)
+                                     + ligne.quantite)
+        pu_net[ligne.produit_id] = max(pu_net.get(ligne.produit_id, 0),
+                                       _pu_net(ligne.prix_unitaire, ligne.remise))
+    for avoir in facture.avoirs.exclude(statut='annulee').filter(note_debit=None):
+        for ligne in avoir.lignes.all():
+            if ligne.produit_id in restant:
+                restant[ligne.produit_id] -= ligne.quantite
+    if not taux:  # Facture sans ligne (acompte, tranche) : ses paniers figés.
+        taux = {Decimal(str(b['taux'])) for b in facture.ventilation_tva or []
+                } or {Decimal(str(facture.taux_tva))}
+    return {'taux': taux, 'restant': restant, 'pu_net': pu_net}
+
+
+def _pu_net(prix_unitaire, remise):
+    return prix_unitaire * (1 - (remise or 0) / Decimal('100'))
+
+
+def _refus_borne(i, bornes, produit_id, montants):
+    """AARG38 — le motif (400) d'une ligne hors des lignes facturées, ou None.
+    Sans ligne produit sur la facture : le taux seul, le plafond borne le reste."""
+    qte, pu, remise, taux_tva = montants
+    if taux_tva is not None and taux_tva not in bornes['taux']:
+        return f'Ligne {i} : taux de TVA absent de la facture.'
+    if not bornes['restant']:
+        return None
+    restant = bornes['restant'].get(produit_id, Decimal('0'))
+    if qte > restant:
+        return (f'Ligne {i} : quantité créditée supérieure à la quantité '
+                f"facturée restante ({max(restant, Decimal('0')).normalize():f}).")
+    bornes['restant'][produit_id] = restant - qte
+    if _pu_net(pu, remise) > bornes['pu_net'][produit_id]:
+        return (f'Ligne {i} : prix unitaire supérieur au prix facturé '
+                f"({bornes['pu_net'][produit_id]:.2f}).")
+    return None
+
+
 def _montant_note_debit(donnees, facture):
     """AFAC32 — montant HT + taux saisis d'une note de débit SANS lignes.
     Rend ``((montant, taux), None)`` ou ``((None, None), message)`` — 400.
@@ -170,6 +218,7 @@ class FactureRectificatifsActionsMixin:
             # pas. Dès qu'une ligne de la facture porte un produit, DC10 tient.
             facture_sans_produit = not facture.lignes.exclude(
                 produit=None).exists()
+            bornes = _bornes_lignes_facturees(facture)
             for i, ligne in enumerate(lignes, start=1):
                 designation = (ligne.get('designation') or '').strip()
                 if not designation:
@@ -200,6 +249,10 @@ class FactureRectificatifsActionsMixin:
                     return Response(
                         {'detail': f'Ligne {i} : produit inconnu.'},
                         status=status.HTTP_400_BAD_REQUEST)
+                refus = bornes and _refus_borne(i, bornes, produit_id, montants)
+                if refus:
+                    return Response({'detail': refus},
+                                    status=status.HTTP_400_BAD_REQUEST)
                 clean_lignes.append({
                     'produit_id': produit_id,
                     'designation': designation[:255],
