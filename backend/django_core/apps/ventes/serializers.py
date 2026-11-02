@@ -11,6 +11,7 @@ from core.champs_stricts import (
 )
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ListeJSON, ObjetJSON
+from core.serializer_mixins import _user_may_see
 from core.serializers import (
     ChampsStrictsMixin, CompanyScopedPrimaryKeyRelatedField, request_company_id,
 )
@@ -499,6 +500,14 @@ class TiersPayeurValidationMixin:
     def validate_caution(self, value):
         from .domain.conditions_ci import caution
         return caution(value)
+
+
+def _peut_voir_marge(request):
+    """ADVS9 — la marge interne : responsable ET ``marge_voir`` (repli légacy
+    de ``_user_may_see``), en lecture comme dans la réponse d'écriture."""
+    user = getattr(request, 'user', None)
+    return bool(getattr(user, 'is_responsable', False)
+                and _user_may_see(user, 'marge_voir'))
 
 
 class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
@@ -1035,17 +1044,15 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         link = self._active_share_link(obj)
         return link.engagement_summary if link else {}
 
-    # QX23be — marge interne figée, exposée UNIQUEMENT au responsable/admin
-    # (jamais dans un PDF ni une sortie client — prix_achat rule). Un
-    # commercial/lecteur reçoit toujours None ; ``fields='__all__'`` inclut le
-    # champ modèle, cette méthode le NEUTRALISE pour les non-managers.
+    # QX23be / ADVS9 — marge interne figée, exposée UNIQUEMENT au porteur de
+    # ``marge_voir`` (jamais dans un PDF ni une sortie client — prix_achat
+    # rule). Les autres reçoivent toujours None ; ``fields='__all__'`` inclut
+    # le champ modèle, cette méthode le NEUTRALISE (``_peut_voir_marge``).
     marge_snapshot = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_marge_snapshot(self, obj):
-        request = self.context.get('request')
-        user = getattr(request, 'user', None)
-        if user is not None and getattr(user, 'is_responsable', False):
+        if _peut_voir_marge(self.context.get('request')):
             val = obj.marge_snapshot
             return str(val) if val is not None else None
         return None
@@ -1242,6 +1249,10 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
                             'etude_params', 'roof_layout', 'layout_hash',
                             'offres_tailles_config', 'marge_snapshot',
                             'overrides',
+                            # ADVS11 — même classe : posés par la conception
+                            # (``build_electrical_design``) et le rendu PDF.
+                            'electrical_design', 'electrical_design_hash',
+                            'pdf_render_meta',
                             # QJR541 — statut et champs de CYCLE DE VIE :
                             # ignorés au PATCH/POST (DRF, jamais un 400).
                             # Chacun a sa porte dédiée et gardée : envoi
@@ -1273,6 +1284,13 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
 
     def validate_remise_globale(self, value):
         return _borne_saisie(value, 'remise_globale', 'pourcentage')
+
+    def to_representation(self, instance):
+        """ADVS9 — la réponse du PATCH/POST masque la marge comme la lecture."""
+        data = super().to_representation(instance)
+        if not _peut_voir_marge(self.context.get('request')):
+            data['marge_snapshot'] = None
+        return data
 
     def create(self, validated_data):
         """ASEC22 — l'auteur est TOUJOURS ``request.user`` (le corps ne
