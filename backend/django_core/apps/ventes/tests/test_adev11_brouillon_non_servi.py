@@ -89,6 +89,29 @@ class BrouillonNonServiTests(TestCase):
         self.assertEqual(self.http.get(self._url('pdf')).status_code, 404)
         self._assert_toujours_brouillon()
 
+    def test_document_404_jeton_client(self):
+        """ADVS30 (C-ADVS-028) — le PDF brut au jeton client d'un brouillon : 404
+        muet, aucun rendu, aucune vue comptée, aucune notification ; le jeton
+        d'aperçu interne reste servi, sans trace."""
+        from unittest import mock
+        url = f'/api/django/public/document/{self.lien.token}/'
+        with mock.patch('apps.ventes.public_views.generate_premium_devis_pdf') as rendu, \
+                mock.patch('apps.ventes.public_views._notify_open') as ouverture:
+            reponse = self.http.get(url)
+        self.assertEqual(reponse.status_code, 404)
+        rendu.assert_not_called()
+        ouverture.assert_not_called()
+        self.lien.refresh_from_db()
+        self.assertEqual(self.lien.view_count, 0)
+        self.assertIsNone(self.lien.first_viewed_at)
+        with mock.patch('apps.ventes.public_views.generate_premium_devis_pdf', return_value='k'), \
+                mock.patch('apps.ventes.public_views.download_pdf', return_value=b'%PDF-1.4 x'):
+            interne = self.http.get(f'/api/django/public/document/{self.lien.token_interne}/')
+        self.assertEqual(interne.status_code, 200)
+        self.lien.refresh_from_db()
+        self.assertEqual(self.lien.view_count, 0)
+        self._assert_toujours_brouillon()
+
     def test_accept_409_brouillon(self):
         self._assert_409_brouillon(self._post('accept', CORPS_ACCEPT))
         self._assert_toujours_brouillon()

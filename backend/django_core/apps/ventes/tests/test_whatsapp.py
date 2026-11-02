@@ -159,7 +159,7 @@ class TestPublicDocumentEndpoint(TestCase):
             company=self.company, nom='Client', telephone='0612345678')
         self.devis = Devis.objects.create(
             company=self.company, reference='DEV-PUB-1',
-            client=self.client_obj)
+            client=self.client_obj, statut='envoye')
 
     @patch('apps.ventes.public_views.download_pdf', return_value=b'%PDF-1.4 x')
     @patch('apps.ventes.public_views.generate_premium_devis_pdf',
