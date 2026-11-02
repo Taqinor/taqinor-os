@@ -1003,20 +1003,49 @@ class DeploiementSansEffetTests(VisiteCadenceBase):
             CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS,
         )
 
+        from apps.parametres.models_relance import (
+            CADENCES_DEFAUT, CanalRelance, Cadence,
+        )
+
+        phrase_stop = "Répondez STOP et je n'insiste plus."
+        # CADV111 — les clés historiques sont byte-identiques SAUF la phrase
+        # STOP en fin de texte (CAD110 l'a posée, CADV34 l'étend à tout
+        # message écrit) : on retire la phrase finale, le reste est gelé.
+        j14 = MESSAGE_TEMPLATE_DEFAULTS['j14_pause']
+        if j14.endswith(' ' + phrase_stop):
+            j14 = j14[:-len(phrase_stop) - 1]
         self.assertEqual(
-            MESSAGE_TEMPLATE_DEFAULTS['j14_pause'],
+            j14,
             'Je mets votre dossier en pause. Votre proposition reste dans '
-            'notre système ; un message suffit pour la réactiver. '
-            "Répondez STOP et je n'insiste plus.")
-        # CAD110 — la mention ne s'est PAS répandue : exactement les 8 clés
-        # décidées la portent, et aucune autre.
-        cles_stop = sorted(
+            'notre système ; un message suffit pour la réactiver.')
+        # Listes CALCULÉES des cadences livrées (plus de liste figée de 8) :
+        # clés écrites = barreaux WhatsApp + cadence de réveil ; clés d'appel
+        # = barreaux d'appel hors réveil.
+        ecrites, appels = set(), set()
+        for cadence, barreaux in CADENCES_DEFAUT.items():
+            for barreau in barreaux:
+                cle = barreau.get('template_cle')
+                if not cle:
+                    continue
+                if barreau['canal'] == CanalRelance.WHATSAPP or (
+                        cadence == Cadence.REVEIL):
+                    ecrites.add(cle)
+                elif barreau['canal'] == CanalRelance.APPEL:
+                    appels.add(cle)
+        porteuses = {
             cle for cle in CLES_RELANCE
-            if 'STOP' in MESSAGE_TEMPLATE_DEFAULTS[cle])
-        self.assertEqual(cles_stop, sorted([
+            if phrase_stop in MESSAGE_TEMPLATE_DEFAULTS[cle]}
+        # Aucune clé d'appel ne porte la phrase, et chaque porteuse la porte
+        # EN FIN de texte (les clés WhatsApp l'ont toutes après CADV34).
+        self.assertFalse(porteuses & appels, sorted(porteuses & appels))
+        for cle in sorted(porteuses):
+            self.assertTrue(
+                MESSAGE_TEMPLATE_DEFAULTS[cle].endswith(phrase_stop), cle)
+        # Plancher de CAD110 : ses huit clés la portent toujours.
+        self.assertTrue({
             'je_classe_j7', 'cloture_j14', 'j13_dernier', 'j14_pause',
             'reveil_a1', 'reveil_a2', 'reveil_a3', 'reveil_b',
-        ]))
+        } <= porteuses)
         # Les deux clés du lot visite sont AJOUTÉES ensemble, dans cet ordre,
         # juste après la dernière clé d'avant le lot.
         depart = CLES_RELANCE.index('parrainage')
