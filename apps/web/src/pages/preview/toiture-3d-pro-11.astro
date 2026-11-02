@@ -927,20 +927,9 @@ const chipClass =
     color: var(--color-brass-300, #f3cc66);
     letter-spacing: 0.02em;
   }
-  .rp9-map {
-    position: relative;
-    width: 100%;
-    height: 60vh;
-    min-height: 360px;
-    background: var(--color-nuit-700);
-  }
-  @media (min-width: 1024px) {
-    .rp9-map { height: 560px; }
-  }
   /* Largeur réservée : la recommandation ne provoque aucun saut de mise en page. */
   .rp9-results { min-height: 520px; }
   .rp9-results--ready { border-color: rgb(243 204 102 / 0.25); }
-  .rp9-map :global(.maplibregl-map) { position: absolute; inset: 0; }
 
   /* W192 — Segmented control : état actif/sélectionné bien visible sur canvas sombre */
   .rp9-chip[aria-pressed='true'] {
@@ -1183,78 +1172,21 @@ const chipClass =
 </style>
 
 <script>
-  // Activation paresseuse : MapLibre + Three.js + le cerveau ne sont téléchargés
-  // qu'au premier geste réel. La clé publique MapTiler est lue via /api/roof-config.
-  // createRoofTypeSelect est minuscule et sans dépendance lourde — l'importer ici
-  // ne déclenche AUCUN chargement de Three.js/MapLibre.
+  // Activation paresseuse (lib/roofPreviewBoot) : MapLibre + Three.js + le cerveau ne sont
+  // téléchargés qu'au premier geste réel. createRoofTypeSelect est minuscule et sans
+  // dépendance lourde — l'importer ici ne déclenche AUCUN chargement de Three.js/MapLibre.
   import { createRoofTypeSelect } from '../../lib/roofTypeSelect';
-
-  const fallback = document.getElementById('rp9-fallback');
-  const stage = document.getElementById('rp9-stage');
-  const searchForm = document.getElementById('rp9-search') as HTMLFormElement | null;
-  const addressEl = document.getElementById('rp9-address') as HTMLInputElement | null;
-  const openBtn = document.getElementById('rp9-open');
-  const placeholder = document.getElementById('rp9-map-placeholder');
+  import { startRoofPreview } from '../../lib/roofPreviewBoot';
 
   // Puces « type de toit » CÂBLÉES DÈS LE CHARGEMENT (avant tout boot de la carte) :
   // l'Étape 2 demande le choix d'abord, donc « Toit plat » / « Toit en pente »
   // doivent répondre à l'instant. L'outil 3D, une fois booté, s'abonne via initRoofTool.
   const roofTypeSelect = createRoofTypeSelect(document);
 
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let started = false;
-  let key = '';
-  let mapboxToken = '';
-
-  function showFallback() {
-    if (fallback) fallback.hidden = false;
-    if (stage) stage.hidden = true;
-  }
-
-  async function boot(initialQuery?: string) {
-    if (started || !key) return;
-    started = true;
-    let mapCreated = false;
-    try {
-      const mod = await import('../../scripts/roof-tool-pro11.ts');
-      placeholder?.remove();
-      mod.initRoofToolPro8({
-        maptilerKey: key,
-        mapboxToken: mapboxToken || undefined,
-        reducedMotion,
-        initialQuery,
-        roofType: roofTypeSelect,
-        onReady: () => {
-          mapCreated = true;
-        },
-      });
-    } catch {
-      if (!mapCreated) {
-        started = false;
-        showFallback();
-      }
-    }
-  }
-
-  (async () => {
-    try {
-      const res = await fetch('/api/roof-config');
-      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
-      if (!cfg.available || !cfg.maptilerKey) {
-        showFallback();
-        return;
-      }
-      key = cfg.maptilerKey;
-      // Token Mapbox facultatif : présent → imagerie satellite plus nette ;
-      // absent → repli transparent sur le style hybride MapTiler.
-      mapboxToken = cfg.mapboxToken || '';
-      searchForm?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        boot(addressEl?.value.trim() || undefined);
-      });
-      openBtn?.addEventListener('click', () => boot());
-    } catch {
-      showFallback();
-    }
-  })();
+  // Token Mapbox facultatif : présent → imagerie satellite plus nette ;
+  // absent → repli transparent sur le style hybride MapTiler.
+  startRoofPreview('rp9', () => import('../../scripts/roof-tool-pro11.ts'), 'initRoofToolPro8', (cfg) => ({
+    mapboxToken: cfg.mapboxToken || undefined,
+    roofType: roofTypeSelect,
+  }));
 </script>

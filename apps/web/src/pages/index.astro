@@ -32,7 +32,8 @@ import BrandStrip from '../components/BrandStrip.astro';
 import ZelligeSignature from '../components/ZelligeSignature.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
-import { REALISATIONS, realisationBySlug, MEASURED_FLEET_LIFETIME_MWH_FR } from '../lib/realisations';
+import { buildGallery } from '../lib/homeGallery';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR } from '../lib/realisations';
 import { YIELD_TABLE } from '../lib/yieldTable';
 import { PRODUCTION_NET_FACTOR } from '../lib/systemLoss';
 
@@ -137,23 +138,7 @@ const galleryRaw = [
   // qualitatif (marques confirmées à l'image), jamais un compte de panneaux deviné.
   { name: 'bouskoura-toit', alt: 'Toiture-terrasse d’une villa entièrement couverte de panneaux solaires, Bouskoura', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'Onduleur Deye · stockage DYNESS', slug: 'bouskoura-villa-2026' },
 ];
-const gallery = galleryRaw.map((g) => {
-  const r = realisationBySlug(g.slug);
-  const ville = r?.ville ?? '';
-  const kwc = r?.kwc ?? '';
-  const prod = g.showProd ? (r?.production ?? null) : null;
-  // (2026-09) `kwc` peut être vide (chantier filmé avant tout relevé de
-  // puissance, ex. Bouskoura) : jointures filtrées plutôt qu'un séparateur qui
-  // pend sur rien (« Bouskoura · » / « Bouskoura, »).
-  return {
-    ...g,
-    ville,
-    kwc,
-    prod,
-    caption: [ville, kwc, prod].filter(Boolean).join(' · '),
-    ariaLabel: [ville, kwc, prod].filter(Boolean).join(', '),
-  };
-});
+const gallery = buildGallery(galleryRaw);
 
 // W271 — Chips de filtre ville : « Toutes » + les villes réellement présentes
 // dans `gallery` ci-dessus (aucune ville inventée ; l'ordre suit le premier
