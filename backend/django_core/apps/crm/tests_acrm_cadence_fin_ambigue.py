@@ -23,7 +23,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm import stages
-from apps.crm.models import Lead, RelanceEtape
+from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.cadence_plan import initialiser_plan_relance
 from apps.parametres.models_relance import CadenceRelanceEtape
 from apps.roles.models import Role
@@ -116,6 +116,11 @@ class CadenceFinAmbigueTests(TestCase):
             self.lead.relance_etapes.filter(
                 cadence='contact',
                 statut=RelanceEtape.Statut.A_FAIRE).count(), 1)
+        # CADV22 — « injoignable » exige cinq appels tracés.
+        LeadActivity.objects.bulk_create([
+            LeadActivity(company=self.company, lead=self.lead, user=self.user,
+                         kind=LeadActivity.Kind.APPEL, body='Pas de réponse.')
+            for _ in range(5)])
         self._fait()
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.COLD)

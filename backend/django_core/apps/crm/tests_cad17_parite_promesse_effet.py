@@ -51,7 +51,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm import suite_touche as st
-from apps.crm.models import Client, Lead, MotifPerte, RelanceEtape
+from apps.crm.models import Client, Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.cadence_reperes import (
     _LIBELLES_FILET,
     _LIBELLES_VISITE,
@@ -772,6 +772,14 @@ class PariteBase(TestCase):
     def _fabriquer(self, scenario, variante):
         """Le lead et la touche du scénario, dans la branche ``variante``."""
         lead = self._lead(scenario)
+        if scenario.cadence == 'contact' and scenario.ordre == max(
+                _ordres_defaut('contact')):
+            # CADV22 — la dernière touche ne parque au Froid (la promesse
+            # jouée ici) qu'après cinq appels tracés.
+            LeadActivity.objects.bulk_create([
+                LeadActivity(company=lead.company, lead=lead, user=lead.owner,
+                             kind=LeadActivity.Kind.APPEL, body='Pas de réponse.')
+                for _ in range(5)])
         devis = None
         if scenario.devis or scenario.famille == A_COTE or variante in (
                 'devis_ouvert', 'devis_epuise'):

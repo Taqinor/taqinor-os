@@ -36,7 +36,7 @@ from .cadence_reperes import (
     est_etape_de_visite,
     q_visite,
 )
-from .fiche_funnel import _rang_funnel, parquer_lead, poser_tag_lead
+from .fiche_funnel import ParcRefuse, _rang_funnel, parquer_lead, poser_tag_lead
 from .leads_doublons import find_duplicates_by_contact
 from .models import Lead, LeadActivity, RelanceEtape
 
@@ -1091,7 +1091,16 @@ def cloturer_cadence(lead, user, cadence):
             # Le lead a PROGRESSÉ pendant la cadence (devis envoyé, signé) :
             # la touche restée ouverte ne doit pas le faire retomber.
             return
-        parquer_lead(lead, _CLOTURE_RAISONS[cadence], None, user)
+        try:
+            parquer_lead(lead, _CLOTURE_RAISONS[cadence], None, user)
+        except ParcRefuse as refus:
+            # CADV22 — le lead reste à son étape, le refus se lit au chatter ;
+            # le filet QJ-INVARIANT de ``marquer_etape_relance`` pose sa suite.
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body=f'Mise au Froid refusée : {refus}.')
+            return
         tag = _CLOTURE_TAGS.get(cadence)
         if tag:
             poser_tag_lead(lead, user, tag)

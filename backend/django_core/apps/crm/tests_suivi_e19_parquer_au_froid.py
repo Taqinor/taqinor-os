@@ -28,7 +28,7 @@ from testkit.time import frozen
 from apps.crm import horaires, stages, cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE
-from apps.crm.models import Lead, RelanceEtape
+from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
 
@@ -63,6 +63,14 @@ class ParquerAuFroidTests(TestCase):
             company=self.company, nom=f'Injoignable E19 {n}',
             stage=stages.CONTACTED, owner=self.acteur,
             telephone=f'+21266219{n:04d}')
+        self._appels(self.lead)
+
+    def _appels(self, lead, nombre=5):
+        """CADV22 — les appels signés sans lesquels « injoignable » est refusé."""
+        LeadActivity.objects.bulk_create([
+            LeadActivity(company=self.company, lead=lead, user=self.acteur,
+                         kind=LeadActivity.Kind.APPEL, body='Pas de réponse.')
+            for _ in range(nombre)])
 
     def _filet_ouvert(self):
         return RelanceEtape.objects.create(
@@ -134,6 +142,7 @@ class ParquerAuFroidTests(TestCase):
         autre = Lead.objects.create(
             company=self.company, nom='Apres devis', stage=stages.FOLLOW_UP,
             owner=self.acteur, telephone='+212662190001')
+        self._appels(autre, 1)
         cadence_plan.cloturer_cadence(autre, self.acteur, 'apres_devis')
         autre.refresh_from_db()
         self.assertEqual((autre.parc_etat, autre.parc_raison, autre.stage),
@@ -151,6 +160,83 @@ class ParquerAuFroidTests(TestCase):
         self.assertEqual(self.lead.stage, stages.COLD)
         self.assertEqual(self.lead.activites.filter(
             field='parc_raison').count(), 1)
+
+    def _lead_neuf(self, **kw):
+        return Lead.objects.create(
+            company=self.company, nom='Neuf', stage=stages.CONTACTED,
+            owner=self.acteur, telephone='+212662190002', **kw)
+
+    def _instantane(self, lead):
+        lead.refresh_from_db()
+        return (lead.stage, lead.parc_etat, lead.parc_raison, lead.tags,
+                lead.activites.count())
+
+    def test_injoignable_sous_cinq_appels_est_refuse(self):
+        """CADV22 — un refus n'écrit rien. Mutant : seuil 5 → 3 ⇒ échec."""
+        from apps.crm.fiche_funnel import ParcRefuse, parquer_lead
+        lead = self._lead_neuf()
+        self._appels(lead, 3)
+        avant = self._instantane(lead)
+        with self.assertRaisesMessage(
+                ParcRefuse, 'injoignable exige 5 appels tracés (3 trouvés)'):
+            parquer_lead(lead, 'injoignable', None, self.acteur)
+        self.assertEqual(self._instantane(lead), avant)
+        self._appels(lead, 2)
+        parquer_lead(lead, 'injoignable', None, self.acteur)
+        self.assertEqual(lead.parc_raison, 'injoignable')
+
+    def test_les_appels_systeme_ne_comptent_pas(self):
+        from apps.crm.fiche_funnel import nb_contacts_humains
+        lead = self._lead_neuf()
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.APPEL, body='Système.')
+        self.assertEqual(nb_contacts_humains(lead), 0)
+
+    def test_aucun_parcage_a_zero_touche_sauf_les_trois_raisons(self):
+        from apps.crm.fiche_funnel import ParcRefuse, parquer_lead
+        lead = self._lead_neuf()
+        avant = self._instantane(lead)
+        with self.assertRaisesMessage(ParcRefuse, 'aucun parcage à 0 touche'):
+            parquer_lead(lead, 'budget', None, self.acteur)
+        self.assertEqual(self._instantane(lead), avant)
+        for raison in ('faux_numero', 'doublon', 'test'):
+            with self.subTest(raison):
+                sans_touche = self._lead_neuf()
+                parquer_lead(sans_touche, raison, None, self.acteur)
+                self.assertEqual(sans_touche.parc_etat, 'archive')
+
+    def test_exiger_touche_faux_laisse_passer_la_seule_regle_des_zero_touches(self):
+        from apps.crm.fiche_funnel import ParcRefuse, parquer_lead
+        lead = self._lead_neuf()
+        parquer_lead(lead, 'pas_maintenant_sans_date', None, None,
+                     exiger_touche=False)
+        self.assertEqual(lead.parc_raison, 'pas_maintenant_sans_date')
+        with self.assertRaises(ParcRefuse):
+            parquer_lead(self._lead_neuf(), 'injoignable', None, None,
+                         exiger_touche=False)
+
+    def test_whatsapp_only_compte_ses_whatsapp(self):
+        from apps.crm.fiche_funnel import parquer_lead
+        lead = self._lead_neuf(
+            contact_preference=Lead.ContactPreference.WHATSAPP_ONLY)
+        LeadActivity.objects.bulk_create([
+            LeadActivity(company=self.company, lead=lead, user=self.acteur,
+                         kind=LeadActivity.Kind.WHATSAPP, body='Message.')
+            for _ in range(5)])
+        parquer_lead(lead, 'injoignable', None, self.acteur)
+        self.assertEqual(lead.parc_etat, 'nurture')
+
+    def test_la_fin_de_gabarit_note_le_refus_sans_parquer(self):
+        lead = self._lead_neuf()
+        self._appels(lead, 3)
+        cadence_plan.cloturer_cadence(lead, self.acteur, 'contact')
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.CONTACTED)
+        self.assertIsNone(lead.parc_raison)
+        self.assertFalse(lead.relance_etapes.filter(cadence='reveil').exists())
+        self.assertTrue(lead.activites.filter(
+            body__startswith='Mise au Froid refusée : injoignable exige').exists())
 
     def test_parquer_en_standby_garde_l_etape_et_la_date(self):
         from apps.crm.fiche_funnel import parquer_lead
@@ -210,6 +296,7 @@ class ParquerAuFroidTests(TestCase):
                 owner=self.acteur, **champs)
 
         avec = froid('Avec raison')
+        self._appels(avec, 1)
         parquer_lead(avec, 'budget', None, self.acteur)
         sans = froid('Sans raison')
         froid('Perdu', perdu=True, motif_perte='Prix')
