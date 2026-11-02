@@ -4,7 +4,7 @@ terrain : `DevisSerializer.get_marge_snapshot` sert la marge à tout `is_respons
 `marge_voir`. Devis créé par un admin (POST atomic/) ; pour le Technicien (portée équipe), un second devis lui est
 attribué (`created_by`) par ORM pour franchir sa portée d'enregistrement — seule la garde du sérialiseur est
 mesurée. Société neuve, transaction annulée."""
-SONDE = {"constat": "C-ADVS-043", "sha": "1dfa7986c",
+SONDE = {"constat": "C-ADVS-002", "sha": "1dfa7986c",
          "attendu": "rôle sans marge_voir → marge_snapshot None (défaut : valeur servie)",
          "modeles": ["ventes.Devis", "roles.Role"]}
 
