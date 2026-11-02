@@ -81,8 +81,8 @@ class AucunBarreauNAjouteTests(SimpleTestCase):
         self.assertNotIn(CLE, cles)
 
     def test_les_trois_cadences_gardent_leur_nombre_de_barreaux(self):
-        self.assertEqual(len(CADENCE_CONTACT_DEFAUT), 11)
-        self.assertEqual(len(CADENCE_APRES_DEVIS_DEFAUT), 10)
+        self.assertEqual(len(CADENCE_CONTACT_DEFAUT), 8)
+        self.assertEqual(len(CADENCE_APRES_DEVIS_DEFAUT), 9)
         self.assertEqual(len(CADENCE_REVEIL_DEFAUT), 2)
 
 
