@@ -91,6 +91,14 @@ class VersionRemplaceeHorsJeuTests(TestCase):
                            {'to_email': 'client@example.com'})
         self._assert_409_v1_intact(r)
         rendu.assert_not_called()
+        # api-fuzz 01/11 : ce 409 n'a pas de ``statut`` -> le schéma publié du
+        # 409 ne l'exige plus (seul ``detail`` est commun aux deux refus).
+        from apps.ventes.views import openapi_docs
+        champs = openapi_docs.EnvoyerEmailSansDestinataire.fields
+        self.assertFalse(champs['statut'].required)
+        self.assertTrue(champs['detail'].required)
+        self.assertEqual(r.data['successeur']['reference'],
+                         'DEV-ADEV7-0001-V2')
 
     def test_whatsapp_et_pdf_partage_v1_409(self):
         self._assert_409_v1_intact(self._post(self.v1, 'whatsapp'))

@@ -788,6 +788,13 @@ class SchemaVisitesPublieTests(SimpleTestCase):
             {'id', 'lead', 'commercial', 'statut', 'date_prevue',
              'date_realisee', 'notes'})
 
+    def test_la_qualification_publie_un_corps_obligatoire(self):
+        # api-fuzz 01/11 : POST sans corps (« conforme » car facultatif au
+        # schéma) refusé 400 « champ obligatoire » ×6.
+        operation = self.schema['paths'][
+            '/api/django/visites/visites/{id}/qualification/']['post']
+        self.assertTrue(operation['requestBody'].get('required'))
+
     def test_le_motif_de_renvoi_publie_non_blanc_sans_nul(self):
         # api-fuzz-full 27/10 : « /@Bl\x00 » était publié conforme puis
         # refusé 400 — le corps publie désormais le motif « non blanc, sans
