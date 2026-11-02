@@ -118,7 +118,7 @@ unites:
     pr: 862
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-facturation.md
-    notes: "apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-facturation.md) : 63 constats (7 S1), 89 tâches AFAC dont 10 décisions fondateur M1 (AFAC80-89) ; lien « Payer en ligne » relatif vers une API JSON constaté en direct ; portes de facture SAV / intervention ajoutées aux deux chemins connus."
+    notes: "vérifie AFAC du 02/11/2026 (3ᵉ clôture, docs/audits/2026-11-02-facturation-verifie.md) : 32 tâches échantillonnées — 29 ok, 1 déjà-présent, 2 partielles S3 ; 0 S1-S2, le groupe reste vérifié hors cycle ; 4 S3 → AFAC103-106 (facturation 3, sécurité 1). apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-facturation.md) : 63 constats (7 S1), 89 tâches AFAC dont 10 décisions fondateur M1 (AFAC80-89) ; lien « Payer en ligne » relatif vers une API JSON constaté en direct ; portes de facture SAV / intervention ajoutées aux deux chemins connus."
 
   - id: D3
     rang: 3
