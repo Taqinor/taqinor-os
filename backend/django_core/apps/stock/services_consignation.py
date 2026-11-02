@@ -172,10 +172,10 @@ def facturer_declaration(declaration, *, user, depot=None):
     Appelle ``apps.ventes.services.creer_facture_consignation`` (prix de vente
     catalogue, jamais ``prix_achat`` ; idempotente par la référence d'origine
     ``CONSIGNATION-DECL-<id>``), puis passe la déclaration ``facturee`` avec
-    ``document_reference`` = n° de la facture. Rejouer la même déclaration
-    renvoie la MÊME facture (aucune seconde facture). La facture est posée
-    sur ``declaration.facture`` (attribut non persistant, lu par la réponse
-    de l'endpoint). Renvoie la Facture.
+    ``document_reference`` = n° de la facture au brouillon (repli) et
+    ``declaration.facture`` = lien persistant (ASTK256) dont le n° COURANT est
+    servi. Rejouer la même déclaration renvoie la MÊME facture. Renvoie la
+    Facture.
     """
     from django.db import transaction
 
@@ -191,11 +191,13 @@ def facturer_declaration(declaration, *, user, depot=None):
                      'quantite': declaration.quantite}],
             reference_origine=reference_origine_declaration(declaration))
         if (declaration.statut != DeclarationConsommation.Statut.FACTUREE
+                or declaration.facture_id != facture.pk
                 or declaration.document_reference != facture.reference):
             declaration.statut = DeclarationConsommation.Statut.FACTUREE
             declaration.document_reference = facture.reference
-            declaration.save(update_fields=['statut', 'document_reference'])
-    declaration.facture = facture
+            declaration.facture = facture
+            declaration.save(update_fields=[
+                'statut', 'document_reference', 'facture'])
     return facture
 
 
@@ -204,7 +206,8 @@ def releve_consignation(depot):
     le détail des déclarations triées par date (LECTURE SEULE)."""
     from .models import DeclarationConsommation
 
-    declarations = list(depot.declarations.order_by('date_declaration', 'id'))
+    declarations = list(depot.declarations.select_related('facture').order_by(
+        'date_declaration', 'id'))
     facture = sum(
         d.quantite for d in declarations
         if d.statut == DeclarationConsommation.Statut.FACTUREE)
@@ -225,6 +228,6 @@ def releve_consignation(depot):
             'date': d.date_declaration.isoformat(),
             'quantite': d.quantite,
             'statut': d.statut,
-            'document_reference': d.document_reference,
+            'document_reference': d.numero_courant(),
         } for d in declarations],
     }
