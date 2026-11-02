@@ -205,6 +205,22 @@ class PoseDuReveilSaisonnierTests(_Base):
         self.assertEqual(RelanceEtape.objects.filter(
             template_cle=REVEIL_SAISON_CLE).count(), 1)
 
+    def test_un_perdu_prix_recoit_le_reveil_pas_un_perdu_concurrent(self):
+        """CADV90 — liste fermée, sans casse ; un perdu archivé ou opposé reste
+        refusé. Mutant : élargir la liste à « Concurrent » ⇒ échec."""
+        prix = self._dormant(nom='Prix', perdu=True, motif_perte='prix')
+        for nom, champs in (
+                ('Concurrent', {'motif_perte': 'Concurrent'}),
+                ('Sans motif', {}),
+                ('Archive', {'motif_perte': 'Prix', 'is_archived': True}),
+                ('Oppose', {'motif_perte': 'Prix', 'ne_plus_contacter': True})):
+            self._dormant(nom=nom, perdu=True, **champs)
+        posees = poser_reveils_saisonniers(self.company, self.acteur)
+        self.assertEqual([e.lead_id for e in posees], [prix.pk])
+        self.assertEqual(poser_reveils_saisonniers(self.company, self.acteur), [])
+        self.assertEqual(RelanceEtape.objects.filter(
+            template_cle=REVEIL_SAISON_CLE).count(), 1)
+
     def test_un_archive_ou_un_perdu_ne_recoit_rien(self):
         archive = self._dormant(nom='Archive', is_archived=True)
         self._reveil_pose_le(archive, datetime.date(2026, 3, 2))
