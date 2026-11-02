@@ -188,6 +188,40 @@ class TestBuildUblXml(DgiTestBase):
         self.assertIn('TaxInclusiveAmount', xml)
         self.assertIn('Panneau PV 550W', xml)
 
+    def test_remise_globale_en_allowance_charge(self):
+        """AARG20 (C-AARG-016) — une facture remisée : AllowanceCharge, lignes
+        brutes − remise = HT net, et l'aperçu `ubl` = le XML transmis."""
+        from apps.ventes.utils.ubl import build_ubl_xml as apercu
+        facture = Facture.objects.create(
+            company=self.company, reference=f'FAC-{MONTH}-9002',
+            client=self.client_b2b, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), remise_globale=Decimal('10'))
+        LigneFacture.objects.create(
+            facture=facture, produit=self.produit, designation='Kit',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        xml = build_ubl_xml(facture, self.profile)
+        ns = {'cac': 'urn:oasis:names:specification:ubl:schema:xsd:'
+                     'CommonAggregateComponents-2',
+              'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:'
+                     'CommonBasicComponents-2'}
+        root = ET.fromstring(xml.split('-->', 1)[1])
+        remise = root.find('cac:AllowanceCharge', ns)
+        self.assertEqual(remise.findtext('cbc:ChargeIndicator', namespaces=ns),
+                         'false')
+        self.assertEqual(remise.findtext('cbc:Amount', namespaces=ns), '100.00')
+        lignes = [il.findtext('cbc:LineExtensionAmount', namespaces=ns)
+                  for il in root.findall('cac:InvoiceLine', ns)]
+        self.assertEqual(lignes, ['1000.00'])
+        total = root.find('cac:LegalMonetaryTotal', ns)
+        self.assertEqual(
+            total.findtext('cbc:TaxExclusiveAmount', namespaces=ns), '900.00')
+        self.assertEqual(root.find('cac:TaxTotal', ns).findtext(
+            'cbc:TaxAmount', namespaces=ns), '180.00')
+        vu = apercu(facture, self.profile)
+        self.assertIn('APERCU BROUILLON', vu)
+        self.assertEqual(vu.split('-->', 1)[1], xml.split('-->', 1)[1])
+
     def test_no_buy_price_or_margin_in_xml(self):
         facture = self._facture()
         xml = build_ubl_xml(facture, self.profile)

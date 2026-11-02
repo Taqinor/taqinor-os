@@ -14,7 +14,7 @@ on the document that matters most: `facturation.Facture` (the single
 `ventes.Facture` anchor in this table was dead) carries BOTH `devise` and
 `taux_change`, and they do not have the same status:
 
-- `devise` is **used**, as a LABEL: `apps/ventes/utils/ubl.py` reads it to
+- `devise` is **used**, as a LABEL: `apps/ventes/dgi/dgi_export.py` reads it to
   fill the UBL `DocumentCurrencyCode` of the exported invoice.
 - `taux_change` is **decorative**: it is stored, and copied from the Devis
   at creation (`apps/ventes/domain/creation.py`, `.../cycle_vie.py`,

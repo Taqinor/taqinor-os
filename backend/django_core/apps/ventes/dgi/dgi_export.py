@@ -13,9 +13,9 @@ PÉRIMÈTRE STRICT — groundwork local uniquement :
     unitaire, total HT et taux de TVA).
 
 ``build_ubl_xml`` est une fonction pure (objets → str), testable sans MinIO.
-Distincte de l'« aperçu brouillon » N38 (``apps.ventes.utils.ubl``) : ici la
-sortie est marquée comme export DGI local conforme, sans bandeau brouillon,
-et est gardée derrière l'interrupteur maître N105.
+AARG20 — LE seul constructeur : l'« aperçu brouillon » N38
+(``apps.ventes.utils.ubl``) le délègue ici et ne change que son commentaire de
+tête ; l'export DGI est gardé derrière l'interrupteur maître N105.
 """
 from decimal import Decimal, ROUND_HALF_UP
 from xml.etree import ElementTree as ET
@@ -133,6 +133,21 @@ def build_ubl_xml(facture, profile=None, currency=None):
     total_ht = Decimal(facture.total_ht)
     total_tva = Decimal(facture.total_tva)
     total_ttc = Decimal(facture.total_ttc)
+
+    # QX2 / AARG20 — remise globale documentée en AllowanceCharge : la somme des
+    # lignes est BRUTE, l'AllowanceCharge la ramène au HT net (TaxExclusive).
+    # Facture de tranche sans ligne : son HT figé. Aucune remise → aucun nœud.
+    lignes = list(facture.lignes.all())
+    lignes_brut = (sum((Decimal(str(li.total_ht)) for li in lignes), Decimal('0'))
+                   if lignes else total_ht)
+    remise_montant = (lignes_brut - total_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    if remise_montant > 0:
+        allowance = ET.SubElement(root, f'{{{cac}}}AllowanceCharge')
+        el(allowance, 'ChargeIndicator', text='false')  # false = remise
+        el(allowance, 'AllowanceChargeReason', text='Remise globale')
+        el(allowance, 'Amount', text=_q2(remise_montant), currencyID=currency)
+
     tax_total = ET.SubElement(root, f'{{{cac}}}TaxTotal')
     el(tax_total, 'TaxAmount', text=_q2(total_tva), currencyID=currency)
     for bucket in facture.tva_par_taux:
@@ -147,14 +162,17 @@ def build_ubl_xml(facture, profile=None, currency=None):
 
     # ── Totaux (LegalMonetaryTotal) ──
     monetary = ET.SubElement(root, f'{{{cac}}}LegalMonetaryTotal')
-    el(monetary, 'LineExtensionAmount', text=_q2(total_ht),
+    el(monetary, 'LineExtensionAmount', text=_q2(lignes_brut),
        currencyID=currency)
     el(monetary, 'TaxExclusiveAmount', text=_q2(total_ht), currencyID=currency)
     el(monetary, 'TaxInclusiveAmount', text=_q2(total_ttc), currencyID=currency)
+    if remise_montant > 0:
+        el(monetary, 'AllowanceTotalAmount', text=_q2(remise_montant),
+           currencyID=currency)
     el(monetary, 'PayableAmount', text=_q2(total_ttc), currencyID=currency)
 
     # ── Lignes (InvoiceLine) — TVA par ligne, jamais de prix d'achat/marge ──
-    for idx, ligne in enumerate(facture.lignes.all(), start=1):
+    for idx, ligne in enumerate(lignes, start=1):
         il = ET.SubElement(root, f'{{{cac}}}InvoiceLine')
         el(il, 'ID', text=str(idx))
         el(il, 'InvoicedQuantity', text=str(ligne.quantite))
