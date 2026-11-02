@@ -77,7 +77,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <text x="155.0" y="50.5" font-size="13.5" text-anchor="middle" fill="#0b3d2e" font-weight="700">PRISE DE</text>
 <text x="155.0" y="67.3" font-size="13.5" text-anchor="middle" fill="#0b3d2e" font-weight="700">CONTACT</text>
 <text x="155.0" y="81.8" font-size="11" text-anchor="middle" fill="#1a1a1a">messages et appels</text>
-<text x="155.0" y="95.5" font-size="11" text-anchor="middle" fill="#1a1a1a">7 jours</text>
+<text x="155.0" y="95.5" font-size="11" text-anchor="middle" fill="#1a1a1a">14 jours</text>
 <rect x="273.3" y="22.0" width="118.0" height="92.0" rx="9" fill="#eef5f1" stroke="#0b3d2e" stroke-width="2"/>
 <text x="332.3" y="42.7" font-size="13.5" text-anchor="middle" fill="#0b3d2e" font-weight="700">PRÉPARER ET</text>
 <text x="332.3" y="59.5" font-size="13.5" text-anchor="middle" fill="#0b3d2e" font-weight="700">ENVOYER LE</text>
@@ -87,8 +87,8 @@ table.touches td:nth-child(3) { width: 17%; }
 <rect x="450.7" y="22.0" width="118.0" height="92.0" rx="9" fill="#eef5f1" stroke="#0b3d2e" stroke-width="2"/>
 <text x="509.7" y="50.5" font-size="13.5" text-anchor="middle" fill="#0b3d2e" font-weight="700">SUIVI DE</text>
 <text x="509.7" y="67.3" font-size="13.5" text-anchor="middle" fill="#0b3d2e" font-weight="700">PROPOSITION</text>
-<text x="509.7" y="81.8" font-size="11" text-anchor="middle" fill="#1a1a1a">9 touches</text>
-<text x="509.7" y="95.5" font-size="11" text-anchor="middle" fill="#1a1a1a">90 jours</text>
+<text x="509.7" y="81.8" font-size="11" text-anchor="middle" fill="#1a1a1a">10 touches</text>
+<text x="509.7" y="95.5" font-size="11" text-anchor="middle" fill="#1a1a1a">14 jours</text>
 <rect x="628.0" y="46.0" width="62.0" height="44.0" rx="22" fill="#0b3d2e" stroke="#0b3d2e" stroke-width="1.6"/>
 <text x="659.0" y="72.7" font-size="13.5" text-anchor="middle" fill="#ffffff" font-weight="700">SIGNÉ</text>
 <path d="M70.0,68.0 L96.0,68.0" fill="none" stroke="#0b3d2e" stroke-width="2.0" stroke-linejoin="round" marker-end="url(#pointe)"/>
@@ -207,34 +207,38 @@ table.touches td:nth-child(3) { width: 17%; }
 <p>Ces délais sont les réglages par défaut ; ils se modifient dans Paramètres → Référentiels → <span class="ecran">«&nbsp;Cadences de relance&nbsp;»</span>.</p>
 <section class="rythme">
 <h4>Prise de contact</h4>
-<p>8 touches — 5 appels et 3 messages — sur 7 jours.</p>
+<p>11 touches — 6 appels et 5 messages — sur 14 jours.</p>
 <table class="touches">
 <tr><th>N°</th><th>Jour</th><th>Canal</th><th>Touche</th></tr>
 <tr><td>1</td><td>J0</td><td>WhatsApp</td><td>Message d’identité</td></tr>
 <tr><td>2</td><td>J0 + 3 min</td><td>Appel</td><td>Appel d’ouverture</td></tr>
 <tr><td>3</td><td>J0 + 2 h 30</td><td>Appel</td><td>Appel 2 (répondeur)</td></tr>
 <tr><td>4</td><td>J1</td><td>Appel</td><td>Appel 3</td></tr>
-<tr><td>5</td><td>J2</td><td>Appel</td><td>Appel 4 (répondeur)</td></tr>
-<tr><td>6</td><td>J2</td><td>WhatsApp</td><td>WhatsApp de valeur</td></tr>
-<tr><td>7</td><td>J4</td><td>Appel</td><td>Appel 5 (dernier)</td></tr>
-<tr><td>8</td><td>J7</td><td>WhatsApp</td><td>«&nbsp;Je classe&nbsp;?&nbsp;»</td></tr>
+<tr><td>5</td><td>J1</td><td>WhatsApp</td><td>WhatsApp de valeur</td></tr>
+<tr><td>6</td><td>J2</td><td>Appel</td><td>Appel 4 (répondeur)</td></tr>
+<tr><td>7</td><td>J3</td><td>WhatsApp</td><td>Vocal</td></tr>
+<tr><td>8</td><td>J5</td><td>Appel</td><td>Appel 5 (dimanche)</td></tr>
+<tr><td>9</td><td>J7</td><td>WhatsApp</td><td>«&nbsp;Je classe&nbsp;?&nbsp;»</td></tr>
+<tr><td>10</td><td>J10</td><td>Appel</td><td>Appel 6 (dernier)</td></tr>
+<tr><td>11</td><td>J14</td><td>WhatsApp</td><td>Clôture</td></tr>
 </table>
 <p class="petit">J0 = l’arrivée du lead.</p>
 </section>
 <section class="rythme">
 <h4>Suivi de proposition (après devis)</h4>
-<p>9 touches — 5 appels et 4 messages — sur 90 jours.</p>
+<p>10 touches — 3 appels et 7 messages — sur 14 jours.</p>
 <table class="touches">
 <tr><th>N°</th><th>Jour</th><th>Canal</th><th>Touche</th></tr>
 <tr><td>1</td><td>J1</td><td>WhatsApp</td><td>Le PDF s’ouvre bien&nbsp;?</td></tr>
 <tr><td>2</td><td>J2</td><td>Appel</td><td>Appel de suivi</td></tr>
 <tr><td>3</td><td>J3</td><td>WhatsApp</td><td>Dimanche famille</td></tr>
+<tr><td>4</td><td>J4</td><td>WhatsApp</td><td>Preuve — chantier comparable</td></tr>
+<tr><td>5</td><td>J6</td><td>WhatsApp</td><td>Garanties fabricants</td></tr>
 <tr><td>6</td><td>J7</td><td>Appel</td><td>Appel de suivi</td></tr>
-<tr><td>7</td><td>J10</td><td>WhatsApp</td><td>Garanties fabricants</td></tr>
-<tr><td>8</td><td>J14</td><td>Appel</td><td>Appel de décision</td></tr>
-<tr><td>9</td><td>J28</td><td>Appel</td><td>Appel de validité</td></tr>
-<tr><td>10</td><td>J60</td><td>WhatsApp</td><td>Dernier message</td></tr>
-<tr><td>11</td><td>J90</td><td>Appel</td><td>Dernier appel</td></tr>
+<tr><td>7</td><td>J9</td><td>WhatsApp</td><td>Validité de la proposition</td></tr>
+<tr><td>8</td><td>J11</td><td>Appel</td><td>Appel de suivi</td></tr>
+<tr><td>9</td><td>J13</td><td>WhatsApp</td><td>Dernier message</td></tr>
+<tr><td>10</td><td>J14</td><td>WhatsApp</td><td>Mise en pause</td></tr>
 </table>
 <p class="petit">J0 = l’envoi du devis.</p>
 </section>
