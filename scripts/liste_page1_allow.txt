@@ -8,3 +8,63 @@
 # AFAC95/ASAV77 (2026-10-09) : racines etendues a pages/** et store/** ; leurs sites
 # (releve du jour) sont geles ici, memes regles (fichier::fonction, decroissant).
 # ADOC182 (2026-10-11) : sites a helper local sans appel HTTP : les 3 faux positifs (endpoints non pagines) vivent dans scripts/liste_page1_non_paginees.txt.
+# ADOC190 — passif gelé révélé par le jugement PAR APPEL (un voisin qui pagine ne masque plus ; helper sur la réponse entière / importé) :
+# chaque site est une lecture réelle de la page 1 à corriger (fetchAllPages) ou à porter au registre non paginé avec sa citation ; la liste ne fait que décroître.
+frontend/src/features/adsengine/ExperimentsScreen.jsx::ArmDailySeries
+frontend/src/features/adsengine/ExperimentsScreen.jsx::ExperimentsScreen
+frontend/src/features/adsengine/FlightPlanScreen.jsx::FlightPlanScreen
+frontend/src/features/adsengine/RulesScreen.jsx::RulesScreen
+frontend/src/features/adsengine/VeilleEtiquetage.jsx::VeilleEtiquetage
+frontend/src/features/crm/workspace/LeadWorkspace.jsx::relay
+frontend/src/features/crm/workspace/sections/SectionPipeline.jsx::onFriseChanged
+frontend/src/features/ged/GedDocumentInsights.jsx::GedDocumentInsights
+frontend/src/features/ged/GedNavigator.jsx::BulkOperationsDialog
+frontend/src/features/ged/GedNavigator.jsx::DocumentPreviewDialog
+frontend/src/features/ged/GedNavigator.jsx::loadCabinets
+frontend/src/features/ged/NumeriserPage.jsx::NumeriserPage
+frontend/src/features/ged/advanced/ApprobationPage.jsx::load
+frontend/src/features/ged/advanced/ChecklistPage.jsx::load
+frontend/src/features/ged/advanced/ChecklistPage.jsx::submit
+frontend/src/features/ged/advanced/CoffresPage.jsx::load
+frontend/src/features/ged/advanced/PlanificationsPage.jsx::PlanificationsPage
+frontend/src/features/ged/advanced/ReglesAclPage.jsx::ReglesAclPage
+frontend/src/features/ged/advanced/ReglesDossierPage.jsx::JournalDialog
+frontend/src/features/ged/advanced/ReglesDossierPage.jsx::ReglesDossierPage
+frontend/src/features/ged/advanced/RetentionPage.jsx::load
+frontend/src/features/offlinesync/SyncConflictsPanel.jsx::SyncConflictsPanel
+frontend/src/features/offlinesync/mobile/CommercialHome.jsx::CommercialHome
+frontend/src/features/offlinesync/mobile/EquipeTerrainHome.jsx::EquipeTerrainHome
+frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx::ObjetsPersonnalisesPage
+frontend/src/features/uxviews/useFavoris.js::useFavoris
+frontend/src/features/uxviews/useServerSavedViews.js::useServerSavedViews
+frontend/src/pages/admin/GouvernanceAccesPage.jsx::load
+frontend/src/pages/crm/ParrainagePage.jsx::load
+frontend/src/pages/crm/RelancesDuJourWidget.jsx::CadencesEchues
+frontend/src/pages/crm/SiteProfilePage.jsx::SiteProfilePage
+frontend/src/pages/crm/VisiteursPage.jsx::chargerEquipe
+frontend/src/pages/crm/comptes/PlanComptePage.jsx::PlanComptePage
+frontend/src/pages/installations/InstallationDetail.jsx::loadDossierReglementaire
+frontend/src/pages/installations/SuiviGpsPage.jsx::HistoriquePresenceTab
+frontend/src/pages/monitoring/ProductionPage.jsx::isStale
+frontend/src/pages/monitoring/ProductionPage.jsx::load
+frontend/src/pages/parametres/DonneesSection.jsx::load
+frontend/src/pages/parametres/ExportsPlanifiesSection.jsx::charger
+frontend/src/pages/parametres/KitsSection.jsx::load
+frontend/src/pages/parametres/KpiAlertesPage.jsx::reload
+frontend/src/pages/parametres/PlansCommissionPage.jsx::PlansCommissionPage
+frontend/src/pages/reporting/DashboardConfigPage.jsx::DashboardConfigPage
+frontend/src/pages/reporting/DashboardConfigPage.jsx::reload
+frontend/src/pages/reporting/DashboardSharePage.jsx::reload
+frontend/src/pages/reporting/DashboardSharePage.jsx::reloadInternes
+frontend/src/pages/sav/ProblemesPage.jsx::charger
+frontend/src/pages/sav/ProblemesPage.jsx::chargerTicketsLies
+frontend/src/pages/sav/SavAlarmesPage.jsx::SavAlarmesPage
+frontend/src/pages/sav/TicketsPage.jsx::loadInterventions
+frontend/src/pages/stock/BonsCommandeFournisseur.jsx::reloadSuggestions
+frontend/src/pages/stock/FacturesFournisseur.jsx::reload
+frontend/src/pages/stock/LotsEntrepot.jsx::LotsEntrepot
+frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx::PaiementsFournisseurLedgerPage
+frontend/src/pages/stock/ProduitForm.jsx::setFicheCiField
+frontend/src/pages/stock/wms/CasiersPage.jsx::CasiersPage
+frontend/src/pages/visites/PlanifierVisitePage.jsx::PlanifierVisitePage
+frontend/src/pages/visites/VisitesListPage.jsx::VisitesListPage
