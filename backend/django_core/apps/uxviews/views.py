@@ -322,7 +322,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         `{role: <id>}`). Un seul défaut actif par (company, ecran, role) : les
         autres vues du même rôle+écran perdent `est_defaut_role`."""
         instance = self.get_object()
-        role_id = request.data.get('role', instance.role_id)
+        # Corps JSON `null`/liste = pas de corps objet : repli sur le rôle de la
+        # vue (`request.data.get` levait AttributeError, 500).
+        corps = request.data if isinstance(request.data, dict) else {}
+        role_id = corps.get('role', instance.role_id)
         if not role_id:
             # ERR-ENF11-FUZZ-UXVIEWS : `role` est facultatif quand la vue en
             # porte déjà un — son absence ici est un refus d'ÉTAT (409).
