@@ -29,7 +29,7 @@ const outbox = vi.hoisted(() => {
         return { queued: false, data }
       } catch (err) {
         if (err?.response) throw err
-        const clientOpId = await enqueue(opType, payload, meta)
+        const clientOpId = await (meta === undefined ? enqueue(opType, payload) : enqueue(opType, payload, meta))
         return { queued: true, clientOpId }
       }
     },
@@ -108,7 +108,7 @@ describe('ConsommationPanel — WIR210 hors-ligne (F11)', () => {
       'Hors ligne — enregistré, synchro au retour du réseau.')
   })
 
-  it('échec réseau → l'op enfilée porte la version lue', async () => {
+  it("échec réseau → l'op enfilée porte la version lue", async () => {
     const user = userEvent.setup()
     api.getConsommation.mockResolvedValue({ data: {
       ...CONSOMMATION,

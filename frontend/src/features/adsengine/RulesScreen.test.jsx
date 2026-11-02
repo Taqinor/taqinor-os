@@ -215,7 +215,7 @@ describe('RulesScreen (ENG43)', () => {
     expect(screen.queryByTestId('ae-rule-threshold-input-fatigue')).toBeNull()
     // Vide : rien n'est envoyé, message.
     fireEvent.click(screen.getByTestId('ae-rule-threshold-save-stop_loss_cpl'))
-    expect(await screen.findByTestId('ae-rules-arm-err')).toHaveTextContent('rien n'a été envoyé')
+    expect(await screen.findByTestId('ae-rules-arm-err')).toHaveTextContent("rien n'a été envoyé")
     expect(mocks.policyUpdate).not.toHaveBeenCalled()
     mocks.policies.mockResolvedValue(page([
       exempleContrat('adsengine', 'regle_policy'),
