@@ -20,7 +20,7 @@ horloge vivante rend instable.
 import datetime
 
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from authentication.models import Company
 
@@ -121,6 +121,63 @@ class _Base(TestCase):
 
 class PoseDuReveilSaisonnierTests(_Base):
     slug = 'cad74-pose'
+
+    def _meta_du(self, jour, **kw):
+        lead = self._dormant(source=Lead.Source.META_LEAD_ADS, **kw)
+        Lead.objects.filter(pk=lead.pk).update(date_creation=datetime.datetime.combine(
+            jour, datetime.time(10, 0), tzinfo=horaires.CASABLANCA))
+        return lead
+
+    def test_seaux_reactivation_range_chaque_dormant_dans_un_seul_seau(self):
+        """CADV32. Mutant : permuter K3 et K6 dans la précédence ⇒ A tombe dans K6."""
+        from apps.crm.cadence_selectors import seaux_reactivation
+        from apps.crm.models import Client, LeadActivity
+        from apps.ventes.models import Devis
+
+        maintenant = datetime.datetime(2026, 11, 2, 10, 0, tzinfo=horaires.CASABLANCA)
+        # A est aussi un Meta d'avant l'ère : la précédence le garde en K3.
+        a = self._meta_du(datetime.date(2026, 6, 15), nom='A')
+        LeadActivity.objects.create(
+            company=self.company, lead=a, user=self.acteur,
+            kind=LeadActivity.Kind.APPEL, outcome='joint', body='Joint.')
+        client = Client.objects.create(company=self.company, nom='A')
+        Devis.objects.create(
+            company=self.company, reference='DEV-CADV32-1', client=client, lead=a,
+            statut=Devis.Statut.ENVOYE, taux_tva=20,
+            date_envoi=maintenant - datetime.timedelta(days=30))
+        b = self._meta_du(datetime.date(2026, 10, 12), nom='B')
+        c = self._meta_du(datetime.date(2026, 6, 15), nom='C', facture_hiver=2400)
+        d = self._meta_du(datetime.date(2026, 6, 15), nom='D', facture_hiver=600)
+        e = self._meta_du(datetime.date(2026, 6, 15), nom='E', ne_plus_contacter=True,
+                          facture_hiver=2400)
+        # Joint sans devis (K4), site (K7) : aucun de ces seaux ; une autre société non plus.
+        joint_sans_devis = self._meta_du(datetime.date(2026, 6, 15), nom='K4')
+        LeadActivity.objects.create(
+            company=self.company, lead=joint_sans_devis, user=self.acteur,
+            kind=LeadActivity.Kind.APPEL, outcome='joint', body='Joint.')
+        self._dormant(nom='K7')
+        autre = Company.objects.create(nom='Autre', slug='cad74-autre')
+        Lead.objects.create(company=autre, nom='Autre', stage=stages.COLD,
+                            source=Lead.Source.META_LEAD_ADS)
+
+        self.assertEqual(seaux_reactivation(self.company, maintenant),
+                         {'K3': [a.pk], 'K5': [b.pk], 'K6_p1': [c.pk], 'K6_p2': []})
+        with override_settings(REACTIVATION_K6_PALIER2=True):
+            seaux = seaux_reactivation(self.company, maintenant)
+        self.assertEqual(seaux, {'K3': [a.pk], 'K5': [b.pk], 'K6_p1': [c.pk], 'K6_p2': [d.pk]})
+        self.assertNotIn(e.pk, sum(seaux.values(), []))
+
+    def test_le_projet_a_trois_mois_est_au_palier_1(self):
+        from apps.crm.cadence_selectors import seaux_reactivation
+        lead = self._meta_du(datetime.date(2026, 6, 15), facture_hiver=600,
+                             project_timeline=Lead.ProjectTimeline.MOINS_3_MOIS)
+        self.assertEqual(seaux_reactivation(self.company)['K6_p1'], [lead.pk])
+
+    def test_motif_exclu_ne_depend_pas_de_la_saison(self):
+        from apps.crm.cadence_reveil_saison import motif_exclu_du_contact
+        self.assertIsNone(motif_exclu_du_contact(self._dormant()))
+        self.assertIn('Opposition', motif_exclu_du_contact(
+            self._dormant(ne_plus_contacter=True)))
 
     def test_un_dormant_hors_fenetre_recoit_reveil_b_une_fois(self):
         """Le cœur du Done."""

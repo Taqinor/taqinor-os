@@ -1542,11 +1542,11 @@ NOTIFICATIONS_TOUJOURS_IMMEDIATES = tuple(
         'lead_new,lead_assigned,lead_callback_requested').split(',')
     if cle.strip())
 
-# XRH33 — public careers/recruitment page, PARKED (OFF) by default (same
-# pattern as CONTACT_FORM_ENABLED). When off, both public rh careers
-# endpoints (list + apply) return 404. Founder decision to expose (or not)
-# recruitment publicly. Flip to '1' to re-enable.
+# XRH33 — public careers page, PARKED (OFF) by default (as CONTACT_FORM_ENABLED) :
+# when off, both public rh careers endpoints return 404. Flip to '1' to re-enable.
 CAREERS_ENABLED = os.environ.get('CAREERS_ENABLED', '0') == '1'
+# CADV32 (D-CADV-11) — K6 palier 2 : après le récépissé F211 et la relecture Meta.
+REACTIVATION_K6_PALIER2 = os.environ.get('REACTIVATION_K6_PALIER2', '0') == '1'
 
 # N101(b) — inscription self-service des installateurs pilotes, PARQUÉE (OFF)
 # par défaut (même patron que CONTACT_FORM_ENABLED). Éteint, l'endpoint public
