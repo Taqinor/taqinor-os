@@ -1342,26 +1342,34 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
         raise ValidationError(
             {'devis_ids': 'Tous les devis doivent appartenir au même client.'})
 
-    for d in devis_qs:
-        if d.statut != Devis.Statut.ACCEPTE:
-            raise ValidationError({
-                'devis_ids': (
-                    f'Le devis {d.reference} doit être accepté pour être '
-                    f'consolidé.'),
-            })
-        # ATOT2 — LA garde unique des quatre portes (``factures_du_devis`` :
-        # échéancier, complète, BC ET consolidée active) ; une consolidée
-        # ANNULÉE ne bloque plus (elle bloquait à vie via FactureSource).
-        try:
-            exiger_devis_facturable(d, 'consolidee')
-        except DevisDejaFacture as exc:
-            raise ValidationError({
-                'devis_ids': f'{d.reference} — {exc.motif}',
-            })
-
     client = devis_qs[0].client
 
     with transaction.atomic():
+        # AARG16 — comme les portes BC et complète : ventes verrouillées (par
+        # pk), gardes relues SOUS le verrou, brouillons de la vente retirés.
+        from .annulation_facture import retirer_brouillons_de_la_vente
+        from .facturation_vente import verrouiller_vente
+        for d in sorted(devis_qs, key=lambda devis: devis.pk):
+            verrouiller_vente(d)
+            d.refresh_from_db(fields=['statut'])
+            if d.statut != Devis.Statut.ACCEPTE:
+                raise ValidationError({
+                    'devis_ids': (
+                        f'Le devis {d.reference} doit être accepté pour être '
+                        f'consolidé.'),
+                })
+            # ATOT2 — LA garde unique des quatre portes (``factures_du_devis`` :
+            # échéancier, complète, BC ET consolidée active) ; une consolidée
+            # ANNULÉE ne bloque plus (elle bloquait à vie via FactureSource).
+            try:
+                exiger_devis_facturable(d, 'consolidee')
+            except DevisDejaFacture as exc:
+                raise ValidationError({
+                    'devis_ids': f'{d.reference} — {exc.motif}',
+                })
+            retirer_brouillons_de_la_vente(
+                d, user=user, motif='Remplacé par la facture consolidée')
+
         def _create(ref):
             return Facture.objects.create(
                 reference=ref, company=company, client=client,
