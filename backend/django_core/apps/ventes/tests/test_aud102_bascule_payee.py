@@ -41,6 +41,7 @@ class _CompteurPayee:
 
     def __init__(self):
         self.appels = []
+        self.users = {}
 
     def __enter__(self):
         facture_payee.connect(self._recevoir, weak=False)
@@ -52,6 +53,8 @@ class _CompteurPayee:
 
     def _recevoir(self, sender, instance, company, **kwargs):
         self.appels.append(instance.pk)
+        # APAR87 — l'acteur porté par le signal (l'encaisseur, pas le créateur).
+        self.users[instance.pk] = kwargs.get('user')
 
     def pour(self, facture):
         return [pk for pk in self.appels if pk == facture.pk]
@@ -63,6 +66,10 @@ class _BaseSolde(TestCase):
             slug='aud102-co', defaults={'nom': 'AUD102 Co'})
         self.user = User.objects.create_user(
             username=f'aud102_{_nxt()}', password='x',
+            role_legacy='responsable', company=self.company)
+        # APAR87 — l'encaisseur, distinct du créateur de la facture.
+        self.encaisseur = User.objects.create_user(
+            username=f'aud102_enc_{_nxt()}', password='x',
             role_legacy='responsable', company=self.company)
         self.client_obj = Client.objects.create(
             company=self.company, nom='AUD102', prenom='Client',
@@ -117,11 +124,12 @@ class TestNeufCheminsEmettentFacturePayee(_BaseSolde):
             affecter_encaissement_groupe(
                 company=self.company, client=self.client_obj,
                 montant=Decimal('1200'), mode='virement',
-                date_paiement=timezone.localdate(), user=self.user,
+                date_paiement=timezone.localdate(), user=self.encaisseur,
                 factures=[facture])
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.PAYEE)
         self.assertEqual(len(compteur.pour(facture)), 1)
+        self.assertEqual(compteur.users[facture.pk], self.encaisseur)
 
     def test_p5_ventilation_avance(self):
         from apps.ventes.domain.encaissements import (
@@ -135,10 +143,11 @@ class TestNeufCheminsEmettentFacturePayee(_BaseSolde):
             mode='virement', created_by=self.user)
         with _CompteurPayee() as compteur:
             ventiler_avance(paiement=avance, facture=facture,
-                            montant=Decimal('1200'), user=self.user)
+                            montant=Decimal('1200'), user=self.encaisseur)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.PAYEE)
         self.assertEqual(len(compteur.pour(facture)), 1)
+        self.assertEqual(compteur.users[facture.pk], self.encaisseur)
 
     def test_p6_retenue_a_la_source(self):
         from apps.ventes.domain.encaissements import (
@@ -153,10 +162,11 @@ class TestNeufCheminsEmettentFacturePayee(_BaseSolde):
                 # AFAC30 — la RAS-TVA porte sur la TVA (200 sur 1 200 TTC) :
                 # 1 000 payés + RAS-TVA 100 % = 200 soldent la facture.
                 type_retenue='ras_tva', taux=Decimal('100'),
-                created_by=self.user)
+                created_by=self.encaisseur)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.PAYEE)
         self.assertEqual(len(compteur.pour(facture)), 1)
+        self.assertEqual(compteur.users[facture.pk], self.encaisseur)
 
     def test_p7_abandon_de_solde(self):
         from apps.ventes.domain.recouvrement import abandonner_solde_facture

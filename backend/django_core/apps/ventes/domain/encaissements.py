@@ -595,7 +595,7 @@ def affecter_encaissement_groupe(
         for facture in locked:
             facture.refresh_from_db()
             marquer_facture_soldee(
-                facture, montant=facture.total_ttc,
+                facture, montant=facture.total_ttc, user=user,
                 source='encaissement_groupe')
 
     return paiements
@@ -1079,7 +1079,8 @@ def ventiler_avance(*, paiement, facture, montant, user=None):
         # AUD102 (P5) — la ventilation d'une avance soldait en silence : elle
         # passe par LE service unique (donc `facture_payee` + lettrage).
         marquer_facture_soldee(
-            locked_facture, montant=montant, source='ventilation_avance')
+            locked_facture, montant=montant, user=user,
+            source='ventilation_avance')
 
         from .. import activity
         activity.log_facture_avance_affectee(
@@ -1190,7 +1191,8 @@ def enregistrer_paiement_avec_retenue(
         # le reste dû RÉEL (paiements + RAS + avoirs + notes de débit) : une
         # RAS ne solde plus ce qu'elle ne couvre pas.
         marquer_facture_soldee(
-            locked, montant=montant, source='retenue_source')
+            locked, montant=montant, user=created_by,
+            source='retenue_source')
 
     return paiement, retenue
 
