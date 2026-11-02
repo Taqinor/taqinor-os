@@ -145,6 +145,59 @@ def _preparations_whatsapp_du_jour(company, user):
         body__startswith=TRACE_WHATSAPP_PREPARE).count()
 
 
+def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
+    """FG33 — la file de click-through WhatsApp, ordonnée : gardes ACRM15,
+    plafond et trace CADV10. Sortie de ``apply_bulk_action`` (C20)."""
+    from apps.ventes.utils.whatsapp import build_wa_url
+    template_id = params.get('template_id')
+    body_tpl = params.get('body') or ''
+    tpl = None
+    if template_id:
+        try:
+            from .models import MessageTemplate
+            tpl = MessageTemplate.objects.filter(
+                company=company, id=template_id).first()
+        except (ValueError, TypeError):  # id illisible : corps direct
+            tpl = None
+    queue = []
+    deja = _preparations_whatsapp_du_jour(company, user)
+    for lead in leads:
+        # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
+        # ``message_pour_etape`` / ``_lead_relancable``) : une personne
+        # qui a demandé à ne plus être contactée, un lead perdu ou
+        # archivé ne reçoit AUCUN message — sortis avec leur motif.
+        if getattr(lead, 'ne_plus_contacter', False):
+            skip(lead, 'ne plus contacter')
+            continue
+        if getattr(lead, 'perdu', False) or getattr(
+                lead, 'is_archived', False):
+            skip(lead, 'perdu/archivé')
+            continue
+        phone = lead.whatsapp or lead.telephone
+        if not phone:
+            continue
+        if deja + len(queue) >= PREPARER_WHATSAPP_PLAFOND_PAR_JOUR:
+            skip(lead, 'plafond journalier atteint '
+                       f'({PREPARER_WHATSAPP_PLAFOND_PAR_JOUR})')
+            continue
+        corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
+        wa_url = build_wa_url(phone, corps)
+        queue.append({
+            'lead_id': lead.id,
+            'nom': str(lead),
+            'phone': phone,
+            'wa_url': wa_url,
+        })
+        activity.log_bulk_note(lead, user, TRACE_WHATSAPP_PREPARE)
+    return {
+        'ok': True,
+        'op': 'prepare_whatsapp',
+        'queue': queue,
+        'count': len(queue),
+        'skipped': skipped,
+    }
+
+
 def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     """Applique une action en masse à une sélection de leads de la société.
 
@@ -472,54 +525,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
 
     # FG33 — Résultat spécial : file de click-through WhatsApp ordonné
     if op == 'prepare_whatsapp':
-        from apps.ventes.utils.whatsapp import build_wa_url
-        template_id = params.get('template_id')
-        body_tpl = params.get('body') or ''
-        tpl = None
-        if template_id:
-            try:
-                from .models import MessageTemplate
-                tpl = MessageTemplate.objects.filter(
-                    company=company, id=template_id).first()
-            except (ValueError, TypeError):  # id illisible : corps direct
-                tpl = None
-        queue = []
-        deja = _preparations_whatsapp_du_jour(company, user)
-        for lead in leads:
-            # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
-            # ``message_pour_etape`` / ``_lead_relancable``) : une personne
-            # qui a demandé à ne plus être contactée, un lead perdu ou
-            # archivé ne reçoit AUCUN message — sortis avec leur motif.
-            if getattr(lead, 'ne_plus_contacter', False):
-                skip(lead, 'ne plus contacter')
-                continue
-            if getattr(lead, 'perdu', False) or getattr(
-                    lead, 'is_archived', False):
-                skip(lead, 'perdu/archivé')
-                continue
-            phone = lead.whatsapp or lead.telephone
-            if not phone:
-                continue
-            if deja + len(queue) >= PREPARER_WHATSAPP_PLAFOND_PAR_JOUR:
-                skip(lead, 'plafond journalier atteint '
-                           f'({PREPARER_WHATSAPP_PLAFOND_PAR_JOUR})')
-                continue
-            corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
-            wa_url = build_wa_url(phone, corps)
-            queue.append({
-                'lead_id': lead.id,
-                'nom': str(lead),
-                'phone': phone,
-                'wa_url': wa_url,
-            })
-            activity.log_bulk_note(lead, user, TRACE_WHATSAPP_PREPARE)
-        return {
-            'ok': True,
-            'op': 'prepare_whatsapp',
-            'queue': queue,
-            'count': len(queue),
-            'skipped': skipped,
-        }
+        return _file_whatsapp_en_masse(company, user, leads, params, skip, skipped)
 
     return {
         'ok': True,
