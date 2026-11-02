@@ -3389,13 +3389,14 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
         """XGED2 — Annule une demande de signature (action ÉMETTEUR, tracée).
 
         `POST …/demandes-signature/<id>/annuler/`. Une demande déjà `signe`/
-        `refuse` ne peut plus être annulée (400). Écriture : responsable/admin."""
+        `refuse` ne peut plus être annulée (409, refus d'état — ENF11).
+        Écriture : responsable/admin."""
         demande = self.get_object()  # borné à la société (TenantMixin)
         try:
             demande = services.annuler_demande(demande, user=request.user)
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(
             DemandeSignatureDocumentSerializer(
                 demande, context={'request': request}).data,
