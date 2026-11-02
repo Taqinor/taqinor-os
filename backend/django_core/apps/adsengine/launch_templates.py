@@ -54,6 +54,9 @@ LAUNCH_TEMPLATES = {
             "Bonjour, je suis intéressé par un projet solaire résidentiel à "
             "{ville}. Quelle est votre facture mensuelle d'électricité ?",
         ],
+        # CADV43 : le message pré-rempli de la pub CTWA (rendu depuis
+        # ``qualifying_questions[0]``, jamais copié) ouvre la fenêtre de 24 h.
+        'ctwa_welcome': True,
         'creative_slots': {SLOT_REEL: 1, SLOT_STATIC: 1, SLOT_EXPLAINER: 1},
     },
     'agri_pompage': {
@@ -180,7 +183,7 @@ def dry_run_launch(template_key, *, city, launch_date, variant, company=None,
             'placements': tpl['placements'],
             'status': PAUSED_STATUS,  # règle #3
         })
-    return {
+    result = {
         'template': template_key,
         'seasonal': tpl['seasonal'],
         'campaign': {
@@ -200,3 +203,7 @@ def dry_run_launch(template_key, *, city, launch_date, variant, company=None,
         'creative_enhancements': tpl['creative_enhancements'],
         'qualifying_questions': list(tpl['qualifying_questions']),
     }
+    if tpl.get('ctwa_welcome'):  # CADV43 — gabarits CTWA qui le portent
+        result['welcome_message'] = tpl['qualifying_questions'][0].format(
+            ville=city)
+    return result

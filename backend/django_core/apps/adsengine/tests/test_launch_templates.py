@@ -119,6 +119,23 @@ class DryRunTests(TestCase):
         self.assertEqual(len(result['adsets']), 3)
         self.assertEqual(result['utm']['utm_campaign'], 'resid_ctwa_casablanca_a')
 
+    def test_resid_ctwa_porte_le_message_d_accueil_et_reste_paused(self):
+        result = launch_templates.dry_run_launch(
+            'resid_ctwa', city='Casablanca',
+            launch_date=datetime.date(2026, 11, 23), variant='A',
+            total_daily_budget_mad=100)
+        msg = result['welcome_message']
+        self.assertIn('Casablanca', msg)
+        self.assertIn('facture mensuelle', msg)
+        self.assertFalse(any(c.isdigit() for c in msg))
+        self.assertEqual(result['campaign']['status'], 'PAUSED')
+        for adset in result['adsets']:
+            self.assertEqual(adset['status'], 'PAUSED')
+        b2b = launch_templates.dry_run_launch(
+            'b2b_leadform', city='Casablanca',
+            launch_date=datetime.date(2026, 11, 23), variant='A')
+        self.assertNotIn('welcome_message', b2b)
+
     def test_dry_run_budgets_under_ceiling(self):
         result = launch_templates.dry_run_launch(
             'resid_ctwa', city='Rabat',
