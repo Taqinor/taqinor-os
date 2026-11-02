@@ -2965,6 +2965,39 @@ decisions:
     date: "2026-11-01"
     source: "Reda, question interactive, contre-visite vérifie ATOT"
     taches: [ATOT44, ATOT45]
+  - id: D-ASAV-VER2-1
+    question: "Quels tickets consomment le quota inclus (déplacements / visites) d'un contrat de maintenance ?"
+    options:
+      - cle: couverts_seuls
+        texte: "Seuls les tickets que le contrat couvre : ouverts à partir de date_debut, sur un équipement du registre du contrat, pas déjà couverts par la garantie constructeur"
+      - cle: tous_depuis_debut
+        texte: "Tous les tickets depuis date_debut (garantie et hors registre compris)"
+    reponse: couverts_seuls
+    date: "2026-11-02"
+    source: "Reda, question interactive, contre-visite vérifie ASAV du 01/11/2026"
+    taches: [ASAV122]
+  - id: D-ASAV-VER2-2
+    question: "Le quota d'un contrat se remet-il à zéro chaque année civile ou à l'anniversaire du contrat ?"
+    options:
+      - cle: annee_civile
+        texte: "Année civile (1er janvier - 31 décembre), bornée par date_debut l'année de départ"
+      - cle: annee_contrat
+        texte: "Année de contrat (fenêtres de 12 mois depuis date_debut)"
+    reponse: annee_civile
+    date: "2026-11-02"
+    source: "Reda, question interactive, contre-visite vérifie ASAV du 01/11/2026"
+    taches: [ASAV122]
+  - id: D-ASAV-VER2-3
+    question: "Corriger l'angle mort de la garde d'acceptation fait apparaître ≈ 134 tâches déjà cochées qui doivent une preuve en direct : regel unique de cette dette ?"
+    options:
+      - cle: regel_unique
+        texte: "Oui : les ids entrent une fois dans la dette gelée de chaque groupe (--reamorcer), qui ne fait ensuite que rétrécir"
+      - cle: preuves_dabord
+        texte: "Non : preuves en direct d'abord, garde bloquante avant le correctif"
+    reponse: regel_unique
+    date: "2026-11-02"
+    source: "Reda, question interactive, contre-visite vérifie ASAV du 01/11/2026"
+    taches: [ASAV120]
   - id: D-ACAL-VER2-1
     question: "Un calepinage enregistré puis ombré (horizon, ombre, matrice) garde une production stockée jamais dératée, que l'atelier réémet à la réouverture : quelle règle ?"
     options:
