@@ -28,16 +28,25 @@ ANCIENS_NOUVEAUX = (
 )
 
 
+def _remplacer(FollowupLevel, de, vers, lot=500):
+    """Remplace le message exact ``de`` par lots de ``lot`` lignes (YOPSB4)."""
+    ids = list(FollowupLevel.objects.filter(message=de)
+               .values_list('pk', flat=True).iterator(chunk_size=lot))
+    for debut in range(0, len(ids), lot):
+        FollowupLevel.objects.filter(pk__in=ids[debut:debut + lot]).update(
+            message=vers)
+
+
 def reecrire(apps, schema_editor):
     FollowupLevel = apps.get_model('facturation', 'FollowupLevel')
     for ancien, nouveau in ANCIENS_NOUVEAUX:
-        FollowupLevel.objects.filter(message=ancien).update(message=nouveau)
+        _remplacer(FollowupLevel, ancien, nouveau)
 
 
 def retablir(apps, schema_editor):
     FollowupLevel = apps.get_model('facturation', 'FollowupLevel')
     for ancien, nouveau in ANCIENS_NOUVEAUX:
-        FollowupLevel.objects.filter(message=nouveau).update(message=ancien)
+        _remplacer(FollowupLevel, nouveau, ancien)
 
 
 class Migration(migrations.Migration):
