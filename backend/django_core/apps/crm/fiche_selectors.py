@@ -794,6 +794,26 @@ def leads_signes_sans_devis_accepte(company):
         .values('id', 'stage', 'source'))
 
 
+def leads_froid_sans_raison(company):
+    """CADV75 — leads au Froid (``stages.COLD``, natifs, vivants) SANS
+    ``parc_raison`` : un lead parqué sans raison est une violation (conception
+    v4 §6.2). Ni perdu (sa raison est le motif), ni archivé, ni « ne plus
+    contacter » (sa raison est le drapeau). Liste de dicts ``{'id', 'stage',
+    'source'}`` — aucune donnée personnelle. Scopé à ``company``."""
+    from django.db.models import Q
+
+    from . import stages
+    from .models import Lead
+    return list(
+        Lead.objects
+        .filter(company=company, stage=stages.COLD, perdu=False,
+                is_archived=False, ne_plus_contacter=False)
+        .filter(Q(parc_raison__isnull=True) | Q(parc_raison=''))
+        .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
+        .order_by('pk')
+        .values('id', 'stage', 'source'))
+
+
 def champs_devis_auto_manquants(lead):
     """AGR124 — ``[{champ, label}]`` des groupes « devis automatique prêt »
     sans aucun champ rempli (``devis_auto.champs_manquants_detail``, AGR403) :

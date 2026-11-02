@@ -43,13 +43,13 @@ with no rate column at all — mono-MAD in practice.
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2331` | quota_total |
 | crm | Lead | `apps/crm/models.py:223` | montant_estime, tva_recuperable |
-| crm | PointContact | `apps/crm/models.py:2344` | cout |
+| crm | PointContact | `apps/crm/models.py:2376` | cout |
 | crm | GesteRelanceAppareil | `apps/crm/models_cadence.py:214` | total |
 | crm | CommissionPartenaire | `apps/crm/models_clients.py:277` | base_ht, montant |
 | crm | DealEnregistre | `apps/crm/models_clients.py:555` | montant_commission_du, montant_commission_estime |
 | crm | Client | `apps/crm/models_clients.py:790` | tva_recuperable |
-| crm | ForecastEntry | `apps/crm/models_clients.py:1535` | montant_prevu |
-| crm | ForecastSnapshot | `apps/crm/models_clients.py:1596` | montant_total |
+| crm | ForecastEntry | `apps/crm/models_clients.py:1577` | montant_prevu |
+| crm | ForecastSnapshot | `apps/crm/models_clients.py:1638` | montant_total |
 | crm | LeadPompageMixin | `apps/crm/models_lead_pompage.py:37` | carburant_prix_declare_le, carburant_prix_unitaire_mad |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
 | facturation | LigneFacture | `apps/facturation/models.py:814` | prix_unitaire, remise, taux_tva |

@@ -1,6 +1,16 @@
 {
  "appel": "GET relance-etapes controle",
  "corps": {
+  "cohorte_hebdo": [
+   {
+    "acceptes": 0,
+    "crees": 3,
+    "devis_21j": 0,
+    "joints_14j": 0,
+    "premier_contact_median_h": null,
+    "semaine": "2026-09-28"
+   }
+  ],
   "commerciaux": [
    {
     "id": "user#2",
@@ -123,10 +133,13 @@
     "en_retard": 0,
     "en_retard_actuel": 0,
     "id": "user#2",
+    "leads_travailles": 2,
     "nom": "golden-http-comm",
     "ouvert": 0,
     "reportees": 0,
-    "sautees": 0
+    "sautees": 0,
+    "touches_faites": 0,
+    "touches_par_lead": null
    },
    {
     "a_temps": 0,
@@ -136,10 +149,13 @@
     "en_retard": 0,
     "en_retard_actuel": 0,
     "id": "user#1",
+    "leads_travailles": 1,
     "nom": "golden-http-resp",
     "ouvert": 0,
     "reportees": 0,
-    "sautees": 0
+    "sautees": 0,
+    "touches_faites": 0,
+    "touches_par_lead": null
    }
   ],
   "par_type": [],

@@ -229,5 +229,6 @@ def attribuer_leads_echus_task():
     d'équipe n'a pas décidé dans le délai (minutes ouvrées) part au membre
     proposé (``apps/crm/dispatch.py``). Planifiée dans
     ``erp_agentique/celery.py``."""
-    from apps.crm.dispatch import attribuer_echeances
-    return {'attribues': attribuer_echeances()}
+    from apps.crm.dispatch import attribuer_echeances, escalader_file
+    return {'attribues': attribuer_echeances(),
+            'paliers_file': escalader_file()}

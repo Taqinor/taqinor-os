@@ -1478,3 +1478,33 @@ def trier_file_du_jour(qs):
         F('lead__score').desc(nulls_last=True),
         'ordre',
     )
+
+
+def leads_reveil_sans_historique(company):
+    """CADV3 — leads de la société dont des touches ``reveil`` sont OUVERTES
+    alors qu'ils n'ont JAMAIS été joints (aucune issue ``ISSUES_CLIENT_JOINT``
+    au chatter) NI chiffrés (aucun devis sorti du brouillon).
+
+    Un réveil dit « on se reparle » : sans conversation ni proposition passée,
+    il n'a rien à réveiller (157 messages → 0 conversation, constat v4 §4.5).
+    Lecture seule, en lot : une requête pour les touches, une pour les joints,
+    une pour les devis. Renvoie un ``QuerySet`` de ``Lead`` trié par id."""
+    from apps.ventes.selectors import leads_ayant_recu_un_devis
+
+    from .cadence_plan import ISSUES_CLIENT_JOINT
+    from .models import Lead, LeadActivity, RelanceEtape
+
+    avec_reveil = set(RelanceEtape.objects.filter(
+        company=company, cadence='reveil',
+        statut=RelanceEtape.Statut.A_FAIRE,
+    ).values_list('lead_id', flat=True))
+    if not avec_reveil:
+        return Lead.objects.none()
+    joints = set(LeadActivity.objects.filter(
+        company=company, lead_id__in=avec_reveil,
+        outcome__in=ISSUES_CLIENT_JOINT,
+    ).values_list('lead_id', flat=True))
+    chiffres = leads_ayant_recu_un_devis(company, list(avec_reveil))
+    return Lead.objects.filter(
+        company=company, pk__in=avec_reveil - joints - chiffres,
+    ).order_by('pk')

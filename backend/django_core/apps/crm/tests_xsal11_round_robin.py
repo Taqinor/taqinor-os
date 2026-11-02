@@ -327,6 +327,107 @@ class AttributionParResponsableTests(TestCase):
         second = self._nouveau().attribution_en_attente.proposee
         self.assertEqual({premier, second}, {self.a, self.b})
 
+    def test_la_file_a_prendre_se_prend_une_seule_fois(self):
+        # CADV31 (D-CADV-7) : équipe en file « À prendre » (sans confirmation) —
+        # un nouveau lead résidentiel attend, tout membre actif se l'attribue,
+        # le second reçoit 409 ; un membre ne s'attribue qu'à lui-même ; le
+        # lead industriel va au responsable pro sans entrer dans la file.
+        from rest_framework.exceptions import PermissionDenied
+        from apps.crm import dispatch
+        from apps.crm.models import LeadActivity
+        from apps.crm.models_clients import AttributionEnAttente
+        from core.conflit_etat import ConflitEtat
+        self.equipe.confirmation_responsable = False
+        self.equipe.file_a_prendre = True
+        self.equipe.save(update_fields=['confirmation_responsable',
+                                        'file_a_prendre'])
+        pro = make_commercial(self.company, 'disp_pro', self.role)
+        profil = CompanyProfile.objects.get(company=self.company)
+        profil.responsable_leads_pro = pro
+        profil.save()
+        lead = self._nouveau_a(self._a(29, 10), type_installation='residentiel')
+        industriel = self._nouveau_a(self._a(29, 10),
+                                     type_installation='industriel')
+        industriel.refresh_from_db()
+        self.assertEqual(industriel.owner, pro)
+        self.assertFalse(
+            AttributionEnAttente.objects.filter(lead=industriel).exists())
+        self.assertTrue(AttributionEnAttente.objects.filter(lead=lead).exists())
+        # La file est listée aux trois membres (responsable compris).
+        for user in (self.chef, self.a, self.b):
+            fichier = dispatch.file_attente(user)
+            self.assertEqual(fichier['en_attente'], 1, user.username)
+            self.assertTrue(fichier['equipe']['a_prendre'])
+        # Un membre ne s'attribue qu'à lui-même.
+        with self.assertRaises(PermissionDenied):
+            dispatch.attribuer(self.a, lead.pk, self.b.pk)
+        dispatch.attribuer(self.a, lead.pk, self.a.pk)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.a)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, body=f'Pris par {dispatch.nom_affiche(self.a)}').exists())
+        with self.assertRaises(ConflitEtat):
+            dispatch.attribuer(self.b, lead.pk, self.b.pk)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.a)
+
+    def test_les_paliers_de_la_file_notifient_une_fois_et_attribuent_a_t30(self):
+        # CADV115 : lead résidentiel arrivé à 10:02 jamais pris — T+5 prévient
+        # l'équipe, T+15 la direction (PREMIER_CONTACT_DEPASSE), T+30 attribue
+        # au membre le moins chargé ; un passage répété n'envoie rien.
+        from unittest import mock
+        from apps.crm import dispatch
+        from apps.crm.models import LeadActivity
+        from apps.notifications.types_evenements import EventType
+        self.equipe.confirmation_responsable = False
+        self.equipe.file_a_prendre = True
+        self.equipe.save(update_fields=['confirmation_responsable',
+                                        'file_a_prendre'])
+        reda = User.objects.create_user(
+            username='disp_reda', password='x', company=self.company,
+            role_legacy='admin')
+        Lead.objects.create(company=self.company, nom='Charge', owner=self.a)
+        lead = self._nouveau_a(self._a(29, 10, 2),
+                               type_installation='residentiel')
+        attente = lead.attribution_en_attente
+        self.assertEqual(attente.echeance, self._a(29, 10, 32))
+
+        def passage(h, mi):
+            with mock.patch('apps.notifications.services.notify_many',
+                            return_value=[]) as envoi:
+                n = dispatch.escalader_file(self._a(29, h, mi))
+            return n, envoi
+
+        n, envoi = passage(10, 6)  # T+4
+        self.assertEqual((n, envoi.call_count), (0, 0))
+        n, envoi = passage(10, 7)  # T+5 : l'équipe
+        self.assertEqual((n, envoi.call_count), (1, 1))
+        destinataires, evenement = envoi.call_args.args[:2]
+        self.assertEqual({u.pk for u in destinataires},
+                         {self.chef.pk, self.a.pk, self.b.pk})
+        self.assertEqual(evenement, EventType.LEAD_NON_CONTACTE)
+        n, envoi = passage(10, 8)  # passage répété : rien
+        self.assertEqual((n, envoi.call_count), (0, 0))
+        n, envoi = passage(10, 17)  # T+15 : la direction
+        self.assertEqual((n, envoi.call_count), (1, 1))
+        destinataires, evenement = envoi.call_args.args[:2]
+        self.assertIn(reda.pk, {u.pk for u in destinataires})
+        self.assertEqual(evenement, EventType.PREMIER_CONTACT_DEPASSE)
+        n, envoi = passage(10, 18)
+        self.assertEqual((n, envoi.call_count), (0, 0))
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.chef)  # toujours à prendre
+        n, envoi = passage(10, 32)  # T+30 : le moins chargé (b, a a un lead)
+        self.assertEqual(n, 1)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.b)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=lead, body__contains='délai de prise dépassé').count(), 1)
+        n, envoi = passage(10, 40)
+        self.assertEqual((n, envoi.call_count), (0, 0))
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=lead, body__startswith='auto — file À prendre').count(), 3)
+
     def test_on_sans_responsable_actif_rotation_directe(self):
         self.chef.is_active = False
         self.chef.save(update_fields=['is_active'])

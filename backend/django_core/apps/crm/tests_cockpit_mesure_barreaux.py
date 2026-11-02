@@ -159,6 +159,80 @@ class TauxDeJointTests(_Base):
         self.assertEqual(
             set(ligne), set(CONTRAT['exemple']['taux_joint_par_creneau'][0]))
 
+    # ── CADV110 — la cohorte hebdomadaire préenregistrée ──
+    def _semaine(self, lundi, n, joints):
+        """``n`` leads créés le lundi ``lundi`` (date), dont ``joints`` sont
+        joints le lendemain (issue ``joint``)."""
+        creation = datetime.datetime.combine(
+            lundi, datetime.time(9), tzinfo=horaires.CASABLANCA)
+        for rang in range(n):
+            lead = Lead.objects.create(
+                company=self.company, nom=f'Cohorte {lundi} {rang}',
+                stage=stages.NEW, owner=self.acteur,
+                telephone=f'+2126{next(_seq):08d}')
+            Lead.objects.filter(pk=lead.pk).update(date_creation=creation)
+            if rang < joints:
+                activite = LeadActivity.objects.create(
+                    company=self.company, lead=lead, user=self.acteur,
+                    kind=LeadActivity.Kind.APPEL, outcome='joint')
+                LeadActivity.objects.filter(pk=activite.pk).update(
+                    created_at=creation + datetime.timedelta(days=1))
+
+    def test_cohorte_hebdomadaire_cusum_signale_apres_la_base_pas_avant(self):
+        """12 semaines de base à 40 % joints ≤ 14 j, puis trois semaines à
+        90 % : aucun signal en base (CUSUM nul), pas encore au rang 13, signal
+        au rang 14 ; le repère du registre tombe sur sa semaine."""
+        from apps.crm.mesure_cadence import (
+            COHORTE_CUSUM_H, cohorte_hebdomadaire)
+        from apps.crm.models_cadence import ExperienceCadence
+
+        premier = datetime.date(2026, 5, 25)             # un lundi
+        for rang in range(12):
+            self._semaine(premier + datetime.timedelta(weeks=rang), 10, 4)
+        for rang in range(12, 15):                       # jusqu'au 31/08
+            self._semaine(premier + datetime.timedelta(weeks=rang), 10, 9)
+        experience = ExperienceCadence.objects.create(
+            company=self.company, date=datetime.date(2026, 8, 19),
+            changement='gabarit contact v4', metrique='joint ≤ 14 j')
+        serie = cohorte_hebdomadaire(self.company)
+        self.assertEqual(len(serie), 15, [s['semaine'] for s in serie])
+        self.assertEqual(serie[0]['semaine'], '2026-05-25')
+        self.assertEqual(serie[-1]['semaine'], '2026-08-31')
+        self.assertEqual(
+            set(serie[0]),
+            set(CONTRAT['exemple']['cohorte'][0]))
+        self.assertTrue(all(s['limite_h'] == COHORTE_CUSUM_H > 0
+                            for s in serie))
+        self.assertFalse(any(s['signal'] for s in serie[:13]), serie[:13])
+        self.assertTrue(serie[13]['signal'], serie[13])
+        self.assertEqual(serie[0]['joint_14j_pct'], 40.0)
+        self.assertEqual(serie[14]['joint_14j_pct'], 90.0)
+        self.assertEqual([s['controle'] for s in serie[:12]],
+                         [False] * 3 + [True] + [False] * 3 + [True]
+                         + [False] * 3 + [True])
+        self.assertEqual(serie[12]['reperes'], [experience.pk])
+        self.assertEqual(serie[11]['reperes'], [])
+        self.assertEqual(cohorte_hebdomadaire(self.company), serie)
+
+    def test_cohorte_aucun_signal_avant_le_premier_point_de_controle(self):
+        """Une semaine 2 extrême ne signale pas : on lit à partir de la
+        semaine 4 seulement (cusum haut, signal faux)."""
+        from apps.crm.mesure_cadence import (
+            COHORTE_CUSUM_H, cohorte_hebdomadaire)
+
+        premier = datetime.date(2026, 7, 27)
+        for rang, joints in enumerate((0, 20, 0)):
+            self._semaine(premier + datetime.timedelta(weeks=rang), 20, joints)
+        serie = cohorte_hebdomadaire(self.company)
+        self.assertGreater(serie[1]['cusum'], COHORTE_CUSUM_H)
+        self.assertFalse(any(s['signal'] for s in serie))
+
+    def test_cohorte_sans_lead_mur_est_vide(self):
+        from apps.crm.mesure_cadence import cohorte_hebdomadaire
+        self.assertEqual(cohorte_hebdomadaire(self.company), [])
+        self._semaine(datetime.date(2026, 9, 28), 2, 1)   # semaine en cours
+        self.assertEqual(cohorte_hebdomadaire(self.company), [])
+
 
 class SignaturesParTouchesTests(_Base):
 

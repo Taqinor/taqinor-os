@@ -42,7 +42,7 @@ from rest_framework.views import APIView
 
 from authentication.permissions import (
     IsAdminOrResponsableTier,
-    IsAdminRole,
+    HasPermissionOrLegacy, IsAdminRole,
     IsAnyRole,
     IsResponsableOrAdmin,
 )
@@ -817,7 +817,7 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
         # le palier responsable/admin.
         if self.action in ('list', 'retrieve'):
             return [IsAuthenticated()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('encaisser')()]  # AARG11
 
     def perform_create(self, serializer):
         # company imposée côté serveur ; on initie aussitôt auprès du PSP.

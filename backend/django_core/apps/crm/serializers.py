@@ -1268,6 +1268,8 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             # AMET23 — marqueur de provenance : posé par ``update`` ci-dessous
             # (clés du corps) et par la migration de rattrapage, jamais du corps.
             'saisies_humaines',
+            # CADV21 — parcage : écrit par le seul ``parquer_lead``.
+            'parc_etat', 'parc_raison', 'parc_jusqu_au',
         ]
 
     def champs_a_marquer(self, validated_data):

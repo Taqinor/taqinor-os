@@ -31,7 +31,7 @@ from . import dispatch
 from . import schema_docs as sd
 from .champs_api import MAPPING_STRICT_COMPLET, BooleenStrict
 from .models import Lead
-from .models_clients import ObjectifCommercial, RegleAttribution
+from .models_clients import ObjectifCommercial, PermanenceEquipe, RegleAttribution
 from .params_requete import corps_objet, entier_param
 from .serializers import _CompanyScopedRelationsMixin
 
@@ -186,6 +186,37 @@ def dispatch_reglages(request, equipe_id):
     corps.is_valid(raise_exception=True)
     return Response(dispatch.modifier_reglages(
         request.user, equipe_id, corps.validated_data))
+
+
+class LignePermanenceSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    demi_journee = serializers.ChoiceField(
+        choices=PermanenceEquipe.DemiJournee.choices)
+    commercial = EntierStrict(allow_null=True)
+
+
+class PermanencesSerializer(serializers.Serializer):
+    """Corps de ``PUT crm/dispatch/permanences/<equipe_id>/`` : ``commercial``
+    nul retire la permanence de la demi-journée ; liste vide = rien à changer
+    (le schéma ne déclare pas de minimum)."""
+    permanences = LignePermanenceSerializer(many=True, max_length=200)
+
+
+@extend_schema(methods=['PUT'], request=PermanencesSerializer, responses=sd.OBJ)
+@extend_schema(methods=['GET'], responses=sd.OBJ)
+@api_view(['GET', 'PUT'])
+@parser_classes([JSONParser])
+@permission_classes([IsAnyRole])
+def dispatch_permanences(request, equipe_id):
+    """Rota de permanence par demi-journée (CADV104) : lecture tout rôle de la
+    société ; écriture ``dispatch.peut_regler`` (responsable, directeur
+    commercial, Direction/Admin). 404 hors société."""
+    if request.method == 'PUT':
+        corps = PermanencesSerializer(data=corps_objet(request))
+        corps.is_valid(raise_exception=True)
+        return Response(dispatch.definir_permanences(
+            request.user, equipe_id, corps.validated_data['permanences']))
+    return Response(dispatch.permanences_equipe(request.user, equipe_id))
 
 
 @extend_schema(request=sd.corps('CrmDispatchAttribuerRequest',

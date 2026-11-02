@@ -101,7 +101,10 @@
         "reportees": 5,
         "a_temps_pct": 83.3,
         "en_retard_actuel": 2,
-        "aujourdhui": 5
+        "aujourdhui": 5,
+        "touches_faites": 21,
+        "leads_travailles": 14,
+        "touches_par_lead": 1.5
       },
       {
         "id": 3,
@@ -114,7 +117,10 @@
         "reportees": 1,
         "a_temps_pct": 91.7,
         "en_retard_actuel": 0,
-        "aujourdhui": 2
+        "aujourdhui": 2,
+        "touches_faites": 21,
+        "leads_travailles": 14,
+        "touches_par_lead": 1.5
       }
     ],
     "exceptions": {
@@ -247,7 +253,17 @@
       "visites_planifiees": 3,
       "devis_envoyes": 4,
       "devis_acceptes": 1
-    }
+    },
+    "cohorte_hebdo": [
+      {
+        "semaine": "2026-10-12",
+        "crees": 3,
+        "premier_contact_median_h": 2.0,
+        "joints_14j": 1,
+        "devis_21j": 1,
+        "acceptes": 1
+      }
+    ]
   },
   "exemple_vide": {
     "periode_jours": 14,
@@ -308,7 +324,8 @@
       "visites_planifiees": 0,
       "devis_envoyes": 0,
       "devis_acceptes": 0
-    }
+    },
+    "cohorte_hebdo": []
   },
   "exemple_alerte": {
     "periode_jours": 14,
@@ -410,7 +427,10 @@
         "reportees": 5,
         "a_temps_pct": 83.3,
         "en_retard_actuel": 2,
-        "aujourdhui": 5
+        "aujourdhui": 5,
+        "touches_faites": 21,
+        "leads_travailles": 14,
+        "touches_par_lead": 1.5
       },
       {
         "id": 3,
@@ -423,7 +443,10 @@
         "reportees": 1,
         "a_temps_pct": 91.7,
         "en_retard_actuel": 0,
-        "aujourdhui": 2
+        "aujourdhui": 2,
+        "touches_faites": 21,
+        "leads_travailles": 14,
+        "touches_par_lead": 1.5
       }
     ],
     "exceptions": {
@@ -565,19 +588,30 @@
       "visites_planifiees": 3,
       "devis_envoyes": 4,
       "devis_acceptes": 1
-    }
+    },
+    "cohorte_hebdo": [
+      {
+        "semaine": "2026-10-12",
+        "crees": 3,
+        "premier_contact_median_h": 2.0,
+        "joints_14j": 1,
+        "devis_21j": 1,
+        "acceptes": 1
+      }
+    ]
   },
   "notes": {
     "retard": "LA règle, écrite une fois : un JOUR COMPTÉ est un jour ouvré de la société (`ouvre`) que n'excuse aucune absence déclarée du responsable du lead. Le retard d'une étape OUVERTE = le nombre de jours comptés STRICTEMENT après son échéance courante, aujourd'hui compris (échéance vendredi, lue lundi, samedi et dimanche non ouvrés → 1). À 0 l'étape n'est pas encore en retard : elle n'est ni dans `exceptions.en_retard`, ni dans `verdict`/`par_type` (non jugée, comme une étape d'aujourd'hui), et la case de son jour est `en_cours`. Une étape CLOSE reste jugée sur son jour : « à temps » = close au plus tard le jour de son échéance (ou excusée : née en retard, ou échue un jour d'absence déclarée), « en retard » = close après. L'ancienneté d'une TÂCHE (`ouverte_depuis_jours`) se compte de la même façon depuis le jour où elle a été posée.",
     "verdict": "`du` = `a_temps` + `en_retard` + `sautees` + `ouvert` : les étapes JUGÉES dont l'échéance tombe sur la période. `en_retard` = closes après leur jour ; `ouvert` = encore à faire ET en retard (au moins un jour compté). `reportees` = parmi ces étapes jugées (`du`), celles dont l'échéance a été repoussée au moins une fois par un geste humain (`nb_reports` ≥ 1) — un fait montré à côté du pourcentage, jamais retranché de lui. `a_temps_pct` = `a_temps` / `du` ; `precedent_a_temps_pct` = la même mesure sur la période de même longueur juste avant ; `null` dès qu'un dénominateur est nul.",
     "verdict.niveau": "`alerte` : au moins une étape ouverte en retard de `seuils.retard_alerte_jours` jours OUVRÉS ou plus, OU un dossier actif sorti du suivi (`sans_prochaine_etape`), OU un premier contact hors délai en attente. `attention` : au moins une étape en retard, OU une tâche en attente depuis `seuils.tache_attente_jours` jours OUVRÉS ou plus, OU une étape ouverte reportée `seuils.reports_min` fois ou plus (`exceptions.reports.plusieurs_fois` > 0 — un report unique est LISTÉ, il ne change pas le niveau). `ok` : rien de tout cela. `vide` : rien de dû sur la période et aucune liste d'exceptions non vide (« pas encore de données »). Le niveau se lit sur l'état ACTUEL (les exceptions), jamais sur le seul pourcentage.",
     "jours.etat": "`vert` : tout ce qui était dû ce jour-là a été traité ce jour-là. `orange` : plus rien d'ouvert, mais au moins une étape traitée en retard ou sautée. `rouge` : il reste au moins une étape ouverte EN RETARD de ce jour-là. `en_cours` : il reste des étapes ouvertes, mais aucune n'est encore en retard — aujourd'hui (la journée n'est pas finie), ou un jour passé depuis lequel aucun jour compté ne s'est écoulé (week-end, férié, absence). `vide` : rien n'était dû. Une case = le jour d'ÉCHÉANCE courante de l'étape ; ses compteurs (`du`, `ouvert`…) comptent TOUTES les étapes du jour, jugées ou non.",
-    "par_commercial": "Une ligne par entrée de `commerciaux` (mêmes `id` et `nom`) : la MESURE DU VERDICT (`du`, `a_temps`, `en_retard`, `sautees`, `ouvert`, `reportees`, `a_temps_pct` — mêmes étapes jugées, mêmes règles, mêmes absences excusées) restreinte aux étapes des dossiers de ce commercial, sur TOUTE la portée visible et quel que soit `owner` : `owner` ne filtre que le verdict, la frise et les exceptions, le tableau par commercial reste celui de tous les commerciaux (`segment`, lui, restreint la portée comme partout). Par ligne, `du` = `a_temps` + `en_retard` + `sautees` + `ouvert` ; `a_temps_pct` = `a_temps` / `du`, `null` dès que `du` vaut 0. `en_retard_actuel` = le nombre d'étapes OUVERTES de ce commercial en retard MAINTENANT d'au moins un jour compté, quelle que soit leur échéance ou la période (ce sont les lignes de `exceptions.en_retard` qui lui reviennent : sans `owner`, leur somme égale `exceptions.en_retard.total`). `aujourdhui` = le nombre d'étapes de ce commercial dues AUJOURD'HUI, tous statuts confondus (annulations du moteur exclues) — la charge du jour. Triées par `en_retard_actuel` décroissant, puis `ouvert` décroissant, puis `nom`, puis `id`. `par_commercial` vaut `[]` quand `commerciaux` est vide. Aucun score unique : des compteurs séparés.",
+    "par_commercial": "Une ligne par entrée de `commerciaux` (mêmes `id` et `nom`) : la MESURE DU VERDICT (`du`, `a_temps`, `en_retard`, `sautees`, `ouvert`, `reportees`, `a_temps_pct` — mêmes étapes jugées, mêmes règles, mêmes absences excusées) restreinte aux étapes des dossiers de ce commercial, sur TOUTE la portée visible et quel que soit `owner` : `owner` ne filtre que le verdict, la frise et les exceptions, le tableau par commercial reste celui de tous les commerciaux (`segment`, lui, restreint la portée comme partout). Par ligne, `du` = `a_temps` + `en_retard` + `sautees` + `ouvert` ; `a_temps_pct` = `a_temps` / `du`, `null` dès que `du` vaut 0. `en_retard_actuel` = le nombre d'étapes OUVERTES de ce commercial en retard MAINTENANT d'au moins un jour compté, quelle que soit leur échéance ou la période (ce sont les lignes de `exceptions.en_retard` qui lui reviennent : sans `owner`, leur somme égale `exceptions.en_retard.total`). `aujourdhui` = le nombre d'étapes de ce commercial dues AUJOURD'HUI, tous statuts confondus (annulations du moteur exclues) — la charge du jour. Triées par `en_retard_actuel` décroissant, puis `ouvert` décroissant, puis `nom`, puis `id`. `par_commercial` vaut `[]` quand `commerciaux` est vide. Aucun score unique : des compteurs séparés. CADV66 — `touches_faites` = étapes closes « fait » de ce commercial sur la période, `leads_travailles` = leads distincts portant une étape due sur la période, `touches_par_lead` = touches_faites ÷ leads_travailles (1 décimale), `null` sans touche faite — jamais 0 inventé ; lu sur les étapes déjà chargées, aucune requête de plus.",
     "exceptions": "État de l'INSTANT, indépendant de `jours` ; chaque liste est triée par ancienneté décroissante et plafonnée à 10 lignes (`total` dit le vrai nombre). `en_retard` : étapes ouvertes (touches ET tâches) en retard d'au moins un jour compté ; `jours_de_retard` = ce nombre de jours OUVRÉS (≥ 1), `due_date` = l'échéance (la date, elle, est calendaire). Toute ligne d'étape porte `nb_reports` (reports humains de cette étape, 0 si aucun). `taches_en_attente` : TÂCHES ouvertes posées depuis `seuils.tache_attente_jours` jours ouvrés ou plus, quelle que soit leur échéance (un report ne les en sort pas) ; `ouverte_depuis_jours` = jours OUVRÉS depuis la pose. `reports` : étapes OUVERTES dont l'échéance a été repoussée AU MOINS UNE FOIS par un geste humain — toutes, dès le premier report, l'origine la plus ancienne d'abord (`due_initial` = échéance d'origine, `due_date` = la nouvelle) : une étape en retard qu'on reporte quitte `en_retard` mais ne disparaît pas ; `plusieurs_fois` = combien d'entre elles l'ont été `seuils.reports_min` fois ou plus. `sans_prochaine_etape` : dossiers actifs (ni archivés, ni perdus, ni « ne plus contacter », ni Signé, ni Froid) qui ont DÉJÀ eu une étape et n'en ont plus aucune d'ouverte — les anciens leads jamais placés restent l'affaire de la carte « Anciens leads à placer ». `premier_contact_hors_delai` : leads « Nouveau » jamais contactés dont l'ATTENTE atteint le délai de la société (`lead_sla_hours`) ; l'attente se compte en heures d'HORLOGE, jours NON ouvrés retirés (un lead du vendredi 18 h, délai 24 h, est hors délai lundi 18 h — les absences personnelles ne retirent rien : un lead neuf doit être repris) ; `attend_depuis_heures` = cette attente. Ligne de `sans_prochaine_etape` (voir `exemple_alerte`) : `stage` = clé de `STAGES.py`, `derniere_etape_le` = jour de clôture de sa dernière étape, `depuis_jours` = jours CALENDAIRES écoulés depuis (un âge, pas un retard).",
     "par_type": "Sur la période ; l'ordre des lignes est celui de la table du parcours ; un type sans aucune étape jugée n'est pas servi ; `reportees` comme au verdict, par type. `reponses` : ce qui a été répondu sur les étapes closes « fait » — clé = l'issue enregistrée (`joint`, `non_joint`, `rappel`, `refuse`, `visite_acceptee`…), `sans_issue` pour un « Fait — passer à la suite » ; triées par effectif décroissant.",
     "premier_contact": "Leads CRÉÉS sur la période : `dans_le_delai` = premier contact humain posé avant le délai, sur la MÊME horloge que l'exception (heures d'horloge, jours non ouvrés retirés) ; `mediane_minutes` = médiane du délai création → premier contact en minutes OUVRÉES (le KPI « rappelé en moins de 5 min ouvrées » — jamais la moyenne : week-ends et fériés la faussent) ; `plus_longue_attente_heures` = le lead encore jamais contacté qui attend depuis le plus longtemps (horloge du délai), `null` s'il n'y en a pas.",
     "resultats": "Sur la période et la même portée : visites techniques planifiées, devis passés « envoyé », devis passés « accepté » — trois résultats à lire À CÔTÉ de l'effort, jamais un classement.",
     "erreurs": "400 `{\"erreurs\": {champ: message}}` — `jours` (hors 7/14/30), `owner` (non numérique) ; `owner` entier inconnu ou hors portée : 404, même corps. AGR542 — `segment` (valeur inconnue) : « Segment inconnu : « fellah ». Valeurs admises : residentiel, commercial, industriel, agricole, non_renseigne. »",
-    "segment": "AGR503/AGR542 — `?segment=` ∈ residentiel, commercial, industriel, agricole, non_renseigne ; absent = tous les segments (comportement actuel, inchangé). `segment` servi = texte ou null — ÉCHO du paramètre reçu (null quand le paramètre est absent). Le filtre porte sur `crm.Lead.type_installation` du lead de chaque étape (`non_renseigne` = vide) : toutes les listes et tous les compteurs se restreignent aux leads de ce segment ; TOUTES les règles de mesure restent IDENTIQUES (jours ouvrés, reports comptés, même page pour tous les rôles), aucun seuil propre à un segment. Exemple : GET /api/django/crm/relance-etapes/controle/?jours=14&owner=7&segment=agricole."
+    "segment": "AGR503/AGR542 — `?segment=` ∈ residentiel, commercial, industriel, agricole, non_renseigne ; absent = tous les segments (comportement actuel, inchangé). `segment` servi = texte ou null — ÉCHO du paramètre reçu (null quand le paramètre est absent). Le filtre porte sur `crm.Lead.type_installation` du lead de chaque étape (`non_renseigne` = vide) : toutes les listes et tous les compteurs se restreignent aux leads de ce segment ; TOUTES les règles de mesure restent IDENTIQUES (jours ouvrés, reports comptés, même page pour tous les rôles), aucun seuil propre à un segment. Exemple : GET /api/django/crm/relance-etapes/controle/?jours=14&owner=7&segment=agricole.",
+    "cohorte_hebdo": "CADV65 (conception v4 §7.7) — une ligne par semaine (lundi local, Africa/Casablanca) de CRÉATION des leads de la portée (archivés écartés, filtre `owner`/`segment` appliqué) sur la fenêtre `periode_jours`, du plus ancien au plus récent ; `[]` sans lead. `crees` = leads créés cette semaine ; `premier_contact_median_h` = médiane en heures entre la création et `first_contacted_at` des seuls leads contactés (`null` si aucun) ; `joints_14j` = leads dont une première issue jointe (`joint`, `interesse`, `visite_acceptee`) est tombée dans les 14 jours suivant la création ; `devis_21j` = leads dont le premier devis a été envoyé dans les 21 jours ; `acceptes` = leads portant au moins un devis accepté. Lecture seule, aucun seuil ni verdict. Producteur : `controle_suivi._cohorte_hebdo` ; affichage en vague 2 (2.13)."
   }
 }

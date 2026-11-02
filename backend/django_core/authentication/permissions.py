@@ -66,6 +66,13 @@ def _registre_modules():
     return _REGISTRE_MODULES
 
 
+#: AARG52 — apps de FONDATION sans codes au registre : seules à garder la règle
+#: historique en ÉCRITURE (liste qui ne fait que décroître ; ``portail`` retiré).
+APPS_SANS_MODULE = frozenset({
+    'authentication', 'core', 'dataimport', 'documents', 'monitoring',
+    'offlinesync', 'outillage', 'records', 'roles', 'semantic', 'uxviews'})
+
+
 def module_de_la_vue(view):
     """ASEC11 — module (clé de ``PERMISSION_MODULE``) dont relève ``view``.
 
@@ -104,7 +111,8 @@ class IsResponsableOrAdmin(BasePermission):
       * au moins un code de ce module (lecture comprise) pour une lecture.
     Toujours AU-DESSUS de ``is_responsable`` (jamais plus large qu'avant).
     Inchangés : superuser, palier administrateur, comptes hérités sans rôle
-    fin, vues sans module résolu (``module_de_la_vue`` → None)."""
+    fin, lectures sans module résolu ; écriture sans module résolu :
+    ``APPS_SANS_MODULE`` seulement (AARG52)."""
     def has_permission(self, request, view):
         user = request.user
         if not (user and user.is_authenticated and user.is_responsable):
@@ -116,7 +124,9 @@ class IsResponsableOrAdmin(BasePermission):
             return True
         module = module_de_la_vue(view)
         if module is None:
-            return True
+            parties = (type(view).__module__ or '').split('.')
+            app = parties[1] if parties[0] == 'apps' and len(parties) > 1 else parties[0]
+            return request.method in SAFE_METHODS or app in APPS_SANS_MODULE
         codes = codes_du_module(module) & set(user.role.permissions or [])
         if request.method in SAFE_METHODS:
             return bool(codes)

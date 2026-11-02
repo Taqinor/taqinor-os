@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.crm.models import Client, Lead
-from apps.crm.clients_identite import merge_clients
+from apps.crm.clients_identite import FusionRefusee, merge_clients
 from apps.installations.models_installation import Installation
 from apps.sav.models import Ticket
 from apps.ventes.models import Devis, Facture
@@ -124,3 +124,25 @@ class MergeClientsTests(TestCase):
                                                     self.company)]
         self.assertTrue(any(str(self.survivant.pk) in c
                             for c in corps_doublon), corps_doublon)
+
+    def test_fusion_refusee_si_factures_emises_sous_autre_ice(self):
+        """AARG51 — doublon à facture ÉMISE sous un autre ICE : refus, rien
+        de repointé ; au même ICE : fusion inchangée."""
+        self.survivant.ice = '001234567000001'
+        self.survivant.save(update_fields=['ice'])
+        facture = Facture.objects.create(
+            company=self.company, reference='F-AARG51-1',
+            client=self.doublon, statut=Facture.Statut.EMISE,
+            montant_ht=Decimal('100.00'), montant_tva=Decimal('20.00'),
+            montant_ttc=Decimal('120.00'))
+        with self.assertRaises(FusionRefusee):
+            merge_clients(self.survivant, [self.doublon], self.user)
+        facture.refresh_from_db()
+        self.doublon.refresh_from_db()
+        self.assertEqual(facture.client_id, self.doublon.pk)
+        self.assertFalse(self.doublon.avertissement_bloquant)
+        self.survivant.ice = self.doublon.ice
+        self.survivant.save(update_fields=['ice'])
+        merge_clients(self.survivant, [self.doublon], self.user)
+        facture.refresh_from_db()
+        self.assertEqual(facture.client_id, self.survivant.pk)
