@@ -153,6 +153,11 @@ LIBELLE_VISITE = "Relevé du site à la visite technique"
 MOTIF_ARGENT_BT = "vos 12 dernières factures"
 MOTIF_ARGENT_MT = ("vos 12 dernières factures MT : prix des trois postes, "
                    "prime fixe, puissance souscrite")
+#: AMOT116 (niveau 9) — consommation CONNUE (baseline résolue) : le manque
+#: réel, jamais les 12 factures ; bloc absent ⇒ aucune demande au client.
+MOTIF_ARGENT_CONTRAT = "votre contrat d'électricité (tarif, puissance souscrite)"
+MOTIF_ARGENT_HORAIRES = "vos horaires d'activité"
+MOTIF_ARGENT_SANS_DEMANDE = "économies non chiffrées à ce stade"
 #: CPDF1 — option « avec batterie » servie sans son ``economie_ci`` complet
 #: (flux, indicateurs) : argent omis, jamais celui de l'offre sans batterie.
 MOTIF_ARGENT_OPTION_AVEC = (
@@ -796,11 +801,14 @@ def _argent_option_avec(option_avec, segment):
     return None, MOTIF_ARGENT_OPTION_AVEC
 
 
-def _bloc_argent(data, etude_ci, segment, option_avec=None):
+def _bloc_argent(data, etude_ci, segment, option_avec=None, baseline=None):
     """``(argent, motif)`` — CIQ304 : le bloc ``economie_ci`` PUBLIC recopié
     tel quel (valeurs au centime), ou ``None`` + ce qui manque. CPDF1 —
-    ``option_avec`` (option « avec batterie » servie) : son argent seul."""
-    from apps.ventes.economie_ci import STATUT_CALCULE, economie_ci_publique
+    ``option_avec`` (option « avec batterie » servie) : son argent seul.
+    AMOT116 — ``baseline`` (celle de ``_bloc_baseline``, jamais résolue deux
+    fois) servie ⇒ le manque réel lu dans ``motifs_omission``."""
+    from apps.ventes.economie_ci import (
+        MOTIF_SANS_HORAIRE, MOTIF_TARIF_OMIS, STATUT_CALCULE, economie_ci_publique)
 
     if option_avec is not None:
         return _argent_option_avec(option_avec, segment)
@@ -812,9 +820,14 @@ def _bloc_argent(data, etude_ci, segment, option_avec=None):
         if segment != "industriel":
             argent = _sans_industriel(argent)
         return argent, None
-    motif = (MOTIF_ARGENT_MT if _est_mt(data, etude_ci, economie)
-             else MOTIF_ARGENT_BT)
-    return None, motif
+    if _est_mt(data, etude_ci, economie):
+        return None, MOTIF_ARGENT_MT
+    if baseline is None or data.get("regles_ecarts_0111_historique"):
+        return None, MOTIF_ARGENT_BT
+    premier = (_dict(economie).get("motifs_omission") or [None])[0]
+    return None, {MOTIF_TARIF_OMIS: MOTIF_ARGENT_CONTRAT,
+                  MOTIF_SANS_HORAIRE: MOTIF_ARGENT_HORAIRES}.get(
+                      premier, MOTIF_ARGENT_SANS_DEMANDE)
 
 
 #: CIQ314 — libellé d'une garantie lue sur une fiche produit.
@@ -974,7 +987,7 @@ def synthese_ci(data):
     option_batterie = _option_batterie(data)
     if option_batterie is not None:
         synthese["option_batterie"] = option_batterie
-    argent, motif = _bloc_argent(data, etude_ci, segment, option_avec)
+    argent, motif = _bloc_argent(data, etude_ci, segment, option_avec, baseline)
     if argent is not None:
         synthese["argent"] = argent
     else:

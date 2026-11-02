@@ -11,7 +11,10 @@ Ce qui est prouvé ici, par HTTP réel sur des devis réels :
   n'existe plus (404) ;
 * sync-layout d'un envoyé passe ; depuis ACAL96 (D-ACAL-1) la route écrit
   le calepinage lié (seul écrivain : enregistrer_layout) puis resynchronise ;
-* ``design-context.modifiable == not est_verrouille``.
+* ``design-context.modifiable == not est_verrouille`` (devis résidentiels) ;
+* ACAL373 — ``design-context.modifiable`` == « la porte d'écriture passe »,
+  y compris pour un devis BROUILLON agricole ou multi-villa : 409 avec la
+  raison de l'écran mot pour mot (layout/ ET sync-devis/), rien d'écrit.
 
 Run :
     python manage.py test apps.calepinage.tests.test_acal_verrou_predicat_ventes -v2
@@ -22,7 +25,7 @@ from apps.calepinage.models import Calepinage, CalepinageVersion
 from apps.calepinage.services.layout import empreinte_document
 from apps.calepinage.services.verrou import est_verrouille
 from apps.stock.models import Produit
-from apps.ventes.models import Devis
+from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.selectors import devis_modifiabilite
 
 from .test_api_liste import BaseApiCalepinage, url_detail
@@ -108,6 +111,66 @@ class VerrouPredicatVentesTest(BaseApiCalepinage):
                 self.assertEqual(reponse.status_code, 200, reponse.data)
                 self.assertEqual(reponse.data['modifiable'],
                                  not est_verrouille(self.calepinage))
+
+    def test_design_context_egal_a_la_porte_agricole_et_multi_villa(self):
+        """ACAL373 (sonde C-ACAL-VER2-51) — l'écran et la porte d'écriture
+        disent la même chose : agricole et multi-villa refusés en 409 avec la
+        raison de ``design-context``, sans rien écrire ; résidentiel inchangé."""
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau mono 550W', sku='A373-550',
+            prix_vente=Decimal('2290'), prix_achat=Decimal('1'),
+            quantite_stock=10)
+        self.calepinage.roof_layout = _layout(8)
+        self.calepinage.save(update_fields=['roof_layout'])
+        for cas in ('agricole', 'multi_villa'):
+            with self.subTest(cas=cas):
+                self.devis.mode_installation = (
+                    Devis.ModeInstallation.AGRICOLE if cas == 'agricole'
+                    else Devis.ModeInstallation.RESIDENTIEL)
+                self.devis.save(update_fields=['mode_installation'])
+                LigneDevis.objects.filter(devis=self.devis).delete()
+                if cas == 'multi_villa':
+                    for groupe in (0, 1):
+                        LigneDevis.objects.create(
+                            devis=self.devis, produit=produit,
+                            designation=produit.nom, quantite=4,
+                            prix_unitaire=Decimal('2290'),
+                            groupe_index=groupe)
+                self._statut(Devis.Statut.BROUILLON)
+                self.assertFalse(est_verrouille(self.calepinage))
+                contexte = self.api.get(
+                    f'{url_detail(self.calepinage.pk)}design-context/')
+                self.assertEqual(contexte.status_code, 200, contexte.data)
+                self.assertFalse(contexte.data['modifiable'])
+                raison = contexte.data['raison_lecture_seule']
+                self.assertTrue(raison)
+                avant = (self.calepinage.roof_layout,
+                         self.calepinage.layout_hash,
+                         CalepinageVersion.objects.filter(
+                             calepinage=self.calepinage).count())
+                reponse = self._poster_layout({'panels': 4})
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                self.assertEqual(reponse.data['roof_layout'], [raison])
+                resync = self.api.post(
+                    f'{url_detail(self.calepinage.pk)}sync-devis/', {},
+                    format='json')
+                self.assertEqual(resync.status_code, 409, resync.data)
+                self.assertEqual(resync.data['roof_layout'], [raison])
+                # Persistance : rien n'a été écrit.
+                self.calepinage.refresh_from_db()
+                self.assertEqual(
+                    (self.calepinage.roof_layout, self.calepinage.layout_hash,
+                     CalepinageVersion.objects.filter(
+                         calepinage=self.calepinage).count()), avant)
+        # Résidentiel : comportement d'ACAL42 inchangé (brouillon s'écrit).
+        LigneDevis.objects.filter(devis=self.devis).delete()
+        self.devis.mode_installation = Devis.ModeInstallation.RESIDENTIEL
+        self.devis.save(update_fields=['mode_installation'])
+        self._statut(Devis.Statut.BROUILLON)
+        contexte = self.api.get(
+            f'{url_detail(self.calepinage.pk)}design-context/')
+        self.assertTrue(contexte.data['modifiable'])
+        self.assertEqual(self._poster_layout({'panels': 5}).status_code, 200)
 
 
 class MiroirEnvoyeTest(BaseApiCalepinage):

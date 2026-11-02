@@ -292,4 +292,16 @@ def restaurateur_piece_jointe(element):
     rendre la pièce de nouveau retenue."""
     from apps.records.models import Attachment
 
-    return Attachment.objects.filter(pk=element.object_id).first()
+    from ..models import Calepinage
+
+    piece = Attachment.objects.filter(pk=element.object_id).first()
+    # ACAL375 — lève le marqueur « retiré » d'une pièce météo restaurée.
+    if piece is not None and (piece.file_key or '').startswith('meteo/'):
+        cal = Calepinage.objects.filter(
+            pk=piece.object_id, company=element.company,
+            meteo_retirees__contains=[piece.pk]).first()
+        if cal is not None:
+            cal.meteo_retirees = [x for x in cal.meteo_retirees
+                                  if x != piece.pk]
+            cal.save(update_fields=['meteo_retirees'])
+    return piece

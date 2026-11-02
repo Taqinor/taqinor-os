@@ -97,8 +97,13 @@ class Ntdst24HtmlTests(Ntdst24Base):
         self.assertNotIn('TAQINOR', html.upper())
 
     def test_le_document_de_facturation_apparait(self):
+        # ASTK256 — le relevé imprime le n° COURANT de la facture liée à la
+        # déclaration (la référence tapée n'est qu'un repli sans lien).
         html = render_releve_consignation_html(self.depot)
-        self.assertIn('FAC-NTDST24-0001', html)
+        declaration = self.depot.declarations.filter(
+            statut=DeclarationConsommation.Statut.FACTUREE).first()
+        self.assertTrue(declaration.numero_courant())
+        self.assertIn(declaration.numero_courant(), html)
 
 
 class Ntdst24EndpointTests(Ntdst24Base):

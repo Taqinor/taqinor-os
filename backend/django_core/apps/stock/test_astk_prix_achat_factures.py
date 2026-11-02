@@ -34,7 +34,7 @@ BASES = ('/api/django/stock/factures-fournisseur/',
 CLES_INTERDITES = {
     'prix_unitaire_ht', 'montant_ht', 'montant_tva', 'montant_ttc',
     'montant_ttc_devise', 'solde_du', 'total_paye', 'paiements',
-    'date_paiement', 'total_ht', 'total_tva',
+    'date_paiement', 'total_ht', 'total_tva', 'motif_ecart',
 }
 
 
@@ -92,7 +92,10 @@ class PrixAchatFacturesTests(TestCase):
             fournisseur=self.fournisseur,
             date_facture=datetime.date(2026, 9, 1),
             montant_ht=Decimal('833.33'), montant_tva=Decimal('166.67'),
-            montant_ttc=Decimal('1000'))
+            montant_ttc=Decimal('1000'),
+            statut_controle='exception',
+            motif_ecart='Rapprochement 3 voies hors tolérance : '
+                        'facturé 833,33 HT pour 0,00 HT reçus')
         LigneFactureFournisseur.objects.create(
             facture=self.facture, designation='Prestation', quantite=1,
             prix_unitaire_ht=Decimal('833.33'))
@@ -115,6 +118,23 @@ class PrixAchatFacturesTests(TestCase):
                 self.assertEqual(rep.status_code, 200)
                 self.assertFalse(CLES_INTERDITES & _cles(rep.data))
                 self.assertNotIn(b'date_paiement', rep.content)
+                self.assertNotIn('facturé'.encode(), rep.content)
+                self.assertNotIn(b'factur\u00e9', rep.content)
+
+    def test_checklist_cloture_sans_montants(self):
+        # ASTK255 — jumeau : la checklist de clôture sert la même facture.
+        url = ('/api/django/stock/achats-parametres/checklist-cloture/'
+               '?periode=2026-09-15')
+        for user in (self.commercial, self.viewer):
+            rep = _api(user).get(url)
+            self.assertEqual(rep.status_code, 200)
+            lignes = rep.data['factures_en_exception']
+            self.assertEqual(len(lignes), 1)
+            self.assertNotIn('montant_ttc', lignes[0])
+            self.assertNotIn('motif_ecart', lignes[0])
+        lignes = _api(self.admin).get(url).data['factures_en_exception']
+        self.assertIn('facturé 833,33 HT', lignes[0]['motif_ecart'])
+        self.assertIn('montant_ttc', lignes[0])
 
     def test_comptes_a_payer_et_en_exception_403(self):
         for base in BASES:
@@ -167,6 +187,7 @@ class PrixAchatFacturesTests(TestCase):
             self.assertEqual(Decimal(str(rep.data['montant_ttc'])),
                              Decimal('1000'))
             self.assertEqual(len(rep.data['paiements']), 1)
+            self.assertIn('facturé 833,33 HT', rep.data['motif_ecart'])
             self.assertIn('solde_du', rep.data)
             self.assertIn('prix_unitaire_ht', rep.data['lignes'][0])
             self.assertEqual(

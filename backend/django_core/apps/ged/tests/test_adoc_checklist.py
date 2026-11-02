@@ -96,6 +96,56 @@ class ChecklistTests(TestCase):
         self.assertEqual(demande.document_id, doc.pk)
         self.assertEqual(self._statuts()['CIN'], 'present')
 
+    def _televerser(self, nom_fichier):
+        """Dépôt écran SANS nom saisi : le nom vaut le nom du fichier."""
+        from unittest import mock
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        meta = ({'file_key': f'attachments/{nom_fichier}',
+                 'filename': nom_fichier, 'size': 12,
+                 'mime': 'application/pdf'}, None)
+        with mock.patch('apps.ged.views.store_attachment', return_value=meta):
+            resp = auth(self.admin).post(
+                '/api/django/ged/documents/televerser/', {
+                    'folder': self.folder.pk,
+                    'file': SimpleUploadedFile(
+                        nom_fichier, b'%PDF-1.4 fake',
+                        content_type='application/pdf')},
+                format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        return resp.data['id']
+
+    def test_depot_nomme_par_son_fichier_solde(self):
+        """ADOC188 (sonde C-ADOC-VER-030) — « CIN.pdf » solde CIN ; l'extension
+        ne se colle plus au dernier mot ; « facture.pdf » ne solde rien."""
+        demande = services.creer_demande_document(
+            folder=self.folder, company=self.co, libelle='CIN',
+            exigence=self.cin, created_by=self.admin)
+        self._televerser('facture.pdf')
+        demande.refresh_from_db()
+        self.assertEqual(demande.statut, 'en_attente')
+        self.assertEqual(self._statuts()['CIN'], 'manquant')
+        doc_id = self._televerser('CIN.pdf')
+        demande.refresh_from_db()
+        self.assertEqual(demande.statut, 'soldee')
+        self.assertEqual(demande.document_id, doc_id)
+        self.assertEqual(self._statuts()['CIN'], 'present')
+
+    def test_souligne_et_extension_solde_la_seule_cnss(self):
+        """ADOC188 — « Attestation_CNSS.pdf » solde la seule CNSS."""
+        demande_cin = services.creer_demande_document(
+            folder=self.folder, company=self.co, libelle='CIN',
+            exigence=self.cin, created_by=self.admin)
+        demande_cnss = services.creer_demande_document(
+            folder=self.folder, company=self.co, libelle='Attestation CNSS',
+            exigence=self.cnss, created_by=self.admin)
+        doc_id = self._televerser('Attestation_CNSS.pdf')
+        demande_cin.refresh_from_db()
+        demande_cnss.refresh_from_db()
+        self.assertEqual(demande_cin.statut, 'en_attente')
+        self.assertEqual(demande_cnss.statut, 'soldee')
+        self.assertEqual(demande_cnss.document_id, doc_id)
+
     def test_depot_solde_la_seule_piece_designee(self):
         demande_cin = services.creer_demande_document(
             folder=self.folder, company=self.co, libelle='CIN',

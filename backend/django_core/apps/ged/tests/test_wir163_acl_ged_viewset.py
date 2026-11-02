@@ -120,6 +120,21 @@ class ValidationTests(Wir163Base):
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_put_qui_change_de_cible_sans_vider_l_autre_409(self):
+        """api-fuzz (vague 15) — un PUT conforme qui nomme le document d'une
+        entrée posée sur un dossier : la ligne en base s'y oppose → 409 d'état
+        (plus un 400), rien n'est écrit."""
+        acl = AclGed.objects.create(
+            company=self.co_a, folder=self.folder_a, utilisateur=self.normal_a,
+            niveau='lecture')
+        resp = auth(self.admin_a).put(f'{BASE}{acl.id}/', {
+            'document': self.doc_a.id, 'utilisateur': self.normal_a.id,
+            'niveau': 'lecture',
+        }, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        acl.refresh_from_db()
+        self.assertEqual((acl.folder_id, acl.document_id), (self.folder_a.id, None))
+
     def test_cible_hors_societe_refusee(self):
         resp = auth(self.admin_a).post(BASE, {
             'document': self.doc_b.id, 'utilisateur': self.normal_a.id,

@@ -427,6 +427,16 @@ def valeur_option_avec(data):
     return valeur
 
 
+def economie_ttc_option_avec(data):
+    """AMOT115 — l'économie de l'année 1 TTC SERVIE de l'option « avec
+    batterie » (``etude_ci.option_avec.economie_ci.economie_annee1``), jamais
+    recalculée ; ``None`` quand le bloc ne la porte pas."""
+    avec = _dict(_dict(_dict(_dict(data).get("etude")).get("etude_ci")).get("option_avec"))
+    eco = _dict(_dict(avec.get("economie_ci")).get("economie_annee1"))
+    ttc = nombre_normalise(eco.get("total_mad_ttc"))
+    return ttc if ttc and ttc > 0 else None
+
+
 def non_rentable_option_avec(avec):
     """D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026) — clés ADDITIVES
     de la valeur chiffrée quand l'étude (niveau 5) marque l'option « avec »

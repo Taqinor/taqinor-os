@@ -2558,10 +2558,10 @@ def _cles_binaires_exclusives(document):
 def _supprimer_binaires(cles):
     """ADOC29 — efface du stockage objet les clés données (via
     `records.storage.delete_attachment`, jamais réimplémenté). Une exception
-    remonte à l'appelant (qui annule alors sa transaction)."""
+    remonte à l'appelant (`lever=True`, ADOC189 : il annule sa transaction)."""
     from apps.records import storage
     for cle in cles:
-        storage.delete_attachment(cle)
+        storage.delete_attachment(cle, lever=True)
 
 
 # ── GED25 — Purge automatique de la corbeille (DRY-RUN par défaut) ────────────
@@ -5069,16 +5069,19 @@ def matcher_depot_demandes(document):
         .order_by('created_at', 'id'))
     # ADOC12/ADOC177 — le dépôt ne solde que la demande de SA PROPRE pièce :
     # tous les mots du libellé (ou de son exigence) sont des mots entiers du
-    # nom, sans accents ni casse. Jamais de sous-chaîne ni de repli.
+    # nom, sans accents ni casse. Jamais de sous-chaîne ni de repli. ADOC188 :
+    # mots découpés sur TOUT non-alphanumérique (« CIN.pdf » → cin, pdf).
     from django.utils.text import slugify
-    mots_nom = set(slugify(document.nom or '').split('-'))
+
+    def mots(texte):
+        return set(re.split(r'[^a-z0-9]+', slugify(re.sub(r'[\W_]+', ' ', texte or '')))) - {''}
+    mots_nom = mots(document.nom)
     demande = None
     for candidate in en_attente:
         libelles = [candidate.libelle or '']
         if candidate.exigence_id:
             libelles.append(candidate.exigence.libelle or '')
-        if any(slugify(lib) and set(slugify(lib).split('-')) <= mots_nom
-               for lib in libelles):
+        if any(mots(lib) and mots(lib) <= mots_nom for lib in libelles):
             demande = candidate
             break
     if demande is None:
@@ -5198,8 +5201,11 @@ _re_mod = re  # alias local de la section XGED9 auto-contenue.
 # import email — ancre d'idempotence (un même message retraité ne duplique pas).
 MAIL_INTAKE_MESSAGE_ID_KEY = 'ged_mail_intake_message_id'
 
-_ALIAS_PLUS_RE = _re_mod.compile(r'\+([\w\-]+)@')
-_ALIAS_SUBJECT_RE = _re_mod.compile(r'\[([\w\-]+)\]')
+# ADOC187 — classe de caractères d'alias UNIQUE : extraction ET validation
+# (`serializers.MOTIF_ALIAS_EMAIL`) acceptent les mêmes alias (point compris).
+ALIAS_EMAIL_CARACTERES = 'A-Za-z0-9._-'
+_ALIAS_PLUS_RE = _re_mod.compile(rf'\+([{ALIAS_EMAIL_CARACTERES}]+)@')
+_ALIAS_SUBJECT_RE = _re_mod.compile(rf'\[([{ALIAS_EMAIL_CARACTERES}]+)\]')
 
 
 def mail_intake_enabled():
@@ -5212,15 +5218,8 @@ def extraire_alias_email(*, to_addr='', subject=''):
     """XGED9 — Extrait l'alias cible d'une adresse plus-adressée OU d'un objet
     `[alias]`. `to_addr` prioritaire (ex. « ged+compta@… » → « compta ») ; à
     défaut, le premier `[alias]` de l'objet. Renvoie '' si aucun match."""
-    if to_addr:
-        m = _ALIAS_PLUS_RE.search(to_addr)
-        if m:
-            return m.group(1).lower()
-    if subject:
-        m = _ALIAS_SUBJECT_RE.search(subject)
-        if m:
-            return m.group(1).lower()
-    return ''
+    m = _ALIAS_PLUS_RE.search(to_addr or '') or _ALIAS_SUBJECT_RE.search(subject or '')
+    return m.group(1).lower() if m else ''
 
 
 def resoudre_dossier_alias(company, alias):

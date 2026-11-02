@@ -434,6 +434,7 @@ def lire_piece_meteo(calepinage):
                     object_id=calepinage.pk,
                     file_key__startswith='meteo/')
             .exclude(pk__in=en_corbeille)
+            .exclude(pk__in=getattr(calepinage, 'meteo_retirees', None) or [])
             .order_by('-id')
             .first())
 

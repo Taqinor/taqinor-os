@@ -413,8 +413,17 @@ describe('CAL93 — le profil d’horizon lointain (horizonProfile) persisté da
     const areas = [zone('z1')];
     const sans = serializeLayout(makeCtx(areas));
     const avec = serializeLayout(makeCtx(areas), null, { horizonProfile: profil });
-    expect(avec.result).toEqual(sans.result);
-    expect(avec.zones).toEqual(sans.zones);
+    // D-ACAL-VER2-1 (ACAL367) : avec un horizon, la production porte sa
+    // `signatureOmbrage` (empreinte des entrées d'ombrage, pas un chiffre).
+    const { signatureOmbrage, ...chiffres } = avec.result;
+    expect(typeof signatureOmbrage).toBe('string');
+    expect(chiffres).toEqual(sans.result);
+    const sansSignature = (z) => {
+      if (!z.result) return z;
+      const { signatureOmbrage: _s, ...r } = z.result;
+      return { ...z, result: r };
+    };
+    expect(avec.zones.map(sansSignature)).toEqual(sans.zones);
   });
 });
 

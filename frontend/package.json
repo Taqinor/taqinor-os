@@ -18,6 +18,7 @@
     "check-bundle-budget": "node scripts/check_bundle_budget.mjs",
     "check-hex": "node scripts/check_hex.mjs",
     "check-dockerfile-context": "node --test scripts/check_dockerfile_context.mjs",
+    "check-no-alert-parametres": "node --test scripts/check_no_alert_parametres.test.mjs",
     "gen:api-types": "openapi-typescript http://localhost:8000/api/schema/ -o src/api/types/schema.d.ts"
   },
   "dependencies": {

@@ -4268,11 +4268,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         shadingUi.setHorizonProfile(deserializeHorizonProfileFromLayout({ horizonProfile: valeur }));
         return;
       }
-      if (cle === 'underlay') {
-        semerFondDepuisDocument({ underlay: valeur });
-        return;
-      }
+      if (cle === 'underlay') return void semerFondDepuisDocument({ underlay: valeur });
       appliquerHydratation(hydratationDeSection(cle, valeur));
+      if (cle === 'zones') [syncPitchChips, syncFacingChips, syncFacingSlider].forEach((f) => f()); // ACAL366
       recalc();
     },
     // ACAL286 — la table d'affectation SERVIE (électrique.affectation[], couleurs de chaîne /

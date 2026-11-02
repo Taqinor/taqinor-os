@@ -31,7 +31,7 @@ from .corps_requete import (
 #: ADOC26 / api-fuzz-full 24/10 — alias d'ingestion e-mail d'un dossier : vide,
 #: ou une lettre/un chiffre puis lettres, chiffres, point, tiret, souligné
 #: (normalisé en minuscules). Publié tel quel au schéma (validateur du champ).
-MOTIF_ALIAS_EMAIL = r'^([A-Za-z0-9][A-Za-z0-9._-]*)?$'
+MOTIF_ALIAS_EMAIL = rf'^([A-Za-z0-9][{services.ALIAS_EMAIL_CARACTERES}]*)?$'
 MESSAGE_ALIAS_EMAIL = (
     "Alias invalide : lettres, chiffres, point, tiret ou souligné uniquement.")
 #: Plus grand entier d'une colonne ``integer`` PostgreSQL (clé, rang).
@@ -1634,14 +1634,13 @@ class RegleApprobationGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalM
 
 def _refus_cible(serializer, noms, message):
     """ENF11 — refus de la règle « exactement une cible » / « au moins un
-    principal ». Le CORPS d'un PATCH qui ne nomme qu'UN des champs liés ne dit
-    pas à lui seul si la règle tient : c'est la ligne en base qui tranche → 409
-    d'ÉTAT. Dans tous les autres cas la règle se lit dans le corps (publiée au
-    schéma) → 400."""
+    principal ». Le CORPS d'une MISE À JOUR (PATCH ou PUT) qui ne nomme qu'UN
+    des champs liés ne dit pas à lui seul si la règle tient : c'est la ligne en
+    base qui tranche → 409 d'ÉTAT. Dans tous les autres cas la règle se lit dans
+    le corps (publiée au schéma) → 400."""
     donnees = getattr(serializer, 'initial_data', None) or {}
     nommes = [n for n in noms if n in donnees]
-    if (serializer.instance is not None and serializer.partial
-            and 0 < len(nommes) < len(noms)):
+    if serializer.instance is not None and 0 < len(nommes) < len(noms):
         from core.conflit_etat import ConflitEtat
         raise ConflitEtat({'non_field_errors': [message]})
     raise serializers.ValidationError(message)

@@ -29,9 +29,28 @@ from authentication.models import Company
 
 
 def _jour(n):
-    """Patch de l'horloge locale : aujourd'hui + n jours."""
-    return mock.patch('django.utils.timezone.localdate',
-                      return_value=date.today() + timedelta(days=n))
+    """Patch des DEUX horloges lues par les balayages : aujourd'hui + n jours
+    (``timezone.localdate`` ET ``beat_tasks.date.today``)."""
+    cible = date.today() + timedelta(days=n)
+
+    class _Date(date):
+        @classmethod
+        def today(cls):
+            return cible
+
+    class _Pile:
+        def __enter__(self):
+            self._ps = [
+                mock.patch('django.utils.timezone.localdate',
+                           return_value=cible),
+                mock.patch('apps.automation.beat_tasks.date', _Date)]
+            for p in self._ps:
+                p.start()
+
+        def __exit__(self, *a):
+            for p in self._ps:
+                p.stop()
+    return _Pile()
 
 
 class MarqueurOccurrenceTests(TestCase):
@@ -112,9 +131,10 @@ class MarqueurOccurrenceTests(TestCase):
             statut=Equipement.Statut.EN_SERVICE,
             date_fin_garantie=timezone.localdate() + timedelta(days=60))
         self._regle(TriggerType.WARRANTY_EXPIRING, requires_approval=True)
-        # Le balayage garantie lit ``date.today()`` : on simule trois jours
-        # successifs en rejouant le balayage (la fenêtre reste ouverte).
-        for _ in range(3):
-            _trigger_warranty_expiring(self.co)
+        # Le balayage garantie lit ``date.today()`` : trois jours successifs
+        # simulés par ``_jour(n)`` (la fenêtre reste ouverte).
+        for n in range(3):
+            with _jour(n):
+                _trigger_warranty_expiring(self.co)
         self.assertEqual(
             AutomationApproval.objects.filter(company=self.co).count(), 1)

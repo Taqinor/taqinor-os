@@ -51,6 +51,8 @@ CLES_EXACTES = {
     'frais_annexes', 'paiements', 'montant',
     # ERR-STK-PRIX-ACHAT-SUITE — valeurs de stock/pertes au coût d'achat.
     'total_valeur', 'valeur',
+    # ASTK255 — motif chiffré du rapprochement 3 voies.
+    'motif_ecart',
 }
 PREFIXES_CLES = ('prix_achat_', 'total_achat', 'montant_', 'cout_')
 RE_PK = re.compile(r'\(\?P<pk>[^)]*\)')

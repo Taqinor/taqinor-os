@@ -43,29 +43,29 @@ class DeclarationConsommationSerializer(CompanyScopedRelationsMixin,
     rechargement, une déclaration facturée perdait sa référence et son lien."""
     facture_id = serializers.SerializerMethodField()
     facture_reference = serializers.SerializerMethodField()
+    document_reference = serializers.SerializerMethodField()
 
     class Meta:
         model = DeclarationConsommation
         fields = ['id', 'depot', 'quantite', 'date_declaration', 'statut',
                   'document_reference', 'facture_id', 'facture_reference',
                   'note', 'created_at']
-        read_only_fields = ['statut', 'document_reference', 'created_at']
+        read_only_fields = ['statut', 'created_at']
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_facture_id(self, obj):
-        facture = getattr(obj, 'facture', None)
-        return facture.pk if facture is not None else None
+        return obj.facture_id
+
+    @extend_schema_field(serializers.CharField())
+    def get_document_reference(self, obj):
+        # ASTK256 — n° COURANT de la facture liée (jamais « BROUILLON-<id> »
+        # figé après émission), repli sur la référence persistée.
+        return obj.numero_courant()
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_facture_reference(self, obj):
-        # ``facture`` n'est posée (attribut non persistant) que par
-        # ``facturer_declaration`` ; après rechargement, la référence vient du
-        # n° de facture persisté dans ``document_reference`` (ERR-ASTK221).
-        facture = getattr(obj, 'facture', None)
-        if facture is not None:
-            return facture.reference
         if obj.statut == DeclarationConsommation.Statut.FACTUREE:
-            return obj.document_reference or None
+            return obj.numero_courant() or None
         return None
 
 
@@ -135,7 +135,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
     """
     queryset = DepotConsignation.objects.select_related(
         'produit', 'client').prefetch_related(
-        'declarations').all()
+        'declarations__facture').all()
     serializer_class = DepotConsignationSerializer
     ordering = ['-date_depot', '-id']
 

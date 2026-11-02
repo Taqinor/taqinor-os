@@ -46,3 +46,16 @@ export function resolveAvenant(p: unknown): AvenantPublic | null {
   // Ni à signer, ni daté : état incohérent → rien (on n'invente pas une signature).
   return signeLe ? { etat: 'signe', reference, signeLe } : null;
 }
+
+/**
+ * ERR-VNT83-AVENANT-SIGNATURE-PAGE — vrai quand le serveur dit qu'un avenant
+ * attend la signature du client (`avenant.a_signer === true`, `signe_le` vide).
+ * Une V2 négociée est servie `accepte` en interne : sans ce signal la page la
+ * croirait déjà signée et masquerait le formulaire.
+ */
+export function avenantASigner(p: unknown): boolean {
+  const brut = p && typeof p === 'object' ? (p as Record<string, unknown>).avenant : null;
+  if (!brut || typeof brut !== 'object') return false;
+  const a = brut as Record<string, unknown>;
+  return a.a_signer === true && !a.signe_le;
+}

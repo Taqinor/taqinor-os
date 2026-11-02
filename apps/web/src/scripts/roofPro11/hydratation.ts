@@ -47,6 +47,8 @@ import { lireParcelle } from './parcelle'; // ACAL233
 export type HydratationAtelier = Partial<CouchesDocument & ConsumptionHydration> & {
   /** ACAL258 — l'allée technique de CE calepinage (`null` la retire). */
   alleeTechnique?: Ctx['alleeTechnique'];
+  /** ACAL366 — les pans rendus par `layout/section/` (`cle: 'zones'`). */
+  zonesSection?: ReadonlyArray<Record<string, unknown>>;
 };
 
 /** Copie profonde JSON-sûre (le document est un JSON pur) : aucun alias entre le payload
@@ -159,10 +161,36 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
   if (typeof h.consWinterFactor === 'number') ctx.consWinterFactor = h.consWinterFactor;
   if (h.consSource !== undefined) ctx.consSource = h.consSource ? { ...h.consSource } : null;
   if (h.electrical !== undefined) ctx.electrical = h.electrical ? copie(h.electrical) : null;
+  if (h.zonesSection !== undefined) appliquerZonesSection(ctx, h.zonesSection); // ACAL366
+}
+
+/** ACAL366 — par `id` de pan, les SEULS champs de `CHAMPS_SECTION_ZONE` du serveur : ceux que
+ *  l'atelier possède sur le pan vivant (accesseurs du ctx pour le pan actif), les autres —
+ *  et la suggestion de pente — dans `documentRelu.zones`, que `reconcilierAvecDocumentRelu`
+ *  réémet. Un pan absent de la section n'est pas touché. */
+function appliquerZonesSection(ctx: Ctx, zones: ReadonlyArray<Record<string, unknown>>): void {
+  const doc = ctx.documentRelu;
+  const relues = (Array.isArray(doc?.zones) ? doc!.zones : []) as Array<Record<string, unknown>>;
+  for (const z of zones) {
+    const pan = ctx.areas.find((a) => a.id === z?.id);
+    if (!pan) continue;
+    const actif = pan.id === ctx.activeAreaId;
+    if (typeof z.pitchDeg === 'number' && Number.isFinite(z.pitchDeg)) pan.pitchDeg = z.pitchDeg;
+    if (typeof z.facingAzimuthDeg === 'number' && Number.isFinite(z.facingAzimuthDeg)) pan.facingAzimuthDeg = z.facingAzimuthDeg;
+    if (typeof z.facingManual === 'boolean') pan.facingManual = z.facingManual;
+    if (z.pitchSource && typeof z.pitchSource === 'object') pan.pitchSource = copie(z.pitchSource as Record<string, unknown>);
+    else delete pan.pitchSource;
+    if (actif) Object.assign(ctx, { pitchDeg: pan.pitchDeg, facingAzimuthDeg: pan.facingAzimuthDeg, facingManual: pan.facingManual ?? false });
+    const relue = relues.find((r) => r?.id === pan.id);
+    for (const cle of relue ? ['facingAzimuthSource', 'facingAzimuthPrecisionDeg', 'pitchSuggestion'] : []) {
+      if (cle in z) relue![cle] = copie(z[cle]);
+      else delete relue![cle];
+    }
+  }
 }
 
 /** ACAL26 — les sections qu'un onglet du Rail peut appliquer une à une. */
-export type CleSectionAtelier = 'horizonProfile' | 'poseSurfaces' | 'underlay' | 'environment' | 'alleeTechnique';
+export type CleSectionAtelier = 'horizonProfile' | 'poseSurfaces' | 'underlay' | 'environment' | 'alleeTechnique' | 'zones';
 
 /**
  * ACAL26 — traduit UNE section `{cle: valeur}` en hydratation partielle, avec les MÊMES
@@ -172,6 +200,7 @@ export type CleSectionAtelier = 'horizonProfile' | 'poseSurfaces' | 'underlay' |
  */
 export function hydratationDeSection(cle: CleSectionAtelier, valeur: unknown): HydratationAtelier {
   if (cle === 'alleeTechnique') return { alleeTechnique: lireAlleeTechnique({ alleeTechnique: valeur }) }; // ACAL258
+  if (cle === 'zones') return { zonesSection: Array.isArray(valeur) ? (valeur as Array<Record<string, unknown>>) : [] }; // ACAL366
   const lu = lireCouchesDocument({ [cle]: valeur });
   if (cle === 'poseSurfaces') return { surfacesPose: lu.surfacesPose };
   if (cle === 'environment') return { environment: lu.environment };

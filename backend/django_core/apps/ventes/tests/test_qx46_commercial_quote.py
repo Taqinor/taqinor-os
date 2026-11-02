@@ -1021,6 +1021,44 @@ class TestAmot95BaseDeclaree(SimpleTestCase):
         self.assertEqual(onepage.economie_ttc(
             dict(chiffres, economie_annuelle_ttc_mad=None), fmt, str), "")
 
+    def test_deux_options_cartes_ht_et_ttc(self):
+        """AMOT115 (C-AMOT-VER-030) — base « deux », deux options : chaque
+        carte imprime la TTC servie sous la HT ; base ht/ttc ou drapeau
+        ``regles_ecarts_0111_historique`` : les cartes d'avant le niveau 9."""
+        import html as _h
+        import re
+        from apps.ventes.quote_engine.ci import options_cote
+        from apps.ventes.quote_engine.residential.theme import fmt
+
+        def cartes(cle, base="deux", **extra):
+            synthese = {
+                "argent": {"base": base, "economie_annee1": {
+                    "total_mad": 98931.16, "total_mad_ttc": 118717.39},
+                    "indicateurs": {"retour_ans": 5.4}},
+                "option_batterie": {"totaux": {"ht_net": 700000.0, "ttc": 840000.0},
+                                    "valeur_chiffree": {"economie_annuelle_mad": 20000.0,
+                                                        "retour_simple_ans": 9.1}}}
+            ch = chiffres_cles(synthese)
+            d = {"langue_sortie": "fr", "option_servie": "sans", f"{cle}_synthese": synthese,
+                 f"{cle}_economies": ch["economie_annuelle_mad"],
+                 f"{cle}_economie_base": ch["base_economie"], f"{cle}_payback": 5.4,
+                 f"{cle}_kwc": 100.0, "puissance_kwc_avec": 100.0,
+                 "totaux_all": {"ht_net": 533333.0, "ttc": 640000.0},
+                 "etude": {"etude_ci": {"option_avec": {"economie_ci": {"economie_annee1": {
+                     "total_mad": 20000.0, "total_mad_ttc": 24000.0}}}}}, **extra}
+            brut = options_cote.cartes_options(d, cle, "c1c", fmt, fmt, 640000.0)
+            texte = re.sub(r"\s+", " ", _h.unescape(re.sub(r"<[^>]+>", " ", brut)).replace("\xa0", " "))
+            return texte.split("Avec batterie")
+
+        for cle in ("com", "ind"):
+            with self.subTest(cle=cle):
+                sans, avec = cartes(cle)
+                self.assertIn(self.TTC, sans)
+                self.assertIn("soit 24 000 MAD TTC", avec)
+                for base in ("ht", "ttc"):
+                    self.assertNotIn("soit", " ".join(cartes(cle, base)))
+                self.assertNotIn("soit", " ".join(cartes(cle, regles_ecarts_0111_historique=True)))
+
     def test_anglais(self):
         p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])
         self.assertNotIn("Recoverable VAT not declared", p1)  # CPDF5

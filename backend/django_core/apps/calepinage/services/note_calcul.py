@@ -69,6 +69,7 @@ CLES_INTERDITES_EXACTES = ('marge', 'prix', 'cout', 'coefficient')
 #: Libellé lisible des sources publiées par le moteur.
 LIBELLE_SOURCE = {
     'pvgis': 'PVGIS',
+    'fichier': 'fichier météo déposé',
     'fiche': 'fiche produit',
     'mesure': 'mesure',
     'hypothese': 'hypothèse société',

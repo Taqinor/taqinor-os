@@ -444,8 +444,11 @@ class TestSyncLayout(TestCase):
         commun = devis.lignes.create(
             produit=self.onduleur, designation='Onduleur réseau Huawei 5kW',
             quantite=Decimal('1'), prix_unitaire=Decimal('12000'),
-            remise=Decimal('7'), ordre=5, groupe_index=1,
+            remise=Decimal('7'), ordre=5, groupe_index=0,
             groupe_label='Villa A')
+        # ACAL373 — un devis multi-villa (groupe_index >= 1) n'est plus
+        # resynchronisé depuis le calepinage (409, raison de l'écran) : le
+        # libellé de groupe reste vérifié sur un devis mono-villa.
         resp = self._post(devis, layout(panels=16))
         self.assertEqual(resp.status_code, 200)
         panneau = devis.lignes.get(designation='Panneau Jinko 550W')
@@ -457,7 +460,7 @@ class TestSyncLayout(TestCase):
         commun.refresh_from_db()
         self.assertEqual(commun.prix_unitaire, Decimal('12000.00'))
         self.assertEqual(commun.remise, Decimal('7.00'))
-        self.assertEqual(commun.groupe_index, 1)
+        self.assertEqual(commun.groupe_index, 0)
         self.assertEqual(commun.groupe_label, 'Villa A')
         self.assertTrue(
             devis.lignes.filter(type_ligne='section',
@@ -900,9 +903,13 @@ class TestCompletionDuKit(TestCase):
         devis = self._squelette()
         Devis.objects.filter(pk=devis.pk).update(
             mode_installation=Devis.ModeInstallation.AGRICOLE)
+        avant = devis.lignes.count()
         resp = self._post(devis, layout(panels=16, kwc=8.8))
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data['lignes_ajoutees'], 0)
+        # ACAL373 — la porte d'écriture du calepinage refuse un devis
+        # agricole avec la raison de l'écran (409), rien n'est écrit.
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('Devis agricole', str(resp.data['roof_layout']))
+        self.assertEqual(devis.lignes.count(), avant)
         self.assertFalse(devis.lignes.filter(designation='Socles').exists())
 
     def test_devis_multi_villa_le_kit_n_est_pas_devine(self):
@@ -913,12 +920,12 @@ class TestCompletionDuKit(TestCase):
             designation='Panneau Jinko 550W', quantite=Decimal('4'),
             prix_unitaire=Decimal('1100'), ordre=3, groupe_index=1,
             groupe_label='Villa B')
+        avant = devis.lignes.count()
         resp = self._post(devis, layout(panels=20, kwc=11.0))
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data['lignes_ajoutees'], 0)
-        self.assertTrue(any('chaque villa a le sien' in a
-                            for a in resp.data['avertissements']),
-                        resp.data['avertissements'])
+        # ACAL373 — multi-villa : 409 avec la raison de l'écran, rien d'écrit.
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('Devis multi-villa', str(resp.data['roof_layout']))
+        self.assertEqual(devis.lignes.count(), avant)
 
 
 # ── PVCBL — F8 : les câbles suivent la taille du calepinage ─────────────────

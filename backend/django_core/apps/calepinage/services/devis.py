@@ -398,6 +398,17 @@ def resynchroniser_devis(calepinage, *, user=None,
 
     verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
     layout = _exiger_layout(calepinage)
+    # ACAL373 — agricole / multi-villa : la raison de l'écran, 409, rien n'est
+    # écrit (le refus de STATUT reste celui de ventes, revision_possible compris).
+    from apps.ventes.selectors_calepinage import raison_lecture_seule_conception
+
+    from .verrou import est_verrouille
+    lie = getattr(calepinage, 'devis', None)
+    if lie is not None and not est_verrouille(calepinage):
+        raison = raison_lecture_seule_conception(lie)
+        if raison:
+            raise DevisRefuse(raison, champ='roof_layout', statut=409,
+                              donnees={'roof_layout': [raison]})
     # ACAL170 — même cliquet électrique que la génération, AVANT toute
     # écriture (un devis ENVOYÉ suit le même refus).
     garde = _garde_electrique(calepinage, derogation_electrique, user,

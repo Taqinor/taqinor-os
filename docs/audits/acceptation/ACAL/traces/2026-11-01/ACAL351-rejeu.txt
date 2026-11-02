@@ -1,0 +1,114 @@
+ACAL351 — rejeu du 2026-11-01 (nuit, jusqu'au 02/11 ~00:25), pile locale http://localhost sur origin/main c6ab9b58ed (checkout principal détaché à ce sha, monté par les conteneurs ; front reconstruit par l'orchestrateur à 23:24). Société démo 2, demo_admin. EMAIL_BACKEND = console vérifié sur django_core, celery_worker, celery_worker_interactive (settings.dev).
+Incident d'environnement : vers 23:38 nginx, frontend, fastapi_ia et les workers Celery ont été arrêtés hors de ce rejeu (Exited 0 / 137, une autre session) ; relancés par `docker start` des MÊMES conteneurs (aucune reconstruction) ; pile lente (premier GET design-context ~30 s, un 504 sur /token/ puis rétabli, une connexion coupée pendant le passage d'un conteneur `django_core-run` d'une autre session).
+Écran : Playwright MCP. Écart d'environnement déclaré (dossier §0, méthode de 2026-10-30-f1f711dc7) : clé MapTiler absente du serveur (design-context → carte.available false) ; CÔTÉ NAVIGATEUR seulement, la réponse design-context est complétée d'une clé factice et api.maptiler.com sert un style minimal valide {version 8, sources {}, layers [fond]}. Aucune autre réponse modifiée.
+API : client HTTP sur http://localhost (cookies demo_admin), sans interception. PVGIS joignable depuis celery_worker (printhorizon 200) : simulations RÉELLES.
+Bruit attendu : 404 GET <id>/plan-importe/ sur les calepinages semés avec l'`exemple` (underlay = pièce fictive 512) ; avertissements console HydrateFallback / PCFSoftShadowMap.
+
+Données posées (aucune suppression possible : DELETE calepinage = 405 par conception, lead porteur de calepinage = 409) :
+ leads 3817, 3818, 3819, 3820 (SE), 3821 (SEF), 3822 (absorbé, archivé par la fusion), 3823, 3824 (converti en client 2808) — tous « QA-ACAL-ACC … » ;
+ calepinages 189, 190, 192, 193, 194, 195, 196 ARCHIVÉS en fin de rejeu ; 191 NON archivable (porte DEV-202611-0003 envoyé) ;
+ devis DEV-202611-0002 (2572, accepté puis révisé) et DEV-202611-0003 (2573, V2 envoyée) ; produits 15365 (module 550 W à fiche) et 15366 (onduleur 2 MPPT à fiche) ; document GED 262 ; 2 e-mails au backend console (qa-acal-acc@example.invalid).
+ Réglage société simulation.fenetre_annees passé à [2014, 2023] le temps de S-E puis RESTAURÉ (relu identique).
+
+## S-A.premier-enregistrer-js — PASS (ACAL351) — le défaut A1 du 30/10 est corrigé
+Calepinage 190 (lead 3818) semé par l'API depuis le navigateur (page.request, nombres JSON JavaScript) avec le document de l'`exemple` de roof_layout_v2.schema.json (33 clés, zones[0].neededAuto true, neededPanels 12) : 1 version, layout_hash afef9b47….
+Atelier ouvert, guides fermés (« Plus tard », « Fermer le guide »), AUCUN geste, « Enregistrer le calepinage » : 200 POST 190/layout/ ; statut lu à l'écran « Conception inchangée — le calepinage n’a pas bougé. » ;
+GET après : document identique (texte JSON trié égal), layout_hash et empreinte_document identiques, resultat identique clé par clé, versions 1 → 1. zones[0].neededAuto reste true. Console : seul le 404 plan-importe attendu.
+Capture : ACAL351-S-A-premier-enregistrer-js.jpg (bouton ; le statut est lu dans le DOM).
+
+## S-A.premier-enregistrer-flottants — FAIL (ACAL351) — défaut A2
+Calepinage 189 (lead 3817) semé par l'API Python (json.load de l'`exemple` puis POST layout/ avec If-Match) : 200, 33 clés, 1 version, layout_hash 6bd53ad2…, empreinte b690c222….
+Atelier ouvert, aucun geste, « Enregistrer le calepinage » : 200 POST 189/layout/ ; statut écran « Conception enregistrée — version 191. » (attendu « Conception inchangée ») ; versions 1 → 2 ; layout_hash 6bd53ad2… → afef9b47… ; empreinte b690c222… → ec6a7381….
+Diff de VALEURS clé par clé : vide (neededAuto inchangé). Seule différence : le TYPE des nombres entiers écrits en flottant par l'exemple — 42 champs, ex. scene.sunHour 12.0 → 12, zones[0].pitchDeg 15.0 → 15, zones[0].facingAzimuthDeg 180.0 → 180, poseSurfaces[0].areaM2 800.0 → 800, horizonProfile.points[0].heightDeg 8.0 → 8. Le navigateur re-sérialise 15.0 en 15 (JSON JavaScript) et l'empreinte serveur distingue 15.0 de 15 : tout document écrit côté serveur ou par l'API avec des flottants entiers (exemple du schéma, sonde, écrivains Python) prend une version fantôme au premier Enregistrer sans geste.
+Le même document semé avec des nombres JavaScript (S-A.premier-enregistrer-js) est « inchangé » : c'est la canonicalisation de l'empreinte (layout_hash / empreinte_document) qui est en cause, pas l'atelier. La sonde du 30/10 (C-ACAL-ACC-API, renvoi Python → Python) ne pouvait pas le voir.
+Capture : ACAL351-S-A-premier-enregistrer.jpg (statut lu dans le DOM, le bandeau n'est plus visible sur la capture).
+
+## API.S-C.generer — PASS (ACAL351)
+Calepinage 191 (lead 3819 triphasé), document {pin, 1 pan Sud 10 modules}, entree-electrique {phases: 3} 200.
+POST generer-devis/ → 201 DEV-202611-0002 (2572), avertissements [], marques_manquantes [] ; lignes : « Onduleur réseau Huawei 10kW Triphasé » ×1 (onduleur NON monophasé), Smart Meter, Wifi Dongle, « Panneau mono 550W » ×10, Structures ×10, Socles ×20, câbles, protection, installation, transport. Second POST → 200 deduplique true (même devis). Détail : layout_stale false, layout_nb_panneaux 10.
+
+## API.S-C.perime-planche — PASS (ACAL351)
+Document passé à 8 modules SANS resynchro : détail layout_stale true, layout_nb_panneaux 8.
+GET /ventes/devis/2572/proposal/?include_calepinage=1 (conception divergente) → 200 PDF 3 pages, aucune planche de calepinage.
+POST sync-devis/ → 200 {inchange false, panneaux 8, kwc 4.4, lignes_modifiees 3, avertissement « La conception 3D porte le devis de 10 à 8 panneaux. »} ; layout_stale false ; lignes : panneaux ×8, structures ×8, socles ×16, onduleur conservé.
+proposal ?include_calepinage=1 (aligné) → 200 PDF 4 pages AVEC la planche ; « prix_achat » absent.
+
+## API.S-D.variantes — PASS (ACAL351)
+POST variantes/ {nom} → 201 (id 27) ; PATCH nom → 200 « Variante QA renommee » ; POST retenir (Idempotency-Key) → 200 retenue true ; liste [(27, renommée, retenue true)].
+Non vérifié : « atelier = variante » et « Générer chiffre la variante » (écran non joué).
+
+## API.P6.3.approbation-perimee — PASS (ACAL351)
+GET approbation/ → etat null, perimee false ; POST {decision: approuve} → 200 etat approuve ; modification du document (9 modules) ; GET → etat approuve, perimee TRUE.
+
+## API.P6.5.archiver-delete — PASS (ACAL351)
+Devis 2572 envoyé (envoyer-email, backend console, statut envoye) puis POST archiver/ → 400 « Ce calepinage porte le devis DEV-202611-0002 (Envoyé) : détachez-le d'abord » ; DELETE calepinages/191/ → 405.
+
+## API.P6.4.corriger-apres-envoi — PASS (ACAL351)
+Devis envoyé : écriture du document (10 modules) 200 puis sync-devis/ → 200 {panneaux 10, kwc 5.5, lignes_modifiees 3} ; devis toujours « envoye », lignes à 10 ; historique du devis : « Corrigé après envoi — calepinage (lignes, conception). » (champ correction_apres_envoi, demo_admin).
+
+## API.P6.4.accepte-verrou — PASS (ACAL351)
+POST /ventes/devis/2572/accepter/ → 200 ; design-context : modifiable false, raison_lecture_seule « Devis « Accepté » : le calepinage n'est plus modifiable. Utilisez « Réviser » pour en créer une nouvelle version. », revision_possible true ; POST layout/ → 409 {roof_layout: ['Devis accepté : révisez-le'], code calepinage_verrouille}.
+Non vérifié à l'écran : bandeau « révisez-le », onglet Pertes refusé, absence de « Déverrouiller ».
+
+## API.S-C.reviser — PASS (ACAL351)
+POST /ventes/devis/2572/reviser/ → 201 V2 DEV-202611-0003 (2573) ; calepinages du lead 3819 : UN seul [(191 → devis 2573)] ; versions du calepinage : 197 « Version envoyée — DEV-202611-0002 » en tête ; design-context : devis 2573, modifiable true.
+
+## API.S-C.parite — PASS (ACAL351)
+V2 resynchronisée (inchange true, 10 panneaux, 5,5 kWc) puis envoyée (console) ; page publique /api/django/ventes/proposal/<jeton>/ = 200 : nb_panneaux 10, puissance_kwc 5.5, production_annuelle_kwh 8796 (dimensionnement_options.sans), eco_s_ann 5367 PRÉSENT, layout_nb_panneaux 10, aucune clé prix_achat.
+/proposal?include_calepinage=1 (4 pages) : « 10 panneaux × 550 W », « 5,5 kWc », « 8 796 kWh/an », « 5 367 MAD/an Économie calculée » ; « prix_achat » absent. Détail calepinage (ce que lit l'écran du module) : layout_nb_panneaux 10, layout_stale false.
+Écran /ventes/devis/2573/design ouvert : « Devis DEV-202611-0003 · QA-ACAL-ACC FAM … », « Calepinage QA-ACAL-ACC FAM chargé », aucune erreur console, aucun 4xx/5xx (capture ACAL351-S-C-devis-design.jpg).
+Observation (non jugée, moteur PDF, hors ACAL) : le même PDF dit « économie ≈ 5 366 MAD/an » dans « Comment nous calculons vos économies » (9 594 − 4 228) contre 5 367 ailleurs — arrondi.
+Observation (non jugée) : page publique roof_layout.pans[0].kwc 0.0 et etude.toiture.kwc 0.0 pour 10 panneaux — le document de ce rejeu ne porte ni module ni panelWatt.
+
+## API.S-E.simulation — PASS (ACAL351)
+Calepinage 193 (lead 3821) : pan Sud 10 modules + horizon saisi 8 points (0..315°, 2-8°) ; entree-electrique {module 15365 (550 W, Vmp/Voc/Isc/Imp), onduleur 15366 (2 MPPT, 5 kW, triphasé), températures −5/70, phases 3} 200.
+Sur le calepinage 192 SANS module désigné : simuler/ → 409 nommé « Aucun pan … ne porte à la fois des modules et une puissance crête … désignez le module PV dans l'onglet Matériel électrique ».
+simuler/ → 202 job 30 → done en ~10 s ; resultat.simulation : version sim-3, hash_entree, reglages_utilises {mode_meteo pluriannuel, fenetre_annees [2020,2020]}, calcule_le ; meteo : PVGIS seriescalc SARAH3, usehorizon=1 userhorizon=2,3,5,8,6,4,3,2, fuseau Etc/GMT-1 (« imagerie ») ; ombrage par pan (Sud tof 0,9388, cascade par pan) ; performance.pr null (non publié) ; incertitude p50 11 324,7 kWh, motif_refus « Pertes non renseignées (…) : la valeur serait une borne haute fausse — non publiée ».
+Enregistrer sans geste (POST layout/ du document relu, jeton courant) → 200 ; resultat.simulation IDENTIQUE (ne périme pas).
+Pertes : salissure 3 % source « saisie qa » → 400 nommé (sources admises) ; salissure mensuelle [2,2,3,3,4,5,5,5,4,3,2,2] source saisie → 200 (pct 3,33) ; resultat.simulation_perimee TRUE.
+Fenêtre 2014-2023 (réglage société) + second pan Est 10 modules (toit 10 + 10) : simuler → 202 job 31 → done ~41 s ; meteo.annees = 2014…2023 (10), fenetre « 2014-2023 » ; production.total {kwc 11.0, portee « annee_moyenne », mention « borne haute — 18 pertes non renseignées », p50_kwh 15 065,1, complete false} ; incertitude méthode quadrature, composante variabilité interannuelle 10 années observées (σ 1,36 %) ; ombrage par pan [Sud tof 0,8938 cascade, Est tof 0,8013 cascade] ; simulation_perimee false ; pr null.
+Réglage restauré → la simulation redevient périmée (réglage dans l'empreinte, ACAL48) et resultat.production n'est plus servi (repli).
+Non vérifié : « P50 ≈ moyenne des années » en chiffres (la série par année n'a pas été relue avant la restauration du réglage).
+
+## ECRAN.S-E.onglets — PASS (ACAL351)
+/calepinage/193?onglet=production : « simulation périmée : le document a changé depuis le calcul du 02/11/2026 » + bouton « Relancer (document modifié) » + liste « Ce qui manque encore » (coefficients de température non sourcés, ratio DC/AC 2,20 > 1,35 et > 1,50) ; onglet pertes : diagramme en cascade « Irradiance incidente 100 % → Salissure 3,3 % Saisie → Énergie livrée 96,7 % », « Postes saisis, non calculés » ; aucune erreur console, aucun 4xx/5xx. Captures ACAL351-onglet-production.jpg, ACAL351-onglet-pertes.jpg.
+Observation (non jugée) : le motif dit « le document a changé » alors que, ce rejeu, le dernier changement était la restauration du réglage société fenetre_annees (une version « Pose réelle » a aussi été créée entre-temps).
+
+## API.S-F.verdict — PASS (ACAL351)
+Calepinage 193 : verdicts {voc_cold_under_vmax conforme bloquant, vmp_cold_under_mppt_max, vmp_hot_over_mppt_min, courant_par_entree_mppt, ratio_dc_ac conformes} ; GET entree-electrique/ relit module 15365, onduleur 15366, −5/70 °C, phases 3 ; schema-unifilaire.dxf → 200 image/vnd.dxf (57 295 o).
+Calepinage 192 sans module : schema-unifilaire.dxf → 409 nommé « … module : tension au point de puissance maximale (Vmp) Aucun fichier n'est produit … ». Écran verdict-électrique (193) : « Dossier électrique : Publiable — Aucun motif bloquant, aucune valeur sans provenance », norme « Non calculé, motivé NORME_NON_APPLICABLE ».
+Observation (non jugée) : bloc « Raccordement réseau » : « phases n'est pas saisi » alors que entree-electrique porte phases 3 (raccordement_saisie distincte ?).
+Non joué : refus de génération + dérogation tracée (P4.6), dossier réglementaire (P8.3), schéma édité/batterie (P4.4/P4.5).
+
+## API.S-H.livrables — PASS (ACAL351)
+AVANT simulation (192) : export-csv/ → 409 nommé « La série horaire n'est pas disponible … Aucun fichier de zéros » ; note-calcul.pdf → 409 nommé (pose.kwc / production.base.source absents).
+APRÈS simulation (193) : export-csv/ → 200 text/csv, 8 795 lignes, « Provenance;Module Calepinage », « Base de rayonnement;PVGIS-SARAH3 » ; note-calcul.pdf 200 (3 p.) ; rapport-etude.pdf 200 (15 p., Sommaire, mention « borne haute ») et ?langue=en 200 (15 p.) ; planche.pdf (1 p.), plan-pose.pdf (1 p.), export.dxf, export-projet.json, presentation-compacte.pdf (2 p., « borne haute ») tous 200 ; dans aucun PDF ni « MAD »/« DH » ni « prix_achat ».
+
+## API.S-H.pose-reelle — PASS (ACAL351)
+Pose réelle Sud 9 / Est 10 (releve_le 2026-11-01) → 200 ; correction du commentaire seul → 200 ; GET : total prévu 20, posé 19, écart Sud −1, releve_par demo_admin ; POST {creer_version: true} → 201, version 201 « Pose réelle — 19 module(s) posé(s) sur 20 prévu(s) ; écarts : Sud (-1) ».
+POST dossier-fin-chantier/ ×2 (sans changement) → 201 et 201, MÊME Document GED 262 « Dossier de fin de chantier — QA-ACAL-ACC SEF », version_count 1 (aucune version sans changement), une seule fiche GED à ce nom ; pièces plan de pose, as-built (2 p.), plan de câblage, … ; document-asbuilt.pdf 200 (2 p., date 2026), sans montant.
+Écran onglet pose-reelle : « total prévu 20 · total posé 19 », « Dernière version née des écarts : n° 201 » (capture ACAL351-onglet-pose-reelle.jpg).
+
+## API.P8.4.export-import — PASS (ACAL351)
+export-projet.json 200 → import-projet/ {apercu: true} 200 (ecrit false, 20 modules, 1 poste de pertes, resultat ignoré « la simulation se relance ») → import réel 201 calepinage 194 ; document importé = document source (texte JSON trié égal).
+Observation (non jugée) : l'import crée un SECOND calepinage ouvert sur le lead 3821 qui en a déjà un (depuis-lead / Nouveau refusent ce cas en 409).
+
+## API.S-G.fusion-corbeille — PASS (ACAL351)
+depuis-lead/ sur le lead 3822 → 201 calepinage 195 ; rejoué → 200, un seul calepinage [195] ; fusion de 3822 DANS 3823 (POST merge) → 200 ; le calepinage 195 suit le survivant (lead 3823, calepinages du survivant [195]) ; DELETE du lead 3823 → 409 « Ce lead porte le calepinage « sans titre » (#195) : archivez-le d'abord … », calepinages [195].
+
+## API.S-G.renommer-liste — PASS (ACAL351)
+Calepinage 196 (lead 3824) ; second POST calepinages/ sur le même lead → 409 « Ce lead a déjà un calepinage ouvert … » calepinage_existant 196 ; lead converti en client (convertir-client mode nouveau → client 2808) ; PATCH titre → 200, nom relu « QA-ACAL-ACC SG lead+client 80674 » ; liste ?q=<titre> → [196] (référence CAL-2611-0196, vignette présente) ; recherche globale /reporting/search/?q=<titre> → groupe « Calepinages » [196].
+Observation (non jugée) : le paramètre de liste ?search= (et ?recherche=) est ignoré (renvoie toute la liste, 50) — seul ?q= filtre.
+
+## ACAL351.gardes — PASS (ACAL351)
+Sur wt16 (= c6ab9b58e) : check_calepinage_actions_consommees.py exit 0 (dettes corrigées pouvant quitter la base signalées), check_services_appeles.py exit 0 (594 fonctions, aucune nouvelle sans appelant), check_api_shapes.py exit 0 (335 endpoints + 461 ressources, 0 dette), node frontend/scripts/check_dockerfile_context.mjs exit 0 (pass 1, fail 0).
+
+## Non joué ce rejeu (reste d'ACAL351)
+S-B : onglet Horizon puis atelier depuis une page ouverte avant, Terrain/Ombrière puis atelier, ombrière → Générer, ligne panneau au module saisi.
+S-C ÉCRAN : dessin (photo calée, module choisi), Générer/Resynchroniser par les boutons, retirer 2 panneaux sans enregistrer, déplacer un panneau sur /ventes/devis/<id>/design puis Enregistrer la conception, bandeau « Document mis à jour », Réviser depuis le bandeau, badge périmé À L'ÉCRAN (ACAL47), étude horaire = lignes, affiche, underlay conservé.
+S-D ÉCRAN : bandeau « révisez-le », onglet Pertes refusé, aucun Déverrouiller ; atelier = variante retenue, Générer chiffre la variante ; P1.5 modèle → lead d'une autre ville.
+S-E : P5.1 réglages typés + fuseau à l'écran, P5.3 « en cours → résultat » à l'écran, Recalculer, P50 = moyenne des années en chiffres, P7 devis lié (ombrage par zone, repli).
+S-F : P4.1 désignation dans l'onglet, P4.3 raccordement + simulation concurrente, P4.4/P4.5 schéma édité/batterie, P4.6 refus de génération + dérogation, P8.3 dossier réglementaire.
+S-G : GPS corrigé (bannière, Recentrer), cible depuis les factures, photos (minio:9000, calage croisé), relevé (aller-retour, azimut), plan DXF multi-entités cp1252, reprise de visite, double clic depuis-lead À L'ÉCRAN.
+S-H : jeu anonymisé (anon_admin) non utilisé ; rapport d'étude Remettre ×2, carte de chaleur périmée ; plan de pose azimut non cardinal, plan de masse sur parcelle, titres « Villa Hammadi »/arabe, mention verrouillé ; P8.3 gabarit/dossier GED ; P9.2 retouche du toit ; P9.3 dossier de fin de chantier après changement (2ᵉ version).
+Specs Playwright par famille (calepinage-aller-retour/publication/acal-cycle/simulation/electrique-f06/entree-site/livrables.spec.js) : ABSENTES de l'arbre — aucune n'a été écrite (aucune modification de code dans cette tâche). Serveur Astro (apps/web) : non démarré (outil public non rejoué).

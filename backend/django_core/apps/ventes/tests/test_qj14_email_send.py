@@ -175,6 +175,31 @@ class TestEnvoyerEmailAction(TestCase):
         self.assertIsNotNone(log)
         self.assertEqual(log.to_email, 'autre@dest.ma')
 
+    def test_piece_jointe_au_format_memorise(self):
+        """AMOT117 (C-AMOT-VER-050) — sans ``pdf_mode`` dans la requête, la
+        pièce jointe suit le format du dernier rendu persisté ; un
+        ``pdf_mode`` explicite prime ; sans rendu mémorisé : « full »."""
+        from unittest import mock
+        from apps.ventes.models import ShareLink
+        cas = (({'pdf_mode': 'onepage'}, {}, 'onepage'),
+               ({'pdf_mode': 'onepage'}, {'pdf_mode': 'full'}, 'full'),
+               (None, {}, 'full'))
+        for i, (memo, corps, attendu) in enumerate(cas):
+            devis = make_devis(self.company, self.user, self.client_obj, 'brouillon',
+                               f'DEV-QJ14-FMT{i}')
+            if memo is not None:
+                Devis.objects.filter(pk=devis.pk).update(pdf_render_meta={'options': memo})
+            with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                            return_value='k.pdf') as rendu, \
+                    mock.patch('apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF'):
+                resp = self.api.post(url(devis.id), dict(corps), format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            opts = rendu.call_args.args[1]
+            self.assertEqual(opts['pdf_mode'], attendu, (memo, corps))
+            self.assertEqual(opts['share_token'],
+                             ShareLink.objects.filter(devis=devis).latest('created_at').token)
+            self.assertIs(rendu.call_args.kwargs.get('persist'), False)
+
     def test_corps_mal_type_400_sans_envoi(self):
         """ENF11 — un champ de mauvais type (entier, null) ou un corps non
         objet est refusé (400) AVANT tout effet : pas d'EmailLog, pas d'envoi."""

@@ -147,7 +147,12 @@ class Ciq341Synthese(SimpleTestCase):
         p1 = _texte(_page1(_data(economie=None)))
         self.assertIn("Synthèse", p1)
         self.assertNotIn("TRI sur", p1)
-        self.assertIn("vos 12 dernières factures", p1)
+        # AMOT116 — consommation connue (12 factures) : aucune demande de
+        # factures ; un devis sous le niveau 9 (drapeau) la garde.
+        self.assertIn("non chiffrés à ce stade.", p1)
+        self.assertNotIn("12 dernières factures", p1)
+        hier = dict(_data(economie=None), regles_ecarts_0111_historique=True)
+        self.assertIn("vos 12 dernières factures", _texte(_page1(hier)))
 
     def test_quatre_pages(self):
         from weasyprint import HTML

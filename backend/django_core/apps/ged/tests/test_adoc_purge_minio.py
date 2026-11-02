@@ -48,7 +48,7 @@ class PurgeMinioTests(TestCase):
         services.mettre_en_corbeille(doc, self.admin)
         with mock.patch('apps.records.storage.delete_attachment') as efface:
             services.purger_definitivement(doc)
-        efface.assert_called_once_with('attachments/k.pdf')
+        efface.assert_called_once_with('attachments/k.pdf', lever=True)
         self.assertFalse(Document.objects.filter(pk=doc.pk).exists())
 
     def test_cle_partagee_conservee(self):
@@ -68,13 +68,43 @@ class PurgeMinioTests(TestCase):
         # est annulée : on garde l'id pour relire la base.
         doc_id = doc.pk
         services.mettre_en_corbeille(doc, self.admin)
-        with mock.patch('apps.records.storage.delete_attachment',
-                        side_effect=RuntimeError('minio indisponible')):
+        # ADOC189 (sonde C-ADOC-VER-031) — seul le client MinIO est simulé :
+        # c'est `delete_attachment` RÉEL qui doit faire remonter l'échec.
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=self._client_en_panne()):
             with self.assertRaises(RuntimeError):
                 services.purger_definitivement(doc)
         self.assertTrue(Document.objects.filter(pk=doc_id).exists())
         self.assertEqual(
             DocumentVersion.objects.filter(document_id=doc_id).count(), 1)
+
+    @staticmethod
+    def _client_en_panne():
+        client = mock.Mock()
+        client.delete_object.side_effect = RuntimeError('minio indisponible')
+        return client
+
+    def test_echec_stockage_annule_la_disposition(self):
+        """ADOC189 — disposition « détruire », MinIO en panne : document et
+        version conservés, aucun certificat, demande non exécutée."""
+        PolitiqueRetention.objects.create(
+            company=self.co, nom='Globale', duree_conservation_jours=30)
+        doc = self._doc('Vieux', 'attachments/vieux.pdf')
+        Document.objects.filter(pk=doc.pk).update(
+            created_at=timezone.now() - timedelta(days=400))
+        demande = services.creer_demande_disposition(
+            self.co, libelle='Purge', document_ids=[doc.pk], user=self.admin)
+        services.approuver_demande_disposition(demande, user=self.admin2)
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=self._client_en_panne()):
+            with self.assertRaises(RuntimeError):
+                services.executer_demande_disposition(demande, user=self.admin2)
+        self.assertTrue(Document.objects.filter(pk=doc.pk).exists())
+        self.assertEqual(
+            DocumentVersion.objects.filter(document_id=doc.pk).count(), 1)
+        self.assertEqual(CertificatDestruction.objects.count(), 0)
+        demande.refresh_from_db()
+        self.assertNotEqual(demande.statut, 'executee')
 
     def test_disposition_supprime_binaire(self):
         PolitiqueRetention.objects.create(
@@ -88,6 +118,6 @@ class PurgeMinioTests(TestCase):
         with mock.patch('apps.records.storage.delete_attachment') as efface:
             certificats = services.executer_demande_disposition(
                 demande, user=self.admin2)
-        efface.assert_called_once_with('attachments/vieux.pdf')
+        efface.assert_called_once_with('attachments/vieux.pdf', lever=True)
         self.assertEqual(len(certificats), 1)
         self.assertEqual(CertificatDestruction.objects.count(), 1)
