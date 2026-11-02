@@ -1285,7 +1285,9 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
         modifiees += 1
         change = True
 
-    for modele in modeles:
+    # ACAL374 — fiches désignées d'abord (tri stable) : elles revendiquent
+    # leurs lignes avant qu'un modèle sans fiche ne prenne la plus grosse.
+    for modele in sorted(modeles, key=lambda m: not m.get('produit_id')):
         cible = int(modele.get('count') or 0)
         produit_id = modele.get('produit_id')
         if produit_id:
