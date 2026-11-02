@@ -2558,10 +2558,10 @@ def _cles_binaires_exclusives(document):
 def _supprimer_binaires(cles):
     """ADOC29 — efface du stockage objet les clés données (via
     `records.storage.delete_attachment`, jamais réimplémenté). Une exception
-    remonte à l'appelant (qui annule alors sa transaction)."""
+    remonte à l'appelant (`lever=True`, ADOC189 : il annule sa transaction)."""
     from apps.records import storage
     for cle in cles:
-        storage.delete_attachment(cle)
+        storage.delete_attachment(cle, lever=True)
 
 
 # ── GED25 — Purge automatique de la corbeille (DRY-RUN par défaut) ────────────
