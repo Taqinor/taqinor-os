@@ -250,6 +250,15 @@ def _section_servie(link, cle):
     return True
 
 
+def _sections_masquees(link):
+    """ADVS17 — les sections qu'un lien de DEVIS décoche, triées, hors ``pdf``
+    (jugée par les vues) ; contrat ``contract_samples/sections_pdf_public.json``."""
+    if not getattr(link, 'devis_id', None):
+        return []
+    return sorted(cle for cle in ShareLink.SECTIONS_CLES
+                  if cle != 'pdf' and not _section_servie(link, cle))
+
+
 def _client_ip(request):
     """QJR416 — l'IP de PREUVE, lue par LA primitive partagée.
 
