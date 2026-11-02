@@ -54,7 +54,7 @@ class PeseeLigneActionsMixin:
                                         PESEE_SHAPE)),
         }),
     })
-    @action(detail=True, methods=['get'], url_path='pesees',
+    @action(detail=True, methods=['get'], url_path='pesees',  # headless: D-ENF15-STOCK-22
             permission_classes=[IsAnyRole])
     def pesees(self, request, pk=None):
         """Relevés (ou leur absence) de toutes les lignes de la réception."""
@@ -77,7 +77,7 @@ class PeseeLigneActionsMixin:
         200: inline_serializer('StockReceptionPeseeSaisie', PESEE_SHAPE),
     })
     @action(detail=True, methods=['post'],
-            url_path=r'lignes/(?P<ligne_id>[0-9]+)/pesee',
+            url_path=r'lignes/(?P<ligne_id>[0-9]+)/pesee',  # headless: D-ENF15-STOCK-22
             permission_classes=[IsResponsableOrAdmin])
     def pesee_ligne(self, request, pk=None, ligne_id=None):
         """Saisit le relevé d'UNE ligne (``{unite_variable?, quantite_reelle,
@@ -115,7 +115,7 @@ class PeseeLigneActionsMixin:
                 })),
         }),
     })
-    @action(detail=True, methods=['post'], url_path='rapprocher-pesees',
+    @action(detail=True, methods=['post'], url_path='rapprocher-pesees',  # headless: D-ENF15-STOCK-22
             permission_classes=[IsResponsableOrAdmin])
     def rapprocher_pesees(self, request, pk=None):
         """AUD226 — solde les écarts de pesée de la réception CONFIRMÉE par un

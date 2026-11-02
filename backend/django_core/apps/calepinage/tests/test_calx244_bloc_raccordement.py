@@ -256,6 +256,14 @@ class RefusNommentLeChampTest(SimpleTestCase):
 
         self.assertEqual(refus.champ, 'raccordement.tension_nominale_v')
 
+    def test_une_valeur_demesuree_est_refusee_pas_calculee(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE : 1e308 faisait deborder les calculs (500).
+        for champ in ('puissance_souscrite_kva', 'tension_nominale_v',
+                      'limite_elevation_pct', 'cos_phi_impose',
+                      'plafond_injection_kw'):
+            refus = self._refus(**{champ: 1.1e308})
+            self.assertEqual(refus.champ, 'raccordement.' + champ)
+
     def test_une_cle_inconnue_est_ignoree_pas_enregistree(self):
         bloc = bloc_raccordement(None, dict(SAISIE, numero_compteur='X1'),
                                  [TRONCON_AC], {})

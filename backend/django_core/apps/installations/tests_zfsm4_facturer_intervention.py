@@ -156,6 +156,6 @@ class TestGenererFactureIntervention(TestCase):
         r = self.api.post(
             f'{BASE}/interventions/{interv2.id}/generer-facture/',
             format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : refus d'état
         self.assertFalse(Facture.objects.filter(
             client_id=None, company=self.company).exists())

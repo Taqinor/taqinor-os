@@ -161,15 +161,31 @@ class ActionRaccordementTest(BaseApiCalepinage):
         reponse = self.api.post(url_raccordement(self.calepinage.pk),
                                 {'limite_elevation_pct': 3}, format='json')
 
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # ENF11 : règle liant deux champs (valeur sans source) = 409.
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('source_limite', reponse.data)
 
     def test_cos_phi_sans_source_est_refuse_en_nommant_le_champ(self):
         reponse = self.api.post(url_raccordement(self.calepinage.pk),
                                 {'cos_phi_impose': 0.9}, format='json')
 
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('source_cos_phi', reponse.data)
+
+    def test_plafond_sans_justification_409_et_nul_400(self):
+        """ENF11 (fuzz 01/11) : plafond sans justification = 409 ; un NUL dans
+        une provenance = 400 nommé (était un 500 au rangement JSONB)."""
+        url = url_raccordement(self.calepinage.pk)
+        reponse = self.api.post(url, {'plafond_injection_kw': 3},
+                                format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('plafond_injection_justification', reponse.data)
+        reponse = self.api.post(
+            url, {'plafond_injection_kw': 3,
+                  'plafond_injection_justification': 'a\x00b'},
+            format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('plafond_injection_justification', reponse.data)
 
     def test_un_regime_hors_1_et_3_est_refuse(self):
         reponse = self.api.post(url_raccordement(self.calepinage.pk),

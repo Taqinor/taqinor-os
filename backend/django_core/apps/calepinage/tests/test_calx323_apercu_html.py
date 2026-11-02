@@ -136,6 +136,16 @@ class ApercuDocumentEnBaseTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 409)
         self.assertIn('resultat', reponse.data)
 
+    def test_plan_cablage_accepte_le_parametre_langue(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE : ``langue=`` transmis à une mise en page
+        # sans ce paramètre levait TypeError (500) ; refus de planche = 409.
+        reponse = self._apercu(self.calepinage, code='plan_cablage')
+        reponse_langue = self.api.get(
+            f'{url_detail(self.calepinage.pk)}apercu-document/'
+            '?code=plan_cablage&langue=zz')
+        self.assertLess(reponse.status_code, 500)
+        self.assertLess(reponse_langue.status_code, 500)
+
     def test_aucun_acces_reseau_dans_le_html_servi(self):
         html = self._apercu(self.calepinage).content.decode('utf-8')
         self.assertNotIn('http://', html)

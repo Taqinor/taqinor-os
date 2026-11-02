@@ -35,6 +35,27 @@ def en_retard(company, today):
     return RelanceEtape.objects.filter(due_date__lt=seuil)
 '''
 
+ANCIENNE_ALERTE = '''
+from .models import RelanceEtape
+
+def _alertes_lead(lead, touche, today):
+    return touche['due_date'] < today.isoformat()
+'''
+
+RELANCE_DATE = '''
+from .models import RelanceEtape
+
+def alerte(lead, today):
+    return lead.relance_date and lead.relance_date < today
+'''
+
+RELANCE_DATE_VIA_SEUIL = '''
+from .models import RelanceEtape
+
+def alerte(lead, seuil):
+    return lead.relance_date and lead.relance_date < seuil
+'''
+
 
 class GardeTests(unittest.TestCase):
     def test_signale_comparaison_hors_source(self):
@@ -64,6 +85,17 @@ class GardeTests(unittest.TestCase):
 
     def test_lecture_via_seuil_retard_acceptee(self):
         violations, _ = guard.evaluer({AILLEURS: LECTURE_VIA_SEUIL}, {})
+        self.assertEqual(violations, [])
+
+    def test_signale_indice_dict_due_date(self):
+        violations, _ = guard.evaluer({AILLEURS: ANCIENNE_ALERTE}, {})
+        self.assertEqual(len(violations), 1)
+        self.assertIn("_alertes_lead", violations[0])
+
+    def test_signale_relance_date_et_accepte_via_seuil(self):
+        violations, _ = guard.evaluer({AILLEURS: RELANCE_DATE}, {})
+        self.assertEqual(len(violations), 1)
+        violations, _ = guard.evaluer({AILLEURS: RELANCE_DATE_VIA_SEUIL}, {})
         self.assertEqual(violations, [])
 
     def test_fichier_sans_relance_etape_hors_perimetre(self):

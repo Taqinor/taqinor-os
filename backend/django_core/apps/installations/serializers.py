@@ -1081,7 +1081,7 @@ class TypeInterventionPlanSerializer(serializers.ModelSerializer):
 # ── FG291 — Programme / Projet multi-chantiers ───────────────────────────────
 
 class ProjetChantierSerializer(
-    IdInconnu404Mixin,
+    IdInconnu404Mixin, ChampsTexteStrictsMixin,  # fuzz 01/11 : `libelle` sans NUL
     UniciteEn409Mixin,
     SameCompanyFKSerializerMixin,
         serializers.ModelSerializer):

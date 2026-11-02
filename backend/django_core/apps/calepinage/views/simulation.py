@@ -134,7 +134,8 @@ def enregistrer_pertes(self, request, pk=None):
         persister_pertes(calepinage, saisie, user=request.user)
     except PertesInvalides as refus:
         return Response({refus.champ or 'pertes': [str(refus)]},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=(status.HTTP_409_CONFLICT if refus.etat
+                                else status.HTTP_400_BAD_REQUEST))
     return Response(publication_des_pertes(calepinage))
 
 

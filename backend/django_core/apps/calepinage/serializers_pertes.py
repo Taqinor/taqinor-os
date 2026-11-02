@@ -14,6 +14,14 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from core.champs_stricts import ChaineStricte
+
+from .services.pertes_politique import SOURCES_ADMISES
+
+#: Un pourcentage de perte vaut ``0 <= pct < 100`` : le plus grand flottant
+#: STRICTEMENT inférieur à 100 (``maximum`` du schéma = la règle du service).
+PCT_MAX = 99.99999999999999
+
 __all__ = ['PertesCalepinageSerializer', 'PosteDePerteSerializer',
            'PostesDePertesSerializer', 'PosteDuCatalogueSerializer',
            'PosteStatueSerializer']
@@ -22,20 +30,28 @@ __all__ = ['PertesCalepinageSerializer', 'PosteDePerteSerializer',
 class PosteDePerteSerializer(serializers.Serializer):
     """UN poste : sa valeur, sa source, et ses douze mois s'il est saisonnier."""
 
-    poste = serializers.CharField()
-    libelle = serializers.CharField(required=False, allow_blank=True)
-    pct = serializers.FloatField(required=False)
+    # ERR-ENF11-FUZZ-CALEPINAGE (fuzz 01/11) : ce que le service refuse EN
+    # LISIBLE dans le corps est publié ici (nom non blanc sans NUL, borne du
+    # pourcentage, source énumérée, EXACTEMENT 12 mois). « pct ou mensuel »,
+    # l'unicité du poste et le forçage motivé lient plusieurs champs : le
+    # schéma ne les dit pas, le service les refuse en 409 (``etat``).
+    poste = ChaineStricte()
+    libelle = ChaineStricte(required=False, allow_blank=True)
+    pct = serializers.FloatField(required=False, min_value=0,
+                                 max_value=PCT_MAX)
     #: ``null`` = poste NON sourcé — publié comme tel, jamais masqué.
-    source = serializers.CharField(required=False, allow_null=True)
-    reference = serializers.CharField(required=False, allow_blank=True)
+    source = serializers.ChoiceField(choices=SOURCES_ADMISES, required=False,
+                                     allow_null=True)
+    reference = ChaineStricte(required=False, allow_blank=True)
     #: 12 valeurs (salissure) ; ``pct`` est alors leur MOYENNE, calculée
     #: côté serveur — jamais saisie à côté.
-    mensuel = serializers.ListField(child=serializers.FloatField(),
-                                    required=False, allow_null=True)
+    mensuel = serializers.ListField(
+        child=serializers.FloatField(min_value=0, max_value=PCT_MAX),
+        min_length=12, max_length=12, required=False, allow_null=True)
     #: ACAL135 — le FORÇAGE SIGNÉ : appliqué à la place de l'étape qui le
     #: calculerait, refusé sans ``motif_force``.
     force = serializers.BooleanField(required=False)
-    motif_force = serializers.CharField(required=False, allow_blank=True)
+    motif_force = ChaineStricte(required=False, allow_blank=True)
 
 
 class PosteStatueSerializer(PosteDePerteSerializer):

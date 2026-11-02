@@ -698,7 +698,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                          produit_source_quantite_stock=serializers.IntegerField(),
                                          produit_cible_quantite_stock=serializers.IntegerField(),
                                          numero_lot=serializers.CharField(allow_null=True))})
-    @action(detail=False, methods=['post'], url_path='decoupes',
+    @action(detail=False, methods=['post'], url_path='decoupes',  # headless: D-ENF15-STOCK-22
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
     def decoupes(self, request):
         """XSTK16 — découpe/reconditionnement : débite `produit_source` et
@@ -815,7 +815,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
     @extend_schema(responses=corps('ProduitClasseAbc', produit=serializers.IntegerField(),
                                    classe_abc=serializers.CharField(allow_null=True), depuis=serializers.DateField(),
                                    jusqu_a=serializers.DateField()))
-    @action(detail=True, methods=['get'], url_path='classe-abc',
+    @action(detail=True, methods=['get'], url_path='classe-abc',  # headless: D-ENF15-STOCK-22
             permission_classes=[IsAnyRole])
     def classe_abc(self, request, *args, **kwargs):
         """NTWMS13 — classe ABC de rotation de ce produit sur 12 mois
@@ -842,7 +842,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                  ['aucune', 'fifo', 'fefo', 'zone'], vide=True)],
                    responses=corps('ProduitPlanPicking', strategie=serializers.CharField(),
                                    lignes=serializers.ListField(child=serializers.DictField())))
-    @action(detail=True, methods=['get'], url_path='plan-picking',
+    @action(detail=True, methods=['get'], url_path='plan-picking',  # headless: D-ENF15-STOCK-22
             permission_classes=[IsAnyRole])
     def plan_picking(self, request, *args, **kwargs):
         """NTWMS3 — plan de prélèvement de ce produit pour la quantité
@@ -993,7 +993,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                P('largeur', INT, False, 'Largeur du gabarit (mm, 30-105)', vide=True),
                                P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'], vide=True)],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
-    @action(detail=False, methods=['get'], url_path='etiquettes-prix',
+    @action(detail=False, methods=['get'], url_path='etiquettes-prix',  # headless: D-ENF15-STOCK-22
             permission_classes=[IsAnyRole])
     def etiquettes_prix(self, request):
         """NTRET17 — Étiquettes PRIX de rayon (EAN-13 + prix TTC en gros).

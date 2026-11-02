@@ -39,6 +39,7 @@ TOUJOURS présents. Aucun prix, aucun kWh (D-CALX 5, W3).
 """
 from __future__ import annotations
 
+import sys
 import math
 
 from core.electrique.cables import RHO_CUIVRE_20C, chute_tension_v
@@ -118,11 +119,15 @@ MOTIF_SANS_TENSION_NOMINALE = (
 
 
 class RaccordementInvalide(ValueError):
-    """Refus métier sur la saisie de raccordement — champ fautif NOMMÉ."""
+    """Refus métier sur la saisie de raccordement — champ fautif NOMMÉ.
 
-    def __init__(self, message, *, champ=''):
+    ``etat`` marque une règle qui LIE plusieurs champs (une valeur sans sa
+    source) : le schéma ne la dit pas, l'API la refuse en 409 (ENF11)."""
+
+    def __init__(self, message, *, champ='', etat=False):
         super().__init__(message)
         self.champ = champ
+        self.etat = etat
 
 
 # ── lectures tolérantes (aucune valeur substituée, jamais) ────────────────
@@ -277,7 +282,8 @@ def _limite_saisie(injection):
         if isinstance(injection.get('source_limite'), str) else ''
     if limite is not None and not source:
         raise RaccordementInvalide(REFUS_LIMITE_SANS_SOURCE,
-                                   champ='raccordement.source_limite')
+                                   champ='raccordement.source_limite',
+                                   etat=True)
     return (limite, source or None)
 
 
@@ -490,7 +496,8 @@ def _cos_phi_saisi(saisie):
     source = brut.strip() if isinstance(brut, str) else ''
     if cos_phi is not None and not source:
         raise RaccordementInvalide(REFUS_COS_PHI_SANS_SOURCE,
-                                   champ='raccordement.source_cos_phi')
+                                   champ='raccordement.source_cos_phi',
+                                   etat=True)
     return (cos_phi, source or None)
 
 
@@ -1004,8 +1011,9 @@ STATUT_PUBLIE_OMIS = 'omis'
 PREFIXE_CHAMP = 'raccordement.'
 
 
-def _refus_saisie(champ, phrase):
-    return RaccordementInvalide(phrase, champ=PREFIXE_CHAMP + champ)
+def _refus_saisie(champ, phrase, etat=False):
+    return RaccordementInvalide(phrase, champ=PREFIXE_CHAMP + champ,
+                                etat=etat)
 
 
 def _texte_saisi(valeur, champ):
@@ -1017,7 +1025,25 @@ def _texte_saisi(valeur, champ):
             champ, "La provenance doit être un texte : indiquez le document "
                    "qui fixe cette valeur (texte réglementaire, contrat de "
                    "raccordement ou prescription du gestionnaire de réseau).")
+    if '\x00' in valeur:  # ne se range pas en JSONB (500) ; publié sans NUL
+        raise _refus_saisie(
+            champ, "La provenance contient un caractère interdit (caractère "
+                   "nul) : corrigez la saisie.")
     return valeur.strip() or None
+
+
+#: ERR-ENF11-FUZZ-CALEPINAGE - plafond de TOUT nombre saisi du raccordement :
+#: la racine 4e du plus grand flottant, pour que les produits aval (kVA, V, %, kW)
+#: ne débordent pas (500 sur 1e308). Borne de FORME, calculée, jamais une limite
+#: électrique. Publiée en ``maximum`` sur le corps de l'API.
+SAISIE_MAXIMUM = sys.float_info.max ** 0.25
+
+
+def _refus_trop_grand(champ, nombre):
+    return _refus_saisie(
+        champ, "%s est trop grande (« %s » ; au plus %s)."
+               % (INTITULES_SAISIE[champ].capitalize(), fr(nombre),
+                  fr(SAISIE_MAXIMUM)))
 
 
 def _nombre_saisi(valeur, champ):
@@ -1035,6 +1061,8 @@ def _nombre_saisi(valeur, champ):
             champ, "%s doit être strictement positive : « %s » ne décrit "
                    "aucun branchement réel."
                    % (INTITULES_SAISIE[champ].capitalize(), fr(nombre)))
+    if nombre > SAISIE_MAXIMUM:
+        raise _refus_trop_grand(champ, nombre)
     return nombre
 
 
@@ -1057,6 +1085,8 @@ def _plafond_saisi(valeur):
         raise _refus_saisie(
             champ, "%s ne peut pas être négatif (« %s »)."
                    % (INTITULES_SAISIE[champ].capitalize(), fr(nombre)))
+    if nombre > SAISIE_MAXIMUM:
+        raise _refus_trop_grand(champ, nombre)
     return nombre
 
 
@@ -1101,7 +1131,7 @@ def _saisie_publiee(brute):
     if (saisie['plafond_injection_kw'] is not None
             and not saisie['plafond_injection_justification']):
         raise _refus_saisie('plafond_injection_justification',
-                            REFUS_PLAFOND_SANS_JUSTIFICATION)
+                            REFUS_PLAFOND_SANS_JUSTIFICATION, etat=True)
     return {champ: saisie[champ] for champ in CHAMPS_SAISIE}
 
 

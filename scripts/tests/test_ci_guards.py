@@ -300,6 +300,11 @@ class GardeBackendNeLitPasLeFrontendTests(unittest.TestCase):
 class ToutEstBrancheTests(unittest.TestCase):
     EXCLUSIONS = os.path.join(REPO_ROOT, "scripts", "ci_guards_non_branches.txt")
 
+    @staticmethod
+    def _cite(cle, texte):
+        """ADEP105 - nom EXACT : borne par des non-mots (`test_x` n'est pas cite par `test_x_y`)."""
+        return re.search(r"(?<!\w)" + re.escape(cle) + r"(?!\w)", texte) is not None
+
     @classmethod
     def _textes_cites(cls):
         morceaux = [c for rows in ci_guards.GARDES.values() for _n, c, _w in rows]
@@ -339,12 +344,22 @@ class ToutEstBrancheTests(unittest.TestCase):
         texte = self._textes_cites()
         exclusions = self._exclusions()
         orphelins = [rel for rel, cle in self._fichiers()
-                     if cle not in texte and rel not in exclusions]
+                     if not self._cite(cle, texte) and rel not in exclusions]
         self.assertEqual(
             orphelins, [],
             "scripts jamais executes en CI - ajoutez une entree a ci_guards.GARDES, ou une "
             "ligne `fichier | motif | date` a scripts/ci_guards_non_branches.txt : "
             + ", ".join(orphelins))
+
+    def test_entree_exacte_retiree_rouge(self):
+        """ADEP105 - retirer l'entree exacte `test_check_stages` n'est plus masque par
+        `test_check_stages_litteraux` ; idem `check_x.py` cite seulement dans `check_x_y.py`."""
+        texte = "python -m unittest scripts.tests.test_check_stages_litteraux -v\nscripts/check_x_y.py"
+        self.assertFalse(self._cite("test_check_stages", texte))
+        self.assertFalse(self._cite("check_x.py", texte))
+        self.assertTrue(self._cite("test_check_stages_litteraux", texte))
+        self.assertTrue(self._cite("check_x_y.py", texte))
+        self.assertTrue(self._cite("test_check_stages", texte + "\nscripts.tests.test_check_stages -v"))
 
     def test_exclusions_datees_et_vivantes(self):
         texte = self._textes_cites()
@@ -354,7 +369,7 @@ class ToutEstBrancheTests(unittest.TestCase):
                 self.assertEqual(len(champs), 3, f"{rel} : format `fichier | motif | date`")
                 self.assertRegex(champs[2], r"^\d{4}-\d{2}-\d{2}$")
                 self.assertIn(rel, existants, f"{rel} n'existe plus - retirez la ligne")
-                self.assertNotIn(existants[rel], texte,
+                self.assertFalse(self._cite(existants[rel], texte),
                                  f"{rel} est desormais branche - retirez la ligne (cliquet)")
 
 

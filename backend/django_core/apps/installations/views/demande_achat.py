@@ -136,7 +136,8 @@ def _notifier_demandeur_decision(da, approuvee):
         logger.warning("notifier demandeur decision : échec ignoré, comportement dégradé", exc_info=True)
 
 
-class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
+class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMixin,
+                          CompanyScopedModelViewSet):
     """FG310 — réquisitions d'achat. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
     serveur ; chantier/programme/fournisseur_suggere validés tenant. Filtrable
@@ -226,9 +227,10 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         da = self.get_object()
         if da.statut not in (DemandeAchat.Statut.BROUILLON,
                              DemandeAchat.Statut.SOUMISE):
+            # ENF11 : statut courant = état stocké, pas une saisie invalide.
             return Response(
                 {'detail': "Seule une demande brouillon peut être soumise."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         regle = services.resoudre_regle_approbation_achat(da)
         try:
             services.controler_budget_demande_achat(da, regle=regle)
@@ -245,7 +247,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
                 champs={'archivee': False, 'date_archivage': None})
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         services.lancer_workflow_approbation_achat(da, regle=regle)
         return Response(self.get_serializer(da).data)
 
@@ -282,9 +284,19 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         from .. import services
 
         da = self.get_object()
-        etape_id = request.data.get('etape')
+        corps = oa.corps_objet(request)
+        etape_id = corps.get('etape')
+        commentaire = corps.get('commentaire') or ''
+        # ENF11 : un `etape` non entier ou un `commentaire` non texte = 400.
+        etape_invalide = bool(etape_id) and (
+            isinstance(etape_id, bool) or not isinstance(etape_id, int))
+        if etape_invalide or not isinstance(commentaire, str):
+            return Response(
+                {'detail': "`etape` (entier) et `commentaire` (texte) attendus."},
+                status=status.HTTP_400_BAD_REQUEST)
         if etape_id:
-            etape = da.etapes_approbation.filter(pk=etape_id).first()
+            etape = (da.etapes_approbation.filter(pk=etape_id).first()
+                     if 0 < etape_id <= oa.ID_MAX else None)
             if etape is None:
                 return Response(
                     {'detail': 'Étape inconnue pour cette demande.'},
@@ -296,8 +308,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
                     {'detail': "Aucune étape d'approbation en attente."},
                     status=status.HTTP_409_CONFLICT)
         try:
-            operation(etape, approbateur=request.user,
-                      commentaire=request.data.get('commentaire') or '')
+            operation(etape, approbateur=request.user, commentaire=commentaire)
         except services.ApprobationAchatError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)

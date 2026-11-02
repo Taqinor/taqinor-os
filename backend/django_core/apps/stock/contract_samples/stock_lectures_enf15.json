@@ -1,0 +1,138 @@
+{
+  "endpoint": "GET /api/django/stock/fournisseurs/documents-expirants/",
+  "pourquoi": "ENF15 (D-ENF15-STOCK-22, 02/11/2026) — six lectures stock qui n'avaient aucun écran : formes servies, lues ligne à ligne dans les sélecteurs/vues cités, consommées par ConformiteFournisseurs.jsx, ReleveDeductionsTva.jsx, TracabiliteLotSerie.jsx et ValorisationADate.jsx. Fichier multi-routes (`routes.<nom>`) ; `exemple` de tête = la première route. Les montants (Decimal) sont servis en TEXTE.",
+  "avertissement_forme": "Les réponses documents-expirants, export-conformite et releve-deductions-tva sont DIRECTEMENT des tableaux (`return Response(liste)`, sans enveloppe) ; `exemple` les enveloppe sous `lignes` uniquement parce que ce fichier de contrat exige un OBJET — un test qui consomme cette fixture lit `.lignes`.",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Clés lues dans selectors.py (documents_fournisseur_expirant, conformite_fournisseurs, releve_deductions_tva_par_taux), selectors_fournisseur.py (delai_mesure_vs_annonce), selectors_wms.py (tracabilite_produit) et services.py (valorisation_a_date) ; pas encore affirmées par APIClient.",
+  "exemple": {
+    "lignes": [
+      {
+        "document_id": 1,
+        "fournisseur_id": 3,
+        "fournisseur_nom": "Sunrak",
+        "type_document": "ice",
+        "type_document_display": "Attestation ICE",
+        "date_expiration": "2026-11-10",
+        "jours_restants": 8
+      }
+    ]
+  },
+  "routes": {
+    "fournisseurs_export_conformite": {
+      "endpoint": "GET /api/django/stock/fournisseurs/export-conformite/",
+      "pourquoi": "NTP2P19 — une ligne par fournisseur actif. `?debut=&fin=` (dates ISO, illisibles = ignorées) ; `?export=xlsx` renvoie le classeur. `montant_achete` est un MONTANT D'ACHAT : la clé est RETIRÉE sans `prix_achat_voir` (voir `exemple_sans_prix_achat`) et l'écran masque alors la colonne.",
+      "exemple": {
+        "lignes": [
+          {
+            "fournisseur_id": 3,
+            "fournisseur": "Sunrak",
+            "statut_onboarding": "Validé",
+            "score_risque": 82,
+            "niveau_risque": "faible",
+            "documents_expires": "",
+            "documents_manquants": "RIB",
+            "dernier_retard_le": "2026-09-01",
+            "dernier_retard_jours": 4,
+            "montant_achete": "12500.00"
+          }
+        ]
+      },
+      "exemple_sans_prix_achat": {
+        "lignes": [
+          {
+            "fournisseur_id": 3,
+            "fournisseur": "Sunrak",
+            "statut_onboarding": "Validé",
+            "score_risque": 82,
+            "niveau_risque": "faible",
+            "documents_expires": "",
+            "documents_manquants": "RIB",
+            "dernier_retard_le": "2026-09-01",
+            "dernier_retard_jours": 4
+          }
+        ]
+      }
+    },
+    "fournisseurs_delai_mesure": {
+      "endpoint": "GET /api/django/stock/fournisseurs/<id>/delai-mesure/",
+      "pourquoi": "NTSCM11 — délai de livraison RÉEL mesuré vs ANNONCÉ (`?fenetre_mois=&produit=&seuil_ecart_pct=`). Responsable/Admin. Sans livraison confirmée : `nb_mesures` = 0 et les délais valent null.",
+      "exemple": {
+        "fournisseur_id": 3,
+        "produit_id": null,
+        "fenetre_mois": 12,
+        "nb_mesures": 4,
+        "delai_annonce_jours": 10.0,
+        "delai_mesure_jours": 15.0,
+        "ecart_jours": 5.0,
+        "ecart_type_jours": 2.1,
+        "ecart_pct": "50.00",
+        "seuil_ecart_pct": "20.00",
+        "utiliser_delai_reel": true,
+        "delai_retenu_jours": 15.0
+      }
+    },
+    "factures_releve_deductions_tva": {
+      "endpoint": "GET /api/django/stock/factures-fournisseur/releve-deductions-tva/",
+      "pourquoi": "XPUR17 — TVA déductible sur les achats, groupée par taux (`?date_debut=&date_fin=`). Responsable/Admin. Montants d'achat : l'écran n'est offert qu'avec `prix_achat_voir`.",
+      "exemple": {
+        "lignes": [
+          {
+            "taux_tva": "20.00",
+            "total_ht": "1000.00",
+            "total_tva": "200.00",
+            "nombre_factures": 2
+          }
+        ]
+      }
+    },
+    "produits_tracabilite": {
+      "endpoint": "GET /api/django/stock/produits/tracabilite/",
+      "pourquoi": "NTWMS16 — chaîne amont/stock/aval d'un lot (`?lot=`) ou d'un n° de série (`?serie=`). 404 `{detail}` si le numéro est inconnu. Aucun prix. Les éléments d'`aval` sont de type `picking`, `colis` ou `equipement` (champs selon le type).",
+      "exemple": {
+        "lot": "LOT-005",
+        "serie": "",
+        "produit": { "id": 1, "nom": "Batterie 100Ah", "sku": "BAT-100" },
+        "amont": [
+          {
+            "type": "reception",
+            "reception_reference": "REC-9",
+            "bcf_reference": "BCF-3",
+            "fournisseur_nom": "Dyness",
+            "date": "2026-10-01",
+            "quantite": 10,
+            "produit_id": 1
+          }
+        ],
+        "stock": { "quantite_restante": 6, "emplacement_id": 2, "emplacement_nom": "Dépôt A", "casiers": [] },
+        "aval": [
+          {
+            "type": "picking",
+            "vague_reference": "VAG-2",
+            "quantite_prelevee": 4,
+            "chantier_id": 7,
+            "chantier_reference": "CH-7"
+          }
+        ]
+      }
+    },
+    "produits_valorisation_a_date": {
+      "endpoint": "GET /api/django/stock/produits/valorisation-a-date/",
+      "pourquoi": "XSTK13 — valeur du stock reconstruite à `?date=AAAA-MM-JJ` (requis, sinon 400). ADMIN uniquement. `cout_moyen` et `valeur` sont des COÛTS D'ACHAT : l'écran n'est offert qu'avec `prix_achat_voir`.",
+      "exemple": {
+        "date": "2026-10-30",
+        "total": "1000.00",
+        "lignes": [
+          {
+            "produit_id": 1,
+            "sku": "PAN-1",
+            "designation": "Panneau 550W",
+            "quantite": 10,
+            "cout_moyen": "100.00",
+            "valeur": "1000.00",
+            "source": "cmp"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -2,7 +2,7 @@ import { createElement, lazy } from 'react'
 import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
   Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote, Gauge,
-  LayoutGrid, Link2, Handshake, BadgePercent, PackageOpen, ShieldAlert, Blocks,
+  LayoutGrid, Link2, Handshake, BadgePercent, PackageOpen, ShieldAlert, Blocks, ShieldCheck,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
@@ -41,6 +41,8 @@ const FournisseursStock = lazy(() => import('../../pages/stock/FournisseursStock
 // accords de prix), jusqu'ici construite mais routée nulle part. Atteinte
 // depuis un lien de `FournisseursStock.jsx` (pas d'entrée de menu dédiée).
 const FournisseurFiche360 = lazy(() => import('../../pages/stock/FournisseurFiche360'))
+// ENF15 (D-ENF15-STOCK-22) — pièces qui expirent, conformité (+ export Excel), délai réel vs annoncé.
+const ConformiteFournisseurs = lazy(() => import('../../pages/stock/ConformiteFournisseurs'))
 const BonsCommandeFournisseur = lazy(() => import('../../pages/stock/BonsCommandeFournisseur'))
 const ModelesBcf = lazy(() => import('../../pages/stock/ModelesBcf'))
 const ReceptionsFournisseur = lazy(() => import('../../pages/stock/ReceptionsFournisseur'))
@@ -107,6 +109,8 @@ const config = {
       { to: '/stock/categories',     label: 'Catégories & marques', k: 'nav.categories', icon: navIcon(Boxes), roles: ['responsable','admin'] },
       { to: '/stock/fournisseurs',   label: 'Fournisseurs',     k: 'nav.fournisseurs', icon: navIcon(Truck), roles: ['responsable','admin'] },
       { to: '/stock/mouvements',     label: 'Mouvements',       k: 'nav.mouvements', icon: navIcon(ArrowLeftRight),   roles: ['normal','responsable','admin'] },
+      // ENF15 — pas de clé `k` (catalogue i18n fermé, `tr()` retombe sur le FR).
+      { to: '/stock/fournisseurs/conformite', label: 'Conformité fournisseurs', icon: navIcon(ShieldCheck), roles: ['responsable','admin'] },
       // ── ACHATS — sous-groupe prêt à déplacer (ODX20 pas livré : `apps/achats`
       // existe déjà côté backend — manifest `key:'achats'`, `depends:['stock']`
       // — mais sa vue/frontend n'a pas atterri ; en attendant, ces 5 écrans
@@ -156,6 +160,7 @@ const config = {
     { path: '/stock/mouvements', component: MouvementsPage },
     { path: '/stock/categories', component: CategoriesStock },
     { path: '/stock/fournisseurs', component: FournisseursStock },
+    { path: '/stock/fournisseurs/conformite', component: ConformiteFournisseurs },
     { path: '/stock/fournisseurs/:id/360', component: FournisseurFiche360 },
     // ── ACHATS — même sous-groupe que la nav ci-dessus (miroir `group`). ──
     { path: '/stock/bons-commande-fournisseur', component: BonsCommandeFournisseur, group: 'achats' },

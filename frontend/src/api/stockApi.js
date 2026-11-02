@@ -686,6 +686,28 @@ const stockApi = {
       paramsSerializer: { indexes: null },
       responseType: 'blob',
     }),
+  // ENF15 (D-ENF15-STOCK-22) — six lectures serveur jusqu'ici sans écran.
+  // Pièces d'onboarding fournisseur expirant dans `within` jours (30 par défaut).
+  getDocumentsFournisseurExpirants: (within) =>
+    api.get('/stock/fournisseurs/documents-expirants/', { params: { within } }),
+  // Conformité par fournisseur actif ; `montant_achete` absent sans le droit prix d'achat.
+  getConformiteFournisseurs: (params) =>
+    api.get('/stock/fournisseurs/export-conformite/', { params }),
+  exportConformiteFournisseursXlsx: (params) =>
+    api.get('/stock/fournisseurs/export-conformite/', {
+      params: { ...params, export: 'xlsx' }, responseType: 'blob',
+    }),
+  // Délai de livraison réel mesuré vs annoncé (responsable/admin).
+  getDelaiMesureFournisseur: (id, params) =>
+    api.get(`/stock/fournisseurs/${id}/delai-mesure/`, { params }),
+  // Relevé des déductions TVA (achats) par taux (responsable/admin).
+  getReleveDeductionsTva: (params) =>
+    api.get('/stock/factures-fournisseur/releve-deductions-tva/', { params }),
+  // Traçabilité amont/aval d'un lot (`lot`) ou d'un n° de série (`serie`).
+  getTracabilite: (params) => api.get('/stock/produits/tracabilite/', { params }),
+  // Valorisation du stock reconstruite à une date passée (admin).
+  getValorisationADate: (date) =>
+    api.get('/stock/produits/valorisation-a-date/', { params: { date } }),
 }
 
 export default stockApi

@@ -52,7 +52,7 @@ from .garde_ecriture import (
 from .corps_requete import (
     GedArchiverLegalementCorps,
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
-    GedMotifCorps, GedOperationsLotCorps, GedVerrouCorps, _date_iso,
+    GedMotifCorps, GedOperationsLotCorps, GedProlongerCorps, GedVerrouCorps, _date_iso,
     _entier_borne, _id_filtre, _pk, _pks, _txt, conflit_archivage, corps_valide,
     liste_ou_400, lignes_csv_invalides, nom_fichier_sur, refus_cycle_vie,
     refus_etat, reponse_valeur_ou_409,
@@ -3287,18 +3287,8 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
         notification d'expiration proche (le prochain sweep peut re-notifier
         sur la nouvelle échéance)."""
         demande = self.get_object()
-        raw = request.data.get('expires_at')
-        if not raw:
-            return Response(
-                {'expires_at': 'La nouvelle échéance est requise.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        from django.utils.dateparse import parse_datetime
-
-        expires_at = parse_datetime(raw)
-        if expires_at is None:
-            return Response(
-                {'expires_at': 'Date invalide (format ISO attendu).'},
-                status=status.HTTP_400_BAD_REQUEST)
+        # ERR-ENF11-FUZZ-GED : corps validé (objet, date-heure ISO) -> 400.
+        expires_at = corps_valide(GedProlongerCorps, request)['expires_at']
         try:
             demande = services.prolonger_demande_signature(
                 demande, expires_at=expires_at, user=request.user)
@@ -3399,13 +3389,14 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
         """XGED2 — Annule une demande de signature (action ÉMETTEUR, tracée).
 
         `POST …/demandes-signature/<id>/annuler/`. Une demande déjà `signe`/
-        `refuse` ne peut plus être annulée (400). Écriture : responsable/admin."""
+        `refuse` ne peut plus être annulée (409, refus d'état — ENF11).
+        Écriture : responsable/admin."""
         demande = self.get_object()  # borné à la société (TenantMixin)
         try:
             demande = services.annuler_demande(demande, user=request.user)
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(
             DemandeSignatureDocumentSerializer(
                 demande, context={'request': request}).data,
@@ -4358,8 +4349,9 @@ class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
                 demande, user=request.user,
                 commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except DemandeDispositionError as exc:
+            # ENF11 : déjà décidée / non approuvée = refus d'ÉTAT, pas de saisie.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -4381,8 +4373,9 @@ class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
                 demande, user=request.user,
                 commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except DemandeDispositionError as exc:
+            # ENF11 : déjà décidée / non approuvée = refus d'ÉTAT, pas de saisie.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -4400,8 +4393,9 @@ class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
         try:
             services.executer_demande_disposition(demande, user=request.user)
         except DemandeDispositionError as exc:
+            # ENF11 : déjà décidée / non approuvée = refus d'ÉTAT, pas de saisie.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
