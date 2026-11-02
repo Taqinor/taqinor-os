@@ -1154,7 +1154,7 @@ class CommandeReparationTests(_PlacementBase):
                             for e in annulees))
         for lead in (l2, l3):
             self.assertEqual(lead.relance_etapes.filter(
-                statut=RelanceEtape.Statut.A_FAIRE).count(), 2)
+                cadence='reveil', statut=RelanceEtape.Statut.A_FAIRE).count(), 2)
         rejeu = self._appeler('reparer_rebonds_froid', '--population',
                               'reveils', '--apply')
         self.assertIn('0 lead(s) à réveil', rejeu)
