@@ -2965,3 +2965,16 @@ decisions:
     date: "2026-11-01"
     source: "Reda, question interactive, contre-visite vérifie ATOT"
     taches: [ATOT44, ATOT45]
+  - id: D-ACAL-VER2-1
+    question: "Un calepinage enregistré puis ombré (horizon, ombre, matrice) garde une production stockée jamais dératée, que l'atelier réémet à la réouverture : quelle règle ?"
+    options:
+      - cle: signature
+        texte: "Signature du dératé : la production stockée porte une signature des entrées d'ombrage ; à la réouverture, signature absente ou différente ⇒ recalcul dératé ; document inchangé octet-identique (ACAL31 conservé)"
+      - cle: toujours
+        texte: "Toujours dérater au boot (casse l'aller-retour octet-identique d'ACAL31)"
+      - cle: tel_quel
+        texte: "Laisser tel quel : le chiffre client vient du moteur de devis"
+    reponse: signature
+    date: "2026-11-02"
+    source: "Reda, question interactive, contre-visite vérifie ACAL du 01/11/2026"
+    taches: [ACAL367]
