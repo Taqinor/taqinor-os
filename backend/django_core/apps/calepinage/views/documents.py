@@ -230,13 +230,14 @@ def apercu_document(self, request, pk=None):
     from django.http import HttpResponse
 
     from ..services.documents import mise_en_page
+    from ..services.planche import PlancheRefusee
     from ..services.rapport import RapportRefuse
 
     #: Les refus RÉELLEMENT levés par les mises en page aujourd'hui
     #: enregistrées (``MISES_EN_PAGE``) — un document neuf AJOUTE sa
     #: propre exception ici quand il rejoint le registre, exactement comme
     #: ``sorties.py::_tableur`` capture ``(ExportRefuse, PlancheRefusee)``.
-    REFUS_CONNUS = (RapportRefuse,)
+    REFUS_CONNUS = (RapportRefuse, PlancheRefusee)
 
     calepinage = self.get_object()  # borné société par get_queryset
     code = (request.query_params.get('code') or '').strip()
@@ -256,7 +257,8 @@ def apercu_document(self, request, pk=None):
     try:
         html = fonction(calepinage, langue=langue)
     except REFUS_CONNUS as refus:
-        return Response({refus.champ or 'resultat': str(refus)},
+        return Response({getattr(refus, 'champ', '') or 'resultat':
+                         str(refus)},
                         status=status.HTTP_409_CONFLICT)
     return HttpResponse(html, content_type='text/html; charset=utf-8')
 

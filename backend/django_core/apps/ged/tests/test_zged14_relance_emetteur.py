@@ -127,6 +127,15 @@ class ViewTests(ZGed14Base):
             {}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_prolonger_corps_non_objet_ou_date_illisible_400(self):
+        # ERR-ENF11-FUZZ-GED : corps scalaire / date non texte -> 400, pas 500.
+        demande = self._make_demande()
+        api = auth(self.admin_a)
+        url = f'/api/django/ged/demandes-signature/{demande.pk}/prolonger/'
+        for corps in (False, [1], {'expires_at': 12}, {'expires_at': 'x'}):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, corps)
+
     def test_isolation_societe(self):
         demande = self._make_demande()
         co_b = make_company('zged14-b', 'Zged14 B')

@@ -521,9 +521,11 @@ def _rendre_plan_cablage_svg(calepinage, *, moment=None, affectation=None):
         pied=pied_du_calepinage(calepinage, moment=moment))
 
 
-def html_du_plan_cablage(calepinage, **options):
+def html_du_plan_cablage(calepinage, *, langue=None, **options):
     """L'UNIQUE mise en page du plan : le PDF et l'aperçu (CALX323) la
-    partagent."""
+    partagent. ``langue`` est accepté pour la forme commune des mises en
+    page (l'aperçu la transmet à toutes) : ce plan n'est servi qu'en
+    français."""
     from ..planche import html_de_planche
 
     return html_de_planche(_rendre_plan_cablage_svg(calepinage, **options))
