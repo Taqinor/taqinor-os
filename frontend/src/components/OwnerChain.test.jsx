@@ -4,10 +4,13 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import OwnerChain from './OwnerChain'
 
-function wrap(ui) {
-  return <MemoryRouter>{ui}</MemoryRouter>
+function wrap(ui, auth = { role: 'admin' }) {
+  const store = configureStore({ reducer: { auth: (state = auth) => state } })
+  return <Provider store={store}><MemoryRouter>{ui}</MemoryRouter></Provider>
 }
 
 describe('OwnerChain (VX216c)', () => {
@@ -33,6 +36,16 @@ describe('OwnerChain (VX216c)', () => {
     const links = screen.getAllByRole('link')
     expect(links).toHaveLength(1)
     expect(links[0]).toHaveAttribute('href', '/ventes/devis?devis=2')
+  })
+
+  it('ADVS23 — pas de maillon Devis pour un rôle sans lecture Ventes (lien vers un refus)', () => {
+    render(wrap(
+      <OwnerChain devis={{ id: 2, nom: 'DEV-2' }} chantier={{ id: 3, nom: 'CH-3' }} />,
+      { role: 'normal', role_nom: 'Technicien', permissions: ['installation_voir'] },
+    ))
+    const links = screen.getAllByRole('link')
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '/chantiers?id=3')
   })
 
   it('ne rend rien du tout sans aucune entité', () => {

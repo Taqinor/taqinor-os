@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Avatar, AvatarFallback, initials } from '../ui/Avatar'
 import { cn } from '../lib/cn'
+import { useCanLireVentes } from '../hooks/useHasPermission'
 
 // VX216(c) — personne ne voit la CHAÎNE de responsabilité du client quand il
 // rappelle : « Lead : A · Devis : B · Chantier : C · SAV : D », chaque maillon
@@ -11,12 +12,14 @@ import { cn } from '../lib/cn'
 //   - Chantier → /chantiers?id=<id>   (patron VX79, InstallationsPage.jsx)
 //   - SAV    → /sav?id=<ticket_id>    (patron VX79, TicketsPage.jsx)
 // Un maillon sans id connu est simplement absent (jamais un lien mort).
+// ADVS23 — idem du maillon Devis pour un rôle sans lecture Ventes (refus 403).
 //
 // steps: [{ key, label, id, name, role, href }]
 export default function OwnerChain({ lead, devis, chantier, sav, className }) {
+  const peutLireVentes = useCanLireVentes()
   const steps = [
     lead && { key: 'lead', label: 'Lead', name: lead.nom, href: `/crm/leads?lead=${lead.id}` },
-    devis && { key: 'devis', label: 'Devis', name: devis.nom ?? devis.reference, href: `/ventes/devis?devis=${devis.id}` },
+    devis && peutLireVentes && { key: 'devis', label: 'Devis', name: devis.nom ?? devis.reference, href: `/ventes/devis?devis=${devis.id}` },
     chantier && { key: 'chantier', label: 'Chantier', name: chantier.nom ?? chantier.reference, href: `/chantiers?id=${chantier.id}` },
     sav && { key: 'sav', label: 'SAV', name: sav.nom ?? sav.reference, href: `/sav?id=${sav.id}` },
   ].filter(Boolean)
