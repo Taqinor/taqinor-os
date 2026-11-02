@@ -155,3 +155,21 @@ class XSAV27PretEquipementServiceTest(TestCase):
             resp = api.post(url, corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
         self.assertFalse(PretEquipement.objects.exists())
+
+    def test_retourner_corps_non_objet_ou_date_illisible_400_pas_500(self):
+        # api-fuzz ERR-ENF11-FUZZ-SAV : corps ``false`` -> ``bool`` sans
+        # ``.get`` (500) ; la date publiée illisible = 400 nommé.
+        api = auth(self.admin)
+        pret = creer_pret_equipement(
+            company=self.company, ticket=self.ticket, produit=self.onduleur,
+            numero_serie='SN-PRET-RET', date_sortie=date.today(),
+            date_retour_prevue=date.today() + timedelta(days=14),
+            user=self.admin)
+        url = (f'/api/django/sav/tickets/{self.ticket.id}/prets-equipement/'
+               f'{pret.id}/retourner/')
+        for corps in (False, [1], 7, {'date_retour_reelle': 'hier'},
+                      {'date_retour_reelle': 20260105}):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        pret.refresh_from_db()
+        self.assertNotEqual(pret.statut, PretEquipement.Statut.RETOURNE)
