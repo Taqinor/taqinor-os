@@ -19,14 +19,16 @@ docker compose exec django_core python manage.py problemes_utilisateurs --jours 
 Sortie : une ligne par problème distinct, du plus fréquent au moins fréquent,
 avec le nombre d'occurrences, le nombre de **personnes distinctes** touchées
 (un problème vu par 4 personnes n'est pas le même incident qu'un problème vu
-40 fois par une seule), le statut HTTP, le genre, la date du dernier cas et la
-route.
+40 fois par une seule), le statut HTTP, le genre, la date du dernier cas, le
+code et la route. Le code fait partie de la clé de regroupement : pour une
+erreur JavaScript (genre `script`, sans route) c'est la seule information qui
+nomme le problème.
 
 ```
-  occ  pers  statut  genre     dernier cas       route
-   37     3       -  reseau    2026-11-02 14:08  GET /api/django/crm/leads/
-    9     1     500  serveur   2026-11-02 11:52  POST /api/django/ventes/devis/
-    4     2       -  script    2026-11-01 17:30  (écran)
+  occ  pers  statut  genre     dernier cas       code                   route
+   37     3       -  reseau    2026-11-02 14:08  ECONNABORTED           GET /api/django/crm/leads/
+    9     1     500  serveur   2026-11-02 11:52  -                      POST /api/django/ventes/devis/
+    4     2       -  script    2026-11-01 17:30  TypeError              (écran)
 ```
 
 Options : `--jours N` (fenêtre, défaut 7), `--company <slug>` (une seule

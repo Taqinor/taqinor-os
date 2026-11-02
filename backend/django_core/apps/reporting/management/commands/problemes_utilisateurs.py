@@ -20,7 +20,7 @@ class Command(BaseCommand):
     help = (
         "Liste les problèmes vécus par les utilisateurs (requêtes sans "
         "réponse, 5xx, erreurs JavaScript) des N derniers jours, regroupés "
-        "par route et statut. Lecture seule."
+        "par route, statut et code. Lecture seule."
     )
 
     def add_arguments(self, parser):
@@ -58,7 +58,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             f"{'occ':>5}  {'pers':>4}  {'statut':>6}  genre     "
-            f"dernier cas       route")
+            f"dernier cas       {'code':<22} route")
         for ligne in lignes:
             statut = ligne['statut_reponse']
             self.stdout.write(
@@ -66,6 +66,7 @@ class Command(BaseCommand):
                 f"{(statut if statut is not None else '-'):>6}  "
                 f"{ligne['genre']:<9} "
                 f"{ligne['dernier']:%Y-%m-%d %H:%M}  "
+                f"{(ligne['code'] or '-'):<22} "
                 f"{(ligne['methode'] + ' ' if ligne['methode'] else '')}"
                 f"{ligne['route'] or '(écran)'}")
         total = sum(ligne['occurrences'] for ligne in lignes)
