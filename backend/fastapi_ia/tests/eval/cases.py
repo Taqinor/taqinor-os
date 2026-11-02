@@ -57,6 +57,20 @@ CASES = [
         "must_be_scalar": True,
     },
     {
+        "id": "ca_facture_ht_mois",
+        # AANA77/ATOT55 : le CA facture se lit sur le total STOCKE
+        # (total_ht_stocke, rempli sur toute facture), jamais montant_ht.
+        "question": "Quel est le chiffre d'affaires facture HT ce mois-ci ?",
+        "gold_sql": (
+            "SELECT SUM(total_ht_stocke) FROM ventes_facture WHERE company_id = 1 "
+            "AND statut IN ('emise', 'payee', 'en_retard') "
+            "AND date_emission >= date_trunc('month', now())"
+        ),
+        "expected_tables": {"ventes_facture"},
+        "forbidden_tables": set(),
+        "must_be_scalar": True,
+    },
+    {
         "id": "nombre_clients",
         "question": "Combien de clients avons-nous ?",
         "gold_sql": "SELECT COUNT(*) FROM crm_client WHERE company_id = 1",

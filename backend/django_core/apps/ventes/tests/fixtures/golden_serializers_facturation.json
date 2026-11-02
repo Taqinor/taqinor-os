@@ -1033,7 +1033,21 @@
      null,
      false
     ],
+    "total_ht_stocke": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
     "total_ttc": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "total_ttc_stocke": [
      "DecimalField",
      true,
      false,
