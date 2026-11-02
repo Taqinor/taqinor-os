@@ -254,7 +254,7 @@ def _reglages_tarifaires_du_devis(devis):
     """ADVS1 (D-ADVS-1) — ``(tranches, charges_fixes)`` : l'instantané de l'envoi
     (même forme et même reconstruction que ``etude_horaire._reglages_tarifaires``)
     ou, brouillon et envoyé d'avant ce gel, les réglages du jour."""
-    from apps.ventes.domain.envoi import reglages_figes
+    from apps.ventes.domain.reglages_figes_lecture import reglages_figes
     from apps.ventes.etude_horaire import _reglages_tarifaires
     from .pricing import TrancheTable
     fige = reglages_figes(devis)
@@ -266,14 +266,6 @@ def _reglages_tarifaires_du_devis(devis):
         selective_threshold=surcharge["selective_threshold"],
         boundary_tolerance=surcharge["boundary_tolerance"])
     return tranches or None, fige.get("redevance_compteur_mad_mois")
-
-
-def _tarif_du_devis(devis):
-    """ADVS1 (D-ADVS-1) — les repères ROI figés à l'envoi, sinon ceux du jour."""
-    from apps.parametres.selectors import tariff_for
-    from apps.ventes.domain.envoi import reglages_figes
-    return reglages_figes(devis).get("tarif") or tariff_for(
-        getattr(devis, "company", None))
 
 
 def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
@@ -375,7 +367,11 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
 
     _tariff = {}
     try:
-        _tariff = _tarif_du_devis(devis)
+        from apps.parametres.selectors import tariff_for
+        from apps.ventes.domain.reglages_figes_lecture import reglages_figes
+        # ADVS1 (D-ADVS-1) — les repères figés à l'envoi, sinon ceux du jour.
+        _tariff = reglages_figes(devis).get("tarif") or tariff_for(
+            getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici (D-ENF22-BLE001)
         # QJR158 (d) — CET ÉCHEC PARLE. Muet, il faisait retomber le document
         # sur le productible de repli SANS que rien, nulle part, n'indique que
