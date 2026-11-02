@@ -52,7 +52,7 @@ def _document(facture):
                   'arrondi_unites', 'ventilation_tva'):
         setattr(doc, champ, getattr(facture, champ))
     doc.lignes = _Lignes(
-        _Ligne(li, facture.taux_tva) for li in facture.lignes.all())
+        [_Ligne(li, facture.taux_tva) for li in facture.lignes.all()])
     return doc
 
 
