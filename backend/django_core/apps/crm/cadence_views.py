@@ -611,14 +611,14 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
                 status=status.HTTP_409_CONFLICT)
-        # COCKPIT-CONTRÔLE B4 — « Sauter » est refusé sur une TÂCHE, AVANT
-        # toute écriture (« déjà traitée » prime, SUIVI E8). La table du
-        # parcours ne le propose pas ; le serveur le tient désormais aussi.
+        # COCKPIT-CONTRÔLE B4 — « Sauter » est refusé sur une TÂCHE, AVANT toute
+        # écriture (« déjà traitée » prime, SUIVI E8). ERR-ENF11-FUZZ-CRM — le corps
+        # est conforme, c'est la nature de la touche enregistrée qui s'y oppose : 409.
         from .suite_touche import est_tache
         if statut == RelanceEtape.Statut.SAUTEE and est_tache(etape):
             return Response(
                 {'erreurs': {'etape': MESSAGE_TACHE_NON_SAUTABLE}},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         note = (request.data.get('note') or '').strip()
         outcome = (request.data.get('outcome') or '').strip()
         body = (request.data.get('body') or '').strip()
@@ -1087,7 +1087,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         réponse ». Sans cela, sauter le message d'identité supprimait les dix
         gestes qui suivent.
 
-        COCKPIT-CONTRÔLE B4 — refusé sur une TÂCHE (400 ``{"erreurs":
+        COCKPIT-CONTRÔLE B4 — refusé sur une TÂCHE (409 ``{"erreurs":
         {"etape": …}}``, rien n'est écrit) : une tâche se traite ou se
         reporte, elle ne se saute pas."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
