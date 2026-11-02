@@ -107,6 +107,72 @@ class StatutDeriveTests(TestCase):
         recalculer_statut_paiement(facture)
         self.assertEqual(self.payees.count(facture.pk), 1)
 
+    def _annuler_en_gardant_l_avance(self):
+        """Une facture payée 150 000, annulée `garder_en_avance` → (facture,
+        id de l'avoir miroir, paiement détaché devenu avance)."""
+        from apps.ventes.models import Avoir, Facture, Paiement
+        facture = Facture.objects.get(
+            pk=self._facture(paiements=['150000']).pk)
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+        paiement = Paiement.objects.get(facture=facture)
+        r = self.api.post(
+            f'/api/django/ventes/factures/{facture.id}/annuler/',
+            {'acompte': {'action': 'garder_en_avance'}}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        return facture, Avoir.objects.get(facture=facture).id, paiement
+
+    def test_annuler_avoir_miroir_rattache_l_avance(self):
+        """AARG2 — l'avoir miroir annulé rend les paiements à la facture ;
+        jamais « payée » à payé 0. Pas de second `facture_payee`."""
+        from apps.ventes.models import Facture, Paiement
+        facture, avoir_id, paiement = self._annuler_en_gardant_l_avance()
+        self.assertEqual(self.payees.count(facture.pk), 1)
+        r = self.api.post(f'/api/django/ventes/avoirs/{avoir_id}/annuler/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        facture = Facture.objects.get(pk=facture.pk)
+        paiement.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+        self.assertEqual(facture.montant_paye, Decimal('150000.00'))
+        self.assertEqual(facture.montant_du, Decimal('0'))
+        self.assertEqual(paiement.facture_id, facture.pk)
+        self.assertEqual(paiement.statut_affectation,
+                         Paiement.StatutAffectation.AFFECTE)
+        self.assertFalse(Paiement.objects.filter(
+            client=self.client_obj, facture__isnull=True).exists())
+        self.assertEqual(self.payees.count(facture.pk), 1)
+
+    def test_annuler_avoir_miroir_avance_utilisee_409(self):
+        """AARG2 — avance ventilée ailleurs : 409, rien d'écrit."""
+        from apps.ventes.domain.encaissements import ventiler_avance
+        from apps.ventes.models import Avoir, Facture
+        facture, avoir_id, paiement = self._annuler_en_gardant_l_avance()
+        autre = self._facture()
+        ventiler_avance(paiement=paiement, facture=autre,
+                        montant=Decimal('1000'), user=self.admin)
+        r = self.api.post(f'/api/django/ventes/avoirs/{avoir_id}/annuler/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('a été utilisée', str(r.data))
+        facture = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(facture.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(Avoir.objects.get(pk=avoir_id).statut,
+                         Avoir.Statut.EMISE)
+        paiement.refresh_from_db()
+        self.assertIsNone(paiement.facture_id)
+
+    def test_annuler_avoir_miroir_trace_ancienne_409(self):
+        """AARG2 — une annulation ancienne ne nomme pas ses paiements : 409."""
+        from apps.ventes.models import Facture, FactureActivity
+        facture, avoir_id, _paiement = self._annuler_en_gardant_l_avance()
+        FactureActivity.objects.filter(
+            facture=facture, field='acompte').update(new_value=None)
+        r = self.api.post(f'/api/django/ventes/avoirs/{avoir_id}/annuler/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(Facture.objects.get(pk=facture.pk).statut,
+                         Facture.Statut.ANNULEE)
+
     def test_annuler_avoir_rouvre_payee(self):
         from apps.ventes.models import Facture
         facture = self._facture()

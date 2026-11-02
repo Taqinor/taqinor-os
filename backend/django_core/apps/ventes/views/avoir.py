@@ -183,6 +183,11 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                         )},
                         status=status.HTTP_400_BAD_REQUEST)
                 if facture.statut == Facture.Statut.ANNULEE:
+                    # AARG2 — l'argent gardé en avance revient d'abord ; le
+                    # statut final se dérive du reste dû (recalcul ci-dessous).
+                    from ..domain.annulation_facture import rendre_avance_gardee
+                    rendre_avance_gardee(
+                        facture, avant_pk=trace.pk, user=request.user)
                     facture.statut = ancien
                     facture.save(update_fields=['statut'])
                     from ..models import FactureActivity
@@ -204,12 +209,11 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 sender=Avoir, instance=avoir, company=avoir.company)
             # ATOT8 — le reste dû remonte : une facture PAYÉE grâce à cet
             # avoir revient au recouvrement (statut dérivé du reste dû).
-            if trace is None:
-                from ..domain.encaissements import recalculer_statut_paiement
-                recalculer_statut_paiement(
-                    Facture.objects.get(
-                        pk=avoir.facture_id, company=avoir.company),
-                    user=request.user, source='annulation_avoir')
+            from ..domain.encaissements import recalculer_statut_paiement
+            recalculer_statut_paiement(
+                Facture.objects.get(
+                    pk=avoir.facture_id, company=avoir.company),
+                user=request.user, source='annulation_avoir')
         return Response(AvoirSerializer(avoir).data)
 
     @extend_schema(responses=D.PdfBinaire)
