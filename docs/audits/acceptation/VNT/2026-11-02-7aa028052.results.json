@@ -1,0 +1,64 @@
+{
+  "sha": "7aa0280526d7556b98d959ef25cb6b0503069d9d",
+  "date": "2026-11-02",
+  "groupe": "VNT",
+  "verdict": "FAIL",
+  "couvre": [
+    "VNT60",
+    "VNT61",
+    "VNT72",
+    "VNT73"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P2.11",
+      "taches": [
+        "VNT60",
+        "VNT61",
+        "VNT72",
+        "VNT73"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/VNT/traces/2026-11-02/ACCEPTATION-VNT-P2.11.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : formulaire de signature de l'avenant visible sur la page du lien"
+    },
+    {
+      "id": "P2.12",
+      "taches": [
+        "VNT60",
+        "VNT61",
+        "VNT72"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/VNT/traces/2026-11-02/ACCEPTATION-VNT-P2.12.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : formulaire de signature de l'avenant visible sur la page du lien"
+    }
+  ]
+}
