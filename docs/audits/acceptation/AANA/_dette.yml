@@ -4,5 +4,12 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: AANA
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - AANA30
+  - AANA65
+  - AANA68
+  - AANA70
+  - AANA71
+  - AANA75
+  - AANA76

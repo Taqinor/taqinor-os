@@ -287,11 +287,11 @@ _AT_ATOMIQUE_RE = re.compile(r"(?<!`)\(@atomique:\s*(?P<owners>[^@()`\n]+)\)",
                              re.IGNORECASE)
 # AMET89 — `(@acceptation)` nu (pas cité entre backticks) : jamais en lane ni
 # refusée, listée « Acceptation (orchestrateur) » (règle 3-bis).
-_AT_ACCEPTATION_RE = re.compile(r"(?<!`)\(@acceptation\)", re.IGNORECASE)
+_AT_ACCEPTATION_RE = re.compile(r"(?<!`)\(@acceptation\)|(?<=\s)@acceptation[ \t]*$", re.IGNORECASE | re.MULTILINE)
 # AMET97 — tâche à preuve EN DIRECT (pile locale) : `(@acceptation)` nu ou
 # « Preuve en direct : P<n> ». `--sans-pile` la sort des lanes (règle 3-bis).
 _PREUVE_EN_DIRECT_RE = re.compile(
-    _AT_ACCEPTATION_RE.pattern + r"|Preuve en direct\s*:\s*P\d", re.IGNORECASE)
+    _AT_ACCEPTATION_RE.pattern + r"|Preuve en direct\s*:\s*(?!n/a|API seulement)\S", re.IGNORECASE)
 _AFTER_RE = re.compile(r"@after:\s*(?P<ids>[A-Z0-9,\s-]+)", re.IGNORECASE)
 _GATE_TOKEN_RE = re.compile(r"\b(ROUTINE|SCHEMA|ARCH|DECISION|AUTH|COST|GALLERY)\b")
 _DEP_TOKEN_RE = re.compile(r"DEP:\s*([A-Za-z0-9_-]+)")

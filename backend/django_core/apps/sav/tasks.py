@@ -265,7 +265,8 @@ def scan_sla_breaches():
         company_id__in=active_company_ids(),
         statut__in=Ticket.OPEN_STATUTS,
         annule=False,
-    ).filter(Q(sla_due_at__lt=today) | Q(sla_breach=True))
+    ).filter(Q(sla_due_at__lt=today) | Q(sla_breach=True)
+             | Q(sla_echeance_at__lt=timezone.now()))  # ASAV115 — chemin heures
      .select_related('company', 'technicien_responsable'))
     # AUD521 — réglages chargés UNE fois par société (plus un get_or_create
     # par ticket).

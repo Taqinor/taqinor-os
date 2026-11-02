@@ -3,15 +3,15 @@
 
 CLASSE C-ACAL-044 : lecture-modification-écriture du DOCUMENT ENTIER
 (`roof_layout`). Un écran (onglet, panneau) qui appelle
-`enregistrerLayoutCalepinage(` réécrit tout le document à partir de sa copie
-locale : la moindre copie périmée écrase le travail des autres onglets. Seul
+`enregistrerLayoutCalepinage(` (ou `…Conditionnel(`, le seul qui reste) réécrit
+tout le document à partir de sa copie locale : la moindre copie périmée écrase le travail des autres onglets. Seul
 l'atelier (`pages/ventes/ToitureDesign.jsx`, qui porte l'empreinte et le verrou
 `If-Match`) a le droit d'écrire le document entier.
 
 La garde lit `frontend/src` (hors tests, hors commentaires) et échoue en nommant
-fichier:ligne pour tout APPEL `enregistrerLayoutCalepinage(` hors de l'atelier.
-Une DÉFINITION (`enregistrerLayoutCalepinage: (`) n'est pas un appel ; le
-variant `enregistrerLayoutCalepinageConditionnel(` est un autre nom.
+fichier:ligne pour tout APPEL `enregistrerLayoutCalepinage(` ou `…Conditionnel(`
+hors de l'atelier.
+Une DÉFINITION (`enregistrerLayoutCalepinageConditionnel: (`) n'est pas un appel.
 
 Passif gelé : `ALLOWLIST` (fichier -> raison) ci-dessous — il ne peut que
 RÉTRÉCIR, une entrée morte (le fichier n'appelle plus) fait échouer la garde.
@@ -30,7 +30,7 @@ ATELIER = "frontend/src/pages/ventes/ToitureDesign.jsx"
 # ACAL364 : PanneauAllees écrit par section (`alleeTechnique`) — plus aucun passif.
 ALLOWLIST: dict = {}
 
-_APPEL = re.compile(r"(?<![\w$])(?:[\w$.]+\.)?enregistrerLayoutCalepinage\s*\(")
+_APPEL = re.compile(r"(?<![\w$])(?:[\w$.]+\.)?enregistrerLayoutCalepinage(?:Conditionnel)?\s*\(")
 
 
 def _sans_commentaires(texte: str) -> str:
@@ -73,7 +73,7 @@ def verifier(root: Path = ROOT, allow: dict | None = None) -> list:
     for rel, lignes in sorted(appels.items()):
         if rel not in allow:
             erreurs.append(
-                f"{rel}:{lignes[0]} appelle enregistrerLayoutCalepinage( hors de "
+                f"{rel}:{lignes[0]} appelle enregistrerLayoutCalepinage[Conditionnel]( hors de "
                 f"l'atelier ({ATELIER}) — réécriture du document entier "
                 "(C-ACAL-044) ; passer par une route d'écriture ciblée.")
     for rel in sorted(set(allow) - set(appels)):

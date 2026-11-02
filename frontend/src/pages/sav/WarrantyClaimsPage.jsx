@@ -102,6 +102,10 @@ export default function WarrantyClaimsPage() {
     lireTout(stockApi.getFournisseurs).then(setFournisseurs).catch(() => {})
   }, [])
 
+  // ASAV118 — fournisseur du produit de l'équipement, s'il est dans la liste.
+  const fournisseurDe = (id) => fournisseurs.find(
+    (f) => f.id === equipements.find((e) => String(e.id) === id)?.produit_fournisseur)?.id
+
   const visibleRows = useMemo(() => rows, [rows])
 
   const create = async () => {
@@ -253,7 +257,8 @@ export default function WarrantyClaimsPage() {
                 className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_2fr_2fr_1fr_1fr_auto]">
             <FormField label="Équipement">
               <Select value={form.equipement ? String(form.equipement) : '__none'}
-                      onValueChange={(v) => setForm((f) => ({ ...f, equipement: v === '__none' ? '' : v }))}>
+                      onValueChange={(v) => setForm((f) => ({
+                        ...f, equipement: v === '__none' ? '' : v, fournisseur: String(fournisseurDe(v) ?? f.fournisseur) }))}>
                 <SelectTrigger><SelectValue placeholder="— Équipement —" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Équipement —</SelectItem>

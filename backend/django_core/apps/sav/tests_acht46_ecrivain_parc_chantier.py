@@ -20,6 +20,7 @@ from apps.sav.services import (
 from apps.stock.models import Produit
 
 RECEPTION = date(2026, 9, 1)
+POSE_REELLE = date(2026, 8, 25)  # ACHT125 — pose réelle ≠ réception
 
 
 class EcrivainParcChantierTests(TestCase):
@@ -36,9 +37,10 @@ class EcrivainParcChantierTests(TestCase):
             company=self.company, nom='Onduleur', sku='OND-46', prix_achat=0,
             prix_vente=10, garantie_mois=60)
 
-    def _chantier(self, ref):
+    def _chantier(self, ref, date_pose_reelle=None):
         return Installation.objects.create(
             company=self.company, reference=ref, client=self.client_obj,
+            date_pose_reelle=date_pose_reelle,
             bom=[{'produit_id': self.panneau.id, 'designation': 'Panneau',
                   'quantite': 12},
                  {'produit_id': self.onduleur.id, 'designation': 'Onduleur',
@@ -52,32 +54,45 @@ class EcrivainParcChantierTests(TestCase):
             date_pose=RECEPTION, created_by=None,
             resolve_produit=par_id.get)
 
-    def _assurer(self, chantier, produit, serie, qte):
+    def _assurer(self, chantier, produit, serie, qte, date_pose=RECEPTION):
         return assurer_equipement_chantier(
             company=self.company, installation=chantier, produit=produit,
-            numero_serie=serie, quantite_ligne=qte, date_pose=RECEPTION,
+            numero_serie=serie, quantite_ligne=qte, date_pose=date_pose,
             created_by=None)
 
-    def _parc(self, chantier, produit):
+    def _parc(self, chantier, produit, sauf=()):
         return sorted(
-            (e.numero_serie or '', e.date_pose) for e in
-            Equipement.objects.filter(installation=chantier, produit=produit))
+            (e.numero_serie or '', e.date_pose, e.date_fin_garantie) for e in
+            Equipement.objects.filter(installation=chantier, produit=produit)
+            .exclude(numero_serie__in=sauf))
 
     def test_ordre_indifferent(self):
-        a = self._chantier('CHT-46-A')
+        # ACHT125 — chantiers à pose réelle ≠ réception ; l'ordre B relève la
+        # série AVANT la réception, datée de la pose réelle (comme le terrain).
+        a = self._chantier('CHT-46-A', POSE_REELLE)
         self._balayage(a)
         self._assurer(a, self.panneau, 'SN-A1', 12)
-        b = self._chantier('CHT-46-B')
-        self._assurer(b, self.panneau, 'SN-B1', 12)
+        b = self._chantier('CHT-46-B', POSE_REELLE)
+        self._assurer(b, self.panneau, 'SN-B1', 12, date_pose=POSE_REELLE)
+        main = Equipement.objects.create(
+            company=self.company, produit=self.panneau, installation=b,
+            numero_serie='SN-B-MAIN', date_pose=date(2026, 8, 1))
+        main.recompute_garanties()
+        main.save(update_fields=['date_fin_garantie'])
         self._balayage(b)
         parc_a = self._parc(a, self.panneau)
-        parc_b = self._parc(b, self.panneau)
-        self.assertEqual(
-            [(s != '', d) for s, d in parc_a],
-            [(s != '', d) for s, d in parc_b])
-        self.assertEqual(len(parc_a), 2)
-        self.assertEqual({d for _, d in parc_a}, {RECEPTION})
-        self.assertEqual({d for _, d in parc_b}, {RECEPTION})
+        parc_b = self._parc(b, self.panneau, sauf=('SN-B-MAIN',))
+        attendu = [(False, RECEPTION, date(2036, 9, 1)),
+                   (True, RECEPTION, date(2036, 9, 1))]
+        self.assertEqual([(s != '', d, f) for s, d, f in parc_a], attendu)
+        self.assertEqual([(s != '', d, f) for s, d, f in parc_b], attendu)
+        main.refresh_from_db()
+        self.assertEqual((main.date_pose, main.date_fin_garantie),
+                         (date(2026, 8, 1), date(2036, 8, 1)))
+        # Second balayage : idempotent.
+        avant = self._parc(b, self.panneau)
+        self._balayage(b)
+        self.assertEqual(self._parc(b, self.panneau), avant)
 
     def test_placeholder_rempli_quantite_1(self):
         c = self._chantier('CHT-46-O')

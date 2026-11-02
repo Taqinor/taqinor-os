@@ -5,8 +5,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-const { serveur } = vi.hoisted(() => ({
+const { serveur, DETAIL_409 } = vi.hoisted(() => ({
   serveur: { row: null, bodies: [], force: null },
+  DETAIL_409: 'Ce bon de livraison est déjà signé par Ancien le 01/01/2026 à 10:00. Pour le signer à nouveau, indiquez un motif : il sera journalisé.',
 }))
 vi.mock('../../api/installationsApi', () => ({
   default: {
@@ -15,7 +16,7 @@ vi.mock('../../api/installationsApi', () => ({
       if (serveur.force) return Promise.reject(serveur.force)
       if (serveur.row.signe_le && !body.motif_override_signature) {
         return Promise.reject({ response: { status: 409, data: {
-          detail: 'Chantier déjà signé : indiquez le motif de la re-signature.',
+          detail: DETAIL_409,
         } } })
       }
       serveur.row.signature_client = body.signature_client
@@ -79,13 +80,16 @@ describe('SignatureLivraisonDialog — ACHT59 motif de re-signature', () => {
 
   it('un refus serveur sur le motif s’affiche sans nom de champ technique', async () => {
     serveur.row = { id: 3, signe_le: '2026-01-01T10:00:00Z', signature_client: 'OLD' }
-    serveur.force = { response: { status: 409, data: {
-      motif_override_signature: ['Motif invalide.'] } } }
+    // Corps RÉEL du 409 de la vue (`signer_client`), jamais un mock inventé.
+    serveur.force = { response: { status: 409, data: { detail: DETAIL_409 } } }
     const user = userEvent.setup()
     rendre(serveur.row)
     await user.click(screen.getByRole('button', { name: 'Tracer' }))
     await user.type(screen.getByLabelText('Motif de la re-signature'), 'x')
     await user.click(screen.getByRole('button', { name: /enregistrer la signature/i }))
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Motif invalide.'))
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(DETAIL_409)
+      expect(toast.error.mock.calls[0][0]).not.toContain('motif_override_signature')
+    })
   })
 })

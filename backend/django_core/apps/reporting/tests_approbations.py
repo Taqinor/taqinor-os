@@ -187,6 +187,50 @@ class TestApprobationsDecision(ApprobationsBase):
         demande.refresh_from_db()
         self.assertEqual(demande.statut, APPROBATION_EN_ATTENTE)
 
+    def test_ged_chaine_deux_etapes_avance_l_etape_1(self):
+        """ADOC185 (sonde C-ADOC-VER-013) — l'approbateur 1 d'une chaîne GED
+        à 2 étapes, décidant depuis la boîte centrale, n'avance QUE l'étape
+        1 : demande en attente chez l'approbateur 2, document « revue » ;
+        l'approbateur 2 approuve ensuite ⇒ « approuvé »."""
+        from apps.ged import services as ged_services
+        from apps.ged.models import (
+            APPROBATION_APPROUVE, APPROBATION_EN_ATTENTE,
+            ChaineApprobationGed, DemandeApprobation, LIFECYCLE_REVUE,
+        )
+        a1 = User.objects.create_user(
+            username='adoc185_a1', password='x', company=self.company)
+        a2 = User.objects.create_user(
+            username='adoc185_a2', password='x', company=self.company)
+        cab = Cabinet.objects.create(company=self.company, nom='Docs chaîne')
+        folder = Folder.objects.create(
+            company=self.company, cabinet=cab, nom='Entrants chaîne')
+        doc = Document.objects.create(
+            company=self.company, folder=folder, nom='procedure.pdf')
+        dem = ged_services.request_review(doc, user=self.user, approbateur=a1)
+        ChaineApprobationGed.objects.create(
+            company=self.company, demande=dem, etape_courante=0,
+            etapes=[{'approbateur_id': a1.pk, 'statut': 'en_cours',
+                     'decision_le': None},
+                    {'approbateur_id': a2.pk, 'statut': 'en_attente',
+                     'decision_le': None}])
+        corps = {'source': 'ged', 'id': dem.pk, 'decision': 'approuver',
+                 'motif': ''}
+        for approbateur in (a1, a2):
+            api = APIClient()
+            api.force_authenticate(approbateur)
+            resp = api.post(self._decide_url(), corps, format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            if approbateur is a1:
+                relue = DemandeApprobation.objects.get(pk=dem.pk)
+                chaine = ChaineApprobationGed.objects.get(demande=dem)
+                self.assertEqual(relue.statut, APPROBATION_EN_ATTENTE)
+                self.assertEqual(relue.approbateur_id, a2.pk)
+                self.assertEqual(chaine.etape_courante, 1)
+                doc.refresh_from_db()
+                self.assertEqual(doc.statut, LIFECYCLE_REVUE)
+        self.assertEqual(DemandeApprobation.objects.get(pk=dem.pk).statut,
+                         APPROBATION_APPROUVE)
+
     def test_reject_with_motif_installations(self):
         # VX101 — décider une source `installations` exige le tier
         # Responsable/Admin : utilise `resp_api` (rôle normal → voir

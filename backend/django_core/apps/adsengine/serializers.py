@@ -167,17 +167,12 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
         'exploration_floor_mad')
 
     def _stamp_currency(self, instance, validated_data, company):
-        """Pose la devise du compte quand un plafond est SAISI (création, ou
-        valeur modifiée) ; jamais lue du corps. AACQ98 — une création SANS
-        plafond saisi garde '' (le défaut du modèle est calibré en MAD)."""
+        """Pose la devise du compte dès qu'un plafond est SOUMIS (AACQ107 :
+        même valeur ressaisie comprise) ; jamais lue du corps. AACQ98 — une
+        création SANS plafond saisi garde '' (défaut du modèle calibré en MAD)."""
         if company is None:
             return
-        changed = any(
-            f in validated_data and (
-                instance is None
-                or validated_data[f] != getattr(instance, f))
-            for f in self._CURRENCY_FIELDS)
-        if changed:
+        if any(f in validated_data for f in self._CURRENCY_FIELDS):
             from .rules_engine import account_currency
             validated_data['ceiling_currency'] = (
                 account_currency(company) or 'MAD').upper()
@@ -504,14 +499,10 @@ class RulePolicySerializer(serializers.ModelSerializer):
 
     def _stamp_currency(self, instance, validated_data, company):
         """AACQ3 (D-AACQ-1 = a) — la devise des seuils ``*_mad`` est posée par
-        le serveur (devise du compte) quand un seuil est RÉELLEMENT saisi —
-        à la création ou ressaisi (valeur changée) ; jamais lue du corps.
+        le serveur (devise du compte) dès qu'un seuil est SOUMIS — AACQ107 :
+        même valeur ressaisie comprise ; jamais lue du corps.
         AACQ98 — armer sans seuil garde '' : le défaut du gabarit est en MAD."""
-        if company is None:
-            return
-        new = self._mad_params(validated_data.get('params'))
-        old = self._mad_params(getattr(instance, 'params', None))
-        if not any(old.get(k) != v for k, v in new.items()):
+        if company is None or not self._mad_params(validated_data.get('params')):
             return
         from .rules_engine import account_currency
         validated_data['threshold_currency'] = (

@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ASTK
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - ASTK15
   - ASTK21
@@ -36,3 +37,9 @@ ids:
   - ASTK229
   - ASTK230
   - ASTK231
+  - ASTK242
+  - ASTK244
+  - ASTK248
+  - ASTK249
+  - ASTK251
+  - ASTK253

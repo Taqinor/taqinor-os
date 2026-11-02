@@ -4,6 +4,7 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ACAL
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - ACAL23
   - ACAL24
@@ -171,6 +172,7 @@ ids:
   - ACAL190
   - ACAL191
   - ACAL192
+  - ACAL193
   - ACAL194
   - ACAL195
   - ACAL196
@@ -276,14 +278,17 @@ ids:
   - ACAL312
   - ACAL313
   - ACAL314
+  - ACAL315
   - ACAL320
   - ACAL324
   - ACAL325
   - ACAL326
   - ACAL329
   - ACAL331
+  - ACAL332
   - ACAL335
   - ACAL336
   - ACAL340
   - ACAL342
   - ACAL346
+  - ACAL352

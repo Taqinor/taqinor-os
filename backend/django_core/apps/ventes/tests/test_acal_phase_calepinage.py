@@ -18,8 +18,10 @@ Run:
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.ventes.tests.test_acal_phase_calepinage"
 """
+import json
 from decimal import Decimal
 from io import StringIO
+from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -177,6 +179,16 @@ class PhaseDuLeadSurLeLayout(TestCase):
             self.assertTrue(str(r.data['hors_reseau']).strip(), geste.__name__)
             self.assertEqual(
                 Devis.objects.filter(company=self.company).count(), avant, geste.__name__)
+
+    def test_from_layout_refus_conformes_au_contrat(self):
+        # ACAL368 — le contrat nomme les deux refus 409 (ENF11), plus aucun 422.
+        contrat = json.loads((Path(__file__).resolve().parent.parent / 'contract_samples'
+                              / 'devis_from_layout.json').read_text(encoding='utf-8'))
+        self.assertFalse([k for k in contrat if k.startswith('exemple_422')])
+        self.assertEqual(sorted(contrat['exemple_409_preflight']), ['detail', 'errors'])
+        r = self._from_layout(self._lead('aucun'))
+        self.assertEqual(r.status_code, 409, r.content.decode())
+        self.assertEqual(sorted(r.data), sorted(contrat['exemple_409_hors_reseau']))
 
     def test_preflight_lit_la_phase_du_lead(self):
         from apps.ventes.domain import geometrie

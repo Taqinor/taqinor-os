@@ -6,7 +6,9 @@ premiers tickets.
 Run :
     python manage.py test apps.sav.tests_asav5_quotas_contrat -v2
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -17,8 +19,11 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
-from apps.sav.models import ContratMaintenance, Ticket, TicketActivity
+from apps.sav.models import (
+    ContratMaintenance, Equipement, PieceConsommee, Ticket, TicketActivity)
 from apps.sav.droits_contrat import droits_restants
+from apps.stock.models import Produit
+from apps.ventes.models import Facture
 
 User = get_user_model()
 ANNEE = 2026
@@ -135,3 +140,97 @@ class QuotasContratTests(TestCase):
                 ticket_id=ticket_id, kind=TicketActivity.Kind.NOTE)
             if f'#{contrat.pk}' in (n.body or '')]
         self.assertEqual(notes, [])
+
+    # ── ASAV122 (D-ASAV-VER2-1/2) — seuls les tickets COUVERTS consomment ────
+    def _api(self):
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        return api
+
+    def _hors_garantie(self):
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur', sku='OND-A122',
+            prix_achat=0, prix_vente=Decimal('5000'))
+        eq = Equipement.objects.create(
+            company=self.company, produit=produit, installation=self.inst,
+            numero_serie='A122-SN', date_pose=date(ANNEE - 4, 1, 1))
+        return produit, eq
+
+    def _contrat_mi_annee(self):
+        return ContratMaintenance.objects.create(
+            company=self.company, client=self.client_obj,
+            installation=self.inst, date_debut=date(ANNEE, 3, 11),
+            actif=True, deplacements_inclus_an=1)
+
+    def _ticket_eq(self, n, jour, eq, **kw):
+        return Ticket.objects.create(
+            company=self.company, reference=f'SAV-A122-{n}',
+            client=self.client_obj, installation=self.inst, equipement=eq,
+            type=Ticket.Type.CORRECTIF, created_by=self.user,
+            date_ouverture=jour, **kw)
+
+    def _facturer(self, api, ticket, produit):
+        PieceConsommee.objects.create(
+            company=self.company, ticket=ticket, produit=produit,
+            quantite=Decimal('1'), created_by=self.user)
+        r = api.post(f'/api/django/sav/tickets/{ticket.pk}/facturer/', {},
+                     format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        relu = Ticket.objects.get(pk=ticket.pk)
+        facture = Facture.objects.get(pk=relu.facture_id_ext)
+        prix = [ligne.prix_unitaire for ligne in facture.lignes.all()]
+        return r.data['couverture'], prix
+
+    def test_ticket_anterieur_au_contrat_ne_consomme_pas(self):
+        produit, eq = self._hors_garantie()
+        t0 = self._ticket_eq(0, date(ANNEE, 3, 1), eq)
+        contrat = self._contrat_mi_annee()
+        t1 = self._ticket_eq(1, date(ANNEE, 4, 5), eq)
+        t2 = self._ticket_eq(2, date(ANNEE, 4, 9), eq)
+        api = self._api()
+        self.assertEqual(t0.couverture_calculee(),
+                         Ticket.Couverture.FACTURABLE)
+        self.assertEqual(self._facturer(api, t1, produit),
+                         (Ticket.Couverture.CONTRAT, [Decimal('0')]))
+        self.assertEqual(self._facturer(api, t2, produit),
+                         (Ticket.Couverture.FACTURABLE, [Decimal('5000')]))
+        # Relu : la couverture et l'écran des contrats disent la même chose.
+        t1.refresh_from_db()
+        self.assertEqual(t1.couverture_calculee(), Ticket.Couverture.CONTRAT)
+        with patch('django.utils.timezone.localdate',
+                   return_value=date(ANNEE, 12, 1)):
+            r = api.get(f'/api/django/sav/contrats-maintenance/{contrat.pk}/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['droits_restants']['deplacements_consommes'], 2)
+        self.assertEqual(r.data['droits_restants']['deplacements_restants'], 0)
+
+    def test_ticket_sans_date_ouverture_compte_par_creation(self):
+        produit, eq = self._hors_garantie()
+        self._contrat_mi_annee()
+        t1 = self._ticket_eq(1, date(ANNEE, 4, 5), eq)
+        Ticket.objects.filter(pk=t1.pk).update(
+            date_ouverture=None, date_creation=timezone.make_aware(
+                datetime(ANNEE, 4, 5, 10, 0)))
+        t2 = self._ticket_eq(2, date(ANNEE, 4, 9), eq)
+        t1.refresh_from_db()
+        self.assertEqual(t1.couverture_calculee(), Ticket.Couverture.CONTRAT)
+        self.assertEqual(self._facturer(self._api(), t2, produit),
+                         (Ticket.Couverture.FACTURABLE, [Decimal('5000')]))
+
+    def test_ticket_sous_garantie_ou_hors_registre_ne_consomme_pas(self):
+        produit, eq = self._hors_garantie()
+        contrat = self._contrat_mi_annee()
+        hors_registre = Equipement.objects.create(
+            company=self.company, produit=produit, installation=self.inst,
+            numero_serie='A122-SN-HR', date_pose=date(ANNEE - 4, 1, 1))
+        contrat.equipements.add(eq)
+        neuf = Equipement.objects.create(
+            company=self.company, produit=produit, installation=self.inst,
+            numero_serie='A122-SN-NEUF', date_pose=date(ANNEE, 1, 2))
+        contrat.equipements.add(neuf)
+        self._ticket_eq(1, date(ANNEE, 4, 1), neuf)  # garantie légale : OUI
+        self._ticket_eq(2, date(ANNEE, 4, 2), hors_registre)
+        t3 = self._ticket_eq(3, date(ANNEE, 4, 3), eq)
+        self.assertEqual(droits_restants(contrat, ANNEE)['deplacements_consommes'], 1)
+        self.assertEqual(t3.couverture_calculee(), Ticket.Couverture.CONTRAT)

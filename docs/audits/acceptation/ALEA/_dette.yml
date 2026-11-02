@@ -4,10 +4,12 @@
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ALEA
 amorce: 3a7c3b882
+reamorce: 9f7cc5de4
 ids:
   - ALEA1
   - ALEA2
   - ALEA3
+  - ALEA4
   - ALEA11
   - ALEA13
   - ALEA14

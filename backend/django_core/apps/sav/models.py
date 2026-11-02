@@ -1053,8 +1053,8 @@ class Ticket(models.Model):
                 self.equipement, cache=registre_cache):
             from .droits_contrat import droits_restants
             annee = ref.year
-            droits = droits_restants(
-                contrat, annee, ticket=self, cache=droits_cache)
+            droits = droits_restants(contrat, annee, ticket=self, cache=droits_cache,
+                                     registre_cache=registre_cache)  # ASAV122
             if self.type == self.Type.PREVENTIF:
                 restant = droits['visites_restantes']
             else:

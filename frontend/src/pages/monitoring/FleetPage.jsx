@@ -170,7 +170,7 @@ export default function FleetPage() {
       id: 'pr_pct', header: 'PR', width: 120, align: 'right',
       accessor: (r) => (r.pr_pct == null ? -1 : Number(r.pr_pct)),
       cell: (v, r) => (r.pr_pct == null
-        ? <span className="text-muted-foreground">—</span>
+        ? <span className="text-muted-foreground">{r.sans_reference ? 'sans référence' : '—'}</span>
         : (
           <Badge tone={prStatus(r.pr_pct) === 'neutral' ? 'neutral' : prStatus(r.pr_pct)}>
             {formatPercent(r.pr_pct, { decimals: 1 })}
@@ -247,7 +247,7 @@ export default function FleetPage() {
                     <span className="font-medium">{s.reference || `#${s.installation}`}</span>
                     <div className="flex items-center gap-1">
                       <Badge tone={stale ? 'warning' : badgeTone}>
-                        {stale ? 'Périmé' : (s.pr_pct == null ? '—' : formatPercent(s.pr_pct, { decimals: 1 }))}
+                        {stale ? 'Périmé' : (s.pr_pct == null ? (s.sans_reference ? 'sans référence' : '—') : formatPercent(s.pr_pct, { decimals: 1 }))}
                       </Badge>
                       <IconButton
                         variant="ghost"

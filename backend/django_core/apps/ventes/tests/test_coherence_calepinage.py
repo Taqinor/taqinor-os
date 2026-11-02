@@ -8,9 +8,12 @@ primitives (``pans_du_document``, ``puissance_kwc_du_devis``,
 Test-du-test : retirer ``regles_calepinage`` de ``charger_regles`` ⇒ les
 tests échouent (règle inconnue : KeyError du registre).
 """
+import json
 from decimal import Decimal
+from io import StringIO
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
 
 from apps.calepinage.models import Calepinage
@@ -29,15 +32,19 @@ REGLES = ('CAL_MODULES_DEVIS_VS_CALEPINAGE', 'CAL_KWC_DEVIS_VS_CALEPINAGE',
           'CAL_EMPREINTE_IMPRIMEE_PERIMEE')
 
 
-def _layout(modules):
-    return {
-        'panelWatt': 550,
-        'zones': [{
-            'label': 'Sud',
-            'geometry': {'panels': [{'x': i, 'y': 0} for i in range(modules)]},
-            'azimut_deg': 180, 'inclinaison_deg': 20,
-        }],
-    }
+def _layout(modules, fiche=True):
+    """ACAL372 — le document DÉCLARE sa fiche 550 W (``modules[]`` +
+    ``geometry.moduleId``) : le kWc des fiches est connu ; ``fiche=False`` ⇒
+    kWc inconnu."""
+    geometry = {'panels': [{'x': i, 'y': 0} for i in range(modules)]}
+    layout = {'panelWatt': 550, 'zones': [{
+        'label': 'Sud', 'geometry': geometry,
+        'azimut_deg': 180, 'inclinaison_deg': 20}]}
+    if fiche:
+        geometry['moduleId'] = 'm550'
+        layout['modules'] = [{'id': 'm550', 'libelle': 'Panneau Jinko 550W',
+                              'source': 'fiche', 'pmaxWc': 550}]
+    return layout
 
 
 class CoherenceCalepinageTests(TestCase):
@@ -113,6 +120,31 @@ class CoherenceCalepinageTests(TestCase):
         self.assertEqual(
             {rid: len(v) for rid, v in self._violations(devis).items()},
             {rid: 0 for rid in REGLES})
+
+    def _audit(self, rule):
+        out = StringIO()
+        call_command('audit_coherence', '--company', self.company.slug,
+                     '--json', '--no-persist', stdout=out)
+        return [v for v in json.loads(out.getvalue())['violations']
+                if v['rule'] == rule]
+
+    def test_audit_coherence_devis_coherent_outil_720w_sans_faux_kwc(self):
+        # ACAL372 (sonde C-ACAL-VER2-81) — geometry.kwc 11,52 (outil 720 W),
+        # fiche 550 W déclarée, 16 × 550 W chiffrés : aucun faux écart kWc.
+        layout = _layout(16)
+        layout['panelWatt'] = 720
+        layout['zones'][0]['geometry']['kwc'] = 11.52
+        devis = self._devis(16, hash_devis=layout_hash(layout))
+        self._calepinage(devis, layout)
+        self.assertEqual(self._audit('CAL_KWC_DEVIS_VS_CALEPINAGE'), [])
+        # Sans fiche : kWc inconnu ⇒ aucune violation kWc (jamais inventé) ;
+        # l'écart de COMPTE reste levé.
+        sans_fiche = _layout(16, fiche=False)
+        autre = self._devis(12, hash_devis=layout_hash(sans_fiche))
+        self._calepinage(autre, sans_fiche)
+        self.assertEqual(self._audit('CAL_KWC_DEVIS_VS_CALEPINAGE'), [])
+        modules = self._audit('CAL_MODULES_DEVIS_VS_CALEPINAGE')
+        self.assertEqual([v['reference'] for v in modules], [autre.reference])
 
     def test_devis_sans_calepinage_ignore(self):
         devis = self._devis(12)

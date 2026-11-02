@@ -209,7 +209,7 @@ describe('MSGACC1 — MessageAccueilModal', () => {
 // par Login.jsx n'a pas de `portee` ; la décision attend la réponse de /auth/me/.
 describe('ADOC183 — transition de connexion', () => {
   const rendreAvecVraiReducer = async () => {
-    const { default: authReducer, setCredentials, fetchMe } = await import('../features/auth/store/authSlice')
+    const { default: authReducer, fetchMe } = await import('../features/auth/store/authSlice')
     const store = configureStore({ reducer: { auth: authReducer } })
     render(
       <Provider store={store}>
@@ -217,7 +217,6 @@ describe('ADOC183 — transition de connexion', () => {
       </Provider>,
     )
     await act(async () => {
-      store.dispatch(setCredentials({ user: { username: 'client-294' } }))
       store.dispatch(fetchMe())
     })
     return store
@@ -235,5 +234,34 @@ describe('ADOC183 — transition de connexion', () => {
     getMe.mockResolvedValue({ data: { username: 'demo_admin', portee: 'interne' } })
     await rendreAvecVraiReducer()
     await waitFor(() => expect(messagesAccueilALire).toHaveBeenCalledTimes(1))
+  })
+})
+
+// ADOC184 — ré-authentification sur session expirée (modale « Session expirée »), SANS
+// rechargement : SessionProvider relit /auth/me/ comme la connexion (portee absente du stub).
+describe('ADOC184 — ré-authentification sur session expirée', () => {
+  it('ré-authentification portail : aucun appel', async () => {
+    const { default: authReducer } = await import('../features/auth/store/authSlice')
+    const { SessionProvider } = await import('../providers/SessionProvider')
+    const { SESSION_EXPIRED_EVENT } = await import('../providers/session-bridge')
+    const api = (await import('../api/axios')).default
+    api.post.mockResolvedValue({ data: { role: 'normal', permissions: [] } })
+    getMe.mockResolvedValue({ data: { username: 'client-294', portee: 'portail_client' } })
+    const store = configureStore({ reducer: { auth: authReducer } })
+    render(
+      <Provider store={store}>
+        <SessionProvider>
+          <MessageAccueilModal />
+        </SessionProvider>
+      </Provider>,
+    )
+    await act(async () => { window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT)) })
+    await userEvent.type(screen.getByLabelText(/Nom d.utilisateur/), 'client-294')
+    await userEvent.type(screen.getByLabelText('Mot de passe'), 'secret')
+    await userEvent.click(screen.getByRole('button', { name: /^Se reconnecter$/i }))
+    await waitFor(() => expect(getMe).toHaveBeenCalled())
+    await act(async () => { await Promise.resolve() })
+    expect(store.getState().auth.user.portee).toBe('portail_client')
+    expect(messagesAccueilALire).not.toHaveBeenCalled()
   })
 })

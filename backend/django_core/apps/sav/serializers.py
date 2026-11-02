@@ -48,6 +48,8 @@ class EquipementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     produit_nom = serializers.CharField(source='produit.nom', read_only=True, allow_null=True)
     produit_marque = serializers.CharField(source='produit.marque', read_only=True, allow_null=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True, allow_null=True)
+    produit_fournisseur = serializers.IntegerField(
+        source='produit.fournisseur_id', read_only=True, allow_null=True)
     installation_reference = serializers.CharField(
         source='installation.reference', read_only=True, allow_null=True)
     client_nom = serializers.SerializerMethodField()
@@ -398,14 +400,17 @@ class TicketListSerializer(serializers.ListSerializer):
             contrat = enfant._contrat_recent_cache[cle]
             if contrat is not None:
                 retenus.setdefault(contrat.pk, (contrat, set()))[1].add(ref.year)
-        self._precharger_droits(retenus.values(), enfant._droits_cache)
+        self._precharger_droits(retenus.values(), enfant._droits_cache,
+                                enfant._registre_cache)
 
     @staticmethod
-    def _precharger_droits(retenus, droits_cache):
-        """Même lecture que ``droits_restants`` (tickets non annulés de
-        l'année, rattachés au chantier du contrat, sinon à son client), pour
-        tous les contrats retenus en UNE requête."""
+    def _precharger_droits(retenus, droits_cache, registre_cache=None):
+        """Même lecture que ``droits_restants`` (ASAV122 : la MÊME règle
+        ``droits_contrat.lignes_consommatrices`` — tickets que le contrat
+        couvre dans l'année, pas avant ``date_debut``), pour tous les contrats
+        retenus en UNE requête."""
         from django.db.models import Q
+        from .droits_contrat import lignes_consommatrices, tickets_dates
         a_lire = [(c, a) for c, annees in retenus for a in annees
                   if (c.pk, a) not in droits_cache
                   and (c.installation_id or c.client_id)]
@@ -419,20 +424,13 @@ class TicketListSerializer(serializers.ListSerializer):
             else:
                 portee |= Q(company_id=c.company_id, client_id=c.client_id)
         annees = {a for _c, a in a_lire}
-        lus = list(Ticket.objects.filter(
-            portee, annule=False,
-            date_ouverture__gte=datetime.date(min(annees), 1, 1),
-            date_ouverture__lte=datetime.date(max(annees), 12, 31),
-        ).values_list('type', 'date_ouverture', 'pk', 'company_id',
-                      'installation_id', 'client_id'))
+        lus = list(tickets_dates(
+            portee,
+            date_ref_couverture__gte=datetime.date(min(annees), 1, 1),
+            date_ref_couverture__lte=datetime.date(max(annees), 12, 31)))
         for c, a in a_lire:
-            if c.installation_id:
-                col, val = 4, c.installation_id
-            else:
-                col, val = 5, c.client_id
-            droits_cache[(c.pk, a)] = [
-                (r[0], r[1], r[2]) for r in lus
-                if r[3] == c.company_id and r[1].year == a and r[col] == val]
+            droits_cache[(c.pk, a)] = lignes_consommatrices(
+                c, a, lus, registre_cache)
 
 
 class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
@@ -648,6 +646,8 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     @extend_schema_field(serializers.CharField())
     def get_sous_garantie_effectif_display(self, obj):
+        if obj.garantie_chantier_a_confirmer:  # ASAV117 (D-ASAV-2 a)
+            return 'À confirmer (garantie de chantier)'
         return dict(Ticket.SousGarantie.choices).get(
             obj.sous_garantie_calcule, obj.sous_garantie_calcule)
 
@@ -1194,3 +1194,18 @@ class DowntimeEntreeSerializer(serializers.Serializer):
         required=False, allow_null=True, min_value=1, max_value=2147483647)
     motif = TexteSansSubstitut(
         required=False, allow_blank=True, allow_null=True)
+
+
+def equipement_neuf_resume(equipement):
+    """ASAV119 — résumé de l'équipement neuf posé en remplacement (réponse de
+    « Retirer une pièce ») ; ``fin_garantie`` = garantie effective ISO (même
+    source que ``EquipementSerializer``), ``None`` sans neuf."""
+    if equipement is None:
+        return None
+    fin = equipement.date_fin_garantie_effective
+    return {
+        'id': equipement.id, 'numero_serie': equipement.numero_serie,
+        'statut': equipement.statut, 'installation': equipement.installation_id,
+        'client': equipement.client_vente_id,
+        'fin_garantie': fin.isoformat() if fin else None,
+    }

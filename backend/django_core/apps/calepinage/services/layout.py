@@ -147,6 +147,36 @@ def empreinte_document(roof_layout):
     return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
 
 
+def _est_nombre(valeur):
+    return isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
+
+
+def garder_types_numeriques(ancien, nouveau):
+    """ERR-ACAL351 — ``nouveau`` où chaque nombre ÉGAL en valeur au nombre
+    stocké au même chemin garde le TYPE stocké (``15`` reçu sur ``15.0``
+    stocké ⇒ ``15.0``, et inversement). Fonction PURE (copie).
+
+    L'atelier re-sérialise ``15.0`` en ``15`` (JSON JavaScript) : sans cela,
+    un premier « Enregistrer » sans geste d'un document écrit en Python
+    changeait les octets du document, donc l'empreinte « document », et
+    déposait une version fantôme. Les empreintes elles-mêmes ne sont PAS
+    recodées : leurs valeurs déjà stockées (jeton, simulation, images,
+    livrables, ``layout_hash``) restent justes pour tout document inchangé.
+    """
+    if _est_nombre(ancien) and _est_nombre(nouveau):
+        return ancien if (type(ancien) is not type(nouveau)
+                          and ancien == nouveau) else nouveau
+    if isinstance(ancien, dict) and isinstance(nouveau, dict):
+        return {cle: (garder_types_numeriques(ancien[cle], valeur)
+                      if cle in ancien else valeur)
+                for cle, valeur in nouveau.items()}
+    if isinstance(ancien, list) and isinstance(nouveau, list):
+        return [garder_types_numeriques(ancien[i], valeur)
+                if i < len(ancien) else valeur
+                for i, valeur in enumerate(nouveau)]
+    return nouveau
+
+
 class LayoutRefuse(ValueError):
     """Refus métier d'enregistrement, message français, champ fautif nommé."""
 
@@ -476,7 +506,6 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
 
     verifier_ecriture_autorisee(calepinage)
 
-    nouvelle = layout_hash(roof_layout) or ''
     champs = ['roof_layout', 'layout_hash', 'updated_at']
     with transaction.atomic():
         if base_empreinte is not None:
@@ -486,6 +515,9 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
             calepinage.roof_layout = _relire_sous_verrou(calepinage,
                                                          base_empreinte)
         ancien_layout = calepinage.roof_layout
+        # ERR-ACAL351 — un nombre inchangé garde son type stocké (15.0 / 15).
+        roof_layout = garder_types_numeriques(ancien_layout, roof_layout)
+        nouvelle = layout_hash(roof_layout) or ''
         # ACAL76 — un contour NOUVELLEMENT croisé (nœud papillon) est refusé
         # en nommant son chemin ; rien n'est écrit.
         _refuser_contour_nouvellement_croise(ancien_layout, roof_layout)

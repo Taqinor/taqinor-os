@@ -76,7 +76,7 @@ from .serializers import (
     CategorieTicketSerializer,
     EquipeMaintenanceSerializer,
     CategorieEquipementSerializer,
-    TicketActiviteAFaireSerializer, ProblemeSerializer,
+    TicketActiviteAFaireSerializer, ProblemeSerializer, equipement_neuf_resume,
     WorksheetMaintenanceModeleSerializer, TicketWorksheetSerializer,
 )
 
@@ -2193,13 +2193,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             ticket, request.user,
             f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
         data = dict(PieceRetireeSerializer(piece).data)
-        data['equipement_neuf'] = None if equipement_neuf is None else {
-            'id': equipement_neuf.id,
-            'numero_serie': equipement_neuf.numero_serie,
-            'statut': equipement_neuf.statut,
-            'installation': equipement_neuf.installation_id,
-            'client': equipement_neuf.client_vente_id,
-        }
+        data['equipement_neuf'] = equipement_neuf_resume(equipement_neuf)
         return Response(data, status=201)
 
     @extend_schema(responses=_sch('SavPiecesUnifiees', {}, extra=True))

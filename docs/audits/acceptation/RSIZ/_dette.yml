@@ -1,0 +1,18 @@
+# Dette d'acceptation GELÉE du groupe RSIZ (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: RSIZ
+amorce: 9f7cc5de4
+reamorce: 9f7cc5de4
+ids:
+  - RSIZ2
+  - RSIZ3
+  - RSIZ4
+  - RSIZ5
+  - RSIZ6
+  - RSIZ7
+  - RSIZ8
+  - RSIZ9
+  - RSIZ10
+  - RSIZ11

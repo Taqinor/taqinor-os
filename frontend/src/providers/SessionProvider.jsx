@@ -13,7 +13,7 @@ import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Label } from '../ui/Label'
 import api from '../api/axios'
-import { setCredentials, logout } from '../features/auth/store/authSlice'
+import { setCredentials, fetchMe, logout } from '../features/auth/store/authSlice'
 import { SESSION_EXPIRED_EVENT, subscribeToSessionLogout, emitAuthLogout } from './session-bridge'
 import { isAnyFormDirty, confirmLeaveIfDirty } from '../ui/useDirtyGuard'
 
@@ -73,6 +73,9 @@ export function SessionProvider({ children }) {
         role_nom: res.data?.role_nom || null,
         permissions: res.data?.permissions || [],
       }))
+      // ADOC184 — comme Login.jsx : le stub n'a pas de `portee` ; sans /auth/me/ un compte
+      // portail déclencherait messages-accueil (403) et la bienvenue ERP.
+      dispatch(fetchMe())
       dismiss()
     } catch (err) {
       const detail = err?.response?.data?.detail

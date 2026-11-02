@@ -425,6 +425,21 @@ class TestWarrantyClaim(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_equipement_sert_fournisseur_du_produit(self):
+        """ASAV118 — la liste des équipements sert ``produit_fournisseur``."""
+        from apps.stock.models import Fournisseur
+        f1 = Fournisseur.objects.create(company=self.co, nom='Huawei Maroc')
+        Produit.objects.filter(pk=self.prod.pk).update(fournisseur=f1)
+        sans = make_equipement(self.co, self.user,
+                               make_produit(self.co, sku='RMA-P2'), self.inst,
+                               serie='SN-RMA-2')
+        r = self.api.get('/api/django/sav/equipements/?page_size=100')
+        self.assertEqual(r.status_code, 200, r.content)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        par_id = {row['id']: row for row in rows}
+        self.assertEqual(par_id[self.equip.pk]['produit_fournisseur'], f1.pk)
+        self.assertIsNone(par_id[sans.pk]['produit_fournisseur'])
+
 
 # ── FG85 — QR équipements ────────────────────────────────────────────────────
 
