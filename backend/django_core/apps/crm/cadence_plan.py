@@ -1394,6 +1394,11 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     ancien = cible.due_at
     delta = (nouveau - ancien) if ancien else None
     deplacer_echeance_etape(cible, nouveau, report_humain=compter_report)
+    # CADV11 — seul un geste humain écrit la date convenue ; c'est celle de la
+    # touche recalée sur la fenêtre (la date que le client verra tenue).
+    if compter_report:
+        cible.rappel_convenu_le = nouveau.astimezone(horaires.CASABLANCA).date()
+        cible.save(update_fields=['rappel_convenu_le'])
     # ERR-ALEA-RELANCE-DIMANCHE — la date de relance SAISIE pour ce report
     # (AMET20 la protège de ``_recaler_file``) suit le recalage de SA touche :
     # un dimanche ou un férié visé glisse au même jour ouvré que la touche

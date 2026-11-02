@@ -245,6 +245,12 @@
    "nom": "lead_segment",
    "read_only": true,
    "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "rappel_convenu_le",
+   "read_only": true,
+   "required": false
   }
  ]
 }

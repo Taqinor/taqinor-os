@@ -132,11 +132,13 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'posee_le',
             # AGR531 — additif (contrat `relance_etape_v2.json`).
             'lead_segment',
+            # CADV11 — additif (contrat `relance_etape_v2.json`).
+            'rappel_convenu_le',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
             'libelle', 'template_cle', 'devis', 'traite_le', 'cle',
-            'nb_reports', 'due_initial_at',
+            'nb_reports', 'due_initial_at', 'rappel_convenu_le',
         ]
 
     def get_lead_nom(self, obj) -> str:

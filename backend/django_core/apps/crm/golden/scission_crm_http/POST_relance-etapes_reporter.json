@@ -32,6 +32,7 @@
   "ordre": 1,
   "overdue": false,
   "posee_le": "2026-09-30T10:00:00Z",
+  "rappel_convenu_le": "2026-10-02",
   "statut": "a_faire",
   "statut_libelle": "À faire",
   "suites": {
