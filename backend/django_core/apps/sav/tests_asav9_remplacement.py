@@ -79,6 +79,22 @@ class RemplacementTests(TestCase):
         self.ancien.refresh_from_db()
         self.assertEqual(self.ancien.statut, Equipement.Statut.REMPLACE)
 
+    def test_neuf_sert_fin_garantie(self):
+        """ASAV119 — la réponse sert la fin de garantie effective du neuf,
+        identique à la fiche de l'équipement au parc."""
+        r = self._post()
+        self.assertEqual(r.status_code, 201, r.content)
+        neuf = Equipement.objects.get(company=self.company,
+                                      numero_serie='SN-A2')
+        attendu = neuf.date_fin_garantie_effective
+        self.assertIsNotNone(attendu)
+        self.assertEqual(r.data['equipement_neuf']['fin_garantie'],
+                         attendu.isoformat())
+        fiche = self.api.get(f'/api/django/sav/equipements/{neuf.pk}/')
+        self.assertEqual(fiche.status_code, 200, fiche.content)
+        self.assertEqual(str(fiche.data['date_fin_garantie_effective']),
+                         attendu.isoformat())
+
     def test_registre_contrat_substitue(self):
         self._post()
         neuf = Equipement.objects.get(numero_serie='SN-A2')

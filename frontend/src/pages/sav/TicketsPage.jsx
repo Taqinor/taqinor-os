@@ -1288,7 +1288,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             <p className="mt-2 text-sm" data-testid="equipement-neuf">
               Équipement neuf : {equipementNeuf.numero_serie}
               {equipementNeuf.statut ? ` (${equipementNeuf.statut})` : ''}
-              {equipementNeuf.fin_garantie ? ` — garantie jusqu'au ${equipementNeuf.fin_garantie}` : ''}
+              {equipementNeuf.fin_garantie ? ` — garantie jusqu'au ${formatDateFR(equipementNeuf.fin_garantie)}` : ''}
             </p>
           )}
           {retirerError && (

@@ -1198,3 +1198,18 @@ class DowntimeEntreeSerializer(serializers.Serializer):
         required=False, allow_null=True, min_value=1, max_value=2147483647)
     motif = TexteSansSubstitut(
         required=False, allow_blank=True, allow_null=True)
+
+
+def equipement_neuf_resume(equipement):
+    """ASAV119 — résumé de l'équipement neuf posé en remplacement (réponse de
+    « Retirer une pièce ») ; ``fin_garantie`` = garantie effective ISO (même
+    source que ``EquipementSerializer``), ``None`` sans neuf."""
+    if equipement is None:
+        return None
+    fin = equipement.date_fin_garantie_effective
+    return {
+        'id': equipement.id, 'numero_serie': equipement.numero_serie,
+        'statut': equipement.statut, 'installation': equipement.installation_id,
+        'client': equipement.client_vente_id,
+        'fin_garantie': fin.isoformat() if fin else None,
+    }
