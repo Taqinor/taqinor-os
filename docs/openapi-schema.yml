@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4886, operations: 7672, components: 3600}
+counts: {paths: 4888, operations: 7674, components: 3602}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3619,6 +3619,7 @@ operations:
 - post /api/django/ventes/devis/{id}/pdf-partage/ -> django_ventes_devis_pdf_partage_create
 - post /api/django/ventes/devis/{id}/prix-negocie/ -> django_ventes_devis_prix_negocie_create
 - post /api/django/ventes/devis/{id}/proforma-pdf/ -> django_ventes_devis_proforma_pdf_create
+- post /api/django/ventes/devis/{id}/prolonger-validite/ -> django_ventes_devis_prolonger_validite_create
 - get /api/django/ventes/devis/{id}/proposal/ -> django_ventes_devis_proposal_retrieve
 - post /api/django/ventes/devis/{id}/reappliquer-lead/ -> django_ventes_devis_reappliquer_lead_create
 - post /api/django/ventes/devis/{id}/refuser/ -> django_ventes_devis_refuser_create
@@ -7457,6 +7458,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/pdf-partage/ -> v1_ventes_devis_pdf_partage_create
 - post /api/v1/ventes/devis/{id}/prix-negocie/ -> v1_ventes_devis_prix_negocie_create
 - post /api/v1/ventes/devis/{id}/proforma-pdf/ -> v1_ventes_devis_proforma_pdf_create
+- post /api/v1/ventes/devis/{id}/prolonger-validite/ -> v1_ventes_devis_prolonger_validite_create
 - get /api/v1/ventes/devis/{id}/proposal/ -> v1_ventes_devis_proposal_retrieve
 - post /api/v1/ventes/devis/{id}/reappliquer-lead/ -> v1_ventes_devis_reappliquer_lead_create
 - post /api/v1/ventes/devis/{id}/refuser/ -> v1_ventes_devis_refuser_create
@@ -10254,6 +10256,8 @@ components:
 - DevisPrefillSiteResponse
 - DevisPreset
 - DevisPrixNegocieReponse
+- DevisProlongerValiditeCorpsRequest
+- DevisProlongerValiditeReponse
 - DevisRefuserRequestRequest
 - DevisReplaceLinesRequestRequest
 - DevisReviseVisiteIntrouvable

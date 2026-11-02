@@ -100,6 +100,12 @@ _AVENANT_SIGNATURE_REPONSE = inline_serializer(
         'share_link': serializers.CharField(),
         'tache_id': serializers.IntegerField(allow_null=True),
     })
+#: CADV82 — formes OpenAPI du contrat ``devis_prolonger_validite.json``.
+_PROLONGER_CORPS = inline_serializer('DevisProlongerValiditeCorps', {
+    'date': serializers.DateField(required=False, allow_null=True)})
+_PROLONGER_REPONSE = inline_serializer('DevisProlongerValiditeReponse', {
+    'date_validite': serializers.DateField(allow_null=True),
+    'prolongee': serializers.BooleanField()})
 
 
 class DevisCycleActionsMixin:
@@ -683,6 +689,37 @@ class DevisCycleActionsMixin:
         return Response(
             DevisSerializer(nouveau, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+    # api-only: TEMPORAIRE (CADV82) — aucun bouton « Prolonger » du devis n'appelle
+    # encore cette action ; retirer ce marqueur dès que l'écran la câble.
+    @extend_schema(request=_PROLONGER_CORPS,
+                   responses={200: _PROLONGER_REPONSE, 409: D.ErreurDevisFige})
+    @action(detail=True, methods=['post'], url_path='prolonger-validite',
+            permission_classes=[IsResponsableOrAdmin])
+    def prolonger_validite(self, request, pk=None):
+        """CADV82 — l'appel J28 prolonge un devis ENVOYÉ (contrat
+        ``devis_prolonger_validite.json``) : ``date`` facultative (défaut :
+        aujourd'hui + réglage société) ; jamais plus courte ; aucun statut
+        écrit (règle #4). Un devis non envoyé — l'expiré se révise — : 409."""
+        import datetime as _dt
+        from ..services import (
+            jours_validite_societe, prolonger_validite_devis)
+        from ..utils.expiry import date_expiration
+        devis = self.get_object()
+        cible = valider_corps(request, _PROLONGER_CORPS).get('date') or (
+            timezone.localdate() + _dt.timedelta(
+                days=jours_validite_societe(devis.company)))
+        if devis.statut != Devis.Statut.ENVOYE:
+            detail = ('Devis expiré : réviser, pas prolonger.'
+                      if devis.statut == Devis.Statut.EXPIRE else
+                      'Seul un devis envoyé se prolonge.')
+            return Response({'detail': detail, 'code': 'statut'},
+                            status=status.HTTP_409_CONFLICT)
+        nouvelle = prolonger_validite_devis(devis, cible)
+        effective = nouvelle or date_expiration(devis)
+        return Response({
+            'date_validite': effective.isoformat() if effective else None,
+            'prolongee': nouvelle is not None})
 
     @extend_schema(request=D.AccepterRequest,
                    # api-fuzz : le 409 « date future » est un ConflitEtat

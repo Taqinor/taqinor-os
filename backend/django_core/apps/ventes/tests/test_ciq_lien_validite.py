@@ -121,3 +121,72 @@ class LienSuitLaValidite(TestCase):
             inconnu = api.get('/api/django/public/proposal/inconnu-xyz/data/')
         self.assertEqual(expire.status_code, inconnu.status_code)
         self.assertEqual(expire.content, inconnu.content)
+
+    # ── CADV82 — l'appel J28 prolonge par l'API (contrat
+    # ``devis_prolonger_validite.json``), jamais un expiré ──────────────────
+    def _prolonger(self, devis, corps=None, role='responsable'):
+        from authentication.models import CustomUser
+        self.n += 1
+        user = CustomUser.objects.create_user(
+            username=f'cadv82-{self.n}', password='x', role_legacy=role,
+            company=self.company)
+        api = APIClient()
+        api.force_authenticate(user)
+        return api.post(
+            f'/api/django/ventes/devis/{devis.pk}/prolonger-validite/',
+            corps if corps is not None else {}, format='json')
+
+    def test_f_prolonger_par_l_api_un_devis_envoye(self):
+        devis = self._devis(J + datetime.timedelta(days=2))
+        lien = ShareLink.for_devis(devis)
+        rep = self._prolonger(devis, {'date': '2027-01-10'})
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertEqual(rep.json(),
+                         {'date_validite': '2027-01-10', 'prolongee': True})
+        devis.refresh_from_db()
+        self.assertEqual(devis.date_validite, datetime.date(2027, 1, 10))
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        lien.refresh_from_db()
+        self.assertEqual(lien.expires_at,
+                         _fin_du_jour(datetime.date(2027, 1, 10)))
+        rejeu = self._prolonger(devis, {'date': '2027-01-10'})
+        self.assertEqual(rejeu.json(),
+                         {'date_validite': '2027-01-10', 'prolongee': False})
+
+    def test_g_sans_corps_aujourd_hui_plus_le_reglage(self):
+        from apps.ventes.services import jours_validite_societe
+        devis = self._devis(J + datetime.timedelta(days=2))
+        rep = self._prolonger(devis)
+        attendu = J + datetime.timedelta(
+            days=jours_validite_societe(self.company))
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertEqual(rep.json(), {'date_validite': attendu.isoformat(),
+                                      'prolongee': True})
+
+    def test_h_date_plus_courte_rien_ne_bouge(self):
+        devis = self._devis(J + datetime.timedelta(days=40))
+        rep = self._prolonger(
+            devis, {'date': (J + datetime.timedelta(days=10)).isoformat()})
+        self.assertEqual(rep.json(), {
+            'date_validite': (J + datetime.timedelta(days=40)).isoformat(),
+            'prolongee': False})
+
+    def test_i_expire_409_reviser_pas_prolonger(self):
+        devis = self._devis(J - datetime.timedelta(days=1),
+                            statut=Devis.Statut.EXPIRE)
+        rep = self._prolonger(devis, {'date': '2027-01-10'})
+        self.assertEqual(rep.status_code, 409, rep.content)
+        self.assertEqual(rep.json(), {
+            'detail': 'Devis expiré : réviser, pas prolonger.',
+            'code': 'statut'})
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.EXPIRE)
+        self.assertEqual(devis.date_validite, J - datetime.timedelta(days=1))
+
+    def test_j_utilisateur_normal_refuse_et_date_invalide_400(self):
+        devis = self._devis(J + datetime.timedelta(days=2))
+        self.assertEqual(
+            self._prolonger(devis, {'date': '2027-01-10'},
+                            role='normal').status_code, 403)
+        self.assertEqual(
+            self._prolonger(devis, {'date': 'demain'}).status_code, 400)

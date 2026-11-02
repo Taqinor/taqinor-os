@@ -1642,8 +1642,9 @@ LIBELLES = {
                          'en': 'Estimated payback',
                          'ar': 'مدة الاسترداد المقدرة'},
     'op_validite_jusqu': {
-        'fr': 'Validit&#233;&#160;: jusqu&#8217;au {date}',
-        'en': 'Valid until {date}', 'ar': 'صالح إلى غاية {date}'},
+        'fr': 'Validit&#233;&#160;: jusqu&#8217;au {date} &#183; prix r&#233;visable au-del&#224;',
+        'en': 'Valid until {date} &#183; price may be revised after',
+        'ar': 'صالح إلى غاية {date} &#183; السعر قابل للمراجعة بعد ذلك'},
     'op_siege': {'fr': 'Si\u00e8ge\u00a0:', 'en': 'Head office:',
                  'ar': 'المقر:'},
     'clauses_particulieres': {'fr': 'Clauses particulières',
