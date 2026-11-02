@@ -17,6 +17,8 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qj14_email_send -v 2
 """
+from unittest import mock
+
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
@@ -70,6 +72,16 @@ def url(devis_id):
     return f'/api/django/ventes/devis/{devis_id}/envoyer-email/'
 
 
+def rendu_ok(test):
+    """ADVS12 — pièce jointe bouchonnée pour un ``setUp`` : le moteur REFUSE
+    ces devis de test sans ligne, et un refus n'envoie plus rien."""
+    for correctif in (
+            mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf', return_value='k.pdf'),
+            mock.patch('apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF')):
+        correctif.start()
+        test.addCleanup(correctif.stop)
+
+
 # ─── Tests ─────────────────────────────────────────────────────────────────────
 
 @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
@@ -81,6 +93,7 @@ class TestEnvoyerEmailAction(TestCase):
         self.user = make_user(self.company)
         self.api = make_api(self.user)
         self.client_obj = make_client(self.company, 'yasmine@test.ma')
+        rendu_ok(self)
 
     def test_email_sent_and_log_created(self):
         """An email is delivered and an EmailLog record is written."""
@@ -255,6 +268,7 @@ class TestEnvoyerEmailTerminalStatus(TestCase):
         self.user = make_user(self.company, 'u_qj14t')
         self.api = make_api(self.user)
         self.client_obj = make_client(self.company, 'term@test.ma')
+        rendu_ok(self)
 
     def test_accepted_devis_not_regressed(self):
         devis = make_devis(self.company, self.user, self.client_obj, 'accepte',
@@ -294,8 +308,50 @@ class TestEnvoyerEmailEchecNeMarquePas(TestCase):
             telephone='+212600005190', stage=stages.CONTACTED)
         self.stage_initial = self.lead.stage
 
+    def _devis_sans_onduleur(self, reference):
+        from apps.ventes.tests._quote_engine_common import make_devis as devis_chiffre
+        return devis_chiffre(self.company, self.user, self.client_obj, [
+            ('Panneau mono 450W', '8', '1166.67', '20'),
+            ('Structure aluminium toiture', '1', '300', '20'),
+        ], reference=reference)
+
+    def test_rendu_refuse_aucun_mail_reste_brouillon(self):
+        """ADVS12 (C-ADVS-009) — devis sans onduleur : le VRAI moteur refuse le
+        rendu ; 409 nommé, aucun mail « ci-joint » sans PDF, devis brouillon."""
+        devis = self._devis_sans_onduleur('DEV-QJ14-R1')
+        with mock.patch('apps.ventes.email_service._send') as envoi:
+            resp = self.api.post(url(devis.id), {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['code'], 'pdf_refuse')
+        self.assertIn('onduleur', resp.data['detail'])
+        self.assertEqual(resp.data['devis_statut'], 'brouillon')
+        envoi.assert_not_called()
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'brouillon')
+        self.assertIsNone(devis.date_envoi)
+        log = EmailLog.objects.get(devis=devis)
+        self.assertEqual(log.statut, EmailLog.Statut.ECHEC)
+        self.assertIn('onduleur', log.erreur)
+
+    def test_panne_de_stockage_502_pdf_indisponible(self):
+        """ADVS12 — autre panne (rendu, stockage) : 502 ``pdf_indisponible``,
+        le motif technique reste dans l'EmailLog, rien ne part."""
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'brouillon', 'DEV-QJ14-R2')
+        with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf', return_value='k.pdf'), \
+                mock.patch('apps.ventes.utils.pdf.download_pdf', side_effect=OSError('minio muet')), \
+                mock.patch('apps.ventes.email_service._send') as envoi:
+            resp = self.api.post(url(devis.id), {}, format='json')
+        self.assertEqual(resp.status_code, 502, resp.data)
+        self.assertEqual(resp.data['code'], 'pdf_indisponible')
+        self.assertNotIn('minio', resp.data['detail'])
+        envoi.assert_not_called()
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'brouillon')
+        self.assertIn('minio muet', EmailLog.objects.get(devis=devis).erreur)
+
     def test_echec_smtp_ne_marque_pas_envoye(self):
-        from unittest import mock
+        rendu_ok(self)
         devis = make_devis(self.company, self.user, self.client_obj,
                            'brouillon', 'DEV-QJ14-E1')
         devis.lead = self.lead

@@ -119,6 +119,22 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
         raise _RemiseEnvoiRefusee(erreur.message)
 
 
+#: ADVS12 — message d'une panne de rendu ou de stockage (le motif technique
+#: reste dans l'``EmailLog``, jamais montré au commercial).
+PDF_INDISPONIBLE = ("Le PDF du devis n'a pas pu être produit : l'e-mail n'est "
+                    "pas parti. Réessayez dans un instant.")
+
+
+def _refus_rendu(exc):
+    """ADVS12 — ``(http, code, motif)`` d'un rendu de pièce jointe en échec :
+    ``ValueError`` = refus NOMMÉ du moteur (409, le motif est montré) ; toute
+    autre panne de rendu ou de stockage = 502."""
+    if isinstance(exc, ValueError):
+        return status.HTTP_409_CONFLICT, 'pdf_refuse', str(exc)
+    return (status.HTTP_502_BAD_GATEWAY, 'pdf_indisponible',
+            f'{type(exc).__name__}: {exc}')
+
+
 def _options_piece_jointe(devis, pdf_mode, token):
     """AMOT117 — options de la pièce jointe : celles du dernier rendu persisté
     (``pdf_render_meta['options']``, même lecture que ``cle_pdf_a_jour``) ;
@@ -306,23 +322,11 @@ class DevisEnvoiActionsMixin:
             from ..domain.envoi import figer_clauses_devis
             figer_clauses_devis(devis)
 
-        # Génère le PDF premium (persist=False — rendu à la volée, pas de
-        # remplacement du fichier stocké : le moteur rend seulement).
-        attachment = None
-        attachment_name = None
         # ADEV68 — le lien de proposition est créé AVANT le rendu et son jeton
         # passé au moteur : la pièce jointe d'un devis encore brouillon (rendue
         # juste avant ``mark_devis_sent``) imprime CE lien, alors que le
         # moteur ne frappe plus de lien pour un brouillon.
         link = ShareLink.for_devis(devis)
-        try:
-            opts = _options_piece_jointe(devis, pdf_mode, link.token)
-            key = generate_premium_devis_pdf(devis.id, opts, persist=False)
-            attachment = download_pdf(key)
-            attachment_name = f'Devis_{devis.reference}.pdf'
-        except Exception:  # noqa: BLE001 — PDF indisponible n'empêche pas l'envoi (D-ENF22-BLE001)
-            logger.warning(
-                "devis_envoi.DevisEnvoiActionsMixin.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
 
         # Ajoute le lien de proposition tokenisé dans le corps si fourni.
         proposal_url = chemin_proposition(devis, link.token)
@@ -385,7 +389,6 @@ class DevisEnvoiActionsMixin:
             to_email=dest, from_email=_from_email(),
             sujet=(sujet or '')[:300], corps=corps,
             reference=reference[:80],
-            piece_jointe=(attachment_name or '')[:255],
             created_by=request.user if getattr(request.user, 'is_authenticated', False) else None,
         )
 
@@ -399,6 +402,22 @@ class DevisEnvoiActionsMixin:
                 # c'est la FICHE (ni client ni adresse) qui s'y oppose = 409.
                 status=status.HTTP_409_CONFLICT)
 
+        # Génère le PDF premium (persist=False — rendu à la volée, pas de
+        # remplacement du fichier stocké : le moteur rend seulement).
+        # ADVS12 — plus de mode dégradé : pas de pièce jointe, pas de mail.
+        try:
+            opts = _options_piece_jointe(devis, pdf_mode, link.token)
+            key = generate_premium_devis_pdf(devis.id, opts, persist=False)
+            attachment = download_pdf(key)
+        except Exception as exc:  # noqa: BLE001 — traduit en refus nommé (D-ENF22-BLE001)
+            logger.warning("devis_envoi.envoyer_email : pièce jointe non rendue", exc_info=True)
+            http, code, log.erreur = _refus_rendu(exc)
+            log.statut = EmailLog.Statut.ECHEC
+            log.save()
+            return Response({'detail': log.erreur if code == 'pdf_refuse' else PDF_INDISPONIBLE, 'code': code,
+                             'log_id': log.id, 'email_statut': log.statut, 'devis_statut': devis.statut}, status=http)
+        attachment_name = f'Devis_{devis.reference}.pdf'
+        log.piece_jointe = attachment_name[:255]
         ok, err = _send(dest, sujet, corps, attachment, attachment_name)
         log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
         log.erreur = err
