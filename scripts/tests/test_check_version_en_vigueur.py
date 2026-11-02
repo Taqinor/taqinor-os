@@ -41,7 +41,23 @@ def lus(company):
 '''
 
 
+STATUT_AUTRE_MODELE = '''
+def journal(facture):
+    return EmailLog.objects.filter(facture=facture, statut=EmailLog.Statut.ENVOYE)
+'''
+
+STATUT_DEVIS_ENUM = '''
+def lus(company):
+    return Devis.objects.filter(company=company, statut=Devis.Statut.ENVOYE)
+'''
+
+
 class DetectionTests(unittest.TestCase):
+    def test_statut_d_un_autre_modele_ignore(self):
+        self.assertEqual(guard.analyser_source(STATUT_AUTRE_MODELE), [])
+        self.assertEqual(
+            [f for _l, f in guard.analyser_source(STATUT_DEVIS_ENUM)], ['lus'])
+
     def test_lecture_sans_is_active_detectee(self):
         self.assertEqual(
             [f for _l, f in guard.analyser_source(SANS_PREDICAT)], ['ca_signe'])

@@ -88,21 +88,6 @@ ALLOWLIST = {
     "backend/django_core/apps/crm/fiche_selectors.py::leads_signes_sans_devis_accepte":
         "détecte un lead SIGNED dont AUCUN devis n'est accepté, toutes "
         "versions confondues (drapeau de cohérence, décidé par ACRM10)",
-    "backend/django_core/apps/ventes/scheduled.py::_email_parti":
-        "À CORRIGER (09/10, arrivé de main pendant ce build) : lecture d'un "
-        "statut de devis sans is_active dans ventes/scheduled.py — à passer "
-        "par le prédicat de version en vigueur par le propriétaire ventes ; la "
-        "ligne tombe avec la correction",
-    "backend/django_core/apps/ventes/scheduled.py::pre_echeance_reminders":
-        "À CORRIGER (09/10, arrivé de main pendant ce build) : lecture d'un "
-        "statut de devis sans is_active dans ventes/scheduled.py — à passer "
-        "par le prédicat de version en vigueur par le propriétaire ventes ; la "
-        "ligne tombe avec la correction",
-    "backend/django_core/apps/ventes/scheduled.py::releve_mensuel_reminders":
-        "À CORRIGER (09/10, arrivé de main pendant ce build) : lecture d'un "
-        "statut de devis sans is_active dans ventes/scheduled.py — à passer "
-        "par le prédicat de version en vigueur par le propriétaire ventes ; la "
-        "ligne tombe avec la correction",
 }
 
 
@@ -113,6 +98,13 @@ def _est_statut_devis(node) -> bool:
     if isinstance(node, ast.Name) and node.id == NOM_CONSTANTE:
         return True
     if isinstance(node, ast.Attribute) and node.attr in ATTRS_STATUT:
+        # ``<Modèle>.Statut.ENVOYE`` d'un AUTRE modèle (EmailLog…) n'est pas
+        # un statut de devis : seul ``Devis.Statut.X`` (ou un alias nu) compte.
+        modele = node.value
+        if (isinstance(modele, ast.Attribute) and modele.attr == "Statut"
+                and isinstance(modele.value, ast.Name)
+                and modele.value.id != "Devis"):
+            return False
         return True
     return False
 
