@@ -19,12 +19,11 @@ import Callout from '../../components/Callout.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { localizeNavHref } from '../../i18n/pages';
-import { YIELD_TABLE } from '../../lib/yieldTable';
+import { AZIMUTHS, ensoleillementData } from '../../lib/ensoleillement';
 import EnsoleillementVille from '../../components/blocs/EnsoleillementVille.astro';
 
 const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
-const AZIMUTHS = ['-90', '-45', '0', '45', '90'] as const;
 const AZIMUTH_LABELS: Record<string, string> = {
   '-90': 'شرق',
   '-45': 'جنوب شرق',
@@ -56,22 +55,7 @@ const VILLE_CFG = {
 };
 
 // مرتَّبة حسب خط العرض تصاعدياً (جنوب ← شمال)، كما في estimatorBrain.ts.
-const cities = Object.entries(YIELD_TABLE)
-  .map(([slug, data]) => ({ slug, label: CITY_LABELS[slug] ?? slug, ...data }))
-  .sort((a, b) => a.lat - b.lat);
-
-const tilts = Object.keys(cities[0].grid['0']).map(Number).sort((a, b) => a - b);
-
-// أفضل زوج (ميل، اتجاه) لكل مدينة — لملخّص أعلى الصفحة.
-const bestByCity = cities.map((c) => {
-  let best = { tilt: 0, azimuth: '0', value: 0 };
-  for (const az of AZIMUTHS) {
-    for (const [tiltStr, value] of Object.entries(c.grid[az] ?? {})) {
-      if (value > best.value) best = { tilt: Number(tiltStr), azimuth: az, value };
-    }
-  }
-  return { ...c, best };
-});
+const { cities, tilts, bestByCity } = ensoleillementData(CITY_LABELS);
 
 const jsonLd = {
   '@context': 'https://schema.org',
