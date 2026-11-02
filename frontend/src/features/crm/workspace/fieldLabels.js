@@ -341,11 +341,11 @@ const fieldLabels = {
   },
   frein_principal: {
     label: 'Frein principal', section: 'pipeline',
-    inputId: 'lf-frein-principal', pending: 'vague 2 (CAD154)',
+    inputId: 'lf-frein-principal',
   },
   declencheur: {
     label: 'Ce qui a accroché', section: 'pipeline',
-    inputId: 'lf-declencheur', pending: 'vague 2 (CAD154)',
+    inputId: 'lf-declencheur',
   },
   chauffage_electrique_hiver: {
     label: 'Chauffage électrique en hiver', section: 'equipements',

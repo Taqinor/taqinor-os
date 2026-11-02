@@ -83,6 +83,14 @@ describe('fieldLabels — la carte ne dérive pas des sections réelles (règle 
     expect(fantomes).toEqual([])
   })
 
+  // CADV26 — frein principal et déclencheur ont leurs vrais champs (plus `pending`).
+  it('frein_principal et declencheur ont un inputId présent dans les sections, sans pending', () => {
+    for (const cle of ['frein_principal', 'declencheur']) {
+      expect(fieldLabels[cle].pending, cle).toBeUndefined()
+      expect(allKnownIds.has(fieldLabels[cle].inputId), cle).toBe(true)
+    }
+  })
+
   it('chaque entrée porte un label non vide', () => {
     const sansLabel = Object.entries(fieldLabels)
       .filter(([, entry]) => typeof entry.label !== 'string' || !entry.label.trim())
