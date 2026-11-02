@@ -1009,7 +1009,8 @@ def tranches_a_venir(devis, lignes=None, option=None) -> list:
             if t['statut'] == 'a_faire' and t['montant_ttc'] > 0]
 
 
-def creer_facture_tranche(devis, user, company, create_with_reference):
+def creer_facture_tranche(devis, user, company, create_with_reference,
+                          override_credit=False):
     """Émet et retourne la prochaine facture de tranche de la vente.
 
     Lève ValueError (400 chez l'appelant) si le devis n'est pas accepté, si
@@ -1056,7 +1057,8 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             else:
                 facture = creer_brouillon_tranche(devis, plan['prochaine'],
                                                   user)
-            _emettre(facture, user)
+            # AARG15 — l'override autorisé va jusqu'à l'émission (journalisé là).
+            _emettre(facture, user, override_credit=override_credit)
     except FacturationVenteRefusee as exc:
         if exc.corps.get('code') == 'credit_hold':
             from apps.ventes.domain.recouvrement import CreditHoldError
