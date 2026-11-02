@@ -115,6 +115,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     from apps.ventes.domain.etude_ci import (
         CLE_TAILLE_CREATION, entrees_pour_etude_params, etudier_ci, refus_devis_auto_ci,
         verdict_taille_creation)
+    from apps.ventes.domain.creation import devise_par_defaut
     from apps.ventes.domain.etude_ci_batterie import lignes_des_options
     from apps.ventes.models import Devis
 
@@ -163,7 +164,8 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         return Devis.objects.create(
             company=company, reference=ref, client=client, lead=lead,
             statut=Devis.Statut.BROUILLON, created_by=user,
-            taux_tva=taux_tva, mode_installation=lead.type_installation,
+            taux_tva=taux_tva, devise=devise_par_defaut(company),
+            mode_installation=lead.type_installation,
             etude_params=entrees)
 
     devis = _ecrire_devis_auto_par_pipeline(

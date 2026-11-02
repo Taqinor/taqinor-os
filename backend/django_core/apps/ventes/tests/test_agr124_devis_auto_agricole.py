@@ -197,6 +197,17 @@ class DevisAutoAgricoleTests(TestCase):
         lead.refresh_from_db()
         self.assertEqual(lead.type_installation, 'agricole')
 
+    def test_devise_et_tva_de_la_societe(self):
+        # ADVS28 — EUR / 14 % du profil ; rien de codé à MAD / 20.
+        CompanyProfile.objects.filter(company=self.co).update(
+            devise_defaut='EUR', tva_standard=Decimal('14'))
+        self._pompe('15000')
+        rep = self._post(self._lead())
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertEqual(devis.devise, 'EUR')
+        self.assertEqual(devis.taux_tva, Decimal('14'))
+
     def test_debit_souhaite_seul_cree_le_brouillon_besoin_derive(self):
         """AGQ1 (D-AGQ-1) — un lead qui ne déclare QUE le débit souhaité
         (aucun volume) : le débit souhaité × heures-pic fait le besoin, le

@@ -162,6 +162,15 @@ class DevisAutoCITests(_Base):
             self.assertIn(cle, etude)
         self.assertIn('production_figee', devis.etude_params)
 
+    def test_devise_et_tva_de_la_societe(self):
+        # ADVS28 — EUR / 14 % du profil ; rien de codé à MAD / 20.
+        CompanyProfile.objects.filter(company=self.co).update(
+            devise_defaut='EUR', tva_standard=Decimal('14'))
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        devis.refresh_from_db()
+        self.assertEqual(devis.devise, 'EUR')
+        self.assertEqual(devis.taux_tva, Decimal('14'))
+
     def _toit_plat(self):
         Produit.objects.create(company=self.co, nom='Structure toit plat lestée C&I',
                                prix_vente=Decimal('450'), prix_achat=Decimal('200'),
