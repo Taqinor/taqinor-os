@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 
 from django.contrib.contenttypes.models import ContentType
@@ -52,6 +53,25 @@ def cible_du_favori(favori):
     return cible
 
 
+_CARACTERE_NON_STOCKABLE = re.compile('[\x00\ud800-\udfff]')
+
+
+def _sans_caractere_non_stockable(valeur):
+    """Retire récursivement (clés ET valeurs) le NUL et les demi-substituts
+    isolés : JSONB refuse le NUL et l'UTF-8 refuse un substitut isolé
+    (DataError/UnicodeEncodeError, 500 sur PATCH). Le schéma publie un objet
+    opaque sans motif exprimable sur ses clés : on normalise (comme un
+    ``strip``) plutôt que de refuser un corps conforme."""
+    if isinstance(valeur, str):
+        return _CARACTERE_NON_STOCKABLE.sub('', valeur)
+    if isinstance(valeur, list):
+        return [_sans_caractere_non_stockable(v) for v in valeur]
+    if isinstance(valeur, dict):
+        return {_sans_caractere_non_stockable(k): _sans_caractere_non_stockable(v)
+                for k, v in valeur.items()}
+    return valeur
+
+
 @extend_schema_field({
     'type': 'object', 'additionalProperties': {},
     'description': (
@@ -66,7 +86,7 @@ class ConfigurationVueField(serializers.JSONField):
     def to_internal_value(self, data):
         if not isinstance(data, dict):
             raise serializers.ValidationError('Un objet JSON est attendu.')
-        return super().to_internal_value(data)
+        return _sans_caractere_non_stockable(super().to_internal_value(data))
 
 
 # ENF11 — `apps.crm.serializers.SavedViewSerializer` porte le MÊME nom de

@@ -28,7 +28,9 @@ from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
 from .cadence_temps import instant_utc
 from .controle_suivi import SEGMENTS_ADMIS
-from .params_requete import CorpsTexteMixin, corps_objet, entier_param, texte_verifie
+from .params_requete import (
+    CorpsTexteMixin, corps_objet, entier_param, texte_verifie, verifier_corps_texte,
+)
 from .cadence_reponses import CANAUX_RECONTACT_API, CLES_MESSAGE_REPONSE, REPONSES_TOUCHE, TYPES_PIECE_RECUE
 from core.champs_stricts import ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
@@ -1500,6 +1502,9 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
         simplement s'il est présent sans lead_id fourni).
         """
         tmpl = self.get_object()
+        # ERR-ENF11-FUZZ-CRM — corps non objet (``.get`` absent) ou texte non
+        # texte (``str.replace`` sur un entier) : 400 au lieu de 500.
+        verifier_corps_texte(request, ('prenom', 'ville', 'lien'))
         prenom = request.data.get('prenom', '')
         ville = request.data.get('ville', '')
         lien = request.data.get('lien', '')

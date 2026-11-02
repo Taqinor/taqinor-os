@@ -16,7 +16,9 @@ import re
 from decimal import Decimal, InvalidOperation
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_field, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import JSONParser
@@ -46,9 +48,21 @@ class RegleListePrixCorpsSerializer(RegleListePrixSerializer):
 
 #: Corps PUBLIÉ de ``lignes`` (upsert du prix d'un produit) — mêmes bornes
 #: que ``SaisiePrixListeSerializer`` (ADEV39).
+@extend_schema_field({
+    'type': 'string',
+    # ERR-ENF11-FUZZ-VENTES — ``min_value=0`` n'est pas publié pour une chaîne
+    # décimale : « -28 » était « conforme » puis refusé. Le motif exclut le
+    # signe (8 chiffres entiers, 2 décimales : ``max_digits=10``).
+    'pattern': r'^(?:\d{1,8}(?:\.\d{0,2})?|\.\d{1,2})$',
+})
+class PrixPositifField(drf_serializers.DecimalField):
+    """Prix décimal >= 0 dont le schéma publié interdit le signe moins."""
+
+
 LIGNE_PRIX_CORPS = inline_serializer('ListePrixLigneSaisie', fields={
     'produit': drf_serializers.IntegerField(min_value=1),
-    'prix_unitaire': drf_serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0')),
+    'prix_unitaire': PrixPositifField(
+        max_digits=10, decimal_places=2, min_value=Decimal('0')),
 })
 
 
@@ -97,6 +111,8 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
         from apps.stock.selectors import get_produit_scoped
 
         liste = self.get_object()
+        if not hasattr(request.data, 'keys'):  # ERR-ENF11-FUZZ-VENTES : tableau = 500
+            raise ValidationError({'detail': 'Un objet JSON est attendu.'})
         produit_id = request.data.get('produit')
         prix_unitaire = request.data.get('prix_unitaire')
         if not produit_id or prix_unitaire is None:
@@ -128,6 +144,10 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
     def regles(self, request, pk=None):
         """Ajoute une règle de prix/palier à cette liste (XSAL2)."""
         liste = self.get_object()
+        # ERR-ENF11-FUZZ-VENTES — un corps JSON tableau/scalaire ne se déplie
+        # pas en ``{**request.data}`` (TypeError, 500) : 400 nommé.
+        if not hasattr(request.data, 'keys'):
+            raise ValidationError({'detail': 'Un objet JSON est attendu.'})
         # ASEC22 — le ``request`` en contexte BORNE ``produit`` à la société
         # (SameCompanyFKSerializerMixin) : sans lui, aucune société de
         # référence et l'id d'une autre société passait (V5 : 201).

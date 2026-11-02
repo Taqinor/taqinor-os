@@ -555,10 +555,15 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         ``{"commentaire": "..."}``."""
         from ..services import resoudre_exception_facture
         facture = self.get_object()
+        # ENF11 fuzz : un corps JSON scalaire (`true`, nombre) levait
+        # AttributeError sur `.get` (500) -> 400 ; `commentaire` doit être un
+        # vrai texte sans NUL (un NUL fait lever ValueError a l'ecriture, 500).
+        commentaire = serializers.CharField(
+            required=False, allow_blank=True).run_validation(
+            corps_objet(request).get('commentaire', ''))
         try:
             resoudre_exception_facture(
-                facture, user=request.user,
-                commentaire=request.data.get('commentaire', ''))
+                facture, user=request.user, commentaire=commentaire)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)

@@ -391,6 +391,17 @@ class TestFG36MessageTemplate(TestCase):
         self.assertIn('Ahmed', resp.data['texte'])
         self.assertIn('Casablanca', resp.data['texte'])
 
+    def test_render_corps_non_objet_ou_texte_mal_type_400(self):
+        # ERR-ENF11-FUZZ-CRM : corps entier (``.get`` absent) ou ``prenom``
+        # numérique (``str.replace``) levaient 500.
+        tpl = MessageTemplate.objects.create(
+            company=self.company, nom='Render 400', langue='fr',
+            corps='Bonjour {prenom}')
+        url = f'/api/django/crm/message-templates/{tpl.pk}/render/'
+        for corps in (29679, [1], {'prenom': 12}, {'ville': ['x']}):
+            resp = self.user_api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
     def test_archived_template_hidden_from_list(self):
         MessageTemplate.objects.create(
             company=self.company, nom='Archived Tpl', langue='fr',

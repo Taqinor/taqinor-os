@@ -181,7 +181,7 @@ class ValidationCreationTests(TestCase):
             f'{URL_RULES}{regle.pk}/',
             {'action_config': {'field': 'statut', 'value': 'accepte'}},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_les_autres_actions_restent_inchangees(self):
         payload = self._payload({})

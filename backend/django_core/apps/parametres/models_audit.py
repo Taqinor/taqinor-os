@@ -51,9 +51,11 @@ class SettingsAuditLog(models.Model):
             company=company,
             user=user if (user and getattr(
                 user, 'is_authenticated', False)) else None,
-            section=section,
-            field=field or '',
-            field_label=field_label or '',
+            section=(section or '')[:50],
+            # Les colonnes sont bornées (100/150) : une clé i18n de 120 signes
+            # faisait lever DataError (500) à l'écriture de l'audit.
+            field=(field or '')[:100],
+            field_label=(field_label or '')[:150],
             old_value='' if old is None else str(old),
             new_value='' if new is None else str(new),
         )

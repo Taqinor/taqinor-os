@@ -7,7 +7,8 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
-from rest_framework.exceptions import ParseError
+from django.utils.dateparse import parse_datetime
+from rest_framework.exceptions import ParseError, ValidationError
 from rest_framework.response import Response
 
 from .models import ReleveCompteurEquipement
@@ -19,6 +20,33 @@ def exiger_objet(donnees):
     if not hasattr(donnees, 'get'):
         raise ParseError('Corps JSON objet attendu.')
     return donnees
+
+
+def date_du_corps(corps, champ):
+    """Date ``AAAA-MM-JJ`` du corps, ou ``None`` si absente ; illisible ou non
+    texte (ENF11 : TypeError = 500) = 400 sur le champ."""
+    brute = corps.get(champ)
+    if not brute:
+        return None
+    try:
+        return date.fromisoformat(brute)
+    except (TypeError, ValueError):
+        raise ValidationError({champ: 'Date invalide (AAAA-MM-JJ).'})
+
+
+def datetime_du_corps(corps, champ):
+    """Date-heure ISO du corps, ou ``None`` si absente ; illisible ou non texte
+    (ENF11 : TypeError = 500) = 400 sur le champ."""
+    brute = corps.get(champ)
+    if not brute:
+        return None
+    try:
+        valeur = parse_datetime(brute) if isinstance(brute, str) else None
+    except ValueError:
+        valeur = None
+    if valeur is None:
+        raise ValidationError({champ: 'Date-heure invalide.'})
+    return valeur
 
 
 def _refus(cle, message, statut=400):

@@ -167,7 +167,8 @@ class ChampsStrictsSouplesMixin:
             kwargs.update(borne_min=bornes[0], borne_max=bornes[1])
         elif bornes and issubclass(classe, serializers.IntegerField):
             classe = EntierBornePublie
-            kwargs.update(borne_validee='min', min_value=bornes[0])
+            kwargs.update(borne_validee='min', min_value=bornes[0],
+                          reponse_sans_borne=field_name == 'quantite_stock')
         return classe, kwargs
 
 
@@ -223,13 +224,33 @@ class EntierBornePublie(serializers.IntegerField):
     ``validate_<champ>`` du sérialiseur : le contrat d'erreur (message
     français, code ``invalid``) reste celui que les contrats WMS épinglent."""
 
-    def __init__(self, borne_validee, **kwargs):
+    def __init__(self, borne_validee, reponse_sans_borne=False, **kwargs):
         """``borne_validee`` : ``'min'`` ou ``'max'`` — la seule borne dont le
-        validateur DRF est retiré (l'autre reste contrôlée par DRF)."""
+        validateur DRF est retiré (l'autre reste contrôlée par DRF).
+        ``reponse_sans_borne`` : la borne ne vaut que pour la REQUÊTE, la
+        valeur servie peut la franchir (ex. stock négatif d'un produit)."""
         from django.core.validators import MaxValueValidator, MinValueValidator
         super().__init__(**kwargs)
+        self.reponse_sans_borne = reponse_sans_borne
         classe = MinValueValidator if borne_validee == 'min' else MaxValueValidator
         self.validators = [v for v in self.validators if not isinstance(v, classe)]
+
+
+class _EntierBornePublieReponse(OpenApiSerializerFieldExtension):
+    """ENF11 (api-fuzz « Response violates schema », GET produits/ et
+    PATCH produits/{id}/unarchive/) — ``quantite_stock`` publiait
+    ``minimum: 0`` aussi en RÉPONSE alors que le stock servi peut être
+    négatif (sorties au-delà du stock) : la borne reste sur la requête
+    (stock initial >= 0), elle est retirée de la réponse."""
+    target_class = 'apps.stock.openapi_helpers.EntierBornePublie'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction == 'response' and getattr(
+                self.target, 'reponse_sans_borne', False):
+            schema = {cle: v for cle, v in schema.items() if cle != 'minimum'}
+        return schema
 
 
 class _DecimalSoupleStockBorne(OpenApiSerializerFieldExtension):

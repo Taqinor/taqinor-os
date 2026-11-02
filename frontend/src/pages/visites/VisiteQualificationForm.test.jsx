@@ -94,6 +94,17 @@ describe('VisiteQualificationForm — VISITE-QUALIF', () => {
     expect(await screen.findByText('Choix de frein invalide.')).toBeInTheDocument()
   })
 
+  it('refus statut terminée affiché en alerte', async () => {
+    qualifierVisite.mockRejectedValue({
+      response: { status: 400, data: { erreurs: { statut: ['Visite terminée : qualification verrouillée.'] } } },
+    })
+    const user = userEvent.setup()
+    render(<VisiteQualificationForm visiteId={7} qualification={null} onSaved={() => {}} />)
+    await user.click(screen.getByRole('button', { name: /enregistrer la qualification/i }))
+    const alerte = await screen.findByText('Visite terminée : qualification verrouillée.')
+    expect(alerte).toHaveAttribute('role', 'alert')
+  })
+
   it('lectureSeule (visite validée) rend un résumé texte, jamais les chips interactives', () => {
     render(
       <VisiteQualificationForm

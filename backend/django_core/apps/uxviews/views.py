@@ -322,7 +322,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         `{role: <id>}`). Un seul défaut actif par (company, ecran, role) : les
         autres vues du même rôle+écran perdent `est_defaut_role`."""
         instance = self.get_object()
-        role_id = request.data.get('role', instance.role_id)
+        # Corps JSON `null`/liste = pas de corps objet : repli sur le rôle de la
+        # vue (`request.data.get` levait AttributeError, 500).
+        corps = request.data if isinstance(request.data, dict) else {}
+        role_id = corps.get('role', instance.role_id)
         if not role_id:
             # ERR-ENF11-FUZZ-UXVIEWS : `role` est facultatif quand la vue en
             # porte déjà un — son absence ici est un refus d'ÉTAT (409).
@@ -599,8 +602,10 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         request=inline_serializer('FavoriReordonnerRequete', {
             'ordre': drf_serializers.IntegerField()}),
         responses=FavoriUtilisateurSerializer(many=True))
+    # ERR-ENF11-FUZZ-UXVIEWS — la réponse est un tableau NU : sans
+    # `pagination_class=None` le schéma annonçait PaginatedFavoriUtilisateurList.
     @action(detail=True, methods=['post'], url_path='reordonner',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole], pagination_class=None)
     def reordonner(self, request, pk=None):
         """NTUX21 — déplace CE favori à la position `ordre` (0 = en tête) et
         renumérote la liste de l'utilisateur de façon contiguë.

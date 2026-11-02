@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsAdminRole
 from core.champs_stricts import EntierStrict, entier_ou_400
+from core.conflit_etat import ConflitEtat
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import corps_valide
 from core.viewsets import CompanyScopedModelViewSet
@@ -245,8 +246,8 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
         ``configured=False`` et un message dégradé, n'écrit rien."""
         field_def = self.get_object()
         if field_def.type != 'ia':
-            return Response(
-                {'detail': "Ce champ n'est pas de type IA."}, status=400)
+            # ENF11 : le type est un état STOCKÉ (le corps est conforme) -> 409.
+            raise ConflitEtat("Ce champ n'est pas de type IA.")
         # Corps validé par le serializer PUBLIÉ (``.get`` sur un corps liste
         # levait AttributeError → 500 ; un type faux passait jusqu'au filtre).
         record_id = corps_valide(request, _GENERER_REQUETE)['record_id']

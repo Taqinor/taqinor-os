@@ -324,6 +324,22 @@ class ContratApiFuzzPortailTests(TestCase):
         doc.refresh_from_db()
         self.assertTrue(doc.traite)
 
+    def test_modification_document_fichier_illisible_409(self):
+        # ERR-ENF11-FUZZ-PORTAIL : octets ni PDF/PNG/JPEG/WebP (rien n'est
+        # stocké, le refus est levé avant MinIO) -> 409 à la modification.
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.portail.models import DocumentClientPortail
+        doc = DocumentClientPortail.objects.create(
+            company=self.a, client_id=self.client_a.id, type_document='autre')
+        url = f'/api/django/portail/documents-client-portail/{doc.id}/'
+        for methode in (self.api.put, self.api.patch):
+            res = methode(url, {
+                'client_id': self.client_a.id,
+                'fichier': SimpleUploadedFile('f', b'd\xef\xbf&*j')},
+                format='multipart')
+            self.assertEqual(res.status_code, 409, res.content)
+
     def test_modification_demande_id_inconnu_404_corps_identique(self):
         """ERR-ENF11-FUZZ-PORTAIL — PUT/PATCH : un entier conforme qui ne
         désigne rien dans la société (inexistant OU d'une autre société) est

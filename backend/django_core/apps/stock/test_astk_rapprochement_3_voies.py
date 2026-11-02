@@ -142,6 +142,29 @@ class Rapprochement3VoiesTests(TestCase):
             format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
+    def test_resoudre_exception_corps_invalide_400_sans_500(self):
+        """ENF11 fuzz — corps scalaire / commentaire non texte ou avec NUL :
+        400 (jamais le 500 de `.get` sur un booléen), la facture reste en
+        exception ; un corps valide la résout."""
+        facture = self._facture_ocr(Decimal('1500'))
+        self._lier(facture)
+        url = (f'/api/django/stock/factures-fournisseur/{facture.id}'
+               '/resoudre-exception/')
+        for corps in ('true', '-6.5e87', '[1]'):
+            resp = self.api.post(url, data=corps,
+                                 content_type='application/json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        for commentaire in ({'a': 1}, 'x\x00y'):
+            resp = self.api.post(url, {'commentaire': commentaire},
+                                 format='json')
+            self.assertEqual(resp.status_code, 400, (commentaire, resp.data))
+        facture.refresh_from_db()
+        self.assertEqual(
+            facture.statut_controle,
+            FactureFournisseur.StatutControle.EXCEPTION)
+        resp = self.api.post(url, {'commentaire': 'ok'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     def test_sur_livraison_plafonnee_attendu_sur_quantite_appliquee(self):
         """ASTK245 — rejoue la sonde C-ASTK-VER-002 : BCF 10 × 100, réception
         de 12 confirmée (10 appliqués) ⇒ 1 200 HT facturés passent en
