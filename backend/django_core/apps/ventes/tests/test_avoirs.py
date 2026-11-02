@@ -273,6 +273,39 @@ class TestAvoirs(TestCase):
             self.assertEqual(resp.status_code, 400, (corps, resp.data))
         self.assertEqual(Avoir.objects.count(), 0)
 
+    def test_annuler_regenere_le_pdf_annule(self):
+        # AARG37 — le PDF servi après annulation imprime « Annulé », et une
+        # annulation rejouée ne refait ni rendu ni événement.
+        from unittest import mock
+
+        from core.events import avoir_annule
+        api = self._api(self.admin)
+        r = api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            {'motif': 'Total'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        avoir = Avoir.objects.get(pk=r.data['id'])
+        evenements = []
+
+        def recepteur(**kw):
+            evenements.append(kw['instance'].pk)
+        avoir_annule.connect(recepteur)
+        self.addCleanup(avoir_annule.disconnect, recepteur)
+        with mock.patch('apps.ventes.utils.pdf._html_to_pdf',
+                        return_value=b'%PDF') as rendu, \
+                mock.patch('apps.ventes.utils.pdf._upload_pdf') as televerse:
+            url = f'/api/django/ventes/avoirs/{avoir.id}/annuler/'
+            self.assertEqual(api.post(url).status_code, 200)
+            self.assertEqual(rendu.call_count, 1)
+            self.assertIn('Annul', rendu.call_args[0][0])
+            self.assertEqual(api.post(url).status_code, 200)
+        self.assertEqual(rendu.call_count, 1)
+        self.assertEqual(televerse.call_count, 1)
+        self.assertEqual(evenements, [avoir.pk])
+        avoir.refresh_from_db()
+        self.assertEqual(avoir.statut, Avoir.Statut.ANNULEE)
+        self.assertTrue(avoir.fichier_pdf)
+
     # ── AUD126 — la garde de plafond est SÉRIALISÉE ──
     def test_creer_avoir_verrouille_la_facture_avant_de_lire_le_plafond(self):
         """AUD126 — `creer_avoir` n'avait ni `transaction.atomic` ni

@@ -214,6 +214,14 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 Facture.objects.get(
                     pk=avoir.facture_id, company=avoir.company),
                 user=request.user, source='annulation_avoir')
+        # AARG37 — le PDF servi ne doit plus montrer un avoir actif (rendu hors
+        # transaction, best-effort comme NoteDebitViewSet.annuler).
+        try:
+            from ..utils.pdf import generate_avoir_pdf
+            generate_avoir_pdf(avoir.id)
+            avoir.refresh_from_db()
+        except Exception:  # noqa: BLE001 — PDF best-effort (D-ENF22-BLE001)
+            logger.warning("avoir.AvoirViewSet.annuler : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(AvoirSerializer(avoir).data)
 
     @extend_schema(responses=D.PdfBinaire)
