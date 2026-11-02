@@ -97,6 +97,20 @@ class ModelesEmailLusTests(TestCase):
         self.assertNotIn('RELANCE-PROBE', corps)
         self.assertIn('Note saisie FAC-APAR59-0001', corps)
 
+    def test_relance_une_seule_salutation(self):
+        """AARG25 — le message du niveau qui salue déjà ne l'est pas deux fois."""
+        from apps.ventes.email_service import composer_relance_email
+        _sujet, corps = composer_relance_email(
+            self.facture, niveau_nom='Rappel courtois',
+            message='Bonjour, sauf erreur la facture {reference} reste due.')
+        self.assertEqual(corps.count('Bonjour'), 1)
+        self.assertTrue(corps.startswith(
+            'Bonjour Alaoui Karim,\n\nSauf erreur la facture FAC-APAR59-0001'))
+        _sujet, sans_salut = composer_relance_email(
+            self.facture, message='Merci de régler {reference}, sous 8 jours.')
+        self.assertIn(
+            '\n\nMerci de régler FAC-APAR59-0001, sous 8 jours.\n\n', sans_salut)
+
     def test_sans_personnalisation_texte_actuel_identique(self):
         log = self._envoyer_facture()
         self.assertTrue(mail.outbox[0].body.startswith(
