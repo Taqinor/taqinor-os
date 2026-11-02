@@ -13,7 +13,8 @@ tué les workers 17 fois dans la journée (premier kill à 08:32 UTC), ce que
 l'écran a vu comme « problème de connexion » (49 abandons client en 20 s).
 
 La liste ``defer('etude_params')`` et annote ces deux clés
-(``apps.ventes.selectors.prefetch_devis_liste_leads``) ; les lecteurs passent
+(``apps.ventes.selectors_listes.prefetch_devis_liste_leads``) ; les
+lecteurs passent
 par :func:`cle_etude`, qui préfère l'annotation quand elle est posée et retombe
 MOT POUR MOT sur le JSON sinon (détail, moteur PDF, Celery, shell).
 

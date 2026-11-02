@@ -218,7 +218,8 @@ class TestLeadListeEtudeParamsNonChargee(TestCase):
     les workers 17 fois dans la journée.
 
     Test-du-test : retirer ``defer('etude_params')`` de
-    ``ventes.selectors.prefetch_devis_liste_leads`` ⇒ le JSON lourd est relu
+    ``ventes.selectors_listes.prefetch_devis_liste_leads`` ⇒ le JSON
+    lourd est relu
     (``test_etude_params_jamais_chargee`` échoue sur le compte de colonnes
     chargées) ; retirer un chemin de ``ANNOTATION_PAR_CLE`` ⇒ une requête
     ``etude_params`` par devis (``test_requetes_plates``) ; retirer
