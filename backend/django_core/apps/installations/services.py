@@ -5933,6 +5933,7 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
         except Exception:  # pragma: no cover - défensif
             logger.warning("installations.changer_statut_chantier : exception ignorée", exc_info=True)
             effets['rappel_solde'] = None
+    effets['reception_defaite'] = _defaire_reception(installation, canon_old, canon_new, user)  # AARG46
     effets['stock'] = _apply_stock_statut_effects(
         installation, canon_old, canon_new, user)
     # AUD326 — pose / lève le verrou de clôture, côté serveur uniquement, et
@@ -6453,6 +6454,23 @@ def notifier_reception_solde_a_facturer(installation, user=None):
         # un JalonProjet atteint automatiquement) se propage au portail.
         synchroniser_jalon_portail(jalon, user)
     return notifier_jalon_a_facturer(jalon, user)
+
+
+def _defaire_reception(installation, canon_old, canon_new, user=None):
+    """AARG46 — symétrique de notifier_reception_solde_a_facturer : retour avant RÉCEPTIONNÉ ⇒ jalon non atteint."""
+    ordre = Installation.STATUT_ORDER
+    if canon_old != Installation.Statut.RECEPTIONNE or canon_new not in ordre[:ordre.index(canon_old)]:
+        return False
+    from apps.portail import services as portail_services
+    from .models import JalonProjet
+    jalon = JalonProjet.objects.filter(
+        installation=installation, phase=JalonProjet.Phase.RECEPTION, atteint=True).first()
+    if jalon is None:
+        return False
+    jalon.atteint = False
+    jalon.save(update_fields=['atteint'])
+    portail_services.upsert_jalon_chantier(installation.company, installation.id, jalon.phase, jalon.libelle)
+    return True
 
 
 def chantiers_a_facturer(company, user=None):
