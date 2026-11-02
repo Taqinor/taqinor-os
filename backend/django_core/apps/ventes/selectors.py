@@ -1994,7 +1994,7 @@ def _calculer_catalogue_ci_pret(company_id):
     from core.product_roles import LIBELLES_ROLES_CI
 
     from .domain.etude_ci import _reglages_societe
-    from .moteur_ci.composition import _d, prestations_manquantes
+    from .moteur_ci.composition import prestations_manquantes
 
     company = Company.objects.get(pk=company_id)
     forfaits = getattr(_reglages_societe(company), 'forfaits_ci', None) or {}

@@ -71,7 +71,7 @@ with no rate column at all — mono-MAD in practice.
 | monitoring | AbonnementMonitoring | `apps/monitoring/models.py:435` | montant |
 | parametres | TariffSettings | `apps/parametres/models_tariff.py:76` | force_motrice_prix_kwh_ttc, prix_incluent_taxes, prix_unique_kwh, surplus_prix_kwh_ttc |
 | portail | PaiementFacturePortail | `apps/portail/models.py:229` | montant |
-| publicapi | BulkJob | `apps/publicapi/models.py:541` | total |
+| publicapi | BulkJob | `apps/publicapi/models.py:543` | total |
 | sav | Ticket | `apps/sav/models.py:656` | cout |
 | sav | WarrantyClaim | `apps/sav/models.py:1439` | cout_recupere |
 | sav | ContratMaintenance | `apps/sav/models.py:1557` | prix |
