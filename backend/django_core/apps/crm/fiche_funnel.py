@@ -587,6 +587,8 @@ ETAT_PAR_RAISON = {
 
 #: CADV22 (conception v4 §2, invariant 3) — appels humains tracés exigés pour
 #: dire « injoignable » ; les raisons qui ne supposent aucune touche.
+#: D-CADV22-GABARIT-COURT — un PLAFOND : un gabarit plus court n'exige que ses
+#: propres appels (``appels_exiges_injoignable``).
 APPELS_MIN_INJOIGNABLE = 5
 RAISONS_SANS_TOUCHE = frozenset({'faux_numero', 'doublon', 'test'})
 
@@ -604,21 +606,69 @@ def nb_contacts_humains(lead, kinds=None):
     return lead.activites.filter(user__isnull=False, kind__in=kinds).count()
 
 
-def _refus_parcage(lead, raison, exiger_touche):
-    """Le message du refus de ce parcage, ou ``None``. Un lead « WhatsApp
-    uniquement » compte aussi ses WhatsApp pour « injoignable »."""
+def appels_exiges_injoignable(lead):
+    """D-CADV22-GABARIT-COURT (Reda, 02/11/2026) — min(5, barreaux d'appel du
+    gabarit de prise de contact de la société) : sans quoi un gabarit de 3
+    appels ne parquerait jamais. LECTURE PURE (même calcul à blanc que
+    ``suite_touche.ordres_de_la_cadence``) : l'écran lit cette règle aussi."""
+    from apps.parametres.models_relance import (
+        CADENCES_DEFAUT, CadenceRelanceEtape, CanalRelance)
+
+    # CAD58 : un barreau encore en « visite » naît en appel (``_canal_effectif``).
+    canaux_appel = (CanalRelance.APPEL, CanalRelance.VISITE)
+    lignes = list(CadenceRelanceEtape.objects.filter(
+        company_id=lead.company_id, cadence='contact',
+    ).values_list('ordre', 'actif', 'canal'))
+    canaux = [canal for _ordre, actif, canal in lignes if actif]
+    if not canaux:
+        existants = {ordre for ordre, _actif, _canal in lignes}
+        canaux = [entree['canal'] for entree in CADENCES_DEFAUT['contact']
+                  if entree['ordre'] not in existants]
+    return min(APPELS_MIN_INJOIGNABLE,
+               sum(1 for canal in canaux if canal in canaux_appel))
+
+
+def manque_au_parcage(lead, raison, exiger_touche=True, *, appel_en_plus=False,
+                      touche_en_plus=False, comptes=None, exiges=None):
+    """CADV22 — ce qui manque à ce parcage : ``None`` s'il passe,
+    ``(trouves, exiges)`` si des appels tracés manquent, ``(0, 0)`` à 0 touche.
+    ``appel_en_plus`` / ``touche_en_plus`` : la clôture qu'on s'apprête à faire
+    compte déjà (D-CADV22-PROMESSE : la promesse lit cette règle, elle ne la
+    recopie pas). Un lead « WhatsApp uniquement » compte aussi ses WhatsApp
+    pour « injoignable ». ``comptes`` (``{kind: tentatives}``), ``exiges`` : déjà
+    lus en lot par la liste (``suite_touche.LecteurParcage``), jamais une requête."""
+    def tentatives(kinds=None):
+        if comptes is None:
+            return nb_contacts_humains(lead, kinds)
+        kinds = kinds or (LeadActivity.Kind.APPEL, LeadActivity.Kind.WHATSAPP,
+                          LeadActivity.Kind.EMAIL)
+        return sum(comptes.get(kind, 0) for kind in kinds)
+
     if raison == 'injoignable':
         kinds = [LeadActivity.Kind.APPEL]
         if lead.contact_preference == Lead.ContactPreference.WHATSAPP_ONLY:
             kinds.append(LeadActivity.Kind.WHATSAPP)
-        trouves = nb_contacts_humains(lead, kinds)
-        if trouves < APPELS_MIN_INJOIGNABLE:
-            return (f'injoignable exige {APPELS_MIN_INJOIGNABLE} appels tracés '
-                    f'({trouves} trouvés)')
+        trouves = tentatives(kinds) + int(appel_en_plus)
+        exiges = appels_exiges_injoignable(lead) if exiges is None else exiges
+        if trouves < exiges:
+            return trouves, exiges
     if (exiger_touche and raison not in RAISONS_SANS_TOUCHE
-            and not nb_contacts_humains(lead)):
-        return 'aucun parcage à 0 touche'
+            and not touche_en_plus and not tentatives()):
+        return 0, 0
     return None
+
+
+def _refus_parcage(lead, raison, exiger_touche):
+    """Le message du refus de ce parcage, ou ``None``."""
+    manque = manque_au_parcage(lead, raison, exiger_touche)
+    if manque is None:
+        return None
+    trouves, exiges = manque
+    if not exiges:
+        return 'aucun parcage à 0 touche'
+    pluriel = 's' if exiges > 1 else ''
+    return (f'injoignable exige {exiges} appel{pluriel} tracé{pluriel} '
+            f'({trouves} trouvé{"s" if trouves > 1 else ""})')
 
 
 def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True):
@@ -630,8 +680,8 @@ def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True):
 
     ``raison`` inconnue ⇒ ``ValueError`` ; ``standby`` sans date de reprise ⇒
     ``ValueError`` (``jusqu_au`` est ignorée hors standby). Renvoie ``lead``.
-    CADV22 — ``ParcRefuse`` sous 5 appels tracés (« injoignable ») ou à 0 touche,
-    et rien n'est écrit ; ``exiger_touche=False`` : le seul parcage après
+    CADV22 — ``ParcRefuse`` sous min(5, appels du gabarit) tracés (« injoignable »)
+    ou à 0 touche, et rien n'est écrit ; ``exiger_touche=False`` : le seul parcage après
     expiration d'un devis envoyé (CADV84), l'envoi est la touche."""
     etat = ETAT_PAR_RAISON.get(raison)
     if etat is None:

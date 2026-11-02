@@ -51,6 +51,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm import suite_touche as st
+from apps.crm.cadence_config import CLE_DEVIS, q_etape
 from apps.crm.models import Client, Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.cadence_reperes import (
     _LIBELLES_FILET,
@@ -312,6 +313,20 @@ def _derniere_froid_reveils(c):
     c.vrai(c.ouvertes(cadence='reveil').exists(), 'aucun réveil programmé')
 
 
+def _etape_appel_avant_froid(c):
+    # D-CADV22-PROMESSE — la promesse et l'effet : pas de Froid, pas de réveil,
+    # pas d'étape devis, un autre appel de la MÊME cadence, et le refus au chatter.
+    c.vrai(c.lead.stage != stages.COLD, 'le dossier est parti au Froid')
+    c.vrai(not c.ouvertes(cadence='reveil').exists(), 'un réveil est programmé')
+    c.vrai(not c.ouvertes(q_etape(CLE_DEVIS)).exists(), 'l’étape devis est posée')
+    c.vrai(c.barreaux(c.ouvertes(cadence=c.etape.cadence, canal=APPEL,
+                                 ordre__gt=c.etape.ordre)).exists(),
+           'aucun autre appel n’est posé')
+    c.vrai(c.lead.activites.filter(
+        body__startswith='Mise au Froid refusée').exists(),
+        'le refus ne se lit pas au chatter')
+
+
 def _dernier_reveil(c):
     c.vrai(c.lead.stage == stages.COLD, 'le dossier n’est plus au Froid')
     c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
@@ -560,6 +575,7 @@ VERIFICATEURS = {
     st.TOUCHE_SUIVANTE: _touche_suivante,
     st.TOUCHE_SUIVANTE_A_LA_DATE: _touche_suivante_a_la_date,
     st.DERNIERE_FROID_REVEILS: _derniere_froid_reveils,
+    st.ETAPE_APPEL_AVANT_FROID: _etape_appel_avant_froid,
     st.DERNIER_REVEIL: _dernier_reveil,
     st.RESTE_AU_FROID: _reste_au_froid,
     st.SORT_DU_FROID: _sort_du_froid,
@@ -615,6 +631,14 @@ class VocabulaireTests(SimpleTestCase):
             for codes in promesses.values():
                 produits.update(codes)
         for codes in st.promesses_journal().values():
+            produits.update(codes)
+        # D-CADV22-PROMESSE — dépend d'un COMPTE en base : la grille pure lui passe
+        # sa condition, ``PariteFroidRefuseTests`` le rejoue par l'API.
+        derniere = next(s for s in SCENARIOS if s.nom == 'contact_derniere_appel')
+        for codes in st.promesses_touche(
+                _etape_non_enregistree(derniere),
+                ordres=_ordres_defaut(derniere.cadence),
+                conditions={'non_joint': '1 appel sur 5 tracé'}).values():
             produits.update(codes)
         self.assertEqual(produits, set(st.CODES))
 
@@ -716,6 +740,8 @@ _compteur = itertools.count(1)
 
 class PariteBase(TestCase):
     slug = 'cad17'
+    #: Appels tracés avant la dernière touche ; ``None`` : ceux qui parquent.
+    appels_traces = None
 
     def setUp(self):
         gel = frozen(GEL)
@@ -781,7 +807,8 @@ class PariteBase(TestCase):
     def _fabriquer(self, scenario, variante):
         """Le lead et la touche du scénario, dans la branche ``variante``."""
         lead = self._lead(scenario)
-        appels = _APPELS_TRACES_AVANT_LA_FIN.get(scenario.cadence)
+        appels = (self.appels_traces if self.appels_traces is not None
+                  else _APPELS_TRACES_AVANT_LA_FIN.get(scenario.cadence))
         if appels and scenario.ordre == max(_ordres_defaut(scenario.cadence)):
             LeadActivity.objects.bulk_create([
                 LeadActivity(company=lead.company, lead=lead, user=lead.owner,
@@ -960,6 +987,79 @@ class PariteDeuxiemeAffaireTests(PariteBase):
 
     def test_deuxieme_affaire(self):
         self._garder('deuxieme_message', 'deuxieme_appel')
+
+
+class PariteFroidRefuseTests(PariteBase):
+    """D-CADV22-PROMESSE — la dernière touche qui ne PEUT PAS parquer : la grille
+    rejouée SANS les appels que ``_fabriquer`` sème pour atteindre le Froid. La
+    promesse lue par l'API et l'effet en base disent la même chose."""
+    slug = 'cad17-froid-refuse'
+
+    def _codes(self, nom, appels):
+        self.appels_traces = appels
+        scenario = next(s for s in SCENARIOS if s.nom == nom)
+        lead, etape = self._fabriquer(scenario, 'base')
+        ligne = next(
+            r for r in self.api.get(
+                f'/api/django/crm/relance-etapes/?lead={lead.pk}').data['results']
+            if r['id'] == etape.pk)
+        return ligne['suites'], ligne['conditions_suite']
+
+    def test_contact_trois_appels_sur_cinq(self):
+        suites, conditions = self._codes('contact_derniere_appel', 2)
+        self.assertEqual(suites['non_joint'], [st.ETAPE_APPEL_AVANT_FROID])
+        # La touche close compte : deux tracés + celui-ci. « Sauter » n'en trace aucun.
+        self.assertEqual(conditions['non_joint'], '3 appels sur 5 tracés')
+        self.assertEqual(conditions[st.CLE_SAUTER], '2 appels sur 5 tracés')
+        self.assertNotIn('joint', conditions)
+        self.assertNotIn(st.ETAPE_DEVIS_DEMAIN, suites['non_joint'])
+        self.appels_traces = 2
+        self._garder('contact_derniere_appel', 'contact_derniere_message')
+
+    def test_le_cinquieme_appel_parque_comme_promis(self):
+        suites, conditions = self._codes('contact_derniere_appel', 4)
+        self.assertEqual(suites['non_joint'], [st.DERNIERE_FROID_REVEILS])
+        self.assertNotIn('non_joint', conditions)
+        # « Sauter » n'en trace pas : il en reste un.
+        self.assertEqual(suites[st.CLE_SAUTER], [st.ETAPE_APPEL_AVANT_FROID])
+        self.appels_traces = 4
+        self._garder('contact_derniere_appel')
+
+    def test_deuxieme_affaire_aucune_touche(self):
+        suites, conditions = self._codes('deuxieme_appel', 0)
+        self.assertEqual(suites[st.CLE_SAUTER], [st.ETAPE_APPEL_AVANT_FROID])
+        self.assertEqual(conditions, {st.CLE_SAUTER: 'Aucune touche tracée'})
+        # L'appel fait est une touche : celle-là parque.
+        self.assertEqual(suites['non_joint'], [st.DERNIERE_FROID_REVEILS])
+        self.appels_traces = 0
+        self._garder('deuxieme_appel')
+
+    def test_suivi_sans_aucune_touche_tracee(self):
+        suites, _conditions = self._codes('apres_devis_derniere_message', 0)
+        self.assertEqual(suites[st.CLE_SAUTER], [st.ETAPE_APPEL_AVANT_FROID])
+        self.appels_traces = 0
+        self._garder('apres_devis_derniere_message')
+
+    def test_l_appel_de_plus_rejoue_la_mise_au_froid(self):
+        # Le chemin refusé se termine : 4 appels tracés, la dernière touche sautée,
+        # l'appel de plus répondu « sans réponse » fait le cinquième et parque.
+        self.appels_traces = 4
+        scenario = next(s for s in SCENARIOS if s.nom == 'contact_derniere_appel')
+        lead, etape = self._fabriquer(scenario, 'base')
+        self.assertEqual(self._rejouer(etape, st.CLE_SAUTER, 'base').status_code, 200)
+        lead.refresh_from_db()
+        self.assertNotEqual(lead.stage, stages.COLD)
+        appel = lead.relance_etapes.get(statut=A_FAIRE)
+        self.assertEqual((appel.cadence, appel.canal), ('contact', APPEL))
+        self.assertEqual(appel.type_etape if hasattr(appel, 'type_etape')
+                         else st.type_etape(appel), st.TYPE_CONTACT_APPEL)
+        self.assertEqual(st.promesses_touche(appel)['non_joint'],
+                         [st.DERNIERE_FROID_REVEILS])
+        self.assertEqual(self._rejouer(appel, 'non_joint', 'base').status_code, 200)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertTrue(lead.relance_etapes.filter(
+            cadence='reveil', statut=A_FAIRE).exists())
 
 
 class PariteJournalTests(PariteBase):

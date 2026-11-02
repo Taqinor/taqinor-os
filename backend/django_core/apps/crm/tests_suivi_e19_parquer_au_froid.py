@@ -27,7 +27,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages, cadence_plan
 from apps.crm import cadence_reperes
-from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE
+from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE, CLE_DEVIS, q_etape
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
@@ -200,6 +200,44 @@ class ParquerAuFroidTests(TestCase):
         parquer_lead(lead, 'injoignable', None, self.acteur)
         self.assertEqual(lead.parc_raison, 'injoignable')
 
+    def test_un_gabarit_court_parque_apres_ses_propres_appels(self):
+        """D-CADV22-GABARIT-COURT — min(5, appels du gabarit). Mutant : min → 5 fixe,
+        ou comptage de tous les canaux ⇒ échec."""
+        from apps.crm.fiche_funnel import ParcRefuse, appels_exiges_injoignable, parquer_lead
+        gabarit = CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence='contact', actif=True)
+        appels = list(gabarit.filter(canal='appel').order_by('ordre'))
+        self.assertGreater(len(appels), 5, 'le gabarit livré dépasse le plafond')
+        self.assertEqual(appels_exiges_injoignable(self.lead), 5)
+        gabarit.filter(pk__in=[e.pk for e in appels[3:]]).update(actif=False)
+        self.assertEqual(appels_exiges_injoignable(self.lead), 3)
+
+        lead = self._lead_neuf()
+        self._appels(lead, 2)
+        avant = self._instantane(lead)
+        with self.assertRaisesMessage(
+                ParcRefuse, 'injoignable exige 3 appels tracés (2 trouvés)'):
+            parquer_lead(lead, 'injoignable', None, self.acteur)
+        self.assertEqual(self._instantane(lead), avant)
+        self._appels(lead, 1)
+        parquer_lead(lead, 'injoignable', None, self.acteur)
+        self.assertEqual(lead.parc_raison, 'injoignable')
+
+    def test_un_gabarit_sans_appel_reste_soumis_a_la_regle_des_zero_touches(self):
+        from apps.crm.fiche_funnel import ParcRefuse, parquer_lead
+        CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence='contact', canal='appel').update(actif=False)
+        with self.assertRaisesMessage(ParcRefuse, 'aucun parcage à 0 touche'):
+            parquer_lead(self._lead_neuf(), 'injoignable', None, self.acteur)
+
+    def test_le_compte_des_appels_ne_seede_rien(self):
+        # L'écran le lit : une lecture n'écrit jamais (société sans gabarit).
+        from apps.crm.fiche_funnel import APPELS_MIN_INJOIGNABLE, appels_exiges_injoignable
+        vierge = Company.objects.create(nom='E19 vierge', slug='suivi-e19-vierge')
+        lead = Lead(company=vierge, nom='Sans gabarit')
+        self.assertEqual(appels_exiges_injoignable(lead), APPELS_MIN_INJOIGNABLE)
+        self.assertFalse(CadenceRelanceEtape.objects.filter(company=vierge).exists())
+
     def test_les_appels_systeme_ne_comptent_pas(self):
         from apps.crm.fiche_funnel import nb_contacts_humains
         lead = self._lead_neuf()
@@ -252,6 +290,19 @@ class ParquerAuFroidTests(TestCase):
         self.assertFalse(lead.relance_etapes.filter(cadence='reveil').exists())
         self.assertTrue(lead.activites.filter(
             body__startswith='Mise au Froid refusée : injoignable exige').exists())
+        # D-CADV22-PROMESSE — la suite est un autre appel de la même cadence,
+        # jamais l'étape devis, et le filet n'a plus rien à poser.
+        [appel] = lead.relance_etapes.filter(statut=A_FAIRE)
+        self.assertEqual((appel.cadence, appel.canal), ('contact', 'appel'))
+        self.assertEqual(appel.libelle, cadence_plan.LIBELLE_TOUCHE_AVANT_FROID)
+        self.assertGreater(appel.ordre, max(e['ordre'] for e in CADENCES_DEFAUT['contact']))
+        self.assertFalse(lead.relance_etapes.filter(q_etape(CLE_DEVIS)).exists())
+
+    def test_whatsapp_uniquement_la_touche_de_plus_reste_un_whatsapp(self):
+        lead = self._lead_neuf(
+            contact_preference=Lead.ContactPreference.WHATSAPP_ONLY)
+        cadence_plan.cloturer_cadence(lead, self.acteur, 'contact')
+        self.assertEqual(lead.relance_etapes.get(statut=A_FAIRE).canal, 'whatsapp')
 
     def test_parquer_en_standby_garde_l_etape_et_la_date(self):
         from apps.crm.fiche_funnel import parquer_lead

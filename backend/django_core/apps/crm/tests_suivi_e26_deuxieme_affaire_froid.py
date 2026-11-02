@@ -164,6 +164,29 @@ class DeuxiemeAffaireFroidApiTests(TestCase):
         self.assertEqual((appel.statut, appel.outcome), (FAIT, 'non_joint'))
         self._assert_au_froid(self.lead)
 
+    def test_les_deux_touches_sautees_posent_un_appel_jamais_le_devis(self):
+        # D-CADV22-PROMESSE — aucune touche tracée : le parcage est refusé, et la
+        # suite n'est plus « Préparer et envoyer le devis » (retiré par E26).
+        message = self._barreau(PREMIER)
+        resp = self.api.post(f'/api/django/crm/relance-etapes/{message.pk}/sauter/',
+                             {'note': ''}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        [appel] = self._ouvertes()
+        self.assertEqual(_promesses(appel)[st.CLE_SAUTER], [st.ETAPE_APPEL_AVANT_FROID])
+        resp = self.api.post(f'/api/django/crm/relance-etapes/{appel.pk}/sauter/',
+                             {'note': ''}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+        self.lead.refresh_from_db()
+        self.assertNotEqual(self.lead.stage, stages.COLD)
+        self.assertFalse(self.lead.relance_etapes.filter(q_etape(CLE_DEVIS)).exists())
+        [autre] = self._ouvertes()
+        self.assertEqual((autre.cadence, autre.canal), (CADENCE, RelanceEtape.Canal.APPEL))
+        self.assertGreater(autre.ordre, DERNIER)
+        # Cet appel fait, le dossier part au Froid comme la décision E26 le veut.
+        self._sans_reponse(autre)
+        self._assert_au_froid(self.lead)
+
     def test_une_touche_qui_n_est_pas_la_derniere_fait_naitre_la_suivante(self):
         message = self._barreau(PREMIER)
 

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <title>Guide — Le suivi commercial&nbsp;: étapes, réponses et suites</title>
 <meta name="generator" content="scripts/generer_guide_suivi.py">
-<meta name="table-version" content="1.1">
-<meta name="table-sha256" content="776d35176d24567babdd04645672bcd69b77fc8bd29f62e2a61b00f04dc51659">
+<meta name="table-version" content="1.2">
+<meta name="table-sha256" content="4ca905920416e7dd02a795ae6c08b9eaf74592078c4eb1a29db977a8d88f7dc4">
 <!-- Fichier GÉNÉRÉ : ne pas modifier à la main. Relancer `python scripts/generer_guide_suivi.py` après tout changement de la table du parcours. -->
 <style>
 @page { size: A4; margin: 18mm; @bottom-center { content: "TAQINOR OS — Guide interne · page " counter(page) "/" counter(pages); font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8pt; color: #888; } }
@@ -63,7 +63,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <header>
 <h1>Le suivi commercial : étapes, réponses et suites</h1>
 <p class="sous-titre">Guide interne équipe commerciale · TAQINOR</p>
-<p class="version">Version 1.1 · 30/09/2026</p>
+<p class="version">Version 1.2 · 02/11/2026</p>
 <p class="lede">Pour chaque étape du suivi : la question qui t’est posée, les réponses possibles, et ce que chaque réponse déclenche ensuite.</p>
 </header>
 <h2>1. Le parcours en un regard</h2>
@@ -264,7 +264,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
 <tr><td><strong>Client joint</strong></td><td>La prise de contact s’arrête. Le dossier passe <span class="ecran">«&nbsp;Contacté&nbsp;»</span>. Étape suivante&nbsp;: <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> — pour demain, et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants)&nbsp;: <span class="ecran">«&nbsp;Planifier la visite — relevé du point d’eau&nbsp;»</span> à la place du devis.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>La fenêtre de planification s’ouvre. Date saisie&nbsp;: la visite est créée, <span class="ecran">«&nbsp;Confirmer la visite (veille)&nbsp;»</span> et <span class="ecran">«&nbsp;Débrief visite&nbsp;»</span> sont posées. Date pas encore fixée&nbsp;: l’étape <span class="ecran">«&nbsp;Planifier la visite technique convenue&nbsp;»</span> est posée pour aujourd’hui. Dans les deux cas la prise de contact s’arrête et le dossier passe <span class="ecran">«&nbsp;Contacté&nbsp;»</span>.</td></tr>
-<tr><td><strong>Pas de réponse</strong></td><td>La touche suivante du protocole est programmée. Après la dernière touche&nbsp;: le dossier part au Froid (étiquette <span class="ecran">«&nbsp;Injoignable&nbsp;»</span> — ou <span class="ecran">«&nbsp;Deuxième affaire sans réponse&nbsp;»</span> quand c’est un client déjà signé qui revient) et ses réveils J30 / J60 sont programmés.</td></tr>
+<tr><td><strong>Pas de réponse</strong></td><td>La touche suivante du protocole est programmée. Après la dernière touche&nbsp;: le dossier part au Froid (étiquette <span class="ecran">«&nbsp;Injoignable&nbsp;»</span> — ou <span class="ecran">«&nbsp;Deuxième affaire sans réponse&nbsp;»</span> quand c’est un client déjà signé qui revient) et ses réveils J30 / J60 sont programmés. S’il manque des appels tracés (5, ou le nombre d’appels du protocole s’il en compte moins&nbsp;; au moins une touche pour un client déjà signé)&nbsp;: pas de Froid, l’écran dit le compte (<span class="ecran">«&nbsp;3 appels sur 5 tracés&nbsp;»</span>) et la suite est un autre appel, jamais le devis.</td></tr>
 <tr><td><strong>Répondeur</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Répondeur&nbsp;»</span> est gardée dans l’historique.</td></tr>
 <tr><td><strong>Occupé</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Occupé&nbsp;»</span> est gardée dans l’historique.</td></tr>
 <tr><td><strong>Numéro invalide</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>, avec la note <span class="ecran">«&nbsp;Numéro invalide&nbsp;»</span>. Case cochée&nbsp;: le lead passe Perdu (motif junk) et tout s’arrête.</td></tr>
@@ -287,7 +287,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Le client a répondu</strong></td><td>La prise de contact s’arrête. Le dossier passe <span class="ecran">«&nbsp;Contacté&nbsp;»</span>. Étape suivante&nbsp;: <span class="ecran">«&nbsp;Appeler le client — il a répondu au message&nbsp;»</span>, au prochain créneau d’appel.</td></tr>
 <tr><td><strong>Client joint au téléphone</strong></td><td>Appel passé au lieu du message, et le client a décroché&nbsp;: même suite qu’un appel abouti — <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span>, pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants)&nbsp;: <span class="ecran">«&nbsp;Planifier la visite — relevé du point d’eau&nbsp;»</span> à la place du devis.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Comme sur un appel&nbsp;: planification, ou étape <span class="ecran">«&nbsp;Planifier la visite technique convenue&nbsp;»</span> si la date n’est pas fixée.</td></tr>
-<tr><td><strong>Pas de réponse</strong></td><td>La touche suivante du protocole est programmée. Après la dernière (<span class="ecran">«&nbsp;Clôture&nbsp;»</span>)&nbsp;: le dossier part au Froid et ses réveils sont programmés.</td></tr>
+<tr><td><strong>Pas de réponse</strong></td><td>La touche suivante du protocole est programmée. Après la dernière (<span class="ecran">«&nbsp;Clôture&nbsp;»</span>)&nbsp;: le dossier part au Froid et ses réveils sont programmés. S’il manque des appels tracés&nbsp;: pas de Froid, l’écran dit le compte et la suite est un autre appel.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie&nbsp;; le reste du suivi glisse d’autant. Sur la dernière touche&nbsp;: <span class="ecran">«&nbsp;Rappeler le client — rappel convenu&nbsp;»</span> est posée à la date et à l’heure convenues.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Veille&nbsp;: cette même touche revient à la date convenue.</td></tr>
 <tr><td><strong>En attente d’un accord (DPA / banque)</strong><span class="pastille">date à saisir</span></td><td>Étiquette de la raison de l’attente (<span class="ecran">«&nbsp;Attend un accord (DPA / banque)&nbsp;»</span> pour l’administration), puis la veille de <span class="ecran">«&nbsp;Plus tard&nbsp;»</span>&nbsp;: cette même touche revient à la date convenue.<br><span class="note">Commercial&nbsp;: <span class="ecran">«&nbsp;En attente d’un accord&nbsp;»</span> · Industriel&nbsp;: <span class="ecran">«&nbsp;En attente d’un accord&nbsp;»</span></span></td></tr>
@@ -634,6 +634,6 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td>Dossier FDA (agricole, pompe au butane)</td><td>Fiche du lead → <span class="ecran">«&nbsp;Tâches du playbook&nbsp;»</span>&nbsp;: la tâche du dossier FDA, et son bouton <span class="ecran">«&nbsp;Proposer le texte&nbsp;»</span></td></tr>
 </table>
 </section>
-<p class="pied">Version 1.1 — 30/09/2026 — généré depuis la table du parcours ; chaque réponse est rejouée par la garde de parcours (hors cas « dernière touche ») à chaque mise à jour de l’ERP.</p>
+<p class="pied">Version 1.2 — 02/11/2026 — généré depuis la table du parcours ; chaque réponse est rejouée par la garde de parcours (hors cas « dernière touche ») à chaque mise à jour de l’ERP.</p>
 </body>
 </html>

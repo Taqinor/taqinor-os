@@ -1056,6 +1056,50 @@ def _materialiser_touche_suivante(etape_close, user=None):
     return None, RaisonSuite.FIN_GABARIT
 
 
+#: D-CADV22-PROMESSE (Reda, 02/11/2026) — la touche posée quand la dernière
+#: touche d'une cadence ne peut pas parquer le lead.
+LIBELLE_TOUCHE_AVANT_FROID = 'Appeler le client — appel à tracer avant le Froid'
+
+
+def _poser_touche_avant_froid(lead, user, cadence):
+    """D-CADV22-PROMESSE — un AUTRE appel (un WhatsApp sur un lead « WhatsApp
+    uniquement », CAD32), jamais « Préparer et envoyer le devis ».
+
+    La touche reste dans SA cadence, juste après le dernier barreau : hors
+    gabarit, sa clôture sans réponse donne ``FIN_GABARIT`` et rejoue donc la mise
+    au Froid. Ce n'est pas une boucle : chaque appel tracé rapproche le seuil
+    (et une touche SAUTÉE ne compte pas, elle reposera la même touche)."""
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import horaires
+
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    canal = (RelanceEtape.Canal.WHATSAPP
+             if lead.contact_preference == Lead.ContactPreference.WHATSAPP_ONLY
+             else RelanceEtape.Canal.APPEL)
+    quand = horaires.prochain_creneau_appel(
+        timezone.now() + datetime.timedelta(days=1), lead.company, canal=canal)
+    # Le suivi d'un devis garde son devis, comme ``materialiser_touche_suivante``.
+    close = (lead.relance_etapes.filter(cadence=cadence, traite_le__isnull=False)
+             .order_by('-traite_le').first())
+    etape = RelanceEtape(
+        company=lead.company, lead=lead, cadence=cadence,
+        ordre=max((g.ordre for g in gabarits), default=0) + 1,
+        canal=canal, libelle=LIBELLE_TOUCHE_AVANT_FROID,
+        due_at=quand, due_initial_at=quand,
+        due_date=quand.astimezone(horaires.CASABLANCA).date(),
+        devis_id=close.devis_id if close else None,
+        cadence_depart=close.cadence_depart if close else timezone.now())
+    try:
+        with transaction.atomic():
+            etape.save()
+    except IntegrityError:
+        # Double clic (contrainte : un barreau ouvert une seule fois).
+        return None
+    _recaler_file(lead, user)
+    return etape
+
+
 def cloturer_cadence(lead, user, cadence):
     """MRY11 — Fin de cadence : dormance COLD, étiquette, réveils J30/J60.
 
@@ -1097,11 +1141,12 @@ def cloturer_cadence(lead, user, cadence):
             parquer_lead(lead, _CLOTURE_RAISONS[cadence], None, user)
         except ParcRefuse as refus:
             # CADV22 — le lead reste à son étape, le refus se lit au chatter ;
-            # le filet QJ-INVARIANT de ``marquer_etape_relance`` pose sa suite.
+            # D-CADV22-PROMESSE — la suite est un autre appel, jamais le devis.
             LeadActivity.objects.create(
                 company=lead.company, lead=lead, user=None,
                 kind=LeadActivity.Kind.NOTE,
                 body=f'Mise au Froid refusée : {refus}.')
+            _poser_touche_avant_froid(lead, user, cadence)
             return
         tag = (tag_injoignable(lead.company) if cadence == 'contact'
                else _CLOTURE_TAGS.get(cadence))

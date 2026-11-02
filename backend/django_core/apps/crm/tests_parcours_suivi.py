@@ -134,7 +134,8 @@ class TableParcoursTests(SimpleTestCase):
                     with self.subTest(etape=etape['id'], reponse=reponse['modele'],
                                       contexte=contexte):
                         self.assertIn(contexte, CONTEXTES_VARIANTE)
-                        if contexte == 'derniere_touche':
+                        if contexte in ('derniere_touche',
+                                        'derniere_touche_appels_manquants'):
                             # Un barreau de protocole : la garde en fait la dernière touche
                             # par le gabarit de la société.
                             self.assertIn(etape['id'], ORDRE_AMENE)
