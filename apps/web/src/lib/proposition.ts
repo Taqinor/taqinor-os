@@ -1052,8 +1052,7 @@ export type OfferState = 'live' | 'accepted' | 'refused' | 'expired' | 'withdraw
  */
 export function resolveOfferState(
   p: Pick<ProposalResponse, 'statut' | 'accepted' | 'date_validite' | 'quote'>
-    & Partial<Pick<ProposalResponse, 'remplace_par' | 'offre_expiree' | 'date_expiration'>>
-    & { avenant?: unknown },
+    & Partial<Pick<ProposalResponse, 'remplace_par' | 'offre_expiree' | 'date_expiration'>>,
   now: Date = new Date(),
 ): OfferState {
   // QJR536 — une version REMPLACÉE n'est plus signable, quel que soit son

@@ -5,6 +5,8 @@
 # que la purge à J+30 aurait fait revenir). Réversible : RemoveField.
 from django.db import migrations, models
 
+TAILLE_LOT = 500
+
 
 def recopier(apps, schema_editor):
     Element = apps.get_model('trash', 'ElementSupprime')
@@ -25,8 +27,12 @@ def recopier(apps, schema_editor):
     par_cal = {}
     for pk, cal_id in pieces.values_list('pk', 'object_id'):
         par_cal.setdefault(cal_id, []).append(pk)
-    for cal_id, pks in par_cal.items():
-        Calepinage.objects.filter(pk=cal_id).update(meteo_retirees=sorted(pks))
+    # YOPSB4 — par lots, comme les recopies 0142-0148 de ventes.
+    lignes = sorted(par_cal.items())
+    for debut in range(0, len(lignes), TAILLE_LOT):
+        batch = lignes[debut:debut + TAILLE_LOT]
+        for cal_id, pks in batch:
+            Calepinage.objects.filter(pk=cal_id).update(meteo_retirees=sorted(pks))
 
 
 class Migration(migrations.Migration):
