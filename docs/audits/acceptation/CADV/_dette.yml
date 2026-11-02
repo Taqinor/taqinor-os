@@ -1,0 +1,8 @@
+# Dette d'acceptation GELÉE du groupe CADV (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée VIDE à la création du groupe (01/11/2026) :
+# aucune tâche CADV n'était cochée.
+groupe: CADV
+amorce: 0d4aa868d
+ids: []
