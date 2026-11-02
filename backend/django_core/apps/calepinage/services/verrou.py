@@ -79,7 +79,9 @@ def verifier_ecriture_autorisee(calepinage, champ='roof_layout'):
 
     ACAL118 — un calepinage ARCHIVÉ refuse TOUTE écriture (409, clé
     ``calepinage`` : « Calepinage archivé : restaurez-le … ») ; restaurer
-    est le seul geste qui le rouvre."""
+    est le seul geste qui le rouvre. ACAL373 — un devis lié agricole ou
+    multi-villa refuse aussi (409, la raison de ``design-context`` mot pour
+    mot) : « modifiable » à l'écran ⇔ cette porte passe."""
     from .archivage import MESSAGE_ARCHIVE, est_archive
 
     if est_archive(calepinage):
@@ -90,6 +92,12 @@ def verifier_ecriture_autorisee(calepinage, champ='roof_layout'):
             verdict.get('raison_non_modifiable')
             or 'Devis lié figé : révisez-le (nouvelle version).',
             champ=champ)
+    if verdict is not None:  # ACAL373 — agricole / multi-villa : la raison de l'écran
+        from apps.ventes.selectors_calepinage import (
+            raison_lecture_seule_conception)
+        raison = raison_lecture_seule_conception(_devis_lie(calepinage))
+        if raison:
+            raise VerrouilleRefuse(raison, champ=champ)
 
 
 def apres_envoi(calepinage):
