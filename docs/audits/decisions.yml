@@ -2965,6 +2965,19 @@ decisions:
     date: "2026-11-01"
     source: "Reda, question interactive, contre-visite vérifie ATOT"
     taches: [ATOT44, ATOT45]
+  - id: D-ACAL-VER2-1
+    question: "Un calepinage enregistré puis ombré (horizon, ombre, matrice) garde une production stockée jamais dératée, que l'atelier réémet à la réouverture : quelle règle ?"
+    options:
+      - cle: signature
+        texte: "Signature du dératé : la production stockée porte une signature des entrées d'ombrage ; à la réouverture, signature absente ou différente ⇒ recalcul dératé ; document inchangé octet-identique (ACAL31 conservé)"
+      - cle: toujours
+        texte: "Toujours dérater au boot (casse l'aller-retour octet-identique d'ACAL31)"
+      - cle: tel_quel
+        texte: "Laisser tel quel : le chiffre client vient du moteur de devis"
+    reponse: signature
+    date: "2026-11-02"
+    source: "Reda, question interactive, contre-visite vérifie ACAL du 01/11/2026"
+    taches: [ACAL367]
 
   - id: D-CADV-1
     question: "Protocole de contact résidentiel : garder les 11 touches sur 14 j (règle du 21/09 « ni nombre ni ordre ni J+N », CAD25) ou passer à la v4 (5 appels + 3 WhatsApp sur 7 j, fenêtres 10-14 h / 16-18 h, sans barreau dimanche ni heure 17:30-18:30) ?"
