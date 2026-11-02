@@ -312,6 +312,60 @@ class TestDispatchLeads(TestCase):
         attente = AttributionEnAttente.objects.get(lead=self.lead)
         self.assertLess(attente.echeance, avant)
 
+    def test_la_permanence_du_moment_est_proposee_en_premier(self):
+        # CADV104 : permanence samedi 14/11/2026 matin = Sara (m1), dimanche
+        # 15/11 après-midi = le responsable ; sans permanence : règles puis
+        # rotation comme avant. Rota écrite et relue par l'API.
+        import datetime
+        from unittest import mock
+        from apps.crm import dispatch, horaires
+        lignes = [
+            {'date': '2026-11-14', 'demi_journee': 'matin',
+             'commercial': self.m1.pk},
+            {'date': '2026-11-15', 'demi_journee': 'apres_midi',
+             'commercial': self.chef.pk},
+        ]
+        url = f'/api/django/crm/dispatch/permanences/{self.equipe.pk}/'
+        self.auth_as(self.m1)  # un membre ne règle pas la rota
+        self.assertEqual(self.api.put(
+            url, {'permanences': lignes}, format='json').status_code, 403)
+        self.auth_as(self.chef)
+        r = self.api.put(url, {'permanences': lignes}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        r = self.api.get(url)
+        self.assertEqual(
+            [(p['date'], p['demi_journee'], p['commercial'], p['libelle'])
+             for p in r.json()['permanences']],
+            [('2026-11-14', 'matin', self.m1.pk, 'Permanence samedi matin'),
+             ('2026-11-15', 'apres_midi', self.chef.pk,
+              'Permanence dimanche après-midi')])
+        # Une ligne par (équipe, date, demi-journée) : reposer = remplacer.
+        self.api.put(url, {'permanences': [dict(lignes[0], commercial=self.m2.pk)]},
+                     format='json')
+        self.assertEqual(len(self.api.get(url).json()['permanences']), 2)
+        self.api.put(url, {'permanences': lignes[:1]}, format='json')
+        # Commercial hors équipe : 400.
+        r = self.api.put(url, {'permanences': [{
+            'date': '2026-11-16', 'demi_journee': 'matin',
+            'commercial': self.autre_chef.pk}]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
+        def a(jour, h):
+            return datetime.datetime(2026, 11, jour, h, tzinfo=horaires.CASABLANCA)
+
+        def propose(instant):
+            with mock.patch('django.utils.timezone.now', return_value=instant):
+                return dispatch.proposer(self.equipe, self.lead)
+
+        self.assertEqual(propose(a(14, 10)),
+                         (self.m1, 'Permanence samedi matin'))
+        self.assertEqual(propose(a(15, 17)),
+                         (self.chef, 'Permanence dimanche après-midi'))
+        # Sans permanence saisie ce jour-là : rotation de charge.
+        membre, raison = propose(a(16, 10))
+        self.assertIn(membre, (self.m1, self.m2))
+        self.assertEqual(raison, dispatch.RAISON_ROTATION)
+
     def test_le_responsable_peut_prendre_le_lead_lui_meme(self):
         # Fondateur 28/10 : le responsable figure parmi les choix (en tête,
         # marqué) et peut s'attribuer le lead, ou être le membre d'une règle.

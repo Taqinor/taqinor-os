@@ -32,7 +32,8 @@ from core.conflit_etat import ConflitEtat
 from . import horaires
 from .leads_attribution import _leads_ouverts_count
 from .models import Lead
-from .models_clients import AttributionEnAttente, EquipeCommerciale, RegleAttribution
+from .models_clients import (
+    AttributionEnAttente, EquipeCommerciale, PermanenceEquipe, RegleAttribution)
 
 logger = logging.getLogger(__name__)
 
@@ -175,16 +176,48 @@ def raison_regle(regle):
     return 'Règle : ' + (', '.join(morceaux) or 'tous les leads')
 
 
-def proposer(equipe, lead):
+_JOURS = ('lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche')
+
+
+def _demi_journee(instant):
+    """(date locale, ``matin`` | ``apres_midi``) de ``instant`` — coupure 13 h."""
+    local = instant.astimezone(horaires.CASABLANCA)
+    return local.date(), (PermanenceEquipe.DemiJournee.MATIN if local.hour < 13
+                          else PermanenceEquipe.DemiJournee.APRES_MIDI)
+
+
+def libelle_permanence(date, demi):
+    return (f'Permanence {_JOURS[date.weekday()]} '
+            f"{'matin' if demi == 'matin' else 'après-midi'}")
+
+
+def permanence_du_moment(equipe, instant=None):
+    """(membre de permanence, raison) pour la demi-journée de ``instant`` si
+    une ligne existe ET que son commercial est un membre actif ; sinon None
+    (CADV104 — retour aux règles puis à la rotation)."""
+    date, demi = _demi_journee(instant or timezone.now())
+    ligne = PermanenceEquipe.objects.filter(
+        equipe=equipe, company_id=equipe.company_id, date=date,
+        demi_journee=demi).select_related('commercial').first()
+    if ligne is None or not membre_actif(equipe, ligne.commercial):
+        return None
+    return ligne.commercial, libelle_permanence(date, demi)
+
+
+def proposer(equipe, lead, instant=None):
     """(membre proposé ou None, raison) — première règle active qui
-    correspond (son membre doit être un membre ACTIF de l'équipe), sinon la
-    rotation équilibrée existante."""
+    correspond (son membre doit être un membre ACTIF de l'équipe), puis le
+    commercial de PERMANENCE de la demi-journée (CADV104), sinon la rotation
+    équilibrée existante."""
     regles = RegleAttribution.objects.filter(
         equipe=equipe, company_id=equipe.company_id, actif=True,
     ).select_related('membre').order_by('ordre', 'id')
     for regle in regles:
         if membre_actif(equipe, regle.membre) and _regle_correspond(regle, lead):
             return regle.membre, raison_regle(regle)
+    permanent = permanence_du_moment(equipe, instant)
+    if permanent is not None:
+        return permanent
     membre = rotation(equipe)
     return (membre, RAISON_ROTATION) if membre is not None else (None, RAISON_AUCUN)
 
@@ -274,6 +307,58 @@ def equipes_reglables(user):
          'est_responsable': m.pk == e.responsable_id}
         for m in _choix_equipe(e, e.membres_actifs)]}
         for e in equipes if peut_regler(user, e)]
+
+
+def permanences_equipe(user, equipe_id):
+    """Rota de permanence d'une équipe (contrat ``dispatch_permanences.json``) ;
+    404 hors société."""
+    equipe = (EquipeCommerciale.objects.filter(
+        pk=equipe_id, company_id=user.company_id).first()
+        if user.company_id else None)
+    if equipe is None:
+        raise NotFound('Équipe introuvable.')
+    lignes = PermanenceEquipe.objects.filter(
+        equipe=equipe, company_id=equipe.company_id).select_related('commercial')
+    return {'equipe': equipe.pk, 'permanences': [
+        {'date': p.date.isoformat(), 'demi_journee': p.demi_journee,
+         'commercial': p.commercial_id,
+         'commercial_nom': nom_affiche(p.commercial),
+         'libelle': libelle_permanence(p.date, p.demi_journee)}
+        for p in lignes]}
+
+
+def definir_permanences(user, equipe_id, lignes):
+    """Pose / remplace / retire (``commercial`` nul) les permanences données —
+    une ligne par (équipe, date, demi-journée). 403 sans droit de réglage ; 400
+    si le commercial n'est pas un membre actif de l'équipe."""
+    equipe = (EquipeCommerciale.objects.select_related('departement').filter(
+        pk=equipe_id, company_id=user.company_id).first()
+        if user.company_id else None)
+    if equipe is None:
+        raise NotFound('Équipe introuvable.')
+    if not peut_regler(user, equipe):
+        raise PermissionDenied(
+            "Seuls le responsable de l'équipe, le directeur commercial et "
+            "la Direction règlent sa permanence.")
+    choix = _choix_equipe(equipe, equipe.membres.filter(
+        is_active=True, company_id=equipe.company_id))
+    with transaction.atomic():
+        for ligne in lignes:
+            if ligne['commercial'] is None:
+                PermanenceEquipe.objects.filter(
+                    equipe=equipe, company_id=equipe.company_id,
+                    date=ligne['date'],
+                    demi_journee=ligne['demi_journee']).delete()
+                continue
+            membre = next((m for m in choix if m.pk == ligne['commercial']), None)
+            if membre is None:
+                raise ValidationError(
+                    {'commercial': "Choisissez un membre actif de l'équipe."})
+            PermanenceEquipe.objects.update_or_create(
+                equipe=equipe, company_id=equipe.company_id, date=ligne['date'],
+                demi_journee=ligne['demi_journee'],
+                defaults={'commercial': membre})
+    return permanences_equipe(user, equipe_id)
 
 
 def reglage_equipe(equipe):

@@ -39,7 +39,7 @@ from .clients_views import (
 from .leads_views import PointContactViewSet, rapport_attribution
 from .dispatch_views import (
     RegleAttributionViewSet, cockpit_equipe, dispatch_attribuer, dispatch_file,
-    dispatch_reglages)
+    dispatch_permanences, dispatch_reglages)
 # SPL79 — rendez-vous (visites).
 from .visites_views import AppointmentViewSet
 # SPL76 — sous-parcours clients : salle de vente, partenaires, apporteurs,
@@ -146,6 +146,8 @@ urlpatterns = [
     path('dispatch/', dispatch_file, name='dispatch-leads'),
     path('dispatch/<int:lead_id>/attribuer/', dispatch_attribuer,
          name='dispatch-attribuer'),
+    path('dispatch/permanences/<int:equipe_id>/', dispatch_permanences,
+         name='dispatch-permanences'),
     path('dispatch/reglages/<int:equipe_id>/', dispatch_reglages,
          name='dispatch-reglages'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
