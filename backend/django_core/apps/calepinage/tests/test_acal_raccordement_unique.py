@@ -107,7 +107,8 @@ class Raccordement(BaseApiCalepinage):
 
     def test_refus_plafond_sans_justification_nomme_le_champ(self):
         reponse = self._poster({'plafond_injection_kw': 3.0})
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # ENF11 : règle liant deux champs (valeur sans source), non dite au schéma = 409
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(list(reponse.data),
                          ['plafond_injection_justification'])
         self.assertNotIn(CLE_SAISIE, self.calepinage.resultat or {})
