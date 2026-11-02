@@ -950,6 +950,11 @@ LIBELLES = {
               'charge, subscribed power',
         'ar': 'فواتيركم الاثنتي عشرة الأخيرة للجهد المتوسط: أسعار الفترات '
               'الثلاث، الإتاوة الثابتة، القدرة المكتتبة'},
+    'ci_motif_argent_contrat': {'fr': "votre contrat d'électricité (tarif, puissance souscrite)",  # AMOT116
+                                'en': 'your electricity contract (tariff, subscribed power)',
+                                'ar': 'عقد الكهرباء الخاص بكم (التعريفة، القدرة المكتتبة)'},
+    'ci_motif_argent_horaires': {'fr': "vos horaires d'activité", 'en': 'your operating hours',  # AMOT116
+                                 'ar': 'ساعات نشاطكم'},
     'ci_invest_ht': {'fr': 'Investissement HT (clé en main)',
                      'en': 'Investment excl. VAT (turnkey)',
                      'ar': 'الاستثمار دون احتساب الضريبة (تسليم مفتاح)'},

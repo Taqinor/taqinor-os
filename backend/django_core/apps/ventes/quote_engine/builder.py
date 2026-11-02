@@ -508,7 +508,7 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
-        REGLES_ARRONDI_3010, REGLES_CONSO_PUBLIQUE_0111, calcul_corrige, regles_au_moins)
+        REGLES_ARRONDI_3010, REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0111, calcul_corrige, regles_au_moins)
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
@@ -2167,13 +2167,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # la charge utile publique.
     if avertissements_internes:
         data["avertissements_internes"] = list(avertissements_internes)
-    # Fondateur 08/10/2026 — drapeaux des GABARITS (devis envoyé avant les corrections : formats d'origine,
-    # AMOT24/26/33/35/45, AMOT19 ; CPDF — C&I sous le niveau de règles 3 : corrections de chiffre du PDF C&I aux
-    # seuls nouveaux rendus ; niveau 1 ⇒ dit par la 1re clé) ; un devis aux règles courantes ne porte aucune clé.
+    # Fondateur 08/10/2026 — drapeaux des GABARITS (devis envoyé avant les corrections : formats d'origine, AMOT19/24/
+    # 26/33/35/45 ; CPDF — C&I sous le niveau 3 : chiffres corrigés aux nouveaux rendus) ; règles courantes : aucune.
     data.update({cle: True for cle, pose in (
         ("regles_calcul_origine", not _corrige),
         ("regles_avant_2710", _corrige and not _regles_2710(devis)),
         ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)),  # AGNR52
+        ("regles_ecarts_0111_historique", not regles_au_moins(devis, REGLES_ECARTS_0111)),  # AMOT116/AMOT115
         ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),

@@ -218,8 +218,8 @@ class Devis(models.Model):
     # sensibilités C&I) ; niveau 5 (0144, retours C&I « avec batterie » et
     # curseur de stockage) ; niveau 6 (0145, arrondi moitié vers le haut de
     # l'argent affiché, D-ENF-ARRONDI-PDF) ; niveau 7 (0146, écarts AMOT du
-    # 31/10) ; 8 (0147, conso publique AGNR54) — un devis neuf naît en 8.
-    regles_calcul = models.PositiveSmallIntegerField(default=8)
+    # 31/10) ; 8 (0147, AGNR54) ; 9 (0148, AMOT116) — un devis neuf naît en 9.
+    regles_calcul = models.PositiveSmallIntegerField(default=9)
     version = models.PositiveIntegerField(default=1)
     version_parent = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,

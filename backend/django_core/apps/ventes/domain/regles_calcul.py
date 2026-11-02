@@ -66,8 +66,16 @@ REGLES_ECARTS_3110 = 7
 #: Porte aussi AGNR52 : les % d'échéancier imprimés (puce CGV, marqueur C&I,
 #: cases agricoles) sont dérivés des montants servis, branches MAD dès 2 tranches.
 REGLES_CONSO_PUBLIQUE_0111 = 8
+#: Niveau 9 (contre-visite AMOT du 01/11/2026, C-AMOT-VER-040/030, AMOT116 et
+#: AMOT115, « nouveaux rendus seulement ») : un devis C&I dont la consommation
+#: est connue ne demande plus « vos 12 dernières factures » mais nomme le
+#: manque réel (contrat d'électricité, horaires d'activité) ; en base « deux »,
+#: chaque carte d'option imprime l'économie TTC à côté de la HT. La migration
+#: 0148 laisse à 8 tout devis non brouillon (drapeau de rendu
+#: ``regles_ecarts_0111_historique``) : il garde la phrase et les cartes reçues.
+REGLES_ECARTS_0111 = 9
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_CONSO_PUBLIQUE_0111
+REGLES_COURANTES = REGLES_ECARTS_0111
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

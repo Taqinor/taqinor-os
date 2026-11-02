@@ -21,6 +21,8 @@ from .blocs import langue, libelle
 from .. import i18n_labels_ci  # noqa: F401 — libellés CPDF des couvertures
 from ..montants import decimale, regles_avant_2710
 from .mentions import TEXTES_POINTE_SANS, TEXTES_VISITE, texte
+from .synthese import (MOTIF_ARGENT_BT, MOTIF_ARGENT_CONTRAT, MOTIF_ARGENT_HORAIRES,
+                       MOTIF_ARGENT_SANS_DEMANDE)
 
 #: Bandeau (sans le point final de la phrase de la table des mentions).
 BANDEAU_RESERVE = TEXTES_VISITE["fr"].rstrip(".")
@@ -36,9 +38,11 @@ TEXTE_NON_CHIFFRE = (
 
 #: CIQ333 — motif d'argent servi par ``synthese_ci`` → clé du catalogue.
 MOTIFS_ARGENT = {
-    "vos 12 dernières factures": "ci_motif_argent_bt",
+    MOTIF_ARGENT_BT: "ci_motif_argent_bt",
     ("vos 12 dernières factures MT : prix des trois postes, prime fixe, "
      "puissance souscrite"): "ci_motif_argent_mt",
+    MOTIF_ARGENT_CONTRAT: "ci_motif_argent_contrat",  # AMOT116
+    MOTIF_ARGENT_HORAIRES: "ci_motif_argent_horaires",
 }
 #: CPDF — motifs d'argent servis par ``synthese_ci`` qui ne demandent rien au
 #: client (``synthese.MOTIF_ARGENT_OPTION_AVEC``) : aucune phrase imprimée.
@@ -211,15 +215,17 @@ def ligne_non_chiffre(d, cle, prefixe):
     """Le motif quand l'argent n'est pas chiffré (``masquer_economies``).
 
     AMOT80 — investissement non chiffré ⇒ SON motif ; argent servi sans
-    motif client ⇒ aucune demande de factures (la consommation est là)."""
+    motif client ⇒ aucune demande de factures (la consommation est là).
+    AMOT116 — consommation connue sans bloc d'économie : idem."""
     phrase = motif_investissement(d, cle)
-    if phrase is None and not d.get(f"{cle}_motif_argent") and \
-            (d.get(f"{cle}_synthese") or {}).get("argent"):
+    servi = d.get(f"{cle}_motif_argent")
+    if phrase is None and (servi == MOTIF_ARGENT_SANS_DEMANDE or not servi and (
+            d.get(f"{cle}_synthese") or {}).get("argent")):
         phrase = libelle(d, "ci_non_chiffre_sans_motif", "Économies et "
                          "retour sur investissement non chiffrés à ce stade.")
     if phrase:
         return f'<div class="{prefixe}-mtsrc">{phrase}</div>'
-    motif = d.get(f"{cle}_motif_argent") or "vos 12 dernières factures"
+    motif = d.get(f"{cle}_motif_argent") or MOTIF_ARGENT_BT
     if motif in MOTIFS_INTERNES_SANS_PHRASE:
         # CPDF1/CPDF5 — un motif INTERNE (argent de l'option avec batterie
         # non chiffré) n'est jamais une demande au client : rien d'imprimé.
