@@ -36,6 +36,7 @@
    "crm_emit_appointment_effectue",
    "crm_emit_lead_created",
    "crm_dispatch_mise_en_attente",
+   "crm_stop_cadence_on_archive",
    "crm_client_mirror_tiers"
   ],
   "pre_save": [

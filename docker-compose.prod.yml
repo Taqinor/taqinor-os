@@ -22,8 +22,36 @@
 # RECALIBRER après SCA7 (mesure live RAM réelle via `free -h` sur la boîte).
 # Purement réversible : suppression de ces clés = retour au comportement
 # actuel (aucune limite), zéro changement de code applicatif.
+# YJPB2 — ROTATION DES JOURNAUX CONTENEURS (incident Meryem du 02/11/2026).
+# AVANT : aucune clé `logging` dans les deux compose (grep vérifié) — le pilote
+# json-file de Docker tourne alors SANS AUCUNE borne de taille, et les journaux
+# (dont l'UNIQUE trace serveur des problèmes vécus : le journal d'accès nginx,
+# les lignes SIGKILL de gunicorn) ne sont ni bornés ni rotés. Deux conséquences
+# vécues : un journal qui peut remplir le disque de la boîte, et un journal
+# impossible à parcourir (un seul fichier de plusieurs Go).
+# APRÈS : chaque conteneur garde N fichiers bornés, rotés par Docker.
+# CE QUE CELA NE FAIT PAS : un journal de conteneur meurt AVEC son conteneur,
+# donc chaque déploiement repart de zéro. C'est exactement pourquoi la trace
+# DURABLE des problèmes vécus par les utilisateurs vit en base
+# (`reporting.ProblemeClient`, lisible par `manage.py problemes_utilisateurs`)
+# et non dans ces journaux. Voir docs/journal-problemes-utilisateurs.md.
+x-journaux: &journaux
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+# nginx est le conteneur le plus bavard (une ligne par requête HTTP) ET celui
+# dont le journal sert aux enquêtes : fenêtre plus large que les autres.
+x-journaux-nginx: &journaux-nginx
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "6"
+
 services:
   caddy:
+    logging: *journaux
     image: caddy:2
     restart: always
     ports:
@@ -48,6 +76,7 @@ services:
     cpus: 0.5
 
   nginx:
+    logging: *journaux-nginx
     ports: !reset []
     environment:
       # VX200 — CSP par environnement : origine MinIO PUBLIQUE reelle (a poser
@@ -61,6 +90,7 @@ services:
     cpus: 0.5
 
   django_core:
+    logging: *journaux
     # --threads : les requêtes légères (listes, clics) ne font plus la queue
     #   derrière un rendu PDF WeasyPrint (3-4,5 s mesurés) qui occupe un worker.
     # --preload : imports lourds (matplotlib, WeasyPrint) chargés UNE fois
@@ -107,34 +137,40 @@ services:
     cpus: 2.0
 
   fastapi_ia:
+    logging: *journaux
     # SCA8 — 2 workers uvicorn + modèles OCR/LangChain en mémoire (cache
     # HuggingFace monté en volume séparé, hors de cette limite).
     mem_limit: 2g
     cpus: 1.5
 
   celery_worker:
+    logging: *journaux
     # SCA8/SCA9 — queues default+scheduled (interactive isolée ci-dessous).
     mem_limit: 2g
     cpus: 1.5
 
   celery_worker_interactive:
+    logging: *journaux
     # SCA8/SCA9 — queue interactive isolée, charge plus légère et bornée
     # (rendu PDF synchrone déclenché par un clic, jamais un batch).
     mem_limit: 1g
     cpus: 1.0
 
   celery_beat:
+    logging: *journaux
     # SCA8 — scheduler seul, aucun traitement de tâche : empreinte minimale.
     mem_limit: 256m
     cpus: 0.25
 
   frontend:
+    logging: *journaux
     # SCA8 — sert des fichiers statiques (nginx interne à l'image), aucune
     # charge dynamique.
     mem_limit: 256m
     cpus: 0.25
 
   db:
+    logging: *journaux
     ports: !reset []
     # SCA8 — PROTÉGÉ EN PRIORITÉ : Postgres ne doit jamais être OOM-killed
     # par un voisin bruyant. shared_buffers (SCA11) vise ~25 % de cette
@@ -143,6 +179,7 @@ services:
     cpus: 2.0
 
   pgbouncer:
+    logging: *journaux
     # AUD412 — le reset de port MANQUAIT pour le pooler. `docker-compose.yml`
     # publie « 6432:6432 » sur le service pgbouncer ; comme AUCUNE entrée
     # `pgbouncer` n'existait ici, le service HÉRITAIT ce port publié — donc le
@@ -154,12 +191,14 @@ services:
     ports: !reset []
 
   minio:
+    logging: *journaux
     ports: !reset []
     # SCA8 — charge dominée par l'I/O disque, pas le CPU/RAM.
     mem_limit: 1g
     cpus: 0.5
 
   redis:
+    logging: *journaux
     ports: !reset []
     # SCA8 — PROTÉGÉ EN PRIORITÉ (broker Celery) : une éviction de tâches
     # en attente est un incident. maxmemory Redis (SCA10) sera posé SOUS
@@ -168,6 +207,7 @@ services:
     cpus: 1.0
 
   redis_cache:
+    logging: *journaux
     # SCA10 — cache applicatif, séparé du broker. Pas de ports à reset (le
     # compose de base ne l'expose déjà pas). Limite plus modeste que le
     # broker : un cache est jetable, sa perte dégrade la latence, jamais la

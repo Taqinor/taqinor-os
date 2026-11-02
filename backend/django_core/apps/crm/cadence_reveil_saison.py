@@ -27,6 +27,8 @@ rentrée scolaire n'est PAS une fenêtre de réveil (CAD76).
 """
 import logging
 
+from .tasks import REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE
+
 logger = logging.getLogger(__name__)
 
 #: Clé du texte validé, déjà présent au catalogue des messages.
@@ -65,6 +67,16 @@ def _maintenant_local(maintenant=None):
     return instant.astimezone(horaires.CASABLANCA)
 
 
+#: CADV90 (D-CADV-2, conception v4 §4.5) — les motifs de perte qui reviennent :
+#: liste FERMÉE, comparée sans casse (``MotifPerte`` n'a pas de drapeau terminal).
+MOTIFS_PERTE_NON_TERMINAUX = ('Prix', 'Reporté')
+
+
+def _perdu_non_terminal(lead):
+    motif = (getattr(lead, 'motif_perte', None) or '').strip().casefold()
+    return motif in {m.casefold() for m in MOTIFS_PERTE_NON_TERMINAUX}
+
+
 def _motif_de_refus(lead, *, maintenant=None):
     """Pourquoi ce lead ne reçoit PAS le réveil saisonnier — ou ``None``.
 
@@ -88,7 +100,11 @@ def _motif_de_refus(lead, *, maintenant=None):
                 'agricole.')
     if getattr(lead, 'is_archived', False):
         return 'Le lead est archivé.'
-    if getattr(lead, 'perdu', False):
+    # CADV28 (D-CADV-8) — l'état Archive du parcage : jamais recontacté (les
+    # contacts Odoo froids : la base légale la plus faible).
+    if getattr(lead, 'parc_etat', None) == 'archive':
+        return 'Lead à l’état Archive : jamais recontacté.'
+    if getattr(lead, 'perdu', False) and not _perdu_non_terminal(lead):
         return 'Le lead est perdu — le réveil ne s’applique pas.'
     # ACRM16 — la porte unique de `reveil_b` respecte l'OPPOSITION : aucune
     # invitation à écrire à une personne qui a demandé à ne plus être
@@ -174,7 +190,7 @@ def _poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
 
 
 def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
-                              limite=200):
+                              limite=REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE):
     """Passe la fenêtre sur les dormants d'une société : renvoie les touches
     posées. Best-effort lead par lead — un dormant en échec n'arrête pas les
     autres. Destinée au crochet planifié (qui n'existe pas encore : voir le
@@ -196,6 +212,10 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
     # les ``plafond`` premiers ids, déjà servis, étaient re-sélectionnés à
     # chaque passage et les suivants jamais servis. ``_motif_de_refus`` reste
     # la porte unique, relue lead par lead.
+    # CADV90 — même règle que ``_perdu_non_terminal``, dans la requête.
+    perdu_admis = Q(perdu=False)
+    for motif in MOTIFS_PERTE_NON_TERMINAUX:
+        perdu_admis |= Q(perdu=True, motif_perte__iexact=motif)
     touches = RelanceEtape.objects.filter(company=company, lead=OuterRef('pk'))
     dernier_reveil = (touches.filter(cadence='reveil')
                       .exclude(template_cle=REVEIL_SAISON_CLE)
@@ -203,9 +223,10 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
                       .values('due_date')[:1])
     dormants = (Lead.objects
                 .filter(company=company, stage=stages.COLD,
-                        is_archived=False, perdu=False,
-                        ne_plus_contacter=False)
+                        is_archived=False, ne_plus_contacter=False)
+                .filter(perdu_admis)
                 .exclude(type_installation='agricole')
+                .exclude(parc_etat='archive')
                 .annotate(
                     _deja_cette_annee=Exists(touches.filter(
                         template_cle=REVEIL_SAISON_CLE,

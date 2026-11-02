@@ -329,10 +329,13 @@ def corps_bulk(actions):
     « ``add_tag`` sans ``tag`` » conforme et le serveur répondait 400. Une
     branche par famille d'actions ; les actions sans paramètre sont groupées."""
     from . import stages
+    from .fiche_funnel import ETAT_PAR_RAISON
     non_blanc = {'type': 'string', 'pattern': r'\S'}
     avec_parametre = {
         ('add_tag', 'remove_tag'): {'tag': non_blanc},
-        ('set_stage',): {'stage': {'type': 'string', 'enum': list(stages.STAGES)}},
+        ('set_stage',): {'stage': {
+            'type': 'string',
+            'enum': [e for e in stages.STAGES if e != stages.COLD]}},
         ('set_canal',): {'canal': non_blanc},
         ('set_priorite',): {'priorite': {
             'type': 'string', 'enum': ['basse', 'normale', 'haute']}},
@@ -348,4 +351,13 @@ def corps_bulk(actions):
         branches.append({
             'required': sorted(proprietes),
             'properties': {'action': {'enum': list(noms)}, **proprietes}})
+    # CADV73 — le Froid en lot exige sa raison (hors raison à date, standby).
+    branches.append({
+        'required': ['parc_raison', 'stage'],
+        'properties': {
+            'action': {'enum': ['set_stage']},
+            'stage': {'type': 'string', 'enum': [stages.COLD]},
+            'parc_raison': {'type': 'string', 'enum': sorted(
+                r for r, etat in ETAT_PAR_RAISON.items() if etat != 'standby')},
+        }})
     return {EXTENSION_CORPS_RESSERRE: {'anyOf': branches}}

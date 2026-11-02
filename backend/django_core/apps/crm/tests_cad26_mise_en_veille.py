@@ -104,6 +104,32 @@ class _Base(TestCase):
 class VeilleCourteTests(_Base):
     slug = 'cad26-courte'
 
+    def test_la_date_convenue_est_ecrite_sur_la_touche(self):
+        """CADV11 — report humain : la date ; moteur (``compter_report=False``) :
+        ``null``. Mutant : ne pas écrire le champ ⇒ échec."""
+        from apps.crm.cadence_plan import reporter_prochaine_touche
+
+        def lue():
+            liste = self.api.get(
+                '/api/django/crm/relance-etapes/', {'lead': self.lead.pk})
+            return next(r for r in liste.data['results']
+                        if r['id'] == self.etape.pk)
+
+        reporter_prochaine_touche(
+            self.lead, None, datetime.date(2026, 10, 1), etape=self.etape,
+            compter_report=False)
+        self.assertIsNone(lue()['rappel_convenu_le'])
+        resp = self.api.post(
+            f'/api/django/crm/relance-etapes/{self.etape.pk}/reporter/',
+            {'rappel_le': '2026-11-20', 'rappel_heure': '10:00'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['rappel_convenu_le'], '2026-11-20')
+        self.assertEqual(lue()['rappel_convenu_le'], '2026-11-20')
+        self.assertEqual(lue()['nb_reports'], 1)
+        self.etape.refresh_from_db()
+        self.assertEqual(
+            self.etape.rappel_convenu_le, datetime.date(2026, 11, 20))
+
     def test_aucune_touche_intermediaire_ne_part(self):
         resp = self._veille(TROIS_SEMAINES)
         self.assertEqual(resp.status_code, 200, resp.data)

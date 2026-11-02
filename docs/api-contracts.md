@@ -128,6 +128,8 @@
     detail:texte, expires_at:texte, manquantes:inconnu, questions:inconnu, token:inconnu, url:inconnu, url_interne:inconnu
 - frontend/src/api/crmApi.js :: parrainageStats -> /api/django/crm/parrainages/stats
     par_statut:inconnu, recompenses_total:texte, recompenses_versees:texte, total:inconnu
+- frontend/src/api/crmApi.js :: recontacterLead -> /api/django/crm/leads/<>/recontact
+    etape:inconnu, stage:inconnu
 - frontend/src/api/crmApi.js :: renderMessageTemplate -> /api/django/crm/message-templates/<>/render
     texte:inconnu
 - frontend/src/api/crmApi.js :: replayWebsiteLeadPayload -> /api/django/crm/website-lead-payloads/<>/replay

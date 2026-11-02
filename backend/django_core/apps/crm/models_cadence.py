@@ -167,6 +167,11 @@ class RelanceEtape(TenantModel):
         null=True, blank=True, verbose_name="Échéance d'origine")
     nb_reports = models.PositiveSmallIntegerField(
         default=0, verbose_name='Reports humains')
+    # CADV11 — la date de rappel CONVENUE par un report humain (le moteur ne
+    # l'écrit jamais) : ``due_at`` seul ne distingue pas un rendez-vous pris
+    # avec le client d'un simple glissement.
+    rappel_convenu_le = models.DateField(
+        null=True, blank=True, verbose_name='Date de rappel convenue')
 
     class Meta:
         verbose_name = 'Étape de relance'

@@ -68,6 +68,59 @@ class ExpirationConditionnelleTests(TestCase):
         self.assertEqual(resultat['expired'], 0)
         self.assertEqual(recus, [])
 
+    def _lead_inactif(self):
+        """Un lead « Relance » sans activité depuis 31 jours, lié au devis."""
+        from apps.crm import stages
+        from apps.crm.models import Lead, LeadActivity
+        from apps.ventes.models import Devis
+        lead = Lead.objects.create(
+            company=self.company, nom='Inactif', stage=stages.FOLLOW_UP,
+            telephone='+212661470001')
+        LeadActivity.objects.filter(lead=lead).update(
+            created_at=timezone.now() - timedelta(days=31))
+        Devis.objects.filter(pk=self.devis.pk).update(lead=lead)
+        return lead
+
+    def test_l_expiration_range_au_froid_avec_une_raison(self):
+        """CADV84 — Froid, raison en champ, devis expiré (règle #4) ; une 2e
+        nuit n'écrit rien. Deux lignes de chatter : parc_raison puis stage.
+        Mutant : retirer ``parquer_lead`` ⇒ ``parc_raison`` vide."""
+        from apps.crm import stages
+        from apps.ventes.models import Devis
+        lead = self._lead_inactif()
+        resultat = self._expirer()
+        self.assertEqual(resultat['funnel_cold'], 1)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertEqual((lead.parc_etat, lead.parc_raison, lead.parc_jusqu_au),
+                         ('nurture', 'pas_maintenant_sans_date', None))
+        self.assertEqual(lead.activites.filter(field='parc_raison').count(), 1)
+        self.assertEqual(lead.activites.filter(field='stage').count(), 1)
+        self.assertEqual(Devis.objects.get(pk=self.devis.pk).statut,
+                         Devis.Statut.EXPIRE)
+        self.assertEqual(self._expirer()['funnel_cold'], 0)
+        self.assertEqual(lead.activites.filter(field='parc_raison').count(), 1)
+
+    def test_un_lead_en_standby_a_date_future_n_est_pas_parque(self):
+        """Le garde ``lead_en_attente_ou_veille`` tient : touche datée à venir."""
+        from apps.crm import stages
+        from apps.crm.models import RelanceEtape
+        from apps.ventes.domain.recouvrement import NOTE_EXPIRATION_EN_ATTENTE
+        lead = self._lead_inactif()
+        dans_20 = timezone.now().date() + timedelta(days=20)
+        RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=1,
+            due_date=dans_20, canal=RelanceEtape.Canal.APPEL)
+        lead.__class__.objects.filter(pk=lead.pk).update(
+            parc_etat='standby', parc_raison='plus_tard_date',
+            parc_jusqu_au=dans_20)
+        self._expirer()
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.FOLLOW_UP)
+        self.assertEqual(lead.parc_etat, 'standby')
+        self.assertTrue(lead.activites.filter(
+            body=NOTE_EXPIRATION_EN_ATTENTE).exists())
+
     def test_envoye_expire(self):
         from apps.ventes.models import Devis
         resultat = self._expirer()

@@ -39,6 +39,7 @@
    "due_date": "2026-09-30",
    "libelle": "Appel de relance"
   },
+  "rappel_convenu_le": null,
   "statut": "sautee",
   "statut_libelle": "Sautée",
   "suites": {},

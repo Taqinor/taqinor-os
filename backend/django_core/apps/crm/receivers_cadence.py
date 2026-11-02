@@ -8,6 +8,7 @@ relais d'une ligne par récepteur parti.
 import datetime
 import logging
 
+from django.db import transaction
 from django.utils import timezone
 
 from . import stages
@@ -37,6 +38,7 @@ from .cadence_reperes import (
     OUTCOME_VISITE_ACCEPTEE,
     annuler_etapes_moteur_ouvertes,
     est_cloture_d_etape_visite,
+    kind_de_la_touche,
     q_visite,
     touche_close_de,
 )
@@ -320,7 +322,7 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
                 visite = est_cloture_d_etape_visite(instance)
                 assurer_prochaine_etape_apres_succes(
                     instance.lead, instance.user,
-                    canal_touche=None if visite else instance.kind,
+                    canal_touche=None if visite else kind_de_la_touche(instance),
                     demarrer_plan=not visite)
         elif issue == 'refuse':
             # SUIVI E21 (30/09/2026) — le refus arrête les relances ET le
@@ -356,6 +358,24 @@ def _arreter_cadence_on_stage_change(sender, lead, old_stage, new_stage, user,
         logger.warning(
             "MRY9: arrêt de cadence échoué au changement d'étape du lead #%s",
             getattr(lead, 'pk', '?'), exc_info=True)
+
+
+def _arreter_cadence_on_archive(sender, instance, update_fields=None, **kwargs):
+    """CADV61 — un lead archivé n'a plus de touche à faire, quel que soit le
+    chemin (unitaire, en masse, commande) : ses touches restaient À FAIRE sur
+    un dossier caché des listes. La fusion annule déjà les siennes (motif
+    « fusion ») et sauve sans ``update_fields`` : no-op. Restaurer ne ressuscite
+    rien. Best-effort, point de sauvegarde : l'archivage prime."""
+    if (not instance.is_archived or not update_fields
+            or 'is_archived' not in update_fields):
+        return
+    try:
+        with transaction.atomic():
+            arreter_cadence(instance, user=None, motif='lead archivé')
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+        logger.warning(
+            "CADV61 : arrêt de cadence échoué à l'archivage du lead #%s",
+            getattr(instance, 'pk', '?'), exc_info=True)
 
 
 def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,

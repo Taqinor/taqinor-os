@@ -46,7 +46,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.cadence_config import cle_de
-from apps.crm.models import Lead, MotifPerte, RelanceEtape
+from apps.crm.models import Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.notifications.calendar_utils import ajouter_jours_ouvres
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import (
@@ -1079,6 +1079,14 @@ class ParcoursBase(TestCase):
             lead, etape = self.amener_generique_appel()
         else:
             lead, etape = self.amener(cas.type_id)
+        if (cas.contexte == 'derniere_touche'
+                and CADENCE_DU_TYPE.get(cas.type_id) == 'contact'):
+            # CADV22 — la dernière touche ne parque au Froid qu'après cinq
+            # appels tracés : le gabarit raccourci par la variante n'en a pas.
+            LeadActivity.objects.bulk_create([
+                LeadActivity(company=lead.company, lead=lead, user=lead.owner,
+                             kind=LeadActivity.Kind.APPEL, body='Pas de réponse.')
+                for _ in range(5)])
         if cas.contexte == CONTEXTE_AGRICOLE_SANS_RELEVE_EAU:
             # AGR530 — le même dossier, devenu un pompage au point d'eau
             # inconnu (aucune donnée hydraulique) : la seule différence.

@@ -35,6 +35,7 @@
     "ordre": 1,
     "overdue": false,
     "posee_le": "2026-09-30T10:00:00Z",
+    "rappel_convenu_le": null,
     "statut": "a_faire",
     "statut_libelle": "À faire",
     "suites": {
@@ -109,6 +110,7 @@
     "ordre": 2,
     "overdue": false,
     "posee_le": "2026-09-30T10:00:00Z",
+    "rappel_convenu_le": null,
     "statut": "a_faire",
     "statut_libelle": "À faire",
     "suites": {
@@ -183,6 +185,7 @@
     "ordre": 3,
     "overdue": false,
     "posee_le": "2026-09-30T10:00:00Z",
+    "rappel_convenu_le": null,
     "statut": "a_faire",
     "statut_libelle": "À faire",
     "suites": {
@@ -257,6 +260,7 @@
     "ordre": 4,
     "overdue": false,
     "posee_le": "2026-09-30T10:00:00Z",
+    "rappel_convenu_le": null,
     "statut": "a_faire",
     "statut_libelle": "À faire",
     "suites": {
@@ -331,6 +335,7 @@
     "ordre": 5,
     "overdue": false,
     "posee_le": "2026-09-30T10:00:00Z",
+    "rappel_convenu_le": null,
     "statut": "a_faire",
     "statut_libelle": "À faire",
     "suites": {

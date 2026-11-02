@@ -1029,7 +1029,6 @@ def _advance_lead_on_expiry(lead, today):
         return False, False
 
     moved_fup = False
-    moved_cold = False
 
     if lead.stage == stages.QUOTE_SENT:
         # Only advance if lead is not already further.
@@ -1067,16 +1066,11 @@ def _advance_lead_on_expiry(lead, today):
                 company=lead.company, user=None, kind=NOTE,
                 body=NOTE_EXPIRATION_EN_ATTENTE)
             return False, False
-        ancien = lead.stage
-        moved_cold = appliquer_stage_lead(lead, stages.COLD, user=None)
-        if moved_cold:
-            from apps.crm import activity as crm_activity
-            crm_activity.log_bulk_change(
-                lead, user=None,
-                field='stage',
-                old_val=ancien,
-                new_val=stages.COLD,
-            )
-        return False, moved_cold
+        # CADV84 (D-CADV-4) — LE point d'écriture du parcage : la raison reste
+        # en champ. L'envoi du devis est la touche : ``exiger_touche=False``.
+        from apps.crm.services import parquer_lead
+        parquer_lead(lead, 'pas_maintenant_sans_date', None, None,
+                     exiger_touche=False)
+        return False, True
 
     return False, False

@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/crm/leads/<id>/recontact/",
-  "pourquoi": "CADV96 (M0, PACT10, conception v4 §4.5, D-CADV-2 / D-CADV-4) — forme de la réouverture d'un lead au Froid recontacté par le client, posée AVANT ses moitiés ; route non servie à ce jour (aucun `forme_serveur`). Tâche porteuse : CADV35 (action `recontact` de `LeadCadenceActionsMixin`, corps `{canal: 'whatsapp' | 'appel', note}`). 200 : Froid → Contacté (`stage` = clé STAGES.py), parc effacé, UNE étape d'appel `appel_apres_reponse`, chatter de l'acteur, responsable notifié ; perdu, archivé, opposé ou signé : 400 `{detail}`. Aucun lecteur front dans le plan v4.",
+  "pourquoi": "CADV96 (M0, PACT10, conception v4 §4.5, D-CADV-2 / D-CADV-4) — forme de la réouverture d'un lead au Froid recontacté par le client, posée AVANT ses moitiés. Tâche porteuse : CADV35 (action `recontact` de `LeadCadenceActionsMixin`, corps `{canal: 'whatsapp' | 'appel', note}`). 200 : Froid → Contacté (`stage` = clé STAGES.py), parc effacé, UNE étape d'appel `appel_apres_reponse`, chatter de l'acteur, responsable notifié ; perdu, archivé, opposé, signé ou lead hors Froid : 409 `{detail}` (ENF11 : un état refuse en 409, jamais en 400) ; `canal` hors vocabulaire : 400 `{canal}`. Aucun lecteur front dans le plan v4.",
   "exemple": {
     "etape": "appel_apres_reponse",
     "stage": "CONTACTED"

@@ -100,6 +100,54 @@ class FicheTests(_Base):
 class MasseTests(_Base):
     slug = 'mry22-masse'
 
+    def test_le_lot_vers_le_froid_exige_une_raison(self):
+        """CADV73 — sans raison : 400, rien d'écrit ; avec raison : deux leads
+        rangés, celui à 0 touche listé dans ``skipped`` avec le refus de
+        CADV22. Mutant : retirer la validation ⇒ 200 sans raison."""
+        from apps.crm import stages
+        from apps.crm.models import Lead, LeadActivity
+
+        def lead_appele(nom, appels):
+            lead = Lead.objects.create(
+                company=self.company, nom=nom, stage=stages.CONTACTED,
+                owner=self.lead.owner, telephone='+212661220001')
+            LeadActivity.objects.bulk_create([
+                LeadActivity(company=self.company, lead=lead,
+                             user=self.lead.owner,
+                             kind=LeadActivity.Kind.APPEL, body='Appel.')
+                for _ in range(appels)])
+            return lead
+
+        un, deux, zero = (lead_appele('Un', 5), lead_appele('Deux', 5),
+                          lead_appele('Zero', 0))
+        corps = {'action': 'set_stage', 'ids': [un.pk, deux.pk, zero.pk],
+                 'stage': stages.COLD}
+        url = '/api/django/crm/leads/bulk/'
+        sans = self.api.post(url, corps, format='json')
+        self.assertEqual(sans.status_code, 400, sans.data)
+        self.assertEqual(sans.data['detail'],
+                         'Raison de mise au Froid obligatoire.')
+        un.refresh_from_db()
+        self.assertEqual(un.stage, stages.CONTACTED)
+        for raison in ('plus_tard_date', 'pigeon', ['budget']):
+            with self.subTest(raison=raison):
+                self.assertEqual(self.api.post(
+                    url, {**corps, 'parc_raison': raison}, format='json'
+                ).status_code, 400)
+        avec = self.api.post(
+            url, {**corps, 'parc_raison': 'injoignable'}, format='json')
+        self.assertEqual(avec.status_code, 200, avec.data)
+        self.assertEqual(avec.data['updated'], 2)
+        self.assertEqual([s['id'] for s in avec.data['skipped']], [zero.pk])
+        self.assertIn('5 appels tracés', avec.data['skipped'][0]['reason'])
+        for lead in (un, deux, zero):
+            lead.refresh_from_db()
+        self.assertEqual((un.stage, un.parc_etat, un.parc_raison),
+                         (stages.COLD, 'nurture', 'injoignable'))
+        self.assertEqual(deux.parc_raison, 'injoignable')
+        self.assertEqual((zero.stage, zero.parc_raison),
+                         (stages.CONTACTED, None))
+
     def test_bulk_sans_motif_refuse_en_400(self):
         resp = self.api.post('/api/django/crm/leads/bulk/', {
             'action': 'set_perdu', 'ids': [self.lead.pk],

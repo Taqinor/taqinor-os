@@ -13,6 +13,10 @@ import { emitSessionExpired, sessionEstActive } from '../providers/session-bridg
 // VX161 — refresh 401 partagé avec iaApi.js (une seule promesse en vol,
 // jamais un POST /token/refresh/ par requête en échec).
 import { refreshSession } from './refreshCoordinator'
+// YJPB1 — journal des problèmes VÉCUS par les utilisateurs (module pur,
+// transport `fetch` : il n'utilise JAMAIS cette instance axios, donc
+// aucune récursion possible par cet intercepteur).
+import { signalerErreurRequete } from '../lib/journalProblemes'
 
 const ORIGIN = originFrom(import.meta.env.VITE_API_URL)
 
@@ -104,6 +108,16 @@ api.interceptors.response.use(
       emitSessionExpired()
       return Promise.reject(error)
     }
+
+    // YJPB1 — JOURNAL DES PROBLÈMES VÉCUS. Jusqu'ici, une requête sans
+    // réponse (le délai de 20 s ci-dessus, réseau coupé) ou une 5xx ne
+    // laissait AUCUNE trace côté serveur : seul le toast FR, dans le
+    // navigateur de l'utilisateur. Posé AVANT la garde du toast, et donc
+    // AUSSI pour les écrans qui gèrent l'erreur eux-mêmes
+    // (`suppressErrorToast`) — l'incident Meryem du 02/11/2026 vivait
+    // précisément derrière un état local « Indisponible pour le
+    // moment. ». Best-effort absolu : ne lève jamais, n'attend rien.
+    signalerErreurRequete(error, { sessionEstActive })
 
     // L53 — Bridge global : toute requête échouée surface un toast d'erreur FR,
     // sauf si l'appelant a explicitement opté pour la gestion locale

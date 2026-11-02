@@ -15,6 +15,23 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const PAGE_SRC = readFileSync(join(HERE, 'LeadsPage.jsx'), 'utf8')
 const CSS_SRC = resolveCss(join(HERE, '..', '..', '..', 'index.css'))
 
+test('CADV74 : vers Froid, le panneau étape exige la raison et l\'envoie', () => {
+  const bar = readFileSync(join(HERE, 'BulkActionBar.jsx'), 'utf8')
+  assert.match(bar, /const versFroid = stage === COLD_STAGE/)
+  assert.match(bar, /disabled=\{versFroid && !parcRaison\}/)
+  assert.match(bar, /\{ stage, parc_raison: parcRaison \}/)
+  // Une raison à date ne se pose pas en lot (le serveur la refuse).
+  assert.doesNotMatch(bar, /\['plus_tard_date'/)
+  // Mêmes codes que le contrat, hors la seule raison standby.
+  const contrat = JSON.parse(readFileSync(join(
+    HERE, '..', '..', '..', '..', '..', 'backend', 'django_core', 'apps', 'crm',
+    'contract_samples', 'lead.json'), 'utf8'))
+  const attendus = Object.entries(contrat.notes.codes_raison)
+    .filter(([, etat]) => etat !== 'standby').map(([code]) => code).sort()
+  const servis = [...bar.matchAll(/^  \['([a-z_]+)', '/gm)].map((m) => m[1]).sort()
+  assert.deepEqual(servis, attendus)
+})
+
 test('LB25 : BulkActionBar reste le MÊME composant, enveloppé dans .lp-bulk-float', () => {
   const idx = PAGE_SRC.indexOf('<div className="lp-bulk-float">')
   assert.ok(idx > 0, 'wrapper .lp-bulk-float introuvable')

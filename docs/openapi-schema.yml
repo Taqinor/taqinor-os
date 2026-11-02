@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4902, operations: 7694, components: 3609}
+counts: {paths: 4906, operations: 7698, components: 3611}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1018,6 +1018,7 @@ operations:
 - get /api/django/crm/leads/{id}/panneau-appel/ -> django_crm_leads_panneau_appel_retrieve
 - get /api/django/crm/leads/{id}/points-contact/ -> django_crm_leads_points_contact_retrieve
 - post /api/django/crm/leads/{id}/questionnaire-lien/ -> django_crm_leads_questionnaire_lien_create
+- post /api/django/crm/leads/{id}/recontact/ -> django_crm_leads_recontact_create
 - get /api/django/crm/leads/{id}/references-proches/ -> django_crm_leads_references_proches_retrieve
 - post /api/django/crm/leads/{id}/relance/arreter/ -> django_crm_leads_relance_arreter_create
 - post /api/django/crm/leads/{id}/relance/initialiser/ -> django_crm_leads_relance_initialiser_create
@@ -2728,6 +2729,7 @@ operations:
 - get /api/django/reporting/pipeline/ -> django_reporting_pipeline_retrieve
 - get /api/django/reporting/pipeline/velocity/ -> django_reporting_pipeline_velocity_retrieve
 - get /api/django/reporting/probabilites-etape/ -> django_reporting_probabilites_etape_retrieve
+- post /api/django/reporting/problemes-client/ -> django_reporting_problemes_client_create
 - get /api/django/reporting/rapport-definitions/ -> django_reporting_rapport_definitions_list
 - post /api/django/reporting/rapport-definitions/ -> django_reporting_rapport_definitions_create
 - delete /api/django/reporting/rapport-definitions/{id}/ -> django_reporting_rapport_definitions_destroy
@@ -4905,6 +4907,7 @@ operations:
 - get /api/v1/crm/leads/{id}/panneau-appel/ -> v1_crm_leads_panneau_appel_retrieve
 - get /api/v1/crm/leads/{id}/points-contact/ -> v1_crm_leads_points_contact_retrieve
 - post /api/v1/crm/leads/{id}/questionnaire-lien/ -> v1_crm_leads_questionnaire_lien_create
+- post /api/v1/crm/leads/{id}/recontact/ -> v1_crm_leads_recontact_create
 - get /api/v1/crm/leads/{id}/references-proches/ -> v1_crm_leads_references_proches_retrieve
 - post /api/v1/crm/leads/{id}/relance/arreter/ -> v1_crm_leads_relance_arreter_create
 - post /api/v1/crm/leads/{id}/relance/initialiser/ -> v1_crm_leads_relance_initialiser_create
@@ -6580,6 +6583,7 @@ operations:
 - get /api/v1/reporting/pipeline/ -> v1_reporting_pipeline_retrieve
 - get /api/v1/reporting/pipeline/velocity/ -> v1_reporting_pipeline_velocity_retrieve
 - get /api/v1/reporting/probabilites-etape/ -> v1_reporting_probabilites_etape_retrieve
+- post /api/v1/reporting/problemes-client/ -> v1_reporting_problemes_client_create
 - get /api/v1/reporting/rapport-definitions/ -> v1_reporting_rapport_definitions_list
 - post /api/v1/reporting/rapport-definitions/ -> v1_reporting_rapport_definitions_create
 - delete /api/v1/reporting/rapport-definitions/{id}/ -> v1_reporting_rapport_definitions_destroy
@@ -10069,6 +10073,7 @@ components:
 - CrmLeadLocataireIssue
 - CrmLeadMergeRequestRequest
 - CrmLeadMessageVisite
+- CrmLeadRecontactRequestRequest
 - CrmLeadSupprime
 - CrmLeadVisitePassee
 - CrmLeadVisitePlanifiee
@@ -11966,6 +11971,7 @@ components:
 - PrixFournisseurImportCorpsRequest
 - PrixFournisseurRequest
 - Probleme
+- ProblemeClientRequeteRequest
 - ProblemeRequest
 - ProblemeStatutEnum
 - ProchaineToucheCrm

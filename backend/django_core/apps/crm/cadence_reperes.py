@@ -179,6 +179,26 @@ _CLOTURE_TAGS = {
     'deuxieme_affaire': _CLOTURE_TAG_DEUXIEME_AFFAIRE,
 }
 
+
+def tag_injoignable(company):
+    """CADV80 (D-CADV-1) — « Injoignable N appels », N lu sur le gabarit actif
+    de prise de contact de la société : l'étiquette dit ce que SA cadence a
+    fait (le « 6 » de ``_CLOTURE_TAG_INJOIGNABLE`` reste le défaut livré)."""
+    appels = sum(
+        1 for gabarit in gabarit_relance.CadenceRelanceEtape.cadence_pour(
+            company, 'contact')
+        if gabarit.canal == gabarit_relance.CanalRelance.APPEL)
+    return f'Injoignable {appels} appel{"s" if appels > 1 else ""}'
+
+
+#: CADV72 (D-CADV-4) — la RAISON de parcage de la fin de gabarit, en champ
+#: (``parquer_lead``) ; l'étiquette ci-dessus reste, c'est l'affichage.
+_CLOTURE_RAISONS = {
+    'contact': 'injoignable',
+    'apres_devis': 'pas_maintenant_sans_date',
+    'deuxieme_affaire': 'pas_maintenant_sans_date',
+}
+
 #: MRY11 — étape la plus AVANCÉE qu'une cadence puisse encore parquer.
 #: `_bulk_stage_allowed` autorise « vers COLD » depuis N'IMPORTE OÙ (c'est
 #: voulu pour une mise au parking manuelle) : sans ce plafond, épuiser une
@@ -463,6 +483,11 @@ def prefixe_activite_touche(etape):
 #: ``marquer_etape_relance``, relu par ``touche_close_de``.
 _ATTRIBUT_TOUCHE_CLOSE = '_touche_close'
 
+#: CADV9 — même mécanisme : le type que la touche close aurait porté, quand sa
+#: ligne de réponse est devenue une note parce que le clic « WhatsApp ouvert »
+#: est déjà la tentative. La suite (« il a répondu → l'appeler ») en dépend.
+_ATTRIBUT_KIND_TOUCHE = '_kind_touche'
+
 
 def touche_close_de(activite):
     """SUIVI E22 — la touche dont ``activite`` est la ligne de CLÔTURE, telle
@@ -470,6 +495,12 @@ def touche_close_de(activite):
     autre ligne (journal d'appel de la fiche, note, ligne relue en base) —
     le récepteur retombe alors sur son comportement ordinaire."""
     return getattr(activite, _ATTRIBUT_TOUCHE_CLOSE, None)
+
+
+def kind_de_la_touche(activite):
+    """CADV9 — le type RÉEL de la touche que cette ligne clôt (``kind`` de la
+    ligne pour toute autre activité)."""
+    return getattr(activite, _ATTRIBUT_KIND_TOUCHE, activite.kind)
 
 
 def est_cloture_d_etape_visite(activite):

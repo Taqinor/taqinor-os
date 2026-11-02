@@ -113,6 +113,7 @@ NON_APPLICABLES_DETAIL_LEAD = {
     'planifier_visite': 'visite du lead de l’URL ; le commercial du corps est '
                         'un utilisateur, pas un lead/client',
     'questionnaire_lien': 'lien public du lead de l’URL (aucun id du corps)',
+    'recontact': 'rouvre le seul lead de l’URL (get_object borné), aucun id du corps',
     'salle_vente_analytics_view': 'analytique des salles du lead de l’URL',
     'whatsapp_devis': 'envoi externe (WhatsApp) du devis du lead de l’URL',
     'whatsapp_devis_apercu': 'aperçu du message du devis du lead de l’URL',

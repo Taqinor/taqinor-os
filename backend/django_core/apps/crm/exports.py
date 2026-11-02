@@ -118,9 +118,13 @@ def _sans_colonnes(headers, rows, retirees):
 
 def export_leads_xlsx(leads, *, masquer_pii=False):
     """Réponse .xlsx pour une sélection de leads. ``masquer_pii`` (ACRM4)
-    retire les colonnes e-mail / téléphone / WhatsApp."""
+    retire les colonnes e-mail / téléphone / WhatsApp. CADV67 — « opposé :
+    jamais contacté, jamais exporté » : un lead « ne plus contacter » ne sort
+    pas, quelle que soit la sélection."""
+    from .portee_selectors import peut_contacter
+
     headers = LEAD_EXPORT_HEADERS
-    rows = [lead_row(lead) for lead in leads]
+    rows = [lead_row(lead) for lead in leads if peut_contacter(lead)]
     if masquer_pii:
         headers, rows = _sans_colonnes(headers, rows, LEAD_EXPORT_PII_HEADERS)
     return build_xlsx_response(

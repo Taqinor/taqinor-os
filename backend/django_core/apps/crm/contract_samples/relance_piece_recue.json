@@ -38,6 +38,7 @@
     "type_etape": "suivi_message",
     "est_tache": false,
     "nb_reports": 0,
+    "rappel_convenu_le": null,
     "due_initial_at": "2026-09-05T13:00:00Z",
     "posee_le": "2026-09-05T13:00:00Z",
     "visite_prevue_le": null,

@@ -57,7 +57,10 @@ from .cadence_plan import (
     initialiser_plan_relance,
     reporter_prochaine_touche,
 )
-from .fiche_funnel import avancer_stage_lead_vers, poser_tag_lead, retirer_tag_lead
+from .fiche_funnel import (
+    CYCLES_STANDBY_MAX, ParcRefuse, avancer_stage_lead_vers, cycles_standby, parquer_lead,
+    poser_tag_lead, retirer_tag_lead,
+)
 from .cadence_messages import ETIQUETTES_RAISON_ATTENTE, PREFIXE_LIEN_LOCATAIRE, RAISONS_ATTENTE
 from .cadence_reperes import (
     FILET_JOINT_DELAI_JOURS,
@@ -826,17 +829,24 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
     spec = REPONSES_TOUCHE[REPONSE_PLUS_TARD]
     libelle = (etape.libelle or '').strip() or etape.get_canal_display()
     quand = _instant_de_veille(quand)
-    reprise = mettre_en_veille(lead, user, quand, etape=etape,
-                               journaliser=False)
-    if reprise is not None and reprise.pk == etape.pk:
+    jour_convenu = quand.astimezone(horaires.CASABLANCA).date()
+    # CADV78 — plafond : deux cycles, sauf une date du trimestre en cours.
+    aujourd_hui = aujourd_hui_local()
+    au_froid = (cycles_standby(lead) >= CYCLES_STANDBY_MAX
+                and (jour_convenu.year, (jour_convenu.month - 1) // 3)
+                != (aujourd_hui.year, (aujourd_hui.month - 1) // 3))
+    reprise = (None if au_froid else mettre_en_veille(
+        lead, user, quand, etape=etape, journaliser=False))
+    if au_froid:
+        suite = 'troisième « plus tard » hors du trimestre : dossier rangé au Froid'
+    elif reprise is not None and reprise.pk == etape.pk:
         suite = (f'dossier en veille jusqu’au {reprise.due_date:%d/%m/%Y}, '
                  'reprise à cette même touche — aucun barreau consommé')
     elif reprise is not None:
         suite = (f'plus d’un mois d’attente : la cadence est arrêtée et un '
                  f'réveil est daté du {reprise.due_date:%d/%m/%Y}')
     else:
-        jour = quand.astimezone(horaires.CASABLANCA).date()
-        suite = (f'veille demandée jusqu’au {jour:%d/%m/%Y}, aucune touche à '
+        suite = (f'veille demandée jusqu’au {jour_convenu:%d/%m/%Y}, aucune touche à '
                  'reprendre')
     corps = (f'Réponse du client sur la touche « {libelle} » : « '
              f'{spec["note"]} » — {suite}.')
@@ -848,6 +858,17 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
         company=lead.company, lead=lead, user=user,
         kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
         body=corps, outcome=spec['outcome'])
+    # CADV77 (D-CADV-4) — l'état Standby se lit sur le lead, à la date du client.
+    # Après la ligne de réponse : elle est la touche que CADV22 exige.
+    try:
+        if au_froid:
+            parquer_lead(lead, 'pas_maintenant_sans_date', None, user)
+        else:
+            parquer_lead(lead, 'plus_tard_date', jour_convenu, user)
+    except ParcRefuse as refus:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=f'Standby refusé : {refus}.')
     if reprise is None:
         etape.refresh_from_db()
         return etape
@@ -1532,6 +1553,79 @@ def enregistrer_piece_recue(etape, user, *, type_piece, attachment=None,
     _recaler_file(lead, user)
     etape_devis.refresh_from_db()
     return etape, etape_devis
+
+
+# ── CADV35 — le client au Froid qui recontacte (conception v4 §4.5) ─────────
+#
+# Un Nurture n'a plus de touche où saisir « il a répondu » (CADV25) et
+# ``reprendre_cadence_apres_reouverture`` est un no-op délibéré sur un lead au
+# Froid : ce geste est le seul chemin. Humain (écran ou appel entrant noté) ou
+# formulaire Meta renvoyé (CADV101) ; jamais déclenché par un message capté.
+
+#: CADV35 — les canaux par lesquels le client revient. ``formulaire_meta`` n'est
+#: pas proposé à l'API : seul le webhook Meta l'emploie (CADV101).
+CANAUX_RECONTACT = {
+    'whatsapp': 'WhatsApp',
+    'appel': 'appel entrant',
+    'formulaire_meta': 'formulaire Meta',
+}
+CANAUX_RECONTACT_API = ('whatsapp', 'appel')
+
+
+def refus_recontact(lead, canal):
+    """CADV35 — refuse le geste de la route ``recontact`` : canal hors
+    vocabulaire de l'API = 400 ; ÉTAT de la fiche = 409 (ENF11, jamais un 400)."""
+    from rest_framework.exceptions import ValidationError
+
+    from core.conflit_etat import ConflitEtat
+
+    if canal not in CANAUX_RECONTACT_API:
+        raise ValidationError({'canal': 'Canal attendu : whatsapp ou appel.'})
+    if lead.perdu:
+        raise ConflitEtat('Lead perdu : décochez « Perdu » pour le rouvrir.')
+    if lead.is_archived:
+        raise ConflitEtat('Lead archivé : restaurez-le pour le rouvrir.')
+    if lead.ne_plus_contacter:
+        raise ConflitEtat('Lead « ne plus contacter » : l’opposition se lève sur la '
+                          'fiche, jamais par ce geste.')
+    if lead.stage == stages.SIGNED:
+        raise ConflitEtat('Lead signé : rien à rouvrir.')
+    if lead.stage != stages.COLD:
+        raise ConflitEtat('Ce lead n’est pas au Froid : rien à rouvrir.')
+
+
+def enregistrer_recontact(lead, user, *, canal, note=''):
+    """CADV35 — le client d'un lead au Froid se manifeste : Froid → Contacté,
+    parcage effacé, UNE étape « Appeler le client — il a répondu au message »,
+    une ligne de chatter à l'acteur, responsable prévenu.
+
+    Le devis éventuel ne démarre rien (``avec_plan_devis=False``) : la suite
+    d'une réponse est l'appel. Les touches encore ouvertes (réveils) sont
+    annulées d'abord, sinon le filet ne poserait rien. L'appelant vérifie
+    ``refus_recontact`` avant. Renvoie l'étape posée."""
+    arreter_cadence(lead, user=user, motif='le client a recontacté')
+    ancienne = lead.parc_raison
+    lead.parc_etat = lead.parc_raison = lead.parc_jusqu_au = None
+    lead.save(update_fields=['parc_etat', 'parc_raison', 'parc_jusqu_au'])
+    if ancienne:
+        activity.log_bulk_change(lead, user, 'parc_raison', ancienne, None)
+    avancer_stage_lead_vers(lead, user, stages.CONTACTED)
+    corps = f'Le client a recontacté ({CANAUX_RECONTACT[canal]}).'
+    if (note or '').strip():
+        corps += f' Note : {note.strip()}'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE, body=corps)
+    etape = assurer_prochaine_etape_apres_succes(
+        lead, user, avec_plan_devis=False,
+        canal_touche=LeadActivity.Kind.WHATSAPP)
+    responsable = lead.owner
+    if responsable is not None and responsable != user:
+        from apps.notifications.services import notify
+        notify(user=responsable, event_type='lead_assigned',
+               title='Lead rouvert — le client a recontacté', body=corps,
+               link=f'/crm/leads?lead={lead.pk}', reason='assigne_a_vous')
+    return etape
 
 
 # ── CAD-A ── CAD10 — le motif de refus, FACULTATIF, au moment où il est dit ─

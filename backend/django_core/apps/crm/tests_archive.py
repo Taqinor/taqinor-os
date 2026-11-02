@@ -14,10 +14,11 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.crm.models import Lead, Client, LeadActivity
+from apps.crm.models import Lead, Client, LeadActivity, RelanceEtape
 from apps.ventes.models import Devis
 
 User = get_user_model()
@@ -81,6 +82,29 @@ class TestArchiveRestore(ArchiveTestBase):
         r = api.get('/api/django/crm/leads/?archived=all')
         ids = ids_of(r)
         self.assertIn(self.lead.id, ids)
+
+    def test_archiver_arrete_les_touches_ouvertes(self):
+        """CADV61 — plus aucune touche à faire ; restaurer n'en ressuscite
+        aucune. Mutant : retirer le relais ⇒ 3 touches restent à faire."""
+        touches = [
+            RelanceEtape.objects.create(
+                company=self.lead.company, lead=self.lead, cadence='contact',
+                ordre=ordre, due_date=timezone.localdate(),
+                canal=RelanceEtape.Canal.APPEL, libelle=f'Appel {ordre}')
+            for ordre in (1, 2, 3)]
+        api = auth(self.resp)
+        a = api.post(f'/api/django/crm/leads/{self.lead.id}/archiver/')
+        self.assertEqual(a.status_code, 200, a.data)
+        self.assertFalse(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
+        for touche in touches:
+            touche.refresh_from_db()
+            self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+            self.assertEqual(touche.note, 'lead archivé')
+        r = api.post(f'/api/django/crm/leads/{self.lead.id}/restaurer/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
 
     def test_restore_returns_lead_to_default_views(self):
         api = auth(self.resp)

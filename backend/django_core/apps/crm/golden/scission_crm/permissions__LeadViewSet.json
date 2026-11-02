@@ -390,6 +390,16 @@
   ]
  },
  {
+  "action": "recontact",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
   "action": "references_proches",
   "methode": "GET",
   "permissions": [

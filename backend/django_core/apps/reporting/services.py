@@ -15,6 +15,14 @@ from django.utils import timezone
 
 DEFAULT_WEB_VITALS_RETENTION_DAYS = 30
 
+# YJPB1 — journal des problèmes vécus par les utilisateurs : même
+# raisonnement que les Web Vitals (trace technique, pas une donnée
+# métier), fenêtre volontairement PLUS LONGUE (90 j) pour qu'une
+# question du genre « qu'ont vécu les commerciaux ce trimestre ? » ait
+# encore de quoi répondre. Override fondateur :
+# PROBLEMES_CLIENT_RETENTION_DAYS (0/négatif = conservation illimitée).
+DEFAULT_PROBLEMES_CLIENT_RETENTION_DAYS = 90
+
 
 def q_lead_gagne():
     """AANA21 / D-AANA-1 — filtre ORM d'un lead GAGNÉ : étape SIGNED (clé lue
@@ -172,6 +180,25 @@ def purge_web_vitals(now, apply_) -> int:
         return 0
     cutoff = (now or timezone.now()) - timezone.timedelta(days=days)
     qs = WebVitalMetric.objects.filter(created_at__lt=cutoff)
+    count = qs.count()
+    if apply_ and count:
+        qs.delete()
+    return count
+
+
+def purge_problemes_client(now, apply_) -> int:
+    """YJPB1 — purge les `ProblemeClient` au-delà de la fenêtre de rétention.
+    Contrat `core.retention` : `apply_=False` (dry-run) ne supprime rien,
+    renvoie le compte qui SERAIT supprimé."""
+    from .models import ProblemeClient
+
+    days = _retention_days(
+        'PROBLEMES_CLIENT_RETENTION_DAYS',
+        DEFAULT_PROBLEMES_CLIENT_RETENTION_DAYS)
+    if days <= 0:
+        return 0
+    cutoff = (now or timezone.now()) - timezone.timedelta(days=days)
+    qs = ProblemeClient.objects.filter(created_at__lt=cutoff)
     count = qs.count()
     if apply_ and count:
         qs.delete()

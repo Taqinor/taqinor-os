@@ -585,7 +585,43 @@ ETAT_PAR_RAISON = {
 }
 
 
-def parquer_lead(lead, raison, jusqu_au, user):
+#: CADV22 (conception v4 §2, invariant 3) — appels humains tracés exigés pour
+#: dire « injoignable » ; les raisons qui ne supposent aucune touche.
+APPELS_MIN_INJOIGNABLE = 5
+RAISONS_SANS_TOUCHE = frozenset({'faux_numero', 'doublon', 'test'})
+
+
+class ParcRefuse(Exception):
+    """CADV22 — ce parcage est refusé : rien n'a été écrit. Listé dans
+    ``skipped`` par le lot, noté au chatter par la fin de gabarit."""
+
+
+def nb_contacts_humains(lead, kinds=None):
+    """CADV22 — tentatives signées d'un humain (même définition que
+    l'annotation ``nb_tentatives`` de ``LeadViewSet``), restreintes à ``kinds``."""
+    kinds = kinds or (LeadActivity.Kind.APPEL, LeadActivity.Kind.WHATSAPP,
+                      LeadActivity.Kind.EMAIL)
+    return lead.activites.filter(user__isnull=False, kind__in=kinds).count()
+
+
+def _refus_parcage(lead, raison, exiger_touche):
+    """Le message du refus de ce parcage, ou ``None``. Un lead « WhatsApp
+    uniquement » compte aussi ses WhatsApp pour « injoignable »."""
+    if raison == 'injoignable':
+        kinds = [LeadActivity.Kind.APPEL]
+        if lead.contact_preference == Lead.ContactPreference.WHATSAPP_ONLY:
+            kinds.append(LeadActivity.Kind.WHATSAPP)
+        trouves = nb_contacts_humains(lead, kinds)
+        if trouves < APPELS_MIN_INJOIGNABLE:
+            return (f'injoignable exige {APPELS_MIN_INJOIGNABLE} appels tracés '
+                    f'({trouves} trouvés)')
+    if (exiger_touche and raison not in RAISONS_SANS_TOUCHE
+            and not nb_contacts_humains(lead)):
+        return 'aucun parcage à 0 touche'
+    return None
+
+
+def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True):
     """CADV21 — LE point d'écriture unique du parcage d'un lead : pose
     ``parc_etat`` (dicté par ``raison``, table ``ETAT_PAR_RAISON``),
     ``parc_raison`` et ``parc_jusqu_au``, range le lead au Froid
@@ -594,7 +630,9 @@ def parquer_lead(lead, raison, jusqu_au, user):
 
     ``raison`` inconnue ⇒ ``ValueError`` ; ``standby`` sans date de reprise ⇒
     ``ValueError`` (``jusqu_au`` est ignorée hors standby). Renvoie ``lead``.
-    Les refus métier (appels tracés, 0 touche) sont CADV22, pas ici."""
+    CADV22 — ``ParcRefuse`` sous 5 appels tracés (« injoignable ») ou à 0 touche,
+    et rien n'est écrit ; ``exiger_touche=False`` : le seul parcage après
+    expiration d'un devis envoyé (CADV84), l'envoi est la touche."""
     etat = ETAT_PAR_RAISON.get(raison)
     if etat is None:
         raise ValueError(f'Raison de parcage inconnue : {raison!r}.')
@@ -602,6 +640,15 @@ def parquer_lead(lead, raison, jusqu_au, user):
         raise ValueError('Un parcage en standby exige une date de reprise.')
     jusqu_au = jusqu_au if etat == 'standby' else None
     ancienne = lead.parc_raison
+    # CADV72 — rejouer le MÊME parcage sur un lead déjà rangé n'écrit aucune
+    # seconde ligne. Sorti du Froid depuis (réveil joint, colonnes gardées), il
+    # se range à nouveau : sinon ses réveils partiraient sur un lead hors Froid.
+    if ((ancienne, lead.parc_etat, lead.parc_jusqu_au) == (raison, etat, jusqu_au)
+            and (etat == 'standby' or lead.stage == stages.COLD)):
+        return lead
+    refus = _refus_parcage(lead, raison, exiger_touche)
+    if refus:
+        raise ParcRefuse(refus)
     lead.parc_etat = etat
     lead.parc_raison = raison
     lead.parc_jusqu_au = jusqu_au
@@ -610,6 +657,19 @@ def parquer_lead(lead, raison, jusqu_au, user):
     if etat != 'standby':
         avancer_stage_lead_vers(lead, user, stages.COLD)
     return lead
+
+
+#: CADV78 — au plus deux cycles de Standby ; le troisième « Plus tard » hors du
+#: trimestre en cours range le lead au Froid.
+CYCLES_STANDBY_MAX = 2
+
+
+def cycles_standby(lead):
+    """CADV78 — combien de fois ce lead est passé en Standby : le chatter de
+    ``parquer_lead`` fait foi, aucune colonne de plus."""
+    return lead.activites.filter(
+        field='parc_raison',
+        new_value=Lead.ParcRaison.PLUS_TARD_DATE.label).count()
 
 
 def assigner_lead_a(lead, user, owner_id):

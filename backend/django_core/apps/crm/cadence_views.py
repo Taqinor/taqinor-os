@@ -28,10 +28,8 @@ from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
 from .cadence_temps import instant_utc
 from .controle_suivi import SEGMENTS_ADMIS
-from .params_requete import (
-    CorpsTexteMixin, corps_objet, entier_param, texte_verifie, verifier_corps_texte,
-)
-from .cadence_reponses import CLES_MESSAGE_REPONSE, REPONSES_TOUCHE, TYPES_PIECE_RECUE
+from .params_requete import CorpsTexteMixin, corps_objet, entier_param, texte_verifie, verifier_corps_texte
+from .cadence_reponses import CANAUX_RECONTACT_API, CLES_MESSAGE_REPONSE, REPONSES_TOUCHE, TYPES_PIECE_RECUE
 from core.champs_stricts import ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
@@ -1502,9 +1500,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
         simplement s'il est présent sans lead_id fourni).
         """
         tmpl = self.get_object()
-        # ERR-ENF11-FUZZ-CRM — corps non objet (``.get`` absent) ou texte non
-        # texte (``str.replace`` sur un entier) : 400 au lieu de 500.
-        verifier_corps_texte(request, ('prenom', 'ville', 'lien'))
+        verifier_corps_texte(request, ('prenom', 'ville', 'lien'))  # ENF11 : non objet / non texte = 400
         prenom = request.data.get('prenom', '')
         ville = request.data.get('ville', '')
         lien = request.data.get('lien', '')
@@ -1581,10 +1577,8 @@ class LeadCadenceActionsMixin:
                            # ligne l'action retomberait sur IsAdminRole et la
                            # Commerciale — qui arrête — serait refusée.
                            'arreter_relance',
-                           # MRY30 — placement des anciens leads dans les
-                           # cadences : même motif (l'@action déclare
-                           # IsResponsableOrAdmin).
-                           'placement_cadences'):
+                           # MRY30 — placement des anciens leads : même motif (@action IsResponsableOrAdmin).
+                           'placement_cadences', 'recontact'):
             return [IsResponsableOrAdmin()]
         return super().get_permissions()
 
@@ -1809,6 +1803,18 @@ class LeadCadenceActionsMixin:
         arretees = arreter_cadence(
             lead, user=request.user, motif=motif, cadences=cadences)
         return Response({'arretees': arretees}, status=status.HTTP_200_OK)
+
+    @extend_schema(request=sd.corps('CrmLeadRecontactRequest', canal=ChoixDocumente(choices=CANAUX_RECONTACT_API),
+                                    note=ChaineStricte(required=False, allow_blank=True)), responses=sd.OBJ)
+    @action(detail=True, methods=['post'], permission_classes=[IsResponsableOrAdmin])
+    @_geste_atomique
+    def recontact(self, request, pk=None):
+        """CADV35 — le client d'un lead au Froid revient ; contrat `lead_recontact.json`."""
+        from .cadence_reponses import enregistrer_recontact, refus_recontact
+        lead, canal = self.get_object(), texte_verifie(request, 'canal', 'note')
+        refus_recontact(lead, canal)
+        etape = enregistrer_recontact(lead, request.user, canal=canal, note=request.data.get('note'))
+        return Response({'etape': getattr(etape, 'cle', ''), 'stage': lead.stage})
 
     @extend_schema(request=sd.corps('CrmPlacementCadencesRequest', apply=serializers.BooleanField(required=False),
                                     limite=serializers.IntegerField(required=False, min_value=1, max_value=200)),
