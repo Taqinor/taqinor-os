@@ -122,6 +122,29 @@ def _refus_borne(i, bornes, produit_id, montants):
     return None
 
 
+def _avoir_cree(avoir):
+    """Réponse 201 de ``creer-avoir`` (hors du mixin : noms figés, VNT96)."""
+    # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
+    try:
+        from ..utils.pdf import generate_avoir_pdf
+        generate_avoir_pdf(avoir.id)
+        avoir.refresh_from_db()
+    except Exception:
+        logger.warning("facture.FactureViewSet.creer_avoir : erreur ignorée (mode dégradé)", exc_info=True)
+    return Response(AvoirSerializer(avoir).data,
+                    status=status.HTTP_201_CREATED)
+
+
+def _contre_passer_par_annulation(facture, user, motif):
+    """AARG39 — la contre-passation EST l'annulation sans directive."""
+    from ..domain.annulation_facture import AnnulationRefusee, annuler_facture
+    try:
+        facture = annuler_facture(facture, user=user, motif=motif)
+    except AnnulationRefusee as refus:
+        return Response(refus.corps, status=status.HTTP_409_CONFLICT)
+    return _avoir_cree(facture.avoir_annulation)
+
+
 def _montant_note_debit(donnees, facture):
     """AFAC32 — montant HT + taux saisis d'une note de débit SANS lignes.
     Rend ``((montant, taux), None)`` ou ``((None, None), message)`` — 400.
@@ -180,7 +203,7 @@ class FactureRectificatifsActionsMixin:
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
         if mode == 'contre_passation':
-            return self._contre_passer_par_annulation(facture, request, motif)
+            return _contre_passer_par_annulation(facture, request.user, motif)
         lignes = request.data.get('lignes')
         # Plafond : un avoir ne peut pas dépasser le reste créditable de la
         # facture (TTC − avoirs actifs déjà émis). AUD126 — il est désormais
@@ -267,30 +290,7 @@ class FactureRectificatifsActionsMixin:
             # Refus de VALEUR (ligne, type) : 400.
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
-        return self._avoir_cree(avoir)
-
-    def _contre_passer_par_annulation(self, facture, request, motif):
-        """AARG39 — la contre-passation EST l'annulation sans directive."""
-        from ..domain.annulation_facture import (
-            AnnulationRefusee, annuler_facture,
-        )
-        try:
-            facture = annuler_facture(facture, user=request.user, motif=motif)
-        except AnnulationRefusee as refus:
-            return Response(refus.corps, status=status.HTTP_409_CONFLICT)
-        return self._avoir_cree(facture.avoir_annulation)
-
-    @staticmethod
-    def _avoir_cree(avoir):
-        # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
-        try:
-            from ..utils.pdf import generate_avoir_pdf
-            generate_avoir_pdf(avoir.id)
-            avoir.refresh_from_db()
-        except Exception:
-            logger.warning("facture.FactureViewSet.creer_avoir : erreur ignorée (mode dégradé)", exc_info=True)
-        return Response(AvoirSerializer(avoir).data,
-                        status=status.HTTP_201_CREATED)
+        return _avoir_cree(avoir)
 
     @extend_schema(request=D.CreerNoteDebitRequest,
                    responses={201: NoteDebitSerializer},
