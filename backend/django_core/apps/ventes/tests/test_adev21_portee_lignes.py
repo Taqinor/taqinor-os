@@ -165,9 +165,11 @@ class PorteeLignesTests(TestCase):
     def test_lead_d_un_collegue_refuse_aux_trois_portes(self):
         lead = self._lead(self.auteur)
         reponses = self._portes_de_creation(lead)
-        self.assertEqual(reponses['atomic'].status_code, 400,
+        # atomic : le 404 d'un id d'une autre société (IdInconnu404Mixin), même
+        # corps au pk près : le refus ne dit pas que le lead existe.
+        self.assertEqual(reponses['atomic'].status_code, 404,
                          reponses['atomic'].content[:300])
-        self.assertEqual(reponses['atomic'].json()['lead'], ['Lead inconnu.'])
+        self.assertIn(str(lead.pk), str(reponses['atomic'].json()['lead']))
         for porte in ('auto', 'composition'):
             with self.subTest(porte=porte):
                 self.assertEqual(reponses[porte].status_code, 404,
@@ -195,7 +197,8 @@ class PorteeLignesTests(TestCase):
             company=autre, nom='Etranger', prenom='Lead',
             telephone='+212600000022')
         reponses = self._portes_de_creation(lead)
-        self.assertEqual(reponses['atomic'].status_code, 400)
+        self.assertEqual(reponses['atomic'].status_code, 404)
+        self.assertIn(str(lead.pk), str(reponses['atomic'].json()['lead']))
         self.assertEqual(reponses['auto'].status_code, 404)
         self.assertEqual(reponses['composition'].status_code, 404)
 
