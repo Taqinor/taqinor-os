@@ -304,7 +304,10 @@ class TestScheduledJobs(TestCase):
                 if relance:
                     Facture.objects.filter(pk=f.pk).update(
                         prochaine_relance=relance)
-            with CaptureQueriesContext(connection) as ctx:
+            # AARG58 : le rendu du PDF joint n'est pas ce que ce test borne.
+            from unittest.mock import patch
+            with patch('apps.ventes.email_service._document_pdf',
+                       return_value=(b'%PDF', 'x.pdf')),                     CaptureQueriesContext(connection) as ctx:
                 beat()
             return sum(1 for q in ctx.captured_queries
                        if any(t in q['sql'] for t in tables))
