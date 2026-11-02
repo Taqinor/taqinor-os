@@ -1572,7 +1572,7 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     return cible
 
 
-def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
+def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None, garder=None):
     """MRY9 — LA fonction d'arrêt d'une (ou de toutes les) cadence(s).
 
     UNE seule implémentation pour SIX déclencheurs (devis accepté, passage
@@ -1598,6 +1598,8 @@ def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
     CAD5 — ``exclure`` (une touche) la laisse ouverte : la réponse « Ne plus
     me contacter » arrête TOUT le reste sous son vrai motif, puis clôt
     elle-même la touche sur laquelle le client l'a dit (qui porte l'issue).
+    CADV36 — ``garder`` (un ``Q``) laisse ouvertes les touches qu'il désigne : un
+    second devis accepté déplace les touches d'après-acceptation, sans les annuler.
 
     Renvoie le nombre de touches arrêtées."""
     ouvertes = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
@@ -1605,6 +1607,8 @@ def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
         ouvertes = ouvertes.filter(cadence__in=list(cadences))
     if exclure is not None:
         ouvertes = ouvertes.exclude(pk=exclure.pk)
+    if garder is not None:
+        ouvertes = ouvertes.exclude(garder)
     pks = list(ouvertes.values_list('pk', flat=True))
     if not pks:
         return 0
@@ -1632,7 +1636,7 @@ def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
 
 
 def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
-                               cadences=None):
+                               cadences=None, garder=None):
     """Variante par ID, best-effort — pour les receivers qui ne tiennent qu'un
     ``devis.lead_id``. Ne lève JAMAIS : un arrêt de cadence en échec ne doit
     pas faire retomber l'acceptation d'un devis déjà actée."""
@@ -1650,7 +1654,7 @@ def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
             if lead is None:
                 return 0
             return arreter_cadence(lead, user=user, motif=motif,
-                                   cadences=cadences)
+                                   cadences=cadences, garder=garder)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'arreter_cadence: échec sur le lead #%s', lead_id, exc_info=True)

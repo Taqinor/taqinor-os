@@ -24,6 +24,7 @@ from .cadence_visite import (
 from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
 from .cadence_filet import (
     _poser_etape_de_filet,
+    _q_chaine_ouverte,
     assurer_prochaine_etape_apres_succes,
     poser_chaine_apres_acceptation,
     poser_filet_visite_a_planifier,
@@ -86,9 +87,11 @@ def _arreter_cadence_on_devis_accepted(sender, devis, user, ancien_statut,
     l'acceptation, qui est déjà actée."""
     arreter_cadence_du_lead_id(
         getattr(devis, 'lead_id', None), company=getattr(devis, 'company', None),
-        user=user, motif='devis accepté')
+        user=user, motif='devis accepté', garder=_q_chaine_ouverte())
     # CADV36 — APRÈS l'arrêt, qui les annulerait. L'acceptation est déjà actée :
     # une pose en échec ne la remet pas en cause, ni l'arrêt qui vient d'avoir lieu.
+    # Un second signal les trouve ouvertes : l'arrêt les garde, la pose les déplace
+    # (sans lui, une ligne annulée et une note de plus à chaque signal).
     try:
         with transaction.atomic():
             poser_chaine_apres_acceptation(devis, user)
