@@ -139,7 +139,7 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
 
         Corps : ``{"valider": true|false, "motif_rejet": "…"}``. Une
         validation exige que TOUTES les pièces requises soient présentes et
-        non expirées (400 explicite sinon).
+        non expirées (409 explicite sinon).
 
         ASTK190 (C-ASTK-043) — ``valider`` est OBLIGATOIRE et parsé
         strictement (``parse_bool_strict``, le helper de
@@ -175,13 +175,15 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
         if valider:
             detail = selectors.progression_onboarding(dossier)
             if not detail['complet']:
+                # ENF11 (api-fuzz) — pièces enregistrées manquantes/expirées :
+                # refus d'ÉTAT du dossier (corps conforme) : 409, pas 400.
                 return Response(
                     {'detail': 'Dossier incomplet : pièces manquantes ou '
                                'expirées — '
                                f'{", ".join(detail["manquants"]) or "aucune"} '
                                f'({detail["progression_pct"]}%).',
                      'progression': detail},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)
             dossier.statut = DossierOnboardingFournisseur.Statut.VALIDE
             dossier.motif_rejet = ''
         else:

@@ -235,7 +235,7 @@ class ProgressionEtValidationTests(TestCase):
         resp = self.api.post(
             f'{STOCK}/dossiers-onboarding-fournisseur/{self.dossier.pk}/'
             'valider-dossier/', {'valider': True}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)  # ENF11 : refus d'etat
         self.dossier.refresh_from_db()
         self.assertNotEqual(self.dossier.statut,
                             DossierOnboardingFournisseur.Statut.VALIDE)
