@@ -163,6 +163,9 @@ describe('useCanListFactures (ERR-ASEC11-LECTURE-FACTURES)', () => {
 
   it('autorise un rôle portant ventes_voir, le palier admin et le compte hérité', () => {
     expect(peut({ role_nom: 'Commercial', permissions: ['ventes_voir'] })).toBe(true)
+    // ADVS23 — `LectureVentes` : un code du module suffit, pas seulement ventes_voir.
+    expect(peut({ role_nom: 'Caissier', permissions: ['encaisser'] })).toBe(true)
+    expect(peut({ role_nom: 'Rédacteur', permissions: ['ventes_creer'] })).toBe(true)
     expect(peut({ role: 'admin', role_nom: 'Directeur', permissions: [] })).toBe(true)
     expect(peut({ role: 'responsable', role_nom: null, permissions: [] })).toBe(true)
   })
