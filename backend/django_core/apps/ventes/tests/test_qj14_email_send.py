@@ -432,6 +432,46 @@ class TestEnvoyerEmailEchecNeMarquePas(TestCase):
         self.assertEqual(devis.statut, 'brouillon')
         self.assertIn('minio muet', EmailLog.objects.get(devis=devis).erreur)
 
+    def _cgv(self, puce):
+        from apps.parametres.models_documents import DocumentTemplates
+        DocumentTemplates.objects.update_or_create(
+            company=self.company, defaults={'cgv_bullets': [puce]})
+
+    def test_envoi_avorte_ne_gele_pas_les_cgv(self):
+        """ADVS29 (C-ADVS-008) — envoi avorté (aucune adresse, échec SMTP), CGV
+        retouchées, envoi réussi : le gel et le PDF joint portent les CGV du
+        jour ; rien n'est écrit par la tentative avortée."""
+        def puces(clauses):
+            return [c['bullets'] for c in clauses or []
+                    if isinstance(c, dict) and c.get('type') == 'cgv_gelees']
+
+        for suffixe, premier_corps, smtp, statut in (
+                ('A1', {}, (True, ''), 409), ('A2', {'to_email': 'a@test.ma'}, (False, 'boom'), 502)):
+            client = Client.objects.create(company=self.company, nom='Sans adresse',
+                                           telephone='+2126110029' + suffixe[-1:] + '0')
+            devis = make_devis(self.company, self.user, client, 'brouillon', f'DEV-QJ14-{suffixe}')
+            avant = list(devis.clauses_appliquees or [])
+            self._cgv('CGV A')
+            imprime = {}
+
+            def rendre(devis_id, *a, **k):
+                imprime['puces'] = puces(Devis.objects.get(pk=devis_id).clauses_appliquees)
+                return 'k.pdf'
+
+            with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf', side_effect=rendre), \
+                    mock.patch('apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF'):
+                with mock.patch('apps.ventes.email_service._send', return_value=smtp):
+                    resp = self.api.post(url(devis.id), premier_corps, format='json')
+                self.assertEqual(resp.status_code, statut, resp.data)
+                devis.refresh_from_db()
+                self.assertEqual(list(devis.clauses_appliquees or []), avant)
+                self._cgv('CGV B')
+                resp = self.api.post(url(devis.id), {'to_email': 'b@test.ma'}, format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            devis.refresh_from_db()
+            self.assertEqual(puces(devis.clauses_appliquees), [['CGV B']])
+            self.assertEqual(imprime['puces'], [['CGV B']])
+
     def test_echec_smtp_ne_marque_pas_envoye(self):
         rendu_ok(self)
         devis = make_devis(self.company, self.user, self.client_obj,

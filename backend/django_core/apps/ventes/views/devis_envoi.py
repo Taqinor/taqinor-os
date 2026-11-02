@@ -151,8 +151,9 @@ def _envoi_atomique(devis, user, dest, sujet, corps, pdf_mode, token):
     règle #4 ; idempotent, ne régresse rien), PUIS le rendu, PUIS ``_send``, sous
     UNE transaction : les receveurs synchrones de ``devis_sent`` ont posé
     ``date_validite`` quand le moteur la lit, le PDF joint imprime donc la date
-    de la fiche ; toute panne annule tout (brouillon, aucune validité, aucun plan
-    de relance). Rendu à la volée (persist=False). Rend le nom de la pièce jointe."""
+    de la fiche ; QJR668 / ADVS29 — les CGV du jour, gelées par ``mark_devis_sent``,
+    y figurent ; toute panne annule tout (brouillon, aucune validité, aucun plan de
+    relance, aucun gel). Rendu à la volée (persist=False). Rend le nom de la pièce."""
     from ..email_service import _send
     from ..quote_engine import generate_premium_devis_pdf
     from ..services import mark_devis_sent
@@ -351,11 +352,6 @@ class DevisEnvoiActionsMixin:
         # UN PDF = UNE GAMME : la pièce jointe reste le PDF de CE devis, jamais
         # un PDF fusionné des deux gammes (chaque gamme a le sien).
         _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
-        # QJR668 — la pièce jointe est rendue AVANT ``mark_devis_sent`` : les
-        # clauses/CGV de l'affaire sont gelées dès maintenant pour y figurer.
-        if devis.statut == devis.Statut.BROUILLON:
-            from ..domain.envoi import figer_clauses_devis
-            figer_clauses_devis(devis)
 
         # ADEV68 — le lien de proposition est créé AVANT le rendu et son jeton
         # passé au moteur : la pièce jointe imprime CE lien, le moteur ne
