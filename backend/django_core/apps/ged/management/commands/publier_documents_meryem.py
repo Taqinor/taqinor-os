@@ -438,6 +438,11 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
                     company=company, folder=dossier, nom=titre,
                     description=description)
                 counters['documents_crees'] += 1
+            elif document.description != description:
+                # ADOC186 — le manifeste fait foi : description écrite et réindexée.
+                document.description = description
+                document.save(update_fields=['description', 'updated_at'])
+                services.update_search_vector(document)
 
             def _stocker(_fichier=fichier, _contenu=contenu):
                 upload = SimpleUploadedFile(

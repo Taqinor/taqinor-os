@@ -31,7 +31,7 @@ from .corps_requete import (
 #: ADOC26 / api-fuzz-full 24/10 — alias d'ingestion e-mail d'un dossier : vide,
 #: ou une lettre/un chiffre puis lettres, chiffres, point, tiret, souligné
 #: (normalisé en minuscules). Publié tel quel au schéma (validateur du champ).
-MOTIF_ALIAS_EMAIL = r'^([A-Za-z0-9][A-Za-z0-9._-]*)?$'
+MOTIF_ALIAS_EMAIL = rf'^([A-Za-z0-9][{services.ALIAS_EMAIL_CARACTERES}]*)?$'
 MESSAGE_ALIAS_EMAIL = (
     "Alias invalide : lettres, chiffres, point, tiret ou souligné uniquement.")
 #: Plus grand entier d'une colonne ``integer`` PostgreSQL (clé, rang).

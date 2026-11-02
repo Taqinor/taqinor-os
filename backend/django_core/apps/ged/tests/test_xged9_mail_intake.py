@@ -94,6 +94,28 @@ class ImporterMessageTests(TestCase):
         self.assertEqual(len(created), 1)
         self.assertEqual(created[0].folder_id, self.folder.pk)
 
+    def test_alias_avec_point_route_vers_le_dossier(self):
+        """ADOC187 — un alias accepté par le dialogue (point compris) est routé
+        par l'ingestion, en adresse « + » comme en objet `[alias]` ; l'alias
+        sans point garde son dossier."""
+        dossier_point = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='Compta 2026',
+            alias_email='compta.2026')
+        for raw in (
+                _build_email(to_addr='ged+compta.2026@taqinor.ma',
+                             message_id='<pt-1@x.com>'),
+                _build_email(to_addr='ged@taqinor.ma',
+                             subject='[compta.2026] Facture',
+                             message_id='<pt-2@x.com>')):
+            created = services.importer_message_email(raw, company=self.co)
+            self.assertEqual(len(created), 1)
+            relu = Document.objects.get(pk=created[0].pk)
+            self.assertEqual(relu.folder_id, dossier_point.pk)
+        created = services.importer_message_email(
+            _build_email(to_addr='ged+compta@taqinor.ma',
+                         message_id='<pt-3@x.com>'), company=self.co)
+        self.assertEqual(created[0].folder_id, self.folder.pk)
+
 
 class GatingTests(TestCase):
     def setUp(self):
