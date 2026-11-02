@@ -120,6 +120,7 @@
  "label": "crm.EquipeCommerciale",
  "relations_inverses": [
   "attributions_en_attente",
+  "permanences",
   "regles_attribution"
  ]
 }

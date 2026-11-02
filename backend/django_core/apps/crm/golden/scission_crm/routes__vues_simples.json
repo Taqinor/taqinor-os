@@ -55,6 +55,12 @@
  },
  {
   "actions_map": null,
+  "motif": "dispatch/permanences/<int:equipe_id>/",
+  "nom": "dispatch-permanences",
+  "vue": "dispatch_permanences"
+ },
+ {
+  "actions_map": null,
   "motif": "dispatch/reglages/<int:equipe_id>/",
   "nom": "dispatch-reglages",
   "vue": "dispatch_reglages"
