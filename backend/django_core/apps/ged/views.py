@@ -4348,8 +4348,9 @@ class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
                 demande, user=request.user,
                 commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except DemandeDispositionError as exc:
+            # ENF11 : déjà décidée / non approuvée = refus d'ÉTAT, pas de saisie.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -4371,8 +4372,9 @@ class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
                 demande, user=request.user,
                 commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except DemandeDispositionError as exc:
+            # ENF11 : déjà décidée / non approuvée = refus d'ÉTAT, pas de saisie.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -4390,8 +4392,9 @@ class DemandeDispositionViewSet(CorpsObjetMixin, TenantMixin,
         try:
             services.executer_demande_disposition(demande, user=request.user)
         except DemandeDispositionError as exc:
+            # ENF11 : déjà décidée / non approuvée = refus d'ÉTAT, pas de saisie.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
