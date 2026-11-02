@@ -453,9 +453,11 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         # (404 sinon), résolue côté serveur ; plus jamais d'un texte libre.
         ville = ''
         if corps.get('lead') is not None:
-            from apps.crm.selectors import get_company_lead
+            from apps.crm.selectors import leads_visibles
             from ..domain.transport import ville_du_lead
-            lead_obj = get_company_lead(company, int(corps['lead']))
+            # ADVS24 — borné à la portée du rôle, pas à la seule société.
+            lead_obj = leads_visibles(request.user, company).filter(
+                pk=int(corps['lead'])).first()
             if lead_obj is None:
                 return Response({'detail': 'Lead inconnu.'},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -502,7 +504,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
 
         Corps : ``{lead}`` (ou ``{client}``, dont on remonte au lead le plus
         récent) + ``taux_tva?`` / ``remise_globale?``. La société est TOUJOURS
-        celle du user ; le lead est borné à cette société (404 sinon). 409 si les
+        celle du user ; le lead est borné à sa portée (404 sinon). 409 si les
         données de dimensionnement manquent (le refus nomme le champ du lead
         ``field``), si un poste fixe C&I n'a pas de prix (« Prix à renseigner »,
         ALEA50) ou si rien ne se compose — l'agent demande alors la donnée /
@@ -520,7 +522,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         from ..services import build_devis_auto, AutoDevisError
         from ..models import ShareLink
         from apps.crm.selectors import (
-            get_company_lead, get_company_client, get_latest_lead_for_client,
+            get_company_client, get_latest_lead_for_client, leads_visibles,
         )
 
         company = request.user.company
@@ -536,8 +538,10 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         lead_obj = None
         lead_id = corps.get('lead')
         client_id = corps.get('client')
+        # ADVS24 — portée du rôle : le lead d'un collègue = lead inconnu.
+        visibles = leads_visibles(request.user, company)
         if lead_id:
-            lead_obj = get_company_lead(company, lead_id)
+            lead_obj = visibles.filter(pk=lead_id).first()
             if lead_obj is None:
                 return Response({'detail': 'Lead inconnu.'},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -553,6 +557,9 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                      "souhaitée) pour générer l'auto-devis."},
                     # CI #997 fuzz — l'ÉTAT de la fiche s'oppose : 409.
                     status=status.HTTP_409_CONFLICT)
+            if not visibles.filter(pk=lead_obj.pk).exists():
+                return Response({'detail': 'Lead inconnu.'},
+                                status=status.HTTP_404_NOT_FOUND)
         else:
             return Response(
                 {'detail': 'Un lead (ou un client) est requis.'},

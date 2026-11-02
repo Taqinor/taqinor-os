@@ -334,6 +334,7 @@ class DevisEditionActionsMixin:
         """Le corps de ``POST /devis/atomic/`` (voir ``atomic``)."""
         from django.db import transaction
         from rest_framework.exceptions import ValidationError
+        from apps.crm.selectors import leads_visibles
         from apps.crm.services import resolve_client_for_lead
 
         company = request.user.company
@@ -387,7 +388,9 @@ class DevisEditionActionsMixin:
 
         lead = serializer.validated_data.get('lead')
         client = serializer.validated_data.get('client')
-        if lead is not None and lead.company_id != company.id:
+        # ADVS24 — lead d'un collègue (portée du rôle) = lead d'une autre société.
+        if lead is not None and not leads_visibles(
+                request.user, company).filter(pk=lead.pk).exists():
             raise ValidationError({'lead': 'Lead inconnu.'})
         if client is not None and client.company_id != company.id:
             raise ValidationError({'client': 'Client inconnu.'})
