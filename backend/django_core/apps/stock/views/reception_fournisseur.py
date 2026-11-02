@@ -244,7 +244,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
         return response
 
     @extend_schema(responses=LISTE)
-    @action(detail=True, methods=['get'], url_path='suggestions-rangement')
+    @action(detail=True, methods=['get'], url_path='suggestions-rangement')  # headless: API seule, décision fondateur 02/11/2026 (D-ENF15-STOCK-22)
     def suggestions_rangement(self, request, pk=None):
         """NTWMS2 — casier SUGGÉRÉ pour chaque ligne, à afficher AVANT la
         validation de la réception (modifiable par le magasinier).
@@ -264,7 +264,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             'lignes': serializers.ListField(child=serializers.DictField()),
         }),
     })
-    @action(detail=True, methods=['get'], url_path='proposer-cross-dock')
+    @action(detail=True, methods=['get'], url_path='proposer-cross-dock')  # headless: API seule, décision fondateur 02/11/2026 (D-ENF15-STOCK-22)
     def proposer_cross_dock(self, request, pk=None):
         """NTWMS15 — vagues en attente qui MATCHENT les lignes reçues.
 
@@ -303,7 +303,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             'detail': serializers.CharField(required=False),
         }),
     })
-    @action(detail=True, methods=['post'], url_path='affecter-cross-dock')
+    @action(detail=True, methods=['post'], url_path='affecter-cross-dock')  # headless: API seule, décision fondateur 02/11/2026 (D-ENF15-STOCK-22)
     def affecter_cross_dock(self, request, pk=None):
         """NTWMS15 — route les lignes reçues vers un colis d'EXPÉDITION.
 

@@ -125,7 +125,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
             'deplacements': serializers.IntegerField(),
         }),
     })
-    @action(detail=True, methods=['post'], url_path='valider-scanne')
+    @action(detail=True, methods=['post'], url_path='valider-scanne')  # headless: API seule, décision fondateur 02/11/2026 (D-ENF15-STOCK-22)
     def valider_scanne(self, request, pk=None):
         """NTWMS41 — valide le retour DEPUIS LE POSTE SCANNER.
 

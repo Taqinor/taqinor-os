@@ -126,7 +126,7 @@ class AchatsParametresViewSet(viewsets.ViewSet):
         return Response(data)
 
 
-class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):
+class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):  # headless: API seule, décision fondateur 02/11/2026 (D-ENF15-STOCK-22)
     """NTP2P9 — grille éditable Paramètres → Achats : override par catégorie
     des tolérances 3 voies (XPUR10). Lecture tout rôle ; écriture réservée à
     ``stock_modifier`` (repli responsable/admin). Au plus une ligne par
