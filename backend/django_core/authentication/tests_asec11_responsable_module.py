@@ -18,7 +18,8 @@ from rest_framework.test import APIClient
 from apps.roles.models import Role
 from apps.roles.permissions_registre import PERMISSION_MODULE
 from authentication.models import Company
-from authentication.permissions import IsResponsableOrAdmin, module_de_la_vue
+from authentication.permissions import (
+    APPS_SANS_MODULE, IsResponsableOrAdmin, module_de_la_vue)
 
 User = get_user_model()
 
@@ -46,14 +47,11 @@ MATRICE_DOREE = {
     'Admin Ventes':           'WWW--WWW',
 }
 
-# Apps de FONDATION / satellites sans codes propres au registre : leurs vues
-# gardées par IsResponsableOrAdmin suivent la règle historique. Liste FIGÉE,
-# qui ne peut que décroître : une nouvelle app non résolue fait échouer le test.
-APPS_SANS_MODULE_FIGEES = frozenset({
-    'authentication', 'core', 'dataimport', 'documents', 'monitoring',
-    'offlinesync', 'outillage', 'portail', 'records', 'roles', 'semantic',
-    'uxviews',
-})
+# AARG52 — la liste des apps de fondation vit dans ``authentication.permissions``
+# (``APPS_SANS_MODULE``, seule liste). Une app non résolue HORS liste a ses
+# écritures fermées aux rôles fins ; ``portail`` l'est jusqu'à AARG8 (modules
+# posés sur ses vues). Toute autre app non résolue fait échouer le test.
+FERMEES_EN_ECRITURE_ATTENDUES = frozenset({'portail'})
 
 
 def _iter_vues(motifs):
@@ -171,8 +169,34 @@ class ResponsableParModuleTests(TestCase):
                 continue
             parties = cls.__module__.split('.')
             non_resolues.add(parties[1] if parties[0] == 'apps' else parties[0])
-        nouvelles = non_resolues - APPS_SANS_MODULE_FIGEES
+        nouvelles = non_resolues - APPS_SANS_MODULE - FERMEES_EN_ECRITURE_ATTENDUES
         self.assertEqual(
             nouvelles, set(),
             'Vue IsResponsableOrAdmin sans module résolu : poser '
             '`permission_module` ou un code au registre.')
+
+    def test_ecriture_sans_module_hors_fondation_refusee(self):
+        """AARG52 — vue sans module d'une app hors ``APPS_SANS_MODULE``
+        (portail) : écriture refusée à un rôle fin non administrateur
+        (Technicien, rôle « RH seul »), lecture inchangée ; app de fondation
+        listée et administrateur : inchangés."""
+        perm = IsResponsableOrAdmin()
+        rh_seul = User.objects.create_user(
+            username='aarg52_rh', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='RH seul',
+                                     permissions=['rh_voir', 'rh_gerer']))
+        portail = type('VuePortail', (), {'__module__': 'apps.portail.views'})()
+        fondation = type('VueCore', (), {'__module__': 'apps.core.views'})()
+        self.assertNotIn('portail', APPS_SANS_MODULE)
+        for user in (rh_seul, self._user('Technicien')):
+            with self.subTest(user=user.username):
+                self.assertIsNone(module_de_la_vue(portail))
+                self.assertFalse(perm.has_permission(
+                    SimpleNamespace(user=user, method='POST'), portail))
+                self.assertTrue(perm.has_permission(
+                    SimpleNamespace(user=user, method='GET'), portail))
+                self.assertTrue(perm.has_permission(
+                    SimpleNamespace(user=user, method='POST'), fondation))
+        admin = self._user('Administrateur')
+        self.assertTrue(perm.has_permission(
+            SimpleNamespace(user=admin, method='POST'), portail))
