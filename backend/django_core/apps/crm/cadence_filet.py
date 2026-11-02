@@ -268,6 +268,11 @@ def assurer_prochaine_etape_apres_succes(lead, user,
     # Jamais après un geste de VISITE (« Ne veut plus de visite » : la reprise
     # pose le devis comme aujourd'hui), ni après une visite effectuée.
     if cle == CLE_DEVIS and cle_close not in _CLES_GESTES_VISITE:
+        # CADV29 (D-CADV-10) — un lead PRO sans pièce ne reçoit pas le devis
+        # d'emblée : « Pièces reçues ? » d'abord (J+3, puis J+7).
+        pieces = poser_pieces_ci(lead, user, cle_close=cle_close)
+        if pieces is not None:
+            return pieces
         visite = _poser_releve_point_eau(lead, user)
         if visite is not None:
             return visite
@@ -557,6 +562,50 @@ def poser_rappel_subvention(lead, user=None):
              'interne, jamais écrit au client.')
     if etape.cle != CLE_RAPPEL_FDA:
         etape.cle = CLE_RAPPEL_FDA
+        etape.save(update_fields=['cle'])
+    _recaler_file(lead, user)
+    return etape
+
+
+#: CADV29 (D-CADV-10) — un devis commercial/industriel exige des factures :
+#: avant l'étape devis, UNE étape WhatsApp « Pièces reçues ? » à J+3, puis une
+#: seconde à J+7 (après le premier « joint »). Retrouvée par sa CLÉ.
+CLE_PIECES_RECUES = 'pieces_recues'
+LIBELLE_PIECES_RECUES = 'Pièces reçues ?'
+_PIECES_CI_JOURS = (3, 4)
+
+
+def poser_pieces_ci(lead, user=None, *, cle_close=''):
+    """CADV29 — pose « Pièces reçues ? » (WhatsApp, générique) pour un lead
+    commercial/industriel dont AUCUNE pièce n'est reçue (chatter « Pièce
+    reçue » de ``enregistrer_piece_recue``). Première étape à J+3 ; sa
+    clôture en pose une seconde à J+7 (échéance de la première + 4 j) ; la
+    clôture de celle-ci rend la main à l'étape devis. Renvoie l'étape posée
+    ou ``None`` (résidentiel/agricole, pièce reçue, étapes déjà consommées)."""
+    if lead.type_installation not in (Lead.TypeInstallation.COMMERCIAL,
+                                      Lead.TypeInstallation.INDUSTRIEL):
+        return None
+    if LeadActivity.objects.filter(
+            company=lead.company, lead=lead,
+            body__icontains='Pièce reçue').exists():
+        return None
+    passes = list(lead.relance_etapes.filter(cle=CLE_PIECES_RECUES)
+                  .order_by('due_at', 'pk'))
+    if not passes:
+        vise = timezone.now() + datetime.timedelta(days=_PIECES_CI_JOURS[0])
+    elif len(passes) == 1 and cle_close == CLE_PIECES_RECUES:
+        vise = max(passes[0].due_at
+                   + datetime.timedelta(days=_PIECES_CI_JOURS[1]),
+                   timezone.now() + datetime.timedelta(days=1))
+    else:
+        return None
+    etape = _poser_etape_de_filet(
+        lead, libelle=LIBELLE_PIECES_RECUES, canal=RelanceEtape.Canal.WHATSAPP,
+        vise=vise,
+        note='Posée automatiquement : lead professionnel sans pièce reçue — '
+             'le devis attend la pièce ou la 2e relance.')
+    if etape.cle != CLE_PIECES_RECUES:
+        etape.cle = CLE_PIECES_RECUES
         etape.save(update_fields=['cle'])
     _recaler_file(lead, user)
     return etape
