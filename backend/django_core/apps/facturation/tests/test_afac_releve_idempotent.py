@@ -111,6 +111,51 @@ class ReleveIdempotentTests(TestCase):
             sorted(p.montant for p in self._paiements(fac)),
             [Decimal('2000.00'), Decimal('5000.00')])
 
+    def test_ligne_annulee_reimportable_rejet_bloque(self):
+        """AFAC104 (C-AFAC-VER2-041) — une saisie annulée libère sa ligne, une
+        seule fois ; un paiement REJETÉ garde sa clé."""
+        from apps.ventes.domain.encaissements import annuler_saisie_paiement
+        from apps.ventes.domain.recouvrement import rejeter_paiement
+        fac = self._facture()
+        self._premier_import(fac)
+        annule = self._paiements(fac)[0]
+        cle = annule.idempotency_key
+        self.assertTrue(cle.startswith('releve:'))
+        annuler_saisie_paiement(paiement=annule, motif='saisie erronée',
+                                user=self.user)
+        ligne = f'2026-06-20;{fac.reference};5000;virement'
+        dry, res = self._importer(
+            _csv([ligne, f'2026-06-25;{fac.reference};2000;virement']))
+        self.assertEqual([d['statut'] for d in dry['preview']],
+                         ['a_importer', 'a_importer'])
+        self.assertEqual(res['created'], 2, res)
+        annule.refresh_from_db()
+        self.assertEqual(annule.idempotency_key, f'{cle}#annule-{annule.pk}')
+        nouveau = [p for p in self._paiements(fac)
+                   if p.idempotency_key == cle]
+        self.assertEqual(len(nouveau), 1)
+        self.assertEqual(nouveau[0].montant, Decimal('5000.00'))
+        self.assertNotEqual(nouveau[0].pk, annule.pk)
+        # Un relevé qui porte encore la ligne : doublon.
+        dry, res = self._importer(_csv([ligne]))
+        self.assertEqual([d['statut'] for d in dry['preview']],
+                         ['doublon_import'])
+        self.assertEqual(res['created'], 0, res)
+
+        # Paiement REJETÉ : la ligne reste un doublon.
+        autre = self._facture()
+        self._premier_import(autre)
+        rejete = self._paiements(autre)[0]
+        cle_rejet = rejete.idempotency_key
+        rejeter_paiement(paiement=rejete, motif='Chèque impayé', user=self.user)
+        rejete.refresh_from_db()
+        self.assertEqual(rejete.idempotency_key, cle_rejet)
+        dry, res = self._importer(
+            _csv([f'2026-06-20;{autre.reference};5000;virement']))
+        self.assertEqual([d['statut'] for d in dry['preview']],
+                         ['doublon_import'])
+        self.assertEqual(res['created'], 0, res)
+
     def test_lignes_identiques_du_meme_fichier(self):
         fac = self._facture()
         data = _csv([f'2026-06-20;{fac.reference};3000;virement',

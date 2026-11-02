@@ -1629,8 +1629,12 @@ def annuler_saisie_paiement(*, paiement, motif, user=None):
         p.annule_par = user if getattr(user, 'is_authenticated', False) \
             else None
         p.motif_annulation = motif[:255]
+        # AFAC104 — la ligne de relevé redevient importable (contrainte unique
+        # sans condition de statut) ; clés PSP et manuelles inchangées (SCA45).
+        if (p.idempotency_key or '').startswith('releve:'):
+            p.idempotency_key = f'{p.idempotency_key}#annule-{p.pk}'
         p.save(update_fields=['statut', 'annule_le', 'annule_par',
-                              'motif_annulation'])
+                              'motif_annulation', 'idempotency_key'])
         touchees = []
         if p.facture_id:
             touchees.append(p.facture)
