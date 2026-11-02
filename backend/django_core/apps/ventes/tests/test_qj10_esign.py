@@ -205,7 +205,7 @@ class TestDevisSignatureIdempotency(TestCase):
         preuve_b = DevisSignature.objects.get(devis=relue)
         self.assertEqual(preuve_b.signataire_nom, 'Ahmed B')
         self.assertGreater(preuve_b.signed_at, preuve_a.signed_at)
-        self.assertEqual(preuve_b.signed_pdf_key, '')
+        self.assertFalse(preuve_b.signed_pdf_key)  # null=True : neuve = None
         self.assertEqual(preuve_b.verifier_contenu()[0], True)
         envoi = rendre()
         preuve_b.refresh_from_db()
