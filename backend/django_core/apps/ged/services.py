@@ -5218,15 +5218,8 @@ def extraire_alias_email(*, to_addr='', subject=''):
     """XGED9 — Extrait l'alias cible d'une adresse plus-adressée OU d'un objet
     `[alias]`. `to_addr` prioritaire (ex. « ged+compta@… » → « compta ») ; à
     défaut, le premier `[alias]` de l'objet. Renvoie '' si aucun match."""
-    if to_addr:
-        m = _ALIAS_PLUS_RE.search(to_addr)
-        if m:
-            return m.group(1).lower()
-    if subject:
-        m = _ALIAS_SUBJECT_RE.search(subject)
-        if m:
-            return m.group(1).lower()
-    return ''
+    m = _ALIAS_PLUS_RE.search(to_addr or '') or _ALIAS_SUBJECT_RE.search(subject or '')
+    return m.group(1).lower() if m else ''
 
 
 def resoudre_dossier_alias(company, alias):
