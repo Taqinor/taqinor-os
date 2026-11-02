@@ -313,9 +313,11 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         paliers = self.context.setdefault('_param_cad_paliers', {})
         if obj.company_id not in paliers:
             paliers[obj.company_id] = lecteur_paliers_actifs(obj.company_id)
+        conditions = self.get_conditions_suite(obj)
         return promesses_touche(obj, ordres=cache[cle],
                                 est_actif=paliers[obj.company_id],
-                                conditions=self.get_conditions_suite(obj))
+                                conditions=conditions,
+                                lecteur=self.context.get('_cadv22_lecteur'))
 
     @extend_schema_field(serializers.DictField(child=serializers.CharField()))
     def get_conditions_suite(self, obj):

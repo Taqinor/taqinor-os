@@ -551,10 +551,11 @@ def _filet_apres_reponse_sauf_suivi(etape, est_actif, canal=None):
 
 
 def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
-                   canal=None):
+                   canal=None, lecteur=None):
     """Un barreau du protocole (ou une touche hors gabarit, traitée comme une
     dernière touche). ``canal`` : le canal RÉEL (SUIVI E16), qui décide de
-    la suite d'un client joint à la place du canal prévu."""
+    la suite d'un client joint à la place du canal prévu. ``lecteur`` : les cycles
+    du pro (CADV102) lus en lot (``LecteurParcage``)."""
     from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
     from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
@@ -651,7 +652,7 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
         # CADV102 — le pro part en Standby trimestriel tant qu'il a des cycles.
         from .fiche_funnel import RAISON_STANDBY_TRIMESTRIEL, raison_fin_de_cadence
 
-        if (raison_fin_de_cadence(getattr(etape, 'lead', None), cadence)
+        if (raison_fin_de_cadence(getattr(etape, 'lead', None), cadence, lecteur)
                 == RAISON_STANDBY_TRIMESTRIEL):
             return [ETAPE_APPEL_TRIMESTRIEL]
         return [DERNIERE_FROID_REVEILS]
@@ -755,7 +756,7 @@ def _codes_a_cote_du_plan(issue, *, visite, cle=''):
     return [SUITE_SI_PLUS_RIEN_OUVERT]
 
 
-def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
+def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif, lecteur=None):
     """CAD47 — ce que fait « Sauter » : le moteur clôt la touche SAUTÉE sans
     issue (``marquer_etape_relance``), et la suite est celle d'une touche
     close sans réponse — barreau suivant, clôture au Froid après la dernière,
@@ -772,7 +773,7 @@ def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
     if nature in (NATURE_VISITE, NATURE_PASSATION):
         return _codes_a_cote_du_plan('', visite=nature == NATURE_VISITE)
     return _codes_barreau(etape, '', derniere=derniere, au_froid=au_froid,
-                          est_actif=est_actif)
+                          est_actif=est_actif, lecteur=lecteur)
 
 
 def _codes_reponse_client(cle, *, nature, derniere):
@@ -822,13 +823,24 @@ def _codes_reponse_client(cle, *, nature, derniere):
 class LecteurParcage:
     """D-CADV22-PROMESSE — ce que la promesse lit pour compter, EN LOT : UNE
     requête pour les touches de la page (``touches``), à la première DERNIÈRE
-    touche rencontrée (patron ``_visite_du_lead``), jamais une par touche."""
+    touche rencontrée (patron ``_visite_du_lead``), jamais une par touche. Les
+    cycles de Standby d'un pro (CADV102) se lisent de même."""
 
     def __init__(self, touches=None, message_ouvert=None):
         self.touches = touches
         self._message_ouvert = message_ouvert
         self._comptes = {}
         self._exiges = {}
+        self._cycles = {}
+
+    def cycles(self, lead):
+        """``cycles_standby(lead)``, en lot."""
+        from .fiche_funnel import cycles_standby_en_lot
+
+        if lead.pk not in self._cycles:
+            self._cycles.update(cycles_standby_en_lot(
+                {t.lead_id for t in (self.touches or ())} | {lead.pk}))
+        return self._cycles[lead.pk]
 
     def comptes(self, lead_id):
         """``{kind: tentatives signées d'un humain}`` du lead."""
@@ -911,7 +923,7 @@ def conditions_de_parcage(etape, *, ordres=None, lecteur=None):
             and _rang_funnel(lead.stage) > _rang_funnel(plafond))):
         return {}
     lecteur = lecteur or LecteurParcage()
-    raison = raison_fin_de_cadence(lead, etape.cadence)
+    raison = raison_fin_de_cadence(lead, etape.cadence, lecteur)
     exiges = lecteur.exiges(lead) if raison == 'injoignable' else None
     conditions = {}
     for cle in cles_de_reponse(etape):
@@ -932,7 +944,8 @@ def conditions_de_parcage(etape, *, ordres=None, lecteur=None):
     return conditions
 
 
-def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None):
+def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None,
+                     lecteur=None):
     """``{cle_de_reponse: [codes d'effet]}`` pour chaque réponse que le
     panneau « Fait » propose sur ``etape`` — les clés de ``cles_de_reponse``
     (la table du parcours, SUIVI-PARCOURS), ``sauter`` compris quand l'étape
@@ -945,7 +958,8 @@ def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None):
     en cache par société de la même façon. Une touche déjà traitée n'a plus
     de suite à annoncer : ``{}``. ``conditions`` : ``conditions_de_parcage`` déjà
     lue (le sérialiseur sert les deux) — une réponse qui y figure n'annonce pas
-    le Froid mais l'appel de plus (D-CADV22-PROMESSE)."""
+    le Froid mais l'appel de plus (D-CADV22-PROMESSE). ``lecteur`` : le
+    ``LecteurParcage`` de la liste ; sans lui, un lecteur pour cette touche."""
     from . import stages
     from .cadence_config import cle_de
     from .models import RelanceEtape
@@ -962,8 +976,9 @@ def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None):
     lead = getattr(etape, 'lead', None)
     au_froid = (etape.cadence == 'reveil'
                 and getattr(lead, 'stage', None) == stages.COLD)
+    lecteur = lecteur or LecteurParcage()
     if conditions is None:
-        conditions = conditions_de_parcage(etape, ordres=ordres)
+        conditions = conditions_de_parcage(etape, ordres=ordres, lecteur=lecteur)
 
     promesses = {}
     for cle in cles_de_reponse(etape):
@@ -971,14 +986,15 @@ def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None):
             # CAD47 — le panneau « Sauter » dit lui aussi ce qu'il déclenche.
             codes = _codes_sauter(
                 etape, nature=nature, derniere=derniere, au_froid=au_froid,
-                est_actif=est_actif)
+                est_actif=est_actif, lecteur=lecteur)
         elif cle == REPONSE_JOINT_TELEPHONE:
             # SUIVI E16 — « Client joint au téléphone » : l'issue « joint »
             # d'un APPEL abouti sur ce barreau (canal réel), jamais celle
             # d'un message répondu.
             codes = _codes_barreau(
                 etape, 'joint', derniere=derniere, au_froid=au_froid,
-                est_actif=est_actif, canal=RelanceEtape.Canal.APPEL)
+                est_actif=est_actif, canal=RelanceEtape.Canal.APPEL,
+                lecteur=lecteur)
         elif cle in REPONSES_TOUCHE:
             codes = _codes_reponse_client(
                 cle, nature=nature, derniere=derniere)
@@ -995,7 +1011,7 @@ def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None):
             else:
                 codes = _codes_barreau(
                     etape, issue, derniere=derniere, au_froid=au_froid,
-                    est_actif=est_actif)
+                    est_actif=est_actif, lecteur=lecteur)
         if cle in conditions and (DERNIERE_FROID_REVEILS in codes
                                   or ETAPE_APPEL_TRIMESTRIEL in codes):
             codes = [ETAPE_APPEL_AVANT_FROID]

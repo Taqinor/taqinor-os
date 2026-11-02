@@ -730,9 +730,23 @@ CYCLES_STANDBY_MAX = 2
 def cycles_standby(lead):
     """CADV78 — combien de fois ce lead est passé en Standby : le chatter de
     ``parquer_lead`` fait foi, aucune colonne de plus."""
-    return lead.activites.filter(
-        field='parc_raison',
-        new_value=Lead.ParcRaison.PLUS_TARD_DATE.label).count()
+    return lead.activites.filter(**_filtre_cycle_standby()).count()
+
+
+def _filtre_cycle_standby():
+    return {'field': 'parc_raison',
+            'new_value': Lead.ParcRaison.PLUS_TARD_DATE.label}
+
+
+def cycles_standby_en_lot(lead_ids):
+    """``{lead_id: cycles_standby}`` de ``lead_ids``, en une requête."""
+    from django.db.models import Count
+
+    comptes = dict(LeadActivity.objects
+                   .filter(lead_id__in=lead_ids, **_filtre_cycle_standby())
+                   .order_by().values_list('lead_id')
+                   .annotate(nombre=Count('pk')))
+    return {lead_id: comptes.get(lead_id, 0) for lead_id in lead_ids}
 
 
 #: CADV102 (D-CADV-10) — un lead commercial ou industriel au bout de sa cadence
@@ -741,13 +755,18 @@ CYCLES_STANDBY_PRO_MAX = 3
 RAISON_STANDBY_TRIMESTRIEL = 'plus_tard_date'
 
 
-def raison_fin_de_cadence(lead, cadence):
+def raison_fin_de_cadence(lead, cadence, lecteur=None):
     """CADV72 × CADV102 — la raison de parcage du lead au bout de ``cadence`` :
     celle de la cadence pour un particulier, le Standby trimestriel pour un pro
-    (son cycle suit le budget annuel), le Froid une fois ses cycles épuisés."""
+    (son cycle suit le budget annuel), le Froid une fois ses cycles épuisés.
+    ``lecteur`` (``suite_touche.LecteurParcage``) : les cycles lus en lot par la
+    promesse d'une liste, jamais une requête par touche."""
     if getattr(lead, 'type_installation', None) not in SEGMENTS_PRO:
         return _CLOTURE_RAISONS[cadence]
-    if lead.pk is None or cycles_standby(lead) < CYCLES_STANDBY_PRO_MAX:
+    if lead.pk is None:
+        return RAISON_STANDBY_TRIMESTRIEL
+    cycles = cycles_standby(lead) if lecteur is None else lecteur.cycles(lead)
+    if cycles < CYCLES_STANDBY_PRO_MAX:
         return RAISON_STANDBY_TRIMESTRIEL
     return 'pas_maintenant_sans_date'
 

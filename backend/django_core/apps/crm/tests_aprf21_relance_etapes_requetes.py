@@ -5,6 +5,8 @@ n'ajoutent aucune requête ; les valeurs restent celles d'avant.
 Test-du-test : remettre la requête par touche dans
 ``get_message_ouvert_le`` (ou retirer ``traite_par`` du ``select_related``)
 ⇒ +1 requête par touche, test_file_plate / test_frise_plate échouent.
+Remettre ``cycles_standby`` par touche (``raison_fin_de_cadence`` sans lecteur)
+⇒ test_file_derniere_touche_pro_plate échoue.
 """
 import datetime
 
@@ -53,11 +55,11 @@ class RelanceEtapesRequetesTests(TestCase):
             libelle=f'Message {self.n}', due_at=maintenant,
             due_date=maintenant.date(), statut=statut, **kw)
 
-    def _touches_whatsapp(self, nombre):
+    def _touches_whatsapp(self, nombre, **sur_le_lead):
         for _ in range(nombre):
             lead = Lead.objects.create(
                 company=self.company, nom=f'L{self.n}', owner=self.user,
-                stage=stages.CONTACTED)
+                stage=stages.CONTACTED, **sur_le_lead)
             touche = self._touche(lead)
             act = LeadActivity.objects.create(
                 company=self.company, lead=lead, user=self.user,
@@ -72,7 +74,11 @@ class RelanceEtapesRequetesTests(TestCase):
         return len(ctx.captured_queries), resp.data['results']
 
     def test_file_plate(self):
-        self._touches_whatsapp(10)
+        # 11 touches : ``ordre`` = 1…11, la dernière du gabarit de prise de contact
+        # en est. La première dernière touche d'une page paie, UNE fois, les
+        # lectures en lot de la promesse (D-CADV22-PROMESSE) ; c'est ensuite que
+        # rien ne doit s'ajouter, et les +10 sont toutes des dernières touches.
+        self._touches_whatsapp(11)
         self._requetes({'scope': 'all'})  # échauffement
         avant, _ = self._requetes({'scope': 'all'})
         self._touches_whatsapp(10)
@@ -84,6 +90,16 @@ class RelanceEtapesRequetesTests(TestCase):
             self.assertEqual(
                 datetime.datetime.fromisoformat(
                     str(obtenu[pk]).replace('Z', '+00:00')), cree)
+
+    def test_file_derniere_touche_pro_plate(self):
+        """CADV102 — la dernière touche d'un pro lit ses cycles de Standby : en lot."""
+        self._touches_whatsapp(11, type_installation='commercial')
+        self._requetes({'scope': 'all'})  # échauffement
+        avant, _ = self._requetes({'scope': 'all'})
+        self._touches_whatsapp(10, type_installation='commercial')
+        apres, lignes = self._requetes({'scope': 'all'})
+        self.assertEqual(apres, avant)
+        self.assertEqual(len(lignes), 21)
 
     def test_message_ouvert_par_touche(self):
         lead = Lead.objects.create(
