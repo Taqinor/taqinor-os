@@ -1781,6 +1781,10 @@ def annuler_acceptation(*, devis, user, motif=''):
         devis.save(update_fields=[
             'statut', 'date_acceptation', 'accepte_par_nom',
             'option_acceptee'])
+        # ADVS32 — le lien redevient celui d'un envoyé : il expire à sa date
+        # (``ouvrir_suivi`` le prolongera de nouveau à la ré-acceptation).
+        from apps.ventes.domain.suivi import lever_suivi
+        lever_suivi([devis.pk])
 
         # Sœurs refusées PAR cette acceptation — et elles seules.
         restaurees = []

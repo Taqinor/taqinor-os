@@ -9,7 +9,7 @@ Run :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_desacceptation -v 2
 """
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -20,7 +20,7 @@ from testkit.time import frozen
 
 from apps.crm.models import Client
 from apps.ventes import services
-from apps.ventes.models import BonCommande, Devis, DevisActivity
+from apps.ventes.models import BonCommande, Devis, DevisActivity, ShareLink
 from authentication.models import Company
 
 User = get_user_model()
@@ -123,6 +123,29 @@ class TestAnnulerAcceptation(TestCase):
         self.assertEqual(rendu.statut, Devis.Statut.ENVOYE)
         self.assertFalse(DevisActivity.objects.filter(
             devis=devis, body__contains='Acceptation annulée').exists())
+
+    def test_le_lien_n_est_plus_prolonge(self):
+        """ADVS32 (C-ADVS-030) — le lien d'un dés-accepté expire à sa date comme
+        celui d'un envoyé ; la ré-acceptation le prolonge ; autres devis : inchangés."""
+        devis = self._devis(20)
+        lien = ShareLink.for_devis(devis)
+        autre = ShareLink.for_devis(self._devis(21))
+        self._accepter(devis)
+        hier = timezone.now() - timedelta(days=1)
+        ShareLink.objects.filter(pk=lien.pk).update(expires_at=hier)
+        ShareLink.objects.filter(pk=autre.pk).update(suivi_prolonge_le=hier)
+        lien.refresh_from_db()
+        self.assertTrue(lien.is_valid)
+        services.annuler_acceptation(devis=devis, user=self.user)
+        lien.refresh_from_db()
+        self.assertIsNone(lien.suivi_prolonge_le)
+        self.assertFalse(lien.is_valid)
+        autre.refresh_from_db()
+        self.assertIsNotNone(autre.suivi_prolonge_le)
+        devis.refresh_from_db()
+        self._accepter(devis)
+        lien.refresh_from_db()
+        self.assertIsNotNone(lien.suivi_prolonge_le)
 
     def test_reacceptation_est_fraiche(self):
         devis = self._devis(13)
