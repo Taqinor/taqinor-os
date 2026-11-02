@@ -13,9 +13,9 @@ PÉRIMÈTRE STRICT — groundwork local uniquement :
     unitaire, total HT et taux de TVA).
 
 ``build_ubl_xml`` est une fonction pure (objets → str), testable sans MinIO.
-Distincte de l'« aperçu brouillon » N38 (``apps.ventes.utils.ubl``) : ici la
-sortie est marquée comme export DGI local conforme, sans bandeau brouillon,
-et est gardée derrière l'interrupteur maître N105.
+AARG20 — LE seul constructeur : l'« aperçu brouillon » N38
+(``apps.ventes.utils.ubl``) le délègue ici et ne change que son commentaire de
+tête ; l'export DGI est gardé derrière l'interrupteur maître N105.
 """
 from decimal import Decimal, ROUND_HALF_UP
 from xml.etree import ElementTree as ET
@@ -52,8 +52,13 @@ def _client_nom(client):
     return plein or (getattr(client, 'nom', '') or '')
 
 
-def build_ubl_xml(facture, profile=None, currency=None):
+def build_ubl_xml(facture, profile=None, currency=None, type_code='380',
+                  origine=None):
     """Construit le XML UBL 2.1 conforme DGI d'une facture. Renvoie une str.
+
+    AARG41 — un rectificatif passe par le même corps : ``facture`` est alors
+    l'avoir (``type_code`` 381) ou la note de débit (383) et ``origine`` sa
+    facture, nommée en ``BillingReference``, dont il reprend acheteur et devise.
 
     ``profile`` (CompanyProfile vendeur) est optionnel : s'il est absent, il
     est résolu depuis la société de la facture. La portée société est garantie
@@ -69,7 +74,7 @@ def build_ubl_xml(facture, profile=None, currency=None):
     if currency is None:
         # DC25 — plus de « MAD » codé en dur : on prend la devise du document,
         # puis celle par défaut de la société, et seulement en dernier « MAD ».
-        currency = (getattr(facture, 'devise', None)
+        currency = (getattr(origine or facture, 'devise', None)
                     or getattr(profile, 'devise_defaut', None)
                     or 'MAD')
     for prefix, uri in NS.items():
@@ -92,10 +97,14 @@ def build_ubl_xml(facture, profile=None, currency=None):
         el(root, 'IssueDate', text=facture.date_emission.isoformat())
     if getattr(facture, 'date_livraison', None):
         el(root, 'TaxPointDate', text=facture.date_livraison.isoformat())
-    el(root, 'InvoiceTypeCode', text='380')
+    el(root, 'InvoiceTypeCode', text=type_code)
     el(root, 'DocumentCurrencyCode', text=currency)
     if getattr(facture, 'conditions_paiement', ''):
         el(root, 'Note', text=facture.conditions_paiement)
+    if origine is not None:
+        reference = ET.SubElement(root, f'{{{cac}}}BillingReference')
+        doc = ET.SubElement(reference, f'{{{cac}}}InvoiceDocumentReference')
+        el(doc, 'ID', text=origine.reference or '')
 
     # ── Vendeur (AccountingSupplierParty) ──
     supplier = ET.SubElement(root, f'{{{cac}}}AccountingSupplierParty')
@@ -117,7 +126,9 @@ def build_ubl_xml(facture, profile=None, currency=None):
         el(s_addr, 'StreetName', text=profile.adresse)
 
     # ── Client (AccountingCustomerParty) — ICE obligatoire en B2B ──
-    client = facture.client
+    # AARG27 — l'acheteur figé à l'émission (repli : le client vivant).
+    from apps.ventes.domain.instantanes_facture import acheteur_de_la_facture
+    client = acheteur_de_la_facture(origine or facture)
     customer = ET.SubElement(root, f'{{{cac}}}AccountingCustomerParty')
     c_party = ET.SubElement(customer, f'{{{cac}}}Party')
     c_name = ET.SubElement(c_party, f'{{{cac}}}PartyName')
@@ -133,6 +144,21 @@ def build_ubl_xml(facture, profile=None, currency=None):
     total_ht = Decimal(facture.total_ht)
     total_tva = Decimal(facture.total_tva)
     total_ttc = Decimal(facture.total_ttc)
+
+    # QX2 / AARG20 — remise globale documentée en AllowanceCharge : la somme des
+    # lignes est BRUTE, l'AllowanceCharge la ramène au HT net (TaxExclusive).
+    # Facture de tranche sans ligne : son HT figé. Aucune remise → aucun nœud.
+    lignes = list(facture.lignes.all())
+    lignes_brut = (sum((Decimal(str(li.total_ht)) for li in lignes), Decimal('0'))
+                   if lignes else total_ht)
+    remise_montant = (lignes_brut - total_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    if remise_montant > 0:
+        allowance = ET.SubElement(root, f'{{{cac}}}AllowanceCharge')
+        el(allowance, 'ChargeIndicator', text='false')  # false = remise
+        el(allowance, 'AllowanceChargeReason', text='Remise globale')
+        el(allowance, 'Amount', text=_q2(remise_montant), currencyID=currency)
+
     tax_total = ET.SubElement(root, f'{{{cac}}}TaxTotal')
     el(tax_total, 'TaxAmount', text=_q2(total_tva), currencyID=currency)
     for bucket in facture.tva_par_taux:
@@ -147,14 +173,17 @@ def build_ubl_xml(facture, profile=None, currency=None):
 
     # ── Totaux (LegalMonetaryTotal) ──
     monetary = ET.SubElement(root, f'{{{cac}}}LegalMonetaryTotal')
-    el(monetary, 'LineExtensionAmount', text=_q2(total_ht),
+    el(monetary, 'LineExtensionAmount', text=_q2(lignes_brut),
        currencyID=currency)
     el(monetary, 'TaxExclusiveAmount', text=_q2(total_ht), currencyID=currency)
     el(monetary, 'TaxInclusiveAmount', text=_q2(total_ttc), currencyID=currency)
+    if remise_montant > 0:
+        el(monetary, 'AllowanceTotalAmount', text=_q2(remise_montant),
+           currencyID=currency)
     el(monetary, 'PayableAmount', text=_q2(total_ttc), currencyID=currency)
 
     # ── Lignes (InvoiceLine) — TVA par ligne, jamais de prix d'achat/marge ──
-    for idx, ligne in enumerate(facture.lignes.all(), start=1):
+    for idx, ligne in enumerate(lignes, start=1):
         il = ET.SubElement(root, f'{{{cac}}}InvoiceLine')
         el(il, 'ID', text=str(idx))
         el(il, 'InvoicedQuantity', text=str(ligne.quantite))

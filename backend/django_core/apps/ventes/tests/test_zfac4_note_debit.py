@@ -93,6 +93,180 @@ class TestNoteDebit(TestCase):
         self.assertEqual(r2.status_code, 201, r2.data)
         self.assertNotEqual(r1.data['reference'], r2.data['reference'])
 
+    def test_nd_annulee_ne_masque_pas_le_retard_de_la_facture(self):
+        """AARG53 — le crédit de l'avoir miroir d'une ND annulée ne solde pas la
+        part de la facture : 600 restent dus depuis 90 jours, pas à J+30."""
+        import datetime
+        from decimal import Decimal as D
+
+        from apps.ventes.domain.encaissements import recalculer_statut_paiement
+        from apps.ventes.models import Paiement
+        jour = datetime.date.today()
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-ND-0010', client=self.client_obj,
+            statut=Facture.Statut.EMISE, taux_tva=D('20.00'),
+            date_emission=jour - datetime.timedelta(days=120),
+            date_echeance=jour - datetime.timedelta(days=90))
+        LigneFacture.objects.create(
+            facture=facture, produit=self.panneau, designation='Panneau PV',
+            quantite=D('1'), prix_unitaire=D('1000'), taux_tva=D('20.00'))
+        Paiement.objects.create(
+            company=self.company, facture=facture, montant=D('600'),
+            date_paiement=jour - datetime.timedelta(days=85),
+            mode='virement', created_by=self.admin)
+        recalculer_statut_paiement(facture)
+        api = self._api(self.admin)
+        r = api.post(
+            f'/api/django/ventes/factures/{facture.id}/creer-note-debit/',
+            {'motif': 'Complément', 'montant': '500.00', 'taux_tva': '20'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = api.post(f"/api/django/ventes/notes-debit/{r.data['id']}/annuler/")
+        self.assertEqual(r.status_code, 201, r.data)
+        relue = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(relue.montant_du, D('600.00'))
+        self.assertEqual(relue.statut, Facture.Statut.EN_RETARD)
+        self.assertEqual(relue.jours_retard, 90)
+        self.assertEqual(relue.echeance_exigible,
+                         jour - datetime.timedelta(days=90))
+
+    def test_lettre_message_et_liste_lisent_l_echeance_de_la_part_due(self):
+        """AARG53 — ni « Échéance 04/08 — en retard de 1 jour » sur la lettre, ni
+        l'ancienne date dans le message ou la liste des relances."""
+        import datetime
+        from decimal import Decimal as D
+        from unittest import mock
+
+        from apps.ventes.domain.encaissements import recalculer_statut_paiement
+        from apps.ventes.models import Paiement
+        from apps.ventes.recouvrement import variables_relance
+        from apps.ventes.utils.pdf import generate_lettre_relance_pdf
+        jour = datetime.date.today()
+        brute = jour - datetime.timedelta(days=90)
+        part_due = jour - datetime.timedelta(days=1)
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-ND-0011', client=self.client_obj,
+            statut=Facture.Statut.EMISE, taux_tva=D('20.00'),
+            date_emission=jour - datetime.timedelta(days=120),
+            date_echeance=brute)
+        LigneFacture.objects.create(
+            facture=facture, produit=self.panneau, designation='Panneau PV',
+            quantite=D('1'), prix_unitaire=D('1000'), taux_tva=D('20.00'))
+        Paiement.objects.create(
+            company=self.company, facture=facture, montant=D('1200'),
+            date_paiement=jour - datetime.timedelta(days=85),
+            mode='virement', created_by=self.admin)
+        recalculer_statut_paiement(facture)
+        api = self._api(self.admin)
+        r = api.post(
+            f'/api/django/ventes/factures/{facture.id}/creer-note-debit/',
+            {'motif': 'Complément', 'montant': '500.00', 'taux_tva': '20'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        # J+31 de la ND (délai de la facture : 30 j).
+        NoteDebit.objects.filter(pk=r.data['id']).update(
+            date_emission=jour - datetime.timedelta(days=31))
+        relue = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(relue.jours_retard, 1)
+        valeurs = variables_relance(relue)
+        self.assertEqual(valeurs['date_echeance'], f'{part_due:%d/%m/%Y}')
+        self.assertEqual(valeurs['jours_retard'], '1')
+        with mock.patch('apps.ventes.utils.pdf._html_to_pdf',
+                        return_value=b'%PDF') as rendu:
+            generate_lettre_relance_pdf(relue, None, 'Dû le {date_echeance}.')
+        html = rendu.call_args[0][0]
+        self.assertIn(f'Dû le {part_due:%d/%m/%Y}.', html)
+        self.assertIn(f': {part_due:%d/%m/%Y}', html)
+        self.assertIn('en retard de 1 jour(s)', html)
+        self.assertNotIn(f'{brute:%d/%m/%Y}', html)
+        liste = api.get('/api/django/ventes/relances/')
+        self.assertEqual(liste.status_code, 200)
+        ligne = next(x for x in liste.data if x['id'] == facture.id)
+        self.assertEqual(ligne['date_echeance'], part_due.isoformat())
+        self.assertEqual(ligne['jours_retard'], 1)
+
+    def test_nd_sur_facture_payee_a_sa_propre_echeance(self):
+        """AARG53 (C-AARG-060) — une ND d'aujourd'hui sur une facture payée (échue
+        depuis 90 j) n'est pas « en retard de 90 jours » : à J+31 de la ND,
+        en retard d'1 jour ; une retenue libérée suit la même règle."""
+        import datetime
+        from decimal import Decimal as D
+
+        from apps.ventes.domain.encaissements import recalculer_statut_paiement
+        from apps.ventes.models import FollowupLevel, Paiement
+        from apps.ventes.recouvrement import _current_level, _levels
+        from apps.ventes.scheduled import check_overdue_factures
+        FollowupLevel.objects.create(
+            company=self.company, ordre=1, nom='Ferme', delai_jours=1,
+            taux_interet_annuel=D('12'), frais_fixes=D('100'))
+        jour = datetime.date.today()
+
+        def facture_payee(ref, retenue=None):
+            facture = Facture.objects.create(
+                company=self.company, reference=ref, client=self.client_obj,
+                statut=Facture.Statut.EMISE, taux_tva=D('20.00'),
+                date_emission=jour - datetime.timedelta(days=120),
+                date_echeance=jour - datetime.timedelta(days=90),
+                retenue_garantie_mad=retenue)
+            LigneFacture.objects.create(
+                facture=facture, produit=self.panneau, designation='Panneau PV',
+                quantite=D('1'), prix_unitaire=D('1000'), taux_tva=D('20.00'))
+            Paiement.objects.create(
+                company=self.company, facture=facture,
+                montant=D('1200') - (retenue or 0),
+                date_paiement=jour - datetime.timedelta(days=85),
+                mode='virement', created_by=self.admin)
+            recalculer_statut_paiement(facture)
+            return facture
+
+        def etat(facture):
+            relue = Facture.objects.get(pk=facture.pk)
+            return relue.statut, relue.jours_retard, _current_level(
+                relue.jours_retard, _levels(self.company),
+                montant_du=relue.montant_exigible)
+
+        facture = facture_payee('FAC-ND-0002')
+        self.assertEqual(etat(facture)[0], Facture.Statut.PAYEE)
+        r = self._api(self.admin).post(
+            f'/api/django/ventes/factures/{facture.id}/creer-note-debit/',
+            {'motif': 'Complément', 'montant': '500.00', 'taux_tva': '20'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(etat(facture), (Facture.Statut.EMISE, 0, None))
+        check_overdue_factures()
+        self.assertEqual(etat(facture), (Facture.Statut.EMISE, 0, None))
+        # J+31 de la ND (délai de la facture : 30 j).
+        NoteDebit.objects.filter(pk=r.data['id']).update(
+            date_emission=jour - datetime.timedelta(days=31))
+        check_overdue_factures()
+        statut, jours, niveau = etat(facture)
+        self.assertEqual((statut, jours), (Facture.Statut.EN_RETARD, 1))
+        self.assertIsNotNone(niveau)
+        # Une facture encore due : sa part à elle reste la plus ancienne.
+        ouverte = facture_payee('FAC-ND-0003')
+        Paiement.objects.filter(facture=ouverte).update(montant=D('1000'))
+        self._api(self.admin).post(
+            f'/api/django/ventes/factures/{ouverte.id}/creer-note-debit/',
+            {'motif': 'Complément', 'montant': '500.00', 'taux_tva': '20'},
+            format='json')
+        self.assertEqual(Facture.objects.get(pk=ouverte.pk).jours_retard, 90)
+
+        # Retenue de garantie libérée à la date saisie.
+        retenue = facture_payee('FAC-ND-0004', retenue=D('120'))
+        self.assertEqual(Facture.objects.get(pk=retenue.pk).montant_exigible, 0)
+        r = self._api(self.admin).post(
+            f'/api/django/ventes/factures/{retenue.id}/liberer-retenue/',
+            {'date': jour.isoformat()}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Facture.objects.get(pk=retenue.pk).montant_exigible,
+                         D('120'))
+        check_overdue_factures()
+        self.assertEqual(etat(retenue)[:2], (Facture.Statut.EMISE, 0))
+        Facture.objects.filter(pk=retenue.pk).update(
+            retenue_liberee_le=jour - datetime.timedelta(days=31))
+        check_overdue_factures()
+        self.assertEqual(etat(retenue)[:2], (Facture.Statut.EN_RETARD, 1))
+
     def test_note_debit_pdf_renders(self):
         api = self._api(self.admin)
         resp = api.post(

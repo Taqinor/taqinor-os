@@ -185,6 +185,46 @@ class TestDoubleFacturationDevis(TestCase):
 
     # ── Le cas normal reste ouvert ────────────────────────────────────────
 
+    def test_bc_et_facture_annules_ne_bloquent_plus(self):
+        """AARG30 (C-AARG-032) — BC annulé : nouveau BC sur le devis ; facture
+        annulée du BC : nouvelle facture ; les vivants bloquent toujours."""
+        from apps.ventes.domain.annulation_facture import annuler_facture
+        from apps.ventes.models import FactureActivity
+        url_bc = f'/api/django/ventes/devis/{self.devis.id}/convertir-bc/'
+        self.assertEqual(self.api.post(url_bc).status_code, 409)  # BC vivant
+        BonCommande.objects.filter(pk=self.bc.pk).update(
+            statut=BonCommande.Statut.ANNULE)
+        r = self.api.post(url_bc)
+        self.assertEqual(r.status_code, 201, r.data)
+        bc2 = BonCommande.objects.get(pk=r.data['id'])
+        ancien = BonCommande.objects.get(pk=self.bc.pk)
+        self.assertIsNone(ancien.devis_id)
+        self.assertEqual(ancien.reference, self.bc.reference)
+        self.assertEqual(bc2.devis_id, self.devis.id)
+        self.assertTrue(self.devis.activites.filter(
+            body__contains='détaché à la recréation').exists())
+        BonCommande.objects.filter(pk=bc2.pk).update(
+            statut=BonCommande.Statut.CONFIRME)
+        url_f = f'/api/django/ventes/bons-commande/{bc2.id}/creer-facture/'
+        r = self.api.post(url_f, {}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        f1 = Facture.objects.get(bon_commande=bc2)
+        # Facture vivante : second essai refusé.
+        self.assertEqual(
+            self.api.post(url_f, {}, format='json').status_code, 409)
+        annuler_facture(f1, user=self.user)
+        r = self.api.post(url_f, {}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        reference = f1.reference
+        f1 = Facture.objects.get(pk=f1.pk)
+        self.assertEqual(f1.statut, Facture.Statut.ANNULEE)
+        self.assertIsNone(f1.bon_commande_id)
+        self.assertEqual(f1.reference, reference)
+        self.assertTrue(FactureActivity.objects.filter(
+            facture=f1, body__contains='à la recréation').exists())
+        self.assertEqual(Facture.objects.get(bon_commande=bc2).pk,
+                         r.data['id'])
+
     def test_un_devis_vierge_reste_facturable_par_les_deux_portes(self):
         autre_devis = Devis.objects.create(
             company=self.company, created_by=self.user,

@@ -359,7 +359,7 @@ class SuppressionTests(TestCase):
             company=self.company, destinataire=self.employe, auteur=self.admin,
             visible_a_partir_de=self.passe, corps='Bonjour', lu_le=timezone.now())
         res = _auth(self.admin).delete(f'{URL_LIST}{msg.id}/')
-        self.assertEqual(res.status_code, 400, res.data)
+        self.assertEqual(res.status_code, 409, res.data)
         self.assertTrue(MessageAccueil.objects.filter(id=msg.id).exists())
 
     def test_auteur_peut_supprimer_si_non_lu(self):

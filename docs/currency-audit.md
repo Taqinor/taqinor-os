@@ -14,7 +14,7 @@ on the document that matters most: `facturation.Facture` (the single
 `ventes.Facture` anchor in this table was dead) carries BOTH `devise` and
 `taux_change`, and they do not have the same status:
 
-- `devise` is **used**, as a LABEL: `apps/ventes/utils/ubl.py` reads it to
+- `devise` is **used**, as a LABEL: `apps/ventes/dgi/dgi_export.py` reads it to
   fill the UBL `DocumentCurrencyCode` of the exported invoice.
 - `taux_change` is **decorative**: it is stored, and copied from the Devis
   at creation (`apps/ventes/domain/creation.py`, `.../cycle_vie.py`,
@@ -52,10 +52,10 @@ with no rate column at all — mono-MAD in practice.
 | crm | ForecastSnapshot | `apps/crm/models_clients.py:1638` | montant_total |
 | crm | LeadPompageMixin | `apps/crm/models_lead_pompage.py:37` | carburant_prix_declare_le, carburant_prix_unitaire_mad |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
-| facturation | LigneFacture | `apps/facturation/models.py:814` | prix_unitaire, remise, taux_tva |
-| facturation | Paiement | `apps/facturation/models.py:881` | escompte_montant, montant |
-| facturation | Avoir | `apps/facturation/models.py:1105` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
-| facturation | LigneAvoir | `apps/facturation/models.py:1223` | prix_unitaire, remise, taux_tva |
+| facturation | LigneFacture | `apps/facturation/models.py:822` | prix_unitaire, remise, taux_tva |
+| facturation | Paiement | `apps/facturation/models.py:889` | escompte_montant, montant |
+| facturation | Avoir | `apps/facturation/models.py:1113` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
+| facturation | LigneAvoir | `apps/facturation/models.py:1231` | prix_unitaire, remise, taux_tva |
 | ged | ModeleDocument | `apps/ged/models.py:2393` | corps_html |
 | ged | LotEnvoi | `apps/ged/models.py:3351` | total |
 | installations | RegleApprobationAchat | `apps/installations/models_approbation_achat.py:38` | montant_max, montant_min |
@@ -71,7 +71,7 @@ with no rate column at all — mono-MAD in practice.
 | monitoring | AbonnementMonitoring | `apps/monitoring/models.py:435` | montant |
 | parametres | TariffSettings | `apps/parametres/models_tariff.py:76` | force_motrice_prix_kwh_ttc, prix_incluent_taxes, prix_unique_kwh, surplus_prix_kwh_ttc |
 | portail | PaiementFacturePortail | `apps/portail/models.py:229` | montant |
-| publicapi | BulkJob | `apps/publicapi/models.py:541` | total |
+| publicapi | BulkJob | `apps/publicapi/models.py:543` | total |
 | sav | Ticket | `apps/sav/models.py:656` | cout |
 | sav | WarrantyClaim | `apps/sav/models.py:1439` | cout_recupere |
 | sav | ContratMaintenance | `apps/sav/models.py:1557` | prix |

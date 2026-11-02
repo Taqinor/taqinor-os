@@ -120,6 +120,8 @@ import MonToitP2549 from '../../components/blocs/MonToitP2549.astro';
 import DevisMonToitExitModal from '../../components/blocs/DevisMonToitExitModal.astro';
 import MonToitDiv56C1 from '../../components/blocs/MonToitDiv56C1.astro';
 import MonToitInputA829 from '../../components/blocs/MonToitInputA829.astro';
+import DevisMonToitBlocF6B4 from '../../components/blocs/DevisMonToitBlocF6B4.astro';
+import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.astro';
 ---
 
 <Layout
@@ -615,13 +617,7 @@ import MonToitInputA829 from '../../components/blocs/MonToitInputA829.astro';
               </label>
             </div>
 
-            <!-- Questions PAR CATÉGORIE retirées du tunnel (coupe fondateur
-                 18/08) : aucune n'entrait dans l'estimation — estimatePro ne lit
-                 que la CATÉGORIE elle-même (day-share par archétype), la facture,
-                 le raccordement, l'activité, les équipes et la surface. Elles
-                 partaient au webhook sans changer un seul chiffre affiché ; le
-                 commercial les complète désormais dans l'ERP. -->
-
+            <DevisMonToitBlocF6B4 />
             <p class="text-xs text-lune-faint">
               Estimation indicative (autoconsommation, loi 82-21). Une étude détaillée
               est réalisée par un ingénieur.
@@ -1171,11 +1167,7 @@ import MonToitInputA829 from '../../components/blocs/MonToitInputA829.astro';
               placeholder="vous@exemple.com" class={`${inputClass} mt-1`} />
           </label>
 
-          <!-- Raison sociale — DÉPLACÉE ici depuis l'accordéon « Votre contexte »
-               du panneau professionnel (coupe fondateur 18/08) : elle ne nourrit
-               AUCUN calcul, sa place est donc sur l'écran contact, avec le reste
-               des coordonnées. Mêmes id/name — contrat webhook inchangé. Affichée
-               uniquement pour un profil professionnel (syncRaisonSociale). -->
+          <DevisMonToitBlocC596 />
           <label id="mt-raison-sociale-wrap" hidden class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Raison sociale" data-ar="التسمية الاجتماعية">Raison sociale</span>
             <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"

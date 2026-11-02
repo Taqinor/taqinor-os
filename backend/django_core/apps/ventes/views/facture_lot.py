@@ -78,13 +78,14 @@ class FactureLotActionsMixin:
     def consolider(self, request):
         """XFAC11 — crée UNE facture consolidée à partir de plusieurs devis
         acceptés du MÊME client. Body : ``{devis_ids: [...]}``."""
-        from ..services import consolider_factures
+        from ..services import SaleWarningError, consolider_factures
 
         # CI #997 fuzz — corps validé par le sérialiseur PUBLIÉ (ids entiers
         # JSON ≥ 1, au moins deux) : ``"5"`` ou ``5.0`` étaient relus en
         # silence par ``int()``.
         from ..utils.corps import valider_corps
-        devis_ids = valider_corps(request, D.ConsoliderRequest)['devis_ids']
+        corps = valider_corps(request, D.ConsoliderRequest)
+        devis_ids = corps['devis_ids']
         # ENF11 — ids publiés uniques et positifs : un doublon (consolidait
         # deux fois le même devis) ou un id < 1 est une erreur d'ENTRÉE.
         if len(set(devis_ids)) != len(devis_ids) or any(
@@ -97,7 +98,13 @@ class FactureLotActionsMixin:
             facture = consolider_factures(
                 company=request.user.company, devis_ids=devis_ids,
                 user=request.user, created_by=request.user,
+                override_avertissement=corps.get(
+                    'override_avertissement', False),
             )
+        except SaleWarningError as exc:  # AARG32
+            return Response(
+                {'detail': f'Avertissement de vente bloquant : {exc.motif}.',
+                 'code': 'sale_warning'}, status=status.HTTP_403_FORBIDDEN)
         except ValidationError as exc:
             # ENF11 — devis inconnus de la société : 404 (un id inconnu
             # n'est pas une donnée invalide).

@@ -14,7 +14,7 @@ from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsResponsableOrAdmin,
 )
 from . import openapi_docs as D
-from ..models import Avoir, Facture
+from ..models import Avoir, EmailLog, Facture
 from ..serializers_facturation import FactureListeSerializer, FactureSerializer
 from ..utils.corps import valider_corps
 
@@ -139,9 +139,23 @@ class FactureCycleActionsMixin:
                     )},
                     status=status.HTTP_409_CONFLICT,
                 )
+            # AARG23 (D-AARG-4 = garder_date) — envoyée au client ou passée à
+            # la DGI : le retour en brouillon est fermé.
+            if (facture.dgi_statut != Facture.DgiStatut.A_TRANSMETTRE
+                    or EmailLog.objects.filter(
+                        facture=facture, direction=EmailLog.Direction.SORTANT,
+                        statut=EmailLog.Statut.ENVOYE).exists()):
+                return Response(
+                    {'detail': 'Facture déjà envoyée au client : corrigez par '
+                               'un avoir.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
             ancien = facture.statut
             facture.statut = Facture.Statut.BROUILLON
-            facture.save(update_fields=['statut'])
+            # AARG27 — jamais envoyée (refus ci-dessus) : la réémission re-fige
+            # l'acheteur, un client corrigé entre-temps est pris en compte.
+            facture.identite_acheteur = None
+            facture.save(update_fields=['statut', 'identite_acheteur'])
             revoquer_lien_paiement(facture=facture, user=request.user)
         from .. import activity
         activity.log_facture_remise_brouillon(facture, request.user, ancien)

@@ -26,6 +26,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
+from ..erreurs_achats import ConflitEtat
 from ..models import BudgetDepartement, EngagementBudget
 
 
@@ -56,13 +57,15 @@ class BudgetDepartementSerializer(ChampsStrictsMixin, MasqueMontantsAchatMixin,
         # (un budget annuel n'en porte pas) au lieu de buter sur l'ancien mois.
         if periodicite == BudgetDepartement.Periodicite.ANNUELLE and 'periodicite' in attrs and 'mois' not in attrs:
             attrs['mois'] = mois = 0
+        # ENF11 (api-fuzz) — règle croisée périodicité × mois que le schéma ne
+        # peut pas exprimer (et qui lit la périodicité ENREGISTRÉE quand le
+        # corps l'omet, PUT/PATCH) : 409 (ConflitEtat), pas 400.
         if periodicite == BudgetDepartement.Periodicite.MENSUELLE:
             if not 1 <= mois <= 12:
-                raise serializers.ValidationError(
-                    {'mois': 'Un budget mensuel exige un mois entre 1 et 12.'})
+                raise ConflitEtat(
+                    'Un budget mensuel exige un mois entre 1 et 12.')
         elif mois:
-            raise serializers.ValidationError(
-                {'mois': 'Un budget annuel ne porte pas de mois (0).'})
+            raise ConflitEtat('Un budget annuel ne porte pas de mois (0).')
         montant = valeur('montant_alloue', 0)
         if montant is not None and montant < 0:
             raise serializers.ValidationError(

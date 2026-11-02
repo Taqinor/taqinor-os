@@ -913,6 +913,13 @@ describe('pro-11 — W88 : pick + highlight + suppression d\'un panneau ciblé e
 describe('pro-11 — W97 §3 : dégradation gracieuse (no-WebGL, clé absente, <noscript>)', () => {
   const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
   const script = read('../src/scripts/roof-tool-pro11.ts');
+  // ENF19 : le boot (showFallback, /api/roof-config, onReady/mapCreated) vit dans lib/roofPreviewBoot.ts,
+  // partagé par les pages preview/toiture* ; la page pro-11 l'appelle avec son préfixe rp9.
+  const boot = read('../src/lib/roofPreviewBoot.ts');
+
+  it('la page branche le boot partagé avec le préfixe rp9 et l\'outil pro-11', () => {
+    expect(page).toContain("startRoofPreview('rp9', () => import('../../scripts/roof-tool-pro11.ts'), 'initRoofToolPro8'");
+  });
 
   it('la page expose un bloc de repli #rp9-fallback (masqué par défaut) avec une issue 2D + diagnostic', () => {
     expect(page).toContain('id="rp9-fallback"');
@@ -924,17 +931,17 @@ describe('pro-11 — W97 §3 : dégradation gracieuse (no-WebGL, clé absente, <
   });
 
   it('showFallback() révèle #rp9-fallback et masque la scène #rp9-stage', () => {
-    const fn = page.slice(page.indexOf('function showFallback'), page.indexOf('function showFallback') + 160);
+    const fn = boot.slice(boot.indexOf('function showFallback'), boot.indexOf('function showFallback') + 160);
     expect(fn).toContain('fallback.hidden = false');
     expect(fn).toContain('stage.hidden = true');
   });
 
   it('le chemin /api/roof-config available:false / clé absente appelle showFallback()', () => {
     // la garde lit cfg.available ET cfg.maptilerKey ; l'un manquant → repli.
-    expect(page).toContain("await fetch('/api/roof-config')");
-    expect(page).toMatch(/if \(!cfg\.available \|\| !cfg\.maptilerKey\)[\s\S]{0,80}showFallback\(\)/);
+    expect(boot).toContain("await fetch('/api/roof-config')");
+    expect(boot).toMatch(/if \(!cfg\.available \|\| !cfg\.maptilerKey\)[\s\S]{0,80}showFallback\(\)/);
     // une exception réseau sur la config retombe aussi sur le repli.
-    expect(page).toMatch(/catch \{[\s\S]{0,40}showFallback\(\)/);
+    expect(boot).toMatch(/catch \{[\s\S]{0,40}showFallback\(\)/);
   });
 
   it('le chemin SANS WebGL (init throw « WebGL indisponible ») retombe sur showFallback()', () => {
@@ -942,8 +949,8 @@ describe('pro-11 — W97 §3 : dégradation gracieuse (no-WebGL, clé absente, <
     expect(script).toContain("getContext('webgl2') || probe.getContext('webgl')");
     expect(script).toContain("throw new Error('WebGL indisponible')");
     // boot() attrape l'échec d'import/init et — si la carte n'a pas démarré — montre le repli.
-    expect(page).toMatch(/catch \{[\s\S]{0,120}showFallback\(\)/);
-    expect(page).toContain('if (!mapCreated)');
+    expect(boot).toMatch(/catch \{[\s\S]{0,120}showFallback\(\)/);
+    expect(boot).toContain('if (!mapCreated)');
   });
 
   it('un <noscript> propose une issue sans JavaScript (2D + diagnostic)', () => {

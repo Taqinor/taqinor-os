@@ -35,7 +35,8 @@ import ZelligeSignature from '../../components/ZelligeSignature.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS, realisationBySlug, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
+import { buildGallery } from '../../lib/homeGallery';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
 import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -104,22 +105,7 @@ const galleryRaw = [
   // stays qualitative (brands confirmed on camera), never a guessed panel count.
   { name: 'bouskoura-toit', alt: 'A villa roof terrace fully covered in solar panels, Bouskoura', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'Deye inverter · DYNESS storage', slug: 'bouskoura-villa-2026' },
 ];
-const gallery = galleryRaw.map((g) => {
-  const r = realisationBySlug(g.slug);
-  const ville = r?.ville ?? '';
-  const kwc = r?.kwc ?? '';
-  const prod = g.showProd ? (r?.production?.replace('/an', '/yr') ?? null) : null;
-  // (2026-09) `kwc` can be empty (project filmed before any power reading,
-  // e.g. Bouskoura): filtered joins instead of a separator dangling on nothing.
-  return {
-    ...g,
-    ville,
-    kwc,
-    prod,
-    caption: [ville, kwc, prod].filter(Boolean).join(' · '),
-    ariaLabel: [ville, kwc, prod].filter(Boolean).join(', '),
-  };
-});
+const gallery = buildGallery(galleryRaw, { prodLabel: (p) => p.replace('/an', '/yr') });
 
 // W271 — City filter chips: "All" + the cities actually present in `gallery`
 // above (no invented city; order follows each city's first appearance in the

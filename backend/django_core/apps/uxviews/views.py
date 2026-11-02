@@ -187,9 +187,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             return
         parametres = UxParametres.get_or_default(self.request.user.company)
         if not parametres.permettre_vues_partagees_equipe:
-            raise ValidationError({'visibilite': (
-                "Le partage de vues à l'équipe est désactivé pour votre société."
-            )})
+            # api-fuzz : corps conforme, c'est le réglage STOCKÉ de la société
+            # qui s'y oppose (état) : 409, plus 400.
+            raise ConflitEtat(
+                "Le partage de vues à l'équipe est désactivé pour votre société.")
         # NTUX31 — permission fine EN PLUS du réglage société ci-dessus (jamais
         # à sa place) : un rôle fin doit porter `ux.vue.partager_equipe` pour
         # partager une vue ; un compte hérité sans rôle fin garde son accès
@@ -322,7 +323,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         `{role: <id>}`). Un seul défaut actif par (company, ecran, role) : les
         autres vues du même rôle+écran perdent `est_defaut_role`."""
         instance = self.get_object()
-        role_id = request.data.get('role', instance.role_id)
+        # Corps JSON `null`/liste = pas de corps objet : repli sur le rôle de la
+        # vue (`request.data.get` levait AttributeError, 500).
+        corps = request.data if isinstance(request.data, dict) else {}
+        role_id = corps.get('role', instance.role_id)
         if not role_id:
             # ERR-ENF11-FUZZ-UXVIEWS : `role` est facultatif quand la vue en
             # porte déjà un — son absence ici est un refus d'ÉTAT (409).
@@ -341,9 +345,8 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         # société a désactivé le partage d'équipe, on ne peut plus en poser.
         parametres = UxParametres.get_or_default(request.user.company)
         if not parametres.permettre_vues_partagees_equipe:
-            raise ValidationError({'detail': (
-                "Le partage de vues à l'équipe est désactivé pour votre société."
-            )})
+            raise ConflitEtat(
+                "Le partage de vues à l'équipe est désactivé pour votre société.")
         # NTUX27 — restriction FINE optionnelle : quand la société a nommé des
         # rôles autorisés, le Directeur/Admin ne suffit plus, il faut porter
         # l'un de ces rôles. Liste VIDE = comportement historique inchangé.
@@ -599,8 +602,10 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         request=inline_serializer('FavoriReordonnerRequete', {
             'ordre': drf_serializers.IntegerField()}),
         responses=FavoriUtilisateurSerializer(many=True))
+    # ERR-ENF11-FUZZ-UXVIEWS — la réponse est un tableau NU : sans
+    # `pagination_class=None` le schéma annonçait PaginatedFavoriUtilisateurList.
     @action(detail=True, methods=['post'], url_path='reordonner',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole], pagination_class=None)
     def reordonner(self, request, pk=None):
         """NTUX21 — déplace CE favori à la position `ordre` (0 = en tête) et
         renumérote la liste de l'utilisateur de façon contiguë.

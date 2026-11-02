@@ -99,11 +99,17 @@ EnvoyerEmailEchec = _ser('DevisEnvoyerEmailEchec', {
     'devis_statut': s.CharField(),
 })
 
-#: ENF11 — aucune adresse (ni ``to_email`` ni e-mail du client) : refus d'état.
+#: ENF11 — les DEUX refus d'état 409 de l'envoi : aucune adresse (ni
+#: ``to_email`` ni e-mail du client) -> ``{detail, log_id, statut}`` ; version
+#: remplacée (VNT24, ``corps_version_remplacee``) -> ``{detail, code,
+#: successeur}`` sans ``statut`` (api-fuzz 01/11 : « statut is a required
+#: property »). Seul ``detail`` est donc commun et requis.
 EnvoyerEmailSansDestinataire = _ser('DevisEnvoyerEmailSansDestinataire', {
     'detail': s.CharField(),
     'log_id': s.IntegerField(required=False, allow_null=True),
-    'statut': s.CharField(),
+    'statut': s.CharField(required=False),
+    'code': s.CharField(required=False),
+    'successeur': s.DictField(required=False, allow_null=True),
 })
 
 WhatsappRequest = _ser('DevisWhatsappRequest', {
@@ -1506,6 +1512,8 @@ ConsoliderRequest = _ser('FactureConsoliderRequest', {
     # CI #997 fuzz — ids entiers JSON (``"5"`` était relu par ``int()``).
     'devis_ids': s.ListField(child=EntierStrict(min_value=1),
                              min_length=2),
+    # AARG32 — dérogation à un avertissement de vente bloquant (ADEV14).
+    'override_avertissement': s.BooleanField(required=False),
 })
 #: ENF11 — ``[5, 5]`` consolidait deux fois le même devis : ids DISTINCTS.
 CORPS_DEVIS_IDS_UNIQUES = corps_resserre({

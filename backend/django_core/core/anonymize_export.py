@@ -123,6 +123,10 @@ def _install_default_masks():
         'telephone': scrub_phone,
         'adresse': scrub_null,
     })
+    # AARG27 — l'identité acheteur figée recopie nom, e-mail, téléphone, adresse.
+    register_mask('facturation.Facture', {
+        'identite_acheteur': scrub_null,
+    })
     register_mask('crm.Lead', {
         'nom': scrub_name,
         'prenom': scrub_name,

@@ -173,6 +173,70 @@ class TestToggleOffInvisible(DgiTestBase):
 
 
 class TestBuildUblXml(DgiTestBase):
+    def test_avoir_381_et_note_debit_383_referencent_la_facture(self):
+        """AARG41 (C-AARG-044) — le rectificatif s'exporte et nomme sa facture ;
+        404 interrupteur éteint, 403 sans ``ventes_export``, 409 si annulé."""
+        from apps.roles.models import Role
+        from apps.ventes.models import (
+            Avoir, LigneAvoir, LigneNoteDebit, NoteDebit,
+        )
+        facture = self._facture()
+        avoir = Avoir.objects.create(
+            company=self.company, reference=f'AV-{MONTH}-0001', facture=facture,
+            client=self.client_b2b, statut=Avoir.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        LigneAvoir.objects.create(
+            avoir=avoir, produit=self.produit, designation='Panneau PV 550W',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            taux_tva=Decimal('10.00'))
+        note = NoteDebit.objects.create(
+            company=self.company, reference=f'ND-{MONTH}-0001', facture=facture,
+            client=self.client_b2b, statut=NoteDebit.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        LigneNoteDebit.objects.create(
+            note_debit=note, produit=self.produit, designation='Complément',
+            quantite=Decimal('1'), prix_unitaire=Decimal('500'),
+            taux_tva=Decimal('20.00'))
+        urls = {'381': f'/api/django/ventes/avoirs/{avoir.id}/dgi-export/',
+                '383': f'/api/django/ventes/notes-debit/{note.id}/dgi-export/'}
+        ns = {'cac': 'urn:oasis:names:specification:ubl:schema:xsd:'
+                     'CommonAggregateComponents-2',
+              'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:'
+                     'CommonBasicComponents-2'}
+        for url in urls.values():
+            self.assertEqual(self.api.get(url).status_code, 404)
+        seller_profile(self.company, dgi_export_actif=True)
+        ttc = {'381': '1100.00', '383': '600.00'}
+        for code, url in urls.items():
+            with self.subTest(code=code):
+                r = self.api.get(url)
+                self.assertEqual(r.status_code, 200, r.content)
+                self.assertEqual(r['Content-Type'], 'application/xml')
+                root = ET.fromstring(
+                    r.content.decode('utf-8').split('-->', 1)[1])
+                self.assertEqual(
+                    root.find('cbc:InvoiceTypeCode', ns).text, code)
+                self.assertEqual(root.find(
+                    'cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID',
+                    ns).text, facture.reference)
+                self.assertEqual(root.find(
+                    'cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount', ns).text,
+                    ttc[code])
+                self.assertIn('ICE-CLIENT-999', r.content.decode('utf-8'))
+        role = Role.objects.create(
+            company=self.company, nom='AARG41 sans export',
+            permissions=['ventes_voir', 'ventes_modifier'])
+        sans = auth(User.objects.create_user(
+            username='aarg41-sans', password='x', company=self.company,
+            role=role, role_legacy='responsable'))
+        self.assertEqual(sans.get(urls['381']).status_code, 403)
+        Avoir.objects.filter(pk=avoir.pk).update(statut=Avoir.Statut.ANNULEE)
+        self.assertEqual(self.api.get(urls['381']).status_code, 409)
+        # La facture reste 380, sans BillingReference.
+        xml = build_ubl_xml(facture, self.profile)
+        self.assertIn('380', xml)
+        self.assertNotIn('BillingReference', xml)
+
     def test_xml_well_formed_with_ice_and_line_vat(self):
         facture = self._facture()
         xml = build_ubl_xml(facture, self.profile)
@@ -187,6 +251,40 @@ class TestBuildUblXml(DgiTestBase):
         self.assertIn('10.00', xml)
         self.assertIn('TaxInclusiveAmount', xml)
         self.assertIn('Panneau PV 550W', xml)
+
+    def test_remise_globale_en_allowance_charge(self):
+        """AARG20 (C-AARG-016) — une facture remisée : AllowanceCharge, lignes
+        brutes − remise = HT net, et l'aperçu `ubl` = le XML transmis."""
+        from apps.ventes.utils.ubl import build_ubl_xml as apercu
+        facture = Facture.objects.create(
+            company=self.company, reference=f'FAC-{MONTH}-9002',
+            client=self.client_b2b, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), remise_globale=Decimal('10'))
+        LigneFacture.objects.create(
+            facture=facture, produit=self.produit, designation='Kit',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        xml = build_ubl_xml(facture, self.profile)
+        ns = {'cac': 'urn:oasis:names:specification:ubl:schema:xsd:'
+                     'CommonAggregateComponents-2',
+              'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:'
+                     'CommonBasicComponents-2'}
+        root = ET.fromstring(xml.split('-->', 1)[1])
+        remise = root.find('cac:AllowanceCharge', ns)
+        self.assertEqual(remise.findtext('cbc:ChargeIndicator', namespaces=ns),
+                         'false')
+        self.assertEqual(remise.findtext('cbc:Amount', namespaces=ns), '100.00')
+        lignes = [il.findtext('cbc:LineExtensionAmount', namespaces=ns)
+                  for il in root.findall('cac:InvoiceLine', ns)]
+        self.assertEqual(lignes, ['1000.00'])
+        total = root.find('cac:LegalMonetaryTotal', ns)
+        self.assertEqual(
+            total.findtext('cbc:TaxExclusiveAmount', namespaces=ns), '900.00')
+        self.assertEqual(root.find('cac:TaxTotal', ns).findtext(
+            'cbc:TaxAmount', namespaces=ns), '180.00')
+        vu = apercu(facture, self.profile)
+        self.assertIn('APERCU BROUILLON', vu)
+        self.assertEqual(vu.split('-->', 1)[1], xml.split('-->', 1)[1])
 
     def test_no_buy_price_or_margin_in_xml(self):
         facture = self._facture()

@@ -106,6 +106,21 @@ class CreationRegleValidationTests(TestCase):
         })
         self.assertEqual(resp.status_code, 201, resp.data)
 
+    def test_modification_sans_couple_valide_409(self):
+        # ENF11 : à la modification la règle lit aussi la règle enregistrée
+        # (corps partiel) -> 409, jamais un 400 ; la création garde son 400.
+        ok = self._post_rule({'model': 'sav.ticket', 'field': 'statut'})
+        url = f'{URL_RULES}{ok.data["id"]}/'
+        resp = self.api.patch(
+            url, {'trigger_config': {'model': 'ventes.devis',
+                                     'field': 'statut'}}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        resp = self.api.put(url, {
+            'nom': 'R', 'trigger_type': TriggerType.RECORD_STATE_CHANGE,
+            'trigger_config': {}, 'action_type': ActionType.WAIT,
+        }, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+
     def test_autres_triggers_inchanges(self):
         # Non-régression : la validation ARC34 ne touche pas les types
         # existants (aucune whitelist exigée pour LEAD_STAGE_CHANGE).

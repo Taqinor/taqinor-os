@@ -150,7 +150,8 @@
     </div>
     <div class="meta-item">
       <strong>{{ _L("Facture d'origine") }}</strong>
-      <span>{{ _iso(avoir.facture.reference) }}</span>
+      {# AARG36 — la date de la facture d'origine, avec son numéro. #}
+      <span>{{ _iso(avoir.facture.reference) }}{% if avoir.facture.date_emission %} {% if langue_document == 'ar' %}—{% else %}du{% endif %} {{ _iso(avoir.facture.date_emission.strftime('%d/%m/%Y')) }}{% endif %}</span>
     </div>
     <div class="meta-item">
       <strong>{{ _L("Statut") }}</strong>
@@ -211,7 +212,7 @@
          'arrondi': _L('Arrondi commercial'), 'total_ht': _L('Total HT'),
          'tva': _L('TVA'), 'total_ttc': _L('Total crédité TTC'),
          'base_ht': _L('Base HT'),
-       }) }}
+       }, ventilation=(avoir.ventilation_tva or totaux.tva_par_taux|length > 1)) }}
   </div>
 
   {% if signature_uri %}

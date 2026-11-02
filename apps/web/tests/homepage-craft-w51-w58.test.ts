@@ -50,7 +50,9 @@ describe('W54 — plus de double listing des installations', () => {
     // occurrences dupliquées du même ternaire) pour que `kwc` vide (chantier
     // filmé avant tout relevé, ex. Bouskoura) omette proprement le segment
     // plutôt que d'afficher un séparateur qui pend sur rien.
-    expect(index).toContain('caption: [ville, kwc, prod].filter(Boolean).join');
+    // ENF19 : la composition de la légende vit désormais dans lib/homeGallery.ts (partagée fr/en/ar).
+    expect(read('../src/lib/homeGallery.ts')).toContain('caption: [ville, kwc, prod].filter(Boolean).join');
+    expect(index).toContain('buildGallery(galleryRaw');
     expect(index).toContain('{g.caption}');
     expect(index).toContain('{g.type}');
   });

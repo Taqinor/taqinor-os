@@ -91,6 +91,53 @@ class ParametresModifierTests(TestCase):
         self.profile.refresh_from_db()
         self.assertFalse(self.profile.logo_key)
 
+    def test_logo_cite_par_une_facture_emise_n_est_pas_efface(self):
+        """AARG48 (C-AARG-051) — le PDF d'une facture émise garde son logo :
+        remplacer ou retirer le logo du profil ne détruit pas un objet cité par
+        une identité figée ; une clé citée par aucune s'efface comme avant."""
+        from unittest import mock
+
+        from apps.crm.models import Client
+        from apps.ventes.models import Facture
+        client = Client.objects.create(
+            company=self.company, nom='Figé', email='fige@example.invalid')
+        Facture.objects.create(
+            company=self.company, reference='FAC-AARG48-1', client=client,
+            statut=Facture.Statut.EMISE,
+            identite_vendeur={'logo_key': 'logos/k1.png',
+                              'signature_key': 'signatures/s1.png'})
+        api = self._api('Administrateur')
+        fichier = SimpleUploadedFile(
+            'logo.png', b'\x89PNG\r\n\x1a\n' + b'0' * 32,
+            content_type='image/png')
+
+        with mock.patch('apps.parametres.views_uploads.get_minio_client'
+                        ) as minio, mock.patch(
+                'apps.parametres.views_uploads.ensure_uploads_bucket'):
+            supprimer = minio.return_value.delete_object
+            CompanyProfile.objects.filter(pk=self.profile.pk).update(
+                logo_key='logos/k1.png', signature_key='signatures/s1.png')
+            r = api.delete(f'{BASE}delete-logo/')
+            self.assertEqual(r.status_code, 200, r.data)
+            self.profile.refresh_from_db()
+            self.assertEqual(self.profile.logo_key, '')
+            r = api.delete(f'{BASE}delete-signature/')
+            self.assertEqual(r.status_code, 200, r.data)
+            CompanyProfile.objects.filter(pk=self.profile.pk).update(
+                logo_key='logos/k1.png')
+            r = api.post(f'{BASE}upload-logo/', {'file': fichier},
+                         format='multipart')
+            self.assertEqual(r.status_code, 200, r.data)
+            self.profile.refresh_from_db()
+            self.assertNotIn(self.profile.logo_key, ('', 'logos/k1.png'))
+            supprimer.assert_not_called()
+            # K2 n'est citée par aucune identité figée : effacée au retrait.
+            k2 = self.profile.logo_key
+            r = api.delete(f'{BASE}delete-logo/')
+            self.assertEqual(r.status_code, 200, r.data)
+            supprimer.assert_called_once()
+            self.assertEqual(supprimer.call_args.kwargs['Key'], k2)
+
     def test_tarifs_et_modeles(self):
         for nom in ROLES:
             api = self._api(nom)

@@ -162,7 +162,7 @@ class TestGenerateEndpoint(CF17Base):
         resp = self.api.post(
             f'/api/django/custom-fields/definitions/{field_def.id}/generer/',
             {'record_id': lead.id}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_endpoint_requires_record_id(self):
         field_def = CustomFieldDef.objects.create(

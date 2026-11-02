@@ -237,8 +237,8 @@ class FactureEncaissementActionsMixin:
         """CIQ214 — libère la retenue de garantie CLIENT d'une facture de
         tranche (D-CIQ-14), à la date SAISIE (``date`` AAAA-MM-JJ, la
         réception définitive du chantier) : ``montant_exigible`` remonte alors
-        à ``montant_du``. Aucune écriture comptable, aucun statut changé hors
-        de la date ; idempotent sur une retenue déjà libérée (400). La
+        à ``montant_du``. Aucune écriture comptable, statut re-dérivé (AARG53) ;
+        idempotent sur une retenue déjà libérée (400). La
         réception définitive servie par le contrat CIQ6 la pré-remplira côté
         écran dès que l'app chantier l'expose (lecture via selectors)."""
         import datetime as _dt
@@ -267,6 +267,10 @@ class FactureEncaissementActionsMixin:
                 status=status.HTTP_400_BAD_REQUEST)
         facture.retenue_liberee_le = date
         facture.save(update_fields=['retenue_liberee_le'])
+        # AARG53 — la part libérée a sa propre échéance : statut re-dérivé.
+        from ..domain.encaissements import recalculer_statut_paiement
+        recalculer_statut_paiement(facture, user=request.user,
+                                   source='liberer_retenue')
         return Response(FactureSerializer(facture).data)
 
     @extend_schema(request=D.LienPaiementRequest, responses={201: D.LienPaiementResponse})

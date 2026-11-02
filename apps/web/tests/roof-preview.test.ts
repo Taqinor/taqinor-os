@@ -148,7 +148,7 @@ describe('estimateur — cycle de vie carte : init unique, repli seulement sur �
   it('une carte créée n’est jamais masquée : le repli n’arrive que si onReady n’a pas signalé', () => {
     const tool = read('../src/scripts/roof-tool.ts');
     expect(tool).toContain('opts.onReady?.()'); // signale dès la création
-    const page = read('../src/pages/preview/toiture.astro');
+    const page = read('../src/pages/preview/toiture.astro') + read('../src/lib/roofPreviewBoot.ts'); // ENF19 : boot partagé
     expect(page).toContain('mapCreated');
     expect(page).toMatch(/if \(!mapCreated\)[\s\S]{0,80}showFallback/);
   });
@@ -218,7 +218,7 @@ describe('estimateur 3D — variante privée, parallèle, sans toucher la 2D', (
     const tool = read(tool3d) + read('../src/scripts/roofToolShared.ts');
     expect(tool).toContain('webgl');
     expect(tool).toMatch(/throw new Error/);
-    const page = read(page3d);
+    const page = read(page3d) + read('../src/lib/roofPreviewBoot.ts'); // ENF19 : boot partagé
     expect(page).toContain('mapCreated');
     expect(page).toMatch(/if \(!mapCreated\)[\s\S]{0,80}showFallback/);
   });
@@ -350,7 +350,7 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
     const tool = read(toolPro) + read('../src/scripts/roofToolShared.ts');
     expect(tool).toContain('webgl');
     expect(tool).toMatch(/throw new Error/);
-    const page = read(pagePro);
+    const page = read(pagePro) + read('../src/lib/roofPreviewBoot.ts'); // ENF19 : boot partagé
     expect(page).toContain('mapCreated');
     expect(page).toMatch(/if \(!mapCreated\)[\s\S]{0,80}showFallback/);
   });

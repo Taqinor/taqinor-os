@@ -107,8 +107,81 @@ class TestAvoirContrePassation(TestCase):
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'mode': 'contre_passation'}, format='json')
         self.assertEqual(resp.status_code, 409)
+        # AARG39 — le refus de LA porte d'annulation, tel quel.
+        self.assertEqual(resp.data['code'], 'directive_acompte_requise')
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.statut, Facture.Statut.EMISE)
+
+    def test_contre_passation_passe_par_annuler_facture(self):
+        # AARG39 — même avoir CORRECTION, même événement, mêmes refus.
+        from core.events import facture_annulee
+        annulees = []
+
+        def recepteur(instance, **kw):
+            annulees.append(instance.pk)
+        facture_annulee.connect(recepteur)
+        self.addCleanup(facture_annulee.disconnect, recepteur)
+        api = self._api(self.admin)
+        url = f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/'
+        # Un avoir actif refuse d'abord, comme ``annuler``.
+        actif = api.post(url, {'motif': 'Partiel', 'lignes': [
+            {'produit': self.panneau.id, 'designation': 'Panneau PV',
+             'quantite': '1', 'prix_unitaire': '1000', 'taux_tva': '20'}]},
+            format='json')
+        self.assertEqual(actif.status_code, 201, actif.data)
+        r = api.post(url, {'mode': 'contre_passation'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'avoir_actif')
+        self.assertEqual(annulees, [])
+        rendu = api.post(
+            f"/api/django/ventes/avoirs/{actif.data['id']}/annuler/")
+        self.assertEqual(rendu.status_code, 200, rendu.data)
+
+        resp = api.post(url, {'mode': 'contre_passation', 'motif': 'Erreur',
+                              'type': 'geste_commercial'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        avoir = Avoir.objects.get(pk=resp.data['id'])
+        self.assertEqual(avoir.type, Avoir.Type.CORRECTION)
+        self.assertEqual(avoir.motif, 'Erreur')
+        self.assertEqual(annulees, [self.facture.id])
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(
+            Avoir.objects.filter(facture=self.facture).exclude(
+                statut=Avoir.Statut.ANNULEE).count(), 1)
+        # Rejouée : déjà annulée, rien de plus.
+        r = api.post(url, {'mode': 'contre_passation'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(annulees, [self.facture.id])
+
+    def test_contre_passation_meme_permission_qu_annuler(self):
+        # AARG39 — un Commercial (palier limité) qui porte ``encaisser`` crédite,
+        # mais n'annule pas une facture, par aucune des deux portes.
+        from django.core.management import call_command
+
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        role = Role.objects.get(company=self.company, nom='Commercial')
+        self.assertIn('encaisser', role.permissions)
+        commercial = User.objects.create_user(
+            username='zfac5_commercial', password='x', role=role,
+            role_legacy='normal', company=self.company)
+        # SA facture : sinon la portée répondrait 404 avant la garde.
+        Facture.objects.filter(pk=self.facture.pk).update(created_by=commercial)
+        api = self._api(commercial)
+        base = f'/api/django/ventes/factures/{self.facture.id}'
+        r = api.post(f'{base}/annuler/', {'motif': 'Erreur'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        r = api.post(f'{base}/creer-avoir/',
+                     {'mode': 'contre_passation', 'motif': 'Erreur'},
+                     format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.statut, Facture.Statut.EMISE)
+        self.assertEqual(Avoir.objects.filter(facture=self.facture).count(), 0)
+        # Le geste d'argent ordinaire lui reste ouvert (ASEC29).
+        r = api.post(f'{base}/creer-avoir/', {'motif': 'Geste'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
 
     def test_invalid_mode_rejected(self):
         api = self._api(self.admin)

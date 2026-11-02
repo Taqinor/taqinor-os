@@ -390,6 +390,11 @@ class CorpsFuzzTests(TestCase):
         r = self.api.post(f'{BASE}/plans-comptage-tournant/', {
             'classe_abc': 'A', 'frequence_jours': 1, 'actif': 0}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+        # ENF11 fuzz : un entier hors colonne (3,9e17) repondait 500.
+        r = self.api.post(f'{BASE}/plans-comptage-tournant/', {
+            'classe_abc': 'A', 'frequence_jours': 388403799212530865,
+            'actif': True}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(f'{BASE}/plans-echantillonnage/', {
             'categorie': None, 'taux_echantillon_pct': 101, 'actif': False, 'note': ''},
             format='json')

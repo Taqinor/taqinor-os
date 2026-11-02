@@ -453,7 +453,7 @@ def _facture_resume(facture):
     return {
         "reference": facture.reference,
         "date_emission": _fr_date(getattr(facture, "date_emission", None)),
-        "date_echeance": _fr_date(getattr(facture, "date_echeance", None)),
+        "date_echeance": _fr_date(getattr(facture, "echeance_exigible", None)),
         "total_ttc": facture.total_ttc,
         "montant_du": montant_exigible(facture),
         "jours_retard": facture.jours_retard,

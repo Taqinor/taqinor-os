@@ -11,6 +11,7 @@ Couverture :
     selector `factures_echues`).
 """
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.test import TestCase
 
@@ -48,7 +49,7 @@ class FactureOverdueSweepTests(TestCase):
             company=self.company, client=client, reference='FA-OV-1',
             statut=Facture.Statut.EMISE,
             date_echeance=date.today() - timedelta(days=10),
-            created_by=self.seller,
+            created_by=self.seller, montant_ttc=Decimal('1200'),
         )
         defaults.update(kwargs)
         return Facture.objects.create(**defaults)
@@ -99,6 +100,33 @@ class FactureOverdueSweepTests(TestCase):
         self._make_facture(date_echeance=None, reference='FA-OV-6')
         count = _sweep_facture_overdue(self.company)
         self.assertEqual(count, 0)
+
+    def test_retard_de_la_part_due_pas_de_la_date_brute(self):
+        """AARG53 — facture payée (échue depuis 90 j) + ND : rien tant que la ND
+        n'est pas échue, puis « 1 jour » et l'échéance de la ND, jamais 90."""
+        from apps.ventes.models import NoteDebit, Paiement
+        from .sweeps import _sweep_facture_overdue
+        jour = date.today()
+        facture = self._make_facture(
+            reference='FA-OV-9', date_emission=jour - timedelta(days=120),
+            date_echeance=jour - timedelta(days=90))
+        Paiement.objects.create(
+            company=self.company, facture=facture, montant=Decimal('1200'),
+            date_paiement=jour - timedelta(days=85), mode='virement',
+            created_by=self.seller)
+        note = NoteDebit.objects.create(
+            company=self.company, reference='ND-OV-9', facture=facture,
+            client=facture.client, statut='emise', taux_tva=Decimal('20'),
+            montant_ht=Decimal('500'), montant_tva=Decimal('100'),
+            montant_ttc=Decimal('600'))
+        self.assertEqual(_sweep_facture_overdue(self.company), 0)
+        NoteDebit.objects.filter(pk=note.pk).update(
+            date_emission=jour - timedelta(days=31))
+        self.assertEqual(_sweep_facture_overdue(self.company), 1)
+        notif = Notification.objects.get(
+            event_type=EventType.FACTURE_OVERDUE)
+        self.assertIn('en retard de 1 jour(s)', notif.body)
+        self.assertIn(str(jour - timedelta(days=1)), notif.body)
 
     def test_idempotent_same_day_rerun_does_not_duplicate(self):
         from .sweeps import _sweep_facture_overdue

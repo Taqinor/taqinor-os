@@ -78,6 +78,92 @@ class RetourClientAvoirTests(_Base, TestCase):
     def setUp(self):
         self._setup()
 
+    def _payer(self, facture):
+        from datetime import date
+
+        from apps.ventes.domain.encaissements import encaisser_sur_facture
+        from apps.ventes.models import Facture
+        encaisser_sur_facture(
+            facture=Facture.objects.get(pk=facture.pk), user=self.admin,
+            donnees={'montant': facture.total_ttc,
+                     'date_paiement': date.today(), 'mode': 'virement',
+                     'reference': ''})
+
+    def _releve(self):
+        r = self.api.get(
+            f'/api/django/ventes/clients/{self.client_obj.id}/releve/')
+        self.assertEqual(r.status_code, 200, r.data)
+        return r.data
+
+    def test_avoir_au_dela_du_reste_devient_avance(self):
+        """AARG1 (D-AARG-1) — 2 400 crédités sur une facture payée 12 000 :
+        ils ressortent en avance client, visibles au relevé."""
+        from unittest.mock import patch
+
+        from apps.ventes.models import Facture, Paiement
+        from apps.ventes.recouvrement import _releve_data
+        from apps.ventes.utils.pdf import generate_releve_pdf
+        facture = self._facture(pu='10000', qte=1)
+        self._payer(facture)
+        r = self.api.post(
+            f'/api/django/ventes/factures/{facture.id}/creer-avoir/',
+            {'type': 'geste_commercial', 'motif': 'Geste', 'lignes': [
+                {'produit': self.produit.id, 'designation': 'Geste',
+                 'quantite': '1', 'prix_unitaire': '2000',
+                 'taux_tva': '20'}]}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        facture = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(facture.montant_paye, Decimal('9600.00'))
+        self.assertEqual(facture.montant_du, Decimal('0'))
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+        sortie = Paiement.objects.get(facture=facture, montant__lt=0)
+        self.assertEqual(sortie.montant, Decimal('-2400.00'))
+        self.assertIn('Trop-perçu après avoir AV', sortie.note)
+        avance = Paiement.objects.get(facture__isnull=True,
+                                      client=self.client_obj)
+        self.assertEqual(avance.montant, Decimal('2400.00'))
+        self.assertEqual(avance.statut_affectation, 'non_affecte')
+        data = self._releve()
+        self.assertEqual([a['montant'] for a in data['avances']], ['2400.00'])
+        self.assertEqual(data['totaux']['solde'], '-2400.00')
+        self.assertEqual(data['totaux']['du'], '0.00')
+        with patch('apps.ventes.utils.pdf._html_to_pdf',
+                   return_value=b'%PDF') as rendu:
+            generate_releve_pdf(self.client_obj, _releve_data(self.client_obj))
+        self.assertIn('-2400.00 MAD', rendu.call_args[0][0])
+
+    def test_retour_au_dela_du_reste_devient_avance(self):
+        """AARG1 — même geste par `retour-client` (5 000 HT sur 2 × 5 000)."""
+        from apps.ventes.models import Facture, Paiement
+        facture = self._facture(pu='5000', qte=2)
+        self._payer(facture)
+        r = self._retour(facture)
+        self.assertEqual(r.status_code, 201, r.data)
+        facture = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(facture.montant_paye, Decimal('6000.00'))
+        self.assertEqual(facture.montant_du, Decimal('0'))
+        avance = Paiement.objects.get(facture__isnull=True,
+                                      client=self.client_obj)
+        self.assertEqual(avance.montant, Decimal('6000.00'))
+        self.assertEqual(self._releve()['totaux']['solde'], '-6000.00')
+
+    def test_avoir_dans_le_reste_du_aucune_avance(self):
+        """AARG1 — facture non payée : l'avoir réduit le dû, aucune avance."""
+        from apps.ventes.models import Paiement
+        facture = self._facture(pu='10000', qte=1)
+        r = self.api.post(
+            f'/api/django/ventes/factures/{facture.id}/creer-avoir/',
+            {'type': 'geste_commercial', 'motif': 'Geste', 'lignes': [
+                {'produit': self.produit.id, 'designation': 'Geste',
+                 'quantite': '1', 'prix_unitaire': '2000',
+                 'taux_tva': '20'}]}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertFalse(Paiement.objects.filter(
+            client=self.client_obj).exists())
+        data = self._releve()
+        self.assertEqual(data['avances'], [])
+        self.assertEqual(data['totaux']['solde'], data['totaux']['du'])
+
     def test_retour_partiel_facture_remisee_credite_net(self):
         from apps.ventes.models import Avoir
         facture = self._facture(pu='10000', remise_globale='15')
