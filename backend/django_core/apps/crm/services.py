@@ -55,6 +55,7 @@ from .fiche_funnel import (  # façade
     assigner_lead_a,
     avancer_stage_lead_vers,
     creer_relance_lead,
+    parquer_lead,
     poser_tag_lead,
     retirer_tag_lead,
 )
@@ -98,7 +99,6 @@ from .devis_chatter import (  # façade
 from .clients_pilotage import (  # façade
     ajouter_specialite_partenaire,
     handle_parrainage_signup,
-    parquer_lead,
     poser_compteur_deploiements,
     soumettre_lead_partenaire,
 )
