@@ -118,4 +118,4 @@ Porte : 0 réfuté / 42 bruts (38 après fusion) · seconde lentille : 7 S1 → 
 
 ## 9. Coût et routage
 Coût : H0 S1 O15 F1 · jetons sous-agents ≈ 6,5 M · tâches 44 (M0 3, M1 0, M2 24, M3 15, GATED 1) dont l'acceptation ADVS43.
-Routage : `PLAN_AUDIT_DEVIS.md` 29 · `PLAN_AUDIT_MOTEUR.md` 5 · `PLAN_AUDIT_DOCUMENTS.md` 3 · `PLAN_AUDIT_TRANSVERSE.md` 2 (ADVS23 devis+sécurité, ADVS38 facturation+devis) · `PLAN_AUDIT_CALEPINAGE.md` 2 · `PLAN_AUDIT_GENERATEUR.md` 2 · `PLAN_AUDIT_CHANTIERS.md` 1 · PR à venir.
+Routage : `PLAN_AUDIT_DEVIS.md` 29 · `PLAN_AUDIT_MOTEUR.md` 5 · `PLAN_AUDIT_DOCUMENTS.md` 3 · `PLAN_AUDIT_TRANSVERSE.md` 2 (ADVS23 devis+sécurité, ADVS38 facturation+devis) · `PLAN_AUDIT_CALEPINAGE.md` 2 · `PLAN_AUDIT_GENERATEUR.md` 2 · `PLAN_AUDIT_CHANTIERS.md` 1 · PR #1227.
