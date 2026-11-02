@@ -595,6 +595,79 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
     return resultat
 
 
+def courbe_premier_joint(company, *, jours=JOURS_MESURE_DEFAUT):
+    """CADV7 — la courbe CUMULÉE « premier joint par rang de touche », par
+    cadence puis segment (contrat ``mesure_cadence.json``, clé
+    ``courbe_premier_joint``), en LECTURE SEULE.
+
+    Population : les leads créés sur la fenêtre (archivés et miroir Odoo
+    écartés, comme ``par_segment``) qui ont AU MOINS UNE touche close par un
+    humain de la cadence — c'est le dénominateur (``leads``). Pour chaque lead,
+    le RANG (``ordre``) de sa PREMIÈRE touche jointe (``ISSUES_JOINT``, même
+    définition que ``taux_joint_par_creneau``) ; ``cumul`` / ``cumul_pct`` sont
+    la part des leads déjà joints au plus tard à ce rang. Un lead jamais joint
+    reste au dénominateur (``jamais_joints``). ``{}`` sans aucune touche close ;
+    seuls les segments ayant au moins un lead figurent (aucun 0 % inventé).
+    """
+    from django.utils import timezone
+
+    from .models import Lead, RelanceEtape
+    from .suite_touche import q_barreau
+
+    depuis = timezone.now() - datetime.timedelta(days=int(jours))
+    touches = (RelanceEtape.objects
+               .filter(company=company, statut__in=STATUTS_CLOS_HUMAIN,
+                       lead__is_archived=False,
+                       lead__date_creation__gte=depuis)
+               .exclude(lead__source=Lead.Source.ODOO_IMPORT_TEST)
+               .filter(q_barreau()))
+    issues = _issues_par_touche(touches, company)
+    par_lead = {}
+    for ligne in touches.values('id', 'lead_id', 'cadence', 'ordre',
+                                'traite_le', 'lead__type_installation'):
+        cle = (ligne['cadence'], ligne['lead_id'])
+        entree = par_lead.setdefault(cle, {
+            'segment': _segment_de(ligne['lead__type_installation']),
+            'touches': []})
+        entree['touches'].append(ligne)
+
+    blocs = {}
+    for (cadence, _lead_id), entree in par_lead.items():
+        bloc = blocs.setdefault(cadence, {}).setdefault(
+            entree['segment'], {'leads': 0, 'rangs': {}, 'jamais': 0})
+        bloc['leads'] += 1
+        jointes = sorted(
+            (t for t in entree['touches']
+             if issues.get(t['id'], '') in ISSUES_JOINT),
+            key=lambda t: (t['traite_le'] is None, t['traite_le'],
+                           t['ordre']))
+        if not jointes:
+            bloc['jamais'] += 1
+            continue
+        rang = jointes[0]['ordre']
+        bloc['rangs'][rang] = bloc['rangs'].get(rang, 0) + 1
+
+    courbe = {}
+    for cadence in sorted(blocs):
+        courbe[cadence] = {}
+        for segment in SEGMENTS_MESURE + (SEGMENT_NON_RENSEIGNE,):
+            bloc = blocs[cadence].get(segment)
+            if bloc is None:
+                continue
+            cumul = 0
+            par_rang = []
+            for rang in sorted(bloc['rangs']):
+                cumul += bloc['rangs'][rang]
+                par_rang.append({
+                    'rang': rang, 'premiers_joints': bloc['rangs'][rang],
+                    'cumul': cumul,
+                    'cumul_pct': _pct(cumul, bloc['leads'])})
+            courbe[cadence][segment] = {
+                'leads': bloc['leads'], 'par_rang': par_rang,
+                'jamais_joints': bloc['jamais']}
+    return courbe
+
+
 def mesure_cadence(company, *, jours=JOURS_MESURE_DEFAUT):
     """Les mesures de CAD87 (+ CAD178), en une seule lecture (forme du
     contrat).
@@ -618,4 +691,6 @@ def mesure_cadence(company, *, jours=JOURS_MESURE_DEFAUT):
         'gestes_par_appareil': gestes_par_appareil(company, jours=jours),
         # AGR540 — additif : les mêmes mesures découpées par segment.
         'par_segment': par_segment(company, jours=jours),
+        # CADV7 — additif : le premier joint, cumulé par rang de touche.
+        'courbe_premier_joint': courbe_premier_joint(company, jours=jours),
     }

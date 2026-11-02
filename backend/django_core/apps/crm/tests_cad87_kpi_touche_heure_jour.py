@@ -174,6 +174,33 @@ class TauxJointParCreneauTests(_Base):
         self.assertEqual(
             mesure_cadence.taux_joint_par_creneau(self.company, jours=90), [])
 
+    def test_courbe_premier_joint_par_rang(self):
+        """CADV7 — joints aux rangs 1, 2, 2 et un jamais joint : 25 % puis
+        75 % ; le dénominateur garde le lead jamais joint ; un second joint
+        du même lead (rang 3) ne compte pas."""
+        leads = [self._lead(f'R{i}', type_installation='residentiel')
+                 for i in range(4)]
+        self._issue(self._touche(lead=leads[0], ordre=1, heure=9), 'joint')
+        for lead in leads[1:3]:
+            self._issue(self._touche(lead=lead, ordre=1, heure=9),
+                        'non_joint')
+            self._issue(self._touche(lead=lead, ordre=2, heure=10), 'joint')
+        self._issue(self._touche(lead=leads[1], ordre=3, heure=11), 'joint')
+        self._issue(self._touche(lead=leads[3], ordre=1, heure=9),
+                    'non_joint')
+        courbe = mesure_cadence.courbe_premier_joint(self.company)
+        self.assertEqual(courbe['contact']['residentiel'], {
+            'leads': 4, 'jamais_joints': 1,
+            'par_rang': [
+                {'rang': 1, 'premiers_joints': 1, 'cumul': 1,
+                 'cumul_pct': 25.0},
+                {'rang': 2, 'premiers_joints': 2, 'cumul': 3,
+                 'cumul_pct': 75.0}]})
+        self.assertNotIn('agricole', courbe['contact'])
+        self.assertEqual(
+            mesure_cadence.courbe_premier_joint(
+                _company('cad87-courbe-autre')), {})
+
     def test_deux_canaux_a_la_meme_heure_restent_distincts(self):
         self._issue(self._touche(traite_jours=4, heure=8,
                                  canal=RelanceEtape.Canal.WHATSAPP), 'joint')
