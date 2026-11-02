@@ -1951,6 +1951,7 @@ def creer_bon_commande(devis, company, user=None, *, enregistrer=None):
     from core.events import bon_commande_cree
     from ..models import BonCommande, Devis
     from ..utils.company_settings import create_numbered
+    from .annulation_facture import detacher_bc_annules
     if enregistrer is None:
         def enregistrer(ref):
             return BonCommande.objects.create(
@@ -1965,8 +1966,10 @@ def creer_bon_commande(devis, company, user=None, *, enregistrer=None):
                 conflit = ConflitEtat(corps := corps_version_remplacee(verrou))
                 conflit.detail = corps  # corps VNT24 tel quel (successeur.id entier)
                 raise conflit
-            if BonCommande.objects.filter(devis=devis).exists():
+            if BonCommande.objects.filter(devis=devis).exclude(
+                    statut=BonCommande.Statut.ANNULE).exists():
                 raise BonCommandeExistant()
+            detacher_bc_annules(devis, user)  # AARG30
         bc = create_numbered(BonCommande, company, 'bon_commande', enregistrer)
     bon_commande_cree.send(sender=BonCommande, instance=bc, company=company)
     return bc

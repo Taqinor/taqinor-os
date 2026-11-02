@@ -823,9 +823,12 @@ def porte_facture_bc(bc):
     if bc.statut not in (BonCommande.Statut.CONFIRME,
                          BonCommande.Statut.LIVRE):
         return {'ok': False, 'motif': 'Le BC doit être confirmé ou livré.'}
-    annote = getattr(bc, 'has_facture_annote', None)
+    # AARG30 — seule une facture VIVANTE bloque : l'annulée est détachée à la
+    # recréation (``detacher_factures_annulees_du_bc``).
+    annote = getattr(bc, 'facture_active_annote', None)
     deja = (bool(annote) if annote is not None
-            else Facture.objects.filter(bon_commande=bc).exists())
+            else Facture.objects.filter(bon_commande=bc).exclude(
+                statut=Facture.Statut.ANNULEE).exists())
     if deja:
         return {'ok': False, 'motif': 'Une facture existe déjà pour ce BC.'}
     if bc.devis_id:

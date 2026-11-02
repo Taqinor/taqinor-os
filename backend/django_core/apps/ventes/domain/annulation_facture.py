@@ -519,6 +519,35 @@ def avoir_annulation_corps(facture):
             'montant': f'{Decimal(str(avoir.total_ttc)):.2f}'}
 
 
+def detacher_bc_annules(devis, user):
+    """AARG30 — un BC ANNULÉ ne bloque plus la chaîne : il rend le ``OneToOne``
+    de son devis (dans la transaction de la recréation), garde sa référence, et
+    le chatter du devis le dit."""
+    from .. import activity
+    from ..models import BonCommande
+    for bc in BonCommande.objects.filter(
+            devis=devis, statut=BonCommande.Statut.ANNULE):
+        bc.devis = None
+        bc.save(update_fields=['devis'])
+        activity.log_devis_note(
+            devis, user,
+            f'Bon de commande annulé {bc.reference} détaché à la recréation.')
+
+
+def detacher_factures_annulees_du_bc(bc, user):
+    """AARG30 — jumeau côté facture : la facture ANNULÉE rend le ``OneToOne``
+    de son BC, garde sa référence et son chatter le dit."""
+    from ..models import Facture, FactureActivity
+    for facture in Facture.objects.filter(
+            bon_commande=bc, statut=Facture.Statut.ANNULEE):
+        facture.bon_commande = None
+        facture.save(update_fields=['bon_commande'])
+        FactureActivity.objects.create(
+            company=facture.company, facture=facture, user=user,
+            kind=FactureActivity.Kind.NOTE,
+            body=f'Détachée du bon de commande {bc.reference} à la recréation.')
+
+
 def retirer_brouillons_de_la_vente(devis, *, user, motif=''):
     """VNT11 — LE helper partagé par « Prix négocié » et le cycle facture :
     chaque BROUILLON de la vente de ``devis`` (``factures_de_la_vente`` :
