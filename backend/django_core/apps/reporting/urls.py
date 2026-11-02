@@ -36,6 +36,7 @@ from .reports_chantier import pilotage_chantiers_report
 from .p2p_kpi import kpi_p2p
 from .technicien_scorecard import technicien_scorecard
 from .vitals import collect_vital, vitals_p75
+from .journal_problemes import signaler_probleme
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -158,4 +159,11 @@ urlpatterns = [
     # VX61 — beacon Web Vitals RÉELS (POST, une ligne/métrique) + agrégat p75.
     path('vitals/', collect_vital, name='reporting-vitals'),
     path('vitals/p75/', vitals_p75, name='reporting-vitals-p75'),
+    # YJPB1 — journal des problèmes VÉCUS par les utilisateurs (requête
+    # sans réponse, 5xx, erreur JavaScript). Posté par
+    # frontend/src/lib/journalProblemes.js, lu par
+    # `manage.py problemes_utilisateurs` (aucun écran : la lecture est
+    # une commande serveur, pas une page de l'ERP).
+    path('problemes-client/', signaler_probleme,
+         name='reporting-problemes-client'),
 ]

@@ -341,7 +341,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/reporting/models.py::ApprobationSlaConfig.company` | backend/django_core/apps/reporting/models.py:681 | authentication.Company | CASCADE |
 | `backend/django_core/apps/reporting/models.py::ClasseurPartageInterne.company` | backend/django_core/apps/reporting/models.py:718 | authentication.Company | CASCADE |
 | `backend/django_core/apps/reporting/models.py::WebVitalMetric.company` | backend/django_core/apps/reporting/models.py:775 | authentication.Company | CASCADE |
-| `backend/django_core/apps/reporting/models.py::JetonCalendrier.company` | backend/django_core/apps/reporting/models.py:934 | authentication.Company | CASCADE |
+| `backend/django_core/apps/reporting/models.py::ProblemeClient.company` | backend/django_core/apps/reporting/models.py:837 | authentication.Company | CASCADE |
+| `backend/django_core/apps/reporting/models.py::JetonCalendrier.company` | backend/django_core/apps/reporting/models.py:1014 | authentication.Company | CASCADE |
 | `backend/django_core/apps/roles/models.py::Role.company` | backend/django_core/apps/roles/models.py:11 | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py::SavSlaSettings.company` | backend/django_core/apps/sav/models.py:56 | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py::MaintenanceChecklistTemplate.company` | backend/django_core/apps/sav/models.py:260 | authentication.Company | CASCADE |

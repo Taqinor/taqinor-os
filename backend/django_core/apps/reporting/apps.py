@@ -23,6 +23,12 @@ class ReportingConfig(AppConfig):
         from .services import purge_web_vitals
         register_retention_policy('reporting_web_vitals', purge_web_vitals)
 
+        # YJPB1 — même registre pour le journal des problèmes vécus par
+        # les utilisateurs (une ligne par problème, fenêtre 90 j).
+        from .services import purge_problemes_client
+        register_retention_policy(
+            'reporting_problemes_client', purge_problemes_client)
+
         # AANA77 — adaptateurs sémantiques du CA facturé (Facture.total_ht /
         # total_ttc, D-AANA-6) : ca_ht, ca_ttc, panier_moyen.
         from .metriques_ca import register_metric_adapters

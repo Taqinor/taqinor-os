@@ -11,12 +11,20 @@
 // se contente d'attacher deux listeners `window`, feature-detect implicite
 // (no-op si `window` est absent, ex. SSR/tests node).
 import { captureException } from './monitoring'
+// YJPB1 — journal maison des problèmes vécus : la trace survit même sans
+// DSN Sentry (le cas en production), ce qui rendait `captureException`
+// ci-dessus totalement muet.
+import { signalerErreurScript } from './journalProblemes'
+import { sessionEstActive } from '../providers/session-bridge'
 import { toastError } from './toast'
 
 let _installed = false
 
 async function report(error) {
   console.error('[globalErrors]', error)
+  // YJPB1 — AVANT `captureException` : ce journal-ci est celui qui fonctionne
+  // sans DSN Sentry, donc celui qui ne doit jamais dépendre de lui.
+  signalerErreurScript(error, undefined, { sessionEstActive })
   try {
     await captureException(error)
   } catch {

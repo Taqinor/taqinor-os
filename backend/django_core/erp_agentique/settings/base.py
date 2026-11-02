@@ -755,6 +755,14 @@ REST_FRAMEWORK = {
         # une granularité que le format natif DRF (minute/heure/jour) ne
         # peut pas exprimer.
         'pos_pin_caissier': '5/5min',
+        # YJPB1 — journal des problèmes vécus par les utilisateurs
+        # (frontend/src/lib/journalProblemes.js), PAR UTILISATEUR. Un
+        # écran qui boucle en erreur peut en émettre des dizaines par
+        # seconde ; 120/min reste très au-dessus d'un usage réel (le
+        # navigateur dédoublonne déjà) tout en bornant l'écriture.
+        'problemes_client': (
+            os.environ.get('PROBLEMES_CLIENT_RATE_LIMIT', '').strip()
+            or '120/minute'),
         # NTPLT42 — budget par société (env TENANT_RATE_LIMIT, défaut 1200/min).
         # '0'/vide → None = throttle tenant désactivé (rempli plus bas, après la
         # définition de TESTING, où il est forcé off pour ne pas fausser la suite).
