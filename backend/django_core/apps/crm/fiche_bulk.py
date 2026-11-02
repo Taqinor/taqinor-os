@@ -8,7 +8,7 @@ import re
 from django.utils import timezone
 
 from . import activity, stages
-from .models import Canal, Lead
+from .models import Canal, Lead, LeadActivity
 from .leads_fusion import raison_refus_suppression
 from .cadence_touche import reprendre_cadence_apres_reouverture
 from .cadence_filet import assurer_prochaine_etape_apres_succes
@@ -119,6 +119,27 @@ def coerce_id_list(raw):
             seen.add(value)
             out.append(value)
     return out
+
+
+#: CADV10 (conception v4 §5.2) — au plus 25 préparations WhatsApp en masse par
+#: jour et par utilisateur ; le compte se lit sur la trace laissée au chatter.
+PREPARER_WHATSAPP_PLAFOND_PAR_JOUR = 25
+TRACE_WHATSAPP_PREPARE = 'WhatsApp préparé en lot'
+
+
+def _preparations_whatsapp_du_jour(company, user):
+    """CADV10 — traces « WhatsApp préparé en lot » de ``user`` aujourd'hui
+    (jour de Casablanca) : aucun modèle, aucune migration."""
+    import datetime
+
+    from core.dates import aujourd_hui_local
+
+    from . import horaires
+    minuit = datetime.datetime.combine(
+        aujourd_hui_local(), datetime.time(0), tzinfo=horaires.CASABLANCA)
+    return LeadActivity.objects.filter(
+        company=company, user=user, created_at__gte=minuit,
+        body__startswith=TRACE_WHATSAPP_PREPARE).count()
 
 
 def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
@@ -429,7 +450,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
             # FG33 — Préparer la file WhatsApp en masse (pas d'envoi auto)
             elif op == 'prepare_whatsapp':
                 # Pas de décompte updated/unchanged — cette action retourne
-                # directement en dehors de la boucle (pas de side-effect).
+                # directement en dehors de la boucle.
                 pass
 
     # FG33 — Résultat spécial : file de click-through WhatsApp ordonné
@@ -446,6 +467,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
             except (ValueError, TypeError):  # id illisible : corps direct
                 tpl = None
         queue = []
+        deja = _preparations_whatsapp_du_jour(company, user)
         for lead in leads:
             # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
             # ``message_pour_etape`` / ``_lead_relancable``) : une personne
@@ -461,6 +483,10 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
             phone = lead.whatsapp or lead.telephone
             if not phone:
                 continue
+            if deja + len(queue) >= PREPARER_WHATSAPP_PLAFOND_PAR_JOUR:
+                skip(lead, 'plafond journalier atteint '
+                           f'({PREPARER_WHATSAPP_PLAFOND_PAR_JOUR})')
+                continue
             corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
             wa_url = build_wa_url(phone, corps)
             queue.append({
@@ -469,6 +495,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                 'phone': phone,
                 'wa_url': wa_url,
             })
+            activity.log_bulk_note(lead, user, TRACE_WHATSAPP_PREPARE)
         return {
             'ok': True,
             'op': 'prepare_whatsapp',

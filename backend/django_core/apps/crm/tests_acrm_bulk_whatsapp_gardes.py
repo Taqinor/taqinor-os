@@ -10,17 +10,19 @@ placeholder n'a pas de valeur réelle est OMISE.
 
 POST réel de la vue ``bulk`` ; aucun mock.
 """
+import datetime
 from urllib.parse import unquote
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm.models import BookingLink, Lead, MessageTemplate
+from apps.crm.models import BookingLink, Lead, LeadActivity, MessageTemplate
 
 User = get_user_model()
 URL = '/api/django/crm/leads/bulk/'
@@ -49,6 +51,38 @@ class BulkWhatsappGardesTests(TestCase):
         self.api = APIClient()
         self.api.credentials(HTTP_AUTHORIZATION=(
             f'Bearer {AccessToken.for_user(self.user)}'))
+
+    def test_plafond_journalier_et_trace_par_lead(self):
+        """CADV10 — 24 traces ce jour : A passe (25e), B et C sortent avec le
+        motif ; le lendemain le plafond se libère. Mutant : plafond 1000."""
+        trace = 'WhatsApp préparé en lot'
+        LeadActivity.objects.bulk_create([
+            LeadActivity(company=self.company, lead=self.c, user=self.user,
+                         kind=LeadActivity.Kind.NOTE, body=trace)
+            for _ in range(24)])
+        a, b, c = (
+            Lead.objects.create(
+                company=self.company, nom=nom, owner=self.user,
+                telephone=f'+21266115160{rang}')
+            for rang, nom in enumerate(('Eligible A', 'Eligible B', 'Eligible C')))
+        ids = [a.pk, b.pk, c.pk]
+        corps = {'action': 'prepare_whatsapp', 'ids': ids, 'body': 'Bonjour.'}
+        data = self.api.post(URL, corps, format='json').data
+        self.assertEqual([q['lead_id'] for q in data['queue']], [a.pk])
+        self.assertEqual({s['id'] for s in data['skipped']}, {b.pk, c.pk})
+        self.assertEqual({s['reason'] for s in data['skipped']},
+                         {'plafond journalier atteint (25)'})
+        self.assertEqual(
+            LeadActivity.objects.filter(lead=a, body=trace).count(), 1)
+        self.assertFalse(
+            LeadActivity.objects.filter(lead=b, body=trace).exists())
+        self.assertEqual(LeadActivity.objects.filter(
+            user=self.user, body=trace).count(), 25)
+        # Le lendemain : les 25 traces sont d'hier.
+        hier = timezone.now() - datetime.timedelta(days=1, hours=1)
+        LeadActivity.objects.filter(body=trace).update(created_at=hier)
+        data = self.api.post(URL, corps, format='json').data
+        self.assertEqual(len(data['queue']), 3)
 
     def _preparer(self):
         resp = self.api.post(URL, {
