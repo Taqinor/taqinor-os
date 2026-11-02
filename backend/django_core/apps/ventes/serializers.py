@@ -1249,6 +1249,10 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
                             'etude_params', 'roof_layout', 'layout_hash',
                             'offres_tailles_config', 'marge_snapshot',
                             'overrides',
+                            # ADVS11 — même classe : posés par la conception
+                            # (``build_electrical_design``) et le rendu PDF.
+                            'electrical_design', 'electrical_design_hash',
+                            'pdf_render_meta',
                             # QJR541 — statut et champs de CYCLE DE VIE :
                             # ignorés au PATCH/POST (DRF, jamais un 400).
                             # Chacun a sa porte dédiée et gardée : envoi
