@@ -159,6 +159,10 @@ class PoseDuReveilSaisonnierTests(_Base):
         autre = Company.objects.create(nom='Autre', slug='cad74-autre')
         Lead.objects.create(company=autre, nom='Autre', stage=stages.COLD,
                             source=Lead.Source.META_LEAD_ADS)
+        # Un « joint » saisi par un humain sort le lead du Froid (MRY9, M1) : un
+        # dormant joint a été joint PUIS parqué. Sans ce retour, A et K4 ne seraient
+        # plus des dormants et le test ne mesurerait pas leur seau.
+        Lead.objects.filter(pk__in=[a.pk, joint_sans_devis.pk]).update(stage=stages.COLD)
 
         self.assertEqual(seaux_reactivation(self.company, maintenant),
                          {'K3': [a.pk], 'K5': [b.pk], 'K6_p1': [c.pk], 'K6_p2': []})
