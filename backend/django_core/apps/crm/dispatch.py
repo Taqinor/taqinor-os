@@ -44,6 +44,13 @@ MARQUE = '_dispatch_equipe_id'
 RAISON_ROTATION = 'Rotation équilibrée'
 RAISON_AUCUN = 'Aucun membre disponible'
 PLAFOND_DEFAUT = 20
+#: CADV115 — paliers de la file « À prendre », en minutes OUVRÉES depuis
+#: l'arrivée : (minutes, clé, marqueur de chatter d'idempotence).
+PALIERS_FILE = (
+    (5, 'equipe', 'auto — file À prendre T+5'),
+    (15, 'direction', 'auto — file À prendre T+15'),
+    (30, 'attribution', 'auto — file À prendre T+30'),
+)
 
 
 def nom_affiche(user):
@@ -226,7 +233,12 @@ def echeance_pour(equipe, depuis):
     """L'instant où le délai de l'équipe, compté en minutes OUVRÉES (horaires
     de la société), est écoulé depuis ``depuis``. Lead arrivé hors heures :
     l'OUVERTURE suivante (fondateur 30/10/2026 — « à 8 h 30 si le
-    responsable ne l'a pas attribué »)."""
+    responsable ne l'a pas attribué »). File « À prendre » (CADV115) : le
+    dernier palier, T+30 minutes ouvrées, dans tous les cas."""
+    if equipe.file_a_prendre:
+        return horaires.echeance_en_temps_ouvre(
+            depuis, datetime.timedelta(minutes=PALIERS_FILE[-1][0]),
+            equipe.company, canal='whatsapp')
     if hors_heures(equipe.company, depuis):
         return horaires.prochain_creneau_appel(
             depuis, equipe.company, canal='whatsapp')
@@ -504,8 +516,10 @@ def attribuer_echeances(maintenant=None):
     personne, le lead reste au responsable. ``skip_locked`` : une décision
     manuelle en cours n'est jamais doublée. Renvoie le nombre traité."""
     maintenant = maintenant or timezone.now()
+    # La file « À prendre » a ses propres paliers (``escalader_file``).
     ids = list(AttributionEnAttente.objects.filter(
-        echeance__lte=maintenant).values_list('pk', flat=True))
+        echeance__lte=maintenant, equipe__file_a_prendre=False,
+    ).values_list('pk', flat=True))
     traites = 0
     for pk in ids:
         try:
@@ -534,6 +548,94 @@ def attribuer_echeances(maintenant=None):
             logger.warning('dispatch : attribution automatique échouée '
                            '(attente #%s)', pk, exc_info=True)
     return traites
+
+
+def _destinataires_direction(company):
+    """Direction : managers de repli (Commercial responsable / Directeur) et
+    comptes d'administration actifs de la société, sans doublon."""
+    from django.contrib.auth import get_user_model
+    from .leads_socle import _company_fallback_managers
+    vus, out = set(), []
+    admins = get_user_model().objects.filter(
+        company=company, is_active=True, role_legacy='admin').order_by('id')
+    for u in [*_company_fallback_managers(company), *admins]:
+        if u.pk not in vus:
+            vus.add(u.pk)
+            out.append(u)
+    return out
+
+
+def escalader_file(maintenant=None):
+    """CADV115 — chaque minute, après ``attribuer_echeances`` : un lead resté
+    dans la file « À prendre » franchit T+5 (l'équipe est prévenue), T+15 (la
+    direction, ``PREMIER_CONTACT_DEPASSE``) puis T+30 minutes OUVRÉES (le
+    membre le moins chargé le reçoit, chatter « délai de prise dépassé »).
+    Un chatter marqueur par palier : un passage répété n'envoie rien. Renvoie
+    le nombre de paliers franchis sur ce passage."""
+    from apps.notifications.services import notify_many
+    from apps.notifications.types_evenements import EventType
+    from . import activity
+    from .models import LeadActivity
+    maintenant = maintenant or timezone.now()
+    franchis = 0
+    attentes = AttributionEnAttente.objects.filter(
+        equipe__file_a_prendre=True).select_related(
+        'lead', 'equipe', 'company').order_by('created_at', 'id')
+    for attente in list(attentes):
+        try:
+            if _deja_decide(attente):
+                continue
+            equipe, lead = attente.equipe, attente.lead
+            ecoulees = horaires.minutes_ouvrees_entre(
+                attente.created_at, maintenant, attente.company,
+                canal='whatsapp')
+            nom = ' '.join(p for p in (lead.prenom, lead.nom) if p) or 'Nouveau lead'
+            for minutes, palier, marqueur in PALIERS_FILE:
+                if ecoulees < minutes:
+                    break
+                if LeadActivity.objects.filter(
+                        lead=lead, kind=LeadActivity.Kind.NOTE,
+                        body__startswith=marqueur).exists():
+                    continue
+                if palier == 'attribution':
+                    with transaction.atomic():
+                        verrou = (AttributionEnAttente.objects
+                                  .select_for_update(skip_locked=True)
+                                  .filter(pk=attente.pk).first())
+                        if verrou is None or _deja_decide(verrou):
+                            continue
+                        # La proposition (comptée dans la charge par
+                        # ``rotation``) n'a plus d'objet : le lead s'en va.
+                        AttributionEnAttente.objects.filter(
+                            pk=verrou.pk).update(proposee=None)
+                        membre = rotation(equipe)
+                        corps = (f'{marqueur} — délai de prise dépassé : '
+                                 + (f'attribué à {nom_affiche(membre)}'
+                                    if membre is not None
+                                    else 'aucun membre disponible, reste au responsable'))
+                        _finaliser(verrou, membre, None, corps)
+                    franchis += 1
+                    break
+                activity.log_note(
+                    lead, None,
+                    f'{marqueur} — {ecoulees} minute(s) ouvrée(s) sans prise.')
+                if palier == 'equipe':
+                    destinataires = _choix_equipe(equipe, equipe.membres.filter(
+                        is_active=True, company_id=equipe.company_id))
+                    type_evenement = EventType.LEAD_NON_CONTACTE
+                else:
+                    destinataires = _destinataires_direction(equipe.company)
+                    type_evenement = EventType.PREMIER_CONTACT_DEPASSE
+                notify_many(
+                    destinataires, type_evenement,
+                    title=f'{nom} attend dans « À prendre » depuis {ecoulees} min ouvrées',
+                    body="Aucun commercial n'a encore pris ce lead.",
+                    link=f'/crm/leads?lead={lead.pk}', company=equipe.company)
+                franchis += 1
+        except Exception:  # noqa: BLE001 — une attente en échec ne bloque pas les suivantes (D-ENF22-BLE001)
+            logger.warning('dispatch : escalade de la file échouée '
+                           '(attente #%s)', attente.pk, exc_info=True)
+    return franchis
 
 
 def _iso(dt):

@@ -371,6 +371,63 @@ class AttributionParResponsableTests(TestCase):
         lead.refresh_from_db()
         self.assertEqual(lead.owner, self.a)
 
+    def test_les_paliers_de_la_file_notifient_une_fois_et_attribuent_a_t30(self):
+        # CADV115 : lead résidentiel arrivé à 10:02 jamais pris — T+5 prévient
+        # l'équipe, T+15 la direction (PREMIER_CONTACT_DEPASSE), T+30 attribue
+        # au membre le moins chargé ; un passage répété n'envoie rien.
+        from unittest import mock
+        from apps.crm import dispatch
+        from apps.crm.models import LeadActivity
+        from apps.notifications.types_evenements import EventType
+        self.equipe.confirmation_responsable = False
+        self.equipe.file_a_prendre = True
+        self.equipe.save(update_fields=['confirmation_responsable',
+                                        'file_a_prendre'])
+        reda = User.objects.create_user(
+            username='disp_reda', password='x', company=self.company,
+            role_legacy='admin')
+        Lead.objects.create(company=self.company, nom='Charge', owner=self.a)
+        lead = self._nouveau_a(self._a(29, 10, 2),
+                               type_installation='residentiel')
+        attente = lead.attribution_en_attente
+        self.assertEqual(attente.echeance, self._a(29, 10, 32))
+
+        def passage(h, mi):
+            with mock.patch('apps.notifications.services.notify_many',
+                            return_value=[]) as envoi:
+                n = dispatch.escalader_file(self._a(29, h, mi))
+            return n, envoi
+
+        n, envoi = passage(10, 6)  # T+4
+        self.assertEqual((n, envoi.call_count), (0, 0))
+        n, envoi = passage(10, 7)  # T+5 : l'équipe
+        self.assertEqual((n, envoi.call_count), (1, 1))
+        destinataires, evenement = envoi.call_args.args[:2]
+        self.assertEqual({u.pk for u in destinataires},
+                         {self.chef.pk, self.a.pk, self.b.pk})
+        self.assertEqual(evenement, EventType.LEAD_NON_CONTACTE)
+        n, envoi = passage(10, 8)  # passage répété : rien
+        self.assertEqual((n, envoi.call_count), (0, 0))
+        n, envoi = passage(10, 17)  # T+15 : la direction
+        self.assertEqual((n, envoi.call_count), (1, 1))
+        destinataires, evenement = envoi.call_args.args[:2]
+        self.assertIn(reda.pk, {u.pk for u in destinataires})
+        self.assertEqual(evenement, EventType.PREMIER_CONTACT_DEPASSE)
+        n, envoi = passage(10, 18)
+        self.assertEqual((n, envoi.call_count), (0, 0))
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.chef)  # toujours à prendre
+        n, envoi = passage(10, 32)  # T+30 : le moins chargé (b, a a un lead)
+        self.assertEqual(n, 1)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.b)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=lead, body__contains='délai de prise dépassé').count(), 1)
+        n, envoi = passage(10, 40)
+        self.assertEqual((n, envoi.call_count), (0, 0))
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=lead, body__startswith='auto — file À prendre').count(), 3)
+
     def test_on_sans_responsable_actif_rotation_directe(self):
         self.chef.is_active = False
         self.chef.save(update_fields=['is_active'])
