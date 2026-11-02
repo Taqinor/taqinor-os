@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4894, operations: 7686, components: 3610}
+counts: {paths: 4896, operations: 7688, components: 3611}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1018,6 +1018,7 @@ operations:
 - get /api/django/crm/leads/{id}/panneau-appel/ -> django_crm_leads_panneau_appel_retrieve
 - get /api/django/crm/leads/{id}/points-contact/ -> django_crm_leads_points_contact_retrieve
 - post /api/django/crm/leads/{id}/questionnaire-lien/ -> django_crm_leads_questionnaire_lien_create
+- post /api/django/crm/leads/{id}/recontact/ -> django_crm_leads_recontact_create
 - get /api/django/crm/leads/{id}/references-proches/ -> django_crm_leads_references_proches_retrieve
 - post /api/django/crm/leads/{id}/relance/arreter/ -> django_crm_leads_relance_arreter_create
 - post /api/django/crm/leads/{id}/relance/initialiser/ -> django_crm_leads_relance_initialiser_create
@@ -4901,6 +4902,7 @@ operations:
 - get /api/v1/crm/leads/{id}/panneau-appel/ -> v1_crm_leads_panneau_appel_retrieve
 - get /api/v1/crm/leads/{id}/points-contact/ -> v1_crm_leads_points_contact_retrieve
 - post /api/v1/crm/leads/{id}/questionnaire-lien/ -> v1_crm_leads_questionnaire_lien_create
+- post /api/v1/crm/leads/{id}/recontact/ -> v1_crm_leads_recontact_create
 - get /api/v1/crm/leads/{id}/references-proches/ -> v1_crm_leads_references_proches_retrieve
 - post /api/v1/crm/leads/{id}/relance/arreter/ -> v1_crm_leads_relance_arreter_create
 - post /api/v1/crm/leads/{id}/relance/initialiser/ -> v1_crm_leads_relance_initialiser_create
@@ -10061,6 +10063,7 @@ components:
 - CrmLeadLocataireIssue
 - CrmLeadMergeRequestRequest
 - CrmLeadMessageVisite
+- CrmLeadRecontactRequestRequest
 - CrmLeadSupprime
 - CrmLeadVisitePassee
 - CrmLeadVisitePlanifiee

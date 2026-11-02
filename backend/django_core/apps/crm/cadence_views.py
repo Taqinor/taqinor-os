@@ -29,7 +29,7 @@ from .cadence_selectors import STATUTS_SUIVI
 from .cadence_temps import instant_utc
 from .controle_suivi import SEGMENTS_ADMIS
 from .params_requete import CorpsTexteMixin, corps_objet, entier_param, texte_verifie
-from .cadence_reponses import CLES_MESSAGE_REPONSE, REPONSES_TOUCHE, TYPES_PIECE_RECUE
+from .cadence_reponses import CANAUX_RECONTACT_API, CLES_MESSAGE_REPONSE, REPONSES_TOUCHE, TYPES_PIECE_RECUE
 from core.champs_stricts import ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
@@ -1579,7 +1579,7 @@ class LeadCadenceActionsMixin:
                            # MRY30 — placement des anciens leads dans les
                            # cadences : même motif (l'@action déclare
                            # IsResponsableOrAdmin).
-                           'placement_cadences'):
+                           'placement_cadences', 'recontact'):
             return [IsResponsableOrAdmin()]
         return super().get_permissions()
 
@@ -1804,6 +1804,16 @@ class LeadCadenceActionsMixin:
         arretees = arreter_cadence(
             lead, user=request.user, motif=motif, cadences=cadences)
         return Response({'arretees': arretees}, status=status.HTTP_200_OK)
+
+    @extend_schema(request=sd.corps('CrmLeadRecontactRequest', canal=ChoixDocumente(choices=CANAUX_RECONTACT_API),
+                                    note=ChaineStricte(required=False, allow_blank=True)), responses=sd.OBJ)
+    @action(detail=True, methods=['post'], permission_classes=[IsResponsableOrAdmin])
+    @_geste_atomique
+    def recontact(self, request, pk=None):
+        """CADV35 — le client d'un lead au Froid revient ; contrat `lead_recontact.json`."""
+        from .cadence_reponses import reponse_recontact
+        lead, canal = self.get_object(), texte_verifie(request, 'canal', 'note')
+        return Response(reponse_recontact(lead, request.user, canal=canal, note=request.data.get('note')))
 
     @extend_schema(request=sd.corps('CrmPlacementCadencesRequest', apply=serializers.BooleanField(required=False),
                                     limite=serializers.IntegerField(required=False, min_value=1, max_value=200)),

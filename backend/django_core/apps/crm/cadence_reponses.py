@@ -1534,6 +1534,90 @@ def enregistrer_piece_recue(etape, user, *, type_piece, attachment=None,
     return etape, etape_devis
 
 
+# ── CADV35 — le client au Froid qui recontacte (conception v4 §4.5) ─────────
+#
+# Un Nurture n'a plus de touche où saisir « il a répondu » (CADV25) et
+# ``reprendre_cadence_apres_reouverture`` est un no-op délibéré sur un lead au
+# Froid : ce geste est le seul chemin. Humain (écran ou appel entrant noté) ou
+# formulaire Meta renvoyé (CADV101) ; jamais déclenché par un message capté.
+
+#: CADV35 — les canaux par lesquels le client revient. ``formulaire_meta`` n'est
+#: pas proposé à l'API : seul le webhook Meta l'emploie (CADV101).
+CANAUX_RECONTACT = {
+    'whatsapp': 'WhatsApp',
+    'appel': 'appel entrant',
+    'formulaire_meta': 'formulaire Meta',
+}
+CANAUX_RECONTACT_API = ('whatsapp', 'appel')
+
+
+def refus_recontact(lead):
+    """CADV35 — le message du refus si ce lead ne se rouvre pas, sinon ``None``.
+    Toujours un ÉTAT de la fiche (ENF11 : 409, jamais un 400)."""
+    if lead.perdu:
+        return 'Lead perdu : décochez « Perdu » pour le rouvrir.'
+    if lead.is_archived:
+        return 'Lead archivé : restaurez-le pour le rouvrir.'
+    if lead.ne_plus_contacter:
+        return ('Lead « ne plus contacter » : l’opposition se lève sur la '
+                'fiche, jamais par ce geste.')
+    if lead.stage == stages.SIGNED:
+        return 'Lead signé : rien à rouvrir.'
+    if lead.stage != stages.COLD:
+        return 'Ce lead n’est pas au Froid : rien à rouvrir.'
+    return None
+
+
+def enregistrer_recontact(lead, user, *, canal, note=''):
+    """CADV35 — le client d'un lead au Froid se manifeste : Froid → Contacté,
+    parcage effacé, UNE étape « Appeler le client — il a répondu au message »,
+    une ligne de chatter à l'acteur, responsable prévenu.
+
+    Le devis éventuel ne démarre rien (``avec_plan_devis=False``) : la suite
+    d'une réponse est l'appel. Les touches encore ouvertes (réveils) sont
+    annulées d'abord, sinon le filet ne poserait rien. L'appelant vérifie
+    ``refus_recontact`` avant. Renvoie l'étape posée."""
+    arreter_cadence(lead, user=user, motif='le client a recontacté')
+    ancienne = lead.parc_raison
+    lead.parc_etat = lead.parc_raison = lead.parc_jusqu_au = None
+    lead.save(update_fields=['parc_etat', 'parc_raison', 'parc_jusqu_au'])
+    if ancienne:
+        activity.log_bulk_change(lead, user, 'parc_raison', ancienne, None)
+    avancer_stage_lead_vers(lead, user, stages.CONTACTED)
+    corps = f'Le client a recontacté ({CANAUX_RECONTACT[canal]}).'
+    if (note or '').strip():
+        corps += f' Note : {note.strip()}'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE, body=corps)
+    etape = assurer_prochaine_etape_apres_succes(
+        lead, user, avec_plan_devis=False,
+        canal_touche=LeadActivity.Kind.WHATSAPP)
+    responsable = lead.owner
+    if responsable is not None and responsable != user:
+        from apps.notifications.services import notify
+        notify(user=responsable, event_type='lead_assigned',
+               title='Lead rouvert — le client a recontacté', body=corps,
+               link=f'/crm/leads?lead={lead.pk}', reason='assigne_a_vous')
+    return etape
+
+
+def reponse_recontact(lead, user, *, canal, note=''):
+    """CADV35 — le geste de la route ``recontact`` : refus nommés (``canal``
+    hors vocabulaire : 400 ; état de la fiche : 409), puis le corps du 200."""
+    from rest_framework.exceptions import ValidationError
+
+    from core.conflit_etat import ConflitEtat
+
+    if canal not in CANAUX_RECONTACT_API:
+        raise ValidationError({'canal': 'Canal attendu : whatsapp ou appel.'})
+    refus = refus_recontact(lead)
+    if refus:
+        raise ConflitEtat(refus)
+    etape = enregistrer_recontact(lead, user, canal=canal, note=note)
+    return {'etape': getattr(etape, 'cle', ''), 'stage': lead.stage}
+
+
 # ── CAD-A ── CAD10 — le motif de refus, FACULTATIF, au moment où il est dit ─
 #
 # « Refus » posait l'étape « Décider la suite » sans demander pourquoi ; le

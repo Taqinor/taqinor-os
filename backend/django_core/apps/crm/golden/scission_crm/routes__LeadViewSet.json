@@ -327,6 +327,22 @@
  },
  {
   "actions_map": {
+   "post": "recontact"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/recontact/$",
+  "nom": "lead-recontact",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "recontact"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/recontact\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-recontact",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
    "get": "references_proches"
   },
   "motif": "^leads/(?P<pk>[^/.]+)/references-proches/$",

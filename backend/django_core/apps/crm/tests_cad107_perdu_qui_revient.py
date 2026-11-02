@@ -186,6 +186,90 @@ class LesNoOpDeliberesTests(_Base):
             cadence_touche.reprendre_cadence_apres_reouverture(lead, self.acteur),
             [])
 
+    def _lead_froid(self, **kw):
+        self.meryem = (
+            User.objects.filter(username=f'{self.slug}-meryem').first()
+            or User.objects.create_user(
+                username=f'{self.slug}-meryem', password='x',
+                role_legacy='commercial', company=self.company))
+        champs = {'perdu': False, 'motif_perte': None, 'stage': stages.COLD,
+                  'owner': self.meryem, 'prenom': 'Yassine', 'nom': 'Ennaji',
+                  'telephone': '+212661445566', 'parc_etat': 'nurture',
+                  'parc_raison': 'injoignable'}
+        champs.update(kw)
+        return self._lead_perdu(**champs)
+
+    def _recontact(self, lead, corps=None):
+        return self._api().post(
+            f'{LEADS_URL}{lead.pk}/recontact/',
+            corps or {'canal': 'whatsapp', 'note': 'a répondu au message de juin'},
+            format='json')
+
+    def test_un_recontact_client_rouvre_un_lead_au_froid(self):
+        """CADV35 — Froid → Contacté, parc effacé, UNE étape d'appel, chatter
+        de l'acteur, responsable prévenu."""
+        from apps.notifications.models import Notification
+
+        lead = self._lead_froid()
+        reponse = self._recontact(lead)
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertEqual(
+            reponse.json(),
+            {'etape': 'appel_apres_reponse', 'stage': stages.CONTACTED})
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.CONTACTED)
+        self.assertIsNone(lead.parc_etat)
+        self.assertIsNone(lead.parc_raison)
+        self.assertIsNone(lead.parc_jusqu_au)
+        ouverte = self._ouvertes(lead).get()
+        self.assertEqual(ouverte.cle, 'appel_apres_reponse')
+        self.assertEqual(ouverte.canal, RelanceEtape.Canal.APPEL)
+        ligne = LeadActivity.objects.get(
+            lead=lead, body__startswith='Le client a recontacté')
+        self.assertEqual(ligne.user, self.acteur)
+        self.assertIn('a répondu au message de juin', ligne.body)
+        self.assertTrue(Notification.objects.filter(
+            user=self.meryem, title__contains='le client a recontacté').exists())
+
+    def test_le_recontact_remplace_les_reveils_encore_ouverts(self):
+        """Sans cet arrêt, le filet (no-op dès qu'une touche est ouverte) ne
+        poserait aucune étape d'appel."""
+        lead = self._lead_froid()
+        reveil = RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='reveil', ordre=1,
+            due_date=lead.date_creation.date(),
+            canal=RelanceEtape.Canal.APPEL, libelle='Appel de réveil')
+        self.assertEqual(self._recontact(lead).status_code, 200)
+        reveil.refresh_from_db()
+        self.assertEqual(reveil.statut, RelanceEtape.Statut.ANNULEE)
+        self.assertEqual(
+            self._ouvertes(lead).get().cle, 'appel_apres_reponse')
+
+    def test_le_recontact_refuse_perdu_archive_oppose_signe_et_hors_froid(self):
+        """Un ÉTAT de la fiche : 409 (ENF11), et rien n'est écrit."""
+        for nom, champs in (('perdu', {'perdu': True, 'motif_perte': 'Prix'}),
+                            ('archive', {'is_archived': True}),
+                            ('oppose', {'ne_plus_contacter': True}),
+                            ('signe', {'stage': stages.SIGNED}),
+                            ('vivant', {'stage': stages.CONTACTED})):
+            with self.subTest(nom):
+                lead = self._lead_froid(**champs)
+                avant = lead.stage
+                self.assertEqual(self._recontact(lead).status_code, 409)
+                lead.refresh_from_db()
+                self.assertEqual(lead.stage, avant)
+                self.assertEqual(lead.parc_raison, 'injoignable')
+                self.assertFalse(self._ouvertes(lead).exists())
+
+    def test_le_recontact_refuse_un_canal_inconnu(self):
+        lead = self._lead_froid()
+        for canal in ('formulaire_meta', 'pigeon', ''):
+            with self.subTest(canal):
+                self.assertEqual(
+                    self._recontact(lead, {'canal': canal}).status_code, 400)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+
     def test_la_cadence_posee_est_bien_le_REVEIL_jamais_une_neuve(self):
         """Garde-fou CADX : aucune cadence n'est inventée pour l'occasion."""
         lead = self._lead_perdu(perdu=False)
