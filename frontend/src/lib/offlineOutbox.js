@@ -90,6 +90,8 @@ export async function majAtomique(store, fn) {
 }
 
 const STATUS_DONE = new Set(['applied', 'replayed'])
+// ACHT128 — échecs 5xx (500/502/503/504) tolérés par op avant de la marquer `serverError`.
+const ESSAIS_5XX = 3
 
 // ── EZ8 — charges BINAIRES (photos) dans CE MÊME outbox ─────────────────────
 // Jusqu'ici une coupure réseau pendant un upload photo = photo PERDUE (le
@@ -414,20 +416,27 @@ export class Outbox {
           resp = await this.sender(batch)
         } catch (err) {
           const statut = err?.response?.status
-          // ACHT69 — un 500 est une réponse APPLICATIVE du serveur (bug, refus) : visible et
-          // abandonnable. Seuls 502/503/504 (passerelle / surcharge), 401, 408, 429 se retentent.
-          const transitoire = !statut || statut === 502 || statut === 503 || statut === 504
-            || statut === 401 || statut === 408 || statut === 429
-          if (transitoire) break // Réseau retombé / serveur indispo : file intacte.
+          // Réseau (sans réponse), 401, 408, 429 : transitoires, file intacte (jamais comptés).
+          const transitoire = !statut || statut === 401 || statut === 408 || statut === 429
+          if (transitoire) break // Réseau retombé : file intacte.
+          // ACHT128 (décision ACHT69 : « réessayer, puis montrer ») — 500/502/503/504 sont
+          // réessayés : chaque échec 5xx est compté dans `attempts` (persisté), l'op n'est
+          // marquée qu'au ESSAIS_5XX-ième échec (un 503 persistant devient visible).
+          const cinqXX = statut === 500 || statut === 502 || statut === 503 || statut === 504
           // ADEP18 — réponse HTTP NON transitoire (400, 403, 404…) : ce n'est pas une
           // coupure. Les ops du lot sont marquées (visibles, abandonnables), comme le
           // fait `BinaryOutbox.flush`, au lieu de rester « en attente » en silence.
-          const detail = err?.response?.data?.detail || 'Refusée par le serveur.'
+          const detail = err?.response?.data?.detail || (cinqXX
+            ? `Serveur indisponible (HTTP ${statut}) : réessayez plus tard ou abandonnez l'envoi.`
+            : 'Refusée par le serveur.')
           const ids = new Set(batch.map((op) => op.client_op_id))
-          await this._mutate((cur) => cur.map((op) => (ids.has(op.client_op_id)
-            ? { ...op, serverError: detail, attempts: (op.attempts || 0) + 1 }
-            : op)))
-          failed += ids.size
+          const marquer = (op) => !cinqXX || (op.attempts || 0) + 1 >= ESSAIS_5XX
+          await this._mutate((cur) => cur.map((op) => {
+            if (!ids.has(op.client_op_id)) return op
+            const attempts = (op.attempts || 0) + 1
+            return marquer(op) ? { ...op, serverError: detail, attempts } : { ...op, attempts }
+          }))
+          failed += batch.filter(marquer).length
           break
         }
         const results = (resp && resp.results) || []
