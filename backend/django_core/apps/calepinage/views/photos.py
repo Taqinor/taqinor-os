@@ -71,11 +71,6 @@ def fichier_introuvable():
                     status=status.HTTP_404_NOT_FOUND)
 
 
-_CHAMPS_PHOTO = {
-    'genre': serializers.CharField(required=False),
-    'prise_le': serializers.CharField(required=False),
-    'legende': serializers.CharField(required=False, allow_blank=True),
-}
 _FORME_PHOTO = forme_reponse('CalepinagePhotoSite', 'photo', 'photos')
 
 
@@ -107,6 +102,17 @@ class PhotoSiteChampsSerializer(serializers.Serializer):
         'null': ("La date de prise de vue est obligatoire : elle est "
                  "SAISIE, jamais déduite de la date d'import.")})
     legende = ChaineStricte(required=False, allow_blank=True)
+
+
+# Le corps publié du PATCH d'une photo : les mêmes prédicats, tous facultatifs
+# (ERR-ENF11-FUZZ-CALEPINAGE : ``prise_le`` était publié en texte libre puis
+# refusé « illisible »).
+_CHAMPS_PHOTO = {
+    'genre': _ChoixDeFormulaire(choices=PhotoSite.Genre.choices,
+                                required=False),
+    'prise_le': DateStricte(required=False),
+    'legende': ChaineStricte(required=False, allow_blank=True),
+}
 
 
 # Le corps publié du dépôt : les champs ci-dessus et le fichier.
@@ -185,7 +191,7 @@ class PhotosSiteMixin:
         """
         from ..selectors import photos_site
         from ..services.photos import (
-            PhotoRefusee, modifier_photo_site, photo_en_ligne,
+            PhotoEnConflit, PhotoRefusee, modifier_photo_site, photo_en_ligne,
             supprimer_photo_site,
         )
 
@@ -204,6 +210,9 @@ class PhotosSiteMixin:
         try:
             modifier_photo_site(
                 photo, request.data if isinstance(request.data, dict) else {})
+        except PhotoEnConflit as refus:  # date FUTURE : dépend du jour, 409
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_409_CONFLICT)
         except PhotoRefusee as refus:
             return Response({refus.champ or 'detail': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)

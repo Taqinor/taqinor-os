@@ -68,10 +68,18 @@ class EditionPhotoTest(BasePhoto):
     def test_patch_date_future_refusee_comme_a_la_creation(self):
         reponse = self.api.patch(self.url, {'prise_le': DEMAIN.isoformat()},
                                  format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # ENF11 : dépend du jour
         self.assertIn('prise_le', reponse.data)
         self.photo.refresh_from_db()
         self.assertEqual(self.photo.prise_le, HIER)
+
+    def test_patch_corps_publie_date_et_genre_stricts(self):
+        """ENF11 (fuzz 01/11) : le corps publié du PATCH porte les prédicats
+        exécutés (date AAAA-MM-JJ, genre énuméré), plus du texte libre."""
+        from core.champs_stricts import DateStricte
+        from apps.calepinage.views.photos import _CHAMPS_PHOTO
+        self.assertIsInstance(_CHAMPS_PHOTO['prise_le'], DateStricte)
+        self.assertTrue(_CHAMPS_PHOTO['genre'].choices)
 
     def test_patch_genre_inconnu_refuse(self):
         reponse = self.api.patch(self.url, {'genre': 'satellite'},
