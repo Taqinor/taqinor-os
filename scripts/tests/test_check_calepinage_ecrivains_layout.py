@@ -29,13 +29,23 @@ class EcrivainsLayoutTests(unittest.TestCase):
         self.assertEqual(len(erreurs), 1)
         self.assertIn("HorizonPanel.jsx:1", erreurs[0])
 
+    def test_appel_conditionnel_hors_atelier_detecte(self):
+        root = _repo({
+            "frontend/src/features/calepinage/Onglet.jsx":
+                "calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel(id, layout, empreinte)\n",
+        })
+        erreurs = guard.verifier(root, allow={})
+        self.assertEqual(len(erreurs), 1)
+        self.assertIn("Onglet.jsx:1", erreurs[0])
+        self.assertIn("enregistrerLayoutCalepinage", erreurs[0])
+
     def test_atelier_definition_commentaire_test_ignores(self):
         root = _repo({
             guard.ATELIER: "api.enregistrerLayoutCalepinage(id, doc)\n",
             "frontend/src/api/calepinageApi.js":
                 "enregistrerLayoutCalepinage: (id) => 1,\n"
                 "// enregistrerLayoutCalepinage(x)\n"
-                "enregistrerLayoutCalepinageConditionnel(x)\n",
+                "enregistrerLayoutCalepinageConditionnel: (x) => 1,\n",
             "frontend/src/features/x/A.test.jsx": "enregistrerLayoutCalepinage(1)\n",
         })
         self.assertEqual(guard.verifier(root, allow={}), [])
