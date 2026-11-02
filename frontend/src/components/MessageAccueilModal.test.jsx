@@ -209,7 +209,7 @@ describe('MSGACC1 — MessageAccueilModal', () => {
 // par Login.jsx n'a pas de `portee` ; la décision attend la réponse de /auth/me/.
 describe('ADOC183 — transition de connexion', () => {
   const rendreAvecVraiReducer = async () => {
-    const { default: authReducer, setCredentials, fetchMe } = await import('../features/auth/store/authSlice')
+    const { default: authReducer, fetchMe } = await import('../features/auth/store/authSlice')
     const store = configureStore({ reducer: { auth: authReducer } })
     render(
       <Provider store={store}>

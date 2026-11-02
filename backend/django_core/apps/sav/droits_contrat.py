@@ -19,10 +19,11 @@ def tickets_dates(*args, **filtres):
     """ASAV122 — tickets non annulés annotés de leur date de référence
     ``date_ref_couverture`` (même règle que ``Ticket.date_reference_couverture``,
     D-ASAV-6 : l'ouverture, à défaut le jour de création), équipement joint."""
-    return (Ticket.objects.filter(*args, annule=False, **filtres)
+    return (Ticket.objects.filter(annule=False)
             .annotate(date_ref_couverture=Coalesce(
                 'date_ouverture', TruncDate('date_creation'),
                 output_field=DateField()))
+            .filter(*args, **filtres)
             .select_related('equipement'))
 
 
