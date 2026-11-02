@@ -57,6 +57,20 @@ decisions:
     source: "session 2026-10-09 ; constat C-AMET-007"
     taches: [AMET4, AMET102]
 
+  - id: D-AMET4-PROVISOIRE
+    question: "Le brouillon d'acompte créé automatiquement à l'acceptation (D-SIGN-AUTO) bloque-t-il la facturation du devis/BC (porte ATOT2 qui compte les brouillons) ?"
+    options:
+      - cle: a
+        texte: "PROVISOIRE, non bloquant : le brouillon d'acompte automatique ne ferme pas la porte ATOT2 ; il est émis à la main quand l'acompte est demandé"
+      - cle: b
+        texte: "brouillon BLOQUANT (ATOT2 strict) : rien d'autre ne se facture tant qu'il n'est ni émis ni supprimé"
+      - cle: c
+        texte: "ne pas créer de brouillon automatique ; acomptes manuels"
+    reponse: a
+    date: "2026-11-01"
+    source: "session cloud 2026-11-01 (question posée au fondateur) ; blocage de la lane AMET4 du 10/10/2026"
+    taches: [AMET4, AMET7]
+
   - id: D-OWN-FUSION
     question: "Fusionner les propriétaires crm→lead et générateur→devis, déplacer 111 tâches TRANSVERSE verbatim, scinder 43 tâches multi-propriétaires, ordre correctifs-d'abord, TRANSVERSE = SPL atomiques seulement (casse l'append-only une fois) ?"
     options:

@@ -1,0 +1,149 @@
+{
+  "sha": "1681514e33cd195ca3d46d1d12f12b13a5083280",
+  "date": "2026-11-01",
+  "groupe": "AANA",
+  "verdict": "PASS",
+  "couvre": [
+    "AANA57",
+    "AANA58",
+    "AANA69",
+    "AANA77",
+    "AANA78",
+    "AANA79"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P8.1",
+      "taches": [
+        "AANA58"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/rejeu-0111b/rejeu-head-3.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Pile native 0111b : Postgres pgvector pg16 :55490, Redis :56391, moto S3 :9191, Django runserver :8790 (code 1681514e3) et :8791 (contre-épreuve 80186d400b, base séparée erp_acc2_old), worker Celery, vite preview E2E_PROXY sur un build VITE_E2E=1 ; connexion demo_admin par /login (Playwright, Chromium headless). HTTP réel : GET /reporting/dashboard/ et /ventes/dashboard/ (Q2C) sans paramètre, sur from/to=start/end 2026-10-01..2026-11-01 et sur 2020-01 : conversion.taux_acceptation_pct = devis.taux_acceptation_pct (81.2 / 81.2), nb_acceptes_periode/nb_envoyes_periode = acceptes_periode/envoyes_periode (13/16) ; période sans envoi ⇒ null des deux côtés (0/0) ; nb_devis 34, nb_acceptes 16, nb_factures 26 servis. Société ACC2 A : null / 0 / 0 des deux côtés (rejeu-head-5-societeA.json). Contre-épreuve 80186d400b (rejeu-old.json) : reporting 31.8 (acceptés ÷ créés, sans effectifs) contre Q2C 66.7 (6/9), et 31.8 encore sur la période 2020-01 vide."
+    },
+    {
+      "id": "P8.2",
+      "taches": [
+        "AANA57"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/rejeu-0111b/ACCEPTATION-AANA-REPORTING-tunnel.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran /reporting, société ACC2 A (1 devis créé, 0 accepté, 3 factures émises : plus de factures que de devis) : tunnel « Devis créés 1 / Devis acceptés 0 / Factures émises 3 », aucun pourcentage (taux servi null ⇒ ligne « Devis acceptés / envoyés » absente), barres aria-valuenow 100 / 0 / 100 (bornées) ; société démo : « 34 / 16 / 26 » + seul % « Devis acceptés / envoyés : 81 % » = 81.2 servi, aucun « 150 ». /reporting/quote-to-cash : hint « 13 / 16 devis envoyés » = acceptes_periode/envoyes_periode servis, 81.2 % ; rechargé identique (société A : « 0 / 0 devis envoyés », « — »). Contre-épreuve : sonde C-AANA-VER-006 REPRO sur 80186d400b (barre Factures émises « 150 % ») ; au sha la sonde ne trouve plus le calcul `const pct =` (supprimé) — sonde-C-AANA-VER-006.txt. Observation : le tunnel arrondit à l'unité (81 %) quand le Q2C affiche 81.2 % (même valeur servie)."
+    },
+    {
+      "id": "P9",
+      "taches": [
+        "AANA77"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/rejeu-0111b/aana77-metriques-head.json",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Moteur réel resolve_metric (manage.py shell, base locale) : société ACC2 A, 3 factures classiques émises 1 000 / 500 / 250 HT (montant_ht NULL sur les 3) ⇒ ca_ht 1750.00, ca_ttc 2100.00, panier_moyen 700.00 (TTC ÷ 3) ; société démo : ca_ht 54340.00 = Σ total_ht des 13 factures émises/payées (dont 3 à montant_ht NULL), ca_ttc 65168.00 = Σ total_ttc. Définitions semées : adaptateurs reporting.ca_*, filtres emise/payee/en_retard. Persistance : base 80186d400b semée à l'ancienne (sum montant_ht, brouillon inclus ⇒ None/None/None et panier démo 60.00, aana77-metriques-old.json), puis migrate du sha (0004 + 0005 appliquées, second migrate « No migrations to apply ») ⇒ ca_ht 1750.00 / 2100.00, versions [1, 2, 3] (aana77-metriques-apres-migration.json). Prompt de l'agent : aucun exemple SUM(montant_ht|ttc), puce Factures le dit NULL ; exemples factures exécutés par la garde sur Postgres (aana77-prompt-head.json). Tâche laissée OUVERTE : volet agent SQL « CA à 1 750 » BLOQUÉ (aucun total stocké, ATOT55)."
+    },
+    {
+      "id": "P10",
+      "taches": [
+        "AANA78"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/rejeu-0111b/aana78-sql-head.json",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "Outil SQL sécurisé de l'agent (sql_agent_service._validate_and_secure du sha) exécuté sur le VRAI Postgres local (pas sqlite), trois sociétés : ACC2 A (lignes de devis 2 × 10, factures 1 750 HT), ACC2 B (50 × 100 = 5 000 ; 7 × 300 = 2 100), démo. 9 formes (SUM nu, JOIN devis→lignes et lignes→devis, sous-requête dérivée, CTE, public.\"ventes_lignedevis\", lignes de facture nues / alias + JOIN / IN sous-requête) : chaque résultat = vérité par jointure sur company_id (A 20 / 1750, B 5000 / 2100, démo 257434 / 35145) ; jamais le total toutes sociétés (262454 / 38995). Contre-épreuve 80186d400b : les 9 formes échouent à l'exécution « column \"company_id\" does not exist » (aana78-sql-old.json). Rôle propriétaire (SQL_AGENT_DB_USER non défini, AANA64) ; route FastAPI non jouée (aucune clé LLM) — garde jouée en direct sur le code."
+    },
+    {
+      "id": "P11",
+      "taches": [
+        "AANA79"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/rejeu-0111b/ACCEPTATION-AANA-BI-explorateur.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "Explorateur /donnees/explorateur (demo_admin) : Factures, regroupé par statut, Somme de total_ht ⇒ annulee 505 / brouillon 600 / emise 44520 / payee 9820 = Σ Facture.total_ht par statut relue par l'ORM (aana79-verite-head.json) ; POST /core/data-explorer/run/ filtres emise/payee/en_retard : total_ht 54340, total_ttc 65168, 13 factures ; même requête sur montant_ht : 20000 (figé, partiel). Société ACC2 A (run_query réel) : total_ht 1750.00 pour 3 factures. Contre-épreuve 80186d400b : total_ht → 400 « Champ non autorisé », montant_ht A = null (aana79-societe-a-old.json, rejeu-old.json)."
+    },
+    {
+      "id": "P12",
+      "taches": [
+        "AANA69"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-01/rejeu-0111b/ACCEPTATION-AANA-RELEVE-apercu.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "4 factures émises posées par l'API ; relevé CSV (AANA69-releve-head.csv) déposé dans /ventes/paiements/import-releve : aperçu « Mode de paiement non reconnu » (traite, non cochable), « À importer · virement (supposé) » (mode vide), « À importer » (chèque), « Montant invalide » (1200.005). API dry-run : traite ⇒ mode_invalide + file de revue ; vide ⇒ a_importer, virement, mode_par_defaut true ; chèque ⇒ cheque ; 1200.005 ⇒ montant_invalide. Commit (jeton) : created 2 ; paiements relus : facture 2 = 2400.00 virement, facture 3 = 3600.00 cheque, factures 1 et 4 : aucun paiement. Contre-épreuve 80186d400b : les 4 lignes a_importer, traite écrit en virement 1200.00, 1200.005 écrit 1200.01."
+    }
+  ]
+}
