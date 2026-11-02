@@ -685,6 +685,8 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
             _statut_ci == "calcule"
             and ((_economie_ci.get("tarif") or {}).get("contrat")
                  == "mt_general"))
+    # ADVS18 — lien public « Synthèse d'économies » décochée : même masque.
+    masquer_economies |= "economies" in opts.get("sections_masquees", ())
     if _dossier_mt and not masquer_economies:
         try:
             from .ci.mentions import mention_tarif_mt
