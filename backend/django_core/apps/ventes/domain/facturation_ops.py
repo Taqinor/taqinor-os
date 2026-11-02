@@ -1699,6 +1699,7 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
     from .. import activity
     from ..models import Avoir, Facture, LigneAvoir
     from ..utils.company_settings import create_numbered
+    from .encaissements import crediter_trop_percu_en_avance
     from .encaissements import recalculer_statut_paiement
 
     company = facture.company
@@ -1831,8 +1832,9 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
         # émis pour TOUT avoir, retour compris (il ne l'était pas).
         avoir_cree.send(sender=Avoir, instance=avoir, company=company)
         # ATOT8 / AFAC29 — le statut de paiement suit le reste dû (un retour
-        # qui solde la facture la passe PAYÉE).
+        # qui solde la facture la passe PAYÉE). AARG1 — au-delà du reste : avance.
         if mode != 'contre_passation':
+            crediter_trop_percu_en_avance(locked, avoir, user=user)
             recalculer_statut_paiement(locked, user=user, source='avoir')
     return avoir
 

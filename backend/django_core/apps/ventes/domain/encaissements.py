@@ -990,6 +990,37 @@ def enregistrer_avance(*, company, client, montant, date_paiement, mode,
     )
 
 
+def crediter_trop_percu_en_avance(facture, avoir, *, user=None):
+    """AARG1 (D-AARG-1 = avance_client) — la part encaissée que l'avoir
+    ``avoir`` rend excédentaire quitte la facture (Paiement négatif) et devient
+    une avance client non affectée, imputable ou remboursable : elle ne
+    disparaît plus sous un dû borné à 0. Rien si l'avoir tient dans le reste
+    dû, ni sans client. Appelé sous le verrou de la facture. Renvoie l'avance
+    ou None."""
+    from decimal import Decimal
+    from django.utils import timezone
+    from apps.facturation.models import decomposition_du
+    from ..models import Paiement
+
+    d = decomposition_du(facture)
+    trop_percu = (d['paye'] + d['retenues'] + d['avoirs'] + d['abandons']
+                  - d['facture'] - d['notes_debit'])
+    montant = min(trop_percu, d['paye'], Decimal(str(avoir.total_ttc)))
+    if montant <= Decimal('0.01') or facture.client_id is None:
+        return None
+    note = f'Trop-perçu après avoir {avoir.reference}'
+    jour = timezone.localdate()
+    Paiement.objects.create(
+        company=facture.company, facture=facture, client=facture.client,
+        montant=-montant, date_paiement=jour, mode=Paiement.Mode.AUTRE,
+        reference=avoir.reference, note=note, created_by=user)
+    return enregistrer_avance(
+        company=facture.company, client=facture.client, montant=montant,
+        date_paiement=jour, mode=Paiement.Mode.AUTRE,
+        reference=avoir.reference, note=f'{note} (facture {facture.reference})',
+        created_by=user)
+
+
 def ventiler_avance(*, paiement, facture, montant, user=None):
     """Ventile UN paiement non affecté (avance) sur UNE facture ouverte du
     même client, pour ``montant``. Peut être appelée plusieurs fois pour

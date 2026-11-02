@@ -98,6 +98,11 @@
     <div class="totaux-row"><span>Total avoirs</span><span>−{{ releve.totaux.avoirs }} MAD</span></div>
     <div class="totaux-row"><span>Abandons de créance</span><span>−{{ releve.totaux.abandons }} MAD</span></div>
     <div class="totaux-row du"><span>Solde dû</span><span>{{ releve.totaux.du }} MAD</span></div>
+    {# AARG1 (D-AARG-1) — le crédit du client : avances disponibles, solde net. #}
+    {% if releve.avances %}
+    <div class="totaux-row"><span>Avances disponibles</span><span>−{{ releve.totaux.avances }} MAD</span></div>
+    <div class="totaux-row du"><span>Solde du compte</span><span>{{ releve.totaux.solde }} MAD</span></div>
+    {% endif %}
   </div>
 
   <div class="footer">

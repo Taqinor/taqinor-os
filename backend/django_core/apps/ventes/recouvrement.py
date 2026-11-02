@@ -646,7 +646,9 @@ def _releve_data(client, user=None):
                 'mode': p.get_mode_display(),
                 'montant': _s(p.montant),
                 'type': 'paiement',
-                'libelle': p.get_mode_display(),
+                # AARG1 — la sortie d'un trop-perçu se nomme.
+                'libelle': (p.note if p.montant < 0 and p.note
+                            else p.get_mode_display()),
             })
             escompte = p.escompte_montant or Decimal('0')
             if escompte:
@@ -688,6 +690,21 @@ def _releve_data(client, user=None):
             })
     paiements.sort(key=lambda r: r['date'] or '')
     avoirs.sort(key=lambda r: r['date'] or '')
+    # AARG1 (D-AARG-1) — avances encore disponibles : `solde` = dû − avances
+    # dit le crédit du client ; `du` reste le terme de l'identité AFAC97.
+    avances_qs = Paiement.objects.filter(
+        client=client, facture__isnull=True,
+    ).exclude(statut__in=Paiement.STATUTS_NON_COMPTES).prefetch_related(
+        'affectations').order_by('date_paiement', 'id')
+    if user is not None:
+        from authentication.scoping import scope_queryset
+        avances_qs = scope_queryset(avances_qs, user, ['created_by'])
+    avances = [
+        {'date': p.date_paiement.isoformat() if p.date_paiement else None,
+         'reference': p.reference, 'libelle': p.note or 'Avance client',
+         'montant': _s(p.montant_disponible)}
+        for p in avances_qs if p.montant_disponible > 0]
+    total_avances = sum((Decimal(a['montant']) for a in avances), Decimal('0'))
     return {
         'client': {'id': client.id,
                    'nom': f"{client.nom} {client.prenom or ''}".strip(),
@@ -696,6 +713,7 @@ def _releve_data(client, user=None):
         'lignes': lignes,
         'paiements': paiements,
         'avoirs': avoirs,
+        'avances': avances,
         'totaux': {
             'facture': _s(total_facture),
             'notes_debit': _s(total_nd),
@@ -704,6 +722,8 @@ def _releve_data(client, user=None):
             'avoirs': _s(total_avoir),
             'abandons': _s(total_abandon),
             'du': _s(total_du),
+            'avances': _s(total_avances),
+            'solde': _s(total_du - total_avances),
         },
     }
 
