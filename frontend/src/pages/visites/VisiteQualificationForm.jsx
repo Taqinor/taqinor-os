@@ -158,6 +158,12 @@ export default function VisiteQualificationForm({ visiteId, qualification, lectu
     }
   }
 
+  // ALEA57 : toute clé d'erreur hors question / devis_details (ex. `statut`)
+  // est affichée en alerte — sinon le refus serveur reste muet.
+  const erreursHorsChamp = Object.entries(erreurs).filter(
+    ([k]) => k !== 'devis_details' && !QUALIFICATION_SCHEMA.some((q) => q.key === k),
+  )
+
   return (
     <Card className="mb-3 p-3" data-testid="visite-qualification">
       <form noValidate onSubmit={submit} className="space-y-4">
@@ -191,6 +197,9 @@ export default function VisiteQualificationForm({ visiteId, qualification, lectu
               </div>
             )}
           </div>
+        ))}
+        {erreursHorsChamp.map(([k, msg]) => (
+          <p key={k} role="alert" className="text-xs text-destructive">{msg}</p>
         ))}
         <div>
           <Label htmlFor="visite-qualif-conseil">Conseil pour l’appel de closing</Label>

@@ -292,6 +292,16 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         """Vrai si l'appelant porte ``visites_valider`` (ou en tient lieu)."""
         return _user_has_or_legacy(self.request.user, 'visites_valider')
 
+    def perform_destroy(self, instance):
+        """ALEA58 — supprimer la visite retire ses photos par LE service
+        unique (``services.supprimer_media`` : pièce jointe du lead + objet
+        de stockage après commit), jamais par la seule cascade."""
+        from django.db import transaction
+        with transaction.atomic():
+            for media in list(instance.medias.select_related('attachment')):
+                services.supprimer_media(media)
+            instance.delete()
+
     def get_queryset(self):
         qs = super().get_queryset()
         if not self._voit_toute_l_equipe():
