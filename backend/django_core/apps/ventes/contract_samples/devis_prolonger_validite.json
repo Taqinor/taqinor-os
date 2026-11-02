@@ -1,0 +1,27 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<int:pk>/prolonger-validite/",
+  "pourquoi": "CADV82 (C-CADV-082, D-CADV-3) — l'appel J28 prolonge la validité d'un devis encore « envoyé » (responsable ou admin) via apps.ventes.services.prolonger_validite_devis. Corps facultatif : `date` AAAA-MM-JJ (défaut : aujourd'hui + réglage de validité de la société). Jamais plus courte (`prolongee: false`, `date_validite` = validité effective inchangée) ; aucun statut écrit (règle #4) ; le lien public de la proposition suit la nouvelle date ; rejouer = idempotent. 409 {detail, code: 'statut'} pour tout devis non envoyé — l'expiré se révise (reviser), il ne se prolonge pas. Aucun écran à ce jour (api-only TEMPORAIRE).",
+  "corps": {
+    "date": "2027-01-10"
+  },
+  "exemple": {
+    "date_validite": "2027-01-10",
+    "prolongee": true
+  },
+  "exemple_plus_courte": {
+    "date_validite": "2026-12-31",
+    "prolongee": false
+  },
+  "reponses": {
+    "200": "{date_validite, prolongee} (voir `exemple`)",
+    "400": {
+      "date": [
+        "Date has wrong format. Use one of these formats instead: YYYY-MM-DD."
+      ]
+    },
+    "409": {
+      "detail": "Devis expiré : réviser, pas prolonger.",
+      "code": "statut"
+    }
+  }
+}

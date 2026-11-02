@@ -94,6 +94,8 @@ FIGEE = {
     'avenant_demander_signature': PALIER_VENTE,
     # VNT66 — réécrire l'échéancier d'une vente : même palier.
     'echeancier_vente': PALIER_VENTE,
+    # CADV82 — l'appel J28 prolonge la validité d'un envoyé (écriture).
+    'prolonger_validite': RESP,
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).
