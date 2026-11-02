@@ -55,9 +55,15 @@ def devis_du_client_portail(company, client_id, *, limit=200,
     if company is None or not client_id:
         return []
     # QJR520 — une version remplacée n'est plus listée à côté de sa
-    # remplaçante (is_active=True).
+    # remplaçante (is_active=True). ADVS37 (D-ADEV-1=a) — sauf la vente signée
+    # en vigueur : une V1 acceptée reste listée tant que sa V2 n'est pas signée.
+    from django.db.models import Q
+    from .selectors import devis_signes_en_vigueur
+    en_vigueur = devis_signes_en_vigueur(company).filter(
+        client_id=client_id).values('pk')
     qs = (Devis.objects
-          .filter(company=company, client_id=client_id, is_active=True)
+          .filter(Q(is_active=True) | Q(pk__in=en_vigueur),
+                  company=company, client_id=client_id)
           .exclude(statut=Devis.Statut.BROUILLON)
           .order_by('-date_creation')[:limit])
     return [{
