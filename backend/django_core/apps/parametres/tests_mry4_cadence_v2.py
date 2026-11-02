@@ -217,6 +217,39 @@ def _etat(company):
         'dimanche_ok', 'actif'))
 
 
+def _v3_apres_devis(company):
+    """Les 10 barreaux `apres_devis` tels que la production les porte (v3)."""
+    msg, appel = datetime.time(9, 30), datetime.time(18, 0)
+    v3 = [
+        (1, 'whatsapp', 1, msg, "Le PDF s'ouvre bien ?", 'j1_pdf', False),
+        (2, 'appel', 2, appel, 'Appel de suivi', 'appel_suivi_j2', False),
+        (3, 'whatsapp', 3, datetime.time(16, 0), 'Dimanche famille',
+         'dimanche_famille', True),
+        (4, 'whatsapp', 4, msg, 'Preuve — chantier comparable', 'j4_preuve',
+         False),
+        (5, 'whatsapp', 6, msg, 'Garanties fabricants', 'j6_garanties', False),
+        (6, 'appel', 7, appel, 'Appel de suivi', 'appel_suivi_j7', False),
+        (7, 'whatsapp', 9, msg, 'Validité de la proposition', 'j9_validite',
+         False),
+        (8, 'appel', 11, appel, 'Appel de suivi', 'appel_suivi_j11', False),
+        (9, 'whatsapp', 13, msg, 'Dernier message', 'j13_dernier', False),
+        (10, 'whatsapp', 14, msg, 'Mise en pause', 'j14_pause', False),
+    ]
+    for (ordre, canal, jours, heure, libelle, cle, dim) in v3:
+        CadenceRelanceEtape.objects.create(
+            company=company, cadence=Cadence.APRES_DEVIS, ordre=ordre,
+            canal=canal, delai_jours=jours, delai_minutes=0,
+            heure_cible=heure, libelle=libelle, template_cle=cle,
+            dimanche_ok=dim, actif=True)
+
+
+def _etat_apres_devis(company):
+    return list(CadenceRelanceEtape.objects.filter(
+        company=company, cadence=Cadence.APRES_DEVIS).order_by('ordre')
+        .values_list('ordre', 'canal', 'delai_jours', 'heure_cible',
+                     'template_cle', 'dimanche_ok', 'actif'))
+
+
 class MigrationEtiquetteGeneriqueTests(TestCase):
     """L'opération de données de la migration 0081, exécutée telle quelle.
 
@@ -329,6 +362,67 @@ class MigrationEtiquetteGeneriqueTests(TestCase):
         for ligne in etat:
             if ligne[0] != 8:
                 self.assertIn(ligne, v3)
+
+    def _module_apres_devis(self):
+        from importlib import import_module
+        return import_module(
+            'apps.parametres.migrations.0134_gabarit_apres_devis_v4')
+
+    def test_la_migration_v4_reecrit_le_gabarit_apres_devis(self):
+        company = _company('cadv24-prod')
+        _v3_apres_devis(company)
+        avant = _etat_apres_devis(company)
+        module = self._module_apres_devis()
+        module.vers_v4(self._RegistreSimule, None)
+        etat = _etat_apres_devis(company)
+        t = datetime.time
+        self.assertEqual(etat[:3], avant[:3])  # ordres 1-3 inchangés
+        self.assertEqual(etat[5], avant[5])  # appel J7 inchangé
+        self.assertEqual([e[6] for e in etat[3:5]], [False, False])
+        self.assertEqual(etat[6][:5], (7, 'whatsapp', 10, t(9, 30),
+                                       'j6_garanties'))
+        self.assertEqual(etat[7][:3], (8, 'appel', 14))
+        self.assertEqual(etat[8][:3], (9, 'appel', 28))
+        self.assertEqual(etat[9][:3], (10, 'whatsapp', 60))
+        self.assertEqual(etat[10][:3], (11, 'appel', 90))
+        self.assertEqual(len(etat), 11)
+        actifs = CadenceRelanceEtape.cadence_pour(
+            company, Cadence.APRES_DEVIS)
+        self.assertEqual([a.delai_jours for a in actifs],
+                         [1, 2, 3, 7, 10, 14, 28, 60, 90])
+        # Idempotence : relire les 11 lignes après la 2e application.
+        module.vers_v4(self._RegistreSimule, None)
+        self.assertEqual(_etat_apres_devis(company), etat)
+
+    def test_apres_devis_barreau_modifie_par_la_societe_reste_intact(self):
+        company = _company('cadv24-perso')
+        _v3_apres_devis(company)
+        CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.APRES_DEVIS, ordre=4).update(
+            delai_jours=5)
+        self._module_apres_devis().vers_v4(self._RegistreSimule, None)
+        o4 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.APRES_DEVIS, ordre=4)
+        self.assertTrue(o4.actif)
+        self.assertEqual(o4.delai_jours, 5)
+
+    def test_apres_devis_sans_cadence_aucune_ligne_creee(self):
+        company = _company('cadv24-vide')
+        self._module_apres_devis().vers_v4(self._RegistreSimule, None)
+        self.assertEqual(CadenceRelanceEtape.objects.filter(
+            company=company).count(), 0)
+
+    def test_apres_devis_marche_arriere(self):
+        company = _company('cadv24-retour')
+        _v3_apres_devis(company)
+        v3 = _etat_apres_devis(company)
+        module = self._module_apres_devis()
+        module.vers_v4(self._RegistreSimule, None)
+        module.vers_v3(self._RegistreSimule, None)
+        etat = _etat_apres_devis(company)
+        self.assertEqual(etat[:10], v3)
+        self.assertEqual(etat[10][0], 11)
+        self.assertFalse(etat[10][6])
 
 
 class CadenceApiTests(TestCase):
