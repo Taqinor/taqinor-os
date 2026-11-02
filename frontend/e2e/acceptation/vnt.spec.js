@@ -25,7 +25,7 @@ const plage = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => `VNT${a + i}
 const etape = groupe('VNT', [
   ...plage(10, 23), ...plage(25, 31), ...plage(33, 42), 'VNT44', 'VNT45', 'VNT46',
   'VNT58', 'VNT59', 'VNT60', 'VNT61', 'VNT62', 'VNT64', 'VNT72', 'VNT73', 'VNT74', 'VNT75', 'VNT78',
-  'VNT53', 'VNT54', 'VNT55', 'VNT67', 'VNT77', 'VNT84', 'VNT85', 'VNT86', 'VNT88', 'VNT89', 'VNT91', 'VNT92', 'VNT93',
+  'VNT53', 'VNT54', 'VNT55', 'VNT67', 'VNT77', 'VNT49', 'VNT66', 'VNT68', 'VNT70', 'VNT80', 'VNT84', 'VNT85', 'VNT86', 'VNT88', 'VNT89', 'VNT91', 'VNT92', 'VNT93',
   'VNT97', 'VNT98', 'VNT100', 'VNT102', 'VNT103', 'VNT104', 'VNT105', 'VNT106',
 ])
 
@@ -478,7 +478,7 @@ async function devisDetail(request, id) {
 /** Facture(s) de la vente servies par le serveur (`vente.factures`, vente_etat.json). */
 const venteDe = async (request, id) => (await devisDetail(request, id)).vente
 
-etape('P2.1', ['VNT62', 'VNT74', 'VNT75'], async ({ page, suivi, testInfo }) => {
+etape('P2.1', ['VNT62', 'VNT68', 'VNT70', 'VNT74', 'VNT75'], async ({ page, suivi, testInfo }) => {
   // Accepter ⇒ brouillon d'acompte automatique (30 % de 54 500 = 16 350) visible dans le panneau ;
   // « Facturer l'acompte » 15 000 « déjà payé » ⇒ LE MÊME brouillon est émis et payé.
   await avecReplique(page, testInfo, async (r) => {
@@ -533,14 +533,16 @@ function compterMails() {
   return { emailLog: Number(m[1]), consoleMessages: messages }
 }
 
-etape('P2.2', ['VNT58', 'VNT59', 'VNT60', 'VNT64', 'VNT73', 'VNT78'], async ({ page, suivi, testInfo }) => {
+etape('P2.2', ['VNT49', 'VNT58', 'VNT59', 'VNT60', 'VNT64', 'VNT73', 'VNT78'], async ({ page, suivi, testInfo }) => {
   // « Prix négocié » 49 000 depuis le panneau : aperçu serveur (remise 10,00 %), application ⇒ V2 acceptée,
   // V1 remplacée, acompte payé repris, reste à facturer 34 000 ; le lien d'avenant s'affiche.
-  const mailsAvantReplique = compterMails()
   await avecReplique(page, testInfo, async (r) => {
     const acompte = await acompteParApi(page.request, r.devisId)
+    // Base du témoin APRÈS la réplique : l'acceptation interne de la V1 envoie désormais une « Copie — proposition
+    // acceptée » au responsable (EmailLog, observé le 02/11/2026) — hors du geste mesuré.
+    const mailsAvantReplique = compterMails()
     // Témoin positif : un envoi RÉEL par le même processus web (facture d'acompte → client) fait bouger les deux compteurs ;
-    // sans cela « 0 mail » ne prouverait rien (compteur muet). L'acceptation interne ne mail pas (pas de signature).
+    // sans cela « 0 mail » ne prouverait rien (compteur muet).
     const envoi = await page.request.post(`${API}/ventes/factures/${acompte.id}/envoyer-email/`, { timeout: 120_000,
       data: { to_email: 'client-vnt83@acceptation.test', attach_pdf: false } })
     expect(envoi.status(), await envoi.text()).toBe(202)
@@ -878,6 +880,126 @@ etape('P2.7', ['VNT53', 'VNT55'], async ({ page, testInfo }) => {
   })
 })
 
+etape('P2.10', ['VNT54', 'VNT58', 'VNT80'], async ({ page, suivi, testInfo }) => {
+  // 409 vers la tête : (a) le geste Prix négocié rejoué sur la V1 remplacée ⇒ 409 `version_remplacee` nommant la V2 ;
+  // (b) un 2e devis accepté depuis la LISTE sur le même lead ⇒ 409 `vente_active_existante`, erreur SOUS la ligne
+  // avec « Ouvrir <réf> » qui ouvre la vente en vigueur (`?devis=<id>`).
+  await avecReplique(page, testInfo, async (r) => {
+    const neg = await prixNegocieParApi(page.request, r.devisId, '49000')
+    const v2 = neg.devis_v2
+    suivi.attendre(new RegExp(`/ventes/devis/${r.devisId}/prix-negocie/$`), 409)
+    const rejoue = await page.request.post(`${API}/ventes/devis/${r.devisId}/prix-negocie/`, { timeout: 120_000,
+      data: { prix_ttc: '48000', mode: 'appliquer' } })
+    expect(rejoue.status(), await rejoue.text()).toBe(409)
+    const c1 = await rejoue.json()
+    expect([c1.code, c1.successeur?.id, c1.successeur?.reference]).toEqual(['version_remplacee', v2.id, v2.reference])
+    const produit = await lireJson(await page.request.post(`${API}/stock/produits/`, { timeout: 120_000,
+      data: { nom: `VNT 2e ${Date.now()}`, prix_vente: '1000.00' } }), 'produit 2e devis')
+    const d2 = await lireJson(await page.request.post(`${API}/ventes/devis/atomic/`, { timeout: 120_000,
+      data: { lead: r.leadId, taux_tva: '20.00', lignes: [{ produit: produit.id, designation: 'Deuxième affaire', quantite: '1',
+        prix_unitaire: '1000.00', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), '2e devis')
+    await lireJson(await page.request.post(`${API}/ventes/devis/${d2.id}/share-link/`, { timeout: 120_000, data: { envoi: true } }), 'envoi 2e devis')
+    const d2lu = await devisDetail(page.request, d2.id)
+    suivi.attendre(new RegExp(`/ventes/devis/${d2.id}/accepter/$`), 409)
+    await page.goto(`/ventes/devis?devis=${d2.id}`)
+    const ligne = page.locator(`#devis-row-${d2.id}`)
+    await expect(ligne).toBeVisible({ timeout: 60_000 })
+    await ligne.getByRole('button', { name: 'Accepter' }).click()
+    const dlg = page.getByRole('dialog').filter({ hasText: `Accepter le devis — ${d2lu.reference}` })
+    await expect(dlg).toBeVisible({ timeout: 30_000 })
+    await dlg.getByLabel('Nom de la personne qui accepte').fill('Tijani Kharbachi')
+    const cible = new RegExp(`/ventes/devis/${d2.id}/accepter/$`)
+    const [rep] = await Promise.all([
+      page.waitForResponse((x) => x.request().method() === 'POST' && cible.test(new URL(x.url()).pathname)),
+      dlg.getByRole('button', { name: "Confirmer l'acceptation" }).click(),
+    ])
+    expect(rep.status()).toBe(409)
+    expect((await rep.json()).vente_active?.id, 'le 409 nomme la vente en vigueur (la V2)').toBe(v2.id)
+    const alerte = page.getByRole('alert').filter({ hasText: `Ouvrir ${v2.reference}` })
+    await expect(alerte, 'erreur sous la ligne refusée avec « Ouvrir <réf> »').toBeVisible({ timeout: 30_000 })
+    await alerte.getByRole('button', { name: `Ouvrir ${v2.reference}` }).click()
+    await expect(page).toHaveURL(new RegExp(`[?&]devis=${v2.id}`))
+    // Persistance : relu, le 2e devis n'est pas accepté et la V2 reste la seule vente en vigueur.
+    expect((await devisDetail(page.request, d2.id)).statut).toBe('envoye')
+    const v2lu = await devisDetail(page.request, v2.id)
+    expect([v2lu.statut, v2lu.is_active]).toEqual(['accepte', true])
+    await page.request.delete(`${API}/ventes/devis/${d2.id}/`, { timeout: 120_000 }).catch(() => null)
+  }, { remise: '0' })
+})
+
+/** Signature de l'avenant PAR LE LIEN, sur la page publique servie en local (`E2E_WEB_BASE`, jamais la prod) :
+ *  bandeau « Avenant à <V1> », formulaire de signature (#sign-form : nom, cases, tracé #sign-pad, #sign-submit),
+ *  puis confirmation « Avenant signé le … ✓ » et statut inchangé (accepté). */
+async function signerAvenantParLaPage(page, r, v2Id, jeton) {
+  const web = process.env.E2E_WEB_BASE
+  expect(web, 'E2E_WEB_BASE absent : apps/web non servie (NON JOUABLE sans elle)').toBeTruthy()
+  expect(web, 'jamais la prod').toMatch(/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?/)
+  const lien = `${web.replace(/\/$/, '')}/proposition/${jeton}`
+  const rep = await page.goto(lien, { waitUntil: 'domcontentloaded', timeout: 120_000 })
+  expect(rep.status(), `page publique ${lien}`).toBe(200)
+  const bandeau = page.locator('section[data-avenant="a_signer"]')
+  await expect(bandeau).toBeVisible({ timeout: 60_000 })
+  await expect(bandeau).toContainText(`Avenant à ${r.reference} — nouveau prix`)
+  // Le geste du client : le bouton « Signer en ligne » du haut de page mène au bloc de signature.
+  const cta = page.getByRole('link', { name: 'Signer en ligne' }).or(page.getByRole('button', { name: 'Signer en ligne' })).first()
+  if (await cta.count()) await cta.click()
+  const formulaire = page.locator('#sign-form')
+  await expect(formulaire, "formulaire de signature de l'avenant visible sur la page du lien").toBeVisible({ timeout: 30_000 })
+  await formulaire.locator('#sign-nom').fill('Tijani Kharbachi')
+  for (const c of await formulaire.locator('input[type="checkbox"]:visible').all()) await c.check()
+  const pad = formulaire.locator('#sign-pad')
+  const b = await pad.boundingBox()
+  await page.mouse.move(b.x + 20, b.y + b.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(b.x + b.width / 2, b.y + 10, { steps: 8 })
+  await page.mouse.move(b.x + b.width - 20, b.y + b.height / 2, { steps: 8 })
+  await page.mouse.up()
+  await formulaire.locator('#sign-submit').click()
+  await expect(page.locator('[data-avenant="signe"]').or(page.locator('#sign-success'))).toBeVisible({ timeout: 60_000 })
+  await page.goto(lien, { waitUntil: 'domcontentloaded', timeout: 120_000 })
+  await expect(page.locator('[data-avenant="signe"]')).toContainText(/Avenant signé le .+ ✓/, { timeout: 60_000 })
+  const lue = await lireJson(await page.request.get(`${API}/ventes/proposal/${jeton}/`, { timeout: 120_000 }), 'proposition relue')
+  expect([lue.avenant?.a_signer, Boolean(lue.avenant?.signe_le)]).toEqual([false, true])
+  const v2 = await devisDetail(page.request, v2Id)
+  expect([v2.statut, v2.is_active], 'statut inchangé (règle #4)').toEqual(['accepte', true])
+}
+
+etape('P2.11', ['VNT60', 'VNT61', 'VNT72', 'VNT73'], async ({ page, testInfo }) => {
+  // BUREAU : « Prix négocié » 49 000 puis « Faire signer l'avenant » dans le dialogue (lien affiché) ; le client
+  // ouvre le lien et signe l'avenant sur la page publique (formulaire), confirmation, statut inchangé.
+  await avecReplique(page, testInfo, async (r) => {
+    await page.goto(`/crm/leads/${r.leadId}`)
+    await ongletDevis(page).click()
+    await panneauVente(page, r).getByRole('button', { name: 'Prix négocié' }).click()
+    const dlg = page.getByRole('dialog').filter({ hasText: 'Prix négocié' })
+    await dlg.getByLabel('Nouveau prix TTC (MAD)').fill('49000')
+    await dlg.getByRole('button', { name: 'Voir les effets' }).click()
+    await expect(dlg.locator('dl[aria-label="Effets du prix négocié"]')).toContainText('10,00', { timeout: 30_000 })
+    const cible = new RegExp(`/ventes/devis/${r.devisId}/prix-negocie/$`)
+    const [rep] = await Promise.all([
+      page.waitForResponse((x) => x.request().method() === 'POST' && cible.test(new URL(x.url()).pathname)),
+      dlg.getByRole('button', { name: 'Appliquer le prix négocié' }).click(),
+    ])
+    const v2Id = (await rep.json()).devis_v2.id
+    await dlg.getByRole('button', { name: "Faire signer l'avenant" }).click()
+    const lien = dlg.getByTestId('lien-avenant')
+    await expect(lien).toContainText('/proposition/', { timeout: 30_000 })
+    const jeton = (await lien.innerText()).trim().split('/').pop()
+    await signerAvenantParLaPage(page, r, v2Id, jeton)
+  }, { remise: '0' })
+})
+
+etape('P2.12', ['VNT60', 'VNT61', 'VNT72'], async ({ page, testInfo }) => {
+  // TÉLÉPHONE (375 × 812) : même avenant, le client signe sur son téléphone par le lien.
+  await avecReplique(page, testInfo, async (r) => {
+    const neg = await prixNegocieParApi(page.request, r.devisId, '49000')
+    const a = await lireJson(await page.request.post(`${API}/ventes/devis/${neg.devis_v2.id}/avenant/demander-signature/`,
+      { timeout: 120_000 }), 'demande de signature')
+    await page.setViewportSize({ width: 375, height: 812 })
+    await signerAvenantParLaPage(page, r, neg.devis_v2.id, a.share_link.split('/').pop())
+  }, { remise: '0' })
+})
+
 // ───────────────────────── Lot M3 (VNT95) : étapes P3.x ─────────────────────────
 const lireFunnelSigne = async (request) => {
   const d = await lireJson(await request.get(`${API}/reporting/commercial/dashboard/`, { timeout: 120_000 }), 'tableau de bord commercial')
@@ -1059,3 +1181,4 @@ etape('P4.2', ['VNT103', 'VNT106'], async ({ page, suivi, testInfo }) => {
     expect(brut).not.toContain('acompte_montant')
   })
 })
+
