@@ -82,10 +82,12 @@ TYPE_BAREMES_GELES = 'baremes_forfaits_geles'
 #: ``{'type': 'doc_texts_geles', 'textes': {<DEVIS_TEXT_KEYS>}, 'version': int}``.
 TYPE_DOC_TEXTS_GELES = 'doc_texts_geles'
 
-#: ADVS2 (C-ADVS-011+060, D-ADVS-1) — type de l'entrée qui porte les réglages de
-#: rendu de la société et les fiches produit des lignes, figés à l'envoi. Forme
-#: = ``contract_samples/reglages_figes_envoi.json``. Jamais imprimée.
-TYPE_REGLAGES_FIGES = 'reglages_figes'
+#: ADVS2 (C-ADVS-011+060, D-ADVS-1) — les réglages de rendu figés à l'envoi : le
+#: type de l'entrée et sa lecture vivent dans une feuille pure (le moteur la lit
+#: sans tirer ce module).
+from apps.ventes.domain.reglages_figes_lecture import (  # noqa: E402,F401 — feuille pure, réexport (ADVS2)
+    TYPE_REGLAGES_FIGES, reglages_figes,
+)
 
 TYPES_GELS_INTERNES = frozenset({
     TYPE_CGV_GELEES, TYPE_BAREMES_GELES, TYPE_DOC_TEXTS_GELES,
@@ -188,18 +190,6 @@ def figer_reglages_rendu(devis):
         'produits': produits,
     }]
     devis.save(update_fields=['clauses_appliquees'])
-
-
-def reglages_figes(devis):
-    """ADVS2 — l'instantané de l'envoi (forme de l'échantillon, sans ``type``),
-    ou ``{}`` : brouillon (réglages du jour, même sur une V2 qui a hérité de
-    l'entrée) ou devis envoyé avant ce gel."""
-    if getattr(devis, 'statut', None) == 'brouillon':
-        return {}
-    for c in (getattr(devis, 'clauses_appliquees', None) or []):
-        if isinstance(c, dict) and c.get('type') == TYPE_REGLAGES_FIGES:
-            return {k: v for k, v in c.items() if k != 'type'}
-    return {}
 
 
 def doc_texts_a_geler(company):

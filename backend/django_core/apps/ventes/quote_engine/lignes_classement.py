@@ -260,8 +260,10 @@ _CHAMPS_FICHE_FIGEE = ("marque", "description", "garantie", "garantie_mois",
 
 def fiches_figees(devis) -> dict:
     """ADVS7 (D-ADVS-1) — les fiches produit de l'envoi ``{produit_id(str): {…}}``,
-    ``{}`` pour un brouillon ou un envoyé d'avant ce gel (fiche du jour)."""
-    from apps.ventes.domain.envoi import reglages_figes
+    ``{}`` pour un brouillon ou un envoyé d'avant ce gel (fiche du jour).
+    Feuille pure : ``utils.options`` importe ce module, donc ``ventes.models``
+    l'atteint — jamais ``domain.envoi`` ici (contrat import-linter M3)."""
+    from apps.ventes.domain.reglages_figes_lecture import reglages_figes
     return reglages_figes(devis).get("produits") or {}
 
 
