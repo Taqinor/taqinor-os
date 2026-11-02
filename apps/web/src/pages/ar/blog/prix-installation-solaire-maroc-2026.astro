@@ -11,7 +11,7 @@
  * dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
-import { pageLocale } from '../../../lib/pageCtx';
+import { pageLocale, blogBreadcrumbLd, articleMeta } from '../../../lib/pageCtx';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
@@ -19,7 +19,6 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { NAP } from '../../../lib/nap';
-import { estimateReadingTime } from '../../../lib/readingTime';
 import { localizeNavHref } from '../../../i18n/pages';
 import '../../../styles/prose.css';
 import { DATE_LONGUE_FR as dateFmt } from '../../../lib/format';
@@ -36,10 +35,7 @@ const bodyText = `
 وتُطيل الاسترجاع بـ1 إلى 3 سنوات. الضريبة 20% على الجاهز، الألواح وحدها معفاة دون خصم. الاسترجاع 5 إلى
 7 سنوات في السكني.
 `;
-const readingMinutes = estimateReadingTime(bodyText);
-
-const url = new URL(Astro.url.pathname, Astro.site).href;
-const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
+const { readingMinutes, url, schemaImageUrl } = articleMeta(bodyText, Astro.url.pathname, Astro.site, '/og/accueil.png');
 const blogPosting = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
@@ -53,15 +49,7 @@ const blogPosting = {
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
 };
 
-const breadcrumbLd = {
-  '@context': 'https://schema.org',
-  '@type': 'BreadcrumbList',
-  itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'الرئيسية', item: new URL(L('/'), Astro.site).href },
-    { '@type': 'ListItem', position: 2, name: 'المدوّنة', item: new URL(L('/blog'), Astro.site).href },
-    { '@type': 'ListItem', position: 3, name: 'كم تكلّف تركيبة شمسية بالمغرب سنة 2026؟' },
-  ],
-};
+const breadcrumbLd = blogBreadcrumbLd(L, Astro.site, 'الرئيسية', 'المدوّنة', 'كم تكلّف تركيبة شمسية بالمغرب سنة 2026؟');
 
 const fourchettes = [
   { kwc: '3 kWc', prix: '<span dir="ltr">28 000 – 42 000</span> درهم' },

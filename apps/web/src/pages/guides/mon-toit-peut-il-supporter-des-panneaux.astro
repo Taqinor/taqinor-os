@@ -11,6 +11,7 @@
  * répétées ici (guide de méthode, pas de prix).
  */
 import Layout from '../../layouts/Layout.astro';
+import { articleMeta } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -18,7 +19,6 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
-import { estimateReadingTime } from '../../lib/readingTime';
 import { getGuideVerifiedDate } from '../../lib/guideMeta';
 
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
@@ -37,11 +37,8 @@ const guideBodyText = `
   avant toute pose : fissures visibles, affaissement de la charpente, toiture ancienne, surcharge
   existante non prévue à l'origine.
 `;
-const readingMinutes = estimateReadingTime(guideBodyText);
-
-const url = new URL(Astro.url.pathname, Astro.site).href;
 // W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
-const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const { readingMinutes, url, schemaImageUrl } = articleMeta(guideBodyText, Astro.url.pathname, Astro.site, '/og/equipement.png');
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
