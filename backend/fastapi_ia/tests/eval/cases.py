@@ -44,11 +44,11 @@ CASES = [
     },
     {
         "id": "total_factures_mois",
-        # AANA77 (D-AANA-6) : montant_ht est NULL sur une facture classique —
-        # le CA facture n'est pas une colonne ; le cas compte les factures.
-        "question": "Combien de factures ont ete emises ce mois-ci ?",
+        # ATOT55 : le total de CHAQUE facture est stocke (total_ht_stocke,
+        # remise et arrondi compris) ; montant_ht reste NULL hors echeancier.
+        "question": "Quel est le total HT facture ce mois-ci ?",
         "gold_sql": (
-            "SELECT COUNT(id) FROM ventes_facture WHERE company_id = 1 "
+            "SELECT SUM(total_ht_stocke) FROM ventes_facture WHERE company_id = 1 "
             "AND statut IN ('emise', 'payee', 'en_retard') "
             "AND date_emission >= date_trunc('month', now())"
         ),

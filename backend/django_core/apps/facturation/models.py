@@ -5,7 +5,9 @@ from django.utils import timezone
 # AUD105/AUD106/AUD107 — la chaîne d'argent des documents client vit dans
 # un module SANS modèle, pour que ``apps.ventes.models`` (NoteDebit)
 # puisse l'importer en tête de fichier sans toucher l'ordre de chargement.
-from .totaux import TotauxDocumentMixin
+from .totaux import (
+    CHAMPS_DU_TOTAL, TotauxDocumentMixin, synchroniser_total_stocke,
+)
 
 # ODX17 — App Facturation, étape 1 (modèles, state-only).
 #
@@ -111,6 +113,16 @@ class Facture(TotauxDocumentMixin, models.Model):
     montant_ttc = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
     )
+    # ATOT55 — COPIE stockée de ``total_ht`` / ``total_ttc`` (la règle de
+    # ``TotauxDocumentMixin`` : remise au centime, ARRONDI-100, ×N villas)
+    # pour les lectures SQL (agent SQL, exports). Écrite par le SEUL serveur
+    # (``totaux.synchroniser_total_stocke``), jamais par l'API ni l'admin.
+    total_ht_stocke = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        editable=False)
+    total_ttc_stocke = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        editable=False)
     client = models.ForeignKey(
         'crm.Client',
         on_delete=models.PROTECT,
@@ -495,6 +507,10 @@ class Facture(TotauxDocumentMixin, models.Model):
             self.reference = f'{PREFIXE_PROVISOIRE}{self.pk}'
             type(self).objects.filter(pk=self.pk).update(
                 reference=self.reference)
+        # ATOT55 — remise, taux, palier, montants figés : le total stocké suit.
+        champs = kwargs.get('update_fields')
+        if champs is None or CHAMPS_DU_TOTAL.intersection(champs):
+            synchroniser_total_stocke(self)
 
     # AUD106 — `_remise_globale_active`, `total_ht`, `tva_par_taux`,
     # `total_tva`, `total_ttc` et `totaux_affichage` vivent désormais dans
@@ -843,6 +859,28 @@ class LigneFacture(models.Model):
     def taux_tva_effectif(self):
         """Taux réellement appliqué : celui de la ligne, sinon celui de la facture."""
         return self.taux_tva if self.taux_tva is not None else self.facture.taux_tva
+
+    # ATOT55 — toute écriture de ligne recalcule le total stocké de SA facture
+    # (relue en base : remise/taux à jour). Aucun chemin applicatif ne fait de
+    # ``bulk_create``/``QuerySet.update`` de lignes de facture (grep).
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._synchroniser_facture()
+
+    def delete(self, *args, **kwargs):
+        resultat = super().delete(*args, **kwargs)
+        self._synchroniser_facture()
+        return resultat
+
+    def _synchroniser_facture(self):
+        facture = Facture._base_manager.filter(pk=self.facture_id).first()
+        if facture is None:
+            return
+        synchroniser_total_stocke(facture)
+        cache = self._state.fields_cache.get('facture')
+        if cache is not None:
+            cache.total_ht_stocke = facture.total_ht_stocke
+            cache.total_ttc_stocke = facture.total_ttc_stocke
 
 
 class Paiement(models.Model):

@@ -339,13 +339,16 @@ class PromptAgentSqlSchemaTests(SimpleTestCase):
     def test_ca_facture_ht_et_devis_sans_montant_stocke(self):
         # AANA77 (D-AANA-6) : montant_ht/montant_ttc NULL sur une facture
         # classique — aucun exemple ne fait passer leur somme pour le CA.
+        # ATOT55 : le CA facturé HT se lit dans la colonne stockée.
         guide, exemples = _guide_et_exemples(self.texte)
         self.assertNotIn('SUM(montant_ht) FROM', self.texte)
         self.assertNotIn('SUM(montant_ttc) FROM', self.texte)
         self.assertIn('NULL sur une facture classique', guide)
-        nb = [x for x in exemples.splitlines()
-              if x.startswith('- Nombre de factures emises : ')]
-        self.assertEqual(len(nb), 1, exemples)
-        self.assertIn("statut IN ('emise','payee','en_retard')", nb[0])
+        self.assertIn('total_ht_stocke / total_ttc_stocke', guide)
+        ca = [x for x in exemples.splitlines()
+              if x.startswith('- CA facture HT : ')]
+        self.assertEqual(len(ca), 1, exemples)
+        self.assertIn('SELECT SUM(total_ht_stocke) FROM ventes_facture', ca[0])
+        self.assertIn("statut IN ('emise','payee','en_retard')", ca[0])
         self.assertNotIn('ventes_devis.montant', self.texte)
         self.assertNotIn('statut_paiement', self.texte)
