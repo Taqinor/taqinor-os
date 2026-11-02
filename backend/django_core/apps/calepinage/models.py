@@ -194,6 +194,12 @@ class Calepinage(TenantModel):
     #: jamais imprimée dans un livrable client. ``None`` = rien de saisi.
     custom_data = models.JSONField('Champs personnalisés', null=True,
                                    blank=True)
+    #: ACAL375 — pk des pièces météo RETIRÉES/remplacées : « retiré » survit à
+    #: la purge de la corbeille (30 j). Posé par ``views.meteo_fichier``,
+    #: levé par ``archivage.restaurateur_piece_jointe``, lu par
+    #: ``simulation.lire_piece_meteo``.
+    meteo_retirees = models.JSONField('Pièces météo retirées', default=list,
+                                      blank=True)
 
     class Meta:
         verbose_name = 'Calepinage'

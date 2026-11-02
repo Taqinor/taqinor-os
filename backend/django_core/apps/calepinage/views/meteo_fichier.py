@@ -200,6 +200,11 @@ def _mettre_a_la_corbeille(calepinage, piece, user):
     """
     from apps.trash.services import journaliser_suppression
 
+    # ACAL375 — marqueur durable : survit à la purge de la corbeille.
+    if piece.pk not in (calepinage.meteo_retirees or []):
+        calepinage.meteo_retirees = [*(calepinage.meteo_retirees or []),
+                                     piece.pk]
+        calepinage.save(update_fields=['meteo_retirees'])
     return journaliser_suppression(
         instance=piece, company=calepinage.company, user=user,
         type_libelle='Fichier météo',

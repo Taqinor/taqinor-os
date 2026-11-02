@@ -160,6 +160,15 @@ def _surfaces_retirees(zones):
         nombre_tel_que_servi(reservee.get('aire_retiree_m2'))))
 
 
+def _detail_fichier(base, meteo):
+    """ACAL376 — « — Meteonorm (site.csv) » quand la base est un fichier déposé."""
+    if base.get('source') != 'fichier':
+        return ''
+    nom = (meteo.get('fichier') or {}).get('nom')
+    qui = meteo.get('fournisseur')
+    return (' — %s' % qui if qui else '') + (' (%s)' % nom if nom else '')
+
+
 def html_de_section(contexte):
     """Le corps de la section ``site_meteo`` (le titre est posé par
     l'assembleur)."""
@@ -179,7 +188,8 @@ def html_de_section(contexte):
         # CAL238 — la source d'irradiance publiée TELLE QUELLE, jamais un
         # nom de fournisseur devinée quand elle manque.
         _ligne("Base d'irradiance",
-               escape(_source_lisible(base.get('source')))),
+               escape(_source_lisible(base.get('source'))
+                      + _detail_fichier(base, meteo))),
     ]
     if base.get('fenetre_annees'):
         # La fenêtre est celle SERVIE par le résultat — jamais recalculée
