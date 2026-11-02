@@ -19,6 +19,7 @@ export const prerender = false;
 import Layout from '../../layouts/Layout.astro';
 import OtpLectureForm from '../../components/OtpLectureForm.astro';
 import ChainePrix from '../../components/proposition/ChainePrix.astro';
+import { avenantASigner } from '../../lib/avenant';
 import BandeauAvenant from '../../components/proposition/BandeauAvenant.astro';
 // CPRW (27/10/2026) — blocs C&I et agricoles déplacés tels quels dans leurs composants (chaque composant
 // commence par sa balise : la condition d'affichage reste ici, les espaces du rendu ne bougent pas).
@@ -504,7 +505,8 @@ const twoOptions = ok ? hasTwoOptions(data!) : false;
 // (`etude_params.recommended_option`) — même exception que partout ailleurs
 // dans ce moteur (QF6). Rien à changer ici.
 const reco: OptionKey | null = ok ? recommendedOption(data!) : null;
-const accepted = ok ? isAccepted(data!) : false;
+// ERR-VNT83-AVENANT-SIGNATURE-PAGE — un avenant à signer n'est pas « déjà signé ».
+const accepted = ok ? isAccepted(data!) && !avenantASigner(data) : false;
 const preselect: OptionKey | null = ok ? defaultSelectedOption(data!) : null;
 // WJ83 — le CTA collant montre le prix de l'option phare (reco/sans_batterie) :
 // même garde-fou zéro-total que les cartes d'options plus bas.
@@ -2186,6 +2188,7 @@ const signConfig = ok
       twoOptions,
       preselect,
       accepted,
+      avenantASigner: ok ? avenantASigner(data) : false,
       acceptedName: data?.accepte_par_nom ?? '',
       reference,
       clientPhone: q?.client_phone ?? '',
@@ -6117,6 +6120,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                client (ou un sceau textuel si non dessinée), le PDF et « Et après ? »
                vivent directement ICI, pas seulement plus bas dans la page. -->
           <div id="sign-success" class="result-fade" hidden>
+            <p id="sign-avenant-signe" class="fig text-xl text-brass-300" data-i18n hidden></p>
             <div class="success-seal" aria-hidden="true">
               <svg viewBox="0 0 52 52" width="52" height="52" fill="none">
                 <circle class="success-seal-ring" cx="26" cy="26" r="24" stroke="var(--color-brass-400)" stroke-width="2"/>
@@ -7566,6 +7570,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     entrepriseRequise?: boolean;
     preselect: OptionKey | null;
     accepted: boolean;
+    /** ERR-VNT83 — un avenant attend la signature du client. */
+    avenantASigner?: boolean;
     acceptedName: string;
     reference: string;
     /** WJ55 — présent uniquement quand le devis porte un téléphone client. */
@@ -8500,6 +8506,19 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       }
     }
 
+    // ERR-VNT83 — avenant signé : « Avenant signé le jj/mm/aaaa ✓ » dans l'écran de succès.
+    function afficherAvenantSigne(signeLe?: string): void {
+      const el = document.getElementById('sign-avenant-signe');
+      if (!el || !cfg.avenantASigner) return;
+      const t = new Date(signeLe ?? Date.now());
+      const d = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Africa/Casablanca', day: '2-digit', month: '2-digit', year: 'numeric' }).format(Number.isNaN(t.getTime()) ? new Date() : t);
+      el.dataset.fr = `Avenant signé le ${d} ✓`;
+      el.dataset.en = `Amendment signed on ${d} ✓`;
+      el.dataset.ar = `تم توقيع الملحق بتاريخ ${d} ✓`;
+      el.textContent = el.dataset.fr;
+      el.hidden = false;
+    }
+
     // ADEV53 — bloc acompte/RIB/déclaration de virement de l'écran de succès, rempli
     // depuis `paiement` de la réponse d'acceptation (fonctions pures testées sur le
     // contrat). Rien servi ⇒ le bloc reste caché ; RIB absent ⇒ sa ligne reste cachée.
@@ -8779,9 +8798,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           champ?: string;
           code?: string;
           paiement?: unknown;
+          avenant_signe?: { signe_le?: string };
         };
         if (res.ok && data.ok) {
           showSuccess(data.accepte_par_nom || nom.trim(), signedAt, signatureDataUrl, true);
+          afficherAvenantSigne(data.avenant_signe?.signe_le);
           afficherPaiement(data);
           return;
         }

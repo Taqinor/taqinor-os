@@ -18,6 +18,7 @@
 // d'occupation gardent UNE seule définition (`lib/dayProfiles.ts`).
 // AGQ33/AGQ35 — contenu agricole sans dépendance (étapes, FAQ) : module à part (C20, fichier-mur).
 import { etapesAgricole, objectionFaqAgricole, type SyntheseEtape, type SyntheseNote } from './propositionAgricole';
+import { avenantASigner } from './avenant';
 import type { OccupancyId, SeasonId, ServedProduction } from './dayProfiles';
 // L-DEUXOPT (25/08/2026) — lecture de `production_par_option` : réutilise
 // STRICTEMENT le même validateur que `courbes_journalieres.production`
@@ -1051,14 +1052,18 @@ export type OfferState = 'live' | 'accepted' | 'refused' | 'expired' | 'withdraw
  */
 export function resolveOfferState(
   p: Pick<ProposalResponse, 'statut' | 'accepted' | 'date_validite' | 'quote'>
-    & Partial<Pick<ProposalResponse, 'remplace_par' | 'offre_expiree' | 'date_expiration'>>,
+    & Partial<Pick<ProposalResponse, 'remplace_par' | 'offre_expiree' | 'date_expiration'>>
+    & { avenant?: unknown },
   now: Date = new Date(),
 ): OfferState {
   // QJR536 — une version REMPLACÉE n'est plus signable, quel que soit son
   // statut : le backend refuse déjà sa signature (QJR520), la page ne la
   // propose plus et renvoie vers la version en vigueur.
   if (resolveRemplacement(p)) return 'withdrawn';
-  if (isAccepted(p)) return 'accepted';
+  // ERR-VNT83-AVENANT-SIGNATURE-PAGE — un avenant à signer est servi `accepte`
+  // (acceptation interne) mais n'est PAS signé par le client : l'offre reste
+  // signable (`live`) tant que `avenant.a_signer` est vrai.
+  if (isAccepted(p) && !avenantASigner(p)) return 'accepted';
   const statut = (p.statut ?? '').trim().toLowerCase();
   if (statut === 'refuse' || statut === 'refusee' || statut === 'refusé') return 'refused';
   if (statut === 'withdrawn' || statut === 'retire' || statut === 'retiré') return 'withdrawn';
