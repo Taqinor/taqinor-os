@@ -198,15 +198,12 @@ def _garde_kwh_declare(devis):
     """ADVS26 — même refus qu'``/atomic`` : un kWh déclaré que les factures
     contredisent annule la création (409 ``{detail, code}``, sous sa
     transaction)."""
-    from apps.ventes.horaire.conso import (
-        CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT)
-    from apps.ventes.selectors_calepinage import controle_kwh_declare_du_devis
+    from apps.ventes.selectors_calepinage import refus_kwh_declare_du_devis
 
-    controle = controle_kwh_declare_du_devis(devis)
-    if controle is not None and not controle['coherent']:
-        raise DevisRefuse(MESSAGE_KWH_INCOHERENT, champ='conso_mensuelle_kwh',
-                          statut=409, donnees={'detail': MESSAGE_KWH_INCOHERENT,
-                                               'code': CODE_KWH_INCOHERENT})
+    refus = refus_kwh_declare_du_devis(devis)
+    if refus is not None:
+        raise DevisRefuse(refus['detail'], champ='conso_mensuelle_kwh',
+                          statut=409, donnees=refus)
 
 
 def _generer(calepinage, layout, company, lead, client, montants, *, user,
