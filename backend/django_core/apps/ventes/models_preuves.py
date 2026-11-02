@@ -9,7 +9,12 @@ hors C&I (comportement inchangé). Aucun statut nouveau (règle #4).
 Module séparé parce que ``models.py`` est un fichier-mur (≥ 2 000 lignes, garde
 C20) : les champs vivent ici, la table reste celle de ``DevisSignature``.
 """
+import json
+
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
+
+from core.models import TenantModel
 
 
 class PreuveSignatureB2B(models.Model):
@@ -191,6 +196,33 @@ class PreuveSignatureB2B(models.Model):
         return (f"|v{cls.CONTENT_HASH_V3}|etude="
                 f"{json.dumps(figures, sort_keys=True, ensure_ascii=False, default=str)}"
                 + (f"|v{cls.CONTENT_HASH_V4}" if version >= cls.CONTENT_HASH_V4 else ''))
+
+
+class DevisSignatureArchivee(TenantModel):
+    """ADVS4 (D-ADVS-2 = nouvelle preuve) — une preuve remplacée par une seconde
+    signature d'une vente dés-acceptée : copie champ à champ de la
+    ``DevisSignature`` (``signed_pdf_key`` compris), jamais effacée."""
+
+    devis = models.ForeignKey(
+        'ventes.Devis',
+        on_delete=models.CASCADE,  # on_delete: preuve sans objet si le devis est supprimé (comme DevisSignature)
+        related_name='signatures_archivees',
+    )
+    preuve = models.JSONField()
+    archivee_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Signature archivée'
+        verbose_name_plural = 'Signatures archivées'
+        ordering = ['-archivee_le']
+
+    @classmethod
+    def archiver(cls, signature):
+        """Copie ``signature`` (ligne brute, dates en texte ISO) dans l'archive."""
+        ligne = type(signature).objects.filter(pk=signature.pk).values().first()
+        return cls.objects.create(
+            company_id=signature.devis.company_id, devis_id=signature.devis_id,
+            preuve=json.loads(json.dumps(ligne, cls=DjangoJSONEncoder)))
 
 
 class SuiviLienPublic(models.Model):

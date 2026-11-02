@@ -814,8 +814,13 @@ def _completer_client_signataire(devis, entreprise):
 def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                          signature_image='', signed_at_client=None,
                          on_behalf_of='', lignes=None, entreprise=None,
-                         langue='', refus_etude=None, lien=None):
+                         langue='', refus_etude=None, lien=None, remplacer=False):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
+
+    ADVS4 (D-ADVS-2) — ``remplacer`` (vraie bascule d'``accept_devis``) : une
+    preuve laissée par une dés-acceptation est copiée dans
+    ``DevisSignatureArchivee`` puis remplacée, dans le même point de sauvegarde ;
+    un échec garde l'ancienne intacte.
 
     ADEV96 — les chiffres de l'étude C&I scellés sont lus ici et stockés sur
     la signature (``figures_scellees``) : la vérification rejoue le sceau
@@ -843,7 +848,9 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     migrera jamais vers ``core.esign``. Voir ``core/esign.py`` et
     ``docs/esign-socle.md``.
     """
+    from django.db import transaction
     from apps.ventes.models import DevisSignature
+    from apps.ventes.models_preuves import DevisSignatureArchivee
     from apps.ventes.domain.modifiabilite import (
         SyntheseCiIllisible, figures_sceau, lien_scelle)
     figures = None
@@ -855,7 +862,7 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     porte_etude = isinstance(
         (getattr(devis, 'etude_params', None) or {}).get('etude_ci'), dict)
     if refus_etude is not None and porte_etude \
-            and not DevisSignature.objects.filter(devis=devis).exists():
+            and (remplacer or not DevisSignature.objects.filter(devis=devis).exists()):
         try:
             figures = figures_sceau(devis, strict=True, link=lien)
         except SyntheseCiIllisible:
@@ -863,7 +870,8 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                               code='validation_requise') from None
     try:
         from django.utils import timezone
-        if DevisSignature.objects.filter(devis=devis).exists():
+        existante = DevisSignature.objects.filter(devis=devis).first()
+        if existante is not None and not remplacer:
             return
         # NPLUS1 — lignes déjà chargées par l'appelant quand il les a (le hash
         # est identique : elles sont retriées par ``id`` côté modèle).
@@ -877,30 +885,34 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
         img = (signature_image or '')
         if len(img) > 200000:
             img = img[:200000]
-        DevisSignature.objects.create(
-            company=devis.company,
-            devis=devis,
-            signataire_nom=(nom or '')[:150],
-            consentement_explicite=bool(consentement),
-            ip_address=ip or None,
-            user_agent=(user_agent or '')[:512],
-            content_hash=content_hash,
-            signed_at=timezone.now(),
-            signature_image=img,
-            consent_esign=bool(consentement),
-            signed_at_client=signed_at_client or None,
-            on_behalf_of=(on_behalf_of or '')[:150],
-            # CIQ319 — identité de l'entreprise signataire (vide hors C&I).
-            **_champs_signature_entreprise(entreprise),
-            # ADEV99 — langue de la page (confirmation FR, EN si 'en').
-            langue_page=str(langue or '')[:5],
-            # ADEV96 — les chiffres scellés, pour un sceau reproductible ;
-            # ADEV104 — + le niveau du lien scellé (signature au jeton).
-            # ADVS8 — + l'identité client de CE sceau (la vérification la rejoue).
-            figures_scellees=DevisSignature.contenu_scelle(
-                figures, lien_scelle(lien),
-                client=DevisSignature._client_du_sceau(devis)),
-        )
+        with transaction.atomic():
+            if existante is not None:
+                DevisSignatureArchivee.archiver(existante)
+                existante.delete()
+            DevisSignature.objects.create(
+                company=devis.company,
+                devis=devis,
+                signataire_nom=(nom or '')[:150],
+                consentement_explicite=bool(consentement),
+                ip_address=ip or None,
+                user_agent=(user_agent or '')[:512],
+                content_hash=content_hash,
+                signed_at=timezone.now(),
+                signature_image=img,
+                consent_esign=bool(consentement),
+                signed_at_client=signed_at_client or None,
+                on_behalf_of=(on_behalf_of or '')[:150],
+                # CIQ319 — identité de l'entreprise signataire (vide hors C&I).
+                **_champs_signature_entreprise(entreprise),
+                # ADEV99 — langue de la page (confirmation FR, EN si 'en').
+                langue_page=str(langue or '')[:5],
+                # ADEV96 — les chiffres scellés, pour un sceau reproductible ;
+                # ADEV104 — + le niveau du lien scellé (signature au jeton).
+                # ADVS8 — + l'identité client de CE sceau (la vérification la rejoue).
+                figures_scellees=DevisSignature.contenu_scelle(
+                    figures, lien_scelle(lien),
+                    client=DevisSignature._client_du_sceau(devis)),
+            )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
             devis.reference, content_hash[:16])
@@ -957,7 +969,9 @@ def _copier_exemplaire_signe(cle_rendu, *, devis):
     if not cle_rendu:
         return cle_rendu
     base = cle_rendu[:-4] if cle_rendu.lower().endswith('.pdf') else cle_rendu
-    cle_signee = f'{base}{SUFFIXE_EXEMPLAIRE_SIGNE}.pdf'
+    # ADVS4 — une re-signature ne réécrit jamais l'exemplaire de la preuve archivée.
+    rang = devis.signatures_archivees.count()
+    cle_signee = f'{base}{f"-{rang + 1}" if rang else ""}{SUFFIXE_EXEMPLAIRE_SIGNE}.pdf'
     try:
         from apps.ventes.utils.pdf import _upload_pdf, download_pdf
         _upload_pdf(download_pdf(cle_rendu), cle_signee)
@@ -1554,6 +1568,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
                 # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
                 entreprise=entreprise, langue=langue, lien=lien,
+                # ADVS4 — vraie bascule : une preuve d'avant la dés-acceptation
+                # s'archive ; la re-soumission d'un accepté est sortie plus haut.
+                remplacer=True,
                 refus_etude=(ETUDE_ILLISIBLE_REFUS
                              if _acceptation_par_le_client(user)
                              else ETUDE_ILLISIBLE_REFUS_INTERNE),
