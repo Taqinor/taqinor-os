@@ -1577,9 +1577,7 @@ class LeadCadenceActionsMixin:
                            # ligne l'action retomberait sur IsAdminRole et la
                            # Commerciale — qui arrête — serait refusée.
                            'arreter_relance',
-                           # MRY30 — placement des anciens leads dans les
-                           # cadences : même motif (l'@action déclare
-                           # IsResponsableOrAdmin).
+                           # MRY30 — placement des anciens leads : même motif (@action IsResponsableOrAdmin).
                            'placement_cadences', 'recontact'):
             return [IsResponsableOrAdmin()]
         return super().get_permissions()
@@ -1812,9 +1810,11 @@ class LeadCadenceActionsMixin:
     @_geste_atomique
     def recontact(self, request, pk=None):
         """CADV35 — le client d'un lead au Froid revient ; contrat `lead_recontact.json`."""
-        from .cadence_reponses import reponse_recontact
+        from .cadence_reponses import enregistrer_recontact, refus_recontact
         lead, canal = self.get_object(), texte_verifie(request, 'canal', 'note')
-        return Response(reponse_recontact(lead, request.user, canal=canal, note=request.data.get('note')))
+        refus_recontact(lead, canal)
+        etape = enregistrer_recontact(lead, request.user, canal=canal, note=request.data.get('note'))
+        return Response({'etape': getattr(etape, 'cle', ''), 'stage': lead.stage})
 
     @extend_schema(request=sd.corps('CrmPlacementCadencesRequest', apply=serializers.BooleanField(required=False),
                                     limite=serializers.IntegerField(required=False, min_value=1, max_value=200)),

@@ -1572,21 +1572,26 @@ CANAUX_RECONTACT = {
 CANAUX_RECONTACT_API = ('whatsapp', 'appel')
 
 
-def refus_recontact(lead):
-    """CADV35 — le message du refus si ce lead ne se rouvre pas, sinon ``None``.
-    Toujours un ÉTAT de la fiche (ENF11 : 409, jamais un 400)."""
+def refus_recontact(lead, canal):
+    """CADV35 — refuse le geste de la route ``recontact`` : canal hors
+    vocabulaire de l'API = 400 ; ÉTAT de la fiche = 409 (ENF11, jamais un 400)."""
+    from rest_framework.exceptions import ValidationError
+
+    from core.conflit_etat import ConflitEtat
+
+    if canal not in CANAUX_RECONTACT_API:
+        raise ValidationError({'canal': 'Canal attendu : whatsapp ou appel.'})
     if lead.perdu:
-        return 'Lead perdu : décochez « Perdu » pour le rouvrir.'
+        raise ConflitEtat('Lead perdu : décochez « Perdu » pour le rouvrir.')
     if lead.is_archived:
-        return 'Lead archivé : restaurez-le pour le rouvrir.'
+        raise ConflitEtat('Lead archivé : restaurez-le pour le rouvrir.')
     if lead.ne_plus_contacter:
-        return ('Lead « ne plus contacter » : l’opposition se lève sur la '
-                'fiche, jamais par ce geste.')
+        raise ConflitEtat('Lead « ne plus contacter » : l’opposition se lève sur la '
+                          'fiche, jamais par ce geste.')
     if lead.stage == stages.SIGNED:
-        return 'Lead signé : rien à rouvrir.'
+        raise ConflitEtat('Lead signé : rien à rouvrir.')
     if lead.stage != stages.COLD:
-        return 'Ce lead n’est pas au Froid : rien à rouvrir.'
-    return None
+        raise ConflitEtat('Ce lead n’est pas au Froid : rien à rouvrir.')
 
 
 def enregistrer_recontact(lead, user, *, canal, note=''):
@@ -1621,22 +1626,6 @@ def enregistrer_recontact(lead, user, *, canal, note=''):
                title='Lead rouvert — le client a recontacté', body=corps,
                link=f'/crm/leads?lead={lead.pk}', reason='assigne_a_vous')
     return etape
-
-
-def reponse_recontact(lead, user, *, canal, note=''):
-    """CADV35 — le geste de la route ``recontact`` : refus nommés (``canal``
-    hors vocabulaire : 400 ; état de la fiche : 409), puis le corps du 200."""
-    from rest_framework.exceptions import ValidationError
-
-    from core.conflit_etat import ConflitEtat
-
-    if canal not in CANAUX_RECONTACT_API:
-        raise ValidationError({'canal': 'Canal attendu : whatsapp ou appel.'})
-    refus = refus_recontact(lead)
-    if refus:
-        raise ConflitEtat(refus)
-    etape = enregistrer_recontact(lead, user, canal=canal, note=note)
-    return {'etape': getattr(etape, 'cle', ''), 'stage': lead.stage}
 
 
 # ── CAD-A ── CAD10 — le motif de refus, FACULTATIF, au moment où il est dit ─
