@@ -229,7 +229,8 @@ class LesNoOpDeliberesTests(_Base):
         self.assertEqual(ligne.user, self.acteur)
         self.assertIn('a répondu au message de juin', ligne.body)
         self.assertTrue(Notification.objects.filter(
-            user=self.meryem, title__contains='le client a recontacté').exists())
+            recipient=self.meryem,
+            title__contains='le client a recontacté').exists())
 
     def test_le_recontact_remplace_les_reveils_encore_ouverts(self):
         """Sans cet arrêt, le filet (no-op dès qu'une touche est ouverte) ne
