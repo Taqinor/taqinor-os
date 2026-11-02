@@ -48,7 +48,8 @@ def _s(x):
 # dans les messages configurables et sont rendus ici — jamais ailleurs.
 
 #: Jeu de variables DÉCLARÉ, la seule chose qu'un message de relance peut citer.
-VARIABLES_RELANCE = ('reference', 'client', 'montant_du', 'jours_retard')
+VARIABLES_RELANCE = ('reference', 'client', 'montant_du', 'jours_retard',
+                     'date_echeance')
 
 #: Une accolade ouvrante suivie de n'importe quoi jusqu'à la fermante. Volontai-
 #: rement large : un `{ }` ou un `{variable_inexistante}` doit disparaître, pas
@@ -75,11 +76,15 @@ def variables_relance(facture):
         logger.warning("recouvrement.variables_relance : erreur ignorée (mode dégradé)", exc_info=True)
         montant = Decimal('0.00')
     jours = getattr(facture, 'jours_retard', 0) or 0
+    echeance = getattr(facture, 'date_echeance', None)
     return {
         'reference': getattr(facture, 'reference', '') or '',
         'client': nom_client,
         'montant_du': f'{montant:.2f}',
         'jours_retard': str(jours),
+        # AARG24 — ce que le client lit, jamais un champ vide dans la phrase.
+        'date_echeance': (echeance.strftime('%d/%m/%Y') if echeance
+                          else 'non précisée'),
     }
 
 
@@ -104,6 +109,8 @@ def rendre_message_relance(niveau, facture):
     if not message:
         return ''
     valeurs = variables_relance(facture)
+    # AARG24 — dans le texte client, le montant s'écrit à la française (700,00).
+    valeurs['montant_du'] = valeurs['montant_du'].replace('.', ',')
 
     def _remplacer(match):
         cle = match.group(0)[1:-1].strip()
@@ -170,16 +177,20 @@ def montant_exigible(facture):
 # (ordre 1-3, J+7 / J+15 / J+30, canal email par défaut). ``seed-defaults``
 # semait jusqu'ici un SECOND jeu divergent (Rappel / Relance / Mise en demeure,
 # ordre 0-2) : il lit désormais celui-ci. Une migration ne doit pas importer le
-# code de l'app (état figé) : 0010 garde sa copie, identique à celle-ci.
+# code de l'app (état figé) : 0010 garde sa copie de l'ancien texte, et
+# ``facturation/0027`` (AARG24) réécrit les niveaux encore à cet ancien texte.
 NIVEAUX_RELANCE_DEFAUT = (
     (1, 'Rappel courtois', 7,
-     "Bonjour, sauf erreur de notre part, la facture ci-dessus reste en "
-     "attente de règlement. Merci de votre retour."),
+     "Sauf erreur de notre part, la facture {reference} reste en attente de "
+     "règlement : {montant_du} MAD dus (échéance : {date_echeance}). "
+     "Merci de votre retour."),
     (2, 'Relance', 15,
-     "Malgré notre précédent rappel, votre facture demeure impayée. "
+     "Malgré notre précédent rappel, la facture {reference} demeure impayée : "
+     "{montant_du} MAD dus (échéance : {date_echeance}). "
      "Merci de procéder au règlement dans les meilleurs délais."),
     (3, 'Relance ferme', 30,
-     "Votre facture est en retard de paiement important. À défaut de "
+     "La facture {reference} est en retard de paiement important : "
+     "{montant_du} MAD dus (échéance : {date_echeance}). À défaut de "
      "règlement, nous serons contraints d'envisager des mesures de "
      "recouvrement."),
 )
