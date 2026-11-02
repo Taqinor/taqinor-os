@@ -4,7 +4,7 @@ import api from '../../api/axios'
 import coreApi from '../../api/coreApi'
 import { colonneSupprimer } from './colonneSupprimer'
 import reportingApi from '../../api/reportingApi'
-import fetchAllPages from '../../utils/fetchAllPages'
+import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 import {
   Badge, Button, Card, CardContent, Checkbox, DataTable, EmptyState, Label, Segmented, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
@@ -115,16 +115,17 @@ export default function DashboardConfigPage() {
 
   useEffect(() => {
     let active = true
+    // ENF15 — toutes les pages des listes paginées (jamais la seule page 1).
     Promise.all([
-      reportingApi.listDashboardConfigs(),
+      lireToutesLesPages((p) => reportingApi.listDashboardConfigs(p)),
       reportingApi.effectiveDashboardConfig(),
-      api.get('/users/'),
+      lireToutesLesPages((p) => api.get('/users/', { params: p })),
     ])
       .then(([c, e, u]) => {
         if (!active) return
-        setConfigs(c.data.results ?? c.data ?? [])
+        setConfigs(c)
         setEffective(e.data)
-        setUsers(u.data.results ?? u.data ?? [])
+        setUsers(u)
       })
       .catch(() => {})
       .finally(() => { if (active) setLoading(false) })

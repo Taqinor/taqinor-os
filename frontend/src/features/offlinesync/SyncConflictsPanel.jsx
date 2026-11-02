@@ -16,18 +16,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 
 import offlinesyncApi from '../../api/offlinesyncApi'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import {
   Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState,
   Spinner, Textarea,
 } from '../../ui'
 import { CHOIX, lirePayload, peutEnvoyer, resumer } from './conflitsSynchro'
-
-function lignes(reponse) {
-  const data = reponse?.data
-  if (Array.isArray(data)) return data
-  if (Array.isArray(data?.results)) return data.results
-  return []
-}
 
 function Version({ titre, valeur, accent }) {
   return (
@@ -141,12 +135,13 @@ export default function SyncConflictsPanel() {
 
   useEffect(() => {
     let vivant = true
-    offlinesyncApi.listConflits()
-      .then((reponse) => {
+    // ENF15 — toutes les pages du journal (jamais la seule page 1).
+    lireToutesLesPages((p) => offlinesyncApi.listConflits(p))
+      .then((rows) => {
         if (!vivant) return
         setEtat({
           chargement: false,
-          conflits: lignes(reponse).map(resumer).filter(Boolean),
+          conflits: rows.map(resumer).filter(Boolean),
           erreur: '',
         })
       })

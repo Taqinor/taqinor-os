@@ -2515,7 +2515,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
     # ── FG300 — détection de conflits d'affectation (double-booking) ─────────
     @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin')], responses=oa.OBJ_FENETRE)
     @action(detail=False, methods=['get'], url_path='conflits-affectation',
-            permission_classes=[IsAnyRole])
+            pagination_class=None, permission_classes=[IsAnyRole])
     def conflits_affectation(self, request):
         """FG300 — liste les conflits d'affectation : une même ressource
         (technicien principal ou membre d'équipe, ou camionnette) affectée à ≥ 2

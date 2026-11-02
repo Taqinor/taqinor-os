@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, RefreshCw, Search, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import monitoringApi from '../../api/monitoringApi'
-import fetchAllPages from '../../utils/fetchAllPages'
+import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { formatNumber } from '../../lib/format'
 import {
   Button, Badge, Spinner, EmptyState, Input, IconButton,
@@ -27,6 +27,11 @@ import EnTeteMonitoring from './EnTeteMonitoring'
 import { ChargementPage } from '../../ui/ChargementPage'
 
 const todayISO = () => todayLocalIso()
+
+// FG84 — historique mensuel : réponse `{ data: [...] }` d'une action NON liste
+// (une ligne par mois, 12 mois), jamais une liste paginée.
+const lireHistorique = (configId) => monitoringApi.getHistory(configId, { months: 12 })
+  .then((r) => r.data?.data ?? [])
 
 export default function ProductionPage() {
   const { confirmDelete } = useConfirmDialog()
@@ -79,10 +84,10 @@ export default function ProductionPage() {
       .then((rows) => { if (!isStale()) setReadings(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch(() => { if (!isStale()) setReadings([]) })
       .finally(() => { if (!isStale()) setLoadingReadings(false) })
-    monitoringApi.getConfigForInstallation(id)
-      .then((r) => {
+    // ENF15 — toutes les pages (jamais la seule page 1) ; une config par installation.
+    lireToutesLesPages((p) => monitoringApi.getConfigForInstallation(id, p))
+      .then((rows) => {
         if (isStale()) return
-        const rows = r.data.results ?? r.data ?? []
         setConfig(rows[0] ?? { installation: id, provider: 'noop', enabled: false })
       })
       .catch(() => { if (!isStale()) setConfig({ installation: id, provider: 'noop', enabled: false }) })
@@ -106,9 +111,8 @@ export default function ProductionPage() {
         if (active) setLoadingReadings(false)
       }
       try {
-        const r = await monitoringApi.getConfigForInstallation(selectedId)
+        const rows = await lireToutesLesPages((p) => monitoringApi.getConfigForInstallation(selectedId, p))
         if (!active) return
-        const rows = r.data.results ?? r.data ?? []
         setConfig(rows[0] ?? { installation: selectedId, provider: 'noop', enabled: false })
       } catch {
         if (active) setConfig({ installation: selectedId, provider: 'noop', enabled: false })
@@ -126,8 +130,8 @@ export default function ProductionPage() {
     if (!configId) { Promise.resolve().then(() => setHistory([])); return undefined }
     let active = true
     Promise.resolve().then(() => { if (active) setLoadingHistory(true) })
-    monitoringApi.getHistory(configId, { months: 12 })
-      .then((r) => { if (active) setHistory(r.data?.data ?? []) })
+    lireHistorique(configId)
+      .then((rows) => { if (active) setHistory(rows) })
       .catch(() => { if (active) setHistory([]) })
       .finally(() => { if (active) setLoadingHistory(false) })
     return () => { active = false }
