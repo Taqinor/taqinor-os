@@ -74,9 +74,9 @@ class RetourLivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         retour = self.get_object()
         try:
             valider_retour_livraison(retour, request.user)
-        except ValueError as exc:
+        except ValueError as exc:  # ENF11 : requête sans corps, refus d'ÉTAT
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         retour.refresh_from_db()
         return Response(self.get_serializer(retour).data)
 

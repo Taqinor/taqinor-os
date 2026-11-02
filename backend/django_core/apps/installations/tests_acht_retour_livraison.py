@@ -119,6 +119,6 @@ class RetourLivraisonTests(TestCase):
         self.assertEqual(self._patch(l1, 4).status_code, 200)
         r = self.api.post(
             f'{BASE}/retours-livraison/{r1.data["id"]}/valider/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : refus d'état
         self.assertIn('Retour impossible', str(r.data))
         self.assertEqual(self._sur(self.depot), 16)
