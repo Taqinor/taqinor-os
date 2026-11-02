@@ -398,6 +398,10 @@ _LIBELLES = {
 #: ADVS25 — entrées d'écran que le client ne lit pas dans l'étude : l'attribution
 #: (snapshot + marqueur CAPI posés à l'acceptation) et l'option (déjà ``option``).
 _ETUDE_HORS_EMPREINTE = frozenset({'attribution', 'recommended_option'})
+#: ADVS25 — la resynchro du calepinage réécrit elle-même ces entrées, dérivées de
+#: la conception et des lignes (déjà comparées) : un layout renvoyé à l'identique
+#: n'est pas une correction, même quand il les pose pour la première fois.
+_ETUDE_REECRITE_PAR_CALEPINAGE = frozenset({'scenario', 'toiture'})
 #: QJR557 — les gestes NOMMÉS dans le chatter (« corrigé après envoi :
 #: calepinage (lignes) »). Les autres objets gardent le résumé seul.
 _OBJETS_NOMMES = {
@@ -634,6 +638,16 @@ def debut_de_geste_devis(devis, user=None):
         return None
 
 
+def _etude_comparee(empreinte, objet):
+    """ADVS25 — l'étude à comparer pour ce geste : la resynchro du calepinage ne
+    répond pas de :data:`_ETUDE_REECRITE_PAR_CALEPINAGE`."""
+    etude = empreinte.get('etude') or {}
+    if objet != 'calepinage':
+        return etude
+    return {cle: valeur for cle, valeur in etude.items()
+            if cle not in _ETUDE_REECRITE_PAR_CALEPINAGE}
+
+
 def fin_de_geste_devis(devis, user=None, *, avant=None, objet=''):
     """APRÈS les écritures d'un geste. Si ``avant`` (l'empreinte de
     :func:`debut_de_geste_devis`) diffère de l'empreinte courante, consigne
@@ -646,8 +660,10 @@ def fin_de_geste_devis(devis, user=None, *, avant=None, objet=''):
             return None
         apres = empreinte_visible(devis)
         changes = [cle for cle in ('lignes', 'entete', 'note', 'option',
-                                   'conception', 'etude')
+                                   'conception')
                    if avant.get(cle) != apres.get(cle)]
+        if _etude_comparee(avant, objet) != _etude_comparee(apres, objet):
+            changes.append('etude')
         if not changes:
             return None
         resume = ', '.join(_LIBELLES[c] for c in changes)
