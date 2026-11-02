@@ -230,22 +230,39 @@ describe('RelancesSuiviPage — SUIVI-REFUS (Sauter / Reporter refusés)', () =>
     expect(toastError).toHaveBeenCalledWith('Action impossible pour le moment.')
   })
 
-  it('succès « Reporter » inchangé : la liste est relue EN PLACE et le panneau se referme', async () => {
+  // SUIVI-RELOAD (02/11/2026) — ces deux succès relisaient toute la PÉRIODE
+  // (~1,5 Mo) ; ils relisent désormais le seul LEAD concerné, et la touche
+  // elle-même vient de la réponse du geste.
+  it('succès « Reporter » : le panneau se referme, seules les touches du LEAD sont relues — jamais la période', async () => {
+    crmApi.reporterRelanceEtape.mockResolvedValue({
+      data: { ...touche(), due_date: demain(), due_at: `${demain()}T09:00:00Z` },
+    })
     await monterEtOuvrir(/Reporter/)
     fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: demain() } })
     confirmer()
     await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith(
+      { lead: touche().lead }, { suppressErrorToast: true }))
     await waitFor(() => expect(screen.queryByLabelText('Reporter au')).not.toBeInTheDocument())
+    expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(1)
     expect(screen.queryByTestId('erreur-outcome')).not.toBeInTheDocument()
     expect(toastError).not.toHaveBeenCalled()
   })
 
-  it('succès « Sauter » inchangé : la liste est relue EN PLACE', async () => {
+  it('succès « Sauter » : la touche sautée vient de sa réponse (badge « Sautées : 1 »), le lead est relu, la période non', async () => {
+    const sautee = { ...touche(), statut: 'sautee', statut_libelle: 'Sautée' }
+    crmApi.marquerRelanceEtapeSautee.mockResolvedValue({ data: sautee })
+    // Le serveur, relu sur le LEAD, confirme la même touche sautée.
+    crmApi.getRelanceEtapesDues.mockResolvedValue({ data: { count: 1, results: [sautee] } })
     await monterEtOuvrir(/Sauter/)
     confirmer()
     await waitFor(() => expect(crmApi.marquerRelanceEtapeSautee).toHaveBeenCalledWith(780, ''))
-    await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByText(/Sautées\s*:\s*1/)).toBeInTheDocument())
+    // Le DELTA des compteurs serveur suit la touche : « À faire » retombe à 0.
+    expect(screen.getByText(/À faire\s*:\s*0/)).toBeInTheDocument()
+    expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith(
+      { lead: touche().lead }, { suppressErrorToast: true })
+    expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(1)
     expect(toastError).not.toHaveBeenCalled()
   })
 })
@@ -414,5 +431,98 @@ describe('RelancesEquipePanel (SUIVI-ÉQUIPE)', () => {
     render(<RelancesEquipePanel owner="" />)
     await waitFor(() => expect(screen.getByText(/Vue d.équipe indisponible/)).toBeInTheDocument())
     expect(screen.queryByTestId('equipe-tuiles')).not.toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   SUIVI-RELOAD (02/11/2026) — incident de production. La commerciale ouvrait
+   WhatsApp depuis une touche, revenait cocher « Fait », et recevait un
+   « problème de connexion » puis un écran SANS aucune suite : elle se
+   déconnectait et se reconnectait pour retrouver sa file. Cause relevée dans
+   les journaux du serveur : chaque geste — l'ouverture de WhatsApp comprise —
+   relisait la PÉRIODE entière (jusqu'à 62 jours, ~1,5 Mo), la relecture
+   dépassait le délai d'attente du navigateur pendant que les ouvriers du
+   serveur redémarraient, et l'écran remplaçait TOUTE la liste par
+   « Indisponible pour le moment. ». Les deux règles qui en sortent sont
+   prouvées ici.
+   ========================================================================== */
+describe('RelancesSuiviPage — SUIVI-RELOAD (geste ciblé, liste jamais vidée)', () => {
+  const AUJOURDHUI = () => casaISO(new Date())
+  // Une touche WhatsApp À FAIRE d'aujourd'hui : le geste de Meryem.
+  const touche = () => ({
+    ...ETAPES.find((e) => e.canal === 'whatsapp'),
+    id: 782, due_date: AUJOURDHUI(), overdue: false, statut: 'a_faire',
+    traite_le: null, traite_par_nom: null, message_ouvert_le: null,
+  })
+  const MESSAGE = exempleContrat('crm', 'relance_etape_message')
+
+  beforeEach(() => {
+    crmApi.getRelanceEtapesSuivi.mockResolvedValue({
+      data: {
+        results: [touche()],
+        resume: { a_faire: 1, en_retard: 0, fait: 0, sautee: 0, annulee: 0 },
+      },
+    })
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: MESSAGE })
+    vi.spyOn(window, 'open').mockReturnValue(null)
+  })
+
+  it('ouvrir WhatsApp ne relit AUCUNE liste : la touche à jour vient de la réponse du POST', async () => {
+    const ouverte = { ...touche(), message_ouvert_le: new Date().toISOString() }
+    crmApi.whatsappRelanceEtape.mockResolvedValue({ data: { ...MESSAGE, etape: ouverte } })
+    mount()
+    expect(await screen.findAllByTestId('relance-etape-row')).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: /WhatsApp/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir WhatsApp' }))
+    await waitFor(() => expect(crmApi.whatsappRelanceEtape).toHaveBeenCalledWith(782))
+    expect(window.open).toHaveBeenCalledWith(MESSAGE.wa_url, '_blank', 'noopener')
+
+    // La touche a été FUSIONNÉE depuis la réponse : le panneau « Fait » dit
+    // désormais que le message a été ouvert (RLC3) au lieu de demander la
+    // confirmation « message non ouvert ».
+    fireEvent.click(await screen.findByRole('button', { name: /Fait/ }))
+    expect(await screen.findByTestId('rappel-message-ouvert'))
+      .toHaveTextContent(/Message ouvert à \d{2}:\d{2} depuis l/)
+    expect(screen.queryByTestId('confirmer-sans-ouverture')).not.toBeInTheDocument()
+
+    // Le geste le plus fréquent de la journée ne coûte AUCUNE lecture de
+    // liste : ni la période (le montage seulement), ni même le lead.
+    expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(1)
+    expect(crmApi.getRelanceEtapesDues).not.toHaveBeenCalled()
+  })
+
+  it('un rafraîchissement en échec GARDE les touches affichées, le dit, et « Réessayer » relit la période', async () => {
+    crmApi.whatsappRelanceEtape.mockResolvedValue({ data: { ...MESSAGE } })
+    crmApi.getRelanceEtapesDues.mockRejectedValue(new Error('Network Error'))
+    mount()
+    expect(await screen.findAllByTestId('relance-etape-row')).toHaveLength(1)
+
+    // Réponse sans `etape` : on retombe sur la relecture du LEAD… qui échoue.
+    fireEvent.click(screen.getByRole('button', { name: /WhatsApp/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir WhatsApp' }))
+    await waitFor(() => expect(crmApi.getRelanceEtapesDues).toHaveBeenCalled())
+
+    // L'écran ne se vide PAS (c'était le « plus aucune suite » de l'incident)
+    // et ne ment pas : il dit que la liste n'est pas rafraîchie.
+    expect(await screen.findByTestId('suivi-pas-a-jour'))
+      .toHaveTextContent(/Liste non rafraîchie/)
+    expect(screen.getAllByTestId('relance-etape-row')).toHaveLength(1)
+    expect(screen.queryByText('Indisponible pour le moment.')).not.toBeInTheDocument()
+
+    // « Réessayer » relit la période EN PLACE ; au succès, l'avis disparaît.
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByTestId('suivi-pas-a-jour')).not.toBeInTheDocument())
+    expect(screen.getAllByTestId('relance-etape-row')).toHaveLength(1)
+  })
+
+  it('un chargement de NOUVELLE fenêtre en échec reste une erreur : « Indisponible pour le moment. »', async () => {
+    // Les lignes de l'ancienne fenêtre ne répondent pas à la question posée
+    // par le nouvel onglet : là, et là seulement, l'écran dit qu'il n'a rien.
+    crmApi.getRelanceEtapesSuivi.mockRejectedValue(new Error('Network Error'))
+    mount()
+    expect(await screen.findByText('Indisponible pour le moment.')).toBeInTheDocument()
+    expect(screen.queryByTestId('suivi-pas-a-jour')).not.toBeInTheDocument()
   })
 })
