@@ -23,6 +23,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
+from core.conflit_etat import ConflitEtat
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, BooleenStrict, ChaineStricte, entier_ou_400
 from core.parametres_requete import choix_ou_400
 from core.viewsets import CompanyScopedModelViewSet
@@ -692,9 +693,9 @@ class MessageAccueilViewSet(CompanyScopedModelViewSet):
                 {'detail': "Réservé à l'auteur ou à un responsable/admin."},
                 status=status.HTTP_403_FORBIDDEN)
         if instance.lu_le is not None:
-            return Response(
-                {'detail': 'Ce message a déjà été lu — suppression impossible.'},
-                status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 : refus d'ÉTAT (message déjà lu) -> 409, jamais un 400.
+            raise ConflitEtat(
+                'Ce message a déjà été lu — suppression impossible.')
         return super().destroy(request, *args, **kwargs)
 
 
