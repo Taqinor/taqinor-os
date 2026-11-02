@@ -1245,8 +1245,7 @@ CELERY_TASK_ROUTES = {
     'trash.purger_corbeille_transverse': {'queue': 'scheduled'},
     'uxviews.digest_favoris_obsoletes_hebdo': {'queue': 'scheduled'},
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
-    # NTSCM35/36 — voir le commentaire ci-dessus (chaque tache du
-    # beat_schedule DOIT etre routee explicitement vers `scheduled`).
+    # NTSCM35/36 — ci-dessus : chaque tache du beat_schedule routee vers `scheduled`.
     'ventes.expire_stale_devis': {'queue': 'scheduled'},
     'ventes.relance_reminders': {'queue': 'scheduled'},
     'ventes.devis_followup_nudges': {'queue': 'scheduled'},
@@ -1255,6 +1254,7 @@ CELERY_TASK_ROUTES = {
     'ventes.audit_coherence_nuit': {'queue': 'scheduled'},
     'crm.appointment_reminders': {'queue': 'scheduled'},
     'crm.attribuer_leads_echus': {'queue': 'scheduled'},
+    'crm.traiter_chaine_acceptation': {'queue': 'scheduled'},
     'crm.recycler_leads_non_travailles': {'queue': 'scheduled'},
     # CRX22 — recalcul des scores de lead devenus obsoletes (beat) : voir le
     # commentaire ci-dessus, toute tache du beat_schedule DOIT etre routee.

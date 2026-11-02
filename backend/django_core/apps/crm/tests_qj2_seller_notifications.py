@@ -11,6 +11,8 @@ Chaque test vérifie :
   - La société est correctement scopée (multi-tenant).
   - Un owner absent est un no-op (pas d'exception).
 """
+import datetime
+from decimal import Decimal
 from unittest import mock
 
 from django.test import TestCase
@@ -167,6 +169,89 @@ class NotifyDevisOpenedTests(TestCase):
 
 
 # ── (c) acceptance — _notify_seller_accepted + wa.me ─────────────────────────
+
+class ChaineAcceptationTests(TestCase):
+    """CADV112 — la passe quotidienne ``traiter_chaine_acceptation``."""
+
+    INSTANT = datetime.datetime(2026, 11, 23, 8, 45, tzinfo=datetime.timezone.utc)
+
+    def setUp(self):
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+
+        self.company = _make_company('co-j14')
+        self.owner = _make_user(self.company, 'meryem_j14')
+        self.direction = get_user_model().objects.create_user(
+            username='reda_j14', password='x', company=self.company,
+            role_legacy='admin')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Karim Tazi', owner=self.owner,
+            stage='SIGNED', telephone='+212661778800')
+        client = Client.objects.create(company=self.company, nom='Karim Tazi')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-J14-0001', client=client,
+            lead=self.lead, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'), date_acceptation=datetime.date(2026, 11, 9))
+
+    def _passage(self, paye=False):
+        from apps.crm.cadence_filet import traiter_chaine_acceptation
+        with mock.patch('apps.ventes.selectors.acompte_paye_pour_devis',
+                        return_value=paye), mock.patch(
+                'apps.notifications.services.notify_many') as envoi:
+            bilan = traiter_chaine_acceptation(self.INSTANT)
+        return bilan, envoi
+
+    def test_devis_accepte_sans_acompte_escalade_a_j14_une_seule_fois(self):
+        """Mutant : retirer le marqueur ⇒ le second passage renvoie une 2ᵉ
+        notification et échoue."""
+        from apps.notifications.types_evenements import EventType
+
+        bilan, envoi = self._passage()
+        self.assertEqual(bilan['escalades'], 1)
+        envoi.assert_called_once()
+        destinataires, evenement = envoi.call_args.args
+        self.assertIn(self.direction, destinataires)
+        self.assertEqual(evenement, EventType.DEVIS_ACCEPTED)
+        self.assertEqual(envoi.call_args.kwargs['title'],
+                         'Acompte non reçu à J+14 — Karim Tazi')
+        self.assertEqual(self.lead.activites.filter(
+            body__startswith='Acompte non reçu à J+14').count(), 1)
+
+        bilan, envoi = self._passage()
+        self.assertEqual(bilan['escalades'], 0)
+        envoi.assert_not_called()
+
+    def test_acompte_paye_aucune_escalade_et_chaine_annulee(self):
+        from apps.crm.cadence_filet import poser_chaine_apres_acceptation
+        from apps.crm.models import RelanceEtape
+
+        with mock.patch('apps.ventes.selectors.acompte_paye_pour_devis',
+                        return_value=False):
+            poser_chaine_apres_acceptation(self.devis, self.owner)
+        self.assertEqual(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).count(), 2)
+
+        bilan, envoi = self._passage(paye=True)
+        self.assertEqual(bilan, {'escalades': 0, 'annulees': 2})
+        envoi.assert_not_called()
+        self.assertEqual(set(self.lead.relance_etapes.values_list('statut', 'note')),
+                         {(RelanceEtape.Statut.ANNULEE, 'acompte reçu')})
+
+    def test_avant_j14_et_vieille_vente_ne_partent_pas(self):
+        from apps.ventes.models import Devis
+
+        for jour in (datetime.date(2026, 11, 10), datetime.date(2026, 6, 1)):
+            with self.subTest(acceptation=jour):
+                Devis.objects.filter(pk=self.devis.pk).update(date_acceptation=jour)
+                bilan, _envoi = self._passage()
+                self.assertEqual(bilan['escalades'], 0)
+
+    def test_une_autre_societe_n_est_pas_prevenue(self):
+        bilan, envoi = self._passage()
+        self.assertEqual(bilan['escalades'], 1)
+        destinataires = envoi.call_args.args[0]
+        self.assertTrue(all(u.company_id == self.company.pk for u in destinataires))
+
 
 class NotifySellerAcceptedTests(TestCase):
     """Tests pour la notification vendeur à l'acceptation (QJ2 event c).

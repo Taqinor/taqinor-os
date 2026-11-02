@@ -292,6 +292,12 @@ app.conf.beat_schedule = {
         'task': 'crm.escalader_premier_contact',
         'schedule': crontab(minute='*/5'),
     },
+    # CADV112 — devis accepté sans acompte : direction prévenue à J+14, chaîne
+    # annulée dès l'acompte reçu. Une fois par jour, à l'ouverture.
+    'crm-traiter-chaine-acceptation': {
+        'task': 'crm.traiter_chaine_acceptation',
+        'schedule': crontab(hour=8, minute=45),
+    },
     # Fondateur 27/10/2026 — attribution des leads par le responsable
     # d'équipe : passé le délai (minutes ouvrées) sans décision, le lead part
     # au membre proposé. Chaque minute ; ``skip_locked`` contre le double clic.
