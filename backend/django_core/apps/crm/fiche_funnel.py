@@ -723,14 +723,21 @@ def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True, journal=Tr
     return lead
 
 
-def reprendre_lead(lead, user, stage_cible):
-    """CADV35 × CADV89 — sortie de parcage : ``parc_*`` vidés (une ligne de chatter
-    s'il y en avait) et étape avancée vers ``stage_cible`` (jamais un recul)."""
+def sortir_du_parcage(lead, user):
+    """ALEA61 — sortie canonique du parcage : ``parc_*`` vidés (une ligne de
+    chatter s'il y en avait). Écrivain unique avec ``parquer_lead``."""
     ancienne = lead.parc_raison
     lead.parc_etat = lead.parc_raison = lead.parc_jusqu_au = None
     lead.save(update_fields=['parc_etat', 'parc_raison', 'parc_jusqu_au'])
     if ancienne:
         activity.log_bulk_change(lead, user, 'parc_raison', ancienne, None)
+    return lead
+
+
+def reprendre_lead(lead, user, stage_cible):
+    """CADV35 × CADV89 — sortie de parcage : ``parc_*`` vidés (une ligne de chatter
+    s'il y en avait) et étape avancée vers ``stage_cible`` (jamais un recul)."""
+    sortir_du_parcage(lead, user)
     avancer_stage_lead_vers(lead, user, stage_cible)
     return lead
 
