@@ -1,0 +1,27 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/variantes/<int:variante_id>/",
+  "pourquoi": "ENF15 (routes_sous_contrat) — Une variante d'un calepinage (CAL21), même sérialiseur que la liste. Variante d'un autre calepinage ou d'une autre société : 404 `{detail: 'Variante introuvable.'}`.",
+  "exemple": {
+    "id": 5,
+    "nom": "Variante 24 panneaux",
+    "roof_layout": {
+      "schema_version": 2,
+      "zones": [
+        {
+          "id": "PAN-A"
+        }
+      ]
+    },
+    "resultat": {
+      "kwc": 13.2
+    },
+    "retenue": true,
+    "layout_hash": "abababababababababababababababababababababababababababababababab",
+    "cree_par": 3,
+    "created_at": "2026-10-03T09:00:00Z",
+    "updated_at": "2026-10-03T09:15:00Z"
+  },
+  "refus_introuvable": {
+    "detail": "Variante introuvable."
+  }
+}

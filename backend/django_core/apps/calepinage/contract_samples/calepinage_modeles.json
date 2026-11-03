@@ -1,0 +1,84 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/modeles/",
+  "pourquoi": "ENF15 (routes_sous_contrat) — La bibliothèque des calepinages marqués « modèle » de la société (CAL199/CAL246) — liste NUE (pagination désactivée), sérialiseur `CalepinageSerializer` (mêmes clés que la liste, plus layout_hash/roof_image/version_moteur/cree_par/created_at/updated_at/contraintes_site). Bornée société par `request.user.company`.",
+  "reponse": "liste NUE (tableau JSON, sans pagination) d'éléments de la forme `exemple`",
+  "exemple": {
+    "id": 77,
+    "titre": "Toiture Anfa",
+    "statut": "valide",
+    "statut_libelle": "Validé",
+    "lead": {
+      "id": 77,
+      "nom": "Toiture Anfa",
+      "ville": "Casablanca",
+      "supprime": false
+    },
+    "client": 12,
+    "devis": 412,
+    "layout_hash": "abababababababababababababababababababababababababababababababab",
+    "roof_image": "",
+    "version_moteur": "2026.10",
+    "layout_stale": false,
+    "layout_nb_panneaux": 24,
+    "cree_par": 3,
+    "created_at": "2026-10-03T09:00:00Z",
+    "updated_at": "2026-10-03T09:15:00Z",
+    "responsable": 3,
+    "responsable_nom": "demo_admin",
+    "reference": "CAL-2610-0077",
+    "image": {
+      "url": null,
+      "genere_le": null,
+      "expire_le": null
+    },
+    "modifie_le": "2026-10-03T09:15:00Z",
+    "client_apercu": {
+      "id": 12,
+      "nom": "M. Alaoui",
+      "ville": "Casablanca"
+    },
+    "contraintes_site": {},
+    "nom": "Toiture Anfa"
+  },
+  "exemple_liste": [
+    {
+      "id": 77,
+      "titre": "Toiture Anfa",
+      "statut": "valide",
+      "statut_libelle": "Validé",
+      "lead": {
+        "id": 77,
+        "nom": "Toiture Anfa",
+        "ville": "Casablanca",
+        "supprime": false
+      },
+      "client": 12,
+      "devis": 412,
+      "layout_hash": "abababababababababababababababababababababababababababababababab",
+      "roof_image": "",
+      "version_moteur": "2026.10",
+      "layout_stale": false,
+      "layout_nb_panneaux": 24,
+      "cree_par": 3,
+      "created_at": "2026-10-03T09:00:00Z",
+      "updated_at": "2026-10-03T09:15:00Z",
+      "responsable": 3,
+      "responsable_nom": "demo_admin",
+      "reference": "CAL-2610-0077",
+      "image": {
+        "url": null,
+        "genere_le": null,
+        "expire_le": null
+      },
+      "modifie_le": "2026-10-03T09:15:00Z",
+      "client_apercu": {
+        "id": 12,
+        "nom": "M. Alaoui",
+        "ville": "Casablanca"
+      },
+      "contraintes_site": {},
+      "nom": "Toiture Anfa"
+    }
+  ],
+  "exemple_vide": []
+}
