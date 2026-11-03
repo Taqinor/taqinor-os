@@ -40,14 +40,15 @@ def _lead(company, payload, user=None):
     visibilité de l'utilisateur (même règle que ``LeadViewSet`` :
     ``scope_queryset(..., ['owner'])``) : la file hors-ligne n'est pas un
     contournement de permission. Un lead hors portée est indiscernable d'un
-    lead inconnu."""
+    lead inconnu. ACVI5 — sans ``crm_modifier``, même refus."""
     from authentication.scoping import scope_queryset
+    from core.permissions import _user_has_or_legacy
 
     lead = _lead_ou_none(company, payload)
     if lead is not None and user is not None:
         visible = scope_queryset(
             type(lead).objects.filter(pk=lead.pk), user, ['owner'])
-        if not visible.exists():
+        if not visible.exists() or not _user_has_or_legacy(user, 'crm_modifier'):
             lead = None
     if lead is None:
         raise OfflineOpError('Lead inconnu.')

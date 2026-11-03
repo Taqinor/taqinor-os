@@ -57,6 +57,34 @@ class PorteeCrmHorsLigneTests(TestCase):
         self.lead_autre.refresh_from_db()
         self.assertNotIn('vip', self.lead_autre.tags or [])
 
+    def test_sans_crm_modifier_refuse(self):
+        # ACVI5 — la portée ne suffit pas : ni Admin RH ni Commercial terrain
+        # n'écrivent au chatter ou aux tags par la file hors-ligne.
+        from apps.roles.permissions_registre import (
+            ADMIN_RH_PERMISSIONS, COMMERCIAL_TERRAIN_PERMISSIONS)
+
+        for nom, permissions in (('rh', ADMIN_RH_PERMISSIONS),
+                                 ('terrain', COMMERCIAL_TERRAIN_PERMISSIONS)):
+            role = Role.objects.create(
+                company=self.co, nom=f'acvi5-{nom}',
+                permissions=list(permissions))
+            api = auth(User.objects.create_user(
+                username=f'acvi5-{nom}', password='x', company=self.co,
+                role=role))
+            resp = api.post(BATCH, {'ops': [
+                op(f'{nom}-n', 'crm.lead.noter',
+                   {'lead': self.mon_lead.id, 'body': 'test'}),
+                op(f'{nom}-t', 'crm.lead.tag',
+                   {'lead': self.mon_lead.id, 'tag': 'vip'}),
+            ]}, format='json')
+            for resultat in resp.data['results']:
+                self.assertEqual(resultat['status'], 'error', resultat)
+                self.assertIn('Lead inconnu.', str(resultat))
+        self.assertEqual(
+            LeadActivity.objects.filter(lead=self.mon_lead).count(), 0)
+        self.mon_lead.refresh_from_db()
+        self.assertNotIn('vip', self.mon_lead.tags or '')
+
     def test_lead_dans_la_portee_accepte(self):
         resp = self._post('a41-ok', 'crm.lead.noter', self.mon_lead,
                           body='ma note')
