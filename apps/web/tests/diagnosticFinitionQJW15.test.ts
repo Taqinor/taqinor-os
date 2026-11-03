@@ -36,9 +36,11 @@ import { resetRateLimit } from '../src/lib/rateLimit';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
+// ENF19 : jetons, aria-invalid et charge utile vivent dans le module partagé que les deux composants importent.
+const PARTAGE = read('../src/lib/diagnosticFormShared.ts');
 const COMPOSANTS: Array<[string, string]> = [
-  ['DiagnosticForm', read('../src/components/DiagnosticForm.astro')],
-  ['DiagnosticFormEnriched', read('../src/components/DiagnosticFormEnriched.astro')],
+  ['DiagnosticForm', read('../src/components/DiagnosticForm.astro') + PARTAGE],
+  ['DiagnosticFormEnriched', read('../src/components/DiagnosticFormEnriched.astro') + PARTAGE],
 ];
 
 const CRM = 'https://crm.example/hook';
