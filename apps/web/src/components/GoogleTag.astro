@@ -7,11 +7,11 @@
  * le composant ne rend RIEN et `window.tqGoogleTrack` reste indéfini — les
  * appelants se gardent donc toujours (`window.tqGoogleTrack && …`).
  *
- * CONSENTEMENT — mêmes règles que le pixel Meta (QJW14 / WB33) :
- *  - « Refuser » EXPLICITE (`tq_consent` = 'denied') ⇒ gtag.js ne se charge
- *    pas ; si le refus arrive APRÈS le chargement (bandeau WB31 sur la même
- *    page), mode consentement Google passé à « denied » sur les 4 signaux.
- *  - Pas encore répondu ou 'granted' ⇒ le tag tourne.
+ * CONSENTEMENT — WAUD12 (D-WAUD-1 = opt-in strict), mêmes règles que le pixel :
+ * Consent Mode « denied » par défaut sur les 4 signaux AVANT tout `config` ;
+ * gtag.js n'est pas chargé tant que `tq_consent` n'est pas 'granted'. Au grant
+ * (au chargement ou sur la page) : `consent update`, `js`, `config`, conversions
+ * en attente, puis gtag.js injecté après l'affichage. Refus : update « denied ».
  *
  * CONVERSION — `window.tqGoogleTrack(eventId)` est appelé par les pages du
  * tunnel AU MÊME ENDROIT que `tqPixelTrack('Lead', …)` (lead qualifié) avec le
@@ -28,45 +28,77 @@ const leadSendTo = parseLeadSendTo(import.meta.env.PUBLIC_GOOGLE_ADS_LEAD_SEND_T
 {tagIds.length > 0 && (
   <script is:inline define:vars={{ tqGoogleTagIds: tagIds, tqGoogleLeadSendTo: leadSendTo }}>
     (function () {
-      /* Refus explicite ⇒ rien ne se charge (stockage indisponible ⇒ tag actif). */
-      var consent = null;
-      try {
-        consent = localStorage.getItem('tq_consent');
-      } catch (e) {}
-      if (consent === 'denied') return;
-      var s = document.createElement('script');
-      s.async = true;
-      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(tqGoogleTagIds[0]);
-      document.head.appendChild(s);
+      var lireChoix = function () {
+        try {
+          return localStorage.getItem('tq_consent');
+        } catch (e) {
+          return null;
+        }
+      };
+      var signaux = function (valeur) {
+        return { ad_storage: valeur, analytics_storage: valeur, ad_user_data: valeur, ad_personalization: valeur };
+      };
       window.dataLayer = window.dataLayer || [];
       window.gtag = function () {
         window.dataLayer.push(arguments);
       };
-      window.gtag('js', new Date());
-      for (var i = 0; i < tqGoogleTagIds.length; i++) window.gtag('config', tqGoogleTagIds[i]);
-      /* Refus APRÈS chargement : mode consentement Google « denied ». */
+      /* Refus par défaut, avant tout config. */
+      window.gtag('consent', 'default', signaux('denied'));
+      var charge = false;
+      var charger = function () {
+        if (charge) return;
+        charge = true;
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(tqGoogleTagIds[0]);
+        document.head.appendChild(s);
+      };
+      var apresAffichage = function () {
+        var libre = function () {
+          if (window.requestIdleCallback) window.requestIdleCallback(charger, { timeout: 3000 });
+          else setTimeout(charger, 1500);
+        };
+        if (document.readyState === 'complete') libre();
+        else window.addEventListener('load', libre, { once: true });
+      };
+      var envoyerLead = function (eventId) {
+        var extra = eventId ? { transaction_id: String(eventId) } : {};
+        if (tqGoogleLeadSendTo) {
+          window.gtag('event', 'conversion', Object.assign({ send_to: tqGoogleLeadSendTo }, extra));
+        }
+        window.gtag('event', 'generate_lead', extra);
+      };
+      var accorde = false;
+      var configure = false;
+      var enAttente = [];
+      var demarrer = function () {
+        if (accorde) return;
+        accorde = true;
+        window.gtag('consent', 'update', signaux('granted'));
+        if (!configure) {
+          configure = true;
+          window.gtag('js', new Date());
+          for (var i = 0; i < tqGoogleTagIds.length; i++) window.gtag('config', tqGoogleTagIds[i]);
+        }
+        enAttente.splice(0).forEach(envoyerLead);
+        apresAffichage();
+      };
+      if (lireChoix() === 'granted') demarrer();
       window.addEventListener('tq:consent-change', function (e) {
-        if (e && e.detail && e.detail.value === 'denied') {
-          try {
-            window.gtag('consent', 'update', {
-              ad_storage: 'denied',
-              analytics_storage: 'denied',
-              ad_user_data: 'denied',
-              ad_personalization: 'denied',
-            });
-          } catch (err) {}
+        var choix = e && e.detail && e.detail.value;
+        if (choix === 'granted') demarrer();
+        if (choix === 'denied') {
+          accorde = false;
+          enAttente = [];
+          try { window.gtag('consent', 'update', signaux('denied')); } catch (err) {}
         }
       });
-      /* Pont pour les pages (tunnel /devis/mon-toit) : no-op si refusé. */
+      /* Pont pour les pages (tunnel /devis/mon-toit) : gardé jusqu'au choix, no-op si refusé. */
       window.tqGoogleTrack = function (eventId) {
         try {
-          if (typeof window.gtag !== 'function') return;
-          if (localStorage.getItem('tq_consent') === 'denied') return;
-          var extra = eventId ? { transaction_id: String(eventId) } : {};
-          if (tqGoogleLeadSendTo) {
-            window.gtag('event', 'conversion', Object.assign({ send_to: tqGoogleLeadSendTo }, extra));
-          }
-          window.gtag('event', 'generate_lead', extra);
+          if (lireChoix() === 'denied') return;
+          if (accorde) envoyerLead(eventId);
+          else enAttente.push(eventId);
         } catch (err) {}
       };
     })();
