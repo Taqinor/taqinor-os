@@ -1,0 +1,23 @@
+---
+// ENF19 : grille des contrats d'entretien partagée (maintenance-monitoring fr/en/ar).
+const { tiers, wa, cta, nomDir } = Astro.props;
+---
+<div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
+  {tiers.map((t, i) => (
+    <div class="v2-rise flex flex-col border-t-2 border-azur-900 bg-blanc p-7" style={`--v2-i:${i}`}>
+      <h3 class="display text-xl text-azur-700" dir={nomDir}>{t.name}</h3>
+      <p class="mt-3 flex-1 text-sm leading-relaxed text-encre-soft">{t.body}</p>
+      <ul class="mt-4 space-y-2 text-sm text-encre-soft">
+        {t.inclusions.map((inc) => (
+          <li class="flex items-start gap-2">
+            <span class="mt-1 text-azur-600" aria-hidden="true">✓</span>
+            <span>{inc}</span>
+          </li>
+        ))}
+      </ul>
+      <a href={wa(t.name)} rel="noopener" class="mt-6 inline-block border-2 border-azur-600 px-5 py-2.5 text-center text-sm font-bold text-azur-600 transition-colors hover:bg-azur-600 hover:text-white">
+        {cta} {t.name}
+      </a>
+    </div>
+  ))}
+</div>

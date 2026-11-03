@@ -1,0 +1,19 @@
+---
+// ENF19 : grille « Sur votre téléphone » partagée (maintenance-monitoring fr/en/ar).
+const { vues, dir } = Astro.props;
+---
+<div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
+  {vues.map((v, i) => (
+    <div class="v2-rise flex flex-col items-center p-4" style={`--v2-i:${i}`}>
+      <div class="phone-frame">
+        <div class="phone-notch" aria-hidden="true"></div>
+        <div class="phone-screen">
+          <p class="phone-app-label" dir={dir}>{v.appLabel}</p>
+          <p class={`phone-headline ${v.accent}`} dir={dir}>{v.headline}</p>
+          <p class="phone-sub">{v.sub}</p>
+        </div>
+      </div>
+      <p class="mt-5 text-center text-sm leading-relaxed text-lune-soft">{v.caption}</p>
+    </div>
+  ))}
+</div>
