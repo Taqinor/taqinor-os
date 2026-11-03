@@ -1579,6 +1579,9 @@ CANAUX_RECONTACT = {
     'whatsapp': 'WhatsApp',
     'appel': 'appel entrant',
     'formulaire_meta': 'formulaire Meta',
+    'livechat': 'chat du site',  # ACVI13
+    'evenement': 'inscription à un événement',  # ACVI13
+    'locataire': 'coordonnées données par son locataire',  # ACVI13
 }
 CANAUX_RECONTACT_API = ('whatsapp', 'appel')
 
@@ -1843,6 +1846,24 @@ def _marquer_locataire(lead, user):
     activity.log_changes(avant, lead, user)
 
 
+def doublon_a_reprendre(dupes, telephone):
+    """ACVI13 (D-ACVI-5) — le tri d'une nouvelle demande : ``(vivant, froid à
+    rouvrir)``, ``(None, None)`` = fiche neuve (D-CRX1) : jamais un rattachement
+    muet à un archivé, un perdu ou un opposé. Un opposé reste opposé : son
+    empreinte posée, la fiche neuve naît opposée (``Lead.save``)."""
+    from .leads_doublons import poser_empreintes_opposition
+    from .leads_meta import _froid_a_reprendre
+
+    dupes = list(dupes)
+    for doublon in (d for d in dupes if d.ne_plus_contacter):
+        poser_empreintes_opposition(doublon.company, doublon)
+    vivant = max(
+        (d for d in dupes if not (d.is_archived or d.perdu or d.ne_plus_contacter
+                                  or d.stage == stages.COLD)),
+        key=lambda d: d.date_creation, default=None)
+    return vivant, None if vivant else _froid_a_reprendre(dupes, telephone)
+
+
 def creer_lead_proprietaire(locataire, user, donnees, *, queryset=None):
     """CAD164 — le propriétaire est joignable : SA fiche, liée au locataire.
 
@@ -1867,9 +1888,10 @@ def creer_lead_proprietaire(locataire, user, donnees, *, queryset=None):
     whatsapp = (donnees.get('whatsapp') or '').strip()
     with transaction.atomic():
         _marquer_locataire(locataire, user)
-        existant = next(iter(find_duplicates_by_contact(
+        vivant, froid = doublon_a_reprendre(find_duplicates_by_contact(
             locataire.company, phone=telephone or whatsapp,
-            exclude_pk=locataire.pk, queryset=queryset)), None)
+            exclude_pk=locataire.pk, queryset=queryset), telephone or whatsapp)
+        existant = vivant or froid
         cree = existant is None
         if cree:
             proprietaire = Lead(
@@ -1886,6 +1908,8 @@ def creer_lead_proprietaire(locataire, user, donnees, *, queryset=None):
                 base_legale=BASE_LEGALE_NON_COLLECTEE)
         else:
             proprietaire = existant
+            if froid is not None:  # ACVI13 — le Froid parqué est rouvert.
+                enregistrer_recontact(froid, user, canal='locataire')
         nom_locataire = ' '.join(
             p for p in ((locataire.prenom or '').strip(),
                         (locataire.nom or '').strip()) if p)

@@ -19,6 +19,8 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages, cadence_messages
 from apps.crm import cadence_reponses
+from apps.crm.leads_intake import (
+    create_lead_from_evenement_marketing, create_lead_from_livechat)
 from apps.crm.models import Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.parametres.models import CompanyProfile
 
@@ -122,6 +124,87 @@ class LocataireApiTests(TestCase):
         self.assertEqual(resp.data['lead_proprietaire']['id'], deja.pk)
         self.assertEqual(Lead.objects.filter(company=self.company).count(),
                          avant)
+
+    def _numero_proprietaire(self):
+        return CONTRAT['corps_proprietaire']['proprietaire']['telephone']
+
+    def test_doublon_archive_donne_une_fiche_neuve(self):
+        """ACVI13 (D-ACVI-5) — mutant : garder les archivés ⇒ A rendu, 0 touche."""
+        a = Lead.objects.create(company=self.company, nom='A', is_archived=True,
+                                telephone=self._numero_proprietaire())
+        resp = self.api.post(self._url(), CONTRAT['corps_proprietaire'],
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        neuf = Lead.objects.get(pk=resp.data['lead_proprietaire']['id'])
+        self.assertNotEqual(neuf.pk, a.pk)
+        self.assertTrue(RelanceEtape.objects.filter(
+            lead=neuf, cadence='contact',
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
+        a.refresh_from_db()
+        self.assertTrue(a.is_archived)
+        self.assertFalse(a.activites.filter(body__startswith=cadence_messages.PREFIXE_LIEN_LOCATAIRE).exists())
+
+    def test_doublon_perdu_donne_une_fiche_neuve(self):
+        a = Lead.objects.create(company=self.company, nom='A', perdu=True,
+                                telephone=self._numero_proprietaire())
+        resp = self.api.post(self._url(), CONTRAT['corps_proprietaire'],
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertNotEqual(resp.data['lead_proprietaire']['id'], a.pk)
+
+    def test_doublon_oppose_la_fiche_neuve_nait_opposee(self):
+        a = Lead.objects.create(
+            company=self.company, nom='A', ne_plus_contacter=True,
+            telephone=self._numero_proprietaire())
+        resp = self.api.post(self._url(), CONTRAT['corps_proprietaire'],
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        neuf = Lead.objects.get(pk=resp.data['lead_proprietaire']['id'])
+        self.assertNotEqual(neuf.pk, a.pk)
+        self.assertTrue(neuf.ne_plus_contacter)
+        self.assertFalse(RelanceEtape.objects.filter(
+            lead=neuf, statut=RelanceEtape.Statut.A_FAIRE).exists())
+
+    def test_doublon_au_froid_est_rouvert(self):
+        a = Lead.objects.create(
+            company=self.company, nom='A', stage=stages.COLD, owner=self.acteur,
+            telephone=self._numero_proprietaire())
+        avant = Lead.objects.filter(company=self.company).count()
+        resp = self.api.post(self._url(), CONTRAT['corps_proprietaire'],
+                             format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['lead_proprietaire']['id'], a.pk)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), avant)
+        a.refresh_from_db()
+        self.assertEqual(a.stage, stages.CONTACTED)
+
+    def test_livechat_n_absorbe_que_dans_un_doublon_vivant(self):
+        numero = '+212661000165'
+        archive = Lead.objects.create(company=self.company, nom='Arch',
+                                      telephone=numero, is_archived=True)
+        neuf = create_lead_from_livechat(
+            company=self.company, nom='Chat', telephone=numero)
+        self.assertNotEqual(neuf.pk, archive.pk)
+        self.assertEqual(create_lead_from_livechat(
+            company=self.company, nom='Chat', telephone=numero).pk, neuf.pk)
+
+    def test_livechat_rouvre_un_froid(self):
+        numero = '+212661000166'
+        froid = Lead.objects.create(company=self.company, nom='Froid',
+                                    telephone=numero, stage=stages.COLD,
+                                    owner=self.acteur)
+        self.assertEqual(create_lead_from_livechat(
+            company=self.company, nom='Chat', telephone=numero).pk, froid.pk)
+        froid.refresh_from_db()
+        self.assertEqual(froid.stage, stages.CONTACTED)
+
+    def test_evenement_jumeau_du_livechat(self):
+        numero = '+212661000167'
+        perdu = Lead.objects.create(company=self.company, nom='Perdu',
+                                    telephone=numero, perdu=True)
+        neuf = create_lead_from_evenement_marketing(
+            company=self.company, nom='Salon', telephone=numero)
+        self.assertNotEqual(neuf.pk, perdu.pk)
 
     def test_proprietaire_inconnu_clot_perdu_locataire(self):
         maintenant = timezone.now().astimezone(horaires.CASABLANCA)
