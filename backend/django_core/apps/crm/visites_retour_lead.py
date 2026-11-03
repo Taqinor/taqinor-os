@@ -262,6 +262,16 @@ def _feu_vert_anterieur(lead):
         body=_VISITE_CHATTER['validee']).count() > 1
 
 
+def _lever_marque_mesure(lead, colonne, anterieur):
+    """ACVI62 — au 1er feu vert la mesure prend la colonne, même quand elle
+    égale la déclaration : sa marque de saisie humaine est levée. Rend ``True``
+    si une marque a été retirée."""
+    if anterieur or colonne not in (lead.saisies_humaines or []):
+        return False
+    lead.saisies_humaines = [c for c in lead.saisies_humaines if c != colonne]
+    return True
+
+
 def _ecrire_mesure(lead, colonne, valeur, brute, user, anterieur):
     """ACVI62 — au 1er feu vert la mesure remplace la déclaration et sa marque
     est levée ; une colonne re-marquée depuis un feu vert est une correction
@@ -269,9 +279,7 @@ def _ecrire_mesure(lead, colonne, valeur, brute, user, anterieur):
     posée."""
     from apps.records.provenance import ecrire_si_libre
 
-    if not anterieur:
-        lead.saisies_humaines = [
-            c for c in (lead.saisies_humaines or []) if c != colonne]
+    _lever_marque_mesure(lead, colonne, anterieur)
     if ecrire_si_libre(lead, colonne, valeur, journal=False):
         return True
     _noter_mesure_non_recopiee(lead, user, colonne, brute)
@@ -292,6 +300,7 @@ def appliquer_mesures_point_eau(lead, mesures, user):
     avant = Lead.objects.get(pk=lead.pk)
     anterieur = _feu_vert_anterieur(lead)
     ecrites = []
+    marque_levee = False
     for categorie, code, colonne, provenance in RETOUR_LEAD_POINT_EAU:
         bloc = mesures.get(categorie)
         brute = bloc.get(code) if isinstance(bloc, dict) else None
@@ -308,12 +317,14 @@ def appliquer_mesures_point_eau(lead, mesures, user):
                     lead, colonne, valeur, brute, user, anterieur):
                 continue
             ecrites.append(colonne)
+        else:
+            marque_levee |= _lever_marque_mesure(lead, colonne, anterieur)
         if provenance:
             source, origine = provenance
             if getattr(lead, source) != origine:
                 setattr(lead, source, origine)
                 ecrites.append(source)
-    if ecrites:
+    if ecrites or marque_levee:
         lead.save(update_fields=ecrites + [
             'saisies_humaines', 'date_modification'])
         activity.log_changes(avant, lead, user)
@@ -381,6 +392,7 @@ def appliquer_releve_ci(lead, releve, user):
     }
     anterieur = _feu_vert_anterieur(lead)
     ecrites, rendu = [], {}
+    marque_levee = False
     for cle, colonne, source in RETOUR_LEAD_CI + RETOUR_LEAD_CI_SUPPLEMENT:
         bloc = releve.get(cle)
         if not isinstance(bloc, dict) or bloc.get('non_releve'):
@@ -397,10 +409,12 @@ def appliquer_releve_ci(lead, releve, user):
                 continue
             ecrites.append(colonne)
             rendu[colonne] = {'valeur': valeur, 'provenance': provenance}
+        else:
+            marque_levee |= _lever_marque_mesure(lead, colonne, anterieur)
         if source and getattr(lead, source) != ORIGINE_MESURE_VISITE:
             setattr(lead, source, ORIGINE_MESURE_VISITE)
             ecrites.append(source)
-    if ecrites:
+    if ecrites or marque_levee:
         lead.save(update_fields=ecrites + [
             'saisies_humaines', 'date_modification'])
         activity.log_changes(avant, lead, user)

@@ -181,6 +181,26 @@ class RetourReleveCiALaValidation(TestCase):
                 lead=self.lead, kind=LeadActivity.Kind.MODIFICATION).count(),
             nb)
 
+    def test_mesure_egale_a_la_declaration_leve_la_marque(self):
+        # ACVI62 — 1er feu vert : la valeur déclarée égale la mesure, la marque
+        # tombe quand même ; aucune colonne écrite, aucune ligne de journal.
+        Lead.objects.filter(pk=self.lead.pk).update(
+            compteur_puissance_kva=Decimal('36'),
+            saisies_humaines=['compteur_puissance_kva'])
+        self.lead.refresh_from_db()
+        nb = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.MODIFICATION,
+            field='compteur_puissance_kva').count()
+        visites_services.valider_visite(
+            self._visite(mesures=self._mesures_ci(
+                puissance_souscrite_kva_constatee=36)), self.bureau)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.compteur_puissance_kva, Decimal('36'))
+        self.assertNotIn('compteur_puissance_kva', self.lead.saisies_humaines)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.MODIFICATION,
+            field='compteur_puissance_kva').count(), nb)
+
     def test_correction_humaine_apres_feu_vert_gardee(self):
         # ACVI62 — 1er feu vert : la mesure remplace même une saisie marquée, et
         # lève la marque ; une correction postérieure survit au 2e feu vert.
