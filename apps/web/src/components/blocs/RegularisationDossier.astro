@@ -1,0 +1,41 @@
+---
+// ENF19 : acte final « confiez-nous le dossier » partagé (regularization-article-33 fr/en/ar) — textes en props.
+import ZelligeDivider from '../ZelligeDivider.astro';
+const { kicker, titre, intro, kwcLabel, kwcPlaceholder, inconnu, villeLabel, villePlaceholder, cta, waFallback } = Astro.props;
+---
+<div class="v2-seam" aria-hidden="true"></div>
+<section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
+  <div class="mx-auto max-w-3xl">
+    <ZelligeDivider />
+    <div class="v2-rise mt-6 border-2 border-azur-600 bg-blanc p-8 sm:p-10">
+      <p class="tech-label text-azur-600">{kicker}</p>
+      <h2 class="display v2-section-title mt-2">{titre}</h2>
+      <p class="mt-4 max-w-md text-sm leading-relaxed text-encre-soft">{intro}</p>
+      <div class="mt-6 grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="rg33-kwc" class="mb-1 block text-sm font-semibold" set:html={kwcLabel}></label>
+          <input id="rg33-kwc" type="number" min="0" step="0.1" inputmode="decimal" placeholder={kwcPlaceholder}
+            class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
+          <label class="mt-2 flex items-center gap-2 text-xs text-encre-soft">
+            <input id="rg33-unknown" type="checkbox" class="accent-azur-600" />
+            {inconnu}
+          </label>
+        </div>
+        <div>
+          <label for="rg33-ville" class="mb-1 block text-sm font-semibold">{villeLabel}</label>
+          <input id="rg33-ville" type="text" autocomplete="address-level2" placeholder={villePlaceholder}
+            class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
+        </div>
+      </div>
+      <a id="rg33-go" href={waFallback} rel="noopener"
+        class="glow mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+      >{cta}</a>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { initRegularisationWhatsapp } from '../../lib/regularisationWhatsapp';
+
+  initRegularisationWhatsapp();
+</script>

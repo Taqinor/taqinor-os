@@ -107,7 +107,7 @@ describe('estimateur — capture du lead RÉUTILISÉE, plomberie intacte', () =>
 
   it('seuil + consentement + CAPI inchangés (preview-lead poste toujours le record de base au CAPI)', () => {
     const ep = read('../src/pages/api/preview-lead.ts');
-    expect(ep).toContain('fireCapi(baseRecord'); // signal publicitaire identique
+    expect(ep).toContain('transfererLead(record, baseRecord'); // signal publicitaire identique
     expect(ep).toContain('cleanEnrichment');
     const enr = read('../src/components/DiagnosticFormEnriched.astro');
     expect(enr).toContain('name="consent" required'); // consentement toujours requis

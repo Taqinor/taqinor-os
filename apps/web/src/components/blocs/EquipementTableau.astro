@@ -1,0 +1,32 @@
+---
+// ENF19 : tableau comparatif partagé (équipement fr/en/ar) — libellés en props.
+interface Props {
+  titre: string;
+  critere: string;
+  colA: string;
+  colB: string;
+  rows: { critere: string; a: string; b: string }[];
+}
+const { titre, critere, colA, colB, rows } = Astro.props;
+---
+<div class="overflow-x-auto">
+  <h3 class="tech-label mb-3 text-brass-300">{titre}</h3>
+  <table class="w-full min-w-[420px] border-collapse text-sm">
+    <thead>
+      <tr class="border-b-2 border-brass-400/70 text-left text-white">
+        <th scope="col" class="py-3 pr-4 font-semibold">{critere}</th>
+        <th scope="col" class="py-3 pr-4 font-semibold">{colA}</th>
+        <th scope="col" class="py-3 font-semibold">{colB}</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-white/10 text-lune">
+      {rows.map((row) => (
+        <tr>
+          <th scope="row" class="py-3 pr-4 font-normal text-lune-faint">{row.critere}</th>
+          <td class="py-3 pr-4">{row.a}</td>
+          <td class="py-3">{row.b}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>

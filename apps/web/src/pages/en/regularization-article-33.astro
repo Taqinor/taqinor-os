@@ -19,7 +19,6 @@ import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
@@ -42,6 +41,8 @@ const sanctions = [
 ];
 import RegularizationArticle33Ol7511 from '../../components/blocs/RegularizationArticle33Ol7511.astro';
 import RegularizationArticle33DivC937 from '../../components/blocs/RegularizationArticle33DivC937.astro';
+import Loi8221OuEnEstLaLoiEn from '../..//components/blocs/Loi8221OuEnEstLaLoiEn.astro';
+import RegularisationDossier from '../../components/blocs/RegularisationDossier.astro';
 ---
 
 <Layout
@@ -77,27 +78,17 @@ import RegularizationArticle33DivC937 from '../../components/blocs/Regularizatio
         <p class="tech-label v2-kicker text-brass-300">Where does the law stand? · verified on 5 October 2026</p>
         {/* CIW413 — same tariff sentences as CIW412 (ANRE decision 04/26 art. 6-7; decree 2.25.100
             art. 12; D-CIQ-4): the tariff targets the VOLTAGE, low voltage is not open. */}
-        <div class="mt-4 grid gap-5 sm:grid-cols-2">
-          <div>
-            <p class="tech-label text-lune">In force</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Implementing decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of
+        <Loi8221OuEnEstLaLoiEn>
+          <Fragment slot="vigueur">Implementing decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of
               9 March 2026, in force since 9 June 2026) and ANRE decision <strong class="text-white">04/26</strong>.
               ANRE surplus tariff (decision 04/26): <strong class="text-white">0.18 DH/kWh off-peak,
               0.21 DH/kWh at peak, excluding taxes</strong>, for installations connected at
               <strong class="text-white"> medium, high or very high voltage (MV/HV/EHV)</strong>,
-              whatever their regime.
-            </p>
-          </div>
-          <div>
-            <p class="tech-label text-lune">Not yet published</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              In <strong class="text-white">low voltage (LV)</strong>, whatever the regime — including a
+              whatever their regime.</Fragment>
+          <Fragment slot="bt">In <strong class="text-white">low voltage (LV)</strong>, whatever the regime — including a
               shop of 11 kW or more under a connection agreement — resale of the surplus is not open
-              as of today. File under Article 33 without waiting, regardless of this tariff.
-            </p>
-          </div>
-        </div>
+              as of today. File under Article 33 without waiting, regardless of this tariff.</Fragment>
+        </Loi8221OuEnEstLaLoiEn>
       </div>
     </section>
 
@@ -141,65 +132,8 @@ import RegularizationArticle33DivC937 from '../../components/blocs/Regularizatio
     </section>
 
     <!-- FINAL ACT — the file handed over in full light -->
-    <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
-      <div class="mx-auto max-w-3xl">
-        <ZelligeDivider />
-        <div class="v2-rise mt-6 border-2 border-azur-600 bg-blanc p-8 sm:p-10">
-          <p class="tech-label text-azur-600">Full handling</p>
-          <h2 class="display v2-section-title mt-2">Hand us the file</h2>
-          <p class="mt-4 max-w-md text-sm leading-relaxed text-encre-soft">
-            Two questions, and your WhatsApp message goes out already complete — we identify
-            the applicable regime and build the file.
-          </p>
-          <div class="mt-6 grid gap-4 sm:grid-cols-2">
-            <div>
-              <label for="rg33-kwc" class="mb-1 block text-sm font-semibold">Approximate power (kWc)</label>
-              <input id="rg33-kwc" type="number" min="0" step="0.1" inputmode="decimal" placeholder="e.g. 5"
-                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
-              <label class="mt-2 flex items-center gap-2 text-xs text-encre-soft">
-                <input id="rg33-unknown" type="checkbox" class="accent-azur-600" />
-                I don't know the power
-              </label>
-            </div>
-            <div>
-              <label for="rg33-ville" class="mb-1 block text-sm font-semibold">City of the installation</label>
-              <input id="rg33-ville" type="text" autocomplete="address-level2" placeholder="e.g. Casablanca"
-                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
-            </div>
-          </div>
-          <a id="rg33-go" href={waFallback} rel="noopener"
-            class="glow mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
-          >Start on WhatsApp</a>
-        </div>
-      </div>
-    </section>
+    <RegularisationDossier kicker="Full handling" titre="Hand us the file" intro="Two questions, and your WhatsApp message goes out already complete — we identify the applicable regime and build the file." kwcLabel="Approximate power (kWc)" kwcPlaceholder="e.g. 5" inconnu="I don't know the power" villeLabel="City of the installation" villePlaceholder="e.g. Casablanca" cta="Start on WhatsApp" waFallback={waFallback} />
 
     <StickyCta />
   </div>
 </Layout>
-
-<script>
-  import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
-  import { WHATSAPP_LEADS } from '../../lib/nap';
-
-  // Le lien se met à jour en direct : le client n'édite JAMAIS le message.
-  const kwcEl = document.getElementById('rg33-kwc') as HTMLInputElement;
-  const unknownEl = document.getElementById('rg33-unknown') as HTMLInputElement;
-  const villeEl = document.getElementById('rg33-ville') as HTMLInputElement;
-  const goEl = document.getElementById('rg33-go') as HTMLAnchorElement;
-
-  function refresh() {
-    kwcEl.disabled = unknownEl.checked;
-    if (unknownEl.checked) kwcEl.value = '';
-    goEl.href = whatsappLink(
-      WHATSAPP_LEADS,
-      regularizationWhatsappText({
-        kwc: unknownEl.checked ? '' : kwcEl.value,
-        ville: villeEl.value,
-      }),
-    );
-  }
-  for (const el of [kwcEl, unknownEl, villeEl]) el.addEventListener('input', refresh);
-  refresh();
-</script>

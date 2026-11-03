@@ -66,6 +66,7 @@ const regimes = [
   },
 ];
 import Loi8221ExpliqueeDiv68F7 from '../../../components/blocs/Loi8221ExpliqueeDiv68F7.astro';
+import Loi8221OuEnEstLaLoiEn from '../../../components/blocs/Loi8221OuEnEstLaLoiEn.astro';
 ---
 
 <Layout
@@ -97,28 +98,7 @@ import Loi8221ExpliqueeDiv68F7 from '../../../components/blocs/Loi8221ExpliqueeD
         {/* CIW412 — sources: ANRE decision 04/26 art. 6-7 (the surplus tariff targets the VOLTAGE
             MV/HV/EHV, whatever the regime); decree 2.25.100 art. 12 (connection agreement from
             11 kW to under 5 MW); D-CIQ-4. In low voltage, resale is not open. */}
-        <div class="mt-4 grid gap-5 sm:grid-cols-2">
-          <div>
-            <p class="tech-label text-lune">In force</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Implementing decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of
-              9 March 2026, in force since <strong class="text-white">9 June 2026</strong>) and ANRE
-              decision <strong class="text-white">04/26</strong>. ANRE surplus tariff (decision 04/26):
-              <strong class="text-white">0.18 DH/kWh off-peak, 0.21 DH/kWh at peak, excluding taxes</strong>,
-              for installations connected at
-              <strong class="text-white"> medium, high or very high voltage (MV/HV/EHV)</strong>,
-              whatever their regime.
-            </p>
-          </div>
-          <div>
-            <p class="tech-label text-lune">Not yet published</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              In <strong class="text-white">low voltage (LV)</strong>, whatever the regime — including a
-              shop of 11 kW or more under a connection agreement — resale of the surplus is not open
-              as of today. Do not take the MV/HV tariff above as the one for your home or your shop.
-            </p>
-          </div>
-        </div>
+        <Loi8221OuEnEstLaLoiEn />
         <p class="mt-5 text-xs leading-relaxed text-lune-faint">
           Already have an installation in place? Article 33 provides "within eighteen (18) months from
           the date of entry into force of this law"; the starting point of that period is to be

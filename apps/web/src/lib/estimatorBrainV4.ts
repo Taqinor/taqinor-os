@@ -35,7 +35,7 @@ import { type LngLat } from './roof';
 import { PERIMETER_SETBACK_M } from './roofPro2';
 import { PANEL2_WATT, type ConfigFamily, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import type { AxisAzimuth, AxisOrient, AxisMargin, FlatConfig } from './estimatorBrainV3';
-import { departageBase, packFlat, productionFields, type EvalProductionSourced, type YieldFn, type YieldSource } from './estimatorBrainCommun';
+import { departageBase, packFlat, productionFields, resolveYield, type EvalProductionSourced, type YieldFn, type YieldSource } from './estimatorBrainCommun';
 
 export type { AxisAzimuth, AxisOrient, AxisMargin, FlatConfig } from './estimatorBrainV3';
 export { PANEL2_WATT };
@@ -112,20 +112,6 @@ export function pvgisCandidatePairs(
     for (const t of EW_TILTS) for (const leg of pvgisLegs('eastwest', t, ewAz, 1)) add(t, leg.aspect);
   }
   return [...out.values()];
-}
-
-/** Rendement résolu pour un (tilt, aspect) : PVGIS si dispo et valide, sinon table. */
-function resolveYield(
-  yieldFn: YieldFn | undefined,
-  latitudeDeg: number,
-  tiltDeg: number,
-  aspect: number,
-): { value: number; source: YieldSource } {
-  if (yieldFn) {
-    const v = yieldFn(tiltDeg, aspect);
-    if (v != null && Number.isFinite(v) && v > 0) return { value: v, source: 'pvgis' };
-  }
-  return { value: specificYield(latitudeDeg, tiltDeg, aspect), source: 'estimate' };
 }
 
 /** Production annuelle (kWh) d'une config via la source PVGIS (repli table). */
