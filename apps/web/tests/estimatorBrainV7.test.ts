@@ -19,6 +19,9 @@ import { PANEL2_WATT, aspectForAzimuth, optimalSouthTiltDeg } from '../src/lib/e
 import { matrixTiltGrid } from '../src/lib/estimatorBrainV6';
 import { type LngLat } from '../src/lib/roof';
 
+// Banc lourd (optimiseur vivant sous jsdom) : 5 s par défaut cassent sur un runner chargé (CI #1247).
+vi.setConfig({ testTimeout: 30_000 });
+
 const LAT = 33.59;
 const BILL = 1500;
 

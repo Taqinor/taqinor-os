@@ -11,6 +11,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoofTypeSelect } from '../src/lib/roofTypeSelect';
 
+// Banc lourd (optimiseur vivant sous jsdom) : 5 s par défaut cassent sur un runner chargé (CI #1247).
+vi.setConfig({ testTimeout: 30_000 });
+
 // ── MapLibre mock : un faux Map qui capture les handlers et n'instancie AUCUN WebGL.
 //    addLayer N'APPELLE PAS onAdd → le calque Three.js ne démarre jamais → sceneRoot reste
 //    null → renderScene s'auto-annule. L'optimiseur + le DOM tournent quand même.
