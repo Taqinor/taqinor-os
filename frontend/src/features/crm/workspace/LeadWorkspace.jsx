@@ -139,6 +139,7 @@ export default function LeadWorkspace({
   leadsQueue = null, onNavigateLead = null,
   initialDevis = null, focusSection = null,
   onOpenDuplicate = null,
+  onSigneRefuse = null,
   variant = 'dialog',
 }) {
   const dispatch = useDispatch()
@@ -1008,7 +1009,7 @@ export default function LeadWorkspace({
           onClose={() => setSigneOpen(false)}
           onConfirmed={() => { setSigneOpen(false); onClose?.() }}
           onAccepted={() => onSaved?.()}
-          onFailed={() => onSaved?.()}
+          onFailed={(echec) => { onSaved?.(); onSigneRefuse?.(state.server, echec) }}
         />
       )}
       {planOpen && (

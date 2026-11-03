@@ -69,7 +69,7 @@ test('LW5 : date par défaut + comparaison "future" en LOCAL, jamais toISOString
   assert.doesNotMatch(SRC, /new Date\(\)\.toISOString\(\)\.slice\(0, ?10\)/)
   assert.match(SRC, /function todayLocalStr\(now = new Date\(\)\)/)
   assert.match(SRC, /toLocaleDateString\('fr-CA'\)/)
-  assert.match(SRC, /useState\(\(\) => todayLocalStr\(\)\)/)
+  assert.match(SRC, /useState\(\(\) => saisieInitiale\?\.date \?\? todayLocalStr\(\)\)/)
   assert.match(SRC, /const today = todayLocalStr\(\)/)
 })
 

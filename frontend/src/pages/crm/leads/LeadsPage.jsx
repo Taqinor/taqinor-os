@@ -424,6 +424,8 @@ export default function LeadsPage() {
   const [stageError, setStageError] = useState(null)
   // A2 — lead en attente de confirmation « Signé » (choix du devis + option).
   const [signeLead, setSigneLead] = useState(null)
+  // ACVI68 — la saisie du dialogue « Signé » refusé par le serveur, rendue à sa réouverture.
+  const [signeSaisie, setSigneSaisie] = useState(null)
 
   // ── Sélection multiple (actions en masse, T3) ───────────────────────────
   const [selected, setSelected] = useState(() => new Set())
@@ -731,6 +733,14 @@ export default function LeadsPage() {
         throw err
       })
   ), [dispatch])
+
+  // ACVI68 — refus d'acceptation : le dialogue revient pré-rempli (même depuis
+  // une fiche fermée par la fête au clic). Conflit (`echec` absent) : rien.
+  const rouvrirSigne = useCallback((fiche, echec) => {
+    if (!echec) return
+    setSigneSaisie({ ...echec.saisie, erreurs: echec.erreurs })
+    setSigneLead(fiche)
+  }, [])
 
   // VX187 — useCallback (même raison que onOpenLead/onAutoQuote ci-dessus) :
   // passé à chaque carte/ligne comme `onChangeStage`. Seule dépendance externe
@@ -1209,6 +1219,7 @@ export default function LeadsPage() {
           lead={showForm ? editLead : deepLead}
           onClose={closeForm}
           onSaved={onSaved}
+          onSigneRefuse={rouvrirSigne}
           onOpenDuplicate={onOpenDuplicate}
           initialDevis={showForm ? formDevisIntent : null}
           focusSection={showForm ? formFocusSection : null}
@@ -1259,15 +1270,16 @@ export default function LeadsPage() {
       {signeLead && (
         <SigneDialog
           lead={signeLead}
-          onClose={() => { setSigneLead(null); refetch() }}
+          saisieInitiale={signeSaisie}
+          onClose={() => { setSigneLead(null); setSigneSaisie(null); refetch() }}
           onConfirmed={() => {
             // La carte passe en « Signé » tout de suite (fête dès le clic) ;
             // le serveur confirme pendant la fête, puis on resynchronise.
             dispatch(leadStagePatched({ id: signeLead.id, stage: CONVERSION_STAGE }))
             setSigneLead(null)
           }}
-          onAccepted={() => refetch()}
-          onFailed={() => refetch()}
+          onAccepted={() => { setSigneSaisie(null); refetch() }}
+          onFailed={(echec) => { refetch(); rouvrirSigne(signeLead, echec) }}
         />
       )}
 

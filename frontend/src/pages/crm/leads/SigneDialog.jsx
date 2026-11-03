@@ -8,6 +8,7 @@
 // funnel et le statut du document restent deux couches séparées).
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Eye, FileWarning } from 'lucide-react'
+import { getApiError } from '../../../lib/apiError'
 import ventesApi, { acceptationDejaFaite } from '../../../api/ventesApi'
 import fetchAllPages from '../../../utils/fetchAllPages'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
@@ -89,24 +90,24 @@ function todayLocalStr(now = new Date()) {
 // `onConfirmed` : appelé AU CLIC (ferme le dialogue) ; `onAccepted` : appelé
 // quand le serveur a confirmé l'acceptation (rafraîchir les listes) ;
 // `onFailed` : le serveur a refusé (défaire l'affichage optimiste).
-export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, onFailed }) {
+export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, onFailed, saisieInitiale = null }) {
   const [loading, setLoading] = useState(true)
   const [devisList, setDevisList] = useState([])
   // Nombre TOTAL de devis du lead (avant filtrage) : distingue « aucun devis »
   // de « aucun devis sélectionnable » (que des refusés/inactifs).
   const [totalDevisCount, setTotalDevisCount] = useState(0)
-  const [devisId, setDevisId] = useState('')
+  const [devisId, setDevisId] = useState(saisieInitiale?.devisId ?? '')
   // Choix explicite de l'option par l'utilisateur ('' = pas encore choisi) ;
   // l'option effective est dérivée (choix explicite, sinon celle déjà retenue
   // sur le devis) — pas d'état dérivé synchronisé via un effet.
-  const [optionChoice, setOptionChoice] = useState('')
-  const [nom, setNom] = useState('')
-  const [date, setDate] = useState(() => todayLocalStr())
+  const [optionChoice, setOptionChoice] = useState(saisieInitiale?.optionChoice ?? '')
+  const [nom, setNom] = useState(saisieInitiale?.nom ?? '')
+  const [date, setDate] = useState(() => saisieInitiale?.date ?? todayLocalStr())
   // CIQ324 — `null` tant que le vendeur n'a rien tapé : la raison sociale
   // connue du devis choisi sert alors de valeur affichée (jamais d'effet de sync).
-  const [entrepriseSaisie, setEntrepriseSaisie] = useState(null)
+  const [entrepriseSaisie, setEntrepriseSaisie] = useState(saisieInitiale?.entrepriseSaisie ?? null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState(saisieInitiale?.message ?? null)
   // VNT80 — refus serveur qui NOMME un autre devis (vente active existante,
   // version remplacée) : message nommé sous le bouton + lien vers ce devis.
   const [conflit, setConflit] = useState(null)
@@ -131,7 +132,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
         // Présélection du devis le plus pertinent (envoyé récent, sinon total
         // le plus élevé) au lieu du premier renvoyé par l'API.
         const best = preselectDevis(list)
-        if (best) setDevisId(String(best.id))
+        if (best) setDevisId((courant) => courant || String(best.id))
       })
       .catch(() => {
         if (alive) setError('Impossible de charger les devis de ce lead.')
@@ -234,8 +235,18 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
       if (acceptationDejaFaite(err)) { onAccepted?.(); return }
       // Vrai refus serveur : la fête s'arrête et le motif s'affiche.
       effacerAffaireSignee()
-      onFailed?.()
       const c = conflitDevis(err?.response?.data)
+      // ACVI68 — hors conflit, le parent rouvre le dialogue avec la saisie.
+      const { message, fieldErrors } = getApiError(
+        err, "L'acceptation n'a pas pu être enregistrée — réessayez.")
+      onFailed?.(c ? undefined : {
+        saisie: {
+          devisId, optionChoice, nom, date, entrepriseSaisie,
+          // Sous son champ quand il en a un : jamais deux fois à l'écran.
+          message: fieldErrors?.nom ? null : message,
+        },
+        erreurs: fieldErrors ?? {},
+      })
       if (c) {
         // La fenêtre lead est souvent déjà fermée (fête au clic) : le toast
         // porte aussi « Ouvrir <réf> » ; ouverte, le message reste sous le bouton.
@@ -249,8 +260,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
         })
         return
       }
-      toastError(err?.response?.data?.detail
-        ?? "L'acceptation n'a pas pu être enregistrée — réessayez.")
+      toastError(message)
     }
   }
 
@@ -393,6 +403,9 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
                 onChange={(e) => setNom(e.target.value)}
                 placeholder="ex. M. Bennani"
               />
+              {saisieInitiale?.erreurs?.nom && (
+                <p className="form-error" role="alert">{saisieInitiale.erreurs.nom}</p>
+              )}
 
               <label className="form-label" htmlFor="sd-date">Date d'acceptation</label>
               <input

@@ -33,6 +33,34 @@ async function ouvrir(mode) {
 
 const confirmer = () => fireEvent.click(screen.getByRole('button', { name: /Confirmer|Marquer|Passer/ }))
 
+describe('SigneDialog — ACVI68 refus serveur', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('rend la saisie au parent, puis se rouvre pré-rempli avec l\'erreur sous le champ', async () => {
+    ventesApi.getDevis.mockResolvedValue({ data: { results: [devis('residentiel')] } })
+    ventesApi.accepterDevis.mockRejectedValueOnce({
+      response: { status: 400, data: { nom: ['Obligatoire.'] } },
+    })
+    const onFailed = vi.fn()
+    const lead = { id: 5, nom: 'Exemple', prenom: 'Karim' }
+    const { unmount } = render(
+      <SigneDialog lead={lead} onClose={() => {}} onConfirmed={() => {}} onFailed={onFailed} />)
+    await screen.findByLabelText('Devis accepté')
+    fireEvent.change(screen.getByLabelText(/Nom de la personne/), { target: { value: 'M. Bennani' } })
+    confirmer()
+    await waitFor(() => expect(onFailed).toHaveBeenCalledTimes(1))
+    const { saisie, erreurs } = onFailed.mock.calls[0][0]
+    expect(saisie.nom).toBe('M. Bennani')
+    expect(erreurs.nom).toBe('Obligatoire.')
+    unmount()
+    render(<SigneDialog lead={lead} onClose={() => {}} onConfirmed={() => {}}
+                        saisieInitiale={{ ...saisie, erreurs }} />)
+    await screen.findByLabelText('Devis accepté')
+    expect(screen.getByLabelText(/Nom de la personne/)).toHaveValue('M. Bennani')
+    expect(screen.getByText('Obligatoire.')).toBeInTheDocument()
+  })
+})
+
 describe('SigneDialog — CIQ324 identité d\'entreprise', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
