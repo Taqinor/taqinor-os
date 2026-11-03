@@ -635,7 +635,10 @@ def _apply_updates(instance, fields, skip_keys=(), ecraser=False,
         modifications.append(dict(item, ecrasement=True))
 
     if changed:
-        instance.save(update_fields=changed)
+        # ACVI26 — `save()` recalcule `*_normalise` mais n'écrit que les colonnes listées.
+        derivees = [c.name for c in instance._meta.concrete_fields
+                    if c.name.endswith('_normalise')]
+        instance.save(update_fields=changed + derivees)
     return changed, modifications, refuses
 
 

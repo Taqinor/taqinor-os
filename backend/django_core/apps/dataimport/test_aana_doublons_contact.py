@@ -24,6 +24,24 @@ class TestDoublonsContactLeads(ImportBase):
         self.assertEqual(resp.status_code, 200, resp.data)
         return resp.data
 
+    def test_maj_telephone_persiste_phone_normalise(self):
+        # ACVI26 — un numéro importé en `maj` est retrouvé par la dédup.
+        from apps.crm.services import find_duplicates_by_contact
+
+        lead = Lead.objects.create(
+            company=self.company, nom='L', email='l@x.ma')
+        resp = self.api.post('/api/django/imports/commit/', {
+            'file': self._csv('email,telephone\nl@x.ma,0612340256\n'),
+            'target': 'leads', 'mode': 'maj',
+        }, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.phone_normalise, '612340256')
+        self.assertEqual(
+            [d.pk for d in find_duplicates_by_contact(
+                self.company, phone='0612340256')], [lead.pk])
+
     def test_meme_telephone_autre_email(self):
         avant = Lead.objects.filter(company=self.company).count()
         data = self._commit('Nom,Email,Telephone\nB,b@x.ma,+212 612345678\n')
