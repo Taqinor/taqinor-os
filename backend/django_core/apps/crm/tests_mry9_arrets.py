@@ -185,6 +185,13 @@ class DeclencheurEtapeTests(_Base):
         self.assertEqual(self._ouvertes('contact'), 0)
         self.assertEqual(self._ouvertes('apres_devis'), 0)
 
+    def test_froid_manuel_arrete_le_filet_generique(self):
+        """ACVI38 — parqué au Froid : plus d'étape de filet à faire."""
+        filet = _poser_plan_direct(self.lead, 'generique', LUNDI)
+        self.assertTrue(filet)
+        avancer_stage_lead_vers(self.lead, self.acteur, stages.COLD)
+        self.assertEqual(self._ouvertes('generique'), 0)
+
     def test_cold_ne_touche_pas_les_reveils(self):
         """COLD est un PARKING : arrêter les réveils J30/J60 condamnerait le
         lead à ne plus jamais être réveillé (MRY11)."""

@@ -9,6 +9,7 @@ import datetime
 import logging
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from . import stages
@@ -362,8 +363,9 @@ def _arreter_cadence_on_stage_change(sender, lead, old_stage, new_stage, user,
         if new_stage == stages.SIGNED:
             arreter_cadence(lead, user=user, motif='lead signé')
         elif new_stage == stages.COLD:
+            # ACVI38 — tout sauf les réveils, le filet ``generique`` compris.
             arreter_cadence(lead, user=user, motif='lead passé en froid',
-                            cadences=['contact', 'apres_devis'])
+                            garder=Q(cadence='reveil'))
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             "MRY9: arrêt de cadence échoué au changement d'étape du lead #%s",
