@@ -1,0 +1,13 @@
+---
+/** WAUD77 — « Réponse courte » sourcée en tête de page ; le texte vient de lib/reponsesCourtes.ts. */
+import { REPONSES_COURTES, type ReponseCourteId } from '../lib/reponsesCourtes';
+
+interface Props {
+  id: ReponseCourteId;
+}
+const { id } = Astro.props;
+---
+
+<p class="mt-6 max-w-xl border-s-2 border-brass-400 ps-4 text-sm leading-relaxed text-white" data-reponse-courte={id}>
+  <strong class="text-brass-300">Réponse courte.</strong> {REPONSES_COURTES[id]}
+</p>
