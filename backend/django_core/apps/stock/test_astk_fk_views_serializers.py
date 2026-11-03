@@ -720,13 +720,14 @@ class CorpsFuzzTests(TestCase):
         self.assertEqual(champ.run_validation(['SN1', 'SN2']), ['SN1', 'SN2'])
         self.assertEqual(champ.run_validation([]), [])
         self.assertIsNone(champ.run_validation(None))
-        r = self._api_admin().get(f'{BASE}/produits/tracabilite/?serie=0')
+        api = self._api_admin()
+        r = api.get(f'{BASE}/produits/tracabilite/?serie=0')
         self.assertEqual(r.status_code, 404, r.content)
         # CI #1247 fuzz : vide = aucun numéro (404) ; blanc = motif violé (400).
         for parametre in ('serie', 'lot'):
-            r = self._api_admin().get(f'{BASE}/produits/tracabilite/?{parametre}=')
+            r = api.get(f'{BASE}/produits/tracabilite/?{parametre}=')
             self.assertEqual(r.status_code, 404, r.content)
-            r = self._api_admin().get(f'{BASE}/produits/tracabilite/?{parametre}=%20')
+            r = api.get(f'{BASE}/produits/tracabilite/?{parametre}=%20')
             self.assertEqual(r.status_code, 400, r.content)
 
 
