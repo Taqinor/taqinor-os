@@ -347,7 +347,8 @@ def annuler_rendez_vous(lead, user, motif=''):
     C'est la porte que le CRM appelle (frontière M3 : il n'importe jamais
     ``apps.visites.models``). Sont visées les visites du lead au statut
     BROUILLON, jamais commencées (ni départ ni arrivée pointés), à date prévue
-    non passée. Pour chacune : ``date_prevue`` vidée, UNE ligne ajoutée aux
+    non passée. Pour chacune : statut ANNULÉE (ACVI66, gelé : plus terminable),
+    ``date_prevue`` vidée, UNE ligne ajoutée aux
     notes (« Rendez-vous du JJ/MM/AAAA annulé à la demande du client. » — ou,
     avec un ``motif``, « Rendez-vous du JJ/MM/AAAA annulé — <motif>. »), et
     l'assigné prévenu par la primitive de notification EXISTANTE (clé
@@ -374,7 +375,8 @@ def annuler_rendez_vous(lead, user, motif=''):
         existantes = (visite.notes or '').strip()
         visite.notes = f'{existantes}\n{ligne}' if existantes else ligne
         visite.date_prevue = None
-        visite.save(update_fields=['date_prevue', 'notes'])
+        visite.statut = VisiteTerrain.Statut.ANNULEE
+        visite.save(update_fields=['date_prevue', 'notes', 'statut'])
         if visite.commercial_id is not None and (
                 user is None
                 or visite.commercial_id != getattr(user, 'id', None)):

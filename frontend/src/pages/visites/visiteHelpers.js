@@ -232,6 +232,7 @@ export const STATUT_VISITE_LABEL = {
   terminee: 'Terminée — à revoir',
   validee: 'Validée',
   a_refaire: 'À refaire',
+  annulee: 'Annulée',
 }
 
 // wa.me — QJR635 : ré-export du constructeur UNIQUE (`lib/contactLinks.js`
