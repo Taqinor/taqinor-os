@@ -30,6 +30,22 @@ class ClesSigneesWhatsappTests(TestCase):
             self.lead.pk)
         self.assertIn(self.cle, selectors.signed_lead_phone_keys(self.company))
 
+    def test_recherche_par_numero_une_requete(self):
+        # ACVI20 — colonnes normalisées, sans parcourir la table.
+        from apps.crm.leads_intake import find_lead_by_phone
+        for rang in range(5):
+            Lead.objects.create(company=self.company, nom=f'Autre {rang}',
+                                telephone=f'06610000{rang:02d}')
+        with self.assertNumQueries(1):
+            trouve = selectors.find_lead_id_by_phone(
+                self.company, '+212612345678')
+        self.assertEqual(trouve, self.lead.pk)
+        Lead.objects.filter(pk=self.lead.pk).update(is_archived=True)
+        self.assertIsNone(
+            selectors.find_lead_id_by_phone(self.company, '0612345678'))
+        self.assertEqual(
+            find_lead_by_phone(self.company, '0612345678').pk, self.lead.pk)
+
     def test_conversation_de_la_pub_comptee_signee(self):
         from apps.adsengine.metrics import conversations_per_ad
         from apps.adsengine.models import CtwaReferral

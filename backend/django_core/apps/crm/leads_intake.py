@@ -20,7 +20,7 @@ from .leads_consentement import (
     CONSENT_SOURCE_DOCUMENT,
     enregistrer_base_legale_lead,
 )
-from .leads_doublons import find_duplicates_by_contact, normalize_phone
+from .leads_doublons import find_duplicates_by_contact
 from .leads_notifications import notify_new_lead
 from .leads_score import recompute_lead_score
 from .models import Lead, LeadActivity
@@ -426,16 +426,10 @@ def find_lead_by_phone(company, telephone):
     Point d'entrée cross-app sanctionné pour `apps.notifications` (webhook BSP
     WhatsApp) : matching par numéro SANS jamais exposer les modèles crm.
     Renvoie le lead le plus RÉCEMMENT créé en cas de doublon, ou None."""
-    key = normalize_phone(telephone)
-    if not key:
-        return None
-    candidates = [
-        lead for lead in Lead.objects.filter(company=company)
-        .order_by('-date_creation')
-        if normalize_phone(lead.telephone) == key
-        or normalize_phone(lead.whatsapp) == key
-    ]
-    return candidates[0] if candidates else None
+    from .leads_selectors import find_lead_id_by_phone  # ACVI20 — un seul sélecteur
+
+    pk = find_lead_id_by_phone(company, telephone, archives=True)
+    return Lead.objects.filter(pk=pk).first() if pk else None
 
 
 def find_lead_by_email(company, email):

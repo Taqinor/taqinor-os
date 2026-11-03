@@ -9,9 +9,6 @@ import datetime
 from .cadence_selectors import (
     _mediane,
 )
-from .portee_selectors import (
-    cles_numeros_lead,
-)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -55,7 +52,7 @@ def normalize_name_key(nom, prenom=None, societe=None):
     return leads_doublons.normalize_name(nom, prenom, societe)
 
 
-def find_lead_id_by_phone(company, phone):
+def find_lead_id_by_phone(company, phone, *, archives=False):
     """ADSDEEP24 — id du lead vivant de ``company`` dont le téléphone (ou
     WhatsApp) correspond au numéro donné, normalisé via la MÊME clé QW10 que
     ``normalize_phone_key``, ou None.
@@ -65,19 +62,20 @@ def find_lead_id_by_phone(company, phone):
     téléphone) — jamais un import de ``apps.crm.models`` côté adsengine. Renvoie
     le lead le plus récemment créé en cas de doublon ; None si le numéro est
     vide ou introuvable."""
+    from django.db.models import Q
+
     from . import leads_doublons
     from .models import Lead
 
-    key = leads_doublons.normalize_phone(phone)
+    key = leads_doublons.normalize_phone(phone)[:20]
     if not key:
         return None
-    for lead in (Lead.objects
-                 .filter(company=company, is_archived=False)
-                 .only('id', 'telephone', 'whatsapp')
-                 .order_by('-id')):
-        if key in cles_numeros_lead(lead):  # ACRM33 — helper unique
-            return lead.id
-    return None
+    # ACVI20 — colonnes indexées (QW10, ACRM32), jamais la table en Python.
+    leads = Lead.objects.filter(
+        Q(phone_normalise=key) | Q(whatsapp_normalise=key), company=company)
+    if not archives:
+        leads = leads.filter(is_archived=False)
+    return leads.order_by('-id').values_list('id', flat=True).first()
 
 
 # DC13 — localisation chantier : lead d'abord, sinon repli sur le client ──────
