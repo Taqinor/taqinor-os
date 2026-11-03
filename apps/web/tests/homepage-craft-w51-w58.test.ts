@@ -247,9 +247,11 @@ describe('WAUD36 — règle C étendue : teaser verrouillé, promesse « étude 
   });
 
   it('tunnel FR/EN/AR : plus de promesse « estimation » sur les libellés d’étape et le bouton', () => {
-    const fr = read('../src/pages/devis/mon-toit.astro');
+    const fr = read('../src/components/blocs/DevisMonToitBoutonsEtude.astro');
     expect(fr).toContain('>Voir mon étude gratuite<');
     expect(fr).not.toContain('>Voir mon estimation<');
+    expect(read('../src/pages/devis/mon-toit.astro')).toContain('<DevisMonToitBoutonsEtude />');
+    expect(read('../src/pages/ar/devis/mon-toit.astro')).toContain('<DevisMonToitBoutonsEtude />');
     expect(read('../src/pages/en/devis/mon-toit.astro')).not.toContain('See my estimate');
     const parcours = read('../src/lib/tunnel/parcours.ts');
     expect(parcours).not.toMatch(/'Votre estimation'|'Your estimate'|'تقديرك'/);
