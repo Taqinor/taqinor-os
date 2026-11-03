@@ -93,7 +93,7 @@ class SodRuleViewSet(CompanyScopedModelViewSet):
             'libelle': serializers.CharField(allow_blank=True),
         }, many=True),
     }))
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], pagination_class=None)
     def violations(self, request):
         """Rapport des cumuls SoD de la société (scopé société)."""
         from .sod import sod_violations

@@ -36,8 +36,8 @@ export default function KitsSection() {
   const [newType, setNewType] = useState(NONE)
   const [newItem, setNewItem] = useState({}) // { [kitId]: outilId }
 
-  const load = () => outillageApi.getKits()
-    .then((r) => { setKits(r.data.results ?? r.data); setLoadError(false) })
+  const load = () => toutesLesPages((p) => outillageApi.getKits(p))
+    .then((liste) => { setKits(liste); setLoadError(false) })
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
 
@@ -46,8 +46,8 @@ export default function KitsSection() {
     toutesLesPages((params) => outillageApi.getOutils(params))
       .then((rows) => setOutils(rows))
       .catch(() => {})
-    installationsApi.getTypesIntervention()
-      .then((r) => setTypes((r.data.results ?? r.data).filter((t) => !t.archived)))
+    toutesLesPages((p) => installationsApi.getTypesIntervention(p))
+      .then((liste) => setTypes(liste.filter((t) => !t.archived)))
       .catch(() => {})
   }, [])
 

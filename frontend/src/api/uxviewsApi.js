@@ -4,7 +4,7 @@ import api from './axios'
 // fondation de la couche UX power-user. `ecran` est un identifiant stable
 // côté frontend (ex. 'crm.leads', 'ventes.devis').
 const uxviewsApi = {
-  listSavedViews: (ecran) => api.get('/uxviews/saved-views/', { params: { ecran } }),
+  listSavedViews: (ecran, params) => api.get('/uxviews/saved-views/', { params: { ecran, ...params } }),
   createSavedView: (data) => api.post('/uxviews/saved-views/', data),
   updateSavedView: (id, data) => api.patch(`/uxviews/saved-views/${id}/`, data),
   deleteSavedView: (id) => api.delete(`/uxviews/saved-views/${id}/`),

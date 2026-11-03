@@ -7,11 +7,7 @@
 // lui-même.
 import { useCallback, useEffect, useState } from 'react'
 import uxviewsApi from '../../api/uxviewsApi'
-import { fetchAllPages } from '../../utils/fetchAllPages'
-
-function extractList(data) {
-  return Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
-}
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 
 export function useFavoris() {
   const [favoris, setFavoris] = useState([])
@@ -22,8 +18,8 @@ export function useFavoris() {
     setLoading(true)
     setError(null)
     // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
-    return fetchAllPages((page, o) => uxviewsApi.listFavoris({ page, ...o }).then((r) => r?.data))
-      .then((data) => setFavoris(extractList(data)))
+    return lireToutesLesPages((p) => uxviewsApi.listFavoris(p))
+      .then(setFavoris)
       .catch(() => setError('Impossible de charger les favoris.'))
       .finally(() => setLoading(false))
   }, [])
@@ -59,7 +55,7 @@ export function useFavoris() {
   // serveur et adopte IMMÉDIATEMENT la liste renvoyée (déjà réordonnée par
   // `reordonner/`) sans attendre un second aller-retour.
   const reorder = useCallback((id, ordre) => uxviewsApi.reordonnerFavori(id, ordre)
-    .then((res) => { setFavoris(extractList(res.data)); return res }), [])
+    .then((res) => { setFavoris(Array.isArray(res.data) ? res.data : []); return res }), [])
 
   return { favoris, loading, error, refresh, isFavori, findFavori, toggle, reorder }
 }
