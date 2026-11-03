@@ -267,3 +267,18 @@ describe('WAUD16 — /impact-taqinor : stockage exact, villes mesurées, CO2 omi
     expect(src).not.toContain('villesUniques');
   });
 });
+
+describe('WAUD49 — badges de preuve cliquables ou retirés', () => {
+  it('CertLogoRow sans keys : chaque badge a une cible, IEC vers la fiche hébergée', () => {
+    const src = read('../src/components/CertLogoRow.astro');
+    expect(src).toContain("iec: '/fiches/canadian-solar-710-topbihiku7-2608.pdf'");
+    expect(src).toMatch(/loi8221: `\$\{prefixe\}\/loi-82-21\/`/);
+    expect(src).toMatch(/panneaux: `\$\{prefixe\}\/garanties\/`/);
+    expect(src).toMatch(/onduleur: `\$\{prefixe\}\/garanties\/`/);
+  });
+  it('badge « distributeurs officiels » retiré tant qu’aucune attestation n’est hébergée', () => {
+    expect(read('../src/components/BrandStrip.astro')).not.toMatch(/heading: '[^']*(distributeurs officiels|official distributors)/);
+    expect(read('../src/pages/équipement.astro')).not.toContain('Marques tier-1 · distributeurs officiels');
+    expect(read('../src/pages/en/équipement.astro')).not.toContain('Tier-1 brands · official distributors');
+  });
+});
