@@ -64,6 +64,10 @@ class ParquerAuFroidTests(TestCase):
             stage=stages.CONTACTED, owner=self.acteur,
             telephone=f'+21266219{n:04d}')
         self._appels(self.lead)
+        # CADV25 — ces réveils-là sont ceux d'un client déjà joint une fois.
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
 
     def _appels(self, lead, nombre=5):
         """CADV22 — les appels signés sans lesquels « injoignable » est refusé."""

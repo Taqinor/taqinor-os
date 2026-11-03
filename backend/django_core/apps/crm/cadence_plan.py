@@ -226,6 +226,31 @@ def _realisation_eligible(lead):
 _TAG_DECISION_A_PLUSIEURS = 'décision à plusieurs'
 
 
+def _a_un_historique_client(lead):
+    """CADV25 — joint au moins une fois (``ISSUES_CLIENT_JOINT``) ou chiffré
+    (``ventes.lead_a_un_devis``). Lue en lot par ``leads_reveil_sans_historique``
+    (CADV3) et le placement : même définition, jamais une seconde notion."""
+    from apps.ventes.selectors import lead_a_un_devis
+
+    if not getattr(lead, 'pk', None):
+        return False
+    return (lead.activites.filter(outcome__in=ISSUES_CLIENT_JOINT).exists()
+            or bool(lead_a_un_devis(lead)))
+
+
+def nombre_reveils_permis(lead, *, historique=None):
+    """CADV25 (D-CADV-2, 01/11/2026) — LE « réveil permis » : combien de barreaux
+    du gabarit ``reveil`` ce lead peut porter (``None`` = tous, ``0`` = aucun).
+
+    157 messages de réveil à des leads jamais joints ni chiffrés ont donné 0
+    conversation : ceux-là ne vivent plus que sur la liste saisonnière
+    (``poser_reveils_saisonniers``). ``historique`` : la réponse déjà connue de
+    l'appelant (lue en lot par le placement, ou établie par son geste)."""
+    if historique is None:
+        historique = _a_un_historique_client(lead)
+    return None if historique else 0
+
+
 def _normaliser_depart(depart):
     """L'ANCRE de cadence, toujours un datetime AWARE (CKP2).
 
@@ -249,7 +274,8 @@ def _normaliser_depart(depart):
     return depart
 
 
-def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
+def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None,
+                               reveil_justifie=False):
     """Les ÉCHÉANCES d'une cadence, SANS RIEN ÉCRIRE :
     ``[(gabarit, échéance aware), …]`` dans l'ordre du gabarit.
 
@@ -270,6 +296,9 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     usage — comportement pré-existant, assumé) et pour les horaires de la
     société. ``gabarits`` permet de réutiliser un gabarit déjà chargé et
     d'éviter cette lecture : un placement en lit trois, pas trois cents.
+
+    CADV25 — ``reveil`` : seuls les barreaux que ``nombre_reveils_permis`` laisse
+    au lead ; ``reveil_justifie`` : l'appelant sait que le client a un historique.
     """
     from datetime import timedelta
 
@@ -283,6 +312,9 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
 
     if gabarits is None:
         gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    if cadence == 'reveil':
+        gabarits = list(gabarits)[:nombre_reveils_permis(
+            lead, historique=reveil_justifie or None)]
     if not gabarits:
         return []
 
@@ -591,7 +623,7 @@ def choix_devis_relance(devis_liste):
 @_sous_verrou_du_lead(_lead_premier_argument)
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                              devis=None, exiger_confirmation=False,
-                             motif_remplacement=''):
+                             motif_remplacement='', reveil_justifie=False):
     """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
     société (``parametres.CadenceRelanceEtape.cadence_pour``).
 
@@ -659,6 +691,11 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     tant que ``motif_remplacement`` est vide ; avec un motif, l'arrêt passe
     par ``arreter_cadence`` comme un arrêt normal, sous ce motif. Sans
     ``exiger_confirmation`` (le moteur), le remplacement reste silencieux.
+
+    CADV25 — ``reveil`` sur un lead jamais joint ni chiffré : liste vide, sans
+    exception (``nombre_reveils_permis``). Sauf ``reveil_justifie`` (l'appelant
+    établit l'historique : date donnée par le client, suivi d'un devis) et le
+    chemin humain ``exiger_confirmation`` : une décision, pas un réveil d'office.
 
     Retourne la liste des ``RelanceEtape`` MATÉRIALISÉES de CETTE cadence
     (créées ou déjà existantes)."""
@@ -734,7 +771,8 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
 
     ancre = _normaliser_depart(depart)
     echeances = calculer_echeances_cadence(
-        lead, cadence, ancre, gabarits=gabarits)
+        lead, cadence, ancre, gabarits=gabarits,
+        reveil_justifie=reveil_justifie or exiger_confirmation)
     # CKP2 (fondateur 2026-09-10, décision (3) « CADENCE RÉACTIVE ») — on ne
     # programme QUE le prochain geste. Les trois appels J0 créés d'avance
     # tombaient tous les trois dans la file même quand le premier avait suffi.
@@ -1140,7 +1178,9 @@ def cloturer_cadence(lead, user, cadence):
     rester au milieu du pipeline à encombrer la vue de Meryem : il part au
     PARKING (COLD) avec une étiquette qui dit POURQUOI, et deux réveils
     J30/J60 qui le rendront un jour. C'est ce qui distingue « mis de côté »
-    de « oublié ».
+    de « oublié ». CADV25 — la prise de contact d'un lead jamais joint ni chiffré
+    finit sans réveil (liste saisonnière) ; le suivi d'un devis et la deuxième
+    affaire ont un historique par construction.
 
     Trois garanties :
       * COLD est un parking, PAS une perte — aucun motif de perte n'est posé
@@ -1207,7 +1247,8 @@ def cloturer_cadence(lead, user, cadence):
         arreter_cadence(lead, user=user, motif=MOTIF_PARQUE_AU_FROID,
                         cadences=['generique'])
         initialiser_plan_relance(
-            lead, user, cadence='reveil', depart=timezone.now())
+            lead, user, cadence='reveil', depart=timezone.now(),
+            reveil_justifie=cadence in ('apres_devis', 'deuxieme_affaire'))
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'MRY11: clôture de cadence échouée (lead #%s, cadence %s)',

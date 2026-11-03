@@ -785,8 +785,9 @@ def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
     premier = min(gabarits, key=lambda g: g.ordre)
     depart = quand - datetime.timedelta(days=premier.delai_jours or 0)
     try:
+        # CADV25 — la date vient du client : le réveil est justifié.
         etapes = initialiser_plan_relance(
-            lead, user, cadence='reveil', depart=depart)
+            lead, user, cadence='reveil', depart=depart, reveil_justifie=True)
     except CadenceActiveConflit:
         etapes = []
     ouvertes = [e for e in etapes if e.statut == RelanceEtape.Statut.A_FAIRE]

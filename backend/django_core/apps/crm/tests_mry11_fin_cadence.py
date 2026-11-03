@@ -25,7 +25,12 @@ from authentication.models import Company
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.cadence_touche import marquer_etape_relance
-from apps.crm.cadence_plan import arreter_cadence, cloturer_cadence
+from apps.crm.cadence_plan import (
+    arreter_cadence,
+    calculer_echeances_cadence,
+    cloturer_cadence,
+    initialiser_plan_relance,
+)
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
 
@@ -113,6 +118,12 @@ class _Base(TestCase):
     def _reveils(self):
         return self.lead.relance_etapes.filter(cadence='reveil')
 
+    def _deja_joint(self):
+        """CADV25 — un client joint autrefois, sans signal : les réveils lui restent."""
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
+
 
 class ClotureContactTests(_Base):
     slug = 'mry11-contact'
@@ -147,6 +158,7 @@ class ClotureContactTests(_Base):
         self.assertEqual(self.lead.tags, 'Injoignable 5 appels')
 
     def test_deux_reveils_sont_poses(self):
+        self._deja_joint()
         self._epuiser('contact')
         reveils = self._reveils()
         self.assertEqual(reveils.count(), 2)
@@ -208,8 +220,10 @@ class NonRegressionTests(_Base):
     def test_une_cadence_reveil_epuisee_ne_se_reclot_pas(self):
         """Sinon un lead réveillé sans réponse entrerait dans une boucle de
         réveils infinie."""
+        self._deja_joint()
         etapes = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
+        self.assertEqual(len(etapes), 2)
         for etape in etapes:
             marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT)
@@ -293,6 +307,7 @@ class ToucheJointeEnMilieuDeCadenceTests(_Base):
         """Non-régression du comportement voulu de MRY11 : quand la cadence
         s'épuise VRAIMENT, le lead part au parking avec son étiquette et ses
         deux réveils."""
+        self._deja_joint()
         for etape in self.etapes[:-1]:
             marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT)
@@ -330,7 +345,37 @@ class GabaritsReveilTests(_Base):
             taux_tva=Decimal('20.00'),
             date_envoi=LUNDI if statut != 'brouillon' else None)
 
+    def test_un_lead_jamais_joint_ni_chiffre_n_a_pas_de_reveil(self):
+        """CADV25 (D-CADV-2) — 157 messages, 0 conversation. Mutant : retirer le
+        filtre ⇒ J30 + J60 posés."""
+        self.lead.stage = stages.COLD
+        self.lead.save(update_fields=['stage'])
+        self.assertEqual(initialiser_plan_relance(
+            self.lead, self.acteur, cadence='reveil', depart=LUNDI), [])
+        self.assertEqual(self._reveils().count(), 0)
+        self.assertEqual(calculer_echeances_cadence(self.lead, 'reveil', LUNDI), [])
+
+    def test_un_lead_joint_garde_le_j30_appel_et_le_j60_whatsapp(self):
+        self._deja_joint()
+        initialiser_plan_relance(
+            self.lead, self.acteur, cadence='reveil', depart=LUNDI)
+        self.assertEqual(
+            list(self._reveils().order_by('ordre').values_list('canal', flat=True)),
+            ['appel', 'whatsapp'])
+
+    def test_un_lead_chiffre_garde_ses_deux_reveils(self):
+        self._devis('refuse')
+        initialiser_plan_relance(
+            self.lead, self.acteur, cadence='reveil', depart=LUNDI)
+        self.assertEqual(self._reveils().count(), 2)
+
+    def test_la_prise_de_contact_epuisee_finit_au_froid_sans_reveil(self):
+        self._epuiser('contact')
+        self.assertEqual(self.lead.stage, stages.COLD)
+        self.assertEqual(self._reveils().count(), 0)
+
     def test_un_lead_jamais_chiffre_recoit_M6_puis_la_derniere_chance(self):
+        self._deja_joint()
         self._epuiser('contact')
         self.assertEqual(self._reveils().count(), 2)
         self.assertEqual(self._cles_reveil(), ['reveil_a2', 'reveil_a3'])
@@ -343,6 +388,11 @@ class GabaritsReveilTests(_Base):
 
     def test_un_brouillon_jamais_envoye_ne_compte_pas(self):
         self._devis('brouillon')
+        # Un brouillon ne vaut pas « chiffré » : ni réveil (CADV25)…
+        self.assertEqual(_materialiser_tout(
+            self.lead, self.acteur, depart=LUNDI, cadence='reveil'), [])
+        # … ni, une fois le client joint, le message réservé au devis (MRY11).
+        self._deja_joint()
         _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
         self.assertEqual(self._cles_reveil(), ['reveil_a2', 'reveil_a3'])
