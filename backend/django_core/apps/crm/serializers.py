@@ -930,6 +930,15 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         request = self.context.get('request')
         if value and request and value.company_id != request.user.company_id:
             raise serializers.ValidationError('Utilisateur inconnu.')
+        # ACVI7 — créer un lead déjà affecté à un collègue exige ``crm_reassign``
+        # (même refus que le PATCH, ASEC50) ; ``owner`` = soi reste permis (VX93).
+        if (value and request and self.instance is None
+                and value.pk != request.user.pk):
+            from rest_framework.exceptions import PermissionDenied
+            from core.permissions import _user_has_or_legacy
+            from apps.roles.permissions import DroitDeLaGrille
+            if not _user_has_or_legacy(request.user, 'crm_reassign'):
+                raise PermissionDenied(DroitDeLaGrille('crm_reassign').message)
         # ACVI14 — un compte désactivé ne reçoit plus de lead (déjà responsable : accepté).
         if value and not value.is_active and getattr(self.instance, 'owner_id', None) != value.pk:
             raise serializers.ValidationError('Utilisateur inactif.')
