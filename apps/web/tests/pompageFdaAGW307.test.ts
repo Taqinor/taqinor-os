@@ -2,6 +2,8 @@
 // vérifier » (WG11) publie la RÈGLE sourcée de l'aide FDA, sans montant, avec les mêmes mots
 // que le devis agricole (quote_engine/agricole/mentions.py) et que la page Financement
 // (AGW306). Le paragraphe Saquii reste inchangé (non vérifié). Garde sur le HTML CONSTRUIT.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { builtPage, mainOf, visibleText } from './builtHtmlHelper';
 
@@ -62,4 +64,15 @@ describe('AGW307 — la carte FDA de /pompage-solaire = la règle, pas une prome
       expect(page).toMatch(lang === 'FR' ? /ne garantit aucune éligibilité/ : lang === 'EN' ? /guarantees no eligibility/ : /لا تضمن/);
     });
   }
+});
+
+describe('WAUD52 — vocabulaire « pompe solaire »', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8');
+  it('FR ≥ 6 « pompe solaire », AR ≥ 4 « مضخة شمسية »', () => {
+    expect((lire('pompage-solaire').match(/pompe solaire/gi) ?? []).length).toBeGreaterThanOrEqual(6);
+    expect(lire('pompage-solaire')).toContain('kit pompage');
+    expect(lire('pompage-solaire')).toContain('pompe immergée');
+    expect((lire('ar/pompage-solaire').match(/مضخة شمسية/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(lire('en/pompage-solaire')).toMatch(/title="Solar pump/);
+  });
 });
