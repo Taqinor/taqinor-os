@@ -726,11 +726,11 @@ unites:
     I: 4
     score: 20
     niveau: L3
-    statut: en cours
+    statut: audité
     groupe: ACVI
     plan: docs/plans/PLAN_AUDIT_LEAD.md
-    plans_alimentes: []
+    plans_alimentes: [docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md]
     pr: null
     date: 2026-11-03
-    dossier: null
-    notes: "Troisième audit de PARCOURS (L3, 03/11/2026), choisi par `loop audit` : aucune unité « à auditer », 0 vérifie dû ; PA1 = plus fort churn (416 commits crm/visites depuis le 20/10, cadence v4 mergée les 01-02/11) et sorties client directes."
+    dossier: docs/audits/2026-11-03-parcours-PA1.md
+    notes: "Troisième audit de PARCOURS (L3, 03/11/2026, loop audit : aucune unité à auditer, 0 vérifie dû ; PA1 = plus fort churn, cadence v4 mergée les 01-02/11) : 88 constats dont 6 S1 (import hors portée, visite sur tout lead, fusion qui perd l'opposition, opposition non portée par le téléphone, rendus WhatsApp sans garde d'opposition, pièces du lead hors portée) et 30 S2 ; 5 S1 maintenus et élargis par la seconde lentille ; parcours heureux rejoué par l'API sans écart ; D-ACVI-1..9 ouvertes (boucle sans fondateur) ; 1 critique Fable (3 trous sondés, 2 retenus). Tâches ACVI1-99."

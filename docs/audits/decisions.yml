@@ -3306,3 +3306,102 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, session all-plans"
     taches: [CADV22]
+  - id: D-ACVI-1
+    question: "Un Commercial terrain (portée « all », privé d'énumération des leads) crée aujourd'hui une visite sur n'importe quel id de lead et reçoit client_panel et devis (C-ACVI-101) : que doit faire la porte POST /visites/visites/ ?"
+    options:
+      - cle: assignation
+        texte: "Le terrain ne crée une visite que sur un lead déjà assigné ou proposé par un responsable (lead hors portée = 404), comme la porte de la fiche"
+      - cle: creation_sans_panel
+        texte: "Création libre gardée, mais la réponse n'expose ni client_panel ni devis tant que la visite n'est pas assignée"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    taches: [ACVI2]
+  - id: D-ACVI-2
+    question: "Relances, rendez-vous, points de contact et rapport d'attribution sont lisibles par Admin RH, Commercial terrain et un Commercial « soi » sur toute la société (C-ACVI-102, C-ACVI-109) : crm_voir + portée, ou transparence CKP3 étendue ?"
+    options:
+      - cle: portee
+        texte: "crm_voir exigé et portée du rôle appliquée (listes, journal, suivi, rapport d'attribution)"
+      - cle: transparence_agregats
+        texte: "Les agrégats (KPI, rapport d'attribution) restent visibles à tous ; les listes nominatives passent sous crm_voir + portée"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    taches: [ACVI3, ACVI10]
+  - id: D-ACVI-3
+    question: "Un porteur de visites_valider à portée sous-arbre (Commercial responsable) lit toutes les visites de la société (C-ACVI-107) : toute la société ou la portée ?"
+    options:
+      - cle: portee_sauf_be
+        texte: "Portée du rôle, sauf un rôle bureau d'études dédié qui voit toute la société"
+      - cle: societe
+        texte: "Statu quo : tout valideur voit toute la société"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    taches: [ACVI8]
+  - id: D-ACVI-4
+    question: "Les portes RDV YanBow, API publique, ticket SAV et import fichier créent des leads sans propriétaire, sans score ou sans cadence (C-ACVI-002) : même règle d'arrivée partout, ou traitement manuel déclaré dans la table ?"
+    options:
+      - cle: parite_sauf_rdv_odoo
+        texte: "Owner, score et cadence (ou refus tracé) sur toutes les portes ; exceptions écrites dans la table : RDV YanBow (YBW51) et miroir Odoo"
+      - cle: manuel_declare
+        texte: "Ces portes restent manuelles ; la table PA1 le déclare et un filet nocturne signale les leads sans owner"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    taches: [ACVI88]
+  - id: D-ACVI-5
+    question: "Une nouvelle demande (propriétaire d'un locataire, livechat, site) dont le doublon est archivé, perdu ou opposé est rattachée en silence à la fiche au rebut (C-ACVI-003) : règle D-CRX1 partout ?"
+    options:
+      - cle: d_crx1_partout
+        texte: "Nouveau lead, ou réouverture d'un Froid (CADV101), jamais un rattachement muet à un archivé/perdu ; un opposé reste opposé"
+      - cle: rattacher_et_rouvrir
+        texte: "Rattacher au doublon mais le rouvrir, le notifier et relancer sa cadence"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    taches: [ACVI13]
+  - id: D-ACVI-6
+    question: "Une opposition vivante (STOP, case « ne plus contacter ») ne vaut que pour la fiche : une nouvelle fiche au même numéro, ou le survivant d'une fusion, redevient contactable (C-ACVI-060, C-ACVI-020) : l'opposition suit-elle la personne ?"
+    options:
+      - cle: suit_la_personne
+        texte: "Dès le STOP, l'opposition est portée par le téléphone et l'e-mail normalisés de la société (empreinte) ; toute fiche créée ou fusionnée en hérite ; levée tracée par la fiche"
+      - cle: fiche_seule
+        texte: "Statu quo (fiche seule) ; la fusion copie au moins le drapeau"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    taches: [ACVI43]
+  - id: D-ACVI-7
+    question: "WhatsApp de devis, de visite ou de touche vers un lead opposé qui a lui-même demandé le document (C-ACVI-061) : refus ou envoi transactionnel tracé ?"
+    options:
+      - cle: refus_409
+        texte: "Refus 409 nommé sur tout rendu/envoi vers un opposé, perdu ou archivé ; seul l'accusé STOP passe"
+      - cle: transactionnel_trace
+        texte: "Un document demandé par le client (devis, confirmation de visite) peut partir, tracé « transactionnel » ; les touches de cadence restent refusées"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    taches: [ACVI89]
+  - id: D-ACVI-8
+    question: "La réservation publique et l'agenda créent un crm.Appointment sans VisiteTerrain, sans date sur la fiche ni suspension de cadence (C-ACVI-172) : est-ce la visite technique ?"
+    options:
+      - cle: la_visite
+        texte: "Oui : la réservation passe par planifier_visite (VisiteTerrain, date sur la fiche, cadence recalée, technicien prévenu)"
+      - cle: rdv_commercial
+        texte: "Non : rendez-vous commercial distinct, libellé distinct au chatter, sans effet sur la visite technique"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    taches: [ACVI63]
+  - id: D-ACVI-9
+    question: "Le lien {lien_rdv} des messages pointe vers taqinor.ma/rdv (aucune page) sans requête et vers l'ERP avec requête (C-ACVI-063) : quel hôte canonique ?"
+    options:
+      - cle: erp
+        texte: "La page /rdv/<token> du SPA ERP (seule existante) : une base de liens unique côté serveur"
+      - cle: site_public
+        texte: "Une page rdv à créer sur le site Astro, PUBLIC_SITE_URL devient la base"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    taches: [ACVI46]
