@@ -69,3 +69,16 @@ export const ROUTES = [
   { name: 'en-home', path: '/en/' },
   { name: 'ar-home', path: '/ar/' },
 ];
+
+/**
+ * WAUD60 — garde vitesse + console sur les 5 pages du constat (avant, mesures des 02-03/11 :
+ * accueil perf 50, tunnel 47, /ar/ 46) : `npm run lighthouse:gate -- --routes=vitesse --runs=3`.
+ * Le câblage .github/workflows reste hors apps/web (plan plateforme).
+ */
+export const ROUTES_VITESSE = [
+  { name: 'home', path: '/' },
+  { name: 'ar-home', path: '/ar/' },
+  { name: 'devis-mon-toit', path: '/devis/mon-toit/' },
+  { name: 'ville-casablanca', path: '/installation-solaire-casablanca/' },
+  { name: 'guide-loi', path: '/guides/loi-82-21-expliquee/' },
+];
