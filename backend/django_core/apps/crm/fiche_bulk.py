@@ -14,6 +14,7 @@ from .leads_fusion import raison_refus_suppression
 from .cadence_touche import reprendre_cadence_apres_reouverture
 from .cadence_filet import assurer_prochaine_etape_apres_succes
 from .cadence_plan import arreter_cadence, sync_relance_activity
+from .cadence_visite import annuler_rendez_vous_sur_arret, cause_rdv_perdu
 from .fiche_funnel import (
     ETAT_PAR_RAISON,
     ParcRefuse,
@@ -41,6 +42,24 @@ BULK_ACTIONS = {
 _PRIORITES = {'basse', 'normale', 'haute'}
 # Actions réservées à l'admin (la suppression définitive l'est déjà partout).
 BULK_ADMIN_ONLY = {'delete'}
+
+
+def archiver_lead(lead, user, *, note=None):
+    """ACVI24 — L'archivage (fiche et lot) : écriture et chatter dans la même
+    transaction (ALEA30), puis le rendez-vous de visite en attente annulé."""
+    from django.db import transaction
+
+    lead.is_archived = True
+    lead.archived_by = user
+    lead.archived_at = timezone.now()
+    with transaction.atomic():
+        lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
+        if note:
+            activity.log_bulk_note(lead, user, note)
+        else:
+            activity.log_archive(lead, user)
+    annuler_rendez_vous_sur_arret(lead, user, cause='le lead est archivé')
+    return lead
 
 
 class ReferenceInconnue(ValueError):
@@ -530,6 +549,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                     # une purge de 40 leads laissait 40 cadences vivantes.
                     arreter_cadence(lead, user=user,
                                     motif=motif or 'lead perdu')
+                    # ACVI24 — le rendez-vous en attente s'annule avec le lead.
+                    annuler_rendez_vous_sur_arret(
+                        lead, user, cause=cause_rdv_perdu(motif))
                 if old_motif != motif:
                     activity.log_bulk_change(lead, user, 'motif_perte', old_motif, motif)
                 updated += 1
@@ -559,13 +581,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                 if lead.is_archived:
                     unchanged += 1
                     continue
-                lead.is_archived = True
-                lead.archived_by = user
-                lead.archived_at = timezone.now()
-                lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
-                activity.log_bulk_note(
+                archiver_lead(
                     lead, user,
-                    f"Lead archivé en masse par {getattr(user, 'username', '?')}")
+                    note=f"Lead archivé en masse par {getattr(user, 'username', '?')}")
                 updated += 1
 
             elif op == 'unarchive':

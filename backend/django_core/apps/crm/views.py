@@ -826,18 +826,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             permission_classes=[IsResponsableOrAdmin])
     def archiver(self, request, pk=None):
         """Archive un lead (réversible). Le retire des vues par défaut."""
-        from django.db import transaction
-        from django.utils import timezone
+        from .fiche_bulk import archiver_lead
         lead = self.get_object()
         if not lead.is_archived:
-            lead.is_archived = True
-            lead.archived_by = request.user
-            lead.archived_at = timezone.now()
-            # ALEA30 — écriture et chatter dans la MÊME transaction.
-            with transaction.atomic():
-                lead.save(update_fields=['is_archived', 'archived_by',
-                                         'archived_at'])
-                activity.log_archive(lead, request.user)
+            archiver_lead(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
     @extend_schema(request=None, responses=LeadSerializer)

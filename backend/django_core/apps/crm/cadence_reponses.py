@@ -1927,4 +1927,7 @@ def clore_locataire_sans_proprietaire(lead, user):
     lead.save(update_fields=['perdu', 'motif_perte'])
     activity.log_changes(avant, lead, user)
     arreter_cadence(lead, user=user, motif=motif)
+    # ACVI24 — le rendez-vous en attente s'annule avec le lead perdu.
+    from .cadence_visite import annuler_rendez_vous_sur_arret, cause_rdv_perdu
+    annuler_rendez_vous_sur_arret(lead, user, cause=cause_rdv_perdu(motif))
     return True

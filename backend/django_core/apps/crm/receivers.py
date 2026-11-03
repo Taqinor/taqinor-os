@@ -316,6 +316,10 @@ def _marquer_lead_perdu_on_devis_refused(sender, devis, user, motif_refus,
     # comme les deux autres. Une seule fonction, jamais une variante locale.
     arreter_cadence(lead, user=user,
                     motif=(motif_refus or 'devis refusé'))
+    # ACVI24 — le rendez-vous en attente s'annule avec le lead perdu.
+    from .cadence_visite import annuler_rendez_vous_sur_arret, cause_rdv_perdu
+    annuler_rendez_vous_sur_arret(lead, user,
+                                  cause=cause_rdv_perdu(lead.motif_perte))
 
 
 @receiver(devis_accepted, dispatch_uid="crm_flip_parrainage_converti_on_devis_accepted")
