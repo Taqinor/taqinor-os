@@ -37,14 +37,18 @@ async function portailDe(r, baseURL, clientId) {
   const prov = await lireJson(await r.post(`${API}/portail/comptes-portail/${compte.id}/provisionner-acces/`, { ...T, data: {} }), 'accès')
   await py(`u = U.objects.get(username=${JSON.stringify(prov.username)}); u.set_password(${JSON.stringify(mdp)}); u.save(); sortie(1)`)
   // Le verrou de connexion par IP (429) se libère seul : on attend, on ne le contourne pas.
-  for (let i = 0; ; i += 1) {
+  let session
+  let fatale
+  await expect(async () => {
     try {
-      return await connecterPortail({ request: pwRequest }, baseURL, prov.username, mdp)
+      session = await connecterPortail({ request: pwRequest }, baseURL, prov.username, mdp)
     } catch (e) {
-      if (i >= 3 || !/429/.test(String(e.message))) throw e
-      await new Promise((ok) => { setTimeout(ok, 70_000) })
+      if (/429/.test(String(e.message))) throw e
+      fatale = e
     }
-  }
+  }).toPass({ intervals: [70_000], timeout: 280_000 })
+  if (fatale) throw fatale
+  return session
 }
 
 async function dossierEssai(r, m) {
