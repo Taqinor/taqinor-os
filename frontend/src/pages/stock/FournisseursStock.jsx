@@ -26,6 +26,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { frErrChamps as frErr } from '../../lib/frErr'
 import { AlerteErreurStock } from './BandeauxListeStock'
 import PiedDialogueFermer from './PiedDialogueFermer'
+import { creerSoumission } from '../../lib/soumission'
 
 // XPUR4 — les 4 statuts fournisseur (miroir de `Fournisseur.Statut` côté
 // serveur — le blocage est déjà appliqué et testé serveur, cf.
@@ -240,15 +241,12 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
     }
   }
 
-  const submit = async (ev) => {
-    ev.preventDefault()
-    if (!validate()) return
-    if (isNew && !emailDupChecked) {
-      const ok = await checkDoublonExact()
-      if (!ok) return
-    }
-    setSaving(true)
-    try {
+  const validerPuisDoublon = () => {
+    if (!validate()) return false
+    return (!isNew || emailDupChecked) ? true : checkDoublonExact()
+  }
+
+  const submit = creerSoumission(validerPuisDoublon, setSaving, async () => {
       const payload = {
         nom: fields.nom.trim(),
         contact_personne: fields.contact_personne.trim() || null,
@@ -277,7 +275,7 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
         .filter(Boolean)
       onSaved?.(avertissements.length ? avertissements.join(' ') : null)
       onClose()
-    } catch (err) {
+  }, (err) => {
       // ASTK225 — les 400 du serveur sur l'identité légale s'affichent SOUS le champ.
       const data = err?.response?.data ?? {}
       const champ = (k) => (Array.isArray(data[k]) ? data[k][0] : (typeof data[k] === 'string' ? data[k] : undefined))
@@ -287,8 +285,7 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
         ...prev, ...parChamp,
         submit: Object.keys(parChamp).length ? undefined : frErr(err, "L'enregistrement a échoué."),
       }))
-    } finally { setSaving(false) }
-  }
+  })
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>

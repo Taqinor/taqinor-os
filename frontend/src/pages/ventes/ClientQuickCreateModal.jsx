@@ -5,6 +5,7 @@ import { usePasteClean, parsePastedPhone } from '../../hooks/usePasteClean'
 import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
 import PhoneHint from '../../components/PhoneHint'
 import { frErrRapide } from '../../lib/frErr'
+import { creerSoumissionNomRequis } from '../../lib/soumission'
 import ModaleCreationRapide from '../../components/ModaleCreationRapide'
 import ComboboxEntreprise from '../../components/ComboboxEntreprise'
 import AvertissementDoublons from '../../components/AvertissementDoublons'
@@ -49,12 +50,9 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
       : null)
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError(null)
-    if (!nom.trim()) { setError('Le nom est requis.'); return }
-    setBusy(true)
-    try {
+  const handleSubmit = creerSoumissionNomRequis({
+    nom, setError, setBusy,
+    envoyer: async () => {
       const payload = {
         nom: nom.trim(),
         prenom: prenom.trim() || null,
@@ -64,12 +62,9 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
       const res = await crmApi.createClient(payload)
       onCreated?.(res.data)
       reset()
-    } catch (err) {
-      setError(frErrRapide(err, 'La création du client a échoué.'))
-    } finally {
-      setBusy(false)
-    }
-  }
+    },
+    messageErreur: (err) => frErrRapide(err, 'La création du client a échoué.'),
+  })
 
   return (
     <ModaleCreationRapide open={open} onFermer={handleClose} onSubmit={handleSubmit}
