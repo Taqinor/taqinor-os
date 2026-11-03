@@ -85,6 +85,9 @@ export function isCompound(text: string): boolean {
  * celles-ci sont révélées telles quelles (aucune image intermédiaire absurde).
  */
 export function shouldDigitRoll(text: string): boolean {
+  // WAUD38 — une valeur à unité (ans, kWc, MAD, kWh…) n'est jamais interpolée : l'image figée
+  // quand le visiteur s'arrête affichait un chiffre faux (« 3,83 kWc » pour 17,04).
+  if (!/^[\d\s.,\u00a0\u202f]+\s*%?$/.test(text.trim())) return false;
   return parseTokens(text).length === 1 && !isCompound(text);
 }
 

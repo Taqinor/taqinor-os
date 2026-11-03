@@ -75,8 +75,8 @@ describe('GoogleTag.astro', () => {
 
   it('inclus dans le Layout avec la même exclusion noindex que MetaPixel', () => {
     const layout = read('../src/layouts/Layout.astro');
-    expect(layout).toContain('{!noindex && <MetaPixel />}');
-    expect(layout).toContain('{!noindex && <GoogleTag />}');
+    expect(layout).toContain('{mesure && <MetaPixel />}');
+    expect(layout).toContain('{mesure && <GoogleTag />}');
   });
 });
 
