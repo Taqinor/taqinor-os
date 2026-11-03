@@ -163,11 +163,11 @@ def appliquer_champ_automatique(lead, champ, valeur, user=None):
     # ACVI32 — comme le PATCH : marqueur respecté (refus au chatter), dérivée persistée.
     from apps.records.provenance import MESSAGE_REFUS, ecrire_si_libre
 
-    from .views import LeadViewSet
     if not ecrire_si_libre(lead, champ, propre, user=user):
         return CHAMP_AUTO_INCHANGE, MESSAGE_REFUS
-    derivee = LeadViewSet.COLONNES_DERIVEES.get(champ)
-    lead.save(update_fields=[champ, derivee] if derivee else [champ])
+    # Par introspection (jamais `views` : contrat import-linter ventes -/-> audit).
+    derivees = [c.name for c in Lead._meta.concrete_fields if c.name.endswith('_normalise')]
+    lead.save(update_fields=[champ, *derivees])
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION, field=champ,
