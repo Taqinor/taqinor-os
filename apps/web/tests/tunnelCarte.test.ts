@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { creerContexte, type ConfigLocale } from '../src/lib/tunnel/contexte';
 import { creerDom } from '../src/lib/tunnel/dom';
 import { creerEtat, type LocaleTunnel } from '../src/lib/tunnel/etat';
-import { installerCarte, TEXTES_CARTE, type ConfigCarte, type ContexteCarte } from '../src/lib/tunnel/carte';
+import { installerCarte, surveillerWorkersCarte, TEXTES_CARTE, type ConfigCarte, type ContexteCarte } from '../src/lib/tunnel/carte';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  lireFichiersMaplibre, NOM_PARTAGE, NOM_WORKER, preparerFichiersWorker, reecrireChunk,
+} from '../scripts/maplibre-worker.mjs';
 
 const HTML = `
 <input id="mt-city"><input id="rp9-address">
@@ -195,5 +199,74 @@ describe('carte — aperçu 3D et instantané du toit', () => {
     (window as any).print = print;
     document.getElementById('mt-print-estimate')!.click();
     expect(print).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WAUD1 — worker MapLibre publié', () => {
+  it('le paquet installé référence toujours worker + partagé (contrat du plugin)', async () => {
+    const f = await lireFichiersMaplibre();
+    expect(f.nomWorker).toMatch(/^maplibre-gl-worker\.[0-9a-f]{10}\.mjs$/);
+    expect(f.nomPartage).toMatch(/^maplibre-gl-shared\.[0-9a-f]{10}\.mjs$/);
+    expect(f.worker).toContain(`./${f.nomPartage}`);
+    expect(f.worker).not.toContain(`./${NOM_PARTAGE}`);
+    expect(f.worker).not.toContain('sourceMappingURL');
+  });
+
+  it('le chunk est réécrit ; un chunk sans la référence reste intact', () => {
+    const f = preparerFichiersWorker(`import{a}from"./${NOM_PARTAGE}";a()`, 'export const a=()=>1');
+    const code = reecrireChunk(`new URL("./${NOM_WORKER}")`, f);
+    expect(code).toContain(f.nomWorker);
+    expect(code).not.toContain(NOM_WORKER);
+    expect(reecrireChunk('rien', f)).toBeNull();
+  });
+
+  it('un worker qui change de contrat fait échouer le build', () => {
+    expect(() => preparerFichiersWorker('rien', 'x')).toThrow(/montée de MapLibre/);
+  });
+
+  it('build présent : le worker référencé par le chunk MapLibre existe bel et bien', () => {
+    const astro = `${process.cwd()}/dist/client/_astro/`;
+    if (!existsSync(astro)) return;
+    const fichiers = readdirSync(astro);
+    const chunk = fichiers.find((n) => /^maplibre-gl\..*\.js$/.test(n));
+    expect(chunk).toBeTruthy();
+    const code = readFileSync(astro + chunk, 'utf-8');
+    const nom = code.match(/maplibre-gl-worker\.[0-9a-f]{10}\.mjs/)?.[0];
+    expect(nom).toBeTruthy();
+    expect(fichiers).toContain(nom);
+    const partage = readFileSync(astro + nom, 'utf-8').match(/maplibre-gl-shared\.[0-9a-f]{10}\.mjs/)?.[0];
+    expect(fichiers).toContain(partage);
+  });
+});
+
+describe('WAUD1 — repli visible si la carte échoue', () => {
+  class FauxWorker extends EventTarget { constructor(public url: string | URL, public options?: WorkerOptions) { super(); } }
+
+  it('une erreur de chargement du worker appelle le repli, une seule fois', () => {
+    const fenetre = { Worker: FauxWorker } as any;
+    const repli = vi.fn();
+    const retirer = surveillerWorkersCarte(fenetre, repli);
+    const a = new fenetre.Worker('/a.mjs', { type: 'module' });
+    const b = new fenetre.Worker('/b.mjs');
+    expect(a.url).toBe('/a.mjs');
+    a.dispatchEvent(new Event('error'));
+    b.dispatchEvent(new Event('error'));
+    expect(repli).toHaveBeenCalledTimes(1);
+    retirer();
+    expect(fenetre.Worker).toBe(FauxWorker);
+  });
+
+  it('sans Worker (navigateur ancien, jsdom) : aucune exception', () => {
+    expect(() => surveillerWorkersCarte({} as any, vi.fn())()).not.toThrow();
+    expect(() => surveillerWorkersCarte(null, vi.fn())()).not.toThrow();
+  });
+
+  it('panne carte en session (onMapError) → repli adresse', async () => {
+    (fetch as any).mockResolvedValue({ json: async () => ({ available: true, maptilerKey: 'k' }) });
+    const { ctx, bootCaptureOnly } = monter('fr');
+    ctx.crochets.appeler('ensureMapBooted');
+    await attendre(); await attendre();
+    bootCaptureOnly.mock.calls[0][0].onMapError();
+    expect(document.getElementById('mt-fallback')!.hidden).toBe(false);
   });
 });

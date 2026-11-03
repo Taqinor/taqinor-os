@@ -2,6 +2,7 @@
 import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import { defineConfig } from 'astro/config';
 import { dossierClient, retirerPreviewToiture } from './scripts/retirer-preview-toiture.mjs';
+import { maplibreWorker } from './scripts/maplibre-worker.mjs';
 
 import cloudflare from '@astrojs/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
@@ -149,7 +150,8 @@ export default defineConfig({
   },
 
   vite: {
-    plugins: [tailwindcss()]
+    // WAUD1 — publie le worker MapLibre 6 (404 depuis WEBERR2).
+    plugins: [tailwindcss(), maplibreWorker()]
   },
 
   integrations: [

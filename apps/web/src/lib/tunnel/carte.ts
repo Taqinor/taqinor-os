@@ -98,6 +98,35 @@ function langueTextes(ctx: ContexteCarte, pourStatut: boolean): Langue {
   return ctx.crochets.a('langueActive') && ctx.crochets.appeler('langueActive') === 'ar' ? 'ar' : 'fr';
 }
 
+/** WAUD1 — fenêtre pendant laquelle les workers créés sont ceux de la carte. */
+export const DELAI_SURVEILLANCE_WORKERS_MS = 15_000;
+
+/** Enrobe `Worker` le temps du démarrage : toute erreur de chargement d'un worker
+ *  de la carte appelle `surPanne` (une fois). Rien d'autre ne change. */
+export function surveillerWorkersCarte(
+  fenetre: (Window & typeof globalThis) | null,
+  surPanne: () => void,
+  delaiMs = DELAI_SURVEILLANCE_WORKERS_MS,
+): () => void {
+  const Natif = fenetre?.Worker;
+  if (!fenetre || !Natif) return () => {};
+  let signale = false;
+  class WorkerSurveille extends Natif {
+    constructor(url: string | URL, options?: WorkerOptions) {
+      super(url, options);
+      this.addEventListener('error', () => {
+        if (signale) return;
+        signale = true;
+        surPanne();
+      });
+    }
+  }
+  fenetre.Worker = WorkerSurveille;
+  const retirer = () => { if (fenetre.Worker === WorkerSurveille) fenetre.Worker = Natif; };
+  setTimeout(retirer, delaiMs);
+  return retirer;
+}
+
 function construireCarte(ctx: ContexteCarte) {
   const { etat, dom, config } = ctx;
   const { $ } = dom;
@@ -169,6 +198,9 @@ function construireCarte(ctx: ContexteCarte) {
   async function boot(key: string, mapboxToken: string) {
     if (etat.started) return;
     etat.started = true;
+    // WAUD1 — un worker carte introuvable ne lève rien au démarrage (carte grise
+    // sans message, régression WEBERR2) : on écoute ses erreurs de chargement.
+    surveillerWorkersCarte(doc.defaultView, showFallback);
     try {
       const { bootCaptureOnly } = await config.chargeurs.captureBoot();
       bootCaptureOnly({
@@ -176,6 +208,7 @@ function construireCarte(ctx: ContexteCarte) {
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
         onReady: clearMapSkeleton,
+        onMapError: showFallback,
         ...config.optionsBootLocale,
         roofInputMode: () => etat.roofInputMode,
         hydratePans: etat.capturePans.length >= 2 ? etat.capturePans : undefined,
