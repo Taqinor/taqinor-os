@@ -9,7 +9,7 @@ from django.urls import reverse
 from authentication.models import Company
 from core.test_utils import WideTeardownTimeoutMixin
 
-from .models import Lead, LeadActivity, WebsiteLeadPayload
+from .models import Lead, LeadActivity, RelanceEtape, WebsiteLeadPayload
 from .webhooks import _canal_site_web
 
 SECRET = 'test-secret-webhook-123'
@@ -53,6 +53,39 @@ class WebsiteLeadWebhookTests(TestCase):
         return self.client.post(
             self.url, data=json.dumps(data),
             content_type='application/json', **headers)
+
+    def test_doublon_perdu_reveille_une_seule_cadence(self):
+        # ACVI16 — la garde 5 de la cadence juge APRÈS le réveil du doublon :
+        # une personne, une cadence ouverte ; sans doublon, 2 touches.
+        from apps.crm import stages
+        perdu = Lead.objects.create(
+            company=self.company, nom='Ancien perdu', ville='Rabat',
+            telephone='+212662100002', perdu=True, stage=stages.COLD)
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=perdu, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
+
+        res = self.post(payload_site(phoneE164='+212662100002'))
+
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        perdu.refresh_from_db()
+        self.assertFalse(perdu.perdu)
+        self.assertEqual(
+            nouveau.relance_etapes.filter(cadence='contact').count(), 0)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=nouveau,
+            body__contains=f'doublon possible de #{perdu.pk}').exists())
+        ouvertes = {
+            etape.lead_id for etape in RelanceEtape.objects.filter(
+                company=self.company, statut='a_faire')}
+        self.assertEqual(ouvertes, {perdu.pk})
+
+        seul = self.post(payload_site(phoneE164='+212662100003'))
+        self.assertEqual(seul.status_code, 201, seul.content)
+        self.assertEqual(
+            Lead.objects.get(pk=seul.json()['lead_id'])
+            .relance_etapes.filter(cadence='contact').count(), 2)
 
     def test_payload_valide_cree_un_lead_complet(self):
         res = self.post(payload_site())
