@@ -242,7 +242,9 @@ export default function VisiteWizardPage() {
           ))}
         </TabsList>
         {categories.map((c) => (
-          <TabsContent key={c.categorie} value={c.categorie} className="space-y-3 pt-3">
+          // ACVI57 — monté même inactif (patron VX105) : la saisie non enregistrée
+          // survit au changement d'onglet.
+          <TabsContent key={c.categorie} value={c.categorie} forceMount hidden={categorieActive !== c.categorie} className="space-y-3 pt-3">
             {c.slots.map((slot) => (
               <SlotTile key={slot.code} visiteId={id} slot={slot} onChanged={recharger} />
             ))}
