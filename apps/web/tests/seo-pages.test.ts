@@ -416,3 +416,21 @@ describe('WAUD45 — couverture, heures de soleil et « 300 jours » retirés', 
     }
   });
 });
+
+describe('WAUD27 — titres ville et meta de Rabat', () => {
+  it('FR « panneaux solaires », AR « الألواح الشمسية », Rabat sans chantier local', () => {
+    for (const slug of ['casablanca', 'rabat', 'marrakech', 'tanger', 'agadir']) {
+      expect(cityContentBySlug(slug, 'fr').title).toMatch(/^Installation de panneaux solaires à /);
+      expect(cityContentBySlug(slug, 'ar').title).toContain('الألواح الشمسية');
+    }
+    expect(cityContentBySlug('rabat', 'fr').description).not.toContain('dans la région');
+    expect(cityContentBySlug('rabat', 'en').description).not.toContain('in the region');
+    expect(cityContentBySlug('rabat', 'ar').description).not.toMatch(/في الجهة|بالجهة|في المنطقة/);
+  });
+  it('titres arabes : prix, accueil, guide onduleur', () => {
+    const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/pages/ar/${p}.astro`, import.meta.url)), 'utf-8');
+    expect(lire('prix-panneaux-solaires-maroc')).toMatch(/title="[^"]*ثمن/);
+    expect(lire('index')).toMatch(/title="[^"]*الألواح الشمسية/);
+    expect(lire('guides/onduleur-hybride-ou-reseau')).toMatch(/title="[^"]*إنفرتر/);
+  });
+});

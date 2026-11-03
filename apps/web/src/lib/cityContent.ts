@@ -132,7 +132,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
       },
     },
     closer: 'Faites étudier votre toiture {intro} avant de signer quoi que ce soit.',
-    title: 'Installation solaire {intro} — étude, pose et loi 82-21 | Taqinor',
+    title: 'Installation de panneaux solaires {intro} — étude, pose et loi 82-21 | Taqinor',
     description:
       'Installation solaire {intro} : dimensionnement par l’ingénierie sur votre facture, pose, suivi de production en temps réel et conformité loi 82-21. Étude gratuite.',
     roiNuance:
@@ -202,7 +202,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
       },
     },
     closer: 'ادرس سطحك {intro} قبل أن توقّع أي شيء.',
-    title: 'تركيب شمسي {intro} — دراسة وتركيب والقانون 82-21 | Taqinor',
+    title: 'تركيب الألواح الشمسية {intro} — دراسة وتركيب والقانون 82-21 | Taqinor',
     description:
       'تركيب شمسي {intro}: تحديد المقاس بالهندسة انطلاقاً من فاتورتك، تركيب، متابعة الإنتاج في الوقت الحقيقي والامتثال للقانون 82-21. دراسة مجانية.',
     roiNuance:
@@ -241,7 +241,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'Votre toiture casablancaise mérite d’être chiffrée sur vos kWh, pas sur une moyenne.',
-      title: 'Installation solaire à Casablanca — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Casablanca — étude, pose et loi 82-21 | Taqinor',
       description:
         'Installation solaire à Casablanca : une villa de 11,36 kWc y bénéficie d’un suivi de production en temps réel. Étude dimensionnée sur votre facture, pose et déclaration loi 82-21.',
       roiNuance:
@@ -318,7 +318,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'سطحك البيضاوي يستحقّ أن يُسعَّر على كيلوواط-ساعاتك، لا على معدّل.',
-      title: 'تركيب شمسي في الدار البيضاء — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في الدار البيضاء — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
         'تركيب شمسي في الدار البيضاء: فيلا بقدرة 11,36 kWc مع متابعة الإنتاج في الوقت الحقيقي. دراسة محسوبة على فاتورتك، تركيب وتصريح القانون 82-21.',
       roiNuance:
@@ -359,9 +359,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'À Rabat, faites dimensionner votre toiture par l’ingénierie avant d’engager un budget.',
-      title: 'Installation solaire à Rabat — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Rabat — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Rabat : Taqinor dimensionne sur votre facture, pose et déclare au titre de la loi 82-21. Suivi de production en temps réel, chantiers réels mesurés dans la région.',
+        'Installation solaire à Rabat : Taqinor dimensionne sur votre facture, pose et déclare au titre de la loi 82-21. Suivi de production sur les installations raccordées.',
       roiNuance:
         'Avec ≈ 2 900 h par an, Rabat a le deuxième gisement le plus faible de nos cinq villes : de quoi tenir dans la ' +
         'bande 3–7 ans, plutôt vers sa partie haute pour un dimensionnement identique — l’étude sur votre facture reste ' +
@@ -403,7 +403,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Rabat, have your roof sized by engineering before you commit a budget.',
       title: 'Solar installation in Rabat — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Rabat: Taqinor sizes on your bill, installs and declares under Law 82-21. Real-time production monitoring, real projects measured in the region.',
+        'Solar installation in Rabat: Taqinor sizes on your bill, installs and declares under Law 82-21. Production monitoring on connected installations.',
       roiNuance:
         'At ≈ 2,900 h a year, Rabat has the second-lightest resource of our five cities: still well within the 3–7 year ' +
         'band, typically toward its upper half for an identical system size — the assessment on your bill is what really pins it down.',
@@ -441,9 +441,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'في الرباط، حدّد مقاس سطحك بالهندسة قبل أن تلتزم بميزانية.',
-      title: 'تركيب شمسي في الرباط — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في الرباط — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في الرباط: تاكينور تحدّد المقاس على فاتورتك، تركّب وتصرّح بموجب القانون 82-21. متابعة الإنتاج في الوقت الحقيقي، أوراش حقيقية مقيسة في الجهة.',
+        'تركيب شمسي في الرباط: تاكينور تحدّد المقاس على فاتورتك، تركّب وتصرّح بموجب القانون 82-21. متابعة الإنتاج في الوقت الحقيقي.',
       roiNuance:
         'بـ ≈ 2 900 ساعة في السنة، تملك الرباط ثاني أخفّ مخزون بين مدننا الخمس: يبقى ضمن بند 3–7 سنوات، ' +
         'غالباً في نصفه الأعلى لمقاس مماثل — والدراسة على فاتورتك هي ما يحدّده فعلاً.',
@@ -484,7 +484,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'À Marrakech, le bon dimensionnement vaut mieux qu’un grand champ : faites étudier votre toiture.',
-      title: 'Installation solaire à Marrakech — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Marrakech — étude, pose et loi 82-21 | Taqinor',
       description:
         'Installation solaire à Marrakech : on dimensionne sur votre facture, pas sur la météo. Pose, suivi de production en temps réel et conformité loi 82-21.',
       roiNuance:
@@ -566,7 +566,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'في مراكش، المقاس الصحيح خير من حقل كبير: ادرس سطحك.',
-      title: 'تركيب شمسي في مراكش — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في مراكش — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
         'تركيب شمسي في مراكش: نحدّد المقاس على فاتورتك، لا على الطقس. تركيب، متابعة الإنتاج في الوقت الحقيقي والامتثال للقانون 82-21.',
       roiNuance:
@@ -609,7 +609,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'À Tanger, un toit bien orienté vaut un grand champ mal posé : faisons l’étude d’abord.',
-      title: 'Installation solaire à Tanger — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Tanger — étude, pose et loi 82-21 | Taqinor',
       description:
         'Installation solaire à Tanger : un détroit venté — d’où un dimensionnement calculé au degré près sur votre facture. Pose, suivi de production en temps réel et loi 82-21.',
       roiNuance:
@@ -693,7 +693,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'في طنجة، سطح حسن التوجيه خير من حقل كبير سيّئ التركيب: لنبدأ بالدراسة.',
-      title: 'تركيب شمسي في طنجة — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في طنجة — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
         'تركيب شمسي في طنجة: مضيق ذو رياح — ومن ثَمّ مقاس محسوب بدقة الدرجة على فاتورتك. تركيب، متابعة الإنتاج في الوقت الحقيقي والقانون 82-21.',
       roiNuance:
@@ -737,7 +737,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'À Agadir, le soleil est acquis ; ce qui compte, c’est le dimensionnement. Faites étudier votre toiture.',
-      title: 'Installation solaire à Agadir — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Agadir — étude, pose et loi 82-21 | Taqinor',
       description:
         'Installation solaire à Agadir : l’un des meilleurs gisements de nos villes — mais on dimensionne sur votre facture. Pose, suivi de production en temps réel et loi 82-21.',
       roiNuance:
@@ -819,7 +819,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'في أكادير، الشمس مضمونة؛ المهمّ هو المقاس. ادرس سطحك.',
-      title: 'تركيب شمسي في أكادير — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في أكادير — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
         'تركيب شمسي في أكادير: من بين أفضل المخزونات لدينا — لكننا نحدّد المقاس على فاتورتك. تركيب، متابعة الإنتاج في الوقت الحقيقي والقانون 82-21.',
       roiNuance:
