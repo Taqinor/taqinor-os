@@ -16,7 +16,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Lead
 from apps.roles.models import Role
-from apps.visites import services
+from apps.visites import services, visite_checklist as checklist
 from authentication.models import Company
 
 User = get_user_model()
@@ -53,6 +53,17 @@ class VisitesCouvertureEnumTests(TestCase):
         return self.api.patch(
             f'/api/django/visites/visites/{self.visite_id}/mesures/',
             {'categorie': categorie, 'valeurs': valeurs}, format='json')
+
+    def test_mesure_non_finie_400_nommant_le_champ(self):
+        # ACVI59 — plus jamais 500 ; les mesures restent inchangées.
+        for brute in ('NaN', 'Infinity', '1e400'):
+            resp = self.patch_mesures('toiture', {'longueur_m': brute})
+            self.assertEqual(resp.status_code, 400, (brute, resp.content))
+            self.assertIn('longueur', str(resp.data).lower())
+        visite = self.api.get(
+            f'/api/django/visites/visites/{self.visite_id}/').data
+        self.assertIsNone(
+            (visite['mesures'].get('toiture') or {}).get('longueur_m'))
 
     # ── OBSERVÉ avant correction : 400 sur une saisie humaine limpide ───────
     # `mesures/` renvoie l'AGRÉGAT complet (`selectors.contexte_visite_terrain`) :
@@ -97,6 +108,20 @@ class VisitesCouvertureEnumTests(TestCase):
 
 class NormaliserChoixUnitTests(TestCase):
     """Le helper pur (aucune base requise) — les cas exacts de l'incident."""
+
+    def test_valeur_mesure_non_finie_refusee(self):
+        # ACVI59 — NaN levait InvalidOperation (500), Infinity et 1e400
+        # passaient en ``float('inf')`` : refus nommé, en NOMBRE comme en ENTIER.
+        for nature in (checklist.NOMBRE, checklist.ENTIER):
+            declaration = {'nature': nature, 'libelle': 'Longueur'}
+            for brute in ('NaN', 'sNaN', 'Infinity', '-Infinity', '1e400'):
+                valeur, message = services.valeur_mesure(declaration, brute)
+                self.assertIsNone(valeur, (nature, brute))
+                self.assertIn('Longueur', message, (nature, brute))
+        self.assertEqual(
+            services.valeur_mesure(
+                {'nature': checklist.NOMBRE, 'libelle': 'Longueur'}, '12.5'),
+            (12.5, None))
 
     def test_reconnait_les_libelles_observes_par_le_qa_explorer(self):
         choix_couverture = [

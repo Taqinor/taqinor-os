@@ -924,6 +924,22 @@ def valeur_non_releves(connus, brute):
     return etats, erreurs
 
 
+def _decimal_fini(brute):
+    """ACVI59 — ``Decimal`` fini et représentable en ``float``, sinon ``None`` :
+    ``NaN``, ``Infinity``, ``1e400`` sont refusés, jamais une exception (500)
+    ni un ``inf`` que le JSON stocké ne saurait pas écrire."""
+    import math
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        nombre = Decimal(str(brute))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if not nombre.is_finite() or not math.isfinite(float(nombre)):
+        return None
+    return nombre
+
+
 def valeur_mesure(declaration, brute):
     """Convertit/valide UNE valeur de mesure. Renvoie ``(valeur, message)``.
 
@@ -931,8 +947,6 @@ def valeur_mesure(declaration, brute):
     ``None`` quand la valeur est acceptée. Aucun SEUIL technique n'est jugé
     ici : on vérifie la NATURE d'une mesure, jamais si elle est « suffisante ».
     """
-    from decimal import Decimal, InvalidOperation
-
     from . import visite_checklist as checklist
 
     if brute is None or brute == '':
@@ -944,10 +958,7 @@ def valeur_mesure(declaration, brute):
         return _valeur_objet(declaration['forme'], brute,
                              f"« {declaration['libelle']} »")
     if nature == checklist.ENTIER:
-        try:
-            nombre = Decimal(str(brute))
-        except (InvalidOperation, ValueError, TypeError):
-            nombre = None
+        nombre = _decimal_fini(brute)
         if nombre is None or nombre != nombre.to_integral_value():
             return None, (f"« {declaration['libelle']} » attend un entier "
                           f'(reçu : {brute!r}).')
@@ -971,9 +982,8 @@ def valeur_mesure(declaration, brute):
                           'jointe (identifiant) ou une référence.')
         return brute, None
     if nature == checklist.NOMBRE:
-        try:
-            nombre = Decimal(str(brute))
-        except (InvalidOperation, ValueError, TypeError):
+        nombre = _decimal_fini(brute)
+        if nombre is None:
             return None, (f"« {declaration['libelle']} » attend un nombre "
                           f'(reçu : {brute!r}).')
         if nombre < 0:
