@@ -2,11 +2,11 @@
 // probabilités servies au Kanban / Pipeline / Prévisions (AANA67), étapes (1), (3), (4),
 // (6) de la contre-visite (AANA74). AANA60 n'est pas construite (BLOCKED au plan) : pas d'étape. Hors périmètre de cette spec, dit à l'orchestrateur : pile neuve (`down -v`, interdit
 // sur une pile partagée), volet agent SQL d'AANA77 (bloqué au plan), LLM (aucune clé) : les requêtes passent par le moteur réel.
-import { test, expect, request as pwRequest } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { groupe } from './_oracles.js'
-import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
-import { lireJson, listeDe, telephoneMobileUnique, connexionApi, assurerSessionPage } from '../helpers.js'
+import { py, fermerDjangoApresTout } from './_django.js'
+import { lireJson, listeDe, telephoneMobileUnique, assurerSessionPage } from '../helpers.js'
 
 const etape = groupe('AANA', ['AANA77', 'AANA64', 'AANA67'])
 fermerDjangoApresTout()
