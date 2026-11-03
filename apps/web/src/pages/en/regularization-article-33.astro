@@ -39,10 +39,6 @@ const steps = [
 
 const sanctions = [
   { title: 'Irregular situation', body: 'An existing installation that has not been regularized is in an irregular situation under Law 82-21, now in force.' },
-  { title: 'Fines — article 28', body: 'From 2,000 to 5,000 MAD for operating without the required declaration.' },
-  { title: 'Fines — article 29', body: 'From 100,000 to 1,000,000 MAD for operating without a connection agreement or without authorisation.' },
-  { title: 'Formal notice and shutdown — article 25', body: 'Risk of a formal notice followed by an ordered shutdown of the installation.' },
-  { title: 'Disconnection from the grid — article 32', body: 'The grid operator may disconnect a non-compliant installation.' },
 ];
 import RegularizationArticle33Ol7511 from '../../components/blocs/RegularizationArticle33Ol7511.astro';
 import RegularizationArticle33DivC937 from '../../components/blocs/RegularizationArticle33DivC937.astro';
@@ -50,7 +46,7 @@ import RegularizationArticle33DivC937 from '../../components/blocs/Regularizatio
 
 <Layout
   title="Article 33 regularization — existing solar installations | Taqinor"
-  description="Implementing decree 2-25-100 has been in force since 9 June 2026. Article 33 of Law 82-21 provides an 18-month period to regularize existing solar installations (starting point to be confirmed with the energy authorities): a 5-step procedure, the penalties at stake, and full handling of the file."
+  description="Implementing decree 2-25-100 has been in force since 9 June 2026. Article 33 of Law 82-21 provides an 18-month period to regularize existing solar installations: a 5-step procedure and full handling of the file."
   ogSlug="article-33"
 >
   <div class="v2">
@@ -112,8 +108,8 @@ import RegularizationArticle33DivC937 from '../../components/blocs/Regularizatio
         <p class="v2-lead mt-5 text-lune-soft">
           Article 33 of Law 82-21 provides that existing installations must be regularized "within
           eighteen (18) months from the date of entry into force of this law" (Law 82-21, art. 33),
-          i.e. <strong class="fig lum text-xl">18 months</strong>. The starting point of that period is
-          to be confirmed with the energy authorities: file without waiting. A regularized
+          i.e. <strong class="fig lum text-xl">18 months</strong>. File without
+          waiting. A regularized
           installation is legally secure; an installation that is not regularized is in an irregular
           situation.
         </p>
@@ -132,8 +128,8 @@ import RegularizationArticle33DivC937 from '../../components/blocs/Regularizatio
           no more filled brass disk repeated. */}
       <RegularizationArticle33Ol7511 steps={steps} />
 
-      <h2 class="display v2-section-title v2-rise mt-14 text-white">What you risk by doing nothing</h2>
-      <p class="v2-rise mt-2 text-sm text-lune-soft">Penalties provided for by Law 82-21:</p>
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">The status of a non-regularized installation</h2>
+      <p class="v2-rise mt-2 text-sm text-lune-soft">Under Law 82-21:</p>
       <RegularizationArticle33DivC937 sanctions={sanctions} />
 
       <RelatedLinks mt="mt-8" links={[

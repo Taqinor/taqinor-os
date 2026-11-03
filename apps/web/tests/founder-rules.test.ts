@@ -88,3 +88,27 @@ describe('WAUD15 — règle B : jamais un compte de chantiers dérivé, dernièr
     expect(dateComparable('inconnue')).toBe(-1);
   });
 });
+
+describe('WAUD18 — loi 82-21 : ni montant d’amende, ni menace, ni « à confirmer »', () => {
+  const FICHIERS = [
+    'pages/regularization-article-33.astro', 'pages/en/regularization-article-33.astro', 'pages/ar/regularization-article-33.astro',
+    'pages/faq.astro', 'pages/en/faq.astro', 'pages/ar/faq.astro',
+    'pages/guides/loi-82-21-expliquee.astro', 'pages/en/guides/loi-82-21-expliquee.astro', 'pages/ar/guides/loi-82-21-expliquee.astro',
+    'pages/loi-82-21.astro', 'pages/en/loi-82-21.astro', 'pages/ar/loi-82-21.astro',
+    'content/blog/loi-82-21-autoproduction-2026.md',
+  ];
+  const LIRE = (f: string) => {
+    const s = readFileSync(fileURLToPath(new URL(`../src/${f}`, import.meta.url)), 'utf-8');
+    return s.replace(/\/\*[\s\S]*?\*\//g, ''); // en-têtes de fichier hors rendu
+  };
+  it.each(FICHIERS)('%s', (f) => {
+    const s = LIRE(f);
+    expect(s).not.toMatch(/1[ .,\u00a0]000[ .,\u00a0]000/);
+    expect(s).not.toMatch(/d[ée]cembre 2027|December 2027/i);
+    expect(s).not.toMatch(/à confirmer|to be confirmed|يجب تأكيدها/);
+    expect(s).not.toMatch(/d[ée]connexion|disconnection|فصلها عن الشبكة/i);
+    // Garde : « MAD » ou « DH » accolé à une amende ou sanction.
+    expect(s).not.toMatch(/(amende|sanction|fine|penalt|غرام|عقوب)[^.\n]{0,80}\b(MAD|DH|درهم)\b/i);
+    expect(s).not.toMatch(/\b(MAD|DH)\b[^.\n]{0,40}(amende|sanction|fine|penalt)/i);
+  });
+});
