@@ -138,7 +138,7 @@ export const CIBLES_LIEN = [
   { value: 'crm.lead', label: 'Lead (CRM)' },
   { value: 'crm.client', label: 'Client' },
   { value: 'ventes.devis', label: 'Devis' },
-  { value: 'ventes.facture', label: 'Facture' },
+  { value: 'facturation.facture', label: 'Facture' },
   { value: 'installations.chantier', label: 'Chantier' },
   { value: 'sav.ticket', label: 'Ticket SAV' },
 ]

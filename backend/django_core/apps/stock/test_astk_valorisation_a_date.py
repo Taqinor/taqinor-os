@@ -15,7 +15,9 @@ import datetime
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from authentication.models import Company
@@ -115,3 +117,17 @@ class ValorisationADateTests(TestCase):
         inventaire = figer_inventaire_annuel(self.company, exercice, self.user)
         relu = InventaireAnnuel.objects.get(pk=inventaire.pk)
         self.assertEqual(relu.total_valeur, Decimal('10000.00'))
+
+    def test_quantites_lues_en_une_seule_requete(self):
+        # Rejeu ENF15 : 15 s sur 2 447 fiches, une requête par produit. Des fiches
+        # sans mouvement n'ajoutent plus aucune requête.
+        aujourdhui = timezone.localdate()
+        with CaptureQueriesContext(connection) as avant:
+            valorisation_a_date(self.company, aujourdhui)
+        for i in range(20):
+            Produit.objects.create(
+                company=self.company, nom=f'Sans mouvement {i}',
+                prix_vente=Decimal('1'))
+        with CaptureQueriesContext(connection) as apres:
+            valorisation_a_date(self.company, aujourdhui)
+        self.assertEqual(len(apres), len(avant))

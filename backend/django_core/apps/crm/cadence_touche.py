@@ -569,11 +569,18 @@ def annuler_touche_relance(etape, user):
     # Ce que CETTE clôture a fait naître (preuve : l'horodatage de création).
     nees = lead.relance_etapes.filter(
         created_at__gte=debut, created_at__lte=fin).exclude(pk=etape.pk)
-    if nees.filter(cadence='reveil').exists():
+    mouvements = list(lead.activites.filter(
+        kind=LeadActivity.Kind.MODIFICATION, field='stage',
+        created_at__gte=debut, created_at__lte=fin,
+    ).order_by('created_at', 'pk'))
+    # CADV25 — le Froid se lit aussi sur le mouvement d'étape : un lead jamais
+    # joint ni chiffré y part sans aucun réveil.
+    if (nees.filter(cadence='reveil').exists()
+            or any(_stage_depuis_libelle(m.new_value) == stages.COLD for m in mouvements)):
         raise AnnulationToucheRefusee(
             'statut',
             'Cette touche a clôturé la cadence : le dossier est parti au '
-            'froid avec ses réveils. Utilisez « Relancer la cadence » sur la '
+            'froid. Utilisez « Relancer la cadence » sur la '
             'fiche plutôt que cette annulation.')
     if nees.exclude(statut=RelanceEtape.Statut.A_FAIRE).exists():
         raise AnnulationToucheRefusee(
@@ -581,10 +588,6 @@ def annuler_touche_relance(etape, user):
             "L'étape programmée par cette touche a déjà été traitée : "
             "annuler celle-ci n'est plus possible.")
 
-    mouvements = list(lead.activites.filter(
-        kind=LeadActivity.Kind.MODIFICATION, field='stage',
-        created_at__gte=debut, created_at__lte=fin,
-    ).order_by('created_at', 'pk'))
     if any(_stage_depuis_libelle(m.new_value) == stages.QUOTE_SENT
            for m in mouvements):
         raise AnnulationToucheRefusee(

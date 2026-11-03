@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
@@ -89,6 +89,31 @@ function renderList(opts) {
     </Provider>,
   )
 }
+
+describe('FactureList — lien profond ?id= ouvert directement', () => {
+  it('attend la liste avant de chercher la facture, puis ouvre sa fiche', async () => {
+    const f = { id: 77, reference: 'FAC-2026-07-0077', client_nom: 'ACME', statut: 'emise',
+      date_emission: '2026-07-01', date_echeance: '2026-08-01', total_ttc: 5000, montant_paye: 0, montant_du: 5000 }
+    const base = makeStore({ factures: [] }).getState()
+    const store = configureStore({
+      reducer: (etat = base, action) => (action.type === 'essai/charge'
+        ? { ...etat, ventes: { ...etat.ventes, factures: [f] } } : etat),
+      middleware: (d) => d({ serializableCheck: false, immutableCheck: false }),
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/ventes/factures?id=77']}>
+          <ThemeProvider>
+            <FactureList />
+          </ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    act(() => { store.dispatch({ type: 'essai/charge' }) })
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Éditer — FAC-2026-07-0077')
+  })
+})
 
 const baseFacture = {
   id: 1, reference: 'FAC-2026-07-0001', client_nom: 'ACME', statut: 'emise',

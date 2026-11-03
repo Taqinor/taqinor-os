@@ -3,7 +3,7 @@
   "effets": {
     "touche_suivante": "La cadence continue : sa touche suivante est programmée à son délai prévu.",
     "touche_suivante_a_la_date": "La touche suivante de la cadence est programmée à la date choisie.",
-    "derniere_froid_reveils": "C’était la dernière touche : le dossier part au Froid et ses réveils sont programmés.",
+    "derniere_froid_reveils": "C’était la dernière touche : le dossier part au Froid ; ses réveils ne sont programmés que pour un particulier déjà joint ou chiffré (ou à facture déclarée au-dessus du seuil du pilote : un seul appel de réveil).",
     "dernier_reveil": "C’était le dernier réveil : plus aucune relance n’est programmée, le dossier reste au Froid.",
     "reste_au_froid": "Le dossier reste au Froid.",
     "sort_du_froid": "Le dossier sort du Froid.",
@@ -21,6 +21,7 @@
     "etape_planifier_visite": "Aucune relance du protocole n’est posée : une étape « Planifier la visite technique convenue » la remplace, pour aujourd’hui (sauf si une visite est déjà calée).",
     "etape_message_creneau": "Prochaine étape : un message pour convenir d’un créneau d’appel.",
     "etape_dernier_appel": "Prochaine étape, demain : un dernier appel avant de chiffrer.",
+    "rien_apres_signature": "Le dossier est signé : aucune autre étape n’est posée.",
     "suite_si_plus_rien_ouvert": "Aucune touche n’est ajoutée pour cette étape ; si plus aucune relance n’est ouverte, le suivi de proposition reprend s’il n’est pas allé au bout, sinon une étape de suite est posée.",
     "etiquette_decision": "L’étiquette « Décision à plusieurs » est posée (le rendez-vous « dimanche famille » rejoint le plan s’il n’est pas encore passé).",
     "ne_plus_contacter": "Le lead passe « Ne plus contacter » : toutes ses relances s’arrêtent, sans étape de décision, et aucune ne pourra redémarrer.",

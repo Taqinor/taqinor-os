@@ -56,6 +56,7 @@ from apps.crm.models import Client, Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.cadence_filet import assurer_prochaine_etape_apres_succes
 from apps.crm.cadence_reperes import (
     CLE_PIECES_RECUES,
+    LIBELLE_CONFIRMER_SIGNATURE,
     _LIBELLES_FILET,
     _LIBELLES_VISITE,
     FILET_APPEL_LIBELLE,
@@ -135,23 +136,24 @@ class Scenario:
 
 
 SCENARIOS = (
-    # Prise de contact (11 barreaux) : message, appel, dernière touche.
+    # Prise de contact (8 barreaux, CADV23) : message, appel, dernière touche.
     Scenario('contact_message', 'contact', 1, WHATSAPP),
     Scenario('contact_appel', 'contact', 2, APPEL),
-    Scenario('contact_derniere_message', 'contact', 11, WHATSAPP),
-    Scenario('contact_derniere_appel', 'contact', 11, APPEL),
-    # Suivi de proposition (10 barreaux), avec et sans devis dans l'ERP.
+    Scenario('contact_derniere_message', 'contact', 8, WHATSAPP),
+    Scenario('contact_derniere_appel', 'contact', 8, APPEL),
+    # Suivi de proposition (9 barreaux jusqu'à l'ordre 11, CADV24), avec et sans
+    # devis dans l'ERP.
     Scenario('apres_devis_message', 'apres_devis', 1, WHATSAPP,
              devis=True, stage=stages.QUOTE_SENT),
     Scenario('apres_devis_appel', 'apres_devis', 2, APPEL,
              devis=True, stage=stages.QUOTE_SENT),
-    Scenario('apres_devis_derniere_message', 'apres_devis', 10, WHATSAPP,
+    Scenario('apres_devis_derniere_message', 'apres_devis', 11, WHATSAPP,
              devis=True, stage=stages.QUOTE_SENT),
-    Scenario('apres_devis_derniere_appel', 'apres_devis', 10, APPEL,
+    Scenario('apres_devis_derniere_appel', 'apres_devis', 11, APPEL,
              devis=True, stage=stages.QUOTE_SENT),
     Scenario('apres_devis_sans_devis', 'apres_devis', 2, APPEL,
              stage=stages.QUOTE_SENT),
-    Scenario('apres_devis_sans_devis_derniere', 'apres_devis', 10, WHATSAPP,
+    Scenario('apres_devis_sans_devis_derniere', 'apres_devis', 11, WHATSAPP,
              stage=stages.QUOTE_SENT),
     # Les gestes de visite (cadence après-devis, hors protocole).
     Scenario('visite_confirmation', 'apres_devis', VISITE_ORDRE_CONFIRMATION,
@@ -191,6 +193,9 @@ SCENARIOS = (
     Scenario('filet_decider', 'generique', 1, APPEL, FILET_REFUS_LIBELLE),
     Scenario('filet_question_prix', 'generique', 1, APPEL,
              QUESTION_PRIX_LIBELLE, stage=stages.QUOTE_SENT),
+    # ERR-CADV-FILET-SIGNE — les deux appels de CADV36, le dossier est Signé.
+    Scenario('filet_signe', 'generique', 1, APPEL, LIBELLE_CONFIRMER_SIGNATURE,
+             stage=stages.SIGNED),
     Scenario('filet_passation', 'generique', PASSATION_ORDRE, WHATSAPP,
              PASSATION_LIBELLE, stage=stages.QUOTE_SENT, famille=A_COTE),
     # Deuxième affaire (2 barreaux) : un client déjà acquis qui revient.
@@ -313,7 +318,14 @@ def _touche_suivante_a_la_date(c):
 
 def _derniere_froid_reveils(c):
     c.vrai(c.lead.stage == stages.COLD, 'le dossier n’est pas au Froid')
-    c.vrai(c.ouvertes(cadence='reveil').exists(), 'aucun réveil programmé')
+    # CADV25 — la promesse dit « s'il a déjà été joint ou chiffré » : le scénario
+    # de prise de contact n'est ni l'un ni l'autre ; le suivi d'un devis et la
+    # deuxième affaire ont un historique par construction.
+    if c.etape.cadence == 'contact':
+        c.vrai(not c.ouvertes(cadence='reveil').exists(),
+               'un réveil est programmé pour un lead jamais joint ni chiffré')
+    else:
+        c.vrai(c.ouvertes(cadence='reveil').exists(), 'aucun réveil programmé')
 
 
 def _etape_appel_avant_froid(c):
@@ -474,6 +486,11 @@ def _rien_de_nouveau(c):
     c.vrai(not c.nouvelles().exists(), 'une touche a été ajoutée')
 
 
+def _rien_apres_signature(c):
+    _rien_de_nouveau(c)
+    c.vrai(c.lead.stage == stages.SIGNED, 'le dossier n’est plus signé')
+
+
 def _suite_si_plus_rien_ouvert(c):
     # 24/09/2026 — dans AUCUNE branche le dossier ne part au Froid (c'était
     # la promesse du code retiré `visite_froid_si_seule`).
@@ -627,6 +644,7 @@ VERIFICATEURS = {
     st.ETAPE_MESSAGE_CRENEAU: _etape_message_creneau,
     st.ETAPE_DERNIER_APPEL: _etape_dernier_appel,
     st.SUITE_SI_PLUS_RIEN_OUVERT: _suite_si_plus_rien_ouvert,
+    st.RIEN_APRES_SIGNATURE: _rien_apres_signature,
     st.ETIQUETTE_DECISION: _etiquette_decision,
     st.NE_PLUS_CONTACTER: _ne_plus_contacter,
     st.VEILLE_MEME_TOUCHE: _veille_meme_touche,
@@ -755,6 +773,17 @@ class ContratTests(SimpleTestCase):
                          + CONTRAT['exemple_dernier_reveil']['results']):
             self.assertEqual(set(resultat), forme)
 
+    def test_un_filet_sur_dossier_signe_n_annonce_ni_devis_ni_decision(self):
+        # ERR-CADV-FILET-SIGNE — « Préparer le devis » était promis à un signé.
+        scenario = next(s for s in SCENARIOS if s.nom == 'filet_signe')
+        promesses = st.promesses_touche(
+            _etape_non_enregistree(scenario), ordres=_ordres_defaut('generique'))
+        self.assertEqual(promesses['sans_issue'], [st.RIEN_APRES_SIGNATURE])
+        self.assertEqual(promesses['refuse'],
+                         [st.RELANCES_ARRETEES, st.RIEN_APRES_SIGNATURE])
+        self.assertEqual(promesses['rappel'], [st.ETAPE_DEPLACEE_A_LA_DATE])
+        self.assertEqual(promesses['visite_acceptee'], [st.ETAPE_PLANIFIER_VISITE])
+
     def test_cad97_le_barreau_generique_n_annonce_pas_demain(self):
         # CAD97 — barreau du gabarit : la touche suivante à SON délai ; étape
         # posée par le filet : la suite demain (ou le suivi d'un devis).
@@ -862,12 +891,12 @@ class PariteBase(TestCase):
             devis = self._devis(lead)
         if scenario.famille == A_COTE:
             self._suivi_consomme(
-                lead, devis, 10 if variante == 'seule_epuise' else 2)
+                lead, devis, 11 if variante == 'seule_epuise' else 2)
             if variante == 'avec_autre':
                 # Le plan suspendu pendant la visite : une touche ouverte.
                 gabarit = next(e for e in CADENCES_DEFAUT['apres_devis']
-                               if e['ordre'] == 4)
-                self._touche(lead, cadence='apres_devis', ordre=4,
+                               if e['ordre'] == 7)
+                self._touche(lead, cadence='apres_devis', ordre=7,
                              canal=gabarit['canal'],
                              libelle=gabarit['libelle'], devis=devis,
                              due=GEL + datetime.timedelta(days=2),
@@ -875,7 +904,7 @@ class PariteBase(TestCase):
         elif variante == 'devis_ouvert':
             self._suivi_consomme(lead, devis, 2)
         elif variante == 'devis_epuise':
-            self._suivi_consomme(lead, devis, 10)
+            self._suivi_consomme(lead, devis, 11)
 
         barreau = st.nature_touche(RelanceEtape(
             cadence=scenario.cadence,
@@ -1021,7 +1050,7 @@ class PariteGeneriqueTests(PariteBase):
                      'filet_envoi_devis', 'filet_appeler', 'filet_creneau',
                      'filet_dernier_appel', 'filet_rappel_convenu',
                      'filet_decider', 'filet_question_prix',
-                     'filet_passation')
+                     'filet_passation', 'filet_signe')
 
 
 class PariteDeuxiemeAffaireTests(PariteBase):
@@ -1100,7 +1129,8 @@ class PariteFroidRefuseTests(PariteBase):
         self.assertEqual(self._rejouer(appel, 'non_joint', 'base').status_code, 200)
         lead.refresh_from_db()
         self.assertEqual(lead.stage, stages.COLD)
-        self.assertTrue(lead.relance_etapes.filter(
+        # CADV25 — ce lead n'a jamais été joint : au Froid, sans réveil.
+        self.assertFalse(lead.relance_etapes.filter(
             cadence='reveil', statut=A_FAIRE).exists())
 
 

@@ -37,7 +37,7 @@
       },
       {
         "code": "dormant_jamais_chiffre",
-        "libelle": "Dormant — Froid, tag « Jamais chiffré », réveil étalé",
+        "libelle": "Dormant — Froid, tag « Jamais chiffré », réveil étalé si déjà joint ou facture ≥ 2 000",
         "cadence": "reveil",
         "nombre": 58
       }
@@ -57,6 +57,7 @@
       }
     ],
     "reveils_jusqu_au": "2026-10-14",
+    "appels_contact": 5,
     "applique": 0,
     "erreurs": 0,
     "restants": 270
@@ -73,6 +74,7 @@
     "par_etape": [],
     "apercu": [],
     "reveils_jusqu_au": null,
+    "appels_contact": 5,
     "applique": 0,
     "erreurs": 0,
     "restants": 0
@@ -87,6 +89,7 @@
     "exemple_erreur": "réponse HTTP 503 `{detail}` quand la lecture des devis acceptés est indisponible : RIEN n'est appliqué (voir `exemple_erreur` au premier niveau).",
     "par_etape": "un objet par code de décision, dans l'ordre ci-dessus ; `cadence` ∈ {contact, apres_devis, reveil}. `nombre` est un entier, jamais null.",
     "apercu": "les 20 premiers leads à placer (ordre : `jours` croissant) ; `stage_libelle` = libellé français de l'étape actuelle (STAGES.py) ; `prochaine_touche` = libellé de la première touche À FAIRE créée ; `prochaine_le` = son `due_at` ISO Africa/Casablanca ; `ancre` = date locale.",
+    "appels_contact": "barreaux d'appel actifs du gabarit de prise de contact de la société (entier) : le nombre lu par la carte, jamais un chiffre recopié à l'écran.",
     "reveils_jusqu_au": "date locale de la dernière première-touche de réveil étalée (8 leads par jour ouvré), null sans dormant.",
     "applique": "nombre de leads réellement placés PAR CET APPEL (au plus `limite`, défaut 40) ; toujours 0 en aperçu.",
     "erreurs": "nombre de leads dont le placement a échoué DANS CET APPEL (best-effort lead par lead : une erreur n'arrête jamais les autres, elle est journalisée et comptée ici). Toujours 0 en aperçu — l'aperçu est un calcul pur, il n'exécute rien.",

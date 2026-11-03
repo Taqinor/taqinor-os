@@ -1,0 +1,6 @@
+== C-ATOT-VER-007 (sha b72cda218)
+attendu : PATCH client / retenue_garantie_mad sur une facture émise : accepté, document légal réécrit
+observé : patch_client=409 client=1547 (A=1547, B=1548) patch_retenue=409 retenue=None
+{"repro": false, "patch_client": 409, "patch_retenue": 409}
+verdict : ÉCART
+base inchangée : oui (avant 105662, après 105662) ; mails 0 ; tâches Celery bloquées 0

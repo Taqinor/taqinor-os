@@ -1,0 +1,7 @@
+== C-ACAL-VER2-61 (sha 56d5b623a)
+attendu : resynchro d'un document MIXTE (pan sans moduleId listé AVANT un pan à fiche désignée) : chaque ligne panneau reste celle de SON modèle — une seule ligne par produit, la fiche désignée garde son compte (8), le pan sans fiche passe 4 -> 5 sur SA ligne ; jamais la ligne de la fiche désignée « volée » par le modèle sans fiche puis recréée
+observé : modeles lus [{'produit_id': None, 'watt': 450, 'count': 4}, {'produit_id': 4225, 'watt': 550, 'count': 8}]
+création [(4225, 8), (4226, 4)] ttc 47900.00 ; sync 200 -> [(4225, 8), (4226, 5)] ttc 50100.00 avert=['La conception 3D porte le devis de 12 à 13 panneaux.', 'Structure de fixation absente du catalogue ou sans prix — ligne non ajoutée.', 'Socles de lestage absents du catalogue ou sans prix — ligne non ajoutée.', 'Accessoires (câblage DC/AC, connecteurs) absents du catalogue ou sans prix — ligne non
+{"repro": false, "avant": [[4225, 8], [4226, 4]], "apres": [[4225, 8], [4226, 5]], "sync": 200}
+verdict : ÉCART
+base inchangée : oui (avant 108062, après 108062) ; mails 0 ; tâches Celery bloquées 0

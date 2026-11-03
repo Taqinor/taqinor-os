@@ -158,7 +158,8 @@ class SuiviSansDevisPoursuiviTests(_Base):
         self._assert_relance_date(ouverte)
 
     def test_plan_epuise_l_etape_generique_prend_le_relais(self):
-        self._barreau(10, statut=FAIT)
+        self._barreau(max(e['ordre'] for e in CADENCES_DEFAUT['apres_devis']),
+                      statut=FAIT)  # le dernier barreau du gabarit (v4, CADV24)
         decider = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='generique',
             ordre=1, canal=RelanceEtape.Canal.APPEL,

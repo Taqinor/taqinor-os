@@ -1,0 +1,6 @@
+== C-ATOT-VER-004 (sha b72cda218)
+attendu : avoir de révision > TTC de sa facture, ou facture soldée/négative restée « émise »
+observé : {'generer': [201, 201, 201, 201, 201, 409], 'statuts_factures': ['payee', 'emise', 'emise', 'emise', 'emise'], 'prix_negocie': 201, 'reponse': "{'devis_v2': {'id': 2293, 'reference': 'DEV-202611-0001', 'version': 2}, 'remise_pct': '25.00', 'total_ttc': '9000.00', 'factures_annulees': [], 'factures_reprises': [{'reference': 'FAC-202611-0001', ", 'avoir_ttc': '600.00', 'facture_ttc': '2400.00', 'montant_du': '1800.00', 'statut': 'emise'}
+{"repro": false, "depasse": false, "generer": [201, 201, 201, 201, 201, 409], "statuts_factures": ["payee", "emise", "emise", "emise", "emise"], "prix_negocie": 201, "reponse": "{'devis_v2': {'id': 2293, 'reference': 'DEV-202611-0001', 'version': 2}, 'remise_pct': '25.00', 'total_ttc': '9000.00', 'factures_annulees': [], 'factures_reprises': [{'reference': 'FAC-202611-0001', ", "avoir_ttc": "600.00", "facture_ttc": "2400.00", "montant_du": "1800.00", "statut": "emise"}
+verdict : ÉCART
+base inchangée : oui (avant 105662, après 105662) ; mails 0 ; tâches Celery bloquées 0

@@ -37,6 +37,7 @@ from .cadence_plan import (
 from .cadence_messages import SEGMENTS_PRO
 from .cadence_reperes import (
     CLE_PIECES_RECUES,
+    CLE_RAPPEL_FDA,
     LIBELLE_CONFIRMER_SIGNATURE,
     LIBELLE_RELANCE_ACOMPTE,
     VISITE_CADENCE,
@@ -492,7 +493,8 @@ def _libelle_rappel_subvention(approbation):
 #: ACRM45 (C-ACRM-040) — la CLÉ STABLE du rappel FDA : l'étape se retrouve
 #: par elle, jamais par son libellé (qui porte la date d'approbation et
 #: changeait donc à chaque correction de cette date — deux rappels ouverts).
-CLE_RAPPEL_FDA = 'rappel_fda'
+#: La constante vit dans ``cadence_reperes`` (importée plus haut) : le filet
+#: la reconnaît (``est_etape_de_filet``) sans cycle d'import.
 
 #: Le début du libellé d'avant ACRM45 (``cle`` vide) : une étape ouverte
 #: posée avant la clé est ADOPTÉE (sa clé est posée), jamais doublée.

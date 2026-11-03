@@ -1,0 +1,172 @@
+{
+  "sha": "369cf21d8804e8395677f3795327ca8180ee0a1e",
+  "date": "2026-11-03",
+  "groupe": "ATOT",
+  "verdict": "PASS",
+  "couvre": [
+    "ATOT48",
+    "ATOT49",
+    "ATOT55",
+    "ATOT40",
+    "ATOT43",
+    "ATOT46",
+    "ATOT41"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "V2",
+      "taches": [
+        "ATOT49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-ATOT-V2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V1",
+      "taches": [
+        "ATOT48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-ATOT-V1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V55",
+      "taches": [
+        "ATOT55"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-ATOT-V55.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S-002",
+      "taches": [
+        "ATOT40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-03/C-ATOT-VER-002.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Ligne d'un brouillon vers une facture émise : 409, TTC inchangé."
+    },
+    {
+      "id": "S-004",
+      "taches": [
+        "ATOT43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-03/C-ATOT-VER-004.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Prix négocié 9 000 sur 5 × 20 % : avoirs ≤ créditable (passage par le constructeur)."
+    },
+    {
+      "id": "S-006",
+      "taches": [
+        "ATOT46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-03/C-ATOT-VER-006.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Note de débit au grand livre reconstitué : lignes 3 → 6."
+    },
+    {
+      "id": "S-007",
+      "taches": [
+        "ATOT41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-11-03/C-ATOT-VER-007.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "PATCH client et retenue d'une émise : 409."
+    }
+  ]
+}

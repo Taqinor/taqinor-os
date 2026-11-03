@@ -1,0 +1,7 @@
+== C-ACAL-VER2-72 (sha 56d5b623a)
+attendu : ACAL146 (ligne Client : « Rapport d'étude : provenance bancable de la météo complète, fournisseur nommé ») : un résultat simulé sur un fichier météo déposé (meteo.service='fichier', meteo.fournisseur='Meteonorm') -> la section site_meteo du rapport nomme le fichier/fournisseur, jamais « PVGIS ». REPRO si la base d'irradiance imprimée dit PVGIS et que Meteonorm n'apparaît pas.
+observé : base={'source': 'fichier', 'base_rayonnement': None, 'fenetre_annees': None, 'loss_passee_pct': None, 'commentaire': "Aucune perte n'est passée à PVGIS : l'irradiance est demandée NUE (pvcalculation=0) et toute la cascade est celle du module (bloc « cascade »)."}
+pvgis_dans_rapport=False meteonorm_dans_rapport=True
+{"repro": false, "base_source": "fichier", "pvgis_dans_rapport": false, "meteonorm_dans_rapport": true}
+verdict : ÉCART
+base inchangée : oui (avant 108062, après 108062) ; mails 0 ; tâches Celery bloquées 0

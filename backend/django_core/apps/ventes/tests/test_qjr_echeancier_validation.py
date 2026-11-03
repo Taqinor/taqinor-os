@@ -357,6 +357,13 @@ class EcheancierDUnDevis(TestCase):
             self.assertIn('6\u202f000,00 MAD TTC', texte)
             self.assertNotIn('5\u202f999,30', texte)
             self.assertIn('Réception : 4.71 % · 800,00 MAD TTC', texte)
+            # Devis envoyé resté au niveau 7 : il garde ce qu'il a reçu.
+            # Mutant : retirer le garde ``regles_au_moins`` ⇒ 6 000 ici.
+            Devis.objects.filter(pk=devis.pk).update(regles_calcul=7)
+            devis.refresh_from_db()
+            self.assertEqual(
+                [j['montant_ttc'] for j in jalons_paiement_devis(devis)][0],
+                Decimal('5999.30'), suffixe)
         devis = _devis(
             self.company, self.client_obj, f'DEV-{MONTH}-Q62C',
             echeancier=[{'type': 'acompte', 'pct_or_montant': 30},

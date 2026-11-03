@@ -27,7 +27,7 @@ export default function DocumentsClientPortailAdmin() {
 
   // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
   const fetchDocumentsClient = () => chargerToutesLesPages(
-    (page) => portailApi.admin.documentsClient.liste({ page }),
+    (page, pageSize) => portailApi.admin.documentsClient.liste({ page, page_size: pageSize }),
     { setRows, setLoadError, setLoading },
   )
 

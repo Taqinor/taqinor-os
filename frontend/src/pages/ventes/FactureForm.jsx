@@ -151,7 +151,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     // ALEA33 — TOUTES les pages (jamais les 50 premiers clients seulement).
     fetchAllPages((page) => crmApi.getClients({ page, page_size: 200 }).then((r) => r.data))
       .then((res) => setClients(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
-    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
+    fetchAllPages((page, { page_size: pageSize } = {}) => stockApi.getProduits({ page, page_size: pageSize }).then((r) => r.data))
       .then(setProduits).catch(() => {})
     fetchAllPages((page) => ventesApi.getBonsCommande({ page, page_size: 200 }).then((r) => r.data))
       .then((res) => setBonsCommande(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
@@ -825,7 +825,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
           {isEdit && facture?.id && (
             <div className="border-t border-border pt-4">
               <p className="mb-2 text-sm font-semibold text-foreground">Pièces jointes</p>
-              <AttachmentsPanel model="ventes.facture" id={facture.id} />
+              <AttachmentsPanel model="facturation.facture" id={facture.id} />
             </div>
           )}
 

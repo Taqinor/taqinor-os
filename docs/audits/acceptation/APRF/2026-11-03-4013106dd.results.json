@@ -1,0 +1,33 @@
+{
+ "sha": "4013106dd34aac944f092aa9a5e14468b62f1924",
+ "date": "2026-11-03",
+ "groupe": "APRF",
+ "verdict": "PASS",
+ "couvre": [
+  "APRF29"
+ ],
+ "couvre_avec_ecart": [],
+ "etapes": [
+  {
+   "id": "P4.3",
+   "taches": [
+    "APRF29"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "traces/2026-11-03-4013106dd-P4.3.txt",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  }
+ ]
+}

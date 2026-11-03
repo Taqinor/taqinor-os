@@ -97,10 +97,10 @@ class Cadence(models.TextChoices):
     cadence historique.
 
     Une seule échelle anonyme ne pouvait pas porter trois rythmes différents :
-    la prise de contact (11 touches sur 14 j — 6 appels et 5 WhatsApp —, dont
+    la prise de contact (8 touches sur 7 j — 5 appels et 3 WhatsApp —, dont
     la PREMIÈRE est le message d'identité à J0 + 0 minute, la deuxième l'appel
     d'ouverture à J0 + 3 minutes et la troisième l'appel 2 à J0 + 2 h 30),
-    le suivi après devis (J1…J14) et le réveil des dormants (J30/J60). La
+    le suivi après devis (J1…J90) et le réveil des dormants (J30/J60). La
     quatrième valeur, ``generique``, N'EST PAS une nouveauté : c'est le nom
     donné aux 5 barreaux neutres qui existaient déjà (J+2/5/10/20/35). Ils ne
     sont ni supprimés ni réécrits — la migration 0081 se contente de les
@@ -129,8 +129,8 @@ class Cadence(models.TextChoices):
     VISITE = 'visite', 'Visite technique'
 
 
-# ── Protocole de rappel v3 (04/09/2026) ─────────────────────────────────────
-# 6 APPELS MAXIMUM + 5 WhatsApp sur 14 jours, jamais plus d'un appel ET d'un
+# ── Protocole de rappel (v4, CADV23, D-CADV-1) ──────────────────────────────
+# 5 APPELS MAXIMUM + 3 WhatsApp sur 7 jours, jamais plus d'un appel ET d'un
 # message par jour — **HORS J0** : les trois gestes du jour même (message
 # d'identité, appel d'ouverture, appel 2 à +2 h 30) sont VOULUS ensemble, c'est
 # la promesse « rappelé dans les cinq minutes ». Ces délais viennent du
@@ -143,9 +143,10 @@ class Cadence(models.TextChoices):
 # en sont exemptés. Un délai retouché depuis Paramètres ne peut donc plus
 # empiler trois appels le même jour.
 #
-# ``dimanche_ok`` : la touche 8 (5ᵉ appel) est le SEUL rendez-vous autorisé le
-# dimanche, entre 16 h et 19 h, pour les prospects qu'on ne trouve jamais en
-# semaine. Toutes les autres touches sont recalées sur les jours ouvrés.
+# ``dimanche_ok`` : le protocole v4 (CADV23) n'a plus de touche de contact le
+# dimanche ; une société peut en autoriser une (fenêtre 16 h-19 h, le moteur
+# sait toujours la placer). Toutes les autres touches sont recalées sur les
+# jours ouvrés.
 CADENCE_CONTACT_DEFAUT = [
     {'ordre': 1, 'delai_jours': 0, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': "Message d'identité",
@@ -165,36 +166,28 @@ CADENCE_CONTACT_DEFAUT = [
      'heure_cible': datetime.time(10, 30),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 3',
      'template_cle': 'appel_relance', 'dimanche_ok': False},
-    {'ordre': 5, 'delai_jours': 1, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp de valeur',
-     'template_cle': 'valeur_j1', 'dimanche_ok': False},
-    {'ordre': 6, 'delai_jours': 2, 'delai_minutes': 0,
-     'heure_cible': datetime.time(18, 0),
+    # CADV23 (02/11/2026, D-CADV-1) — protocole v4 : 5 appels + 3 WhatsApp sur
+    # 7 jours. Les barreaux 5-8 remplacent les touches 5-11 du v3 (un rappel
+    # en 25 exécutions) ; plus de dimanche ni de 17 h 30-18 h 30 par défaut.
+    # Aucune clé de message nouvelle : `repondeur` (4e appel), `valeur_j1`
+    # (« je n'ai pas réussi à vous joindre »), `appel_dernier` (5e et dernier
+    # appel), `je_classe_j7` (question de clôture).
+    {'ordre': 5, 'delai_jours': 2, 'delai_minutes': 0,
+     'heure_cible': datetime.time(16, 0),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 4 (répondeur)',
      'template_cle': 'repondeur', 'dimanche_ok': False},
-    {'ordre': 7, 'delai_jours': 3, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Vocal',
-     'template_cle': 'vocal_j3', 'dimanche_ok': False},
-    {'ordre': 8, 'delai_jours': 5, 'delai_minutes': 0,
-     'heure_cible': datetime.time(10, 30),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 5 (dimanche)',
-     'template_cle': 'appel_dimanche', 'dimanche_ok': True},
-    {'ordre': 9, 'delai_jours': 7, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
+    {'ordre': 6, 'delai_jours': 2, 'delai_minutes': 0,
+     'heure_cible': datetime.time(17, 45),
+     'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp de valeur',
+     'template_cle': 'valeur_j1', 'dimanche_ok': False},
+    {'ordre': 7, 'delai_jours': 4, 'delai_minutes': 0,
+     'heure_cible': datetime.time(11, 0),
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel 5 (dernier)',
+     'template_cle': 'appel_dernier', 'dimanche_ok': False},
+    {'ordre': 8, 'delai_jours': 7, 'delai_minutes': 0,
+     'heure_cible': datetime.time(12, 0),
      'canal': CanalRelance.WHATSAPP, 'libelle': '« Je classe ? »',
      'template_cle': 'je_classe_j7', 'dimanche_ok': False},
-    # CAD67 — le DERNIER appel avant clôture (celui qui décide du classement
-    # du lead) n'avait aucune phrase d'ouverture : script court dédié.
-    {'ordre': 10, 'delai_jours': 10, 'delai_minutes': 0,
-     'heure_cible': datetime.time(15, 0),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 6 (dernier)',
-     'template_cle': 'appel_dernier', 'dimanche_ok': False},
-    {'ordre': 11, 'delai_jours': 14, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Clôture',
-     'template_cle': 'cloture_j14', 'dimanche_ok': False},
 ]
 
 # Suivi APRÈS ENVOI DU DEVIS (Guide v2.1 chapitre 7). La touche « dimanche
@@ -234,34 +227,35 @@ CADENCE_APRES_DEVIS_DEFAUT = [
      'heure_cible': datetime.time(16, 0),
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Dimanche famille',
      'template_cle': 'dimanche_famille', 'dimanche_ok': True},
-    {'ordre': 4, 'delai_jours': 4, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Preuve — chantier comparable',
-     'template_cle': 'j4_preuve', 'dimanche_ok': False},
-    {'ordre': 5, 'delai_jours': 6, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Garanties fabricants',
-     'template_cle': 'j6_garanties', 'dimanche_ok': False},
+    # CADV24 (02/11/2026, D-CADV-3) — cadence v4 : J4 et J6 (WhatsApp morts)
+    # sortent du défaut, le trou d'`ordre` 4-5 est gardé (comme AGR514) ; la
+    # validité du devis ne suit plus le dernier barreau (CADV81). Aucune clé
+    # de message nouvelle : les appels J14, J28 et J90 réutilisent
+    # `appel_suivi_j11`, le WhatsApp J60 réutilise `j13_dernier`.
     {'ordre': 6, 'delai_jours': 7, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
      'template_cle': 'appel_suivi_j7', 'dimanche_ok': False},
-    {'ordre': 7, 'delai_jours': 9, 'delai_minutes': 0,
+    {'ordre': 7, 'delai_jours': 10, 'delai_minutes': 0,
      'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Validité de la proposition',
-     'template_cle': 'j9_validite', 'dimanche_ok': False},
-    {'ordre': 8, 'delai_jours': 11, 'delai_minutes': 0,
+     'canal': CanalRelance.WHATSAPP, 'libelle': 'Garanties fabricants',
+     'template_cle': 'j6_garanties', 'dimanche_ok': False},
+    {'ordre': 8, 'delai_jours': 14, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel de décision',
      'template_cle': 'appel_suivi_j11', 'dimanche_ok': False},
-    {'ordre': 9, 'delai_jours': 13, 'delai_minutes': 0,
+    {'ordre': 9, 'delai_jours': 28, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_APPEL,
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel de validité',
+     'template_cle': 'appel_suivi_j11', 'dimanche_ok': False},
+    {'ordre': 10, 'delai_jours': 60, 'delai_minutes': 0,
      'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Dernier message',
      'template_cle': 'j13_dernier', 'dimanche_ok': False},
-    {'ordre': 10, 'delai_jours': 14, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Mise en pause',
-     'template_cle': 'j14_pause', 'dimanche_ok': False},
+    {'ordre': 11, 'delai_jours': 90, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_APPEL,
+     'canal': CanalRelance.APPEL, 'libelle': 'Dernier appel',
+     'template_cle': 'appel_suivi_j11', 'dimanche_ok': False},
 ]
 
 # Réveil des dormants — deux touches seulement, très espacées.

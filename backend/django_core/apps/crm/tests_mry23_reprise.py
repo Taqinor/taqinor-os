@@ -28,7 +28,7 @@ from authentication.models import Company
 from apps.crm import stages
 from apps.crm.management.commands.demarrer_cadences_existantes import (
     demarrer_cadences_existantes)
-from apps.crm.models import Client, Lead, RelanceEtape
+from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
 
@@ -244,8 +244,11 @@ class ReveilsEtalesTests(_Base):
     def test_vingt_cinq_dormants_a_dix_par_jour_couvrent_trois_jours(self):
         """Lancer 400 réveils le même matin ferait partir 400 messages en
         rafale depuis le même numéro."""
-        for i in range(25):
-            self._lead(f'Froid {i}', stage=stages.COLD)
+        # CADV25 — des dormants déjà joints une fois : les seuls à avoir un réveil.
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=self._lead(f'Froid {i}', stage=stages.COLD),
+            kind=LeadActivity.Kind.NOTE, outcome='joint', body='Joint autrefois.')
+            for i in range(25)])
         # Bug CI #29 (récidive du 10/09/2026) — `now` est GELÉ sur un lundi :
         # le réveil ordre 1 vaut J+30, donc lancé un JEUDI les trois départs
         # étalés tombent Sam/Dim/Lun et le recalage week-end les fusionne TOUS
@@ -265,8 +268,15 @@ class ReveilsEtalesTests(_Base):
         jours = {e.due_at.date() for e in premieres if e.due_at}
         self.assertGreater(len(jours), 1)
 
+    def test_un_froid_jamais_joint_ni_chiffre_n_est_ni_reveille_ni_annonce(self):
+        """CADV25 — l'aperçu de la reprise dit ce que l'application fera."""
+        lead = self._lead('Froid muet', stage=stages.COLD)
+        simulation = demarrer_cadences_existantes(self.company)
+        self.assertEqual(simulation['reveil']['nb'], 0, simulation)
+        demarrer_cadences_existantes(self.company, apply_changes=True)
+        self.assertEqual(self._touches(lead, 'reveil').count(), 0)
+
     def test_un_dormant_avec_activite_recente_nest_pas_reveille(self):
-        from apps.crm.models import LeadActivity
         actif = self._lead('Encore suivi', stage=stages.QUOTE_SENT)
         LeadActivity.objects.create(
             company=self.company, lead=actif, user=self.acteur,

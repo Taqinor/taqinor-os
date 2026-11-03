@@ -151,8 +151,8 @@ class GardeTroisLesTouchesDAppelOntUnScript(SimpleTestCase):
     #: Les cinq touches d'appel qui n'avaient AUCUN script avant CAD67/CAD98,
     #: repérées par (cadence par défaut, ordre, clé attendue).
     CINQ = (
-        (CADENCE_CONTACT_DEFAUT, 6, 'repondeur'),          # Appel 4
-        (CADENCE_CONTACT_DEFAUT, 10, 'appel_dernier'),     # Appel 6
+        (CADENCE_CONTACT_DEFAUT, 5, 'repondeur'),          # Appel 4 (v4, CADV23)
+        (CADENCE_CONTACT_DEFAUT, 7, 'appel_dernier'),      # Appel 5 (dernier)
         (CADENCE_APRES_DEVIS_DEFAUT, 2, 'appel_suivi_j2'),
         (CADENCE_APRES_DEVIS_DEFAUT, 6, 'appel_suivi_j7'),
         (CADENCE_APRES_DEVIS_DEFAUT, 8, 'appel_suivi_j11'),

@@ -59,6 +59,16 @@ describe('PlacementAnciensLeadsCard (MRY33)', () => {
     expect(crmApi.placerAnciensLeads).not.toHaveBeenCalled()
   })
 
+  it('le nombre d\'appels promis est celui du rapport, jamais un chiffre figé', async () => {
+    render(<PlacementAnciensLeadsCard />)
+    const carte = screen.getByTestId('placement-anciens-leads-card')
+    expect(carte.textContent).not.toMatch(/six appels|appel\(s\)/)
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+    const attendu = `compte ${DONNEES.appels_contact} appel(s)`
+    await waitFor(() => expect(carte.textContent).toContain(attendu))
+    expect(carte.textContent).not.toMatch(/six appels/)
+  })
+
   it('« Aperçu » affiche les cinq lignes par étape et le total à placer', async () => {
     render(<PlacementAnciensLeadsCard />)
     fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))

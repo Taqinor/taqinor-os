@@ -85,8 +85,8 @@
     "mailto_url": null
   },
   "exemple_preuve_manquante": {
-    "message": "Le suivi de production est en temps réel, je peux vous montrer.",
-    "wa_url": "https://wa.me/212661112233?text=Le%20suivi%20de%20production%20est%20en%20temps%20r%C3%A9el%2C%20je%20peux%20vous%20montrer.",
+    "message": "Le suivi de production est en temps réel, je peux vous montrer. Répondez STOP et je n'insiste plus.",
+    "wa_url": "https://wa.me/212661112233?text=Le%20suivi%20de%20production%20est%20en%20temps%20r%C3%A9el%2C%20je%20peux%20vous%20montrer.%20R%C3%A9pondez%20STOP%20et%20je%20n%27insiste%20plus.",
     "langue": "fr",
     "phone": "+212661112233",
     "placeholders_manquants": [

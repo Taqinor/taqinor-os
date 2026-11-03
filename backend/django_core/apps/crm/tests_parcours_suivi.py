@@ -552,6 +552,7 @@ class ParcoursCompletsTests(ParcoursBase):
         """Onze touches sans réponse → Froid (« Injoignable ») + réveils J30/J60 → réveil J30
         « Client joint » → le dossier sort du Froid → étape devis."""
         lead, _message = self.amener('contact_message')
+        self.client_deja_joint(lead)
         self.touches_de_contact_sans_reponse(lead)
         lead.refresh_from_db()
         self.assertIn('Injoignable', lead.tags or '')

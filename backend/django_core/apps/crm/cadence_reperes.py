@@ -302,6 +302,10 @@ _LIBELLES_FILET_HORS_GABARIT = frozenset({
 #: CLÉ stable. Une étape de filet : sa suite est décidée par le filet, jamais par
 #: le barreau suivant du gabarit `generique`.
 CLE_PIECES_RECUES = 'pieces_recues'
+#: ACRM45 — le rappel du délai FDA : étape posée à la main par le filet
+#: (cadence `generique`), retrouvée par sa CLÉ ; sa clôture ne fait pas naître
+#: le barreau suivant du gabarit `generique`.
+CLE_RAPPEL_FDA = 'rappel_fda'
 #: Les libellés PAR DÉFAUT des étapes de filet (les étapes posées avant la
 #: clé en portent un) — un lecteur ne s'en sert plus pour RECONNAÎTRE une
 #: étape (``est_etape_de_filet``/``_q_filet``), seulement pour les nommer.
@@ -365,7 +369,7 @@ def _q_filet():
     from django.db.models import Q
 
     return (q_etape(*CLES_APRES_CONTACT)
-            | Q(cle=CLE_PIECES_RECUES)
+            | Q(cle__in=(CLE_PIECES_RECUES, CLE_RAPPEL_FDA))
             | Q(cle='', libelle__in=tuple(_LIBELLES_FILET_HORS_GABARIT)))
 
 

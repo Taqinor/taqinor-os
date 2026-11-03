@@ -292,6 +292,10 @@ class FiletJointTests(_Base):
         from apps.crm.cadence_plan import arreter_cadence
         arreter_cadence(self.lead, user=self.acteur,
                         motif='lead passé en froid')
+        # CADV25 — un réveil suppose un client déjà joint une fois.
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.lead.company, lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
         reveils = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
         self.assertGreater(len(reveils), 1)

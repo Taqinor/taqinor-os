@@ -1,0 +1,9 @@
+$ python scripts/check_fetchallpages_taille_page.py
+check_fetchallpages_taille_page : OK (58 appel(s) en exception datée)
+
+$ python -m unittest scripts.tests.test_check_fetchallpages_taille_page
+.........
+----------------------------------------------------------------------
+Ran 9 tests in 7.639s
+
+OK

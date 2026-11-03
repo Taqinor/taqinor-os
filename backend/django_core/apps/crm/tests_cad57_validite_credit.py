@@ -85,14 +85,6 @@ class _Base(TestCase):
         devis.refresh_from_db()
         return devis
 
-    def _fin_du_suivi(self):
-        """La dernière échéance du plan après-devis matérialisé/prévu."""
-        derniere = (self.lead.relance_etapes
-                    .filter(cadence='apres_devis', due_at__isnull=False)
-                    .order_by('-due_at').first())
-        return (derniere.due_at.astimezone(horaires.CASABLANCA).date()
-                if derniere else None)
-
 
 class ComptantTests(_Base):
     slug = 'cad57-comptant'
@@ -149,9 +141,20 @@ class CreditTests(_Base):
             devis.date_validite,
             ENVOI.date() + datetime.timedelta(days=jours))
 
-    def test_elle_est_PLUS_LOINTAINE_que_la_fin_du_suivi(self):
+    def test_elle_ne_suit_pas_la_fin_du_plan_et_lappel_J28_la_precede(self):
+        """D-CADV-3 (remplace « plus lointaine que la fin du suivi », CAD57) :
+        le plan court jusqu'à J90, la validité reste à 30 jours, et l'appel J28
+        tombe AVANT l'expiration — un devis expiré ne se prolonge plus, il se
+        révise. Mutants : revenir à la dernière échéance du plan, ou un appel de
+        validité posé après la date ⇒ échec."""
         devis = self._envoyer()
-        self.assertGreater(devis.date_validite, self._fin_du_suivi())
+        plan = calculer_echeances_cadence(self.lead, 'apres_devis', ENVOI)
+        self.assertEqual(devis.date_validite, ENVOI_PLUS_30)
+        self.assertGreater(plan[-1][1].date(), devis.date_validite)
+        appel_j28 = [echeance for gabarit, echeance in plan
+                     if gabarit.delai_jours == 28]
+        self.assertEqual(len(appel_j28), 1)
+        self.assertLess(appel_j28[0].date(), devis.date_validite)
 
     def test_la_duree_suit_le_reglage_societe_et_non_un_nombre_ecrit(self):
         """Zéro chiffre inventé : changer le réglage change la date."""

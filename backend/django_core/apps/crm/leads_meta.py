@@ -612,14 +612,34 @@ def _froid_a_reprendre(dupes, telephone):
     return max(froids, key=lambda d: d.date_creation, default=None)
 
 
-def _reprendre_froid_meta(lead, leadgen_id, extras, ville, form_id):
+def _poser_case_whatsapp_meta(lead, extras, moment):
+    """CADV113 — la case WhatsApp du formulaire (D-CADV-5) : opt-in posé sur la
+    fiche + entrée accordée/refusée au registre, datée de ``moment``. Question
+    absente : rien n'est touché."""
+    opt_in = extras.get('whatsapp_opt_in')
+    if opt_in is None:
+        return
+    horodatage = moment if opt_in else None
+    Lead.objects.filter(pk=lead.pk).update(
+        whatsapp_opt_in=opt_in, consent_timestamp=horodatage)
+    lead.whatsapp_opt_in, lead.consent_timestamp = opt_in, horodatage
+    enregistrer_consentement_lead(
+        lead, purpose='whatsapp', granted=opt_in,
+        source=_CONSENT_SOURCE_META_CASE_WHATSAPP, occurred_at=moment)
+
+
+def _reprendre_froid_meta(lead, leadgen_id, extras, ville, form_id, created_time):
     """CADV101 — rouvre (``enregistrer_recontact``), enrichit sans écraser, et
-    trace la demande : le tout ou rien, sur le lead existant."""
+    trace la demande : le tout ou rien, sur le lead existant. La réponse à la case
+    WhatsApp est celle de CETTE demande, datée de son arrivée : la plus récente
+    fait foi, y compris un « non » sur un ancien accord."""
     from .cadence_reponses import enregistrer_recontact
 
     with transaction.atomic():
         enregistrer_recontact(lead, None, canal='formulaire_meta')
         _enrichir_meta_trace(lead, extras)
+        _poser_case_whatsapp_meta(
+            lead, extras, _parse_meta_created_time(created_time) or timezone.now())
         if ville and not lead.ville:
             lead.ville = ville
             lead.save(update_fields=['ville'])
@@ -759,7 +779,8 @@ def create_lead_from_meta_lead_ads(
     froid = _froid_a_reprendre(dupes, telephone)
     if froid is not None:
         return _reprendre_froid_meta(
-            froid, leadgen_id, extras, fields.get('ville'), str(form_id or ''))
+            froid, leadgen_id, extras, fields.get('ville'), str(form_id or ''),
+            created_time)
 
     # ADSENG1 — identifiants Meta natifs (clés de jointure stables) + noms
     # résolus via les miroirs adsengine (jamais un import des modèles adsengine).
@@ -851,18 +872,7 @@ def create_lead_from_meta_lead_ads(
         lead, source=CONSENT_SOURCE_META_LEAD_ADS,
         base_legale=BASE_LEGALE_NON_COLLECTEE,
         occurred_at=moment_meta or lead.date_creation)
-    # CADV113 — la case WhatsApp du formulaire (D-CADV-5) : opt-in posé sur la
-    # fiche + entrée accordée/refusée au registre, datée de l'arrivée Meta.
-    if extras.get('whatsapp_opt_in') is not None:
-        opt_in = extras['whatsapp_opt_in']
-        horodatage = (moment_meta or lead.date_creation) if opt_in else None
-        Lead.objects.filter(pk=lead.pk).update(
-            whatsapp_opt_in=opt_in, consent_timestamp=horodatage)
-        lead.whatsapp_opt_in, lead.consent_timestamp = opt_in, horodatage
-        enregistrer_consentement_lead(
-            lead, purpose='whatsapp', granted=opt_in,
-            source=_CONSENT_SOURCE_META_CASE_WHATSAPP,
-            occurred_at=moment_meta or lead.date_creation)
+    _poser_case_whatsapp_meta(lead, extras, moment_meta or lead.date_creation)
     # D-CRX1 — signalement du doublon EN VISIBILITÉ (jamais une fusion), avec
     # la mention de l'héritage quand il a eu lieu. Réutilise ``dupes`` déjà
     # calculés (jamais une 2e requête). Best-effort, comme côté site : un
