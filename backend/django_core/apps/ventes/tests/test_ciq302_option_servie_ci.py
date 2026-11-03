@@ -336,6 +336,33 @@ class TestCpdf1OptionAvecServie(SimpleTestCase):
         self.assertNotIn("energie", s)
 
 
+class TestEcheancierMadOptionAvec(SimpleTestCase):
+    """ERR-AGNR-ECHEANCIER-CI — jalons calculés sur l'option servie : la tranche
+    saisie en MAD garde son montant ; niveau d'avant : ce que le client a reçu."""
+
+    JALONS = [
+        {"jalon": "commande", "pct": 1.27, "montant_ttc": 6000.0},
+        {"jalon": "livraison_materiel", "pct": 50, "montant_ttc": 236550.0},
+        {"jalon": "mise_en_service", "pct": 48.73, "montant_ttc": 230550.0}]
+
+    def _montants(self, **surcharges):
+        from apps.ventes.quote_engine.ci.synthese import synthese_ci
+        s = synthese_ci(_data_ci(jalons_paiement=self.JALONS, **surcharges))
+        return [j["montant_ttc"] for j in s["echeancier"]]
+
+    def test_tranche_en_mad_gardee_sur_le_meme_total(self):
+        self.assertEqual(self._montants(), [6000.0, 236550.0, 230550.0])
+
+    def test_devis_sous_le_niveau_8_garde_la_repartition_par_pct(self):
+        premier, *_reste, dernier = self._montants(regles_echeancier_historique=True)
+        self.assertEqual(premier, 6008.37)
+        self.assertEqual(dernier, 230541.63)
+
+    def test_total_different_reparti_par_pct(self):
+        premier, *_reste = self._montants(total_avec=500000.0)
+        self.assertEqual(premier, 6350.0)
+
+
 class TestCpdf10EcheancierAuReliquat(SimpleTestCase):
     """CPDF10 — pourcentages imprimés = montants : le dernier jalon imprime
     le reliquat quand le réglage ne somme pas à 100."""
