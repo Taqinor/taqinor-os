@@ -1,0 +1,22 @@
+---
+// Bloc partagé (garde ACAL345).
+import DevisMonToitProfilResume from './DevisMonToitProfilResume.astro';
+---
+<details class="mt-1 cine-card border border-white/10 text-white">
+            <DevisMonToitProfilResume />
+            <div class="flex flex-col gap-4 border-t border-white/10 p-3">
+<slot />
+</div>
+</details>
+
+
+          <label class="flex items-start gap-3 text-sm text-lune-soft">
+            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true"
+              aria-describedby="mt-consent-err" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+            <span data-i18n data-fr="J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire." data-ar="أوافق على أن تتواصل معي تاكينور بخصوص مشروعي الشمسي.">
+              J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire.
+            </span>
+          </label>
+          <span id="mt-consent-err" hidden role="alert" class="block text-xs text-alert-300"></span>
+
+          <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>

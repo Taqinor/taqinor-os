@@ -1,0 +1,27 @@
+---
+// Bloc partagé (garde ACAL345).
+---
+<div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-piscine" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Piscine" data-ar="مسبح">Piscine</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance de la pompe de filtration (kW)"
+                      data-ar="قدرة مضخة الترشيح (كيلوواط)">
+                      Puissance de la pompe de filtration (kW)
+                    </label>
+                    <input id="mt-equip-piscine-kw" type="number" min="0" step="any" inputmode="decimal"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — durée/créneau réels (facultatifs) : la durée
+                         remplace le défaut 8h, le créneau déplace le départ
+                         (10h par défaut) — indépendants, se composent librement. -->
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Heures de filtration par jour (facultatif)"
+                      data-ar="ساعات الترشيح يومياً (اختياري)">
+                      Heures de filtration par jour (facultatif)
+                    </label>
+<slot />
+</div>
+</div>

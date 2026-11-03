@@ -10,6 +10,9 @@
  * (W204) that the FR index already has. W289 — SEO-framed intro + ItemList
  * schema for the measured/visitable pillar, ported from FR.
  */
+import RealisationPhoto from '../../../components/blocs/RealisationPhoto.astro';
+import RealisationGrille from '../../../components/blocs/RealisationGrille.astro';
+import RealisationCarte from '../../../components/blocs/RealisationCarte.astro';
 import Layout from '../../../layouts/Layout.astro';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
@@ -101,43 +104,21 @@ import PourquoiTaqinorBloc4D73 from '../../../components/blocs/PourquoiTaqinorBl
     </section>
 
     <!-- W308 : gallery with lightbox — data-lightbox-gallery marks the group -->
-    <section class="px-4 pb-24 sm:pb-32">
-      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger data-lightbox-gallery>
+    <RealisationGrille>
         {REALISATIONS.map((r, i) => (
-          <div class="v2-rise relative" style={`--v2-i:${i}`}>
-            <button
-              type="button"
-              class="photo-card-btn cine-card group relative block w-full overflow-hidden text-left"
-              data-lightbox-trigger
-              data-lightbox-src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`}
-              data-lightbox-alt={altOf(r)}
-              data-lightbox-label={[r.ville, r.kwc, dateLocale(r.date, 'en')].filter(Boolean).join(' · ')}
-              aria-label={`Enlarge photo: ${altOf(r)}`}
-            >
-              <Picture
-                name={r.photos[0].name}
-                alt={altOf(r)}
-                widths={r.photos[0].widths}
-                ratio={3 / 2}
-                sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                style={(r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : undefined}
-                class="photo-card-img aspect-[3/2] w-full object-cover"
-              />
-              <PhotoCaption
-                caption={standardCaption(r, 'en')}
-                detail={r.panneaux}
-              />
-            </button>
+          <RealisationCarte i={i} src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`} alt={altOf(r)} label={[r.ville, r.kwc, dateLocale(r.date, 'en')].filter(Boolean).join(' · ')} aria={`Enlarge photo: ${altOf(r)}`}>
+              <Fragment slot="image">
+              <RealisationPhoto r={r} alt={altOf(r)} caption={standardCaption(r, 'en')} />
+              </Fragment>
             <a
               href={L(`/realisations/${r.slug}`)}
               class="group mt-2 inline-flex items-center gap-1 border-b-2 border-azur-200/60 pb-0.5 text-sm font-bold text-white transition-colors hover:text-azur-200"
             >
               See the case study <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
             </a>
-          </div>
+          </RealisationCarte>
         ))}
-      </div>
-    </section>
+    </RealisationGrille>
 
     <!-- W281 — real on-site film, below the dedicated proof hub's gallery -->
     <VideoChantier />

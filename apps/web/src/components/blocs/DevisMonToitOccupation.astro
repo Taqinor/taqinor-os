@@ -1,0 +1,37 @@
+---
+// Bloc partagé (garde ACAL345).
+const { aria } = Astro.props as Record<string, any>;
+---
+<legend class="text-sm text-lune-soft" data-i18n
+                  data-fr="Passez-vous la journée à la maison ?"
+                  data-ar="هل تقضون النهار في المنزل؟">
+                  Passez-vous la journée à la maison&nbsp;?
+                </legend>
+                <div class="mt-2 border border-white/10 bg-white/5 p-2">
+                  <svg id="mt-occ-chart" width="100%" height="140" viewBox="0 0 320 140"
+                    preserveAspectRatio="none" role="img"
+                    aria-label={aria}></svg>
+                  <p class="mt-1 text-[11px] text-lune-faint" data-i18n
+                    data-fr="Hauteur de la courbe : part de la consommation selon l'heure"
+                    data-ar="ارتفاع المنحنى: حصة الاستهلاك حسب الساعة">
+                    Hauteur de la courbe&nbsp;: part de la consommation selon l'heure
+                  </p>
+                </div>
+                <div class="mt-2 grid grid-cols-3 gap-2">
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_jour" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#2a78d6"></span>
+                    <span data-i18n data-fr="Présent" data-ar="حاضر">Présent</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="Votre choix" data-ar="اختياركم">Votre choix</span>
+                  </button>
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="absence_jour" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#eb6834"></span>
+                    <span data-i18n data-fr="Absent" data-ar="غائب">Absent</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="Votre choix" data-ar="اختياركم">Votre choix</span>
+                  </button>
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_partielle" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#1baf7a"></span>
+                    <span data-i18n data-fr="Partiel" data-ar="جزئي">Partiel</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="Votre choix" data-ar="اختياركم">Votre choix</span>
+                  </button>
+                </div>
+                <input type="hidden" id="mt-occupation-jour" name="occupation_jour" />

@@ -29,12 +29,12 @@
  * — pendant que le lien WhatsApp original reste disponible juste à côté,
  * clairement étiqueté comme un canal séparé.
  */
+import ContactCarteWa from '../components/blocs/ContactCarteWa.astro';
+import ContactEntete from '../components/blocs/ContactEntete.astro';
 import Layout from '../layouts/Layout.astro';
-import StarRating from '../components/StarRating.astro';
 import { NAP } from '../lib/nap';
 import { useTranslations } from '../i18n/utils';
 import { contactWhatsappLinks } from '../lib/contactWhatsapp';
-import ContactBlocCF60 from '../components/blocs/ContactBlocCF60.astro';
 
 const t = useTranslations('fr');
 const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
@@ -46,11 +46,7 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
   ogSlug="contact"
 >
   <div class="v2">
-    <ContactBlocCF60 />
-
-    <section class="px-4 py-20 text-white">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">{t("cta.delai")}</p>
+    <ContactEntete>
         <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">Parlez à un humain</h1>
         <p class="v2-lead cine-in mt-5 max-w-xl text-white/85 [animation-delay:240ms]">
           Pas de formulaire ici : écrivez-nous directement sur WhatsApp, appelez, ou demandez à être
@@ -58,22 +54,17 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
         </p>
         {/* W280 — StarRating : note Google réelle uniquement, no-op-safe
             (n'affiche rien tant que le fondateur n'a pas renseigné une vraie note). */}
-        <div class="cine-in mt-6 [animation-delay:320ms]">
-          <StarRating />
-        </div>
-      </div>
-    </section>
+    </ContactEntete>
 
     <!-- W249 — page « parler à un humain » : les raccourcis WhatsApp/téléphone et la fiche NAP -->
     <section class="bg-blanc-azur px-4 py-16 text-encre">
       <div class="mx-auto max-w-4xl">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-          <a href={waGeneral} rel="noopener"
-            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:0">
+          <ContactCarteWa href={waGeneral}>
             <p class="tech-label text-azur-600">Nouveau projet</p>
             <p class="mt-2 font-display font-bold">WhatsApp — nouvelle installation</p>
             <p class="mt-1 text-sm text-encre-soft">Étude et devis pour un nouveau projet</p>
-          </a>
+          </ContactCarteWa>
           {/* WJ97 — rappel téléphonique RÉEL (distinct de WhatsApp) : ouvre le
               mini-formulaire #rappel-form plus bas, qui poste un vrai lead au
               CRM (contactPreference: 'phone_ok') au lieu d'un lien wa.me

@@ -17,6 +17,7 @@
  * credited. This page now communicates the real code (via the advisor or
  * the customer portal), never a self-chosen one.
  */
+import PourAllerPlusLoin from '../../components/blocs/PourAllerPlusLoin.astro';
 import Layout from '../../layouts/Layout.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -189,16 +190,11 @@ import ParrainageDivD63B from '../../components/blocs/ParrainageDivD63B.astro';
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Go further</p>
-        <RelatedLinks links={[
+    <PourAllerPlusLoin kicker="Go further" links={[
           { href: L('/devis/mon-toit'), label: 'Start a diagnostic' },
           { href: L('/realisations'), label: 'Our installations' },
           { href: L('/à-propos'), label: 'About Taqinor' },
         ]} />
-      </div>
-    </section>
 
     <StickyCta />
   </div>

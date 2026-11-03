@@ -11,6 +11,9 @@
  * language switcher / hreflang do not surface this page yet. The route itself
  * renders correctly and is a real, indexable page.
  */
+import PourAllerPlusLoin from '../../components/blocs/PourAllerPlusLoin.astro';
+import LienRealisationsBilanEn from '../../components/blocs/LienRealisationsBilanEn.astro';
+import LigneMateriel from '../../components/blocs/LigneMateriel.astro';
 import Layout from '../../layouts/Layout.astro';
 import { impactFigures } from '../../lib/impactFigures';
 import { pageLocale } from '../../lib/pageCtx';
@@ -112,31 +115,19 @@ const jsonLd = {
         </p>
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {REALISATIONS.map((r, i) => (
-            <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
-              <span class="text-sm font-semibold">{[r.ville, r.kwc, `ref. ${r.ref}`, dateLocale(r.date, 'en')].filter(Boolean).join(' · ')}</span>
-              <span class="whitespace-normal text-right text-sm text-azur-600">
-                {[r.onduleur, r.batterie].filter(Boolean).join(' · ') || r.panneaux}
-              </span>
-            </div>
+            <LigneMateriel r={r} i={i} titre={[r.ville, r.kwc, `ref. ${r.ref}`, dateLocale(r.date, 'en')].filter(Boolean).join(' · ')} />
           ))}
         </div>
-        <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          <a href={L('/realisations')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">See our latest projects in detail →</a>
-        </p>
+        <LienRealisationsBilanEn />
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
-        <RelatedLinks links={[
+    <PourAllerPlusLoin kicker="To go further" links={[
           { href: L('/realisations'), label: 'Our projects' },
           { href: L('/impact-taqinor'), label: 'Taqinor Impact (CO2 avoided)' },
           { href: L('/ensoleillement-maroc'), label: 'Solar yield by city' },
           { href: L('/maintenance-monitoring'), label: 'Maintenance & monitoring' },
         ]} />
-      </div>
-    </section>
 
     <CtaBand title="A project that could add to this counter? Start the free assessment." href={devisHref} />
 
