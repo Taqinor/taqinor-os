@@ -82,11 +82,11 @@ describe('GarantiesTeaser — FR verbatim, EN/AR présents, chiffres invariants'
 
 describe('BrandStrip — FR verbatim, EN/AR présents, marques invariantes', () => {
   it('reprend le titre et le CTA FR mot pour mot', () => {
-    expect(brandStrip).toContain('Marques tier-1 · distributeurs officiels au Maroc');
+    expect(brandStrip).toContain("heading: 'Marques tier-1'"); // WAUD49
     expect(brandStrip).toContain('Voir notre équipement →');
   });
   it('contient des traductions EN et AR distinctives', () => {
-    expect(brandStrip).toContain('Tier-1 brands · official distributors in Morocco');
+    expect(brandStrip).toContain("heading: 'Tier-1 brands'"); // WAUD49
     expect(brandStrip).toContain('See our equipment →');
     expect(brandStrip).toContain('علامات الفئة الأولى');
   });
@@ -194,7 +194,7 @@ describe('WAUD24 — liens ville du pied de page localisés', () => {
     const src = readFileSync(fileURLToPath(new URL('../src/components/Footer.astro', import.meta.url)), 'utf-8');
     expect(src).toContain('href={L(`/installation-solaire-${c.slug}`)}');
     expect(src).toContain("villeLocale(c.slug, locale)");
-    expect(src).not.toContain('{c.intro}');
+    expect(src).toContain('in ${villeLocale(c.slug, locale)}');
   });
   it('villeLocale : arabe sur /ar, nom latin sinon', async () => {
     const { villeLocale } = await import('../src/lib/realisations');
