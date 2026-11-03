@@ -388,6 +388,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     # ── Garde de lecture seule (VT3 : une visite validée est gelée) ───────────
 
+    def _refus_si_terminee(self, visite, action):
+        """ACVI58 — le gel ALEA7 d'une visite terminée (mesures, photos)."""
+        refus = services.refus_transition(visite, action)
+        return None if refus is None else Response(refus, status=status.HTTP_400_BAD_REQUEST)
+
     def _refus_si_gelee(self, visite):
         if visite.modifiable:
             return None
@@ -448,7 +453,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     def photos(self, request, pk=None):
         """Ajoute UNE photo dans un slot NOMMÉ de la checklist."""
         visite = self.get_object()
-        refus = self._refus_si_gelee(visite)
+        refus = self._refus_si_gelee(visite) or self._refus_si_terminee(visite, 'photos')
         if refus is not None:
             return refus
 
@@ -520,7 +525,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             url_path=r'photos/(?P<media_id>[^/.]+)')
     def supprimer_photo(self, request, pk=None, media_id=None):
         visite = self.get_object()
-        refus = self._refus_si_gelee(visite)
+        refus = self._refus_si_gelee(visite) or self._refus_si_terminee(visite, 'photos')
         if refus is not None:
             return refus
         media = visite.medias.filter(pk=media_id).first()
@@ -540,7 +545,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     def mesures(self, request, pk=None):
         """Enregistre les mesures d'UNE catégorie, champ par champ."""
         visite = self.get_object()
-        refus = self._refus_si_gelee(visite)
+        refus = self._refus_si_gelee(visite) or self._refus_si_terminee(visite, 'mesures')
         if refus is not None:
             return refus
 
