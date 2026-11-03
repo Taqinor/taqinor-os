@@ -153,7 +153,7 @@ const solutions = [
   { href: '/professionnel/', tag: 'Industriels · hôtels · cliniques', title: 'Solaire professionnel', body: 'Réduction du poste électricité, moyenne tension, conformité loi 82-21.' },
   { href: '/pompage-solaire/', tag: 'Agriculture & irrigation', title: 'Pompage solaire', body: 'Pompage au fil du soleil, souvent sans batteries, dimensionné au besoin réel.' },
   { href: '/batteries-stockage/', tag: 'Autoconsommation', title: 'Batteries & stockage', body: 'Stockage LFP pour le nocturne ou la continuité de service — quand l’étude le justifie.' },
-  { href: '/maintenance-monitoring/', tag: 'Après la pose', title: 'Maintenance & monitoring', body: 'Supervision en temps réel avec accès client, SAV proactif, dossier technique.' },
+  { href: '/maintenance-monitoring/', tag: 'Après la pose', title: 'Maintenance & monitoring', body: 'Suivi de production sur les installations raccordées, SAV proactif, dossier technique.' },
   { href: '/regularization-article-33/', tag: 'Mise en conformité', title: 'Régularisation Loi 82-21', body: 'Régularisation des installations existantes via l’Article 33.' },
 ];
 
@@ -170,7 +170,7 @@ const journey = [
   { n: '3', title: 'Visite technique & étude gratuite', body: 'Lecture de la toiture sur site, étude complète et devis à 0 MAD.' },
   { n: '4', title: 'Pose', body: 'Matériel tier-1 installé avec son dossier technique complet.' },
   { n: '5', title: 'Mise en service', body: 'Raccordement, contrôles, et dossier loi 82-21 mené à terme.' },
-  { n: '6', title: 'Suivi en temps réel', body: 'Production relevée en continu, accès client inclus : vous lisez vos kWh à la source.' },
+  { n: '6', title: 'Suivi de production', body: 'Sur les installations raccordées au suivi, la production se relève à la source.' },
 ];
 
 // W252 — « Comment ça marche » : bande 4 étapes sous le héros, le device
@@ -185,7 +185,7 @@ const howItWorks = [
   { n: '1', title: 'Estimation instantanée', body: 'Votre facture donne une fourchette kWc en 60 secondes, sans engagement.' },
   { n: '2', title: 'Étude personnalisée signée', body: 'Visite technique, dimensionnement sur votre toiture réelle, validé et signé avant tout devis.' },
   { n: '3', title: 'Devis + signature en ligne', body: 'Le chiffrage détaillé se signe électroniquement, où que vous soyez.' },
-  { n: '4', title: 'Installation & SAV', body: 'Pose par notre équipe, mise en service, puis suivi de production en temps réel et SAV proactif.' },
+  { n: '4', title: 'Installation & SAV', body: 'Pose par notre équipe, mise en service, puis suivi de production sur les installations raccordées et SAV proactif.' },
 ];
 
 // W58 — Iconographie sobre des cartes « Nos solutions » : un trait SVG par
@@ -206,7 +206,7 @@ const latest = derniereRealisation();
 // TROIS statistiques restantes (jamais un doublon de la même donnée).
 const trust = [
   { fig: 'Loi 82-21', tally: false, label: 'Conformité incluse', body: 'Déclaration préparée et déposée pour vous par Taqinor' },
-  { fig: 'Temps réel', tally: false, label: 'Production suivie', body: 'Suivi de production en temps réel sur chaque installation, accès client inclus' },
+  { fig: 'Temps réel', tally: false, label: 'Production suivie', body: 'Suivi de production en temps réel sur les installations raccordées au suivi' },
 ];
 
 // W265 — L'histoire de l'investissement sur 30 ans : SEULE rupture tonale
@@ -237,7 +237,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
 
 <Layout
   title="Taqinor — Installations solaires au Maroc, conformes loi 82-21"
-  description="Installations solaires pour villas, industries et hôtels au Maroc : dimensionnées sur votre facture, déclarées loi 82-21, avec suivi de production en temps réel et accès client."
+  description="Installations solaires pour villas, industries et hôtels au Maroc : dimensionnées sur votre facture, déclarées loi 82-21, avec suivi de production sur les installations raccordées et accès client."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -272,7 +272,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
           photographique ~100svh ne repose plus sur un seul chevron discret
           comme unique signal que le site continue. */}
       <div class="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 scroll-chevron" aria-hidden="true">
-        <span class="tech-label text-white/70">Voir nos réalisations mesurées</span>
+        <span class="tech-label text-white/70">Voir nos réalisations</span>
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9" />
         </svg>
@@ -347,7 +347,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">30 ans de performance garantie</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
-        <span>production suivie, pas promise — suivi en temps réel sur chaque installation</span>
+        <span>production suivie, pas promise — suivi en temps réel sur les installations raccordées au suivi</span>
       </p>
     </section>
 
@@ -515,7 +515,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
           <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Pourquoi Taqinor</p>
           <h2 class="display v2-section-title mt-5 text-white">La preuve avant la promesse</h2>
           <p class="v2-body mt-5">
-            Des chantiers réels, visitables, supervisés en continu, et une étude dimensionnée à la
+            Des chantiers réels, visitables, et une étude dimensionnée à la
             main sur votre facture réelle. Le chiffre décide du matériel — jamais l'inverse.
           </p>
         </div>

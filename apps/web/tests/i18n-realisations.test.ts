@@ -262,3 +262,41 @@ describe('WAUD21 — production mesurée : seule la réalisation appariée', () 
     for (const r of REALISATIONS.filter((x) => !x.measuredLabel)) expect(mesureAffichee(r, 'fr')).toBeNull();
   });
 });
+
+describe('WAUD14 — pas de « mesuré / temps réel » sans relevé, pas de phrase d’attente', () => {
+  const CHAMPS = ['description', 'situation', 'sizing', 'install', 'result', 'resume'] as const;
+  const MESURE = /temps réel|mesurée?s?\b|real[- ]time|\bmeasured\b|في الوقت الحقيقي|المقاس[ةه]?\b/i;
+  const ATTENTE = /seront publiés|dès que nous|dès sa délivrance|will be published|ستُنشر/;
+  const CONSO = /facture|consommation|\bbill\b|consumption|فاتور|استهلاك/i;
+
+  it('aucune réalisation sans measuredLabel ne dit mesuré ou temps réel, en 3 langues', () => {
+    for (const r of REALISATIONS.filter((x) => !x.measuredLabel)) {
+      for (const loc of ['fr', 'en', 'ar'] as const) {
+        const cs = caseStudyBySlug(r.slug, loc);
+        for (const c of CHAMPS) expect(cs[c], `${r.ref} ${loc} ${c}`).not.toMatch(MESURE);
+      }
+    }
+  });
+  it('ni phrase d’attente, ni fait de consommation du client, ni raison du dimensionnement', () => {
+    for (const r of REALISATIONS) {
+      for (const loc of ['fr', 'en', 'ar'] as const) {
+        const cs = caseStudyBySlug(r.slug, loc);
+        for (const c of CHAMPS) {
+          expect(cs[c], `${r.ref} ${loc} ${c}`).not.toMatch(ATTENTE);
+          expect(cs[c], `${r.ref} ${loc} ${c}`).not.toMatch(CONSO);
+        }
+      }
+    }
+  });
+  it('accueil et pages de preuve : plus de promesse universelle de suivi', () => {
+    const UNIVERSEL = /sur chaque installation|on every installation|على كل تركيب|في كل تركيب/;
+    for (const f of ['index.astro', 'en/index.astro', 'ar/index.astro']) {
+      expect(readSrc(`../src/pages/${f}`), f).not.toMatch(UNIVERSEL);
+    }
+    expect(readSrc('../src/components/GarantiesTeaser.astro')).not.toMatch(UNIVERSEL);
+    expect(readSrc('../src/pages/index.astro')).not.toContain('Voir nos réalisations mesurées');
+    expect(readSrc('../src/pages/résidentiel.astro')).not.toContain('production mesurée');
+    expect(readSrc('../src/pages/en/résidentiel.astro')).not.toContain('Deye 5 kW · real-time');
+  });
+});
+
