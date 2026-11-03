@@ -424,6 +424,56 @@ class MigrationEtiquetteGeneriqueTests(TestCase):
         self.assertEqual(etat[10][0], 11)
         self.assertFalse(etat[10][6])
 
+    def _module_reveil(self):
+        from importlib import import_module
+        return import_module(
+            'apps.parametres.migrations.0135_reveil_j30_en_appel')
+
+    def _reveil_seed_0609(self, company, canal_j30='whatsapp'):
+        CadenceRelanceEtape.objects.create(
+            company=company, cadence=Cadence.REVEIL, ordre=1, canal=canal_j30,
+            delai_jours=30, libelle='Réveil J30', template_cle='reveil_a1',
+            actif=True)
+        CadenceRelanceEtape.objects.create(
+            company=company, cadence=Cadence.REVEIL, ordre=2,
+            canal='whatsapp', delai_jours=60, libelle='Réveil J60',
+            template_cle='reveil_a2', actif=True)
+
+    def test_la_migration_remet_le_reveil_j30_en_appel(self):
+        company = _company('cadv85-prod')
+        perso = _company('cadv85-perso')
+        self._reveil_seed_0609(company)
+        self._reveil_seed_0609(perso)
+        CadenceRelanceEtape.objects.filter(
+            company=perso, cadence=Cadence.REVEIL, ordre=1).update(
+            libelle='Notre réveil')
+        module = self._module_reveil()
+        module.en_appel(self._RegistreSimule, None)
+        o1 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.REVEIL, ordre=1)
+        self.assertEqual((o1.canal, o1.delai_jours, o1.template_cle),
+                         ('appel', 30, 'reveil_a1'))
+        o2 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.REVEIL, ordre=2)
+        self.assertEqual((o2.canal, o2.delai_jours), ('whatsapp', 60))
+        # La ligne personnalisée n'est jamais écrasée.
+        self.assertEqual(CadenceRelanceEtape.objects.get(
+            company=perso, cadence=Cadence.REVEIL, ordre=1).canal, 'whatsapp')
+        # Idempotence.
+        module.en_appel(self._RegistreSimule, None)
+        o1.refresh_from_db()
+        self.assertEqual(o1.canal, 'appel')
+
+    def test_reveil_marche_arriere(self):
+        company = _company('cadv85-retour')
+        self._reveil_seed_0609(company)
+        module = self._module_reveil()
+        module.en_appel(self._RegistreSimule, None)
+        module.en_whatsapp(self._RegistreSimule, None)
+        self.assertEqual(CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.REVEIL, ordre=1).canal,
+            'whatsapp')
+
 
 class CadenceApiTests(TestCase):
     def setUp(self):
