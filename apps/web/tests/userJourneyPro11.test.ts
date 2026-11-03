@@ -832,6 +832,30 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     attendus((await rouvrir(enregistre, 11))().serializeLayout() as Doc);
   }, 120000);
 
+  // ACAL366 — « production recalculée sur 35° » : un pan rouvert AVEC sa production à 15° ne
+  // réémet plus la production relue une fois sa pente changée (la pose peut rester la même).
+  it('section « zones » sur un pan rouvert AVEC sa production : le document suit la carte recalculée', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const { result: _sansProduction, ...trace } = copie(neuf().serializeLayout() as Doc);
+    const pan = { ...(trace.zones as Array<Record<string, unknown>>)[0], roofType: 'pitched', pitchDeg: 15, facingAzimuthDeg: 180, neededAuto: false };
+    delete pan.result;
+    const a15 = await rouvrir({ ...trace, zones: [pan] }, 12);
+    const enregistre = copie(a15().serializeLayout() as Doc);
+    expect(enregistre.result.annualKwh).toBeGreaterThan(0);
+    const api = await rouvrir(enregistre, 12);
+    const avant = lecture(api());
+    expect(avant.doc).toBe(enregistre.result.annualKwh);
+    api().appliquerSection('zones', [{ ...pan, pitchDeg: 35, pitchSource: { mode: 'degres', degres: 35 } }]);
+    const apres = lecture(api());
+    expect(apres.carte).not.toBe(avant.carte);
+    expect(Math.round(apres.doc)).toBe(apres.carte);
+    // Persistance : rouvert sans geste, la production recalculée sur 35° est relue telle quelle.
+    const relu = copie(api().serializeLayout() as Doc);
+    expect(lecture((await rouvrir(relu, 12))()).doc).toBe(relu.result.annualKwh);
+  }, 120000);
+
   it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
