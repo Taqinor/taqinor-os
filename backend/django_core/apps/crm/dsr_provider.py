@@ -246,6 +246,9 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     (adsengine, calepinage) s'y abonnent — le CRM n'en importe aucune.
     """
     phone_key = getattr(le, 'phone_normalise', '') or ''
+    # ACVI39 — un lead effacé n'a plus aucune touche à faire (file, digest).
+    from .cadence_plan import arreter_cadence
+    arreter_cadence(le, user=None, motif='effacement')
     # ACRM19 — les identifiants sont lus AVANT le scrub : ils retrouvent les
     # copies brutes d'intake qui ne portent pas (encore) le lien au lead.
     identifiants = [v.strip() for v in (le.email, le.telephone, le.whatsapp)

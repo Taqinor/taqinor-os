@@ -43,6 +43,23 @@ class EffacementTracageTests(TestCase):
             ip='41.77.1.5', user_agent='Mozilla/5.0 (Android)',
             appareil_id='appareil-amina-uuid', duree_s=120)
 
+    def test_l_effacement_arrete_les_cadences(self):
+        """ACVI39 — après l'effacement, 0 touche à faire."""
+        from django.utils import timezone
+
+        from apps.crm.models import RelanceEtape
+
+        for ordre in (1, 2):
+            RelanceEtape.objects.create(
+                company=self.company, lead=self.lead, cadence='contact',
+                ordre=ordre, canal=RelanceEtape.Canal.APPEL, libelle='Appel',
+                due_at=timezone.now(), due_date=timezone.localdate())
+        self.assertEqual(erase_crm(self.company, 'amina@example.ma'), 1)
+        self.assertFalse(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
+        self.assertEqual(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.ANNULEE, note='effacement').count(), 2)
+
     def test_l_appareil_id_du_lead_est_efface(self):
         self.assertEqual(erase_crm(self.company, 'amina@example.ma'), 1)
         self.lead.refresh_from_db()
