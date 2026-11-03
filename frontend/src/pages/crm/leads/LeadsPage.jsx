@@ -425,6 +425,8 @@ export default function LeadsPage() {
   // WIR229/FG33 — file de liens wa.me pré-remplis (jamais un envoi auto : la
   // commerciale ouvre chaque lien un par un depuis cette liste).
   const [waQueue, setWaQueue] = useState(null)
+  // ERR-CADV-WA-MOTIF (CADV10) — les leads écartés de la file, avec le motif du serveur.
+  const [waSkipped, setWaSkipped] = useState([])
   const canDelete = useIsAdmin()
 
   // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
@@ -531,6 +533,7 @@ export default function LeadsPage() {
       // de mise à jour (le bandeau `bulkMsg` habituel n'a pas de sens ici).
       if (action === 'prepare_whatsapp') {
         setWaQueue(data?.queue ?? [])
+        setWaSkipped(data?.skipped ?? [])
         return
       }
       setBulkMsg(bulkResultMessage(data))
@@ -1046,11 +1049,16 @@ export default function LeadsPage() {
               ))}
             </ul>
           )}
+          {waSkipped.length > 0 && (
+            <ul data-testid="lp-wa-skipped">
+              {waSkipped.map((s) => <li key={s.id}>{s.nom} : {s.reason}</li>)}
+            </ul>
+          )}
           <IconButton
             variant="ghost"
             className="lp-stage-error-close"
             label="Fermer la file WhatsApp"
-            onClick={() => setWaQueue(null)}
+            onClick={() => { setWaQueue(null); setWaSkipped([]) }}
           >
             <X />
           </IconButton>
