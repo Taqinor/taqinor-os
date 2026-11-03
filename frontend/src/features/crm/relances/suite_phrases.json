@@ -21,6 +21,7 @@
     "etape_planifier_visite": "Aucune relance du protocole n’est posée : une étape « Planifier la visite technique convenue » la remplace, pour aujourd’hui (sauf si une visite est déjà calée).",
     "etape_message_creneau": "Prochaine étape : un message pour convenir d’un créneau d’appel.",
     "etape_dernier_appel": "Prochaine étape, demain : un dernier appel avant de chiffrer.",
+    "rien_apres_signature": "Le dossier est signé : aucune autre étape n’est posée.",
     "suite_si_plus_rien_ouvert": "Aucune touche n’est ajoutée pour cette étape ; si plus aucune relance n’est ouverte, le suivi de proposition reprend s’il n’est pas allé au bout, sinon une étape de suite est posée.",
     "etiquette_decision": "L’étiquette « Décision à plusieurs » est posée (le rendez-vous « dimanche famille » rejoint le plan s’il n’est pas encore passé).",
     "ne_plus_contacter": "Le lead passe « Ne plus contacter » : toutes ses relances s’arrêtent, sans étape de décision, et aucune ne pourra redémarrer.",

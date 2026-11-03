@@ -108,6 +108,9 @@ SUIVI_PROPOSITION_DEMARRE = 'suivi_proposition_demarre'
 ETAPE_PLANIFIER_VISITE = 'etape_planifier_visite'
 ETAPE_MESSAGE_CRENEAU = 'etape_message_creneau'
 ETAPE_DERNIER_APPEL = 'etape_dernier_appel'
+# ERR-CADV-FILET-SIGNE — une étape de filet close sur un dossier Signé (les deux
+# appels de CADV36) : le filet ne pose plus rien (``assurer_prochaine_etape_apres_succes``).
+RIEN_APRES_SIGNATURE = 'rien_apres_signature'
 # Décision fondateur du 24/09/2026 — ``visite_froid_si_seule`` (« si c'était
 # la dernière relance ouverte, le dossier part au Froid ») n'existe plus : une
 # étape de visite sans réponse ne parque JAMAIS le lead au Froid, le filet
@@ -173,7 +176,7 @@ CODES = frozenset({
     ETAPE_DEPLACEE_A_LA_DATE, SUIVI_PROPOSITION_DEMARRE,
     ETAPE_PLANIFIER_VISITE, ETAPE_MESSAGE_CRENEAU, ETAPE_DERNIER_APPEL,
     SUITE_SI_PLUS_RIEN_OUVERT, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
-    VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
+    RIEN_APRES_SIGNATURE, VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
     LEAD_PERDU, VISITE_ABANDONNEE, ETAPE_RAPPEL_CONVENU_A_LA_DATE,
@@ -695,7 +698,9 @@ def _codes_filet(etape, issue, est_actif):
 
     PARAM-CADENCE — l'escalier se lit en CLÉS (``cle_de``) et saute un
     palier désactivé, exactement comme le moteur
-    (``services.prochain_palier_sans_reponse``)."""
+    (``services.prochain_palier_sans_reponse``). Dossier Signé : ni étape de
+    suite ni décision (la garde du filet), seuls le rappel et la visite posent."""
+    from . import stages
     from .cadence_config import CLE_DERNIER_APPEL, CLE_MESSAGE_CRENEAU, cle_de
     from .cadence_filet import prochain_palier_sans_reponse
     from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
@@ -710,8 +715,12 @@ def _codes_filet(etape, issue, est_actif):
         if cle_de(etape) == CLE_MESSAGE_CRENEAU:
             return [ETAPE_RAPPEL_CONVENU_A_LA_DATE]
         return [ETAPE_DEPLACEE_A_LA_DATE]
+    signe = getattr(getattr(etape, 'lead', None), 'stage', None) == stages.SIGNED
     if issue == 'refuse':
-        return [RELANCES_ARRETEES, ETAPE_DECIDER_SUITE]
+        return [RELANCES_ARRETEES,
+                RIEN_APRES_SIGNATURE if signe else ETAPE_DECIDER_SUITE]
+    if signe:
+        return [RIEN_APRES_SIGNATURE]
     if issue in ('joint', 'interesse'):
         # SUIVI-PARCOURS — « Client joint » sur une étape de filet : le
         # récepteur MRY9 pose la suite selon le CANAL de la touche (message
