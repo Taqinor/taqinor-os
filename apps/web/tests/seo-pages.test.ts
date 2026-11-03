@@ -434,3 +434,23 @@ describe('WAUD27 — titres ville et meta de Rabat', () => {
     expect(lire('guides/onduleur-hybride-ou-reseau')).toMatch(/title="[^"]*إنفرتر/);
   });
 });
+
+describe('WAUD71 WAUD51 — JSON-LD', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+  it('WAUD71 : Product sans Offer sans prix, description depuis fiches.ts', () => {
+    const s = lire('pages/produits/[slug].astro');
+    expect(s).not.toMatch(/offers: \{/);
+    expect(s).not.toContain('InStock');
+    expect(s).toContain('description: fiche.resume');
+  });
+  it('WAUD51 : entité complète sur 3 pages, référence @id ailleurs, Person sur /à-propos seulement', () => {
+    const l = lire('layouts/Layout.astro');
+    expect(l).toContain("'@id': ENTITE_ID");
+    expect(l).toContain('legalName: LEGAL_IDENTITY.raisonSociale');
+    expect(l).toContain('contactPoint:');
+    expect(l).toContain("availableLanguage: ['fr', 'ar', 'en']");
+    expect(l).toMatch(/entiteComplete \? jsonLd : \{/);
+    expect(lire('pages/à-propos.astro')).toContain("'@type': 'Person'");
+    for (const p of ['pages/index.astro', 'pages/en/index.astro', 'pages/ar/index.astro']) expect(lire(p)).not.toContain("'@type': 'Person'");
+  });
+});

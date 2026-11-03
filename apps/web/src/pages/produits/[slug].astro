@@ -33,12 +33,8 @@ const downloadHref = ficheDownloadHref(fiche);
 const estPdf = !!downloadHref && downloadHref.toLowerCase().endsWith('.pdf');
 const pairings = relatedFiches(fiche);
 
-// W326 — Offer/availability : AUCUN prix inventé. Le prix dépend de l'étude
-// (dimensionnement propre à chaque toiture), donc n'existe pas au niveau
-// produit générique ; on déclare seulement la disponibilité + le vendeur,
-// via un Offer schema.org valide sans propriété `price`/`priceCurrency`.
-// La garantie est jointe en `warranty` (WarrantyPromise), fidèle à
-// `fiche.warranty` — aucune durée inventée, reprise telle quelle de fiches.ts.
+// WAUD71 (amende W326) — pas d'Offer sans prix (disponibilité invérifiable) ; la garantie, propriété
+// d'une Offer en schema.org, reste sur la page mais hors du JSON-LD Product.
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Product',
@@ -47,18 +43,7 @@ const jsonLd = {
   brand: { '@type': 'Brand', name: fiche.marque },
   model: fiche.modele,
   url: new URL(`/produits/${fiche.slug}`, Astro.site).href,
-  offers: {
-    '@type': 'Offer',
-    availability: 'https://schema.org/InStock',
-    itemCondition: 'https://schema.org/NewCondition',
-    seller: { '@type': 'Organization', name: 'Taqinor' },
-    url: new URL('/devis/mon-toit', Astro.site).href,
-    warranty: {
-      '@type': 'WarrantyPromise',
-      durationOfWarranty: { '@type': 'QuantitativeValue', value: fiche.warranty.years, unitCode: 'ANN' },
-      ...(fiche.warranty.note ? { description: fiche.warranty.note } : {}),
-    },
-  },
+  description: fiche.resume,
 };
 ---
 
