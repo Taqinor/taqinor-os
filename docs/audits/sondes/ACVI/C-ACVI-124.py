@@ -11,6 +11,7 @@ SONDE = {"constat": "C-ACVI-027+028+038", "sha": "352ae5455",
 
 
 def sonde(ctx):
+    from apps.crm import stages
     import datetime as dt
     import json
     from django.contrib.auth import get_user_model
@@ -57,7 +58,7 @@ def sonde(ctx):
     CompanyProfile.objects.filter(pk=prof.pk).update(lead_sla_deassign_hours=48, lead_sla_hours=24)
     l8 = Lead.objects.create(company=c, nom='Recycle', prenom='ACVI027', telephone='+212600027008')
     Lead.objects.filter(pk=l8.pk).update(date_creation=timezone.now() - dt.timedelta(days=5), first_contacted_at=None,
-                                         stage='NEW')
+                                         stage=stages.NEW)
     s, _ = appel('PATCH owner humain', 'patch', '%s%d/' % (leads_url, l8.id), {'owner': com.id})
     l8.refresh_from_db()
     owner_apres_patch = getattr(l8.owner, 'username', None)

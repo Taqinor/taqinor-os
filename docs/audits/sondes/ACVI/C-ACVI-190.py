@@ -17,6 +17,7 @@ SONDE = {"constat": "C-ACVI-190", "sha": "352ae5455",
 
 
 def sonde(ctx):
+    from apps.crm import stages
     import json
     from decimal import Decimal
     from django.contrib.auth import get_user_model
@@ -114,7 +115,7 @@ def sonde(ctx):
     rep = repondre(lienF.token, {'facture_hiver': 1500, 'conso_mensuelle_kwh': 650})
     obs['temoin_vivant'] = {'post': rep, 'avant': av, 'apres': etat(F)}
     # 6. section hors whitelist / clé hors section
-    rep = repondre(lienF.token, {'stage': 'SIGNED', 'owner': None, 'ne_plus_contacter': False,
+    rep = repondre(lienF.token, {'stage': stages.SIGNED, 'owner': None, 'ne_plus_contacter': False,
                                  'score_ajustement': 100, 'facture_hiver': 1600})
     F.refresh_from_db()
     obs['cles_hors_section'] = {'post': rep, 'stage': F.stage, 'facture_hiver': str(F.facture_hiver)}

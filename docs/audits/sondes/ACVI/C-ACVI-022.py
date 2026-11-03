@@ -11,6 +11,7 @@ SONDE = {"constat": "C-ACVI-020+021+022+035", "sha": "352ae5455",
 
 
 def sonde(ctx):
+    from apps.crm import stages
     import datetime as dt
     import json
     from django.contrib.auth import get_user_model
@@ -81,10 +82,10 @@ def sonde(ctx):
     # ── Fusion 2 : stage ──
     a2 = Lead.objects.create(company=c, nom='Absorbe2', prenom='ACVI035', telephone='+212600020035', owner=ua)
     b2 = Lead.objects.create(company=c, nom='Survivant2', prenom='ACVI035', telephone='+212600020035', owner=ua)
-    Lead.objects.filter(pk=a2.pk).update(stage='SIGNED')
+    Lead.objects.filter(pk=a2.pk).update(stage=stages.SIGNED)
     s_m2, _ = appel('fusion A2 (SIGNED) dans B2 (NEW)', 'post', f'{leads_url}{b2.id}/merge/', {'others': [a2.id]})
     b2.refresh_from_db()
-    fusion2 = {'http': s_m2, 'a2_stage_avant': 'SIGNED', 'b2_stage_apres': b2.stage}
+    fusion2 = {'http': s_m2, 'a2_stage_avant': stages.SIGNED, 'b2_stage_apres': b2.stage}
     obs = {'avant': avant, 'apres_fusion1': apres, 'fusion2': fusion2, 'etapes': etapes, 'visite_api': s_vis}
     obs['defauts'] = {
         'B1_opposition_perdue': apres['b_ne_plus_contacter'] is False,
@@ -92,6 +93,6 @@ def sonde(ctx):
         'B2_visite_restee_sur_archive': apres['a_visites'] > 0 and apres['b_visites'] == 0,
         'B2_rdv_reste_sur_archive': apres['a_rdv'] > 0 and apres['b_rdv'] == 0,
         'B3a_first_contacted_pose_par_fusion': apres['b_first_contacted_at'] != 'None',
-        'B16_stage_non_harmonise': b2.stage != 'SIGNED',
+        'B16_stage_non_harmonise': b2.stage != stages.SIGNED,
     }
     return {'repro': any(obs['defauts'].values()), 'observe': obs}

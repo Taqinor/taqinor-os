@@ -13,6 +13,7 @@ SONDE = {"constat": "C-ACVI-005+006+007", "sha": "352ae5455",
 
 
 def sonde(ctx):
+    from apps.crm import stages
     import json
     import uuid
     from django.contrib.auth import get_user_model
@@ -70,7 +71,7 @@ def sonde(ctx):
                              'leads': Lead.objects.filter(company=c, phone_normalise__endswith='661000504').count()}
         # A-6 doublon perdu (non archivé), étape Froid
         perdu = Lead.objects.create(company=c, nom='Ancien perdu', telephone='+212662100002', ville='Rabat',
-                                    owner=com, perdu=True, stage='COLD')
+                                    owner=com, perdu=True, stage=stages.COLD)
         s, txt = post(payload(fullName='Revenant', phoneE164='+212662100002'))
         leads = list(Lead.objects.filter(company=c, phone_normalise__endswith='662100002'))
         obs['A6'] = {'statut': s, 'leads': [

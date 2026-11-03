@@ -13,6 +13,7 @@ SONDE = {"constat": "C-ACVI-200+206+207+208+209+210+211", "sha": "352ae5455",
 
 
 def sonde(ctx):
+    from apps.crm import stages
     import datetime as dt
     import traceback
     from types import SimpleNamespace
@@ -59,7 +60,7 @@ def sonde(ctx):
     # C-1
     def c1():
         l = lead('Avenant')
-        Lead.objects.filter(pk=l.pk).update(stage='SIGNED')
+        Lead.objects.filter(pk=l.pk).update(stage=stages.SIGNED)
         l.refresh_from_db()
         e = poser_tache_avenant(l, SimpleNamespace(reference='D-ACVI200'), ua)
         av = touches(l)
@@ -98,7 +99,7 @@ def sonde(ctx):
     # C-8
     def c8():
         l = lead('Froid')
-        Lead.objects.filter(pk=l.pk).update(stage='CONTACTED', first_contacted_at=timezone.now())
+        Lead.objects.filter(pk=l.pk).update(stage=stages.CONTACTED, first_contacted_at=timezone.now())
         l.refresh_from_db()
         filet = assurer_prochaine_etape_apres_succes(l, ua)
         av = touches(l)
@@ -111,7 +112,7 @@ def sonde(ctx):
         l.refresh_from_db()
         ap = touches(l)
         return {'stage': l.stage, 'parc_etat': l.parc_etat, 'mode': mode, 'avant': av, 'apres': ap,
-                'defaut': l.stage == 'COLD' and any(t[1] == 'generique' and t[4] == 'a_faire' for t in ap)}
+                'defaut': l.stage == stages.COLD and any(t[1] == 'generique' and t[4] == 'a_faire' for t in ap)}
     cas('C8', c8)
 
     # C-9

@@ -12,6 +12,7 @@ SONDE = {"constat": "C-ACVI-024+026+029+031+032+040", "sha": "352ae5455",
 
 
 def sonde(ctx):
+    from apps.crm import stages
     import datetime as dt
     import json
     from django.contrib.auth import get_user_model
@@ -99,7 +100,7 @@ def sonde(ctx):
                      {'nom': 'Passation' + nom, 'prenom': 'ACVI024', 'telephone': '+21260002413' + str(len(res13)),
                       'email': 'acvi024-13%s@example.invalid' % nom, 'owner': ua.id})
         lx = Lead.objects.filter(company=c, email='acvi024-13%s@example.invalid' % nom).order_by('-id').first()
-        Lead.objects.filter(pk=lx.pk).update(first_contacted_at=timezone.now() - dt.timedelta(days=1), stage='CONTACTED')
+        Lead.objects.filter(pk=lx.pk).update(first_contacted_at=timezone.now() - dt.timedelta(days=1), stage=stages.CONTACTED)
         ouvertes = touches(lx, statut=RelanceEtape.Statut.A_FAIRE)
         if geste == 'patch':
             s, _ = appel('PATCH owner', api, 'patch', '%s%d/' % (leads_url, lx.id), {'owner': u2.id})
