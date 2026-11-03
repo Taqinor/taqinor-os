@@ -366,9 +366,11 @@ class BonCommande(models.Model):
         from .multivilla import nombre_proprietes
         n_prop = nombre_proprietes(self.devis)
         out = []
-        for ligne in lignes_vendues(self.devis):
-            if not ligne.compte_dans_totaux or ligne.quantite is None:
-                continue
+        vendues = [li for li in lignes_vendues(self.devis)
+                   if li.compte_dans_totaux and li.quantite is not None]
+        livre_par_ligne = _reporter_livraisons_de_revision(
+            livre_par_ligne, vendues, self.devis_id)
+        for ligne in vendues:
             livre = livre_par_ligne.get(ligne.id) or 0
             commandee = ligne.quantite * n_prop
             out.append({
@@ -392,6 +394,25 @@ class BonCommande(models.Model):
         any_livre = any(r['quantite_livree'] > 0 for r in reliquats)
         any_reliquat = any(r['reliquat'] > 0 for r in reliquats)
         return any_livre and any_reliquat
+
+
+def _reporter_livraisons_de_revision(livre_par_ligne, vendues, devis_id):
+    """AARG29 — BC rattaché à une révision (``rattacher_aval_financier_revision``) :
+    ce qui a été livré sur une ligne de la V1 compte sur la ligne de la V2 de même
+    produit, à défaut de même désignation. Aucune requête quand rien n'est à reporter."""
+    connues = {li.id for li in vendues}
+    autres = [pk for pk in livre_par_ligne if pk not in connues]
+    if not autres:
+        return livre_par_ligne
+    from .models import LigneDevis
+    reporte = dict(livre_par_ligne)
+    for pk, produit_id, designation in LigneDevis.objects.filter(pk__in=autres).exclude(
+            devis_id=devis_id).values_list('pk', 'produit_id', 'designation'):
+        cible = next((li for li in vendues if produit_id and li.produit_id == produit_id), None) \
+            or next((li for li in vendues if li.designation == designation), None)
+        if cible is not None:
+            reporte[cible.id] = (reporte.get(cible.id) or 0) + reporte[pk]
+    return reporte
 
 
 class AffectationPaiement(models.Model):
