@@ -1,5 +1,9 @@
 ---
 // ENF19 : grille des fiches matériel partagée (équipement fr/en/ar) — le libellé « Réf. » est une prop.
+interface Props {
+  categories: { ref: string; title: string; body: string; points: string[] }[];
+  refLabel: string;
+}
 const { categories, refLabel } = Astro.props;
 ---
 <section class="mx-auto max-w-6xl px-4 py-16">

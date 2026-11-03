@@ -1,5 +1,11 @@
 ---
 // ENF19 : grille des contrats d'entretien partagée (maintenance-monitoring fr/en/ar).
+interface Props {
+  tiers: { name: string; body: string; inclusions: string[] }[];
+  wa: (tierName: string) => string;
+  cta: string;
+  nomDir?: string;
+}
 const { tiers, wa, cta, nomDir } = Astro.props;
 ---
 <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
