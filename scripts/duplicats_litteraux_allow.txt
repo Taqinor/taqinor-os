@@ -44,7 +44,6 @@
 2591bdff1406|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
 26574f820536|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 27587fb2c41f|apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-28a574da1dbc|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/obstacles.ts
 28fd2590a21a|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
 29473eb1207b|apps/web/src/components/InstantEstimator.astro,apps/web/src/pages/questionnaire/[token].astro
 2b5f6f8f7ed4|apps/web/src/scripts/roof-tool-pro11.ts,apps/web/src/scripts/roofPro11/captureBoot.ts,apps/web/src/scripts/roofPro11/prefill.ts
