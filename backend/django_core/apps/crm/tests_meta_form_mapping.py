@@ -11,6 +11,7 @@ chatter idempotente. Les leads capturés AVANT ce mapping sont enrichis
 from decimal import Decimal
 
 from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
 
 from authentication.models import Company
 
@@ -500,3 +501,64 @@ class MetaFormF6MappingTests(TestCase):
         self.assertIs(non.whatsapp_opt_in, False)
         self.assertIsNone(non.consent_timestamp)
         self.assertFalse(qs.get(subject_identifier=non.telephone).granted)
+
+    def _froid(self, telephone, **kw):
+        from django.contrib.auth import get_user_model
+
+        from apps.crm import stages
+        owner, _creee = get_user_model().objects.get_or_create(
+            username='reprise_optin_owner',
+            defaults={'company': self.company, 'role_legacy': 'responsable'})
+        return Lead.objects.create(
+            company=self.company, nom='Froid Parqué', telephone=telephone, owner=owner,
+            canal=Lead.Canal.TELEPHONE, stage=stages.COLD, parc_etat='nurture',
+            parc_raison='injoignable', **kw)
+
+    def test_la_reprise_d_un_froid_pose_la_case_whatsapp(self):
+        # ERR-CADV-REPRISE-OPTIN — mêmes écritures que CADV113 sur le lead rouvert.
+        import time
+
+        from core.models import ConsentRecord
+        arrivee = int(time.time()) - 3600
+        registre = ConsentRecord.objects.filter(
+            company=self.company, purpose='whatsapp')
+        # Oui, puis rejeu : une seule entrée, datée de l'arrivée Meta.
+        froid = self._froid('+212600000311')
+        oui = {'name': 'consentement_whatsapp', 'values': ['Oui, sur WhatsApp']}
+        for _rejeu in range(2):
+            rouvert = create_lead_from_meta_lead_ads(
+                company=self.company, leadgen_id='reprise-1',
+                field_data=_field_data_f6(phone=froid.telephone) + [oui],
+                form_id='TQ-F6-HI-2610', created_time=arrivee)
+        self.assertEqual(rouvert.pk, froid.pk)
+        froid.refresh_from_db()
+        self.assertIs(froid.whatsapp_opt_in, True)
+        self.assertEqual(int(froid.consent_timestamp.timestamp()), arrivee)
+        entree = registre.get(subject_identifier=froid.telephone)
+        self.assertTrue(entree.granted)
+        self.assertEqual(int(entree.occurred_at.timestamp()), arrivee)
+        self.assertEqual(entree.source, 'formulaire Meta Lead Ads — case WhatsApp')
+        # Non sur un ancien accord : la réponse la plus récente fait foi.
+        accord = self._froid(
+            '+212600000312', whatsapp_opt_in=True, consent_timestamp=timezone.now())
+        create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='reprise-2',
+            field_data=_field_data_f6(phone=accord.telephone) + [
+                {'name': 'consentement_whatsapp', 'values': ['Non merci']}],
+            form_id='TQ-F6-HI-2610')
+        accord.refresh_from_db()
+        self.assertIs(accord.whatsapp_opt_in, False)
+        self.assertIsNone(accord.consent_timestamp)
+        self.assertFalse(registre.get(subject_identifier=accord.telephone).granted)
+        # Question absente : l'accord déjà recueilli ne bouge pas, aucune entrée.
+        moment = timezone.now()
+        garde = self._froid(
+            '+212600000313', whatsapp_opt_in=True, consent_timestamp=moment)
+        create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='reprise-3',
+            field_data=_field_data_f6(phone=garde.telephone),
+            form_id='TQ-F6-HI-2610')
+        garde.refresh_from_db()
+        self.assertIs(garde.whatsapp_opt_in, True)
+        self.assertEqual(garde.consent_timestamp, moment)
+        self.assertFalse(registre.filter(subject_identifier=garde.telephone).exists())

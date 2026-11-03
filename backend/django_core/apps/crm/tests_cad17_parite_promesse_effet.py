@@ -56,6 +56,7 @@ from apps.crm.models import Client, Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.cadence_filet import assurer_prochaine_etape_apres_succes
 from apps.crm.cadence_reperes import (
     CLE_PIECES_RECUES,
+    LIBELLE_CONFIRMER_SIGNATURE,
     _LIBELLES_FILET,
     _LIBELLES_VISITE,
     FILET_APPEL_LIBELLE,
@@ -192,6 +193,9 @@ SCENARIOS = (
     Scenario('filet_decider', 'generique', 1, APPEL, FILET_REFUS_LIBELLE),
     Scenario('filet_question_prix', 'generique', 1, APPEL,
              QUESTION_PRIX_LIBELLE, stage=stages.QUOTE_SENT),
+    # ERR-CADV-FILET-SIGNE — les deux appels de CADV36, le dossier est Signé.
+    Scenario('filet_signe', 'generique', 1, APPEL, LIBELLE_CONFIRMER_SIGNATURE,
+             stage=stages.SIGNED),
     Scenario('filet_passation', 'generique', PASSATION_ORDRE, WHATSAPP,
              PASSATION_LIBELLE, stage=stages.QUOTE_SENT, famille=A_COTE),
     # Deuxième affaire (2 barreaux) : un client déjà acquis qui revient.
@@ -482,6 +486,11 @@ def _rien_de_nouveau(c):
     c.vrai(not c.nouvelles().exists(), 'une touche a été ajoutée')
 
 
+def _rien_apres_signature(c):
+    _rien_de_nouveau(c)
+    c.vrai(c.lead.stage == stages.SIGNED, 'le dossier n’est plus signé')
+
+
 def _suite_si_plus_rien_ouvert(c):
     # 24/09/2026 — dans AUCUNE branche le dossier ne part au Froid (c'était
     # la promesse du code retiré `visite_froid_si_seule`).
@@ -635,6 +644,7 @@ VERIFICATEURS = {
     st.ETAPE_MESSAGE_CRENEAU: _etape_message_creneau,
     st.ETAPE_DERNIER_APPEL: _etape_dernier_appel,
     st.SUITE_SI_PLUS_RIEN_OUVERT: _suite_si_plus_rien_ouvert,
+    st.RIEN_APRES_SIGNATURE: _rien_apres_signature,
     st.ETIQUETTE_DECISION: _etiquette_decision,
     st.NE_PLUS_CONTACTER: _ne_plus_contacter,
     st.VEILLE_MEME_TOUCHE: _veille_meme_touche,
@@ -762,6 +772,17 @@ class ContratTests(SimpleTestCase):
         for resultat in (CONTRAT['exemple_generique']['results']
                          + CONTRAT['exemple_dernier_reveil']['results']):
             self.assertEqual(set(resultat), forme)
+
+    def test_un_filet_sur_dossier_signe_n_annonce_ni_devis_ni_decision(self):
+        # ERR-CADV-FILET-SIGNE — « Préparer le devis » était promis à un signé.
+        scenario = next(s for s in SCENARIOS if s.nom == 'filet_signe')
+        promesses = st.promesses_touche(
+            _etape_non_enregistree(scenario), ordres=_ordres_defaut('generique'))
+        self.assertEqual(promesses['sans_issue'], [st.RIEN_APRES_SIGNATURE])
+        self.assertEqual(promesses['refuse'],
+                         [st.RELANCES_ARRETEES, st.RIEN_APRES_SIGNATURE])
+        self.assertEqual(promesses['rappel'], [st.ETAPE_DEPLACEE_A_LA_DATE])
+        self.assertEqual(promesses['visite_acceptee'], [st.ETAPE_PLANIFIER_VISITE])
 
     def test_cad97_le_barreau_generique_n_annonce_pas_demain(self):
         # CAD97 — barreau du gabarit : la touche suivante à SON délai ; étape
@@ -1029,7 +1050,7 @@ class PariteGeneriqueTests(PariteBase):
                      'filet_envoi_devis', 'filet_appeler', 'filet_creneau',
                      'filet_dernier_appel', 'filet_rappel_convenu',
                      'filet_decider', 'filet_question_prix',
-                     'filet_passation')
+                     'filet_passation', 'filet_signe')
 
 
 class PariteDeuxiemeAffaireTests(PariteBase):

@@ -686,7 +686,22 @@ class ApercuTests(_PlacementBase):
         self.assertEqual(
             set(self._placer(apply=False)),
             {'apply', 'total_candidats', 'a_placer', 'ignores', 'par_etape',
-             'apercu', 'reveils_jusqu_au', 'applique', 'erreurs', 'restants'})
+             'apercu', 'reveils_jusqu_au', 'appels_contact', 'applique',
+             'erreurs', 'restants'})
+
+    def test_le_nombre_d_appels_est_celui_du_gabarit_de_la_societe(self):
+        # ERR-CADV-SIX-APPELS — jamais un chiffre recopié à l'écran.
+        from apps.parametres.models_relance import (
+            CadenceRelanceEtape, CanalRelance)
+        appels = CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence='contact', actif=True,
+            canal=CanalRelance.APPEL)
+        CadenceRelanceEtape.cadence_pour(self.company, 'contact')
+        self.assertEqual(
+            self._placer(apply=False)['appels_contact'], appels.count())
+        appels.filter(pk=appels.first().pk).update(actif=False)
+        avant = appels.count()
+        self.assertEqual(self._placer(apply=False)['appels_contact'], avant)
 
     def test_sans_dormant_reveils_jusqu_au_est_nul(self):
         self.dormant.delete()

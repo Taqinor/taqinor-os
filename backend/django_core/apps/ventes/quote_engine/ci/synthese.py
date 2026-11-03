@@ -701,12 +701,27 @@ def _au_reliquat(sortie):
     return sortie
 
 
+def _jalons_sur_ce_total(data, jalons, total):
+    """ERR-AGNR-ECHEANCIER-CI — les jalons servis somment déjà à ``total`` : le
+    builder les a calculés sur cette option (``jalons_paiement_devis``, règle
+    d'AGNR49 : une tranche en MAD à SON montant), les re-dériver des % arrondis
+    imprimerait un autre montant. Total différent : aucune règle ne dit ce que
+    vaut un montant saisi sur une autre offre, la répartition par % reste. Un
+    devis sous le niveau 8 garde ce que le client a reçu."""
+    if total is None or data.get("regles_echeancier_historique"):
+        return False
+    montants = [_num(j.get("montant_ttc")) for j in jalons if isinstance(j, dict)]
+    return None not in montants and abs(sum(montants) - total) < 0.005
+
+
 def _echeancier(data, option):
     jalons = data.get("jalons_paiement")
     if isinstance(jalons, list) and jalons:
         total_avec = (_num(data.get("total_avec"))
                       if option == "avec_batterie"
                       and not regles_avant_2710() else None)
+        if _jalons_sur_ce_total(data, jalons, total_avec):
+            total_avec = None
         sortie = _echeancier_n(jalons, total_avec)
         if sortie:
             return sortie

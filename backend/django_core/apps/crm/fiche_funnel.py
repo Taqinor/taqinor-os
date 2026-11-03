@@ -610,23 +610,27 @@ def nb_contacts_humains(lead, kinds=None):
 def appels_exiges_injoignable(lead):
     """D-CADV22-GABARIT-COURT (Reda, 02/11/2026) — min(5, barreaux d'appel du
     gabarit de prise de contact de la société) : sans quoi un gabarit de 3
-    appels ne parquerait jamais. LECTURE PURE (même calcul à blanc que
-    ``suite_touche.ordres_de_la_cadence``) : l'écran lit cette règle aussi."""
+    appels ne parquerait jamais. L'écran lit cette règle aussi."""
+    return min(APPELS_MIN_INJOIGNABLE, appels_du_gabarit_contact(lead.company_id))
+
+
+def appels_du_gabarit_contact(company_id):
+    """Les barreaux d'appel ACTIFS du gabarit de prise de contact de la société.
+    LECTURE PURE (même calcul à blanc que ``suite_touche.ordres_de_la_cadence``)."""
     from apps.parametres.models_relance import (
         CADENCES_DEFAUT, CadenceRelanceEtape, CanalRelance)
 
     # CAD58 : un barreau encore en « visite » naît en appel (``_canal_effectif``).
     canaux_appel = (CanalRelance.APPEL, CanalRelance.VISITE)
     lignes = list(CadenceRelanceEtape.objects.filter(
-        company_id=lead.company_id, cadence='contact',
+        company_id=company_id, cadence='contact',
     ).values_list('ordre', 'actif', 'canal'))
     canaux = [canal for _ordre, actif, canal in lignes if actif]
     if not canaux:
         existants = {ordre for ordre, _actif, _canal in lignes}
         canaux = [entree['canal'] for entree in CADENCES_DEFAUT['contact']
                   if entree['ordre'] not in existants]
-    return min(APPELS_MIN_INJOIGNABLE,
-               sum(1 for canal in canaux if canal in canaux_appel))
+    return sum(1 for canal in canaux if canal in canaux_appel)
 
 
 def manque_au_parcage(lead, raison, exiger_touche=True, *, appel_en_plus=False,

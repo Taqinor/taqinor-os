@@ -22,7 +22,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm import stages
+from apps.crm import stages, suite_touche
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.cadence_plan import initialiser_plan_relance
 from apps.parametres.models_relance import CadenceRelanceEtape
@@ -81,6 +81,13 @@ class CadenceFinAmbigueTests(TestCase):
             f'/api/django/parametres/cadence-relance/{barreau.pk}/',
             {'actif': False}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
+        # ERR-CADV-DERNIERE-TOUCHE — la promesse dit ce que le moteur fait juste
+        # après : la touche suivante, jamais la dernière touche et le Froid.
+        self.touche.refresh_from_db()
+        promesses = suite_touche.promesses_touche(self.touche)
+        self.assertEqual(promesses['non_joint'], [suite_touche.TOUCHE_SUIVANTE])
+        self.assertEqual(promesses['rappel'],
+                         [suite_touche.TOUCHE_SUIVANTE_A_LA_DATE])
         self._fait()
         self._assert_pas_parque()
         # La suite est le premier barreau ACTIF d'ordre supérieur.
@@ -91,6 +98,18 @@ class CadenceFinAmbigueTests(TestCase):
         self.assertTrue(self.lead.relance_etapes.filter(
             statut=RelanceEtape.Statut.A_FAIRE, cadence='contact',
             ordre=suivant.ordre).exists())
+
+    def test_est_derniere_touche_lit_les_barreaux_superieurs(self):
+        self.touche.ordre = 4
+        for ordres, attendu in (
+                (frozenset({5, 7}), False),  # barreau 4 désactivé, il en reste après
+                (frozenset({1, 2, 3}), True),  # désactivé et plus rien après lui
+                (frozenset({1, 4}), True),
+                (frozenset({4, 5}), False),
+                (frozenset(), True)):
+            with self.subTest(ordres=sorted(ordres)):
+                self.assertIs(
+                    suite_touche.est_derniere_touche(self.touche, ordres), attendu)
 
     def test_exception_ne_parque_pas(self):
         with patch('apps.crm.cadence_plan._materialiser_touche_suivante',
