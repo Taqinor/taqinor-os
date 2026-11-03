@@ -21,7 +21,6 @@
 import { useEffect, useState } from 'react'
 import { CalendarClock, Play, Plus } from 'lucide-react'
 import api from '../../api/axios'
-import toutesLesPages from './toutesLesPages'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
@@ -66,9 +65,9 @@ export default function ExportsPlanifiesSection() {
   const [runningId, setRunningId] = useState(null)
   const [draft, setDraft] = useState(VIDE)
 
-  const charger = () => toutesLesPages((p) => api.get('/core/scheduled-exports/', { params: p }))
-    .then((liste) => {
-      setRows(liste)
+  const charger = () => api.get('/core/scheduled-exports/')
+    .then((res) => {
+      setRows(res.data?.results ?? res.data ?? [])
       setLoadError(false)
     })
     .catch(() => setLoadError(true))
