@@ -53,7 +53,9 @@ from apps.crm import activity, horaires, stages
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS, q_etape
 from apps.crm.models import Client, Lead, LeadActivity, MotifPerte, RelanceEtape
+from apps.crm.cadence_filet import assurer_prochaine_etape_apres_succes
 from apps.crm.cadence_reperes import (
+    CLE_PIECES_RECUES,
     _LIBELLES_FILET,
     _LIBELLES_VISITE,
     FILET_APPEL_LIBELLE,
@@ -204,6 +206,7 @@ BRANCHES_SUIVI = ('base', 'devis_ouvert', 'devis_epuise')
 VARIANTES = {
     st.ETAPE_APPELER_SAUF_SUIVI: BRANCHES_SUIVI,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: BRANCHES_SUIVI,
+    st.ETAPE_PIECES_RECUES_SAUF_SUIVI: BRANCHES_SUIVI,
     # SUIVI E17 — `etape_devis_a_la_date_sauf_suivi` retiré : le dernier
     # réveil pose l'appel « rappel convenu » à la date choisie.
     # 24/09/2026 — `visite_froid_si_seule` retiré (une étape de visite ne
@@ -408,6 +411,23 @@ def _etape_devis_demain_sauf_suivi(c):
         _etape_devis_demain(c)
 
 
+def _etape_pieces_recues(c):
+    # CADV29 — la prochaine touche du pro sans pièce, et aucune étape devis.
+    c.vrai(c.ouvertes(cle=CLE_PIECES_RECUES).exists(),
+           'aucune étape « Pièces reçues ? »')
+    c.vrai(not c.ouvertes(libelle=FILET_JOINT_LIBELLE).exists(),
+           'une étape « préparer le devis » est posée avant les pièces')
+
+
+def _etape_pieces_recues_sauf_suivi(c):
+    if c.variante == 'devis_ouvert':
+        _suivi_repris(c)
+        c.vrai(not c.ouvertes(cle=CLE_PIECES_RECUES).exists(),
+               'une étape « Pièces reçues ? » est posée malgré le suivi')
+    else:
+        _etape_pieces_recues(c)
+
+
 def _etape_devis_a_la_date(c):
     c.vrai(c.ouvertes(libelle=FILET_JOINT_LIBELLE,
                       due_date=DATE_CHOISIE).exists(),
@@ -604,6 +624,8 @@ VERIFICATEURS = {
     st.ETAPE_DEVIS_DEMAIN: _etape_devis_demain,
     st.ETAPE_APPELER_SAUF_SUIVI: _etape_appeler_sauf_suivi,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: _etape_devis_demain_sauf_suivi,
+    st.ETAPE_PIECES_RECUES: _etape_pieces_recues,
+    st.ETAPE_PIECES_RECUES_SAUF_SUIVI: _etape_pieces_recues_sauf_suivi,
     st.ETAPE_DEVIS_A_LA_DATE: _etape_devis_a_la_date,
     st.ETAPE_DECIDER_SUITE: _etape_decider_suite,
     st.ETAPE_DEPLACEE_A_LA_DATE: _etape_deplacee_a_la_date,
@@ -658,12 +680,14 @@ class VocabulaireTests(SimpleTestCase):
                 ordres=_ordres_defaut(derniere.cadence),
                 conditions={'non_joint': '1 appel sur 5 tracé'}).values():
             produits.update(codes)
-        # CADV102 — le segment du lead : ce même barreau, client industriel.
-        pro = _etape_non_enregistree(derniere)
-        pro.lead.type_installation = 'industriel'
-        for codes in st.promesses_touche(
-                pro, ordres=_ordres_defaut(derniere.cadence)).values():
-            produits.update(codes)
+        # CADV102, CADV29 — le segment du lead : ce même barreau et une étape de
+        # filet, client industriel.
+        for scenario in (derniere, next(s for s in SCENARIOS if s.nom == 'filet_appeler')):
+            pro = _etape_non_enregistree(scenario)
+            pro.lead.type_installation = 'industriel'
+            for codes in st.promesses_touche(
+                    pro, ordres=_ordres_defaut(scenario.cadence)).values():
+                produits.update(codes)
         self.assertEqual(produits, set(st.CODES))
 
     def test_le_journal_de_l_ecran_est_le_calcul_du_moteur(self):
@@ -1096,6 +1120,29 @@ class PariteStandbyProTests(PariteBase):
 
     def test_prise_de_contact_et_suivi(self):
         self._garder('contact_derniere_appel', 'apres_devis_derniere_appel')
+
+    def test_etape_de_filet_du_pro_sans_piece(self):
+        # CADV29 — chaque branche (suivi repris, épuisé, aucun devis) est rejouée.
+        self._garder('filet_appeler')
+
+    def test_la_promesse_suit_les_passages_de_pieces_recues(self):
+        # CADV29 — J+3 annonce J+7, J+7 annonce le devis ; une pièce reçue aussi.
+        scenario = next(s for s in SCENARIOS if s.nom == 'contact_derniere_appel')
+        lead = self._lead(scenario)
+        premiere = assurer_prochaine_etape_apres_succes(
+            lead, self.acteur, canal_touche='appel')
+        self.assertEqual(st.promesses_touche(premiere)[st.CLE_SANS_ISSUE],
+                         [st.ETAPE_PIECES_RECUES_SAUF_SUIVI])
+        self.assertEqual(self._rejouer(premiere, st.CLE_SANS_ISSUE, 'base').status_code, 200)
+        seconde = lead.relance_etapes.get(statut=A_FAIRE)
+        self.assertEqual(seconde.cle, CLE_PIECES_RECUES)
+        self.assertEqual(st.promesses_touche(seconde)[st.CLE_SANS_ISSUE],
+                         [st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI])
+        lead_piece, etape = self._fabriquer(scenario, 'base')
+        LeadActivity.objects.create(company=self.company, lead=lead_piece, user=self.acteur,
+                                    kind=LeadActivity.Kind.NOTE,
+                                    body='Pièce reçue du client : facture.')
+        self.assertIn(st.ETAPE_DEVIS_DEMAIN, st.promesses_touche(etape)['joint'])
 
     def test_une_fois_les_cycles_epuises_la_promesse_redevient_le_froid(self):
         scenario = next(s for s in SCENARIOS if s.nom == 'apres_devis_derniere_appel')

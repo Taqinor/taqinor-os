@@ -300,3 +300,19 @@ class TestDoubleFacturationDevis(TestCase):
             self.assertEqual(set(ech[cle]['facturable']), {'ok', 'motif'})
         self.assertEqual(ech['exemple']['facturable'],
                          self._facturable(b1))
+
+    def test_afac105_creer_facture_sert_total_ttc_et_montant_ttc_nul(self):
+        """AFAC105 — la réponse porte le total des lignes dans `total_ttc` ;
+        `montant_ttc` (figé des tranches) est nul : l'écran lit `total_ttc`.
+        Les clés sont celles du contrat partagé, jamais un mock inventé."""
+        import json
+        from pathlib import Path
+        contrat = json.loads((Path(__file__).resolve().parents[2]
+                              / 'facturation' / 'contract_samples'
+                              / 'bon_commande_creer_facture.json'
+                              ).read_text(encoding='utf-8'))['exemple']
+        resp = self._facturer_bc()
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertTrue(set(contrat) <= set(resp.data))
+        self.assertEqual(Decimal(str(resp.data['total_ttc'])), Decimal('12000'))
+        self.assertIsNone(resp.data['montant_ttc'])

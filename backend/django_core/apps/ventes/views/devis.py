@@ -309,13 +309,13 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         return super().destroy(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
-        """VNT55 (D-ADEV-1) — supprimer le brouillon de révision V2 d'une
-        vente acceptée réactive la V1, dans la même transaction (le lien
-        ``superseded_by`` est lu AVANT la suppression)."""
+        """VNT55 (D-ADEV-1) — supprimer le brouillon de révision V2 réactive
+        sa V1 (ADEV16 : quel qu'en soit le statut), dans la même transaction
+        (le lien ``superseded_by`` est lu AVANT la suppression)."""
         from django.db import transaction
         from ..domain.revision import abandonner_revision
         with transaction.atomic():
-            abandonner_revision(instance, self.request.user)
+            abandonner_revision(instance, self.request.user, retrait=True)
             super().perform_destroy(instance)
 
     def perform_create(self, serializer):

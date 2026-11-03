@@ -24,6 +24,7 @@ from .cadence_messages import (
     lead_financement_pro_declare,
 )
 from .cadence_reperes import (
+    CLE_PIECES_RECUES,
     FIN_NOTE_REPORT,
     MOTIF_PARQUE_AU_FROID,
     OUTCOME_VISITE_ACCEPTEE,
@@ -1955,7 +1956,7 @@ def est_etape_de_filet(etape):
         return False
     # PARAM-CADENCE — par la CLÉ (gabarit « Après l'appel »), ou le libellé
     # des deux étapes hors gabarit (passation, question de prix).
-    if est_etape(etape, *CLES_APRES_CONTACT):
+    if est_etape(etape, *CLES_APRES_CONTACT, CLE_PIECES_RECUES):
         return True
     return (not (getattr(etape, 'cle', '') or '')
             and (etape.libelle or '').strip() in _LIBELLES_FILET_HORS_GABARIT)

@@ -25,17 +25,34 @@ aucun ``kwc`` exploitable. Un devis avec layout mais sans kWc résoluble d'
 aucun des trois côtés est ignoré (il ne compterait ni pour conçu ni pour
 signé — mieux qu'une fausse valeur zéro).
 
+ADEV40 (D-ADEV-4 = (a)) — le kWc compté est celui du PROJET : les lignes, le
+calepinage et l'étude décrivent UNE villa, ``nombre_proprietes`` en donne le ×N
+(même échelle que le total ×N et ``prix_par_kwc``). Le multiplicateur reste ici :
+``puissance_kwc_du_devis`` alimente le cache d'une villa lu par le moteur.
+
 **Aucun prix, aucune marge, aucun ``prix_achat`` ne transite ici** (règle
 générateur-only de ``Produit.prix_achat``) : ce module ne lit que les lignes
 du devis, ``Devis.roof_layout``, ``Devis.etude_params`` et ``Devis.statut``.
 """
 from __future__ import annotations
 
+from .multivilla import nombre_proprietes
+
 __all__ = ['kwc_concu_devis', 'kpi_ventes']
 
 
 def kwc_concu_devis(devis):
-    """kWc d'UN devis « conçu » (layout 3D finalisé), ou ``None`` si irrésoluble.
+    """kWc du PROJET d'un devis « conçu » (layout 3D finalisé), ×N villas, ou
+    ``None`` si irrésoluble (ADEV40 ; N = 1 : valeur inchangée)."""
+    kwc = _kwc_concu_une_villa(devis)
+    if kwc is None:
+        return None
+    n = nombre_proprietes(devis)
+    return kwc if n == 1 else round(kwc * n, 2)
+
+
+def _kwc_concu_une_villa(devis):
+    """kWc d'UNE villa, ou ``None`` si irrésoluble.
 
     PVUNI — même priorité que ``quote_engine/builder.py`` (``build_quote_data``) :
     les LIGNES d'abord (``puissance_panneaux_lignes``), le kWc du calepinage
