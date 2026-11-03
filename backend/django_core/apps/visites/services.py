@@ -180,6 +180,14 @@ def _commercial_nom(visite):
     return (commercial.get_full_name() or commercial.username or '')
 
 
+def rattacher_visites_au_lead(absorbe, survivant):
+    """ACVI22 — fusion de leads : les visites suivent le dossier (le gel ALEA11 du
+    sérialiseur ne cède qu'ici). Renvoie le nombre de visites rattachées."""
+    from .models import VisiteTerrain
+
+    return VisiteTerrain.objects.filter(lead=absorbe).update(lead=survivant)
+
+
 def emettre_visite_planifiee(visite, user):
     """Publie ``visite_planifiee`` — la date prévue vient d'être posée/changée.
 

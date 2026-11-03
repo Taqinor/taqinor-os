@@ -188,6 +188,12 @@ def merge_leads(survivor, others, user):
             # Savepoint : un transfert qui échoue ne casse jamais la fusion,
             # mais il est tracé (journal + note au chatter du survivant).
             _transferer_calepinages_apres_fusion(absorbed, survivor, user)
+            # 2 ter) ACVI22 — le survivant porte la visite dont il affiche la date.
+            from apps.visites.services import rattacher_visites_au_lead
+            rattacher_visites_au_lead(absorbed, survivor)
+            for enfants in (absorbed.appointments, absorbed.points_contact,
+                            absorbed.booking_links, absorbed.questionnaire_liens):
+                enfants.update(lead=survivor)
             # 3) Activités + pièces jointes génériques → survivant.
             try:
                 from apps.records.models import Activity, Attachment

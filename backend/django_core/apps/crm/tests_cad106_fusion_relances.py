@@ -198,6 +198,31 @@ class CeQueLaFusionNeCassePasTests(_Base):
             company=self.company, granted=False,
             source__startswith='fusion de fiches').exists())
 
+    def test_visite_et_rendez_vous_suivent_le_survivant(self):
+        # ACVI22 — visites, rendez-vous, points de contact, liens : rien sur l'archivée.
+        from django.utils import timezone
+
+        from apps.crm.models import (
+            Appointment, BookingLink, PointContact, QuestionnaireLien)
+        from apps.visites.models import VisiteTerrain
+
+        a, b = self.absorbe, self.survivant
+        visite = VisiteTerrain.objects.create(company=self.company, lead=a)
+        rdv = Appointment.objects.create(
+            company=self.company, lead=a, scheduled_at=timezone.now())
+        point = PointContact.objects.create(
+            company=self.company, lead=a, canal='telephone',
+            date_contact=timezone.now())
+        lien = BookingLink.objects.create(company=self.company, lead=a)
+        questionnaire = QuestionnaireLien.objects.create(
+            company=self.company, lead=a, questions={})
+
+        merge_leads(b, [a], self.acteur)
+
+        for objet in (visite, rdv, point, lien, questionnaire):
+            objet.refresh_from_db()
+            self.assertEqual(objet.lead_id, b.pk, type(objet).__name__)
+
     def test_les_touches_DEJA_closes_ne_sont_pas_retouchees(self):
         faite = self._touche(self.absorbe, statut=RelanceEtape.Statut.FAIT)
         merge_leads(self.survivant, [self.absorbe], self.acteur)
