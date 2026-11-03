@@ -39,8 +39,8 @@ describe('CIW401 — page /professionnel : aucune preuve villa, aucun chiffre no
     it(`${lang} — les deux entrées vers le tunnel ?mode=industriel et ?mode=commercial sont présentes`, () => {
       const html = builtPage(route);
       const base = lang === 'FR' ? '/devis/mon-toit' : `/${lang.toLowerCase()}/devis/mon-toit`;
-      expect(html).toContain(`href="${base}?mode=industriel"`);
-      expect(html).toContain(`href="${base}?mode=commercial"`);
+      expect(html).toContain(`href="${base}/?mode=industriel"`);
+      expect(html).toContain(`href="${base}/?mode=commercial"`);
     });
   }
 

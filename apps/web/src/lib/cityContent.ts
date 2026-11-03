@@ -93,9 +93,9 @@ type LocalizedCityContent = Record<Locale, CityContent>;
  * le `localizeNavHref` du template gère le repli FR sans lien mort).
  */
 const REGIMES_LINK: Record<Locale, string> = {
-  fr: '<a href="/loi-82-21" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir les régimes →</a>',
-  en: '<a href="/loi-82-21" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See the regimes →</a>',
-  ar: '<a href="/loi-82-21" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">اطّلع على الأنظمة →</a>',
+  fr: '<a href="/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir les régimes →</a>',
+  en: '<a href="/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See the regimes →</a>',
+  ar: '<a href="/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">اطّلع على الأنظمة →</a>',
 };
 
 /**

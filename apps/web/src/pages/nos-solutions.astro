@@ -43,7 +43,7 @@ const villesDesservies = NAP.serviceArea.slice(0, -1);
 
 const solutions = [
   {
-    href: '/devis/mon-toit',
+    href: '/devis/mon-toit/',
     title: 'Étude & diagnostic gratuit',
     summary:
       'Gratuit, sans engagement : design 3D de votre toit offert, dimensionnement sur votre facture réelle — le point de départ de toutes nos solutions.',
@@ -62,35 +62,35 @@ const solutions = [
     // atterrit aujourd'hui sur l'étape toiture (étape 0) comme n'importe quel
     // autre lien vers ce parcours ; câbler la lecture de ce paramètre est une
     // tâche distincte, ce fichier n'étant pas dans le périmètre autorisé ici.
-    href: '/devis/mon-toit?etape=facture',
+    href: '/devis/mon-toit/?etape=facture',
     title: 'Analyse gratuite de votre facture',
     summary:
       'Indiquez le montant de votre facture ONEE : on en tire votre consommation réelle et une fourchette chiffrée immédiate, sans passer par le relevé de toiture d’abord.',
     qualifier: 'À choisir si vous n’avez pas encore mesuré votre toit, mais avez votre facture sous la main.',
   },
   {
-    href: '/résidentiel',
+    href: '/résidentiel/',
     title: 'Solaire résidentiel',
     summary:
       'Villa ou appartement : on dimensionne sur votre facture, pas sur un kit, et la déclaration loi 82-21 part avec le chantier.',
     qualifier: 'Pour un logement — la déclaration loi 82-21 est incluse.',
   },
   {
-    href: '/professionnel',
+    href: '/professionnel/',
     title: 'Solaire professionnel & industriel',
     summary:
       'Hangars, usines, hôtels, cliniques : on attaque le poste électricité, en moyenne tension si besoin, dans les règles de la loi 82-21.',
     qualifier: 'Pour un site professionnel — jusqu’à la moyenne tension si nécessaire.',
   },
   {
-    href: '/pompage-solaire',
+    href: '/pompage-solaire/',
     title: 'Pompage solaire',
     summary:
       'Irrigation au fil du soleil, le plus souvent sans batteries, calé sur le débit et la HMT (hauteur manométrique totale, la « hauteur » que la pompe doit vaincre) — et exonéré de TVA en agricole.',
     qualifier: 'Pour l’irrigation agricole — dimensionné sur votre débit et votre HMT réels.',
   },
   {
-    href: '/batteries-stockage',
+    href: '/batteries-stockage/',
     title: 'Batteries & stockage',
     summary:
       'Batteries LFP Dyness pour le creux du soir ou la continuité de service, quand votre courbe de consommation le justifie.',
@@ -100,21 +100,21 @@ const solutions = [
     // W253 — page existante mais jusqu'ici invisible du hub (elle vivait sans
     // lien entrant depuis /nos-solutions). Résumé repris tel quel du
     // positionnement déjà publié sur la page elle-même.
-    href: '/recharge-voiture-electrique-solaire',
+    href: '/recharge-voiture-electrique-solaire/',
     title: 'Recharge de véhicule électrique au solaire',
     summary:
       'Rechargez votre voiture électrique avec l’énergie produite sur votre propre toit, plutôt qu’au tarif plein du réseau.',
     qualifier: 'Pour un foyer qui roule (ou va rouler) à l’électrique.',
   },
   {
-    href: '/maintenance-monitoring',
+    href: '/maintenance-monitoring/',
     title: 'Maintenance & monitoring',
     summary:
       'Supervision en temps réel avec accès client depuis une application, SAV qui agit sur alerte et dossier technique complet — la vie d’après la pose.',
     qualifier: 'Inclus après la pose — à considérer aussi pour une installation existante non suivie.',
   },
   {
-    href: '/regularization-article-33',
+    href: '/regularization-article-33/',
     title: 'Régularisation Loi 82-21',
     summary:
       'Une installation existante remise dans les clous via l’Article 33.',
@@ -212,12 +212,12 @@ const jsonLd = {
             <p class="mt-1 text-sm text-lune-soft">De votre toit, pas d’un gabarit</p>
           </div>
         </div>
-        <a href="/devis/mon-toit" class="mt-10 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Lancer mon diagnostic gratuit</a>
+        <a href="/devis/mon-toit/" class="mt-10 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Lancer mon diagnostic gratuit</a>
         <p class="mt-6 text-sm text-lune-faint">
           Vous roulez à l’électrique ? Découvrez aussi comment
-          <a href="/recharge-voiture-electrique-solaire" class="text-white underline underline-offset-2 hover:text-lune">recharger votre voiture au solaire</a>,
-          combien coûtent les <a href="/prix-panneaux-solaires-maroc" class="text-white underline underline-offset-2 hover:text-lune">panneaux solaires au Maroc</a>,
-          ou parcourez tous nos <a href="/guides" class="text-white underline underline-offset-2 hover:text-lune">guides</a> et notre <a href="/blog" class="text-white underline underline-offset-2 hover:text-lune">blog</a>.
+          <a href="/recharge-voiture-electrique-solaire/" class="text-white underline underline-offset-2 hover:text-lune">recharger votre voiture au solaire</a>,
+          combien coûtent les <a href="/prix-panneaux-solaires-maroc/" class="text-white underline underline-offset-2 hover:text-lune">panneaux solaires au Maroc</a>,
+          ou parcourez tous nos <a href="/guides/" class="text-white underline underline-offset-2 hover:text-lune">guides</a> et notre <a href="/blog/" class="text-white underline underline-offset-2 hover:text-lune">blog</a>.
         </p>
       </div>
     </section>
@@ -251,7 +251,7 @@ const jsonLd = {
             <dt class="tech-label mt-2 text-lune-faint">L’étude et le diagnostic</dt>
           </div>
         </dl>
-        <a href="/financement" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
+        <a href="/financement/" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
           Voir le détail du financement <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
         </a>
       </div>
@@ -266,7 +266,7 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-lune">Ce que vous recevez</p>
         <h2 class="display v2-section-title mt-5 max-w-xl text-white">Le matériel posé et les garanties écrites</h2>
         <div class="mt-8 grid gap-6 sm:grid-cols-2" data-stagger>
-          <a href="/équipement" class="v2-rise cine-card group flex flex-col p-7" style="--v2-i:0">
+          <a href="/équipement/" class="v2-rise cine-card group flex flex-col p-7" style="--v2-i:0">
             <p class="tech-label text-lune">Équipement</p>
             <h3 class="display mt-2 text-xl text-white">L’équipement posé</h3>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
@@ -275,7 +275,7 @@ const jsonLd = {
             </p>
             <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">Voir l’équipement <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
           </a>
-          <a href="/garanties" class="v2-rise cine-card group flex flex-col p-7" style="--v2-i:1">
+          <a href="/garanties/" class="v2-rise cine-card group flex flex-col p-7" style="--v2-i:1">
             <p class="tech-label text-lune">Garanties</p>
             <h3 class="display mt-2 text-xl text-white">Nos garanties écrites</h3>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
@@ -309,7 +309,7 @@ const jsonLd = {
       </div>
     </section>
 
-    <CtaBand title="C’est le diagnostic qui désigne la bonne solution. Il est gratuit." href="/devis/mon-toit" />
+    <CtaBand title="C’est le diagnostic qui désigne la bonne solution. Il est gratuit." href="/devis/mon-toit/" />
 
     <StickyCta />
   </div>

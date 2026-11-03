@@ -184,7 +184,8 @@ describe('inventaire des routes (sortie construite réelle)', () => {
     // W245 — /devis/ (capture « Mon toit ») est RETIRÉE de cette liste : c'est
     // devenu le CTA principal du site, indexé + dans le sitemap comme
     // n'importe quelle page publique (donc plus jamais dans privatePaths).
-    const PRIVATE_PREFIXES = ['/preview/', '/internal/', '/proposition/', '/embed/'];
+    // WAUD58 — /liens : page de bio noindex, hors sitemap.
+    const PRIVATE_PREFIXES = ['/preview/', '/internal/', '/proposition/', '/embed/', '/liens/'];
     for (const p of privatePaths) {
       // Retire un éventuel préfixe de locale (/en, /ar) : ces tunnels restent
       // privés dans toutes les langues.

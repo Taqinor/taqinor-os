@@ -169,7 +169,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'L’installation fait l’objet d’un suivi de production en temps réel, dont le foyer garde l’accès : le monitoring restitue mois après mois ce qui est produit et consommé.',
       resume:
         'La plus grande installation résidentielle livrée par Taqinor en 2026 : une toiture de villa d’El Jadida équipée en 24 panneaux, onduleur hybride triphasé et stockage lithium.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
@@ -186,7 +186,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'The installation has continuous real-time production monitoring, to which the household keeps access: the monitoring reports what is produced and consumed, month after month.',
       resume:
         'The largest residential installation delivered by Taqinor in 2026: an El Jadida villa roof fitted with 24 panels, a three-phase hybrid inverter and lithium storage.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Solar installation in Casablanca' },
       alts: {
         'reflet-468': 'The sun reflects on the row of panels during the install, El Jadida',
         'equipe-trois': 'Taqinor team in front of the long row of panels at the end of the project, El Jadida',
@@ -207,7 +207,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'إنتاج التركيبة يخضع لمتابعة مستمرة في الوقت الحقيقي، وتحتفظ الأسرة بالولوج إليها: المراقبة تُبيّن شهراً بعد شهر ما يُنتَج وما يُستهلَك.',
       resume:
         'أكبر تركيبة سكنية سلّمتها تاكينور في 2026: سطح فيلا بالجديدة مُجهَّز بـ 24 لوحاً وعاكس هجين ثلاثي الطور وتخزين ليثيوم.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'reflet-468': 'الشمس تنعكس على صف الألواح أثناء التركيب، الجديدة',
         'equipe-trois': 'فريق تاكينور أمام الصف الطويل من الألواح في نهاية الورش، الجديدة',
@@ -232,7 +232,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'L’installation bénéficie d’un suivi de production en temps réel avec accès client : le monitoring montre ce qui est produit et consommé, et la borne de recharge se lit dans la courbe de consommation autant que les panneaux dans celle de production.',
       resume:
         'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge et suivi de production en temps réel.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
@@ -249,7 +249,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'The installation has real-time production monitoring with client access: the monitoring shows what is produced and consumed, and the charging station reads in the consumption curve as much as the panels read in the production curve.',
       resume:
         'A Casablanca villa facing the skyline: 16 panels, a Deye hybrid inverter and two Dyness batteries, with a charging station and real-time production monitoring.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Solar installation in Casablanca' },
       alts: {
         'hero-skyline': 'Row of solar panels in front of the Casablanca skyline and a minaret, golden light',
         'portrait-400': 'The engineer in front of the panel array, Casablanca skyline',
@@ -270,7 +270,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'التركيبة تخضع لمتابعة الإنتاج في الوقت الحقيقي مع ولوج الزبون: المراقبة تُظهر ما يُنتَج وما يُستهلَك، ومحطة الشحن تُقرأ في منحنى الاستهلاك بقدر ما تُقرأ الألواح في منحنى الإنتاج.',
       resume:
         'فيلا بالدار البيضاء تواجه الأفق: 16 لوحاً، عاكس هجين Deye وبطاريتان Dyness، مع محطة شحن ومتابعة الإنتاج في الوقت الحقيقي.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'hero-skyline': 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي',
         'portrait-400': 'المهندس أمام حقل الألواح، أفق الدار البيضاء',
@@ -295,7 +295,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'La production de l’installation se suit en temps réel, accès client inclus : à cette échelle aussi, le foyer voit ses kWh mois après mois, au compteur.',
       resume:
         'Une installation résidentielle compacte sur toit plat à El Jadida : huit panneaux, onduleur hybride et une batterie 5 kWh, dimensionnés sur la facture du foyer et avec suivi de production en temps réel.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
@@ -312,7 +312,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'The installation’s production is monitored in real time, client access included: at this scale too, the household sees its kWh month after month, straight off the meter.',
       resume:
         'A compact residential installation on a flat roof in El Jadida: eight panels, a hybrid inverter and a 5 kWh battery, sized on the household’s bill and with real-time production monitoring.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Solar installation in Casablanca' },
       alts: {
         'champ-villa': 'Array of eight panels on a villa’s flat roof, El Jadida',
       },
@@ -331,7 +331,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'إنتاج التركيبة يُتابَع في الوقت الحقيقي، مع ولوج الزبون: عند هذا المقياس أيضاً، الأسرة ترى كيلوواط-ساعاتها شهراً بعد شهر، مباشرة من العدّاد.',
       resume:
         'تركيبة سكنية مُدمجة على سطح مستوٍ بالجديدة: ثمانية ألواح، عاكس هجين وبطارية 5 kWh، مُحدَّدة المقاس على فاتورة الأسرة ومع متابعة الإنتاج في الوقت الحقيقي.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'champ-villa': 'حقل من ثمانية ألواح على سطح مستوٍ لفيلا، الجديدة',
       },
@@ -354,7 +354,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'L’installation bénéficie d’un suivi de production en temps réel avec accès client : c’est le même engagement de mesure continue que sur l’ensemble de nos chantiers.',
       resume:
         'Une villa de Casablanca équipée de huit panneaux Canadian Solar 710 Wc — même puissance que notre installation d’El Jadida, pour un profil de consommation comparable, avec suivi de production en temps réel.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
@@ -371,7 +371,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'The installation has real-time production monitoring with client access: it is the same commitment to continuous measurement as across all our projects.',
       resume:
         'A Casablanca villa fitted with eight Canadian Solar 710 Wc panels — the same power as our El Jadida installation, for a comparable consumption profile, with real-time production monitoring.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Solar installation in Casablanca' },
       alts: {
         'pose-134': 'The team tilts a panel during the install, Casablanca',
       },
@@ -390,7 +390,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'التركيبة تخضع لمتابعة الإنتاج في الوقت الحقيقي مع ولوج الزبون: إنه الالتزام نفسه بالمتابعة المستمرة كما في كل أوراشنا.',
       resume:
         'فيلا بالدار البيضاء مُجهَّزة بثمانية ألواح Canadian Solar 710 Wc — القدرة نفسها كتركيبتنا بالجديدة، لمَلمح استهلاك مماثل، مع متابعة الإنتاج في الوقت الحقيقي.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'pose-134': 'الفريق يميل لوحاً أثناء التركيب، الدار البيضاء',
       },
@@ -413,7 +413,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'Posée en octobre 2025, l’installation suit notre standard d’implantation et d’entretien, avec la même possibilité de suivi de production en temps réel, accès client, que sur nos autres chantiers.',
       resume:
         'Une installation à Nouaceur, dans la périphérie de Casablanca : six panneaux JA Solar posés avec le même soin d’implantation que nos chantiers de plus grande taille.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
@@ -430,7 +430,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'Fitted in October 2025, the installation follows our standard of layout and upkeep, with the same real-time production monitoring available, client access included, as on our other projects.',
       resume:
         'An installation in Nouaceur, on the outskirts of Casablanca: six JA Solar panels fitted with the same care of layout as our larger projects.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Solar installation in Casablanca' },
       alts: {
         'equipe-gilet-taqinor': 'Installer in a Taqinor vest fitting a structure’s rails, Nouaceur',
         'mesure-rails': 'Marking out and tape measurement of the fixing rails on the roof, Nouaceur',
@@ -457,7 +457,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'مُركَّبة في أكتوبر 2025، تتبع التركيبة معيارنا في التنصيب والصيانة، مع نفس إمكانية متابعة الإنتاج في الوقت الحقيقي، بولوج الزبون، المتوفرة في باقي أوراشنا.',
       resume:
         'تركيبة في النواصر، بضواحي الدار البيضاء: ستة ألواح JA Solar مُركَّبة بنفس عناية التنصيب التي في أوراشنا الأكبر حجماً.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'equipe-gilet-taqinor': 'مُركِّب بسترة تاكينور يضع سكك بنية، النواصر',
         'mesure-rails': 'تخطيط وقياس بالمتر لسكك التثبيت على السطح، النواصر',
@@ -497,7 +497,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'Installation mise en service en juillet 2026. Comme sur nos autres chantiers, l’onduleur Deye permet un suivi de production en temps réel, accès client compris ; les chiffres de production seront publiés une fois relevés.',
       resume:
         'Une villa à Bouskoura équipée de seize panneaux de 715 Wc (11,44 kWc), onduleur hybride Deye et deux batteries DYNESS de 5 kWh — mise en service en juillet 2026.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
@@ -514,7 +514,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'Commissioned in July 2026. As on our other projects, the Deye inverter provides real-time production monitoring, client access included; production figures will be published once recorded.',
       resume:
         'A villa in Bouskoura with sixteen 715 Wc panels (11.44 kWc), a Deye hybrid inverter and two DYNESS 5 kWh batteries — commissioned in July 2026.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'Solar installation in Casablanca' },
       alts: {
         'bouskoura-toit': 'A villa roof terrace fully covered in solar panels, Bouskoura',
         'bouskoura-toit-large': 'Wide aerial view of the villa’s solar roof and the neighbourhood, Bouskoura',
@@ -540,7 +540,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
         'شُغِّل التركيب في يوليوز 2026. كما في باقي أوراشنا، يتيح عاكس Deye متابعة الإنتاج في الوقت الحقيقي، بولوج الزبون؛ وستُنشر أرقام الإنتاج بمجرد تسجيلها.',
       resume:
         'فيلا في بوسكورة بستة عشر لوحاً بقدرة 715 واط (11,44 kWc)، عاكس هجين Deye وبطاريتي DYNESS بسعة 5 كيلوواط-ساعة — شُغِّلت في يوليوز 2026.',
-      cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
+      cityLink: { href: '/installation-solaire-casablanca/', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'bouskoura-toit': 'سطح فيلا مغطى بالكامل بألواح شمسية، بوسكورة',
         'bouskoura-toit-large': 'منظر جوي واسع لسطح الفيلا الشمسي والحي المحيط، بوسكورة',

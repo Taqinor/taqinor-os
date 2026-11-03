@@ -279,8 +279,8 @@ describe('[...token].astro — couleurs VALIDÉES fondateur, PINNED', () => {
     expect(CODE).toContain("presence_partielle: { stroke: '#1baf7a', dash: '2,3' }");
   });
 
-  it('la silhouette du client porte le libellé grand public « Votre choix » (WAUD61)', () => {
-    expect(CODE).toContain('Votre choix');
+  it('la silhouette du client porte le libellé grand public « Votre profil » (WAUD61)', () => {
+    expect(CODE).toContain('Votre profil');
     expect(CODE).not.toContain('pour ce client');
   });
 

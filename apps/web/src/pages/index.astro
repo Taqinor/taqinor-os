@@ -149,12 +149,12 @@ const galleryCities = ['Toutes', ...Array.from(new Set(gallery.map((g) => g.vill
 // dans le menu. Descriptions reprises du positionnement déjà publié, sans
 // nouveau claim ni chiffre. Cartes texte (aucune image) → zéro CLS.
 const solutions = [
-  { href: '/résidentiel', tag: 'Villas & appartements', title: 'Solaire résidentiel', body: 'Dimensionné sur votre facture réelle, déclaration loi 82-21 incluse.' },
-  { href: '/professionnel', tag: 'Industriels · hôtels · cliniques', title: 'Solaire professionnel', body: 'Réduction du poste électricité, moyenne tension, conformité loi 82-21.' },
-  { href: '/pompage-solaire', tag: 'Agriculture & irrigation', title: 'Pompage solaire', body: 'Pompage au fil du soleil, souvent sans batteries, dimensionné au besoin réel.' },
-  { href: '/batteries-stockage', tag: 'Autoconsommation', title: 'Batteries & stockage', body: 'Stockage LFP pour le nocturne ou la continuité de service — quand l’étude le justifie.' },
-  { href: '/maintenance-monitoring', tag: 'Après la pose', title: 'Maintenance & monitoring', body: 'Supervision en temps réel avec accès client, SAV proactif, dossier technique.' },
-  { href: '/regularization-article-33', tag: 'Mise en conformité', title: 'Régularisation Loi 82-21', body: 'Régularisation des installations existantes via l’Article 33.' },
+  { href: '/résidentiel/', tag: 'Villas & appartements', title: 'Solaire résidentiel', body: 'Dimensionné sur votre facture réelle, déclaration loi 82-21 incluse.' },
+  { href: '/professionnel/', tag: 'Industriels · hôtels · cliniques', title: 'Solaire professionnel', body: 'Réduction du poste électricité, moyenne tension, conformité loi 82-21.' },
+  { href: '/pompage-solaire/', tag: 'Agriculture & irrigation', title: 'Pompage solaire', body: 'Pompage au fil du soleil, souvent sans batteries, dimensionné au besoin réel.' },
+  { href: '/batteries-stockage/', tag: 'Autoconsommation', title: 'Batteries & stockage', body: 'Stockage LFP pour le nocturne ou la continuité de service — quand l’étude le justifie.' },
+  { href: '/maintenance-monitoring/', tag: 'Après la pose', title: 'Maintenance & monitoring', body: 'Supervision en temps réel avec accès client, SAV proactif, dossier technique.' },
+  { href: '/regularization-article-33/', tag: 'Mise en conformité', title: 'Régularisation Loi 82-21', body: 'Régularisation des installations existantes via l’Article 33.' },
 ];
 
 // W65 — Les marques tier-1 vivent désormais dans <BrandStrip> (src/lib/brands.ts) :
@@ -299,7 +299,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
               WJ36 — le héros pointe le parcours devis, libellé principal verbatim. */}
-          <a id="hero-cta-magnetic" href="/devis/mon-toit" class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+          <a id="hero-cta-magnetic" href="/devis/mon-toit/" class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Obtenir mon étude gratuite →
           </a>
           {/* W349 — Ghost WhatsApp devient la porte sans formulaire : contour
@@ -380,7 +380,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
         <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger data-gallery-grid>
           {gallery.map((g, i) => (
             <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
-              <a href={`/realisations/${g.slug}`} class="absolute inset-0 z-0" aria-label={`Voir la réalisation : ${g.ariaLabel}`}></a>
+              <a href={`/realisations/${g.slug}/`} class="absolute inset-0 z-0" aria-label={`Voir la réalisation : ${g.ariaLabel}`}></a>
               {/* Grade « heure dorée » uniforme — .v3-grade sur la photo de contenu.
                   W364 — view-transition-name par photo (g.name, PAS g.slug —
                   certaines installations ont plusieurs cartes/photos, et un nom
@@ -432,7 +432,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
           </p>
         )}
         {/* Lien discret vers TOUTES les réalisations — pas un bouton plein */}
-        <a href="/realisations" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
+        <a href="/realisations/" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
           Voir nos dernières réalisations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
         </a>
       </div>
@@ -469,7 +469,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
             </a>
           ))}
         </div>
-        <a href="/nos-solutions" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos solutions <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
+        <a href="/nos-solutions/" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos solutions <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
       </div>
     </section>
 
@@ -489,7 +489,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
           </p>
         </div>
         <EnIndexDlF52D investment={investment} />
-        <a href="/financement" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
+        <a href="/financement/" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
           Voir le détail du financement <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
         </a>
       </div>
@@ -549,7 +549,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
       <p class="v2-lead mx-auto mt-4 max-w-2xl text-lune-soft">
         Études conçues par des ingénieurs — expertise R&amp;D télécom, ex-Huawei, Ericsson et STMicroelectronics.
       </p>
-      <a href="/à-propos" class="mt-6 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
+      <a href="/à-propos/" class="mt-6 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
         Le fondateur et sa méthode →
       </a>
     </section>
@@ -644,7 +644,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
             l'orientation réelle, et recevez une étude signée par notre équipe technique.
           </p>
           <div class="mt-6 flex flex-wrap gap-3">
-            <a href="/devis/mon-toit" class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+            <a href="/devis/mon-toit/" class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
               Obtenir mon étude gratuite →
             </a>
             <EnIndexA993D waDirect={waDirect} />

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 
 // @ts-expect-error — module JS pur sans déclaration de types (copié dans dist/server au build)
-import { canonicalTarget, canonicalRedirectStatus, CANONICAL_ORIGIN } from '../worker/canonical.mjs';
+import { canonicalTarget, canonicalRedirectStatus, CANONICAL_ORIGIN, httpsTarget } from '../worker/canonical.mjs';
 // @ts-expect-error — module JS pur sans déclaration de types (copié dans dist/server au build)
 import { pathRedirect, trailingSlashRedirect } from '../worker/redirects.mjs';
 // Le catalogue des fiches déclare les MÊMES alias que la table du Worker.
@@ -63,11 +63,11 @@ describe('canonicalRedirectStatus — préserve la méthode/le corps des POST (E
 describe('pathRedirect', () => {
   it('redirige les slugs sans accent vers le canonique accentué (301)', () => {
     expect(pathRedirect('https://taqinor.ma/residentiel')).toEqual({
-      target: 'https://taqinor.ma/r%C3%A9sidentiel',
+      target: 'https://taqinor.ma/r%C3%A9sidentiel/',
       status: 301,
     });
     expect(pathRedirect('https://taqinor.ma/equipement')).toEqual({
-      target: 'https://taqinor.ma/%C3%A9quipement',
+      target: 'https://taqinor.ma/%C3%A9quipement/',
       status: 301,
     });
   });
@@ -100,12 +100,12 @@ describe('pathRedirect', () => {
 
   it('mappe les alias usuels vers la bonne page (301)', () => {
     expect(pathRedirect('https://taqinor.ma/regularisation')?.target).toBe(
-      'https://taqinor.ma/regularization-article-33',
+      'https://taqinor.ma/regularization-article-33/',
     );
     expect(pathRedirect('https://taqinor.ma/confidentialite')?.target).toBe(
-      'https://taqinor.ma/politique-de-confidentialite',
+      'https://taqinor.ma/politique-de-confidentialite/',
     );
-    expect(pathRedirect('https://taqinor.ma/mentions')?.target).toBe('https://taqinor.ma/mentions-legales');
+    expect(pathRedirect('https://taqinor.ma/mentions')?.target).toBe('https://taqinor.ma/mentions-legales/');
     expect(pathRedirect('https://taqinor.ma/home')?.status).toBe(301);
   });
 
@@ -180,21 +180,21 @@ describe('trailingSlashRedirect — forme canonique = avec barre finale', () => 
 describe('pathRedirect — anciens slugs de fiches techniques', () => {
   it('l’ancien coffret combiné atterrit sur la fiche protection DC', () => {
     expect(pathRedirect('https://taqinor.ma/produits/tableau-protection-ac-dc')).toEqual({
-      target: 'https://taqinor.ma/produits/protection-dc',
+      target: 'https://taqinor.ma/produits/protection-dc/',
       status: 301,
     });
   });
 
   it('les anciens accessoires de câblage atterrissent sur la fiche câblage', () => {
     expect(pathRedirect('https://taqinor.ma/produits/accessoires-cablage')).toEqual({
-      target: 'https://taqinor.ma/produits/cablage',
+      target: 'https://taqinor.ma/produits/cablage/',
       status: 301,
     });
   });
 
   it('la barre finale et la querystring d’un vieux lien sont tolérées/préservées', () => {
     expect(pathRedirect('https://taqinor.ma/produits/accessoires-cablage/?utm_source=devis')).toEqual({
-      target: 'https://taqinor.ma/produits/cablage?utm_source=devis',
+      target: 'https://taqinor.ma/produits/cablage/?utm_source=devis',
       status: 301,
     });
   });
@@ -211,7 +211,47 @@ describe('pathRedirect — anciens slugs de fiches techniques', () => {
       expect(
         pathRedirect(`https://taqinor.ma/produits/${ancien}`),
         `alias « ${ancien} » absent de worker/redirects.mjs`,
-      ).toEqual({ target: `https://taqinor.ma/produits/${actuel}`, status: 301 });
+      ).toEqual({ target: `https://taqinor.ma/produits/${actuel}/`, status: 301 });
     }
+  });
+});
+
+describe('WAUD25 — variantes d’URL en un seul saut', () => {
+  const VARIANTES: [string, string][] = [
+    ['/a-propos', '/%C3%A0-propos/'],
+    ['/en/a-propos/', '/en/%C3%A0-propos/'],
+    ['/en/residentiel', '/en/r%C3%A9sidentiel/'],
+    ['/ar/residentiel/', '/ar/r%C3%A9sidentiel/'],
+    ['/en/equipement', '/en/%C3%A9quipement/'],
+    ['/residentiel/', '/r%C3%A9sidentiel/'],
+    ['/FAQ', '/faq/'],
+    ['/en/FAQ/', '/en/faq/'],
+  ];
+  it.each(VARIANTES)('%s → %s', (de, vers) => {
+    const r = pathRedirect(`https://taqinor.ma${de}`);
+    expect(r?.target).toBe(`https://taqinor.ma${vers}`);
+    expect(r?.status).toBe(301);
+    // la cible ne redirige plus
+    expect(pathRedirect(r!.target)).toBeNull();
+    expect(trailingSlashRedirect(r!.target)).toBeNull();
+  });
+
+  it('jetons et API jamais touchés par la casse', () => {
+    expect(pathRedirect('https://taqinor.ma/proposition/AbC123xYz/')).toBeNull();
+    expect(pathRedirect('https://taqinor.ma/suivi/AbC/')).toBeNull();
+    expect(pathRedirect('https://taqinor.ma/api/Lead')).toBeNull();
+  });
+});
+
+describe('WAUD23 — http → https en tête du Worker', () => {
+  it.each(['/', '/faq/', '/devis/mon-toit/?utm_source=g'])('http://taqinor.ma%s → https, sans boucle', (p) => {
+    const cible = httpsTarget(`http://taqinor.ma${p}`);
+    expect(cible).toBe(`https://taqinor.ma${p}`);
+    expect(httpsTarget(cible)).toBeNull();
+    expect(canonicalTarget(cible)).toBeNull();
+  });
+  it('jamais localhost ni un autre hôte', () => {
+    expect(httpsTarget('http://localhost:4321/')).toBeNull();
+    expect(httpsTarget('http://127.0.0.1:8788/')).toBeNull();
   });
 });

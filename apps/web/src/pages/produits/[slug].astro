@@ -74,7 +74,7 @@ const jsonLd = {
     <Breadcrumb
       items={[
         { label: 'Accueil', href: '/' },
-        { label: 'Fiches techniques', href: '/produits' },
+        { label: 'Fiches techniques', href: '/produits/' },
         { label: fiche.nom },
       ]}
     />
@@ -195,7 +195,7 @@ const jsonLd = {
             (parcours /devis/mon-toit, libellé principal verbatim) ; le
             téléchargement PDF est rétrogradé en bouton contour. */}
         <div class="v2-rise mt-8 flex flex-wrap gap-3">
-          <a href="/devis/mon-toit" class="glow bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Obtenir mon étude gratuite &rarr;</a>
+          <a href="/devis/mon-toit/" class="glow bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Obtenir mon étude gratuite &rarr;</a>
           {downloadHref && (
             <a
               href={downloadHref}
@@ -298,7 +298,7 @@ const jsonLd = {
             <RelatedLinks
               mt="mt-5"
               links={pairings.flatMap((group) =>
-                group.fiches.map((f) => ({ href: `/produits/${f.slug}`, label: f.nom }))
+                group.fiches.map((f) => ({ href: `/produits/${f.slug}/`, label: f.nom }))
               )}
             />
           </div>
@@ -311,7 +311,7 @@ const jsonLd = {
               ? 'Ce poste n’a pas de fiche constructeur : c’est un ensemble monté sur mesure. Sa composition exacte est fixée par l’étude, dans le respect de la norme liée ci-dessus.'
               : 'Ce poste n’a pas de fiche constructeur : c’est un ensemble monté sur mesure. Sa composition exacte est fixée par l’étude, dans le respect des normes citées ci-dessus.'}
           Le raisonnement derrière chaque marque est expliqué sur
-          <a href="/équipement" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
+          <a href="/équipement/" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
         </p>
       </div>
     </section>

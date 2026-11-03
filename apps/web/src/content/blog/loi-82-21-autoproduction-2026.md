@@ -157,7 +157,7 @@ par un objectif d'injection maximale.
 ---
 
 Pour comprendre les trois régimes en détail et identifier le vôtre,
-lisez notre [guide complet : Loi 82-21 expliquée simplement](/guides/loi-82-21-expliquee).
+lisez notre [guide complet : Loi 82-21 expliquée simplement](/guides/loi-82-21-expliquee/).
 
 Pour évaluer la rentabilité selon votre ville et votre profil de consommation,
-consultez notre article [Rentabilité solaire par ville au Maroc — chiffres 2026](/blog/rentabilite-solaire-par-ville-maroc).
+consultez notre article [Rentabilité solaire par ville au Maroc — chiffres 2026](/blog/rentabilite-solaire-par-ville-maroc/).

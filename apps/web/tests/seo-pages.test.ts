@@ -6,6 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { lireAstroAvecBlocs } from './astroBlocsHelper';
+import { builtPage } from './builtHtmlHelper';
+// @ts-expect-error — module JS pur sans déclaration de types
+import { dateArticle, datesDuDepot, lastmodPour } from '../scripts/sitemap-dates.mjs';
 import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
 import { NAP } from '../src/lib/nap';
 
@@ -228,7 +231,7 @@ describe('maillage & téléphone (W9 / W10)', () => {
     // Lien vers le hub /realisations depuis la galerie. W54 a retiré le bloc
     // « Fiches chantier » en double : la galerie photo porte désormais seule la
     // preuve (et ses données), d'où un seul lien hub au lieu de deux.
-    expect((idx.match(/href="\/realisations"/g) ?? []).length).toBeGreaterThanOrEqual(1);
+    expect((idx.match(/href="\/realisations\/"/g) ?? []).length).toBeGreaterThanOrEqual(1);
     // Chaque carte de la galerie lie son étude de cas (template `/realisations/${g.slug}`).
     expect(idx).toContain('/realisations/${g.slug}');
     // Chaque étude de cas réelle (5 installs) reste référencée par slug sur l’accueil.
@@ -282,5 +285,77 @@ describe('teaser garanties (W16)', () => {
     for (const p of ['index', 'résidentiel', 'professionnel']) {
       expect(read(`../src/pages/${p}.astro`), p).toContain('GarantiesTeaser');
     }
+  });
+});
+
+describe('WAUD4 — pages à chemin accentué : hreflang, sélecteur, contexte WhatsApp', () => {
+  const CHEMINS = ['résidentiel', 'équipement', 'à-propos'];
+  for (const [prefixe, attendu] of [['', 'fr'], ['/en', 'en'], ['/ar', 'ar']] as const) {
+    for (const c of CHEMINS) {
+      it(`${prefixe}/${c}`, () => {
+        const html = builtPage(`${prefixe}/${c}`);
+        for (const l of ['fr', 'en', 'ar', 'x-default']) {
+          expect(html).toMatch(new RegExp(`<link rel="alternate" hreflang="${l}"`));
+        }
+        expect(html.includes(`lang="${attendu}"`)).toBe(true);
+      });
+    }
+  }
+
+  it('le lien WhatsApp de /résidentiel/ nomme la page', () => {
+    const liens = [...builtPage('/résidentiel').matchAll(/https:\/\/wa\.me\/[^"]+/g)].map((m) => decodeURIComponent(m[0]));
+    expect(liens.some((l) => l.includes('page Résidentiel'))).toBe(true);
+  });
+});
+
+describe('WAUD25 — 404 de la marque', () => {
+  const page = readFileSync(fileURLToPath(new URL('../src/pages/404.astro', import.meta.url)), 'utf-8');
+  it('trilingue, statut 404, au moins 3 sorties', () => {
+    expect(page).toContain('Astro.response.status = 404');
+    expect(page).toContain('prerender = false');
+    for (const l of ['fr:', 'en:', 'ar:']) expect(page).toContain(l);
+    expect(page.match(/data-sortie-404/g)!.length).toBeGreaterThanOrEqual(3);
+    expect(page).toContain('quoteJourneyHref(locale)');
+    expect(page).toContain('whatsappLink(');
+  });
+  it('favicon.ico servi', () => {
+    const ico = readFileSync(fileURLToPath(new URL('../public/favicon.ico', import.meta.url)));
+    expect([...ico.subarray(0, 4)]).toEqual([0, 0, 1, 0]);
+  });
+});
+
+describe('WAUD58 — pages utilitaires hors index', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  it('/status, /liens noindex ; /confiance noindex quand le flux est vide, repli vers /garanties', () => {
+    expect(lire('src/pages/status/index.astro')).toMatch(/title="Statut du service \| Taqinor"\s+noindex/);
+    expect(lire('src/pages/liens.astro')).toMatch(/noindex/);
+    const confiance = lire('src/pages/confiance.astro');
+    expect(confiance).toContain('noindex={groupes.length === 0}');
+    expect(confiance).toContain('/garanties/');
+    expect(confiance).not.toContain('momentanément indisponibles');
+  });
+  it('/liens a un H1 et sort du sitemap', () => {
+    expect(lire('src/pages/liens.astro')).toContain('<h1');
+    expect(lire('astro.config.mjs')).toContain('\\/liens\\/?$');
+  });
+});
+
+describe('WAUD85 — lastmod : vraies dates seulement', () => {
+  it('guides, articles et relevé sont datés ; une page sans date réelle ne l’est jamais', () => {
+    const table = datesDuDepot();
+    expect(lastmodPour(table, 'https://taqinor.ma/guides/loi-82-21-expliquee/')).toBe('2026-10-05');
+    expect(lastmodPour(table, 'https://taqinor.ma/en/guides/loi-82-21-expliquee/')).toBe('2026-10-05');
+    expect(lastmodPour(table, 'https://taqinor.ma/blog/prix-installation-solaire-maroc-2026/')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(lastmodPour(table, 'https://taqinor.ma/production-mesuree/')).toBe('2026-07-05');
+    for (const u of ['https://taqinor.ma/', 'https://taqinor.ma/contact/', 'https://taqinor.ma/faq/', 'https://taqinor.ma/installation-solaire-casablanca/']) {
+      expect(lastmodPour(table, u)).toBeUndefined();
+    }
+  });
+  it('un brouillon n’a pas de date ; updatedDate l’emporte', () => {
+    expect(dateArticle('---\ndraft: true\npubDate: 2026-01-01\n---\n')).toBeNull();
+    expect(dateArticle('---\npubDate: 2026-01-01\nupdatedDate: 2026-02-02\n---\n')).toBe('2026-02-02');
+  });
+  it('astro.config.mjs ne lit plus git', () => {
+    expect(readFileSync(fileURLToPath(new URL('../astro.config.mjs', import.meta.url)), 'utf-8')).not.toContain('git log');
   });
 });

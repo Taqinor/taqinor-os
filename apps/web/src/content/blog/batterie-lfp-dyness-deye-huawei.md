@@ -102,6 +102,6 @@ Voici la grille de décision que j'utilise en rendez-vous :
 - Installation en montagne ou zone à gel hivernal : Dyness **PowerDepot H5B** (chauffage intégré, −20 °C).
 - Capacité maximale dans un espace réduit : **PowerBrick** (14,34 kWh, ≥ 8 000 cycles).
 
-Pour connaître la taille d'installation adaptée à votre consommation, consultez notre guide [Lithium ou gel — quelle chimie choisir ?](/guides/batterie-lithium-ou-gel) et notre article [Stocker ou revendre : quel arbitrage avec la loi 82-21 ?](/blog/batterie-stocker-ou-revendre-maroc).
+Pour connaître la taille d'installation adaptée à votre consommation, consultez notre guide [Lithium ou gel — quelle chimie choisir ?](/guides/batterie-lithium-ou-gel/) et notre article [Stocker ou revendre : quel arbitrage avec la loi 82-21 ?](/blog/batterie-stocker-ou-revendre-maroc/).
 
-Vous souhaitez un devis avec la configuration précise (batterie + onduleur + panneaux) ? Notre simulateur calcule la puissance recommandée à partir de votre facture ONEE. → **[Obtenir un diagnostic personnalisé](/devis/mon-toit)**
+Vous souhaitez un devis avec la configuration précise (batterie + onduleur + panneaux) ? Notre simulateur calcule la puissance recommandée à partir de votre facture ONEE. → **[Obtenir un diagnostic personnalisé](/devis/mon-toit/)**

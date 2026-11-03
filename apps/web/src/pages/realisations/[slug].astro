@@ -41,7 +41,7 @@ const cityPage = CITIES.find((c) => c.name === r.ville);
 // service la plus pertinente fournie par l'étude (ex. El Jadida/Nouaceur →
 // Casablanca, même région) ; `null` si aucune n'est pertinente.
 const cityLink = cityPage
-  ? { href: `/installation-solaire-${cityPage.slug}`, label: `Installation solaire ${cityPage.intro}` }
+  ? { href: `/installation-solaire-${cityPage.slug}/`, label: `Installation solaire ${cityPage.intro}` }
   : cs.cityLink;
 const segmentHref = r.segment === 'professionnel' ? '/professionnel' : '/résidentiel';
 const segmentLabel = r.segment === 'professionnel' ? 'Professionnel' : 'Résidentiel';
@@ -148,7 +148,7 @@ const t = {
   waCta: 'Discuter de cette installation sur WhatsApp',
 };
 
-const bodyProps = { r, cs, L, rtl: false, fr: true, t, altOf: (p: { alt: string }) => p.alt, breadcrumbItems: [{ label: 'Accueil', href: '/' }, { label: 'Réalisations', href: '/realisations' }, { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville }], cityLink, segmentHref, phasedPhotos, phaseLabels, hasDiptych, galleryPhotos, equipment, heroAlt, nearestCase, waCaseStudy };
+const bodyProps = { r, cs, L, rtl: false, fr: true, t, altOf: (p: { alt: string }) => p.alt, breadcrumbItems: [{ label: 'Accueil', href: '/' }, { label: 'Réalisations', href: '/realisations/' }, { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville }], cityLink, segmentHref, phasedPhotos, phaseLabels, hasDiptych, galleryPhotos, equipment, heroAlt, nearestCase, waCaseStudy };
 ---
 
 <Layout

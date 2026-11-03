@@ -20,8 +20,21 @@ export function getLocaleFromPath(pathname: string): Locale {
  * concordent toutes (toutes avec barre, ou toutes sans) et ne déclenchent
  * jamais le 301 de canonicalisation de la barre finale (worker/redirects.mjs).
  */
+/** Décode un chemin d'URL ; un chemin mal encodé reste tel quel (jamais d'exception). */
+export function decodeChemin(chemin: string): string {
+  try {
+    return decodeURI(chemin);
+  } catch {
+    return chemin;
+  }
+}
+
 export function stripLocale(pathname: string): string {
-  const normalized = pathname.startsWith('/') ? pathname : '/' + pathname;
+  // WAUD4 — Astro.url.pathname arrive ENCODÉ (/r%C3%A9sidentiel/) ; le registre i18n et
+  // les libellés WhatsApp sont en clés accentuées : sans ce décodage, 9 URL perdaient
+  // hreflang, sélecteur de langue et contexte de page.
+  const decoded = decodeChemin(pathname);
+  const normalized = decoded.startsWith('/') ? decoded : '/' + decoded;
   const parts = normalized.split('/').filter(Boolean);
   // La forme canonique du site est AVEC barre finale ; on la conserve telle
   // quelle (racine `/` exclue) pour que toutes les locales s'accordent.

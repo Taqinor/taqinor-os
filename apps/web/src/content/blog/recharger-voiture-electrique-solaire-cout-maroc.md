@@ -115,9 +115,9 @@ Pour un usage quotidien, de toute façon, c'est la recharge à domicile qui rest
 
 Ce calcul est le point de départ. La réalité dépend de votre consommation totale, de votre toiture et de vos habitudes de conduite. Notre outil de diagnostic vous donne une estimation en quelques minutes — et notre équipe peut affiner avec un vrai devis.
 
-→ **[Découvrir le pilier complet : recharge VE au solaire au Maroc](/recharge-voiture-electrique-solaire)**
+→ **[Découvrir le pilier complet : recharge VE au solaire au Maroc](/recharge-voiture-electrique-solaire/)**
 
-→ **[Obtenir un diagnostic personnalisé](/devis/mon-toit)**
+→ **[Obtenir un diagnostic personnalisé](/devis/mon-toit/)**
 
 ---
 
