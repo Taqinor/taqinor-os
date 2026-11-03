@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 31d664598c004e3e0a0ef8fec272ce99249141251e6fecf43d62e5a3e8652e63
-Plan fingerprint: 03a7387dd68549e3bc80acff6e39b0b6ffc78855838c8cab2d31a37c2e0faf12
+Plan fingerprint: cb41234c7ef09082bdc6c4cdbe5e91f58e0be5cda96fd47bc391b31432e802be
 
 
 
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1303)**
+**Done (1304)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -779,6 +779,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `AIC50` — Skill `assistant-manuel` : Claude Code génère sur l'abonnement de Reda (jamais une clé…
 - `AIC51` — Skill `assistant-tri` + `docs/assistant-tri.md` + interrupteur…
 - `AICM1` — Réclamer les crédits API et créer le workspace de l'assistant
+- `BPQ9` — [core/observabilite]
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -1900,7 +1901,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (123)**
+**Open — to build (135)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1950,6 +1951,18 @@ Things this map could not fully verify from source — do not over-trust:
 - `AICM2` — Réglage de confidentialité du compte claude.ai
 - `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]
+- `BPQ1` — [reporting/journal]
+- `BPQ2` — [core/observabilite]
+- `BPQ3` — [reporting/journal]
+- `BPQ4` — [reporting/journal]
+- `BPQ5` — [skills/problemes-prod]
+- `BPQ6` — [core/health + frontend/shell]
+- `BPQ7` — [frontend/shell]
+- `BPQ8` — [docs/problemes-prod]
+- `BPQ10` — [core/observabilite]
+- `BPQ11` — [docs/problemes-prod]
+- `BPQ12` — [core/health]
+- `BPQ13` — [scripts/check]
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
 - `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
@@ -2036,3 +2049,4 @@ Things this map could not fully verify from source — do not over-trust:
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
 - `VX252` — [BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI
+

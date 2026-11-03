@@ -650,3 +650,7 @@ unmapped_ok:
   - AIC
   # AICM — gestes MANUELS de Reda du Groupe AIC (crédits, confidentialité, juriste) : pass-through.
   - AICM
+  # BPQ — Boucle quotidienne des problèmes vécus (revue L3 du 03/11/2026,
+  # docs/boucle-problemes-quotidienne.md) : observabilité/reporting + skill de tri ;
+  # auto-ordonné par ses @after (BPQ1 -> BPQ3 -> BPQ4 -> BPQ5…), aucun prérequis de vague.
+  - BPQ

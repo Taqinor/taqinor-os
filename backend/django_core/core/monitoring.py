@@ -34,6 +34,15 @@ _INITIALISE = False
 _company_id_ctx: "contextvars.ContextVar[Optional[int]]" = (
     contextvars.ContextVar('sentry_company_id', default=None))
 
+# BPQ9 — identifiant de requête courant (contextvar), posé par
+# ``core.middleware.RequestIdMiddleware`` AVANT la vue et retiré après. C'est
+# le MÊME identifiant que Django renvoie au navigateur (en-tête
+# ``X-Request-Id`` + ``error.request_id`` de l'enveloppe 500) : une ligne
+# ``serveur`` du journal des problèmes (``reporting.ProblemeClient``) se relie
+# ainsi à l'évènement Sentry qui porte sa pile d'appel.
+_request_id_ctx: "contextvars.ContextVar[Optional[str]]" = (
+    contextvars.ContextVar('sentry_request_id', default=None))
+
 
 def sentry_dsn():
     """DSN Sentry configuré (chaîne vide = monitoring désactivé)."""
@@ -62,13 +71,42 @@ def bind_company(company_id: Optional[int]) -> None:
         logger.warning("bind company : échec ignoré, comportement dégradé", exc_info=True)
 
 
+def bind_request_id(request_id: Optional[str]) -> None:
+    """BPQ9 — associe l'identifiant de requête aux futurs événements Sentry.
+
+    No-op inoffensif sans init (aucun import du SDK). Appelé par
+    ``RequestIdMiddleware`` avec ``None`` en sortie de requête, pour qu'un
+    worker ne prête jamais l'identifiant d'une requête à la suivante.
+    """
+    _request_id_ctx.set(request_id)
+    if not _INITIALISE:
+        return
+    try:
+        import sentry_sdk  # paresseux, présent seulement si init
+        sentry_sdk.set_tag('request_id', request_id or None)
+    except Exception:  # noqa: BLE001 — jamais casser une requête pour un tag (D-ENF22-BLE001)
+        logger.warning("bind request id : échec ignoré, comportement dégradé", exc_info=True)
+
+
+def release():
+    """BPQ9 — version déployée (``SENTRY_RELEASE``, le sha de ``main`` déployé) ;
+    ``None`` si absente. Permet à Sentry de distinguer « régressé après tel
+    déploiement » de « jamais corrigé »."""
+    return (os.environ.get('SENTRY_RELEASE') or '').strip() or None
+
+
 def _before_send(event, hint):
-    """Injecte le tag ``company`` sur chaque événement (repli contextvar)."""
+    """Injecte les tags ``company`` et ``request_id`` sur chaque événement
+    (repli contextvar)."""
     try:
         company_id = _company_id_ctx.get()
         if company_id is not None:
             tags = event.setdefault('tags', {})
             tags.setdefault('company', str(company_id))
+        request_id = _request_id_ctx.get()
+        if request_id:
+            tags = event.setdefault('tags', {})
+            tags.setdefault('request_id', request_id)
     except Exception:  # noqa: BLE001 — un before_send ne doit jamais lever (D-ENF22-BLE001)
         logger.warning("before send : échec ignoré, comportement dégradé", exc_info=True)
     return event
@@ -107,6 +145,9 @@ def init_sentry():
     sentry_sdk.init(
         dsn=dsn,
         environment=os.environ.get('SENTRY_ENVIRONMENT', '') or None,
+        # BPQ9 — sha déployé : Sentry marque « régressé » un problème résolu
+        # qui revient dans une release plus récente.
+        release=release(),
         traces_sample_rate=traces,
         send_default_pii=False,
         # NTPLT46 — chaque événement porte le tag `company` (repli contextvar).

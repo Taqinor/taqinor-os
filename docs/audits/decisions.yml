@@ -13,7 +13,7 @@
 # préfixe+numéro quand le fichier n'en donne pas (D-ASEC-4, D-QJR5-659...) ; `ouverte` quand le fichier ne donne pas la réponse.
 
 version: 1
-date_maj: "2026-11-02"
+date_maj: "2026-11-03"
 
 decisions:
 
@@ -3405,3 +3405,78 @@ decisions:
     date: "2026-11-03"
     source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI46]
+
+  - id: D-JPB-1
+    question: "Où tourne le tri quotidien des problèmes vécus (07:00) : routine cloud Claude Code, tâche du portable, ou chaque PC allumé ?"
+    options:
+      - cle: cloud
+        texte: "Routine cloud : sans dépendre d'un PC, lit l'ERP par l'API à jeton de service (BPQ4)"
+      - cle: portable
+        texte: "Tâche Windows du portable via nightly-qa.ps1 (SSH possible, ne tourne que si allumé et session ouverte)"
+      - cle: chaque_pc
+        texte: "Une tâche Windows sur le portable ET le desktop ; la première machine qui pose la claim tri-problemes:<date> (plan_claims.py) fait le tri, l'autre sort ; cloud possible plus tard"
+    reponse: cloud
+    date: "2026-11-03"
+    source: "session 2026-11-03 revue L3 journal (AskUserQuestion puis message) : « si le coût est identique on le fait sur cloud » — coût identique confirmé (usage de l'abonnement dans les deux cas)"
+    taches: [BPQ8]
+
+  - id: D-JPB-2
+    question: "Capture durable des erreurs serveur (500 Django, échecs Celery) : Sentry backend seul ou journal serveur maison ?"
+    options:
+      - cle: sentry_backend
+        texte: "Sentry backend seul : SDK déjà installé, une variable .env, jamais de DSN front (aucune donnée navigateur) ; compte gratuit 1 utilisateur / 5 000 erreurs par mois / 30 j"
+      - cle: maison
+        texte: "Table reporting.ProblemeServeur écrite depuis le handler 500 et task_failure, sans service externe"
+    reponse: sentry_backend
+    date: "2026-11-03"
+    source: "session 2026-11-03 revue L3 journal (AskUserQuestion)"
+    taches: [BPQ9, BPQ10]
+
+  - id: D-JPB-3
+    question: "Poser RETENTION_AUTO_APPLY=1 sur le serveur (les 11 purges de rétention passent de l'essai à blanc à la suppression réelle) ?"
+    options:
+      - cle: oui
+        texte: "Oui, Reda le pose dans /opt/taqinor-os/.env puis docker compose up -d"
+      - cle: non
+        texte: "Pas maintenant : l'item reste GATED"
+    reponse: oui
+    date: "2026-11-03"
+    source: "session 2026-11-03 revue L3 journal (AskUserQuestion) ; geste Reda, Claude ne touche jamais au .env prod"
+    taches: [ERR-JPB-ENV-PROD-RETENTION-ET-MAX-REQUESTS]
+
+  - id: D-JPB-4
+    question: "Armer GUNICORN_MAX_REQUESTS=300 et GUNICORN_MAX_REQUESTS_JITTER=60 sur le serveur (recyclage des workers avant qu'ils grossissent) ?"
+    options:
+      - cle: oui
+        texte: "Oui, Reda les pose dans /opt/taqinor-os/.env puis docker compose up -d"
+      - cle: non
+        texte: "Pas maintenant"
+    reponse: oui
+    date: "2026-11-03"
+    source: "session 2026-11-03 revue L3 journal (AskUserQuestion) ; geste Reda"
+    taches: [ERR-JPB-ENV-PROD-RETENTION-ET-MAX-REQUESTS]
+
+  - id: D-JPB-6
+    question: "Faut-il une balise de journal PUBLIQUE (hors session : portail client, /proposal/<tok>, kiosque) fortement bridée ?"
+    options:
+      - cle: non
+        texte: "Non : hors session rien n'est envoyé ; les erreurs serveur de ces flux sont couvertes par Sentry backend"
+      - cle: oui
+        texte: "Oui : endpoint anonyme bridé par IP et par jeton de page"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "session 2026-11-03 revue L3 journal : non posée (défaut recommandé : non)"
+    taches: []
+
+  - id: D-JPB-7
+    question: "Activer une sonde externe gratuite (Cloudflare Health Check ou équivalent) sur /api/django/health/ready/ avec alerte e-mail à Reda ?"
+    options:
+      - cle: oui
+        texte: "Oui, créée par Reda dans le tableau de bord (jamais un jeton API Cloudflare dans le dépôt)"
+      - cle: non
+        texte: "Non"
+    reponse: ouverte
+    date: "2026-11-03"
+    source: "session 2026-11-03 revue L3 journal : non posée (défaut recommandé : oui)"
+    taches: [BPQ12]
+
