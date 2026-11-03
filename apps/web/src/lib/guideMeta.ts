@@ -10,6 +10,8 @@
  *
  * Slugs match the file name under apps/web/src/pages/guides/*.astro.
  */
+import { NAP } from './nap';
+
 export const GUIDE_VERIFIED_DATES: Record<string, Date> = {
   'batterie-lithium-ou-gel': new Date('2026-07-03'),
   'combien-de-panneaux-pour-ma-maison': new Date('2026-07-03'),
@@ -35,4 +37,10 @@ export function getGuideVerifiedDate(slug: string): Date {
 /** WAUD50 — dateModified JSON-LD = la date « Vérifié le » affichée (AAAA-MM-JJ). */
 export function guideDateModified(slug: string): string {
   return getGuideVerifiedDate(slug).toISOString().slice(0, 10);
+}
+
+/** WAUD50 — champs Article communs aux guides traduits : auteur, éditeur, page. */
+export function guideArticleCommun(url: string) {
+  const organisation = { '@type': 'Organization', name: NAP.name, url: NAP.url };
+  return { author: organisation, publisher: organisation, mainEntityOfPage: url };
 }
