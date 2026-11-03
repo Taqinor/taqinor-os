@@ -52,7 +52,7 @@ test('DevisGenerator importe fetchAllPages (VX54) — même bug, même correctif
 
 test('DevisGenerator ne rappelle plus stockApi.getProduits() SANS paramètre (code réel, hors commentaires)', () => {
   assert.doesNotMatch(DG_CODE, /stockApi\.getProduits\(\)/)
-  assert.match(DG_CODE, /fetchAllPages\(\(page\)\s*=>\s*stockApi\.getProduits\(\{\s*page\s*\}\)/)
+  assert.match(DG_CODE, /fetchAllPages\(\(page, \{ page_size: pageSize \} = \{\}\)\s*=>\s*stockApi\.getProduits\(\{\s*page, page_size: pageSize\s*\}\)/)
 })
 
 // QJR652 — le téléchargement passe par le helper partagé (chemin iOS / PWA) :
