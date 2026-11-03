@@ -9,36 +9,50 @@
   {"type": "acceptation", "ref": "apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.accepter", "nom": "interne"},
   {"type": "acceptation", "ref": "apps/ventes/public/signature_views.py::proposal_accept", "nom": "signature publique"},
   {"type": "acceptation", "ref": "apps/portail/views_client.py::MesDevisPortailViewSet.accepter", "nom": "portail client"},
+  {"type": "acceptation", "ref": "apps/ventes/domain/negociation.py::appliquer_prix_negocie", "nom": "prix négocié (avenant accepté)"},
+  {"type": "avenant", "ref": "apps/ventes/domain/negociation.py::signer_avenant", "nom": "signature client de l'avenant"},
+  {"type": "envoi", "ref": "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.share_link", "nom": "lien de partage"},
+  {"type": "envoi", "ref": "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.envoyer_email", "nom": "e-mail"},
+  {"type": "envoi", "ref": "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.whatsapp", "nom": "WhatsApp"},
+  {"type": "envoi", "ref": "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.pdf_partage", "nom": "PDF de partage"},
+  {"type": "envoi", "ref": "apps/crm/devis_views.py::LeadDevisActionsMixin.whatsapp_devis", "nom": "WhatsApp depuis le lead"},
   {"type": "creation", "ref": "apps/ventes/views/devis.py::DevisViewSet.perform_create", "nom": "POST devis"},
-  {"type": "creation", "ref": "apps/ventes/views/devis.py::DevisViewSet.composition", "nom": "composition"},
   {"type": "creation", "ref": "apps/ventes/views/devis.py::DevisViewSet.auto", "nom": "auto"},
   {"type": "creation", "ref": "apps/ventes/views/devis_calepinage.py::DevisCalepinageActionsMixin.from_layout", "nom": "from-layout (calepinage)"},
   {"type": "creation", "ref": "apps/ventes/views/devis_edition.py::DevisEditionActionsMixin.atomic", "nom": "atomic"},
+  {"type": "creation", "ref": "apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.dupliquer", "nom": "dupliquer"},
+  {"type": "creation", "ref": "apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.dupliquer_variante", "nom": "dupliquer en variante"},
+  {"type": "creation", "ref": "apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.dupliquer_variante_gamme", "nom": "dupliquer en variante de gamme"},
+  {"type": "creation", "ref": "apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.renouveler", "nom": "renouveler"},
   {"type": "creation", "ref": "apps/ventes/domain/creation_auto.py::creer_devis_automatique_depuis_lead", "nom": "devis automatique (tunnel)"},
-  {"type": "creation", "ref": "apps/ventes/domain/creation.py::create_draft_devis_from_ocr", "nom": "OCR"}
+  {"type": "creation", "ref": "apps/ventes/domain/creation.py::create_draft_devis_from_ocr", "nom": "OCR"},
+  {"type": "creation", "ref": "apps/ventes/domain/creation.py::create_devis_pour_ticket", "nom": "ticket SAV"},
+  {"type": "creation", "ref": "apps/ventes/domain/creation.py::create_devis_upsell_from_intervention", "nom": "upsell intervention"},
+  {"type": "creation", "ref": "apps/ventes/domain/gammes.py::create_devis_from_reserve", "nom": "réserve de chantier"},
+  {"type": "creation", "ref": "apps/ventes/domain/imports.py::creer_devis_import", "nom": "import"}
  ],
  "etapes": [
   {
    "id": "PA3-01",
-   "nom": "Composer le devis (7 entrées de création, un seul état de départ : brouillon)",
+   "nom": "Composer le devis (entrées de création réelles, un seul état de départ : brouillon)",
    "proprietaire": "ventes",
    "declencheur": {"type": "clic", "source": "frontend/src/pages/ventes/DevisGenerator.jsx::DevisGenerator"},
    "ecran": {"route": "/ventes/devis/nouveau", "composant": "DevisGenerator", "action": "composer les lignes puis enregistrer le brouillon"},
-   "fonction_entree": "apps/ventes/views/devis.py::DevisViewSet.composition",
+   "fonction_entree": "apps/ventes/views/devis_edition.py::DevisEditionActionsMixin.atomic",
    "checkpoint": {"modifiable": true, "champs": ["Devis.lignes", "Devis.client", "Devis.lead", "Devis.etude_params"], "persistance": "apps/ventes/models.py::Devis"},
    "regle_aval": ["choix_explicite", "recalcul"],
    "provenance": {"marqueur": "Devis.statut = brouillon", "ecrivains_auto": ["apps/ventes/domain/creation_auto.py::creer_devis_automatique_depuis_lead"]},
    "compensation": "seul un brouillon se supprime (409 sinon) ; sinon archiver ou réviser",
-   "portes": ["POST devis", "composition", "auto", "from-layout", "atomic", "devis automatique depuis un lead", "OCR"],
+   "portes": ["POST devis", "auto", "from-layout", "atomic", "dupliquer", "dupliquer_variante", "dupliquer_variante_gamme", "renouveler", "devis automatique depuis un lead", "OCR", "ticket SAV", "upsell intervention", "réserve de chantier", "import"],
    "suite": "PA3-02",
    "negatifs": ["brouillon sans client ni lead : refusé"],
    "test_nomme": "apps/ventes/tests/test_ciq115_composition_ci.py",
-   "taches": ["AMET10"],
-   "constats": ["Chaque entrée recalcule les montants côté serveur."]
+   "taches": ["AMET10", "ADVS41"],
+   "constats": ["Chaque entrée recalcule les montants côté serveur.", "`composition` est un dry-run (« sans rien créer ») : ce n'est PAS une porte de création."]
   },
   {
    "id": "PA3-02",
-   "nom": "Envoyer la proposition (brouillon → envoyé, geste unique)",
+   "nom": "Envoyer la proposition (brouillon → envoyé, 5 portes, un seul tampon)",
    "proprietaire": "ventes",
    "declencheur": {"type": "clic", "source": "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.envoyer_email"},
    "ecran": {"route": "/ventes/devis", "composant": "liste des devis", "action": "envoyer par e-mail / lien / WhatsApp"},
@@ -47,11 +61,11 @@
    "regle_aval": ["fige"],
    "provenance": {"marqueur": "Devis.statut = envoye ; clauses et barèmes figés", "ecrivains_auto": ["apps/ventes/domain/envoi.py::figer_clauses_devis"]},
    "compensation": "aucune : un devis envoyé se corrige sur place ou se révise (PA3-12)",
-   "portes": ["apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.envoyer_email"],
+   "portes": ["apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.share_link", "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.envoyer_email", "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.whatsapp", "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.pdf_partage", "apps/crm/devis_views.py::LeadDevisActionsMixin.whatsapp_devis"],
    "suite": "PA3-03",
    "negatifs": ["déjà envoyé : pas de nouveau tampon de date d'envoi"],
    "test_nomme": "apps/ventes/tests/test_correction_apres_envoi.py",
-   "taches": ["AMET10"],
+   "taches": ["AMET10", "ADVS41"],
    "constats": []
   },
   {
@@ -83,11 +97,11 @@
    "regle_aval": ["reference"],
    "provenance": {"marqueur": "jeton de lien public", "ecrivains_auto": []},
    "compensation": "aucune : lecture seule",
-   "portes": ["apps/ventes/public_views.py::proposal_data", "apps/ventes/public/lecture_views.py::proposal_engagement"],
+   "portes": ["apps/ventes/public_views.py::proposal_data", "apps/ventes/public/lecture_views.py::proposal_engagement", "apps/ventes/public_views.py::proposal_pdf", "apps/ventes/public_views.py::public_document", "apps/ventes/public/signature_views.py::proposal_activate_option", "apps/ventes/public/signature_views.py::proposal_decliner"],
    "suite": "PA3-05",
    "negatifs": ["devis remplacé par une révision : réponse `version_remplacee`", "jeton inconnu : 404 neutre"],
    "test_nomme": "apps/ventes/tests/test_proposal_version_remplacee.py",
-   "taches": ["AMET10"],
+   "taches": ["AMET10", "ADVS41"],
    "constats": []
   },
   {
@@ -105,7 +119,7 @@
    "suite": "PA3-08",
    "negatifs": ["déjà accepté : idempotent, pas de second événement", "blocage crédit / avertissement de vente : 409", "version remplacée : refus"],
    "test_nomme": "apps/ventes/tests/test_adev13_gardes_acceptation_trois_portes.py",
-   "taches": ["AMET10"],
+   "taches": ["AMET10", "ADEV13"],
    "constats": ["Trois portes, une seule fonction d'entrée accept_devis (garde ADEV13)."]
   },
   {
@@ -119,7 +133,7 @@
    "regle_aval": ["fige", "refus_409"],
    "provenance": {"marqueur": "Devis.statut = accepte", "ecrivains_auto": ["apps/ventes/domain/cycle_vie.py::accept_devis"]},
    "compensation": "désacceptation gardée (PA3-13)",
-   "portes": ["apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.accepter"],
+   "portes": ["apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.accepter", "apps/ventes/domain/negociation.py::appliquer_prix_negocie", "apps/ventes/domain/negociation.py::signer_avenant"],
    "suite": "PA3-08",
    "negatifs": ["blocage crédit : 403 sale_warning"],
    "test_nomme": "apps/ventes/tests/test_acceptation.py",
@@ -157,9 +171,9 @@
    "compensation": "la désacceptation défait chantier, contrat, commission (PA3-13)",
    "portes": ["apps/ventes/domain/cycle_vie.py::accept_devis"],
    "suite": "PA3-09",
-   "negatifs": ["effet aval en échec : journalisé, l'acceptation reste acquise"],
+   "negatifs": ["abonné obligatoire en échec : la signature est annulée (contrat ADEV54)"],
    "test_nomme": "apps/ventes/tests/test_acceptation.py",
-   "taches": ["AMET10"],
+   "taches": ["AMET10", "ADEV54"],
    "constats": ["Le funnel (STAGES.py) et le statut du devis restent deux couches séparées."]
   },
   {
@@ -182,7 +196,7 @@
   },
   {
    "id": "PA3-10",
-   "nom": "Refus du devis (envoyé → refusé)",
+   "nom": "Refus du devis (brouillon ou envoyé → refusé)",
    "proprietaire": "ventes",
    "declencheur": {"type": "clic", "source": "apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.refuser"},
    "ecran": {"route": "/ventes/devis", "composant": "liste des devis", "action": "« Marquer refusé » (motif, date)"},
@@ -193,9 +207,9 @@
    "compensation": "aucune : une nouvelle version se crée par révision",
    "portes": ["apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.refuser"],
    "suite": "fin",
-   "negatifs": ["version remplacée par une révision : 409 version_remplacee"],
+   "negatifs": ["version remplacée par une révision : 409 version_remplacee", "ni brouillon ni envoyé : 409 statut"],
    "test_nomme": "apps/ventes/tests/test_adev1_contrat_refuser.py",
-   "taches": ["AMET10"],
+   "taches": ["AMET10", "ADVS22"],
    "constats": []
   },
   {
@@ -208,12 +222,12 @@
    "checkpoint": {"modifiable": false, "champs": ["Devis.statut"], "persistance": "apps/ventes/models.py::Devis"},
    "regle_aval": ["recalcul", "fige"],
    "provenance": {"marqueur": "Devis.statut = expire", "ecrivains_auto": ["apps/ventes/domain/recouvrement.py::expire_stale_devis"]},
-   "compensation": "« renouveler » prolonge la validité d'un devis expiré",
+   "compensation": "« renouveler » crée un nouveau brouillon re-tarifé ; « prolonger_validite » prolonge un devis envoyé",
    "portes": ["apps/ventes/scheduled.py::expire_stale_devis"],
    "suite": "fin",
    "negatifs": ["jamais un devis accepté ou refusé (règle #4)", "idempotent"],
    "test_nomme": "apps/ventes/tests/test_adev52_expiration_une_regle.py",
-   "taches": ["AMET10"],
+   "taches": ["AMET10", "ADEV52"],
    "constats": []
   },
   {
@@ -245,11 +259,11 @@
    "regle_aval": ["refus_409", "recalcul"],
    "provenance": {"marqueur": "Devis.statut = envoye ; chantier, contrat, commission défaits", "ecrivains_auto": ["apps/ventes/domain/cycle_vie.py::annuler_acceptation"]},
    "compensation": "preuve de signature conservée",
-   "portes": ["apps/ventes/domain/cycle_vie.py::raison_blocage_annulation_acceptation"],
+   "portes": ["apps/crm/fiche_funnel.py::desaccepter_devis_du_lead", "apps/crm/fiche_bulk.py::apply_bulk_action", "apps/ventes/domain/reparation_vente.py::reparer_vente_active"],
    "suite": "PA3-02",
    "negatifs": ["facture, bon de commande ou chantier avancé : 409", "dossier 82-21 sorti de en_constitution : 409"],
    "test_nomme": "apps/ventes/tests/test_desacceptation.py",
-   "taches": ["AMET10"],
+   "taches": ["AMET10", "ADVS41"],
    "constats": []
   }
  ]
