@@ -830,10 +830,14 @@ def traiter_chaine_acceptation(maintenant=None):
         ouverts = set(RelanceEtape.objects.filter(
             _q_chaine_ouverte(), company=company).values_list('lead_id', flat=True))
         for lead_id in ouverts:
-            if any(acompte_paye_pour_devis(devis.pk, company) for devis in
-                   devis_acceptes_actifs(company, lead_id=lead_id)):
-                bilan['annulees'] += retirer_chaine_apres_acceptation(
-                    lead_id, company, motif='acompte reçu')
+            try:
+                if any(acompte_paye_pour_devis(devis.pk, company) for devis in
+                       devis_acceptes_actifs(company, lead_id=lead_id)):
+                    bilan['annulees'] += retirer_chaine_apres_acceptation(
+                        lead_id, company, motif='acompte reçu')
+            except Exception:  # noqa: BLE001 — ACVI85 : un lead en échec n'arrête rien (D-ENF22-BLE001)
+                logger.warning('traiter_chaine_acceptation : lead %s en échec',
+                               lead_id, exc_info=True)
         echus = devis_signes_en_vigueur(company).filter(
             lead__isnull=False, date_acceptation__lte=seuil,
             date_acceptation__gte=seuil - datetime.timedelta(
@@ -846,16 +850,20 @@ def traiter_chaine_acceptation(maintenant=None):
             destinataires = _destinataires_direction(company)
             if not destinataires:
                 continue
-            notify_many(
-                destinataires, EventType.DEVIS_ACCEPTED,
-                title=f'Acompte non reçu à J+14 — {devis.lead.nom}',
-                body=f'Devis {devis.reference} accepté le '
-                     f'{devis.date_acceptation:%d/%m/%Y}, aucun acompte payé.',
-                link=f'/crm/leads?lead={devis.lead_id}', company=company)
-            LeadActivity.objects.create(
-                company=company, lead=devis.lead, user=None,
-                kind=LeadActivity.Kind.NOTE, body=marqueur)
-            bilan['escalades'] += 1
+            try:
+                notify_many(
+                    destinataires, EventType.DEVIS_ACCEPTED,
+                    title=f'Acompte non reçu à J+14 — {devis.lead.nom}',
+                    body=f'Devis {devis.reference} accepté le '
+                         f'{devis.date_acceptation:%d/%m/%Y}, aucun acompte payé.',
+                    link=f'/crm/leads?lead={devis.lead_id}', company=company)
+                LeadActivity.objects.create(
+                    company=company, lead=devis.lead, user=None,
+                    kind=LeadActivity.Kind.NOTE, body=marqueur)
+                bilan['escalades'] += 1
+            except Exception:  # noqa: BLE001 — ACVI85 : un lead en échec n'arrête rien (D-ENF22-BLE001)
+                logger.warning('traiter_chaine_acceptation : devis %s en échec',
+                               devis.pk, exc_info=True)
     return bilan
 
 

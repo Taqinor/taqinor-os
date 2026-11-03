@@ -59,10 +59,10 @@ def recycler_leads_non_travailles(now=None, dry_run=False):
     """Cœur de la commande — appelable directement (tests, tâche Celery).
 
     Renvoie ``(nb_escalades, nb_desassignations)``. ``now`` est injectable
-    pour des tests déterministes. Company-scopé : itère TOUTES les sociétés,
+    pour des tests déterministes. Company-scopé : itère les sociétés ACTIVES,
     chacune isolée (jamais de fuite cross-tenant). Best-effort par lead.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from apps.crm import selectors
     from apps.crm.models import LeadActivity
@@ -72,7 +72,7 @@ def recycler_leads_non_travailles(now=None, dry_run=False):
     nb_escalades = 0
     nb_desassignations = 0
 
-    for company in Company.objects.all():
+    for company in active_companies():
         seuil = lead_sla_hours(company)
         if not seuil:
             continue  # SLA désactivé pour cette société — rien à recycler.
@@ -88,19 +88,23 @@ def recycler_leads_non_travailles(now=None, dry_run=False):
             body__startswith=ESCALATION_MARKER,
         ).values_list('lead_id', flat=True))
         for lead in leads:
-            if lead.pk not in deja_escalades:
-                nb_escalades += 1
-                deja_escalades.add(lead.pk)
-                if not dry_run:
-                    _escalate(lead, seuil, now)
-
-            if deassign_hours and lead.owner_id:
-                age_hours = (
-                    now - lead.date_creation).total_seconds() / 3600.0
-                if age_hours >= deassign_hours:
-                    nb_desassignations += 1
+            try:  # ACVI85 — un lead en échec n'arrête pas la passe.
+                if lead.pk not in deja_escalades:
+                    deja_escalades.add(lead.pk)
                     if not dry_run:
-                        _deassign(lead)
+                        _escalate(lead, seuil, now)
+                    nb_escalades += 1
+
+                if deassign_hours and lead.owner_id:
+                    age_hours = (
+                        now - lead.date_creation).total_seconds() / 3600.0
+                    if age_hours >= deassign_hours:
+                        if not dry_run:
+                            _deassign(lead)
+                        nb_desassignations += 1
+            except Exception:  # noqa: BLE001 — (D-ENF22-BLE001)
+                logger.warning('recycler_leads_non_travailles : lead %s en échec',
+                               lead.pk, exc_info=True)
 
     return nb_escalades, nb_desassignations
 

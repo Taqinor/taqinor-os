@@ -49,10 +49,10 @@ def escalader_rappels_demandes(now=None, dry_run=False):
     """Cœur de la commande — appelable directement (tests, tâche Celery).
 
     Renvoie ``nb_escalades``. ``now`` injectable pour des tests déterministes.
-    Company-scopé : itère TOUTES les sociétés, chacune isolée. Best-effort par
+    Company-scopé : itère les sociétés ACTIVES, chacune isolée. Best-effort par
     lead : un échec de notification n'interrompt jamais le traitement des
     autres leads."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from apps.crm import selectors
     from apps.crm.models import LeadActivity
@@ -62,7 +62,7 @@ def escalader_rappels_demandes(now=None, dry_run=False):
     now = now or timezone.now()
     nb_escalades = 0
 
-    for company in Company.objects.all():
+    for company in active_companies():
         seuil = callback_sla_hours(company)
         if not seuil:
             continue  # SLA rappel désactivé (SLA générique désactivé aussi).
@@ -78,10 +78,13 @@ def escalader_rappels_demandes(now=None, dry_run=False):
             if lead.pk in deja_escalades:
                 continue
             deja_escalades.add(lead.pk)
-            nb_escalades += 1
-            if dry_run:
-                continue
-            _escalate(lead, seuil, now, lead_notification_recipients)
+            try:  # ACVI85 — un lead en échec n'arrête pas la passe.
+                if not dry_run:
+                    _escalate(lead, seuil, now, lead_notification_recipients)
+                nb_escalades += 1
+            except Exception:  # noqa: BLE001 — (D-ENF22-BLE001)
+                logger.warning('escalader_rappels_demandes : lead %s en échec',
+                               lead.pk, exc_info=True)
 
     return nb_escalades
 

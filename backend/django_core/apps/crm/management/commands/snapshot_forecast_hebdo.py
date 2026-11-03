@@ -30,13 +30,13 @@ def _semaine_iso(now=None):
 def snapshot_forecast_hebdo(now=None):
     """Cœur de la commande — appelable directement (tests, tâche Celery).
     Renvoie le nombre de lignes ``ForecastSnapshot`` créées/mises à jour."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from apps.crm.models import ForecastEntry
 
     semaine = _semaine_iso(now)
     nb = 0
-    for company in Company.objects.all():
+    for company in active_companies():
         entries = (
             ForecastEntry.objects.filter(company=company)
             .select_related('lead', 'lead__owner')
