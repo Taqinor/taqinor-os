@@ -42,6 +42,7 @@ const sanctions = [
 ];
 import RegularizationArticle33Ol7511 from '../../components/blocs/RegularizationArticle33Ol7511.astro';
 import RegularizationArticle33DivC937 from '../../components/blocs/RegularizationArticle33DivC937.astro';
+import Loi8221OuEnEstLaLoiEn from '../..//components/blocs/Loi8221OuEnEstLaLoiEn.astro';
 ---
 
 <Layout
@@ -77,27 +78,17 @@ import RegularizationArticle33DivC937 from '../../components/blocs/Regularizatio
         <p class="tech-label v2-kicker text-brass-300">Where does the law stand? · verified on 5 October 2026</p>
         {/* CIW413 — same tariff sentences as CIW412 (ANRE decision 04/26 art. 6-7; decree 2.25.100
             art. 12; D-CIQ-4): the tariff targets the VOLTAGE, low voltage is not open. */}
-        <div class="mt-4 grid gap-5 sm:grid-cols-2">
-          <div>
-            <p class="tech-label text-lune">In force</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Implementing decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of
+        <Loi8221OuEnEstLaLoiEn>
+          <Fragment slot="vigueur">Implementing decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of
               9 March 2026, in force since 9 June 2026) and ANRE decision <strong class="text-white">04/26</strong>.
               ANRE surplus tariff (decision 04/26): <strong class="text-white">0.18 DH/kWh off-peak,
               0.21 DH/kWh at peak, excluding taxes</strong>, for installations connected at
               <strong class="text-white"> medium, high or very high voltage (MV/HV/EHV)</strong>,
-              whatever their regime.
-            </p>
-          </div>
-          <div>
-            <p class="tech-label text-lune">Not yet published</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              In <strong class="text-white">low voltage (LV)</strong>, whatever the regime — including a
+              whatever their regime.</Fragment>
+          <Fragment slot="bt">In <strong class="text-white">low voltage (LV)</strong>, whatever the regime — including a
               shop of 11 kW or more under a connection agreement — resale of the surplus is not open
-              as of today. File under Article 33 without waiting, regardless of this tariff.
-            </p>
-          </div>
-        </div>
+              as of today. File under Article 33 without waiting, regardless of this tariff.</Fragment>
+        </Loi8221OuEnEstLaLoiEn>
       </div>
     </section>
 

@@ -73,6 +73,7 @@ const howToLd = {
 };
 import RegularizationArticle33Ol7511 from '../components/blocs/RegularizationArticle33Ol7511.astro';
 import RegularizationArticle33DivC937 from '../components/blocs/RegularizationArticle33DivC937.astro';
+import Loi8221OuEnEstLaLoi from '..//components/blocs/Loi8221OuEnEstLaLoi.astro';
 ---
 
 <Layout
@@ -110,27 +111,17 @@ import RegularizationArticle33DivC937 from '../components/blocs/RegularizationAr
         <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 5 octobre 2026</p>
         {/* CIW413 — mêmes phrases tarifaires que CIW412 (décision ANRE 04/26 art. 6-7 ; décret
             2.25.100 art. 12 ; D-CIQ-4) : le tarif vise la TENSION, la basse tension n'est pas ouverte. */}
-        <div class="mt-4 grid gap-5 sm:grid-cols-2">
-          <div>
-            <p class="tech-label text-lune">En vigueur</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Le décret d'application <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en
+        <Loi8221OuEnEstLaLoi>
+          <Fragment slot="vigueur">Le décret d'application <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en
               vigueur depuis le 9 juin 2026) et la décision ANRE <strong class="text-white">04/26</strong>.
               Tarif d'excédent ANRE (décision 04/26) : <strong class="text-white">0,18 DH/kWh hors pointe,
               0,21 DH/kWh en pointe, hors taxes</strong>, pour les installations raccordées en
               <strong class="text-white"> moyenne, haute ou très haute tension (MT/HT/THT)</strong>,
-              quel que soit leur régime.
-            </p>
-          </div>
-          <div>
-            <p class="tech-label text-lune">Pas encore publié</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
+              quel que soit leur régime.</Fragment>
+          <Fragment slot="bt">En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
               un commerce de 11 kW ou plus sous accord de raccordement — la revente du surplus n'est
-              pas ouverte à ce jour. L'Article 33 se dépose sans attendre, indépendamment de ce tarif.
-            </p>
-          </div>
-        </div>
+              pas ouverte à ce jour. L'Article 33 se dépose sans attendre, indépendamment de ce tarif.</Fragment>
+        </Loi8221OuEnEstLaLoi>
       </div>
     </section>
 
