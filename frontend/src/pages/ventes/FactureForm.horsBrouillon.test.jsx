@@ -82,6 +82,13 @@ beforeEach(() => {
 })
 
 describe('AFAC71 — FactureForm hors brouillon', () => {
+  it('rejeu AARG50 : les pièces jointes visent la cible servie (facturation.facture), jamais un 400', async () => {
+    rendre({ ...base.facture, lignes: [{ ...LIGNE }] })
+    const { default: api } = await import('../../api/axios')
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/records/attachments/',
+      expect.objectContaining({ params: expect.objectContaining({ model: 'facturation.facture' }) })))
+  })
+
   it('facture émise soldée dans un autre onglet : « Mettre à jour » garde statut payee, montants et lignes', async () => {
     const ouverte = { ...base.facture, lignes: [{ ...LIGNE }] } // vue du Kanban : statut emise
     // Entre-temps, autre onglet : facture soldée côté serveur.

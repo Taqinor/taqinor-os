@@ -1,0 +1,58 @@
+{
+ "commande": "audit_coherence --company taqinor-demo --json --no-persist",
+ "checked": {
+  "devis": 703,
+  "facture": 738
+ },
+ "violations_total": 70,
+ "par_regle": {
+  "DOC_ACCEPTE_SANS_DATE": 3,
+  "DOC_VALIDITE_AVANT_CREATION": 3,
+  "CAL_EMPREINTE_IMPRIMEE_PERIMEE": 1,
+  "CAL_KWC_DEVIS_VS_CALEPINAGE": 1,
+  "DOC_FACTURATION_DEPASSE_DEVIS": 32,
+  "DOC_ECHEANCE_AVANT_EMISSION": 5,
+  "FACTURE_STATUT_RESTE_INCOHERENT": 1,
+  "NUMEROTATION_TROUS_DOUBLONS": 10,
+  "SEC_COMPTE_DEMO_ACTIF": 14
+ },
+ "violations_documents_du_rejeu": [
+  {
+   "rule": "DOC_FACTURATION_DEPASSE_DEVIS",
+   "severity": "critique",
+   "reference": "DEV-202611-0109",
+   "message": "Facturé net 44600.00 (factures 44600.00 − avoirs 0.00) > total du devis 32000.00."
+  },
+  {
+   "rule": "DOC_FACTURATION_DEPASSE_DEVIS",
+   "severity": "critique",
+   "reference": "DEV-202611-0154",
+   "message": "Facturé net 44600.00 (factures 44600.00 − avoirs 0.00) > total du devis 32000.00."
+  },
+  {
+   "rule": "DOC_ECHEANCE_AVANT_EMISSION",
+   "severity": "avertissement",
+   "reference": "FAC-202611-0020",
+   "message": "Échéance 2026-10-01 antérieure à l'émission 2026-11-02."
+  },
+  {
+   "rule": "DOC_ECHEANCE_AVANT_EMISSION",
+   "severity": "avertissement",
+   "reference": "FAC-202611-0043",
+   "message": "Échéance 2026-10-01 antérieure à l'émission 2026-11-03."
+  },
+  {
+   "rule": "DOC_ECHEANCE_AVANT_EMISSION",
+   "severity": "avertissement",
+   "reference": "FAC-202611-0067",
+   "message": "Échéance 2026-10-01 antérieure à l'émission 2026-11-03."
+  },
+  {
+   "rule": "DOC_ECHEANCE_AVANT_EMISSION",
+   "severity": "avertissement",
+   "reference": "FAC-202611-0098",
+   "message": "Échéance 2026-10-01 antérieure à l'émission 2026-11-03."
+  }
+ ],
+ "note": "Les autres violations portent sur des fiches antérieures au rejeu (seed DEMO, séries ACC* des acceptations précédentes, clone erp_perf). Sur les documents du rejeu : DOC_ECHEANCE_AVANT_EMISSION = échéance 01/10 posée exprès par l'étape P7.1 ; DOC_FACTURATION_DEPASSE_DEVIS = brouillon dont l'étape V55 double une ligne pour éprouver la colonne stockée. 375 rule_errors QUOTE_BUILD sur des devis de test sans onduleur (refus attendu du moteur)."
+}

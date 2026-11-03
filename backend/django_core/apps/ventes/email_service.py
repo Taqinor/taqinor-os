@@ -424,13 +424,14 @@ def composer_relance_email(facture, *, niveau_nom='', message=''):
     # AUD130 — le message configuré porte des placeholders (`{reference}`…) que
     # PERSONNE ne formatait : `message.strip()` les expédiait tels quels. Le
     # rendu passe par l'unique fonction partagée avec la lettre PDF.
-    from .recouvrement import rendre_message_relance
+    from .recouvrement import NIVEAUX_RELANCE_DEFAUT, rendre_message_relance
     # AARG25 — le salut est posé ici : celui du message rendu n'est pas répété.
+    # AARG24 (rejeu AARG50) — sans message (niveau au texte vide, relance sans
+    # note) : le texte du premier niveau par défaut, qui dit ce qui est dû.
     corps_msg = _SALUT_OUVERTURE.sub(
         lambda m: m.group(1).upper(),
         rendre_message_relance(message, facture) or '', count=1) or (
-        f"Sauf erreur de notre part, la facture {reference} reste impayée. "
-        f"Nous vous remercions de bien vouloir procéder à son règlement.")
+        rendre_message_relance(NIVEAUX_RELANCE_DEFAUT[0][3], facture))
     signature = _signature(
         getattr(facture, 'company', None), reference=reference)
     corps = (

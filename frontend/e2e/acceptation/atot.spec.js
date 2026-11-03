@@ -20,9 +20,9 @@
 //   P2.2 joue le geste par son endpoint (POST devis/<id>/facturer-complet/).
 import { expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
-import { uniq, lireJson, textePdf, telephoneMobileUnique } from '../helpers.js'
+import { uniq, lireJson, textePdf, telephoneMobileUnique, assurerSessionPage, executerDansDjango } from '../helpers.js'
 
-const etape = groupe('ATOT', ['ATOT17'])
+const etape = groupe('ATOT', ['ATOT17', 'ATOT48', 'ATOT49', 'ATOT55'])
 const API = '/api/django'
 const T = { timeout: 120_000 }
 const f2 = (v) => Number(v).toFixed(2)
@@ -354,4 +354,79 @@ etape('P3.4', ['ATOT17'], async ({ page, testInfo }) => {
   for (const b of avoir.tva_par_taux) expect(contientMontant(ta, b.montant), `avoir TVA ${b.taux} %`).toBeTruthy()
   // Écran (liste des factures) = API = PDF.
   await ecranEgalApi(page, await lireFacture(page.request, f.id))
+})
+
+// ── V2 — rejeu ATOT53 (2) : BC d'un devis déjà facturé, aucun bouton qui répond 409 (ATOT49) ─────
+etape('V2', ['ATOT49'], async ({ page, testInfo }) => {
+  testInfo.setTimeout(300_000)
+  await assurerSessionPage(page)
+  const r = page.request
+  const d = await creerDevis(r, { lignes: LIGNES_RONDES, remise: '0' })
+  const bc = await lireJson(await r.post(`${API}/ventes/devis/${d.id}/convertir-bc/`, { ...T, data: {} }), 'BC')
+  await lireJson(await r.post(`${API}/ventes/bons-commande/${bc.id}/confirmer/`, { ...T, data: {} }), 'confirmer')
+  await lireJson(await r.post(`${API}/ventes/devis/${d.id}/facturer-complet/`, { ...T, data: { remplacer_brouillons: true } }), 'facture complète')
+  const relu = await lireJson(await r.get(`${API}/ventes/bons-commande/${bc.id}/`, T), 'BC relu')
+  expect(relu.facturable?.ok, 'la porte du BC est fermée').toBe(false)
+  await page.goto('/ventes/bons-commande')
+  const rangee = page.locator('tr').filter({ hasText: bc.reference }).first()
+  await expect(rangee).toBeVisible({ timeout: 60_000 })
+  await expect(rangee.getByRole('button', { name: /^Facture$/ }), 'aucun bouton « Facture »').toHaveCount(0)
+})
+
+// ── V1 — rejeu ATOT53 (1) : `devis` et `client` d'un BC livré, 409, rien d'écrit (ATOT48) ────────
+etape('V1', ['ATOT48'], async ({ page, testInfo }) => {
+  testInfo.setTimeout(300_000)
+  await assurerSessionPage(page)
+  const r = page.request
+  const d = await creerDevis(r, { lignes: LIGNES_RONDES, remise: '0' })
+  const autre = await creerDevis(r, { lignes: LIGNES_RONDES, remise: '0' })
+  const bc = await lireJson(await r.post(`${API}/ventes/devis/${d.id}/convertir-bc/`, { ...T, data: {} }), 'BC')
+  await lireJson(await r.post(`${API}/ventes/bons-commande/${bc.id}/confirmer/`, { ...T, data: {} }), 'confirmer')
+  // Livrer exige le stock du BC : posé sur les produits de CE devis.
+  executerDansDjango(`from apps.ventes.models import LigneDevis; from apps.stock.models import Produit; Produit.objects.filter(pk__in=LigneDevis.objects.filter(devis_id=${d.id}).values('produit_id')).update(quantite_stock=100)`)
+  await lireJson(await r.post(`${API}/ventes/bons-commande/${bc.id}/marquer-livre/`, { ...T, data: {} }), 'livré')
+  for (const corps of [{ devis: autre.id }, { client: autre.client }]) {
+    const rep = await r.patch(`${API}/ventes/bons-commande/${bc.id}/`, { ...T, data: corps })
+    expect(rep.status(), `PATCH ${JSON.stringify(corps)} : ${await rep.text()}`).toBe(409)
+  }
+  const relu = await lireJson(await r.get(`${API}/ventes/bons-commande/${bc.id}/`, T), 'BC relu')
+  expect(relu.devis, 'devis intact').toBe(d.id)
+  expect(relu.client, 'client intact').toBe(d.client)
+})
+
+// ── V55 — ATOT55 : colonne stockée = total calculé, après écriture de lignes et de remise ───────
+etape('V55', ['ATOT55'], async ({ page, testInfo }) => {
+  testInfo.setTimeout(300_000)
+  await assurerSessionPage(page)
+  const r = page.request
+  const d = await creerDevis(r, { lignes: LIGNES_RONDES, remise: '0' })
+  const bc = await lireJson(await r.post(`${API}/ventes/devis/${d.id}/convertir-bc/`, { ...T, data: {} }), 'BC')
+  await lireJson(await r.post(`${API}/ventes/bons-commande/${bc.id}/confirmer/`, { ...T, data: {} }), 'confirmer')
+  const brouillon = await lireJson(await r.post(`${API}/ventes/bons-commande/${bc.id}/creer-facture/`, { ...T, data: {} }), 'facture du BC')
+  const stockees = (id) => JSON.parse(executerDansDjango(`from apps.ventes.models import Facture; import json; f=Facture.objects.get(pk=${id}); print('@@'+json.dumps({'ht':str(f.total_ht_stocke),'ttc':str(f.total_ttc_stocke),'cht':str(f.total_ht),'cttc':str(f.total_ttc)}))`).split('\n').reverse().find((l) => l.startsWith('@@')).slice(2))
+  const egales = (s, quoi) => {
+    expect(cents(s.ht), `${quoi} : HT stocké = HT calculé`).toBe(cents(s.cht))
+    expect(cents(s.ttc), `${quoi} : TTC stocké = TTC calculé`).toBe(cents(s.cttc))
+  }
+  const a = stockees(brouillon.id)
+  egales(a, 'création')
+  // Remise écrite : la colonne suit.
+  await lireJson(await r.patch(`${API}/ventes/factures/${brouillon.id}/`, { ...T, data: { remise_globale: '5.00' } }), 'remise')
+  const b = stockees(brouillon.id)
+  egales(b, 'remise')
+  expect(cents(b.ttc), 'la remise a bien bougé le total').toBeLessThan(cents(a.ttc))
+  // Ligne écrite : la colonne suit.
+  const f = await lireJson(await r.get(`${API}/ventes/factures/${brouillon.id}/`, T), 'facture')
+  await lireJson(await r.patch(`${API}/ventes/factures-lignes/${f.lignes[0].id}/`, { ...T, data: { quantite: '2.00' } }), 'ligne')
+  const c = stockees(brouillon.id)
+  egales(c, 'ligne')
+  expect(cents(c.ttc), 'la ligne a bien bougé le total').toBeGreaterThan(cents(b.ttc))
+  // Migration de remplissage : aucune facture de la pile dont la colonne diverge.
+  const ecarts = JSON.parse(executerDansDjango(`from apps.ventes.models import Facture; import json; n=0; m=[]
+for f in Facture.objects.all().iterator():
+    n+=1
+    if f.total_ttc_stocke is None or abs(f.total_ttc_stocke-f.total_ttc)>0.005 or abs(f.total_ht_stocke-f.total_ht)>0.005: m.append(f.pk)
+print('@@'+json.dumps({'n':n,'ecarts':m[:20]}))`).split('\n').reverse().find((l) => l.startsWith('@@')).slice(2))
+  expect(ecarts.n, 'factures relues').toBeGreaterThan(0)
+  expect(ecarts.ecarts, `colonne divergente sur ${ecarts.n} factures`).toEqual([])
 })

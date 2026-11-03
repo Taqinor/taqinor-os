@@ -10,9 +10,9 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
 import { spawn } from 'node:child_process'
 import { groupe } from './_oracles.js'
-import { API_DJANGO, PNG_1PX, boutonNouveauLead, gotoLeads, isoDansJours, lireJson, listeDe } from '../helpers.js'
+import { API_DJANGO, PNG_1PX, assurerSessionPage, boutonNouveauLead, gotoLeads, isoDansJours, lireJson, listeDe } from '../helpers.js'
 
-const etape = groupe('ALEA', ['ALEA26', 'ALEA5', 'ALEA6', 'ALEA7', 'ALEA8', 'ALEA9', 'ALEA10', 'ALEA12', 'ALEA16', 'ALEA17', 'ALEA18', 'ALEA19', 'ALEA29', 'ALEA32'])
+const etape = groupe('ALEA', ['ALEA26', 'ALEA5', 'ALEA6', 'ALEA7', 'ALEA8', 'ALEA9', 'ALEA10', 'ALEA12', 'ALEA16', 'ALEA17', 'ALEA18', 'ALEA19', 'ALEA29', 'ALEA32', 'ALEA56', 'ALEA57', 'ALEA58'])
 test.describe.configure({ timeout: 600_000 })
 
 const PW = 'Alea26-essai-local-2026!'
@@ -497,4 +497,105 @@ etape('P5.3', ['ALEA26'], async ({ testInfo, suivi }) => {
   expect(patch.status(), 'PATCH {} du Commercial terrain').toBe(403)
   expect(bulk.status(), 'bulk archive du Commercial terrain').toBe(403)
   expect(archive, 'le lead n\'est pas archivé').not.toBe(true)
+})
+
+// ── P1.6 — « Catalogue C&I prêt » exige l'article de chaque prestation : bouton désactivé, motif nommé (ALEA56) ──
+etape('P1.6', ['ALEA56'], async ({ page, testInfo, suivi }) => {
+  await assurerSessionPage(page)
+  const nom = 'alea56_admin'
+  const ids = await py(`${PRELUDE}
+from decimal import Decimal
+from django.core.cache import cache
+from apps.parametres.models import CompanyProfile
+from apps.stock.models import Produit
+from apps.ventes.moteur_ci.composition import PRESTATIONS_CI
+from authentication.models import Company
+co, _ = Company.objects.get_or_create(slug='alea56-essai', defaults=dict(nom='ALEA56 Essai', est_demo=True))
+CompanyProfile.objects.update_or_create(company=co, defaults={'forfaits_ci': {cle: {'fixe_ht': '500', 'source': 'grille essai'} for cle, _l in PRESTATIONS_CI}})
+for role in ('coffret_dc', 'coffret_ac', 'protection_ac', 'compteur_injection'):
+    Produit.objects.get_or_create(company=co, role_ci=role, defaults=dict(nom='Poste %s' % role, prix_vente=Decimal('900'), prix_achat=Decimal('400')))
+Produit.objects.filter(company=co, role_ci__in=[c for c, _l in PRESTATIONS_CI]).delete()
+u, _ = U.objects.get_or_create(username='${nom}', defaults=dict(company=co, role_legacy='admin'))
+u.company = co; u.role_legacy = 'admin'; u.is_active = True; u.must_change_password = False; u.set_password('${PW}'); u.save()
+l = Lead.objects.create(company=co, nom='${NOM} Usine', prenom='Essai', ville='Casablanca', telephone='${tel()}', type_installation='commercial',
+    conso_mensuelle_kwh=Decimal('9000'), contrat_electricite='bt_patente', raccordement='triphase', jours_ouverture=[1, 2, 3, 4, 5], heure_debut=8, heure_fin=18)
+cache.delete('ventes:catalogue_ci_pret:%s' % co.id)
+sortie(dict(lead=l.id, co=co.id, libelles=[lib for _c, lib in PRESTATIONS_CI]))`)
+  const ctx = await page.context().browser().newContext({ baseURL: base(testInfo), serviceWorkers: 'block' })
+  await ctx.addInitScript(() => {
+    try { localStorage.setItem('taqinor:welcome:seen:v1', '1'); localStorage.setItem('taqinor-pwa-install-dismissed', '1') } catch { /* mode privé */ }
+  })
+  await expect(async () => {
+    const r = await ctx.request.post(`${API_DJANGO}/token/`, { data: { username: nom, password: PW } })
+    expect(r.status(), `connexion de ${nom}`).toBe(200)
+  }).toPass({ intervals: [10_000, 20_000, 30_000], timeout: 240_000 })
+  const lire = async () => (await lireJson(await ctx.request.get(`${API_DJANGO}/crm/leads/${ids.lead}/`, T), 'lead')).devis_auto
+  let da = await lire()
+  expect(da.pret, `lead prêt côté données : ${JSON.stringify(da.manquants)}`).toBe(true)
+  expect(da.catalogue_ci.pret, 'catalogue non prêt sans article de prestation').toBe(false)
+  const courts = ids.libelles.map((l) => l.replace(/ C&I$/, ''))
+  expect(da.catalogue_ci.manquants.length, 'les 8 prestations').toBe(ids.libelles.length)
+  for (const l of courts) expect(da.catalogue_ci.manquants.some((m) => m.includes(l)), `nomme ${l}`).toBeTruthy()
+  // Écran : bouton désactivé, motif et postes nommés.
+  const p = suivi.surveiller(await ctx.newPage())
+  await p.goto(`/crm/leads/${ids.lead}`)
+  await p.getByTestId('lw-context-rail').getByRole('tab', { name: /devis/i }).click()
+  await expect(p.getByTestId('lw-devis-auto-bloque')).toBeDisabled({ timeout: 60_000 })
+  const bloc = p.getByTestId('lw-devis-catalogue-ci')
+  await expect(bloc).toContainText('postes sans prix')
+  for (const l of courts) await expect(bloc).toContainText(l)
+  // Un article actif par rôle de prestation : catalogue prêt, le blocage tombe.
+  await py(`${PRELUDE}
+from decimal import Decimal
+from apps.stock.models import Produit
+from apps.ventes.moteur_ci.composition import PRESTATIONS_CI
+for cle, lib in PRESTATIONS_CI:
+    Produit.objects.create(company_id=${ids.co}, nom='Prestation ' + cle, role_ci=cle, prix_vente=Decimal('500'))
+sortie('ok')`)
+  da = await lire()
+  expect(da.catalogue_ci.pret, `prêt avec les articles : ${JSON.stringify(da.catalogue_ci.manquants)}`).toBe(true)
+  await p.reload()
+  await p.getByTestId('lw-context-rail').getByRole('tab', { name: /devis/i }).click()
+  await expect(p.getByTestId('lw-devis-catalogue-ci')).toHaveCount(0, { timeout: 60_000 })
+  await ctx.close()
+  await py(`${PRELUDE}
+U.objects.filter(username='${nom}').update(is_active=False)
+sortie('ok')`)
+})
+
+// ── P3.5b — le refus « visite terminée » s'affiche dans le formulaire de qualification (ALEA57) ──────────────
+etape('P3.5b', ['ALEA57'], async ({ page, suivi }) => {
+  const r = page.request
+  await assurerSessionPage(page)
+  const lead = await lireJson(await r.post(`${API_DJANGO}/crm/leads/`, { ...T, data: { nom: `${NOM} Qualif ${Date.now()}`, ville: 'Casablanca', telephone: tel() } }), 'lead')
+  const visite = await lireJson(await r.post(`${API_DJANGO}/visites/visites/`, { ...T, data: { lead: lead.id } }), 'visite')
+  // Erreur de champ connue : reste sous son champ (réponse injectée, le serveur n'en renvoie qu'une à la fois).
+  const route = new RegExp(`/visites/visites/${visite.id}/qualification/`)
+  suivi.attendre(route, 400)
+  suivi.attendre(route, 409)
+  await page.goto(`/visites/${visite.id}`)
+  const form = page.getByTestId('visite-qualification')
+  await expect(form).toBeVisible({ timeout: 60_000 })
+  await page.route(route, (x) => x.fulfill({
+    status: 400, contentType: 'application/json', body: JSON.stringify({ erreurs: { frein: ['Frein invalide (essai).'] } }),
+  }))
+  await form.getByRole('button', { name: 'Enregistrer' }).click()
+  await expect(form.getByRole('alert').filter({ hasText: 'Frein invalide (essai).' })).toBeVisible({ timeout: 30_000 })
+  await page.unroute(route)
+  // Visite terminée : le refus RÉEL du serveur (rien d'injecté).
+  await py(`${PRELUDE}
+VisiteTerrain.objects.filter(pk=${visite.id}).update(statut='terminee')
+sortie('ok')`)
+  await page.reload()
+  await expect(form).toBeVisible({ timeout: 60_000 })
+  const [rep] = await Promise.all([
+    page.waitForResponse((x) => x.request().method() === 'POST' && /\/qualification\/$/.test(new URL(x.url()).pathname), T),
+    form.getByRole('button', { name: 'Enregistrer' }).click(),
+  ])
+  expect([400, 409], 'refus serveur').toContain(rep.status())
+  const corps = await rep.json()
+  const message = [].concat(corps.erreurs.statut)[0]
+  expect(message, 'le serveur nomme `statut`').toBeTruthy()
+  await expect(form.getByRole('alert').filter({ hasText: message })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Qualification enregistrée.')).toHaveCount(0)
 })

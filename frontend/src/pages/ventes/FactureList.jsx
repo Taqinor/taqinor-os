@@ -356,7 +356,10 @@ export default function FactureList() {
   // tous les cas pour ne pas rouvrir la modale à chaque re-render.
   useEffect(() => {
     const wantedId = searchParams.get('id')
-    if (!wantedId || loading) return
+    // Rejeu AARG50 — au premier rendu le chargement n'a pas encore commencé
+    // (`loading` faux, liste vide) : attendre la liste, sinon le paramètre est
+    // retiré avant d'avoir pu trouver la facture (URL ouverte directement).
+    if (!wantedId || loading || factures.length === 0) return
     const match = factures.find(f => String(f.id) === String(wantedId))
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?id= (D-ENF22)
     if (match) openEdit(match)

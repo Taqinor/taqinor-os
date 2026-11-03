@@ -1,0 +1,6 @@
+== C-ATOT-VER-002 (sha b72cda218)
+attendu : PATCH {facture: <émise>} sur une ligne de brouillon : accepté, la facture émise gagne une ligne
+observé : PATCH 409 lignes_emise=1 ttc 1200.00 -> 1200.00
+{"repro": false, "status": 409, "ttc_avant": "1200.00", "ttc_apres": "1200.00"}
+verdict : ÉCART
+base inchangée : oui (avant 105662, après 105662) ; mails 0 ; tâches Celery bloquées 0

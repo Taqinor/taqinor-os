@@ -707,7 +707,8 @@ const stockApi = {
   getTracabilite: (params) => api.get('/stock/produits/tracabilite/', { params }),
   // Valorisation du stock reconstruite à une date passée (admin).
   getValorisationADate: (date) =>
-    api.get('/stock/produits/valorisation-a-date/', { params: { date } }),
+    // Calcul sur tout le catalogue : délai long comme les exports (rejeu ENF15).
+    api.get('/stock/produits/valorisation-a-date/', { params: { date }, timeout: 120000 }),
 }
 
 export default stockApi

@@ -1,0 +1,7 @@
+== C-ALEA-VER2-101 (sha ce3356e48)
+attendu : jumeau d'ALEA13 : DELETE /api/django/visites/visites/<id>/ (visite brouillon portant une photo) répond 204, VisiteMedia supprimé en cascade, mais l'Attachment de la photo reste sur le lead (photo fantôme dans le panneau pièces jointes)
+observé : creation visite 201
+DELETE visite -> 204 ; visite existe=False ; media existe=False ; attachment du lead existe=False
+{"repro": false, "status": 204, "attachment_restant": false}
+verdict : ÉCART
+base inchangée : oui (avant 2282, après 2282) ; mails 0 ; tâches Celery bloquées 0

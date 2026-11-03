@@ -1,0 +1,6 @@
+== C-ATOT-VER-003 (sha b72cda218)
+attendu : devis industriel à deux options non accepté : bande variantes ≠ option_totaux(devis)['ttc']
+observé : option_effective='sans_batterie' bande=16800.00 attendu=16800.00 total_ttc=16800.00
+{"repro": false, "bande": "16800.00", "attendu": "16800.00"}
+verdict : ÉCART
+base inchangée : oui (avant 105662, après 105662) ; mails 0 ; tâches Celery bloquées 0

@@ -825,7 +825,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
           {isEdit && facture?.id && (
             <div className="border-t border-border pt-4">
               <p className="mb-2 text-sm font-semibold text-foreground">Pièces jointes</p>
-              <AttachmentsPanel model="ventes.facture" id={facture.id} />
+              <AttachmentsPanel model="facturation.facture" id={facture.id} />
             </div>
           )}
 
