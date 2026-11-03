@@ -203,3 +203,11 @@ describe('WAUD24 — liens ville du pied de page localisés', () => {
     expect(villeLocale('rabat', 'fr')).toBe('Rabat');
   });
 });
+
+describe('WAUD87 — assurance habitation sur /garanties EN et AR', () => {
+  it.each(['en/garanties', 'ar/garanties'])('%s', (p) => {
+    const src = readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8');
+    expect(src).toContain('items={insuranceFaq}');
+    expect(src).toContain('schema={false}');
+  });
+});
