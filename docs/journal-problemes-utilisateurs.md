@@ -39,7 +39,7 @@ n'écrit rien, ne corrige rien.
 
 | Couche | Où | Ce qu'elle garde | Durée de vie |
 |---|---|---|---|
-| **Problèmes vécus (navigateur)** | table `reporting_problemeclient` | genre, route API normalisée, écran, statut HTTP, code, message tronqué, famille de navigateur, utilisateur, société | **90 j** (purge `reporting_problemes_client`) |
+| **Problèmes vécus (navigateur)** | table `reporting_problemeclient` | genre, route API normalisée, écran, statut HTTP, code, message tronqué, famille de navigateur, utilisateur, société | **90 j** (purge `reporting_problemes_client`, réelle seulement si `RETENTION_AUTO_APPLY=1` est posé sur le serveur — sinon essai à blanc, état de la prod au 03/11) |
 | Erreurs serveur (500) | journal Django `core.exceptions` | trace complète + `request_id` | vie du conteneur |
 | Journal d'accès HTTP | `docker logs erp-agentique-nginx-1` | chaque requête + **durées** (nouveau) | vie du conteneur, 50 Mo × 6 fichiers |
 
@@ -58,7 +58,7 @@ ne laissaient **aucune** trace côté serveur :
 | `reseau` | la requête n'obtient **aucune** réponse : délai de 20 s dépassé (`api/axios.js`) ou réseau coupé | le toast « La connexion a expiré… », et côté serveur un `499` nginx sans durée |
 | `serveur` | réponse 5xx | le toast d'erreur FR |
 | `script` | erreur JavaScript non interceptée (`lib/globalErrors.js`) | un `console.error` dans le navigateur de l'utilisateur |
-| `ecran` | écran tombé (error boundary) | idem |
+| `ecran` | écran tombé (error boundary) — **pas encore câblé** (ERR-JPB-ECRAN-JAMAIS-EMIS : les boundaries n'appellent pas le journal et React 19 ne relance rien vers `window.error`) | idem |
 
 Un 4xx n'est **pas** signalé : 401/403/404/409 sont des refus que
 l'application gère déjà. Une annulation volontaire (`AbortController`, l'écran
@@ -137,8 +137,8 @@ Pour l'allumer (geste du fondateur — service externe, palier gratuit plafonné
    ```
 3. `docker compose up -d --build` — le **rebuild est obligatoire** : les
    variables `VITE_*` sont résolues à la compilation du frontend ;
-4. côté backend uniquement, `sentry-sdk` doit être installé (dépendance
-   optionnelle) ; sans lui l'init est ignorée en silence.
+4. côté backend, `sentry-sdk` est déjà dans `requirements.txt` (donc dans
+   l'image) ; sans DSN l'init est ignorée en silence.
 
 Ce qu'apporte Sentry en plus : la pile d'appel complète, le replay de session,
 le regroupement automatique et l'alerte. Ce que le journal maison garde, lui,
@@ -147,8 +147,11 @@ sans aucune dépendance externe : la liste des problèmes vécus, par route, par
 
 ## Ce qui n'est toujours pas capturé
 
-- un problème survenu **hors session** (page publique, écran de connexion) :
-  rien n'est envoyé, par choix (voir plus haut) ;
+- un problème survenu **hors session** : page publique, écran de connexion,
+  mais aussi le portail client par jeton, `/proposal/<tok>`, et les écrans SPA
+  sans login (kiosque, quai, dépositaire, portail fournisseur) : rien n'est
+  envoyé, par choix (voir plus haut) — leurs erreurs **serveur** relèvent de
+  la capture serveur (`docs/boucle-problemes-quotidienne.md`) ;
 - un navigateur qui n'atteint pas le serveur **du tout** (coupure totale au
   moment du signalement) : le POST échoue et n'est pas réessayé — le journal est
   best-effort, jamais une file d'attente ;
@@ -171,3 +174,10 @@ sans aucune dépendance externe : la liste des problèmes vécus, par route, par
 | Journal d'accès chronométré | `backend/nginx/nginx.conf` (`log_format taqinor`) |
 | Rotation des journaux conteneurs | `docker-compose.prod.yml` (`x-journaux`) |
 | Tests | `apps/reporting/tests_vitals.py` (seconde moitié) et `frontend/src/lib/monitoring.test.mjs` (seconde moitié) — ajoutés aux modules de test EXISTANTS de la même surface, `check_test_placement` (AMET84) refusant un fichier de test neuf par tâche |
+
+## Revue L3 du 03/11/2026 et boucle quotidienne
+
+Les défauts connus du journal (`ERR-JPB-*` dans `docs/ERROR_PLAN.md`) et la boucle
+quotidienne qui transforme ces lignes en corrections (résumé → tri du matin →
+`work on error plan` → clôture prouvée) sont décrits dans
+`docs/boucle-problemes-quotidienne.md`.
