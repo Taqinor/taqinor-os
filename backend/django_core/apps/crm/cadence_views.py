@@ -342,7 +342,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             qs = (self.get_queryset().filter(lead_id=lead_id)
                   .select_related('lead', 'lead__owner', 'lead__client',  # ERR-PERF-CRM-N1
                                   'lead__company', 'devis', 'traite_par')
-                  .order_by('cadence', 'ordre', 'due_date'))
+                  .defer('devis__etude_params').order_by('cadence', 'ordre', 'due_date'))  # ACVI77
         else:
             from .selectors import relance_etapes_dues
             scope = request.query_params.get('scope', 'today')

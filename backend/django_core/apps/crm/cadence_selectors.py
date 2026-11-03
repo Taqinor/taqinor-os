@@ -645,7 +645,7 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
         company=company, statut=RelanceEtape.Statut.A_FAIRE,
         lead__is_archived=False,
     ).select_related('lead', 'lead__owner', 'lead__client', 'lead__company',
-                     'devis')
+                     'devis').defer('devis__etude_params')  # ACVI77
     if scope == 'overdue':
         # ALEA32 — « en retard » = au moins un jour COMPTÉ depuis l'échéance
         # (le seuil unique, ``controle_suivi.seuil_retard``).

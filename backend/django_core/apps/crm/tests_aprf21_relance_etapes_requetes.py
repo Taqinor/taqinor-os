@@ -291,6 +291,29 @@ class SuiviEtudeParamsNonChargeeTests(TestCase):
         self.assertTrue(all(ligne['devis_reference'].startswith('DEV-AOOM3-')
                             for ligne in lignes))
 
+    def test_file_et_frise_ne_chargent_pas_etude_params(self):
+        # ACVI77 — même règle sur la file, la frise (`?lead=`) et le digest.
+        from apps.crm.management.commands.notifier_relances_dues import (
+            notifier_relances_dues)
+        self._touches_avec_devis(3)
+        lead = RelanceEtape.objects.filter(company=self.company).first().lead
+        base = '/api/django/crm/relance-etapes/'
+        for params in ({'scope': 'all'}, {'lead': lead.pk}):
+            with CaptureQueriesContext(connection) as ctx:
+                resp = self.api.get(base, params)
+            self.assertEqual(resp.status_code, 200, resp.data)
+            lignes = resp.data.get('results', resp.data)
+            self.assertTrue(all(ligne['devis_reference'].startswith('DEV-AOOM3-')
+                                for ligne in lignes))
+            self.assertEqual(
+                [q['sql'] for q in ctx.captured_queries
+                 if 'etude_params' in q['sql']], [], params)
+        with CaptureQueriesContext(connection) as ctx:
+            notifier_relances_dues()
+        self.assertEqual(
+            [q['sql'] for q in ctx.captured_queries
+             if 'etude_params' in q['sql']], [])
+
     def test_requetes_plates(self):
         self._touches_avec_devis(5)
         self._fenetre()  # échauffement
