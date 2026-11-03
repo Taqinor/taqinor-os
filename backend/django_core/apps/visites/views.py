@@ -303,6 +303,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         unique (``services.supprimer_media`` : pièce jointe du lead + objet
         de stockage après commit), jamais par la seule cascade."""
         from django.db import transaction
+        # ACVI60 — le lead est compensé par LA porte d'annulation, avant que
+        # la ligne disparaisse.
+        if instance.date_prevue is not None:
+            services.annuler_visite(instance, self.request.user)
         with transaction.atomic():
             for media in list(instance.medias.select_related('attachment')):
                 services.supprimer_media(media)
@@ -437,7 +441,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite.refresh_from_db()
         if visite.commercial_id != avant:
             services.notifier_assignation(visite, acteur=request.user)
-        if visite.date_prevue != date_avant:
+        if visite.date_prevue is None and date_avant is not None:
+            # ACVI60 — date vidée : c'est une annulation, jamais un silence.
+            services.annuler_visite(visite, request.user, jour=date_avant)
+            reponse.data.update(statut=visite.statut, notes=visite.notes)
+        elif visite.date_prevue != date_avant:
             # AGR412 — une re-planification recale le gabarit sur le type
             # du lead tant que la visite est brouillon.
             if services.recaler_gabarit(visite):

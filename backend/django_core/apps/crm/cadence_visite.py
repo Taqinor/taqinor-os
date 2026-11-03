@@ -39,6 +39,7 @@ from .cadence_reperes import (
     VISITE_ORDRE_CONFIRMATION,
     VISITE_ORDRE_DEBRIEF,
     _CLES_DEBRIEF,
+    annuler_etapes_moteur_ouvertes,
     q_visite,
 )
 from .cadence_touche import marquer_etape_relance
@@ -552,6 +553,30 @@ def annuler_rendez_vous_du_lead(lead, user, *, motif='',
         lead.visite_prevue_le = None
         lead.save(update_fields=['visite_prevue_le'])
     return annules
+
+
+def compenser_visite_retiree(lead, user, jour):
+    """ACVI60 — une visite retirée (date vidée, suppression) ne laisse rien
+    derrière elle sur le lead : ``visite_prevue_le`` vidé s'il portait ce
+    ``jour``, confirmation et débrief annulés (statut moteur), UNE note
+    système. Un autre rendez-vous en attente garde tout : c'est lui que ces
+    touches préparent. Rend ``True`` si le lead a été compensé."""
+    from apps.visites.services import visite_en_attente
+
+    if visite_en_attente(lead) is not None:
+        return False
+    lead.refresh_from_db(fields=['visite_prevue_le'])
+    if lead.visite_prevue_le == jour:
+        lead.visite_prevue_le = None
+        lead.save(update_fields=['visite_prevue_le'])
+    annuler_etapes_moteur_ouvertes(
+        lead, CLE_CONFIRMATION, CLE_DEBRIEF, note='visite retirée')
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f'Visite technique du {jour:%d/%m/%Y} retirée.')
+    _recaler_file(lead, user)
+    return True
 
 
 #: SUIVI E21 — les causes écrites (visite, message au technicien, chatter)

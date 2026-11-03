@@ -366,26 +366,53 @@ def annuler_rendez_vous(lead, user, motif=''):
         statut=VisiteTerrain.Statut.BROUILLON,
         en_route_le__isnull=True, arrivee_le__isnull=True,
         date_prevue__gte=aujourd_hui_local()))
-    precision = (motif or '').strip().rstrip('.')
     for visite in visites:
-        jour = f'{visite.date_prevue:%d/%m/%Y}'
-        raison = (f'— {precision}.' if precision
-                  else 'à la demande du client.')
-        ligne = f'Rendez-vous du {jour} annulé {raison}'
-        existantes = (visite.notes or '').strip()
-        visite.notes = f'{existantes}\n{ligne}' if existantes else ligne
-        visite.date_prevue = None
-        visite.statut = VisiteTerrain.Statut.ANNULEE
-        visite.save(update_fields=['date_prevue', 'notes', 'statut'])
-        if visite.commercial_id is not None and (
-                user is None
-                or visite.commercial_id != getattr(user, 'id', None)):
-            _notifier_commercial_visite(
-                visite, 'visite_terrain_assignee',
-                'Visite technique annulée',
-                f'Le rendez-vous du {jour} chez « {visite.lead} » est '
-                f'annulé {raison}')
+        _poser_annulation(visite, user, visite.date_prevue, motif)
     return len(visites)
+
+
+def _poser_annulation(visite, user, date_prevue, motif=''):
+    """L'annulation d'UNE visite : statut, date vidée, ligne de notes,
+    assigné prévenu — partagée par ``annuler_rendez_vous`` et ``annuler_visite``.
+    """
+    from .models import VisiteTerrain
+
+    jour = f'{date_prevue:%d/%m/%Y}'
+    precision = (motif or '').strip().rstrip('.')
+    raison = (f'— {precision}.' if precision
+              else 'à la demande du client.')
+    ligne = f'Rendez-vous du {jour} annulé {raison}'
+    existantes = (visite.notes or '').strip()
+    visite.notes = f'{existantes}\n{ligne}' if existantes else ligne
+    visite.date_prevue = None
+    visite.statut = VisiteTerrain.Statut.ANNULEE
+    visite.save(update_fields=['date_prevue', 'notes', 'statut'])
+    if visite.commercial_id is not None and (
+            user is None
+            or visite.commercial_id != getattr(user, 'id', None)):
+        _notifier_commercial_visite(
+            visite, 'visite_terrain_assignee',
+            'Visite technique annulée',
+            f'Le rendez-vous du {jour} chez « {visite.lead} » est '
+            f'annulé {raison}')
+
+
+def annuler_visite(visite, user, *, jour=None, motif=''):
+    """ACVI60 — LA porte d'annulation d'UNE visite (``PATCH date_prevue: null``,
+    ``DELETE``) : la visite passe ANNULÉE et le LEAD est compensé (date sur la
+    fiche, touches de visite). ``jour`` : la date d'avant quand le PATCH l'a
+    déjà vidée. Compensation best-effort, comme tout retour vers le CRM : le
+    geste sur la visite est acté."""
+    jour = jour or visite.date_prevue
+    _poser_annulation(visite, user, jour, motif)
+    try:
+        from apps.crm.cadence_visite import compenser_visite_retiree
+
+        compenser_visite_retiree(visite.lead, user, jour)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+        logger.warning('ACVI60 : lead non compensé (visite #%s)', visite.pk,
+                       exc_info=True)
+    return visite
 
 
 MESSAGE_DATE_PASSEE = (
