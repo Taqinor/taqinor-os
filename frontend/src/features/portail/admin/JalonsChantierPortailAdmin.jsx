@@ -26,7 +26,7 @@ export default function JalonsChantierPortailAdmin() {
 
   // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
   const fetchJalons = () => chargerToutesLesPages(
-    (page) => portailApi.admin.jalonsChantier.liste({ page }),
+    (page, pageSize) => portailApi.admin.jalonsChantier.liste({ page, page_size: pageSize }),
     { setRows, setLoadError, setLoading },
   )
 

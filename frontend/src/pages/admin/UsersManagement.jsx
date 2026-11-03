@@ -166,9 +166,9 @@ export default function UsersManagement() {
     try {
       // ADOC38 — toutes les pages (fetchAllPages), jamais la seule page 1.
       const [userList, roleListBrut, posteListBrut] = await Promise.all([
-        fetchAllPages((page) => api.get('/users/', { params: { page } }).then((r) => r.data), { concurrency: 3 }),
-        fetchAllPages((page) => rolesApi.getRoles({ page }).then((r) => r.data), { concurrency: 3 }),
-        fetchAllPages((page) => rolesApi.getPostes({ page }).then((r) => r.data), { concurrency: 3 }),
+        fetchAllPages((page, { page_size: pageSize } = {}) => api.get('/users/', { params: { page, page_size: pageSize } }).then((r) => r.data), { concurrency: 3 }),
+        fetchAllPages((page, { page_size: pageSize } = {}) => rolesApi.getRoles({ page, page_size: pageSize }).then((r) => r.data), { concurrency: 3 }),
+        fetchAllPages((page, { page_size: pageSize } = {}) => rolesApi.getPostes({ page, page_size: pageSize }).then((r) => r.data), { concurrency: 3 }),
       ])
       setPostes((Array.isArray(posteListBrut) ? posteListBrut : (posteListBrut?.results ?? []))
         .filter((p) => p.actif !== false))
