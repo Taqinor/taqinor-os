@@ -567,6 +567,8 @@ def reglements_facture_pdf(facture):
             'reference': av.reference or '',
             'montant': Decimal(str(av.total_ttc))})
     for r in sorted(facture.retenues_subies.all(), key=lambda r: r.id):
+        if r.annulee:  # AARG35
+            continue
         lignes.append({
             'date': _date(getattr(r, 'attestation_date', None)),
             'mode': f'Retenue à la source ({r.get_type_retenue_display()})',

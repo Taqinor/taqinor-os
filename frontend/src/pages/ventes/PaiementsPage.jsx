@@ -39,6 +39,8 @@ const STATUTS_RELEVE = {
   doublon_import: { label: 'Déjà importée', tone: 'info' },
   date_invalide: { label: 'Date illisible', tone: 'danger' },
   mode_invalide: { label: 'Mode de paiement non reconnu', tone: 'warning' },
+  // AARG6 — la porte d'encaissement refuse la ligne (J+7 de la loi 31-08…).
+  non_encaissable: { label: 'Non encaissable', tone: 'warning' },
   // Statuts propres au bilan du commit (contrat releve_import_commit.json).
   non_selectionnee: { label: 'Non sélectionnée', tone: 'neutral' },
   created: { label: 'Créée', tone: 'success' },
@@ -360,7 +362,7 @@ export default function PaiementsPage() {
               <div className="grid gap-3">
                 {apercu.deja_importe && (
                   <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-                    Ce fichier a déjà été importé : le serveur refusera un nouvel import.
+                    Ce fichier a déjà été importé : seules les lignes pas encore importées le seront.
                   </div>
                 )}
                 <div className="flex flex-wrap items-center gap-3 text-sm">

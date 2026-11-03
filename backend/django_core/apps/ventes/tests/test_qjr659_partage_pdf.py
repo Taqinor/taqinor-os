@@ -9,6 +9,7 @@ Run:
         -Modules "apps.ventes.tests.test_qjr659_partage_pdf"
 """
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -48,6 +49,33 @@ class PartagePdfVautEnvoi(TestCase):
     def _post(self, d):
         return self.api.post(
             f'/api/django/ventes/devis/{d.id}/pdf-partage/', {}, format='json')
+
+    def test_pdf_partage_porte_le_lien_signer(self):
+        """ADVS14 — GET : le PDF partagé est rendu avec le jeton du lien (lien
+        « signer » + QR), sans persister ni marquer envoyé ; le lien est réutilisé."""
+        d = self._devis()
+        with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                        return_value='k.pdf') as rendu, \
+                mock.patch('apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF'):
+            r = self.api.get(f'/api/django/ventes/devis/{d.id}/pdf-partage/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+        self.assertEqual(r.content, b'%PDF')
+        lien = ShareLink.objects.get(devis=d)
+        args, kwargs = rendu.call_args
+        self.assertEqual(args[1]['share_token'], lien.token)
+        self.assertIs(kwargs['persist'], False)
+        d.refresh_from_db()
+        self.assertEqual(d.statut, 'brouillon')
+        self.assertIsNone(d.date_envoi)
+
+    def test_pdf_partage_garde_t17_avant_tout_rendu(self):
+        d = self._devis(remise='30')
+        with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf') as rendu:
+            r = self.api.get(f'/api/django/ventes/devis/{d.id}/pdf-partage/')
+        self.assertEqual(r.status_code, 400, r.content)
+        rendu.assert_not_called()
+        self.assertFalse(ShareLink.objects.filter(devis=d).exists())
 
     def test_brouillon_partage_marque_envoye_sans_lien_minte(self):
         d = self._devis()

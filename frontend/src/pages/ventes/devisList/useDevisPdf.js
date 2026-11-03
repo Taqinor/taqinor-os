@@ -395,7 +395,8 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   const handlePartagerPdf = async (d) => {
     setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
     try {
-      const res = await ventesApi.telechargerPdfDevis(d.id)
+      // ADVS14 — jamais le fichier d'un brouillon sans jeton : le PDF partagé porte le QR « Signer ».
+      const res = await ventesApi.pdfAPartagerDevis(d.id)
       const filename = filenameFromResponse(res, `${d.reference}.pdf`)
       const file = new File([res.data], filename, { type: 'application/pdf' })
       const shareData = { files: [file], title: `Devis ${d.reference}` }

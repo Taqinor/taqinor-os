@@ -7,6 +7,7 @@ Les imports function-locaux des corps restent dans les corps (les
 n'interceptent qu'ainsi).
 """
 from django.db import transaction
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from rest_framework import status
@@ -182,6 +183,33 @@ def _options_piece_jointe(devis, pdf_mode, token):
     from ..quote_engine import clean_pdf_options
     memo = options_du_dernier_rendu(devis)
     return clean_pdf_options(dict(memo, share_token=token, **({'pdf_mode': pdf_mode} if pdf_mode else {})))
+
+
+def _pdf_partage_fichier(devis):
+    """ADVS14 — le PDF que la feuille de partage native va envoyer : rendu avec le
+    lien « signer » et son QR (idiome ADEV68 d'``envoyer_email``, ``persist=False``),
+    jamais le fichier d'un brouillon sans jeton. Le lien créé est celui que
+    ``ShareLink.for_devis`` réutilise ; aucun statut ne bouge (le POST marque envoyé)."""
+    from django.http import HttpResponse
+
+    from ..models import ShareLink
+    from ..quote_engine import generate_premium_devis_pdf
+    from ..utils.filenames import document_filename
+    from ..utils.pdf import download_pdf
+
+    opts = _options_piece_jointe(devis, '', ShareLink.for_devis(devis).token)
+    try:
+        octets = download_pdf(generate_premium_devis_pdf(devis.id, opts, persist=False))
+    except Exception as exc:  # noqa: BLE001 — traduit en refus nommé (D-ENF22-BLE001)
+        logger.warning("devis_envoi._pdf_partage_fichier : PDF non rendu", exc_info=True)
+        refus = _refus_rendu(exc)
+        return Response({'detail': refus.detail, 'code': refus.code}, status=refus.http)
+    reponse = HttpResponse(octets, content_type='application/pdf')
+    nom = document_filename('Devis', devis.reference,
+                            client=devis.client if devis.client_id else None,
+                            company=devis.company)
+    reponse['Content-Disposition'] = f'inline; filename="{nom}"'
+    return reponse
 
 
 class DevisEnvoiActionsMixin:
@@ -631,8 +659,8 @@ class DevisEnvoiActionsMixin:
         (QJR539) passe AVANT tout effet (400 ``{detail}``, le devis reste
         brouillon), puis ``mark_devis_sent`` — le seul chemin brouillon →
         envoyé (idempotent, ne régresse jamais un accepté/refusé/expiré,
-        funnel via ``devis_sent``). Aucun lien client n'est minté. Le
-        frontend ne l'appelle ni sur AbortError ni sur le repli
+        funnel via ``devis_sent``). Aucun lien client n'est minté par le POST.
+        Le frontend ne l'appelle ni sur AbortError ni sur le repli
         téléchargement."""
         from ..services import mark_devis_sent
         from .. import activity
@@ -647,6 +675,16 @@ class DevisEnvoiActionsMixin:
                 devis, request.user,
                 f'PDF du devis {devis.reference} partagé (feuille de partage).')
         return Response({'devis_statut': devis.statut})
+
+    @extend_schema(request=None, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    @pdf_partage.mapping.get
+    def pdf_partage_fichier(self, request, pk=None):
+        """ADVS14 — GET ``pdf-partage`` : le PDF à partager, avec son lien et son QR
+        de signature (mêmes gardes que le POST, d'abord)."""
+        devis = self.get_object()
+        _exiger_version_en_jeu(devis, ENVOYER)
+        _exiger_remise_envoi(devis, request.user)
+        return _pdf_partage_fichier(devis)
 
     @extend_schema(request=D.ContacterSuperieurRequest, responses=D.ContacterSuperieurResponse)
     @action(detail=True, methods=['post'], url_path='contacter-superieur',

@@ -3,7 +3,9 @@
 Sans base : la table `apps/facturation/parcours/PA4.json` est lue, ses ancres
 `fichier::symbole` sont résolues par AST (Python) ou par recherche du mot
 (JS), et `portes` est comparé au balayage réel des créateurs
-`Facture.objects.create` / `Paiement.objects.create`.
+`Facture.objects.create` / `Paiement.objects.create`, des appels à la primitive
+`enregistrer_paiement` (AARG34), des `serializer.save` d'un `perform_create` de
+viewset et des fonctions passées à `create_provisoire` (AARG44).
 """
 import ast
 import json
@@ -16,6 +18,7 @@ DJANGO_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = DJANGO_ROOT.parents[1]
 TABLE = DJANGO_ROOT / 'apps' / 'facturation' / 'parcours' / 'PA4.json'
 ANCRE = re.compile(r'((?:backend|frontend)/[\w/.\[\]-]+\.(?:py|jsx?|ts))::([\w.]+)')
+VIEWSETS_DOCUMENTS = {'FactureViewSet': 'Facture', 'PaiementViewSet': 'Paiement'}
 REGLES = {'recalcul', 'preserve_manuel', 'fige', 'reference', 'choix_explicite',
           'refus_409', 'ecrase', 'non_propage'}
 
@@ -60,6 +63,26 @@ def _resout(chemin, symbole):
     return True
 
 
+def _createur_indirect(appel, pile):
+    """AARG44 — (modèle, symbole) d'une porte qui ne dit pas `objects.create` :
+    primitive `enregistrer_paiement`, `serializer.save` d'un `perform_create` de
+    viewset, fonction passée à `create_provisoire`."""
+    if not isinstance(appel, ast.Call):
+        return None
+    f = appel.func
+    if isinstance(f, ast.Name) and f.id == 'enregistrer_paiement':
+        return 'Paiement', '.'.join(pile)
+    if (isinstance(f, ast.Attribute) and f.attr == 'save' and isinstance(f.value, ast.Name)
+            and f.value.id == 'serializer' and pile[-1:] == ['perform_create']
+            and len(pile) >= 2 and pile[-2] in VIEWSETS_DOCUMENTS):
+        return VIEWSETS_DOCUMENTS[pile[-2]], '.'.join(pile)
+    if isinstance(f, ast.Name) and f.id == 'create_provisoire' and appel.args:
+        passe = appel.args[0]
+        nom = [passe.id] if isinstance(passe, ast.Name) else []
+        return 'Facture', '.'.join(pile + nom)
+    return None
+
+
 def _createurs():
     """{(modele, 'apps/ventes/x.py::symbole')} réellement présents hors tests."""
     trouves = set()
@@ -77,6 +100,9 @@ def _createurs():
                 st = pile
                 if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                     st = pile + [c.name]
+                trouve = _createur_indirect(c, pile)
+                if trouve:
+                    trouves.add((trouve[0], 'backend/django_core/%s::%s' % (rel, trouve[1])))
                 if (isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
                         and c.func.attr == 'create'
                         and isinstance(c.func.value, ast.Attribute)
@@ -129,3 +155,13 @@ class ParcoursPA4Tests(SimpleTestCase):
                 self.assertTrue(_ancres(p['source'], set()), p['source'])
                 declares.add((modele, p['source']))
         self.assertEqual(declares, _createurs())
+
+    def test_portes_voient_serializer_save_et_create_provisoire(self):
+        """AARG44 — les portes sans `objects.create` sont vues : retirer une porte de
+        la table rougit `test_portes_listent_tous_les_createurs`."""
+        createurs = _createurs()
+        ventes = 'backend/django_core/apps/ventes/'
+        self.assertIn(('Facture', ventes + 'views/facture.py::FactureViewSet.perform_create'), createurs)
+        self.assertIn(('Facture', ventes + 'domain/facturation_vente.py::creer_brouillon_tranche'), createurs)
+        self.assertIn(('Paiement', 'backend/django_core/apps/portail/services.py::rapprocher_paiement_facture'),
+                      createurs)

@@ -1,7 +1,7 @@
 {
  "_doc": "PA4 « Argent » (METHODE §D.1) — table du parcours : convertir le devis en BC, facturer, encaisser, corriger (avoir, note de débit, RAS), exporter (pro-forma, UBL/DGI) et relancer. Pilote : facturation. Garde statique : apps/facturation/tests/test_parcours_pa4.py (symboles résolus par AST, sans base). Chemins relatifs à la racine du dépôt, forme fichier::symbole.",
  "version": "1.0",
- "maj": "2026-10-09",
+ "maj": "2026-11-03",
  "parcours": "PA4",
  "pilote": "facturation",
  "etapes": [
@@ -27,7 +27,7 @@
    "regle_aval": [
     {
      "type": "refus_409",
-     "detail": "devis non accepté, ou BC déjà existant : HTTP 400 (message explicite)"
+     "detail": "devis non accepté, ou BC déjà existant : HTTP 409 (message explicite)"
     },
     {
      "type": "reference",
@@ -64,7 +64,7 @@
    "regle_aval": [
     {
      "type": "refus_409",
-     "detail": "seul un BC en attente peut être confirmé : HTTP 400"
+     "detail": "seul un BC en attente peut être confirmé : HTTP 409"
     },
     {
      "type": "choix_explicite",
@@ -132,7 +132,7 @@
    "regle_aval": [
     {
      "type": "refus_409",
-     "detail": "BC non confirmé/livré, facture déjà liée, ou devis déjà facturé (exiger_devis_facturable) : HTTP 400"
+     "detail": "BC non confirmé/livré, facture déjà liée, ou devis déjà facturé (exiger_devis_facturable) : HTTP 409"
     },
     {
      "type": "reference",
@@ -160,7 +160,7 @@
     "composant": "DevisList.jsx",
     "action": "Facturer"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/utils/echeancier.py::creer_facture_tranche",
+   "fonction_entree": "backend/django_core/apps/ventes/domain/facturation_vente.py::facturer_vente",
    "checkpoint": {
     "modifiable": false,
     "champs": [],
@@ -173,7 +173,7 @@
     },
     {
      "type": "refus_409",
-     "detail": "blocage crédit client et avertissements de vente bloquants : HTTP 403/400"
+     "detail": "blocage crédit client et avertissements de vente bloquants : HTTP 403 ; tranche déjà créée : HTTP 409"
     }
    ],
    "suite": "PA4.06",
@@ -246,7 +246,7 @@
     },
     {
      "type": "refus_409",
-     "detail": "garde sur-paiement"
+     "detail": "garde sur-paiement : HTTP 409"
     }
    ],
    "suite": "PA4.09",
@@ -284,12 +284,13 @@
     },
     {
      "type": "refus_409",
-     "detail": "jeton absent ou consommé, fichier déjà importé pour la société : HTTP 400"
+     "detail": "jeton absent : HTTP 400 ; jeton déjà consommé : HTTP 409 ; ligne déjà importée ou non encaissable (J+7) : sautée"
     }
    ],
    "suite": "PA4.09",
    "negatifs": [
-    "même fichier importé deux fois"
+    "même fichier importé deux fois : 0 ligne créée",
+    "acompte signé au domicile avant J+7 : 0 Paiement"
    ],
    "taches": [],
    "constats": []
@@ -335,7 +336,9 @@
    "negatifs": [
     "contre-passation d'une facture payée"
    ],
-   "taches": ["VNT11"],
+   "taches": [
+    "VNT11"
+   ],
    "constats": []
   },
   {
@@ -376,13 +379,13 @@
    "nom": "Encaisser avec retenue à la source (RAS)",
    "proprietaire": "facturation",
    "declencheur": {
-    "type": "clic",
-    "source": "frontend/src/pages/ventes/PaiementDialog.jsx::enregistrerPaiement"
+    "type": "manuel",
+    "source": "backend/django_core/apps/ventes/views/paiement.py::PaiementViewSet.paiement_avec_retenue"
    },
    "ecran": {
-    "route": "/ventes/factures",
-    "composant": "PaiementDialog.jsx",
-    "action": "Paiement avec retenue"
+    "route": "(aucune)",
+    "composant": "(aucun)",
+    "action": "API seulement : POST paiement-avec-retenue"
    },
    "fonction_entree": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement_avec_retenue",
    "checkpoint": {
@@ -470,7 +473,7 @@
   },
   {
    "id": "PA4.14",
-   "nom": "Export UBL / transmission DGI",
+   "nom": "Export UBL ; transmission DGI (dormante)",
    "proprietaire": "facturation",
    "declencheur": {
     "type": "clic",
@@ -479,7 +482,7 @@
    "ecran": {
     "route": "/ventes/factures",
     "composant": "FactureList.jsx",
-    "action": "Export DGI"
+    "action": "transmission (dormante)"
    },
    "fonction_entree": "backend/django_core/apps/ventes/dgi/transmission.py::transmettre_facture",
    "checkpoint": {
@@ -624,6 +627,18 @@
    {
     "source": "backend/django_core/apps/ventes/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.facturer_penalites._create",
     "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_vente.py::creer_brouillon_tranche",
+    "etape": "PA4.05"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_vente.py::_creer_brouillon_complet",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.perform_create",
+    "etape": "PA4.16"
    }
   ],
   "Paiement": [
@@ -636,7 +651,7 @@
     "etape": "PA4.07"
    },
    {
-    "source": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement",
+    "source": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement._ecrire",
     "etape": "PA4.07"
    },
    {
@@ -665,6 +680,10 @@
    },
    {
     "source": "backend/django_core/apps/ventes/domain/annulation_facture.py::annuler_facture",
+    "etape": "PA4.07"
+   },
+   {
+    "source": "backend/django_core/apps/portail/services.py::rapprocher_paiement_facture",
     "etape": "PA4.07"
    }
   ]

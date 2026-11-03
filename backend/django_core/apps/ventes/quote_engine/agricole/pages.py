@@ -786,8 +786,9 @@ def _totaux(d, lg):
     lignes = [("sous_total_ht", tot.get("ht_brut"), "")]
     if (_num(tot.get("remise")) or 0) > 0:
         lignes.append(("remise", tot.get("remise"), "- "))
-    if (_num(tot.get("arrondi")) or 0) > 0:
-        lignes.append(("arrondi", tot.get("arrondi"), "- "))
+    _arrondi = _num(tot.get("arrondi")) or 0
+    if _arrondi:  # ADVS3 — négatif : des centimes remontés à la centaine.
+        lignes.append(("arrondi", abs(_arrondi), "- " if _arrondi > 0 else "+ "))
     lignes.append(("total_ht", tot.get("ht_net"), ""))
     # AGQ32 — la TVA ventilée par taux du builder (``tva_par_taux``), comme
     # le une-page ; un seul taux : la ligne unique d'hier.

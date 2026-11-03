@@ -43,7 +43,7 @@ def releve_dry_run(request):
 
     Renvoie le mapping colonnes, TOUTES les lignes (AFAC6) avec le statut de
     chaque ligne (a_importer, non_trouve, deja_regle, surpaiement,
-    montant_invalide, ambigu, client_non_identifie, doublon_import,
+    montant_invalide, ambigu, client_non_identifie, doublon_import, non_encaissable,
     date_invalide — contrat facturation/releve_import_dry_run.json), la FILE DE REVUE
     (``revue``) et — AUD121 — le ``token`` à repasser au commit.
     """

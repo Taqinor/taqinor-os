@@ -167,37 +167,48 @@ def recalculer_statut_paiement(facture, *, user=None, source=''):
     return facture.statut
 
 
-def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
-                         reference='', note=''):
-    """Enregistre un ``Paiement`` MANUEL sur une facture EXISTANTE.
+def enregistrer_paiement(*, montant, user=None, facture=None, company=None,
+                         porte=True, **champs):
+    """AARG34 — LE seul point qui crée un ``Paiement`` dans ``apps.ventes``.
 
-    Thin service exposé pour apps.pos (encaissement comptoir XPOS1/XPOS6) —
-    même modèle/table que le paiement enregistré depuis l'écran facture,
-    aucune duplication de logique.
+    ``porte`` vrai (tout encaissement sur une facture : écran, groupé, lien, relevé,
+    capture carte, retenue, apps.pos, portail) : sous le verrou de la facture, la
+    porte AFAC9 (émise / en retard, CAD122 : ``AcompteAvantDelaiLegal`` nommant la
+    date), le refus de l'excédent (``FactureNonEncaissable``), UNE ligne de chatter
+    « paiement » et UN ``paiement_enregistre`` (YLEDG1 : seam de
+    compta.ecriture_pour_paiement, jamais d'import de son service ici).
 
-    CAD122 — REFUSE un encaissement d'ACOMPTE sur une commande signée au
-    domicile du client tant que le délai des articles 49 et 50 de la loi 31-08
-    court (``AcompteAvantDelaiLegal``, message nommant la date). Une commande
-    signée à distance ou au bureau n'est pas concernée."""
-    _verifier_delai_acompte_domicile(facture, date_paiement)
-    # AFAC9 — LA porte unique (émise / en retard seulement).
-    exiger_facture_encaissable(facture, date_paiement)
-    from apps.ventes.models import Paiement
-    paiement = Paiement.objects.create(
-        company=facture.company,
-        facture=facture,
-        montant=montant,
-        date_paiement=date_paiement,
-        mode=mode,
-        reference=reference or '',
-        note=note or '',
-        created_by=user,
-    )
-    # YLEDG1 — événement documentaire générique (pose du seam pour
-    # compta.ecriture_pour_paiement, jamais d'import de son service ici).
+    ``porte`` faux (mouvement sans encaissement : avance sans facture, remboursement
+    ou trop-perçu négatif) : l'écriture seule, excédent sans objet ; l'appelant porte
+    sa trace (``log_facture_acompte_rembourse``…).
+
+    ``champs`` : les autres champs de ``Paiement`` (``date_paiement``, ``mode``,
+    ``reference``, ``note``, ``idempotency_key``…). L'appelant solde la facture."""
+    from django.db import transaction
+
+    from apps.ventes import activity
+    from apps.ventes.models import Facture, Paiement
     from core.events import paiement_enregistre
-    paiement_enregistre.send(
-        sender=Paiement, instance=paiement, company=facture.company)
+
+    def _ecrire(societe, piece):
+        return Paiement.objects.create(
+            company=societe, facture=piece, montant=montant, created_by=user, **champs)
+
+    if not porte:
+        return _ecrire(company or facture.company, facture)
+    date_paiement = champs.get('date_paiement')
+    with transaction.atomic():
+        locked = Facture.objects.select_for_update().get(pk=facture.pk)
+        _verifier_delai_acompte_domicile(locked, date_paiement)
+        exiger_facture_encaissable(locked, date_paiement)
+        reste = locked.montant_du
+        if montant - reste > TOLERANCE_CENTIME:
+            raise FactureNonEncaissable(
+                f'Le paiement dépasse le reste à payer ({reste:.2f} MAD).')
+        paiement = _ecrire(locked.company, locked)
+        activity.log_facture_paiement(locked, user, paiement)
+        paiement_enregistre.send(
+            sender=Paiement, instance=paiement, company=locked.company)
     return paiement
 
 
@@ -338,6 +349,28 @@ def exiger_facture_encaissable(facture, date_paiement=None):
         raise FactureNonEncaissable(motif)
 
 
+def _avoir_d_escompte(facture, escompte, user):
+    """AARG57 (D-AARG-5 = par_avoir) — l'escompte accordé réduit HT et TVA au
+    prorata de la facture (porte unique d'avoir, ATOT43) : journal, TVA et relevé
+    suivent l'encaissé réel. L'avoir repasse le statut de paiement (ATOT8)."""
+    from apps.facturation.totaux import ventilation_document_fige
+    from core.money import quantize_mad
+
+    from .facturation_ops import creer_avoir_facture
+
+    paniers = facture.tva_par_taux
+    vent = ventilation_document_fige(paniers, escompte)
+    if vent is None:  # mono-taux : un panier, prorata de la TVA
+        tva = quantize_mad(escompte * Decimal(str(facture.total_tva)) / Decimal(str(facture.total_ttc)))
+        taux = paniers[0]['taux'] if paniers else facture.taux_tva
+        vent = [{'taux': str(taux), 'base_ht': str(escompte - tva), 'montant': str(tva)}]
+    tva = sum((Decimal(v['montant']) for v in vent), Decimal('0'))
+    return creer_avoir_facture(
+        facture=facture, user=user, motif='Escompte pour règlement anticipé',
+        montant_ventile={'ht': escompte - tva, 'tva': tva, 'ttc': escompte,
+                         'ventilation': vent})
+
+
 def encaisser_sur_facture(*, facture, donnees, user):
     """LE chemin de l'encaissement MANUEL d'une facture (montant + date + mode).
 
@@ -386,7 +419,9 @@ def encaisser_sur_facture(*, facture, donnees, user):
         # montant réglé correspond au NET après escompte (reste − escompte,
         # tolérance 1 centime), l'escompte se calcule automatiquement et
         # SOLDE la facture avec le règlement — jamais hors fenêtre (plein
-        # tarif reste dû, comportement actuel inchangé).
+        # tarif reste dû, comportement actuel inchangé). AARG57 (D-AARG-5) :
+        # par AVOIR, ci-dessous : ``Paiement.escompte_montant`` n'est plus
+        # écrit (lecture historique gardée).
         date_paiement = donnees.get('date_paiement')
         escompte_montant = Decimal('0')
         if locked.escompte_applicable(date_paiement):
@@ -398,22 +433,11 @@ def encaisser_sur_facture(*, facture, donnees, user):
         if montant - reste > TOLERANCE_CENTIME:
             raise EncaissementRefuse(
                 f'Le paiement dépasse le reste à payer ({reste:.2f} MAD).')
-        paiement = Paiement.objects.create(
-            **donnees,
-            facture=locked,
-            company=locked.company,
-            created_by=user,
-            escompte_montant=escompte_montant,
-        )
-        # Chatter facture : trace l'encaissement (acteur côté serveur,
-        # jamais lu du corps de la requête).
-        from apps.ventes import activity
-        activity.log_facture_paiement(locked, user, paiement)
-        # YLEDG1 — événement documentaire générique (pose du seam pour
-        # compta.ecriture_pour_paiement, jamais d'import de son service ici).
-        from core.events import paiement_enregistre
-        paiement_enregistre.send(
-            sender=Paiement, instance=paiement, company=locked.company)
+        # AARG34 — chatter (acteur côté serveur, jamais lu du corps de la
+        # requête) et événement dans la primitive.
+        paiement = enregistrer_paiement(facture=locked, user=user, **donnees)
+        if escompte_montant:
+            _avoir_d_escompte(locked, escompte_montant, user)
         # Statut auto : intégralement réglée → « Payée ».
         # AUD102 (P2) — la bascule (garde centime-près, U10
         # reset_relance_escalation, YDOCF4 `facture_paid` + YEVNT6
@@ -422,7 +446,8 @@ def encaisser_sur_facture(*, facture, donnees, user):
         soldee = marquer_facture_soldee(
             locked, montant=montant, user=user,
             source='encaissement_facture')
-        if not soldee and locked.statut != Facture.Statut.ANNULEE:
+        if not soldee and locked.statut not in (
+                Facture.Statut.ANNULEE, Facture.Statut.PAYEE):
             # ZFAC11 — arrondi de caisse : un règlement EN ESPÈCES égal au
             # reste à payer arrondi au pas société (défaut 0 = désactivé,
             # comportement inchangé) solde la facture, l'écart d'arrondi
@@ -604,19 +629,9 @@ def affecter_encaissement_groupe(
 
 def _creer_paiement_groupe(facture, montant, mode, date_paiement, user,
                            reference):
-    from apps.ventes.models import Paiement
-
-    paiement = Paiement.objects.create(
-        company=facture.company, facture=facture, montant=montant,
-        date_paiement=date_paiement, mode=mode,
-        reference=reference or '', created_by=user,
-    )
-    # YLEDG1 — événement documentaire générique (même seam que
-    # enregistrer_paiement / le geste facture-par-facture).
-    from core.events import paiement_enregistre
-    paiement_enregistre.send(
-        sender=Paiement, instance=paiement, company=facture.company)
-    return paiement
+    return enregistrer_paiement(
+        facture=facture, montant=montant, user=user,
+        date_paiement=date_paiement, mode=mode, reference=reference or '')
 
 
 # ── FG53 — Liens de paiement « Payer en ligne » ──────────────────────────────
@@ -925,20 +940,14 @@ def record_payment_from_link(*, link, payload=None):
             montant = reste
         if montant <= Decimal('0'):
             return None, 'Aucun reste à payer sur cette facture.'
-        paiement = Paiement.objects.create(
-            company=facture.company,
-            facture=facture,
-            montant=montant,
-            date_paiement=timezone.localdate(),
-            mode=Paiement.Mode.CARTE,
-            reference=provider_ref,
-            note='Paiement en ligne (lien « Payer en ligne »).',
-        )
-        # YLEDG1 — événement documentaire générique (pose du seam pour
-        # compta.ecriture_pour_paiement).
-        from core.events import paiement_enregistre
-        paiement_enregistre.send(
-            sender=Paiement, instance=paiement, company=facture.company)
+        try:
+            paiement = enregistrer_paiement(
+                facture=facture, montant=montant,
+                date_paiement=timezone.localdate(), mode=Paiement.Mode.CARTE,
+                reference=provider_ref,
+                note='Paiement en ligne (lien « Payer en ligne »).')
+        except FactureNonEncaissable as refus:
+            return None, str(refus)
         facture.refresh_from_db()
         # AFAC23 — le lien ne passe PAYÉ que si la facture est SOLDÉE : un
         # règlement partiel le laisse ouvert pour le reste (la page affiche
@@ -983,12 +992,10 @@ def enregistrer_avance(*, company, client, montant, date_paiement, mode,
         raise ValidationError({'montant': 'Le montant doit être positif.'})
     if client is None:
         raise ValidationError({'client': 'Client requis pour une avance.'})
-    return Paiement.objects.create(
-        company=company, client=client, facture=None,
+    return enregistrer_paiement(
+        porte=False, company=company, client=client, montant=montant, user=created_by,
         statut_affectation=Paiement.StatutAffectation.NON_AFFECTE,
-        montant=montant, date_paiement=date_paiement, mode=mode,
-        reference=reference, note=note, created_by=created_by,
-    )
+        date_paiement=date_paiement, mode=mode, reference=reference, note=note)
 
 
 def crediter_trop_percu_en_avance(facture, avoir, *, user=None):
@@ -1011,10 +1018,10 @@ def crediter_trop_percu_en_avance(facture, avoir, *, user=None):
         return None
     note = f'Trop-perçu après avoir {avoir.reference}'
     jour = timezone.localdate()
-    Paiement.objects.create(
-        company=facture.company, facture=facture, client=facture.client,
-        montant=-montant, date_paiement=jour, mode=Paiement.Mode.AUTRE,
-        reference=avoir.reference, note=note, created_by=user)
+    enregistrer_paiement(
+        porte=False, facture=facture, client=facture.client, montant=-montant, user=user,
+        date_paiement=jour, mode=Paiement.Mode.AUTRE,
+        reference=avoir.reference, note=note)
     return enregistrer_avance(
         company=facture.company, client=facture.client, montant=montant,
         date_paiement=jour, mode=Paiement.Mode.AUTRE,
@@ -1202,11 +1209,9 @@ def enregistrer_paiement_avec_retenue(
             retenue_montant = Decimal('0')
         retenue_montant = quantize_mad(retenue_montant)
 
-        paiement = Paiement.objects.create(
-            company=locked.company, facture=locked, montant=montant,
-            date_paiement=date_paiement, mode=mode, reference=reference,
-            note=note, created_by=created_by,
-        )
+        paiement = enregistrer_paiement(
+            facture=locked, montant=montant, user=created_by,
+            date_paiement=date_paiement, mode=mode, reference=reference, note=note)
         retenue = RetenueSubie.objects.create(
             company=locked.company, facture=locked, paiement=paiement,
             type_retenue=type_retenue, taux=taux, base=base,
@@ -1215,7 +1220,6 @@ def enregistrer_paiement_avec_retenue(
         )
 
         from .. import activity
-        activity.log_facture_paiement(locked, created_by, paiement)
         activity.log_facture_retenue_subie(locked, created_by, retenue)
 
         locked.refresh_from_db()

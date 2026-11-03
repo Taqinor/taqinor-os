@@ -84,8 +84,6 @@ export default function FactureRow({ f, ctx }) {
   const {
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
-    // PACT121 - ouvre la demande de paiement carte (prestataire).
-    openPaiementEnLigne,
     // APX14 - ouvre l'apercu PDF inline de cette facture.
     openPreview,
     // EZ13 - marquage sec, relegue au menu et explique.
@@ -440,14 +438,6 @@ export default function FactureRow({ f, ctx }) {
                 {['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openNoteDebit(f) }}>
                     <ReceiptText /> Note de débit
-                  </DropdownMenuItem>
-                )}
-                {/* PACT121 — demande de paiement carte au client (CMI/Payzone).
-                    Libellé distinct du bouton « Payer en ligne » (lien FG53)
-                    pour qu'aucune action n'ait deux fois le même nom. */}
-                {f.encaissable !== false && (
-                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openPaiementEnLigne(f) }}>
-                    <CreditCard /> Demander un paiement carte
                   </DropdownMenuItem>
                 )}
                 {/* N105/WR2b — export DGI : masqué tant que l'interrupteur société est OFF. */}
