@@ -66,7 +66,8 @@ import LanguageSwitcher from './LanguageSwitcher.astro';
 import StarRating from './StarRating.astro';
 import Picture from './Picture.astro';
 import { hasRating } from '../lib/testimonials';
-import { DEYE_CLOUD_URL, NAP } from '../lib/nap';
+import { DEYE_CLOUD_URL, NAP, WHATSAPP_LEADS } from '../lib/nap';
+import { pageContextWhatsappText, whatsappLink } from '../lib/whatsapp';
 import { REALISATIONS } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localesForPath, localizeNavHref, QUOTE_JOURNEY_PATH } from '../i18n/pages';
@@ -79,6 +80,7 @@ const t = useTranslations(locale);
 const rootPath = stripLocale(Astro.url.pathname);
 const pageLocales = localesForPath(rootPath);
 const L = (href: string) => localizeNavHref(href, locale);
+const waEntete = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname)));
 
 // Solutions — dans cet ordre (W28). Le déclencheur pointe vers /nos-solutions.
 // W264 — `featured` : les deux points d'entrée grand public (résidentiel,
