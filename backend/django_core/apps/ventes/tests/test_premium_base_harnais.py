@@ -17,6 +17,7 @@ Lancer :
         apps.ventes.tests.test_premium_base_harnais -v 2
 """
 import inspect
+from unittest import mock
 
 from django.test import SimpleTestCase
 
@@ -82,6 +83,20 @@ class HarnaisOctetIdentique(SimpleTestCase):
                     c_renderer._augment(c_sample.build(categorie)),
                     [c_cover, equip, trust])
                 self.assertEqual(c_render.build_html(data), attendu)
+
+
+class RenderPdfDuMarche(SimpleTestCase):
+    """ENF19 — ``render_pdf`` de marché délégué à ``premium_base``."""
+
+    def test_sans_data_echantillon_du_marche_avec_data_tel_quel(self):
+        for module, echantillon in ((c_render, c_sample), (i_render, i_sample)):
+            with self.subTest(module=module.__name__),                     mock.patch.object(premium_base, 'render_pdf') as rendu,                     mock.patch.object(module, 'build_html',
+                                      return_value='<h>') as html:
+                module.render_pdf('o.pdf')
+                self.assertEqual(html.call_args[0][0], echantillon.build())
+                self.assertEqual(rendu.call_args[0][:2], ('o.pdf', '<h>'))
+                module.render_pdf('o.pdf', {'a': 1})
+                self.assertEqual(html.call_args[0][0], {'a': 1})
 
 
 class UnSeulKwcStr(SimpleTestCase):

@@ -41,8 +41,5 @@ def build_html(data: dict) -> str:
 
 
 def render_pdf(out_path, data: dict | None = None) -> str:
-    if data is None:
-        from . import sample_data
-        data = sample_data.build()
-    return premium_base.render_pdf(
-        out_path, build_html(data), Path(__file__).resolve().parent)
+    return premium_base.render_pdf_marche(
+        out_path, data, build_html, __package__, Path(__file__).resolve().parent)
