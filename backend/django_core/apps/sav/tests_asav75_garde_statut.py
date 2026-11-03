@@ -46,29 +46,54 @@ def _est_ticket_statut(noeud):
     return False
 
 
-def _nom_ticket(noeud):
-    """Le nom de base d'une chaîne d'attributs contient « ticket »."""
+def _nom_ticket(noeud, noms=frozenset()):
+    """Le nom de base d'une chaîne d'attributs contient « ticket » (ou est un
+    nom lié à un ``Ticket`` dans la fonction, ASAV127)."""
     while isinstance(noeud, (ast.Attribute, ast.Call, ast.Subscript)):
         noeud = noeud.func if isinstance(noeud, ast.Call) else noeud.value
-    return isinstance(noeud, ast.Name) and 'ticket' in noeud.id.lower()
+    return isinstance(noeud, ast.Name) and (
+        'ticket' in noeud.id.lower() or noeud.id in noms)
+
+
+def _noms_ticket(fonction):
+    """ASAV127 — noms liés à un ``Ticket`` par TYPE : paramètre annoté
+    ``Ticket``, affectation depuis ``Ticket.objects…``, variable de boucle sur
+    un tel queryset (ou sur un nom déjà lié)."""
+    noms = set()
+    for arg in (fonction.args.args + fonction.args.kwonlyargs):
+        if arg.annotation is not None and ast.unparse(
+                arg.annotation).strip("'\"") == 'Ticket':
+            noms.add(arg.arg)
+    for n in ast.walk(fonction):
+        if isinstance(n, ast.Assign):
+            cibles, valeur = n.targets, n.value
+        elif isinstance(n, (ast.For, ast.AsyncFor)):
+            cibles, valeur = [n.target], n.iter
+        else:
+            continue
+        if 'Ticket.objects' in ast.unparse(valeur) or _nom_ticket(
+                valeur, noms):
+            noms.update(c.id for c in cibles if isinstance(c, ast.Name))
+    return noms
 
 
 def _ecritures(arbre):
     """[(fonction, ligne)] des écritures directes de statut d'un ticket."""
     trouvees = []
 
-    def visiter(noeud, fonction):
+    def visiter(noeud, fonction, noms=frozenset()):
         for enfant in ast.iter_child_nodes(noeud):
-            nom = fonction
+            nom, lies = fonction, noms
             if isinstance(enfant, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 nom = enfant.name
+                lies = noms | _noms_ticket(enfant)
             if isinstance(enfant, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
                 cibles = (enfant.targets if isinstance(enfant, ast.Assign)
                           else [enfant.target])
                 for cible in cibles:
                     if (isinstance(cible, ast.Attribute)
                             and cible.attr == 'statut'
-                            and (_nom_ticket(cible.value)
+                            and (_nom_ticket(cible.value, lies)
                                  or (enfant.value is not None
                                      and _est_ticket_statut(enfant.value)))):
                         trouvees.append((nom, enfant.lineno))
@@ -78,15 +103,15 @@ def _ecritures(arbre):
                         and len(enfant.args) >= 2
                         and isinstance(enfant.args[1], ast.Constant)
                         and enfant.args[1].value == 'statut'
-                        and _nom_ticket(enfant.args[0])):
+                        and _nom_ticket(enfant.args[0], lies)):
                     trouvees.append((nom, enfant.lineno))
                 if (isinstance(func, ast.Attribute) and func.attr == 'update'
                         and any(k.arg == 'statut' for k in enfant.keywords)):
                     base = func.value
                     texte = ast.unparse(base)
-                    if 'Ticket.objects' in texte or _nom_ticket(base):
+                    if 'Ticket.objects' in texte or _nom_ticket(base, lies):
                         trouvees.append((nom, enfant.lineno))
-            visiter(enfant, nom)
+            visiter(enfant, nom, lies)
 
     visiter(arbre, '<module>')
     return trouvees
@@ -136,3 +161,30 @@ class GardeStatutTicketTests(SimpleTestCase):
                 "    equipement.statut = 'remplace'\n",
                 encoding='utf-8')
             self.assertEqual(scanner(dossier), [])
+
+    def test_fixture_typee_signalee(self):
+        """ASAV127 — reconnu par le TYPE de la cible, pas seulement le nom."""
+        source = chr(10).join([
+            'def a(principal: Ticket):',
+            "    principal.statut = 'cloture'",
+            'def b():',
+            '    t = Ticket.objects.get(pk=1)',
+            "    t.statut = 'cloture'",
+            'def c(c):',
+            '    qs = Ticket.objects.filter(company=c)',
+            "    qs.update(statut='cloture')",
+            'def d(ids):',
+            '    for x in Ticket.objects.filter(pk__in=ids):',
+            "        x.statut = 'resolu'",
+            'def e(ticket):',
+            "    ticket.statut = 'cloture'",
+            'def f(alarme):',
+            '    e = Equipement.objects.first()',
+            "    e.statut = 'remplace'",
+        ]) + chr(10)
+        with tempfile.TemporaryDirectory() as dossier:
+            (Path(dossier) / 'fixture.py').write_text(source, encoding='utf-8')
+            signalees = scanner(dossier)
+        self.assertEqual(
+            sorted(s.split(' ')[0] for s in signalees),
+            [f'fixture.py::{f}' for f in 'abcde'])
