@@ -14,6 +14,8 @@ export default defineConfig({
       {
         test: {
           name: 'unit',
+          // Bancs lourds de l'estimateur sous jsdom : 5 s cassent sur un runner chargé (CI #1247).
+          testTimeout: 30_000,
           include: ['**/*.{test,spec}.?(c|m)[jt]s?(x)'],
           exclude: ['**/node_modules/**', '**/dist/**', ...TESTS_RENDU],
         },

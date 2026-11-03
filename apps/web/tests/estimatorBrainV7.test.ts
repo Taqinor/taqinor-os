@@ -7,7 +7,7 @@
 // de signe d'azimut PVGIS (S=0 / E=−90 / O=+90 / N=180), génération = posé × kWc ×
 // rendement PVGIS avec posé = min(besoin, ce qui tient) et le plafond jamais dépassé,
 // et le repli gracieux PVGIS.
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   betterLive,
   solveLive,
@@ -18,9 +18,6 @@ import {
 import { PANEL2_WATT, aspectForAzimuth, optimalSouthTiltDeg } from '../src/lib/estimatorBrainV2';
 import { matrixTiltGrid } from '../src/lib/estimatorBrainV6';
 import { type LngLat } from '../src/lib/roof';
-
-// Banc lourd (optimiseur vivant sous jsdom) : 5 s par défaut cassent sur un runner chargé (CI #1247).
-vi.setConfig({ testTimeout: 30_000 });
 
 const LAT = 33.59;
 const BILL = 1500;
