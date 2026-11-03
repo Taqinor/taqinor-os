@@ -621,7 +621,7 @@ etape('P8.1', ['AARG16'], async ({ page, testInfo }) => {
     const histB = JSON.stringify(await lireJson(await r.get(`${API}/ventes/factures/${brouillonAuto.id}/historique/`, T), 'historique du brouillon'))
     expect(histB, 'motif du retrait').toMatch(/Remplacé par la facture consolidée/)
   }
-  const apres = shellJson(`from apps.ventes.selectors_facturation import factures_de_la_vente; from apps.ventes.models import Devis; import json; d=Devis.objects.get(pk=${dA.id}); print('@@'+json.dumps([x.id for x in factures_de_la_vente(d) if x.statut!='annulee']))`)
+  const apres = shellJson(`from apps.ventes.vente_facturation import factures_de_la_vente; from apps.ventes.models import Devis; import json; d=Devis.objects.get(pk=${dA.id}); print('@@'+json.dumps([x.id for x in factures_de_la_vente(d) if x.statut!='annulee']))`)
   expect(apres, 'seule la consolidée reste active').toEqual([conso.id])
   await ligneFacture(page, f)
 })

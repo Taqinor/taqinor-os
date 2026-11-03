@@ -382,6 +382,8 @@ etape('V1', ['ATOT48'], async ({ page, testInfo }) => {
   const autre = await creerDevis(r, { lignes: LIGNES_RONDES, remise: '0' })
   const bc = await lireJson(await r.post(`${API}/ventes/devis/${d.id}/convertir-bc/`, { ...T, data: {} }), 'BC')
   await lireJson(await r.post(`${API}/ventes/bons-commande/${bc.id}/confirmer/`, { ...T, data: {} }), 'confirmer')
+  // Livrer exige le stock du BC : posé sur les produits de CE devis.
+  executerDansDjango(`from apps.ventes.models import LigneDevis; from apps.stock.models import Produit; Produit.objects.filter(pk__in=LigneDevis.objects.filter(devis_id=${d.id}).values('produit_id')).update(quantite_stock=100)`)
   await lireJson(await r.post(`${API}/ventes/bons-commande/${bc.id}/marquer-livre/`, { ...T, data: {} }), 'livré')
   for (const corps of [{ devis: autre.id }, { client: autre.client }]) {
     const rep = await r.patch(`${API}/ventes/bons-commande/${bc.id}/`, { ...T, data: corps })
