@@ -86,8 +86,6 @@ class ProvisioningScriptTests(TestCase):
         sql = self._sql()
         self.assertIn("to_regclass('public.' || quote_ident(t))", sql)
         self.assertNotIn('stock_produit,', sql)
-', '
-'))
         self.assertIn("'ia_ocr_document'", sql)
 
     def test_documents_revert(self):
