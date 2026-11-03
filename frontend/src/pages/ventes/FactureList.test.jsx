@@ -125,7 +125,7 @@ describe('FactureList — WIR21 : vues sauvegardées côté serveur', () => {
   it('affiche le bouton « Vues » (ViewsManagerPopover) et charge les vues serveur', async () => {
     renderList({ factures: [baseFacture] })
     expect(await screen.findByTestId('uxviews-open-btn')).toBeInTheDocument()
-    await waitFor(() => expect(uxviewsApi.listSavedViews).toHaveBeenCalledWith('ventes.factures'))
+    await waitFor(() => expect(uxviewsApi.listSavedViews).toHaveBeenCalledWith('ventes.factures', expect.objectContaining({ page: 1 })))
   })
 
   it('« Enregistrer cette vue » crée une SavedView serveur (ecran ventes.factures)', async () => {

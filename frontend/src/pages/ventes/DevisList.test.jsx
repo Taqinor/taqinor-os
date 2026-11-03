@@ -210,7 +210,7 @@ describe('DevisList — WIR21 : vues sauvegardées côté serveur', () => {
   it('affiche le bouton « Vues » (ViewsManagerPopover) au lieu des chips localStorage', async () => {
     renderList({ loading: false, devis: oneDevis })
     expect(await screen.findByTestId('uxviews-open-btn')).toBeInTheDocument()
-    await waitFor(() => expect(uxviewsApi.listSavedViews).toHaveBeenCalledWith('ventes.devis'))
+    await waitFor(() => expect(uxviewsApi.listSavedViews).toHaveBeenCalledWith('ventes.devis', expect.objectContaining({ page: 1 })))
   })
 
   it('« Enregistrer cette vue » crée une SavedView serveur (ecran ventes.devis)', async () => {
@@ -1365,7 +1365,7 @@ describe('DevisList — QJR659 : partager le PDF vaut envoi', () => {
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     renderList({ role: 'admin', devis: [{ ...base, id: 83, reference: 'DEV-PART-3' }] })
     await partager('DEV-PART-3')
-    await waitFor(() => { expect(ventesApi.telechargerPdfDevis).toHaveBeenCalledWith(83) })
+    await waitFor(() => { expect(ventesApi.pdfAPartagerDevis).toHaveBeenCalledWith(83) })
     await new Promise(r => setTimeout(r, 50))
     expect(ventesApi.partagePdfDevis).not.toHaveBeenCalled()
     clickSpy.mockRestore()
