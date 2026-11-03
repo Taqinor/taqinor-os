@@ -28,6 +28,8 @@
  * trois archétypes et ne pas dériver. Pour ajouter un archétype, noter ici et
  * documenter dans DESIGN_RATIONALE.md.
  */
+import { RETOUR_PAR_SEGMENT } from '../lib/billRange';
+import { PANEL_PERFORMANCE_FLOOR_FR, PANEL_PERFORMANCE_WARRANTY_YEARS } from '../lib/warranty';
 import CityPageBody from '../components/CityPageBody.astro';
 import Layout from '../layouts/Layout.astro';
 import { CITIES } from '../lib/realisations';
@@ -58,15 +60,15 @@ const t = {
   kicker: `Zone d'intervention · ${c.name}`,
   h1: `Installation solaire ${c.intro}`,
   potential: 'Potentiel solaire',
-  hoursUnit: 'h/an',
-  sunshineLabel: `Ensoleillement annuel indicatif · ${c.name}`,
-  publicData: 'Donnée météo publique, à titre indicatif.',
+  hoursUnit: 'kWh/kWc/an',
+  sunshineLabel: `Production annuelle par kWc installé · ${c.name}`,
+  publicData: 'Source : PVGIS (TMY 2005-2020), plein sud, inclinaison 30°, 20 % de pertes.',
   statBill: 'De la facture couverte',
-  statRoiValue: '3–7 ans',
+  statRoiValue: RETOUR_PAR_SEGMENT.residentiel?.label.fr ?? '',
   statRoi: 'Retour sur investissement',
-  statWarrantyValue: '25 ans',
-  statWarranty: 'Garantie de performance',
-  stat8221: 'Simple déclaration loi 82-21',
+  statWarrantyValue: `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`,
+  statWarranty: `Garantie de performance (${PANEL_PERFORMANCE_FLOOR_FR})`,
+  stat8221: 'Déclaration loi 82-21 selon la puissance',
   projectsKicker: `Nos chantiers · ${c.name}`,
   projectsH2: `Des installations réelles ${c.intro}`,
   caseStudy: "Voir l'étude de cas",

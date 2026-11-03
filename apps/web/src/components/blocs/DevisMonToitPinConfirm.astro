@@ -1,0 +1,25 @@
+---
+// Bloc partagé FR/AR (garde ACAL345).
+---
+<div id="mt-pin-confirm" hidden class="border-t border-white/10 p-4">
+            <p class="text-sm font-semibold text-white" data-i18n
+              data-fr="C'est bien votre toit ?" data-ar="هل هذا هو سطحكم؟">C'est bien votre toit ?</p>
+            <p class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="La carte est centrée sur le repère que vous venez de poser."
+              data-ar="الخريطة متمركزة على العلامة التي وضعتموها للتو.">
+              La carte est centrée sur le repère que vous venez de poser.
+            </p>
+            <!-- Adresse REMPLIE seulement si le géocodage inverse en a trouvé une
+                 (W2) — jamais une adresse devinée, jamais une ligne vide. -->
+            <p id="mt-pin-confirm-address" hidden class="mt-2 text-sm text-lune-soft"></p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button type="button" id="mt-pin-confirm-yes"
+                class="bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+                <span data-i18n data-fr="Oui, c'est mon toit" data-ar="نعم، هذا سطحي">Oui, c'est mon toit</span>
+              </button>
+              <button type="button" id="mt-pin-confirm-adjust"
+                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+                <span data-i18n data-fr="Non, déplacer le repère" data-ar="لا، غيّروا موضع العلامة">Non, déplacer le repère</span>
+              </button>
+            </div>
+          </div>

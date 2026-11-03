@@ -79,11 +79,11 @@ export default function KpiAlertesPage() {
 
   useEffect(() => {
     let active = true
-    Promise.all([toutesLesPages((params) => reportingApi.listKpiAlertes(params)), api.get('/users/')])
+    Promise.all([toutesLesPages((params) => reportingApi.listKpiAlertes(params)), toutesLesPages((params) => api.get('/users/', { params }))])
       .then(([a, u]) => {
         if (!active) return
         setAlertes(a)
-        setUsers(u.data?.results ?? u.data ?? [])
+        setUsers(u)
       })
       .catch(() => { if (active) setAlertes([]) })
       .finally(() => { if (active) setLoading(false) })

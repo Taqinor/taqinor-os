@@ -18,7 +18,7 @@ import RelatedLinks from '../../components/RelatedLinks.astro';
 import Faq from '../../components/Faq.astro';
 import { NAP } from '../../lib/nap';
 import { localizeNavHref } from '../../i18n/pages';
-import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
+import { DATE_LONGUE_AR as dateFmt } from '../../lib/format';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
 
@@ -44,7 +44,7 @@ const faq = [
   },
   {
     q: 'ما العائد على الاستثمار لتركيبة شمسية بالمغرب؟',
-    a: 'من 5 إلى 7 سنوات في السكني القياسي دون بطارية؛ إضافة بطارية تُطيل هذا الأجل بـ1 إلى 3 سنوات. يعتمد الحساب بشدّة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE.',
+    a: 'يعتمد الحساب بشدّة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE.',
   },
 ];
 
@@ -64,7 +64,7 @@ const jsonLd = {
 ---
 
 <Layout
-  title="أثمنة الألواح الشمسية بالمغرب: هوامش حسب القدرة (kWc) | Taqinor"
+  title="ثمن الألواح الشمسية بالمغرب: هوامش حسب القدرة (kWc) | Taqinor"
   description="كم تكلّف تركيبة شمسية جاهزة بالمغرب؟ هوامش استرشادية حسب القدرة (3، 5، 10 kWc)، تكاليف السقف والبطارية، الضريبة على القيمة المضافة، ولماذا الرقم الحقيقي يأتي دائماً من زيارة تقنية."
   ogSlug="residentiel"
 >
@@ -164,11 +164,9 @@ const jsonLd = {
         انخفضت من <span dir="ltr" style="unicode-bidi:isolate">17,5 %</span> إلى <span dir="ltr" style="unicode-bidi:isolate">2,5 %</span>، ما ساهم في خفض كلفتها في السوق.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">العائد على الاستثمار: 5 إلى 7 سنوات في السكني</h2>
+      <h2 class="display v2-section-title mt-12 text-white">العائد على الاستثمار</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        فترة الاسترجاع الأكثر ذكراً من طرف المُركِّبين المغاربة لتركيبة سكنية قياسية (دون بطارية) هي
-        <strong class="text-white"> <span dir="ltr" style="unicode-bidi:isolate">5</span> إلى <span dir="ltr" style="unicode-bidi:isolate">7 سنوات</span></strong>. مع بطارية، أضيفوا <span dir="ltr" style="unicode-bidi:isolate">1</span> إلى <span dir="ltr" style="unicode-bidi:isolate">3 سنوات</span>. يعتمد هذا
-        الحساب بشدة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE — انظروا صفحتنا
+        يعتمد هذا الحساب بشدة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE — انظروا صفحتنا
         <a href={L('/financement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">التمويل والربحية</a>
         للتفصيل، ومقالنا
         <a href={L('/blog/rentabilite-solaire-par-ville-maroc')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">الربحية حسب المدينة</a>

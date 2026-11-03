@@ -98,6 +98,8 @@ from .fiche_selectors import (
     leads_export_rows, dernier_contact_lead, leads_signes_sans_devis_accepte,
     champs_devis_auto_manquants, lead_en_attente_ou_veille,
     visite_point_eau_du_lead, leads_froid_sans_raison,
+    leads_actifs_sans_prochaine_etape, leads_parques_sans_touche,
+    leads_reveil_aveugle, leads_fermes_avec_touche_ouverte, saisies_joint_anormales,
 )
 
 # Noms ré-exportés volontairement (façade) : pas la surface complète du module.
@@ -150,6 +152,8 @@ __all__ = [
     'lead_touchpoints_attribution', 'lead_values_changed_since', 'leads_callback_sla_depasse',
     'leads_chauds_non_contactes', 'leads_en_portee', 'leads_export_rows',
     'leads_froid_sans_raison', 'leads_matching_regles',
+    'leads_actifs_sans_prochaine_etape', 'leads_parques_sans_touche',
+    'leads_reveil_aveugle', 'leads_fermes_avec_touche_ouverte', 'saisies_joint_anormales',
     'leads_meta_sla_depasse', 'leads_rappel_demande', 'leads_recents_pour_couverture',
     'leads_response_time_rows', 'leads_signes_sans_devis_accepte', 'leads_sla_depasse',
     'leads_source_campagne', 'leads_utilisant_produit', 'leads_ville_rows', 'leads_visibles',
@@ -168,4 +172,29 @@ __all__ = [
     'signed_leads_for_campaigns', 'site_du_client', 'site_location_for_devis', 'site_profile_for_client',
     'soumissions_partenaire_portail', 'specialites_partenaire_cles', 'stats_equipe',
     'telephones_cibles_activites', 'trier_file_du_jour', 'ville_effective', 'visite_point_eau_du_lead',
+    'arrivee_lead_meta', 'hors_heures_ouvrees', 'lead_porte_note',
 ]
+
+
+def arrivee_lead_meta(lead, created_time=None):
+    """CADV41 — l'heure réelle d'une demande Meta : ``created_time`` de l'événement
+    (forme webhook ou pull), sinon la date d'arrivée posée sur la fiche (MRY0)."""
+    from .leads_meta import _parse_meta_created_time
+
+    return _parse_meta_created_time(created_time) or lead.date_creation
+
+
+def hors_heures_ouvrees(company, instant=None):
+    """CADV41 — ``dispatch.hors_heures`` pour un appelant d'une autre app."""
+    from .dispatch import hors_heures
+
+    return hors_heures(company, instant)
+
+
+def lead_porte_note(lead, corps):
+    """CADV41 — le chatter du lead porte-t-il déjà cette note exacte ?"""
+    from .models import LeadActivity
+
+    return LeadActivity.objects.filter(
+        company_id=lead.company_id, lead=lead, kind=LeadActivity.Kind.NOTE,
+        body=corps).exists()

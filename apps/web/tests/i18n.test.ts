@@ -42,6 +42,15 @@ describe('déduction & préfixage de chemin', () => {
     expect(localizePath('/', 'ar')).toBe('/ar/');
   });
 
+  it('WAUD4 — chemin encodé : décodé, et ses 3 locales retrouvées', () => {
+    expect(stripLocale('/r%C3%A9sidentiel/')).toBe('/résidentiel/');
+    expect(stripLocale('/en/%C3%A9quipement/')).toBe('/équipement/');
+    expect(stripLocale('/%E0%A4%A')).toBe('/%E0%A4%A');
+    for (const c of ['/r%C3%A9sidentiel/', '/%C3%A9quipement/', '/%C3%A0-propos/']) {
+      expect(localesForPath(c)).toEqual(['fr', 'en', 'ar']);
+    }
+  });
+
   it('stripLocale enlève le préfixe', () => {
     expect(stripLocale('/en/contact')).toBe('/contact');
     expect(stripLocale('/ar/')).toBe('/');
@@ -161,17 +170,17 @@ describe("registre de disponibilité & alternates (anti-lien-mort)", () => {
 
   it("localizeNavHref préfixe seulement si la cible existe, sinon repli FR (jamais de lien mort)", () => {
     // FR : jamais de préfixe.
-    expect(localizeNavHref('/contact', 'fr')).toBe('/contact');
+    expect(localizeNavHref('/contact', 'fr')).toBe('/contact/');
     // EN/AR : préfixe seulement si la page est traduite.
     if (hasLocale('/contact', 'en')) {
-      expect(localizeNavHref('/contact', 'en')).toBe('/en/contact');
+      expect(localizeNavHref('/contact', 'en')).toBe('/en/contact/');
     }
     // W67 lot 2 : /guides et les pages ville SONT désormais traduits → préfixés.
-    expect(localizeNavHref('/guides', 'en')).toBe('/en/guides');
-    expect(localizeNavHref('/installation-solaire-casablanca', 'ar')).toBe('/ar/installation-solaire-casablanca');
-    expect(localizeNavHref('/realisations/el-jadida-17-kwc', 'en')).toBe('/en/realisations/el-jadida-17-kwc');
+    expect(localizeNavHref('/guides', 'en')).toBe('/en/guides/');
+    expect(localizeNavHref('/installation-solaire-casablanca', 'ar')).toBe('/ar/installation-solaire-casablanca/');
+    expect(localizeNavHref('/realisations/el-jadida-17-kwc', 'en')).toBe('/en/realisations/el-jadida-17-kwc/');
     // Un chemin SANS traduction retombe sur le FR (cible qui existe toujours).
-    expect(localizeNavHref('/page-inexistante', 'en')).toBe('/page-inexistante');
+    expect(localizeNavHref('/page-inexistante', 'en')).toBe('/page-inexistante/');
   });
 
   it('toute page listée traduite a réellement ses routes /en/ et /ar/ construites', () => {
@@ -246,5 +255,19 @@ describe('formulaire de lead — flux de données IDENTIQUE dans toutes les lang
     expect(form).toContain('value={r.id}');
     expect(form).toContain('billLabel(r.id)');
     expect(form).toContain('roofLabel(r.id)');
+  });
+});
+
+describe('WAUD88 — le sélecteur de langue garde ?mode= et rien d’autre', () => {
+  it('liste blanche : mode seulement', async () => {
+    const { hrefAvecMode } = await import('../src/i18n/utils');
+    expect(hrefAvecMode('/ar/devis/mon-toit/', '?mode=agricole')).toBe('/ar/devis/mon-toit/?mode=agricole');
+    expect(hrefAvecMode('/ar/devis/mon-toit/', '?utm_source=x')).toBe('/ar/devis/mon-toit/');
+    expect(hrefAvecMode('/ar/devis/mon-toit/', '?mode=agricole&fbclid=a&utm_source=x')).toBe('/ar/devis/mon-toit/?mode=agricole');
+    expect(hrefAvecMode('/ar/devis/mon-toit/', '')).toBe('/ar/devis/mon-toit/');
+  });
+  it('le composant appelle ce filtre côté navigateur', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/components/LanguageSwitcher.astro', import.meta.url)), 'utf-8');
+    expect(src).toContain('hrefAvecMode');
   });
 });

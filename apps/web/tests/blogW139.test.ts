@@ -105,7 +105,9 @@ describe('W139 — données structurées & canonical de la route [slug]', () => 
   const slug = read('../src/pages/blog/[...slug].astro');
   it('porte BlogPosting + BreadcrumbList', () => {
     expect(slug).toMatch(/['"]@type['"]:\s*['"]BlogPosting['"]/);
-    expect(slug).toMatch(/['"]@type['"]:\s*['"]BreadcrumbList['"]/);
+    // WAUD50 : un seul BreadcrumbList, émis par le composant Breadcrumb (plus de doublon inline).
+    expect(slug).toContain('<Breadcrumb');
+    expect(slug).not.toMatch(/['"]@type['"]:\s*['"]BreadcrumbList['"]/);
   });
   it('passe par le Layout (un seul canonical) et n’émet pas de canonical inline', () => {
     expect(slug).toContain('import Layout from');
@@ -124,5 +126,18 @@ describe('W139 — sitemap', () => {
     expect(sitemapExcluded('/blog')).toBe(false);
     expect(sitemapExcluded('/blog/prix-installation-solaire-maroc-2026')).toBe(false);
     expect(sitemapExcluded('/preview/toiture-3d-pro-11')).toBe(true);
+  });
+});
+
+describe('WAUD67 — aucune date de blog antérieure au premier commit', () => {
+  // Premier commit de ces 8 articles (git log --diff-filter=A, relevé le 03/11/2026) : 21/06/2026.
+  const PREMIER_COMMIT = '2026-06-21';
+  it('aucune pubDate avant le premier commit', () => {
+    const dossier = fileURLToPath(new URL('../src/content/blog/', import.meta.url));
+    for (const f of readdirSync(dossier).filter((n) => n.endsWith('.md'))) {
+      const m = /^pubDate:\s*(\d{4}-\d{2}-\d{2})/m.exec(readFileSync(`${dossier}${f}`, 'utf-8'));
+      expect(m, f).not.toBeNull();
+      expect(m![1] >= PREMIER_COMMIT, `${f} : ${m![1]}`).toBe(true);
+    }
   });
 });

@@ -8,6 +8,8 @@
  * The Layout auto-sets lang=ar + dir=rtl; only text changes, classes intact.
  * Internal links via localizeNavHref. FR untouched.
  */
+import { RETOUR_PAR_SEGMENT } from '../../lib/billRange';
+import { PANEL_PERFORMANCE_FLOOR_EN, PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 import CityPageBody from '../../components/CityPageBody.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import Layout from '../../layouts/Layout.astro';
@@ -44,15 +46,15 @@ const t = {
   kicker: `منطقة التدخّل · ${cityNameAr}`,
   h1: `تركيب شمسي ${intro}`,
   potential: 'الإمكان الشمسي',
-  hoursUnit: 'ساعة/سنة',
-  sunshineLabel: `إشعاع سنوي إرشادي · ${cityNameAr}`,
-  publicData: 'معطى مناخي عمومي، على سبيل الإرشاد.',
+  hoursUnit: 'kWh/kWc/سنة',
+  sunshineLabel: `الإنتاج السنوي لكل kWc مركَّب · ${cityNameAr}`,
+  publicData: 'المصدر: PVGIS (TMY 2005-2020)، جنوباً، ميل 30°، 20 % من الخسائر.',
   statBill: 'من الفاتورة مُغطّاة',
-  statRoiValue: '3–7 سنوات',
+  statRoiValue: RETOUR_PAR_SEGMENT.residentiel?.label.ar ?? '',
   statRoi: 'عائد الاستثمار',
-  statWarrantyValue: '25 سنة',
-  statWarranty: 'ضمان الأداء',
-  stat8221: 'تصريح بسيط للقانون 82-21',
+  statWarrantyValue: `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`,
+  statWarranty: `ضمان الأداء (${PANEL_PERFORMANCE_FLOOR_EN})`,
+  stat8221: 'تصريح القانون 82-21 حسب القدرة',
   projectsKicker: `أوراشنا · ${cityNameAr}`,
   projectsH2: `تركيبات حقيقية ${intro}`,
   caseStudy: 'شاهد دراسة الحالة',

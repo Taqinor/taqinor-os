@@ -80,7 +80,8 @@ class NoyauArrondiTests(SimpleTestCase):
         self.assertEqual(t['ht_net'] + t['tva'], t['ttc'])
         self.assertEqual(t['ht_brut'] - t['remise'] - t['arrondi'],
                          t['ht_net'])
-        self.assertGreaterEqual(t['arrondi'], Decimal('0'))
+        # ADVS3 — négatif seulement quand le TTC remonte à la centaine (< 1 MAD).
+        self.assertGreater(t['arrondi'], Decimal('-1'))
         self.assertEqual(
             sum((b['ht_net'] for b in t['tva_par_taux']), Decimal('0')),
             t['ht_net'])
@@ -157,6 +158,38 @@ class NoyauArrondiTests(SimpleTestCase):
         self.assertEqual(t['ttc'], Decimal('400.00'))
         self._invariants(t)
 
+    def test_centimes_perdus_remontent_a_la_centaine(self):
+        """ADVS3 (D-ADVS-4) — 3 × 1 000 TTC saisis (HT 833,33) = 2 999,99 :
+        3 000,00, jamais 2 900 ; ``ht_net + tva == ttc``, aucune ligne repricée."""
+        lignes = [_ligne(3, '833.33', 20)]
+        self.assertEqual(_totaux(lignes, pas=None)['ttc'], Decimal('2999.99'))
+        t = _totaux(lignes)
+        self.assertEqual(t['ttc'], Decimal('3000.00'))
+        self.assertEqual(t['ht_net'], Decimal('2500.00'))
+        self.assertEqual(t['arrondi'], Decimal('-0.01'))
+        self._invariants(t)
+        # Autres totaux inchangés : 2 957 → 2 900 ; rond ; 1 MAD pile = palier inférieur.
+        self.assertEqual(_totaux([_ligne(1, '2464.17', 20)])['ttc'],
+                         Decimal('2900.00'))
+        self.assertEqual(_totaux([_ligne(1, '2500.00', 20)])['ttc'],
+                         Decimal('3000.00'))
+        self.assertEqual(_totaux([_ligne(1, '2499.17', 20)])['ttc'],
+                         Decimal('2900.00'))
+
+    def test_devis_d_un_niveau_ancien_garde_le_palier_inferieur(self):
+        """ADVS3 — décision du 08/10 : un devis envoyé garde le total reçu."""
+        from apps.ventes.domain.argent import centaine_remontee
+
+        lignes = [_ligne(3, '833.33', 20)]
+        envoye = SimpleNamespace(regles_calcul=10)
+        self.assertFalse(centaine_remontee(envoye))
+        self.assertTrue(centaine_remontee(SimpleNamespace(regles_calcul=11)))
+        t = _canonical_totaux(
+            lignes, remise_globale_pct=Decimal('0'),
+            fallback_taux=Decimal('20'), arrondi_pas=PAS_ARRONDI_DEVIS,
+            arrondi_montee=centaine_remontee(envoye))
+        self.assertEqual(t['ttc'], Decimal('2900.00'))
+
     def test_proprietes_sur_un_echantillon_deterministe(self):
         import random
         alea = random.Random(20261002)
@@ -170,7 +203,7 @@ class NoyauArrondiTests(SimpleTestCase):
             exact = _totaux(lignes, pas=None, remise=remise)
             t = _totaux(lignes, remise=remise)
             self._invariants(t)
-            self.assertLessEqual(t['ttc'], exact['ttc'])
+            self.assertLess(t['ttc'], exact['ttc'] + 1)  # ADVS3
             if exact['ttc'] >= 100:
                 self.assertEqual(t['ttc'] % 100, 0)
                 # Un devis qui porte du 20 % atteint toujours le palier juste
@@ -211,7 +244,7 @@ class SolveurRemisePourTtcTests(SimpleTestCase):
             if _totaux(lignes, remise=str(Decimal(c) / 100))['ttc']
             == Decimal('49000.00')]
         self.assertEqual((atteignables[0], atteignables[-1]),
-                         (Decimal('4.48'), Decimal('4.66')))
+                         (Decimal('4.48'), Decimal('4.67')))  # ADVS3
         r = self._solve(lignes, Decimal('49000'))
         self.assertEqual(r['remise_pct'], Decimal('4.50'))
         self.assertEqual([b['ht_net'] for b in r['totaux']['tva_par_taux']],

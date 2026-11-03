@@ -10,6 +10,8 @@
  *
  * Slugs match the file name under apps/web/src/pages/guides/*.astro.
  */
+import { NAP } from './nap';
+
 export const GUIDE_VERIFIED_DATES: Record<string, Date> = {
   'batterie-lithium-ou-gel': new Date('2026-07-03'),
   'combien-de-panneaux-pour-ma-maison': new Date('2026-07-03'),
@@ -25,9 +27,20 @@ export const GUIDE_VERIFIED_DATES: Record<string, Date> = {
   'quelle-taille-de-batterie': new Date('2026-07-03'),
 };
 
-/** Fallback used only if a slug is somehow missing from the map above. */
-const DEFAULT_VERIFIED_DATE = new Date('2026-07-03');
-
 export function getGuideVerifiedDate(slug: string): Date {
-  return GUIDE_VERIFIED_DATES[slug] ?? DEFAULT_VERIFIED_DATE;
+  const d = GUIDE_VERIFIED_DATES[slug];
+  // WAUD50 — jamais de date de repli : un slug absent de la carte est une erreur de build.
+  if (!d) throw new Error(`guideMeta: pas de date « vérifié le » pour ${slug}`);
+  return d;
+}
+
+/** WAUD50 — dateModified JSON-LD = la date « Vérifié le » affichée (AAAA-MM-JJ). */
+export function guideDateModified(slug: string): string {
+  return getGuideVerifiedDate(slug).toISOString().slice(0, 10);
+}
+
+/** WAUD50 — champs Article communs aux guides traduits : auteur, éditeur, page. */
+export function guideArticleCommun(url: string) {
+  const organisation = { '@type': 'Organization', name: NAP.name, url: NAP.url };
+  return { author: organisation, publisher: organisation, mainEntityOfPage: url };
 }

@@ -81,8 +81,12 @@ REGLES_ECARTS_0111 = 9
 #: 0149 laisse à 9 tout devis non brouillon : il garde ses deux répartitions
 #: d'hier (moteur : rôle seul ; noyau : variante puis mots-clés), écart compris.
 REGLES_PANIER_UNIQUE_0211 = 10
+#: Niveau 11 (ADVS3, D-ADVS-4, 03/11/2026, « nouveaux rendus seulement ») : un TTC à
+#: moins d'1 MAD sous une centaine y remonte au lieu de perdre 100 MAD. La migration
+#: 0151 laisse tout devis non brouillon à son niveau : il garde le total reçu.
+REGLES_CENTAINE_0311 = 11
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_PANIER_UNIQUE_0211
+REGLES_COURANTES = REGLES_CENTAINE_0311
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

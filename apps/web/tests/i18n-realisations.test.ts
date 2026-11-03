@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cityContentBySlug } from '../src/lib/cityContent';
 import { caseStudyBySlug } from '../src/lib/caseStudies';
-import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
+import { REALISATIONS, CITIES, mesureAffichee, realisationByRef } from '../src/lib/realisations';
 
 const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 // ENF19 — le corps des pages ville et études de cas (V2Enhance, class="v2", JSON-LD Service) vit dans
@@ -78,8 +78,8 @@ describe('cityContentBySlug — locale-aware, additif', () => {
     const SEP = '[\\s ,]?'; // espace, espace fine, ou virgule
     for (const loc of ['fr', 'en', 'ar'] as const) {
       const cc = cityContentBySlug('casablanca', loc);
-      // ≈ 2 950 / 2,950 doit apparaître dans le sunshineContext.
-      expect(cc.sunshineContext).toMatch(new RegExp(`2${SEP}950`));
+      // WAUD45 : plus d'heures de soleil chiffrées dans le sunshineContext (remplacées par le rendement PVGIS).
+      expect(cc.sunshineContext).not.toMatch(new RegExp(`2${SEP}950`));
       // Le numéro de loi 82-21 reste exact dans le pilier conformité.
       expect(cc.pillars.compliance.body).toContain('82-21');
       // WB1 (2026-07-04) : le chiffre de production annuel « 14 271 » était
@@ -248,5 +248,100 @@ describe('realisations.ts — non touché (faits intacts)', () => {
 
   it('seule Casablanca a un chantier local (honnêteté hasLocalInstall)', () => {
     expect(CITIES.filter((c) => c.hasLocalInstall).map((c) => c.name)).toEqual(['Casablanca']);
+  });
+});
+
+describe('WAUD21 — production mesurée : seule la réalisation appariée', () => {
+  it('réf. 400 : 1,13 MWh, relevé du 4 juillet 2026, dans les 3 langues', () => {
+    const r = realisationByRef('400');
+    expect(mesureAffichee(r, 'fr')).toEqual({ valeur: '1,13 MWh', libelle: 'Production mesurée — relevé le 4 juillet 2026' });
+    expect(mesureAffichee(r, 'en')).toEqual({ valeur: '1.13 MWh', libelle: 'Measured production — read on 4 July 2026' });
+    expect(mesureAffichee(r, 'ar')?.valeur).toBe('1,13 MWh');
+  });
+  it('aucune autre réalisation sans measuredLabel n’affiche de mesure', () => {
+    for (const r of REALISATIONS.filter((x) => !x.measuredLabel)) expect(mesureAffichee(r, 'fr')).toBeNull();
+  });
+});
+
+describe('WAUD14 — pas de « mesuré / temps réel » sans relevé, pas de phrase d’attente', () => {
+  const CHAMPS = ['description', 'situation', 'sizing', 'install', 'result', 'resume'] as const;
+  const MESURE = /temps réel|mesurée?s?\b|real[- ]time|\bmeasured\b|في الوقت الحقيقي|المقاس[ةه]?\b/i;
+  const ATTENTE = /seront publiés|dès que nous|dès sa délivrance|will be published|ستُنشر/;
+  const CONSO = /facture|consommation|\bbill\b|consumption|فاتور|استهلاك/i;
+
+  it('aucune réalisation sans measuredLabel ne dit mesuré ou temps réel, en 3 langues', () => {
+    for (const r of REALISATIONS.filter((x) => !x.measuredLabel)) {
+      for (const loc of ['fr', 'en', 'ar'] as const) {
+        const cs = caseStudyBySlug(r.slug, loc);
+        for (const c of CHAMPS) expect(cs[c], `${r.ref} ${loc} ${c}`).not.toMatch(MESURE);
+      }
+    }
+  });
+  it('ni phrase d’attente, ni fait de consommation du client, ni raison du dimensionnement', () => {
+    for (const r of REALISATIONS) {
+      for (const loc of ['fr', 'en', 'ar'] as const) {
+        const cs = caseStudyBySlug(r.slug, loc);
+        for (const c of CHAMPS) {
+          expect(cs[c], `${r.ref} ${loc} ${c}`).not.toMatch(ATTENTE);
+          expect(cs[c], `${r.ref} ${loc} ${c}`).not.toMatch(CONSO);
+        }
+      }
+    }
+  });
+  it('accueil et pages de preuve : plus de promesse universelle de suivi', () => {
+    const UNIVERSEL = /sur chaque installation|on every installation|على كل تركيب|في كل تركيب/;
+    for (const f of ['index.astro', 'en/index.astro', 'ar/index.astro']) {
+      expect(readSrc(`../src/pages/${f}`), f).not.toMatch(UNIVERSEL);
+    }
+    expect(readSrc('../src/components/GarantiesTeaser.astro')).not.toMatch(UNIVERSEL);
+    expect(readSrc('../src/pages/index.astro')).not.toContain('Voir nos réalisations mesurées');
+    expect(readSrc('../src/pages/résidentiel.astro')).not.toContain('production mesurée');
+    expect(readSrc('../src/pages/en/résidentiel.astro')).not.toContain('Deye 5 kW · real-time');
+  });
+});
+
+describe('WAUD32 — mois et dates par locale', () => {
+  it('dateLocale : FR identique à l’octet, EN et AR traduits', async () => {
+    const { dateLocale, standardCaption } = await import('../src/lib/realisations');
+    expect(dateLocale('avril 2026', 'fr')).toBe('avril 2026');
+    expect(dateLocale('avril 2026', 'en')).toBe('April 2026');
+    expect(dateLocale('octobre 2025', 'ar')).toMatch(/2025/);
+    expect(dateLocale('octobre 2025', 'ar')).not.toMatch(/octobre/);
+    for (const r of REALISATIONS) {
+      expect(standardCaption(r, 'fr')).toContain(r.date);
+      expect(standardCaption(r, 'en')).not.toContain(r.date);
+      expect(standardCaption(r, 'ar')).not.toContain(r.date);
+    }
+  });
+  it('les pages ar/ n’importent plus DATE_LONGUE_FR', () => {
+    for (const p of ['blog/index', 'blog/prix-installation-solaire-maroc-2026', 'blog/rentabilite-solaire-par-ville-maroc', 'prix-panneaux-solaires-maroc', 'ressources/10-questions-avant-de-signer']) {
+      expect(readSrc(`../src/pages/ar/${p}.astro`), p).not.toContain('DATE_LONGUE_FR');
+    }
+    for (const p of ['en/realisations/index', 'ar/realisations/index', 'en/production-mesuree', 'ar/production-mesuree']) {
+      expect(readSrc(`../src/pages/${p}.astro`), p).toContain('dateLocale');
+    }
+  });
+});
+
+describe('WAUD17 — /à-propos : le chantier documenté le plus ancien', () => {
+  it('min(date) = Nouaceur, octobre 2025', async () => {
+    const { plusAncienneRealisation } = await import('../src/lib/realisations');
+    expect(plusAncienneRealisation().slug).toBe('nouaceur-4-kwc');
+    expect(plusAncienneRealisation().date).toBe('octobre 2025');
+  });
+  it('les 3 pages utilisent min(date) et un mois par locale', () => {
+    for (const [p, loc] of [['à-propos', null], ['en/à-propos', 'en'], ['ar/à-propos', 'ar']] as const) {
+      const s = readSrc(`../src/pages/${p}.astro`);
+      expect(s).toContain('plusAncienneRealisation()');
+      expect(s).not.toContain('REALISATIONS[REALISATIONS.length - 1]');
+      if (loc) expect(s).toContain(`dateLocale(earliestRealisation.date, '${loc}')`);
+    }
+  });
+});
+
+describe('WAUD14 (reste) — /ar/realisations ne promet pas un suivi sur chaque installation', () => {
+  it('aucune promesse « كل تركيبة … الوقت الحقيقي » (suivi universel non vérifié)', () => {
+    const src = readSrc('../src/pages/ar/realisations/index.astro');
+    expect(src).not.toMatch(/كل تركيبة تستفيد/);
   });
 });

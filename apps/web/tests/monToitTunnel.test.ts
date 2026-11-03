@@ -828,7 +828,7 @@ describe('AGW400 — liens pompage → tunnel avec ?mode=agricole', () => {
 // par nos soins » dans le tunnel ; lien vers /financement.
 // ———————————————————————————————————————————————————————————————————————————
 describe('AGW405 — bloc FDA du tunnel : aucun pourcentage, aucune promesse', () => {
-  const LIENS: Record<string, string> = { FR: '/financement', EN: '/en/financement', AR: '/ar/financement' };
+  const LIENS: Record<string, string> = { FR: '/financement/', EN: '/en/financement/', AR: '/ar/financement/' };
   for (const [lang, rel] of LOCALES) {
     const src = read(rel);
     const bloc = slice(src, '<p id="mt-fda-note"', '</p>');

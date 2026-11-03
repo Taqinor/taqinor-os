@@ -58,7 +58,8 @@ def ecarts_chaine(totaux, *, remise_pct=None, tol=None):
     if remise_pct is not None:
         _ecart('remise', remise, round(ht_brut * _f(remise_pct) / 100, 2)
                if _f(remise_pct) > 0 else 0.0)
-    if arrondi < 0:
+    # ADVS3 — un arrondi négatif n'est légitime que s'il remonte à une centaine.
+    if arrondi < 0 and ttc % 100:
         _ecart('arrondi', arrondi, 0.0)
     _ecart('ht_net', ht_net, ht_brut - remise - arrondi)
     paniers = list(t.get('tva_par_taux') or [])

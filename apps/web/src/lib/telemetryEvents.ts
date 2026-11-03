@@ -197,20 +197,20 @@ export function isTelemetryEventName(name: unknown): name is TelemetryEventName 
 // attend un couple fermé {step, action} — pas un nom d'événement libre. Plutôt
 // qu'un second canal/endpoint pour ce vocabulaire de plus haut niveau, ce
 // module se contente de TRADUIRE les 4 événements DELTA de WJ104 vers ce
-// couple ; `journey_step_*`/`estimate_rendered`/`whatsapp_clicked` restent des
+// couple ; `journey_step_*`/`estimate_rendered` restent des
 // noms DÉCLARÉS mais NON câblés (statut d'adoption inchangé, cf. l'en-tête).
 
 /** Couple {step, action} au format attendu par `validateBeaconEvent` (funnelBeacon.ts). */
 export interface FunnelWireEvent {
   step: 'toit' | 'facture' | 'estimation' | 'contact' | 'proposal';
-  action: 'reached' | 'abandoned' | 'viewed' | 'callback_requested' | 'signed';
+  action: 'reached' | 'abandoned' | 'viewed' | 'callback_requested' | 'signed' | 'whatsapp_clicked';
 }
 
 /**
  * WJ104 — Traduit un événement du vocabulaire DELTA (`estimate_viewed`,
  * `callback_requested`, `proposal_viewed`, `proposal_signed`) vers le couple
  * {step, action} du beacon WJ59. Renvoie `null` pour tout autre nom
- * (`journey_step_*`/`estimate_rendered`/`whatsapp_clicked`/
+ * (`journey_step_*`/`estimate_rendered`/
  * `proposal_scrolled_to_financing`) — non câblés aujourd'hui, jamais un envoi
  * silencieusement mal formé.
  */
@@ -224,7 +224,53 @@ export function toFunnelWire(event: TelemetryEventName): FunnelWireEvent | null 
       return { step: 'proposal', action: 'viewed' };
     case 'proposal_signed':
       return { step: 'proposal', action: 'signed' };
+    case 'whatsapp_clicked':
+      return { step: 'contact', action: 'whatsapp_clicked' };
     default:
       return null;
   }
+}
+
+// ——— WAUD7 : clics WhatsApp et téléphone (831 liens wa.me + 776 tel:, aucune mesure) ———
+
+const CLE_JETON_FUNNEL = 'mt-funnel-token-v1';
+
+/** Zone de la page qui porte le lien (jamais de donnée de contact). */
+function zoneDuLien(lien: Element): string {
+  const zone = lien.closest('[data-cta-zone], header, footer, nav, main');
+  if (!zone) return 'page';
+  return zone.getAttribute('data-cta-zone') ?? zone.tagName.toLowerCase();
+}
+
+/** Même jeton anonyme que le tunnel (par onglet), créé ici si le visiteur n'y est pas passé. */
+function jetonFunnel(win: Window): string {
+  const existant = win.sessionStorage.getItem(CLE_JETON_FUNNEL);
+  if (existant) return existant;
+  const neuf = win.crypto.randomUUID().replace(/-/g, '').slice(0, 32);
+  win.sessionStorage.setItem(CLE_JETON_FUNNEL, neuf);
+  return neuf;
+}
+
+/**
+ * Écouteur délégué posé par Layout : événement Meta `Contact` sous le MÊME consentement que
+ * PageView (`tqPixelTrack` est un no-op si refusé ou pixel absent) ; pour un lien wa.me,
+ * `whatsapp_clicked` vers le beacon de funnel, sauf refus explicite. Best-effort : un échec
+ * de mesure n'empêche jamais le clic. Le corps du lead n'est pas concerné.
+ */
+export function installerMesureContact(doc: Document, win: Window & { tqPixelTrack?: (e: string, p?: object) => void }): void {
+  doc.addEventListener('click', (e) => {
+    const lien = (e.target as Element | null)?.closest?.('a[href^="https://wa.me"], a[href^="tel:"]');
+    if (!lien) return;
+    try {
+      const chemin = win.location.pathname;
+      win.tqPixelTrack?.('Contact', { content_name: chemin, placement: zoneDuLien(lien) });
+      if (!lien.getAttribute('href')?.startsWith('https://wa.me')) return;
+      if (win.localStorage.getItem('tq_consent') === 'denied') return;
+      const fil = toFunnelWire('whatsapp_clicked');
+      const corps = JSON.stringify({ ...fil, sessionToken: jetonFunnel(win), path: chemin });
+      win.navigator.sendBeacon?.('/api/funnel-beacon', new Blob([corps], { type: 'application/json' }));
+    } catch {
+      // Mesure best-effort.
+    }
+  });
 }

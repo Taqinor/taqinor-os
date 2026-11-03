@@ -8,13 +8,13 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { pageLocale } from '../../../lib/pageCtx';
+import { guideArticleCommun, guideDateModified } from '../../../lib/guideMeta';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import Faq from '../../../components/Faq.astro';
-import { NAP } from '../../../lib/nap';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { localizeNavHref } from '../../../i18n/pages';
 
@@ -30,7 +30,7 @@ const faq = [
   },
   {
     q: 'How do I keep the power on during an outage with solar?',
-    a: 'You need a hybrid inverter with EPS (Emergency Power Supply) outputs and a battery. During an outage, the inverter switches within milliseconds to these backup outputs, which power only the priority circuits wired to them.',
+    a: 'You need a hybrid inverter with EPS (Emergency Power Supply) outputs and a battery. During an outage, the inverter switches to these backup outputs, which power only the priority circuits wired to them.',
   },
   {
     q: 'How long does the backup battery last during an outage?',
@@ -47,9 +47,8 @@ const jsonLd = {
   description: 'Power outage and solar: how the EPS outputs of a hybrid inverter (Deye, Huawei) work, the "off-grid" myth explained, and why a standard on-grid system always shuts down during an outage.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Solar EPS emergency power hybrid inverter' },
-  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  mainEntityOfPage: url,
+  ...guideArticleCommun(url),
+  dateModified: guideDateModified('electricite-pendant-les-coupures'),
 };
 ---
 
@@ -113,7 +112,7 @@ const jsonLd = {
       <p class="v2-lead mt-5 text-lune-soft">
         Deye's SG-series inverters (single-phase SG05LP1, three-phase SG05LP3) integrate backup
         mode natively, with no external box. When the grid goes down, the switchover to the EPS
-        outputs is <strong>near-instant (~4–10 ms, UPS-type)</strong>. This delay is so short that
+        outputs is <strong>near-instant (UPS-type)</strong>. This delay is so short that
         most sensitive electronics don't notice it, provided they're plugged into the EPS circuits.
         The battery used is low-voltage 48 V LFP, and the inverter offers six configurable TOU
         (Time of Use) windows to charge the battery during off-peak hours and maximise the autonomy

@@ -15,7 +15,7 @@ import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import Callout from '../../components/Callout.astro';
 import KeyFigure from '../../components/KeyFigure.astro';
-import { getGuideVerifiedDate } from '../../lib/guideMeta';
+import { getGuideVerifiedDate, guideDateModified } from '../../lib/guideMeta';
 import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuGelPCFC9.astro';
 
 // W303 — date de vérification + auteur + temps de lecture. WB12 — la date
@@ -43,8 +43,9 @@ const jsonLd = {
   description: 'Autoconsommation diurne ou stockage : quand les batteries se justifient dans une installation solaire, expliqué simplement.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Batteries de stockage solaire' },
-  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  author: { '@type': 'Person', name: 'Reda Kasri' },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  dateModified: guideDateModified('faut-il-des-batteries'),
   mainEntityOfPage: url,
 };
 ---
@@ -61,7 +62,7 @@ const jsonLd = {
     <V2Enhance />
     <Article33Ribbon />
 
-    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Faut-il des batteries ?' }]} />
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides/' }, { label: 'Faut-il des batteries ?' }]} />
 
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Équipement</p>
@@ -145,14 +146,14 @@ const jsonLd = {
         c’est de couvrir l’essentiel de la facture au moindre dirham investi.
       </p>
       <RelatedLinks links={[
-        { href: "/équipement", label: "Voir l’équipement" },
-        { href: "/guides/onduleur-hybride-ou-reseau", label: "Onduleur hybride ou onduleur réseau ?" },
-        { href: "/blog/batterie-stocker-ou-revendre-maroc", label: "Stocker ou revendre : l’économie détaillée" },
-        { href: "/guides", label: "Tous les guides" },
+        { href: "/équipement/", label: "Voir l’équipement" },
+        { href: "/guides/onduleur-hybride-ou-reseau/", label: "Onduleur hybride ou onduleur réseau ?" },
+        { href: "/blog/batterie-stocker-ou-revendre-maroc/", label: "Stocker ou revendre : l’économie détaillée" },
+        { href: "/guides/", label: "Tous les guides" },
       ]} />
     </article>
 
-    <CtaBand title="Pour trancher sur votre cas précis, lancez l’étude gratuite." href="/devis/mon-toit" />
+    <CtaBand title="Pour trancher sur votre cas précis, lancez l’étude gratuite." href="/devis/mon-toit/" />
 
     <StickyCta />
   </div>

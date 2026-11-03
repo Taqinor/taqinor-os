@@ -18,6 +18,7 @@
  * removed; DiagnosticForm.astro + /api/simulate stay intact in the codebase
  * as the documented fallback (mounted elsewhere).
  */
+import { RETOUR_PAR_SEGMENT } from '../../lib/billRange';
 import Layout from '../../layouts/Layout.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -36,7 +37,7 @@ import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
 import { buildGallery } from '../../lib/homeGallery';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH, MEASURED_FLEET_READ_NOTE, derniereRealisation } from '../../lib/realisations';
 import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -75,13 +76,13 @@ const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH.toFixed(2); // "6.56"
 const heroTitleSuffix = ` MWh already produced and measured across our installations.`;
 const heroSub =
-  `A real cumulative figure, tracked in real time — not a sales projection. Your study starts with a 60-second diagnostic.`;
+  `A real cumulative figure, ${MEASURED_FLEET_READ_NOTE.en} — not a sales projection. Your study starts with a 60-second diagnostic.`;
 
 // PLACEHOLDER(MERYEM): provisional FAQ.
 const faq = [
   { q: 'How much does a residential solar installation cost?', a: 'It depends on your consumption and your roof. A villa with a bill of 1 500 MAD per month typically gets a 4 to 6 kWc system. The diagnostic below gives you an immediate range; the precise quote is set after a technical visit.' },
   { q: 'What does Law 82-21 say for households?', a: 'At low voltage, an installation under 11 kW falls under the declaration regime: a prior formality, not an authorisation. Taqinor prepares and files the declaration for you.' },
-  { q: 'My existing installation is not declared. What should I do?', a: 'Article 33 of Law 82-21 opens a regularisation window for existing installations. The window is open: file now. See the Regularisation page for the 5-step procedure.' },
+  { q: 'My existing installation is not declared. What should I do?', a: 'Article 33 of Law 82-21 opens a regularisation window for existing installations. See the Regularisation page for the 5-step procedure.' },
   { q: 'How long do the panels last?', a: 'Panels carry a 30-year linear performance warranty (≥ 87.4 % of the initial output at 30 years). Inverters are typically replaced once over the lifetime of the installation.' },
   { q: 'Do I need batteries?', a: 'Not necessarily. If your consumption is mostly during the day, direct self-consumption is the best investment. Batteries are justified for night-time consumption or service continuity — we calculate it in the study.' },
 ];
@@ -93,14 +94,14 @@ const faq = [
 // choice (which photo carries the figure) stays here; only the FIGURE itself
 // is derived. Unit suffix translated /an → /yr after deriving the number.
 const galleryRaw = [
-  { name: 'reflet-468', alt: 'The sun reflects off the row of panels during the install, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'Taqinor team in front of the long row of panels at the end of the job, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Job complete · Taqinor team', slug: 'el-jadida-17-kwc' },
+  { name: 'reflet-468', alt: 'The sun reflects off the row of panels during the install, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'Taqinor team in front of the long row of panels at the end of the job, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: false, type: 'Job complete · Taqinor team', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'Row of solar panels in front of the Casablanca skyline and a minaret, golden light', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Real-time production monitoring', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'Array of eight panels on a flat villa roof, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: 'The team tilts a panel during the install, Casablanca', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Install in progress · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: 'Jet-wash cleaning of the panel array, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Array maintenance · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: false, type: 'Real-time production monitoring', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'Array of eight panels on a flat villa roof, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: 'The team tilts a panel during the install, Casablanca', widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: true, type: 'Install in progress · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: 'Jet-wash cleaning of the panel array, Nouaceur', widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'Array maintenance · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
   // (2026-09) Bouskoura — power not yet published for this project: `type`
   // stays qualitative (brands confirmed on camera), never a guessed panel count.
   { name: 'bouskoura-toit', alt: 'A villa roof terrace fully covered in solar panels, Bouskoura', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'Deye inverter · DYNESS storage', slug: 'bouskoura-villa-2026' },
@@ -116,12 +117,12 @@ const galleryCities = ['All', ...Array.from(new Set(gallery.map((g) => g.ville))
 // menu. Descriptions from the already-published positioning, no new claim or
 // figure. Text cards (no image) → zero CLS.
 const solutions = [
-  { href: '/résidentiel', tag: 'Villas & apartments', title: 'Residential solar', body: 'Sized to your real bill, Law 82-21 declaration included.' },
-  { href: '/professionnel', tag: 'Industry · hotels · clinics', title: 'Business solar', body: 'Cutting your electricity costs, medium voltage, Law 82-21 compliance.' },
-  { href: '/pompage-solaire', tag: 'Agriculture & irrigation', title: 'Solar pumping', body: 'Pumping with the sun, often without batteries, sized to the real need.' },
-  { href: '/batteries-stockage', tag: 'Self-consumption', title: 'Batteries & storage', body: 'LFP storage for the evening or service continuity — when the study justifies it.' },
-  { href: '/maintenance-monitoring', tag: 'After the install', title: 'Maintenance & monitoring', body: 'Real-time production monitoring with client access, proactive after-sales, technical file.' },
-  { href: '/regularization-article-33', tag: 'Bringing into compliance', title: 'Law 82-21 regularisation', body: 'Regularising existing installations via Article 33.' },
+  { href: '/résidentiel/', tag: 'Villas & apartments', title: 'Residential solar', body: 'Sized to your real bill, Law 82-21 declaration included.' },
+  { href: '/professionnel/', tag: 'Industry · hotels · clinics', title: 'Business solar', body: 'Cutting your electricity costs, medium voltage, Law 82-21 compliance.' },
+  { href: '/pompage-solaire/', tag: 'Agriculture & irrigation', title: 'Solar pumping', body: 'Pumping with the sun, often without batteries, sized to the real need.' },
+  { href: '/batteries-stockage/', tag: 'Self-consumption', title: 'Batteries & storage', body: 'LFP storage for the evening or service continuity — when the study justifies it.' },
+  { href: '/maintenance-monitoring/', tag: 'After the install', title: 'Maintenance & monitoring', body: 'Production monitoring on connected installations, proactive after-sales, technical file.' },
+  { href: '/regularization-article-33/', tag: 'Bringing into compliance', title: 'Law 82-21 regularisation', body: 'Regularising existing installations via Article 33.' },
 ];
 
 // The real journey, end to end. Facts already published on the site (60-second
@@ -133,7 +134,7 @@ const journey = [
   { n: '3', title: 'Technical visit & free study', body: 'On-site roof reading, complete study and a 0 MAD quote.' },
   { n: '4', title: 'Installation', body: 'Tier-1 equipment installed with its complete technical file.' },
   { n: '5', title: 'Commissioning', body: 'Connection, checks, and the Law 82-21 file carried through to the end.' },
-  { n: '6', title: 'Real-time monitoring', body: 'Production read continuously, client access included: you read your kWh at the source.' },
+  { n: '6', title: 'Production monitoring', body: 'On installations connected to monitoring, production is read at the source.' },
 ];
 
 // W252 — "How it works": 4-step band under the hero, the near-universal
@@ -147,7 +148,7 @@ const howItWorks = [
   { n: '1', title: 'Instant estimate', body: 'Your bill gives a kWc range in 60 seconds, with no commitment.' },
   { n: '2', title: 'Personalised, signed study', body: 'Technical visit, sizing on your actual roof, validated and signed before any quote.' },
   { n: '3', title: 'Quote + e-signature', body: 'The detailed quote is signed electronically, wherever you are.' },
-  { n: '4', title: 'Installation & after-sales', body: 'Installed by our team, commissioned, then real-time production monitoring and proactive after-sales.' },
+  { n: '4', title: 'Installation & after-sales', body: 'Installed by our team, commissioned, then production monitoring on connected installations and proactive after-sales.' },
 ];
 
 // Sober iconography for the "Our solutions" cards: one SVG line per card,
@@ -160,11 +161,10 @@ const howItWorks = [
 // the team page). W284 derives the visitable-worksites count from REALISATIONS
 // instead of copying it by hand. Gold lives on the .lum figures (brass
 // discipline). No invented claim.
-const visitableSitesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+const latest = derniereRealisation();
 const trust = [
-  { fig: String(visitableSitesCount), tally: false, label: 'Worksites you can visit', body: 'Real installations to see on request — Casablanca, El Jadida, Nouaceur' },
   { fig: 'Law 82-21', tally: false, label: 'Compliance included', body: 'Declaration prepared and filed for you by Taqinor' },
-  { fig: 'Real-time', tally: false, label: 'Production tracked', body: 'Real-time production monitoring on every installation, client access included' },
+  { fig: 'Real-time', tally: false, label: 'Production tracked', body: 'Real-time production monitoring on installations connected to monitoring' },
 ];
 
 // W265 — The 30-year investment story: the page's ONE clear tonal break
@@ -172,9 +172,8 @@ const trust = [
 // dark→light→dark narrative breathe. Figures STRICTLY reused from
 // /financement (already published) — no new number.
 const investment = [
-  { v: '3–7 years', label: 'Typical return on investment' },
+  ...(RETOUR_PAR_SEGMENT.residentiel ? [{ v: RETOUR_PAR_SEGMENT.residentiel.label.en, label: 'Typical return on investment' }] : []),
   { v: '30 years', label: 'Panel performance warranty' },
-  { v: '50–100 %', label: 'Of the bill covered — depending on batteries and day/night usage' },
   { v: '0 MAD', label: 'The study and the assessment' },
 ];
 
@@ -197,7 +196,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
 
 <Layout
   title="Taqinor — Solar installations in Morocco, Law 82-21 compliant"
-  description="Solar installations for villas, industry and hotels in Morocco: sized on your bill, declared under Law 82-21, with real-time production monitoring and client access."
+  description="Solar installations for villas, industry and hotels in Morocco: sized on your bill, declared under Law 82-21, with production monitoring on connected installations and client access."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -290,7 +289,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">30-year performance warranty</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
-        <span>production tracked, not promised — real-time monitoring on every installation</span>
+        <span>production tracked, not promised — real-time monitoring on installations connected to monitoring</span>
       </p>
     </section>
 
@@ -324,7 +323,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
             <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
               <a href={L(`/realisations/${g.slug}`)} class="absolute inset-0 z-0" aria-label={`View the installation: ${g.ariaLabel}`}></a>
               {/* Uniform "golden hour" grade — .v3-grade on the content photo */}
-              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, calc(100vw - 2rem)"
                 class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
               {/* Enlarge (lightbox) button — kept separate from the card link
                   (no button nested in an <a>, invalid HTML); z-index above
@@ -488,7 +487,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
             <p class="v2-body mt-5 max-w-md">
               No call centre, no chasing: your diagnostic arrives on WhatsApp,
               you talk directly with the technical team, roof photos in hand,
-              right up to the on-site visit. Sample exchange opposite — anonymised.
+              right up to the on-site visit. Sample exchange opposite.
             </p>
             {/* Copy paired with the active step — hidden by default; the
                 script only shows it once pinning is armed (desktop, motion ok). */}
@@ -558,9 +557,9 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
         </div>
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">Latest installation delivered</p>
-          <EnIndexP51EC featured={featured} />
+          <EnIndexP51EC featured={latest} />
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            Installation tracked in real time, client access included. Site visits available on request.
+            {latest.measuredLabel && 'Installation tracked in real time, client access included.'}
           </p>
         </aside>
       </div>

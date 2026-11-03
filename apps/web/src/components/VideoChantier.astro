@@ -88,7 +88,7 @@ const s = STR[locale] ?? STR.fr;
         • Bordure laiton (border-brass-400/40) + anneau de lueur douce
         • Dimensions explicites sur l'affiche (anti-CLS : 16/9, 1600x900)
         • preload="none" sur la video (chargée à la demande)
-        • poster="/videos/chantier-poster.webp" sur la video (premier frame visible)
+        • affiche native retirée (WAUD29) : LiteVideo dessous la montre déjà (premier frame visible)
         • W179 : group-hover scale-[1.04] (standardisé, était 1.02)
       W346 — la façade clic-pour-lire elle-même est LiteVideo (affiche +
         bouton play + injection du <video> réel au clic). La boucle teaser
@@ -126,7 +126,6 @@ const s = STR[locale] ?? STR.fr;
         preload="none"
         aria-hidden="true"
         tabindex="-1"
-        poster="/videos/chantier-poster.webp"
       ></video>
     </div>
   </div>

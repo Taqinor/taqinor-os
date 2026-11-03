@@ -805,6 +805,30 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(lecture((await rouvrir(sortie, 10))()).doc).toBe(sortie.result.annualKwh);
   }, 120000);
 
+  // ACAL367 — le rejeu de la contre-visite tel quel : rouvert SANS ressaisir la facture (besoin
+  // auto, aucune cible serveur). La facture vide ne doit pas lire « remplir le toit » : le
+  // document montait à 57 296 kWh depuis 25 433 enregistrés.
+  it('rouvert sans ressaisir la facture puis horizon 25° : le document baisse, il ne bondit pas au toit plein', async () => {
+    const enregistre = await enregistreAvecProduction();
+    const api = await rouvrir(enregistre, 13);
+    const avant = lecture(api());
+    expect(avant.doc).toBe(enregistre.result.annualKwh);
+    expect(avant.carte).toBe(Math.round(enregistre.result.annualKwh));
+    api().appliquerSection('horizonProfile', horizon25);
+    const apres = lecture(api());
+    const f = apres.carte / avant.carte;
+    expect(f).toBeLessThan(0.99);
+    expect(apres.doc / avant.doc).toBeCloseTo(f, 3);
+  }, 120000);
+
+  it('D-ACAL-VER2-1 — ancien document ombré sans signature, rouvert SANS geste : production dératée, jamais au-dessus de l’enregistrée', async () => {
+    const enregistre = await enregistreAvecProduction();
+    const ancien = { ...enregistre, horizonProfile: horizon25 } as Doc;
+    const sortie = copie((await rouvrir(ancien, 14))().serializeLayout() as Doc);
+    expect(sortie.result.annualKwh).toBeLessThan(enregistre.result.annualKwh * 0.99);
+    expect(sortie.result.annualKwh).toBeGreaterThan(0);
+  }, 120000);
+
   // ACAL366 — une section « zones » (onglet Pente, panneau Relevé) est posée sur le pan VIVANT :
   // « Enregistrer » garde 35° (jamais l'ancienne pente sous un jeton neuf), puis rouvrir la relit.
   it('section « zones » (pente 35°, azimut relevé) appliquée au pan vivant puis gardée par serializeLayout', async () => {
@@ -830,6 +854,30 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(enregistre.result.annualKwh).toBeGreaterThan(0);
     // Persistance : rouvert depuis l'enregistrement complet, la pente et ses provenances relues.
     attendus((await rouvrir(enregistre, 11))().serializeLayout() as Doc);
+  }, 120000);
+
+  // ACAL366 — « production recalculée sur 35° » : un pan rouvert AVEC sa production à 15° ne
+  // réémet plus la production relue une fois sa pente changée (la pose peut rester la même).
+  it('section « zones » sur un pan rouvert AVEC sa production : le document suit la carte recalculée', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const { result: _sansProduction, ...trace } = copie(neuf().serializeLayout() as Doc);
+    const pan = { ...(trace.zones as Array<Record<string, unknown>>)[0], roofType: 'pitched', pitchDeg: 15, facingAzimuthDeg: 180, neededAuto: false };
+    delete pan.result;
+    const a15 = await rouvrir({ ...trace, zones: [pan] }, 12);
+    const enregistre = copie(a15().serializeLayout() as Doc);
+    expect(enregistre.result.annualKwh).toBeGreaterThan(0);
+    const api = await rouvrir(enregistre, 12);
+    const avant = lecture(api());
+    expect(avant.doc).toBe(enregistre.result.annualKwh);
+    api().appliquerSection('zones', [{ ...pan, pitchDeg: 35, pitchSource: { mode: 'degres', degres: 35 } }]);
+    const apres = lecture(api());
+    expect(apres.carte).not.toBe(avant.carte);
+    expect(Math.round(apres.doc)).toBe(apres.carte);
+    // Persistance : rouvert sans geste, la production recalculée sur 35° est relue telle quelle.
+    const relu = copie(api().serializeLayout() as Doc);
+    expect(lecture((await rouvrir(relu, 12))()).doc).toBe(relu.result.annualKwh);
   }, 120000);
 
   it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {

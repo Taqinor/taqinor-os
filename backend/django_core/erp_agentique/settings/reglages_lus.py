@@ -11,6 +11,10 @@ import os
 
 # apps.crm.cadence_selectors (CADV32, D-CADV-11) : K6 palier 2, après le récépissé F211 et la relecture Meta.
 REACTIVATION_K6_PALIER2 = os.environ.get('REACTIVATION_K6_PALIER2', '0') == '1'
+# apps.adsengine.whatsapp_ack (CADV41, D-CADV-5) : accusé WhatsApp utilitaire hors heures ; une clé vide = rien ne part.
+WHATSAPP_CLOUD_ACCESS_TOKEN = os.environ.get('WHATSAPP_CLOUD_ACCESS_TOKEN', '')
+WHATSAPP_CLOUD_PHONE_NUMBER_ID = os.environ.get('WHATSAPP_CLOUD_PHONE_NUMBER_ID', '')
+WHATSAPP_ACK_TEMPLATE = os.environ.get('WHATSAPP_ACK_TEMPLATE', '')
 # apps.notifications.sweeps (_sweep_hot_leads) : seuils du filet « lead chaud non contacté ».
 HOT_LEAD_SCORE_THRESHOLD = 60
 HOT_LEAD_MINUTES_OUVREES = 30

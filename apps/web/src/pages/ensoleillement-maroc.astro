@@ -20,6 +20,7 @@
  * `src/i18n/pages.ts` — l'orchestrateur fera ce câblage dans une passe
  * séparée.
  */
+import PourAllerPlusLoin from '../components/blocs/PourAllerPlusLoin.astro';
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
@@ -120,7 +121,7 @@ const jsonLd = {
           <p>
             Le productible (kWh/kWc/an) est le rendement annuel théorique d'un système
             photovoltaïque, pertes système incluses (14 %) — pas une production réelle mesurée
-            (voir plutôt notre page <a href="/production-mesuree" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">Production mesurée</a> pour
+            (voir plutôt notre page <a href="/production-mesuree/" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">Production mesurée</a> pour
             des chiffres constatés). Il sert à comparer des configurations, pas à remplacer une
             étude de site qui tient compte de l'ombrage réel et du matériel retenu.
           </p>
@@ -155,19 +156,14 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
-        <RelatedLinks links={[
-          { href: '/guides/orientation-inclinaison-ombrage', label: 'Guide orientation, inclinaison, ombrage' },
-          { href: '/guides/combien-de-panneaux-pour-ma-maison', label: 'Combien de panneaux pour ma maison' },
-          { href: '/production-mesuree', label: 'Production mesurée (nos chantiers réels)' },
-          { href: '/realisations', label: 'Nos réalisations' },
+    <PourAllerPlusLoin links={[
+          { href: '/guides/orientation-inclinaison-ombrage/', label: 'Guide orientation, inclinaison, ombrage' },
+          { href: '/guides/combien-de-panneaux-pour-ma-maison/', label: 'Combien de panneaux pour ma maison' },
+          { href: '/production-mesuree/', label: 'Production mesurée (nos chantiers réels)' },
+          { href: '/realisations/', label: 'Nos réalisations' },
         ]} />
-      </div>
-    </section>
 
-    <CtaBand title="Votre toit a sa propre orientation. Lancez le diagnostic gratuit pour le savoir." href="/devis/mon-toit" />
+    <CtaBand title="Votre toit a sa propre orientation. Lancez le diagnostic gratuit pour le savoir." href="/devis/mon-toit/" />
 
     <StickyCta />
   </div>

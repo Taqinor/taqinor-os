@@ -43,10 +43,6 @@ const steps = [
 
 const sanctions = [
   { title: 'Situation irrégulière', body: 'Une installation existante non régularisée est en situation irrégulière au regard de la loi 82-21, désormais en vigueur.' },
-  { title: 'Amendes — article 28', body: 'De 2 000 à 5 000 MAD pour exploitation sans la déclaration requise.' },
-  { title: 'Amendes — article 29', body: 'De 100 000 à 1 000 000 MAD pour exploitation sans accord de raccordement ou sans autorisation.' },
-  { title: 'Mise en demeure et arrêt — article 25', body: 'Risque de mise en demeure puis d’arrêt ordonné de l’installation.' },
-  { title: 'Déconnexion du réseau — article 32', body: 'Le gestionnaire de réseau peut déconnecter une installation non conforme.' },
 ];
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
@@ -54,7 +50,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Régularisation Article 33 — installations solaires existantes',
-  description: 'Le décret d’application 2-25-100 est en vigueur depuis le 9 juin 2026. L’Article 33 de la loi 82-21 prévoit un délai de 18 mois pour régulariser les installations solaires existantes ; le point de départ de ce délai est à confirmer auprès des services de l’énergie.',
+  description: 'Le décret d’application 2-25-100 est en vigueur depuis le 9 juin 2026. L’Article 33 de la loi 82-21 prévoit un délai de 18 mois pour régulariser les installations solaires existantes ; à déposer sans attendre.',
   about: { '@type': 'Thing', name: 'Régularisation loi 82-21 — Article 33' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -80,7 +76,7 @@ import RegularizationArticle33DivC937 from '../components/blocs/RegularizationAr
 
 <Layout
   title="Régularisation Article 33 — installations solaires existantes | Taqinor"
-  description="Le décret d'application 2-25-100 est en vigueur depuis le 9 juin 2026. L'Article 33 de la loi 82-21 prévoit un délai de 18 mois pour régulariser les installations solaires existantes (point de départ à confirmer auprès des services de l'énergie) : procédure en 5 étapes, sanctions encourues, prise en charge complète du dossier."
+  description="Le décret d'application 2-25-100 est en vigueur depuis le 9 juin 2026. L'Article 33 de la loi 82-21 prévoit un délai de 18 mois pour régulariser les installations solaires existantes : procédure en 5 étapes et prise en charge complète du dossier."
   ogSlug="article-33"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -165,15 +161,15 @@ import RegularizationArticle33DivC937 from '../components/blocs/RegularizationAr
           laiton plein répété. */}
       <RegularizationArticle33Ol7511 steps={steps} />
 
-      <h2 class="display v2-section-title v2-rise mt-14 text-white">Ce que vous risquez en ne faisant rien</h2>
-      <p class="v2-rise mt-2 text-sm text-lune-soft">Sanctions prévues par la loi 82-21 :</p>
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">Le statut d’une installation non régularisée</h2>
+      <p class="v2-rise mt-2 text-sm text-lune-soft">Au regard de la loi 82-21 :</p>
       <RegularizationArticle33DivC937 sanctions={sanctions} />
 
       <RelatedLinks mt="mt-8" links={[
-        { href: '/loi-82-21', label: 'Les 3 régimes de la loi 82-21' },
-        { href: '/guides/loi-82-21-expliquee', label: 'Loi 82-21 expliquée simplement' },
-        { href: '/résidentiel', label: "Régularisation d'une villa ou d'un appartement" },
-        { href: '/professionnel', label: "Régularisation d'un site professionnel" },
+        { href: '/loi-82-21/', label: 'Les 3 régimes de la loi 82-21' },
+        { href: '/guides/loi-82-21-expliquee/', label: 'Loi 82-21 expliquée simplement' },
+        { href: '/résidentiel/', label: "Régularisation d'une villa ou d'un appartement" },
+        { href: '/professionnel/', label: "Régularisation d'un site professionnel" },
       ]} />
     </section>
 

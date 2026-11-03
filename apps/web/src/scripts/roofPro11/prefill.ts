@@ -1360,7 +1360,7 @@ function reconcilierAvecDocumentRelu<T extends SerializedLayout>(layout: T, ctx:
       && memeJson(sortie.billKwh ?? null, relu.billKwh ?? null)) {
       z.neededPanels = rz.neededPanels;
     }
-    if (!memeJson(z.geometry ?? null, rz.geometry ?? null)) geometriesIntactes = false;
+    if (!memeJson(z.geometry ?? null, rz.geometry ?? null) || ['pitchDeg', 'facingAzimuthDeg'].some((k) => typeof rz[k] === 'number' && z[k] !== rz[k])) geometriesIntactes = false; // ACAL366 — pente/azimut changés ⇒ production recalculée
   }
   // Repère : celui du document tant que le pan actif est celui relu, à la même forme.
   const actifRelu = parId.get(ctx.activeAreaId);

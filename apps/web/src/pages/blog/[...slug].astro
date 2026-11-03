@@ -20,6 +20,7 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
+import { canonicalUrl } from '../../lib/canonicalUrl';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
@@ -34,10 +35,10 @@ import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 // rejoint désormais son cluster (prix/résidentiel, batteries/coupures,
 // pompage/agricole…), pas seulement /blog et /guides pour tous les articles.
 const CLUSTER_LINK_BY_THEME: Partial<Record<(typeof BLOG_THEMES)[number], { href: string; label: string }>> = {
-  Solaire: { href: '/résidentiel', label: 'Solaire résidentiel' },
-  Batteries: { href: '/batteries-stockage', label: 'Batteries & stockage' },
-  'Voiture électrique': { href: '/recharge-voiture-electrique-solaire', label: 'Recharger sa voiture au solaire' },
-  Prix: { href: '/prix-panneaux-solaires-maroc', label: 'Prix des panneaux solaires au Maroc' },
+  Solaire: { href: '/résidentiel/', label: 'Solaire résidentiel' },
+  Batteries: { href: '/batteries-stockage/', label: 'Batteries & stockage' },
+  'Voiture électrique': { href: '/recharge-voiture-electrique-solaire/', label: 'Recharger sa voiture au solaire' },
+  Prix: { href: '/prix-panneaux-solaires-maroc/', label: 'Prix des panneaux solaires au Maroc' },
 };
 
 export async function getStaticPaths() {
@@ -63,7 +64,7 @@ const { post, prev, next, related } = Astro.props;
 const { data, body } = post;
 const { Content } = await render(post);
 
-const url = new URL(`/blog/${post.id}`, Astro.site).href;
+const url = canonicalUrl(`/blog/${post.id}`, Astro.site);
 
 // W299 — lien cluster optionnel (voir CLUSTER_LINK_BY_THEME plus haut) ; absent
 // si l'article n'a pas de theme, jamais de lien inventé.
@@ -95,15 +96,6 @@ const blogPosting = {
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
 };
 
-const breadcrumbLd = {
-  '@context': 'https://schema.org',
-  '@type': 'BreadcrumbList',
-  itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Accueil', item: new URL('/', Astro.site).href },
-    { '@type': 'ListItem', position: 2, name: 'Blog', item: new URL('/blog', Astro.site).href },
-    { '@type': 'ListItem', position: 3, name: data.title },
-  ],
-};
 ---
 
 <Layout
@@ -112,14 +104,13 @@ const breadcrumbLd = {
   ogSlug={data.ogSlug ?? 'blog'}
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
-  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
   {/* W376 — reading progress bar (see global.css .reading-bar) */}
   <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
 
-    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Blog', href: '/blog' }, { label: data.title }]} />
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Blog', href: '/blog/' }, { label: data.title }]} />
 
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
 
@@ -182,13 +173,13 @@ const breadcrumbLd = {
       {(prev || next) && (
         <nav class="mt-14 grid gap-3 border-t border-white/10 pt-8 sm:grid-cols-2" aria-label="Navigation entre articles">
           {prev ? (
-            <a href={`/blog/${prev.id}`} class="border border-white/20 p-4 transition-colors hover:border-white hover:bg-white/5">
+            <a href={`/blog/${prev.id}/`} class="border border-white/20 p-4 transition-colors hover:border-white hover:bg-white/5">
               <span class="tech-label text-brass-300">← Plus récent</span>
               <span class="mt-1 block font-semibold text-white">{prev.data.title}</span>
             </a>
           ) : <span></span>}
           {next ? (
-            <a href={`/blog/${next.id}`} class="border border-white/20 p-4 text-right transition-colors hover:border-white hover:bg-white/5 sm:text-right">
+            <a href={`/blog/${next.id}/`} class="border border-white/20 p-4 text-right transition-colors hover:border-white hover:bg-white/5 sm:text-right">
               <span class="tech-label text-brass-300">Plus ancien →</span>
               <span class="mt-1 block font-semibold text-white">{next.data.title}</span>
             </a>
@@ -202,7 +193,7 @@ const breadcrumbLd = {
           <ul class="mt-3 flex flex-col gap-2">
             {related.map((r) => (
               <li>
-                <a href={`/blog/${r.id}`} class="border-b border-white/20 pb-0.5 text-sm font-bold text-white transition-colors hover:border-brass-400">{r.data.title} →</a>
+                <a href={`/blog/${r.id}/`} class="border-b border-white/20 pb-0.5 text-sm font-bold text-white transition-colors hover:border-brass-400">{r.data.title} →</a>
               </li>
             ))}
           </ul>
@@ -212,13 +203,13 @@ const breadcrumbLd = {
       <RelatedLinks
         links={[
           ...(clusterLink ? [clusterLink] : []),
-          { href: '/blog', label: 'Tous les articles' },
-          { href: '/guides', label: 'Les guides pérennes' },
+          { href: '/blog/', label: 'Tous les articles' },
+          { href: '/guides/', label: 'Les guides pérennes' },
         ]}
       />
     </article>
 
-    <CtaBand title="Un projet en tête ? Lancez l'étude gratuite." href="/devis/mon-toit" />
+    <CtaBand title="Un projet en tête ? Lancez l'étude gratuite." href="/devis/mon-toit/" />
 
     <StickyCta />
   </div>

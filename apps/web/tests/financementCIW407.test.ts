@@ -6,6 +6,8 @@
 // et de l'expert-comptable (tâches manuelles), comme CIW402 pour /professionnel.
 // « La plupart de nos clients règlent… » ne s'appuie sur rien : retiré.
 // Garde sur le HTML CONSTRUIT (astro build) des 3 pages.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { builtPage, visibleText } from './builtHtmlHelper';
 
@@ -61,4 +63,17 @@ describe('CIW407 — Financement : ni exonération à l’import, ni amortisseme
       expect(bloc).not.toMatch(/subvention|subsid|إعان/i);
     });
   }
+});
+
+describe('WAUD48 — financement : crédit bancaire et cartes non vérifiées retirés', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8');
+  it.each(['financement', 'en/financement', 'ar/financement', 'faq', 'en/faq', 'ar/faq'])('%s', (p) => {
+    const s = lire(p);
+    expect(s).not.toMatch(/Crédit à la consommation bancaire|crédit à la consommation classique|consumer credit|قرض استهلاك/i);
+    expect(s).not.toMatch(/source: 'non vérifié|source: 'not verified|غير مُتحقَّق منه/);
+  });
+  it.each(['pompage-solaire', 'en/pompage-solaire', 'ar/pompage-solaire'])('%s : garde', (p) => {
+    const rendu = lire(p).split('<Layout')[1].replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+    expect(rendu).not.toMatch(/non vérifié|dès sa délivrance|tant qu.il n.a pas été vérifié|until it has been verified/);
+  });
 });

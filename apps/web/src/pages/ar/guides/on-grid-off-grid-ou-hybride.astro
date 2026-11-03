@@ -8,12 +8,12 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { articlePage } from '../../../lib/pageCtx';
+import { guideArticleCommun, guideDateModified } from '../../../lib/guideMeta';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
-import { NAP } from '../../../lib/nap';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { localizeNavHref } from '../../../i18n/pages';
 
@@ -25,9 +25,8 @@ const jsonLd = {
   description: 'مربوط بالشبكة، مستقل أم هجين: لماذا ينقطع نظام مربوط بالشبكة تلقائياً أثناء العطب، وما يلزم للحفاظ على الكهرباء.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'البنية الشمسية واستمرارية الخدمة' },
-  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  mainEntityOfPage: url,
+  ...guideArticleCommun(url),
+  dateModified: guideDateModified('on-grid-off-grid-ou-hybride'),
 };
 ---
 

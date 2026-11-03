@@ -1,0 +1,28 @@
+---
+// Bloc partagé (garde ACAL345).
+---
+<div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-ve" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Véhicule électrique (actuel ou prévu)" data-ar="سيارة كهربائية (حالية أو مستقبلية)">Véhicule électrique (actuel ou prévu)</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Km parcourus par semaine avec ce véhicule"
+                      data-ar="عدد الكيلومترات المقطوعة أسبوعياً بهذه السيارة">
+                      Km parcourus par semaine avec ce véhicule
+                    </label>
+                    <input id="mt-equip-ve-km" type="number" min="0" step="1" inputmode="numeric"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — précision facultative : chargeur réel +
+                         créneau réel, quand connus, resserrent la fenêtre de
+                         recharge servie (sinon la fenêtre 21h-6h par défaut). -->
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance du chargeur (kW, facultatif)"
+                      data-ar="قدرة الشاحن (كيلوواط، اختياري)">
+                      Puissance du chargeur (kW, facultatif)
+                    </label>
+                    
+<slot />
+</div>
+</div>

@@ -947,7 +947,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if not file:
             return Response({'detail': 'Aucun fichier fourni.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        slot_cle = (request.data.get('slot') or '').strip()
+        slot_cle = (request.data.get('slot') or '').replace('\x00', '').strip()  # NUL = ValueError au filtre (500)
         # La phase suit le créneau choisi quand il existe ; sinon le corps.
         phase = (request.data.get('phase') or '').strip().lower()
         if slot_cle:

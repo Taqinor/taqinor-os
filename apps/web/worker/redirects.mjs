@@ -14,6 +14,14 @@
 const EXACT = {
   '/residentiel': { to: '/résidentiel', status: 301 },
   '/equipement': { to: '/équipement', status: 301 },
+  // WAUD25 — variantes sans accent des pages traduites.
+  '/en/residentiel': { to: '/en/résidentiel', status: 301 },
+  '/ar/residentiel': { to: '/ar/résidentiel', status: 301 },
+  '/en/equipement': { to: '/en/équipement', status: 301 },
+  '/ar/equipement': { to: '/ar/équipement', status: 301 },
+  '/a-propos': { to: '/à-propos', status: 301 },
+  '/en/a-propos': { to: '/en/à-propos', status: 301 },
+  '/ar/a-propos': { to: '/ar/à-propos', status: 301 },
   '/home': { to: '/', status: 301 },
   '/accueil': { to: '/', status: 301 },
   '/index.html': { to: '/', status: 301 },
@@ -44,9 +52,24 @@ const EXACT = {
  * sous /simulator/). On redirige en 301 permanent en PRÉSERVANT le chemin —
  * /simulator/login → https://simulateur.taqinor.ma/simulator/login.
  */
+/** WAUD25 — cible en UN seul saut : la forme canonique porte déjà sa barre finale. */
+function avecBarreFinale(chemin) {
+  if (chemin === '/' || chemin.endsWith('/')) return chemin;
+  return chemin.slice(chemin.lastIndexOf('/') + 1).includes('.') ? chemin : `${chemin}/`;
+}
+
+/** WAUD25 — casse : /FAQ, /en/Contact → minuscules. Un seul segment de page : les
+ *  jetons (/proposition/…, /suivi/…) sont sensibles à la casse et ne passent jamais ici. */
+const PAGE_EN_CAPITALES = /^(?:\/(?:en|ar))?\/[A-Za-zÀ-ÿ-]*[A-ZÀ-Þ][A-Za-zÀ-ÿ-]*$/;
+
 export function pathRedirect(requestUrl) {
   const url = new URL(requestUrl);
   let path = url.pathname;
+  try {
+    path = decodeURI(path);
+  } catch {
+    /* chemin mal encodé : comparé tel quel */
+  }
   if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1); // tolère la barre finale
 
   if (path === '/simulator' || path.startsWith('/simulator/')) {
@@ -55,7 +78,11 @@ export function pathRedirect(requestUrl) {
   }
 
   const hit = EXACT[path];
-  if (hit) return { target: url.origin + encodeURI(hit.to) + url.search, status: hit.status };
+  if (hit) return { target: url.origin + encodeURI(avecBarreFinale(hit.to)) + url.search, status: hit.status };
+
+  if (PAGE_EN_CAPITALES.test(path)) {
+    return { target: url.origin + encodeURI(avecBarreFinale(path.toLowerCase())) + url.search, status: 301 };
+  }
 
   return null;
 }

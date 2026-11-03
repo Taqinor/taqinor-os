@@ -99,6 +99,7 @@ import {
 import { $, fmt, fmtMad } from './dom';
 import { type CardData, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
+import { besoinAutoRelu } from './cible'; // ACAL367
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -664,7 +665,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (ctx.pinned.has('tilt') && ctx.sel.tilt !== 'reco') locks.tiltDeg = ctx.sel.tilt;
     if (ctx.pinned.has('orient') && ctx.sel.orient !== 'auto') locks.layout = ctx.sel.orient as LayoutAxis;
     if (ctx.pinned.has('margin')) locks.margin = ctx.sel.margin;
-    if (!ctx.neededAuto && ctx.neededPanels > 0) locks.need = ctx.neededPanels;
+    const besoin = ctx.neededAuto ? besoinAutoRelu(ctx.documentRelu, ctx.activeAreaId, monthlyBill()) : ctx.neededPanels; // ACAL367
+    if (besoin > 0) locks.need = besoin;
     if (ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0) locks.needImposedZero = true;
     return locks;
   }
@@ -893,7 +895,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       module: cotesDuModuleDuPanActif(), // CALX109 — vraies cotes du module posé sur ce pan
     });
     ctx.liveResult = res;
-    if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
+    if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : besoinAutoRelu(ctx.documentRelu, ctx.activeAreaId, monthlyBill());
     const hasLocks = !!(locks.orientation || locks.tiltDeg != null || locks.layout || locks.margin || locks.need != null);
     ctx.useRecommended = !hasLocks;
     mapWinnerToSel(res.winner);
@@ -1226,7 +1228,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const locks: { layout?: PitchedLayoutAxis; margin?: PitchedMarginAxis; need?: number; needImposedZero?: boolean } = {};
     if (ctx.pitchedLocks.layout) locks.layout = ctx.pitchedLocks.layout;
     if (ctx.pitchedLocks.margin) locks.margin = ctx.pitchedLocks.margin;
-    if (!ctx.neededAuto && ctx.neededPanels > 0) locks.need = ctx.neededPanels;
+    const besoin = ctx.neededAuto ? besoinAutoRelu(ctx.documentRelu, ctx.activeAreaId, monthlyBill()) : ctx.neededPanels; // ACAL367
+    if (besoin > 0) locks.need = besoin;
     if (ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0) locks.needImposedZero = true;
     return locks;
   }
@@ -1249,7 +1252,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       module: cotesDuModuleDuPanActif(), // CALX109 — vraies cotes du module posé sur ce pan
     });
     ctx.pitchedLiveResult = res;
-    if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
+    if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : besoinAutoRelu(ctx.documentRelu, ctx.activeAreaId, monthlyBill());
     const hasLocks = !!(locks.layout || locks.margin || locks.need != null);
     renderPitchedWinner(res, !hasLocks);
     updatePitchedBadges(res);
@@ -1417,7 +1420,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     ctx.pitchedPvgisPerKwc = null; // nouvelle config → chiffre PVGIS obsolète (repli table)
     if (ctx.neededAuto) {
       const n = neededPanelsForTarget(ctx.pitchedRec.targetAnnualKwh, ctx.centroidLat);
-      ctx.neededPanels = n > 0 ? clampNeeded(n) : 0;
+      ctx.neededPanels = n > 0 ? clampNeeded(n) : besoinAutoRelu(ctx.documentRelu, ctx.activeAreaId, monthlyBill());
     }
     // W35 — l'optimiseur vivant en pente rend le gagnant + son comparatif (pose × marge).
     liveResolvePitched();

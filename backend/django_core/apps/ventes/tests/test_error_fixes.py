@@ -589,18 +589,16 @@ class TestDevisTvaQuantize(TestCase):
 
         def q(x):
             return Decimal(x).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        # ARRONDI-100 : le total du devis est ramené au palier de 100 MAD
-        # (TTC 2 299,98 → 2 200,00 par une baisse de HT de 83,32 : panier 10 %
-        # 999,99 → 999,98, panier 20 % 999,99 → 916,68). La TVA du devis reste
-        # la somme quantizée PAR PANIER, mais sur les bases après arrondi :
-        # 300.00 → 283.34.
-        base10 = Decimal('999.98')  # 3 × 333.33 = 999.99, moins 0.01
-        base20 = Decimal('916.68')  # 3 × 333.33 = 999.99, moins 83.31
+        # ADVS3 (D-ADVS-4) : TTC 2 299,98, à moins d'1 MAD sous 2 300, y remonte
+        # (arrondi négatif : panier 20 % 999,99 → 1 000,01, panier 10 % inchangé).
+        # La TVA du devis reste la somme quantizée PAR PANIER, sur ces bases.
+        base10 = Decimal('999.99')  # 3 × 333.33
+        base20 = Decimal('1000.01')  # 3 × 333.33 = 999.99, plus 0.02
         expected = q(base10 * Decimal('10') / Decimal('100')) + \
             q(base20 * Decimal('20') / Decimal('100'))
-        self.assertEqual(q(expected), Decimal('283.34'))
+        self.assertEqual(q(expected), Decimal('300.00'))
         self.assertEqual(q(devis.total_tva), q(expected))
-        self.assertEqual(q(devis.total_ttc), Decimal('2200.00'))
+        self.assertEqual(q(devis.total_ttc), Decimal('2300.00'))
 
         def facturer(reference, **extra):
             facture = Facture.objects.create(

@@ -113,7 +113,7 @@ describe('W56/W65 — bande de marques tier-1 (composant BrandStrip + brands.ts)
   });
 
   it('nomme les marques réelles (dont Jinko, Huawei, Nexans) et lie /équipement', () => {
-    expect(brandStrip).toContain('Marques tier-1 · distributeurs officiels au Maroc');
+    expect(brandStrip).toContain("heading: 'Marques tier-1'"); // WAUD49
     for (const b of ['Canadian Solar', 'JA Solar', 'Deye', 'Huawei', 'Dyness', 'Jinko', 'Nexans']) {
       expect(brandsLib, `marque manquante : ${b}`).toContain(b);
     }
@@ -128,7 +128,7 @@ describe('W57 — frise de parcours bout-en-bout', () => {
     expect(index).toContain('Diagnostic 60 secondes');
     expect(index).toContain('Visite technique & étude gratuite');
     expect(index).toContain('Mise en service');
-    expect(index).toContain('Suivi en temps réel');
+    expect(index).toContain('Suivi de production');
     expect(index).toContain('journey.map');
     // L'ancien <ol> à 3 pas n'est plus rendu en double.
     expect(index).not.toContain("Diagnostic en 60 secondes — fourchette immédiate");

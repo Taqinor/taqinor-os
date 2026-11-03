@@ -1,7 +1,7 @@
 ---
 title: "Loi 82-21 : ce qui change depuis le 9 juin 2026"
 description: "Autoproduction au Maroc : 3 régimes, plafond surplus 20 %, net-billing (rachat 0,18–0,21 DH/kWh en MT/HT ; tarif BT résidentiel non encore publié) — la valeur est dans l'autoconsommation."
-pubDate: 2026-06-29
+pubDate: 2026-06-21
 updatedDate: 2026-07-03
 tags: ["loi 82-21", "réglementation", "autoproduction", "2026"]
 author: "Reda Kasri"
@@ -102,24 +102,6 @@ j'intègre dans chaque étude sérieuse.
 
 ---
 
-## Les pénalités — des amendes, pas de prison
-
-Le projet de loi initial comportait des peines d'emprisonnement. Le texte adopté et
-publié au Bulletin Officiel n° 7400 les a **entièrement supprimées** : seules des amendes
-sont prévues.
-
-| Article | Infraction | Amende |
-|---|---|---|
-| Art. 28 | Absence de déclaration préalable | 2 000 – 5 000 DH |
-| Art. 29 | Mise en service sans accord de raccordement ou autorisation | 100 000 – 1 000 000 DH |
-| Art. 31 | Obstruction au contrôle des agents habilités | 10 000 – 100 000 DH |
-
-Les amendes de l'article 29 sont significatives et visent les installations de puissance
-intermédiaire ou supérieure qui auraient délibérément omis la procédure d'accord de
-raccordement. Pour une villa standard (< 11 kW), c'est l'article 28 qui s'applique
-en cas d'absence de déclaration — l'amende est modeste, mais la régularisation
-(voir ci-dessous) est la voie normale.
-
 ---
 
 ## Article 33 — la fenêtre de régularisation de 18 mois
@@ -127,8 +109,7 @@ en cas d'absence de déclaration — l'amende est modeste, mais la régularisati
 L'Article 33 de la loi 82-21 prévoit explicitement une **fenêtre de régularisation de
 18 mois** à compter de l'entrée en vigueur du dispositif pour les installations déjà
 en place. La date de déclenchement opérationnelle est le **9 juin 2026** (entrée en
-vigueur du Décret 2-25-100), ce qui donne une échéance approximative à **décembre 2027**
-pour mettre les installations existantes en conformité.
+vigueur du Décret 2-25-100).
 
 Ce délai est une opportunité, pas une menace : les propriétaires d'une installation
 posée avant juin 2026 — souvent dans un vide réglementaire — ont le temps de déposer
@@ -157,7 +138,7 @@ par un objectif d'injection maximale.
 ---
 
 Pour comprendre les trois régimes en détail et identifier le vôtre,
-lisez notre [guide complet : Loi 82-21 expliquée simplement](/guides/loi-82-21-expliquee).
+lisez notre [guide complet : Loi 82-21 expliquée simplement](/guides/loi-82-21-expliquee/).
 
 Pour évaluer la rentabilité selon votre ville et votre profil de consommation,
-consultez notre article [Rentabilité solaire par ville au Maroc — chiffres 2026](/blog/rentabilite-solaire-par-ville-maroc).
+consultez notre article [Rentabilité solaire par ville au Maroc — chiffres 2026](/blog/rentabilite-solaire-par-ville-maroc/).

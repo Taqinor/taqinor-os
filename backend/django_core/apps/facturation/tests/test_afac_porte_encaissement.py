@@ -236,6 +236,95 @@ class PorteEncaissementTests(TestCase):
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.BROUILLON)
 
+    def _creer_par_chaque_porte(self, facture):
+        """AARG34 — 300 MAD par chaque porte réelle, avec son refus d'excédent."""
+        from unittest import mock
+
+        from apps.ventes.domain.encaissements import (
+            affecter_encaissement_groupe, enregistrer_paiement_avec_retenue,
+            record_payment_from_link,
+        )
+        from apps.ventes.models import PaymentLink
+        from apps.ventes import paiement_import
+        from core import payment as core_payment
+
+        jour = timezone.localdate()
+        portes = {'ecran': lambda: self.assertEqual(self._payer(facture, '300').status_code, 201)}
+        portes['groupe'] = lambda: affecter_encaissement_groupe(
+            company=self.company, client=self.client_obj, montant=Decimal('300'),
+            mode='virement', date_paiement=jour, user=self.user, factures=[facture])
+
+        def _lien():
+            class Confirme:
+                def verify_webhook(self, link, payload):
+                    return {'paid': True, 'provider_ref': 'PSP-AARG34', 'montant': '300'}
+            lien = PaymentLink.objects.create(
+                company=self.company, facture=facture, montant=Decimal('300'))
+            with mock.patch('apps.ventes.payments.providers.get_provider', return_value=Confirme()):
+                paiement, erreur = record_payment_from_link(link=lien, payload={})
+            self.assertIsNone(erreur)
+        portes['lien'] = _lien
+
+        def _releve():
+            contenu = f'date,reference,montant\n{jour.isoformat()},{facture.reference},300\n'.encode()
+            apercu = paiement_import.dry_run(contenu, 'r.csv', self.company, user=self.user)
+            self.assertEqual(paiement_import.commit(
+                self.company, self.user, apercu['token'])['created'], 1)
+        portes['releve'] = _releve
+        portes['capture'] = lambda: core_payment.marquer_paye(
+            core_payment.creer_transaction(self.company, montant=Decimal('300'), target=facture),
+            external_ref=f'PSP-AARG34-{_nxt()}')
+        portes['retenue'] = lambda: enregistrer_paiement_avec_retenue(
+            facture=facture, montant=Decimal('300'), date_paiement=jour, mode='virement',
+            type_retenue='ras_tva', taux=Decimal('0'), created_by=self.user)
+        return portes
+
+    def test_une_primitive_pour_chaque_paiement(self):
+        """AARG34 — chaque porte pose UN Paiement, UNE ligne de chatter « paiement »,
+        UN ``paiement_enregistre`` ; ``Paiement.objects.create`` n'existe qu'une fois."""
+        import re
+        from pathlib import Path
+
+        from apps.ventes.models import Facture, FactureActivity, Paiement
+        from core.events import paiement_enregistre
+
+        recus = []
+
+        def recepteur(sender, instance, company, **kwargs):
+            recus.append(instance.pk)
+
+        paiement_enregistre.connect(recepteur)
+        self.addCleanup(paiement_enregistre.disconnect, recepteur)
+        noms = ('ecran', 'groupe', 'lien', 'releve', 'capture', 'retenue')
+        for nom in noms:
+            with self.subTest(porte=nom):
+                f = self._facture(Facture.Statut.EMISE)
+                self._creer_par_chaque_porte(f)[nom]()
+                self.assertEqual(Paiement.objects.filter(facture=f).count(), 1)
+                self.assertEqual(FactureActivity.objects.filter(facture=f, field='paiement').count(), 1)
+                self.assertEqual(recus[-1], Paiement.objects.get(facture=f).pk)
+                self.assertEqual(Decimal(str(f.montant_paye)), Decimal('300'))
+        self.assertEqual(len(recus), len(noms))
+
+        apps_ventes = Path(__file__).resolve().parents[2] / 'ventes'
+        sites = [str(p) for p in apps_ventes.rglob('*.py')
+                 if not re.search(r'[\\/]tests[\\/]|[\\/]tests?_[^\\/]*$|[\\/]migrations[\\/]', str(p))
+                 for _ in re.findall(r'\bPaiement\.objects\.create\(', p.read_text(encoding='utf-8'))]
+        self.assertEqual(len(sites), 1, sites)
+        self.assertTrue(sites[0].endswith('encaissements.py'), sites)
+
+    def test_primitive_refuse_l_excedent_sous_verrou(self):
+        from apps.ventes.domain.encaissements import (
+            FactureNonEncaissable, enregistrer_paiement,
+        )
+        from apps.ventes.models import Facture
+        f = self._facture(Facture.Statut.EMISE)
+        with self.assertRaises(FactureNonEncaissable):
+            enregistrer_paiement(
+                facture=f, montant=Decimal('1200.02'), user=self.user,
+                date_paiement=timezone.localdate(), mode='virement')
+        self.assertEqual(self._nb_paiements(f), 0)
+
     # ── sérialiseur : encaissable / motif_non_encaissable ───────────────
     def test_serializer_encaissable(self):
         from apps.ventes.models import Facture

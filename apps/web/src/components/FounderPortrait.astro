@@ -130,7 +130,7 @@ const s = STR[locale] ?? STR.fr;
           <dt class="tech-label mt-2 text-lune-faint">{s.doctorLabel}</dt>
         </div>
         <div class="v2-rise" style="--v2-i:1">
-          <dd class="fig lum whitespace-nowrap text-4xl" data-tally>10+ ans</dd>
+          <dd class="fig lum whitespace-nowrap text-4xl">10+ ans</dd>
           {/* set:html : préserve « R&D » brut (le `&` serait sinon échappé en
               &amp; par une expression Astro, divergeant du rendu FR d'origine). */}
           <dt class="tech-label mt-2 text-lune-faint" set:html={s.yearsLabel}></dt>

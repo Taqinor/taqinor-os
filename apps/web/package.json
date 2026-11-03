@@ -13,6 +13,8 @@
     "test": "vitest run",
     "generate-og": "node scripts/generate-og.mjs",
     "generate-types": "wrangler types",
+    "check:locale-parity": "node scripts/check-locale-parity.mjs",
+    "lighthouse:gate": "node scripts/lighthouse-gate.mjs",
     "check": "tsc -p tsconfig.check.json && node scripts/check-astro-types.mjs"
   },
   "dependencies": {

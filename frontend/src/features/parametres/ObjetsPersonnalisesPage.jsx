@@ -60,8 +60,8 @@ export default function ObjetsPersonnalisesPage() {
   // Champs de l'objet choisi — MÊME endpoint que les modules natifs.
   const chargerChamps = useCallback((objet) => {
     if (!objet) { setChamps([]); return Promise.resolve() }
-    return customFieldsApi.getDefs(`custom:${objet.code}`)
-      .then((res) => setChamps(res.data?.results ?? res.data ?? []))
+    return toutesLesPages((p) => customFieldsApi.getDefs(`custom:${objet.code}`, p))
+      .then(setChamps)
       .catch(() => setChamps([]))
   }, [])
 

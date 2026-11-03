@@ -43,10 +43,16 @@ const ctxBase = {
 
 const facture = {
   id: 118, reference: 'FAC-2026-10-0007', client: 5, client_nom: 'X',
-  statut: 'emise', montant_paye: '20000.00', montant_du: '25000.00',
+  statut: 'emise', montant_paye: '20000.00', montant_du: '25000.00', devis: 7,
 }
-const cible = { id: 121, reference: 'FAC-2026-10-0008', client: 5, statut: 'emise' }
-const autreClient = { id: 130, reference: 'FAC-AUTRE', client: 9, statut: 'emise' }
+const cible = {
+  id: 121, reference: 'FAC-2026-10-0008', client: 5, statut: 'emise', devis: 7,
+  encaissable: true, montant_du: '30000.00',
+}
+const autreClient = {
+  id: 130, reference: 'FAC-AUTRE', client: 9, statut: 'emise', devis: 8,
+  encaissable: true, montant_du: '30000.00',
+}
 
 beforeEach(() => {
   post.mockReset(); get.mockReset(); del.mockReset()
@@ -96,6 +102,28 @@ describe('AFAC13 — annulation d’une facture qui porte de l’argent', () => 
     fireEvent.change(select, { target: { value: '121' } })
     fireEvent.click(screen.getByRole('button', { name: 'Annuler la facture' }))
     expect(onConfirm).toHaveBeenCalledWith(CONTRAT.requete.acompte)
+  })
+
+  it('ne liste que les cibles du même devis, encaissables, qui absorbent l’acompte', () => {
+    const f = { ...facture, id: 1, reference: 'F', montant_paye: '5000.00', montant_du: '7000.00', devis: 11 }
+    const cote = { client: 5, statut: 'emise', encaissable: true }
+    const factures = [f,
+      { ...cote, id: 2, reference: 'G', devis: 11, montant_du: '8000.00' },
+      { ...cote, id: 3, reference: 'H', devis: 12, montant_du: '20000.00' },
+      { ...cote, id: 4, reference: 'K', devis: 11, montant_du: '3000.00' },
+      { ...cote, id: 5, reference: 'L', devis: 11, montant_du: '9000.00', encaissable: false },
+    ]
+    const { unmount } = render(<AnnulationFactureDialog facture={f} factures={factures}
+      onConfirm={() => {}} onClose={() => {}} />)
+    fireEvent.click(screen.getByLabelText('Transférer sur une autre facture'))
+    const options = () => Array.from(screen.getByLabelText('Facture cible').querySelectorAll('option'))
+      .map(o => o.value).filter(Boolean)
+    expect(options()).toEqual(['2'])
+    unmount()
+    render(<AnnulationFactureDialog facture={{ ...f, devis: null }} factures={factures}
+      onConfirm={() => {}} onClose={() => {}} />)
+    fireEvent.click(screen.getByLabelText('Transférer sur une autre facture'))
+    expect(options()).toEqual([])
   })
 
   it('transmet la directive rembourser', () => {

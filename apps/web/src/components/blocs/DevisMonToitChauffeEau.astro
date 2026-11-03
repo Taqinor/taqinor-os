@@ -1,0 +1,25 @@
+---
+// Bloc partagé (garde ACAL345).
+---
+
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-chauffe-eau" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Chauffe-eau électrique" data-ar="سخان ماء كهربائي">Chauffe-eau électrique</span>
+                  </label>
+                  <!-- L-WEBT2 — détail kW/créneau ENCORE PLUS facultatif : la
+                       couche chauffe-eau du moteur n'existe que si les DEUX
+                       sont renseignés (apps/ventes/courbes_journalieres.py) ;
+                       une seule moitié saisie ne produit rien, jamais une
+                       erreur. -->
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance du chauffe-eau (kW, facultatif)"
+                      data-ar="قدرة سخان الماء (كيلوواط، اختياري)">
+                      Puissance du chauffe-eau (kW, facultatif)
+                    </label>
+                    
+<slot />
+</div>
+</div>

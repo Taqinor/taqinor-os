@@ -32,7 +32,7 @@ const cityPage = CITIES.find((c) => c.name === r.ville);
 // Forme localisée « in <city> » pour le H1 et le libellé du lien ville exacte.
 const cityIntro = cityPage ? `in ${cityPage.name}` : `in ${r.ville}`;
 const cityLink = cityPage
-  ? { href: `/installation-solaire-${cityPage.slug}`, label: `Solar installation in ${cityPage.name}` }
+  ? { href: `/installation-solaire-${cityPage.slug}/`, label: `Solar installation in ${cityPage.name}` }
   : cs.cityLink;
 const segmentHref = r.segment === 'professionnel' ? '/professionnel' : '/résidentiel';
 const segmentLabel = r.segment === 'professionnel' ? 'Business' : 'Residential';

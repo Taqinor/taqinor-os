@@ -27,6 +27,7 @@
  * éditables de cette tâche). Elle est liée depuis mon-toit.astro (FR/EN/AR) et
  * la proposition, comme demandé.
  */
+import PourAllerPlusLoin from '../components/blocs/PourAllerPlusLoin.astro';
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
@@ -65,7 +66,7 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Transparence de méthode</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Comment nous calculons votre estimation</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          L'estimation instantanée de <a href="/devis/mon-toit" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">« Mon toit »</a> et
+          L'estimation instantanée de <a href="/devis/mon-toit/" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">« Mon toit »</a> et
           la proposition qui suit s'appuient sur un modèle publié ici sans filtre : la même donnée,
           les mêmes hypothèses, la même prudence — pour que vous puissiez vérifier chaque chiffre
           plutôt que devoir nous croire sur parole.
@@ -83,7 +84,7 @@ const jsonLd = {
           (Commission européenne, Joint Research Centre) — la référence publique la plus citée pour
           l'irradiation solaire en Afrique du Nord. Nous ne l'estimons pas nous-mêmes : la table
           complète, ville par ville, inclinaison par inclinaison, est publiée telle quelle sur notre
-          page <a href="/ensoleillement-maroc" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">Ensoleillement au Maroc</a>.
+          page <a href="/ensoleillement-maroc/" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">Ensoleillement au Maroc</a>.
           Sans repère GPS posé sur la carte, l'estimation instantanée part d'une latitude par défaut
           (Casablanca, la plus centrale de notre zone de service) et d'une orientation plein sud —
           l'optimum théorique — puis s'affine dès qu'un repère réel est posé.
@@ -174,19 +175,14 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
-        <RelatedLinks links={[
-          { href: '/devis/mon-toit', label: "Lancer l'estimation instantanée" },
-          { href: '/ensoleillement-maroc', label: 'Productible solaire par ville (PVGIS)' },
-          { href: '/production-mesuree', label: 'Production mesurée (nos chantiers réels)' },
-          { href: '/loi-82-21', label: 'Loi 82-21 : les 3 régimes' },
+    <PourAllerPlusLoin links={[
+          { href: '/devis/mon-toit/', label: "Lancer l'estimation instantanée" },
+          { href: '/ensoleillement-maroc/', label: 'Productible solaire par ville (PVGIS)' },
+          { href: '/production-mesuree/', label: 'Production mesurée (nos chantiers réels)' },
+          { href: '/loi-82-21/', label: 'Loi 82-21 : les 3 régimes' },
         ]} />
-      </div>
-    </section>
 
-    <CtaBand title="Voyez votre propre fourchette, calculée selon cette même méthode." href="/devis/mon-toit" />
+    <CtaBand title="Voyez votre propre fourchette, calculée selon cette même méthode." href="/devis/mon-toit/" />
 
     <StickyCta />
   </div>

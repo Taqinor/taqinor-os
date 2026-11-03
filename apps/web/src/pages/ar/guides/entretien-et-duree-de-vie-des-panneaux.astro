@@ -9,12 +9,12 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { articlePage } from '../../../lib/pageCtx';
+import { guideArticleCommun, guideDateModified } from '../../../lib/guideMeta';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
-import { NAP } from '../../../lib/nap';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { localizeNavHref } from '../../../i18n/pages';
 
@@ -26,9 +26,8 @@ const jsonLd = {
   description: 'وتيرة تنظيف مُكيَّفة مع السياق المغربي (غبار، رمل، مطر)، أثر الحرارة على الإنتاج، العمر الفعلي والضمان لـ30 سنة: كل ما يجب معرفته للحفاظ على ألواحكم.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'صيانة الألواح الشمسية بالمغرب' },
-  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  mainEntityOfPage: url,
+  ...guideArticleCommun(url),
+  dateModified: guideDateModified('entretien-et-duree-de-vie-des-panneaux'),
 };
 ---
 

@@ -73,7 +73,7 @@ def tva_buckets(lignes, *, fallback_taux, frozen=None):
     ]
 
 
-def _absorber_arrondi(tva_par_taux, ttc, pas):
+def _absorber_arrondi(tva_par_taux, ttc, pas, montee=True):
     """ARRONDI-100 (fondateur, 02/10/2026) — « tous mes devis finissent par
     deux zéros, sans centimes : garde les prix des articles, baisse juste le
     total au palier de 100 DH inférieur ».
@@ -93,6 +93,12 @@ def _absorber_arrondi(tva_par_taux, ttc, pas):
     palier atteignable ⇒ ``None`` (le total reste exact). Un TTC inférieur à
     ``pas`` n'est jamais ramené à zéro.
 
+    ADVS3 (D-ADVS-4) — un TTC à moins de ``_ARRONDI_TOLERANCE_MONTEE`` MAD sous
+    une centaine y REMONTE (3 × 1 000 TTC = 2 999,99 → 3 000,00, jamais 2 900) :
+    la base du panier monte d'autant, ``arrondi_ht`` est alors négatif. ``montee``
+    (booléen ou appelable, lu seulement dans ce cas) : faux pour un devis au niveau
+    de règles < 11, qui garde le palier inférieur que le client a reçu.
+
     Rend ``(paniers, arrondi_ht)`` ou ``None`` quand il n'y a rien à faire.
     MIROIR EXACT : ``frontend/src/features/ventes/remise.js``
     (``absorberArrondi``) — même ordre d'essai, même règle d'arrondi.
@@ -106,6 +112,9 @@ def _absorber_arrondi(tva_par_taux, ttc, pas):
     if cible == ttc:
         return None
     centime = D('0.01')
+    superieure = cible + pas
+    monte = (superieure - ttc < _ARRONDI_TOLERANCE_MONTEE
+             and (montee() if callable(montee) else montee))
 
     def tva_de(base, taux):
         return (base * taux / D('100')).quantize(centime, rounding=RH)
@@ -113,9 +122,11 @@ def _absorber_arrondi(tva_par_taux, ttc, pas):
     taux = [D(str(p['taux'])) for p in tva_par_taux]
     bases = [p['ht_net'] for p in tva_par_taux]
     ordre = sorted(range(len(bases)), key=lambda k: taux[k], reverse=True)
-    for essai in (cible, cible - pas):
+    for essai in ((superieure, cible, cible - pas) if monte
+                  else (cible, cible - pas)):
         if essai <= 0:
             break
+        marge = _ARRONDI_TOLERANCE_MONTEE if essai > ttc else 0
         for i in ordre:
             # (autre panier qui cède, centimes cédés) — (None, 0) d'abord.
             cessions = [(None, 0)] + [
@@ -136,7 +147,7 @@ def _absorber_arrondi(tva_par_taux, ttc, pas):
                     centime, rounding=ROUND_FLOOR)
                 for k in (-2, -1, 0, 1, 2):
                     x = x0 + k * centime
-                    if x < 0 or x > bases[i]:
+                    if x < 0 or x > bases[i] + marge:
                         continue
                     if x + tva_de(x, taux[i]) == reste:
                         nouvelles[i] = x
@@ -153,10 +164,13 @@ def _absorber_arrondi(tva_par_taux, ttc, pas):
 #: le palier soit atteint exactement (2 suffisent sur 20 000 devis 10 %/20 %
 #: simulés ; 5 laisse de la marge). Miroir : ``remise.js``.
 _ARRONDI_CENTIMES_CEDES = 5
+#: ADVS3 (D-ADVS-4) — écart (MAD, strict) sous une centaine qui la fait remonter :
+#: des centimes perdus entre le TTC saisi et le HT stocké. Miroir : ``remise.js``.
+_ARRONDI_TOLERANCE_MONTEE = 1
 
 
 def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux,
-                      arrondi_pas=None):
+                      arrondi_pas=None, arrondi_montee=True):
     """QJ29 — chaîne HT → remise → TVA (par taux) → TTC pour un lot de lignes.
 
     ``lignes`` : itérable de LigneDevis (expose ``total_ht`` et
@@ -215,7 +229,7 @@ def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux,
 
     ttc = q(ht_net + tva_amt)
     arrondi = D('0.00')
-    absorbe = _absorber_arrondi(tva_par_taux, ttc, arrondi_pas)
+    absorbe = _absorber_arrondi(tva_par_taux, ttc, arrondi_pas, arrondi_montee)
     if absorbe is not None:
         tva_par_taux, arrondi = absorbe
         ht_net = q(ht_net - arrondi)
@@ -238,7 +252,8 @@ def _decimales_de(p):
     return 2
 
 
-def remise_pour_ttc(lignes, ttc_cible, *, fallback_taux, arrondi_pas=None):
+def remise_pour_ttc(lignes, ttc_cible, *, fallback_taux, arrondi_pas=None,
+                    arrondi_montee=True):
     """VNT49 — solveur « TTC négocié → remise globale », fonction PURE.
 
     Parmi les remises globales à 2 décimales (0,00 → 100,00 %) dont la chaîne
@@ -276,7 +291,8 @@ def remise_pour_ttc(lignes, ttc_cible, *, fallback_taux, arrondi_pas=None):
     cent = D('100')
     marge = D('0.05')
     p_min = (D('1') - (cible + 2 * pas + D('1')) / ttc0) * cent - marge
-    p_max = (D('1') - cible / ttc0) * cent + marge
+    # ADVS3 — un TTC brut jusqu'à 1 MAD sous la cible y remonte.
+    p_max = (D('1') - (cible - _ARRONDI_TOLERANCE_MONTEE) / ttc0) * cent + marge
     bas_c = int(max(p_min, D('0')).quantize(D('0.01'), rounding=ROUND_FLOOR)
                 * cent)
     haut_c = int(min(max(p_max, D('0')), cent).quantize(
@@ -286,7 +302,8 @@ def remise_pour_ttc(lignes, ttc_cible, *, fallback_taux, arrondi_pas=None):
     for c in range(bas_c, haut_c + 1):
         p = (D(c) / cent).quantize(D('0.01'), rounding=ROUND_HALF_UP)
         t = _canonical_totaux(lignes, remise_globale_pct=p,
-                              fallback_taux=fallback_taux, arrondi_pas=pas)
+                              fallback_taux=fallback_taux, arrondi_pas=pas,
+                              arrondi_montee=arrondi_montee)
         essais.append((p, t['ttc']))
         if t['ttc'] == cible:
             candidats.append((_decimales_de(p), p, t))

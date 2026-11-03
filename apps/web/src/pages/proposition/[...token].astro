@@ -2760,7 +2760,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 revient sur son lien) mène désormais lui aussi au suivi de
                 chantier tokenisé (WJ115). Même token que cette page. */}
             <p class="mt-3">
-              <a href={`/suivi/${encodeURIComponent(token)}`} class="text-brass-300 underline-offset-2 hover:underline" data-suivi-link>
+              <a href={`/suivi/${encodeURIComponent(token)}/`} class="text-brass-300 underline-offset-2 hover:underline" data-suivi-link>
                 <span data-i18n data-fr="Suivre l’avancement de mon chantier" data-en="Track my project’s progress" data-ar="تتبع تقدم ورشتي">Suivre l’avancement de mon chantier</span>
               </a>
             </p>
@@ -3084,7 +3084,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                                 bascule EN/AR (textContent) l'effacerait. */}
                             {it.ficheSlug ? (
                               <a
-                                href={`/produits/${it.ficheSlug}`}
+                                href={`/produits/${it.ficheSlug}/`}
                                 target="_blank"
                                 rel="noopener"
                                 class="mt-1 inline-flex items-center gap-1 text-xs text-brass-300 underline-offset-2 transition-colors hover:text-brass-200 hover:underline"
@@ -4502,7 +4502,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  présent bleu plein #2a78d6 (remplissage 10 %), absent orange
                  pointillé [6,3] #eb6834, partiel vert pointillé [2,3] #1baf7a.
                  La silhouette du CLIENT (drapeau serveur) est mise en évidence
-                 « CHOISIE pour ce client ». `null` ⇒ section masquée entière. */}
+                 « Votre profil ». `null` ⇒ section masquée entière. */}
           {curveMode === 'residentiel' && (clientOccupancyChoice || occScenarios) && (
             <div id="occ-silhouettes" class="cine-card mt-4 rounded-xl p-5 sm:p-6">
               <p class="tech-label text-lune-faint" data-i18n data-fr="Profils d’occupation du logement" data-en="Home occupancy profiles" data-ar="أنماط شغل المسكن">Profils d’occupation du logement</p>
@@ -4538,7 +4538,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   );
                 })}
               </svg>
-              <p class="mt-1 text-[11px] text-lune-faint" data-i18n data-fr="poids de forme (sans unité)" data-en="shape weight (unitless)" data-ar="وزن الشكل (بدون وحدة)">poids de forme (sans unité)</p>
+              <p class="mt-1 text-[11px] text-lune-faint" data-i18n data-fr="Hauteur de la courbe : part de la consommation selon l'heure" data-en="Curve height: share of consumption by hour" data-ar="ارتفاع المنحنى: حصة الاستهلاك حسب الساعة">Hauteur de la courbe : part de la consommation selon l'heure</p>
               {/* Sans comparatif servi, la légende reste ce qu'elle était :
                      purement descriptive, la silhouette du client marquée. */}
               {!occScenarios && (
@@ -4548,7 +4548,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                       <span aria-hidden="true" style={`display:inline-block;width:10px;height:2px;background:${OCC_STROKES[id]}`}></span>
                       {OCCUPANCY_LABELS[id].fr}
                       {id === clientOccupancyChoice && (
-                        <span class="tech-label text-brass-300" data-i18n data-fr="CHOISIE pour ce client" data-en="CHOSEN for this client" data-ar="مُختار لهذا العميل"> · CHOISIE pour ce client</span>
+                        <span class="tech-label text-brass-300" data-i18n data-fr="Votre profil" data-en="Your profile" data-ar="ملفكم"> · Votre profil</span>
                       )}
                     </span>
                   ))}
@@ -5738,7 +5738,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             data-fr={emetteur.bloc.ligne.fr} data-en={emetteur.bloc.ligne.en}
             data-ar={emetteur.bloc.ligne.ar}>{emetteur.bloc.ligne.fr}</p>)}
           <p class="mt-2 text-xs text-lune-faint">
-            <a href="/mentions-legales" target="_blank" rel="noopener" class="underline underline-offset-4 hover:text-lune-soft" data-i18n
+            <a href="/mentions-legales/" target="_blank" rel="noopener" class="underline underline-offset-4 hover:text-lune-soft" data-i18n
               data-fr="Mentions légales complètes" data-en="Full legal notice" data-ar="المعلومات القانونية الكاملة">
               Mentions légales complètes
             </a>
@@ -6207,7 +6207,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   chantier. Le lien apparaît au moment exact où il devient utile
                   — après l'acceptation, jamais avant. MÊME TOKEN que la page :
                   aucun nouvel identifiant, aucun nouveau chemin inventé. */}
-              <a href={`/suivi/${encodeURIComponent(token)}`} class="btn-pill inline-flex items-center justify-center gap-2" data-suivi-link>
+              <a href={`/suivi/${encodeURIComponent(token)}/`} class="btn-pill inline-flex items-center justify-center gap-2" data-suivi-link>
                 <span data-i18n data-fr="Suivre mon chantier" data-en="Track my project" data-ar="تتبع ورشتي">Suivre mon chantier</span>
               </a>
             </div>
@@ -7348,7 +7348,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  tarif BT ANRE non publié) : le détail de la méthode derrière
                  ces hypothèses. -->
             <p class="mt-4 text-xs">
-              <a href="/methodologie-estimation" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
+              <a href="/methodologie-estimation/" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
                 data-fr="En savoir plus sur notre méthode de calcul"
                 data-en="Learn more about our calculation method"
                 data-ar="اعرفوا المزيد عن منهجية حسابنا">
@@ -10930,7 +10930,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
      sur CETTE page uniquement, les entrées de navigation du site vers
      /financement (en-tête ×2 + pied de page) sont masquées ; le composant
      global Header/Footer reste intact pour tout le reste du site. */
-  a[href='/financement'] {
+  a[href='/financement/'] {
     display: none !important;
   }
 </style>

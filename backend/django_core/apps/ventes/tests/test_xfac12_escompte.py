@@ -78,7 +78,39 @@ class XFAC12EscompteTests(TestCase):
         self.assertEqual(self.facture.statut, Facture.Statut.PAYEE)
         self.assertEqual(self.facture.montant_du, Decimal('0'))
         paiement = Paiement.objects.get(facture=self.facture)
-        self.assertEqual(paiement.escompte_montant, Decimal('200.00'))
+        self.assertEqual(paiement.montant, Decimal('9800.00'))
+        self.assertEqual(paiement.escompte_montant or Decimal('0'), Decimal('0'))
+
+    def test_escompte_genere_un_avoir(self):
+        """AARG57 (D-AARG-5) — 1 000 HT + 20 % = 1 200 TTC, 2 % à 10 jours, 1 176 à
+        J+5 : Paiement 1 176 sans escompte, avoir 24 TTC (20 HT, 4 TVA), facture payée,
+        relevé : paiement + avoir, aucune ligne « escompte »."""
+        from apps.ventes.models import Avoir
+        from apps.ventes.recouvrement import _releve_data
+        facture = Facture.objects.create(
+            company=self.company, reference=f'FAC-{MONTH}-0003',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'), taux_tva=Decimal('20'),
+            created_by=self.admin, escompte_pct=Decimal('2.00'), escompte_jours=10)
+        Facture.objects.filter(pk=facture.pk).update(date_emission=self.emission)
+        r = self.api.post(
+            f'/api/django/ventes/factures/{facture.id}/enregistrer-paiement/',
+            {'montant': '1176', 'date_paiement': timezone.now().date().isoformat(),
+             'mode': 'virement'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+        self.assertEqual(facture.montant_du, Decimal('0'))
+        paiement = Paiement.objects.get(facture=facture)
+        self.assertEqual(paiement.montant, Decimal('1176.00'))
+        self.assertEqual(paiement.escompte_montant or Decimal('0'), Decimal('0'))
+        avoir = Avoir.objects.get(facture=facture)
+        self.assertEqual(avoir.motif, 'Escompte pour règlement anticipé')
+        self.assertEqual((avoir.total_ht, avoir.total_tva, avoir.total_ttc),
+                         (Decimal('20.00'), Decimal('4.00'), Decimal('24.00')))
+        lignes = str(_releve_data(self.client_obj))
+        self.assertNotIn('Escompte de règlement', lignes)
 
     def test_paid_at_j15_full_amount_still_due_no_escompte(self):
         """Hors fenêtre (J+15 > 10j) : plein tarif net_attendu ne matche pas,

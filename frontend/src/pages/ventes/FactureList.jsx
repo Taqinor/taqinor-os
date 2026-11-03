@@ -61,7 +61,6 @@ import NoteDebitDialog from './NoteDebitDialog'
 // PACT121 — modale « Payer en ligne » (core.PaymentTransaction, CMI/Payzone).
 // À DISTINGUER de « Encaisser » (règlement déjà reçu) ET du lien FG53
 // ci-dessus : ici on demande un paiement carte à un prestataire.
-import PaiementEnLigneDialog from '../../features/ventes/PaiementEnLigneDialog'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -146,8 +145,6 @@ export default function FactureList() {
   // ── PACT121 — Demande de paiement carte au client (core.PaymentTransaction).
   // Sans compte marchand configuré, la création reste propre et sans effet :
   // la modale affiche « prestataire non configuré », jamais une erreur brute.
-  const [paiementEnLigneTarget, setPaiementEnLigneTarget] = useState(null)
-  const openPaiementEnLigne = (f) => setPaiementEnLigneTarget(f)
 
   // VNT102 (patron SPL212) — sélection/actions en masse, documents et gestes
   // extraits en factureList/ (move only) ; leurs noms sont re-déstructurés ici
@@ -409,8 +406,6 @@ export default function FactureList() {
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
-    // PACT121 - ouvre la demande de paiement carte (prestataire).
-    openPaiementEnLigne,
     // APX14 - ouvre l'apercu PDF inline de cette facture.
     openPreview,
     // EZ13 - marquage sec, relegue au menu et explique.
@@ -655,13 +650,6 @@ export default function FactureList() {
         onChanged={() => dispatch(fetchFactures())}
         open={!!noteDebitTarget}
         onOpenChange={(o) => { if (!o) setNoteDebitTarget(null) }}
-      />
-
-      {/* ── PACT121 — Modale « Payer en ligne » (core.PaymentTransaction) ── */}
-      <PaiementEnLigneDialog
-        facture={paiementEnLigneTarget}
-        open={!!paiementEnLigneTarget}
-        onOpenChange={(o) => { if (!o) setPaiementEnLigneTarget(null) }}
       />
 
       <DialoguesFacture gestes={gestes} lot={lot} docs={docs} factures={factures} />

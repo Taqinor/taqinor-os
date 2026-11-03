@@ -107,6 +107,8 @@ const composants = statusData?.composants ?? [];
 
 <Layout
   title="Statut du service | Taqinor"
+  noindex
+  mesure
   description="État en temps réel des services Taqinor (API, PDF devis, stockage documents, notifications, IA) et historique des incidents."
 >
   <section class="mx-auto max-w-3xl bg-blanc-azur px-5 py-16 text-encre">
@@ -222,7 +224,7 @@ const composants = statusData?.composants ?? [];
 
             <a
               class="mt-3 inline-block text-sm text-azur-700 underline"
-              href={`/status/${inc.id}`}
+              href={`/status/${inc.id}/`}
             >
               Voir le détail
             </a>

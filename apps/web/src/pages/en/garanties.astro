@@ -1,4 +1,5 @@
 ---
+import Faq from '../../components/Faq.astro';
 import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS, BATTERY_WARRANTY_YEARS } from '../../lib/warranty';
 import { pageLocale } from '../../lib/pageCtx';
 /**
@@ -106,6 +107,12 @@ import GarantiesOlC1E2 from '../../components/blocs/GarantiesOlC1E2.astro';
 import GarantiesDivE50A from '../../components/blocs/GarantiesDivE50A.astro';
 import GarantiesSection63F3 from '../../components/blocs/GarantiesSection63F3.astro';
 import WarrantyListBlock from '../../components/blocs/WarrantyListBlock.astro';
+const insuranceFaq = [
+  { q: 'What does home insurance usually cover on a solar installation?', a: 'Multi-risk home policies typically cover fire, lightning, water damage and sometimes weather events (hail, wind) on property, panels included once declared. Accidental breakage, theft of equipment or under-performance are not systematically covered by a standard multi-risk home policy — check the exact clauses and exclusions with your insurer, they vary from one contract to another.' },
+  { q: 'Does the Taqinor warranty replace my home insurance?', a: 'No, they are two different and complementary things. Our warranty (see the table above) covers a defect in equipment or installation over the contractual period. Your home insurance covers incidents external to the installation itself — fire, water damage, weather events. The two apply in different situations; neither replaces the declaration to your insurer.' },
+  { q: 'Can a solar installation lower my insurance premium?', a: 'That depends entirely on your insurer and your contract — we have no commercial agreement with any particular insurer and cannot claim it in general. It is a question to ask your insurer directly when you make the declaration.' },
+];
+
 ---
 
 <Layout
@@ -236,6 +243,12 @@ import WarrantyListBlock from '../../components/blocs/WarrantyListBlock.astro';
         </a>
       </div>
     </section>
+
+    <Faq
+      heading="Home insurance and solar installations"
+      items={insuranceFaq}
+      schema={false}
+    />
 
     <CtaBand title="A 30-year warranty is earned through a serious study. Ours is free." href={devisHref} />
 

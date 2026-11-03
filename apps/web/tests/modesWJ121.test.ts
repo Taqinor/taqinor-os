@@ -176,9 +176,9 @@ describe.each(LOCALES)('WJ121 — 4 cartes de mode dans mon-toit.astro (%s)', (_
     expect(src).not.toContain("id: 'professionnel'");
   });
 
-  it('les deux nouvelles cartes portent le framing du plan (🏭 usine/production, 🏪 hôtel/commerce/services)', () => {
-    expect(src).toContain('🏭');
-    expect(src).toContain('🏪');
+  it('les deux nouvelles cartes portent le framing du plan (usine/production, hôtel/commerce/services), sans émoji (WAUD61)', () => {
+    expect(src).not.toContain('🏭');
+    expect(src).not.toContain('🏪');
   });
 
   it("les sessions en cours sont migrées : 'professionnel' réhydraté → 'industriel'", () => {

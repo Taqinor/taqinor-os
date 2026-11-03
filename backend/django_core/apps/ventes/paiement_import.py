@@ -86,6 +86,8 @@ STATUTS_REVUE = ('ambigu', 'client_non_identifie', 'date_invalide', 'mode_invali
 # AFAC5 — ligne déjà importée par un relevé antérieur (même clé
 # d'idempotence) : jamais importable, jamais en revue.
 STATUT_DOUBLON = 'doublon_import'
+#: AARG6 — la porte d'encaissement (AFAC9, J+7 de la loi 31-08) refuse la ligne.
+STATUT_NON_ENCAISSABLE = 'non_encaissable'
 STATUT_DATE_INVALIDE = 'date_invalide'
 # Le seul statut qu'un commit accepte d'écrire.
 STATUT_IMPORTABLE = 'a_importer'
@@ -384,9 +386,14 @@ def dry_run(file_bytes, filename, company, max_preview=None, user=None):
         if mode is None:
             # AANA69 — mode non reconnu : revue humaine, jamais « virement » muet.
             facture, match_type, statut_match, candidats = None, None, 'mode_invalide', []
+        motif = None
         if facture is not None:
+            from .domain.encaissements import motif_non_encaissable
             reste = facture.montant_du
-            if reste <= TOLERANCE_CENTIME:
+            motif = motif_non_encaissable(facture, date)  # AARG6
+            if motif:
+                statut = STATUT_NON_ENCAISSABLE
+            elif reste <= TOLERANCE_CENTIME:
                 statut = 'deja_regle'
             elif montant - reste > TOLERANCE_CENTIME:
                 statut = 'surpaiement'
@@ -403,6 +410,7 @@ def dry_run(file_bytes, filename, company, max_preview=None, user=None):
             'facture_id': facture.id if facture else None,
             'facture_reference': facture.reference if facture else None,
             'match_type': match_type, 'candidats': candidats,
+            **({'motif': motif} if motif else {}),
         })
 
     # AFAC5 — idempotence PAR LIGNE : une ligne dont la clé est déjà posée
@@ -506,8 +514,8 @@ class JetonReleveInconnu(ValueError):
 
 
 class ReleveDejaImporte(ValueError):
-    """ENF11 — dry-run déjà consommé / contenu déjà importé : l'ÉTAT des
-    imports s'oppose au commit (409)."""
+    """ENF11 — dry-run déjà consommé : l'ÉTAT des imports s'oppose au commit
+    (409)."""
 
 
 def commit(company, user, token, lignes=None):
@@ -517,9 +525,11 @@ def commit(company, user, token, lignes=None):
     exécute ce que l'opérateur a vu et validé. Il exige donc :
       * un ``token`` de dry-run appartenant à la MÊME société (sinon
         ``ValueError`` → 400 côté vue) ;
-      * un jeton NON consommé (usage unique) ;
-      * un contenu de fichier jamais importé pour cette société
-        (``fichier_hash``) — c'est ce qui referme le double-import.
+      * un jeton NON consommé (usage unique).
+
+    AARG33 — le double-import est refermé PAR LIGNE (AFAC5, ``idempotency_key``
+    + ``_marquer_doublons``), plus par fichier : un relevé importé en partie
+    laisse importer ses lignes restantes, les autres sont sautées.
 
     ``lignes`` (optionnel) restreint l'import aux numéros de ligne que
     l'opérateur a cochés ; par défaut, toutes les lignes importables. Une
@@ -534,8 +544,8 @@ def commit(company, user, token, lignes=None):
     """
     from django.db import IntegrityError, transaction as db_transaction
     from django.utils import timezone as dj_timezone
+    from .domain.encaissements import enregistrer_paiement
     from .models import Facture, Paiement, ReleveImportSession
-    from . import activity
 
     token = (token or '').strip()
     if not token:
@@ -553,11 +563,6 @@ def commit(company, user, token, lignes=None):
             raise JetonReleveInconnu('Jeton de dry-run inconnu ou expiré.')
         if session.consomme_at is not None:
             raise ReleveDejaImporte('Ce dry-run a déjà été importé.')
-        if ReleveImportSession.objects.filter(
-                company=company, fichier_hash=session.fichier_hash,
-                consomme_at__isnull=False).exists():
-            raise ReleveDejaImporte(
-                'Ce relevé a déjà été importé (contenu identique).')
         # AFAC6 — les lignes ambiguës RÉSOLUES par l'opérateur sont
         # validées (refus 400 avant toute écriture, jeton non consommé) puis
         # réécrites dans la session (facture choisie, match « manuel »).
@@ -628,6 +633,15 @@ def commit(company, user, token, lignes=None):
             with db_transaction.atomic():
                 locked = Facture.objects.select_for_update().get(
                     pk=facture.pk, company=company, statut__in=OPEN_STATUTS)
+                # AARG6 — LA porte unique, sous le verrou (J+7 compris).
+                from .domain.encaissements import motif_non_encaissable
+                motif = motif_non_encaissable(locked, date_obj)
+                if motif:
+                    skipped += 1
+                    results.append({
+                        'ligne': i + 2, 'statut': STATUT_NON_ENCAISSABLE,
+                        'facture': locked.reference, 'motif': motif})
+                    continue
                 reste = locked.montant_du
                 if reste <= Decimal('0.01'):
                     skipped += 1
@@ -644,19 +658,11 @@ def commit(company, user, token, lignes=None):
                         'montant': str(montant),
                         'reste': str(reste)})
                     continue
-                paiement = Paiement.objects.create(
-                    company=company, facture=locked,
-                    montant=montant, date_paiement=date_obj,
-                    mode=mode, reference=ref or None,
+                paiement = enregistrer_paiement(
+                    facture=locked, montant=montant, user=user,
+                    date_paiement=date_obj, mode=mode, reference=ref or None,
                     note=f'Import relevé bancaire (ligne {i + 2})',
-                    idempotency_key=cle,
-                    created_by=user)
-                activity.log_facture_paiement(locked, user, paiement)
-                # YLEDG1 — événement documentaire générique (pose du seam
-                # pour compta.ecriture_pour_paiement).
-                from core.events import paiement_enregistre
-                paiement_enregistre.send(
-                    sender=Paiement, instance=paiement, company=company)
+                    idempotency_key=cle)
                 locked.refresh_from_db()
                 # AUD102 (P8) — l'import de relevé soldait en silence : la
                 # bascule passe par LE service unique (donc `facture_payee`,

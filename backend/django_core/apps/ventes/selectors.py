@@ -471,10 +471,10 @@ def multi_villa_totaux(devis):
     # sur la même page d'un PDF client.
     # ARRONDI-100 — le total général EST l'argent du devis (``Devis.total_ttc``
     # passe par le même palier) ; les sous-totaux par villa restent exacts.
-    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS, centaine_remontee
     grand_total = _canonical_totaux(
         lignes, remise_globale_pct=remise, fallback_taux=fallback,
-        arrondi_pas=PAS_ARRONDI_DEVIS)
+        arrondi_pas=PAS_ARRONDI_DEVIS, arrondi_montee=centaine_remontee(devis))
     return {'groupes': groupes, 'grand_total': grand_total}
 
 
@@ -1139,13 +1139,13 @@ def lots_totaux(devis):
 
     # ARRONDI-100 — le total consolidé EST l'argent du devis : même palier que
     # ``Devis.total_ttc`` (les blocs par lot restent exacts).
-    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS, centaine_remontee
     return {
         'lots': blocs,
         'hors_lot': hors_lot,
         'total_consolide': _canonical_totaux(
             lignes, remise_globale_pct=remise, fallback_taux=fallback,
-            arrondi_pas=PAS_ARRONDI_DEVIS),
+            arrondi_pas=PAS_ARRONDI_DEVIS, arrondi_montee=centaine_remontee(devis)),
     }
 
 

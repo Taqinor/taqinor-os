@@ -24,6 +24,7 @@
  * W245 — noindex removed (this is the site's primary conversion CTA, not a
  * private tunnel); real landing-page SEO (meta description, OG, hreflang).
  */
+import DevisMonToitContinuer from '../../../components/blocs/DevisMonToitContinuer.astro';
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
 // RWEB17-M13 — table anglaise des tranches, UNE source pour le serveur et le script.
@@ -87,13 +88,13 @@ const STEPS = ['Your roof', 'Your estimate'];
 // WJ6/QX — project-type selector. No mode is preselected: the profile drives
 // an entirely different step-2 questionnaire (bill / pro energy / pumping),
 // so "Continue" requires an explicit choice (nudge on #mt-mode-err, never an alert).
-// WJ121 — 4 real modes: the "Professional" card is split into 🏭 Industrial
-// (factory, production) and 🏪 Commercial (hotel, retail, services); the site
+// WJ121 — 4 real modes: the "Professional" card is split into Industrial
+// (factory, production) and Commercial (hotel, retail, services); the site
 // never emits 'professionnel' anymore (server alias kept in lib/lead.ts + backend).
 const MODES = [
   { id: 'residentiel', label: 'Residential', desc: 'Villa, apartment' },
-  { id: 'industriel', label: '🏭 Industrial', desc: 'Factory, production' },
-  { id: 'commercial', label: '🏪 Commercial', desc: 'Hotel, retail, services' },
+  { id: 'industriel', label: 'Industrial', desc: 'Factory, production' },
+  { id: 'commercial', label: 'Commercial', desc: 'Hotel, retail, services' },
   { id: 'agricole', label: 'Agricultural', desc: 'Pumping, farm' },
 ];
 
@@ -121,8 +122,8 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
 ---
 
 <Layout
-  title="Instant solar estimate — My roof | Taqinor"
-  description="Instant estimate + 3D roof design + online signature: enter your address and your bill, get your power, savings and payback in seconds, for free."
+  title="Solar panel quote in Morocco — free study based on your bill | Taqinor"
+  description="Enter your address and your electricity bill: the Taqinor team prepares your solar study for free and replies on WhatsApp."
   ogSlug="accueil"
   locales={['fr', 'en', 'ar']}
 >
@@ -231,6 +232,12 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
           <span id="mt-mode-err" hidden role="alert" class="mt-2 block text-xs text-alert-300"></span>
         </fieldset>
 
+        <!-- WAUD43 — la carte est facultative : « Continuer » reste sous les profils. -->
+        <DevisMonToitContinuer>
+            <span>Continue</span>
+            <DevisMonToitBloc988F />
+        </DevisMonToitContinuer>
+
         <!-- WJ68/QX — the company fields (name / facility type / site count)
              moved to the PROFESSIONAL sub-panel of step 2 ("Your context"
              accordion) to keep this map step light — same id/name, webhook
@@ -309,8 +316,13 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
                even though it exposes no keyboard interaction of its own here.
                aria-label alone is enough to name it. -->
           <!-- WJ98 — taller map on desktop (`lg:h-[62vh]`, capped 640px); phone/tablet unchanged. -->
+          <div class="relative">
           <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44dvh] min-h-[280px] w-full bg-nuit-700 lg:h-[62vh] lg:max-h-[640px]"
             aria-label="Satellite map to locate your roof"></div>
+            <button type="button" id="mt-map-facade" class="absolute inset-0 z-10 flex items-center justify-center bg-nuit-700 p-4 text-center text-base font-semibold text-white transition-colors hover:text-brass-300">
+              <span class="border border-white/25 px-5 py-3">Point to my roof on the map</span>
+            </button>
+          </div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
             <button type="button" id="rp9-finish" disabled
@@ -365,13 +377,6 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
           </div>
         </div>
 
-        <div class="mt-5 flex justify-end">
-          <button type="button" id="mt-next-0"
-            class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span>Continue</span>
-            <DevisMonToitBloc988F />
-          </button>
-        </div>
       </div>
 
       <!-- ============ STEP 2 — YOUR BILL (+ energy profile) ============ -->
@@ -716,7 +721,7 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
             <p id="mt-fda-note" class="text-xs text-lune-faint">
               State aid (FDA) may be available to replace a butane pump, under conditions, with
               prior approval from your DPA/ORMVA BEFORE the works — details on the
-              <a href="/en/financement" class="underline decoration-white/40 underline-offset-2 hover:text-white">Financing</a> page.
+              <a href="/en/financement/" class="underline decoration-white/40 underline-offset-2 hover:text-white">Financing</a> page.
             </p>
           </div>
 
@@ -1023,7 +1028,7 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
               </p>
               <p id="mt-doc-hypotheses" hidden class="mt-doc-hypo-line"></p>
               <p class="mt-doc-hypo-line">Preliminary estimate, refined after a technical site visit — never a quote.</p>
-              <a href="/en/methodologie-estimation" class="mt-doc-link">See how we calculate this estimate</a>
+              <a href="/en/methodologie-estimation/" class="mt-doc-link">See how we calculate this estimate</a>
             </div>
 
             <!-- (6) Next steps — same narrative as page 3 of the premium quote -->
@@ -1075,7 +1080,7 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
           <div id="mt-nearest-install" hidden class="mt-4 border border-brass-400/25 bg-white/5 p-3 text-sm text-white">
             <p class="tech-label text-brass-300">The installation closest to you</p>
             <p class="mt-1"><span id="mt-nearest-install-text">—</span></p>
-            <a id="mt-nearest-install-link" href="/en/realisations" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline">See this project</a>
+            <a id="mt-nearest-install-link" href="/en/realisations/" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline">See this project</a>
           </div>
 
           <!-- W360 — the honest cost of waiting: DERIVED from the same
@@ -1145,7 +1150,7 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
                  syncCityRequirement() — never hardcoded off (a visitor WITHOUT a pin
                  must still see the field as required). -->
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              aria-describedby="mt-city-err mt-city-hint" placeholder="Read from the map — editable if needed" class={`${inputClass} mt-1`} />
+              aria-describedby="mt-city-err mt-city-hint" placeholder="Your city" data-ph-ville="Your city" data-ph-repere="Read from the map — editable if needed" class={`${inputClass} mt-1`} />
             <span id="mt-city-hint" hidden class="mt-1 block text-xs text-lune-faint">
               Optional — your GPS position is already recorded. The address is still useful for mail.
             </span>
@@ -1249,24 +1254,24 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
                 <div class="mt-2 border border-white/10 bg-white/5 p-2">
                   <svg id="mt-occ-chart" width="100%" height="140" viewBox="0 0 320 140"
                     preserveAspectRatio="none" role="img"
-                    aria-label="Hourly shape weights of the three occupancy profiles"></svg>
-                  <p class="mt-1 text-[11px] text-lune-faint">Vertical axis: shape weight (unitless)</p>
+                    aria-label="Hourly consumption curves of the three occupancy profiles"></svg>
+                  <p class="mt-1 text-[11px] text-lune-faint">Curve height: share of consumption by hour</p>
                 </div>
                 <div class="mt-2 grid grid-cols-3 gap-2">
                   <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_jour" aria-pressed="false">
                     <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#2a78d6"></span>
                     <span>Home</span>
-                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden>CHOSEN for this client</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden>Your choice</span>
                   </button>
                   <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="absence_jour" aria-pressed="false">
                     <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#eb6834"></span>
                     <span>Away</span>
-                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden>CHOSEN for this client</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden>Your choice</span>
                   </button>
                   <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_partielle" aria-pressed="false">
                     <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#1baf7a"></span>
                     <span>Partly</span>
-                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden>CHOSEN for this client</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden>Your choice</span>
                   </button>
                 </div>
                 <input type="hidden" id="mt-occupation-jour" name="occupation_jour" />
@@ -1425,7 +1430,7 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
           <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
             <p class="font-semibold">Thank you! Your request has been recorded.</p>
             <p class="mt-1 text-lune-soft">Our team is preparing your study and will contact you back very soon — often on WhatsApp.</p>
-            <!-- WJ52 — short reference: fills the post-submission void (24–48 h
+            <!-- WJ52 — short reference: fills the post-submission void (callback
                  wait) with a concrete artefact to mention on WhatsApp. -->
             <p class="mt-2 text-lune-soft">
               <span>Your reference:</span>

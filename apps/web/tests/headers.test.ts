@@ -99,3 +99,23 @@ describe('applySecurityHeaders', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('WAUD5 — Cloudflare Web Analytics autorisé par la CSP', () => {
+  const directive = (nom: string) => CONTENT_SECURITY_POLICY.split('; ').find((d: string) => d.startsWith(`${nom} `)) ?? '';
+  it('script-src et connect-src portent les deux hôtes', () => {
+    expect(directive('script-src')).toContain('https://static.cloudflareinsights.com');
+    expect(directive('connect-src')).toContain('https://cloudflareinsights.com');
+  });
+});
+
+describe('WAUD13 — repli formulaire du pixel Meta (pages arabes à URL longue)', () => {
+  const directive = (nom: string) => CONTENT_SECURITY_POLICY.split('; ').find((d: string) => d.startsWith(`${nom} `)) ?? '';
+  it('form-action et frame-src autorisent www.facebook.com, et lui seul', () => {
+    expect(directive('form-action').split(' ')).toEqual(['form-action', "'self'", 'https://api.taqinor.ma', 'https://www.facebook.com']);
+    expect(directive('frame-src')).toContain('https://www.facebook.com');
+    expect(CONTENT_SECURITY_POLICY).not.toMatch(/\*\.facebook\.com/);
+  });
+  it('frame-ancestors reste fermé', () => {
+    expect(directive('frame-ancestors')).toBe("frame-ancestors 'none'");
+  });
+});

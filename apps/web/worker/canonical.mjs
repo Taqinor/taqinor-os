@@ -28,3 +28,15 @@ export function canonicalTarget(requestUrl, canonicalOrigin = CANONICAL_ORIGIN) 
 export function canonicalRedirectStatus(method = 'GET') {
   return method === 'GET' || method === 'HEAD' ? 301 : 308;
 }
+
+/**
+ * WAUD23 — http://taqinor.ma répondait 200 (tunnel compris) et HSTS est ignoré en http.
+ * Cible https, en UN seul saut (avant la barre finale). Seul l'hôte de production est
+ * concerné : jamais localhost ni un aperçu.
+ */
+export function httpsTarget(requestUrl, canonicalOrigin = CANONICAL_ORIGIN) {
+  const url = new URL(requestUrl);
+  const hote = new URL(canonicalOrigin).hostname;
+  if (url.protocol !== 'http:' || url.hostname !== hote) return null;
+  return canonicalOrigin + url.pathname + url.search;
+}

@@ -24,12 +24,12 @@ const waGeneral = whatsappLink(
 
 const links = [
   {
-    href: '/realisations',
+    href: '/realisations/',
     label: 'Nos réalisations',
     sub: 'Des installations réelles, chiffres mesurés',
   },
   {
-    href: '/devis/mon-toit',
+    href: '/devis/mon-toit/',
     label: 'Mon estimation gratuite',
     sub: 'Toiture, facture, ville — 2 minutes',
     featured: true,
@@ -41,7 +41,7 @@ const links = [
     external: true,
   },
   {
-    href: '/blog',
+    href: '/blog/',
     label: 'Blog & guides',
     sub: 'Comprendre avant de décider',
   },
@@ -58,6 +58,8 @@ const jsonLd = {
 
 <Layout
   title="Taqinor — tous nos liens"
+  noindex
+  mesure
   description="Réalisations, estimation gratuite, WhatsApp, blog : tous les liens Taqinor au même endroit."
   ogSlug="accueil"
 >
@@ -71,6 +73,7 @@ const jsonLd = {
         <div class="liens-logo cine-in">
           <Logo size={30} theme="dark" />
         </div>
+        <h1 class="sr-only">Taqinor — tous nos liens</h1>
         <p class="tech-label v2-kicker rule-brass cine-in cine-in-1 mt-5 text-center text-lune">
           Installateur solaire — Maroc
         </p>

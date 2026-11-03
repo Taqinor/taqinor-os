@@ -13,7 +13,7 @@ import {
   Camera, Trash2, RotateCw, Loader2, FileText, Upload, X, FileUp,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
-import { rows, toutesLesPages, errText } from './listesGed'
+import { toutesLesPages, errText } from './listesGed'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import EnteteGed from './EnteteGed'
 import {
@@ -54,10 +54,9 @@ export default function NumeriserPage() {
 
   useEffect(() => {
     let alive = true
-    gedApi.getCabinets()
-      .then((r) => {
+    toutesLesPages(gedApi.getCabinets)
+      .then((list) => {
         if (!alive) return
-        const list = rows(r)
         setCabinets(list)
         if (list.length) setCabinetId((c) => c ?? list[0].id)
       })

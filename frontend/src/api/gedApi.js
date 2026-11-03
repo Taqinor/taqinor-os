@@ -488,7 +488,7 @@ const gedApi = {
   // Réutilise l'endpoint /users/ existant (portée société côté serveur) —
   // même patron que `messagesApi.listCompanyMembers` — pour peupler le
   // sélecteur « utilisateur » du formulaire d'octroi ACL.
-  getUsers: () => api.get('/users/'),
+  getUsers: (params) => api.get('/users/', { params }),
   // ZGED8 — Vues enregistrées (recherches/filtres sauvegardés, partageables).
   // Lecture : ses vues privées + les vues partagées de la société.
   getVues: (params) => api.get('/ged/vues/', { params }),

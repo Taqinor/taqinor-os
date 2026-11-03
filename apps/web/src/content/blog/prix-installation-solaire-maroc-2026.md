@@ -1,7 +1,7 @@
 ---
 title: "Combien coûte une installation solaire au Maroc en 2026 ?"
 description: "Fourchettes indicatives 2026 par puissance, surcoûts toiture, batterie, TVA — pour savoir à quoi s'attendre avant votre devis."
-pubDate: 2026-03-23
+pubDate: 2026-06-21
 tags: ["coût", "prix", "installation", "2026"]
 author: "Reda Kasri"
 ogSlug: "accueil"
@@ -11,7 +11,7 @@ theme: "Prix"
 
 « Combien ça coûte, vraiment ? » C'est la première phrase de presque tous mes rendez-vous. Et la raison pour laquelle les chiffres qu'on trouve en ligne vont du simple au triple est facile à expliquer : le prix d'un panneau posé sur une étagère n'a rien à voir avec celui d'une installation clé-en-main, montée sur votre toit et raccordée. Je préfère donc poser les fourchettes du marché marocain 2026 telles qu'elles sont, avec leurs sources et, surtout, leurs limites.
 
-*(W293 — pour la version pérenne de ces fourchettes, revue chaque année indépendamment de l'actualité 2026, voir notre page [Prix des panneaux solaires au Maroc](/prix-panneaux-solaires-maroc).)*
+*(Pour la version pérenne de ces fourchettes, revue chaque année indépendamment de l'actualité 2026, voir notre page [Prix des panneaux solaires au Maroc](/prix-panneaux-solaires-maroc/).)*
 
 ## Les fourchettes clé-en-main par puissance (indicatif 2026)
 
@@ -76,18 +76,18 @@ Si vous êtes une entreprise ou un investisseur, faites vérifier votre situatio
 
 Le payback le plus souvent cité par les installateurs marocains pour une installation résidentielle standard (sans batterie) est de **5 à 7 ans** — fourchette indicative 2026, cohérente avec plusieurs sources (solaropeak.com, ecovolt.ma, fnh.ma). Avec une batterie, comptez **1 à 3 ans de plus**.
 
-Ce calcul dépend fortement de votre consommation réelle et de votre tranche tarifaire ONEE/régie. Un foyer consommant plus de 310 kWh/mois (tranche à 1,381704 DH/kWh, ou au-delà de 510 kWh à 1,622856 DH/kWh) rentabilise son installation plus vite qu'un faible consommateur — le solaire est d'autant plus rentable que votre facture actuelle est élevée. (Grille tarifaire à jour : voir [notre article sur la rentabilité par ville](/blog/rentabilite-solaire-par-ville-maroc).)
+Ce calcul dépend fortement de votre consommation réelle et de votre tranche tarifaire ONEE/régie. Un foyer consommant plus de 310 kWh/mois (tranche à 1,381704 DH/kWh, ou au-delà de 510 kWh à 1,622856 DH/kWh) rentabilise son installation plus vite qu'un faible consommateur — le solaire est d'autant plus rentable que votre facture actuelle est élevée. (Grille tarifaire à jour : voir [notre article sur la rentabilité par ville](/blog/rentabilite-solaire-par-ville-maroc/).)
 
-Pour aller plus loin sur les économies réelles par ville et les simulations de rentabilité, consultez notre article [Rentabilité solaire par ville au Maroc](/blog/rentabilite-solaire-par-ville-maroc).
+Pour aller plus loin sur les économies réelles par ville et les simulations de rentabilité, consultez notre article [Rentabilité solaire par ville au Maroc](/blog/rentabilite-solaire-par-ville-maroc/).
 
 ## De combien de panneaux avez-vous besoin ?
 
 Avant de comparer les prix, il faut connaître la bonne puissance pour votre foyer. Un ménage consommant entre 4 000 et 6 000 kWh/an nécessite généralement **3 à 5 kWc** ; entre 6 000 et 10 000 kWh/an, plutôt **5 à 8 kWc**. Chaque kWc occupe environ 5 à 6 m² de toiture.
 
-Notre guide dédié vous explique la méthode complète : [Combien de panneaux pour ma maison ?](/guides/combien-de-panneaux-pour-ma-maison)
+Notre guide dédié vous explique la méthode complète : [Combien de panneaux pour ma maison ?](/guides/combien-de-panneaux-pour-ma-maison/)
 
 ## Un dernier mot avant de signer quoi que ce soit
 
 Servez-vous de ces fourchettes pour budgéter et pour repérer une offre anormalement basse ou anormalement chère. Mais ne leur demandez pas ce qu'elles ne peuvent pas donner : un prix ferme. La configuration de votre toiture, votre consommation, votre tranche ONEE et la distance entre les panneaux et le tableau électrique déplacent le total final, parfois de plusieurs milliers de dirhams.
 
-Le seul chiffre qui vaut pour votre maison sort d'une lecture de votre facture et d'une visite. C'est exactement ce que fait notre diagnostic, gratuitement et sans engagement. → **[Obtenir un diagnostic personnalisé](/devis/mon-toit)**
+Le seul chiffre qui vaut pour votre maison sort d'une lecture de votre facture et d'une visite. C'est exactement ce que fait notre diagnostic, gratuitement et sans engagement. → **[Obtenir un diagnostic personnalisé](/devis/mon-toit/)**

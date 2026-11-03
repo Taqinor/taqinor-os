@@ -7,12 +7,12 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { articlePage } from '../../../lib/pageCtx';
+import { guideArticleCommun, guideDateModified } from '../../../lib/guideMeta';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
-import { NAP } from '../../../lib/nap';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { localizeNavHref } from '../../../i18n/pages';
 
@@ -24,9 +24,8 @@ const jsonLd = {
   description: 'On-grid, off-grid or hybrid: why a grid-connected system cuts out automatically during an outage, and what it takes to keep the power on.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Solar architecture and service continuity' },
-  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  mainEntityOfPage: url,
+  ...guideArticleCommun(url),
+  dateModified: guideDateModified('on-grid-off-grid-ou-hybride'),
 };
 ---
 
@@ -70,7 +69,7 @@ const jsonLd = {
       <p class="v2-lead mt-5 text-lune-soft">
         The standard requires every grid-connected inverter to have a so-called
         <strong class="text-lune">anti-islanding</strong> function: as soon as the grid disappears,
-        the inverter detects the absence of voltage and isolates itself within milliseconds. The
+        the inverter detects the absence of voltage and isolates itself at once. The
         reason: if the inverter kept injecting current onto a line that ONEE technicians believe is
         de-energised, it would pose a deadly risk to intervention crews. The automatic shutdown
         protects people — not the inverter.
@@ -99,9 +98,7 @@ const jsonLd = {
         hours.
       </p>
       <p class="v2-lead mt-4 text-lune-soft">
-        When the outage happens, the hybrid inverter switches to its backup outputs within
-        milliseconds (on the order of 4 to 10 ms on UPS-mode models, up to one or two seconds on
-        others). It isolates these circuits from the grid, which respects anti-islanding, and keeps
+        When the outage happens, the hybrid inverter switches to its backup outputs. It isolates these circuits from the grid, which respects anti-islanding, and keeps
         feeding them. It's the only one of the three architectures that ensures daily
         self-consumption while keeping the power on during an outage.
       </p>

@@ -22,6 +22,19 @@
  * (déjà déclarée dans STATIC_TRANSLATED) + meta description vendant
  * l'estimation instantanée + OG dédié.
  */
+import DevisMonToitPiscine from '../../components/blocs/DevisMonToitPiscine.astro';
+import DevisMonToitClim from '../../components/blocs/DevisMonToitClim.astro';
+import DevisMonToitProfil from '../../components/blocs/DevisMonToitProfil.astro';
+import DevisMonToitVehicule from '../../components/blocs/DevisMonToitVehicule.astro';
+import DevisMonToitChauffeEau from '../../components/blocs/DevisMonToitChauffeEau.astro';
+import DevisMonToitEquipements from '../../components/blocs/DevisMonToitEquipements.astro';
+import DevisMonToitProfilResume from '../../components/blocs/DevisMonToitProfilResume.astro';
+import DevisMonToitFinish from '../../components/blocs/DevisMonToitFinish.astro';
+import { STEPS, MODES, TOWNS } from '../../lib/tunnel/modes';
+import DevisMonToitContinuer from '../../components/blocs/DevisMonToitContinuer.astro';
+import DevisMonToitModeBouton from '../../components/blocs/DevisMonToitModeBouton.astro';
+import DevisMonToitPinConfirm from '../../components/blocs/DevisMonToitPinConfirm.astro';
+import DevisMonToitOccupation from '../../components/blocs/DevisMonToitOccupation.astro';
 import Layout from '../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../lib/billRange';
 // « Type de toit » (ROOF_TYPES) retirée du tunnel (coupe fondateur 18/08) — le
@@ -77,24 +90,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 // de profil (ex-écran « Votre facture ») et l'estimation + le formulaire de
 // contact vivent désormais sur le MÊME écran, la révélation se faisant sur place
 // au clic de « Voir mon estimation » (aucune navigation d'étape supplémentaire).
-const STEPS = [
-  { fr: 'Votre toit', ar: 'سطحك' },
-  { fr: 'Votre estimation', ar: 'تقديرك' },
-];
-
-// WJ6 — sélecteur de mode, FR + AR. WJ121 — 4 vrais modes : la carte
-// « Professionnel » est scindée en 🏭 Industriel (usine, production) et
-// 🏪 Commercial (hôtel, commerce, services) ; le site n'émet plus jamais
-// 'professionnel' (alias serveur conservé côté lib/lead.ts + backend).
-const MODES = [
-  { id: 'residentiel', fr: 'Résidentiel', ar: 'سكني', desc_fr: 'Villa, appartement', desc_ar: 'فيلا، شقة' },
-  { id: 'industriel', fr: '🏭 Industriel', ar: '🏭 صناعي', desc_fr: 'Usine, production', desc_ar: 'مصنع، إنتاج' },
-  { id: 'commercial', fr: '🏪 Commercial', ar: '🏪 تجاري', desc_fr: 'Hôtel, commerce, services', desc_ar: 'فندق، تجارة، خدمات' },
-  { id: 'agricole', fr: 'Agricole', ar: 'فلاحي', desc_fr: 'Pompage, ferme', desc_ar: 'ضخ، مزرعة' },
-];
-
-// WJ8 — villes desservies (réelles, NAP) pour la preuve de proximité.
-const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra', 'Fès', 'Settat'];
 import DevisMonToitFieldset60A5 from '../../components/blocs/DevisMonToitFieldset60A5.astro';
 import DevisMonToitLegend2097 from '../../components/blocs/DevisMonToitLegend2097.astro';
 import DevisMonToitDetails955C from '../../components/blocs/DevisMonToitDetails955C.astro';
@@ -125,8 +120,8 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
 ---
 
 <Layout
-  title="Estimation solaire instantanée — Mon toit | Taqinor"
-  description="Estimation instantanée + design 3D de votre toit + signature en ligne : indiquez votre adresse et votre facture, recevez votre puissance, vos économies et votre amortissement en quelques secondes, gratuitement."
+  title="Devis panneaux solaires au Maroc — étude gratuite sur votre facture | Taqinor"
+  description="Indiquez votre adresse et votre facture d'électricité : l'équipe Taqinor prépare gratuitement votre étude solaire et vous répond sur WhatsApp."
   ogSlug="accueil"
   locales={['fr', 'en', 'ar']}
 >
@@ -231,15 +226,22 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                1 colonne, puis 2×2 dès `sm:` (640 px) — WJ121 : 4 cartes. -->
           <div id="mt-mode-grid" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {MODES.map((m) => (
-              <button type="button" class="mt-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-left transition-colors"
-                data-mode={m.id} aria-pressed="false" aria-describedby="mt-mode-err">
-                <span class="text-sm font-semibold text-white" data-i18n data-fr={m.fr} data-ar={m.ar}>{m.fr}</span>
-                <span class="text-xs text-lune-faint" data-i18n data-fr={m.desc_fr} data-ar={m.desc_ar}>{m.desc_fr}</span>
-              </button>
+              <DevisMonToitModeBouton m={m} cls="mt-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-left transition-colors" />
             ))}
           </div>
           <span id="mt-mode-err" hidden role="alert" class="mt-2 block text-xs text-alert-300"></span>
         </fieldset>
+
+        <!-- WAUD43 — la carte est facultative : « Continuer » reste sous les profils. -->
+        <DevisMonToitContinuer>
+            <span data-i18n data-fr="Continuer" data-ar="متابعة">Continuer</span>
+            <!-- WJ89 — chevron SVG auto-retourné en RTL (règle globale.css
+                 `[dir="rtl"] button svg[aria-hidden="true"]`), plus jamais un
+                 glyphe « → » littéral figé dans le sens LTR. -->
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+        </DevisMonToitContinuer>
 
         <!-- WJ68/QX — les champs entreprise (raison sociale / type de site /
              nb de sites) ont DÉMÉNAGÉ dans le sous-panneau PROFESSIONNEL de
@@ -315,14 +317,16 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                (plafonné à 640 px) donne une zone de travail nettement plus
                généreuse dès que l'écran a la place, sans toucher au comportement
                téléphone/tablette (`h-[44dvh]` inchangé en dessous de `lg`). -->
+          <div class="relative">
           <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44dvh] min-h-[280px] w-full bg-nuit-700 lg:h-[62vh] lg:max-h-[640px]"
             aria-label="Carte satellite pour repérer votre toit"></div>
+            <button type="button" id="mt-map-facade" class="absolute inset-0 z-10 flex items-center justify-center bg-nuit-700 p-4 text-center text-base font-semibold text-white transition-colors hover:text-brass-300">
+              <span class="border border-white/25 px-5 py-3">Pointer mon toit sur la carte</span>
+            </button>
+          </div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
-            <button type="button" id="rp9-finish" disabled
-              class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
-              Terminer le tracé
-            </button>
+            <DevisMonToitFinish />
             <button type="button" id="rp9-undo-point" hidden
               class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
               Annuler le dernier point
@@ -353,42 +357,9 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                serrée sur son repère (captureBoot.landOn) et on lui pose la
                question. Le flux « dessiner » garde son propre retour visuel :
                le contour lui-même. -->
-          <div id="mt-pin-confirm" hidden class="border-t border-white/10 p-4">
-            <p class="text-sm font-semibold text-white" data-i18n
-              data-fr="C'est bien votre toit ?" data-ar="هل هذا هو سطحكم؟">C'est bien votre toit ?</p>
-            <p class="mt-1 text-xs text-lune-faint" data-i18n
-              data-fr="La carte est centrée sur le repère que vous venez de poser."
-              data-ar="الخريطة متمركزة على العلامة التي وضعتموها للتو.">
-              La carte est centrée sur le repère que vous venez de poser.
-            </p>
-            <!-- Adresse REMPLIE seulement si le géocodage inverse en a trouvé une
-                 (W2) — jamais une adresse devinée, jamais une ligne vide. -->
-            <p id="mt-pin-confirm-address" hidden class="mt-2 text-sm text-lune-soft"></p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <button type="button" id="mt-pin-confirm-yes"
-                class="bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
-                <span data-i18n data-fr="Oui, c'est mon toit" data-ar="نعم، هذا سطحي">Oui, c'est mon toit</span>
-              </button>
-              <button type="button" id="mt-pin-confirm-adjust"
-                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
-                <span data-i18n data-fr="Non, déplacer le repère" data-ar="لا، غيّروا موضع العلامة">Non, déplacer le repère</span>
-              </button>
-            </div>
-          </div>
+          <DevisMonToitPinConfirm />
         </div>
 
-        <div class="mt-5 flex justify-end">
-          <button type="button" id="mt-next-0"
-            class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span data-i18n data-fr="Continuer" data-ar="متابعة">Continuer</span>
-            <!-- WJ89 — chevron SVG auto-retourné en RTL (règle globale.css
-                 `[dir="rtl"] button svg[aria-hidden="true"]`), plus jamais un
-                 glyphe « → » littéral figé dans le sens LTR. -->
-            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-        </div>
       </div>
 
       <!-- ============ ÉTAPE 2 — VOTRE FACTURE (+ profil énergétique) ============ -->
@@ -741,7 +712,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
             <p id="mt-fda-note" class="text-xs text-lune-faint">
               Aide de l'État (FDA) possible pour remplacer une pompe au butane, sous conditions,
               avec accord préalable de votre DPA/ORMVA AVANT les travaux — détails sur la page
-              <a href="/financement" class="underline decoration-white/40 underline-offset-2 hover:text-white">Financement</a>.
+              <a href="/financement/" class="underline decoration-white/40 underline-offset-2 hover:text-white">Financement</a>.
             </p>
           </div>
 
@@ -1017,7 +988,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
               </p>
               <p id="mt-doc-hypotheses" hidden class="mt-doc-hypo-line"></p>
               <p class="mt-doc-hypo-line">Estimation préliminaire, affinée après visite technique — jamais un devis.</p>
-              <a href="/methodologie-estimation" class="mt-doc-link">Voir comment nous calculons cette estimation</a>
+              <a href="/methodologie-estimation/" class="mt-doc-link">Voir comment nous calculons cette estimation</a>
             </div>
 
             <!-- (6) Prochaines étapes — même récit que la page 3 du devis premium -->
@@ -1070,7 +1041,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
           <div id="mt-nearest-install" hidden class="mt-4 border border-brass-400/25 bg-white/5 p-3 text-sm text-white">
             <p class="tech-label text-brass-300" data-i18n data-fr="L'installation la plus proche de chez vous" data-ar="أقرب تركيب من منزلكم">L'installation la plus proche de chez vous</p>
             <p class="mt-1"><span id="mt-nearest-install-text">—</span></p>
-            <a id="mt-nearest-install-link" href="/realisations" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline" data-i18n data-fr="Voir cette réalisation" data-ar="مشاهدة هذا الإنجاز">Voir cette réalisation</a>
+            <a id="mt-nearest-install-link" href="/realisations/" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline" data-i18n data-fr="Voir cette réalisation" data-ar="مشاهدة هذا الإنجاز">Voir cette réalisation</a>
           </div>
 
           <!-- W360 — le coût honnête de l'attente : DÉRIVÉ de la même fourchette
@@ -1151,7 +1122,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                  sont mis à jour dynamiquement par syncCityRequirement() (jamais retirés
                  en dur ici — un visiteur SANS repère doit toujours voir le champ requis). -->
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              aria-describedby="mt-city-err mt-city-hint" placeholder="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
+              aria-describedby="mt-city-err mt-city-hint" placeholder="Votre ville" data-ph-ville="Votre ville" data-ph-repere="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
             <span id="mt-city-hint" hidden class="mt-1 block text-xs text-lune-faint" data-i18n
               data-fr="Facultatif — votre position GPS est déjà enregistrée. L'adresse reste utile pour le courrier."
               data-ar="اختياري — تم تسجيل موقعكم عبر GPS بالفعل. يبقى العنوان مفيدًا للمراسلة.">
@@ -1224,73 +1195,13 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                de son détail (le moteur ne compose une couche chauffe-eau que
                si la puissance ET le créneau sont TOUS LES DEUX renseignés —
                apps/ventes/courbes_journalieres.py). -->
-          <details class="mt-1 cine-card border border-white/10 text-white">
-            <summary class="cursor-pointer select-none p-3 text-sm font-semibold" data-i18n
-              data-fr="Affiner mon profil de consommation (facultatif)"
-              data-ar="تحسين نمط استهلاكي (اختياري)">
-              Affiner mon profil de consommation (facultatif)
-            </summary>
-            <div class="flex flex-col gap-4 border-t border-white/10 p-3">
+          <DevisMonToitProfil>
               <fieldset>
-                <legend class="text-sm text-lune-soft" data-i18n
-                  data-fr="Passez-vous la journée à la maison ?"
-                  data-ar="هل تقضون النهار في المنزل؟">
-                  Passez-vous la journée à la maison&nbsp;?
-                </legend>
-                <div class="mt-2 border border-white/10 bg-white/5 p-2">
-                  <svg id="mt-occ-chart" width="100%" height="140" viewBox="0 0 320 140"
-                    preserveAspectRatio="none" role="img"
-                    aria-label="Poids de forme horaires des trois profils d'occupation"></svg>
-                  <p class="mt-1 text-[11px] text-lune-faint" data-i18n
-                    data-fr="Axe vertical : poids de forme (sans unité)"
-                    data-ar="المحور العمودي: وزن الشكل (بدون وحدة)">
-                    Axe vertical&nbsp;: poids de forme (sans unité)
-                  </p>
-                </div>
-                <div class="mt-2 grid grid-cols-3 gap-2">
-                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_jour" aria-pressed="false">
-                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#2a78d6"></span>
-                    <span data-i18n data-fr="Présent" data-ar="حاضر">Présent</span>
-                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
-                  </button>
-                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="absence_jour" aria-pressed="false">
-                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#eb6834"></span>
-                    <span data-i18n data-fr="Absent" data-ar="غائب">Absent</span>
-                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
-                  </button>
-                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_partielle" aria-pressed="false">
-                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#1baf7a"></span>
-                    <span data-i18n data-fr="Partiel" data-ar="جزئي">Partiel</span>
-                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
-                  </button>
-                </div>
-                <input type="hidden" id="mt-occupation-jour" name="occupation_jour" />
+                <DevisMonToitOccupation aria="Courbes de consommation horaires des trois profils d’occupation" />
               </fieldset>
 
-              <fieldset class="flex flex-col gap-3">
-                <legend class="text-sm text-lune-soft" data-i18n
-                  data-fr="Équipements (facultatif — affine votre étude)"
-                  data-ar="التجهيزات (اختياري)">
-                  Équipements (facultatif — affine votre étude)
-                </legend>
-
-                <div>
-                  <label class="flex items-center gap-2 text-sm">
-                    <input id="mt-equip-chauffe-eau" type="checkbox" class="h-4 w-4 accent-brass-400" />
-                    <span data-i18n data-fr="Chauffe-eau électrique" data-ar="سخان ماء كهربائي">Chauffe-eau électrique</span>
-                  </label>
-                  <!-- L-WEBT2 — détail kW/créneau ENCORE PLUS facultatif : la
-                       couche chauffe-eau du moteur n'existe que si les DEUX
-                       sont renseignés (apps/ventes/courbes_journalieres.py) ;
-                       une seule moitié saisie ne produit rien, jamais une
-                       erreur. -->
-                  <div data-equip-detail hidden class="mt-1.5 pl-6">
-                    <label class="block text-xs text-lune-faint" data-i18n
-                      data-fr="Puissance du chauffe-eau (kW, facultatif)"
-                      data-ar="قدرة سخان الماء (كيلوواط، اختياري)">
-                      Puissance du chauffe-eau (kW, facultatif)
-                    </label>
-                    <input id="mt-equip-chauffe-eau-kw" type="number" min="0" step="any" inputmode="decimal"
+              <DevisMonToitEquipements>
+                <DevisMonToitChauffeEau><input id="mt-equip-chauffe-eau-kw" type="number" min="0" step="any" inputmode="decimal"
                       placeholder="ex : 2.4"
                       class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
                     <MonToitLabel6E88 />
@@ -1302,31 +1213,9 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                       <option value="nuit">Nuit</option>
                       <option value="journee">Toute la journée</option>
                     </select>
-                  </div>
-                </div>
+                </DevisMonToitChauffeEau>
 
-                <div>
-                  <label class="flex items-center gap-2 text-sm">
-                    <input id="mt-equip-ve" type="checkbox" class="h-4 w-4 accent-brass-400" />
-                    <span data-i18n data-fr="Véhicule électrique (actuel ou prévu)" data-ar="سيارة كهربائية (حالية أو مستقبلية)">Véhicule électrique (actuel ou prévu)</span>
-                  </label>
-                  <div data-equip-detail hidden class="mt-1.5 pl-6">
-                    <label class="block text-xs text-lune-faint" data-i18n
-                      data-fr="Km parcourus par semaine avec ce véhicule"
-                      data-ar="عدد الكيلومترات المقطوعة أسبوعياً بهذه السيارة">
-                      Km parcourus par semaine avec ce véhicule
-                    </label>
-                    <input id="mt-equip-ve-km" type="number" min="0" step="1" inputmode="numeric"
-                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
-                    <!-- L-WEBT2 — précision facultative : chargeur réel +
-                         créneau réel, quand connus, resserrent la fenêtre de
-                         recharge servie (sinon la fenêtre 21h-6h par défaut). -->
-                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
-                      data-fr="Puissance du chargeur (kW, facultatif)"
-                      data-ar="قدرة الشاحن (كيلوواط، اختياري)">
-                      Puissance du chargeur (kW, facultatif)
-                    </label>
-                    <input id="mt-equip-ve-kw" type="number" min="0" step="any" inputmode="decimal"
+                <DevisMonToitVehicule><input id="mt-equip-ve-kw" type="number" min="0" step="any" inputmode="decimal"
                       placeholder="ex : 7.4"
                       class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
                     <MonToitLabelE08D />
@@ -1337,30 +1226,9 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                       <option value="jour">Jour</option>
                       <option value="soir">Soir</option>
                     </select>
-                  </div>
-                </div>
+                </DevisMonToitVehicule>
 
-                <div>
-                  <label class="flex items-center gap-2 text-sm">
-                    <input id="mt-equip-clim" type="checkbox" class="h-4 w-4 accent-brass-400" />
-                    <span data-i18n data-fr="Climatisation" data-ar="تكييف الهواء">Climatisation</span>
-                  </label>
-                  <div data-equip-detail hidden class="mt-1.5 pl-6">
-                    <label class="block text-xs text-lune-faint" data-i18n
-                      data-fr="Nombre de pièces/unités climatisées"
-                      data-ar="عدد الغرف/الوحدات المكيّفة">
-                      Nombre de pièces/unités climatisées
-                    </label>
-                    <input id="mt-equip-clim-pieces" type="number" min="0" step="1" inputmode="numeric"
-                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
-                    <!-- L-WEBT2 — puissance réelle (facultative) : remplace
-                         l'estimation par nombre de pièces si connue. -->
-                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
-                      data-fr="Puissance totale réelle (kW, facultatif)"
-                      data-ar="القدرة الإجمالية الفعلية (كيلوواط، اختياري)">
-                      Puissance totale réelle (kW, facultatif)
-                    </label>
-                    <input id="mt-equip-clim-kw" type="number" min="0" step="any" inputmode="decimal"
+                <DevisMonToitClim><input id="mt-equip-clim-kw" type="number" min="0" step="any" inputmode="decimal"
                       placeholder="ex : 2.8"
                       class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
                     <MonToitLabel42B0 />
@@ -1372,31 +1240,9 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                       <option value="soir">Soir</option>
                       <option value="journee">Toute la journée</option>
                     </select>
-                  </div>
-                </div>
+                </DevisMonToitClim>
 
-                <div>
-                  <label class="flex items-center gap-2 text-sm">
-                    <input id="mt-equip-piscine" type="checkbox" class="h-4 w-4 accent-brass-400" />
-                    <span data-i18n data-fr="Piscine" data-ar="مسبح">Piscine</span>
-                  </label>
-                  <div data-equip-detail hidden class="mt-1.5 pl-6">
-                    <label class="block text-xs text-lune-faint" data-i18n
-                      data-fr="Puissance de la pompe de filtration (kW)"
-                      data-ar="قدرة مضخة الترشيح (كيلوواط)">
-                      Puissance de la pompe de filtration (kW)
-                    </label>
-                    <input id="mt-equip-piscine-kw" type="number" min="0" step="any" inputmode="decimal"
-                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
-                    <!-- L-WEBT2 — durée/créneau réels (facultatifs) : la durée
-                         remplace le défaut 8h, le créneau déplace le départ
-                         (10h par défaut) — indépendants, se composent librement. -->
-                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
-                      data-fr="Heures de filtration par jour (facultatif)"
-                      data-ar="ساعات الترشيح يومياً (اختياري)">
-                      Heures de filtration par jour (facultatif)
-                    </label>
-                    <input id="mt-equip-piscine-heures" type="number" min="0" max="24" step="any" inputmode="decimal"
+                <DevisMonToitPiscine><input id="mt-equip-piscine-heures" type="number" min="0" max="24" step="any" inputmode="decimal"
                       placeholder="ex : 6"
                       class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
                     <MonToitLabel42B0 />
@@ -1408,22 +1254,9 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                       <option value="soir">Soir</option>
                       <option value="journee">Toute la journée</option>
                     </select>
-                  </div>
-                </div>
-              </fieldset>
-            </div>
-          </details>
-
-          <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true"
-              aria-describedby="mt-consent-err" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
-            <span data-i18n data-fr="J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire." data-ar="أوافق على أن تتواصل معي تاكينور بخصوص مشروعي الشمسي.">
-              J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire.
-            </span>
-          </label>
-          <span id="mt-consent-err" hidden role="alert" class="block text-xs text-alert-300"></span>
-
-          <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
+                </DevisMonToitPiscine>
+              </DevisMonToitEquipements>
+          </DevisMonToitProfil>
 
           <!-- WJ3 — CTA PRIMAIRE WhatsApp-first. WJ60 — libellé « Envoi en cours… »
                pendant l'attente réseau (bascule via #mt-submit-label/#mt-submit-pending,
@@ -1454,7 +1287,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
           <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
             <p class="font-semibold" data-i18n data-fr="Merci ! Votre demande est enregistrée." data-ar="شكراً! تم تسجيل طلبك.">Merci ! Votre demande est enregistrée.</p>
             <p class="mt-1 text-lune-soft" data-i18n data-fr="Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp." data-ar="فريقنا يُعدّ دراستك ويتواصل معك قريباً — غالباً عبر واتساب.">Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp.</p>
-            <!-- WJ52 — référence courte : comble le vide post-soumission (24–48 h
+            <!-- WJ52 — référence courte : comble le vide post-soumission (rappel
                  d'attente) par un artefact concret à mentionner sur WhatsApp. -->
             <p class="mt-2 text-lune-soft">
               <span data-i18n data-fr="Votre référence :" data-ar="مرجعكم:">Votre référence&nbsp;:</span>

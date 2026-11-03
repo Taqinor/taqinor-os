@@ -11,27 +11,25 @@
  * فقط على أبواب إنسانية (واتساب، هاتف، NAP، SAV)؛ تصبح النسخة الخالصة من ذلك،
  * مع طلب معاودة اتصال هاتفي صريح إضافي.
  */
+import ContactCarteWa from '../../components/blocs/ContactCarteWa.astro';
+import ContactEntete from '../../components/blocs/ContactEntete.astro';
 import Layout from '../../layouts/Layout.astro';
-import StarRating from '../../components/StarRating.astro';
 import { NAP } from '../../lib/nap';
+import { useTranslations } from '../../i18n/utils';
 import { contactWhatsappLinks } from '../../lib/contactWhatsapp';
 import ContactP1D0F from '../../components/blocs/ContactP1D0F.astro';
-import ContactBlocCF60 from '../../components/blocs/ContactBlocCF60.astro';
 
+const t = useTranslations('ar');
 const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
 ---
 
 <Layout
   title="اتصال — تحدّث مع إنسان | Taqinor"
-  description="واتساب مباشر، معاودة اتصال هاتفي، معلومات تواصل كاملة: تحدّث مع فريق Taqinor التقني بخصوص مشروعك الشمسي. رد خلال 48 ساعة عمل."
+  description="واتساب مباشر، معاودة اتصال هاتفي، معلومات تواصل كاملة: تحدّث مع فريق Taqinor التقني بخصوص مشروعك الشمسي. رد عبر واتساب خلال ساعة، 7 أيام على 7."
   ogSlug="contact"
 >
   <div class="v2">
-    <ContactBlocCF60 />
-
-    <section class="px-4 py-20 text-white">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">رد خلال 48 ساعة عمل</p>
+    <ContactEntete>
         <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">تحدّث مع إنسان</h1>
         <p class="v2-lead cine-in mt-5 max-w-xl text-white/85 [animation-delay:240ms]">
           لا نموذج هنا: راسلنا مباشرة عبر واتساب، اتصل بنا، أو اطلب معاودة الاتصال. للحصول على
@@ -39,22 +37,17 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
         </p>
         {/* W280 — StarRating: تقييم Google حقيقي فقط، آمن بدون بيانات (لا
             يعرض شيئاً حتى يوفّر المؤسّس تقييماً حقيقياً). */}
-        <div class="cine-in mt-6 [animation-delay:320ms]">
-          <StarRating />
-        </div>
-      </div>
-    </section>
+    </ContactEntete>
 
     <!-- W249 — صفحة «التحدث مع إنسان»: اختصارات واتساب/الهاتف وبطاقة NAP -->
     <section class="bg-blanc-azur px-4 py-16 text-encre">
       <div class="mx-auto max-w-4xl">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-          <a href={waGeneral} rel="noopener"
-            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:0">
+          <ContactCarteWa href={waGeneral}>
             <p class="tech-label text-azur-600">مشروع جديد</p>
             <p class="mt-2 font-display font-bold">واتساب — تركيبة جديدة</p>
             <p class="mt-1 text-sm text-encre-soft">دراسة وعرض ثمن لمشروع جديد</p>
-          </a>
+          </ContactCarteWa>
           {/* W249 — معاودة الاتصال الهاتفي: باب إنساني لمن يفضّل التحدث بدل
               الكتابة (مُعبَّأ مسبقاً، لا فراغ للتحرير). */}
           <a href={waRappel} rel="noopener"

@@ -17,6 +17,7 @@
  * (guide FDA 2024), maghrebail.ma (Energy Lease), fiscamaroc.com (art. 123-22°
  * CGI). Taux/montants non publiés par l'émetteur restent hors de cette page.
  */
+import { RETOUR_PAR_SEGMENT } from '../lib/billRange';
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
@@ -26,9 +27,8 @@ import StickyCta from '../components/StickyCta.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 
 const chiffres = [
-  { v: '3–7 ans', label: 'Retour sur investissement typique' },
+  ...(RETOUR_PAR_SEGMENT.residentiel ? [{ v: RETOUR_PAR_SEGMENT.residentiel.label.fr, label: 'Retour sur investissement typique' }] : []),
   { v: '30 ans', label: 'Garantie de performance des panneaux' },
-  { v: '50–100 %', label: 'De la facture couverte — selon batteries et usage jour/nuit' },
   { v: '0 MAD', label: 'L’étude et le diagnostic' },
 ];
 
@@ -40,11 +40,6 @@ const moyens = [
   },
   {
     k: '02',
-    title: 'Crédit à la consommation bancaire classique',
-    body: 'D’autres passent par un crédit à la consommation classique, souscrit directement auprès de leur banque. Le montage se traite entre vous et votre établissement — nous n’y intervenons pas et n’y touchons aucune commission.',
-  },
-  {
-    k: '03',
     title: 'Financement vert (entreprises)',
     body: 'Côté entreprises, des lignes de financement vert pour les énergies renouvelables existent au Maroc. L’accord et les conditions relèvent de votre banque et de votre dossier ; nous ne vendons ni crédit ni produit bancaire, et n’en garantissons aucun.',
   },
@@ -83,22 +78,12 @@ const mecanismes = [
       },
     ],
   },
-  {
-    segment: 'Résidentiel',
-    items: [
-      {
-        nom: 'Prêts verts bancaires',
-        body: 'Certaines banques marocaines proposent, au cas par cas, des lignes de crédit dites « vertes » pouvant couvrir un projet solaire résidentiel. Nous n’avons pas pu vérifier à ce jour qu’un établissement nommé package une offre dédiée au solaire résidentiel — nous ne citons donc aucune banque ici : renseignez-vous directement auprès de la vôtre.',
-        source: 'non vérifié — aucune banque nommée tant que non confirmé',
-      },
-    ],
-  },
 ];
 ---
 
 <Layout
-  title="Rentabilité & financement du solaire au Maroc : ROI 3–7 ans | Taqinor"
-  description="Ce que rapporte vraiment une installation solaire au Maroc : remboursée en gros en 3 à 7 ans par l’électricité que vous cessez d’acheter (barème régie ONEE), puis 30 ans de performance garantie et 50 à 100 % de facture couverte. Comment la financer sans détour — Taqinor installe et garantit, mais n’est pas prêteur."
+  title="Rentabilité & financement du solaire au Maroc | Taqinor"
+  description="Ce que rapporte vraiment une installation solaire au Maroc : l’électricité que vous cessez d’acheter (barème régie ONEE), puis 30 ans de performance garantie. Comment la financer sans détour — Taqinor installe et garantit, mais n’est pas prêteur."
   ogSlug="financement"
 >
   <div class="v2">
@@ -114,10 +99,8 @@ const mecanismes = [
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">L’investissement qui se rembourse, puis paie pour vous</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Une installation, c’est de l’ordre de 80 000 MAD pour une villa — un vrai investissement,
-          pas un gadget. Bien dimensionnée, elle <strong class="text-white">s’amortit en gros en
-          3 à 7 ans</strong> grâce à l’électricité que vous cessez d’acheter au réseau, valorisée au
-          barème régie ONEE. Passé ce point, il reste plus de vingt ans sur les 30 ans
-          garantis où votre courant est <strong class="text-white">quasi gratuit</strong>.
+          pas un gadget. Bien dimensionnée, elle <strong class="text-white">s’amortit</strong> grâce à l’électricité que vous cessez d’acheter au réseau, valorisée au
+          barème régie ONEE. Passé ce point, il reste les années de garantie où votre courant est <strong class="text-white">quasi gratuit</strong>.
         </p>
       </div>
     </section>
@@ -142,13 +125,7 @@ const mecanismes = [
           ))}
         </dl>
         <p class="mt-8 max-w-2xl text-sm leading-relaxed text-lune-soft">
-          Plus la facture est lourde, plus le retour est rapide. Pour une villa typique, comptez de
-          l’ordre de
-          <a href="/résidentiel" class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">4 à 6 ans en résidentiel</a> ;
-          sur un hangar, l’effet d’échelle resserre le retour à
-          <a href="/professionnel" class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">3 à 5 ans pour un site professionnel</a>.
-          En dessous de 1 000 MAD de facture mensuelle, en revanche, le retour passe le plus souvent
-          au-delà de 7 ans — et nous vous le dirons franchement plutôt que de vous vendre l’inutile.
+          Plus la facture est lourde, plus le retour est rapide. En dessous de 1 000 MAD de facture mensuelle, le retour s’allonge — et nous vous le dirons franchement plutôt que de vous vendre l’inutile.
         </p>
       </div>
     </section>
@@ -169,11 +146,11 @@ const mecanismes = [
         <ol class="mt-10 border-t-2 border-brass-400/60" data-stagger>
           <li class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-5" style="--v2-i:0">
             <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">1 · Facture</span><br />Votre relevé ONEE mensuel</span>
-            <span class="fig lum text-xl sm:text-2xl" data-tally>2 000 MAD</span>
+            <span class="fig lum text-xl sm:text-2xl">2 000 MAD</span>
           </li>
           <li class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-5" style="--v2-i:1">
             <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">2 · Puissance</span><br />La taille que cette facture appelle</span>
-            <span class="fig lum text-xl sm:text-2xl" data-tally>6 kWc</span>
+            <span class="fig lum text-xl sm:text-2xl">6 kWc</span>
           </li>
           <li class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-5" style="--v2-i:2">
             <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">3 · Investissement</span><br />Ordre de grandeur, jamais un devis</span>
@@ -183,13 +160,10 @@ const mecanismes = [
             <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">4 · Économie</span><br />Effacé chaque année au barème régie ONEE</span>
             <span class="fig lum text-xl sm:text-2xl">12 000 – 16 000 MAD/an</span>
           </li>
-          <li class="v2-rise flex items-baseline justify-between gap-4 py-5" style="--v2-i:4">
-            <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">5 · Retour</span><br />Puis 19 à 21 ans de courant quasi gratuit</span>
-            <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>4 à 6 ans</span>
-          </li>
+          
         </ol>
         <p class="mt-6 max-w-2xl text-xs leading-relaxed text-lune-soft">
-          Le vôtre partira de votre propre facture, pas de celle-ci — <a href="/devis/mon-toit" class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">lancez votre diagnostic gratuit</a>.
+          Le vôtre partira de votre propre facture, pas de celle-ci — <a href="/devis/mon-toit/" class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">lancez votre diagnostic gratuit</a>.
         </p>
       </div>
     </section>
@@ -273,21 +247,23 @@ const mecanismes = [
             On les fait passer dans le calcul, et le résultat est le vôtre, pas une moyenne de
             plaquette.
           </p>
-          <a href="/devis/mon-toit" class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Calculer ma rentabilité — étude à 0 MAD</a>
+          <a href="/devis/mon-toit/" class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Calculer ma rentabilité — étude à 0 MAD</a>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>0 MAD</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl">0 MAD</dd>
             <dt class="tech-label mt-2 text-lune-faint">L’étude et le diagnostic</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>30 ans</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl">30 ans</dd>
             <dt class="tech-label mt-2 text-lune-faint">Performance garantie (≥ 87,4 %)</dt>
           </div>
+          {RETOUR_PAR_SEGMENT.residentiel && (
           <div class="v2-rise" style="--v2-i:2">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>3–7 ans</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl">{RETOUR_PAR_SEGMENT.residentiel.label.fr}</dd>
             <dt class="tech-label mt-2 text-lune-faint">Retour sur investissement typique</dt>
           </div>
+          )}
           <div class="v2-rise" style="--v2-i:3">
             <dd class="font-display text-xl font-bold text-white">Barème ONEE</dd>
             <dt class="tech-label mt-2 text-lune-faint">Base du calcul d’électricité évitée</dt>
@@ -300,17 +276,17 @@ const mecanismes = [
     <section class="border-t border-white/10 px-4 py-16">
       <div class="mx-auto max-w-6xl">
         <RelatedLinks mt="mt-0" links={[
-          { href: '/résidentiel', label: 'Rentabilité résidentielle' },
-          { href: '/professionnel', label: 'Rentabilité professionnelle' },
-          { href: '/pompage-solaire', label: 'Pompage solaire agricole' },
-          { href: '/prix-panneaux-solaires-maroc', label: 'Prix des panneaux solaires au Maroc' },
-          { href: '/garanties', label: 'Nos garanties (30 ans)' },
-          { href: '/devis/mon-toit', label: 'Lancer mon diagnostic' },
+          { href: '/résidentiel/', label: 'Rentabilité résidentielle' },
+          { href: '/professionnel/', label: 'Rentabilité professionnelle' },
+          { href: '/pompage-solaire/', label: 'Pompage solaire agricole' },
+          { href: '/prix-panneaux-solaires-maroc/', label: 'Prix des panneaux solaires au Maroc' },
+          { href: '/garanties/', label: 'Nos garanties (30 ans)' },
+          { href: '/devis/mon-toit/', label: 'Lancer mon diagnostic' },
         ]} />
       </div>
     </section>
 
-    <CtaBand title="Combien votre toit vous rapporte ? Le diagnostic gratuit le chiffre." href="/devis/mon-toit" />
+    <CtaBand title="Combien votre toit vous rapporte ? Le diagnostic gratuit le chiffre." href="/devis/mon-toit/" />
 
     <StickyCta />
   </div>

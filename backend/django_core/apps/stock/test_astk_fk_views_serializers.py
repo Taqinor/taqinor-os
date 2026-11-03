@@ -294,6 +294,27 @@ class CorpsFuzzTests(TestCase):
         self.modele = ModeleBonCommandeFournisseur.objects.create(
             company=self.a, nom='Modèle F')
 
+    def test_motif_non_blanc_refuse_ce_que_strip_retire(self):
+        """ERR-ENF11 (cron 41296444614) : ``tiers_nom`` = \\x85 jugé conforme."""
+        import re
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL as MOTIF
+        for blanc in ('', ' ', '\x85', '\x1c', '\x1f', '\xa0', ' '):
+            self.assertEqual(blanc.strip(), '')
+            self.assertIsNone(re.search(MOTIF, blanc), repr(blanc))
+        self.assertIsNotNone(re.search(MOTIF, ' a '))
+
+    def test_dupliquer_kit_nom_long_et_echelle_debordante(self):
+        """ERR-ENF11 (cron 41296444614) : deux DataError (500)."""
+        from apps.stock.models import KitProduit
+        kit = KitProduit.objects.create(company=self.a, nom='K' * 255)
+        r = self.api.post(f'{BASE}/kits/{kit.id}/dupliquer/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertLessEqual(len(r.data['nom']), 255)
+        kit.composants.create(produit=self.pa, quantite=Decimal('99999999'))
+        r = self.api.post(f'{BASE}/kits/{kit.id}/dupliquer/',
+                          {'facteur_echelle': 1000}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
     def test_fuzz_corps_non_objet_400(self):
         cas = [('post', '/api/django/achats/paiements-fournisseur/')] + [
             ('post', f'{BASE}/{fin}') for fin in (
@@ -699,8 +720,15 @@ class CorpsFuzzTests(TestCase):
         self.assertEqual(champ.run_validation(['SN1', 'SN2']), ['SN1', 'SN2'])
         self.assertEqual(champ.run_validation([]), [])
         self.assertIsNone(champ.run_validation(None))
-        r = self._api_admin().get(f'{BASE}/produits/tracabilite/?serie=0')
+        api = self._api_admin()
+        r = api.get(f'{BASE}/produits/tracabilite/?serie=0')
         self.assertEqual(r.status_code, 404, r.content)
+        # CI #1247 fuzz : vide = aucun numéro (404) ; blanc = motif violé (400).
+        for parametre in ('serie', 'lot'):
+            r = api.get(f'{BASE}/produits/tracabilite/?{parametre}=')
+            self.assertEqual(r.status_code, 404, r.content)
+            r = api.get(f'{BASE}/produits/tracabilite/?{parametre}=%20')
+            self.assertEqual(r.status_code, 400, r.content)
 
 
 class FuzzFiltresEtCorpsStockATests(TestCase):

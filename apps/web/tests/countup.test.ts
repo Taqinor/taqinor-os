@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { formatFrame, frFormat, isCompound, parseTokens, shouldDigitRoll } from '../src/lib/countup';
 
 // Espaces composés des chaînes réelles de la page d'accueil : insécable + fine.
@@ -6,12 +9,14 @@ const NBSP = String.fromCharCode(0xa0);
 const NNBSP = String.fromCharCode(0x202f);
 
 describe('shouldDigitRoll — valeurs simples animées, plages/composés jamais roulés', () => {
-  it('roule les valeurs simples (un seul nombre, unité optionnelle)', () => {
-    expect(shouldDigitRoll('25 ans')).toBe(true);
-    expect(shouldDigitRoll('0 MAD')).toBe(true);
-    expect(shouldDigitRoll('21 406 kWh/an')).toBe(true);
-    expect(shouldDigitRoll('43,48 kWc')).toBe(true);
-    expect(shouldDigitRoll('17,04 kWc')).toBe(true);
+  it('WAUD38 — ne roule jamais une valeur à unité (durée, puissance, argent) : aucune image fausse', () => {
+    for (const v of ['25 ans', '30 years', '0 MAD', '21 406 kWh/an', '43,48 kWc', '17,04 kWc', '44,19 MWh', '10 سنوات', '+20 ans']) {
+      expect(shouldDigitRoll(v), v).toBe(false);
+    }
+  });
+  it('roule seulement un nombre nu ou un pourcentage', () => {
+    expect(shouldDigitRoll('240')).toBe(true);
+    expect(shouldDigitRoll('87,4 %')).toBe(true);
   });
 
   it('ne roule JAMAIS une plage ou une valeur composée', () => {
@@ -62,23 +67,12 @@ describe('formatFrame — image finale exacte', () => {
 });
 
 describe('formatFrame — image intermédiaire propre pour une valeur simple', () => {
-  it('conserve le suffixe « kWh/an » et un nombre bien formé, sans caractère parasite', () => {
-    const mid = formatFrame('21 406 kWh/an', 0.5);
-    expect(mid.endsWith(' kWh/an')).toBe(true);
-    // La partie numérique : chiffres + éventuels espaces de groupe uniquement.
-    const numPart = mid.slice(0, mid.length - ' kWh/an'.length);
-    expect(numPart).toMatch(new RegExp('^[0-9 ' + NBSP + NNBSP + ']+$'));
-    // Pas de séparateur de plage parasite ni de virgule (valeur entière).
-    expect(mid).not.toMatch(/[–-]/);
-    expect(mid).not.toContain(',');
-    // À mi-course la valeur est ~10 703 (la moitié de 21 406).
-    expect(numPart.replace(new RegExp('[ ' + NBSP + NNBSP + ']', 'g'), '')).toBe('10703');
+  it('WAUD38 — une valeur à unité reste la valeur finale à toute progression', () => {
+    expect(formatFrame('21 406 kWh/an', 0.5)).toBe('21 406 kWh/an');
+    expect(formatFrame('25 ans', 0.4)).toBe('25 ans');
   });
-
-  it('préserve l’unité « ans » sur une valeur simple à mi-course', () => {
-    const mid = formatFrame('25 ans', 0.4);
-    expect(mid.endsWith(' ans')).toBe(true);
-    expect(mid).toBe('10 ans');
+  it('un nombre nu s’interpole et reste bien formé', () => {
+    expect(formatFrame('240', 0.5)).toBe('120');
   });
 });
 
@@ -93,5 +87,24 @@ describe('frFormat — formatage français (virgule décimale, espace milliers)'
 
   it('conserve la virgule décimale même avec groupement des milliers', () => {
     expect(frFormat(1234.5, 1, true)).toBe('1 234,5');
+  });
+});
+
+describe('WAUD38 — aucun data-tally sur un texte à unité', () => {
+  it('scan des sources .astro', () => {
+    const racine = fileURLToPath(new URL('../src', import.meta.url));
+    const fautifs: string[] = [];
+    const parcourir = (d: string) => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const p = join(d, e.name);
+        if (e.isDirectory()) parcourir(p);
+        else if (e.name.endsWith('.astro')) {
+          const m = readFileSync(p, 'utf-8').match(/data-tally[^>']*>[^<{]*(ans|years|سنة|سنوات|kWc|kW\b|MAD|kWh|MWh|DH)[^<]*</g);
+          if (m) fautifs.push(`${p}: ${m[0]}`);
+        }
+      }
+    };
+    parcourir(racine);
+    expect(fautifs).toEqual([]);
   });
 });

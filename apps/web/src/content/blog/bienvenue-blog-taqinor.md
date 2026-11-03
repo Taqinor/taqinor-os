@@ -1,7 +1,7 @@
 ---
 title: "Le blog Taqinor : à quoi il sert"
 description: "Ce qu'on publie ici — retours de chantier, choix d'équipement, évolutions du cadre marocain — et en quoi ça complète, sans les remplacer, nos guides pérennes sur le solaire au Maroc."
-pubDate: 2026-01-12
+pubDate: 2026-06-21
 tags: ["actualités", "à-propos"]
 author: "Reda Kasri"
 ogSlug: "accueil"
