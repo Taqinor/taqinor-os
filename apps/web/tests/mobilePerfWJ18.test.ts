@@ -137,3 +137,16 @@ describe('WAUD8 — aucune animation infinie qui force une peinture à chaque im
     expect(css).toMatch(/prefers-reduced-motion: no-preference\)\s*\{\s*\.mt-skeleton-shimmer::after/);
   });
 });
+
+describe('WAUD78 — la carte attend un geste à l’étape 0 (facultative)', () => {
+  it('les 3 tunnels portent la façade, à côté du conteneur de carte', () => {
+    for (const p of ['../src/pages/devis/mon-toit.astro', '../src/pages/en/devis/mon-toit.astro', '../src/pages/ar/devis/mon-toit.astro']) {
+      expect(readFileSync(root(p), 'utf-8')).toContain('id="mt-map-facade"');
+    }
+  });
+  it('carte et Three restent des imports dynamiques dans les modules du tunnel', () => {
+    for (const p of ['../src/lib/tunnel/carte.ts', '../src/lib/tunnel/parcours.ts']) {
+      expect(staticValueImports(readFileSync(root(p), 'utf-8')).filter((m) => /maplibre|three|roofPro11/.test(m))).toEqual([]);
+    }
+  });
+});

@@ -270,3 +270,70 @@ describe('WAUD1 — repli visible si la carte échoue', () => {
     expect(document.getElementById('mt-fallback')!.hidden).toBe(false);
   });
 });
+
+describe('WAUD78 — façade : aucune requête carte avant un geste', () => {
+  const cfg = { json: async () => ({ available: true, maptilerKey: 'k' }) };
+  function montage(pin = false) {
+    (fetch as any).mockResolvedValue(cfg);
+    document.body.innerHTML = '';
+    const bootCaptureOnly = vi.fn();
+    const chargeurs = { captureBoot: vi.fn(async () => ({ bootCaptureOnly })), viewerOnly: vi.fn(async () => ({ createRoofViewer: vi.fn() })) };
+    document.body.innerHTML = `${HTML}<form id="rp9-search"></form><button id="mt-map-facade"></button>`;
+    const config: ConfigLocale & ConfigCarte = {
+      locale: 'fr', langueBasculable: true, formatNombre: String, doc: document, reducedMotion: true,
+      estimationGatee: true, apercu3dPublic: true, statutsSuiventLangue: false, optionsBootLocale: {}, chargeurs,
+    };
+    const ctx = creerContexte(creerDom(document), creerEtat(null, 'fr'), config) as ContexteCarte;
+    if (pin) ctx.etat.capturePin = { lat: 33.5, lng: -7.6 };
+    for (const n of ['syncCityRequirement', 'markDataEntered', 'saveWizardState']) ctx.crochets.installer(n, () => {});
+    ctx.crochets.installer('langueActive', () => 'fr');
+    installerCarte(ctx);
+    return { ctx, chargeurs, bootCaptureOnly };
+  }
+
+  it('étape 0 sans repère : ni fetch ni import, squelette arrêté', async () => {
+    const { ctx, chargeurs } = montage();
+    ctx.crochets.appeler('ensureMapBooted');
+    await attendre();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(chargeurs.captureBoot).not.toHaveBeenCalled();
+    expect(document.getElementById('rp9-map')!.classList.contains('mt-skeleton-shimmer')).toBe(false);
+  });
+
+  it('clic sur la façade : la carte démarre et la façade disparaît', async () => {
+    const { ctx, bootCaptureOnly } = montage();
+    ctx.crochets.appeler('ensureMapBooted');
+    document.getElementById('mt-map-facade')!.click();
+    await attendre(); await attendre();
+    expect(bootCaptureOnly).toHaveBeenCalledTimes(1);
+    expect(document.getElementById('mt-map-facade')).toBeNull();
+  });
+
+  it('un repère déjà posé (reprise) démarre la carte sans geste', async () => {
+    const { ctx, bootCaptureOnly } = montage(true);
+    ctx.crochets.appeler('ensureMapBooted');
+    await attendre(); await attendre();
+    expect(bootCaptureOnly).toHaveBeenCalledTimes(1);
+  });
+
+  it('focus sur l’adresse ou choix du geste : la carte démarre', async () => {
+    const a = montage();
+    document.getElementById('rp9-address')!.dispatchEvent(new Event('focus'));
+    await attendre(); await attendre();
+    expect(a.bootCaptureOnly).toHaveBeenCalledTimes(1);
+    const b = montage();
+    document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode')[0].click();
+    await attendre(); await attendre();
+    expect(b.bootCaptureOnly).toHaveBeenCalledTimes(1);
+  });
+
+  it('adresse validée avant le chargement : pas de rechargement, recherchée au démarrage', async () => {
+    const { bootCaptureOnly } = montage();
+    (document.getElementById('rp9-address') as HTMLInputElement).value = ' Maârif ';
+    const e = new Event('submit', { cancelable: true });
+    document.getElementById('rp9-search')!.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+    await attendre(); await attendre();
+    expect(bootCaptureOnly.mock.calls[0][0].initialQuery).toBe('Maârif');
+  });
+});

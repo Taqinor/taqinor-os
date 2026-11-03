@@ -195,6 +195,11 @@ function construireCarte(ctx: ContexteCarte) {
     masquer('mt-roof-mode-group');
   }
 
+  // WAUD78 — 560 Ko de carte (MapLibre + types) ne partent plus à l'étape 0, qui est
+  // FACULTATIVE : la façade attend un geste. Sans façade dans la page : démarrage direct.
+  let carteMontee = false;
+  let adresseEnAttente = '';
+
   async function boot(key: string, mapboxToken: string) {
     if (etat.started) return;
     etat.started = true;
@@ -203,12 +208,14 @@ function construireCarte(ctx: ContexteCarte) {
     surveillerWorkersCarte(doc.defaultView, showFallback);
     try {
       const { bootCaptureOnly } = await config.chargeurs.captureBoot();
+      carteMontee = true;
       bootCaptureOnly({
         maptilerKey: key,
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
         onReady: clearMapSkeleton,
         onMapError: showFallback,
+        ...(adresseEnAttente ? { initialQuery: adresseEnAttente } : {}),
         ...config.optionsBootLocale,
         roofInputMode: () => etat.roofInputMode,
         hydratePans: etat.capturePans.length >= 2 ? etat.capturePans : undefined,
@@ -236,9 +243,14 @@ function construireCarte(ctx: ContexteCarte) {
   }
 
   // Un seul fetch /api/roof-config par visite, et seulement quand l'étape 0 est active.
-  function ensureMapBooted() {
+  function demarrerCarte() {
     if (etat.mapFetchDone) return;
     etat.mapFetchDone = true;
+    const facade = $('mt-map-facade');
+    if (facade) {
+      facade.remove();
+      mapEl?.classList.add('mt-skeleton-shimmer');
+    }
     (async () => {
       try {
         const reponse = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -255,9 +267,30 @@ function construireCarte(ctx: ContexteCarte) {
     })();
   }
 
+  /** Crochet appelé à l'étape 0 : carte seulement si un repère est à réafficher. */
+  function ensureMapBooted() {
+    if (etat.mapFetchDone) return;
+    if (!$('mt-map-facade') || etat.capturePin) {
+      demarrerCarte();
+      return;
+    }
+    clearMapSkeleton();
+  }
+
   const brancherBoot = () => {
+  $('mt-map-facade')?.addEventListener('click', demarrerCarte);
+  addressEl?.addEventListener('focus', demarrerCarte);
+  // Adresse validée avant la fin du chargement : elle est gardée et cherchée au démarrage
+  // (sans ce relais, le formulaire encore non câblé rechargerait la page).
+  $('rp9-search')?.addEventListener('submit', (e) => {
+    if (carteMontee) return;
+    e.preventDefault();
+    adresseEnAttente = addressEl?.value.trim() ?? '';
+    demarrerCarte();
+  });
   doc.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
     b.addEventListener('click', () => {
+      demarrerCarte();
       const v: 'point' | 'draw' = b.dataset.value === 'draw' ? 'draw' : 'point';
       if (v === etat.roofInputMode) return;
       etat.roofInputMode = v;
