@@ -182,6 +182,67 @@ class EmpreinteOppositionTests(TestCase):
     def _effacer(self):
         dsr_provider.erase_crm(self.company, EMAIL)
 
+    def _fusionner(self, survivant, *absorbes):
+        from apps.crm.leads_fusion import merge_leads
+        return merge_leads(survivant, list(absorbes), self.user)
+
+    def _opposition_au_registre(self, identifiant):
+        from core.models import ConsentRecord
+        return ConsentRecord.objects.filter(
+            company=self.company, subject_identifier=identifiant,
+            granted=False, source__startswith='fusion de fiches').exists()
+
+    def test_fusion_contact_comble_sur_un_survivant_oppose(self):
+        """D-ACVI-6 — l'absorbé n'est pas opposé, le survivant l'est : le
+        téléphone et l'e-mail venus de l'absorbé portent l'opposition."""
+        numero = '+212612349073'
+        courriel = 'comble.acvi6@example.com'
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', whatsapp='+212612349074',
+            ne_plus_contacter=True, owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', telephone=numero, email=courriel,
+            owner=self.user)
+
+        self._fusionner(survivant, absorbe)
+
+        survivant.refresh_from_db()
+        self.assertEqual(survivant.telephone, numero)
+        self.assertEqual(survivant.email, courriel)
+        for contact in ({'telephone': numero}, {'email': courriel}):
+            with self.subTest(contact=contact):
+                recree = Lead.objects.create(
+                    company=self.company, nom='Recrée', **contact)
+                self.assertTrue(recree.ne_plus_contacter)
+        self.assertTrue(self._opposition_au_registre(numero))
+        self.assertTrue(self._opposition_au_registre(courriel))
+
+    def test_fusion_sans_contact_comble_n_ecrit_rien_au_registre(self):
+        """Survivant opposé, aucun contact comblé : rien de neuf à tracer."""
+        from core.models import ConsentRecord
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', telephone='+212612349075',
+            ne_plus_contacter=True, owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', ville='Rabat', owner=self.user)
+        avant = ConsentRecord.objects.count()
+
+        self._fusionner(survivant, absorbe)
+
+        self.assertEqual(ConsentRecord.objects.count(), avant)
+
+    def test_fusion_sans_opposition_ne_laisse_aucune_empreinte(self):
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', email='libre.acvi6@example.com',
+            owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', telephone='+212612349076',
+            owner=self.user)
+
+        self._fusionner(survivant, absorbe)
+
+        self.assertFalse(EmpreinteOpposition.objects.exists())
+
     def _rattraper(self):
         from importlib import import_module
         from types import SimpleNamespace

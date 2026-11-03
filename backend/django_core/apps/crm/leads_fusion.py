@@ -301,7 +301,11 @@ def merge_leads(survivor, others, user):
             ancienne = survivor.stage
             appliquer_stage_lead(survivor, cible, user=user)
             activity.log_bulk_change(survivor, user, 'stage', ancienne, cible)
-        if oppose:  # ACVI21 — après l'étape 6 : sous les identifiants complétés.
+        # ACVI21 — après l'étape 6 : sous les identifiants complétés.
+        # D-ACVI-6 — un contact comblé sur un survivant déjà opposé porte aussi
+        # l'opposition ; sans contact neuf, rien de neuf à inscrire au registre.
+        contact_comble = champs_ecrits & {'email', 'telephone', 'whatsapp'}
+        if oppose or (survivor.ne_plus_contacter and contact_comble):
             tracer_opposition_registre(survivor, source='fusion de fiches')
     if relances_reprises and not survivor.ne_plus_contacter:
         # CAD106 — la fusion DIT ce qu'elle a fait des relances : sans cette
