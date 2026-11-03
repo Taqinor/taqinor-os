@@ -89,6 +89,33 @@ class PatchMarqueSaisiesHumainesTests(TestCase):
         self.api.force_authenticate(self.user)
         self.url = f'/api/django/crm/leads/{self.lead.pk}/'
 
+    def test_regle_automatique_respecte_marqueur_et_dedup(self):
+        # ACVI32 — la porte des automatisations écrit comme le PATCH.
+        from apps.crm.fiche_ecritures import appliquer_champ_automatique
+        from apps.crm.services import find_duplicates_by_contact
+        from apps.records.models import Activity
+        from apps.records.provenance import MESSAGE_REFUS
+
+        Lead.objects.filter(pk=self.lead.pk).update(email='a@exemple.ma')
+        r = self.api.patch(self.url, {'email': ''}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.lead.refresh_from_db()
+        self.assertIn('email', self.lead.saisies_humaines)
+
+        appliquer_champ_automatique(self.lead, 'email', 'x@exemple.ma')
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.email)
+        self.assertTrue(Activity.objects.filter(
+            company=self.company, field='email', body=MESSAGE_REFUS).exists())
+
+        b = Lead.objects.create(company=self.company, nom='B')
+        appliquer_champ_automatique(b, 'telephone', '0612340025')
+        b.refresh_from_db()
+        self.assertEqual(b.phone_normalise, '612340025')
+        self.assertEqual(
+            [d.pk for d in find_duplicates_by_contact(
+                self.company, phone='0612340025')], [b.pk])
+
     def test_post_marque_les_champs_saisis(self):
         # ACVI25 — la date tapée au POST survit au démarrage de la cadence.
         import datetime
