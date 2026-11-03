@@ -646,14 +646,18 @@ def jalons_paiement_devis(devis, lignes=None) -> list:
     LA règle d'AGNR49 (:func:`regle_somme_echeancier`) : chaque tranche en MAD
     à SON montant, la dernière au reste en MAD — jamais re-dérivés des %
     arrondis (6 000 imprimait 5 999,30). Règle refusée (donnée d'hier hors
-    règle) ou tout en % : répartition par pourcentages, comme avant.
+    règle), tout en %, ou devis non brouillon resté sous le niveau 8
+    (« nouveaux rendus seulement », le niveau d'AGNR52) : répartition par %.
     """
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CONSO_PUBLIQUE_0111, regles_au_moins)
     from apps.ventes.utils.options import option_totaux
     tranches = tranches_normalisees(devis)
     pourcentages = pourcentages_echeancier(devis, lignes=lignes)
     total = option_totaux(devis, lignes=lignes)['ttc']
     montants = None
-    if any(t['unite'] == UNITE_MONTANT for t in tranches):
+    if (regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)
+            and any(t['unite'] == UNITE_MONTANT for t in tranches)):
         try:
             non_dernieres, reste = regle_somme_echeancier(tranches, total)
             montants = dict(enumerate(non_dernieres + [reste]))
