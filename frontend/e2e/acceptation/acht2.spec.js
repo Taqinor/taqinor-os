@@ -1,6 +1,7 @@
 // Acceptation en direct — groupe ACHT, second lot (preuves dues ACHT124-129) + ASTK255/ASTK256.
 // Format : `_format.md`. Données posées par l'API ; ce que l'API ne sait pas écrire (parc SAV
 // ordre A/B) passe par `manage.py shell` (`executerDansDjango`, E2E_DJANGO_EXEC).
+import { execFileSync } from 'node:child_process'
 import { expect, test } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import {
@@ -9,7 +10,7 @@ import {
 
 test.describe.configure({ timeout: 300_000 })
 test.use({ viewport: { width: 1920, height: 1080 }, actionTimeout: 60_000 })
-const etape = groupe('ACHT', ['ACHT125', 'ACHT126', 'ACHT127', 'ACHT129'])
+const etape = groupe('ACHT', ['ACHT124', 'ACHT125', 'ACHT126', 'ACHT127', 'ACHT128', 'ACHT129'])
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
 
 const INST = `${API_DJANGO}/installations`
@@ -148,4 +149,123 @@ etape('PA6.1', ['ACHT129'], async ({ page, suivi }) => {
   await ouvrir()
   await ouvrir() // persistance : relecture serveur après rechargement
   suivi.verifie(5)
+})
+
+// ── Terrain hors ligne (ACHT124, ACHT128) : patron de `adep.spec.js` (file `taqinor-field-outbox`) ──
+const RESEAU = /\/api\/django\//
+const jour = () => new Date().toISOString().slice(0, 10)
+async function avecIntervention(page, corps, onglet) {
+  const { request } = page
+  const moi = (await (await request.get('/api/django/auth/me/')).json()).id
+  const ch = await request.post(`${INST}/chantiers/`, { data: {} })
+  expect(ch.ok(), `chantier créé (${ch.status()})`).toBeTruthy()
+  const chantier = (await ch.json()).id
+  const iv = await request.post(`${INST}/interventions/`, { data: {
+    installation: chantier, type_intervention: 'controle', technicien: moi, date_prevue: jour(),
+  } })
+  expect(iv.ok(), `intervention créée (${iv.status()})`).toBeTruthy()
+  const id = (await iv.json()).id
+  await page.context().addInitScript(([ident, tab]) => {
+    try {
+      localStorage.setItem('taqinor.onboardingTerrain.anonyme', '1')
+      sessionStorage.setItem('mj.activeId', String(ident))
+      sessionStorage.setItem('mj.tab', tab)
+    } catch { /* stockage indisponible */ }
+  }, [id, onglet])
+  try { await corps(id) } finally {
+    await request.delete(`${INST}/interventions/${id}/`).catch(() => null)
+    await request.delete(`${INST}/chantiers/${chantier}/`).catch(() => null)
+  }
+}
+const fileLocale = (page) => page.evaluate(() => new Promise((ok) => {
+  const req = indexedDB.open('taqinor-field-outbox', 1)
+  req.onupgradeneeded = () => req.result.createObjectStore('ops')
+  req.onsuccess = () => {
+    const get = req.result.transaction('ops', 'readonly').objectStore('ops').get('queue')
+    get.onsuccess = () => ok(Array.isArray(get.result) ? get.result : [])
+    get.onerror = () => ok([])
+  }
+  req.onerror = () => ok([])
+}))
+const CONTENEUR = (process.env.E2E_DJANGO_EXEC || 'docker exec live2-django').split(' ').pop()
+const docker = (...args) => execFileSync('docker', args, { stdio: 'pipe', timeout: 120_000 }).toString()
+
+// ── ACHT128 : le serveur injoignable (5xx) devient visible et abandonnable au 3e rejeu ───────
+etape('PA5.4', ['ACHT128'], async ({ page, context, suivi }) => {
+  suivi.attendre(RESEAU)
+  await avecIntervention(page, async () => {
+    await page.goto('/ma-journee')
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.getByPlaceholder(/Réserve à reprendre/)).toBeVisible()
+    await context.setOffline(true)
+    const texte = uniq('ACHT128')
+    await page.getByPlaceholder(/Réserve à reprendre/).fill(texte)
+    await page.getByRole('button', { name: 'Ajouter la réserve' }).click()
+    await expect(page.getByText('Hors ligne — enregistré').first()).toBeVisible()
+    expect((await fileLocale(page)).length).toBe(1)
+    docker('stop', CONTENEUR) // le proxy ne joint plus Django : 5xx sans corps JSON
+    try {
+      const tentatives = []
+      for (let i = 1; i <= 3; i += 1) {
+        await context.setOffline(false) // `online` : le flush part et reçoit le 5xx
+        await expect.poll(async () => (await fileLocale(page))[0]?.attempts ?? 0, { timeout: 60_000 }).toBeGreaterThanOrEqual(i)
+        const op = (await fileLocale(page))[0]
+        tentatives.push({ attempts: op.attempts, serverError: op.serverError ?? null })
+        if (i < 3) { await context.setOffline(true); await page.waitForTimeout(500) }
+      }
+      expect(tentatives[0].serverError, '1er échec : pas encore marquée').toBeNull()
+      expect(tentatives[1].serverError, '2e échec : pas encore marquée').toBeNull()
+      expect(tentatives[2].serverError, '3e échec : marquée, visible').toMatch(/./)
+      await page.keyboard.press('Escape')
+      await expect(page.getByTestId('sync-status-badge')).toHaveAttribute('data-sync-state', 'erreur', { timeout: 30_000 })
+      console.log(`[ACHT128] tentatives : ${JSON.stringify(tentatives)}`)
+    } finally { docker('start', CONTENEUR) }
+    await expect.poll(async () => (await page.request.get('/api/django/auth/me/').catch(() => null))?.status(), { timeout: 120_000 }).toBe(200)
+    await page.reload()
+    const indicateur = page.getByTestId('offline-sync-indicator').filter({ visible: true })
+    await page.getByRole('tab', { name: 'Photos' }).click()
+    await indicateur.getByRole('button', { name: /1 action\(s\) en échec/ }).click()
+    await indicateur.getByRole('button', { name: 'Abandonner' }).first().click()
+    await expect.poll(() => fileLocale(page)).toEqual([])
+  }, 'reserves')
+})
+
+// ── ACHT124 : une saisie hors ligne sur une ligne corrigée en ligne entre-temps ⇒ « conflit » ──
+etape('PA5.5', ['ACHT124'], async ({ page, context, suivi }) => {
+  suivi.attendre(RESEAU, 'reseau')
+  await avecIntervention(page, async (id) => {
+    await lireJson(await page.request.post(`${INST}/interventions/${id}/ajouter-ligne-consommation/`, {
+      data: { designation: 'Câble ACC124', quantite_utilisee: '10' } }), 'ligne hors devis')
+    const conso = async () => (await lireJson(await page.request.get(`${INST}/interventions/${id}/consommation/`), 'consommation'))
+      .lignes.find((l) => l.designation === 'Câble ACC124')
+    const T0 = await conso()
+    expect(Number(T0.quantite_utilisee)).toBe(10)
+    await page.goto('/ma-journee')
+    await expect(page.getByRole('dialog')).toBeVisible()
+    const carte = page.locator('div.rounded').filter({ hasText: 'Câble ACC124' }).first()
+    const champ = carte.locator('input[type="number"]')
+    await expect(champ).toHaveValue('10', { timeout: 30_000 })
+    // Un autre poste corrige la même ligne EN LIGNE (12) après le chargement du terminal.
+    await page.waitForTimeout(1100)
+    await lireJson(await page.request.post(`${INST}/interventions/${id}/modifier-ligne-consommation/`, {
+      data: { ligne: T0.id, quantite_utilisee: '12' } }), 'correction en ligne')
+    await context.setOffline(true)
+    await champ.fill('8')
+    await champ.blur()
+    await expect(page.getByText('Hors ligne — enregistré').first()).toBeVisible()
+    const op = (await fileLocale(page))[0]
+    expect(op.base_updated_at ?? op.baseUpdatedAt, 'l’op porte la date de la ligne chargée (T0)').toBeTruthy()
+    await context.setOffline(false)
+    await expect.poll(async () => JSON.stringify((await fileLocale(page))[0] ?? {}), { timeout: 60_000 }).toMatch(/conflit/i)
+    expect(Number((await conso()).quantite_utilisee), 'la ligne garde la valeur en ligne').toBe(12)
+    await page.reload()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.locator('div.rounded').filter({ hasText: 'Câble ACC124' }).first().locator('input[type="number"]')).toHaveValue('12', { timeout: 30_000 })
+    expect((await fileLocale(page)).length, 'l’op en conflit reste en file jusqu’à son abandon').toBe(1)
+    await page.getByRole('tab', { name: 'Photos' }).click()
+    const indicateur = page.getByTestId('offline-sync-indicator').filter({ visible: true })
+    await indicateur.getByRole('button', { name: /1 action\(s\) en échec/ }).click()
+    await indicateur.getByRole('button', { name: 'Abandonner' }).first().click()
+    await expect.poll(() => fileLocale(page)).toEqual([])
+  }, 'conso')
 })
