@@ -29,6 +29,23 @@ def _context(request_id=None):
     return {'request': request, 'view': None}
 
 
+class ConflitEtatLisibleTests(SimpleTestCase):
+    """ACVI76 — un refus par champ a un ``detail`` lisible, jamais un repr."""
+
+    def test_detail_additif_et_message(self):
+        from core.conflit_etat import ConflitEtat
+        from core.exceptions import _message_for
+
+        exc = ConflitEtat({'stage': ['Lead perdu — étape non modifiable.']})
+        self.assertEqual(str(exc.detail['detail']),
+                         'Lead perdu — étape non modifiable.')
+        self.assertEqual([str(m) for m in exc.detail['stage']],
+                         ['Lead perdu — étape non modifiable.'])
+        self.assertEqual(_message_for(exc, 'state_conflict'),
+                         'Lead perdu — étape non modifiable.')
+        self.assertEqual(str(ConflitEtat('texte').detail), 'texte')
+
+
 class ErrorEnvelopeTests(SimpleTestCase):
 
     def test_validation_error_400_has_fields_and_stable_code(self):

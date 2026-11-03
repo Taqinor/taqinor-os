@@ -115,6 +115,11 @@ def _message_for(exc, code: str) -> str:
         non_field = detail.get('non_field_errors') or detail.get('detail')
         if non_field:
             return str(non_field[0] if isinstance(non_field, list) else non_field)
+        # ACVI76 — le premier message du premier champ, jamais le repr Python.
+        for valeur in detail.values():
+            premier = valeur[0] if isinstance(valeur, list) and valeur else valeur
+            if isinstance(premier, str):
+                return str(premier)
     return str(exc)
 
 
