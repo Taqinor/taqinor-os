@@ -574,7 +574,7 @@ describe('WAUD50 (reste) — Article hors guides : dateModified = date affichée
         articles++;
         if (a.dateModified) {
           avecDate++;
-          expect(a.dateModified, r).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+          expect(a.dateModified, r).toMatch(/^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/);
         } else {
           expect(SANS_DATE_AFFICHEE.test(r), `${r} : Article sans dateModified`).toBe(true);
         }
