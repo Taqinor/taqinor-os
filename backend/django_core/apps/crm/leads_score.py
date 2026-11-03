@@ -145,6 +145,11 @@ def maybe_assign_mql(lead) -> bool:
     try:
         if lead is None or lead.mql_assigned_at is not None:
             return False
+        # ACVI29 — ni dossier clos, ni owner retiré par un humain.
+        from apps.records.provenance import saisies_humaines
+        if (lead.perdu or lead.is_archived or lead.ne_plus_contacter
+                or (not lead.owner_id and 'owner' in saisies_humaines(lead))):
+            return False
         seuil = _seuil_mql_for(getattr(lead, 'company', None))
         if not seuil:
             return False
