@@ -50,6 +50,11 @@ vi.mock('../../api/ventesApi', async (importOriginal) =>
     whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
     // QJR659 — partager le PDF (feuille native résolue) vaut envoi.
     partagePdfDevis: vi.fn(() => Promise.resolve({ data: { devis_statut: 'envoye' } })),
+    // ADVS14 — le PDF partagé est celui de pdf-partage (lien et QR de signature).
+    pdfAPartagerDevis: vi.fn(() => Promise.resolve({
+      data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+      headers: {},
+    })),
     // VX216(a) — « Réviser (nouvelle version) », mocké pour ne jamais
     // toucher le réseau réel dans le test du toast.warning associé.
     reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
@@ -1340,6 +1345,7 @@ describe('DevisList — QJR659 : partager le PDF vaut envoi', () => {
     await partager('DEV-PART-1')
     await waitFor(() => { expect(navigator.share).toHaveBeenCalled() })
     await waitFor(() => { expect(ventesApi.partagePdfDevis).toHaveBeenCalledWith(81) })
+    expect(ventesApi.pdfAPartagerDevis).toHaveBeenCalledWith(81)
   })
 
   it('AbortError (annulation) : aucun marquage', async () => {
