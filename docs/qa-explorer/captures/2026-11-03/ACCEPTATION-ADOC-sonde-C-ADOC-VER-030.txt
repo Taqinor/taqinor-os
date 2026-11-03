@@ -1,0 +1,6 @@
+== C-ADOC-VER-030 (sha 56d5b623a)
+attendu : un fichier « CIN.pdf » téléversé (nom = nom du fichier) dans un dossier dont la seule demande en attente est « CIN » solde cette demande et la checklist passe CIN à 'present' (preuve en direct d'ADOC177)
+observé : televerser CIN.pdf -> 201 ; noms=['CIN.pdf'] ; demande CIN statut=soldee ; service soldee par nom={'CIN.pdf': True, 'cin.PDF': True, 'Attestation CNSS.pdf': True} ; checklist=[(None, 'present')]
+{"repro": false}
+verdict : ÉCART
+base inchangée : non (avant 106543, après 106549) ; mails 0 ; tâches Celery bloquées 0
