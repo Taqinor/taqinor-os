@@ -81,9 +81,10 @@ class DevisListePrechargementTests(TestCase):
                     date_envoi=timezone.now(), date_acceptation=jour)
 
         def charge_le_json(requetes):
+            # Une colonne lue HORS d'un `->` : une annotation ne masque plus le
+            # reste du SELECT (retirer `.defer` rougit ce test, prefetch compris).
             return [q['sql'] for q in requetes
-                    if '"etude_params"' in q['sql']
-                    and 'etude_params" ->' not in q['sql']]
+                    if re.search(r'"etude_params"(?!\s*->)', q['sql'])]
 
         leads = Lead.objects.filter(company=self.company)
         with CaptureQueriesContext(connection) as ctx:
