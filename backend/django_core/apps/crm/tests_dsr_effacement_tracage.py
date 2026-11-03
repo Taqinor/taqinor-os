@@ -22,7 +22,7 @@ from apps.crm.cadence_reponses import creer_lead_proprietaire
 from apps.crm.dsr_provider import erase_crm
 from apps.crm.leads_doublons import normalize_email, normalize_phone
 from apps.crm.models import (
-    EmpreinteOpposition, Lead, RelanceEtape, VisiteExterne,
+    EmpreinteOpposition, Lead, LeadActivity, RelanceEtape, VisiteExterne,
 )
 
 User = get_user_model()
@@ -181,6 +181,80 @@ class EmpreinteOppositionTests(TestCase):
 
     def _effacer(self):
         dsr_provider.erase_crm(self.company, EMAIL)
+
+    def _rattraper(self):
+        from importlib import import_module
+        from types import SimpleNamespace
+
+        from django.apps import apps as registre
+        from django.db import connection
+        migration = import_module(
+            'apps.crm.migrations.0154_acvi6_empreintes_opposition_existantes')
+        migration.poser_empreintes_existantes(
+            registre, SimpleNamespace(connection=connection))
+
+    def test_rattrapage_des_personnes_deja_opposees(self):
+        """D-ACVI-6 — une opposition antérieure à ACVI43 n'a aucune empreinte :
+        sans rattrapage, une nouvelle fiche à ce numéro naît contactable."""
+        numero_archive = '+212612349071'
+        archive = Lead.objects.create(
+            company=self.company, nom='Archive', telephone=numero_archive,
+            ne_plus_contacter=True, is_archived=True, owner=self.user)
+        ailleurs = Lead.objects.create(
+            company=self.autre, nom='Ailleurs', telephone='+212612349072',
+            ne_plus_contacter=True)
+        self.assertFalse(EmpreinteOpposition.objects.exists())
+        modifie_le = Lead.objects.filter(pk=self.oppose.pk).values_list(
+            'date_modification', flat=True).get()
+        chatter = LeadActivity.objects.count()
+
+        self._rattraper()
+
+        # Aucun champ de lead, aucun chatter.
+        self.assertEqual(Lead.objects.filter(pk=self.oppose.pk).values_list(
+            'date_modification', flat=True).get(), modifie_le)
+        self.assertEqual(LeadActivity.objects.count(), chatter)
+        archive.refresh_from_db()
+        self.assertTrue(archive.is_archived)
+        self.assertEqual(EmpreinteOpposition.objects.filter(
+            company=self.company, nature='telephone').count(), 2)
+        self.assertEqual(EmpreinteOpposition.objects.filter(
+            company=self.company, nature='email').count(), 1)
+        self.assertEqual(EmpreinteOpposition.objects.filter(
+            company=self.autre).count(), 1)
+        # Le lecteur retrouve ce que la migration a écrit, à chaque porte.
+        for contact in ({'telephone': TELEPHONE_LOCAL},
+                        {'email': '  SARA.opposee@example.COM'},
+                        {'whatsapp': TELEPHONE},
+                        {'telephone': numero_archive}):
+            with self.subTest(contact=contact):
+                recree = Lead.objects.create(
+                    company=self.company, nom='Recrée', **contact)
+                self.assertTrue(recree.ne_plus_contacter)
+        # Le cloisonnement tient : le numéro de l'autre société reste libre ici.
+        libre = Lead.objects.create(
+            company=self.company, nom='Libre', telephone=ailleurs.telephone)
+        self.assertFalse(libre.ne_plus_contacter)
+        # Un non-opposé ne laisse rien.
+        non_oppose = Lead.objects.create(
+            company=self.company, nom='Non', telephone=self.locataire.telephone)
+        self.assertFalse(non_oppose.ne_plus_contacter)
+
+    def test_rattrapage_idempotent(self):
+        self._rattraper()
+        avant = sorted(EmpreinteOpposition.objects.values_list(
+            'pk', 'nature', 'empreinte'))
+        self.assertEqual(len(avant), 2)
+        self._rattraper()
+        self.assertEqual(sorted(EmpreinteOpposition.objects.values_list(
+            'pk', 'nature', 'empreinte')), avant)
+
+    def test_rattrapage_garde_une_empreinte_deja_posee(self):
+        """Une empreinte d'effacement (ACRM62) survit au rattrapage."""
+        self._effacer()
+        self.assertEqual(EmpreinteOpposition.objects.count(), 2)
+        self._rattraper()
+        self.assertEqual(EmpreinteOpposition.objects.count(), 2)
 
     def test_lead_recree_nait_oppose(self):
         self._effacer()
