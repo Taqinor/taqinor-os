@@ -79,7 +79,7 @@
 - frontend/src/api/crmApi.js :: clientDataExport -> /api/django/crm/clients/<>/data-export
     documents:inconnu, identite:inconnu
 - frontend/src/api/crmApi.js :: confirmerAppointmentWhatsapp -> /api/django/crm/appointments/<>/confirmer-whatsapp
-    detail:texte, ics_url:inconnu, message:inconnu, wa_url:inconnu
+    ics_url:inconnu, message:inconnu, wa_url:inconnu
 - frontend/src/api/crmApi.js :: convertirLeadEnClient -> /api/django/crm/leads/<>/convertir-client
     client:inconnu, detail:texte, mode:inconnu
 - frontend/src/api/crmApi.js :: getCadencesEchues -> /api/django/crm/relance-etapes/cadences-echues
