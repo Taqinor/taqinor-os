@@ -703,12 +703,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if manquants:
             # ERR-ENF11-FUZZ-VISITES — la requête est bien formée, c'est
             # l'ÉTAT de la visite (complétude) qui empêche : 409, même corps.
-            return Response({
-                'manquants': manquants,
-                'message': (
-                    'La visite ne peut pas être terminée : '
-                    f'{len(manquants)} élément(s) manquent encore.'),
-            }, status=status.HTTP_409_CONFLICT)
+            message = ('La visite ne peut pas être terminée : '
+                       f'{len(manquants)} élément(s) manquent encore.')
+            return Response({'manquants': manquants, 'message': message,
+                             'detail': message},
+                            status=status.HTTP_409_CONFLICT)
         # ACVI61 — après un renvoi le lead a déjà eu son retour : le bureau
         # d'études est re-prévenu, le lead reçoit UNE note et rien d'autre.
         reprise = visite.statut == VisiteTerrain.Statut.A_REFAIRE

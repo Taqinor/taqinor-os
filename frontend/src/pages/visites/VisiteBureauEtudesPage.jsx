@@ -196,8 +196,8 @@ function RenvoyerDialog({ open, onOpenChange, visite, onRenvoye }) {
       toast.success('Visite renvoyée au commercial.')
       onRenvoye?.()
       onOpenChange(false)
-    } catch {
-      toast.error('Renvoi impossible.')
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Renvoi impossible.'))
     } finally {
       setEnvoi(false)
     }
@@ -312,6 +312,7 @@ function DetailVisite({ visite, onRetour, onChanged }) {
   const navigate = useNavigate()
   const [renvoiOuvert, setRenvoiOuvert] = useState(false)
   const [validant, setValidant] = useState(false)
+  const [manquantsRefus, setManquantsRefus] = useState([])
   const [revision, setRevision] = useState({ envoi: false, resultat: null, refus: null })
 
   // CSV14 — le devis est le plus récent du lead, tel que servi par la visite
@@ -337,12 +338,15 @@ function DetailVisite({ visite, onRetour, onChanged }) {
 
   const valider = async () => {
     setValidant(true)
+    setManquantsRefus([])
     try {
       await visitesApi.validerVisite(visite.id)
       toast.success('Visite validée — feu vert calepinage.')
       onChanged()
-    } catch {
-      toast.error('Validation impossible.')
+    } catch (err) {
+      // ACVI93 — le refus du serveur tel quel : son message, sa liste.
+      toast.error(apiErrorMessage(err, 'Validation impossible.'))
+      setManquantsRefus(err?.response?.data?.manquants ?? [])
     } finally {
       setValidant(false)
     }
@@ -404,6 +408,13 @@ function DetailVisite({ visite, onRetour, onChanged }) {
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={valider} disabled={validant}>Valider (feu vert)</Button>
           <Button type="button" variant="outline" onClick={() => setRenvoiOuvert(true)}>Renvoyer</Button>
+          {manquantsRefus.length > 0 && (
+            <ul role="alert" data-testid="visite-refus-manquants" className="w-full list-disc pl-5 text-sm text-destructive">
+              {manquantsRefus.map((m, i) => (
+                <li key={`${m.type}-${m.categorie}-${m.code ?? i}`}>{m.libelle}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       {/* AGR422 — l'atelier 3D se construit depuis la TOITURE : pour un relevé

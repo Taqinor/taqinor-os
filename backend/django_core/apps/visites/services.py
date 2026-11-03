@@ -743,12 +743,11 @@ def refus_transition(visite, action):
 
         manquants = selectors.visite_terrain_manquants(visite)
         if manquants:
-            return {
-                'manquants': manquants,
-                'message': (
-                    'La visite ne peut pas être validée : '
-                    f'{len(manquants)} élément(s) manquent encore.'),
-            }
+            message = ('La visite ne peut pas être validée : '
+                       f'{len(manquants)} élément(s) manquent encore.')
+            # ACVI93 — ``detail`` : ce que lit ``lib/apiError.js``.
+            return {'manquants': manquants, 'message': message,
+                    'detail': message}
     return None
 
 

@@ -7,7 +7,8 @@ import userEvent from '@testing-library/user-event'
 import { Toaster } from 'sonner'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 
-const { getVisites, getVisite, renvoyerVisite, reviserDevisApresVisite } = vi.hoisted(() => ({
+const { getVisites, getVisite, renvoyerVisite, reviserDevisApresVisite, validerVisite } = vi.hoisted(() => ({
+  validerVisite: vi.fn(),
   getVisites: vi.fn(),
   getVisite: vi.fn(),
   renvoyerVisite: vi.fn(),
@@ -18,7 +19,7 @@ vi.mock('../../api/visitesApi', () => ({
   default: {
     getVisites: (...a) => getVisites(...a),
     getVisite: (...a) => getVisite(...a),
-    validerVisite: vi.fn(),
+    validerVisite: (...a) => validerVisite(...a),
     renvoyerVisite: (...a) => renvoyerVisite(...a),
     reviserDevisApresVisite: (...a) => reviserDevisApresVisite(...a),
   },
@@ -76,6 +77,26 @@ describe('VisiteBureauEtudesPage — VT10', () => {
     expect(await screen.findByText('Lead A')).toBeInTheDocument()
     expect(screen.queryByText('Lead B')).not.toBeInTheDocument()
     expect(screen.queryByText('Lead C')).not.toBeInTheDocument()
+  })
+
+  it('un 409 manquants affiche le message et la liste', async () => {
+    const message = 'La visite ne peut pas être validée : 1 élément(s) manquent encore.'
+    validerVisite.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          manquants: [{ type: 'photo', categorie: 'general', code: 'general_facade', libelle: 'Façade du bâtiment' }],
+          message,
+          detail: message,
+        },
+      },
+    })
+    const user = userEvent.setup()
+    render(<MemoryRouter><Toaster /><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    await user.click(await screen.findByRole('button', { name: /valider \(feu vert\)/i }))
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(screen.getByTestId('visite-refus-manquants')).toHaveTextContent('Façade du bâtiment')
   })
 
   it('le bouton Renvoyer reste désactivé tant qu’aucun motif n’est saisi', async () => {
