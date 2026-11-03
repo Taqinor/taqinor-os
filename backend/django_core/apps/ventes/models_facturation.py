@@ -565,6 +565,9 @@ class RetenueSubie(models.Model):
     attestation_recue = models.BooleanField(default=False)
     attestation_date = models.DateField(null=True, blank=True)
     attestation_fichier = models.CharField(max_length=500, blank=True, null=True)
+    # AARG35 — la facture a été annulée : la retenue ne compte plus, aucune
+    # attestation n'est attendue. Jamais supprimée (trace).
+    annulee = models.BooleanField(default=False)
     note = models.TextField(blank=True, default='')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
