@@ -250,5 +250,5 @@ Contre-visite `vérifie ACHT` du 01/11/2026 (dossier `docs/audits/2026-11-01-cha
 - 2026-10-09 — ASAV78 — seuils SLA codés en dur (ticketSlaLevel, slaThresholdDays) retirés de ticketStatuses.js après ASAV47 ; test d'absence des exports
 - 2026-10-09 — AMET24 — parcours PA7 (SAV/monitoring) cartographié + garde AST ; 4 étapes déclarées manquantes avec preuve d'absence (création d'abonnement, SLA de disponibilité, suivi du remplacement, résiliation)
 - 2026-10-24 — vérifie ASAV (clôture) — 27 tâches échantillonnées, 18 ok, 9 partielles ; 4 écarts S1-S2 reproduits par sonde (docs/audits/sondes/ASAV/C-ASAV-VER-001..004) → ASAV104-ASAV114 ; 1 appel Fable (critique de complétude, exigée par l'écart S1) : S1 confirmé, 1 trou ajouté (C-ASAV-VER-010), 3 rattachés aux constats existants, 0 « ok » infirmé
-- 2026-10-28 — ASAV114 — contre-visite SAV P114.1-10 rejouée en direct PASS (docs/audits/acceptation/ASAV/2026-10-29-0cd6d9cbd)
+- 2026-10-28 — ASAV114 — contre-visite SAV P114.1-10 rejouée en direct : FAIL 2026-10-29-0cd6d9cbd puis PASS 2026-10-29-f1e7fb9cc et 2026-11-03-cd9602f47 (docs/audits/acceptation/ASAV/ ; citation corrigée par la contre-visite du 03/11)
 - 2026-10-28 — ASAV99 — parcours SAV J4 P99.1-P99.9 rejoué en direct 18/18 PASS (docs/audits/acceptation/ASAV/2026-10-29-f1e7fb9cc)
