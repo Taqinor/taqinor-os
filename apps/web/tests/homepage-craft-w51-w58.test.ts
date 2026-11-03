@@ -113,7 +113,7 @@ describe('W56/W65 — bande de marques tier-1 (composant BrandStrip + brands.ts)
   });
 
   it('nomme les marques réelles (dont Jinko, Huawei, Nexans) et lie /équipement', () => {
-    expect(brandStrip).toContain('Marques tier-1 · distributeurs officiels au Maroc');
+    expect(brandStrip).toContain("heading: 'Marques tier-1'"); // WAUD49
     for (const b of ['Canadian Solar', 'JA Solar', 'Deye', 'Huawei', 'Dyness', 'Jinko', 'Nexans']) {
       expect(brandsLib, `marque manquante : ${b}`).toContain(b);
     }
