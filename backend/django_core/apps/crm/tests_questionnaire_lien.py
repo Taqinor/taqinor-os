@@ -416,6 +416,39 @@ class PublicQuestionnaireTests(TestCase):
             PUBLIC.format(token or self.lien.token),
             data=json.dumps(body), content_type='application/json')
 
+    def test_lien_ferme_sur_lead_clos_et_suit_la_fusion(self):
+        # ACVI96 — 404 sur une fiche perdue, opposée ou archivée, sans écriture ;
+        # le lien d'un absorbé écrit sur le survivant.
+        from apps.crm.leads_fusion import merge_leads
+        corps = {'section': 'energie', 'reponses': {'facture_ete': 1500}}
+        self.assertEqual(self._get().status_code, 200)
+        for champs in ({'perdu': True, 'motif_perte': 'prix'},
+                       {'ne_plus_contacter': True}, {'is_archived': True}):
+            with self.subTest(champs=champs):
+                Lead.objects.filter(pk=self.lead.pk).update(**champs)
+                avant = LeadActivity.objects.filter(lead=self.lead).count()
+                self.assertEqual(self._get().status_code, 404)
+                self.assertEqual(self._post(corps).status_code, 404)
+                self.lead.refresh_from_db()
+                self.assertIsNone(self.lead.facture_ete)
+                self.assertEqual(
+                    LeadActivity.objects.filter(lead=self.lead).count(), avant)
+                self.assertEqual(
+                    quest.appliquer_section(self.lien, 'energie', corps['reponses']), [])
+                Lead.objects.filter(pk=self.lead.pk).update(
+                    perdu=False, motif_perte='', ne_plus_contacter=False,
+                    is_archived=False)
+        self.lead.refresh_from_db()
+        survivant = lead_complet(self.company, facture_ete=None)
+        merge_leads(survivant, [self.lead], None)
+        self.lien.refresh_from_db()
+        self.assertEqual(self.lien.lead_id, survivant.pk)
+        self.assertEqual(self._post(corps).status_code, 200)
+        survivant.refresh_from_db()
+        self.lead.refresh_from_db()
+        self.assertEqual(survivant.facture_ete, 1500)
+        self.assertIsNone(self.lead.facture_ete)
+
     def test_get_sert_les_sections_actives_et_le_prefill(self):
         res = self._get()
         self.assertEqual(res.status_code, 200, res.content)
