@@ -25,6 +25,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin, HasPermissionAndRole,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from core.permissions import _user_has_or_legacy
 from core.selectors import get_company_object
 
 from . import services
@@ -71,6 +72,18 @@ IMPORT_FERIES_RESPONSE = inline_serializer('ImporterFeriesRapport', {
 # règle historique (responsable/admin).
 PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
     'stock_creer', 'Directeur', 'Commercial responsable')
+
+#: ACVI1 — droit exigé par cible en plus du palier (l'aperçu montre, le commit réécrit).
+DROIT_PAR_CIBLE = {'leads': 'crm_modifier', 'clients': 'crm_modifier'}
+
+
+def _refus_droit_cible(request, target):
+    code = DROIT_PAR_CIBLE.get(target)
+    if code is None or _user_has_or_legacy(request.user, code):
+        return None
+    return Response({'detail': "Droit « Modifier » du CRM manquant.",
+                     'code': 'droit_manquant'}, status=403)
+
 
 _CIBLES = sorted(services.TARGETS)
 _MODES = ['creer', 'maj', 'upsert']
@@ -169,6 +182,8 @@ def dry_run(request):
     f, target, err = _read(request)
     if err:
         return err
+    if refus := _refus_droit_cible(request, target):
+        return refus
     options = _options_import(request, _OptionsImport)
     mapping_name = options.get('mapping') or None
     mode = options.get('mode', 'creer')
@@ -178,7 +193,7 @@ def dry_run(request):
         result = services.dry_run(
             f.read(), f.name, target, company=request.user.company,
             mapping_name=mapping_name, mode=mode, ecraser=ecraser,
-            external_system=external_system)
+            external_system=external_system, user=request.user)
     except services.ModeNonSupporte as exc:
         # Couple cible/mode inexprimable dans le corps publié : 409.
         raise ConflitEtat(str(exc))
@@ -225,6 +240,8 @@ def commit(request):
     f, target, err = _read(request)
     if err:
         return err
+    if refus := _refus_droit_cible(request, target):
+        return refus
     # QG4 — l'import de PRODUITS crée des produits : même restriction que le
     # create REST (Directeur + Commercial responsable uniquement).
     if target == 'products' and not PRODUIT_CREATE_PERMISSION().has_permission(
