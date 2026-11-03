@@ -78,8 +78,8 @@ describe('cityContentBySlug — locale-aware, additif', () => {
     const SEP = '[\\s ,]?'; // espace, espace fine, ou virgule
     for (const loc of ['fr', 'en', 'ar'] as const) {
       const cc = cityContentBySlug('casablanca', loc);
-      // ≈ 2 950 / 2,950 doit apparaître dans le sunshineContext.
-      expect(cc.sunshineContext).toMatch(new RegExp(`2${SEP}950`));
+      // WAUD45 : plus d'heures de soleil chiffrées dans le sunshineContext (remplacées par le rendement PVGIS).
+      expect(cc.sunshineContext).not.toMatch(new RegExp(`2${SEP}950`));
       // Le numéro de loi 82-21 reste exact dans le pilier conformité.
       expect(cc.pillars.compliance.body).toContain('82-21');
       // WB1 (2026-07-04) : le chiffre de production annuel « 14 271 » était

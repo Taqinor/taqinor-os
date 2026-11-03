@@ -23,7 +23,6 @@ const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 const chiffres = [
   ...(RETOUR_PAR_SEGMENT.residentiel ? [{ v: RETOUR_PAR_SEGMENT.residentiel.label.ar, label: 'العائد على الاستثمار النموذجي' }] : []),
   { v: '30 سنة', label: 'ضمان أداء الألواح' },
-  { v: '50–100 %', label: 'من الفاتورة مُغطّاة — حسب البطاريات والاستعمال نهارًا/ليلاً' },
   { v: '0 MAD', label: 'الدراسة والتشخيص' },
 ];
 
@@ -92,7 +91,7 @@ import FinancementPs6F3AC from '../../components/blocs/FinancementPs6F3AC.astro'
 
 <Layout
   title="مردودية وتمويل الطاقة الشمسية بالمغرب | Taqinor"
-  description="ما تدرّه فعلاً تركيبة شمسية بالمغرب: تُسدَّد بفضل الكهرباء التي تتوقف عن شرائها (تعريفة ONEE)، ثم 30 سنة من الأداء المضمون و50 إلى 100 % من الفاتورة مغطّاة. كيف تموّلها دون التواء — تاكينور تركّب وتضمن، لكنها ليست مُقرضاً."
+  description="ما تدرّه فعلاً تركيبة شمسية بالمغرب: تُسدَّد بفضل الكهرباء التي تتوقف عن شرائها (تعريفة ONEE)، ثم 30 سنة من الأداء المضمون. كيف تموّلها دون التواء — تاكينور تركّب وتضمن، لكنها ليست مُقرضاً."
   ogSlug="financement"
 >
   <div class="v2">

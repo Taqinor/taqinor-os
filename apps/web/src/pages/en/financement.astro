@@ -29,7 +29,6 @@ const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 const chiffres = [
   ...(RETOUR_PAR_SEGMENT.residentiel ? [{ v: RETOUR_PAR_SEGMENT.residentiel.label.en, label: 'Typical return on investment' }] : []),
   { v: '30 years', label: 'Panel performance warranty' },
-  { v: '50–100 %', label: 'Of the bill covered — depending on batteries and day/night usage' },
   { v: '0 MAD', label: 'The study and the assessment' },
 ];
 
@@ -99,7 +98,7 @@ import FinancementPs6F3AC from '../../components/blocs/FinancementPs6F3AC.astro'
 
 <Layout
   title="Solar returns & financing in Morocco | Taqinor"
-  description="What a solar installation really earns in Morocco: the electricity you stop buying (ONEE utility tariff), then 30 years of guaranteed performance and 50 to 100 % of the bill covered. How to finance it plainly — Taqinor installs and warrants, but is not a lender."
+  description="What a solar installation really earns in Morocco: the electricity you stop buying (ONEE utility tariff), then 30 years of guaranteed performance. How to finance it plainly — Taqinor installs and warrants, but is not a lender."
   ogSlug="financement"
 >
   <div class="v2">

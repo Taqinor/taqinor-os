@@ -2,6 +2,7 @@
 // guides, Pourquoi, MRE, garanties, maillage interne, format téléphone.
 // Vérifie l'indexabilité, l'inclusion sitemap, les données structurées et
 // l'intégrité des faits (aucun chiffre inventé).
+import { cityContentBySlug } from '../src/lib/cityContent';
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -383,5 +384,35 @@ describe('WAUD37 — aucune référence de tâche interne dans le texte public',
       for (const m of texte.matchAll(/\b(W|WJ|WA|WB|WC|CIW|AGW|RWEB|QJW)\d+\b/g)) fautes.push(`${f}: ${m[0]}`);
     }
     expect(fautes).toEqual([]);
+  });
+});
+
+describe('WAUD45 — couverture, heures de soleil et « 300 jours » retirés', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+  const PAGES = ['index', 'financement', 'résidentiel', 'nos-solutions', 'faq'].flatMap((p) => [`${p}`, `en/${p}`, `ar/${p}`]);
+  it.each(PAGES)('%s : ni 50-100 %%, ni 300 jours', (p) => {
+    const s = lire(`pages/${p}.astro`).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(s).not.toMatch(/50\s*(–|-|à|to|إلى)\s*100\s*%/);
+    expect(s).not.toMatch(/300 (jours|days|يوم)/);
+  });
+  it('héros ville : rendement PVGIS de la ville, source nommée, plus d’heures', () => {
+    const body = lire('components/CityPageBody.astro');
+    expect(body).toContain('specificYield(');
+    expect(body).not.toContain('c.sunshineHours}');
+    expect(body).not.toContain('50–100 %');
+    for (const p of ['', 'en/', 'ar/']) {
+      const s = lire(`pages/${p}installation-solaire-[city].astro`);
+      expect(s).toMatch(/hoursUnit: 'kWh\/kWc\//);
+      expect(s).toContain('PVGIS');
+    }
+  });
+  it('prose ville rendue sans heures chiffrées (roiNuance hors rendu)', () => {
+    for (const slug of ['casablanca', 'rabat', 'marrakech', 'tanger', 'agadir']) {
+      for (const loc of ['fr', 'en', 'ar'] as const) {
+        const cc = cityContentBySlug(slug, loc);
+        const rendu = JSON.stringify({ ...cc, roiNuance: '' });
+        expect(rendu, `${slug} ${loc}`).not.toMatch(/≈\s?\d[\s,]?\d{3}/);
+      }
+    }
   });
 });
