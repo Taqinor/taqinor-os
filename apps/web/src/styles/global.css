@@ -601,6 +601,10 @@ summary:focus-visible {
       background-position: 150% 0;
       -webkit-background-clip: text;
       background-clip: text;
+      /* WAUD63 — une ombre de texte se peint PAR-DESSUS le texte clippé (titre gris) : l'ombre
+         passe en filtre, appliqué après le remplissage. */
+      text-shadow: none;
+      filter: drop-shadow(0 2px 14px rgb(7 11 29 / 0.72));
       /* Le remplissage vient du dégradé blanc opaque clippé au texte : le
          texte de base reste `transparent` mais peint plein blanc via le
          dégradé. -webkit-text-fill-color forcé transparent pour que Safari
@@ -816,12 +820,15 @@ summary:focus-visible {
 /* Corps de texte "version 2" : taille fluide, interligne aéré */
 /* W367 — text-wrap: pretty (voir prose.css) : mêmes garanties, support
    progressif, aucun effet sur le rythme RTL. */
-.v2-body {
-  font-family: var(--font-sans);
-  font-size: clamp(1rem, 1.5vw + 0.25rem, 1.125rem);
-  line-height: 1.7;
-  color: var(--color-lune-soft);
-  text-wrap: pretty;
+/* WAUD63 — en @layer : hors couche, la couleur claire écrasait text-encre-soft sur fond clair (1,89:1). */
+@layer components {
+  .v2-body {
+    font-family: var(--font-sans);
+    font-size: clamp(1rem, 1.5vw + 0.25rem, 1.125rem);
+    line-height: 1.7;
+    color: var(--color-lune-soft);
+    text-wrap: pretty;
+  }
 }
 
 /* ─── W175 — Eyebrow canonique sur fond clair (« salle blanche ») ──────────

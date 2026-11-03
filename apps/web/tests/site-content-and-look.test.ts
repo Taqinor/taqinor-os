@@ -617,3 +617,30 @@ describe('réalisations & villes — cohérence des routes & faits', () => {
     }
   });
 });
+
+describe('WAUD63 — accessibilité et lisibilité', () => {
+  const lireSrc = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+  it('le span du logo porte un rôle pour son aria-label', () => {
+    expect(lireSrc('components/Logo.astro')).toMatch(/role="img"\s+aria-label="TAQINOR"/);
+  });
+  it('le <dl> de confiance : dt puis dd, rien d’autre dans le groupe', () => {
+    const dl = lireSrc('components/blocs/EnIndexDl0C1D.astro');
+    expect(dl.indexOf('<dt')).toBeLessThan(dl.indexOf('<dd'));
+    expect(dl).not.toContain('<span');
+    expect(dl).not.toContain('<p ');
+  });
+  it('le lien logo du header n’est plus en français sur EN/AR', () => {
+    expect(lireSrc('components/Header.astro')).toContain("aria-label={t('nav.homeLogo')}");
+    const ui = lireSrc('i18n/ui.ts');
+    expect(ui).toContain("'nav.homeLogo': 'TAQINOR — home'");
+  });
+  it('.v2-body est rangé en @layer : un utilitaire text-encre-soft gagne (contraste)', () => {
+    const css = lireSrc('styles/global.css');
+    expect(css).toMatch(/@layer components \{\s*\.v2-body \{/);
+  });
+  it('H1 du héros : plus de text-shadow peint par-dessus le texte clippé', () => {
+    const css = lireSrc('styles/global.css');
+    const bloc = css.slice(css.indexOf('.hero-title-sweep.hero-sweep-armed {'));
+    expect(bloc.slice(0, bloc.indexOf('animation:'))).toMatch(/text-shadow: none;[\s\S]*filter: drop-shadow/);
+  });
+});
