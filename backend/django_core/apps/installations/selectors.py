@@ -7,7 +7,6 @@ Comportement strictement identique aux requêtes inline d'origine.
 """
 import logging
 from django.db.models import Sum
-from .selectors_annulation import blocage_annulation_acceptation  # noqa: F401 — surface cross-app
 
 
 def installation_for_devis(devis, company=None):

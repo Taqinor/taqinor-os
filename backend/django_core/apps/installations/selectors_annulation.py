@@ -1,5 +1,5 @@
-"""Blocage d'une annulation d'acceptation par le chantier (hors du fichier mur
-``selectors.py`` ; ``selectors`` le réexporte, seule surface des autres apps)."""
+"""Sélecteur cross-app : le blocage d'une annulation d'acceptation par le chantier
+(module à part : ``selectors.py`` est un fichier mur, garde C20)."""
 
 
 def blocage_annulation_acceptation(devis_id, company):
