@@ -503,12 +503,11 @@ def est_derniere_touche(etape, ordres):
     """Cette touche est-elle la DERNIÈRE de sa cadence — celle après laquelle
     ``materialiser_touche_suivante`` ne fait plus rien naître ?
 
-    Vrai pour le plus grand ordre actif, et pour toute touche dont l'ordre
-    n'est PAS un barreau actif (réveil saisonnier CAD74, rappel demandé
-    CAD129) : le moteur ne lui trouve aucun rang, donc aucune suivante."""
-    if not ordres or etape.ordre not in ordres:
-        return True
-    return etape.ordre == max(ordres)
+    MÊME lecture que le moteur (ACRM12) : aucun barreau actif d'ordre supérieur.
+    Une touche en cours sur un barreau DÉSACTIVÉ n'est donc pas la dernière s'il
+    en reste après elle : la suite part du premier d'entre eux. Un réveil
+    saisonnier (CAD74, ordre au-delà du gabarit) reste la dernière."""
+    return not any(ordre > etape.ordre for ordre in ordres or ())
 
 
 def cles_de_reponse(etape):
