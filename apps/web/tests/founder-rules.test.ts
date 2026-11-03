@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { dateComparable, derniereRealisation, REALISATIONS } from '../src/lib/realisations';
 
 const pagesDir = fileURLToPath(new URL('../src/pages', import.meta.url));
 const read = (abs: string) => readFileSync(abs, 'utf-8');
@@ -69,4 +70,21 @@ describe('RÈGLE B — le nombre brut d’installations n’est pas une stat ved
       ).toEqual([]);
     });
   }
+});
+
+describe('WAUD15 — règle B : jamais un compte de chantiers dérivé, dernière livrée = la plus récente', () => {
+  const pages = ['index.astro', 'en/index.astro', 'ar/index.astro'].map((p) => read(join(pagesDir, p)));
+  it('aucune dérivation de comptage rendue comme chiffre', () => {
+    for (const code of pages) {
+      expect(code).not.toMatch(/new Set\(REALISATIONS\.map\(\(r\) => r\.ville\)\)\.size/);
+      expect(code).not.toMatch(/ChantiersVisitablesCount|chantiersVisitablesCount|visitableSitesCount/);
+      expect(code).not.toMatch(/battersInstalls\.length/);
+    }
+  });
+  it('« Dernière installation livrée » = max(date)', () => {
+    const d = derniereRealisation();
+    for (const r of REALISATIONS) expect(dateComparable(r.date)).toBeLessThanOrEqual(dateComparable(d.date));
+    expect(dateComparable('juillet 2026')).toBeGreaterThan(dateComparable('avril 2026'));
+    expect(dateComparable('inconnue')).toBe(-1);
+  });
 });

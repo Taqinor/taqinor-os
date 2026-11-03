@@ -36,7 +36,7 @@ import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
 import { buildGallery } from '../../lib/homeGallery';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH, MEASURED_FLEET_READ_NOTE } from '../../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH, MEASURED_FLEET_READ_NOTE, derniereRealisation } from '../../lib/realisations';
 import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -160,9 +160,8 @@ const howItWorks = [
 // the team page). W284 derives the visitable-worksites count from REALISATIONS
 // instead of copying it by hand. Gold lives on the .lum figures (brass
 // discipline). No invented claim.
-const visitableSitesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+const latest = derniereRealisation();
 const trust = [
-  { fig: String(visitableSitesCount), tally: false, label: 'Worksites you can visit', body: 'Real installations to see on request — Casablanca, El Jadida, Nouaceur' },
   { fig: 'Law 82-21', tally: false, label: 'Compliance included', body: 'Declaration prepared and filed for you by Taqinor' },
   { fig: 'Real-time', tally: false, label: 'Production tracked', body: 'Real-time production monitoring on every installation, client access included' },
 ];
@@ -558,9 +557,9 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
         </div>
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">Latest installation delivered</p>
-          <EnIndexP51EC featured={featured} />
+          <EnIndexP51EC featured={latest} />
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            Installation tracked in real time, client access included. Site visits available on request.
+            {latest.measuredLabel && 'Installation tracked in real time, client access included.'}
           </p>
         </aside>
       </div>

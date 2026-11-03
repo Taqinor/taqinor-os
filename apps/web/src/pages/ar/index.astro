@@ -38,7 +38,7 @@ import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
 import { buildGallery } from '../../lib/homeGallery';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR, MEASURED_FLEET_READ_NOTE } from '../../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR, MEASURED_FLEET_READ_NOTE, derniereRealisation } from '../../lib/realisations';
 import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -67,7 +67,8 @@ const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 // اسم المدينة بالعربية للعرض فقط (الأرقام تبقى اللاتينية من REALISATIONS) —
 // نفس أسماء المدن المستخدمة أسفله في `gallery`.
 const CITY_AR: Record<string, string> = { 'El Jadida': 'الجديدة', 'Casablanca': 'الدار البيضاء', 'Nouaceur': 'النواصر' };
-const featuredVilleAr = CITY_AR[featured.ville] ?? featured.ville;
+const latest = derniereRealisation();
+const latestVilleAr = CITY_AR[latest.ville] ?? latest.ville;
 
 // القاعدة ب1 (2026-07-04) — رقم البطل الصادق: التراكم الحقيقي المقاس لأسطول
 // Deye (MEASURED_FLEET، realisations.ts)، لا رقمًا سنويًا مُختلَقًا لكل تركيب.
@@ -160,9 +161,7 @@ const howItWorks = [
 // ملموسة وغير شخصية (يعيش رصيد المؤسس على صفحة الفريق). W284 تشتقّ عدد الأوراش
 // القابلة للزيارة من REALISATIONS بدل نسخه يدويًا. الذهب يعيش على أرقام .lum
 // (انضباط النحاس). بلا أي ادعاء مخترَع.
-const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 const trust = [
-  { fig: String(chantiersVisitablesCount), tally: false, label: 'أوراش قابلة للزيارة', body: 'تركيبات حقيقية للمعاينة عند الطلب — الدار البيضاء، الجديدة، النواصر' },
   { fig: 'القانون 82-21', tally: false, label: 'مطابقة مُدرَجة', body: 'تصريح تُعِدّه وتُودِعه عنكم Taqinor' },
   { fig: 'الوقت الحقيقي', tally: false, label: 'متابعة الإنتاج', body: 'متابعة الإنتاج في الوقت الحقيقي على كل تركيب، مع ولوج الزبون' },
 ];
@@ -558,13 +557,13 @@ import IndexBloc1A99 from '../../components/blocs/IndexBloc1A99.astro';
         </div>
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">آخر تركيب مُسلَّم</p>
-          <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
-          <p class="tech-label mt-1 text-lune-faint">{featuredVilleAr} · {featured.date}</p>
+          {latest.kwc && <p class="fig lum mt-3 text-4xl" data-tally>{latest.kwc}</p>}
+          <p class="tech-label mt-1 text-lune-faint">{latestVilleAr} · {latest.date}</p>
           <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-            {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
+            {[latest.panneaux, latest.onduleur, latest.batterie].filter(Boolean).join(' · ')}
           </p>
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            تركيبة مُتابَعة في الوقت الحقيقي، مع ولوج الزبون. زيارات ميدانية ممكنة عند الطلب.
+            {latest.measuredLabel && 'تركيبة مُتابَعة في الوقت الحقيقي، مع ولوج الزبون.'}
           </p>
         </aside>
       </div>

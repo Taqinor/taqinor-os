@@ -396,7 +396,7 @@ describe('contenu — exactitude (régressions passées)', () => {
 
   it('la carte de confiance est recadrée (pas de décompte de projets trompeur)', () => {
     const { h } = publicHtml.find((x) => x.r.path === '/')!;
-    expect(h).toContain('Chantiers visitables');
+    expect(h).not.toContain('Chantiers visitables');
     expect(h).not.toContain('>5 projets<');
     expect(h).not.toContain('livrés depuis 2025');
   });

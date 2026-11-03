@@ -426,6 +426,21 @@ export function mesureAffichee(
   };
 }
 
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+/** WAUD15 — « mois année » de `date` en nombre comparable (AAAA×12 + mois), ou -1 si illisible. */
+export function dateComparable(date: string): number {
+  const [mois, annee] = date.trim().split(/\s+/);
+  const m = MOIS_FR.indexOf(mois?.toLowerCase() ?? '');
+  const a = Number(annee);
+  return m < 0 || !Number.isFinite(a) ? -1 : a * 12 + m;
+}
+
+/** WAUD15 — la réalisation la plus récemment livrée (max(date)). */
+export function derniereRealisation(): Realisation {
+  return [...REALISATIONS].sort((a, b) => dateComparable(b.date) - dateComparable(a.date))[0];
+}
+
 export const realisationBySlug = (slug: string): Realisation | undefined =>
   REALISATIONS.find((r) => r.slug === slug);
 

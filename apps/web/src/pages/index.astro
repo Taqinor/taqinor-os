@@ -33,7 +33,7 @@ import ZelligeSignature from '../components/ZelligeSignature.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
 import { buildGallery } from '../lib/homeGallery';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR, MEASURED_FLEET_READ_NOTE } from '../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR, MEASURED_FLEET_READ_NOTE, derniereRealisation } from '../lib/realisations';
 import { YIELD_TABLE } from '../lib/yieldTable';
 import { PRODUCTION_NET_FACTOR } from '../lib/systemLoss';
 
@@ -200,12 +200,11 @@ const howItWorks = [
 // mais W284 les dérive désormais de REALISATIONS plutôt que de les recopier à
 // la main. L'or vit sur les chiffres .lum (discipline laiton). Aucun claim
 // inventé.
-const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+const latest = derniereRealisation();
 // W375 — totalKwcLabel devient le pull-figure monumental de la bande (voir
 // plus bas dans le markup) ; le tableau `trust` ne porte donc plus que les
 // TROIS statistiques restantes (jamais un doublon de la même donnée).
 const trust = [
-  { fig: String(chantiersVisitablesCount), tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
   { fig: 'Loi 82-21', tally: false, label: 'Conformité incluse', body: 'Déclaration préparée et déposée pour vous par Taqinor' },
   { fig: 'Temps réel', tally: false, label: 'Production suivie', body: 'Suivi de production en temps réel sur chaque installation, accès client inclus' },
 ];
@@ -652,9 +651,9 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
         </div>
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">Dernière installation livrée</p>
-          <EnIndexP51EC featured={featured} />
+          <EnIndexP51EC featured={latest} />
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            Installation suivie en temps réel, accès client inclus. Visites de site possibles sur demande.
+            {latest.measuredLabel && 'Installation suivie en temps réel, accès client inclus.'}
           </p>
         </aside>
       </div>
