@@ -418,6 +418,17 @@ def annuler_visite(visite, user, *, jour=None, motif=''):
     return visite
 
 
+def erreur_commercial(commercial, company_id):
+    """ACVI71 — LA garde du commercial d'une visite, lue par la création
+    (``planifier_visite``) et l'édition (sérialiseur) : message FR s'il n'est
+    pas de la société ou si son compte est désactivé, ``None`` sinon."""
+    if (getattr(commercial, 'company_id', None) != company_id
+            or not getattr(commercial, 'is_active', False)):
+        return ('Ce commercial n’appartient pas à votre société (ou son '
+                'compte est désactivé).')
+    return None
+
+
 MESSAGE_DATE_PASSEE = (
     'La visite ne peut pas être planifiée dans le passé : choisir '
     "aujourd'hui ou une date à venir.")
@@ -515,11 +526,9 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
         if message:
             erreurs['date_prevue'] = [message]
     if commercial is not None:
-        if (getattr(commercial, 'company_id', None) != lead.company_id
-                or not getattr(commercial, 'is_active', False)):
-            erreurs['commercial'] = [
-                'Ce commercial n’appartient pas à votre société (ou son '
-                'compte est désactivé).']
+        message = erreur_commercial(commercial, lead.company_id)
+        if message:
+            erreurs['commercial'] = [message]
     if erreurs:
         return None, erreurs
 

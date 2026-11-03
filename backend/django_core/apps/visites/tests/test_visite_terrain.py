@@ -18,6 +18,7 @@ Ce qui est prouvé ici, et pourquoi :
 
 Aucune horloge vive n'est asservie : rien n'affirme une date « d'aujourd'hui ».
 """
+import datetime
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -26,6 +27,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import SimpleTestCase, TestCase
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -773,6 +775,43 @@ class ModificationSansLeadTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('lead', resp.data)
         self.assertNotEqual(VisiteTerrain.objects.get(pk=visite_id).lead_id, autre.id)
+
+    def _visite_datee(self):
+        jour = timezone.localdate() + datetime.timedelta(days=5)
+        resp = self.api.post('/api/django/visites/visites/',
+                             {'lead': self.lead.id,
+                              'date_prevue': jour.isoformat()}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return VisiteTerrain.objects.get(pk=resp.data['id']), jour
+
+    def test_patch_commercial_inactif_refuse(self):
+        # ACVI71 — même garde et même message qu'au POST.
+        visite, jour = self._visite_datee()
+        inactif = make_user(self.company, 'vt4-inactif', TERRAIN)
+        inactif.is_active = False
+        inactif.save(update_fields=['is_active'])
+        resp = self.api.patch(f'/api/django/visites/visites/{visite.id}/',
+                              {'commercial': inactif.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('désactivé', str(resp.data['commercial']))
+        visite.refresh_from_db()
+        self.assertEqual(visite.commercial_id, self.commercial.id)
+        self.assertEqual(visite.date_prevue, jour)
+
+    def test_patch_date_ecrit_la_ligne_deplace(self):
+        # ACVI71 — le PATCH passe par la porte de déplacement.
+        visite, jour = self._visite_datee()
+        nouvelle = jour + datetime.timedelta(days=3)
+        resp = self.api.patch(f'/api/django/visites/visites/{visite.id}/',
+                              {'date_prevue': nouvelle.isoformat()},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        ligne = (f'Rendez-vous du {jour:%d/%m/%Y} déplacé au '
+                 f'{nouvelle:%d/%m/%Y}.')
+        self.assertIn(ligne, resp.data['notes'])
+        visite.refresh_from_db()
+        self.assertEqual(visite.date_prevue, nouvelle)
+        self.assertEqual(visite.notes.count(ligne), 1)
 
     def test_put_corps_non_objet_400_jamais_500(self):
         # api-fuzz-full 28/10 (ENF11) : ``PUT … -9183`` levait ``TypeError``

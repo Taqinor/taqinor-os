@@ -439,18 +439,23 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         date_avant = visite.date_prevue
         reponse = super().update(request, *args, **kwargs)
         visite.refresh_from_db()
-        if visite.commercial_id != avant:
+        date_changee = (visite.date_prevue != date_avant
+                        and visite.date_prevue is not None)
+        # ``_deplacer_visite`` prévient déjà l'assigné : une seule notification.
+        if visite.commercial_id != avant and not date_changee:
             services.notifier_assignation(visite, acteur=request.user)
         if visite.date_prevue is None and date_avant is not None:
             # ACVI60 — date vidée : c'est une annulation, jamais un silence.
             services.annuler_visite(visite, request.user, jour=date_avant)
             reponse.data.update(statut=visite.statut, notes=visite.notes)
-        elif visite.date_prevue != date_avant:
-            # AGR412 — une re-planification recale le gabarit sur le type
-            # du lead tant que la visite est brouillon.
-            if services.recaler_gabarit(visite):
-                visite.save(update_fields=['gabarit'])
-            services.emettre_visite_planifiee(visite, request.user)
+        elif date_changee:
+            # ACVI71 — LA porte de déplacement (ligne « déplacé du … au … »,
+            # gabarit recalé, ``visite_planifiee``) : elle compare à l'ancienne
+            # date, que le sérialiseur vient d'écraser.
+            nouvelle = visite.date_prevue
+            visite.date_prevue = date_avant
+            services._deplacer_visite(visite, request.user, nouvelle, None, '')
+            reponse.data['notes'] = visite.notes
         return reponse
 
     # ── Photos par slot ──────────────────────────────────────────────────────
