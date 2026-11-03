@@ -41,6 +41,7 @@ const apis = vi.hoisted(() => ({
 vi.mock('../../api/ventesApi', () => ({ default: apis.ventes }))
 vi.mock('../../api/stockApi', () => ({ default: apis.stock }))
 
+import CONTRAT_CREER_FACTURE from '../../../../backend/django_core/apps/facturation/contract_samples/bon_commande_creer_facture.json'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import authReducer from '../../features/auth/store/authSlice'
 import FactureForm from './FactureForm'
@@ -75,7 +76,7 @@ describe('AFAC67 — FactureForm : BC issu d\'un devis', () => {
 
   it('choisir le BC du devis : aucune ligne recopiée, facture créée par creer-facture', async () => {
     apis.ventes.creerFactureBC.mockResolvedValue({
-      data: { id: 90, reference: 'FAC-2026-10-0090', montant_ttc: '10800.00' },
+      data: { ...CONTRAT_CREER_FACTURE.exemple, reference: 'FAC-2026-10-0090' },
     })
     const onSaved = vi.fn()
     const user = userEvent.setup()
@@ -91,7 +92,9 @@ describe('AFAC67 — FactureForm : BC issu d\'un devis', () => {
     await waitFor(() => expect(apis.ventes.creerFactureBC).toHaveBeenCalledWith(11))
     const statut = await screen.findByRole('status')
     expect(statut).toHaveTextContent('FAC-2026-10-0090')
-    expect(statut).toHaveTextContent(/10\s?800,00/)
+    // AFAC105 : le total servi est `total_ttc` (montant_ttc est nul sur une facture de lignes).
+    expect(statut).toHaveTextContent(/12\s?000,00/)
+    expect(statut).not.toHaveTextContent(/Total TTC\s*—/)
     expect(onSaved).toHaveBeenCalled()
   })
 

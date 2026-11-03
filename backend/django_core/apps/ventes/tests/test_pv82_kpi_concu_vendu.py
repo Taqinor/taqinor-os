@@ -167,6 +167,42 @@ class LeKwcPrivilegieLeCalepinageSurEtudeParams(_Base):
             ventes_reports.kwc_concu_devis(devis), 6.6, places=2)
 
 
+class LeKwcCompteEstCeluiDuProjet(_Base):
+    """ADEV40 (D-ADEV-4 = (a)) — métamorphique ×N : la même villa ×3 compte
+    trois fois son kWc, quelle que soit la source du kWc."""
+
+    def _x3(self, ref, **champs):
+        etude = {**champs.pop('etude_params', {}), 'nombre_proprietes': 3}
+        return self._devis(ref, etude_params=etude, **champs)
+
+    def test_lignes_x3(self):
+        devis = self._x3('DEV-PV82-X3-L', roof_layout={'zones': []})
+        self._ligne_panneau(devis, quantite=11, watt=600)
+        self.assertEqual(ventes_reports.kwc_concu_devis(devis), 19.8)
+
+    def test_repli_calepinage_x3(self):
+        devis = self._x3('DEV-PV82-X3-C', roof_layout={'result': {'kwc': 6.6}})
+        self.assertEqual(ventes_reports.kwc_concu_devis(devis), 19.8)
+
+    def test_repli_etude_x3(self):
+        devis = self._x3('DEV-PV82-X3-E', roof_layout={'zones': []},
+                         etude_params={'puissance_kwc': 6.6})
+        self.assertEqual(ventes_reports.kwc_concu_devis(devis), 19.8)
+
+    def test_irresoluble_reste_none(self):
+        devis = self._x3('DEV-PV82-X3-N', roof_layout={'zones': []})
+        self.assertIsNone(ventes_reports.kwc_concu_devis(devis))
+
+    def test_les_tuiles_comptent_le_projet(self):
+        devis = self._x3('DEV-PV82-X3-T', statut='accepte',
+                         roof_layout={'zones': []})
+        self._ligne_panneau(devis, quantite=11, watt=600)
+        tuiles = {t['id']: t['valeur'] for t in ventes_reports.kpi_ventes(
+            self.company)}
+        self.assertEqual(tuiles['ventes_kwc_concus'], 19.8)
+        self.assertEqual(tuiles['ventes_kwc_signes'], 19.8)
+
+
 class SeulUnDevisAccepteCompteCommeSigne(_Base):
     def test_kwc_concus_et_signes_et_taux_conversion(self):
         self._devis('DEV-PV82-6', statut='accepte',

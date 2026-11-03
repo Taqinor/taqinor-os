@@ -681,13 +681,17 @@ class DevisEditionActionsMixin:
         envoye = serializer.instance.statut == Devis.Statut.ENVOYE
         etude_avant = (_etude_en_base(serializer.instance)
                        if entrees_etude and envoye else None)
-        # VNT55 (D-ADEV-1) — archiver la révision V2 réactive la V1 acceptée.
+        # VNT55 (D-ADEV-1) — archiver la révision V2 réactive sa V1 ; ADEV16 :
+        # dans la MÊME transaction, quel que soit le statut de la V1.
         archive = (serializer.instance.is_active is True
                    and serializer.validated_data.get('is_active') is False)
-        super().perform_update(serializer)
-        if archive:
-            from ..domain.revision import abandonner_revision
-            abandonner_revision(serializer.instance, self.request.user)
+        from django.db import transaction
+        from ..domain.revision import abandonner_revision
+        with transaction.atomic():
+            super().perform_update(serializer)
+            if archive:
+                abandonner_revision(serializer.instance, self.request.user,
+                                    retrait=True)
         # QJR552 — l'instantané APRÈS le geste (brouillon ou envoyé : l'en-tête
         # corrigé, remise / échéancier, entre dans l'historique) ; dédoublonné.
         from ..domain.historique_config import instantane_de_geste

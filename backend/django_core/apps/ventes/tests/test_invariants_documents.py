@@ -50,6 +50,8 @@ from apps.facturation.models import Facture
 from apps.ventes.models import BonCommande, Devis, LigneDevis
 from apps.ventes.services import AcceptError, accept_devis, mark_devis_sent
 from apps.ventes.domain.recouvrement import expire_stale_devis
+from apps.ventes.domain.revision import RevisionError, reviser_devis
+from apps.ventes.selectors import devis_signes_en_vigueur
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_produit,
 )
@@ -366,3 +368,95 @@ class DocumentLifecycleInvariants(HypothesisDjangoTestCase):
 
     def test_devis_bc_facture_lifecycle(self):
         run_state_machine_as_test(DocumentLifecycleMachine, settings=DOC)
+
+
+class RevisionChainMachine(RuleBasedStateMachine):
+    """ADEV16 (D-ADEV-1) — une vente acceptée V1 explorée par réviser / envoyer
+    / supprimer / archiver / réactiver : toute chaîne garde au moins une version
+    active et la vente reste comptée une fois (aucune règle n'accepte de V2)."""
+
+    def __init__(self):
+        super().__init__()
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username=f'adev16-{uuid.uuid4().hex[:16]}', password='x',
+            role_legacy='admin', company=self.company)
+        self.api = _auth(self.user)
+        v1 = Devis.objects.create(
+            company=self.company, reference='DEV-ADEV16-CHAINE',
+            client=make_client(self.company), statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'), remise_globale=Decimal('0'),
+            mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=v1, produit=make_produit(
+                self.company, 'Panneau PV ADEV16', 'ADEV16-PV', '1000'),
+            designation='Panneau PV ADEV16', quantite=Decimal('10'),
+            prix_unitaire=Decimal('1000'), remise=Decimal('0'),
+            taux_tva=Decimal('10'))
+        self.v1_id = v1.pk
+        self.chaine = [v1.pk]
+
+    def _tete(self):
+        return (Devis.objects.filter(pk__in=self.chaine, is_active=True)
+                .order_by('-pk').first())
+
+    def _url(self, devis):
+        return f'/api/django/ventes/devis/{devis.pk}/'
+
+    @rule()
+    def reviser(self):
+        tete = self._tete()
+        try:
+            self.chaine.append(reviser_devis(tete, user=self.user).pk)
+        except RevisionError:
+            assert tete.statut == Devis.Statut.BROUILLON, tete.statut
+
+    @rule()
+    def envoyer(self):
+        tete = self._tete()
+        if tete.statut == Devis.Statut.BROUILLON:
+            mark_devis_sent(devis=tete, user=self.user)
+
+    @rule()
+    def supprimer(self):
+        tete = self._tete()
+        if tete.statut != Devis.Statut.BROUILLON:
+            return
+        r = self.api.delete(self._url(tete))
+        assert r.status_code == 204, r.content
+        self.chaine.remove(tete.pk)
+
+    @rule()
+    def archiver(self):
+        tete = self._tete()
+        if tete.pk == self.v1_id:
+            return
+        r = self.api.patch(self._url(tete), {'is_active': False}, format='json')
+        assert r.status_code == 200, r.content
+
+    @rule()
+    def reactiver(self):
+        inactif = (Devis.objects.filter(pk__in=self.chaine, is_active=False)
+                   .order_by('pk').first())
+        if inactif is None:
+            return
+        r = self.api.patch(self._url(inactif), {'is_active': True}, format='json')
+        assert r.status_code == 409, r.content
+
+    @invariant()
+    def au_moins_une_version_active(self):
+        assert self._tete() is not None, f'Chaîne sans version active : {self.chaine}'
+
+    @invariant()
+    def la_vente_compte_une_fois(self):
+        ids = list(devis_signes_en_vigueur(self.company)
+                   .values_list('pk', flat=True))
+        assert ids == [self.v1_id], ids
+
+
+@tag('slow')
+class RevisionChainInvariants(HypothesisDjangoTestCase):
+    """Point d'entrée unittest — Postgres requis (CI seulement)."""
+
+    def test_toute_chaine_garde_une_version_active(self):
+        run_state_machine_as_test(RevisionChainMachine, settings=DOC)

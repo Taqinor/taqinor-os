@@ -524,7 +524,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                   {factureCreee ? (
                     <p role="status" className="m-0">
                       Facture <strong>{factureCreee.reference}</strong> créée — Total TTC{' '}
-                      <strong>{formatMAD(factureCreee.montant_ttc)}</strong>, identique au devis signé.
+                      <strong>{formatMAD(factureCreee.total_ttc)}</strong>, identique au devis signé.
                     </p>
                   ) : (
                     <>
