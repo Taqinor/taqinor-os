@@ -27,6 +27,9 @@
 - [Blog](https://taqinor.ma/blog/): articles de fond sur le solaire au Maroc.
 - [FAQ](https://taqinor.ma/faq/): questions fréquentes.
 - [Contact](https://taqinor.ma/contact/): prise de contact.
+- [Subvention et aides](https://taqinor.ma/subvention-panneaux-solaires-maroc/): ce qui existe (agricole FDA, tarif ANRE MT/HT), aucune aide pour un particulier.
+- [Kit solaire ou sur mesure](https://taqinor.ma/kit-solaire-maroc/): ce qu'un kit n'inclut pas.
+- [Lire et comparer deux devis](https://taqinor.ma/devis-panneaux-solaires-maroc/): tableau d'inclusions ligne à ligne.
 - [Sitemap](https://taqinor.ma/sitemap.xml): index complet des pages publiques.
 
 ## English (key pages, /en/)
@@ -47,6 +50,7 @@
 - [Guides](https://taqinor.ma/en/guides/): practical solar guides.
 - [Blog](https://taqinor.ma/en/blog/): in-depth articles on solar in Morocco.
 - [FAQ](https://taqinor.ma/en/faq/): frequently asked questions.
+- [Subsidies and aid](https://taqinor.ma/en/subvention-panneaux-solaires-maroc/): what exists and what does not.
 - [Contact](https://taqinor.ma/en/contact/): get in touch.
 
 ## العربية (الصفحات الرئيسية، /ar/)
@@ -67,6 +71,8 @@
 - [الأدلّة](https://taqinor.ma/ar/guides/): أدلّة عملية حول الطاقة الشمسية.
 - [المدوّنة](https://taqinor.ma/ar/blog/): مقالات معمّقة حول الطاقة الشمسية بالمغرب.
 - [الأسئلة الشائعة](https://taqinor.ma/ar/faq/): الأسئلة المتكرّرة.
+- [الدعم والمساعدات](https://taqinor.ma/ar/subvention-panneaux-solaires-maroc/): ما هو موجود وما ليس موجوداً.
+- [مقارنة عرضين](https://taqinor.ma/ar/devis-panneaux-solaires-maroc/): جدول المشمولات سطراً بسطر.
 - [اتصل بنا](https://taqinor.ma/ar/contact/): تواصل معنا.
 
 ## Notes pour les agents IA

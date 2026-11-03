@@ -14,6 +14,12 @@ import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations'
 import { NAP } from '../src/lib/nap';
 import { canonicalUrl } from '../src/lib/canonicalUrl';
 import { GUIDE_VERIFIED_DATES, guideDateModified } from '../src/lib/guideMeta';
+import { INFO_PAGES, INFO_PAGE_PATHS, type InfoPageId } from '../src/lib/infoPages';
+import { localesForPath } from '../src/i18n/pages';
+import { ANRE_TARIF_HORS_POINTE, ANRE_TARIF_POINTE } from '../src/lib/constants82_21';
+import { DECLARATION_BT_MAX_KW } from '../src/lib/regime';
+import { TABLEAU_GARANTIES_FR } from '../src/lib/warranty';
+import { ANRE_PERIODE_FR, FDA_PLAFOND_PAR_HA_DH, FDA_PLAFOND_PAR_KWC_DH, FDA_PLAFOND_PAR_PROJET_DH, FDA_TAUX_PCT } from '../src/lib/subventionFacts';
 
 const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 // ENF19 — le corps des pages ville et études de cas (V2Enhance, class="v2", JSON-LD Service) vit dans
@@ -661,5 +667,56 @@ describe('WAUD72 — carte de partage (OG) par ville et par langue, sans photo d
     const g = lire('scripts/generate-og.mjs');
     expect(g).toMatch(/slug: `ville-\$\{slug\}-fr`, title: [^\n]*\}\);/);
     expect(g).not.toMatch(/slug: `ville-[^\n]*photo:/);
+  });
+});
+
+describe('WAUD73/74/75 — pages « subvention », « kit ou sur mesure », « lire deux devis » (coquille partagée, zéro montant inventé)', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  const tout = (id: InfoPageId) =>
+    Object.values(INFO_PAGES[id]).flatMap((p) => [p!.title, p!.description, p!.lead, ...p!.blocks.flatMap((b) => [b.h2, ...b.paras, ...(b.table ? b.table.rows.flat() : [])])]);
+  const MONTANT = /\d[\d\s.,  ]*\s*(?:DH|MAD|dirhams?|درهم)/g;
+  const chiffres = (s: string) => s.replace(/[\s.,  ]/g, '');
+
+  it('registre : subvention FR/EN/AR, kit FR, devis FR+AR ; les routes existent', () => {
+    expect(localesForPath(INFO_PAGE_PATHS.subvention)).toEqual(['fr', 'en', 'ar']);
+    expect(localesForPath(INFO_PAGE_PATHS.kit)).toEqual(['fr']);
+    expect(localesForPath(INFO_PAGE_PATHS.devis)).toEqual(['fr', 'ar']);
+    for (const f of ['subvention-panneaux-solaires-maroc', 'en/subvention-panneaux-solaires-maroc', 'ar/subvention-panneaux-solaires-maroc', 'kit-solaire-maroc', 'devis-panneaux-solaires-maroc', 'ar/devis-panneaux-solaires-maroc']) {
+      expect(lire(`src/pages/${f}.astro`), f).toContain('InfoPageBody');
+    }
+  });
+  it('subvention : tout montant affiché vient des constantes sources (FDA, ANRE) ; ni « jusqu’à 30 % » ni « cumulable » ni banque', () => {
+    const permis = new Set([FDA_PLAFOND_PAR_HA_DH, FDA_PLAFOND_PAR_KWC_DH, FDA_PLAFOND_PAR_PROJET_DH].map((n) => String(n)));
+    const tarifs = new Set([ANRE_TARIF_HORS_POINTE, ANRE_TARIF_POINTE].map((n) => chiffres(n.toFixed(2))));
+    let vus = 0;
+    for (const t of tout('subvention')) {
+      for (const m of t.matchAll(MONTANT)) {
+        const n = chiffres(m[0].replace(/[^\d\s.,  ]/g, ''));
+        vus++;
+        expect(permis.has(n) || tarifs.has(n), `montant hors constantes : ${m[0]}`).toBe(true);
+      }
+      expect(t).not.toMatch(/jusqu.à 30|cumulable|banque|up to 30|bank/i);
+      expect(t).not.toMatch(/Lydec|Redal|Amendis/);
+    }
+    expect(vus).toBeGreaterThan(8);
+  });
+  it('la règle FDA et ses plafonds sont ceux déjà publiés sur /pompage-solaire (parité)', () => {
+    const p = lire('src/pages/pompage-solaire.astro');
+    expect(p).toContain(`${FDA_TAUX_PCT} % de l’investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc et 30 000 DH par projet`);
+    expect(FDA_PLAFOND_PAR_HA_DH + FDA_PLAFOND_PAR_KWC_DH + FDA_PLAFOND_PAR_PROJET_DH).toBe(36000);
+    expect(lire('src/lib/constants82_21.ts')).toContain('01/03/2026-28/02/2027');
+    expect(INFO_PAGES.subvention.fr!.blocks[2].paras[0]).toContain(ANRE_PERIODE_FR);
+  });
+  it('kit et devis : aucun montant ni fourchette (RÈGLE C), seuil 82-21 lu dans regime.ts', () => {
+    for (const id of ['kit', 'devis'] as const) for (const t of tout(id)) expect(t.match(MONTANT) ?? [], `${id}: ${t}`).toEqual([]);
+    expect(tout('kit').join(' ')).toContain(`${DECLARATION_BT_MAX_KW} kW`);
+    const garanties = INFO_PAGES.devis.fr!.blocks[1].table!.rows;
+    expect(garanties).toEqual(TABLEAU_GARANTIES_FR.map((g) => [g.item, g.years]));
+  });
+  it('llms.txt référence les nouvelles pages (FR, EN, AR) ; liens vers /prix et 10-questions sans recopier', () => {
+    const t = lire('public/llms.txt');
+    for (const u of ['https://taqinor.ma/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/en/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/ar/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/kit-solaire-maroc/', 'https://taqinor.ma/devis-panneaux-solaires-maroc/', 'https://taqinor.ma/ar/devis-panneaux-solaires-maroc/']) expect(t, u).toContain(u);
+    const liens = INFO_PAGES.devis.fr!.blocks[2].links!.map((l) => l.href);
+    expect(liens).toEqual(['/prix-panneaux-solaires-maroc', '/ressources/10-questions-avant-de-signer']);
   });
 });
