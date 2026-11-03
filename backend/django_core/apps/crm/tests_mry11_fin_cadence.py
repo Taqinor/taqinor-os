@@ -355,6 +355,29 @@ class GabaritsReveilTests(_Base):
         self.assertEqual(self._reveils().count(), 0)
         self.assertEqual(calculer_echeances_cadence(self.lead, 'reveil', LUNDI), [])
 
+    def _facture(self, **factures):
+        Lead.objects.filter(pk=self.lead.pk).update(stage=stages.COLD, **factures)
+        self.lead.refresh_from_db()
+
+    def test_le_pilote_facture_declaree_garde_le_j30(self):
+        """CADV86 (D-CADV-2) — UNE touche, l'appel J30, jamais le J60 ; rejouer n'en
+        pose pas une seconde. Mutant : seuil 2 000 → 2 001 ⇒ échec."""
+        self._facture(facture_hiver=2000)
+        for _rejeu in range(2):
+            initialiser_plan_relance(
+                self.lead, self.acteur, cadence='reveil', depart=LUNDI)
+            [touche] = self._reveils()
+            self.assertEqual((touche.ordre, touche.canal), (1, 'appel'))
+
+    def test_le_pilote_lit_aussi_la_facture_d_ete(self):
+        self._facture(facture_hiver=800, facture_ete=2300)
+        self.assertEqual(len(calculer_echeances_cadence(self.lead, 'reveil', LUNDI)), 1)
+
+    def test_sous_le_seuil_le_lead_n_a_aucun_reveil(self):
+        self._facture(facture_hiver=800)
+        self.assertEqual(initialiser_plan_relance(
+            self.lead, self.acteur, cadence='reveil', depart=LUNDI), [])
+
     def test_un_lead_joint_garde_le_j30_appel_et_le_j60_whatsapp(self):
         self._deja_joint()
         initialiser_plan_relance(

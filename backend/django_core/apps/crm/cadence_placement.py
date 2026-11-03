@@ -120,7 +120,7 @@ PLACEMENT_DECISIONS = (
     ('dormant_devis',
      'Dormant — Froid, tag « Devis sans suite », réveil étalé', 'reveil'),
     ('dormant_jamais_chiffre',
-     'Dormant — Froid, tag « Jamais chiffré », réveil étalé si déjà joint', 'reveil'),
+     'Dormant — Froid, tag « Jamais chiffré », réveil étalé si déjà joint ou facture ≥ 2 000', 'reveil'),
 )
 
 _PLACEMENT_CADENCES = {code: cadence for code, _, cadence in PLACEMENT_DECISIONS}

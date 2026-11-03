@@ -566,6 +566,15 @@ class DecisionDormantTests(_PlacementBase):
         self.assertEqual((quand.hour, quand.minute), (10, 0))
         self.assertTrue(lead.activites.filter(body__startswith='Placé au Froid, sans réveil').exists())
 
+    def test_le_pilote_prend_un_creneau_et_une_seule_touche(self):
+        """CADV86 — l'aperçu annonce le réveil que l'application pose."""
+        lead = self._lead('Pilote', stage=stages.NEW, jours=60)
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=2300)
+        ligne = self._placer(apply=False)['apercu'][0]
+        self.assertEqual(ligne['prochaine_touche'], 'Réveil J30')
+        self._placer()
+        self.assertEqual(len(self._reveils(lead)), 1)
+
     def test_le_dormant_jamais_chiffre_garde_les_gabarits_sans_devis(self):
         lead = self._joint(self._lead('Dormant', stage=stages.NEW, jours=60))
         self._placer()

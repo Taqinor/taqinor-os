@@ -3,7 +3,7 @@
   "effets": {
     "touche_suivante": "La cadence continue : sa touche suivante est programmée à son délai prévu.",
     "touche_suivante_a_la_date": "La touche suivante de la cadence est programmée à la date choisie.",
-    "derniere_froid_reveils": "C’était la dernière touche : le dossier part au Froid ; ses réveils ne sont programmés que s’il a déjà été joint ou chiffré.",
+    "derniere_froid_reveils": "C’était la dernière touche : le dossier part au Froid ; ses réveils ne sont programmés que s’il a déjà été joint ou chiffré (facture déclarée d’au moins 2 000 MAD : un seul appel de réveil).",
     "dernier_reveil": "C’était le dernier réveil : plus aucune relance n’est programmée, le dossier reste au Froid.",
     "reste_au_froid": "Le dossier reste au Froid.",
     "sort_du_froid": "Le dossier sort du Froid.",

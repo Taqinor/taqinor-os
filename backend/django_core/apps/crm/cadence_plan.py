@@ -174,6 +174,9 @@ _REVEIL_GABARITS = {
     False: ('reveil_a2', 'reveil_a3'),   # jamais chiffré
 }
 _REVEIL_CLES_SEEDEES = frozenset({'reveil_a1', 'reveil_a2'})
+#: CADV86 (D-CADV-2, décision du 01/11/2026) — facture déclarée à partir de laquelle
+#: un lead jamais joint ni chiffré garde le seul appel J30 : le pilote d'appels.
+REVEIL_PILOTE_FACTURE_MIN_MAD = 2000
 
 
 def _adapter_gabarits_reveil(lead, etapes, *, rang_initial=0):
@@ -245,10 +248,18 @@ def nombre_reveils_permis(lead, *, historique=None):
     157 messages de réveil à des leads jamais joints ni chiffrés ont donné 0
     conversation : ceux-là ne vivent plus que sur la liste saisonnière
     (``poser_reveils_saisonniers``). ``historique`` : la réponse déjà connue de
-    l'appelant (lue en lot par le placement, ou établie par son geste)."""
+    l'appelant (lue en lot par le placement, ou établie par son geste).
+
+    CADV86 — le pilote : une facture déclarée (hiver ou été) d'au moins
+    ``REVEIL_PILOTE_FACTURE_MIN_MAD`` garde le premier barreau, l'appel J30 (les
+    125 messages J30 ont donné 0 conversation, l'appel n'a jamais été essayé).
+    Aucun quota : le volume est le résultat, pas une règle."""
     if historique is None:
         historique = _a_un_historique_client(lead)
-    return None if historique else 0
+    if historique:
+        return None
+    facture = max(lead.facture_hiver or 0, lead.facture_ete or 0)
+    return 1 if facture >= REVEIL_PILOTE_FACTURE_MIN_MAD else 0
 
 
 def _normaliser_depart(depart):
