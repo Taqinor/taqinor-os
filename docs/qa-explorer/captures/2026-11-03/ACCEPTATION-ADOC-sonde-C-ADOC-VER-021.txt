@@ -1,0 +1,6 @@
+== C-ADOC-VER-021 (sha 56d5b623a)
+attendu : ADOC26 : tout alias accepte par le dialogue du dossier (motif publie : lettres, chiffres, point, tiret, souligne) classe l'e-mail adresse a ged+<alias>@ dans ce dossier
+observé : PATCH alias 'compta.2026' -> 200 ; alias_en_base='compta.2026' ; extraire_alias='compta.2026' ; documents_crees=1
+{"repro": false}
+verdict : ÉCART
+base inchangée : non (avant 108262, après 108263) ; mails 0 ; tâches Celery bloquées 0

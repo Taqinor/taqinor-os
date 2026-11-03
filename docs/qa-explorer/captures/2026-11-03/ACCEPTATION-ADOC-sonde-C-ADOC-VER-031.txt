@@ -1,0 +1,6 @@
+== C-ADOC-VER-031 (sha 56d5b623a)
+attendu : ADOC29 : un échec de l'appel MinIO (delete_object) pendant la purge définitive laisse le document en place (rien de détruit à moitié) — jamais un document effacé dont le binaire reste dans le bucket
+observé : purge avec MinIO en panne -> exception=ConnectionError('minio indisponible (simulé)') ; document encore en base=True
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 108317, après 108317) ; mails 0 ; tâches Celery bloquées 0

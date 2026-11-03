@@ -1,0 +1,6 @@
+== C-ADOC-VER-020 (sha 56d5b623a)
+attendu : ADOC180 : republier par publier_documents_meryem un guide MODIFIE (nouveau contenu + mot ajoute a sa description de manifeste) => la nouvelle version est trouvee en recherche GED par le mot ajoute
+observé : versions=2 ; description_en_base='Pompage au fil du soleil, forage immerge' ; recherche pompage -> 200 trouve=True ; recherche forage (mot ajoute) -> 200 trouve=True
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 108262, après 108262) ; mails 0 ; tâches Celery bloquées 0

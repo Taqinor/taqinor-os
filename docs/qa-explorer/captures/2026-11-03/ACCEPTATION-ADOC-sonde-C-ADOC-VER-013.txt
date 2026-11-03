@@ -1,0 +1,6 @@
+== C-ADOC-VER-013 (sha 56d5b623a)
+attendu : une demande GED à chaîne en deux étapes approuvée depuis la boîte centrale des approbations (/reporting/approbations-en-attente/decider/) par l'approbateur de l'étape 1 n'avance que l'étape 1 (demande « en_attente », approbateur = étape 2), jamais une approbation finale
+observé : decider -> 200 ; demande.statut=en_attente ; approbateur=434 (a2=434) ; document.statut=revue ; etape_courante=1 ; etapes=['approuve', 'en_cours']
+{"repro": false}
+verdict : ÉCART
+base inchangée : non (avant 106757, après 106866) ; mails 0 ; tâches Celery bloquées 0
