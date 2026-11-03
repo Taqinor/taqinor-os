@@ -57,7 +57,7 @@ const groups = fichesByCategorie();
                   ))}
                 </ul>
                 <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-4">
-                  <a href={`/produits/${f.slug}`} class="text-sm font-bold text-white transition-colors hover:text-brass-300">Détails &rsaquo;</a>
+                  <a href={`/produits/${f.slug}/`} class="text-sm font-bold text-white transition-colors hover:text-brass-300">Détails &rsaquo;</a>
                   {/* WJ131 — « (PDF) » n'est promis que si la cible en est un : les
                       postes génériques (protection DC/AC, câblage, accessoires de
                       pose) renvoient vers la NORME officielle, une page, pas un PDF
@@ -79,7 +79,7 @@ const groups = fichesByCategorie();
       <p class="v2-rise max-w-2xl border-l-4 border-brass-400 pl-4 text-sm leading-relaxed text-lune-soft">
         Le matériel n'est jamais choisi d'avance : la puissance, la présence ou non d'une batterie,
         le mono ou le triphasé sortent des chiffres de votre toiture. Pour le raisonnement derrière
-        chaque marque, voyez <a href="/équipement" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
+        chaque marque, voyez <a href="/équipement/" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
       </p>
     </section>
 

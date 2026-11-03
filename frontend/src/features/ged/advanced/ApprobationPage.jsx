@@ -73,12 +73,12 @@ export default function ApprobationPage() {
         gedApi.getAnalytique().catch(() => ({ data: null })),
         gedApi.getTableauBordSignatures().catch(() => ({ data: null })),
       ])
-      setDemandes(unpage(d.data))
-      setSignatures(unpage(s.data))
-      setModeles(unpage(m.data))
-      setDocuments(unpage(docs.data))
-      setRoles(unpage(r.data))
-      setLots(unpage(l.data))
+      setDemandes(d.data)
+      setSignatures(s.data)
+      setModeles(m.data)
+      setDocuments(docs.data)
+      setRoles(r.data)
+      setLots(l.data)
       setAnalytique(a.data)
       setKanban(k.data)
     } catch (err) {

@@ -1,4 +1,5 @@
 ---
+import Faq from '../../components/Faq.astro';
 import { TABLEAU_GARANTIES_AR } from '../../lib/warranty';
 import { pageLocale } from '../../lib/pageCtx';
 /**
@@ -95,6 +96,12 @@ const productionGuarantee = {
 import GarantiesDivE50A from '../../components/blocs/GarantiesDivE50A.astro';
 import GarantiesSection63F3 from '../../components/blocs/GarantiesSection63F3.astro';
 import WarrantyListBlock from '../../components/blocs/WarrantyListBlock.astro';
+const insuranceFaq = [
+  { q: 'ماذا يغطّي تأمين السكن عادةً على تركيبة شمسية؟', a: 'تغطّي عقود التأمين متعدد المخاطر للسكن عادةً الحريق والصاعقة وأضرار المياه وأحياناً الأحداث المناخية (البَرَد، الرياح) على الممتلكات، بما فيها الألواح بعد التصريح بها. أما الكسر العرضي أو سرقة العتاد أو ضعف الأداء فليست مشمولة بالضرورة في عقد سكن عادي — تحقّقوا من البنود والاستثناءات مع مؤمِّنكم، فهي تختلف من عقد إلى آخر.' },
+  { q: 'هل يحلّ ضمان Taqinor محلّ تأمين السكن؟', a: 'لا، هما أمران مختلفان ومتكاملان. يغطّي ضماننا (انظر الجدول أعلاه) عيباً في العتاد أو التركيب خلال المدة التعاقدية. ويغطّي تأمين السكن حوادث خارجة عن التركيبة نفسها — حريق، أضرار مياه، حدث مناخي. يشتغل كلٌّ منهما في حالات مختلفة؛ ولا يحلّ أيٌّ منهما محلّ التصريح لدى مؤمِّنكم.' },
+  { q: 'هل يمكن لتركيبة شمسية أن تخفّض قسط التأمين؟', a: 'يتوقّف ذلك كلياً على مؤمِّنكم وعقدكم — ليس لنا اتفاق تجاري مع مؤمِّن بعينه ولا يمكننا تأكيد ذلك بشكل عام. إنه سؤال يُطرح مباشرة على مؤمِّنكم عند التصريح.' },
+];
+
 ---
 
 <Layout
@@ -228,6 +235,12 @@ import WarrantyListBlock from '../../components/blocs/WarrantyListBlock.astro';
         </a>
       </div>
     </section>
+
+    <Faq
+      heading="تأمين السكن والتركيبة الشمسية"
+      items={insuranceFaq}
+      schema={false}
+    />
 
     <CtaBand title="ضمان 30 سنة يُكتسب بدراسة جادة. ودراستنا مجانية." href={devisHref} />
 

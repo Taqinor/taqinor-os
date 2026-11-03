@@ -19,7 +19,7 @@ import {
   MessageCircleQuestion,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
-import { rows, toutesLesPages, errText } from './listesGed'
+import { toutesLesPages, errText } from './listesGed'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import EnteteGed from './EnteteGed'
 import { formatDate } from '../../lib/format'
@@ -111,9 +111,8 @@ export default function GedNavigator() {
   // ── Chargement des cabinets (armoires racines) ──
   const loadCabinets = (preferId) => {
     setLoadingTree(true)
-    return gedApi.getCabinets()
-      .then((r) => {
-        const list = rows(r)
+    return toutesLesPages(gedApi.getCabinets)
+      .then((list) => {
         setCabinets(list)
         if (list.length) {
           setCabinetId((c) => preferId ?? c ?? list[0].id)
@@ -897,10 +896,9 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
     setVersion(null)
     setAllVersions([])
     setFailed(false)
-    gedApi.getVersions({ document: doc.id })
-      .then((r) => {
+    toutesLesPages(gedApi.getVersions, { document: doc.id })
+      .then((list) => {
         if (!alive) return
-        const list = rows(r)
         setAllVersions(list)
         // ADOC34 — clé `version` du contrat (jamais `numero`).
         const courante = [...list].sort((a, b) => (b.version || 0) - (a.version || 0))[0]
@@ -1407,7 +1405,7 @@ function BulkOperationsDialog({ documents, folders, onClose, onDone }) {
 
   useEffect(() => {
     let alive = true
-    gedApi.getTags().then((r) => { if (alive) setTags(rows(r)) }).catch(() => {})
+    toutesLesPages(gedApi.getTags).then((list) => { if (alive) setTags(list) }).catch(() => {})
     return () => { alive = false }
   }, [])
 

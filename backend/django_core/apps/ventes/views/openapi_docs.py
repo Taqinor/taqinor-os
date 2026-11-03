@@ -939,7 +939,9 @@ EcheancierRequest = {
 RefuserRequest = _ser('DevisRefuserRequest', {
     'motif': ChaineStricte(required=False, allow_blank=True),
     'note': ChaineStricte(required=False, allow_blank=True),
-    'date': ChaineStricte(required=False, allow_blank=True),
+    # ERR-ENF11 (cron 41296444614) — ``format: date`` publié, comme l'acceptation et le
+    # contrat ``devis_refuser.json`` ; une chaîne libre était refusée « Date invalide » en 400.
+    'date': DateStricte(required=False),
     'marquer_lead_perdu': BooleenStrict(required=False),
 })
 #: Au moins un caractère non blanc (le serveur ``strip()`` puis refuse le vide), sans

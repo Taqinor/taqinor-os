@@ -316,6 +316,11 @@ def _utilisateurs_internes(qs, company):
     return qs.exclude(portee=portail) if portail else qs
 
 
+def _compte_du_fuzz(qs, company):
+    """Le seul compte que le fuzz ne peut pas supprimer pendant le run."""
+    return qs.filter(username=USERNAME)
+
+
 def _semer_calepinage(company, user):
     """Un calepinage ordinaire, sur le DERNIER lead (les autres restent
     libres pour ``POST calepinages/`` — un seul ouvert par lead)."""
@@ -826,6 +831,11 @@ REGLES_PAR_CHEMIN = (
      'stock.DossierOnboardingFournisseur', None, None),
     (r'^/api/django/stock/regles-code-barres/', ('nomenclature', 'nomenclature_id'),
      'stock.NomenclatureCodeBarres', None, None),
+    # api-fuzz-full 41296444614 (tranche 5) — les autres comptes de la table par
+    # NOM peuvent être supprimés par le fuzz en cours de run (« Clé primaire 4
+    # non valide ») ; ``fuzz_admin`` est protégé par le crochet ``before_call``.
+    (r'^/api/django/parametres/update/$', ('responsable_defaut_leads',),
+     'authentication.CustomUser', _compte_du_fuzz, None),
 )
 
 

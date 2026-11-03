@@ -431,8 +431,8 @@ function FichesTechniques() {
   const [busy, setBusy] = useState(false)
 
   const load = () => {
-    stockApi.getFichesTechniques()
-      .then((r) => setFiches(r.data?.results ?? r.data ?? []))
+    toutesLesPages((p) => stockApi.getFichesTechniques(undefined, p))
+      .then(setFiches)
       .catch(() => setError('Chargement des fiches impossible.'))
       .finally(() => setLoading(false))
   }

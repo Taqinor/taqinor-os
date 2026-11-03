@@ -280,7 +280,7 @@ describe('WJ131 — le tableau d’équipement rend bien le lien', () => {
 
   it('le lien pointe /produits/<slug>, s’ouvre à part et reste conditionnel', () => {
     expect(PROPOSITION).toContain('{it.ficheSlug ? (');
-    expect(PROPOSITION).toContain('href={`/produits/${it.ficheSlug}`}');
+    expect(PROPOSITION).toContain('href={`/produits/${it.ficheSlug}/`}');
     expect(PROPOSITION).toContain('rel="noopener"');
   });
 
@@ -291,7 +291,7 @@ describe('WJ131 — le tableau d’équipement rend bien le lien', () => {
   it('le lien vit dans le tableau d’équipement, jamais ailleurs', () => {
     const debut = PROPOSITION.indexOf('id="equipement"');
     const fin = PROPOSITION.indexOf('id="mode-agricole"');
-    const idx = PROPOSITION.indexOf('href={`/produits/${it.ficheSlug}`}');
+    const idx = PROPOSITION.indexOf('href={`/produits/${it.ficheSlug}/`}');
     expect(debut).toBeGreaterThan(0);
     expect(idx).toBeGreaterThan(debut);
     expect(idx).toBeLessThan(fin);

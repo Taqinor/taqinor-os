@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from apps.crm.stages import SIGNED
 from testkit.time import frozen
 from core.events import devis_refused, devis_sent
 from apps.crm.models import Client, Lead, MotifPerte
@@ -257,6 +258,9 @@ class TestDevisRefus(TestCase):
         self.assertEqual(devis.statut, 'accepte')
         self.assertIsNone(devis.date_refus)
         self.assertEqual(DevisSignature.objects.filter(devis=devis).count(), 1)
+        # ADVS22 — « chantier signé » intact : l'étape du lead reste SIGNED.
+        devis.lead.refresh_from_db()
+        self.assertEqual(devis.lead.stage, SIGNED)
 
     def test_refus_nominal_relit_le_statut_sous_verrou(self):
         devis = self._devis(num=91)

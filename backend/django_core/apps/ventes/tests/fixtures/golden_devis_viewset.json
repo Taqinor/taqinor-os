@@ -365,6 +365,7 @@
       "url_name": "pdf-partage",
       "detail": true,
       "methodes": [
+        "get",
         "post"
       ]
     },
@@ -693,6 +694,7 @@
     "parser_classes",
     "partial_update",
     "pdf_partage",
+    "pdf_partage_fichier",
     "perform_authentication",
     "perform_content_negotiation",
     "perform_create",

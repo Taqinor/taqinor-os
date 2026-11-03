@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { intrinsicHeight, largestWidth, photoSrcset } from '../src/lib/picture';
 
 describe('photoSrcset', () => {
@@ -28,5 +30,37 @@ describe('intrinsicHeight', () => {
   });
   it('reste exacte pour un cadrage carré', () => {
     expect(intrinsicHeight(640, 1)).toBe(640);
+  });
+});
+
+describe('WAUD29 — LCP de l’accueil', () => {
+  const src = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+  const ACCUEILS = ['../src/pages/index.astro', '../src/pages/en/index.astro', '../src/pages/ar/index.astro'];
+
+  it('la vidéo cachée ne télécharge plus d’affiche avant le LCP', () => {
+    expect(src('../src/components/VideoChantier.astro')).not.toContain('poster="/videos/chantier-poster.webp"');
+  });
+
+  it('police préchargée en priorité basse, affiche héros en priorité haute', () => {
+    const layout = src('../src/layouts/Layout.astro');
+    expect(layout).toMatch(/archivo-latin\.woff2" fetchpriority="low"/);
+    expect(layout).toMatch(/as="image"\s+type="image\/avif"\s+fetchpriority="high"/);
+    expect(src('../src/components/blocs/ArIndexPicture8B05.astro')).toContain('fetchpriority="high"');
+  });
+
+  it('galerie : variante 768w réelle et sizes qui tient compte du padding', () => {
+    for (const page of ACCUEILS) {
+      const code = src(page);
+      expect(code).toContain('calc(100vw - 2rem)');
+      const bloc = code.slice(code.indexOf('const galleryRaw = ['), code.indexOf('const gallery = buildGallery'));
+      const noms = [...bloc.matchAll(/name: '([^']+)'[^\n]*widths: \[([^\]]+)\]/g)];
+      expect(noms.length).toBeGreaterThan(0);
+      for (const [, nom, largeurs] of noms) {
+        expect(largeurs.split(',').map(Number)).toContain(768);
+        for (const ext of ['avif', 'webp']) {
+          expect(existsSync(fileURLToPath(new URL(`../public/photos/${nom}-768.${ext}`, import.meta.url)))).toBe(true);
+        }
+      }
+    }
   });
 });

@@ -1,4 +1,5 @@
 ---
+import { DEYE_PLAGE_KW } from '../lib/fiches';
 import { TABLEAU_GARANTIES_FR } from '../lib/warranty';
 /**
  * Page publique — élévation « élégance retenue » : typographie éditoriale,
@@ -39,11 +40,11 @@ const comparaisonOnduleurs = [
 
 const categories = [
   { ref: 'PV-1', title: 'Panneaux — Canadian Solar TOPBiHiKu', body: "Le bifacial capte aussi la lumière réfléchie par le toit : sur une terrasse claire, c'est du rendement gagné sans surface en plus. Ces modules 705 à 720 Wc sortent d'un constructeur qui a livré plus de 100 GW dans le monde, tenus aux normes IEC 61215 et IEC 61730. Ce sont eux qui équipent Casablanca et El Jadida.", points: ['Bifacial 705 – 720 Wc', 'Garantie produit 12 ans', 'Garantie performance linéaire 30 ans (≥ 87,4 %)'] },
-  { ref: 'PV-2', title: 'Panneaux — JA Solar DeepBlue', body: "La cellule monocristalline DeepBlue va chercher le rendement plutôt que la surface — utile quand la toiture est comptée. Même rang de fabricant, même exigence de certification. Posés à Nouaceur.", points: ['Monocristallin haut rendement', 'Garantie produit 12 ans', 'Garantie performance 25 ans'] },
-  { ref: 'OND-1', title: 'Onduleurs hybrides — Deye', body: "On retient le Deye hybride pour une raison concrète : quand le réseau saute, il bascule sur batterie en quelques millisecondes, assez vite pour qu'un PC reste allumé. Le reste du temps, il décide seconde par seconde s'il vaut mieux puiser dans les panneaux, recharger la batterie ou tirer sur le réseau. Les gammes SUN-SG05LP1, SG05LP3 et SG01HP3 couvrent 5 à 30 kW, mono comme triphasé, et parlent en CAN au BMS de la batterie. Conformes CEI 61727 et VDE-AR-N-4105.", points: ['Monophasé et triphasé, 5 – 30 kW', 'Gestion batterie CAN BMS intégrée', 'Garantie 5 ans'] },
+  { ref: 'PV-2', title: 'Panneaux — JA Solar DeepBlue', body: "La cellule monocristalline DeepBlue va chercher le rendement plutôt que la surface — utile quand la toiture est comptée. Même rang de fabricant, même exigence de certification. Posés à Nouaceur.", points: ['Monocristallin haut rendement'] },
+  { ref: 'OND-1', title: 'Onduleurs hybrides — Deye', body: "On retient le Deye hybride pour une raison concrète : quand le réseau saute, il bascule sur batterie. Le reste du temps, il décide seconde par seconde s'il vaut mieux puiser dans les panneaux, recharger la batterie ou tirer sur le réseau. Les gammes SUN-SG05LP1 et SG05LP3 couvrent " + DEYE_PLAGE_KW + ", mono comme triphasé, et parlent en CAN au BMS de la batterie. Conformes CEI 61727 et VDE-AR-N-4105.", points: [`Monophasé et triphasé, ${DEYE_PLAGE_KW}`, 'Gestion batterie CAN BMS intégrée', 'Garantie 5 ans'] },
   { ref: 'OND-2', title: 'Onduleurs réseau — Huawei SUN2000', body: "Quand l'étude ne retient pas de batterie, on passe sur du string pur. Le Huawei SUN2000 optimise chaîne par chaîne : un panneau à l'ombre ne tire plus toute la rangée vers le bas. Du résidentiel à la toiture tertiaire.", points: ['Rendement européen élevé', 'Optimisation par chaîne', 'Garantie 10 ans'] },
   { ref: 'BAT', title: 'Batteries — Dyness DL5.0C', body: "Le lithium-fer-phosphate ne s'emballe pas thermiquement comme d'autres chimies lithium : c'est le choix de la sûreté pour du stockage chez soi. Les modules DL5.0C / DL5.0C PRO s'empilent par tranches de 5 kWh et parlent nativement le CAN BMS des Deye. Certifiés CE, IEC 62619, UN38.3.", points: ['Chimie LFP — 6 000+ cycles à 90 % DoD', 'Modulaire : 5 à 15 kWh et plus', 'Garantie 7 ans'] },
-  { ref: 'MON', title: 'Monitoring — suivi de production en temps réel', body: "Sans mesure, une production annoncée n'est qu'une promesse invérifiable. Chaque toiture porte donc un dongle WiFi/Ethernet assurant une supervision en temps réel : production à la minute, historiques, alertes sur défaut. Vous gardez votre accès personnel depuis une application ; de notre côté, nous surveillons tout le parc et intervenons avant que la panne ne se voie chez vous.", points: ['Production mesurée en continu', 'Alertes automatiques — SAV proactif', 'Accès client via application mobile'] },
+  { ref: 'MON', title: 'Monitoring — suivi de production en temps réel', body: "Sans mesure, une production annoncée n'est qu'une promesse invérifiable. Les installations raccordées portent un dongle WiFi/Ethernet, supervision incluse : production à la minute, historiques, alertes sur défaut. Vous gardez votre accès personnel depuis une application ; de notre côté, nous surveillons tout le parc et intervenons avant que la panne ne se voie chez vous.", points: ['Production mesurée en continu', 'Alertes automatiques — SAV proactif', 'Accès client via application mobile'] },
 ];
 
 const warranties = TABLEAU_GARANTIES_FR;
@@ -64,7 +65,7 @@ import PourquoiTaqinorPB3A4 from '../components/blocs/PourquoiTaqinorPB3A4.astro
 
     <section class="px-4 py-20 text-white sm:py-28">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Marques tier-1 · distributeurs officiels au Maroc</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Marques tier-1</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Nos marques tier-1, et la raison technique de chacune</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Canadian Solar, JA Solar et Jinko côté panneaux ; Deye et Huawei côté onduleurs ;
@@ -196,14 +197,6 @@ import PourquoiTaqinorPB3A4 from '../components/blocs/PourquoiTaqinorPB3A4.astro
     <section class="border-y border-white/10 px-4 py-16 sm:py-20">
       <div class="mx-auto max-w-3xl">
         <PourquoiTaqinorPB3A4 />
-        <p class="v2-lead mt-5 text-lune-soft">
-          En 2025, la presse marocaine a rapporté un dossier où des lots de panneaux solaires importés
-          se sont révélés sous-performants : des rendements réels sensiblement inférieurs à ceux
-          annoncés dans les fiches techniques et documents officiels, sur des volumes destinés à des
-          marchés publics. Nous ne citons pas ce dossier pour un installateur en particulier — il n'en
-          nomme aucun — mais parce qu'il illustre exactement la question à poser avant de signer :
-          d'où vient ce panneau, et qui peut le prouver ?
-        </p>
         <div class="mt-8 grid gap-4 sm:grid-cols-2" data-stagger>
           <div class="v2-rise border border-white/15 p-6" style="--v2-i:0">
             <p class="tech-label text-brass-300">Ce que le marché a montré</p>
@@ -217,7 +210,7 @@ import PourquoiTaqinorPB3A4 from '../components/blocs/PourquoiTaqinorPB3A4.astro
             <p class="tech-label text-brass-300">Ce que nous documentons, ligne par ligne</p>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">
               Chaque référence de cette page est une marque tier-1 nommée, avec sa fiche constructeur
-              officielle liée en <a href="/produits" class="text-brass-300 underline underline-offset-2 hover:text-white">page produit</a>,
+              officielle liée en <a href="/produits/" class="text-brass-300 underline underline-offset-2 hover:text-white">page produit</a>,
               sa garantie contractuelle Taqinor et — une fois posée — sa production vérifiable via
               le suivi de production en temps réel. Rien d'anonyme, rien qui ne se retrouve pas.
             </p>
@@ -245,9 +238,9 @@ import PourquoiTaqinorPB3A4 from '../components/blocs/PourquoiTaqinorPB3A4.astro
           ensuite que répondre à ce que les chiffres ont demandé.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <a href="/garanties" class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Nos garanties →</a>
-          <a href="/résidentiel" class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Solaire résidentiel →</a>
-          <a href="/professionnel" class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Solaire professionnel →</a>
+          <a href="/garanties/" class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Nos garanties →</a>
+          <a href="/résidentiel/" class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Solaire résidentiel →</a>
+          <a href="/professionnel/" class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Solaire professionnel →</a>
         </div>
       </div>
     </section>

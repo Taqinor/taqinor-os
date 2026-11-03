@@ -215,7 +215,7 @@ describe('GedNavigator — écriture (U14)', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
 
     const dialog = await screen.findByRole('dialog')
-    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith(expect.objectContaining({ document: 8 })))
     // L'aperçu PDF est rendu dans un iframe pointant sur le proxy même-origine.
     await waitFor(() => {
       const iframe = dialog.querySelector('iframe')
@@ -239,7 +239,7 @@ describe('GedNavigator — écriture (U14)', () => {
     renderGed()
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
-    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith(expect.objectContaining({ document: 8 })))
 
     await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
     // ADOC11 — aucune zone par défaut : « Caviarder » inactif sans geste.
@@ -390,7 +390,7 @@ describe('GedNavigator — écriture (U14)', () => {
     renderGed()
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
-    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith(expect.objectContaining({ document: 8 })))
 
     await userEvent.click(await screen.findByRole('button', { name: /^Scinder…$/i }))
     await userEvent.type(await screen.findByLabelText('Points de coupe'), '1, 3')
@@ -458,7 +458,7 @@ describe('GedNavigator — écriture (U14)', () => {
     renderGed()
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
-    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith(expect.objectContaining({ document: 8 })))
 
     await userEvent.click(await screen.findByRole('button', { name: /Comparer versions…/i }))
     await userEvent.click(await screen.findByRole('button', { name: /^Comparer$/i }))
@@ -651,7 +651,7 @@ describe('GedNavigator — écriture (U14)', () => {
     renderGed()
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
-    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith(expect.objectContaining({ document: 8 })))
 
     await userEvent.click(await screen.findByRole('button', { name: /^Versions…$/i }))
     await userEvent.click(await screen.findByRole('button', { name: /^Restaurer$/i }))

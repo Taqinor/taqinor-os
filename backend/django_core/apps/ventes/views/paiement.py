@@ -431,7 +431,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     def attestations_ras_en_attente(self, request):
         """XFAC4 — état des attestations RAS à recevoir (non reçues)."""
         qs = RetenueSubie.objects.select_related('facture').filter(
-            attestation_recue=False)
+            attestation_recue=False, annulee=False)
         qs = company_qs(qs, request.user)
         return Response(RetenueSubieSerializer(qs, many=True).data)
 

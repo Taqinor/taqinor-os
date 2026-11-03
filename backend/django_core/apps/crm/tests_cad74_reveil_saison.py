@@ -282,6 +282,26 @@ class PoseDuReveilSaisonnierTests(_Base):
         self.assertEqual(RelanceEtape.objects.filter(
             template_cle=REVEIL_SAISON_CLE).count(), 1)
 
+    def test_un_perdu_prix_a_une_etape_vivante_recoit_le_reveil(self):
+        """CADV90 — perdre ne change pas l'étape : sans forcer COLD, un perdu
+        « Prix » à Relance reçoit `reveil_b`, un « Concurrent » jamais, un
+        perdu « Prix » signé non plus."""
+        prix = self._dormant(nom='PrixVif', stage=stages.FOLLOW_UP,
+                             perdu=True, motif_perte='Prix')
+        contacte = self._dormant(nom='ReporteVif', stage=stages.CONTACTED,
+                                 perdu=True, motif_perte='Reporté')
+        self._dormant(nom='ConcVif', stage=stages.FOLLOW_UP, perdu=True,
+                      motif_perte='Concurrent')
+        self._dormant(nom='SigneVif', stage=stages.SIGNED, perdu=True,
+                      motif_perte='Prix')
+        self._dormant(nom='ActifVif', stage=stages.FOLLOW_UP)
+        posees = poser_reveils_saisonniers(self.company, self.acteur)
+        self.assertEqual(sorted(e.lead_id for e in posees),
+                         sorted([prix.pk, contacte.pk]))
+        self.assertIsNone(_motif_de_refus(
+            self._dormant(nom='PrixVif2', stage=stages.QUOTE_SENT,
+                          perdu=True, motif_perte='Prix')))
+
     def test_un_archive_ou_un_perdu_ne_recoit_rien(self):
         archive = self._dormant(nom='Archive', is_archived=True)
         self._reveil_pose_le(archive, datetime.date(2026, 3, 2))

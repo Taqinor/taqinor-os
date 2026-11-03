@@ -8,13 +8,13 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { articlePage } from '../../../lib/pageCtx';
+import { guideArticleCommun, guideDateModified } from '../../../lib/guideMeta';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import Faq from '../../../components/Faq.astro';
-import { NAP } from '../../../lib/nap';
 import { localizeNavHref } from '../../../i18n/pages';
 
 // W291 — صورة OG (نفس الرابط المُمرَّر إلى ogSlug أدناه)، لأهلية Article rich results.
@@ -26,9 +26,8 @@ const jsonLd = {
   description: 'الأنظمة الثلاثة للإنتاج الذاتي للكهرباء بالمغرب (تصريح، اتفاق ربط، ترخيص) مشروحة بلغة واضحة.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'القانون 82-21 — الإنتاج الذاتي للطاقة الكهربائية' },
-  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  mainEntityOfPage: url,
+  ...guideArticleCommun(url),
+  dateModified: guideDateModified('loi-82-21-expliquee'),
 };
 
 // W297 — تمريرة AEO/GEO: أسئلة وأجوبة مستقلّة تُعيد استعمال الحقائق المذكورة أعلاه،
@@ -45,7 +44,7 @@ const faq = [
   },
   {
     q: 'ماذا أفعل إن كانت تركيبتي الشمسية الحالية غير مُصرَّح بها؟',
-    a: 'ينص الفصل 33 على «خلال ثمانية عشر (18) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»؛ ونقطة انطلاق هذا الأجل يجب تأكيدها لدى مصالح الطاقة: أودعوا الملف دون انتظار. بعد هذا الأجل، تبقى التركيبة في وضعية غير قانونية تجاه القانون، بالعقوبات التي يستوجبها ذلك.',
+    a: 'ينص الفصل 33 على «خلال ثمانية عشر (18) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»: أودعوا الملف دون انتظار. بعد هذا الأجل، تبقى التركيبة في وضعية غير قانونية تجاه القانون.',
   },
 ];
 
@@ -117,8 +116,8 @@ import Loi8221ExpliqueeDiv68F7 from '../../../components/blocs/Loi8221ExpliqueeD
           </div>
         </div>
         <p class="mt-5 text-xs leading-relaxed text-lune-faint">
-          تركيبتك قائمة بالفعل؟ تنص المادة <span dir="ltr">33</span> على «خلال ثمانية عشر (<span dir="ltr">18</span>) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»؛ ونقطة انطلاق هذا الأجل
-          يجب تأكيدها لدى مصالح الطاقة: أودعوا الملف دون انتظار، بصرف النظر عن هذه التعريفة —
+          تركيبتك قائمة بالفعل؟ تنص المادة <span dir="ltr">33</span> على «خلال ثمانية عشر (<span dir="ltr">18</span>) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»:
+          أودعوا الملف دون انتظار، بصرف النظر عن هذه التعريفة —
           <a href={L('/regularization-article-33')} class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">سوِّ تركيبتك القائمة <span class="inline-block rtl:-scale-x-100">→</span></a>.
         </p>
       </div>
@@ -128,10 +127,10 @@ import Loi8221ExpliqueeDiv68F7 from '../../../components/blocs/Loi8221ExpliqueeD
       <h2 class="display v2-section-title mt-14 text-white">وإن كانت تركيبتي قائمة بالفعل؟</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         القانون لا ينسى التركيبات المُركّبة قبله. تنص مادته <span dir="ltr">33</span> على «خلال ثمانية عشر (<span dir="ltr">18</span>) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»
-        لجعلها في وضع قانوني: نقطة انطلاق هذا الأجل يجب تأكيدها لدى مصالح الطاقة — أودعوا الملف الناقص دون انتظار،
+        لجعلها في وضع قانوني: أودعوا الملف الناقص دون انتظار،
         تصريح أو اتفاق ربط أو ترخيص، حسب النظام الذي يعنيك أعلاه. تركيبة قائمة سُوّيت داخل هذا الأجل تلتحق
-        بالإطار القانوني كأنها جديدة. وبعد انقضاء الأجل، تبقى في وضعية غير قانونية إزاء القانون <span dir="ltr">82-21</span>،
-        بما يستتبعه ذلك من عقوبات. فلا فائدة من الانتظار، والمسطرة تنطلق منذ اليوم.
+        بالإطار القانوني كأنها جديدة. وبعد انقضاء الأجل، تبقى في وضعية غير قانونية إزاء القانون <span dir="ltr">82-21</span>.
+        فلا فائدة من الانتظار، والمسطرة تنطلق منذ اليوم.
       </p>
       <div class="mt-8 flex flex-wrap gap-3">
         <a href={L('/loi-82-21')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">حدّد نظامي في <span dir="ltr">3</span> أسئلة <span class="inline-block rtl:-scale-x-100">→</span></a>

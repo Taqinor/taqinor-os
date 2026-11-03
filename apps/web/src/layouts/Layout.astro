@@ -5,7 +5,7 @@ import Footer from '../components/Footer.astro';
 import ConsentBanner from '../components/ConsentBanner.astro';
 import MetaPixel from '../components/MetaPixel.astro';
 import GoogleTag from '../components/GoogleTag.astro';
-import { NAP, SAME_AS } from '../lib/nap';
+import { NAP, SAME_AS, LEGAL_IDENTITY } from '../lib/nap';
 import { DEFAULT_LOCALE, isLocale, LOCALE_BCP47, LOCALE_DIR, type Locale } from '../i18n/config';
 import { localizePath, stripLocale } from '../i18n/utils';
 import { localesForPath } from '../i18n/pages';
@@ -32,6 +32,9 @@ interface Props {
   preloadHeroPoster?: boolean;
   /** Pages de travail privées : jamais indexées */
   noindex?: boolean;
+  /** Pixel Meta et tag Google. Par défaut absents des pages noindex (pages privées) ; `mesure`
+   *  les garde sur une page publique seulement retirée de l'index (/liens, /status, /confiance). */
+  mesure?: boolean;
   /** Locales réellement disponibles pour CETTE page (hreflang + sélecteur).
    *  Absent / [fr] → page FR seule : rendu strictement inchangé. */
   locales?: Locale[];
@@ -75,6 +78,7 @@ const {
   ogTitle: ogTitleProp,
   preloadHeroPoster = false,
   noindex = false,
+  mesure = !noindex,
   locales,
   footerMinimal = false,
   skipVisitBeacon = false,
@@ -103,6 +107,8 @@ const alternates =
 // no-op tant que le token n'est pas posé (aucun script, aucune requête). Sans
 // cookie, sans ID persistant — la vérité de tunnel reste le flux d'événements
 // WJ55/WJ59 ; ceci ne sert qu'au bon sens trafic/CWV sitewide.
+// WAUD5 — UN SEUL beacon : ce jeton reste vide tant que l'auto-injection de Cloudflare
+// (tableau de bord) est active ; le poser en plus compterait chaque visite deux fois.
 const cfAnalyticsToken = (import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN as string | undefined)?.trim();
 
 const canonical = new URL(Astro.url.pathname, Astro.site);
@@ -129,10 +135,26 @@ const ogImage = { href: ogImageUrl };
 // spécifique ou correct », condition posée par la tâche). NAP : chaîne
 // inchangée, conforme à Reda (2026-06-12) — la réconciliation byte-for-byte
 // avec la fiche Google Business Profile reste en attente de WG5.
+// WAUD51 — entité complète sur l'accueil, /à-propos et /contact ; référence @id ailleurs.
+const ENTITE_ID = `${NAP.url}/#organization`;
+const entiteComplete = ['/', '/à-propos', '/contact'].includes(decodeURI(rootPath).replace(/(.)\/$/, '$1'));
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'LocalBusiness',
+  '@id': ENTITE_ID,
   name: NAP.name,
+  legalName: LEGAL_IDENTITY.raisonSociale,
+  identifier: [
+    { '@type': 'PropertyValue', propertyID: 'RC', value: LEGAL_IDENTITY.rcCourt },
+    { '@type': 'PropertyValue', propertyID: 'ICE', value: LEGAL_IDENTITY.ice },
+  ],
+  logo: new URL('/logo.png', NAP.url).href,
+  contactPoint: {
+    '@type': 'ContactPoint',
+    telephone: NAP.phone,
+    contactType: 'customer service',
+    availableLanguage: ['fr', 'ar', 'en'],
+  },
   url: NAP.url,
   telephone: NAP.phone,
   email: NAP.email,
@@ -190,12 +212,15 @@ const jsonLd = {
     <!-- W215 — Préchargement de la fonte display du titre (LCP <h1> = Archivo).
          Réduit le FOUT sur le headline principal sans bloquer la bande passante
          critique (4G lent). Le subset latin.woff2 couvre le français. -->
-    <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-latin.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-latin.woff2" fetchpriority="low" crossorigin />
+    {/* WAUD79 — Hanken Grotesk porte le texte au-dessus du pli : son échange décale aussi. */}
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/hanken-latin.woff2" fetchpriority="low" crossorigin />
     {preloadHeroPoster && (
       <link
         rel="preload"
         as="image"
         type="image/avif"
+        fetchpriority="high"
         imagesrcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w"
         imagesizes="100vw"
       />
@@ -216,7 +241,7 @@ const jsonLd = {
     <meta name="twitter:title" content={ogTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageUrl} />
-    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" set:html={JSON.stringify(entiteComplete ? jsonLd : { '@context': 'https://schema.org', '@type': 'LocalBusiness', '@id': ENTITE_ID, name: NAP.name, url: NAP.url })} />
     {cfAnalyticsToken && (
       <script
         defer
@@ -224,6 +249,11 @@ const jsonLd = {
         data-cf-beacon={JSON.stringify({ token: cfAnalyticsToken })}
       />
     )}
+    <script>
+      // WAUD7 — clics WhatsApp / téléphone (événement Contact + whatsapp_clicked).
+      import { installerMesureContact } from '../lib/telemetryEvents';
+      installerMesureContact(document, window);
+    </script>
     <script is:inline>
       // Capture first-touch fbclid + UTM sur toute page d'atterrissage —
       // persistés en sessionStorage, repris par le formulaire (gate CAPI).
@@ -276,11 +306,11 @@ const jsonLd = {
     <!-- WB33 — Pixel Meta navigateur (fbq) : PageView sitewide + pont
          window.tqPixelTrack pour l'événement Lead dédupliqué (eventId WJ92)
          du tunnel. Gated comme le CAPI (QJW14) : « Refuser » explicite le
-         bloque/révoque. Jamais sur les pages privées (noindex). -->
-    {!noindex && <MetaPixel />}
+         bloque/révoque. Jamais sur les pages privées (noindex sans `mesure`). -->
+    {mesure && <MetaPixel />}
     <!-- Google tag (Google Ads + GA4) : rien sans PUBLIC_GOOGLE_TAG_ID ; mêmes
          règles de consentement et même exclusion noindex que le pixel Meta. -->
-    {!noindex && <GoogleTag />}
+    {mesure && <GoogleTag />}
   </head>
   <body class="bg-nuit font-sans text-lune antialiased">
     <!-- W216 — Lien d'évitement accessible : premier élément focusable du corps.
@@ -302,8 +332,8 @@ const jsonLd = {
         </p>
         <p class="mt-3 text-xs">
           © 2026 {NAP.name} ·
-          <a href="/mentions-legales" class="underline underline-offset-2 transition-colors hover:text-white">Mentions légales</a> ·
-          <a href="/politique-de-confidentialite" class="underline underline-offset-2 transition-colors hover:text-white">Confidentialité</a>
+          <a href="/mentions-legales/" class="underline underline-offset-2 transition-colors hover:text-white">Mentions légales</a> ·
+          <a href="/politique-de-confidentialite/" class="underline underline-offset-2 transition-colors hover:text-white">Confidentialité</a>
         </p>
       </footer>
     ) : (

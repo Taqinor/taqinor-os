@@ -72,6 +72,27 @@ describe('SPL41 — golden des gestes du générateur', () => {
     await figerGeste(vue, 'autofill-residentiel')
   }, 60000)
 
+  it('Auto-remplir : produit sans TVA → TVA standard de la société', async () => {
+    // ADVS27 — société à 14 %, produit 41 sans taux : 14 000 HT → 15 960 TTC (jamais × 1,20).
+    const vue = await monter(`/ventes/devis/nouveau?lead=${LEAD.id}`, {
+      avant: ({ ventesApi, stockApi, parametresApi }) => {
+        stockApi.getProduits.mockResolvedValue({
+          data: [{ id: 41, nom: 'Onduleur réseau Huawei 5kW Monophasé', prix_vente: 14000, tva: null, is_archived: false }],
+        })
+        parametresApi.getProfile.mockResolvedValue({ data: { tva_standard: '14' } })
+        ventesApi.composerDevis.mockResolvedValue({ data: exempleContrat('ventes', 'devis_composition', 'exemple') })
+      },
+    })
+    await stable(vue)
+    await taper(screen.getByLabelText(/Nombre de panneaux/), '8')
+    await cliquer(screen.getByTestId('btn-auto-remplir'))
+    await waitFor(() => expect(vue.ventesApi.composerDevis).toHaveBeenCalled())
+    await stable(vue)
+    const champs = [...vue.container.querySelectorAll('input')].map((i) => i.value)
+    expect(champs).toContain('15960')
+    expect(champs).not.toContain('16800')
+  }, 60000)
+
   it('Auto-remplir agricole (pompe à courbe, aperçu pompage serveur)', async () => {
     const vue = await monter('/ventes/devis/nouveau', {
       avant: (apis) => {

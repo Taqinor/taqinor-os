@@ -11,7 +11,7 @@
  * available, else the existing FR page — never a dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
-import { pageLocale, blogBreadcrumbLd, articleMeta } from '../../../lib/pageCtx';
+import { pageLocale, articleMeta } from '../../../lib/pageCtx';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
@@ -48,7 +48,6 @@ const blogPosting = {
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
 };
 
-const breadcrumbLd = blogBreadcrumbLd(L, Astro.site, 'Home', 'Blog', 'Solar profitability and ROI by Moroccan city');
 
 const pvout = [
   { city: 'Tangier', value: '~1,550 – 1,650', tilt: '31°' },
@@ -76,7 +75,6 @@ const tariffs = [
   ogSlug="residentiel"
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
-  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />

@@ -154,3 +154,60 @@ describe('RWEB2 — garanties /proposition par marque posée', () => {
     expect(garantiesPanneauxAns([{ designation: 'Onduleur Deye' }])).toBeNull();
   });
 });
+
+describe('WAUD69 — provenance de la garantie Huawei', () => {
+  it('le commentaire cite la décision fondateur, pas la fiche PDF', () => {
+    const code = readFileSync(fileURLToPath(new URL('../src/lib/warranty.ts', import.meta.url)), 'utf-8');
+    expect(code).toContain('décision fondateur du 27/10/2026');
+    expect(code).not.toContain('datasheet 120 mois');
+    expect(code).not.toContain('garantie\n *     constructeur 120 mois');
+  });
+});
+
+describe('WAUD11 — pages ville : la garantie vient de warranty.ts', () => {
+  it.each(['installation-solaire-[city]', 'en/installation-solaire-[city]', 'ar/installation-solaire-[city]'])('%s', (p) => {
+    const code = readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8');
+    expect(code).toContain('statWarrantyValue: `${PANEL_PERFORMANCE_WARRANTY_YEARS}');
+    expect(code).not.toMatch(/'25 (ans|years|سنة)'/);
+    expect(code).not.toMatch(/Simple déclaration|Simple Law|تصريح بسيط/);
+  });
+});
+
+describe('WAUD20 — /équipement : durées JA omises, une seule plage Deye', () => {
+  const pages = ['équipement', 'en/équipement', 'ar/équipement'].map((p) =>
+    readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8'));
+  it('aucune durée sur JA Solar (modèle inconnu)', () => {
+    for (const s of pages) {
+      const ja = s.split('\n').find((l) => l.includes("ref: 'PV-2'")) ?? '';
+      expect(ja).toContain('DeepBlue');
+      expect(ja).not.toMatch(/12|25/);
+    }
+    for (const s of pages) expect(s).not.toMatch(/25 ans|25-year|25 سنة/);
+  });
+  it('plage Deye unique, lue depuis fiches.ts', async () => {
+    const { DEYE_PLAGE_KW } = await import('../src/lib/fiches');
+    expect(DEYE_PLAGE_KW).toBe('3 – 12 kW');
+    for (const s of pages) {
+      expect(s).not.toMatch(/5 à 30|5 to 30|من 5 إلى 30|5 – 30/);
+      expect(s).toContain('DEYE_PLAGE_KW');
+    }
+  });
+});
+
+describe('WAUD56 — bascule Deye sans source, supervision universelle : retirés', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+  const FICHIERS = ['batteries-stockage', 'équipement', 'guides/electricite-pendant-les-coupures', 'guides/on-grid-off-grid-ou-hybride']
+    .flatMap((p) => [`pages/${p}.astro`, `pages/en/${p}.astro`, `pages/ar/${p}.astro`])
+    .filter((p) => p !== 'pages/guides/on-grid-off-grid-ou-hybride.astro')
+    .concat('content/blog/batterie-lfp-dyness-deye-huawei.md');
+  it.each(FICHIERS)('%s', (f) => {
+    const s = lire(f).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(s).not.toMatch(/\b4\s?(–|-)?\s?(10)?\s?ms\b/);
+    expect(s).not.toMatch(/quelques millisecondes|within milliseconds|في أجزاء من الألف/);
+    expect(s).not.toMatch(/Chaque toiture porte|every roof carries|كل سطح يحمل/);
+  });
+  it('≥ 87,4 % relié à la ligne de la fiche (1 % puis 0,4 %/an sur 29 ans)', () => {
+    const w = lire('lib/warranty.ts');
+    expect(w).toContain('1st year power degradation no more than 1%');
+  });
+});

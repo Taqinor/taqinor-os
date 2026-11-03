@@ -11,6 +11,9 @@
  * (W204) that the FR index already has. W289 — SEO-framed intro + ItemList
  * schema for the measured/visitable pillar, ported from FR.
  */
+import RealisationPhoto from '../../../components/blocs/RealisationPhoto.astro';
+import RealisationGrille from '../../../components/blocs/RealisationGrille.astro';
+import RealisationCarte from '../../../components/blocs/RealisationCarte.astro';
 import Layout from '../../../layouts/Layout.astro';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
@@ -22,7 +25,7 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import BrandStrip from '../../../components/BrandStrip.astro';
-import { REALISATIONS, standardCaption } from '../../../lib/realisations';
+import { REALISATIONS, dateLocale, standardCaption } from '../../../lib/realisations';
 import { realisationsItemListJsonLd, realisationsPage, villesUniques } from '../../../lib/realisationsView';
 import { localizeNavHref } from '../../../i18n/pages';
 
@@ -92,51 +95,25 @@ import PourquoiTaqinorBloc660A from '../../../components/blocs/PourquoiTaqinorBl
           قبل أي عرض ثمن، يمكن تنظيم زيارة: مشاهدة تركيبة تاكينور وهي تعمل، وطرح أسئلة على زبون حالي،
           ومقارنة سطح بسطحك. لكل ورش أدناه، تُنشَر القدرة المُركَّبة والعتاد المُثبَّت كما هي.
         </p>
-        <p class="mt-4 text-lune-soft">
-          كل تركيبة تستفيد من متابعة الإنتاج في الوقت الحقيقي، مع ولوج للزبون — يُقرَأ الإنتاج هناك
-          باستمرار، مباشرة من العدّاد.
-        </p>
       </div>
     </section>
 
     <!-- W308 : معرض بمكبّر صور — data-lightbox-gallery يحدّد المجموعة -->
-    <section class="px-4 pb-24 sm:pb-32">
-      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger data-lightbox-gallery>
+    <RealisationGrille>
         {REALISATIONS.map((r, i) => (
-          <div class="v2-rise relative" style={`--v2-i:${i}`}>
-            <button
-              type="button"
-              class="photo-card-btn cine-card group relative block w-full overflow-hidden text-left"
-              data-lightbox-trigger
-              data-lightbox-src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`}
-              data-lightbox-alt={altOf(r)}
-              data-lightbox-label={[r.ville, r.kwc, r.date].filter(Boolean).join(' · ')}
-              aria-label={`تكبير الصورة: ${altOf(r)}`}
-            >
-              <Picture
-                name={r.photos[0].name}
-                alt={altOf(r)}
-                widths={r.photos[0].widths}
-                ratio={3 / 2}
-                sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                style={(r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : undefined}
-                class="photo-card-img aspect-[3/2] w-full object-cover"
-              />
-              <PhotoCaption
-                caption={standardCaption(r, 'ar')}
-                detail={r.panneaux}
-              />
-            </button>
+          <RealisationCarte i={i} src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`} alt={altOf(r)} label={[r.ville, r.kwc, dateLocale(r.date, 'ar')].filter(Boolean).join(' · ')} aria={`تكبير الصورة: ${altOf(r)}`}>
+              <Fragment slot="image">
+              <RealisationPhoto r={r} alt={altOf(r)} caption={standardCaption(r, 'ar')} />
+              </Fragment>
             <a
               href={L(`/realisations/${r.slug}`)}
               class="group mt-2 inline-flex items-center gap-1 border-b-2 border-azur-200/60 pb-0.5 text-sm font-bold text-white transition-colors hover:text-azur-200"
             >
               شاهد دراسة الحالة <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1 inline-block rtl:-scale-x-100" aria-hidden="true">→</span>
             </a>
-          </div>
+          </RealisationCarte>
         ))}
-      </div>
-    </section>
+    </RealisationGrille>
 
     <!-- W281 — فيلم ورشة حقيقي، أسفل معرض ركيزة الإثبات المخصصة -->
     <VideoChantier />

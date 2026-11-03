@@ -11,7 +11,7 @@
  * dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
-import { pageLocale, blogBreadcrumbLd, articleMeta } from '../../../lib/pageCtx';
+import { pageLocale, articleMeta } from '../../../lib/pageCtx';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
@@ -21,7 +21,7 @@ import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { NAP } from '../../../lib/nap';
 import { localizeNavHref } from '../../../i18n/pages';
 import '../../../styles/prose.css';
-import { DATE_LONGUE_FR as dateFmt } from '../../../lib/format';
+import { DATE_LONGUE_AR as dateFmt } from '../../../lib/format';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
 
@@ -49,7 +49,6 @@ const blogPosting = {
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
 };
 
-const breadcrumbLd = blogBreadcrumbLd(L, Astro.site, 'الرئيسية', 'المدوّنة', 'كم تكلّف تركيبة شمسية بالمغرب سنة 2026؟');
 
 const fourchettes = [
   { kwc: '3 kWc', prix: '<span dir="ltr">28 000 – 42 000</span> درهم' },
@@ -64,7 +63,6 @@ const fourchettes = [
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
-  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -91,7 +89,7 @@ const fourchettes = [
           بمصادرها، وخصوصاً بحدودها.
         </p>
         <p class="text-xs text-lune-faint">
-          <em>(W293 — للنسخة الدائمة من هذه الهوامش، مُراجَعة كل سنة بمعزل عن أخبار 2026، انظروا
+          <em>(للنسخة الدائمة من هذه الهوامش، مُراجَعة كل سنة بمعزل عن أخبار 2026، انظروا
           صفحتنا <a href={L('/prix-panneaux-solaires-maroc')}>أثمنة الألواح الشمسية بالمغرب</a>.)</em>
         </p>
 

@@ -88,9 +88,10 @@ export default function GedDocumentInsights({ document, onClose }) {
       .then((r) => setTimeline(toArray(r.data)))
       .catch(() => setTimeline([]))
     reloadAcl()
-    gedApi.getUsers().then((r) => setUsers(toArray(r.data)))
+    // Toutes les pages : /users/ et /roles/ sont paginés (50), jamais la page 1 seule.
+    toutesLesPages(gedApi.getUsers).then((r) => setUsers(r.data))
       .catch(() => setUsers([]))
-    rolesApi.getRoles().then((r) => setRoles(toArray(r.data)))
+    toutesLesPages(rolesApi.getRoles).then((r) => setRoles(r.data))
       .catch(() => setRoles([]))
   }, [document, reloadAcl])
 

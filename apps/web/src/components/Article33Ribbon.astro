@@ -16,13 +16,13 @@ const href = localizeNavHref('/regularization-article-33', locale);
 
 <a
   href={href}
-  class="ribbon-link block px-4 py-3 text-center text-sm font-medium text-lune transition-colors hover:text-white"
+  class="ribbon-link block px-4 py-1 text-center text-xs font-medium text-lune transition-colors hover:text-white"
   aria-label={`${t('ribbon.badge')} — ${t('ribbon.text')}`}
 >
   {/* Brass hairline top edge — réduit-motion safe : pas d'animation, pas de JS */}
   <span class="ribbon-seam" aria-hidden="true"></span>
 
-  <span class="inline-flex flex-wrap items-center justify-center gap-2.5">
+  <span class="flex max-w-full items-center justify-center gap-2.5">
     {/* Icône solaire — aria-hidden, décoratif */}
     <svg
       width="15"
@@ -46,12 +46,12 @@ const href = localizeNavHref('/regularization-article-33', locale);
     </svg>
 
     {/* Badge loi — tech-label avec fond brass doux */}
-    <span class="tech-label inline-block bg-brass-400/15 px-2 py-0.5 text-brass-300 ring-1 ring-brass-400/30">
+    <span class="tech-label inline-block shrink-0 bg-brass-400/15 px-2 py-0.5 text-brass-300 ring-1 ring-brass-400/30">
       {t('ribbon.badge')}
     </span>
 
     {/* Message principal */}
-    <span class="text-lune-soft">{t('ribbon.text')}</span>
+    <span class="truncate text-lune-soft">{t('ribbon.text')}</span>
   </span>
 </a>
 

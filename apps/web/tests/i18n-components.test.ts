@@ -82,11 +82,11 @@ describe('GarantiesTeaser — FR verbatim, EN/AR présents, chiffres invariants'
 
 describe('BrandStrip — FR verbatim, EN/AR présents, marques invariantes', () => {
   it('reprend le titre et le CTA FR mot pour mot', () => {
-    expect(brandStrip).toContain('Marques tier-1 · distributeurs officiels au Maroc');
+    expect(brandStrip).toContain("heading: 'Marques tier-1'"); // WAUD49
     expect(brandStrip).toContain('Voir notre équipement →');
   });
   it('contient des traductions EN et AR distinctives', () => {
-    expect(brandStrip).toContain('Tier-1 brands · official distributors in Morocco');
+    expect(brandStrip).toContain("heading: 'Tier-1 brands'"); // WAUD49
     expect(brandStrip).toContain('See our equipment →');
     expect(brandStrip).toContain('علامات الفئة الأولى');
   });
@@ -149,19 +149,21 @@ describe('VideoChantier — FR verbatim, EN/AR présents, lieux/chemins invarian
 
 describe('WhatsAppMock — FR verbatim, EN/AR présents, deeplink FR figé', () => {
   it('reprend les bulles et libellés FR mot pour mot', () => {
-    expect(whatsapp).toContain('répond généralement en quelques minutes');
+    expect(whatsapp).toContain('répond sur WhatsApp sous 1 h, 7j/7');
     expect(whatsapp).toContain('WhatsApp direct');
     expect(whatsapp).toContain('📷 Photo de la toiture');
   });
   it('contient des traductions EN et AR distinctives', () => {
-    expect(whatsapp).toContain('usually replies within a few minutes');
+    expect(whatsapp).toContain('replies on WhatsApp within 1 h, 7 days a week');
     expect(whatsapp).toContain('📷 Photo of the roof');
-    expect(whatsapp).toContain('يردّ عادةً خلال بضع دقائق');
+    expect(whatsapp).toContain('يردّ عبر واتساب خلال ساعة، 7 أيام على 7');
   });
   it('garde les chiffres + lieux identiques et le deeplink WhatsApp EN FRANÇAIS', () => {
     // Chiffres et lieu identiques dans toutes les langues (présents au moins en FR).
     expect(whatsapp).toContain('1 800 MAD');
-    expect(whatsapp).toContain('5 à 9 kWc');
+    // WAUD19 — aucune puissance chiffrée ni « anonymisé » : c'est un exemple.
+    expect(whatsapp).not.toMatch(/kWc'|\d kWc/);
+    expect(whatsapp).not.toContain('anonymis');
     expect(whatsapp).toContain('Casablanca');
     // Le message pré-rempli du lien reste en français (atteint l'équipe FR).
     expect(whatsapp).toContain(
@@ -184,5 +186,28 @@ describe('Testimonials — FR verbatim, EN/AR présents, garde « rien d’inven
   it('conserve la garde de données réelles (aucun markup sans données)', () => {
     expect(testimonials).toContain('hasTestimonials()');
     expect(testimonials).toContain('hasRating()');
+  });
+});
+
+describe('WAUD24 — liens ville du pied de page localisés', () => {
+  it('href via L(), libellé par locale, villes en arabe', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/components/Footer.astro', import.meta.url)), 'utf-8');
+    expect(src).toContain('href={L(`/installation-solaire-${c.slug}`)}');
+    expect(src).toContain("villeLocale(c.slug, locale)");
+    expect(src).toContain('in ${villeLocale(c.slug, locale)}');
+  });
+  it('villeLocale : arabe sur /ar, nom latin sinon', async () => {
+    const { villeLocale } = await import('../src/lib/realisations');
+    expect(villeLocale('casablanca', 'ar')).toBe('الدار البيضاء');
+    expect(villeLocale('tanger', 'en')).toBe('Tangier');
+    expect(villeLocale('rabat', 'fr')).toBe('Rabat');
+  });
+});
+
+describe('WAUD87 — assurance habitation sur /garanties EN et AR', () => {
+  it.each(['en/garanties', 'ar/garanties'])('%s', (p) => {
+    const src = readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8');
+    expect(src).toContain('items={insuranceFaq}');
+    expect(src).toContain('schema={false}');
   });
 });

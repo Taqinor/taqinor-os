@@ -22,7 +22,6 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { localizeNavHref } from '../../i18n/pages';
 import { REALISATIONS } from '../../lib/realisations';
-import { CO2_KG_PER_KWH } from '../../lib/proposition';
 
 const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
@@ -38,7 +37,7 @@ const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 // الحصيلة التراكمية للأسطول المتابَع في الوقت الحقيقي (MEASURED_FLEET،
 // realisations.ts) — تراكمي "منذ التشغيل"، أبداً سنوي. CO₂ المتجنَّب ومعادل
 // الأشجار يُشتقّان منه.
-const { productionTotal, productionTotalLabel, co2TonnesLabel, battersInstalls, batteryKwhTotal, villesUniques } = impactFigures('fr-FR');
+const { productionTotal, productionTotalLabel, batteryKwhTotal, villesMesurees } = impactFigures('fr-FR');
 
 
 // RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) — l'équivalent « arbres »
@@ -52,14 +51,14 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebPage',
   name: 'أثر Taqinor',
-  description: `أثر Taqinor التراكمي، المقيس والصادق: ${productionTotalLabel} kWh مقيسة تراكمياً على الأسطول المتابَع في الوقت الحقيقي، ${co2TonnesLabel} طن CO₂ متجنَّبة حتى الآن.`,
+  description: `أثر Taqinor التراكمي، المقيس والصادق: ${productionTotalLabel} kWh مقيسة تراكمياً على الأسطول المتابَع في الوقت الحقيقي.`,
   isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
 ---
 
 <Layout
   title="أثر Taqinor: أرقامنا الحقيقية، التراكمية والقابلة للتحقّق | Taqinor"
-  description={`${productionTotalLabel} kWh مقيسة تراكمياً (أسطول متابَع في الوقت الحقيقي)، ${co2TonnesLabel} طن CO₂ متجنَّبة حتى الآن: الحصيلة الصادقة لتركيباتنا — لا شيء مُقدَّر أو مُقرَّب نحو الأعلى.`}
+  description={`${productionTotalLabel} kWh مقيسة تراكمياً (أسطول متابَع في الوقت الحقيقي): حصيلة تركيباتنا، مقروءة في تاريخ معروض.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -76,7 +75,7 @@ const jsonLd = {
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">أثر Taqinor</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           ليست توقّعاً ولا هدفاً: <span dir="ltr">{productionTotalLabel} kWh</span> مقيسة
-          تراكمياً، <span dir="ltr">{co2TonnesLabel} t CO₂</span> متجنَّبة حتى الآن — ما أنتجه فعلاً الأسطول المتابَع
+          تراكمياً — ما أنتجه فعلاً الأسطول المتابَع
           في الوقت الحقيقي منذ التشغيل. هذه الصفحة تكبر مشروعاً بعد مشروع؛ لا تقول إلا ما يمكننا
           إثباته.
         </p>
@@ -90,23 +89,16 @@ const jsonLd = {
         <h2 class="display v2-section-title mt-5 text-white"><span dir="ltr">{productionTotalLabel} kWh</span> مقيسة، حصيلة واحدة</h2>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <KeyFigure value={productionTotalLabel} unit="kWh تراكمية" label="الإنتاج المقيس">
-            حصيلة تراكمية من الأسطول المتابَع في الوقت الحقيقي منذ التشغيل، في {villesUniques.join('، ')}.
-          </KeyFigure>
-          <KeyFigure value={co2TonnesLabel} unit="طن CO₂" label="CO₂ متجنَّب (تراكمي)">
-            محسوب بمعدَّل <span dir="ltr">{CO2_KG_PER_KWH} kg CO₂/kWh</span>، عامل انبعاث الشبكة المغربية المستخدَم
-            في دراساتنا المُسعَّرة — المصدر يبقى للتحديد.
+            حصيلة تراكمية من الأسطول المتابَع في الوقت الحقيقي منذ التشغيل، خصوصاً في {villesMesurees.map((v) => (v === 'Casablanca' ? 'الدار البيضاء' : 'الجديدة')).join(' و')}.
           </KeyFigure>
           <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="التخزين التراكمي">
-            سعة بطاريات مركَّبة على {battersInstalls.length} من أصل المشاريع.
+            السعة التراكمية لبطاريات الإنجازات المنشورة.
           </KeyFigure>
         </div>
         <Callout type="info" title="كيف يُحسَب هذا الرقم">
           <p>
-            CO₂ المتجنَّب = الإنتاج التراكمي المقيس × <span dir="ltr">{CO2_KG_PER_KWH} kg/kWh</span> (متوسط عامل انبعاث
-            شبكة الكهرباء المغربية، مزيج كربوني كثيف — نفس الثابت المعروض في كل دراسة مُسعَّرة لدى
-            Taqinor). <strong>المصدر يبقى للتحديد</strong>: سننشر المرجع المؤرَّخ لهذا العامل بمجرّد أن نحسمه. لا
-            رقم هنا مُقرَّب نحو الأعلى أو مُستقرَأ أو مُقدَّر خارج الإنتاج المقيس فعلاً، ولا نحوِّل هذا CO₂ إلى أي
-            معادل (أشجار، رحلات) يتعذَّر علينا إسناده إلى مصدر.
+            يجمع الرقم التراكمي قراءات إنتاج الأسطول المتابَع، بتاريخ قراءتها.
+            لا يُستقرَأ أي رقم خارج الإنتاج المقروء فعلاً.
           </p>
         </Callout>
       </div>
@@ -145,8 +137,7 @@ const jsonLd = {
         <h2 class="display v2-section-title mt-5 text-white">مقيسة، لا مُضخَّمة أبداً</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           كان بإمكاننا تضخيم هذه الحصيلة بتقديرات نظرية أو مردوديات الكتالوج أو توقّعات على خمس
-          سنوات. نفضّل أن نحتسب فقط ما هو مركَّب ومتابَع ومنشور بالفعل — قابل للتحقّق سطراً بسطر
-          على صفحة إنجازاتنا. كل مشروع جديد موثَّق يدفع هذا المجموع قُدُماً.
+          سنوات. نفضّل أن نحتسب فقط ما هو مركَّب ومتابَع ومنشور بالفعل. كل مشروع جديد موثَّق يدفع هذا المجموع قُدُماً.
         </p>
       </div>
     </section>

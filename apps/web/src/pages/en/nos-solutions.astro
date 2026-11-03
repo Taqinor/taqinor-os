@@ -33,7 +33,7 @@ const villesDesservies = NAP.serviceArea.slice(0, -1);
 
 const solutions = [
   {
-    href: '/devis/mon-toit',
+    href: '/devis/mon-toit/',
     title: 'Free study & assessment',
     summary:
       'Free, no obligation: a 3D design of your roof included, sized to your real bill — the starting point for every solution.',
@@ -50,7 +50,7 @@ const solutions = [
     // restored from sessionStorage). The link lands on the roof step (0)
     // today, same as any other link into this journey; wiring the param is a
     // separate follow-up since that file is outside this task's scope.
-    href: '/devis/mon-toit',
+    href: '/devis/mon-toit/',
     query: '?etape=facture',
     title: 'Free bill analysis',
     summary:
@@ -58,28 +58,28 @@ const solutions = [
     qualifier: 'Choose this if you haven’t measured your roof yet, but have your bill handy.',
   },
   {
-    href: '/résidentiel',
+    href: '/résidentiel/',
     title: 'Residential solar',
     summary:
       'Villa or apartment: we size to your bill, not to a kit, and the Law 82-21 declaration goes out with the project.',
     qualifier: 'For a home — the Law 82-21 declaration is included.',
   },
   {
-    href: '/professionnel',
+    href: '/professionnel/',
     title: 'Business & industrial solar',
     summary:
       'Warehouses, factories, hotels, clinics: we go after the electricity bill, medium voltage if needed, within the rules of Law 82-21.',
     qualifier: 'For a business site — up to medium voltage if needed.',
   },
   {
-    href: '/pompage-solaire',
+    href: '/pompage-solaire/',
     title: 'Solar pumping',
     summary:
       'Irrigation with the sun, most often without batteries, set to flow rate and total head — and VAT-exempt for agriculture.',
     qualifier: 'For agricultural irrigation — sized to your real flow rate and head.',
   },
   {
-    href: '/batteries-stockage',
+    href: '/batteries-stockage/',
     title: 'Batteries & storage',
     summary:
       'Dyness LFP batteries for the evening dip or service continuity, when your consumption curve justifies it.',
@@ -87,21 +87,21 @@ const solutions = [
   },
   {
     // W253 — page existed but had no inbound link from this hub.
-    href: '/recharge-voiture-electrique-solaire',
+    href: '/recharge-voiture-electrique-solaire/',
     title: 'Solar EV charging',
     summary:
       'Charge your electric car with the energy your own roof produces, instead of paying full grid rate.',
     qualifier: 'For a household that drives (or is about to drive) electric.',
   },
   {
-    href: '/maintenance-monitoring',
+    href: '/maintenance-monitoring/',
     title: 'Maintenance & monitoring',
     summary:
       'Real-time production monitoring with client access via an app, after-sales that acts on alerts and a complete technical file — life after install.',
     qualifier: 'Included after install — also worth it for an existing, unmonitored installation.',
   },
   {
-    href: '/regularization-article-33',
+    href: '/regularization-article-33/',
     title: 'Law 82-21 regularisation',
     summary:
       'An existing installation brought back into line via Article 33.',
@@ -213,18 +213,12 @@ const jsonLd = {
           between you and your bank; we take no commission on any of it.
         </p>
         <dl class="mx-auto mt-10 grid max-w-2xl grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4" data-stagger>
-          <div class="v2-rise min-w-0" style="--v2-i:0">
-            <dd class="fig fig-md lum whitespace-nowrap">3–7 yrs</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Typical return on investment</dt>
-          </div>
+          
           <div class="v2-rise min-w-0" style="--v2-i:1">
             <dd class="fig fig-md lum whitespace-nowrap">30 yrs</dd>
             <dt class="tech-label mt-2 text-lune-faint">Panel performance warranty</dt>
           </div>
-          <div class="v2-rise min-w-0" style="--v2-i:2">
-            <dd class="fig fig-md lum whitespace-nowrap">50–100 %</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Of the bill covered <span class="normal-case font-normal">(depending on the number of batteries and day/night usage)</span></dt>
-          </div>
+          
           <div class="v2-rise min-w-0" style="--v2-i:3">
             <dd class="fig fig-md lum whitespace-nowrap">0 MAD</dd>
             <dt class="tech-label mt-2 text-lune-faint">The study and assessment</dt>

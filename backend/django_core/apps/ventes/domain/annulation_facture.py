@@ -200,6 +200,23 @@ def _contre_passer(locked, user, motif=''):
     return avoir
 
 
+def _payes_hors_escompte(locked, paiements):
+    """AARG35 — le payé réel à rendre ou à déplacer : ``montant_paye`` compte
+    l'escompte accordé (XFAC12), qui n'a jamais été encaissé."""
+    escomptes = sum((p.escompte_montant or Decimal('0') for p in paiements),
+                    Decimal('0'))
+    return Decimal(str(locked.montant_paye)) - escomptes
+
+
+def _retirer_escomptes(paiements):
+    """AARG35 — l'escompte tombe avec la facture annulée : le payé net revient à 0."""
+    from ..models import Paiement
+    Paiement.objects.filter(pk__in=[p.pk for p in paiements if p.escompte_montant]).update(
+        escompte_montant=Decimal('0'))
+    for p in paiements:
+        p.escompte_montant = Decimal('0')
+
+
 def _transferer_acompte(locked, directive, paiements, net_acompte, user,
                         motif=''):
     """FG50 — re-pointe l'acompte (paiements + avances ventilées) vers la
@@ -211,6 +228,7 @@ def _transferer_acompte(locked, directive, paiements, net_acompte, user,
     # Re-pointe les paiements vers la cible : les soldes des deux
     # factures se redérivent (propriétés calculées).
     nb = len(paiements)
+    _retirer_escomptes(paiements)  # AARG35 — seul le payé réel suit
     from .encaissements import _rattacher_paiement
     for p in paiements:
         # AFAC17 — LE geste de déplacement partagé avec
@@ -440,7 +458,7 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
         # `p.montant` (elle remboursait 45 000 jamais encaissés).
         paiements = [p for p in locked.paiements.all()
                      if p.statut not in Paiement.STATUTS_NON_COMPTES]
-        net_acompte = Decimal(str(locked.montant_paye))
+        net_acompte = _payes_hors_escompte(locked, paiements)  # AARG35
 
         if acompte_action == 'transferer':
             facture = _transferer_acompte(
@@ -457,13 +475,12 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
             # net retombe à 0 → l'acompte n'est plus « coincé » ; la ligne
             # négative porte l'obligation de remboursement.
             from django.utils import timezone as _tz
-            Paiement.objects.create(
-                facture=locked, company=locked.company,
-                montant=-net_acompte, date_paiement=_tz.now().date(),
-                mode=Paiement.Mode.AUTRE,
-                note='Remboursement acompte (annulation facture)',
-                created_by=user,
-            )
+            from .encaissements import enregistrer_paiement
+            _retirer_escomptes(paiements)  # AARG35
+            enregistrer_paiement(
+                porte=False, facture=locked, montant=-net_acompte, user=user,
+                date_paiement=_tz.now().date(), mode=Paiement.Mode.AUTRE,
+                note='Remboursement acompte (annulation facture)')
             locked.avoir_annulation = _contre_passer(locked, user, motif)
             activity.log_facture_acompte_rembourse(
                 locked, user, net_acompte)
@@ -498,6 +515,8 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
         from .encaissements import fermer_liens_paiement
         from ..models import PaymentLink
         fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
+        # AARG35 — plus de retenue comptée ni d'attestation attendue.
+        locked.retenues_subies.filter(annulee=False).update(annulee=True)
 
     # YEVNT6 — événement documentaire (best-effort), une fois pour les
     # trois branches ci-dessus (toutes convergent vers ANNULEE).

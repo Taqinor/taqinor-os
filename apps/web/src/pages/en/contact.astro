@@ -9,27 +9,25 @@
  * the form, only human doors (WhatsApp, phone, NAP, SAV); it becomes the pure
  * version of that, plus an explicit phone callback request.
  */
+import ContactCarteWa from '../../components/blocs/ContactCarteWa.astro';
+import ContactEntete from '../../components/blocs/ContactEntete.astro';
 import Layout from '../../layouts/Layout.astro';
-import StarRating from '../../components/StarRating.astro';
 import { NAP } from '../../lib/nap';
+import { useTranslations } from '../../i18n/utils';
 import { contactWhatsappLinks } from '../../lib/contactWhatsapp';
 import ContactP1D0F from '../../components/blocs/ContactP1D0F.astro';
-import ContactBlocCF60 from '../../components/blocs/ContactBlocCF60.astro';
 
+const t = useTranslations('en');
 const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
 ---
 
 <Layout
   title="Contact — talk to a human | Taqinor"
-  description="Direct WhatsApp, phone callback, full contact details: talk to Taqinor's technical team about your solar project. Reply within 48 business hours."
+  description="Direct WhatsApp, phone callback, full contact details: talk to Taqinor's technical team about your solar project. WhatsApp reply within 1 h, 7 days a week."
   ogSlug="contact"
 >
   <div class="v2">
-    <ContactBlocCF60 />
-
-    <section class="px-4 py-20 text-white">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Reply within 48 business hours</p>
+    <ContactEntete>
         <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">Talk to a human</h1>
         <p class="v2-lead cine-in mt-5 max-w-xl text-white/85 [animation-delay:240ms]">
           No form here: write to us directly on WhatsApp, call, or ask for a callback.
@@ -37,22 +35,17 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
         </p>
         {/* W280 — StarRating: real Google rating only, no-op-safe (renders
             nothing until the founder supplies a real rating). */}
-        <div class="cine-in mt-6 [animation-delay:320ms]">
-          <StarRating />
-        </div>
-      </div>
-    </section>
+    </ContactEntete>
 
     <!-- W249 — "talk to a human" page: the WhatsApp/phone shortcuts and the NAP card -->
     <section class="bg-blanc-azur px-4 py-16 text-encre">
       <div class="mx-auto max-w-4xl">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-          <a href={waGeneral} rel="noopener"
-            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:0">
+          <ContactCarteWa href={waGeneral}>
             <p class="tech-label text-azur-600">New project</p>
             <p class="mt-2 font-display font-bold">WhatsApp — new installation</p>
             <p class="mt-1 text-sm text-encre-soft">Study and quote for a new project</p>
-          </a>
+          </ContactCarteWa>
           {/* W249 — phone callback: a human door for visitors who'd rather
               talk than type (pre-filled, never a blank to edit). */}
           <a href={waRappel} rel="noopener"

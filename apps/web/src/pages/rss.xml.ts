@@ -10,6 +10,7 @@ export const prerender = true;
 
 import type { APIRoute } from 'astro';
 import { getCollection } from 'astro:content';
+import { canonicalUrl } from '../lib/canonicalUrl';
 
 const SITE = 'https://taqinor.ma';
 const TITLE = 'Taqinor — Blog';
@@ -33,7 +34,7 @@ export const GET: APIRoute = async () => {
 
   const items = posts
     .map((post) => {
-      const link = `${SITE}/blog/${post.id}`;
+      const link = canonicalUrl(`/blog/${post.id}`, SITE);
       const categories = post.data.tags
         .map((tag) => `      <category>${escapeXml(tag)}</category>`)
         .join('\n');
@@ -52,7 +53,7 @@ ${categories}
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>${escapeXml(TITLE)}</title>
-    <link>${SITE}/blog</link>
+    <link>${canonicalUrl('/blog', SITE)}</link>
     <atom:link href="${SITE}/rss.xml" rel="self" type="application/rss+xml" />
     <description>${escapeXml(DESCRIPTION)}</description>
     <language>fr-MA</language>

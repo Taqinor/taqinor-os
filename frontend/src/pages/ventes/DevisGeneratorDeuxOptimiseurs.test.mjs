@@ -249,10 +249,10 @@ test('la remise globale s’applique aux DEUX options, chacune sur SON total', (
   // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : HT persisté
   // 10 × 833,33 = 8 333,30 → brut 9 999,96 ; remise 833,33 → HT net
   // 7 499,97 ; TVA 1 499,99 → 8 999,96, le chiffre facturé.
-  // ARRONDI-100 : 9 999,96 → palier de 100 inférieur (9 900) ; 8 999,96 → 8 900.
-  assert.equal(t.totalSansBrut, 9900)
-  assert.equal(t.totalSans, 8900)
-  assert.equal(t.totalAvec, 8900)
+  // ADVS3 (D-ADVS-4) : à moins d'1 MAD sous la centaine, 9 999,96 → 10 000 et 8 999,96 → 9 000.
+  assert.equal(t.totalSansBrut, 10000)
+  assert.equal(t.totalSans, 9000)
+  assert.equal(t.totalAvec, 9000)
 })
 
 test('une ligne batterie taguée « sans » ne compte JAMAIS dans une capacité batterie', () => {

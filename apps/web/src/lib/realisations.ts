@@ -341,6 +341,8 @@ export interface MeasuredPlant {
   kwc: number | null;
   /** Cumul mesuré depuis la mise en service, en MWh. */
   lifetimeMWh: number;
+  /** Ville du site quand elle est connue (WAUD16) ; absente sinon, jamais devinée. */
+  ville?: string;
   /** Application de supervision — INTERNE, jamais affichée (WC10). */
   source: 'deye' | 'huawei';
   /**
@@ -354,10 +356,10 @@ export interface MeasuredPlant {
   readAt?: string;
 }
 export const MEASURED_FLEET: MeasuredPlant[] = [
-  { label: 'Aïn Diab (Casablanca)', kwc: 10, lifetimeMWh: 2.62, source: 'deye', readAt: '2026-07-04' },
-  { label: 'Casablanca (Rassam)', kwc: 5.68, lifetimeMWh: 1.41, source: 'deye', readAt: '2026-07-04' },
-  { label: 'El Jadida (Benaissa)', kwc: 5, lifetimeMWh: 1.4, source: 'deye', readAt: '2026-07-04' },
-  { label: 'Bd Fès (Casablanca)', kwc: 11.36, lifetimeMWh: 1.13, source: 'deye', readAt: '2026-07-04' },
+  { label: 'Aïn Diab (Casablanca)', ville: 'Casablanca', kwc: 10, lifetimeMWh: 2.62, source: 'deye', readAt: '2026-07-04' },
+  { label: 'Casablanca (Rassam)', ville: 'Casablanca', kwc: 5.68, lifetimeMWh: 1.41, source: 'deye', readAt: '2026-07-04' },
+  { label: 'El Jadida (Benaissa)', ville: 'El Jadida', kwc: 5, lifetimeMWh: 1.4, source: 'deye', readAt: '2026-07-04' },
+  { label: 'Bd Fès (Casablanca)', ville: 'Casablanca', kwc: 11.36, lifetimeMWh: 1.13, source: 'deye', readAt: '2026-07-04' },
   { label: 'Omar Taouss', kwc: null, lifetimeMWh: 3.41, source: 'huawei', readAt: '2026-07-05' },
   { label: 'Villa Haj Elofir', kwc: null, lifetimeMWh: 34.22, source: 'huawei', readAt: '2026-07-05' },
 ];
@@ -391,6 +393,13 @@ export const MEASURED_FLEET_READ_AT: string | null = (() => {
 /** Même date au format FR (« 05/07/2026 ») — chaîne vide si non documentée. */
 export const MEASURED_FLEET_READ_AT_FR = formatDateFr(MEASURED_FLEET_READ_AT);
 
+/** WAUD9 — mention de relevé qui accompagne TOUT affichage du cumul (date réelle, jamais « temps réel »). */
+export const MEASURED_FLEET_READ_NOTE = {
+  fr: `relevé le ${MEASURED_FLEET_READ_AT_FR}`,
+  en: `read on ${MEASURED_FLEET_READ_AT_FR}`,
+  ar: `قراءة بتاريخ ${MEASURED_FLEET_READ_AT_FR}`,
+};
+
 /**
  * (fondateur 2026-08-17) centrale MESURÉE correspondant à une réalisation, ou
  * `null`. Aucun appariement heuristique (ville/puissance) : seule une
@@ -401,6 +410,51 @@ export function measuredPlantFor(r: Realisation | null | undefined): MeasuredPla
   const label = r?.measuredLabel;
   if (!label) return null;
   return MEASURED_FLEET.find((p) => p.label === label) ?? null;
+}
+
+/** WAUD21 — valeur + libellé de la production mesurée d'une réalisation, par locale ; null sans relevé apparié. */
+export function mesureAffichee(
+  r: Realisation | null | undefined,
+  locale: 'fr' | 'en' | 'ar',
+): { valeur: string; libelle: string } | null {
+  const p = measuredPlantFor(r);
+  if (!p?.readAt) return null;
+  const mwh = p.lifetimeMWh.toFixed(2);
+  const fr = mwh.replace('.', ',');
+  const date = new Intl.DateTimeFormat({ fr: 'fr-FR', en: 'en-GB', ar: 'ar-MA' }[locale], { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(p.readAt));
+  return {
+    valeur: `${locale === 'en' ? mwh : fr} MWh`,
+    libelle: { fr: `Production mesurée — relevé le ${date}`, en: `Measured production — read on ${date}`, ar: `الإنتاج المقاس — قراءة بتاريخ ${date}` }[locale],
+  };
+}
+
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+/** WAUD15 — « mois année » de `date` en nombre comparable (AAAA×12 + mois), ou -1 si illisible. */
+export function dateComparable(date: string): number {
+  const [mois, annee] = date.trim().split(/\s+/);
+  const m = MOIS_FR.indexOf(mois?.toLowerCase() ?? '');
+  const a = Number(annee);
+  return m < 0 || !Number.isFinite(a) ? -1 : a * 12 + m;
+}
+
+/** WAUD32 — « mois année » de `date` rendu par locale ; le français reste identique à l'octet. */
+export function dateLocale(date: string, locale: 'fr' | 'en' | 'ar'): string {
+  if (locale === 'fr') return date;
+  const c = dateComparable(date);
+  if (c < 0) return date;
+  const jour = new Date(Date.UTC(Math.floor(c / 12), c % 12, 1));
+  return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'ar-MA', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(jour);
+}
+
+/** WAUD17 — la réalisation documentée la plus ancienne (min(date)). */
+export function plusAncienneRealisation(): Realisation {
+  return [...REALISATIONS].sort((a, b) => dateComparable(a.date) - dateComparable(b.date))[0];
+}
+
+/** WAUD15 — la réalisation la plus récemment livrée (max(date)). */
+export function derniereRealisation(): Realisation {
+  return [...REALISATIONS].sort((a, b) => dateComparable(b.date) - dateComparable(a.date))[0];
 }
 
 export const realisationBySlug = (slug: string): Realisation | undefined =>
@@ -513,7 +567,7 @@ export const standardCaption = (r: Realisation, locale: 'fr' | 'en' | 'ar' = 'fr
   const dateVerb = r.dateType === 'filmed' ? s.filmed : s.installed;
   const parts = [r.ville];
   if (r.kwc) parts.push(r.kwc);
-  parts.push(`${dateVerb} ${r.date}`);
+  parts.push(`${dateVerb} ${dateLocale(r.date, locale)}`);
   if (r.production) {
     const unitLabel = r.productionEstimated ? s.estimated : s.measured;
     parts.push(`${r.production.replace(/\/an$/, '')} ${unitLabel}`);
@@ -591,6 +645,20 @@ export const CITIES: City[] = [
     hasLocalInstall: false,
   },
 ];
+
+/** WAUD24 — nom de ville par locale, pour un libellé jamais mixte. */
+const VILLES_LOCALES: Record<string, { en?: string; ar: string }> = {
+  casablanca: { ar: 'الدار البيضاء' },
+  rabat: { ar: 'الرباط' },
+  marrakech: { ar: 'مراكش' },
+  tanger: { en: 'Tangier', ar: 'طنجة' },
+  agadir: { ar: 'أكادير' },
+};
+export function villeLocale(slug: string, locale: 'fr' | 'en' | 'ar'): string {
+  const nom = CITIES.find((c) => c.slug === slug)?.name ?? slug;
+  if (locale === 'fr') return nom;
+  return VILLES_LOCALES[slug]?.[locale] ?? nom;
+}
 
 export const cityBySlug = (slug: string): City | undefined =>
   CITIES.find((c) => c.slug === slug);

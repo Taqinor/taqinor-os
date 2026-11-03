@@ -192,6 +192,49 @@ class AnnulationArgentTests(TestCase):
         contre = Paiement.objects.get(facture=acompte, montant__lt=0)
         self.assertEqual(contre.montant, Decimal('-10000.00'))
 
+    def test_rembourser_hors_escompte_et_retenue_neutralisee(self):
+        """AARG35 — réglée 1 176 + escompte 24 : −1 176, pas −1 200 ; réglée
+        1 000 + RAS-TVA 200 : la retenue sort du total et des attestations."""
+        from apps.ventes.models import Facture, Paiement, RetenueSubie
+
+        def _facture():
+            return Facture.objects.create(
+                company=self.company, reference=f'FAC-AARG35-{_nxt()}',
+                client=self.client_obj, statut='emise', taux_tva=Decimal('20'),
+                montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+                montant_ttc=Decimal('1200'))
+
+        escomptee = _facture()
+        Paiement.objects.create(
+            company=self.company, facture=escomptee, montant=Decimal('1176'),
+            escompte_montant=Decimal('24'), date_paiement=date.today(),
+            mode='virement', created_by=self.admin)
+        r = self._annuler(escomptee, {'acompte': {'action': 'rembourser'}})
+        self.assertEqual(r.status_code, 200, r.data)
+        contre = Paiement.objects.get(facture=escomptee, montant__lt=0)
+        self.assertEqual(contre.montant, Decimal('-1176.00'))
+        escomptee = self._relire(escomptee)
+        self.assertEqual(escomptee.statut, 'annulee')
+        self.assertEqual(Decimal(str(escomptee.montant_paye)), Decimal('0'))
+
+        retenue_sur = _facture()
+        paiement = self._payer(retenue_sur, '1000')
+        retenue = RetenueSubie.objects.create(
+            company=self.company, facture=retenue_sur, paiement=paiement,
+            type_retenue=RetenueSubie.TypeRetenue.RAS_TVA, taux=Decimal('100'),
+            base=Decimal('200'), montant=Decimal('200'))
+        attendues = '/api/django/ventes/paiements/attestations-ras-en-attente/'
+        self.assertEqual(len(self.api.get(attendues).data), 1)
+        r = self._annuler(retenue_sur, {'acompte': {'action': 'rembourser'}})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Paiement.objects.get(facture=retenue_sur, montant__lt=0).montant,
+                         Decimal('-1000.00'))
+        retenue.refresh_from_db()
+        self.assertTrue(retenue.annulee)
+        retenue_sur = self._relire(retenue_sur)
+        self.assertEqual(retenue_sur.retenues_subies_total, Decimal('0'))
+        self.assertEqual(self.api.get(attendues).data, [])
+
     # ── (d) avoir actif ─────────────────────────────────────────────────
     def test_avoir_actif_refuse(self):
         devis = self._devis()

@@ -121,7 +121,11 @@ def _motif_de_refus(lead, *, maintenant=None):
     exclu = motif_exclu_du_contact(lead)
     if exclu:
         return exclu
-    if lead.stage != stages.COLD:
+    # CADV90 — un perdu « Prix »/« Reporté » ne change pas d'étape en
+    # étant perdu : il reste à Relance/Contacté… et c'est lui qu'on réveille.
+    perdu_vivant = (getattr(lead, 'perdu', False)
+                    and lead.stage != stages.SIGNED)
+    if lead.stage != stages.COLD and not perdu_vivant:
         return ('Le lead n’est pas au Froid : le réveil saisonnier ne '
                 's’adresse qu’aux dormants.')
 
@@ -222,16 +226,18 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
     # chaque passage et les suivants jamais servis. ``_motif_de_refus`` reste
     # la porte unique, relue lead par lead.
     # CADV90 — même règle que ``_perdu_non_terminal``, dans la requête.
-    perdu_admis = Q(perdu=False)
+    # Un perdu non terminal garde l'étape où il a été perdu (hors Signé).
+    perdu_admis = Q(perdu=False, stage=stages.COLD)
     for motif in MOTIFS_PERTE_NON_TERMINAUX:
-        perdu_admis |= Q(perdu=True, motif_perte__iexact=motif)
+        perdu_admis |= (Q(perdu=True, motif_perte__iexact=motif)
+                        & ~Q(stage=stages.SIGNED))
     touches = RelanceEtape.objects.filter(company=company, lead=OuterRef('pk'))
     dernier_reveil = (touches.filter(cadence='reveil')
                       .exclude(template_cle=REVEIL_SAISON_CLE)
                       .order_by('-due_date', '-ordre')
                       .values('due_date')[:1])
     dormants = (Lead.objects
-                .filter(company=company, stage=stages.COLD,
+                .filter(company=company,
                         is_archived=False, ne_plus_contacter=False)
                 .filter(perdu_admis)
                 .exclude(type_installation='agricole')

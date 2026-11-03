@@ -2,6 +2,8 @@
 // vérifier » (WG11) publie la RÈGLE sourcée de l'aide FDA, sans montant, avec les mêmes mots
 // que le devis agricole (quote_engine/agricole/mentions.py) et que la page Financement
 // (AGW306). Le paragraphe Saquii reste inchangé (non vérifié). Garde sur le HTML CONSTRUIT.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { builtPage, mainOf, visibleText } from './builtHtmlHelper';
 
@@ -11,13 +13,13 @@ const PAGES: Array<[string, string]> = [
   ['AR', '/ar/pompage-solaire'],
 ];
 
-/** La carte « aide de l'État » : de `data-fda-regle` à `data-saquii` (incluse). */
+/** La carte « aide de l'État » : de `data-fda-regle` à `data-fda-source` (WAUD48 : Saquii retiré). */
 function carte(html: string): string {
   const main = mainOf(html);
   const a = main.indexOf('data-fda-regle');
-  const b = main.indexOf('data-saquii');
+  const b = main.indexOf('data-fda-source');
   expect(a, 'data-fda-regle').toBeGreaterThan(-1);
-  expect(b, 'data-saquii').toBeGreaterThan(a);
+  expect(b, 'data-fda-source').toBeGreaterThan(a);
   const fin = main.indexOf('</p>', b);
   return visibleText(main.slice(a, fin));
 }
@@ -52,16 +54,25 @@ describe('AGW307 — la carte FDA de /pompage-solaire = la règle, pas une prome
       expect(txt).toMatch(lang === 'FR' ? /relevé le 2 octobre 2026/ : lang === 'EN' ? /read on 2 October 2026/ : /2 أكتوبر 2026/);
     });
 
-    it(`${lang} — le paragraphe Saquii reste présent et ne publie ni pourcentage ni montant`, () => {
+    it(`${lang} — WAUD48 : le paragraphe Saquii non vérifié est retiré, la règle FDA reste`, () => {
       const main = mainOf(html);
-      const a = main.indexOf('data-saquii');
-      const saquii = visibleText(main.slice(a, main.indexOf('</p>', a)));
-      expect(saquii).toContain('Saquii');
-      expect(saquii).not.toMatch(/\d/);
+      expect(main).not.toContain('data-saquii');
+      expect(main).toContain('data-fda-regle');
     });
 
     it(`${lang} — jamais d'éligibilité promise : décision de l'administration, non garantie`, () => {
       expect(page).toMatch(lang === 'FR' ? /ne garantit aucune éligibilité/ : lang === 'EN' ? /guarantees no eligibility/ : /لا تضمن/);
     });
   }
+});
+
+describe('WAUD52 — vocabulaire « pompe solaire »', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8');
+  it('FR ≥ 6 « pompe solaire », AR ≥ 4 « مضخة شمسية »', () => {
+    expect((lire('pompage-solaire').match(/pompe solaire/gi) ?? []).length).toBeGreaterThanOrEqual(6);
+    expect(lire('pompage-solaire')).toContain('kit pompage');
+    expect(lire('pompage-solaire')).toContain('pompe immergée');
+    expect((lire('ar/pompage-solaire').match(/مضخة شمسية/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(lire('en/pompage-solaire')).toMatch(/title="Solar pump/);
+  });
 });

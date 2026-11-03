@@ -16,7 +16,7 @@ import FounderPortrait from '../../components/FounderPortrait.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS } from '../../lib/realisations';
+import { REALISATIONS, dateLocale, plusAncienneRealisation } from '../../lib/realisations';
 import { NAP } from '../../lib/nap';
 
 const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
@@ -32,7 +32,7 @@ const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
  * بوقائع لكل ورش مستخدَمة أصلاً في مكان آخر بالموقع (علامات الصف الأول،
  * أقدم ورش موثَّق).
  */
-const earliestRealisation = REALISATIONS[REALISATIONS.length - 1];
+const earliestRealisation = plusAncienneRealisation();
 
 const etapes = [
   {
@@ -59,6 +59,7 @@ const etapes = [
 import AProposSection62FB from '../../components/blocs/AProposSection62FB.astro';
 import GarantiesSection63F3 from '../../components/blocs/GarantiesSection63F3.astro';
 import ProposDiv96B3 from '../../components/blocs/ProposDiv96B3.astro';
+const personJsonLd = { '@context': 'https://schema.org', '@type': 'Person', name: 'Reda Kasri', jobTitle: 'المؤسس', url: `https://taqinor.ma/ar/à-propos/`, worksFor: { '@id': 'https://taqinor.ma/#organization' } };
 ---
 
 <Layout
@@ -206,7 +207,7 @@ import ProposDiv96B3 from '../../components/blocs/ProposDiv96B3.astro';
               <dt class="tech-label mt-2 text-encre-faint">Canadian Solar وJA Solar وDeye وHuawei وDyness</dt>
             </div>
             <div>
-              <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>
+              <dd class="font-display text-2xl font-bold">{dateLocale(earliestRealisation.date, 'ar')}</dd>
               <dt class="tech-label mt-2 text-encre-faint">أقدم ورش موثَّق ({earliestRealisation.ville})</dt>
             </div>
           </dl>
@@ -244,4 +245,5 @@ import ProposDiv96B3 from '../../components/blocs/ProposDiv96B3.astro';
 
     <StickyCta />
   </div>
+  <script type="application/ld+json" set:html={JSON.stringify(personJsonLd)} />
 </Layout>

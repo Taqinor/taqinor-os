@@ -127,7 +127,14 @@ export const TRANSLATED_PATHS: readonly string[] = Object.keys(TRANSLATED);
 /** Normalise un chemin racine : retire le slash final (sauf la racine). */
 function normalizeRoot(rootPath: string): string {
   if (!rootPath || rootPath === '/') return '/';
-  const noTrail = rootPath.replace(/\/+$/, '');
+  // WAUD4 — une clé encodée (%C3%A9) doit retrouver sa clé accentuée.
+  let decoded = rootPath;
+  try {
+    decoded = decodeURI(rootPath);
+  } catch {
+    /* chemin mal encodé : gardé tel quel */
+  }
+  const noTrail = decoded.replace(/\/+$/, '');
   return noTrail === '' ? '/' : noTrail;
 }
 
@@ -161,10 +168,22 @@ export function hasLocale(rootPath: string, locale: Locale): boolean {
  */
 export function localizeNavHref(rootPath: string, locale: Locale): string {
   const clean = rootPath.startsWith('/') ? rootPath : '/' + rootPath;
-  if (locale === DEFAULT_LOCALE || !isLocale(locale)) return clean;
-  if (!hasLocale(clean, locale)) return clean; // repli FR — jamais de lien mort
+  if (locale === DEFAULT_LOCALE || !isLocale(locale)) return avecBarreFinale(clean);
+  if (!hasLocale(clean, locale)) return avecBarreFinale(clean); // repli FR — jamais de lien mort
   if (clean === '/') return `/${locale}/`;
-  return `/${locale}${clean}`;
+  return avecBarreFinale(`/${locale}${clean}`);
+}
+
+/**
+ * WAUD57 — la forme canonique porte sa barre finale : un lien sans barre coûte un 301
+ * à chaque clic (90 % des liens internes). Fichiers à extension et /api restent tels quels,
+ * ancre et query sont préservées (mêmes exemptions que trailingSlashRedirect du Worker).
+ */
+export function avecBarreFinale(href: string): string {
+  const [, chemin = '', suite = ''] = href.match(/^([^?#]*)(.*)$/s) ?? [];
+  if (!chemin || chemin.endsWith('/') || chemin === '/api' || chemin.startsWith('/api/')) return href;
+  if (chemin.slice(chemin.lastIndexOf('/') + 1).includes('.')) return href;
+  return `${chemin}/${suite}`;
 }
 
 /**

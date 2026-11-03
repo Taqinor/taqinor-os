@@ -165,7 +165,7 @@ def _materialize_paiement_on_payment_captured(sender, transaction, company, **kw
             return
         # AFAC9 — LA porte unique d'encaissement (brouillon, soldée, acompte
         # CAD122 avant J+7) : aucun Paiement n'est matérialisé.
-        from .domain.encaissements import motif_non_encaissable
+        from .domain.encaissements import enregistrer_paiement, motif_non_encaissable
         if motif_non_encaissable(locked, timezone.localdate()):
             return
         reste = locked.montant_du
@@ -174,15 +174,11 @@ def _materialize_paiement_on_payment_captured(sender, transaction, company, **kw
             montant = reste
         if montant <= Decimal('0'):
             return
-        Paiement.objects.create(
-            company=locked.company,
-            facture=locked,
-            montant=montant,
-            date_paiement=timezone.localdate(),
-            mode=Paiement.Mode.CARTE,
+        enregistrer_paiement(
+            facture=locked, montant=montant,
+            date_paiement=timezone.localdate(), mode=Paiement.Mode.CARTE,
             reference=external_ref,
-            note='Paiement carte en ligne (transaction capturée).',
-        )
+            note='Paiement carte en ligne (transaction capturée).')
         locked.refresh_from_db()
         # AUD102 (P9) — ce chemin posait PAYEE et n'émettait que
         # ``facture_paid`` ; ``facture_payee`` — LE signal auquel compta

@@ -10,7 +10,7 @@
  * available, else the existing FR page — never a dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
-import { pageLocale, blogBreadcrumbLd, articleMeta } from '../../../lib/pageCtx';
+import { pageLocale, articleMeta } from '../../../lib/pageCtx';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
@@ -20,7 +20,7 @@ import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { NAP } from '../../../lib/nap';
 import { localizeNavHref } from '../../../i18n/pages';
 import '../../../styles/prose.css';
-import { DATE_LONGUE_FR as dateFmt } from '../../../lib/format';
+import { DATE_LONGUE_AR as dateFmt } from '../../../lib/format';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
 
@@ -47,7 +47,6 @@ const blogPosting = {
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
 };
 
-const breadcrumbLd = blogBreadcrumbLd(L, Astro.site, 'الرئيسية', 'المدوّنة', 'الربحية الشمسية حسب المدينة المغربية');
 
 const pvout = [
   { city: 'طنجة', value: '<span dir="ltr">~1 550 – 1 650</span>', tilt: '<span dir="ltr">31°</span>' },
@@ -75,7 +74,6 @@ const tariffs = [
   ogSlug="residentiel"
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
-  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />

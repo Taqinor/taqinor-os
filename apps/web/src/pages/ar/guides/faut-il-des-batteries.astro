@@ -8,12 +8,12 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { articlePage } from '../../../lib/pageCtx';
+import { guideArticleCommun, guideDateModified } from '../../../lib/guideMeta';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
-import { NAP } from '../../../lib/nap';
 import { localizeNavHref } from '../../../i18n/pages';
 // W310 — يعيد كتلتَي KeyFigure و Callout الموجودتين في النسخة الفرنسية
 // (إحصائية 6000 دورة + نصيحة «الانعكاس الصحيح») واللتين سقطتا صامتتين من هذه المرآة.
@@ -29,9 +29,8 @@ const jsonLd = {
   description: 'استهلاك ذاتي نهاري أو تخزين: متى تُبرَّر البطاريات في تركيبة شمسية، مشروحاً ببساطة.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'بطاريات التخزين الشمسي' },
-  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
-  mainEntityOfPage: url,
+  ...guideArticleCommun(url),
+  dateModified: guideDateModified('faut-il-des-batteries'),
 };
 ---
 

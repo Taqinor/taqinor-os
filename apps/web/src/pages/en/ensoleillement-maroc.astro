@@ -11,6 +11,7 @@
  * language switcher / hreflang do not surface this page yet. The route itself
  * renders correctly and is a real, indexable page.
  */
+import PourAllerPlusLoin from '../../components/blocs/PourAllerPlusLoin.astro';
 import Layout from '../../layouts/Layout.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -150,17 +151,12 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
-        <RelatedLinks links={[
+    <PourAllerPlusLoin kicker="To go further" links={[
           { href: L('/guides/orientation-inclinaison-ombrage'), label: 'Orientation, tilt & shading guide' },
           { href: L('/guides/combien-de-panneaux-pour-ma-maison'), label: 'How many panels for my home' },
           { href: L('/production-mesuree'), label: 'Measured production (our real projects)' },
           { href: L('/realisations'), label: 'Our projects' },
         ]} />
-      </div>
-    </section>
 
     <CtaBand title="Your roof has its own orientation. Start the free assessment to find out." href={devisHref} />
 

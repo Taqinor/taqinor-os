@@ -6,13 +6,16 @@
  * page garde ses libellés, son JSON-LD et le texte du paragraphe d'écart de
  * rendement (slot `yieldNote`) ; ici : structure, classes et logique d'affichage.
  */
+import { specificYield } from '../lib/estimatorBrainV2';
+import { YIELD_TABLE } from '../lib/yieldTable';
+import { RETOUR_PAR_SEGMENT } from '../lib/billRange';
 import Picture from './Picture.astro';
 import CtaBand from './CtaBand.astro';
 import V2Page from './V2Page.astro';
 import type { cityPageBase } from '../lib/cityPageData';
 
 interface Props {
-  c: { name: string; sunshineHours: number | string; hasLocalInstall: boolean };
+  c: { name: string; slug: string; sunshineHours: number | string; hasLocalInstall: boolean };
   rtl?: boolean;
   L: (href: string) => string;
   cardAlt: (r: any) => string;
@@ -29,14 +32,15 @@ const {
   pillarStudy, pillarMeasure, pillarCompliance,
 } = city;
 const pillars = [pillarStudy, pillarMeasure, pillarCompliance];
+// WAUD45 — rendement PVGIS de la ville à 20 % de pertes totales (le chiffre central du site), plein sud à 30°.
+const rendementVille = Math.round(specificYield(YIELD_TABLE[c.slug].lat, 30, 0) / 10) * 10;
 const dir = rtl ? 'ltr' : undefined;
 const noteClass = rtl
   ? 'mx-auto mt-4 max-w-3xl border-e-2 border-brass-400/60 pe-4 text-sm leading-relaxed text-lune-soft'
   : 'mx-auto mt-4 max-w-3xl border-l-2 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft';
 const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10';
 const stats = [
-  { v: '50–100 %', k: t.statBill },
-  { v: t.statRoiValue, k: t.statRoi },
+  ...(t.statRoiValue ? [{ v: t.statRoiValue, k: t.statRoi }] : []),
   { v: t.statWarrantyValue, k: t.statWarranty },
   { v: '< 11 kW', k: t.stat8221 },
 ];
@@ -60,7 +64,7 @@ const stats = [
     <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
       <div class="v2-rise">
         <p class="tech-label v2-kicker rule-brass text-brass-300">{t.potential}</p>
-        <p class="fig lum mt-4 text-5xl sm:text-6xl" dir={dir}>{c.sunshineHours} <span class="text-2xl">{t.hoursUnit}</span></p>
+        <p class="fig lum mt-4 text-5xl sm:text-6xl" dir={dir}>≈ {rendementVille} <span class="text-2xl">{t.hoursUnit}</span></p>
         <p class="tech-label mt-2 text-lune-faint">{t.sunshineLabel}</p>
         <p class="mt-4 max-w-md text-sm leading-relaxed text-lune-soft">
           {t.publicData} {sunshineContext}
@@ -75,7 +79,7 @@ const stats = [
         ))}
       </dl>
     </div>
-    <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
+    {RETOUR_PAR_SEGMENT.residentiel && <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>}
     {delegataireNote && (
       <p class={noteClass}>
         {delegataireNote}

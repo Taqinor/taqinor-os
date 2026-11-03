@@ -135,3 +135,14 @@ const chipClass = (loc: Locale) =>
   .lang-compact > summary::-webkit-details-marker { display: none; }
   .lang-compact[open] .lang-caret { transform: rotate(180deg); }
 </style>
+
+<script>
+  // WAUD88 — sélecteur : réécrit les liens avec la seule clé `mode` (présélection agricole/pro).
+  import { hrefAvecMode } from '../i18n/utils';
+  if (new URLSearchParams(location.search).has('mode')) {
+    document.querySelectorAll<HTMLAnchorElement>('a[hreflang][lang]').forEach((a) => {
+      const href = a.getAttribute('href');
+      if (href) a.setAttribute('href', hrefAvecMode(href, location.search));
+    });
+  }
+</script>

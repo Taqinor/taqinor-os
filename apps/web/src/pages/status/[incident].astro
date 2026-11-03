@@ -53,7 +53,7 @@ if (!incident) {
       tone="dark"
       items={[
         { label: 'Accueil', href: '/' },
-        { label: 'Statut du service', href: '/status' },
+        { label: 'Statut du service', href: '/status/' },
         { label: incident ? incident.titre : 'Incident' },
       ]}
     />
@@ -97,7 +97,7 @@ if (!incident) {
           </div>
         ) : null}
 
-        <a class="mt-8 inline-block text-sm text-azur-700 underline" href="/status">
+        <a class="mt-8 inline-block text-sm text-azur-700 underline" href="/status/">
           ← Retour au statut du service
         </a>
       </>

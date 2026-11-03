@@ -1,0 +1,8 @@
+---
+// Bloc partagé (garde ACAL345).
+import { localizeNavHref } from '../../i18n/pages';
+const L = (h: string) => localizeNavHref(h, 'en');
+---
+<p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          <a href={L('/realisations')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">See our latest projects in detail →</a>
+        </p>

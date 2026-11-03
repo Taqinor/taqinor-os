@@ -71,7 +71,17 @@ interface Props {
   hrefs?: Partial<Record<CertKey, string>>;
 }
 
-const { keys, hrefs = {} } = Astro.props as Props;
+const { keys, hrefs: hrefsProp = {} } = Astro.props as Props;
+// WAUD49 — sans `keys`, les quatre badges sont rendus : chacun pointe vers sa preuve. La fiche
+// Canadian Solar hébergée porte bien les certificats IEC 61215 / 61730 (contrôle pdftotext, 03/11/2026).
+const prefixe = Astro.url.pathname.startsWith('/en') ? '/en' : Astro.url.pathname.startsWith('/ar') ? '/ar' : '';
+const hrefs: Partial<Record<CertKey, string>> = keys && keys.length ? hrefsProp : {
+  iec: '/fiches/canadian-solar-710-topbihiku7-2608.pdf',
+  loi8221: `${prefixe}/loi-82-21/`,
+  panneaux: `${prefixe}/garanties/`,
+  onduleur: `${prefixe}/garanties/`,
+  ...hrefsProp,
+};
 const items = (keys && keys.length ? keys : CERTS.map((c) => c.key))
   .map((k) => CERTS.find((c) => c.key === k))
   .filter((c): c is CertItem => !!c);

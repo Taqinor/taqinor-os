@@ -40,7 +40,7 @@ const cityPage = CITIES.find((c) => c.name === r.ville);
 const cityNameAr = cityPage ? (AR_CITY_NAME[cityPage.slug] ?? cityPage.name) : r.ville;
 const cityIntro = `في ${cityNameAr}`;
 const cityLink = cityPage
-  ? { href: `/installation-solaire-${cityPage.slug}`, label: `تركيب شمسي في ${cityNameAr}` }
+  ? { href: `/installation-solaire-${cityPage.slug}/`, label: `تركيب شمسي في ${cityNameAr}` }
   : cs.cityLink;
 const segmentHref = r.segment === 'professionnel' ? '/professionnel' : '/résidentiel';
 const segmentLabel = r.segment === 'professionnel' ? 'مهنية' : 'سكنية';

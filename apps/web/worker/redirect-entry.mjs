@@ -11,7 +11,7 @@
  * inchangé.
  */
 import astro from './entry.mjs';
-import { canonicalTarget, canonicalRedirectStatus } from './canonical.mjs';
+import { canonicalTarget, canonicalRedirectStatus, httpsTarget } from './canonical.mjs';
 import { pathRedirect, trailingSlashRedirect } from './redirects.mjs';
 import { applyHtmlCacheControl } from './cache.mjs';
 import { applySecurityHeaders } from './headers.mjs';
@@ -24,7 +24,8 @@ export default {
     //    Toute autre méthode (POST du formulaire / de l'API) → 308 : préserve
     //    la méthode ET le corps de la requête (un 301 laisse le client repasser
     //    en GET et PERD le corps → lead silencieusement abandonné). ERR109.
-    const target = canonicalTarget(request.url);
+    // WAUD23 — le schéma d'abord : http://taqinor.ma → https (même code selon la méthode).
+    const target = httpsTarget(request.url) ?? canonicalTarget(request.url);
     if (target) {
       const status = canonicalRedirectStatus(request.method);
       // Un 308 sur une soumission ne doit pas être mis en cache comme un 301

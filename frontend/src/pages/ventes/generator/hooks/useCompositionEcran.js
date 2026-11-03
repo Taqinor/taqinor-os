@@ -82,7 +82,8 @@ export function useCompositionEcran(ctx) {
   const appliquerCompositionServeur = (data) => {
     const generated = (data.lignes || []).map(li => {
       const produit = produits.find(p => String(p.id) === String(li.produit))
-      const taux = produit ? tauxTvaOf(produit) : tauxTvaOuDefaut(li.taux_tva, 20)
+      // ADVS27 — produit sans taux : la TVA standard de la société, comme le serveur.
+      const taux = produit ? tauxTvaOf(produit, tvaStandard) : tauxTvaOuDefaut(li.taux_tva, tvaStandard)
       // ATOT28 — TTC au centime et HT servi PORTÉ (renvoyé tel quel).
       const prixTtc = produit
         ? ttcExactFromHt(li.prix_unitaire_ht, taux)

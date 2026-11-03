@@ -12,7 +12,7 @@
  * finale s'affiche directement (voir script). Zéro CLS : la largeur finale
  * est réservée avant toute animation (src/lib/countup.ts reserveWidth).
  */
-import { MEASURED_FLEET_LIFETIME_MWH } from '../lib/realisations';
+import { MEASURED_FLEET_LIFETIME_MWH, MEASURED_FLEET_READ_NOTE } from '../lib/realisations';
 
 // WC5/WC6 (2026-07-05) : on n'affiche plus la CAPACITÉ installée (« 43,48 kWc »,
 // retirée du site par décision du fondateur) mais la PRODUCTION réellement
@@ -28,9 +28,10 @@ const hasData = MEASURED_FLEET_LIFETIME_MWH > 0;
       <p class="install-counter__label tech-label" data-i18n data-fr="MWh produits et mesurés" data-en="MWh produced and measured" data-ar="ميغاواط-ساعة مُنتَجة ومقيسة">
         MWh produits et mesurés
       </p>
+      <p class="install-counter__label tech-label" data-i18n data-fr={MEASURED_FLEET_READ_NOTE.fr} data-en={MEASURED_FLEET_READ_NOTE.en} data-ar={MEASURED_FLEET_READ_NOTE.ar}>{MEASURED_FLEET_READ_NOTE.fr}</p>
     </div>
     <p class="sr-only">
-      {totalMwhLabel} MWh produits et mesurés — cumul du suivi de production en temps réel.
+      {totalMwhLabel} MWh produits et mesurés — {MEASURED_FLEET_READ_NOTE.fr}.
     </p>
   </div>
 )}

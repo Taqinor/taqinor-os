@@ -181,15 +181,26 @@ class BasesLegalesTests(_Base):
             date_creation=datetime.datetime(2026, 6, 15, 10, 0, tzinfo=horaires.CASABLANCA))
         marqueur = 'Réactivation K6 palier 2 — message préparé'
 
-        def preparer(interrupteur):
+        def preparer(interrupteur, plateforme='Meta'):
             with override_settings(REACTIVATION_K6_PALIER2=interrupteur):
                 return apply_bulk_action(
                     company=self.company, user=self.acteur, lead_ids=ids + [oppose.pk],
                     op='prepare_whatsapp',
-                    params={'seau': 'k6_p2', 'template_cle': 'reactivation_k6_p2'})
+                    params={'seau': 'k6_p2', 'template_cle': 'reactivation_k6_p2',
+                            'plateforme': plateforme})
 
         def lignes():
             return LeadActivity.objects.filter(company=self.company, body=marqueur).count()
+
+        # ERR-CADV-REACTIVATION-BLANC — « [plateforme] » non complété : jamais de
+        # lien, jamais de trace ; chaque lead sort avec le blanc nommé.
+        sans_blanc = preparer(True, plateforme='')
+        self.assertEqual(sans_blanc['queue'], [])
+        self.assertEqual({s['id']: s['reason'] for s in sans_blanc['skipped']},
+                         {**dict.fromkeys(ids, 'à compléter : [plateforme]'),
+                          oppose.pk: 'ne plus contacter'})
+        self.assertEqual(lignes(), 0)
+        self.assertFalse(ConsentRecord.objects.filter(company=self.company).exists())
 
         ferme = preparer(False)
         self.assertEqual(ferme['queue'], [])
@@ -203,6 +214,8 @@ class BasesLegalesTests(_Base):
         for ligne in ouvert['queue']:
             self.assertIn('wa.me', ligne['wa_url'])
             self.assertIn('STOP', ligne['wa_url'])
+            self.assertIn('Meta', ligne['wa_url'])
+            self.assertNotIn('plateforme', ligne['wa_url'])
         self.assertEqual([s['id'] for s in ouvert['skipped']], [oppose.pk])
         for lead in trois:
             self.assertEqual(LeadActivity.objects.filter(lead=lead, body=marqueur).count(), 1)

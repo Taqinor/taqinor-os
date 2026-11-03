@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import uxviewsApi from '../../api/uxviewsApi'
 import rolesApi from '../../api/rolesApi'
-import fetchAllPages from '../../utils/fetchAllPages'
+import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 // NTUX1 — migration BEST-EFFORT des vues localStorage historiques
 // (`hooks/useSavedViews.js`) vers l'API serveur, au premier montage d'un
 // écran qui adopte ce hook (jamais bloquant, jamais rejouée après succès).
@@ -68,8 +68,9 @@ export function useServerSavedViews(ecran) {
     if (!ecran) return undefined
     setLoading(true)
     setError(null)
-    return uxviewsApi.listSavedViews(ecran)
-      .then((res) => setViews(Array.isArray(res.data?.results) ? res.data.results : (res.data || [])))
+    // Toutes les pages (StandardPagination 50) : jamais la seule page 1.
+    return lireToutesLesPages((p) => uxviewsApi.listSavedViews(ecran, p))
+      .then(setViews)
       .catch(() => setError('Impossible de charger les vues.'))
       .finally(() => setLoading(false))
   }, [ecran])

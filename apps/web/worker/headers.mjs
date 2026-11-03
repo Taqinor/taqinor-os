@@ -50,16 +50,30 @@ const GOOGLE_TAG_FRAME = 'https://www.googletagmanager.com';
 const META_PIXEL_SCRIPT = 'https://connect.facebook.net';
 const META_PIXEL_IMG = 'https://www.facebook.com';
 const META_PIXEL_CONNECT = 'https://connect.facebook.net https://www.facebook.com';
+/**
+ * WAUD13 — URL d'événement trop longue (pages AR, chemins encodés) : fbevents.js bascule sur un
+ * POST de formulaire dans une iframe vers www.facebook.com/tr. form-action + frame-src bloquaient
+ * ce repli : 100 % des PageView AR perdus. Élargissement limité à ce seul hôte.
+ */
+const META_PIXEL_REPLI = 'https://www.facebook.com';
+
+/**
+ * WAUD5 — Cloudflare Web Analytics (WJ94 + auto-injection du tableau de bord) : le script
+ * vient de static.cloudflareinsights.com, les mesures partent vers cloudflareinsights.com.
+ * Ces hôtes manquaient : aucune visite n'a jamais été comptée. Beacon sans cookie.
+ */
+const CF_ANALYTICS_SCRIPT = 'https://static.cloudflareinsights.com';
+const CF_ANALYTICS_CONNECT = 'https://cloudflareinsights.com';
 
 const CSP_DIRECTIVES = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' ${GOOGLE_TAG_SCRIPT} ${META_PIXEL_SCRIPT}`,
+  `script-src 'self' 'unsafe-inline' ${GOOGLE_TAG_SCRIPT} ${META_PIXEL_SCRIPT} ${CF_ANALYTICS_SCRIPT}`,
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: https://api.maptiler.com https://api.mapbox.com ${GOOGLE_TAG_IMG} ${META_PIXEL_IMG}`,
   "font-src 'self' data:",
-  `connect-src 'self' https://api.taqinor.ma https://api.maptiler.com https://api.mapbox.com ${GOOGLE_TAG_CONNECT} ${META_PIXEL_CONNECT}`,
+  `connect-src 'self' https://api.taqinor.ma https://api.maptiler.com https://api.mapbox.com ${GOOGLE_TAG_CONNECT} ${META_PIXEL_CONNECT} ${CF_ANALYTICS_CONNECT}`,
   // frame-src explicite : 'self' conserve le repli default-src d'avant.
-  `frame-src 'self' ${GOOGLE_TAG_FRAME}`,
+  `frame-src 'self' ${GOOGLE_TAG_FRAME} ${META_PIXEL_REPLI}`,
   // WJCSP (21/08/2026) — MapLibre rend les sources GeoJSON (repère maison,
   // contour du toit dessiné : rp9-pin/rp9-line/rp9-pts) dans un WEB WORKER
   // qu'il crée depuis un blob:. Sans worker-src, la directive de repli est
@@ -71,7 +85,7 @@ const CSP_DIRECTIVES = [
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
-  "form-action 'self' https://api.taqinor.ma",
+  `form-action 'self' https://api.taqinor.ma ${META_PIXEL_REPLI}`,
 ];
 
 /** Valeur de Content-Security-Policy appliquée aux documents HTML. */

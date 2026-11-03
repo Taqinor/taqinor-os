@@ -573,12 +573,13 @@ function HistoriquePresenceTab() {
     if (!chantierId) return
     setLoading(true)
     setError(null)
-    installationsApi.getGeofenceAlertes({
+    // Toutes les pages : l'historique d'un chantier dépasse vite 200 franchissements.
+    lireToutesLesPages((p) => installationsApi.getGeofenceAlertes({
       chantier: chantierId,
-      page_size: 200,
       ...(typeFiltre !== 'tous' ? { type_franchissement: typeFiltre } : {}),
-    })
-      .then((r) => setEvenements(r.data?.results ?? r.data ?? []))
+      ...p,
+    }))
+      .then(setEvenements)
       .catch(() => setError('Chargement impossible.'))
       .finally(() => setLoading(false))
   }, [chantierId, typeFiltre])

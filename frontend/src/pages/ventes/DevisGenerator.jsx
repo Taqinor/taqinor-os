@@ -907,6 +907,11 @@ export default function DevisGenerator({
     : (scenario === 'Sans batterie' ? 'Sans batterie' : 'Avec batterie')
   const sansRec = recommended === 'Sans batterie'
   const avecRec = recommended === 'Avec batterie'
+  const marcheCi = modeInstallation === 'commercial' || modeInstallation === 'industriel'
+  // ADVS36 — l'option de l'ARGENT = `option_effective` du serveur (PDF, acompte) : mono
+  // déclarée, sinon C&I = offre réseau, résidentiel = avec batterie ; `avecRec` n'est qu'un badge.
+  const optionArgent = !showAvec ? 'sans' : (!showSans || !marcheCi ? 'avec' : 'sans')
+  const centaineMontee = !editId || (editDevis?.regles_calcul ?? 0) >= 11 // ADVS3 : envoyé < 11 = total reçu
 
   // ── Totaux + simulation, recalculés en direct ──
   // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — le SCÉNARIO déclaré entre dans
@@ -915,8 +920,8 @@ export default function DevisGenerator({
   // chiffrait l'option AVEC avec les accessoires Huawei que le serveur retire.
   const totals = useMemo(
     // AGNR36 — chaque ligne classée sur désignation + produit lié.
-    () => optionTotalsTTC(lines, discountPct, { scenario, produits }),
-    [lines, discountPct, scenario, produits],
+    () => optionTotalsTTC(lines, discountPct, { scenario, produits, montee: centaineMontee }),
+    [lines, discountPct, scenario, produits, centaineMontee],
   )
 
   // ── QJRREM (fondateur 07/09/2026) — remise par ligne, écran de création ──
@@ -954,9 +959,9 @@ export default function DevisGenerator({
   // l'écart entre Σ lignes et le total affiché.
   const remiseParPanier = useMemo(
     () => lignesRemiseesParPanier(lines, discountPct, {
-      scenario, option: avecRec && showAvec ? 'avec' : 'sans', produits,
+      scenario, option: optionArgent, produits, montee: centaineMontee,
     }),
-    [lines, discountPct, scenario, avecRec, showAvec, produits],
+    [lines, discountPct, scenario, optionArgent, produits, centaineMontee],
   )
   const lignesRemiseesTtc = remiseParPanier.parLigne
   // Condition d'affichage = remise > 0 (jamais « montant ≠ catalogue ») :
@@ -968,13 +973,10 @@ export default function DevisGenerator({
   const multiPreview = useMemo(
     () => multiPropertyPreviewTTC(lines, {
       nombreProprietes: multiMode === 'multiplier' ? nombreProprietes : null,
-      discountPct,
-      // ATOT24 — la chaîne du rail : scénario + option effective (celle de
-      // `kpiTotal`), jamais l'option « sans » inconditionnelle.
-      scenario,
-      option: avecRec && showAvec ? 'avec' : 'sans',
+      // ATOT24 — la chaîne du rail : scénario + option effective (celle de `kpiTotal`).
+      discountPct, scenario, option: optionArgent, montee: centaineMontee,
     }),
-    [lines, multiMode, nombreProprietes, discountPct, scenario, avecRec, showAvec],
+    [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, centaineMontee],
   )
 
   // SPL51 — dérivations d'aperçu et d'étude horaire (déplacées telles quelles dans le hook, même position : l'ordre des hooks est inchangé).
@@ -1088,7 +1090,6 @@ export default function DevisGenerator({
   // Le corps part tel que tapé (aucun calcul, aucun défaut) ; le lead et le
   // devis voyagent pour que le serveur résolve ce qui n'est pas saisi
   // (`entrees_resolues`, priorité corps > devis > lead). AUCUN appel hors C&I.
-  const marcheCi = modeInstallation === 'commercial' || modeInstallation === 'industriel'
   const ctxProfilCi = {
     mode: modeInstallation,
     lead: leadId ? Number(leadId) : null,
@@ -1563,8 +1564,8 @@ export default function DevisGenerator({
   }
 
   // ── KPI multi-marchés : étude industrielle, pompage, prix/kWc, marge ──
-  const kpiTotal = avecRec && showAvec ? totals.totalAvec : totals.totalSans
-  const kpiTotalBrut = avecRec && showAvec ? totals.totalAvecBrut : totals.totalSansBrut
+  const kpiTotal = optionArgent === 'avec' ? totals.totalAvec : totals.totalSans
+  const kpiTotalBrut = optionArgent === 'avec' ? totals.totalAvecBrut : totals.totalSansBrut
 
   // APX16 — écart entre les DEUX options, visible PENDANT la construction du
   // devis (le rail n'affichait qu'un total, même en scénario double).

@@ -69,6 +69,8 @@ function formatDate(iso: string | null): string {
 <Layout
   title="Confiance | Taqinor"
   description="Hébergement, sous-traitants et localisation des données de la plateforme Taqinor."
+  noindex={groupes.length === 0}
+  mesure
 >
   <section class="mx-auto max-w-3xl bg-blanc-azur px-5 py-16 text-encre">
     <Breadcrumb tone="dark" items={[{ label: 'Accueil', href: '/' }, { label: 'Confiance' }]} />
@@ -88,7 +90,7 @@ function formatDate(iso: string | null): string {
     </a>
 
     {groupes.length === 0 ? (
-      <p class="mt-8 text-encre-soft">Informations momentanément indisponibles.</p>
+      <p class="mt-8 text-encre-soft">Nos engagements écrits sont sur la page <a class="underline" href="/garanties/">Garanties</a>.</p>
     ) : (
       groupes.map((groupe) => (
         <div class="mt-10">

@@ -12,8 +12,9 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
+import { builtPage } from './builtHtmlHelper';
 import { ui } from '../src/i18n/ui';
-import { QUOTE_JOURNEY_PATH, quoteJourneyHref } from '../src/i18n/pages';
+import { avecBarreFinale, QUOTE_JOURNEY_PATH, quoteJourneyHref } from '../src/i18n/pages';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
@@ -32,11 +33,11 @@ function walk(dir: string): string[] {
 describe('WJ36 — le parcours devis est LA cible canonique', () => {
   it('QUOTE_JOURNEY_PATH = /devis/mon-toit et quoteJourneyHref ne casse jamais', () => {
     expect(QUOTE_JOURNEY_PATH).toBe('/devis/mon-toit');
-    expect(quoteJourneyHref('fr')).toBe('/devis/mon-toit');
+    expect(quoteJourneyHref('fr')).toBe('/devis/mon-toit/');
     // EN/AR : repli FR aujourd'hui, /en|/ar/devis/mon-toit après WJ38 —
     // dans les deux cas le chemin se termine par le parcours (jamais de 404).
-    expect(quoteJourneyHref('en').endsWith('/devis/mon-toit')).toBe(true);
-    expect(quoteJourneyHref('ar').endsWith('/devis/mon-toit')).toBe(true);
+    expect(quoteJourneyHref('en').endsWith('/devis/mon-toit/')).toBe(true);
+    expect(quoteJourneyHref('ar').endsWith('/devis/mon-toit/')).toBe(true);
   });
 
   it('le libellé principal existe verbatim dans les trois locales', () => {
@@ -74,7 +75,7 @@ describe('WJ36 — le parcours devis est LA cible canonique', () => {
   });
 
   it('le héros de l’accueil pointe le parcours (FR/EN/AR)', () => {
-    expect(read('../src/pages/index.astro')).toContain('href="/devis/mon-toit"');
+    expect(read('../src/pages/index.astro')).toContain('href="/devis/mon-toit/"');
     expect(read('../src/pages/en/index.astro')).toContain("href={L('/devis/mon-toit')}");
     expect(read('../src/pages/ar/index.astro')).toContain("href={L('/devis/mon-toit')}");
   });
@@ -88,13 +89,13 @@ describe('WJ36 — le parcours devis est LA cible canonique', () => {
 describe('WJ37 — bandeau de réassurance + sticky mobile safe-area', () => {
   it('cta.reassurance existe verbatim dans les trois locales', () => {
     expect((ui.fr as Record<string, string>)['cta.reassurance']).toBe(
-      'Gratuit · Sans engagement · Réponse sous 24–48 h · Sur WhatsApp',
+      'Gratuit · Sans engagement · Réponse WhatsApp sous 1 h, 7j/7',
     );
     expect((ui.en as Record<string, string>)['cta.reassurance']).toBe(
-      'Free · No obligation · Reply within 24–48 h · On WhatsApp',
+      'Free · No obligation · WhatsApp reply within 1 h, 7 days a week',
     );
     expect((ui.ar as Record<string, string>)['cta.reassurance']).toBe(
-      'مجاناً · دون أي التزام · رد خلال 24–48 ساعة · عبر واتساب',
+      'مجاناً · دون أي التزام · رد عبر واتساب خلال ساعة، 7 أيام على 7',
     );
   });
 
@@ -136,5 +137,44 @@ describe('WJ37 — bandeau de réassurance + sticky mobile safe-area', () => {
     // Le bouton CTA principal reste inline-block / sans largeur fixe (whitespace-nowrap
     // seul empêche le retour à la ligne du libellé, la largeur suit le contenu).
     expect(header).not.toMatch(/QUOTE_JOURNEY_PATH[\s\S]{0,200}\bw-\d/);
+  });
+});
+
+describe('WAUD2 — une seule promesse de délai', () => {
+  const PROMESSE = { fr: 'Réponse WhatsApp sous 1 h, 7j/7', en: 'WhatsApp reply within 1 h, 7 days a week', ar: 'رد عبر واتساب خلال ساعة، 7 أيام على 7' };
+  const PAGES = ['', 'installation-solaire-casablanca', 'prix-panneaux-solaires-maroc', 'professionnel', 'pompage-solaire', 'résidentiel', 'contact'];
+
+  it('les 7 pages de décision × 3 langues portent la promesse, aucune trace de l’ancienne', () => {
+    for (const [loc, promesse] of Object.entries(PROMESSE)) {
+      for (const page of PAGES) {
+        const html = builtPage(loc === 'fr' ? `/${page}` : `/${loc}/${page}`);
+        expect(html, `${loc}/${page}`).toContain(promesse);
+        expect(html, `${loc}/${page}`).not.toMatch(/24–48|48 h ouvrées|48 business hours|quelques minutes|within a few minutes|بضع دقائق/);
+      }
+    }
+  });
+
+  it('StickyCta, CtaBand et /contact lisent la chaîne partagée', () => {
+    for (const f of ['StickyCta', 'CtaBand']) {
+      expect(readFileSync(root(`../src/components/${f}.astro`), 'utf-8')).toContain("t('cta.reassurance')");
+    }
+    for (const p of ['contact', 'en/contact', 'ar/contact']) {
+      expect(readFileSync(root(`../src/pages/${p}.astro`), 'utf-8')).toContain('<ContactEntete>');
+    }
+    // Garde ACAL345 : l'en-tête des trois /contact vit dans un composant partagé.
+    expect(readFileSync(root('../src/components/blocs/ContactEntete.astro'), 'utf-8')).toContain('t("cta.delai")');
+  });
+});
+
+describe('WAUD57 — liens internes dans la forme canonique', () => {
+  it('ancre, query, fichiers et /api respectés ; la constante ne change pas', () => {
+    expect(QUOTE_JOURNEY_PATH).toBe('/devis/mon-toit');
+    expect(avecBarreFinale('/faq')).toBe('/faq/');
+    expect(avecBarreFinale('/faq/')).toBe('/faq/');
+    expect(avecBarreFinale('/faq#prix')).toBe('/faq/#prix');
+    expect(avecBarreFinale('/devis/mon-toit?m=1')).toBe('/devis/mon-toit/?m=1');
+    expect(avecBarreFinale('/rss.xml')).toBe('/rss.xml');
+    expect(avecBarreFinale('/api/lead')).toBe('/api/lead');
+    expect(avecBarreFinale('/')).toBe('/');
   });
 });

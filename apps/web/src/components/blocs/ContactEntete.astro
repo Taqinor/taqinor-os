@@ -1,0 +1,18 @@
+---
+// En-tête partagé de /contact FR/EN/AR (garde ACAL345).
+import ContactBlocCF60 from './ContactBlocCF60.astro';
+import StarRating from '../StarRating.astro';
+import { getLocaleFromPath, useTranslations } from '../../i18n/utils';
+const t = useTranslations(getLocaleFromPath(Astro.url.pathname));
+---
+<ContactBlocCF60 />
+
+<section class="px-4 py-20 text-white">
+  <div class="mx-auto max-w-6xl">
+    <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">{t("cta.delai")}</p>
+    <slot />
+    <div class="cine-in mt-6 [animation-delay:320ms]">
+      <StarRating />
+    </div>
+  </div>
+</section>

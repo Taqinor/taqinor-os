@@ -341,3 +341,15 @@ export function libelleRetourLocale(libelle: string, locale: LocaleTunnel): stri
 export function libelle(locale: LocaleTunnel, cle: CleChamp): string {
   return LIBELLES[locale][cle];
 }
+
+/**
+ * WAUD42 — HTML rendu d'une page arabe : un élément à texte seul portant data-fr et data-ar sert
+ * directement l'arabe (avant tout JavaScript). Un élément à markup imbriqué reste au JS. Les
+ * attributs ne changent pas : le corps du lead n'est pas concerné.
+ */
+export function arabeCoteServeur(html: string): string {
+  return html.replace(/<([a-z][a-z0-9-]*)((?:\s[^<>]*?)?\sdata-ar="([^"]*)"[^<>]*)>([^<]*)<\/\1>/g, (tout, tag, attrs, ar, texte) => {
+    if (!/\sdata-fr="/.test(attrs) || !texte.trim()) return tout;
+    return `<${tag}${attrs}>${ar}</${tag}>`;
+  });
+}

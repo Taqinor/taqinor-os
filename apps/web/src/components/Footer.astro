@@ -32,7 +32,7 @@
 import Logo from './Logo.astro';
 import { DEYE_CLOUD_URL, NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { pageContextWhatsappText, whatsappLink } from '../lib/whatsapp';
-import { CITIES } from '../lib/realisations';
+import { CITIES, villeLocale } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localizeNavHref, quoteJourneyHref } from '../i18n/pages';
 
@@ -53,13 +53,13 @@ const journeyHref = quoteJourneyHref(locale);
 
 // Colonne Solutions — VRAIS liens vers chaque service (W29).
 const solutions = [
-  { href: '/résidentiel', label: t('nav.residential') },
-  { href: '/professionnel', label: t('nav.professional') },
-  { href: '/pompage-solaire', label: t('nav.pumping') },
-  { href: '/batteries-stockage', label: t('nav.batteries') },
-  { href: '/maintenance-monitoring', label: t('nav.maintenance') },
-  { href: '/recharge-voiture-electrique-solaire', label: t('nav.evCharging') },
-  { href: '/regularization-article-33', label: t('nav.regularization') },
+  { href: '/résidentiel/', label: t('nav.residential') },
+  { href: '/professionnel/', label: t('nav.professional') },
+  { href: '/pompage-solaire/', label: t('nav.pumping') },
+  { href: '/batteries-stockage/', label: t('nav.batteries') },
+  { href: '/maintenance-monitoring/', label: t('nav.maintenance') },
+  { href: '/recharge-voiture-electrique-solaire/', label: t('nav.evCharging') },
+  { href: '/regularization-article-33/', label: t('nav.regularization') },
 ];
 
 // Colonne Ressources (W29) + équipement & garanties (pages existantes liées
@@ -78,21 +78,22 @@ const dejaClientLabel = locale === 'en' ? 'Already a customer?' : locale === 'ar
 // Header.astro (drift), désormais une seule source.
 const espaceClientLabel = t('nav.clientArea');
 const ressources = [
-  { href: '/realisations', label: t('nav.realisations') },
-  { href: '/guides', label: t('nav.guides') },
-  { href: '/faq', label: t('nav.faq') },
-  { href: '/loi-82-21', label: t('nav.law') },
-  { href: '/pourquoi-taqinor', label: t('nav.why') },
-  { href: '/financement', label: t('nav.financing') },
-  { href: '/marocains-du-monde', label: t('nav.mre') },
-  { href: '/parrainage', label: parrainageLabel },
-  { href: '/à-propos', label: t('nav.about') },
-  { href: '/équipement', label: t('nav.equipment') },
-  { href: '/produits', label: t('nav.produits') },
-  { href: '/garanties', label: t('footer.guarantees') },
+  { href: '/realisations/', label: t('nav.realisations') },
+  { href: '/guides/', label: t('nav.guides') },
+  { href: '/ressources/10-questions-avant-de-signer/', label: t('nav.tenQuestions') },
+  { href: '/faq/', label: t('nav.faq') },
+  { href: '/loi-82-21/', label: t('nav.law') },
+  { href: '/pourquoi-taqinor/', label: t('nav.why') },
+  { href: '/financement/', label: t('nav.financing') },
+  { href: '/marocains-du-monde/', label: t('nav.mre') },
+  { href: '/parrainage/', label: parrainageLabel },
+  { href: '/à-propos/', label: t('nav.about') },
+  { href: '/équipement/', label: t('nav.equipment') },
+  { href: '/produits/', label: t('nav.produits') },
+  { href: '/garanties/', label: t('footer.guarantees') },
 ];
 
-const linkClass = 'transition-colors hover:text-white';
+const linkClass = 'inline-block py-1 transition-colors hover:text-white'; // WAUD64 : cible ≥ 24 px
 
 /**
  * W286 — comptes sociaux RÉELS uniquement (WG8). Type fermé aux réseaux dont
@@ -270,7 +271,7 @@ const SOCIAL_LINKS: SocialLink[] = [];
       <h2 class="tech-label mb-3 text-brass-300">{t('footer.byCity')}</h2>
       <ul class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-lune-soft">
         {CITIES.map((c) => (
-          <li><a href={`/installation-solaire-${c.slug}`} class={linkClass}>{t('footer.byCityItem')} {c.intro}</a></li>
+          <li><a href={L(`/installation-solaire-${c.slug}`)} class={linkClass}>{locale === 'fr' ? `${t('footer.byCityItem')} ${c.intro}` : locale === 'en' ? `${t('footer.byCityItem')} in ${villeLocale(c.slug, locale)}` : `${t('footer.byCityItem')} في ${villeLocale(c.slug, locale)}`}</a></li>
         ))}
       </ul>
     </div>
