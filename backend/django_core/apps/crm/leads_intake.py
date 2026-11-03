@@ -14,6 +14,7 @@ from .fiche_funnel import _STAGE_CONTACTED, _rang_funnel, appliquer_stage_lead
 from .leads_attribution import default_responsable_for
 from .leads_consentement import (
     BASE_LEGALE_NON_COLLECTEE,
+    BASE_LEGALE_SOLLICITATION,
     CONSENT_SOURCE_DOCUMENT,
     enregistrer_base_legale_lead,
 )
@@ -495,7 +496,8 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
         canal=Lead.Canal.AUTRE,
         stage=stages.NEW,
     )
-    activity.log_creation(lead, user)
+    finaliser_lead_importe(lead, user=user, source='ticket SAV',
+                           base_legale=BASE_LEGALE_SOLLICITATION)
     contexte = (contexte or '').strip()
     if contexte:
         # Note SYSTÈME (user=None) : garde le lead au stade NEW (le récepteur
@@ -577,7 +579,9 @@ def create_lead_from_evenement_marketing(
 # ---------------------------------------------------------------------------
 
 
-def finaliser_lead_importe(lead, *, user=None, lead_attrs=None):
+def finaliser_lead_importe(lead, *, user=None, lead_attrs=None,
+                           source='import de fichier',
+                           base_legale=BASE_LEGALE_NON_COLLECTEE):
     """AUD518 — applique à un lead IMPORTÉ les effets de création du chemin
     MANUEL, dont il était intégralement privé.
 
@@ -601,6 +605,8 @@ def finaliser_lead_importe(lead, *, user=None, lead_attrs=None):
        elle-même).
     3. SCORE — ``recompute_lead_score``, qui évalue aussi le passage MQL
        (``maybe_assign_mql``). Déjà best-effort en interne.
+    4. REGISTRE (ACVI12) — la base légale au registre : ``source`` et
+       ``base_legale`` nomment la porte (API publique, ticket SAV, fichier).
 
     Renvoie le lead.
     """
@@ -620,4 +626,5 @@ def finaliser_lead_importe(lead, *, user=None, lead_attrs=None):
 
     activity.log_creation(lead, user)
     recompute_lead_score(lead)
+    enregistrer_base_legale_lead(lead, source=source, base_legale=base_legale)
     return lead

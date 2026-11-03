@@ -231,6 +231,31 @@ class PointsDappelTests(_Base):
             fields={'nom': 'Partenaire', 'telephone': '+212661445566'})
         self.assertGreater(self._touches(lead), 0)
 
+    def test_api_publique_et_ticket_ont_owner_score_et_registre(self):
+        # ACVI12 — une même finalisation d'arrivée sur les trois portes.
+        from apps.crm.models import Client
+        from core.models import ConsentRecord
+
+        api = fiche_api_publique.create_lead_from_public_api(
+            company=self.company,
+            fields={'nom': 'Partenaire', 'telephone': '0661000002'})
+        client = Client.objects.create(
+            company=self.company, nom='Client', email='acvi12@example.com')
+        ticket, _ = leads_intake.create_lead_depuis_ticket(
+            company=self.company, user=self.acteur, client=client)
+        fichier = Lead.objects.create(
+            company=self.company, nom='Fichier', telephone='0661000003')
+        leads_intake.finaliser_lead_importe(fichier)
+
+        for lead, source in ((api, 'API publique'), (ticket, 'ticket SAV'),
+                             (fichier, 'import de fichier')):
+            lead.refresh_from_db()
+            self.assertEqual(lead.owner, self.acteur, source)
+            self.assertGreater(lead.score, 0, source)
+            self.assertEqual(ConsentRecord.objects.filter(
+                company=self.company, granted=False,
+                source__startswith=source).count(), 1, source)
+
     def test_evenement_marketing(self):
         lead = leads_intake.create_lead_from_evenement_marketing(
             company=self.company, nom='Salon',
