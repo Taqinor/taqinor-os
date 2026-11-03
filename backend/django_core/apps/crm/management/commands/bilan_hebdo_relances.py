@@ -64,17 +64,16 @@ def _bilan_deja_parti(company):
     est-il déjà parti pour cette société ?"""
     import datetime
 
-    from django.utils import timezone
-
     from apps.notifications.models import Notification
     from apps.notifications.types_evenements import EventType
+    from core.dates import TZ_METIER, aujourd_hui_local
 
-    aujourdhui = timezone.localdate()
+    aujourdhui = aujourd_hui_local()
     lundi = aujourdhui - datetime.timedelta(days=aujourdhui.weekday())
     return Notification.objects.filter(
         company=company, event_type=EventType.CRM_BILAN_HEBDO,
-        created_at__gte=timezone.make_aware(
-            datetime.datetime.combine(lundi, datetime.time.min))).exists()
+        created_at__gte=datetime.datetime.combine(
+            lundi, datetime.time.min, tzinfo=TZ_METIER)).exists()
 
 
 def bilan_hebdo_relances(*, jours=7, dry_run=False):
