@@ -254,9 +254,13 @@ describe('chaque page publique — contrat SEO rendu', () => {
     expect(lb, 'LocalBusiness JSON-LD absent').toBeTruthy();
     expect(lb!.name).toBe(NAP.name);
     expect(lb!.url).toBe(NAP.url);
-    expect(lb!.telephone).toBe(NAP.phone);
-    expect(lb!.email).toBe(NAP.email);
-    expect(Array.isArray(lb!.areaServed)).toBe(true);
+    // WAUD51 — entité complète sur l'accueil, /à-propos, /contact ; ailleurs, référence par @id.
+    expect(lb!['@id']).toBe(`${NAP.url}/#organization`);
+    if (/^(\/(en|ar))?\/((à-propos|%C3%A0-propos|contact)\/)?$/.test(p)) {
+      expect(lb!.telephone).toBe(NAP.phone);
+      expect(lb!.email).toBe(NAP.email);
+      expect(Array.isArray(lb!.areaServed)).toBe(true);
+    }
   });
 
   it.each(publicHtml.map(({ r }) => r.path))('%s : chaque <img> porte un attribut alt', (p) => {
@@ -642,5 +646,27 @@ describe('WAUD63 — accessibilité et lisibilité', () => {
     const css = lireSrc('styles/global.css');
     const bloc = css.slice(css.indexOf('.hero-title-sweep.hero-sweep-armed {'));
     expect(bloc.slice(0, bloc.indexOf('animation:'))).toMatch(/text-shadow: none;[\s\S]*filter: drop-shadow/);
+  });
+});
+
+describe('WAUD46 WAUD64 WAUD65 — ruban, cibles tactiles, tuiles', () => {
+  const lireSrc2 = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+  it('WAUD46 : ruban sans urgence, sur une ligne, décret intact', () => {
+    const ui = lireSrc2('i18n/ui.ts');
+    expect(ui).not.toMatch(/régularisez maintenant|regularize now|سوِّ وضعك الآن/);
+    expect(ui).toContain('Décret 2-25-100 en vigueur depuis le 9 juin 2026');
+    expect(ui).toContain('installation existante ? Nous montons votre dossier de régularisation →');
+    const r = lireSrc2('components/Article33Ribbon.astro');
+    expect(r).toContain('py-1');
+    expect(r).not.toContain('flex-wrap');
+    expect(r).toContain('truncate');
+  });
+  it('WAUD64 : liens du pied de page à 24 px au moins', () => {
+    expect(lireSrc2('components/Footer.astro')).toMatch(/const linkClass = 'inline-block py-1 /);
+  });
+  it('WAUD65 : tuiles sans nowrap, donc sans collision', () => {
+    expect(lireSrc2('components/blocs/EnIndexDlF52D.astro')).not.toContain('whitespace-nowrap');
+    const ar = lireSrc2('pages/ar/index.astro');
+    expect(ar).not.toContain('fig fig-md whitespace-nowrap text-azur-600');
   });
 });

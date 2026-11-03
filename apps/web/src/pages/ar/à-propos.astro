@@ -59,6 +59,7 @@ const etapes = [
 import AProposSection62FB from '../../components/blocs/AProposSection62FB.astro';
 import GarantiesSection63F3 from '../../components/blocs/GarantiesSection63F3.astro';
 import ProposDiv96B3 from '../../components/blocs/ProposDiv96B3.astro';
+const personJsonLd = { '@context': 'https://schema.org', '@type': 'Person', name: 'Reda Kasri', jobTitle: 'المؤسس', url: `https://taqinor.ma/ar/à-propos/`, worksFor: { '@id': 'https://taqinor.ma/#organization' } };
 ---
 
 <Layout
@@ -244,4 +245,5 @@ import ProposDiv96B3 from '../../components/blocs/ProposDiv96B3.astro';
 
     <StickyCta />
   </div>
+  <script type="application/ld+json" set:html={JSON.stringify(personJsonLd)} />
 </Layout>

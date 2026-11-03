@@ -5,7 +5,7 @@ import Footer from '../components/Footer.astro';
 import ConsentBanner from '../components/ConsentBanner.astro';
 import MetaPixel from '../components/MetaPixel.astro';
 import GoogleTag from '../components/GoogleTag.astro';
-import { NAP, SAME_AS } from '../lib/nap';
+import { NAP, SAME_AS, LEGAL_IDENTITY } from '../lib/nap';
 import { DEFAULT_LOCALE, isLocale, LOCALE_BCP47, LOCALE_DIR, type Locale } from '../i18n/config';
 import { localizePath, stripLocale } from '../i18n/utils';
 import { localesForPath } from '../i18n/pages';
@@ -135,10 +135,26 @@ const ogImage = { href: ogImageUrl };
 // spécifique ou correct », condition posée par la tâche). NAP : chaîne
 // inchangée, conforme à Reda (2026-06-12) — la réconciliation byte-for-byte
 // avec la fiche Google Business Profile reste en attente de WG5.
+// WAUD51 — entité complète sur l'accueil, /à-propos et /contact ; référence @id ailleurs.
+const ENTITE_ID = `${NAP.url}/#organization`;
+const entiteComplete = ['/', '/à-propos', '/contact'].includes(decodeURI(rootPath).replace(/(.)\/$/, '$1'));
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'LocalBusiness',
+  '@id': ENTITE_ID,
   name: NAP.name,
+  legalName: LEGAL_IDENTITY.raisonSociale,
+  identifier: [
+    { '@type': 'PropertyValue', propertyID: 'RC', value: LEGAL_IDENTITY.rcCourt },
+    { '@type': 'PropertyValue', propertyID: 'ICE', value: LEGAL_IDENTITY.ice },
+  ],
+  logo: new URL('/logo.png', NAP.url).href,
+  contactPoint: {
+    '@type': 'ContactPoint',
+    telephone: NAP.phone,
+    contactType: 'customer service',
+    availableLanguage: ['fr', 'ar', 'en'],
+  },
   url: NAP.url,
   telephone: NAP.phone,
   email: NAP.email,
@@ -225,7 +241,7 @@ const jsonLd = {
     <meta name="twitter:title" content={ogTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageUrl} />
-    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" set:html={JSON.stringify(entiteComplete ? jsonLd : { '@context': 'https://schema.org', '@type': 'LocalBusiness', '@id': ENTITE_ID, name: NAP.name, url: NAP.url })} />
     {cfAnalyticsToken && (
       <script
         defer
