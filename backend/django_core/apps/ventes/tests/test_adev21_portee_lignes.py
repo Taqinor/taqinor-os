@@ -19,7 +19,8 @@ from rest_framework.test import APIClient
 
 from apps.crm.models import Client, Lead
 from apps.roles.models import Role
-from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
+from apps.roles.permissions_registre import (
+    COMMERCIAL_PERMISSIONS, RESPONSABLE_PERMISSIONS)
 from apps.stock.models import Produit
 from apps.ventes.domain import pompage
 from apps.ventes.models import Devis, LigneDevis
@@ -223,3 +224,37 @@ class PorteeLignesTests(TestCase):
                                      self._corps_atomic(lead), format='json')
                 self.assertEqual(resp.status_code, 201, resp.content[:300])
                 self.assertTrue(Devis.objects.filter(lead=lead).exists())
+
+    def test_lead_en_portee_atteint_auto_et_composition(self):
+        """ADVS24 — un lead en portée passe les portes ``/auto`` et
+        ``/composition`` (jamais le 404 « Lead inconnu. »), pour un Commercial
+        aux ``COMMERCIAL_PERMISSIONS`` canoniques en portée « soi ».
+
+        ECART À SIGNALER (non changé ici) : ``/composition`` répond 200 et
+        n'écrit rien (aucun devis), alors que ``/auto`` crée le devis.
+        """
+        role_soi = Role.objects.create(
+            company=self.company, nom='Commercial soi',
+            permissions=COMMERCIAL_PERMISSIONS + ['records_scope_soi'],
+            est_systeme=False)
+        soi = User.objects.create_user(
+            username='adev24_soi', password='x', role=role_soi,
+            role_legacy='commercial', company=self.company)
+        for acteur in (self.commercial, soi):
+            with self.subTest(acteur=acteur.username):
+                self.api.force_authenticate(acteur)
+                lead = self._lead(acteur)
+                reponses = self._portes_de_creation(lead)
+                for porte in ('auto', 'composition'):
+                    self.assertNotEqual(
+                        reponses[porte].status_code, 404,
+                        (porte, reponses[porte].content[:300]))
+                self.assertEqual(reponses['composition'].status_code, 200,
+                                 reponses['composition'].content[:300])
+                # composition ne persiste rien : seul /auto a pu créer.
+                crees_avant = Devis.objects.filter(lead=lead).count()
+                self.api.post('/api/django/ventes/devis/composition/',
+                              {'lead': lead.pk, 'nb_panneaux': 8,
+                               'panel_watt': 550}, format='json')
+                self.assertEqual(
+                    Devis.objects.filter(lead=lead).count(), crees_avant)
