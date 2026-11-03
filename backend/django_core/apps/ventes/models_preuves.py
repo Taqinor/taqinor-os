@@ -9,7 +9,12 @@ hors C&I (comportement inchangé). Aucun statut nouveau (règle #4).
 Module séparé parce que ``models.py`` est un fichier-mur (≥ 2 000 lignes, garde
 C20) : les champs vivent ici, la table reste celle de ``DevisSignature``.
 """
+import json
+
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
+
+from core.models import TenantModel
 
 
 class PreuveSignatureB2B(models.Model):
@@ -24,9 +29,12 @@ class PreuveSignatureB2B(models.Model):
     #: ADEV96 — v2 + les chiffres de l'étude C&I que la page et le PDF montrent
     #: (``domain.modifiabilite.figures_etude_scellees`` de la ``synthese_ci``).
     CONTENT_HASH_V3 = 3
+    #: ADVS8 — v3, mais l'identité client est celle FIGÉE à la signature
+    #: (``figures_scellees['client']``) : un renommage ne rompt plus le sceau.
+    CONTENT_HASH_V4 = 4
     #: La version du payload dont sont scellées les NOUVELLES signatures
     #: (``DevisSignature.compute_content_hash`` ; v1 = QJ10, v2 = QJR144).
-    CONTENT_HASH_VERSION = CONTENT_HASH_V3
+    CONTENT_HASH_VERSION = CONTENT_HASH_V4
 
     signataire_email = models.EmailField(
         max_length=254, blank=True, default='',
@@ -121,13 +129,34 @@ class PreuveSignatureB2B(models.Model):
             figures, sort_keys=True, ensure_ascii=False, default=str))
 
     @staticmethod
-    def contenu_scelle(figures, lien=None):
+    def contenu_scelle(figures, lien=None, client=None):
         """ADEV104 — la valeur de :attr:`figures_scellees` : ``{"etude":
         figures}``, plus ``"lien"`` (niveau du lien scellé) quand la signature
-        vient d'un lien public ; portail et ERP : ``{"etude": …}`` seul."""
-        if lien is None:
-            return {'etude': figures}
-        return {'etude': figures, 'lien': lien}
+        vient d'un lien public ; ADVS8 — plus ``"client"``, l'identité scellée
+        (:meth:`_client_du_sceau`)."""
+        contenu = {'etude': figures}
+        if lien is not None:
+            contenu['lien'] = lien
+        if client is not None:
+            contenu['client'] = client
+        return contenu
+
+    @classmethod
+    def _client_du_sceau(cls, devis, version=None, client=None):
+        """ADVS8 — l'identité client du payload : en v4, ``client`` (l'identité
+        STOCKÉE à la signature, rejouée par la vérification) ; sinon — v1-v3,
+        ou à la pose — « nom|email » du Client vivant."""
+        if client is not None and (version or cls.CONTENT_HASH_VERSION) >= cls.CONTENT_HASH_V4:
+            return client
+        vivant = getattr(devis, 'client', None)
+        if vivant is None:
+            return ''
+        return f'{getattr(vivant, "nom", "")}|{getattr(vivant, "email", "")}'
+
+    def client_scelle(self):
+        """L'identité stockée à la signature, ``None`` avant v4."""
+        stocke = self.figures_scellees
+        return stocke.get('client') if isinstance(stocke, dict) else None
 
     def figures_du_sceau(self):
         """``(True, figures)`` quand la signature porte ses chiffres scellés ;
@@ -159,11 +188,41 @@ class PreuveSignatureB2B(models.Model):
         tête, et le contrat import-linter « Core domain models stay
         decoupled » interdit toute arête modèles → domaine (qui atteint
         crm/stock/sav/installations par les services)."""
-        if (version or cls.CONTENT_HASH_VERSION) < cls.CONTENT_HASH_V3:
+        version = version or cls.CONTENT_HASH_VERSION
+        if version < cls.CONTENT_HASH_V3:
             return ''
         import json
+        # ADVS8 — marque v4 : un sceau v3 ne se relit jamais comme un v4.
         return (f"|v{cls.CONTENT_HASH_V3}|etude="
-                f"{json.dumps(figures, sort_keys=True, ensure_ascii=False, default=str)}")
+                f"{json.dumps(figures, sort_keys=True, ensure_ascii=False, default=str)}"
+                + (f"|v{cls.CONTENT_HASH_V4}" if version >= cls.CONTENT_HASH_V4 else ''))
+
+
+class DevisSignatureArchivee(TenantModel):
+    """ADVS4 (D-ADVS-2 = nouvelle preuve) — une preuve remplacée par une seconde
+    signature d'une vente dés-acceptée : copie champ à champ de la
+    ``DevisSignature`` (``signed_pdf_key`` compris), jamais effacée."""
+
+    devis = models.ForeignKey(
+        'ventes.Devis',
+        on_delete=models.CASCADE,  # on_delete: preuve sans objet si le devis est supprimé (comme DevisSignature)
+        related_name='signatures_archivees',
+    )
+    preuve = models.JSONField()
+    archivee_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Signature archivée'
+        verbose_name_plural = 'Signatures archivées'
+        ordering = ['-archivee_le']
+
+    @classmethod
+    def archiver(cls, signature):
+        """Copie ``signature`` (ligne brute, dates en texte ISO) dans l'archive."""
+        ligne = type(signature).objects.filter(pk=signature.pk).values().first()
+        return cls.objects.create(
+            company_id=signature.devis.company_id, devis_id=signature.devis_id,
+            preuve=json.loads(json.dumps(ligne, cls=DjangoJSONEncoder)))
 
 
 class SuiviLienPublic(models.Model):

@@ -17,6 +17,7 @@ catalogue semé comme les tests ventes (``seed_catalogue``).
 from __future__ import annotations
 
 import copy
+from decimal import Decimal
 import json
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from apps.calepinage.models import Calepinage
 from apps.calepinage.services.layout import enregistrer_layout
 from apps.calepinage.services.variantes import dupliquer
 from apps.crm.models import Client, Lead
+from apps.ventes.horaire.conso import CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT
 from apps.ventes.models import Devis
 
 from .test_api_liste import BaseApiCalepinage, url_detail
@@ -164,6 +166,33 @@ class GenererDevisPortesTest(BaseApiCalepinage):
                          avant)
         calepinage.refresh_from_db()
         self.assertIsNone(calepinage.devis_id)
+
+    def test_kwh_contredit_par_les_factures_409_aux_deux_portes(self):
+        # ADVS26 — 46 kWh/mois pour 10 000 MAD de facture : même refus
+        # qu'``/atomic``, rien de créé (règle fondateur du 30/09/2026).
+        Lead.objects.filter(pk=self.lead.pk).update(
+            conso_mensuelle_kwh=Decimal('46'), facture_hiver=Decimal('10000'))
+        reponses = (
+            self.api.post('/api/django/ventes/devis/from-layout/',
+                          {'layout': copy.deepcopy(TOIT), 'lead': self.lead.pk},
+                          format='json'),
+            self._generer(self.original))
+        for reponse in reponses:
+            self.assertEqual(reponse.status_code, 409, reponse.data)
+            self.assertEqual(reponse.data['code'], CODE_KWH_INCOHERENT)
+            self.assertEqual(reponse.data['detail'], MESSAGE_KWH_INCOHERENT)
+        self.assertFalse(Devis.objects.filter(lead_id=self.lead.pk).exists())
+        self.original.refresh_from_db()
+        self.assertIsNone(self.original.devis_id)
+
+    def test_kwh_coherent_les_deux_portes_creent(self):
+        Lead.objects.filter(pk=self.lead.pk).update(
+            conso_mensuelle_kwh=Decimal('650'), facture_hiver=Decimal('1200'))
+        reponse = self.api.post(
+            '/api/django/ventes/devis/from-layout/',
+            {'layout': copy.deepcopy(TOIT), 'lead': self.lead.pk}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertIn(self._generer(self.original).status_code, (200, 201))
 
     def test_reponse_porte_avertissements(self):
         reponse = self._generer(self.original)

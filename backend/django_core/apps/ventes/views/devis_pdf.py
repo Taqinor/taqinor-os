@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from ..models import Devis
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.roles.permissions import IsInternalWriterOrPortalClientOwner
+from ..gardes_lecture import LectureVentesHorsPortail
 import logging
 
 logger = logging.getLogger(__name__)
@@ -89,8 +90,7 @@ class DevisPdfActionsMixin:
         detail=True,
         methods=['get'],
         url_path='etat-pdf',
-        # Même garde que la LECTURE d'un devis (cf. get_permissions) : c'est un
-        # état de rendu, pas une donnée métier de plus.
+        # Tout compte interne : un état de rendu, pas une donnée métier de plus.
         permission_classes=[IsAnyRole],
     )
     def etat_pdf(self, request, pk=None):
@@ -140,10 +140,10 @@ class DevisPdfActionsMixin:
         detail=True,
         methods=['get'],
         url_path='proposal',
-        # NTPRT10 — MÊME classe que la branche `proposal` de get_permissions
-        # ci-dessus (qui prime) : la déclaration de l'@action ne doit jamais
-        # annoncer une garde différente de la garde effective.
-        permission_classes=[IsInternalWriterOrPortalClientOwner],
+        # NTPRT10 — le client portail, propriétaire. ADVS23 — hors portail, la
+        # lecture exige en plus un rôle du module Ventes.
+        permission_classes=[IsInternalWriterOrPortalClientOwner,
+                            LectureVentesHorsPortail],
     )
     def proposal(self, request, pk=None):
         """Canonical client-facing quote PDF path (CLAUDE.md rule #4).

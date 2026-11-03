@@ -34,6 +34,14 @@ REFUSE = 'refuse'
 ABSENT = 'absent'
 
 
+def options_du_dernier_rendu(devis):
+    """ADVS15 (C-ADVS-012) — LA lecture hors moteur du format mémorisé
+    (``pdf_render_meta['options']``) : ``{}`` sans rendu ou sans devis."""
+    meta = getattr(devis, 'pdf_render_meta', None)
+    options = meta.get('options') if isinstance(meta, dict) else None
+    return options if isinstance(options, dict) else {}
+
+
 def _cle_etat(devis_id):
     return f'{ETAT_CACHE_PREFIX}{devis_id}'
 

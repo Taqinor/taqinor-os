@@ -7,9 +7,18 @@ identiques » (aucun import de l'app : ``models.py`` les appelle sans tirer
 def nombre_proprietes(devis) -> int:
     """QJ29 (A) — multiplicateur ×N villas identiques stocké dans
     ``etude_params['nombre_proprietes']`` (défaut 1, jamais < 1). N=1 = chemin
-    mono-système inchangé."""
+    mono-système inchangé.
+
+    AOOM1 — lu par :func:`~apps.ventes.utils.annotations_devis.cle_etude` :
+    sur une LISTE qui a déferré ``etude_params``, la valeur vient de
+    l'annotation SQL, sinon du JSON comme avant. L'annotation est un ``->``,
+    donc le MULTIPLICATEUR garde son type (un ``3`` reste ``int``) : l'argent
+    du devis ne dépend pas du chemin de lecture. ``utils.annotations_devis``
+    n'importe rien — le contrat M1 de ce module tient."""
+    from .utils.annotations_devis import cle_etude
+
     try:
-        n = int((devis.etude_params or {}).get('nombre_proprietes', 1) or 1)
+        n = int(cle_etude(devis, 'nombre_proprietes', 1) or 1)
     except (TypeError, ValueError, AttributeError):
         n = 1
     return max(1, n)

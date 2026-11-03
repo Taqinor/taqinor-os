@@ -7,17 +7,23 @@ cross-app par ``apps.ventes.selectors`` / ``apps.installations.selectors``
 seulement (jamais leurs modèles).
 """
 
-#: ERR-PERF-CRM-N1 — LE préchargement d'une LISTE de leads sérialisés par
-#: ``lignes_devis_du_lead`` (``LeadViewSet.queryset`` et ``relances_du_jour``) :
-#: ``total_ttc`` → ``deux_options_declarees`` → ``lignes_avec_produit`` ne sert
-#: le cache que si chaque ligne porte DÉJÀ son produit (``devis_avec_totaux``,
-#: APRF7) — avec ``devis__lignes`` seul, une requête ``ventes_lignedevis`` PAR
-#: DEVIS (mesuré APRF42 : 18 → 35 → 72 requêtes à 5/25/50 leads) ; et
-#: ``devis_modifiabilite`` d'une V1 remplacée lit ``superseded_by.reference``
-#: (une requête ``ventes_devis`` par version remplacée). Chemins en chaînes :
-#: aucun import de ``apps.ventes.models``.
-PREFETCH_DEVIS_LISTE_LEADS = (
-    'devis', 'devis__lignes__produit', 'devis__superseded_by')
+
+def prefetch_devis_liste_leads():
+    """ERR-PERF-CRM-N1 + AOOM1 — LE préchargement d'une LISTE de leads
+    sérialisés par ``lignes_devis_du_lead`` (``LeadViewSet.queryset`` et
+    ``relances_du_jour``).
+
+    Délégué à ``apps.ventes.selectors_listes`` (frontière M3 : aucun import de
+    ``apps.ventes.models`` ici), qui seul sait quels champs de SES devis la
+    liste a besoin : les lignes AVEC produit, le successeur d'une V1
+    remplacée, et SURTOUT pas l'``etude_params`` complet (39,3 Mio de JSON
+    pour une page de 200 leads → workers tués par le noyau, incident du
+    02/11/2026).
+    """
+    from apps.ventes.selectors_listes import (
+        prefetch_devis_liste_leads as _ventes,
+    )
+    return _ventes('devis')
 
 
 def lignes_devis_du_lead(obj, context):
@@ -134,9 +140,13 @@ def lignes_devis_du_lead(obj, context):
 
 def _corrige_le(devis):
     """QJR566 — ISO de ``etude_params.resync_apres_envoi.date`` ou ``None``
-    (marqueur absent, booléen hérité ou sans date)."""
-    params = getattr(devis, 'etude_params', None)
-    marqueur = params.get('resync_apres_envoi') if isinstance(params, dict) else None
-    if isinstance(marqueur, dict):
-        return marqueur.get('date') or None
-    return None
+    (marqueur absent, booléen hérité ou sans date).
+
+    AOOM1 — lu par ``apps.ventes.utils.annotations_devis.cle_etude`` : sur une
+    LISTE qui a déferré ``etude_params`` (39,3 Mio de JSON par page avant),
+    la date vient de l'annotation SQL ; sinon du JSON, à l'identique. Un
+    marqueur booléen hérité ou sans date rend ``None`` des deux côtés.
+    """
+    from apps.ventes.utils.annotations_devis import cle_etude
+
+    return cle_etude(devis, ('resync_apres_envoi', 'date')) or None

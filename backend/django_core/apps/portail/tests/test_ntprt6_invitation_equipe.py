@@ -28,6 +28,7 @@ from rest_framework.test import APIClient
 from testkit.time import frozen
 
 from apps.crm.models import Client
+from apps.portail.tests import corps_acceptation
 from apps.facturation.models import Facture
 from apps.portail.models import InvitationPortail
 from apps.portail.services import (
@@ -237,8 +238,8 @@ class EndpointDevisEtTicketGatingTests(TestCase):
         self.api.force_authenticate(user=self.admin)
         res = self.api.post(
             f'/api/django/portail/mes-devis/{self.devis.id}/accepter/',
-            {'nom': 'Admin', 'consent_esign': True,
-             'accepte_conditions': True}, format='json')
+            corps_acceptation(self.devis, nom='Admin', consent_esign=True,
+                              accepte_conditions=True), format='json')
         self.assertEqual(res.status_code, 200, res.data)
 
     def test_lecture_refuse_l_ouverture_de_ticket(self):

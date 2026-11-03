@@ -1,17 +1,22 @@
 """Tests FG44 — refus explicite d'un devis (date + motif + chatter + lead perdu)."""
 from datetime import date
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from testkit.time import frozen
+from core.events import devis_refused, devis_sent
 from apps.crm.models import Client, Lead, MotifPerte
-from apps.ventes.models import Devis, DevisActivity
+from apps.stock.models import Produit
+from apps.ventes.models import Devis, DevisActivity, DevisSignature, LigneDevis
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -198,3 +203,83 @@ class TestDevisRefus(TestCase):
         self.assertEqual(h.status_code, 200)
         bodies = [a['body'] for a in h.data]
         self.assertTrue(any('Test historique' in (b or '') for b in bodies))
+
+    # ── ADVS22 — le statut relu sous verrou ───────────────────────────────────
+
+    def _devis_signable(self, num):
+        lead = Lead.objects.create(
+            company=self.company, nom='Course', prenom='Refus',
+            telephone='+212600002600', ville='Casablanca',
+            email='rfus-course@example.com')
+        devis = self._devis(num=num)
+        Devis.objects.filter(pk=devis.pk).update(
+            lead=lead, created_by=self.user)
+        for ordre, (nom, sku, qte, prix) in enumerate((
+                ('Panneau Canadien Solar 710W', 'RFUS-P', '12', '1166.67'),
+                ('Onduleur réseau Huawei 10kW Monophasé', 'RFUS-O', '1',
+                 '14000'))):
+            produit = Produit.objects.create(
+                company=self.company, nom=nom, sku=sku,
+                prix_vente=Decimal(prix), tva=Decimal('20'),
+                quantite_stock=100)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal(qte), prix_unitaire=produit.prix_vente,
+                remise=Decimal('0'), ordre=ordre)
+        return devis
+
+    def test_refus_concurrent_d_une_acceptation_409(self):
+        """L'acceptation s'insère entre le contrôle et l'écriture (patron de la
+        sonde C-ADVS-026) : elle l'emporte, le refus répond 409 ``statut``."""
+        from apps.ventes.services import accept_devis
+        from apps.ventes.views import devis_cycle
+        devis = self._devis_signable(90)
+        vrai = devis_cycle.valider_corps
+
+        def entrelace(request, schema):
+            resultat = vrai(request, schema)
+            accept_devis(
+                devis=Devis.objects.get(pk=devis.pk), user=None,
+                nom='Client Signataire', consentement=True, ip='203.0.113.7')
+            return resultat
+
+        with mock.patch.object(devis_cycle, 'valider_corps',
+                               side_effect=entrelace), \
+                mock.patch.object(devis_refused, 'send') as refus_emis:
+            r = self.api.post(
+                f'/api/django/ventes/devis/{devis.id}/refuser/', {},
+                format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'statut')
+        refus_emis.assert_not_called()
+        # CLAUSE PERSISTANCE — relu en base : la vente signée est intacte.
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'accepte')
+        self.assertIsNone(devis.date_refus)
+        self.assertEqual(DevisSignature.objects.filter(devis=devis).count(), 1)
+
+    def test_refus_nominal_relit_le_statut_sous_verrou(self):
+        devis = self._devis(num=91)
+        with CaptureQueriesContext(connection) as requetes:
+            r = self.api.post(
+                f'/api/django/ventes/devis/{devis.id}/refuser/', {},
+                format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], 'refuse')
+        self.assertTrue(any(
+            'FOR UPDATE' in q['sql'] and 'ventes_devis' in q['sql']
+            for q in requetes.captured_queries))
+
+    def test_envoi_d_un_devis_accepte_entre_temps_sans_gel(self):
+        from apps.ventes.domain.envoi import mark_devis_sent
+        devis = self._devis(num=92, statut=Devis.Statut.BROUILLON)
+        perime = Devis.objects.get(pk=devis.pk)
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        with mock.patch.object(devis_sent, 'send') as envoi_emis:
+            rendu = mark_devis_sent(devis=perime, user=self.user)
+        self.assertEqual(rendu.statut, 'accepte')
+        envoi_emis.assert_not_called()
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'accepte')
+        self.assertIsNone(devis.date_envoi)
+        self.assertFalse(devis.clauses_appliquees)

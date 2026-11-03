@@ -54,6 +54,10 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     if _est_un_avenant(devis):  # VNT52
         return
 
+    if _conversion_deja_emise(devis):  # ADVS34
+        logger.info('ADVS34: CAPI SignedQuote déjà émis pour devis %s.', getattr(devis, 'reference', '?'))
+        return
+
     pixel_id = (
         getattr(settings, 'META_CAPI_PIXEL_ID', None)
         or os.environ.get('META_CAPI_PIXEL_ID', '')
@@ -156,6 +160,35 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     except Exception as exc:
         logger.warning('QJ9: CAPI SignedQuote HTTP échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
+        return  # ADVS34 — aucun marqueur : la prochaine acceptation réessaie.
+    _marquer_conversion_emise(devis)
+
+
+#: ADVS34 — ``etude_params['attribution'][…]`` : posé après l'envoi réussi, relu
+#: avant tout envoi. L'``event_id`` ne dédoublonne que 48 h côté Meta : sans lui,
+#: dés-accepter puis ré-accepter plus tard comptait une seconde vente.
+MARQUEUR_CAPI = 'capi_signedquote_le'
+
+
+def _conversion_deja_emise(devis):
+    params = devis.etude_params
+    attribution = params.get('attribution') if isinstance(params, dict) else None
+    return isinstance(attribution, dict) and bool(attribution.get(MARQUEUR_CAPI))
+
+
+def _marquer_conversion_emise(devis):
+    """Pose le marqueur sur le bloc RELU en base, par l'écrivain unique (QJR105 :
+    aucune autre clé écrasée). Un objet sans pk entier (stub de test) n'est
+    jamais marqué."""
+    if not isinstance(getattr(devis, 'pk', None), int):
+        return
+    from django.utils import timezone
+    from apps.ventes.domain.etude_schema import ecrire
+    from apps.ventes.models import Devis
+    relu = Devis.objects.get(pk=devis.pk)
+    attribution = (relu.etude_params or {}).get('attribution') or {}
+    ecrire(relu, attribution={**attribution, MARQUEUR_CAPI: timezone.now().isoformat()})
+    devis.refresh_from_db(fields=['etude_params'])
 
 
 def _est_un_avenant(devis):

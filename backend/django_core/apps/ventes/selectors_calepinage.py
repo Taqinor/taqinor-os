@@ -265,6 +265,18 @@ def peremption_layout_devis(devis, calepinage=None):
     }
 
 
+def refus_kwh_declare_du_devis(devis):
+    """ADVS26 — la garde kWh déclaré / factures, lue par le module calepinage (une
+    seule règle : ``etude_horaire.controle_kwh_declare_du_devis``) : le corps
+    ``{detail, code}`` du refus, ou ``None`` quand rien ne contredit."""
+    from .etude_horaire import controle_kwh_declare_du_devis as controle
+    from .horaire.conso import CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT
+    resultat = controle(devis)
+    if resultat is None or resultat['coherent']:
+        return None
+    return {'detail': MESSAGE_KWH_INCOHERENT, 'code': CODE_KWH_INCOHERENT}
+
+
 def devis_brouillon_pour_layout(company, lead_id, empreinte):
     """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
 

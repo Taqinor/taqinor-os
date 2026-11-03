@@ -333,7 +333,8 @@ class DevisEditionActionsMixin:
     def _creer_atomique(self, request):
         """Le corps de ``POST /devis/atomic/`` (voir ``atomic``)."""
         from django.db import transaction
-        from rest_framework.exceptions import ValidationError
+        from rest_framework.exceptions import NotFound, ValidationError
+        from apps.crm.selectors import leads_visibles
         from apps.crm.services import resolve_client_for_lead
 
         company = request.user.company
@@ -387,8 +388,12 @@ class DevisEditionActionsMixin:
 
         lead = serializer.validated_data.get('lead')
         client = serializer.validated_data.get('client')
-        if lead is not None and lead.company_id != company.id:
-            raise ValidationError({'lead': 'Lead inconnu.'})
+        # ADVS24 — lead d'un collègue (portée du rôle) = lead d'une autre société :
+        # le MÊME 404 que ``IdInconnu404Mixin``, aucun oracle d'existence.
+        if lead is not None and not leads_visibles(
+                request.user, company).filter(pk=lead.pk).exists():
+            gabarit = serializer.fields['lead'].error_messages['does_not_exist']
+            raise NotFound({'lead': [str(gabarit).format(pk_value=lead.pk)]})
         if client is not None and client.company_id != company.id:
             raise ValidationError({'client': 'Client inconnu.'})
         if client is None:

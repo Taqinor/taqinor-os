@@ -135,6 +135,7 @@ class Agr304DevisCompletTests(SimpleTestCase):
         self.assertEqual(s['eau'], {'m3_jour': 134.2, 'heures_pompage': 4.4,
                                     'hmt_m': 58.7, 'debit_hmt_m3h': 30.5,
                                     'estimation': False,
+                                    'debit_declare': False,
                                     'mois_conception': 12,
                                     'm3_jour_min': 134.2,
                                     'mois_m3_jour_min': 12})

@@ -89,6 +89,47 @@ class TestSignedPdfKeyStored(TestCase):
         self.assertTrue(call_args.kwargs.get('persist', call_args.args[2]
                         if len(call_args.args) > 2 else True))
 
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+           return_value=_DUMMY_KEY)
+    def test_exemplaire_signe_suit_le_format_memorise(self, mock_gen):
+        """ADVS15 — rouge si ``_store_signed_pdf`` rend ``clean_pdf_options({})``
+        (« full », persisté par-dessus le format mémorisé)."""
+        from apps.ventes.quote_engine import clean_pdf_options
+        devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-A03')
+        memo = clean_pdf_options({'pdf_mode': 'onepage'})
+        devis.pdf_render_meta = {'empreinte': 'x', 'options': memo}
+        devis.save(update_fields=['pdf_render_meta'])
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='M. Format')
+        self.assertEqual(mock_gen.call_args.args[1]['pdf_mode'], 'onepage')
+        self.assertIs(mock_gen.call_args.kwargs['persist'], True)
+        # CLAUSE PERSISTANCE — relu en base.
+        devis.refresh_from_db()
+        self.assertEqual(devis.pdf_render_meta['options'], memo)
+        self.assertEqual(
+            DevisSignature.objects.get(devis=devis).signed_pdf_key, _DUMMY_KEY)
+
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+           return_value=_DUMMY_KEY)
+    def test_exemplaire_jamais_rendu_reste_en_format_complet(self, mock_gen):
+        devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-A04')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='M. Format')
+        self.assertEqual(mock_gen.call_args.args[1]['pdf_mode'], 'full')
+
+    def test_pdf_public_suit_le_format_memorise_sous_la_variante_du_client(self):
+        from apps.ventes.models import ShareLink
+        from apps.ventes.public_views import _opts_pdf_public
+        devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-A05')
+        link = ShareLink(company=self.company, devis=devis)
+        self.assertEqual(_opts_pdf_public(link)['pdf_mode'], 'full')
+        devis.pdf_render_meta = {'options': {'pdf_mode': 'onepage',
+                                             'variante_option': 'sans'}}
+        opts = _opts_pdf_public(link, 'avec')
+        self.assertEqual(opts['pdf_mode'], 'onepage')
+        self.assertEqual(opts['variante_option'], 'avec')
+        self.assertIsNone(_opts_pdf_public(link)['variante_option'])
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # (b) Idempotency — existing signed_pdf_key never overwritten

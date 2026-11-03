@@ -38,6 +38,16 @@ def _predecesseurs_ids(devis):
     return devis_predecesseurs_revision_ids(devis)
 
 
+def lever_suivi(devis_ids):
+    """Lève la prolongation des liens de ``devis_ids`` : ils expirent de nouveau
+    à leur ``expires_at`` (version remplacée ADEV17, dés-acceptation ADVS32).
+    Renvoie le nombre de liens touchés."""
+    from apps.ventes.models import ShareLink
+    return (ShareLink.objects
+            .filter(devis_id__in=devis_ids, suivi_prolonge_le__isnull=False)
+            .update(suivi_prolonge_le=None))
+
+
 def ouvrir_suivi(devis):
     """Prolonge les liens publics non révoqués de ``devis`` jusqu'à la
     réception de son chantier, et lève la prolongation des versions que
@@ -45,10 +55,7 @@ def ouvrir_suivi(devis):
     from apps.ventes.models import ShareLink
     predecesseurs = _predecesseurs_ids(devis)
     if predecesseurs:
-        (ShareLink.objects
-         .filter(devis_id__in=predecesseurs,
-                 suivi_prolonge_le__isnull=False)
-         .update(suivi_prolonge_le=None))
+        lever_suivi(predecesseurs)
     return (ShareLink.objects
             .filter(devis_id=devis.pk, revoque_le__isnull=True,
                     suivi_prolonge_le__isnull=True)

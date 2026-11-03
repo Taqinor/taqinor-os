@@ -253,7 +253,21 @@ def _item_marque(it) -> str:
                         it.get("_produit_nom", ""))
 
 
-def _line_to_item(ligne, taux_tva: Decimal) -> dict:
+#: ADVS7 — les champs de fiche produit figés à l'envoi (ADVS2).
+_CHAMPS_FICHE_FIGEE = ("marque", "description", "garantie", "garantie_mois",
+                       "garantie_production_mois")
+
+
+def fiches_figees(devis) -> dict:
+    """ADVS7 (D-ADVS-1) — les fiches produit de l'envoi ``{produit_id(str): {…}}``,
+    ``{}`` pour un brouillon ou un envoyé d'avant ce gel (fiche du jour).
+    Feuille pure : ``utils.options`` importe ce module, donc ``ventes.models``
+    l'atteint — jamais ``domain.envoi`` ici (contrat import-linter M3)."""
+    from apps.ventes.domain.reglages_figes_lecture import reglages_figes
+    return reglages_figes(devis).get("produits") or {}
+
+
+def _line_to_item(ligne, taux_tva: Decimal, fiches=None) -> dict:
     """Convert an OS LigneDevis (HT prices) into a premium item dict.
 
     Carries both HT and TTC unit prices (the PDFs show per-line HT with an
@@ -335,6 +349,11 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     # gardent un item octet-identique.
     if getattr(produit, "role_ci", None):
         item["role_ci"] = produit.role_ci
+    # ADVS7 — ``fiches`` (:func:`fiches_figees`) : la fiche de l'envoi remplace
+    # celle du jour ; un produit absent de l'instantané garde celle du jour.
+    fiche = (fiches or {}).get(str(getattr(produit, "pk", "")))
+    if fiche:
+        item.update({cle: fiche.get(cle) for cle in _CHAMPS_FICHE_FIGEE})
     return item
 
 

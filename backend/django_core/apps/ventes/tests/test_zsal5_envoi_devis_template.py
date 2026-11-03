@@ -17,6 +17,7 @@ from rest_framework.test import APIClient
 
 from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis, EmailLog
+from apps.ventes.tests.test_qj14_email_send import rendu_ok
 
 User = get_user_model()
 
@@ -55,6 +56,7 @@ class TestEnvoiDevisTemplate(TestCase):
         self.user = make_user(self.company)
         self.api = make_api(self.user)
         self.client_obj = make_client(self.company)
+        rendu_ok(self)
 
     def test_default_template_renders_devis_reference_and_link(self):
         devis = Devis.objects.create(

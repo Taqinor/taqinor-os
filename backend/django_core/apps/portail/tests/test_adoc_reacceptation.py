@@ -21,6 +21,7 @@ from rest_framework.test import APIClient
 
 from apps.audit.models import AuditLog
 from apps.crm.models import Client
+from apps.portail.tests import corps_acceptation
 from apps.portail.models import AcceptationDevisPortail
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
@@ -90,8 +91,8 @@ class ReacceptationPortailTests(TestCase):
         self.assertEqual(self.devis.accepte_par_nom, 'Commercial')
 
     def test_double_envoi_portail_idempotent(self):
-        payload = {'nom': 'Sami', 'consent_esign': True,
-                   'accepte_conditions': True}
+        payload = corps_acceptation(self.devis, nom='Sami', consent_esign=True,
+                                    accepte_conditions=True)
         premier = self.api.post(self.url, payload, format='json')
         self.assertEqual(premier.status_code, 200, premier.content)
         preuve = AcceptationDevisPortail.objects.get(devis_id=self.devis.id)

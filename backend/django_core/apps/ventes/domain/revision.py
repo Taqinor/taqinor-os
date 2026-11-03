@@ -98,13 +98,16 @@ def renouveler_devis(devis, *, user=None):
         if ligne.produit_id is None or ligne.prix_manuel:
             return ligne.prix_unitaire
         try:
-            return prix_applicable(
+            prix = prix_applicable(
                 produit=ligne.produit, client=devis.client,
                 quantite=ligne.quantite)['prix']
         except Exception:  # noqa: BLE001 — repli sur le prix historique (D-ENF22-BLE001)
             logger.exception(
                 'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
             return ligne.prix_unitaire
+        # ADVS35 — catalogue sans prix (prestation C&I, forfait d'installation
+        # posés par le moteur) : la ligne garde le sien, jamais 0.
+        return prix or ligne.prix_unitaire
 
     # ── QJR146 (c) — LE DEVIS ET SES LIGNES NAISSENT ENSEMBLE, OU PAS ──────
     # ``create_numbered`` n'ouvrait de transaction que pour son PROPRE retry de

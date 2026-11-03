@@ -745,10 +745,11 @@ def _motif_non_chiffre(d, L):
     ses 12 factures MT ; AMOT80 (D-ACI-8=a) — investissement non chiffré ⇒
     SON motif, jamais « économies pas encore calculées »."""
     motif = ci_couverture.ligne_non_chiffre(d, "ind", "i2")
-    if _argent_option_avec_omis(d):
+    if _argent_option_avec_omis(d) or d.get("economies_masquees_lien"):
         # CPDF1 — option « avec batterie » servie sans son flux 25 ans : la
         # page garde l'analyse énergétique, sans phrase « économies non
         # calculées » (la couverture imprime l'économie de l'année 1).
+        # ADVS18 — idem pour des économies calculées, décochées au lien.
         return "", ""
     motif_inv = ci_couverture.motif_investissement(d, "ind")
     if motif_inv:
@@ -778,13 +779,16 @@ def _corps_non_chiffre(d, L, pied, couleurs_gr, police, fmt, fmt_mad):
     énergétique (l'énergie mois par mois, le surplus) sous une petite ligne
     de motif ; sans bilan, l'encadré d'hier."""
     corps_txt, motif = _motif_non_chiffre(d, L)
-    chapeau = "" if _argent_option_avec_omis(d) else L(
+    masquees = d.get("economies_masquees_lien")
+    chapeau = "" if _argent_option_avec_omis(d) or masquees else L(
         "ci_ind_lead_non_chiffre",
         "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
         "calculée sur vos données.")
     graphique = bloc_energie_mensuelle(
         d, d.get("ind_synthese"), couleurs_gr, police, fmt, "i2",
         hauteur=170, largeur_mm=182)
+    if not graphique and masquees:
+        return f'<div class="i2-foot">{pied}.</div>', "", ""
     if not graphique:
         return (f"""
   <div class="i2-mt">

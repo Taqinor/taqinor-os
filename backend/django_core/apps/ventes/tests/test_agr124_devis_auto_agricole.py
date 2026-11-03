@@ -197,6 +197,29 @@ class DevisAutoAgricoleTests(TestCase):
         lead.refresh_from_db()
         self.assertEqual(lead.type_installation, 'agricole')
 
+    def test_remise_globale_posee(self):
+        # ADVS10 — la remise demandée naît sur le devis ; le noyau remise les totaux.
+        self._pompe('15000')
+        rep = self.api.post(AUTO_URL, {'lead': self._lead().id,
+                                       'remise_globale': '10'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertEqual(devis.remise_globale, Decimal('10.00'))
+        avec_remise = devis.total_ttc
+        Devis.objects.filter(pk=devis.pk).update(remise_globale=Decimal('0'))
+        self.assertGreater(Devis.objects.get(pk=devis.pk).total_ttc, avec_remise)
+
+    def test_devise_et_tva_de_la_societe(self):
+        # ADVS28 — EUR / 14 % du profil ; rien de codé à MAD / 20.
+        CompanyProfile.objects.filter(company=self.co).update(
+            devise_defaut='EUR', tva_standard=Decimal('14'))
+        self._pompe('15000')
+        rep = self._post(self._lead())
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertEqual(devis.devise, 'EUR')
+        self.assertEqual(devis.taux_tva, Decimal('14'))
+
     def test_debit_souhaite_seul_cree_le_brouillon_besoin_derive(self):
         """AGQ1 (D-AGQ-1) — un lead qui ne déclare QUE le débit souhaité
         (aucun volume) : le débit souhaité × heures-pic fait le besoin, le

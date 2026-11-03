@@ -674,6 +674,8 @@ def synthese_agricole(data):
         "hmt_m": _num(etude.get("hmt_m")),
         "debit_hmt_m3h": _num(etude.get("debit_hmt_m3h")),
         "estimation": _estimation(etude),
+        # ADVS39 (D-AMOT-7 = a) — même fonction que le PDF.
+        "debit_declare": debit_declare_sans_courbe(data),
         # AGQ3 — le mois du héro (mois de conception servi) et le plus bas.
         "mois_conception": _mois(
             _dict(etude.get("conception")).get("mois_critique")),
