@@ -158,7 +158,7 @@ import {
   type HydratationAtelier,
 } from './roofPro11/hydratation'; // ACAL26 — une seule hydratation pour les deux boots
 import { reinitialiserDepuisTraceClient } from './roofPro11/edges'; // ACAL78
-import { repartirCibleVendue, neededAutoApresConservation } from './roofPro11/cible'; // ACAL99
+import { besoinAutoRelu, repartirCibleVendue, neededAutoApresConservation } from './roofPro11/cible'; // ACAL99, ACAL367
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -2273,7 +2273,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // besoin énergétique — donc une édition d'obstacle ne réécrit jamais ce nombre.
     if (neededAuto) {
       const n = neededPanelsForTarget(rec.targetAnnualKwh, centroidLat);
-      neededPanels = n > 0 ? clampNeeded(n) : 0;
+      neededPanels = n > 0 ? clampNeeded(n) : besoinAutoRelu(ctx.documentRelu, activeAreaId, bill);
     }
     // FIX 2 (V6) — la MATRICE complète remplace les ~6 lignes : balayage estimé
     // instantané affiché, puis affiné PVGIS au GPS exact ci-dessous.
