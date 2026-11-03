@@ -212,6 +212,23 @@ class RecyclerLeadsCommandTests(TestCase):
         lead.refresh_from_db()
         self.assertEqual(lead.owner_id, self.owner.id)
 
+    def test_deassign_respecte_owner_saisi_et_perdus(self):
+        # ACVI28 — owner marqué, perdu, opposé : gardés ; owner machine : retiré.
+        self.profile.lead_sla_deassign_hours = 100
+        self.profile.save(update_fields=['lead_sla_deassign_hours'])
+        saisi = _old_new_lead(self.company, hours_ago=150, owner=self.owner)
+        Lead.objects.filter(pk=saisi.pk).update(saisies_humaines=['owner'])
+        oppose = _old_new_lead(self.company, hours_ago=150, owner=self.owner)
+        Lead.objects.filter(pk=oppose.pk).update(ne_plus_contacter=True)
+        machine = _old_new_lead(self.company, hours_ago=150, owner=self.owner)
+
+        _, deassigned = recycler_leads_non_travailles(now=timezone.now())
+        self.assertEqual(deassigned, 1)
+        for lead, attendu in ((saisi, self.owner.pk), (oppose, self.owner.pk),
+                              (machine, None)):
+            lead.refresh_from_db()
+            self.assertEqual(lead.owner_id, attendu, lead.pk)
+
     def test_deassign_after_second_threshold(self):
         self.profile.lead_sla_deassign_hours = 100
         self.profile.save(update_fields=['lead_sla_deassign_hours'])

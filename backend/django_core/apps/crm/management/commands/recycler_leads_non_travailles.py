@@ -98,9 +98,7 @@ def recycler_leads_non_travailles(now=None, dry_run=False):
                 if deassign_hours and lead.owner_id:
                     age_hours = (
                         now - lead.date_creation).total_seconds() / 3600.0
-                    if age_hours >= deassign_hours:
-                        if not dry_run:
-                            _deassign(lead)
+                    if age_hours >= deassign_hours and (dry_run or _deassign(lead)):
                         nb_desassignations += 1
             except Exception:  # noqa: BLE001 — (D-ENF22-BLE001)
                 logger.warning('recycler_leads_non_travailles : lead %s en échec',
@@ -149,10 +147,17 @@ def _escalate(lead, seuil, now):
 
 
 def _deassign(lead):
+    """ACVI28 — ne retire que l'owner posé par la machine : ni un owner saisi
+    par un humain, ni celui d'un lead perdu ou opposé. Rend ``True`` si retiré.
+    Sans journal du refus : le beat repasse chaque heure."""
     from apps.crm.models import LeadActivity
+    from apps.records.provenance import ecrire_si_libre
 
+    if lead.perdu or lead.ne_plus_contacter:
+        return False
     ancien_owner = lead.owner
-    lead.owner = None
+    if not ecrire_si_libre(lead, 'owner', None, journal=False):
+        return False
     lead.save(update_fields=['owner'])
     body = 'auto — recyclage SLA : lead désassigné, rendu au pool'
     if ancien_owner is not None:
@@ -160,3 +165,4 @@ def _deassign(lead):
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE, body=body)
+    return True
