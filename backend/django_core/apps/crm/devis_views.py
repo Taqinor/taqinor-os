@@ -223,5 +223,14 @@ class LeadDevisActionsMixin:
             # lead (champs manquants) qui s'oppose — refus d'ÉTAT = 409.
             return Response({'detail': message_manquants(manquants)},
                             status=status.HTTP_409_CONFLICT)
+        # ACVI97 — un kWh tapé que les factures contredisent bloque jusqu'à correction.
+        from apps.ventes.selectors import controle_kwh_declare_du_lead
+        if (lead.type_installation or 'residentiel') == 'residentiel':
+            controle = controle_kwh_declare_du_lead(lead)
+            if controle is not None and not controle['coherent']:
+                return Response(
+                    {'detail': 'kWh déclaré incohérent avec les factures : '
+                               'corriger la fiche.'},
+                    status=status.HTTP_409_CONFLICT)
         return Response(
             {'ok': True, 'detail': 'Lead prêt pour le devis automatique.'})

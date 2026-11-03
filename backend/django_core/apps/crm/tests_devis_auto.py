@@ -580,6 +580,22 @@ class TestDevisAutoEndpoint(TestCase):
         lead_id = lead_id or self.lead.id
         return api.post(f'/api/django/crm/leads/{lead_id}/devis-auto/')
 
+    def test_kwh_contredit_les_factures(self):
+        """ACVI97 — 5 000 kWh pour 300 MAD : plus « prêt », valeur gardée."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Maison', type_installation='residentiel',
+            ville='Rabat', type_surface='toiture', facture_hiver=Decimal('300'))
+        url = f'/api/django/crm/leads/{lead.id}/'
+        patch = self.api.patch(url, {'conso_mensuelle_kwh': 5000}, format='json')
+        self.assertEqual(patch.status_code, 200, patch.data)
+        self.assertIn('kwh_factures', patch.data['avertissements'])
+        refus = self._post(lead.id)
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertIn('incohérent', refus.data['detail'])
+        temoin = self.api.patch(url, {'conso_mensuelle_kwh': 450}, format='json')
+        self.assertNotIn('avertissements', temoin.data)
+        self.assertEqual(self._post(lead.id).status_code, 200)
+
     def test_409_with_exact_french_message(self):
         resp = self._post()
         # ERR-ENF11-FUZZ-CRM : champs manquants = refus d'état, 409.

@@ -1409,6 +1409,17 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             for name in self.PII_FIELDS:
                 if name in data:
                     data[name] = None
+        # ACVI97 — la fiche seule (pas les listes : réglages lus par lead) ; le kWh
+        # tapé est gardé, l'écart est dit et nomme son champ.
+        if (not isinstance(self.parent, serializers.ListSerializer)
+                and instance.conso_mensuelle_kwh
+                and (instance.type_installation or 'residentiel') == 'residentiel'):
+            from apps.ventes.selectors import controle_kwh_declare_du_lead
+            controle = controle_kwh_declare_du_lead(instance)
+            if controle is not None and not controle['coherent']:
+                data['avertissements'] = {'kwh_factures': (
+                    '« Consommation mensuelle (kWh) » contredit les factures '
+                    'déclarées : corrigez la fiche.')}
         return data
 
     @extend_schema_field(serializers.BooleanField())
