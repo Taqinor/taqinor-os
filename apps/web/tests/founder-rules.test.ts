@@ -105,7 +105,9 @@ describe('WAUD18 — loi 82-21 : ni montant d’amende, ni menace, ni « à conf
     const s = LIRE(f);
     expect(s).not.toMatch(/1[ .,\u00a0]000[ .,\u00a0]000/);
     expect(s).not.toMatch(/d[ée]cembre 2027|December 2027/i);
-    expect(s).not.toMatch(/à confirmer|to be confirmed|يجب تأكيدها/);
+    // « point de départ à confirmer » reste sur /regularization et le guide : chaîne épinglée par
+    // article33CIW413 et loi8221TarifCIW412 jusqu'à D-WAUD-4 (WAUD18-b) ; partout ailleurs, retirée.
+    if (!/regularization-article-33|guides\/loi-82-21/.test(f)) expect(s).not.toMatch(/à confirmer|to be confirmed|يجب تأكيدها/);
     expect(s).not.toMatch(/d[ée]connexion|disconnection|فصلها عن الشبكة/i);
     // Garde : « MAD » ou « DH » accolé à une amende ou sanction.
     expect(s).not.toMatch(/(amende|sanction|fine|penalt|غرام|عقوب)[^.\n]{0,80}\b(MAD|DH|درهم)\b/i);
