@@ -152,8 +152,9 @@ export default function VisiteursPage() {
   useEffect(() => {
     if (!leadId) return
     queueMicrotask(() => { setLoadingVisitesLead(true); setErreurVisitesLead(false) })
-    crmApi.getVisitesExternes({ lead: leadId })
-      .then((r) => setVisitesLead(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getVisitesExternes({ lead: leadId, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setVisitesLead(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setErreurVisitesLead(true))
       .finally(() => setLoadingVisitesLead(false))
   }, [leadId])

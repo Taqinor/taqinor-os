@@ -29,8 +29,9 @@ export default function ParrainagePage() {
     { parrain: parrainInitial, filleul_nom: '', recompense: '' })
 
   const load = () => {
-    crmApi.getParrainages()
-      .then(r => setRows(r.data.results ?? r.data)).catch(() => {})
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getParrainages({ page, page_size: pageSize }).then(r => r.data))
+      .then(res => setRows(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
     crmApi.parrainageStats().then(r => setStats(r.data)).catch(() => {})
   }
   useEffect(() => { load() }, [])

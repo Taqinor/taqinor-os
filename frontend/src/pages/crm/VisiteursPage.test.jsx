@@ -193,7 +193,7 @@ describe('VisiteursPage — mode lead (?lead=), historique des accès (VIS-LEAD)
     mount(['/crm/visiteurs?lead=7'])
 
     await waitFor(() => expect(getLead).toHaveBeenCalledWith('7'))
-    await waitFor(() => expect(getVisitesExternes).toHaveBeenCalledWith({ lead: '7' }))
+    await waitFor(() => expect(getVisitesExternes).toHaveBeenCalledWith(expect.objectContaining({ lead: '7' })))
 
     expect(await screen.findByText(/Historique des accès — Alami Ahmed/)).toBeInTheDocument()
     // Ligne d'accès : point_display, IP, durée humanisée (125 s -> 2 min).
