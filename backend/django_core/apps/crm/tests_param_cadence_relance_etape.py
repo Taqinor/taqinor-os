@@ -108,7 +108,7 @@ class VisiteDuLeadTests(_Base):
         recente = VisiteTerrain.objects.create(
             company=self.company, lead=lead,
             date_prevue=datetime.date(2026, 9, 22),
-            notes='Tableau saturé, accès par le garage.')
+            retour_terrain='Tableau saturé, accès par le garage.')
         touche = self._touche(lead)
 
         ligne = self._file()[touche.pk]

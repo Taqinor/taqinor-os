@@ -89,7 +89,8 @@ class ListeVisitesTests(VisiteApiBase):
     def test_sert_la_forme_du_contrat(self):
         VisiteTerrain.objects.create(
             company=self.company, lead=self.lead, date_prevue=DEMAIN,
-            commercial=self.commerciale, notes='Portail bleu')
+            commercial=self.commerciale, notes='Portail bleu',
+            retour_terrain='Accès par le portail bleu.')
         reponse = self.api.get(self._url(self.URL))
         self.assertEqual(reponse.status_code, 200, reponse.data)
         # CAD123 — EXACTEMENT les clés du contrat committé (l'avertissement

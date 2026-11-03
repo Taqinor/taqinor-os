@@ -888,7 +888,7 @@ class SchemaVisitesPublieTests(SimpleTestCase):
         self.assertEqual(
             set(entete['properties']),
             {'id', 'lead', 'commercial', 'statut', 'date_prevue',
-             'date_realisee', 'notes'})
+             'date_realisee', 'notes', 'retour_terrain'})
 
     def test_la_qualification_publie_un_corps_obligatoire(self):
         # api-fuzz 01/11 : POST sans corps (« conforme » car facultatif au
