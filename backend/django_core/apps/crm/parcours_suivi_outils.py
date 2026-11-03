@@ -794,7 +794,7 @@ class ParcoursBase(TestCase):
             outcome='joint', body='Joint autrefois.')])
 
     def touches_de_contact_sans_reponse(self, lead):
-        """Toutes les touches de la prise de contact (onze avec le gabarit livré) closes
+        """Toutes les touches de la prise de contact (huit avec le gabarit livré) closes
         « Pas de réponse », chacune à son échéance : le dossier part au Froid (réveils posés
         s'il a déjà été joint, CADV25)."""
         nombre = CadenceRelanceEtape.objects.filter(

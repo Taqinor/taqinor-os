@@ -412,14 +412,14 @@ class DecisionContactTests(_PlacementBase):
         self.assertEqual(self._codes(rapport), {'contact_complete': 1})
         touches = lead.relance_etapes.filter(cadence='contact')
         # CKP2 — cadence RÉACTIVE : le lead est placé sur la cadence COMPLÈTE
-        # (11 touches annoncées, c'est ce que l'aperçu MRY30 promet), mais
+        # (8 touches annoncées, c'est ce que l'aperçu MRY30 promet), mais
         # seule la prochaine à faire est matérialisée ; la suite naît des
         # issues saisies.
         from apps.crm.cadence_plan import calculer_echeances_cadence
         depart = touches.first().cadence_depart
         self.assertIsNotNone(depart)
         self.assertEqual(
-            len(calculer_echeances_cadence(lead, 'contact', depart)), 11)
+            len(calculer_echeances_cadence(lead, 'contact', depart)), 8)
         self.assertEqual(touches.count(), 1)
         self.assertEqual(
             set(touches.values_list('statut', flat=True)),
@@ -447,7 +447,8 @@ class DecisionContactTests(_PlacementBase):
         """CKP1 — les touches déjà échues d'une cadence rétrodatée sont
         ANNULÉES par le moteur : les compter comme des sauts de Meryem
         inventerait des manquements sur un plan qu'elle n'a jamais vu."""
-        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        # CADV23 — le protocole tient en 7 jours : à J+5, il reste le J+7 à faire.
+        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=5)
         rapport = self._placer()
         self.assertEqual(self._codes(rapport), {'contact_positionne': 1})
         touches = lead.relance_etapes.filter(cadence='contact')
@@ -466,7 +467,8 @@ class DecisionContactTests(_PlacementBase):
         """`initialiser_plan_relance` pointe la PREMIÈRE touche — celle qu'on
         vient de sauter. Sans recalage, « Ma file » montrerait un rappel qui
         n'existe plus."""
-        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        # CADV23 — le protocole tient en 7 jours : à J+5, il reste le J+7 à faire.
+        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=5)
         self._placer()
         lead.refresh_from_db()
         prochaine = (lead.relance_etapes
@@ -475,7 +477,8 @@ class DecisionContactTests(_PlacementBase):
         self.assertEqual(lead.relance_date, prochaine.due_date)
 
     def test_le_positionnement_ne_touche_jamais_a_letape(self):
-        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        # CADV23 — le protocole tient en 7 jours : à J+5, il reste le J+7 à faire.
+        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=5)
         self._placer()
         lead.refresh_from_db()
         self.assertEqual(lead.stage, stages.CONTACTED)
@@ -506,10 +509,10 @@ class DecisionApresDevisTests(_PlacementBase):
             lead.relance_etapes.filter(cadence='apres_devis').count(), 0)
 
     def test_un_devis_trop_ancien_bascule_en_dormance(self):
-        """Toutes les touches (J1…J14) sont passées : cette cadence ne
+        """Toutes les touches (J1…J90, CADV24) sont passées : cette cadence ne
         relancerait personne. Elle est DÉFAITE et le lead part en dormance."""
-        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=40)
-        self._devis(lead, jours=30)
+        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=110)
+        self._devis(lead, jours=100)
         rapport = self._placer()
         self.assertEqual(self._codes(rapport), {'dormant_devis': 1})
         lead.refresh_from_db()
@@ -519,8 +522,8 @@ class DecisionApresDevisTests(_PlacementBase):
         self.assertIn('Devis sans suite', lead.tags or '')
 
     def test_la_bascule_ne_laisse_pas_de_rappel_fantome(self):
-        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=40)
-        self._devis(lead, jours=30)
+        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=110)
+        self._devis(lead, jours=100)
         self._placer()
         lead.refresh_from_db()
         reveil = self._reveils(lead)[0]
@@ -935,7 +938,7 @@ class ApercuPurTests(_PlacementBase):
     def setUp(self):
         super().setUp()
         self.neuf = self._lead('Neuf', stage=stages.NEW, jours=2)
-        self.suivi = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        self.suivi = self._lead('Suivi', stage=stages.CONTACTED, jours=5)  # CADV23
         self.dormant = self._lead('Dormant', stage=stages.NEW, jours=60)
 
     def test_lapercu_ne_cree_ni_touche_ni_ligne_de_chatter(self):
@@ -973,10 +976,11 @@ class ApercuPositionneTests(_PlacementBase):
     slug = 'mry30-apercu-positionne'
 
     def test_la_ligne_positionnee_date_la_premiere_touche_non_passee(self):
-        """La cadence part d'il y a dix jours : ses premières touches sont
+        """La cadence part d'il y a cinq jours : ses premières touches sont
         derrière nous. L'aperçu doit annoncer la première touche À VENIR — et
         exactement celle que l'application créera ensuite."""
-        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        # CADV23 — le protocole tient en 7 jours : à J+5, il reste le J+7 à faire.
+        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=5)
         ligne = self._placer(apply=False)['apercu'][0]
         self.assertEqual(ligne['code'], 'contact_positionne')
 
@@ -995,8 +999,8 @@ class ApercuPositionneTests(_PlacementBase):
         """La bascule appartient à la DÉCISION : annoncée « après devis » puis
         écrite « dormant », la carte montrerait deux chiffres différents pour
         le même clic."""
-        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=40)
-        self._devis(lead, jours=30)
+        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=110)
+        self._devis(lead, jours=100)
         apercu = self._placer(apply=False)
         self.assertEqual(self._codes(apercu), {'dormant_devis': 1})
         self.assertEqual(apercu['apercu'][0]['cadence'], 'reveil')

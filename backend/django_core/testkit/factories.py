@@ -29,6 +29,38 @@ from factory.django import DjangoModelFactory
 from authentication.models import Company, CustomUser
 
 
+def barreau_dominical_societe(company):
+    """CADV23 — le gabarit v4 n'a plus de touche de contact le dimanche, mais une
+    société peut en régler une (ou l'avoir gardée : la migration 0133 ne réécrit
+    pas un barreau personnalisé) et le moteur sait toujours la placer. Le barreau
+    d'ordre 7, réglé comme l'ancien « Appel 5 (dimanche) » (J+5, 10 h 30), suivi
+    du J+7 d'ordre 8 : ce que les tests du rendez-vous dominical exercent."""
+    import datetime
+
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    CadenceRelanceEtape.cadence_pour(company, 'contact')
+    CadenceRelanceEtape.objects.filter(
+        company=company, cadence='contact', ordre=7,
+    ).update(delai_jours=5, heure_cible=datetime.time(10, 30), dimanche_ok=True,
+             libelle='Appel 5 (dimanche)', template_cle='appel_dimanche')
+
+
+def barreau_preuve_j4_societe(company):
+    """CADV24 — la J4 « preuve » sort du gabarit v4 (ordres 4-5 désactivés), mais
+    une société peut la garder et le moteur la filtre toujours sur une réalisation
+    éligible (AGR514) : le barreau d'ordre 4, tel que la production le portait."""
+    import datetime
+
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    CadenceRelanceEtape.cadence_pour(company, 'apres_devis')
+    CadenceRelanceEtape.objects.create(
+        company=company, cadence='apres_devis', ordre=4, canal='whatsapp',
+        delai_jours=4, heure_cible=datetime.time(9, 30),
+        libelle='Preuve — chantier comparable', template_cle='j4_preuve')
+
+
 class CompanyFactory(DjangoModelFactory):
     class Meta:
         model = Company

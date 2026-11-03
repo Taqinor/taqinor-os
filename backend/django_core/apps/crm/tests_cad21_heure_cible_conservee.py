@@ -32,6 +32,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
+from testkit.factories import barreau_dominical_societe
 from testkit.time import frozen
 
 from apps.crm import horaires
@@ -52,11 +53,11 @@ JEUDI_10 = datetime.date(2026, 9, 10)
 VENDREDI_11 = datetime.date(2026, 9, 11)
 SAMEDI_12 = datetime.date(2026, 9, 12)
 
-#: Les heures imposées du Protocole v3, par ordre de barreau (hors dominical,
-#: dont l'heure est celle de la fenêtre 16 h-19 h).
+#: Les heures imposées des appels du protocole v4 (CADV23), par ordre de barreau
+#: (hors dominical, dont l'heure est celle de la fenêtre 16 h-19 h).
 HEURES_IMPOSEES = {4: datetime.time(10, 30),
-                   6: datetime.time(18, 0),
-                   10: datetime.time(15, 0)}
+                   5: datetime.time(16, 0),
+                   7: datetime.time(11, 0)}
 
 
 def _q(jour, heure, minute=0):
@@ -216,12 +217,13 @@ class LesHeuresDuProtocoleTiennentTests(_Base):
                     (plan[ordre].hour, plan[ordre].minute),
                     (heure.hour, heure.minute), (jour, ordre))
 
-    def test_un_lead_du_vendredi_19h45_garde_son_appel_4_a_18h(self):
-        """Le cas nommé par la tâche : 18:00, jamais 09:00. Le JOUR est celui
-        que CAD19 (ancre unique) et CAD20 (un appel par jour) lui donnent."""
+    def test_un_lead_du_vendredi_19h45_garde_son_appel_4_a_16h(self):
+        """Le cas nommé par la tâche : son heure imposée (16:00 depuis CADV23),
+        jamais 09:00. Le JOUR est celui que CAD19 (ancre unique) et CAD20 (un
+        appel par jour) lui donnent."""
         plan = self._par_ordre(_q(VENDREDI_11, 19, 45))
-        self.assertEqual((plan[6].hour, plan[6].minute), (18, 0))
-        self.assertNotEqual((plan[6].hour, plan[6].minute), (9, 0))
+        self.assertEqual((plan[5].hour, plan[5].minute), (16, 0))
+        self.assertNotEqual((plan[5].hour, plan[5].minute), (9, 0))
 
     def test_un_lead_du_samedi_garde_son_appel_3_a_10h30(self):
         plan = self._par_ordre(_q(SAMEDI_12, 11))
@@ -230,6 +232,7 @@ class LesHeuresDuProtocoleTiennentTests(_Base):
     def test_la_touche_dominicale_garde_son_heure_de_fenetre(self):
         """Garde négative : l'heure cible du gabarit (10:30) ne s'applique
         JAMAIS au rendez-vous dominical — il reste au milieu de 16 h-19 h."""
+        barreau_dominical_societe(self.company)  # CADV23 : plus dans le défaut
         for jour in JOURS_DARRIVEE:
             for gabarit, echeance in calculer_echeances_cadence(
                     self.lead, 'contact', _q(jour, 11)):

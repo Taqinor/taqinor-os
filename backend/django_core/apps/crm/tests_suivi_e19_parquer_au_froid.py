@@ -210,8 +210,13 @@ class ParquerAuFroidTests(TestCase):
         from apps.crm.fiche_funnel import ParcRefuse, appels_exiges_injoignable, parquer_lead
         gabarit = CadenceRelanceEtape.objects.filter(
             company=self.company, cadence='contact', actif=True)
+        # CADV23 — le gabarit livré compte cinq appels pile : une société à six
+        # (un barreau de plus) dépasse le plafond, comme le gabarit d'avant.
+        CadenceRelanceEtape.objects.create(
+            company=self.company, cadence='contact', ordre=9, canal='appel',
+            delai_jours=10, libelle='Appel 6', template_cle='appel_dernier')
         appels = list(gabarit.filter(canal='appel').order_by('ordre'))
-        self.assertGreater(len(appels), 5, 'le gabarit livré dépasse le plafond')
+        self.assertGreater(len(appels), 5, 'cette société dépasse le plafond')
         self.assertEqual(appels_exiges_injoignable(self.lead), 5)
         gabarit.filter(pk__in=[e.pk for e in appels[3:]]).update(actif=False)
         self.assertEqual(appels_exiges_injoignable(self.lead), 3)

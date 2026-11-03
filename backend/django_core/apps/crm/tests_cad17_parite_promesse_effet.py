@@ -135,23 +135,24 @@ class Scenario:
 
 
 SCENARIOS = (
-    # Prise de contact (11 barreaux) : message, appel, dernière touche.
+    # Prise de contact (8 barreaux, CADV23) : message, appel, dernière touche.
     Scenario('contact_message', 'contact', 1, WHATSAPP),
     Scenario('contact_appel', 'contact', 2, APPEL),
-    Scenario('contact_derniere_message', 'contact', 11, WHATSAPP),
-    Scenario('contact_derniere_appel', 'contact', 11, APPEL),
-    # Suivi de proposition (10 barreaux), avec et sans devis dans l'ERP.
+    Scenario('contact_derniere_message', 'contact', 8, WHATSAPP),
+    Scenario('contact_derniere_appel', 'contact', 8, APPEL),
+    # Suivi de proposition (9 barreaux jusqu'à l'ordre 11, CADV24), avec et sans
+    # devis dans l'ERP.
     Scenario('apres_devis_message', 'apres_devis', 1, WHATSAPP,
              devis=True, stage=stages.QUOTE_SENT),
     Scenario('apres_devis_appel', 'apres_devis', 2, APPEL,
              devis=True, stage=stages.QUOTE_SENT),
-    Scenario('apres_devis_derniere_message', 'apres_devis', 10, WHATSAPP,
+    Scenario('apres_devis_derniere_message', 'apres_devis', 11, WHATSAPP,
              devis=True, stage=stages.QUOTE_SENT),
-    Scenario('apres_devis_derniere_appel', 'apres_devis', 10, APPEL,
+    Scenario('apres_devis_derniere_appel', 'apres_devis', 11, APPEL,
              devis=True, stage=stages.QUOTE_SENT),
     Scenario('apres_devis_sans_devis', 'apres_devis', 2, APPEL,
              stage=stages.QUOTE_SENT),
-    Scenario('apres_devis_sans_devis_derniere', 'apres_devis', 10, WHATSAPP,
+    Scenario('apres_devis_sans_devis_derniere', 'apres_devis', 11, WHATSAPP,
              stage=stages.QUOTE_SENT),
     # Les gestes de visite (cadence après-devis, hors protocole).
     Scenario('visite_confirmation', 'apres_devis', VISITE_ORDRE_CONFIRMATION,
@@ -869,12 +870,12 @@ class PariteBase(TestCase):
             devis = self._devis(lead)
         if scenario.famille == A_COTE:
             self._suivi_consomme(
-                lead, devis, 10 if variante == 'seule_epuise' else 2)
+                lead, devis, 11 if variante == 'seule_epuise' else 2)
             if variante == 'avec_autre':
                 # Le plan suspendu pendant la visite : une touche ouverte.
                 gabarit = next(e for e in CADENCES_DEFAUT['apres_devis']
-                               if e['ordre'] == 4)
-                self._touche(lead, cadence='apres_devis', ordre=4,
+                               if e['ordre'] == 7)
+                self._touche(lead, cadence='apres_devis', ordre=7,
                              canal=gabarit['canal'],
                              libelle=gabarit['libelle'], devis=devis,
                              due=GEL + datetime.timedelta(days=2),
@@ -882,7 +883,7 @@ class PariteBase(TestCase):
         elif variante == 'devis_ouvert':
             self._suivi_consomme(lead, devis, 2)
         elif variante == 'devis_epuise':
-            self._suivi_consomme(lead, devis, 10)
+            self._suivi_consomme(lead, devis, 11)
 
         barreau = st.nature_touche(RelanceEtape(
             cadence=scenario.cadence,

@@ -30,6 +30,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from testkit.factories import barreau_dominical_societe
 from testkit.time import frozen
 
 from apps.crm import horaires
@@ -76,8 +77,9 @@ class _Base(TestCase):
         self.lead = Lead.objects.create(
             company=self.company, nom='Aziz', prenom='Benali',
             ville='Bouskoura', owner=self.acteur)
-        # Seede la cadence, puis lit le barreau dominical.
-        CadenceRelanceEtape.cadence_pour(self.company, 'contact')
+        # Seede la cadence, y règle un barreau dominical (CADV23 : plus dans le
+        # défaut v4, une société peut en avoir un), puis le lit.
+        barreau_dominical_societe(self.company)
         self.dominical = CadenceRelanceEtape.objects.get(
             company=self.company, cadence='contact', dimanche_ok=True)
 

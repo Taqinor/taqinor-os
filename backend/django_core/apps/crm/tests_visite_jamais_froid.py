@@ -199,12 +199,13 @@ class DebriefAvecPlanPendantTests(_Base):
             lead=self.lead, statut=Devis.Statut.ENVOYE,
             taux_tva=Decimal('20.00'),
             date_envoi=GEL - datetime.timedelta(days=7))
+        # Le message J+10 du gabarit v4 (CADV24) : une touche du plan à venir.
         gabarit = next(e for e in CADENCES_DEFAUT['apres_devis']
-                       if e['ordre'] == 4)
+                       if e['ordre'] == 7)
         plus_tard = GEL + datetime.timedelta(days=3)
         plan = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=4, canal=gabarit['canal'], libelle=gabarit['libelle'],
+            ordre=7, canal=gabarit['canal'], libelle=gabarit['libelle'],
             devis=devis, due_at=plus_tard, due_date=plus_tard.date(),
             cadence_depart=GEL - datetime.timedelta(days=7))
         debrief = RelanceEtape.objects.create(

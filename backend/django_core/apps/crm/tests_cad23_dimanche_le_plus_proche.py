@@ -28,6 +28,7 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
+from testkit.factories import barreau_dominical_societe
 from testkit.time import frozen
 
 from apps.crm import horaires
@@ -130,6 +131,9 @@ class _Base(TestCase):
         self.lead = Lead.objects.create(
             company=self.company, nom='Aziz', prenom='Benali',
             ville='Bouskoura', owner=self.acteur, tags=TAG_FAMILLE)
+        # CADV23 — le défaut v4 n'a plus de touche de contact le dimanche : une
+        # société qui l'a gardée (le moteur la place toujours, CAD23 tient).
+        barreau_dominical_societe(self.company)
 
     def _dominicales(self, depart, cadence):
         """`[(gabarit, échéance locale)]` des touches `dimanche_ok`."""
@@ -204,7 +208,7 @@ class LeResteDuProtocoleNeBougePasTests(_Base):
             ordres = [gabarit.ordre for gabarit, _e
                       in calculer_echeances_cadence(
                           self.lead, 'contact', _q(jour))]
-            self.assertEqual(ordres, list(range(1, 12)), jour)
+            self.assertEqual(ordres, list(range(1, 9)), jour)  # v4, CADV23
 
     def test_aucune_autre_touche_ne_tombe_un_dimanche(self):
         for cadence in ('contact', 'apres_devis'):
