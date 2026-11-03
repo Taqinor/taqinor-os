@@ -315,6 +315,13 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
     }
 
 
+def _responsable_inactif(company, owner_id):
+    """ACVI14 — ``owner_id`` est-il un compte désactivé de la société ?"""
+    from authentication.models import CustomUser
+    return CustomUser.objects.filter(
+        id=owner_id, company=company, is_active=False).exists()
+
+
 def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     """Applique une action en masse à une sélection de leads de la société.
 
@@ -344,6 +351,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     # Pré-validation des paramètres dépendant de l'action.
     target_stage = None
     owner_obj = None
+    owner_inactif = False
     tag = _texte(params.get('tag')) if op in ('add_tag', 'remove_tag') else None
     relance = None
     target_canal = None
@@ -378,7 +386,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     elif op == 'reassign':
         owner_obj = _resolve_owner(company, params.get('owner'))
         if params.get('owner') not in (None, '', 'null') and owner_obj is None:
-            raise ValueError("Responsable introuvable dans cette société.")
+            owner_inactif = _responsable_inactif(company, params.get('owner'))
+            if not owner_inactif:
+                raise ValueError("Responsable introuvable dans cette société.")
     elif op in ('add_tag', 'remove_tag') and not tag:
         raise ValueError("Étiquette vide.")
     elif op == 'set_perdu':
@@ -406,6 +416,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     with transaction.atomic():
         for lead in leads:
             if op == 'reassign':
+                if owner_inactif:  # ACVI14
+                    skip(lead, "Responsable inactif.")
+                    continue
                 if lead.owner_id == (owner_obj.id if owner_obj else None):
                     unchanged += 1
                     continue

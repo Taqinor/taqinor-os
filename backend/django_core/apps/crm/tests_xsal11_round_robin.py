@@ -308,7 +308,10 @@ class AttributionParResponsableTests(TestCase):
         resp = api.post('/api/django/crm/leads/bulk/', {
             'action': 'reassign', 'ids': [lead.pk], 'owner': inactif.pk},
             format='json')
-        self.assertNotEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            [(s['id'], s['reason']) for s in resp.data['skipped']],
+            [(lead.pk, 'Responsable inactif.')])
         lead.refresh_from_db()
         self.assertEqual(lead.owner, actif)
 
