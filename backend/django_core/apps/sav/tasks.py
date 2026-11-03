@@ -247,7 +247,7 @@ def scan_sla_breaches():
 
     Appelé par le scan journalier (management command ou Celery-beat).
     Aucune modification si sla_breach_enabled est False pour la société."""
-    from apps.notifications.services import notify
+    from apps.notifications.sweeps import _notify_user_or_managers
     from apps.notifications.types_evenements import EventType
 
     from authentication.selectors import active_company_ids
@@ -287,17 +287,16 @@ def scan_sla_breaches():
         ticket.save(update_fields=['sla_breach'])
         updated += 1
         # ASAV57 — l'interrupteur société ne gouverne que la NOTIFICATION.
-        if (reglage_pour(ticket).sla_breach_enabled
-                and ticket.technicien_responsable_id):
-            notify(
-                user=ticket.technicien_responsable,
-                event_type=EventType.SAV_TICKET_BREACHING,
-                title=f'SLA dépassé — {ticket.reference}',
-                body=(f'Le ticket {ticket.reference} a dépassé son délai SLA '
-                      f'({ticket.sla_due_at.strftime("%d/%m/%Y")}).'),
-                link=f'/sav/tickets/{ticket.pk}',
-                company=ticket.company,
-            )
+        # ASAV124 — technicien sinon managers (le balayage quotidien ne revoit
+        # plus un ticket dont ce scan a déjà levé ``sla_breach``).
+        if reglage_pour(ticket).sla_breach_enabled:
+            _notify_user_or_managers(
+                ticket.technicien_responsable, ticket.company,
+                EventType.SAV_TICKET_BREACHING,
+                f'SLA dépassé — {ticket.reference}',
+                (f'Le ticket {ticket.reference} a dépassé son délai SLA '
+                 f'({ticket.sla_due_at.strftime("%d/%m/%Y")}).'),
+                f'/sav/tickets/{ticket.pk}')
     return updated
 
 

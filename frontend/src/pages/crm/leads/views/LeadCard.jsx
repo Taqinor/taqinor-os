@@ -18,6 +18,7 @@ import { useState, memo } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
 import { Zap, MapPin, Pentagon, FileText, MoreHorizontal, Lock } from 'lucide-react'
 import BadgeParcage from '../../../../features/crm/workspace/BadgeParcage'
+import { catalogueCiBloque, raisonCatalogueCi } from '../../../../features/crm/workspace/devisTabLogique'
 import {
   CANAL_LABELS,
   CONTACTED_STAGE,
@@ -276,6 +277,8 @@ function LeadCard({
   const roofReady = roofOutlineReady || !!lead.roof_point
   const factureReady = lead.facture_hiver != null && lead.facture_hiver !== ''
   const devisReady = !!lead.devis_auto?.pret
+  // ALEA63 — « Devis auto » : prêt ET catalogue C&I prêt (motif nommé sinon).
+  const devisAutoOk = devisReady && !catalogueCiBloque(lead.devis_auto)
 
   // ── LB13/LB14 — pill d'âge (rotting) : ancienneté dans l'étape courante.
   //    Absorbe l'ancien « Inactif N j » + l'horloge. LB14 la teintera via
@@ -400,7 +403,7 @@ function LeadCard({
                     Planifier une relance
                   </DropdownMenuItem>
                 )}
-                {onAutoQuote && lead.devis_auto?.pret && (
+                {onAutoQuote && devisAutoOk && (
                   <DropdownMenuItem onSelect={() => onAutoQuote(lead)}>
                     <Zap size={14} aria-hidden="true" /> Devis auto
                   </DropdownMenuItem>
@@ -565,10 +568,11 @@ function LeadCard({
             <button
               type="button"
               className="kb-flash kb-quick-btn"
-              disabled={!lead.devis_auto?.pret}
-              title={lead.devis_auto?.pret
+              disabled={!devisAutoOk}
+              title={devisAutoOk
                 ? (roofReady ? 'Devis auto — repère toit disponible' : 'Devis auto')
-                : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
+                : (devisReady ? raisonCatalogueCi(lead.devis_auto)
+                  : (lead.devis_auto?.message ?? 'Devis auto indisponible'))}
               aria-label="Devis auto"
               onPointerDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}

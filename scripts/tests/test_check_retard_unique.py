@@ -56,6 +56,28 @@ def alerte(lead, seuil):
     return lead.relance_date and lead.relance_date < seuil
 '''
 
+RELANCE_DATE_LT = '''
+from .models import RelanceEtape
+
+def relances(qs, today):
+    return qs.filter(relance_date__lt=today)
+'''
+
+ALIAS_DE_CLE = '''
+from .models import RelanceEtape
+
+def alerte(touche, today):
+    due = touche and touche['due_date']
+    return bool(due and due < today.isoformat())
+'''
+
+RELANCE_DATE_LT_VIA_SEUIL = '''
+from .models import RelanceEtape
+
+def relances(qs, company, today):
+    return qs.filter(relance_date__lt=seuil_retard(company, today))
+'''
+
 
 class GardeTests(unittest.TestCase):
     def test_signale_comparaison_hors_source(self):
@@ -111,6 +133,14 @@ class GardeTests(unittest.TestCase):
 
     def test_depot_vert(self):
         self.assertEqual(guard.main([]), 0)
+
+    def test_signale_relance_date_lt_et_alias_de_cle(self):
+        """ALEA66 — ``relance_date__lt=`` et l'alias local d'une clé de dict."""
+        for source in (RELANCE_DATE_LT, ALIAS_DE_CLE):
+            violations, _ = guard.evaluer({AILLEURS: source}, {})
+            self.assertEqual(len(violations), 1, source)
+        violations, _ = guard.evaluer({AILLEURS: RELANCE_DATE_LT_VIA_SEUIL}, {})
+        self.assertEqual(violations, [])
 
 
 if __name__ == "__main__":

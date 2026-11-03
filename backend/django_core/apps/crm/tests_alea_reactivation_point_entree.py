@@ -81,6 +81,23 @@ class ReactivationPointEntreeTests(TestCase):
         # Reprise CAD107 posée.
         self.assertTrue(RelanceEtape.objects.filter(lead=froid).exists())
 
+    def test_formulaire_reveille_froid_sort_du_parcage(self):
+        """ALEA61 — un Froid parqué réveillé par le site relit ``parc_*`` à None."""
+        froid = self._lead('+212662190001', stage=stages.COLD,
+                           parc_etat=Lead.ParcEtat.NURTURE,
+                           parc_raison=Lead.ParcRaison.BUDGET)
+
+        resp = self._post('+212662190001', 'alea61-parque')
+
+        self.assertEqual(resp.status_code, 201, resp.content)
+        froid.refresh_from_db()
+        self.assertNotEqual(froid.stage, stages.COLD)
+        self.assertIsNone(froid.parc_etat)
+        self.assertIsNone(froid.parc_raison)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=froid, field='parc_raison').exists())
+        self.assertTrue(RelanceEtape.objects.filter(lead=froid).exists())
+
     def test_formulaire_reveille_perdu(self):
         perdu = self._lead('+212662100002', stage=stages.COLD, perdu=True,
                            motif_perte='Trop cher')

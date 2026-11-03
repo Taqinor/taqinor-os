@@ -10,7 +10,8 @@ from . import activity, stages
 from .cadence_plan import demarrer_cadence_contact
 from .cadence_touche import reprendre_cadence_apres_reouverture
 from .clients_identite import _email_identite
-from .fiche_funnel import _STAGE_CONTACTED, _rang_funnel, appliquer_stage_lead
+from .fiche_funnel import (
+    _STAGE_CONTACTED, _rang_funnel, appliquer_stage_lead, sortir_du_parcage)
 from .leads_attribution import default_responsable_for
 from .leads_consentement import (
     CONSENT_SOURCE_EVENEMENT,
@@ -54,6 +55,8 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
     if etait_perdu:
         lead.perdu = False
         lead.save(update_fields=['perdu'])
+    if lead.parc_etat or lead.parc_raison:
+        sortir_du_parcage(lead, None)  # ALEA61 — le Froid réveillé n'est plus parqué
 
     cible = _STAGE_CONTACTED if lead.first_contacted_at else stages.NEW
     ancien_stage = None  # étape déjà ≥ cible — pas de changement d'étape.

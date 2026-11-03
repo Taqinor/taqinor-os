@@ -27,7 +27,8 @@ from apps.crm.management.commands.notifier_relances_dues import (
     _ligne_dossier)
 from apps.crm.models import Lead, RelanceEtape
 from apps.crm.selectors import (
-    STATUT_EN_RETARD, chaine_commerciale, relance_etapes_dues,
+    STATUT_EN_RETARD, chaine_commerciale, ma_file_commercial_items,
+    relances_du_jour, relance_etapes_dues,
     relance_etapes_periode)
 from apps.crm.serializers_cadence import RelanceEtapeSerializer
 from apps.notifications.models import Holiday
@@ -135,3 +136,25 @@ class RetardUniqueTests(TestCase):
                          VENDREDI)
         self.assertEqual(seuil_retard(self.company, LUNDI.date()),
                          LUNDI.date())
+
+    def test_files_relances_et_ma_file_lisent_la_regle_unique(self):
+        """ALEA65 — ``relance_date`` (lead) lue au seuil en jours ouvrés."""
+        Lead.objects.filter(pk=self.lead.pk).update(relance_date=VENDREDI)
+
+        def lectures(instant):
+            with frozen(instant):
+                today = instant.date()
+                relances = relances_du_jour(
+                    self.company, self.meryem, scope='overdue', today=today)
+                items = ma_file_commercial_items(
+                    self.company, self.meryem, today=today)
+                return (self.lead.pk in {x.pk for x in relances},
+                        any(i['kind'] == 'relance' and
+                            i['link'].endswith(f'lead={self.lead.pk}')
+                            for i in items))
+
+        self.assertEqual(lectures(DIMANCHE), (False, False))
+        self.assertEqual(lectures(LUNDI), (True, True))
+        Holiday.objects.create(company=self.company, nom='Férié société',
+                               date=LUNDI.date())
+        self.assertEqual(lectures(LUNDI), (False, False))
