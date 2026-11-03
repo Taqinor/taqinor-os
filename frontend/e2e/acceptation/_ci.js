@@ -54,5 +54,5 @@ export const envoyer = async (request, id) => lireJson(await request.post(`${API
 export async function pdfTexte(request, id, query = '') {
   const r = await request.get(`${API}/ventes/devis/${id}/proposal/${query}`, T)
   if (!r.ok()) throw new Error(`/proposal ${id} → HTTP ${r.status()} ${(await r.text()).slice(0, 300)}`)
-  return (await textePdf(await r.body())).replace(/[\s  ]+/gu, ' ')
+  return (await textePdf(await r.body())).replace(/\s+/g, ' ')
 }
