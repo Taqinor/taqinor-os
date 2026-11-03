@@ -39,8 +39,10 @@ function messageErreur(erreur, repli) {
 // libellé = référence, valeur = id (jamais un n° saisi lu comme clé primaire).
 const lignesDe = (r) => (Array.isArray(r?.data) ? r.data : (r?.data?.results ?? []))
 const chercherTickets = async (q) => {
-  const r = await savApi.getTickets({ search: q || undefined, ouvert: 'tous' })
-  return lignesDe(r).map((t) => ({
+  const lignes = await fetchAllPages((page) => savApi.getTickets({
+    search: q || undefined, ouvert: 'tous', page, page_size: 200,
+  }))
+  return lignes.map((t) => ({
     value: String(t.id), label: t.reference ?? `Ticket ${t.id}`,
   }))
 }
