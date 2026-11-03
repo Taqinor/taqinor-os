@@ -276,11 +276,11 @@ def _devis_ouverts(company, membre_ids):
     (``is_active``) des leads OUVERTS du membre (même filtre que
     ``_lignes_pipeline_ouvertes`` : ni archivé, ni perdu, étape hors
     SIGNED/COLD), lus par ``lead.devis``."""
-    from .clients_selectors import _lignes_pipeline_ouvertes
+    from .clients_selectors import _lignes_pipeline_ouvertes, _prefetch_devis
     leads = (_lignes_pipeline_ouvertes(company, membre_ids)
              .filter(devis__statut=STATUT_DEVIS_OUVERT, devis__is_active=True)
              .distinct().prefetch_related(None)
-             .prefetch_related('devis__lignes__produit'))
+             .prefetch_related(*_prefetch_devis(), 'devis__lignes__produit'))
     out = {}
     for lead in leads:
         for devis in lead.devis.all():
