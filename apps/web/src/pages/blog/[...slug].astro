@@ -95,15 +95,6 @@ const blogPosting = {
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
 };
 
-const breadcrumbLd = {
-  '@context': 'https://schema.org',
-  '@type': 'BreadcrumbList',
-  itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Accueil', item: new URL('/', Astro.site).href },
-    { '@type': 'ListItem', position: 2, name: 'Blog', item: new URL('/blog', Astro.site).href },
-    { '@type': 'ListItem', position: 3, name: data.title },
-  ],
-};
 ---
 
 <Layout
@@ -112,7 +103,6 @@ const breadcrumbLd = {
   ogSlug={data.ogSlug ?? 'blog'}
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
-  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
   {/* W376 — reading progress bar (see global.css .reading-bar) */}
   <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">

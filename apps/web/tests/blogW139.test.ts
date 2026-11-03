@@ -105,7 +105,9 @@ describe('W139 — données structurées & canonical de la route [slug]', () => 
   const slug = read('../src/pages/blog/[...slug].astro');
   it('porte BlogPosting + BreadcrumbList', () => {
     expect(slug).toMatch(/['"]@type['"]:\s*['"]BlogPosting['"]/);
-    expect(slug).toMatch(/['"]@type['"]:\s*['"]BreadcrumbList['"]/);
+    // WAUD50 : un seul BreadcrumbList, émis par le composant Breadcrumb (plus de doublon inline).
+    expect(slug).toContain('<Breadcrumb');
+    expect(slug).not.toMatch(/['"]@type['"]:\s*['"]BreadcrumbList['"]/);
   });
   it('passe par le Layout (un seul canonical) et n’émet pas de canonical inline', () => {
     expect(slug).toContain('import Layout from');

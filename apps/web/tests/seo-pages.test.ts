@@ -12,6 +12,7 @@ import { builtPage, mainOf, visibleText } from './builtHtmlHelper';
 import { dateArticle, datesDuDepot, lastmodPour } from '../scripts/sitemap-dates.mjs';
 import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
 import { NAP } from '../src/lib/nap';
+import { GUIDE_VERIFIED_DATES, guideDateModified } from '../src/lib/guideMeta';
 
 const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 // ENF19 — le corps des pages ville et études de cas (V2Enhance, class="v2", JSON-LD Service) vit dans
@@ -462,6 +463,33 @@ describe('WAUD53 — « 10 questions » : titre et liens', () => {
     expect(lire('src/pages/ar/ressources/10-questions-avant-de-signer.astro')).toMatch(/title="[^"]*الألواح الشمسية[^"]*10 أسئلة/);
     for (const f of ['src/components/Header.astro', 'src/components/Footer.astro', 'src/pages/résidentiel.astro', 'src/pages/faq.astro', 'src/pages/garanties.astro', 'public/llms.txt']) {
       expect(lire(f), f).toContain('/ressources/10-questions-avant-de-signer');
+    }
+  });
+});
+
+describe('WAUD50 — JSON-LD Article : dateModified = date « Vérifié le » affichée, un seul BreadcrumbList', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  const slugs = Object.keys(GUIDE_VERIFIED_DATES);
+  it('guideMeta sans repli DEFAULT_VERIFIED_DATE ; guideDateModified lit la carte', () => {
+    expect(lire('src/lib/guideMeta.ts')).not.toContain('DEFAULT_VERIFIED_DATE');
+    expect(() => guideDateModified('slug-inconnu')).toThrow();
+    for (const s of slugs) expect(guideDateModified(s)).toBe(GUIDE_VERIFIED_DATES[s].toISOString().slice(0, 10));
+  });
+  it('les 12 guides x 3 langues émettent dateModified depuis la carte', () => {
+    for (const dir of ['guides', 'en/guides', 'ar/guides']) {
+      for (const s of slugs) {
+        expect(lire(`src/pages/${dir}/${s}.astro`), `${dir}/${s}`).toContain(`dateModified: guideDateModified('${s}')`);
+      }
+    }
+  });
+  it('guides FR signés : auteur Person (même nom que la signature affichée)', () => {
+    for (const s of slugs) expect(lire(`src/pages/guides/${s}.astro`), s).toContain("author: { '@type': 'Person', name: 'Reda Kasri' }");
+  });
+  it('billets de blog : le BreadcrumbList vient du seul composant Breadcrumb (pas de doublon)', () => {
+    for (const f of ['blog/[...slug]', 'en/blog/prix-installation-solaire-maroc-2026', 'ar/blog/prix-installation-solaire-maroc-2026', 'en/blog/rentabilite-solaire-par-ville-maroc', 'ar/blog/rentabilite-solaire-par-ville-maroc']) {
+      const s = lire(`src/pages/${f}.astro`);
+      expect(s, f).not.toMatch(/JSON\.stringify\(breadcrumbLd\)/);
+      expect(s, f).toContain('<Breadcrumb');
     }
   });
 });

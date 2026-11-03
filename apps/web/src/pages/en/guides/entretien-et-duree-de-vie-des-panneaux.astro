@@ -8,6 +8,7 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { articlePage } from '../../../lib/pageCtx';
+import { guideDateModified } from '../../../lib/guideMeta';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
@@ -27,6 +28,7 @@ const jsonLd = {
   about: { '@type': 'Thing', name: 'Solar panel maintenance Morocco' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  dateModified: guideDateModified('entretien-et-duree-de-vie-des-panneaux'),
   mainEntityOfPage: url,
 };
 ---
