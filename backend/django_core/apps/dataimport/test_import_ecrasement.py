@@ -167,6 +167,22 @@ class TestRemplissageSeulParDefaut(EcrasementBase):
         self.assertEqual(refuses['ville']['ancienne'], 'Rabat')
         self.assertEqual(refuses['ville']['nouvelle'], 'Casablanca')
 
+    def test_un_champ_vide_par_un_humain_n_est_pas_rempli(self):
+        # ACVI91 — `saisies_humaines` tient face au remplissage de l'import.
+        from apps.records.models import Activity
+        from apps.records.provenance import MESSAGE_REFUS
+
+        lead = self._lead_reel(email='', saisies_humaines=['email'])
+        resp = self._commit(
+            'Telephone,Email\n0600000000,x@exemple.ma\n', mode='maj')
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertFalse(lead.email)
+        self.assertIn('email', {r['champ'] for r in resp.data['refuses']})
+        self.assertTrue(Activity.objects.filter(
+            company=self.company, field='email', body=MESSAGE_REFUS).exists())
+
     def test_les_refus_sont_journalises_ligne_par_ligne(self):
         self._lead_reel()
         resp = self._commit(

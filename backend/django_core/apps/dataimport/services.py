@@ -616,12 +616,17 @@ def _apply_updates(instance, fields, skip_keys=(), ecraser=False,
       la trace qui rend l'import réversible ;
     * ``refuses`` — écrasements bloqués par le garde-fou (mode remplissage seul).
     """
+    from apps.records.provenance import ecrire_si_libre
+
     ecrasements, remplissages = _diff_fields(
         instance, fields, skip_keys, valeurs_vides)
     changed, modifications, refuses = [], [], []
 
     for item in remplissages:
-        setattr(instance, item['champ'], fields[item['champ']])
+        # ACVI91 — un champ vidé par un humain reste vide (refus journalisé).
+        if not ecrire_si_libre(instance, item['champ'], fields[item['champ']]):
+            refuses.append(dict(item, ancienne=''))
+            continue
         changed.append(item['champ'])
         modifications.append({'champ': item['champ'], 'ancienne': '',
                               'nouvelle': item['nouvelle'], 'ecrasement': False})
