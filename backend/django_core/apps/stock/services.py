@@ -4953,7 +4953,7 @@ def dupliquer_kit(kit, user=None, facteur_echelle=None):
 
     copie = KitProduit.objects.create(
         company=kit.company,
-        nom=f'{kit.nom} (copie)',
+        nom=f'{kit.nom[:247]} (copie)',  # nom <= 255 (sinon DataError 500)
         sku=None,
         description=kit.description,
     )

@@ -1369,7 +1369,7 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
         )
 
     heures = ticket.heures_main_oeuvre
-    if heures:
+    if heures and heures > 0:  # ERR-ENF11 : négatives = pas de ligne (contrainte montants positifs, 500 sinon)
         profile_taux = None
         try:
             from apps.parametres.models import CompanyProfile

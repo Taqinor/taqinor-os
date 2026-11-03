@@ -294,6 +294,18 @@ class CorpsFuzzTests(TestCase):
         self.modele = ModeleBonCommandeFournisseur.objects.create(
             company=self.a, nom='Modèle F')
 
+    def test_dupliquer_kit_nom_long_et_echelle_debordante(self):
+        """ERR-ENF11 (cron 41296444614) : deux DataError (500)."""
+        from apps.stock.models import KitProduit
+        kit = KitProduit.objects.create(company=self.a, nom='K' * 255)
+        r = self.api.post(f'{BASE}/kits/{kit.id}/dupliquer/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertLessEqual(len(r.data['nom']), 255)
+        kit.composants.create(produit=self.pa, quantite=Decimal('99999999'))
+        r = self.api.post(f'{BASE}/kits/{kit.id}/dupliquer/',
+                          {'facteur_echelle': 1000}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
     def test_fuzz_corps_non_objet_400(self):
         cas = [('post', '/api/django/achats/paiements-fournisseur/')] + [
             ('post', f'{BASE}/{fin}') for fin in (

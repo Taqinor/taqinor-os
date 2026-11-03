@@ -227,6 +227,14 @@ class TestPhotoAnnotation(_Base):
         self.assertEqual(r.data['caption'], 'Fissure')
         self.assertEqual(len(r.data['drawing']), 1)
 
+    def test_creneau_avec_caractere_nul_pas_de_500(self):
+        """ERR-ENF11 (cron 41296444614) : NUL au filtre du créneau = ValueError."""
+        with mock.patch('apps.records.storage.get_minio_client'):
+            r = self.api.post(f'{self.url}/ajouter-photo/',
+                              {'file': png_file(), 'slot': 'a\x00b'},
+                              format='multipart')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_photo_format_illisible_409(self):
         """api-fuzz-full 27/10 (ENF11) : un fichier vide (format lu dans les
         octets, règle hors schéma ``binary``) → 409, plus 400."""

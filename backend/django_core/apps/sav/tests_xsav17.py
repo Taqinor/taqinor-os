@@ -60,6 +60,20 @@ class XSAV17ReleveCompteurTest(TestCase):
             company=self.company, produit=self.produit, installation=self.inst,
             entretien_toutes_les_heures=seuil, created_by=self.admin)
 
+    def test_seuil_franchi_sans_client_aucun_ticket_pas_de_500(self):
+        """ERR-ENF11 (cron 41296444614) : Ticket.client requis (NotNullViolation)."""
+        sans_client = Installation.objects.create(
+            company=self.company, reference='CHT-XSAV17-SC', client=None)
+        equip = Equipement.objects.create(
+            company=self.company, produit=self.produit, installation=sans_client,
+            entretien_toutes_les_heures=10, created_by=self.admin)
+        releve, ticket = enregistrer_releve_compteur(
+            company=self.company, equipement=equip, type_releve='heures',
+            valeur=Decimal('100'), date_releve=date(2026, 1, 1),
+            created_by=self.admin)
+        self.assertIsNotNone(releve.pk)
+        self.assertIsNone(ticket)
+
     def test_releve_decroissant_refuse(self):
         equip = self._equip()
         enregistrer_releve_compteur(

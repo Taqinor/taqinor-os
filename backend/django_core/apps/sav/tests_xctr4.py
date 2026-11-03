@@ -127,6 +127,22 @@ class XCTR4CouvertureRoutageTest(TestCase):
         # Jamais de fuite de prix_achat dans la facture.
         self.assertNotEqual(ligne.prix_unitaire, self.piece.prix_achat)
 
+    def test_action_facturer_heures_negatives_sans_ligne_main_oeuvre(self):
+        """ERR-ENF11 (cron 41296444614) : -0,80 h violait la contrainte des
+        montants positifs de la ligne (500)."""
+        ContratMaintenance.objects.create(
+            company=self.company, client=self.client_obj,
+            installation=self.inst, date_debut=date(2026, 1, 1), actif=True)
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-XCTR4-H',
+            client=self.client_obj, installation=self.inst,
+            type=Ticket.Type.CORRECTIF, date_ouverture=date(2026, 3, 1),
+            heures_main_oeuvre=Decimal('-0.80'), created_by=self.admin)
+        PieceConsommee.objects.create(
+            company=self.company, ticket=ticket, produit=self.piece, quantite=1)
+        resp = auth(self.admin).post(f'/api/django/sav/tickets/{ticket.pk}/facturer/')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
     def test_action_facturer_couvert_facture_zero(self):
         ContratMaintenance.objects.create(
             company=self.company, client=self.client_obj,

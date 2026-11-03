@@ -2856,13 +2856,14 @@ def date_definitive_prevue(installation):
         return None
     from dateutil.relativedelta import relativedelta
     from apps.parametres.models import CompanyProfile
-    if installation.company_id is None:
-        return None
-    profil = CompanyProfile.get(installation.company)
-    delai = profil.delai_reception_definitive_mois
+    delai = (CompanyProfile.get(installation.company).delai_reception_definitive_mois
+             if installation.company_id is not None else None)
     if not delai:
         return None
-    return installation.date_reception + relativedelta(months=delai)
+    try:
+        return installation.date_reception + relativedelta(months=delai)
+    except (ValueError, OverflowError):  # ERR-ENF11 : hors calendrier = aucune date prévue (500 sinon)
+        return None
 
 
 def raison_refus_reception_definitive(installation):
@@ -7096,7 +7097,7 @@ def dupliquer_kit(kit, user=None, facteur_echelle=None):
 
     copie = Kit.objects.create(
         company=kit.company,
-        nom=f'{kit.nom} (copie)',
+        nom=f'{kit.nom[:247]} (copie)',  # nom <= 255 (sinon DataError 500)
         reference_interne=None,
         produit_compose=kit.produit_compose,
         active=kit.active,
