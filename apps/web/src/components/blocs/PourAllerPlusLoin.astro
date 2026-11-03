@@ -1,11 +1,11 @@
 ---
 // Bloc partagé (garde ACAL345).
 import RelatedLinks from '../RelatedLinks.astro';
-const { kicker = 'Pour aller plus loin', ...liens } = Astro.props as Record<string, any>;
+const { kicker = 'Pour aller plus loin', links, ...autres } = Astro.props as Record<string, any>;
 ---
 <section class="section-tight px-4 pb-20 sm:pb-24">
   <div class="mx-auto max-w-6xl">
     <p class="tech-label v2-kicker rule-brass text-lune">{kicker}</p>
-    <RelatedLinks {...liens} />
+    <RelatedLinks links={links} {...autres} />
   </div>
 </section>
