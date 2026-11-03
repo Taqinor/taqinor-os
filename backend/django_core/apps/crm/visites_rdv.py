@@ -176,11 +176,12 @@ def public_booking_url(lead, *, request=None):
     if link is None:
         link = BookingLink.objects.create(company=lead.company, lead=lead)
 
-    if request is not None:
+    # ACVI46 (D-ACVI-9) — UNE base : l'ERP, seul à servir la page `/rdv/<jeton>`
+    # (jamais `PUBLIC_SITE_URL`, 404) ; sans base ni requête, '' : phrase omise.
+    base = (getattr(settings, 'PUBLIC_BASE_URL', '') or '').strip().rstrip('/')
+    if not base and request is not None:
         base = request.build_absolute_uri('/')[:-1]
-    else:
-        base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
-    return f'{base}/rdv/{link.token}'
+    return f'{base}/rdv/{link.token}' if base else ''
 
 
 def resoudre_lien_rdv(text, lead, *, request=None) -> str:
