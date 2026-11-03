@@ -787,7 +787,7 @@ class ParcoursBase(TestCase):
         return lead, self.unique(lead, type_id)
 
     def touches_de_contact_sans_reponse(self, lead):
-        """Toutes les touches de la prise de contact (onze avec le gabarit livré) closes
+        """Toutes les touches de la prise de contact (huit avec le gabarit livré) closes
         « Pas de réponse », chacune à son échéance : le dossier part au Froid, réveils posés."""
         nombre = CadenceRelanceEtape.objects.filter(
             company=self.company, cadence='contact', actif=True).count()

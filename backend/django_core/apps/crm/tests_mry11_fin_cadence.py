@@ -123,17 +123,18 @@ class ClotureContactTests(_Base):
 
     def test_letiquette_dit_pourquoi(self):
         self._epuiser('contact')
-        self.assertIn('Injoignable 6 appels', self.lead.tags or '')
+        self.assertIn('Injoignable 5 appels', self.lead.tags or '')
         # Le Protocole v3 compte SIX appels : l'ancien « 7 tentatives » ne
         # correspondait à rien dans la cadence réelle (migration crm.0093).
         self.assertNotIn('7 tentatives', self.lead.tags or '')
 
     def test_l_etiquette_dit_le_vrai_nombre_d_appels(self):
-        """CADV80 — une société à 5 appels étiquette « 5 » ; rejouer ne double
-        rien. Mutant : renvoyer 6 en dur ⇒ échec."""
+        """CADV80 — une société à 4 appels (un de moins que le gabarit v4)
+        étiquette « 4 » ; rejouer ne double rien. Mutant : renvoyer 5 en dur ⇒
+        échec."""
         gabarits = CadenceRelanceEtape.cadence_pour(self.company, 'contact')
         appels = [g for g in gabarits if g.canal == 'appel']
-        self.assertEqual(len(appels), 6)
+        self.assertEqual(len(appels), 5)
         CadenceRelanceEtape.objects.filter(pk=appels[-1].pk).update(actif=False)
         LeadActivity.objects.bulk_create([
             LeadActivity(company=self.company, lead=self.lead, user=self.acteur,
@@ -141,10 +142,10 @@ class ClotureContactTests(_Base):
             for _ in range(5)])
         cloturer_cadence(self.lead, self.acteur, 'contact')
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.tags, 'Injoignable 5 appels')
+        self.assertEqual(self.lead.tags, 'Injoignable 4 appels')
         cloturer_cadence(self.lead, self.acteur, 'contact')
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.tags, 'Injoignable 5 appels')
+        self.assertEqual(self.lead.tags, 'Injoignable 4 appels')
 
     def test_deux_reveils_sont_poses(self):
         self._epuiser('contact')
@@ -253,9 +254,9 @@ class ToucheJointeEnMilieuDeCadenceTests(_Base):
             f'/api/django/crm/relance-etapes/{etape.pk}/fait/',
             corps, format='json')
 
-    def test_la_cadence_de_contact_porte_bien_onze_touches(self):
-        """Garde de lecture : le protocole v3 = 6 appels + 5 WhatsApp."""
-        self.assertEqual(len(self.etapes), 11)
+    def test_la_cadence_de_contact_porte_bien_huit_touches(self):
+        """Garde de lecture : le protocole v4 = 5 appels + 3 WhatsApp."""
+        self.assertEqual(len(self.etapes), 8)
 
     def test_joint_au_troisieme_appel_ne_refroidit_pas_le_lead(self):
         resp = self._fait(self.etapes[2], outcome='joint')
@@ -277,11 +278,11 @@ class ToucheJointeEnMilieuDeCadenceTests(_Base):
 
     def test_les_touches_restantes_sont_bien_ARRETEES_par_MRY9(self):
         """L'arrêt de la cadence, lui, reste le bon geste : on a joint la
-        personne, les dix autres rappels n'ont plus lieu d'être."""
+        personne, les sept autres rappels n'ont plus lieu d'être."""
         self._fait(self.etapes[2], outcome='joint')
         restantes = self.lead.relance_etapes.filter(
             cadence='contact').exclude(pk=self.etapes[2].pk)
-        self.assertEqual(restantes.count(), 10)
+        self.assertEqual(restantes.count(), 7)
         # CKP1 — ANNULÉES par le moteur, pas « sautées » par un humain.
         self.assertEqual(
             {e.statut for e in restantes}, {RelanceEtape.Statut.ANNULEE})
@@ -303,7 +304,7 @@ class ToucheJointeEnMilieuDeCadenceTests(_Base):
             derniere, self.acteur, RelanceEtape.Statut.SAUTEE)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.COLD)
-        self.assertIn('Injoignable 6 appels', self.lead.tags or '')
+        self.assertIn('Injoignable 5 appels', self.lead.tags or '')
         self.assertEqual(self._reveils().count(), 2)
 
 

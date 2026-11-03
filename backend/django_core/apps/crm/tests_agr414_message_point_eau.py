@@ -82,7 +82,7 @@ class TextesDeBase(SimpleTestCase):
                  "compteur. Votre présence est importante : c'est l'occasion "
                  "de répondre à toutes vos questions sur place. En cas "
                  "d'empêchement, répondez-moi ici et on recale le passage. "
-                 "— {conseiller}"))
+                 "— {conseiller} Répondez STOP et je n'insiste plus."))  # CADV34
         self.assertIsNone(variante_segment('visite_confirmation',
                                            'residentiel'))
         self.assertIsNone(variante_segment(CLE, 'residentiel'))

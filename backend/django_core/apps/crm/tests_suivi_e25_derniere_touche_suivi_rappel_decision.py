@@ -54,14 +54,18 @@ WHATSAPP = RelanceEtape.Canal.WHATSAPP
 FAMILLE = cadence_reponses.REPONSE_DECISION_FAMILLE
 PROPRIETAIRE = cadence_reponses.REPONSE_DECISION_PROPRIETAIRE
 ORDRES_SUIVI = frozenset(e['ordre'] for e in CADENCES_DEFAUT['apres_devis'])
-#: Le dernier barreau du gabarit livré (« Mise en pause », un message).
-DERNIER = max(ORDRES_SUIVI)
-#: Le dernier APPEL du gabarit livré (« Appel de suivi », J+11) : il devient
-#: la dernière touche quand la société désactive les deux messages suivants.
-DERNIER_APPEL = max(e['ordre'] for e in CADENCES_DEFAUT['apres_devis']
-                    if e['canal'] == APPEL)
-SANS_LES_MESSAGES_DE_FIN = frozenset(o for o in ORDRES_SUIVI
-                                     if o <= DERNIER_APPEL)
+#: CADV24 — le dernier barreau du gabarit livré est un APPEL (« Dernier appel »,
+#: J+90).
+DERNIER = DERNIER_APPEL = max(ORDRES_SUIVI)
+#: Le dernier MESSAGE du gabarit livré (« Dernier message », J+60) : il devient
+#: la dernière touche quand la société désactive l'appel J+90.
+DERNIER_MESSAGE = max(e['ordre'] for e in CADENCES_DEFAUT['apres_devis']
+                      if e['canal'] == WHATSAPP)
+#: Un appel qui n'est PAS la dernière touche du gabarit livré (J+28).
+APPEL_DU_MILIEU = max(e['ordre'] for e in CADENCES_DEFAUT['apres_devis']
+                      if e['canal'] == APPEL and e['ordre'] < DERNIER_APPEL)
+#: Le gabarit d'une société qui a coupé l'appel J+90 (CADV24).
+SANS_L_APPEL_J90 = frozenset(o for o in ORDRES_SUIVI if o <= DERNIER_MESSAGE)
 VARIANTE_DECIDER = {'contexte': 'derniere_touche',
                     'suite': {'type': 'etape', 'cle': CLE_DECIDER_SUITE,
                               'jour': 'demain'}}
@@ -103,8 +107,8 @@ class PromessesTests(SimpleTestCase):
     appel) comme sur les autres."""
 
     def _dernieres(self):
-        return ((_touche(DERNIER), ORDRES_SUIVI),
-                (_touche(DERNIER_APPEL), SANS_LES_MESSAGES_DE_FIN))
+        return ((_touche(DERNIER_MESSAGE), SANS_L_APPEL_J90),
+                (_touche(DERNIER_APPEL), ORDRES_SUIVI))
 
     def test_decision_a_plusieurs_sur_la_derniere_touche(self):
         for etape, ordres in self._dernieres():
@@ -130,7 +134,7 @@ class PromessesTests(SimpleTestCase):
                                      & set(promesses[cle]))
 
     def test_une_touche_qui_n_est_pas_la_derniere_est_inchangee(self):
-        promesses = _promesses(_touche(DERNIER_APPEL), ORDRES_SUIVI)
+        promesses = _promesses(_touche(APPEL_DU_MILIEU), ORDRES_SUIVI)
         self.assertEqual(promesses['rappel'], [st.TOUCHE_SUIVANTE_A_LA_DATE])
         for cle in (FAMILLE, PROPRIETAIRE):
             with self.subTest(reponse=cle):
@@ -280,7 +284,8 @@ class DerniereToucheApiTests(TestCase):
         self._assert_decider_la_suite(resp, appel, 'en famille')
 
     def test_dernier_message_decision_du_proprietaire(self):
-        message = self._barreau(DERNIER)
+        self._desactiver_apres(DERNIER_MESSAGE)
+        message = self._barreau(DERNIER_MESSAGE)
         self.assertEqual(message.canal, WHATSAPP)
 
         resp = self._fait(message, reponse=PROPRIETAIRE)
@@ -288,7 +293,8 @@ class DerniereToucheApiTests(TestCase):
         self._assert_decider_la_suite(resp, message, 'le propriétaire décide')
 
     def test_dernier_message_a_rappeler_le(self):
-        message = self._barreau(DERNIER)
+        self._desactiver_apres(DERNIER_MESSAGE)
+        message = self._barreau(DERNIER_MESSAGE)
 
         resp = self._rappel(message)
 
@@ -305,7 +311,7 @@ class DerniereToucheApiTests(TestCase):
     # ── une touche qui n'est pas la dernière : inchangé ──
 
     def test_non_derniere_decision_fait_naitre_la_touche_suivante(self):
-        appel = self._barreau(DERNIER_APPEL)
+        appel = self._barreau(APPEL_DU_MILIEU)
         self.assertFalse(cadence_reponses.est_derniere_touche_du_suivi(appel))
 
         self._fait(appel, reponse=FAMILLE)
@@ -314,18 +320,18 @@ class DerniereToucheApiTests(TestCase):
         self.assertIn('Décision à plusieurs', self.lead.tags or '')
         [suivante] = self._ouvertes()
         self.assertEqual(suivante.cadence, 'apres_devis')
-        self.assertGreater(suivante.ordre, DERNIER_APPEL)
+        self.assertGreater(suivante.ordre, APPEL_DU_MILIEU)
         self.assertFalse(self.lead.relance_etapes.filter(
             q_etape(CLE_DECIDER_SUITE, CLE_DEVIS)).exists())
 
     def test_non_derniere_a_rappeler_le_date_la_touche_suivante(self):
-        appel = self._barreau(DERNIER_APPEL)
+        appel = self._barreau(APPEL_DU_MILIEU)
 
         self._rappel(appel)
 
         [suivante] = self._ouvertes()
         self.assertEqual(suivante.cadence, 'apres_devis')
-        self.assertGreater(suivante.ordre, DERNIER_APPEL)
+        self.assertGreater(suivante.ordre, APPEL_DU_MILIEU)
         self.assertEqual(suivante.due_date, DATE_CHOISIE)
         self.assertFalse(self.lead.relance_etapes.filter(
             q_etape(CLE_RAPPEL_CONVENU, CLE_DEVIS)).exists())

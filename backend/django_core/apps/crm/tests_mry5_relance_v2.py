@@ -23,6 +23,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from testkit.factories import barreau_dominical_societe
 
 from apps.crm import horaires
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
@@ -220,13 +221,15 @@ class ToucheDominicaleTests(TestCase):
         self.acteur = User.objects.create_user(
             username='mry5-dim-u', password='x', role_legacy='responsable',
             company=self.company)
+        # CADV23 — le défaut v4 n'en porte plus : une société qui l'a gardé.
+        barreau_dominical_societe(self.company)
 
     def _touche_dominicale(self, depart):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect', owner=self.acteur)
         etapes = _plan_date(lead, cadence='contact', depart=depart)
         touche = next(e for e in etapes if e.template_cle == 'appel_dimanche')
-        self.assertEqual(touche.ordre, 8)
+        self.assertEqual(touche.ordre, 7)
         return touche
 
     def test_un_lead_du_mercredi_est_appele_le_dimanche_le_plus_proche(self):

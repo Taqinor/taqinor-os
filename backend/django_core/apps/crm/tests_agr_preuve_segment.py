@@ -1,10 +1,12 @@
 """AGR514 (D-AGR-10) — J4 « preuve » omise sans réalisation éligible.
 
-Le gabarit après-devis garde ses 10 barreaux (jamais un axe segment, CAD124) ;
-c'est la DONNÉE qui décide : `parametres.selectors.realisation_pour_lead`
-(filtré par segment, AGR513) renvoie `None` → la touche `j4_preuve` est
-écartée, le trou de `ordre` est gardé. Le lead porte « Décision à plusieurs »
-pour que la touche dominicale (MRY4) soit comptée : 10 barreaux au complet.
+Le gabarit après-devis reste unique (jamais un axe segment, CAD124) ; c'est la
+DONNÉE qui décide : `parametres.selectors.realisation_pour_lead` (filtré par
+segment, AGR513) renvoie `None` → la touche `j4_preuve` est écartée, le trou de
+`ordre` est gardé. Le lead porte « Décision à plusieurs » pour que la touche
+dominicale (MRY4) soit comptée. CADV24 : la J4 sort du gabarit v4 (9 barreaux) ;
+la société de ces tests l'a gardée (10 barreaux au complet), le filtre lui
+reste dû.
 """
 import datetime
 from decimal import Decimal
@@ -13,6 +15,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
+from testkit.factories import barreau_preuve_j4_societe
 
 from apps.crm.models import Client, Lead
 from apps.crm.cadence_plan import calculer_echeances_cadence
@@ -31,6 +34,7 @@ class _Base(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom=self.slug, slug=self.slug)
         CompanyProfile.objects.get_or_create(company=self.company)
+        barreau_preuve_j4_societe(self.company)
         self.acteur = User.objects.create_user(
             username=f'{self.slug}-u', password='x',
             role_legacy='responsable', company=self.company)
@@ -93,7 +97,7 @@ class LeadAgricoleTests(_Base):
                 datetime.timezone.utc))
         ordres = [g.ordre for g, _e in partition]
         self.assertNotIn(4, ordres)
-        self.assertIn(5, ordres)
+        self.assertIn(6, ordres)  # le barreau suivant (ordre 5 retiré, CADV24)
 
     def test_avec_realisation_agricole_dix_touches_dont_j4(self):
         self._realisation('agricole')
