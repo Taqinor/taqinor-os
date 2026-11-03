@@ -410,9 +410,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       toast.error(frError(err, 'Rechargement du ticket impossible.'))
     }
   }
-  const loadHistorique = () => {
-    savApi.getTicketHistorique(id).then((r) => setHistorique(r.data)).catch(() => {})
-  }
+  const loadHistorique = () => savApi.getTicketHistorique(id).then((r) => setHistorique(r.data)).catch(() => {})
   const loadInterventions = () => {
     // ENF15 — toutes les pages (jamais la seule page 1).
     lireToutesLesPages((params) => installationsApi.getInterventions({ ticket: id, ...params }))

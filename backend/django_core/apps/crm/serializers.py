@@ -1423,7 +1423,7 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         if (not isinstance(self.parent, serializers.ListSerializer)
                 and instance.conso_mensuelle_kwh
                 and (instance.type_installation or 'residentiel') == 'residentiel'):
-            from apps.ventes.selectors import controle_kwh_declare_du_lead
+            from apps.ventes.selectors_cadence import controle_kwh_declare_du_lead
             controle = controle_kwh_declare_du_lead(instance)
             if controle is not None and not controle['coherent']:
                 data['avertissements'] = {'kwh_factures': (

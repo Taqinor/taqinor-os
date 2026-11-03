@@ -2017,10 +2017,3 @@ def postes_pret_devis_residentiel(company):
     """RSIZ11 — tableau « prêt pour le devis résidentiel » (lecture seule)."""
     from .domain.pret_devis_residentiel import postes_pret_devis_residentiel as f
     return f(company)
-
-
-def controle_kwh_declare_du_lead(lead, company=None):
-    """ACVI97 — la règle « kWh tapé contre factures » pour le CRM : ``None`` si
-    rien à confronter, sinon ``{…, coherent}`` (``etude_horaire``, jamais recodée)."""
-    from .etude_horaire import controle_kwh_declare_du_lead as controle
-    return controle(lead, company)
