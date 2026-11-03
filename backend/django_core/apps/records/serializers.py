@@ -24,7 +24,7 @@ class CibleIntrouvable(ValueError):
     autorisé ou une forme invalide reste un ``ValueError`` simple (400)."""
 
 
-def resolve_target(model_label, object_id, company):
+def resolve_target(model_label, object_id, company, user=None, ecriture=False):
     """('crm.lead', 12, company) -> (ContentType, instance) ou lève ValueError.
 
     Vérifie que le modèle est autorisé ET que l'objet appartient à la société.
@@ -72,6 +72,16 @@ def resolve_target(model_label, object_id, company):
     # plateforme, et le refuser ici casserait ce chemin sans fermer la fuite
     # auditée (qui vient toujours d'une cible sans société, désormais close pour
     # tout le monde).
+    # ACVI6 — ``crm.lead`` hors portée, ou sans droit CRM pour un rôle fin : absent.
+    if user is not None and (app_label, model) == ('crm', 'lead'):
+        from authentication.scoping import scope_queryset
+        from core.permissions import _user_has_or_legacy
+        droit = 'crm_modifier' if ecriture else 'crm_voir'
+        if ((getattr(user, 'role', None) is not None
+             and not _user_has_or_legacy(user, droit))
+                or not scope_queryset(type(obj).objects.filter(pk=obj.pk),
+                                      user, ['owner']).exists()):
+            raise CibleIntrouvable('Cible introuvable.')
     return ct, obj
 
 

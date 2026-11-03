@@ -12,7 +12,6 @@ from . import activity, stages
 from .models import Canal, Lead, LeadActivity
 from .leads_fusion import raison_refus_suppression
 from .cadence_touche import reprendre_cadence_apres_reouverture
-from .cadence_filet import assurer_prochaine_etape_apres_succes
 from .cadence_plan import arreter_cadence, sync_relance_activity
 from .cadence_visite import annuler_rendez_vous_sur_arret, cause_rdv_perdu
 from .fiche_funnel import (

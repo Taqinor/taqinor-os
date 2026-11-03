@@ -7,6 +7,7 @@ retirés avec les apps elles-mêmes ; ``ALLOWED_TARGETS`` continue de résoudre
 dynamiquement depuis les manifestes des apps GARDÉES (``core.platform``,
 ARC30 — voir ``apps/records/models.py``), rien à figer ici.
 """
+from django.test import TestCase
 from testkit.base import TenantAPITestCase
 
 from apps.records.serializers import resolve_target
@@ -95,3 +96,65 @@ class Aud416CibleSansSocieteTests(TenantAPITestCase):
             notify_followers(content_type=ct, object_id=cible.pk,
                              title='Note', body='ok'),
             1)
+
+
+class Acvi6PorteeDesCiblesLeadTests(TestCase):
+    """ACVI6 — pièces et commentaires d'un lead hors portée : absents."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.crm.models import Lead
+        from apps.records.models import Attachment
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            CANONICAL_SYSTEM_ROLES, COMMERCIAL_PERMISSIONS)
+        from authentication.models import Company
+
+        User = get_user_model()
+        self.company = Company.objects.create(nom='ACVI6', slug='acvi6')
+        commercial = Role.objects.create(
+            company=self.company, nom='Commercial soi',
+            permissions=list(COMMERCIAL_PERMISSIONS))
+        rh = Role.objects.create(
+            company=self.company, nom='RH',
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Admin RH']))
+        self.c1 = User.objects.create_user(
+            username='acvi6-c1', password='x', company=self.company, role=commercial)
+        self.c2 = User.objects.create_user(
+            username='acvi6-c2', password='x', company=self.company, role=commercial)
+        self.rh = User.objects.create_user(
+            username='acvi6-rh', password='x', company=self.company, role=rh)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='L1', owner=self.c1)
+        self.piece = Attachment.objects.create(
+            company=self.company, uploaded_by=self.c1,
+            content_type=ContentType.objects.get_for_model(Lead),
+            object_id=self.lead.pk, filename='p.pdf', file_key='k/p.pdf',
+            size=1, mime='application/pdf')
+
+    def _api(self, user):
+        from rest_framework.test import APIClient
+        api = APIClient()
+        api.force_authenticate(user)
+        return api
+
+    def test_collegue_ne_liste_ni_ne_telecharge(self):
+        base = '/api/django/records/attachments/'
+        api = self._api(self.c2)
+        cible = api.get(base, {'model': 'crm.lead', 'id': self.lead.pk})
+        self.assertEqual(cible.status_code, 200, cible.data)
+        self.assertEqual(cible.data['results'] if isinstance(cible.data, dict) else cible.data, [])
+        libre = api.get(base)
+        lignes = libre.data['results'] if isinstance(libre.data, dict) else libre.data
+        self.assertNotIn(self.piece.pk, [r['id'] for r in lignes])
+        self.assertEqual(api.get(f'{base}{self.piece.pk}/download/').status_code, 404)
+
+    def test_role_sans_droit_crm_ne_depose_rien(self):
+        from apps.records.models import Comment
+        reponse = self._api(self.rh).post(
+            '/api/django/records/comments/',
+            {'model': 'crm.lead', 'id': self.lead.pk, 'body': 'x'}, format='json')
+        self.assertEqual(reponse.status_code, 404, reponse.data)
+        self.assertEqual(Comment.objects.filter(object_id=self.lead.pk).count(), 0)

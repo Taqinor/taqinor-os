@@ -254,6 +254,22 @@ _EFFORT_ESTIME_PAR_KIND = {
 }
 
 
+def _sans_leads_hors_portee(qs, user):
+    """ACVI6 — une liste sans cible n'expose pas les pièces des leads hors portée
+    (ni, pour un rôle fin sans ``crm_voir``, celles d'aucun lead)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from authentication.scoping import scope_queryset
+    from core.permissions import _user_has_or_legacy
+
+    ct = ContentType.objects.get(app_label='crm', model='lead')
+    visibles = scope_queryset(ct.model_class().objects.all(), user, ['owner'])
+    if getattr(user, 'role', None) is not None and not _user_has_or_legacy(user, 'crm_voir'):
+        visibles = visibles.none()
+    return qs.exclude(
+        models.Q(content_type=ct) & ~models.Q(object_id__in=visibles.values('pk')))
+
+
 def _company(request):
     return request.user.company if request.user.company_id else None
 
@@ -361,7 +377,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
         ouvertes = drapeau_ou_400(params.get('open'), 'open')
         if model and oid:
             try:
-                ct, _ = resolve_target(model, oid, _company(self.request))
+                ct, _ = resolve_target(
+                    model, oid, _company(self.request), user=self.request.user)
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
@@ -396,7 +413,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Cible introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
         try:
-            ct, _obj = resolve_target(model, oid, company)
+            ct, _obj = resolve_target(
+                model, oid, company, user=self.request.user, ecriture=True)
         except CibleIntrouvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1041,7 +1059,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         model, oid = cible_requete_ou_400(self.request)
         if model and oid:
             try:
-                ct, _ = resolve_target(model, oid, _company(self.request))
+                ct, _ = resolve_target(
+                    model, oid, _company(self.request), user=self.request.user)
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
@@ -1062,7 +1081,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         _exiger_objet(request)
         model, oid = cible_corps_ou_400(request.data)
         try:
-            ct, _obj = resolve_target(model, oid, company)
+            ct, _obj = resolve_target(
+                model, oid, company, user=self.request.user, ecriture=True)
         except CibleIntrouvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1127,10 +1147,13 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
         model, oid = cible_requete_ou_400(self.request)
         if model and oid:
             try:
-                ct, _ = resolve_target(model, oid, _company(self.request))
+                ct, _ = resolve_target(
+                    model, oid, _company(self.request), user=self.request.user)
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
+        else:
+            qs = _sans_leads_hors_portee(qs, self.request.user)
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -1138,7 +1161,8 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
         _exiger_objet(request)
         model, oid = cible_corps_ou_400(request.data)
         try:
-            ct, _obj = resolve_target(model, oid, company)
+            ct, _obj = resolve_target(
+                model, oid, company, user=self.request.user, ecriture=True)
         except CibleIntrouvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1279,7 +1303,8 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
         model, oid = cible_requete_ou_400(self.request)
         if model and oid:
             try:
-                ct, _ = resolve_target(model, oid, _company(self.request))
+                ct, _ = resolve_target(
+                    model, oid, _company(self.request), user=self.request.user)
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
@@ -1290,7 +1315,8 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
         _exiger_objet(request)
         model, oid = cible_corps_ou_400(request.data)
         try:
-            ct, _obj = resolve_target(model, oid, company)
+            ct, _obj = resolve_target(
+                model, oid, company, user=self.request.user, ecriture=True)
         except CibleIntrouvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1350,7 +1376,8 @@ class FollowerViewSet(viewsets.ModelViewSet):
         model, oid = cible_requete_ou_400(self.request)
         if model and oid:
             try:
-                ct, _ = resolve_target(model, oid, _company(self.request))
+                ct, _ = resolve_target(
+                    model, oid, _company(self.request), user=self.request.user)
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
@@ -1363,7 +1390,8 @@ class FollowerViewSet(viewsets.ModelViewSet):
         _exiger_objet(request)
         model, oid = cible_corps_ou_400(request.data)
         try:
-            ct, _obj = resolve_target(model, oid, company)
+            ct, _obj = resolve_target(
+                model, oid, company, user=self.request.user, ecriture=True)
         except CibleIntrouvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1490,7 +1518,7 @@ def attachments_count(request):
     if not (model and oid):
         return Response({'count': 0})
     try:
-        ct, _ = resolve_target(model, oid, _company(request))
+        ct, _ = resolve_target(model, oid, _company(request), user=request.user)
     except ValueError:
         return Response({'count': 0})
     n = _scoped(Attachment.objects.all(), request.user).filter(
