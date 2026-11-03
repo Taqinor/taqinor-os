@@ -814,6 +814,153 @@ def leads_froid_sans_raison(company):
         .values('id', 'stage', 'source'))
 
 
+#: CADV6 (conception v4 §6.2, §7.5) — seuils des règles nocturnes « données » CRM.
+SAISIE_JOINT_FENETRE_JOURS = 7
+SAISIE_JOINT_MIN_SAISIES = 10
+SAISIE_JOINT_TAUX_MAX_WHATSAPP = 25   # % de « joint » au-delà duquel on regarde
+SAISIE_JOINT_TAUX_MAX_APPEL = 70
+
+
+def _vivants_natifs(company):
+    """Leads de la société ni perdus, ni archivés, ni opposés, ni importés d'Odoo."""
+    from .models import Lead
+    return (Lead.objects
+            .filter(company=company, perdu=False, is_archived=False,
+                    ne_plus_contacter=False)
+            .exclude(source=Lead.Source.ODOO_IMPORT_TEST))
+
+
+def _lignes_lead(qs):
+    return list(qs.order_by('pk').values('id', 'stage', 'source'))
+
+
+def leads_actifs_sans_prochaine_etape(company):
+    """CADV6 — leads ACTIFS (ni Froid ni Signé, ni Archive) sans aucune touche
+    ouverte et sans date de Standby à venir : on ne sait pas ce qui leur arrive
+    ensuite (conception v4 §2, invariant 1). ``[{'id', 'stage', 'source'}]``."""
+    from django.db.models import Exists, OuterRef, Q
+
+    from core.dates import aujourd_hui_local
+
+    from . import stages
+    from .models import RelanceEtape
+    ouverte = RelanceEtape.objects.filter(
+        lead=OuterRef('pk'), statut=RelanceEtape.Statut.A_FAIRE)
+    standby_a_venir = Q(parc_etat='standby',
+                        parc_jusqu_au__gte=aujourd_hui_local())
+    return _lignes_lead(
+        _vivants_natifs(company)
+        .exclude(stage__in=(stages.COLD, stages.SIGNED))
+        .exclude(parc_etat='archive')
+        .annotate(_ouverte=Exists(ouverte))
+        .filter(_ouverte=False)
+        .exclude(standby_a_venir))
+
+
+def leads_parques_sans_touche(company):
+    """CADV6 — leads vivants PARQUÉS (raison de parcage ou étiquette « Injoignable
+    6 appels ») sans les touches qui justifient le parcage : « injoignable » avec
+    moins d'appels humains tracés que ``appels_exiges_injoignable`` (au plus 5),
+    ou n'importe quel parcage à 0 touche humaine (hors raisons sans touche)."""
+    from django.db.models import Count, Q
+
+    from .cadence_reperes import _CLOTURE_TAG_INJOIGNABLE
+    from .fiche_funnel import (
+        APPELS_MIN_INJOIGNABLE, RAISONS_SANS_TOUCHE, appels_du_gabarit_contact)
+    from .models import Lead, LeadActivity
+    humain = Q(activites__user__isnull=False)
+    exiges = min(APPELS_MIN_INJOIGNABLE, appels_du_gabarit_contact(company.pk))
+    qs = (_vivants_natifs(company)
+          .filter((Q(parc_raison__isnull=False) & ~Q(parc_raison=''))
+                  | Q(tags__contains=_CLOTURE_TAG_INJOIGNABLE))
+          .annotate(
+              _appels=Count('activites', distinct=True, filter=humain & Q(
+                  activites__kind=LeadActivity.Kind.APPEL)),
+              _wa=Count('activites', distinct=True, filter=humain & Q(
+                  activites__kind=LeadActivity.Kind.WHATSAPP)),
+              _touches=Count('activites', distinct=True, filter=humain & Q(
+                  activites__kind__in=(
+                      LeadActivity.Kind.APPEL, LeadActivity.Kind.WHATSAPP,
+                      LeadActivity.Kind.EMAIL)))))
+    fautifs = []
+    for lead in qs.order_by('pk'):
+        injoignable = (lead.parc_raison == 'injoignable'
+                       or _CLOTURE_TAG_INJOIGNABLE in (lead.tags or ''))
+        appels = lead._appels
+        if lead.contact_preference == Lead.ContactPreference.WHATSAPP_ONLY:
+            appels += lead._wa
+        sans_touche = (lead._touches == 0
+                       and lead.parc_raison not in RAISONS_SANS_TOUCHE)
+        if (injoignable and appels < exiges) or sans_touche:
+            fautifs.append({'id': lead.pk, 'stage': lead.stage,
+                            'source': lead.source})
+    return fautifs
+
+
+def leads_reveil_aveugle(company):
+    """CADV6 — réveils ouverts sur un lead jamais joint ni chiffré : la population de
+    ``cadence_selectors.leads_reveil_sans_historique`` (CADV3), seule définition de
+    « jamais joint » — rendue en lignes sans donnée personnelle."""
+    from .cadence_selectors import leads_reveil_sans_historique
+    return _lignes_lead(leads_reveil_sans_historique(company))
+
+
+def leads_fermes_avec_touche_ouverte(company):
+    """CADV6 — leads perdus, archivés ou opposés qui ont encore une touche à faire.
+    Exception : le réveil saisonnier ``reveil_b`` d'un perdu à motif non terminal
+    (CADV90) est voulu."""
+    from django.db.models import Exists, OuterRef, Q
+
+    from .cadence_reveil_saison import MOTIFS_PERTE_NON_TERMINAUX, REVEIL_SAISON_CLE
+    from .models import Lead, RelanceEtape
+    voulue = Q(template_cle=REVEIL_SAISON_CLE, lead__is_archived=False,
+               lead__ne_plus_contacter=False, lead__perdu=True)
+    motifs = Q()
+    for motif in MOTIFS_PERTE_NON_TERMINAUX:
+        motifs |= Q(lead__motif_perte__iexact=motif)
+    ouverte = (RelanceEtape.objects
+               .filter(lead=OuterRef('pk'), statut=RelanceEtape.Statut.A_FAIRE)
+               .exclude(voulue & motifs))
+    return _lignes_lead(
+        Lead.objects
+        .filter(company=company)
+        .filter(Q(perdu=True) | Q(is_archived=True) | Q(ne_plus_contacter=True))
+        .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
+        .annotate(_ouverte=Exists(ouverte))
+        .filter(_ouverte=True))
+
+
+def saisies_joint_anormales(company, maintenant=None):
+    """CADV6 (conception v4 §7.5) — par utilisateur et canal, sur
+    ``SAISIE_JOINT_FENETRE_JOURS`` jours : au moins ``SAISIE_JOINT_MIN_SAISIES``
+    saisies dont le taux de « joint » dépasse 25 % (WhatsApp) ou 70 % (appel).
+    ``[{'user_id', 'canal', 'saisies', 'joints'}]``, sans donnée personnelle."""
+    import datetime
+
+    from django.db.models import Count, Q
+    from django.utils import timezone
+
+    from .cadence_plan import ISSUES_CLIENT_JOINT
+    from .models import LeadActivity
+    depuis = (maintenant or timezone.now()) - datetime.timedelta(
+        days=SAISIE_JOINT_FENETRE_JOURS)
+    seuils = {LeadActivity.Kind.WHATSAPP: SAISIE_JOINT_TAUX_MAX_WHATSAPP,
+              LeadActivity.Kind.APPEL: SAISIE_JOINT_TAUX_MAX_APPEL}
+    lignes = (LeadActivity.objects
+              .filter(company=company, user__isnull=False, kind__in=seuils,
+                      created_at__gte=depuis)
+              .values('user_id', 'kind')
+              .annotate(saisies=Count('pk'),
+                        joints=Count('pk', filter=Q(
+                            outcome__in=ISSUES_CLIENT_JOINT)))
+              .order_by('user_id', 'kind'))
+    return [{'user_id': ligne['user_id'], 'canal': ligne['kind'],
+             'saisies': ligne['saisies'], 'joints': ligne['joints']}
+            for ligne in lignes
+            if ligne['saisies'] >= SAISIE_JOINT_MIN_SAISIES
+            and ligne['joints'] * 100 > seuils[ligne['kind']] * ligne['saisies']]
+
+
 def champs_devis_auto_manquants(lead):
     """AGR124 — ``[{champ, label}]`` des groupes « devis automatique prêt »
     sans aucun champ rempli (``devis_auto.champs_manquants_detail``, AGR403) :

@@ -251,6 +251,12 @@ class RecalculImmediatTests(TestCase):
         self.assertEqual(self._ouvertes(lead), ['Proposition rouverte — appeler'])
         reveil.refresh_from_db()
         self.assertEqual(reveil.statut, RelanceEtape.Statut.ANNULEE)
+        # Le Then veut une ligne de chatter pour la sortie : le code en écrit
+        # deux (la raison de parcage levée, puis l'étape avancée), une par champ.
+        self.assertEqual(
+            sorted(lead.activites.exclude(field='').exclude(field__isnull=True)
+                   .values_list('field', flat=True)),
+            ['parc_raison', 'stage'])
         # Rejouer le même jour : aucune seconde touche.
         devis_chatter.noter_devis_reouvert('DV-9', lead)
         self.assertEqual(self._ouvertes(lead), ['Proposition rouverte — appeler'])

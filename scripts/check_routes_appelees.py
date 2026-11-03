@@ -56,14 +56,13 @@ SANS_ECRAN_PAR_CONSTRUCTION = {
     "apporteur-portail": "portail public a jeton de l'apporteur d'affaires",
 }
 
-_ACRM2_I = ("A CORRIGER (ACRM2 i, proprietaire crm) : ecran retire le 30/09 (348a7c7b0), "
-            "la route et son calcul 'en retard' restent servis sans appelant")
-_ACRM2_II = ("A CORRIGER (ACRM2 ii, proprietaire crm) : salle de vente - aucune salle ne "
-             "se cree depuis l'ERP, route servie sans ecran (parquer ou construire)")
-_ACRM2_III = ("A CORRIGER (ACRM2 iii, proprietaire crm) : apporteurs / deals enregistres - "
-              "commission calculee a chaque devis accepte, aucun ecran (parquer ou construire)")
-_ACRM2_IV = ("A CORRIGER (ACRM2 iv, proprietaire crm) : aucun appelant front "
-             "(retrait recommande)")
+#: ACRM68 (D-ACRM-6, 09/10/2026) - les familles (ii) salles de vente et (iii)
+#: apporteurs / deals enregistres sont PARQUEES (ACRM65/ACRM66) : routes gardees,
+#: reglage societe eteint par defaut. Les familles (i) et (iv) ont ete RETIREES
+#: (ACRM64/ACRM67) : aucune ligne pour elles ici.
+MOTIF_PARQUEE_D_ACRM6 = "A CORRIGER (D-ACRM-6) : parquee D-ACRM-6, reglage societe eteint"
+_ACRM2_II = MOTIF_PARQUEE_D_ACRM6 + " - salles de vente"
+_ACRM2_III = MOTIF_PARQUEE_D_ACRM6 + " - apporteurs / deals enregistres"
 _SANS_ECRAN = ("A CORRIGER (proprietaire crm) : route servie sans aucun appelant "
                "front ni e2e - retirer, ou construire l'ecran")
 
