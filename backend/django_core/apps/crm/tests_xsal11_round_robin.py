@@ -402,6 +402,40 @@ class AttributionParResponsableTests(TestCase):
         lead.refresh_from_db()
         self.assertEqual(lead.owner, self.a)
 
+    def test_escalade_de_la_file_requetes_constantes(self):
+        # ACVI83 — même coût à 4 et à 12 attentes dont les paliers sont posés.
+        from unittest import mock
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.crm import dispatch
+        from apps.crm.models import LeadActivity
+        self.equipe.confirmation_responsable = False
+        self.equipe.file_a_prendre = True
+        self.equipe.save(update_fields=['confirmation_responsable',
+                                        'file_a_prendre'])
+
+        def creer(nombre):
+            for _ in range(nombre):
+                lead = self._nouveau_a(self._a(26, 10, 2),
+                                       type_installation='residentiel')
+                for _m, _p, marqueur in dispatch.PALIERS_FILE:
+                    LeadActivity.objects.create(
+                        company=self.company, lead=lead,
+                        kind=LeadActivity.Kind.NOTE, body=f'{marqueur} — posé')
+
+        def passage():
+            with mock.patch('apps.notifications.services.notify_many',
+                            return_value=[]) as envoi:
+                with CaptureQueriesContext(connection) as ctx:
+                    n = dispatch.escalader_file(self._a(29, 12, 0))
+            self.assertEqual((n, envoi.call_count), (0, 0))
+            return len(ctx)
+
+        creer(4)
+        a_quatre = passage()
+        creer(8)
+        self.assertEqual(passage(), a_quatre)
+
     def test_les_paliers_de_la_file_notifient_une_fois_et_attribuent_a_t30(self):
         # CADV115 : lead résidentiel arrivé à 10:02 jamais pris — T+5 prévient
         # l'équipe, T+15 la direction (PREMIER_CONTACT_DEPASSE), T+30 attribue

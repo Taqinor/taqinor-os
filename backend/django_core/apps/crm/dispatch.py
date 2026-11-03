@@ -46,6 +46,7 @@ RAISON_AUCUN = 'Aucun membre disponible'
 PLAFOND_DEFAUT = 20
 #: CADV115 — paliers de la file « À prendre », en minutes OUVRÉES depuis
 #: l'arrivée : (minutes, clé, marqueur de chatter d'idempotence).
+_PREFIXE_PALIERS_FILE = 'auto — file À prendre T+'
 PALIERS_FILE = (
     (5, 'equipe', 'auto — file À prendre T+5'),
     (15, 'direction', 'auto — file À prendre T+15'),
@@ -581,60 +582,68 @@ def escalader_file(maintenant=None):
     attentes = AttributionEnAttente.objects.filter(
         equipe__file_a_prendre=True).select_related(
         'lead', 'equipe', 'company').order_by('created_at', 'id')
-    for attente in list(attentes):
-        try:
-            if _deja_decide(attente):
-                continue
-            equipe, lead = attente.equipe, attente.lead
-            ecoulees = horaires.minutes_ouvrees_entre(
-                attente.created_at, maintenant, attente.company,
-                canal='whatsapp')
-            nom = ' '.join(p for p in (lead.prenom, lead.nom) if p) or 'Nouveau lead'
-            for minutes, palier, marqueur in PALIERS_FILE:
-                if ecoulees < minutes:
-                    break
-                if LeadActivity.objects.filter(
-                        lead=lead, kind=LeadActivity.Kind.NOTE,
-                        body__startswith=marqueur).exists():
+    attentes = list(attentes)
+    # ACVI83 — marqueurs lus d'un seul coup, profil et jours ouvrés une fois.
+    corps = LeadActivity.objects.filter(
+        lead_id__in=[a.lead_id for a in attentes],
+        kind=LeadActivity.Kind.NOTE,
+        body__startswith=_PREFIXE_PALIERS_FILE).values_list('lead_id', 'body')
+    poses = {(lead_id, marqueur) for lead_id, body in corps
+             for _minutes, _palier, marqueur in PALIERS_FILE
+             if body.startswith(marqueur)}
+    with horaires.cache_local():
+        for attente in attentes:
+            try:
+                if _deja_decide(attente):
                     continue
-                if palier == 'attribution':
-                    with transaction.atomic():
-                        verrou = (AttributionEnAttente.objects
-                                  .select_for_update(skip_locked=True)
-                                  .filter(pk=attente.pk).first())
-                        if verrou is None or _deja_decide(verrou):
-                            continue
-                        # La proposition (comptée dans la charge par
-                        # ``rotation``) n'a plus d'objet : le lead s'en va.
-                        AttributionEnAttente.objects.filter(
-                            pk=verrou.pk).update(proposee=None)
-                        membre = rotation(equipe)
-                        corps = (f'{marqueur} — délai de prise dépassé : '
-                                 + (f'attribué à {nom_affiche(membre)}'
-                                    if membre is not None
-                                    else 'aucun membre disponible, reste au responsable'))
-                        _finaliser(verrou, membre, None, corps)
+                equipe, lead = attente.equipe, attente.lead
+                ecoulees = horaires.minutes_ouvrees_entre(
+                    attente.created_at, maintenant, attente.company,
+                    canal='whatsapp')
+                nom = ' '.join(p for p in (lead.prenom, lead.nom) if p) or 'Nouveau lead'
+                for minutes, palier, marqueur in PALIERS_FILE:
+                    if ecoulees < minutes:
+                        break
+                    if (lead.pk, marqueur) in poses:
+                        continue
+                    if palier == 'attribution':
+                        with transaction.atomic():
+                            verrou = (AttributionEnAttente.objects
+                                      .select_for_update(skip_locked=True)
+                                      .filter(pk=attente.pk).first())
+                            if verrou is None or _deja_decide(verrou):
+                                continue
+                            # La proposition (comptée dans la charge par
+                            # ``rotation``) n'a plus d'objet : le lead s'en va.
+                            AttributionEnAttente.objects.filter(
+                                pk=verrou.pk).update(proposee=None)
+                            membre = rotation(equipe)
+                            corps = (f'{marqueur} — délai de prise dépassé : '
+                                     + (f'attribué à {nom_affiche(membre)}'
+                                        if membre is not None
+                                        else 'aucun membre disponible, reste au responsable'))
+                            _finaliser(verrou, membre, None, corps)
+                        franchis += 1
+                        break
+                    activity.log_note(
+                        lead, None,
+                        f'{marqueur} — {ecoulees} minute(s) ouvrée(s) sans prise.')
+                    if palier == 'equipe':
+                        destinataires = _choix_equipe(equipe, equipe.membres.filter(
+                            is_active=True, company_id=equipe.company_id))
+                        type_evenement = EventType.LEAD_NON_CONTACTE
+                    else:
+                        destinataires = _destinataires_direction(equipe.company)
+                        type_evenement = EventType.PREMIER_CONTACT_DEPASSE
+                    notify_many(
+                        destinataires, type_evenement,
+                        title=f'{nom} attend dans « À prendre » depuis {ecoulees} min ouvrées',
+                        body="Aucun commercial n'a encore pris ce lead.",
+                        link=f'/crm/leads?lead={lead.pk}', company=equipe.company)
                     franchis += 1
-                    break
-                activity.log_note(
-                    lead, None,
-                    f'{marqueur} — {ecoulees} minute(s) ouvrée(s) sans prise.')
-                if palier == 'equipe':
-                    destinataires = _choix_equipe(equipe, equipe.membres.filter(
-                        is_active=True, company_id=equipe.company_id))
-                    type_evenement = EventType.LEAD_NON_CONTACTE
-                else:
-                    destinataires = _destinataires_direction(equipe.company)
-                    type_evenement = EventType.PREMIER_CONTACT_DEPASSE
-                notify_many(
-                    destinataires, type_evenement,
-                    title=f'{nom} attend dans « À prendre » depuis {ecoulees} min ouvrées',
-                    body="Aucun commercial n'a encore pris ce lead.",
-                    link=f'/crm/leads?lead={lead.pk}', company=equipe.company)
-                franchis += 1
-        except Exception:  # noqa: BLE001 — une attente en échec ne bloque pas les suivantes (D-ENF22-BLE001)
-            logger.warning('dispatch : escalade de la file échouée '
-                           '(attente #%s)', attente.pk, exc_info=True)
+            except Exception:  # noqa: BLE001 — une attente en échec ne bloque pas les suivantes (D-ENF22-BLE001)
+                logger.warning('dispatch : escalade de la file échouée '
+                               '(attente #%s)', attente.pk, exc_info=True)
     return franchis
 
 
