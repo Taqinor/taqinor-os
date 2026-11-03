@@ -83,6 +83,7 @@ const calepinageApi = {
 
     // CAL199/CAL246 — les calepinages marqués MODÈLE de la société (drapeau
     // `records.Tag`, jamais un champ propre). Lecture pure.
+    // Forme de réponse figée par contract_samples/calepinage_modeles.json (ENF15).
     modeles: () => api.get('/calepinage/calepinages/modeles/'),
 
     // CAL18 — le document `roof_layout` (contrat v2 : CAL232,
@@ -115,6 +116,7 @@ const calepinageApi = {
 
     // CAL20 — historique. La restauration REJOUE une version en en créant une
     // NOUVELLE : jamais une réécriture, jamais une suppression d'historique.
+    // Forme figée par contract_samples/calepinage_versions_liste.json (ENF15).
     versions: (id) => api.get(`${pivot(id)}versions/`),
     restaurerVersion: (id, versionId) =>
       api.post(`${pivot(id)}versions/${versionId}/restaurer/`),
@@ -122,7 +124,8 @@ const calepinageApi = {
     // CAL21 — variantes. `retenir` est une ACTION (elle dé-retient la
     // précédente), jamais un PATCH de ressource.
     // ACAL109 — la clé `variantes` (GET liste brute, sans appelant) est
-    // retirée : la liste se lit par `comparer()`.
+    // retirée : la liste se lit par `comparer()`. La route serveur reste décrite par
+    // contract_samples/calepinage_variantes_liste.json (ENF15).
     retenirVariante: (id, varianteId) =>
       api.post(`${pivot(id)}variantes/${varianteId}/retenir/`),
 
@@ -137,6 +140,7 @@ const calepinageApi = {
     // `resultat`, que le comparatif ne publie pas) puis crée une variante
     // neuve avec ce contenu. `nom` (saisi par l'utilisateur) prime ; sans lui,
     // un nom dérivé de la source évite un POST refusé pour nom vide.
+    // Lecture de la variante : contract_samples/calepinage_variante_detail.json (ENF15).
     dupliquerVariante: (id, varianteId, nom) =>
       api.get(`${pivot(id)}variantes/${varianteId}/`)
         .then((res) => api.post(`${pivot(id)}variantes/`, corpsDeCopieVariante(res?.data, nom))),
@@ -291,6 +295,7 @@ const calepinageApi = {
     // chemins-requete: /calepinage/calepinages/{id}/dossier-fin-chantier/
     declencherDocument: (endpoint, params) => api.post(endpoint, null, { params }), // ACAL
     // ACAL223 — l'aperçu HTML EXACT d'une pièce (`apercu-document?code=&langue=`), texte brut.
+    // Réponse text/html décrite par contract_samples/calepinage_apercu_document.json (ENF15).
     apercuDocument: (id, code, params) => api.get(`${pivot(id)}apercu-document/`, // ACAL
       { responseType: 'text', params: { code, ...params } }),
     // ACAL23 — contrat calepinage_layout_section.json (ACAL1/ACAL22). L'écriture COMPLÈTE
@@ -372,6 +377,7 @@ const calepinageApi = {
     // bouton. POST envoie le document de conception et reçoit une suggestion
     // par pan, jamais persistée côté serveur : c'est l'écran qui accepte ou
     // jette, puis enregistre via `enregistrerLayoutCalepinage` (CAL18).
+    // Forme figée par contract_samples/calepinage_suggestion_pente.json (ENF15).
     suggestionPenteDisponible: () => api.get('/calepinage/parametres/suggestion-pente/'),
     suggererPentesIGN: (roofLayout) =>
       api.post('/calepinage/parametres/suggestion-pente/', { roof_layout: roofLayout }),
@@ -382,6 +388,7 @@ const calepinageApi = {
     // SAISIS puis les replis ÉTIQUETÉS « hypothèse interne » ; le PUT
     // REMPLACE les profils saisis — un repli n'en est pas un, il n'est donc
     // jamais renvoyé comme une saisie.
+    // Forme figée par contract_samples/calepinage_profils_types.json (ENF15).
     profilsTypes: () => api.get('/calepinage/parametres/profils-types/'),
     enregistrerProfilsTypes: (profils) =>
       api.put('/calepinage/parametres/profils-types/', { profils }),

@@ -34,6 +34,7 @@ export const sorties = {
     // CHEMIN JSON du premier champ fautif (`champ`) — jamais une validation
     // recalculée ici. Distinct de `layout()`/`enregistrerLayoutCalepinage`
     // (CAL18, l'ATELIER) : ce sont les portes ÉCHANGE / round-trip fichier.
+    // Forme figée par contract_samples/calepinage_export_layout.json (ENF15).
     exporterConception: (id) => api.get(`${pivot(id)}export-layout/`),
     importerConception: (id, document) => api.post(`${pivot(id)}import-layout/`, document),
 

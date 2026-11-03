@@ -103,3 +103,70 @@ class ContratsF06(unittest.TestCase):
         self.assertEqual(servi['entree']['dc_m'], 25.0)
         self.assertEqual(servi['entree']['regime'], 'TT')
         self.assertNotIn('derogations', servi['entree'])
+
+
+class ContratsRoutesLecturesEnf15Test(unittest.TestCase):
+    """ENF15 — huit routes GET du calepinage enfin sous contrat : chaque
+    échantillon cite son endpoint exact et ses clés sont celles que le code
+    sert (sérialiseurs / fonctions pures — aucune base)."""
+
+    def test_endpoints_et_cles_servies(self):
+        from apps.calepinage.serializers import (
+            CalepinageSerializer, CalepinageVarianteSerializer,
+        )
+        from apps.calepinage.serializers_conso import ProfilTypeSerializer
+        from apps.calepinage.services.io_layout import exporter_layout
+        from apps.calepinage.services.lidar_ign import (
+            PAYS_COUVERT, SOURCE, URL_SOURCE,
+        )
+
+        attendus = {
+            'calepinage_versions_liste.json':
+                '/calepinages/<int:pk>/versions/',
+            'calepinage_variantes_liste.json':
+                '/calepinages/<int:pk>/variantes/',
+            'calepinage_variante_detail.json':
+                '/calepinages/<int:pk>/variantes/<int:variante_id>/',
+            'calepinage_modeles.json': '/calepinages/modeles/',
+            'calepinage_export_layout.json':
+                '/calepinages/<int:pk>/export-layout/',
+            'calepinage_apercu_document.json':
+                '/calepinages/<int:pk>/apercu-document/',
+            'calepinage_profils_types.json': '/parametres/profils-types/',
+            'calepinage_suggestion_pente.json':
+                '/parametres/suggestion-pente/',
+        }
+        for nom, chemin in attendus.items():
+            contrat = _charger(nom)
+            self.assertEqual(
+                contrat['endpoint'],
+                'GET /api/django/calepinage' + chemin, nom)
+            self.assertIn('exemple', contrat, nom)
+
+        champs_variante = set(CalepinageVarianteSerializer.Meta.fields)
+        self.assertEqual(
+            set(_charger('calepinage_variantes_liste.json')['exemple']),
+            champs_variante)
+        self.assertEqual(
+            set(_charger('calepinage_variante_detail.json')['exemple']),
+            champs_variante)
+        champs_modele = (set(CalepinageSerializer.Meta.fields)
+                         - {'custom_data'}) | {'nom'}
+        self.assertEqual(
+            set(_charger('calepinage_modeles.json')['exemple']),
+            champs_modele)
+        self.assertEqual(
+            set(_charger('calepinage_versions_liste.json')['exemple']),
+            {'id', 'libelle', 'layout_hash', 'cree_le', 'cree_par',
+             'a_un_resultat'})
+        self.assertEqual(
+            _charger('calepinage_export_layout.json')[
+                'exemple_sans_conception'], exporter_layout(None))
+        self.assertEqual(
+            set(_charger('calepinage_profils_types.json')['exemple'][
+                'profils'][0]),
+            set(ProfilTypeSerializer().fields))
+        pente = _charger('calepinage_suggestion_pente.json')['exemple']
+        self.assertEqual(pente['pays_couvert'], PAYS_COUVERT)
+        self.assertEqual(pente['source'], SOURCE)
+        self.assertEqual(pente['source_url'], URL_SOURCE)

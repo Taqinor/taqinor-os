@@ -1,0 +1,15 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/apercu-document/",
+  "pourquoi": "ENF15 (routes_sous_contrat) — CALX323 — le HTML EXACT que consomme le rendu PDF du document `?code=` (`services/documents::mise_en_page`, une seule mise en page par document). Paramètres : `code` (obligatoire, inventaire GET documents/), `langue` (fr|en). 200 = `text/html; charset=utf-8` (corps HTML, pas du JSON) ; refus = JSON `{<champ>: message}`.",
+  "parametres": {
+    "code": "code du document (obligatoire)",
+    "langue": "fr ou en (facultatif)"
+  },
+  "exemple": {
+    "content_type": "text/html; charset=utf-8",
+    "corps": "<!DOCTYPE html><html>…</html>"
+  },
+  "exemple_code_absent": {
+    "code": "Paramètre « code » requis (voir GET documents/)."
+  }
+}

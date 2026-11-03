@@ -1,0 +1,12 @@
+{
+  "endpoint": "GET /api/django/calepinage/parametres/suggestion-pente/",
+  "pourquoi": "ENF15 (routes_sous_contrat) — CAL237 — le service de suggestion de pente IGN est-il offert à cette société ? Réponse LOCALE (aucune requête sortante). `disponible` n'est vrai que pour `pays = 'fr'` ; sinon false. `suggestions` est toujours vide en GET (le POST propose).",
+  "exemple": {
+    "disponible": false,
+    "pays_couvert": "fr",
+    "source": "IGN — RGE ALTI® / LiDAR HD",
+    "source_url": "https://data.geopf.fr/altimetrie/",
+    "suggestions": [],
+    "detail": ""
+  }
+}

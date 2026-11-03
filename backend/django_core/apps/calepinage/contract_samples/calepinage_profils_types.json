@@ -1,0 +1,86 @@
+{
+  "endpoint": "GET /api/django/calepinage/parametres/profils-types/",
+  "pourquoi": "ENF15 (routes_sous_contrat) — Les profils types de consommation de la société (CAL149) : les profils SAISIS (`source: societe`, `id` entier) puis les replis ÉTIQUETÉS `hypothese_interne` (`id: null`). Forme = `ProfilsTypesSerializer`. Société lue sur `request.user`.",
+  "exemple": {
+    "profils": [
+      {
+        "id": 4,
+        "cle": "boulangerie",
+        "libelle": "Boulangerie",
+        "famille": "commerce",
+        "source": "societe",
+        "provenance": "Relevé client 2026",
+        "courbes": {
+          "ete": [
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667
+          ]
+        },
+        "saisons": [
+          "ete"
+        ]
+      },
+      {
+        "id": null,
+        "cle": "residentiel_jour",
+        "libelle": "Résidentiel — présence en journée",
+        "famille": "residentiel",
+        "source": "hypothese_interne",
+        "provenance": "Hypothèse interne TAQINOR",
+        "courbes": {
+          "ete": [
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667,
+            0.041667
+          ]
+        },
+        "saisons": [
+          "ete"
+        ]
+      }
+    ]
+  }
+}
