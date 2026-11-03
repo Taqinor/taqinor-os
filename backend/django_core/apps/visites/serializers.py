@@ -24,7 +24,7 @@ class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, se
         model = VisiteTerrain
         fields = [
             'id', 'lead', 'commercial', 'statut', 'date_prevue',
-            'date_realisee', 'notes',
+            'date_realisee', 'notes', 'retour_terrain',
         ]
         read_only_fields = [
             'id', 'statut', 'date_realisee',

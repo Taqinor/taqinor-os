@@ -80,7 +80,7 @@ class _Base(TestCase):
 
         visite = VisiteTerrain.objects.create(
             company=self.company, lead=self.lead, date_prevue=VISITE_LE,
-            notes=RETOUR['notes'])
+            retour_terrain=RETOUR['notes'])
         visite_terminee.send(
             sender=VisiteTerrain, visite=visite, lead_id=self.lead.id,
             user=self.terrain, retour=RETOUR, qualification=None)

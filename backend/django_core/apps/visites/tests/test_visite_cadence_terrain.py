@@ -206,7 +206,7 @@ class RetourVisiteSelectorTests(VisiteCadenceBase):
     def _visite(self):
         return VisiteTerrain.objects.create(
             company=self.company, lead=self.lead,
-            commercial=self.commercial, notes='  Tableau saturé.  ')
+            commercial=self.commercial, retour_terrain='  Tableau saturé.  ')
 
     def _photo(self, visite, slot_code, commentaire):
         from django.contrib.contenttypes.models import ContentType
@@ -237,6 +237,40 @@ class RetourVisiteSelectorTests(VisiteCadenceBase):
         self.assertNotEqual(ligne['slot'], 'toiture_vue_generale')
         self.assertTrue(ligne['slot'])
 
+    def test_notes_de_planification_hors_retour(self):
+        # ACVI55 — la note de planification ne sort plus en « Retour terrain » :
+        # ni dans le signal, ni dans la ligne de la fiche lead.
+        visite = VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead, commercial=self.commercial,
+            notes='Sonner au portail')
+        self.assertEqual(selectors.retour_visite(visite)['notes'], '')
+        ligne = selectors.ligne_visite_pour_lead(visite)
+        self.assertEqual(ligne['notes'], '')
+        self.assertIs(ligne['retour_disponible'], False)
+
+        reponse = self.api.patch(
+            f'/api/django/visites/visites/{visite.id}/',
+            {'retour_terrain': 'Tableau saturé'}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        visite.refresh_from_db()
+        self.assertEqual(visite.retour_terrain, 'Tableau saturé')
+        self.assertEqual(visite.notes, 'Sonner au portail')
+        self.assertEqual(selectors.retour_visite(visite)['notes'],
+                         'Tableau saturé')
+
+    def test_retour_terrain_gele_apres_terminer(self):
+        # ACVI55 — même gel ALEA7 que les notes : la correction passe par un
+        # renvoi du bureau d'études.
+        visite = VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead, commercial=self.commercial,
+            statut=VisiteTerrain.Statut.TERMINEE, retour_terrain='RAS')
+        reponse = self.api.patch(
+            f'/api/django/visites/visites/{visite.id}/',
+            {'retour_terrain': 'Autre'}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        visite.refresh_from_db()
+        self.assertEqual(visite.retour_terrain, 'RAS')
+
     def test_un_retour_muet_sort_vide_sans_rien_inventer(self):
         visite = VisiteTerrain.objects.create(
             company=self.company, lead=self.lead)
@@ -262,7 +296,7 @@ class VisitesPourLeadTests(VisiteCadenceBase):
             commercial=self.commercial,
             date_prevue=AUJOURDHUI - datetime.timedelta(days=10),
             statut=VisiteTerrain.Statut.TERMINEE,
-            date_realisee=timezone.now(), notes='Retour terrain')
+            date_realisee=timezone.now(), retour_terrain='Retour terrain')
         recente = VisiteTerrain.objects.create(
             company=self.company, lead=self.lead,
             date_prevue=AUJOURDHUI + datetime.timedelta(days=3))
@@ -317,8 +351,8 @@ class TerminerPublieLeRetourTests(VisiteCadenceBase):
                 {'categorie': categorie, 'valeurs': valeurs}, format='json')
             self.assertEqual(reponse.status_code, 200, reponse.data)
         visite = VisiteTerrain.objects.get(pk=visite_id)
-        visite.notes = 'Le client veut aussi une borne de recharge.'
-        visite.save(update_fields=['notes'])
+        visite.retour_terrain = 'Le client veut aussi une borne de recharge.'
+        visite.save(update_fields=['retour_terrain'])
         return visite_id
 
     def test_terminer_publie_visite_terminee_avec_le_retour(self):

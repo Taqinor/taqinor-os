@@ -21,7 +21,7 @@ import { envoyerPhotoVisite } from '../../features/visites/visitesOffline'
 import PageHeader from '../../components/layout/PageHeader'
 import CameraCapture from '../../features/pwa/CameraCapture'
 import {
-  Button, Card, Spinner, Badge, ChecklistProgress,
+  Button, Card, Spinner, Badge, ChecklistProgress, Label, Textarea,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { toast } from '../../ui/confirm'
@@ -152,11 +152,14 @@ export default function VisiteWizardPage() {
   // enregistrée : le clic suivant termine SANS elle, en toute connaissance.
   const [sansQualifAssume, setSansQualifAssume] = useState(false)
   const [categorieActive, setCategorieActive] = useState(null)
+  // ACVI55 — saisie locale : un rechargement (photo, mesures) ne l'écrase pas.
+  const [retour, setRetour] = useState(null)
 
   const recharger = useCallback(() => {
     visitesApi.getVisite(id)
       .then((res) => {
         setVisite(res.data)
+        setRetour((prev) => prev ?? res.data.retour_terrain ?? '')
         setCategorieActive((prev) => prev ?? trierCategories(res.data.checklist)[0]?.categorie)
       })
       .catch(() => setErreur('Visite introuvable ou inaccessible.'))
@@ -164,6 +167,12 @@ export default function VisiteWizardPage() {
   }, [id])
 
   useEffect(() => { recharger() }, [recharger])
+
+  const enregistrerRetour = async () => {
+    if ((retour ?? '') === (visite.retour_terrain ?? '')) return
+    const res = await visitesApi.updateVisite(id, { retour_terrain: retour })
+    setVisite((v) => ({ ...v, retour_terrain: res.data.retour_terrain }))
+  }
 
   const terminer = async () => {
     // VISITE-QUALIF — la qualification est son PROPRE POST (jamais fusionné
@@ -178,6 +187,7 @@ export default function VisiteWizardPage() {
     }
     setTerminant(true)
     try {
+      await enregistrerRetour()
       const res = await visitesApi.terminerVisite(id)
       setVisite(res.data)
       toast.success('Visite terminée — envoyée au bureau d’études.')
@@ -269,6 +279,19 @@ export default function VisiteWizardPage() {
           </ul>
         </div>
       )}
+
+      {/* ACVI55 — le SEUL texte qui part en « Retour terrain » sur le lead. */}
+      <Card className="mt-4 p-3">
+        <Label htmlFor="visite-retour-terrain">Retour terrain</Label>
+        <Textarea
+          id="visite-retour-terrain"
+          className="mt-1"
+          value={retour ?? ''}
+          disabled={!['brouillon', 'en_cours', 'a_refaire'].includes(visite.statut)}
+          onChange={(e) => setRetour(e.target.value)}
+          onBlur={() => enregistrerRetour().catch(() => toast.error('Retour terrain non enregistré.'))}
+        />
+      </Card>
 
       {/* VISITE-QUALIF — qualification rapide du client, juste avant de
           terminer. Rendue dans les DEUX modes : formulaire à chips en édition,

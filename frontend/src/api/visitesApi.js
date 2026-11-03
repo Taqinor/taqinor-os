@@ -57,6 +57,9 @@ const visitesApi = {
   patchVisiteMesures: (id, categorie, valeurs) =>
     api.patch(`/visites/visites/${id}/mesures/`, { categorie, valeurs }),
 
+  // ACVI55 — PATCH d'entête (retour terrain). 400 : visite déjà terminée.
+  updateVisite: (id, payload) => api.patch(`/visites/visites/${id}/`, payload),
+
   // VISITE-QUALIF — qualification client à un tap, juste avant de terminer.
   // `payload` : {temperature, devis, devis_details, decideur, frein,
   // declencheur, rappel, conseil_closing} (clés/valeurs EXACTES du contrat).

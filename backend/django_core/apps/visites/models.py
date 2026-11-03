@@ -98,6 +98,10 @@ class VisiteTerrain(TenantModel):
         null=True, blank=True, verbose_name='Date de réalisation')
     notes = models.TextField(
         blank=True, default='', verbose_name='Notes de visite')
+    #: ACVI55 — le texte libre du TERRAIN (wizard), seul lu par ``retour_visite`` ;
+    #: ``notes`` reste la planification et le journal des lignes système.
+    retour_terrain = models.TextField(
+        blank=True, default='', verbose_name='Retour terrain')
     #: Mesures saisies, par catégorie de la checklist :
     #: ``{'toiture': {'longueur_m': 12.5, …}, 'tableau': {…}}``.
     mesures = models.JSONField(

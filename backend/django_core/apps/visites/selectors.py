@@ -365,6 +365,7 @@ def contexte_visite_terrain(visite):
         'date_realisee': (visite.date_realisee.isoformat()
                           if visite.date_realisee else None),
         'notes': visite.notes or '',
+        'retour_terrain': visite.retour_terrain or '',
         'modifiable': visite.modifiable,
         'raison_lecture_seule': visite.raison_lecture_seule,
         # AGR412 — aucun toit à assembler sur un relevé du point d'eau ;
@@ -860,8 +861,10 @@ def retour_visite(visite):
     donc enfermé dans l'app terrain. Rien n'est inventé ni complété : un retour
     muet sort avec des valeurs vides, et l'abonné le dit tel quel.
     """
+    # ACVI55 — ``retour_terrain`` (wizard) : jamais ``notes``, qui porte la
+    # planification et les lignes système. La clé du signal reste ``notes``.
     return {
-        'notes': (visite.notes or '').strip(),
+        'notes': (visite.retour_terrain or '').strip(),
         'commentaires_photos': _retour_commentaires_photos(visite),
         'nb_photos': visite.medias.count(),
     }
@@ -888,9 +891,10 @@ def ligne_visite_pour_lead(visite):
         'date_realisee': (visite.date_realisee.isoformat()
                           if visite.date_realisee else None),
         'commercial_nom': nom,
-        'notes': visite.notes or '',
+        # ACVI55 — les deux écrans la lisent comme « Retour terrain ».
+        'notes': visite.retour_terrain or '',
         'retour_disponible': bool(
-            (visite.notes or '').strip()
+            (visite.retour_terrain or '').strip()
             or _retour_commentaires_photos(visite)),
     }
 

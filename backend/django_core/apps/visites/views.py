@@ -209,6 +209,7 @@ class PhotoVisiteSerializer(serializers.Serializer):
 
 class NotesVisiteSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True)
+    retour_terrain = serializers.CharField(required=False, allow_blank=True)
 
 
 class VisiteTerrainViewSet(CompanyScopedModelViewSet):
@@ -414,11 +415,13 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return refus
         # ALEA7 — les notes d'une visite TERMINÉE sont parties au CRM avec le
         # retour terrain : un changement réel est refusé (renvoi BE).
-        if ('notes' in request.data
-                and (request.data.get('notes') or '') != (visite.notes or '')):
-            refus = services.refus_transition(visite, 'notes')
-            if refus is not None:
-                return Response(refus, status=status.HTTP_400_BAD_REQUEST)
+        for champ in ('notes', 'retour_terrain'):
+            if (champ in request.data and (request.data.get(champ) or '')
+                    != (getattr(visite, champ) or '')):
+                refus = services.refus_transition(visite, 'notes')
+                if refus is not None:
+                    return Response(refus,
+                                    status=status.HTTP_400_BAD_REQUEST)
         # VTA7 — on releve l'assigne AVANT l'ecriture : une REASSIGNATION
         # (changement reel d'assigne) previent le nouveau. Un PATCH qui ne
         # touche pas `commercial` ne notifie personne -- sinon chaque
