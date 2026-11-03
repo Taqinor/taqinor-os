@@ -243,6 +243,51 @@ class EmpreinteOppositionTests(TestCase):
 
         self.assertFalse(EmpreinteOpposition.objects.exists())
 
+    def test_fusion_absorbe_oppose_garde_son_propre_numero(self):
+        """D-ACVI-6 — l'absorbé opposé a son numéro, le survivant le sien (qui
+        n'est donc pas comblé) : les deux numéros portent l'opposition."""
+        du_survivant = '+212612349077'
+        de_l_absorbe = '+212612349078'
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', telephone=du_survivant,
+            owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', telephone=de_l_absorbe,
+            owner=self.user)
+        Lead.objects.filter(pk=absorbe.pk).update(ne_plus_contacter=True)
+        absorbe.refresh_from_db()
+
+        self._fusionner(survivant, absorbe)
+
+        survivant.refresh_from_db()
+        self.assertEqual(survivant.telephone, du_survivant)
+        self.assertTrue(survivant.ne_plus_contacter)
+        for numero in (du_survivant, de_l_absorbe):
+            with self.subTest(numero=numero):
+                recree = Lead.objects.create(
+                    company=self.company, nom='Recrée', telephone=numero)
+                self.assertTrue(recree.ne_plus_contacter)
+                self.assertTrue(self._opposition_au_registre(numero))
+
+    def test_fusion_absorbe_oppose_meme_numero_une_seule_trace(self):
+        """Le même numéro des deux côtés : pas de ligne de registre en double."""
+        from core.models import ConsentRecord
+        numero = '+212612349079'
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', telephone=numero, owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', telephone=numero, owner=self.user)
+        Lead.objects.filter(pk=absorbe.pk).update(ne_plus_contacter=True)
+        absorbe.refresh_from_db()
+
+        self._fusionner(survivant, absorbe)
+
+        from apps.crm.leads_consentement import FINALITES_CONTACT
+        self.assertEqual(ConsentRecord.objects.filter(
+            company=self.company, subject_identifier=numero, granted=False,
+            source__startswith='fusion de fiches').count(),
+            len(FINALITES_CONTACT))
+
     def _rattraper(self):
         from importlib import import_module
         from types import SimpleNamespace
