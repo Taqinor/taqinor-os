@@ -128,6 +128,25 @@ FIN_NOTE_REPORT = ' reportée.'
 PREFIXE_NOTE_VEILLE = 'Mise en veille '
 
 
+#: ACVI23 — les notes qu'écrit un geste INTERNE (``activity.log_archive``,
+#: ``log_restore``, ``leads_fusion.merge_leads``) : rien n'est sorti vers le client.
+PREFIXES_NOTE_GESTE_INTERNE = (
+    'Lead archivé par ', 'Lead restauré par ', 'Fusion : ', 'Deux fiches client pour ce lead')
+
+
+def est_note_de_geste_interne(activite):
+    """ACVI23 — note d'un lot (``log_bulk_note``), d'un archivage, d'une fusion ou
+    de la création d'une visite : elle ne pose pas ``first_contacted_at`` (patron
+    ``est_note_de_touche_sautee``). Une note de la commerciale reste un contact."""
+    from .visites_retour_lead import _VISITE_CHATTER
+
+    if activite is None or getattr(activite, 'kind', None) != LeadActivity.Kind.NOTE:
+        return False
+    corps = getattr(activite, 'body', '') or ''
+    return bool(getattr(activite, 'bulk', False)) or corps.startswith(
+        (*PREFIXES_NOTE_GESTE_INTERNE, _VISITE_CHATTER['creation']))
+
+
 def est_note_de_report(activite):
     """COCKPIT-CONTRÔLE B4 — cette ligne de chatter est-elle la note d'un
     REPORT de touche ou d'une MISE EN VEILLE ?

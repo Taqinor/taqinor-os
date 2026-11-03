@@ -44,7 +44,8 @@ from .fiche_funnel import (
     avancer_stage_pour_devis,
     signaler_mismatch_signe_sur_refus,
 )
-from .cadence_reperes import est_note_de_report, est_note_de_touche_sautee
+from .cadence_reperes import (
+    est_note_de_geste_interne, est_note_de_report, est_note_de_touche_sautee)
 from .leads_premier_contact import marquer_premier_contact
 
 logger = logging.getLogger(__name__)
@@ -377,7 +378,8 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     # d'un REPORT (« Rappel demandé le … reportée. ») ou d'une MISE EN VEILLE
     # n'est pas une tentative non plus — reporter la première touche d'un
     # lead neuf ne l'horodate plus et n'éteint plus l'escalade.
-    if est_note_de_touche_sautee(instance) or est_note_de_report(instance):
+    if (est_note_de_touche_sautee(instance) or est_note_de_report(instance)
+            or est_note_de_geste_interne(instance)):  # ACVI23
         return
     marquer_premier_contact(lead)
     # Décision fondateur du 24/09/2026 (relevé du 25/09) — « visite acceptée »
