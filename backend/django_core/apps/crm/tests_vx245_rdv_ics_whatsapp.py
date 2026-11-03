@@ -92,13 +92,15 @@ class Vx245ConfirmationWhatsAppTests(TestCase):
         self.assertIn(f'/crm/appointments/{self.appt.id}/ics/', resp.data['ics_url'])
         # N'envoie RIEN : aucune notification/message n'est créée par cet appel.
 
-    def test_no_phone_returns_400(self):
+    def test_no_phone_returns_409(self):
+        # ERR-ENF11-FUZZ-CRM — le numéro vient de la fiche : refus d'état.
         self.lead.telephone = ''
         self.lead.whatsapp = ''
         self.lead.save(update_fields=['telephone', 'whatsapp'])
         resp = _api(self.user).post(
             f'/api/django/crm/appointments/{self.appt.id}/confirmer-whatsapp/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data['detail'], 'Numéro de téléphone invalide.')
 
 
 class Vx245ClientDocumentsStatutKeyTests(TestCase):
