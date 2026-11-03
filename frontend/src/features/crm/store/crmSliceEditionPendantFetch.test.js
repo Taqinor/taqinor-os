@@ -88,6 +88,19 @@ describe('ALEA21 — édition pendant un fetch de liste', () => {
     expect(st.leads[0].stage).toBe(CONTACTED_STAGE)
     expect(st.leadsEditedDuringFetch).toEqual({})
   })
+
+  it('le rejected d’un fetch annulé ne lève pas la protection du suivant', () => {
+    let st = etatInitial()
+    st = reducer(st, fetchLeads.pending('fetch-1', {}))
+    st = reducer(st, fetchLeads.fulfilled({ results: [lead(1)] }, 'fetch-0', {}))
+    // « Archivés » basculé : fetch-2 part, fetch-1 est annulé (rejected suit le pending)
+    st = reducer(st, fetchLeads.pending('fetch-2', {}))
+    st = reducer(st, fetchLeads.rejected(null, 'fetch-1', {}, 'abort'))
+    st = reducer(st, updateLead.pending('upd-9', { id: 1, data: {} }))
+    st = reducer(st, updateLead.fulfilled(lead(1, CONTACTED_STAGE), 'upd-9', { id: 1, data: {} }))
+    st = reducer(st, fetchLeads.fulfilled({ results: [lead(1)] }, 'fetch-2', {}))
+    expect(st.leads.find((l) => l.id === 1).stage).toBe(CONTACTED_STAGE)
+  })
 })
 
 /* LB7 — garde d'obsolescence de `fetchLeads` (bug recon2-03 #10) : un

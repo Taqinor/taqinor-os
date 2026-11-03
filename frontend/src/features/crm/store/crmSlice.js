@@ -267,6 +267,8 @@ const crmSlice = createSlice({
         state.leadsCreatedDuringFetch = []
       })
       .addCase(fetchLeads.rejected, (state, action) => {
+        // ALEA62 — le rejected d'un fetch annulé suit le pending du suivant : même garde que fulfilled
+        if (action.meta.requestId !== state.fetchLeadsRequestId) return
         state.leadsLoading = false
         state.fetchLeadsInFlight = false
         state.error = action.payload
