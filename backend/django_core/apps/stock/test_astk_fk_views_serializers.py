@@ -297,11 +297,11 @@ class CorpsFuzzTests(TestCase):
     def test_motif_non_blanc_refuse_ce_que_strip_retire(self):
         """ERR-ENF11 (cron 41296444614) : ``tiers_nom`` = \\x85 jugé conforme."""
         import re
-        from apps.stock.schema_contraintes import MOTIF_NON_BLANC
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL as MOTIF
         for blanc in ('', ' ', '\x85', '\x1c', '\x1f', '\xa0', ' '):
             self.assertEqual(blanc.strip(), '')
-            self.assertIsNone(re.search(MOTIF_NON_BLANC, blanc), repr(blanc))
-        self.assertIsNotNone(re.search(MOTIF_NON_BLANC, ' a '))
+            self.assertIsNone(re.search(MOTIF, blanc), repr(blanc))
+        self.assertIsNotNone(re.search(MOTIF, ' a '))
 
     def test_dupliquer_kit_nom_long_et_echelle_debordante(self):
         """ERR-ENF11 (cron 41296444614) : deux DataError (500)."""

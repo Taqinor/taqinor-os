@@ -61,7 +61,8 @@ MOTIF_SANS_NUL = r'^[^\u0000]*$'
 #: CI #997 (2) — « non blanc » au sens de DRF (``str.strip``) : le validateur
 #: du schéma (regex Rust) ne compte pas ``\u001c``-``\u001f`` dans ``\s``,
 #: Python si — ``"\u001c"`` seul était publié conforme puis refusé « vide ».
-MOTIF_NON_BLANC_SANS_NUL = r'^[^\u0000]*[^\s\u0000\u001c-\u001f][^\u0000]*$'
+#: ENF11 (cron 41296444614) — idem NEL (``\u0085``), que le générateur tirait.
+MOTIF_NON_BLANC_SANS_NUL = r'^[^\u0000]*[^\s\u0000\u001c-\u001f\u0085][^\u0000]*$'
 
 
 def non_blanc(texte):

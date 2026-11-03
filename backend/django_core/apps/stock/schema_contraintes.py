@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 
-from core.champs_stricts import QUANTITE_MAX
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, QUANTITE_MAX
 
 #: Un schéma de chaîne décimale « fait de chiffres » : au moins un chiffre de
 #: chaque côté du séparateur quand il y en a un (la regex de drf-spectacular en
@@ -38,18 +38,13 @@ _MOTIF_DECIMAL = re.compile(r'\\d\{[01],(\d+)\}')
 LIGNES_NON_VIDE = {'lignes': {'minItems': 1}}
 QUANTITE_POSITIVE = {'quantite': {'minimum': 1}}
 
-#: Au moins un caractère que ``str.strip()`` garde. Le motif générique « non-espace »
-#: ne suffit pas : le générateur le lit « hors catégorie Z » et tire NEL (0x85) ou les
-#: séparateurs 0x1c-0x1f, que DRF rogne ensuite (api-fuzz-full 41296444614, ``tiers_nom``).
-MOTIF_NON_BLANC = r'[^\s\x1c-\x1f\x85]'
-
 #: Une ligne de BCF désigne un produit OU porte une désignation libre.
 PRODUIT_OU_DESIGNATION = {
     'anyOf': [
         {'type': 'object', 'required': ['produit'],
          'properties': {'produit': {'type': 'integer'}}},
         {'type': 'object', 'required': ['designation'],
-         'properties': {'designation': {'type': 'string', 'pattern': MOTIF_NON_BLANC}}},
+         'properties': {'designation': {'type': 'string', 'pattern': MOTIF_NON_BLANC_SANS_NUL}}},
     ],
 }
 
