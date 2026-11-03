@@ -79,6 +79,18 @@ class ProvisioningScriptTests(TestCase):
         # L'app role reçoit du DML mais AUCUN DDL (les migrations = owner).
         self.assertIn('GRANT SELECT, INSERT, UPDATE, DELETE', sql)
 
+    def test_agent_grants_tolerent_une_table_absente(self):
+        """ERR-AANA64-GRANT-TABLE-ABSENTE — `ia_ocr_document` n'existe que si le service IA a posé
+        son schéma : un GRANT d'un seul tenant échouait entier sur une pile neuve (exit 3, plus aucun
+        droit, `pile_locale.ps1` en échec). Test-du-test : remettre le GRANT multi-tables."""
+        sql = self._sql()
+        self.assertIn("to_regclass('public.' || quote_ident(t))", sql)
+        self.assertNotIn('GRANT SELECT ON
+    stock_produit', sql.replace('
+', '
+'))
+        self.assertIn("'ia_ocr_document'", sql)
+
     def test_documents_revert(self):
         sql = self._sql()
         self.assertIn('DROP ROLE app_rls', sql)
