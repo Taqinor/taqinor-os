@@ -19,6 +19,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from core.dates import aujourd_hui_local
 
 from apps.crm import horaires
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
@@ -159,12 +160,12 @@ class AucunChiffreInventeTests(_Base):
         MessageTemplate.objects.create(
             company=self.company, cle='j9_validite',
             corps_fr="Valable jusqu'au {date_validite}.")
-        devis = self._devis('DEV-MRY13-0002',
-                            date_validite=datetime.date(2099, 10, 15))
+        validite = aujourd_hui_local() + datetime.timedelta(days=30)
+        devis = self._devis('DEV-MRY13-0002', date_validite=validite)
         rendu = message_pour_etape(
             self._touche(template_cle='j9_validite', devis=devis),
             user=self.acteur)
-        self.assertIn('15/10/2099', rendu['message'])
+        self.assertIn(validite.strftime('%d/%m/%Y'), rendu['message'])
         self.assertEqual(rendu['placeholders_manquants'], [])
 
     def test_le_lien_est_lURL_reelle_de_la_proposition(self):
