@@ -218,7 +218,7 @@ def build(ctx):
     _valid_until = (d.get("valid_until") or "").strip() or (
         theme.valid_until(date, validity_days) if validity_days else "")
     validity_pill = (libelle_fixe(d, "res_valable_jusqu",
-                                  f"Valable jusqu'au {_valid_until}",
+                                  f"Validit&#233;&#160;: jusqu&#8217;au {_valid_until} &#183; prix r&#233;visable au-del&#224;",
                                   date=_valid_until) if _valid_until else "")
     sans_bullets = d.get("sans_bullets", []) or []
     avec_bullets = d.get("avec_bullets", []) or []

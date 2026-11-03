@@ -89,7 +89,7 @@ class Ciq331DocumentChiffre(SimpleTestCase):
         self.assertIn("95 425", p1.replace(" ", " ").replace(
             "\xa0", " "))
         self.assertIn("Retour estimé", p1)
-        self.assertIn("Valable jusqu", p1)
+        self.assertIn("prix révisable au-delà", p1)
         # CPDF7 — au dixième sur le flux servi (3 ans servis, 2,5 au flux).
         self.assertEqual(chiffres["payback_ans"], 2.5)
         self.assertIn("2,5", p1)
