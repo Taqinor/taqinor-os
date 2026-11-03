@@ -149,14 +149,14 @@ describe('VideoChantier — FR verbatim, EN/AR présents, lieux/chemins invarian
 
 describe('WhatsAppMock — FR verbatim, EN/AR présents, deeplink FR figé', () => {
   it('reprend les bulles et libellés FR mot pour mot', () => {
-    expect(whatsapp).toContain('répond généralement en quelques minutes');
+    expect(whatsapp).toContain('répond sur WhatsApp sous 1 h, 7j/7');
     expect(whatsapp).toContain('WhatsApp direct');
     expect(whatsapp).toContain('📷 Photo de la toiture');
   });
   it('contient des traductions EN et AR distinctives', () => {
-    expect(whatsapp).toContain('usually replies within a few minutes');
+    expect(whatsapp).toContain('replies on WhatsApp within 1 h, 7 days a week');
     expect(whatsapp).toContain('📷 Photo of the roof');
-    expect(whatsapp).toContain('يردّ عادةً خلال بضع دقائق');
+    expect(whatsapp).toContain('يردّ عبر واتساب خلال ساعة، 7 أيام على 7');
   });
   it('garde les chiffres + lieux identiques et le deeplink WhatsApp EN FRANÇAIS', () => {
     // Chiffres et lieu identiques dans toutes les langues (présents au moins en FR).

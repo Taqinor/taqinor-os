@@ -14,16 +14,18 @@
 import Layout from '../../layouts/Layout.astro';
 import StarRating from '../../components/StarRating.astro';
 import { NAP } from '../../lib/nap';
+import { useTranslations } from '../../i18n/utils';
 import { contactWhatsappLinks } from '../../lib/contactWhatsapp';
 import ContactP1D0F from '../../components/blocs/ContactP1D0F.astro';
 import ContactBlocCF60 from '../../components/blocs/ContactBlocCF60.astro';
 
+const t = useTranslations('ar');
 const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
 ---
 
 <Layout
   title="اتصال — تحدّث مع إنسان | Taqinor"
-  description="واتساب مباشر، معاودة اتصال هاتفي، معلومات تواصل كاملة: تحدّث مع فريق Taqinor التقني بخصوص مشروعك الشمسي. رد خلال 48 ساعة عمل."
+  description="واتساب مباشر، معاودة اتصال هاتفي، معلومات تواصل كاملة: تحدّث مع فريق Taqinor التقني بخصوص مشروعك الشمسي. رد عبر واتساب خلال ساعة، 7 أيام على 7."
   ogSlug="contact"
 >
   <div class="v2">
@@ -31,7 +33,7 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
 
     <section class="px-4 py-20 text-white">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">رد خلال 48 ساعة عمل</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">{t("cta.delai")}</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">تحدّث مع إنسان</h1>
         <p class="v2-lead cine-in mt-5 max-w-xl text-white/85 [animation-delay:240ms]">
           لا نموذج هنا: راسلنا مباشرة عبر واتساب، اتصل بنا، أو اطلب معاودة الاتصال. للحصول على

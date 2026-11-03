@@ -118,7 +118,9 @@ export const ui = {
     // surfaces laiton (en-tête / héros / mi-page / CTA collant).
     'cta.primary': 'Obtenir mon étude gratuite',
     // WJ37 — bandeau de réassurance sous le CTA principal (verbatim founder).
-    'cta.reassurance': 'Gratuit · Sans engagement · Réponse sous 24–48 h · Sur WhatsApp',
+    // WAUD2 — promesse unique (WG9).
+    'cta.delai': 'Réponse WhatsApp sous 1 h, 7j/7',
+    'cta.reassurance': 'Gratuit · Sans engagement · Réponse WhatsApp sous 1 h, 7j/7',
     'breadcrumb.label': "Fil d'Ariane",
     'breadcrumb.home': 'Accueil',
     'faq.heading': 'Questions fréquentes',
@@ -236,7 +238,8 @@ export const ui = {
     // WJ36 — THE primary CTA label, repeated verbatim on every brass surface.
     'cta.primary': 'Get my free study',
     // WJ37 — reassurance strip under the primary CTA (verbatim founder).
-    'cta.reassurance': 'Free · No obligation · Reply within 24–48 h · On WhatsApp',
+    'cta.delai': 'WhatsApp reply within 1 h, 7 days a week',
+    'cta.reassurance': 'Free · No obligation · WhatsApp reply within 1 h, 7 days a week',
     'breadcrumb.label': 'Breadcrumb',
     'breadcrumb.home': 'Home',
     'faq.heading': 'Frequently asked questions',
@@ -354,7 +357,8 @@ export const ui = {
     // WJ36 — libellé du CTA principal (verbatim sur toutes les surfaces laiton).
     'cta.primary': 'احصل على دراستي المجانية',
     // WJ37 — bandeau de réassurance sous le CTA principal (verbatim founder).
-    'cta.reassurance': 'مجاناً · دون أي التزام · رد خلال 24–48 ساعة · عبر واتساب',
+    'cta.delai': 'رد عبر واتساب خلال ساعة، 7 أيام على 7',
+    'cta.reassurance': 'مجاناً · دون أي التزام · رد عبر واتساب خلال ساعة، 7 أيام على 7',
     'breadcrumb.label': 'مسار التصفّح',
     'breadcrumb.home': 'الرئيسية',
     'faq.heading': 'الأسئلة المتكررة',

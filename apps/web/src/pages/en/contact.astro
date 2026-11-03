@@ -12,16 +12,18 @@
 import Layout from '../../layouts/Layout.astro';
 import StarRating from '../../components/StarRating.astro';
 import { NAP } from '../../lib/nap';
+import { useTranslations } from '../../i18n/utils';
 import { contactWhatsappLinks } from '../../lib/contactWhatsapp';
 import ContactP1D0F from '../../components/blocs/ContactP1D0F.astro';
 import ContactBlocCF60 from '../../components/blocs/ContactBlocCF60.astro';
 
+const t = useTranslations('en');
 const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
 ---
 
 <Layout
   title="Contact — talk to a human | Taqinor"
-  description="Direct WhatsApp, phone callback, full contact details: talk to Taqinor's technical team about your solar project. Reply within 48 business hours."
+  description="Direct WhatsApp, phone callback, full contact details: talk to Taqinor's technical team about your solar project. WhatsApp reply within 1 h, 7 days a week."
   ogSlug="contact"
 >
   <div class="v2">
@@ -29,7 +31,7 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
 
     <section class="px-4 py-20 text-white">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Reply within 48 business hours</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">{t("cta.delai")}</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">Talk to a human</h1>
         <p class="v2-lead cine-in mt-5 max-w-xl text-white/85 [animation-delay:240ms]">
           No form here: write to us directly on WhatsApp, call, or ask for a callback.
