@@ -156,6 +156,10 @@ ETAPE_APPEL_AVANT_FROID = 'etape_appel_avant_froid'
 # CADV102 (D-CADV-10) — un lead commercial ou industriel au bout de sa cadence :
 # Standby daté et « Appel trimestriel », ni Froid ni réveils.
 ETAPE_APPEL_TRIMESTRIEL = 'etape_appel_trimestriel'
+# CADV29 (D-CADV-10) — un lead commercial ou industriel sans pièce reçue :
+# « Pièces reçues ? » d'abord (``cadence_filet.pieces_ci_dues``), jamais le devis.
+ETAPE_PIECES_RECUES = 'etape_pieces_recues'
+ETAPE_PIECES_RECUES_SAUF_SUIVI = 'etape_pieces_recues_sauf_suivi'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -174,6 +178,7 @@ CODES = frozenset({
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
     LEAD_PERDU, VISITE_ABANDONNEE, ETAPE_RAPPEL_CONVENU_A_LA_DATE,
     ETAPE_PLANIFIER_DEMAIN, ETAPE_APPEL_AVANT_FROID, ETAPE_APPEL_TRIMESTRIEL,
+    ETAPE_PIECES_RECUES, ETAPE_PIECES_RECUES_SAUF_SUIVI,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -832,6 +837,19 @@ class LecteurParcage:
         self._comptes = {}
         self._exiges = {}
         self._cycles = {}
+        self._pieces = {}
+
+    def pieces(self, lead):
+        """``etat_pieces_ci`` (CADV29), en lot ; un lead non enregistré (contrôles
+        purs) n'a encore rien reçu."""
+        from .cadence_filet import etat_pieces_ci
+
+        if lead.pk is None:
+            return False, 0
+        if lead.pk not in self._pieces:
+            self._pieces.update(etat_pieces_ci(
+                {t.lead_id for t in (self.touches or ())} | {lead.pk}))
+        return self._pieces[lead.pk]
 
     def cycles(self, lead):
         """``cycles_standby(lead)``, en lot."""
@@ -944,6 +962,29 @@ def conditions_de_parcage(etape, *, ordres=None, lecteur=None):
     return conditions
 
 
+#: CADV29 — ce que devient la promesse du devis quand « Pièces reçues ? » passe avant.
+_PIECES_A_LA_PLACE_DU_DEVIS = {
+    ETAPE_DEVIS_DEMAIN: ETAPE_PIECES_RECUES,
+    ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: ETAPE_PIECES_RECUES_SAUF_SUIVI,
+}
+
+
+def _pieces_avant_devis(etape, codes, lecteur):
+    """CADV29 — la promesse dit ce que le moteur fera (``pieces_ci_dues``). La
+    lecture n'a lieu que pour un lead pro à qui le devis serait promis."""
+    from .cadence_config import cle_de
+    from .cadence_filet import pieces_ci_dues
+    from .cadence_messages import SEGMENTS_PRO
+
+    lead = getattr(etape, 'lead', None)
+    if (getattr(lead, 'type_installation', None) not in SEGMENTS_PRO
+            or not _PIECES_A_LA_PLACE_DU_DEVIS.keys() & set(codes)):
+        return codes
+    if not pieces_ci_dues(lead, cle_de(etape), *lecteur.pieces(lead)):
+        return codes
+    return [_PIECES_A_LA_PLACE_DU_DEVIS.get(code, code) for code in codes]
+
+
 def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None,
                      lecteur=None):
     """``{cle_de_reponse: [codes d'effet]}`` pour chaque réponse que le
@@ -1015,7 +1056,7 @@ def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None,
         if cle in conditions and (DERNIERE_FROID_REVEILS in codes
                                   or ETAPE_APPEL_TRIMESTRIEL in codes):
             codes = [ETAPE_APPEL_AVANT_FROID]
-        promesses[cle] = codes
+        promesses[cle] = _pieces_avant_devis(etape, codes, lecteur)
     return promesses
 
 

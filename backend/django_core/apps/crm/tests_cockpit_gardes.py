@@ -1,7 +1,7 @@
 """COCKPIT-CONTRÔLE B4 — deux gardes.
 
 (a) ``sauter/`` sur une TÂCHE (préparer le devis, décider la suite, planifier
-    la visite, devis modifié, question de prix) → 400 ``{"erreurs":
+    la visite, devis modifié, question de prix) → 409 ``{"erreurs":
     {"etape": …}}`` et RIEN n'est écrit. L'écran masquait le bouton ; le
     serveur, lui, laissait tout passer.
 (b) La note écrite par un REPORT (« Rappel demandé le … — touche « … »
@@ -101,7 +101,7 @@ class SauterUneTacheTests(_Base):
             with self.subTest(cle=cle, libelle=libelle):
                 resp = self.api.post(f'{URL}{etape.pk}/sauter/',
                                      {'note': 'essai'}, format='json')
-                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.status_code, 409, resp.data)
                 self.assertEqual(resp.data,
                                  {'erreurs': {
                                      'etape': MESSAGE_TACHE_NON_SAUTABLE}})

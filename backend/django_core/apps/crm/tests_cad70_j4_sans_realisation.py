@@ -88,7 +88,7 @@ class CatalogueVideTests(_Base):
     def test_le_clic_whatsapp_est_refuse_en_nommant_la_preuve(self):
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{self.etape.pk}/whatsapp/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('preuve', resp.data['erreurs'])
         self.assertIn('aucune réalisation publiée',
                       resp.data['erreurs']['preuve'])

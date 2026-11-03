@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSelector } from 'react-redux'
 import crmApi from '../../api/crmApi'
 import { Card, CardContent, Badge, Button, Spinner } from '../../ui'
 import ReglesAttributionEditor from '../parametres/ReglesAttributionEditor'
@@ -76,7 +77,57 @@ function ReglagesAttribution({ equipes, onSaveReglages }) {
   )
 }
 
+// CADV105 (D-CADV-7) — la file « À prendre » : tout membre de l'équipe voit les
+// leads libres et s'en attribue un LUI-MÊME (POST crm/dispatch/<id>/attribuer/
+// avec son propre id) ; le second arrivé reçoit 409 « Déjà pris ».
+function FileAPrendre({ leads, monId, onPris, onErreur }) {
+  const [pris, setPris] = useState(null)
+  const [enCours, setEnCours] = useState(null)
+
+  const prendre = async (l) => {
+    if (enCours != null || monId == null) return
+    setEnCours(l.id)
+    try {
+      await crmApi.attribuerLead(l.id, monId)
+      setPris(l.nom)
+      onErreur(null)
+    } catch (e) {
+      onErreur(e?.response?.status === 409
+        ? 'Déjà pris'
+        : apiErrorMessage(e, 'La prise du lead a échoué.'))
+    }
+    try { await onPris() } finally { setEnCours(null) }
+  }
+
+  return (
+    <Card data-testid="file-a-prendre"><CardContent className="space-y-2 pt-4">
+      <h2 className="text-base font-semibold text-foreground">À prendre</h2>
+      {pris && <p role="status" className="text-sm text-foreground">Pris par vous : {pris}</p>}
+      {leads.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucun lead à prendre</p>
+      ) : (
+        <ul className="space-y-2">
+          {leads.map((l) => (
+            <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-2">
+              <span className="min-w-0 text-sm text-foreground">
+                <strong>{l.nom}</strong>
+                {l.ville ? ` · ${l.ville}` : ''}
+                {l.type_installation_label ? ` · ${l.type_installation_label}` : ''}
+              </span>
+              <Button type="button" size="sm" disabled={enCours != null || monId == null}
+                      onClick={() => prendre(l)}>
+                Je le prends
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </CardContent></Card>
+  )
+}
+
 export default function AttributionLeadsPage() {
+  const monId = useSelector((s) => s.auth?.user?.id ?? null)
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
@@ -204,6 +255,10 @@ export default function AttributionLeadsPage() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {data?.equipe?.a_prendre && (
+        <FileAPrendre leads={data.leads ?? []} monId={monId} onPris={charger} onErreur={setMessage} />
       )}
 
       {lead && (

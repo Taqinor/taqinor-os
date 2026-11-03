@@ -73,6 +73,15 @@ import EquipeSection from './EquipeSection'
 import AttributionLeadsPage from '../crm/AttributionLeadsPage'
 import CockpitEquipePage from '../crm/CockpitEquipePage'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+
+// CADV105 — l'écran lit l'utilisateur connecté (« Je le prends »).
+const rendreAttribution = () => render(
+  <Provider store={configureStore({ reducer: { auth: (state = { user: { id: 1 } }) => state } })}>
+    <AttributionLeadsPage />
+  </Provider>,
+)
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -253,7 +262,7 @@ const DISPATCH = JSON.parse(readFileSync(join(
 describe('AttributionLeadsPage (attribution des leads)', () => {
   it('affiche le lead du contrat et ses membres, le proposé sélectionné', async () => {
     getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
-    render(<AttributionLeadsPage />)
+    rendreAttribution()
     expect(await screen.findByText('Karim Tazi')).toBeInTheDocument()
     expect(screen.getByText('1 en attente')).toBeInTheDocument()
     expect(screen.getByText(/Règle : ville Casablanca/)).toBeInTheDocument()
@@ -264,7 +273,7 @@ describe('AttributionLeadsPage (attribution des leads)', () => {
   it('Entrée attribue au proposé ; → puis Entrée attribue au suivant', async () => {
     getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
     const user = userEvent.setup()
-    render(<AttributionLeadsPage />)
+    rendreAttribution()
     await screen.findByText('Karim Tazi')
     await user.keyboard('{Enter}')
     await waitFor(() => expect(attribuerLead).toHaveBeenCalledWith(1712, 4))
@@ -277,31 +286,31 @@ describe('AttributionLeadsPage (attribution des leads)', () => {
   it('un clic sur un membre attribue à ce membre', async () => {
     getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
     const user = userEvent.setup()
-    render(<AttributionLeadsPage />)
+    rendreAttribution()
     await user.click(await screen.findByRole('option', { name: /Amine/ }))
     await waitFor(() => expect(attribuerLead).toHaveBeenCalledWith(1712, 5))
   })
 
   it('état vide quand aucun lead n’attend', async () => {
     getDispatch.mockResolvedValue(reponseContrat('crm', 'dispatch_leads', 'exemple_file_vide'))
-    render(<AttributionLeadsPage />)
+    rendreAttribution()
     expect(await screen.findByText('Aucun lead en attente')).toBeInTheDocument()
     expect(attribuerLead).not.toHaveBeenCalled()
   })
 
   it('sans équipe dirigée : le dit au lieu d’une file vide', async () => {
     getDispatch.mockResolvedValue(reponseContrat('crm', 'dispatch_leads', 'exemple_vide'))
-    render(<AttributionLeadsPage />)
+    rendreAttribution()
     expect(await screen.findByText(/ne dirigez aucune équipe commerciale/)).toBeInTheDocument()
   })
 
   it('panneau de réglages visible avec equipes_reglables, absent sinon', async () => {
     getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
-    render(<AttributionLeadsPage />)
+    rendreAttribution()
     expect(await screen.findByRole('button', { name: /Réglages de l’attribution/ })).toBeInTheDocument()
     cleanup()
     getDispatch.mockResolvedValue(reponseContrat('crm', 'dispatch_leads', 'exemple_vide'))
-    render(<AttributionLeadsPage />)
+    rendreAttribution()
     await screen.findByText(/ne dirigez aucune équipe commerciale/)
     expect(screen.queryByRole('button', { name: /Réglages de l’attribution/ })).toBeNull()
   })
@@ -309,7 +318,7 @@ describe('AttributionLeadsPage (attribution des leads)', () => {
   it('règle à choix multiples : deux types cochés envoyés en tableau', async () => {
     getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
     const user = userEvent.setup()
-    render(<AttributionLeadsPage />)
+    rendreAttribution()
     await user.click(await screen.findByRole('button', { name: /Réglages de l’attribution/ }))
     await user.click(await screen.findByRole('button', { name: /Ajouter une règle/ }))
     await user.click(screen.getByRole('checkbox', { name: 'Résidentiel' }))
@@ -326,7 +335,7 @@ describe('AttributionLeadsPage (attribution des leads)', () => {
   it('le délai enregistré passe par saveReglagesDispatch', async () => {
     getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
     const user = userEvent.setup()
-    render(<AttributionLeadsPage />)
+    rendreAttribution()
     await user.click(await screen.findByRole('button', { name: /Réglages de l’attribution/ }))
     const champ = await screen.findByLabelText(/Délai avant attribution automatique/)
     await user.clear(champ)
