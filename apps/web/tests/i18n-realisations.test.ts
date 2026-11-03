@@ -345,3 +345,22 @@ describe('WAUD14 (reste) — /ar/realisations ne promet pas un suivi sur chaque 
     expect(src).not.toMatch(/كل تركيبة تستفيد/);
   });
 });
+
+describe('WAUD14 (reste) — /realisations : ni la meta description ni le JSON-LD ne promettent le « temps réel »', () => {
+  const TEMPS_REEL = /temps r[ée]el|real[- ]time|الوقت الحقيقي|الزمن الحقيقي/i;
+  for (const [loc, f] of [
+    ['FR', '../src/pages/realisations/index.astro'],
+    ['EN', '../src/pages/en/realisations/index.astro'],
+    ['AR', '../src/pages/ar/realisations/index.astro'],
+  ] as const) {
+    it(`${loc} : description Layout et description ItemList sans promesse de temps réel`, () => {
+      const s = readSrc(f);
+      const meta = s.match(/<Layout[\s\S]*?description="([^"]*)"/);
+      expect(meta, 'description Layout trouvée').not.toBeNull();
+      expect(meta![1]).not.toMatch(TEMPS_REEL);
+      const ld = s.match(/(?:description:\s*|\n\s*)'([^'\n]*(?:visitables|viewable|قابلة للزيارة)[^'\n]*)'/);
+      expect(ld, 'description JSON-LD trouvée').not.toBeNull();
+      expect(ld![1]).not.toMatch(TEMPS_REEL);
+    });
+  }
+});

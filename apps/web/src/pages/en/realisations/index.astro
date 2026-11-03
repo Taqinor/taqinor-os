@@ -43,7 +43,7 @@ const itemListJsonLd = realisationsItemListJsonLd(
   L,
   Astro.site,
   'Taqinor solar installations — viewable, tracked production',
-  'Solar installations actually fitted by Taqinor, viewable on request, with real-time production monitoring.',
+  'Solar installations actually fitted by Taqinor, viewable on request.',
   (r) => `Solar installation${r.kwc ? ` ${r.kwc}` : ''} in ${r.ville} — ref. ${r.ref}`,
 );
 import RealisationsIndexSection9BE4 from '../../../components/blocs/RealisationsIndexSection9BE4.astro';
@@ -54,7 +54,7 @@ import PourquoiTaqinorBloc4D73 from '../../../components/blocs/PourquoiTaqinorBl
 
 <Layout
   title="Our solar projects in Morocco — tracked installations | Taqinor"
-  description="The solar installations actually fitted by Taqinor: villas in Casablanca, El Jadida and Nouaceur, power, the equipment on the roof and real-time production monitoring. Detailed case studies."
+  description="The solar installations actually fitted by Taqinor: villas in Casablanca, El Jadida and Nouaceur, power and the equipment on the roof. Detailed case studies."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />

@@ -43,7 +43,7 @@ const itemListJsonLd = realisationsItemListJsonLd(
   L,
   Astro.site,
   'تركيبات تاكينور الشمسية — قابلة للزيارة، إنتاج مُتابَع',
-  'التركيبات الشمسية التي ركّبتها تاكينور فعلاً، قابلة للزيارة عند الطلب، مع متابعة الإنتاج في الوقت الحقيقي.',
+  'التركيبات الشمسية التي ركّبتها تاكينور فعلاً، قابلة للزيارة عند الطلب.',
   (r) => `تركيب شمسي${r.kwc ? ` ${r.kwc}` : ''} في ${r.ville} — المرجع ${r.ref}`,
 );
 import RealisationsIndexSection9BE4 from '../../../components/blocs/RealisationsIndexSection9BE4.astro';
@@ -54,7 +54,7 @@ import PourquoiTaqinorBloc660A from '../../../components/blocs/PourquoiTaqinorBl
 
 <Layout
   title="إنجازاتنا الشمسية بالمغرب — تركيبات مُتابَعة | Taqinor"
-  description="التركيبات الشمسية التي ركّبتها تاكينور فعلاً: فيلات بالدار البيضاء والجديدة والنواصر، القدرة، العتاد فوق السطح ومتابعة الإنتاج في الوقت الحقيقي. دراسات حالة مفصّلة."
+  description="التركيبات الشمسية التي ركّبتها تاكينور فعلاً: فيلات بالدار البيضاء والجديدة والنواصر، القدرة والعتاد فوق السطح. دراسات حالة مفصّلة."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />
