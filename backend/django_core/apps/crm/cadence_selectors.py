@@ -425,8 +425,12 @@ def chaine_commerciale(user, company, *, limite=CHAINE_COMMERCIALE_LIMITE):
         ligne['prochaine_le'] or '', ligne['id']))
 
     # ── 2. Visites à venir ──────────────────────────────────────────────────
+    # ACVI65 — l'état se lit dans la visite : ``visite_effectuee`` est un
+    # booléen de LEAD, jamais remis, qui masquait toute visite suivante.
+    from apps.visites.selectors import lead_ids_visite_a_venir
     visites = list(
-        actifs.filter(visite_prevue_le__gte=today, visite_effectuee=False)
+        actifs.filter(visite_prevue_le__gte=today,
+                      pk__in=lead_ids_visite_a_venir(company.pk, today))
         .order_by('visite_prevue_le', 'pk')
         .only('id', 'nom', 'prenom', 'telephone', 'visite_prevue_le',
               'company_id'))
