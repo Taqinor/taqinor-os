@@ -240,3 +240,9 @@ describe('WAUD9 — cumul de flotte daté du vrai relevé', () => {
     }
   });
 });
+
+describe('WAUD40 — pas de « ligne par ligne » sans chiffre par ligne', () => {
+  it.each(['impact-taqinor', 'en/impact-taqinor', 'ar/impact-taqinor', 'production-mesuree'])('%s', (p) => {
+    expect(read(`../src/pages/${p}.astro`)).not.toMatch(/ligne par ligne|line by line|سطراً بسطر/);
+  });
+});
