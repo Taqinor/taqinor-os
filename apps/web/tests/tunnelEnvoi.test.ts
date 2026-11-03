@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { creerContexte, type ContexteTunnel } from '../src/lib/tunnel/contexte';
 import { creerDom } from '../src/lib/tunnel/dom';
 import { creerEtat, type LocaleTunnel } from '../src/lib/tunnel/etat';
-import { installerEnvoi } from '../src/lib/tunnel/envoi';
+import { installerEnvoi, SEUIL_SORTIE_CACHEE_MS } from '../src/lib/tunnel/envoi';
 
 vi.setConfig({ testTimeout: 30_000 }); // jsdom sous charge (suite complète en parallèle)
 const LOCALES: LocaleTunnel[] = ['fr', 'en', 'ar'];
@@ -138,6 +138,7 @@ describe.each(LOCALES)('RWEB17-M8 — envoi et sortie · %s', (locale) => {
   });
 
   it('modale de sortie : une seule fois, jamais après envoi, Échap rend le focus, piège de focus', () => {
+    vi.useFakeTimers();
     const { etat, appels } = monter(locale);
     etat.step = 1;
     etat.lastKwc = 9.5;
@@ -146,6 +147,9 @@ describe.each(LOCALES)('RWEB17-M8 — envoi et sortie · %s', (locale) => {
     ctxMaybe(() => document.dispatchEvent(new window.Event('visibilitychange')), false);
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
     document.dispatchEvent(new window.Event('visibilitychange'));
+    expect(modale.hidden).toBe(true);
+    vi.advanceTimersByTime(SEUIL_SORTIE_CACHEE_MS);
+    vi.useRealTimers();
     expect(modale.hidden).toBe(false);
     expect(etat.exitShown).toBe(true);
     expect(appels).toContain('beacon:contact:abandoned');
@@ -161,6 +165,30 @@ describe.each(LOCALES)('RWEB17-M8 — envoi et sortie · %s', (locale) => {
     // une seule fois : un second déclenchement ne rouvre pas
     document.dispatchEvent(new window.Event('visibilitychange'));
     expect(modale.hidden).toBe(true);
+  });
+
+  it('WAUD33 — retour avant le seuil : rien ; écran facture : jamais, formulaire intact', () => {
+    vi.useFakeTimers();
+    const { etat } = monter(locale);
+    etat.step = 1;
+    etat.lastKwc = 9.5;
+    etat.revealed = true;
+    const modale = document.getElementById('mt-exit') as HTMLElement;
+    const basculer = (v: string) => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: v });
+      document.dispatchEvent(new window.Event('visibilitychange'));
+    };
+    basculer('hidden');
+    vi.advanceTimersByTime(SEUIL_SORTIE_CACHEE_MS - 1);
+    basculer('visible');
+    vi.advanceTimersByTime(SEUIL_SORTIE_CACHEE_MS * 2);
+    expect(modale.hidden).toBe(true);
+    etat.revealed = false;
+    basculer('hidden');
+    vi.advanceTimersByTime(SEUIL_SORTIE_CACHEE_MS * 2);
+    expect(modale.hidden).toBe(true);
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    vi.useRealTimers();
   });
 
   it('lien WhatsApp de sortie : numéro trop court bloqué avec le message de la langue', () => {

@@ -96,6 +96,9 @@ export interface SectionSortie {
   closeExit(): void;
 }
 
+/** WAUD33 — durée d'absence (onglet caché) avant d'ouvrir la fenêtre de sortie. */
+export const SEUIL_SORTIE_CACHEE_MS = 20_000;
+
 const appelerCrochet = (ctx: ContexteTunnel, nom: string, ...args: unknown[]) => ctx.crochets.appeler(nom, ...args);
 const inscrire = (ctx: ContexteTunnel, section: object) => {
   for (const [nom, fn] of Object.entries(section)) ctx.crochets.installer(nom, fn as (...a: any[]) => any);
@@ -384,8 +387,15 @@ export function installerSortie(ctx: ContexteTunnel, doc: Document): SectionSort
     if (!e.relatedTarget && (e as MouseEvent).clientY <= 0) maybeShowExit();
   });
   // mobile : l'onglet passe en arrière-plan
+  // WAUD33 — changer d'appli pour lire sa facture n'est pas partir : la fenêtre attend
+  // SEUIL_SORTIE_CACHEE_MS d'absence et ne s'ouvre jamais sur l'écran facture.
+  let minuterieSortie: ReturnType<typeof setTimeout> | null = null;
   doc.addEventListener('visibilitychange', () => {
-    if (doc.visibilityState === 'hidden') maybeShowExit();
+    if (minuterieSortie !== null) { clearTimeout(minuterieSortie); minuterieSortie = null; }
+    if (doc.visibilityState !== 'hidden') return;
+    const surEcranFacture = ctx.etat.step > 0 && !ctx.etat.revealed;
+    if (surEcranFacture) return;
+    minuterieSortie = setTimeout(() => { minuterieSortie = null; maybeShowExit(); }, SEUIL_SORTIE_CACHEE_MS);
   });
   $('mt-exit-close')?.addEventListener('click', () => closeExit());
   exitModal?.addEventListener('click', (e) => { if (e.target === exitModal) closeExit(); });
