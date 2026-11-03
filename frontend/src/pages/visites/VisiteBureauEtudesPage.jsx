@@ -417,6 +417,10 @@ function DetailVisite({ visite, onRetour, onChanged }) {
           )}
         </div>
       )}
+      {/* ACVI67 — une validation faite par erreur se rouvre d'ici. */}
+      {visite.statut === 'validee' && (
+        <Button type="button" variant="outline" onClick={() => setRenvoiOuvert(true)}>Renvoyer</Button>
+      )}
       {/* AGR422 — l'atelier 3D se construit depuis la TOITURE : pour un relevé
           du point d'eau il n'y a aucun toit à calepiner, le lien est masqué. */}
       {visite.statut === 'validee' && !estVisitePointEau(visite) && (
@@ -461,7 +465,11 @@ export default function VisiteBureauEtudesPage() {
     visitesApi.getVisites({})
       .then((res) => {
         const rows = res.data?.results ?? res.data ?? []
-        setVisites(rows.filter((v) => v.statut === 'terminee'))
+        // ACVI67 — à revoir d'abord, puis les validées (renvoi possible).
+        setVisites([
+          ...rows.filter((v) => v.statut === 'terminee'),
+          ...rows.filter((v) => v.statut === 'validee'),
+        ])
       })
       .catch(() => toast.error('Chargement des visites impossible.'))
       .finally(() => setLoading(false))
@@ -513,7 +521,9 @@ export default function VisiteBureauEtudesPage() {
                   <p className="truncate text-sm font-medium">{v.lead_nom}</p>
                   <p className="text-xs text-muted-foreground">{v.ville}</p>
                 </div>
-                <Badge tone={v.complet ? 'success' : 'neutral'}>À revoir</Badge>
+                <Badge tone={v.complet ? 'success' : 'neutral'}>
+                  {v.statut === 'validee' ? STATUT_VISITE_LABEL.validee : 'À revoir'}
+                </Badge>
               </Card>
             </li>
           ))}

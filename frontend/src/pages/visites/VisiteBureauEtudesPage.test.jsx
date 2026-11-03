@@ -72,10 +72,10 @@ beforeEach(() => {
 })
 
 describe('VisiteBureauEtudesPage — VT10', () => {
-  it('ne liste que les visites `terminee` (champ statut déjà fourni par la liste)', async () => {
+  it('liste les visites `terminee` puis `validee` (ACVI67), jamais les autres', async () => {
     render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
     expect(await screen.findByText('Lead A')).toBeInTheDocument()
-    expect(screen.queryByText('Lead B')).not.toBeInTheDocument()
+    expect(screen.getByText('Lead B')).toBeInTheDocument()
     expect(screen.queryByText('Lead C')).not.toBeInTheDocument()
   })
 
@@ -260,6 +260,23 @@ describe('VisiteBureauEtudesPage — CIQ609 (gabarit ci)', () => {
 describe('VisiteBureauEtudesPage — renvoi au contrat serveur', () => {
   const contrat = documentContrat('visites', 'visite_terrain')
   const VISITE = contrat.exemple
+
+  it('ACVI67 — une visite validée se renvoie, sans bouton « Valider »', async () => {
+    getVisite.mockResolvedValue({ data: { ...VISITE, statut: 'validee' } })
+    renvoyerVisite.mockResolvedValue({ data: {} })
+    const slot = VISITE.checklist[0].slots[0]
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead B'))
+    await user.click(await screen.findByRole('button', { name: /renvoyer/i }))
+    expect(screen.queryByRole('button', { name: /valider \(feu vert\)/i })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('checkbox', { name: `${VISITE.checklist[0].libelle} — ${slot.libelle}` }))
+    await user.type(screen.getByLabelText(/Motif/), 'Validée par erreur')
+    await user.click(screen.getByRole('button', { name: /^renvoyer$/i }))
+    expect(renvoyerVisite).toHaveBeenCalledWith(VISITE.id, expect.objectContaining({
+      photos: slot.photos.map((p) => p.id), motif: 'Validée par erreur',
+    }))
+  })
 
   it('envoie les ids des photos de l’emplacement choisi et {categorie, code} des mesures', async () => {
     getVisite.mockResolvedValue({ data: { ...VISITE, statut: 'terminee' } })
