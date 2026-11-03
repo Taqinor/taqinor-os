@@ -40,8 +40,9 @@ def rapport_attribution(request):
     # 400 nommant le paramètre ; ``parse_date`` levait ValueError (500).
     debut = date_param(request, 'debut')
     fin = date_param(request, 'fin')
-    from .selectors import attribution_leads
-    return Response(attribution_leads(user.company, debut=debut, fin=fin))
+    from .selectors import attribution_leads, leads_en_portee
+    return Response(attribution_leads(user.company, debut=debut, fin=fin,
+                                      leads=leads_en_portee(user)))
 
 
 #: Plafond d'une colonne ``PositiveIntegerField`` (int4 Postgres).
