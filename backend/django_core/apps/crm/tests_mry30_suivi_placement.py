@@ -286,7 +286,7 @@ class SuiviActionTests(_Base):
         resp = self._get(date_debut='2026-09-13', date_fin='2026-09-07')
         self.assertEqual(resp.status_code, 409)
         # Clés du `CrmSuiviConflit` déclaré (cadence_views.suivi).
-        self.assertEqual(set(resp.data), {'date_fin', 'error'})
+        self.assertEqual(set(resp.data), {'detail', 'date_fin', 'error'})
 
     def test_un_responsable_negatif_est_refuse_sans_erreur_serveur(self):
         resp = self._get(owner='-5')

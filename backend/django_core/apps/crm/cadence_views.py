@@ -363,7 +363,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                    responses={200: sd.OBJ,
                               409: inline_serializer('CrmSuiviConflit', {  # ENF11 : écart > 62 j = 409 d'état
                                   # Corps réel : le dict levé par ConflitEtat
-                                  # (clé `date_fin`) + l'enveloppe `error`.
+                                  # (clé `date_fin`, `detail` lisible ACVI76) + l'enveloppe `error`.
+                                  'detail': drf_serializers.CharField(),
                                   'date_fin': drf_serializers.CharField(),
                                   'error': drf_serializers.DictField()})})
     @action(detail=False, methods=['get'], url_path='suivi',
