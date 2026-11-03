@@ -8,7 +8,7 @@ import {
 import { formatDate } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import {
-  errMessage, toutesLesPages, unpage, useChargementGed, actionAvecToast,
+  errMessage, toutesLesPages, useChargementGed, actionAvecToast,
 } from './shared.js'
 import { ChampDocument } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
@@ -46,11 +46,11 @@ export default function PlanificationsPage() {
       // ADOC31 — toutes les pages, jamais la seule première.
       toutesLesPages(gedApi.getPlanificationsDocument),
       toutesLesPages(gedApi.getDocumentsList),
-      gedApi.getUsers(),
+      toutesLesPages(gedApi.getUsers),
     ])
-    setPlanifications(unpage(p.data))
-    setDocuments(unpage(docs.data))
-    setUsers(unpage(u.data))
+    setPlanifications(p.data)
+    setDocuments(docs.data)
+    setUsers(u.data)
   }, 'Impossible de charger les planifications.')
 
   const columns = useMemo(() => [

@@ -41,11 +41,6 @@ const StatutDisposition = statusPill({
 
 const ACTION_DISPOSITION_LABELS = { detruire: 'Détruire', archiver: 'Archiver' }
 
-function unpage(data) {
-  if (Array.isArray(data)) return data
-  return data?.results ?? []
-}
-
 export default function RetentionPage() {
   const [politiques, setPolitiques] = useState([])
   const [echus, setEchus] = useState([])
@@ -84,15 +79,15 @@ export default function RetentionPage() {
         gedApi.getQuotaEtat(),
         toutesLesPages(gedApi.getDemandesDisposition),
       ])
-      setPolitiques(unpage(p.data))
-      setEchus(unpage(e.data))
-      setArchivages(unpage(a.data))
-      setHolds(unpage(h.data))
-      setPartages(unpage(pa.data))
-      setJournal(unpage(j.data))
-      setDocuments(unpage(docs.data))
+      setPolitiques(p.data)
+      setEchus(e.data)
+      setArchivages(a.data)
+      setHolds(h.data)
+      setPartages(pa.data)
+      setJournal(j.data)
+      setDocuments(docs.data)
       setQuota(q.data)
-      setDispositions(unpage(disp.data))
+      setDispositions(disp.data)
     } catch (err) {
       setError(errMessage(err, 'Impossible de charger la rétention.'))
     } finally {

@@ -9,7 +9,7 @@ import {
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import {
-  errMessage, toutesLesPages, unpage, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
+  errMessage, toutesLesPages, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
 } from './shared.js'
 import { PiedFermer } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
@@ -66,12 +66,12 @@ export default function ReglesDossierPage() {
       toutesLesPages(gedApi.getReglesDossier),
       toutesLesPages(gedApi.getDossiers),
       toutesLesPages(gedApi.getTags),
-      gedApi.getUsers(),
+      toutesLesPages(gedApi.getUsers),
     ])
-    setRegles(unpage(r.data))
-    setDossiers(unpage(d.data))
-    setTags(unpage(t.data))
-    setUsers(unpage(u.data))
+    setRegles(r.data)
+    setDossiers(d.data)
+    setTags(t.data)
+    setUsers(u.data)
   }, 'Impossible de charger les règles de dossier.')
 
   const columns = useMemo(() => [
@@ -290,7 +290,7 @@ function JournalDialog({ regle, onClose }) {
 
   useEffect(() => {
     gedApi.getExecutionsRegleDossier(regle.id)
-      .then((res) => setExecutions(unpage(res.data)))
+      .then((res) => setExecutions(res.data))
       .catch((err) => setError(errMessage(err, 'Impossible de charger le journal.')))
       .finally(() => setLoading(false))
   }, [regle.id])

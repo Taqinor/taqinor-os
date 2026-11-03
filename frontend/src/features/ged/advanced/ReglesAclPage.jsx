@@ -8,7 +8,7 @@ import {
 import gedApi from '../../../api/gedApi'
 import rolesApi from '../../../api/rolesApi'
 import {
-  errMessage, toutesLesPages, unpage, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
+  errMessage, toutesLesPages, resumeCondition, useChargementGed, actionAvecToast, actionsActivation,
 } from './shared.js'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
 import ConditionOperateurValeur from './ConditionOperateurValeur.jsx'
@@ -53,10 +53,10 @@ export default function ReglesAclPage() {
     const [r, ro] = await Promise.all([
       // ADOC31 — toutes les pages, jamais la seule première.
       toutesLesPages(gedApi.getReglesAclMetadonnee),
-      rolesApi.getRoles(),
+      toutesLesPages(rolesApi.getRoles),
     ])
-    setRegles(unpage(r.data))
-    setRoles(unpage(ro.data))
+    setRegles(r.data)
+    setRoles(ro.data)
   }, 'Impossible de charger les règles ACL.')
 
   const columns = useMemo(() => [

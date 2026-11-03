@@ -32,11 +32,6 @@ import DialogueFormulaire from './DialogueFormulaire.jsx'
    plutôt que deviné.
    ========================================================================== */
 
-function unpage(data) {
-  if (Array.isArray(data)) return data
-  return data?.results ?? []
-}
-
 export default function ChecklistPage() {
   const [folders, setFolders] = useState([])
   const [cabinets, setCabinets] = useState([])
@@ -71,14 +66,14 @@ export default function ChecklistPage() {
         gedApi.getStampsDisponibles(),
         toutesLesPages(gedApi.getDocumentsList),
       ])
-      setFolders(unpage(f.data))
-      setCabinets(unpage(c.data))
-      setExigences(unpage(ex.data))
-      setDemandes(unpage(de.data))
-      setOcrEnAttente(unpage(ocr.data))
-      setTampons(unpage(ta.data))
+      setFolders(f.data)
+      setCabinets(c.data)
+      setExigences(ex.data)
+      setDemandes(de.data)
+      setOcrEnAttente(ocr.data)
+      setTampons(ta.data)
       setStampsDisponibles(sd.data ?? [])
-      setDocuments(unpage(docs.data))
+      setDocuments(docs.data)
     } catch (err) {
       setError(errMessage(err, 'Impossible de charger la GED avancée.'))
     } finally {
@@ -493,7 +488,7 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
     setSaving(true)
     try {
       const versions = await toutesLesPages(gedApi.getVersions, { document: documentId })
-      const rows = unpage(versions.data)
+      const rows = versions.data
       const derniere = rows.reduce(
         (best, v) => (!best || v.version > best.version ? v : best), null)
       if (!derniere) { toast.error('Ce document n’a aucune version.'); return }
