@@ -103,6 +103,31 @@ class ParcoursPA1Tests(unittest.TestCase):
                     f'{entree["champ"]} : écrivain introuvable '
                     f'{ecrivain["source"]}')
 
+    def test_la_table_suit_le_code(self):
+        # ACVI75 — les corrections du constat C-ACVI-132 ne reviennent pas.
+        etapes = {e['id']: e for e in TABLE['etapes']}
+        cadence = etapes['cadence_contact']
+        self.assertNotIn('notifier_relances_dues_task',
+                         cadence['declencheur']['source'])
+        self.assertIn('demarrer_cadence_contact', cadence['fonction_entree'])
+        self.assertIn('planifier_visite',
+                      etapes['planification_visite']['fonction_entree'])
+        self.assertTrue({'changement_etape', 'lead_perdu', 'parcage',
+                         'archivage_fusion', 'terrain',
+                         'renvoi_visite'} <= set(etapes))
+        ecrivains = {e['champ']: e['ecrivains']
+                     for e in TABLE['provenance']['ecrivains_auto']}
+        sources = [e['source'] for e in ecrivains['visite_effectuee']]
+        self.assertIn(
+            'apps/crm/receivers_cadence.py::_suivi_on_visite_terminee', sources)
+        self.assertNotIn(
+            'apps/crm/receivers_cadence.py::_retour_lead_on_visite_validee',
+            sources)
+        self.assertTrue({'visite_prevue_le', 'releve_ci',
+                         'point_eau'} <= set(ecrivains))
+        self.assertIn('apps/crm/leads_attribution.py::default_responsable_for',
+                      [e['source'] for e in ecrivains['owner']])
+
     def test_les_references_pointent_des_fichiers_existants(self):
         self.assertTrue(TABLE['references'])
         for chemin in TABLE['references']:
