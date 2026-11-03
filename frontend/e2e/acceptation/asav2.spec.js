@@ -4,6 +4,7 @@
 // même jour : `_enregistrement.ecrire` fusionne). Données posées par l'API (`page.request`) ou, pour
 // ce que l'API ne sait pas écrire (horodatage SLA, date de réception), par `manage.py shell`
 // (`executerDansDjango`, E2E_DJANGO_EXEC="docker exec <conteneur django>").
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -13,7 +14,7 @@ import {
   API_DJANGO, assurerSessionPage, executerDansDjango, isoDansJours, lireJson, uniq, telephoneMobileUnique,
 } from '../helpers.js'
 
-test.describe.configure({ timeout: 300_000 })
+test.describe.configure({ timeout: 1_000_000 })
 const ECRAN = { width: 1920, height: 1080 }
 test.use({ viewport: ECRAN, actionTimeout: 60_000 })
 const etape = groupe('ASAV', ['ASAV115', 'ASAV116', 'ASAV117', 'ASAV118', 'ASAV119', 'ASAV121', 'ASAV122'])
@@ -27,6 +28,16 @@ function py(code) {
   const sortie = executerDansDjango(code)
   const m = String(sortie).match(/@@JSON@@(.*)/)
   if (!m) throw new Error(`sortie Django sans JSON : ${String(sortie).slice(-400)}`)
+  return JSON.parse(m[1])
+}
+
+// `audit_coherence` sur toute la société démo dépasse les 120 s de `executerDansDjango` : délai large.
+function pyLong(code) {
+  const [cmd, ...args] = (process.env.E2E_DJANGO_EXEC || 'docker compose exec -T django_core').split(' ')
+  const sortie = execFileSync(cmd, [...args, 'python', 'manage.py', 'shell', '-c', code],
+    { stdio: 'pipe', timeout: 900_000, maxBuffer: 1 << 28 }).toString()
+  const m = sortie.match(/@@JSON@@(.*)/)
+  if (!m) throw new Error(`sortie Django sans JSON : ${sortie.slice(-400)}`)
   return JSON.parse(m[1])
 }
 
@@ -271,7 +282,7 @@ etape('P121.1', ['ASAV121', 'ASAV114'], async ({ page, suivi }) => {
   // Société démo de la pile locale (copie de la pile « live ») : elle porte déjà des avertissements
   // de documents posés par d'autres rejeux. L'oracle 10 se juge sur les documents de CE rejeu
   // (clients « ACC SAV… ») ; la sortie complète est commitée, avec le décompte du reste.
-  const sortie = py(`
+  const sortie = pyLong(`
 import io, json
 from contextlib import redirect_stdout
 from django.contrib.auth import get_user_model
