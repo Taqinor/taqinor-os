@@ -1,0 +1,7 @@
+== parcours-PA4 (sha 56d5b623a)
+attendu : chaque étape 2xx ; TTC facture = TTC devis ; dû = TTC − 50 % − avoir ; aucun prix_achat
+observé : etapes [('accepter', 200, ''), ('convertir-bc', 201, ''), ('confirmer', 200, ''), ('bc-lecture', 200, ''), ('creer-facture', 201, ''), ('emettre', 200, ''), ('paiement', 201, ''), ('avoir', 201, ''), ('facture-lecture', 200, '')]
+ttc_devis 12000.00 obs {'statut': 'emise', 'reference': 'FAC-202611-0001', 'ttc_facture': '12000.00', 'paye': '6000.00', 'avoirs': '1200.00', 'du': '4800.00', 'du_attendu': '4800.00'} fuites_prix_achat []
+{"repro": false, "etapes": [["accepter", 200, ""], ["convertir-bc", 201, ""], ["confirmer", 200, ""], ["bc-lecture", 200, ""], ["creer-facture", 201, ""], ["emettre", 200, ""], ["paiement", 201, ""], ["avoir", 201, ""], ["facture-lecture", 200, ""]], "ttc_devis": "12000.00", "obs": {"statut": "emise", "reference": "FAC-202611-0001", "ttc_facture": "12000.00", "paye": "6000.00", "avoirs": "1200.00", "du": "4800.00", "du_attendu": "4800.00"}, "fuites": []}
+verdict : ÉCART
+base inchangée : oui (avant 1350, après 1350) ; mails 0 ; tâches Celery bloquées 0

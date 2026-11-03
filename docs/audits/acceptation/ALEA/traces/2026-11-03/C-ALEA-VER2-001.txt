@@ -1,0 +1,8 @@
+== C-ALEA-VER2-001 (sha b01fa172f)
+attendu : société aux 8 forfaits C&I réglés + coffret DC/AC, protection AC, compteur tarifés mais SANS article portant un rôle de prestation : devis_auto.catalogue_ci.pret == True alors que le moteur (lignes_chiffrees_sans_article, refus CORC6 de refus_devis_auto_ci) nomme 8 prestations orphelines
+observé : catalogue_ci = {'pret': False, 'manquants': ['Article « Études et ingénierie » (fiche produit)', 'Article « Pose de la structure » (fiche produit)', 'Article « Pose des modules » (fiche produit)', 'Article « Raccordement AC » (fiche produit)', 'Article « Mise en service » (fiche produit)', 'Article « Dossier de raccordement » (fiche produit)', 'Article « Levage et accès » (fiche produit)', 'Article « Transport C&I » (fiche produit)']}
+orphelines moteur = ['Études et ingénierie C&I', 'Pose de la structure C&I', 'Pose des modules C&I', 'Raccordement AC C&I', 'Mise en service C&I', 'Dossier de raccordement C&I', 'Levage et accès C&I', 'Transport C&I']
+refus moteur = Article manquant au catalogue pour : Études et ingénierie C&I, Pose de la structure C&I, Pose des modules C&I, Raccordement AC C&I, Mise en service C&I, Dossier de raccordement C&I, Levage et accès C&I, Transport C&I. Le prix est réglé dans Paramètres › Devis › Prestations C&I, mais aucun article du Stock ne porte ce rôle : créez-le (ou désarchivez-le) avant un devis automatique.
+{"repro": false, "catalogue_pret": false, "orphelines": 8}
+verdict : ÉCART
+base inchangée : oui (avant 5015, après 5015) ; mails 0 ; tâches Celery bloquées 0

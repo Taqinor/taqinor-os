@@ -1,0 +1,6 @@
+== C-ATOT-VER-005 (sha b72cda218)
+attendu : complément de révision : TVA ≠ 3 000.00 (écart net des TVA par taux : −1 000 à 10 %, +4 000 à 20 %)
+observé : {'accepter_v1': 200, 'generer': [201, 201, 201, 409, 409], 'reviser': 201, 'accepter_v2': 200, 'complement_ttc': '24000.00', 'complement_tva': '4000.00', 'paniers': [('20.00', '20000.00', '4000.00')]}
+{"repro": true, "accepter_v1": 200, "generer": [201, 201, 201, 409, 409], "reviser": 201, "accepter_v2": 200, "complement_ttc": "24000.00", "complement_tva": "4000.00", "paniers": [["20.00", "20000.00", "4000.00"]]}
+verdict : REPRO
+base inchangée : oui (avant 105662, après 105662) ; mails 0 ; tâches Celery bloquées 0
