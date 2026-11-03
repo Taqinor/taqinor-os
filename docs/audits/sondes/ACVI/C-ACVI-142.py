@@ -1,0 +1,92 @@
+# flake8: noqa  (sonde de vérification PA1, rejouable par scripts/sonde.py)
+"""H-3 + H-6 + H-7 : croissance du nombre de requêtes avec N (listes PA1), mesurée par CaptureQueriesContext
+à DEUX tailles (N = 3 puis 9) sur les mêmes fixtures :
+H-3 : `kpi_premier_contact(company, jours=30)` (route leads/kpi-premier-contact/) ;
+H-6 : GET /visites/visites/ (liste non paginée) ;
+H-7 : GET relance-etapes/?scope=all quand les leads de la file ont une visite (3 photos commentées).
+Société NEUVE, transaction annulée."""
+SONDE = {"constat": "C-ACVI-142+145+146", "sha": "352ae5455",
+         "attendu": "nombre de requêtes ≈ constant entre N=3 et N=9 pour chacune des trois lectures",
+         "modeles": ["crm.Lead", "crm.RelanceEtape", "visites.VisiteTerrain", "visites.VisiteMedia",
+                     "records.Attachment"]}
+
+
+def sonde(ctx):
+    import datetime
+    from django.contrib.auth import get_user_model
+    from django.contrib.contenttypes.models import ContentType
+    from django.db import connection, transaction
+    from django.test.utils import CaptureQueriesContext
+    from django.urls import reverse
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Lead
+    from apps.crm.models_cadence import RelanceEtape
+    from apps.crm.leads_selectors import kpi_premier_contact
+    from apps.records.models import Attachment
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import ADMIN_PERMISSIONS
+    from apps.visites.models import VisiteTerrain, VisiteMedia
+    U = get_user_model()
+    c = Company.objects.create(nom='Sonde ACVI 142', slug='sonde-acvi-142')
+    role = Role.objects.create(company=c, nom='Administrateur', permissions=ADMIN_PERMISSIONS, est_systeme=True)
+    u = U.objects.create_user(username='sonde-acvi-142', password='x', company=c, role=role, role_legacy='admin')
+    api = APIClient()
+    api.force_authenticate(u)
+    ct = ContentType.objects.get_for_model(VisiteTerrain)
+    jour = timezone.localdate()
+    n = [0]
+
+    def ajouter(k):
+        for _ in range(k):
+            n[0] += 1
+            i = n[0]
+            l = Lead.objects.create(company=c, nom=f'L{i}', owner=u, telephone=f'066100{i:04d}', ville='Rabat',
+                                    visite_prevue_le=timezone.now())
+            Lead.objects.filter(pk=l.pk).update(
+                date_creation=timezone.now() - datetime.timedelta(days=5),
+                first_contacted_at=timezone.now() - datetime.timedelta(days=3))
+            v = VisiteTerrain.objects.create(company=c, lead=l, commercial=u, statut='terminee',
+                                             date_prevue=jour, date_realisee=timezone.now())
+            for s in range(3):
+                a = Attachment.objects.create(company=c, content_type=ct, object_id=v.pk,
+                                              file_key=f'sonde/{i}/{s}.jpg', filename=f'{s}.jpg')
+                VisiteMedia.objects.create(company=c, visite=v, attachment=a, slot_code=f'toit_{s}',
+                                           commentaire=f'commentaire {s}')
+            RelanceEtape.objects.create(company=c, lead=l, cadence='contact', ordre=1,
+                                        canal=RelanceEtape.Canal.WHATSAPP, libelle=f'Appel {i}',
+                                        due_at=timezone.now(), due_date=jour, statut=RelanceEtape.Statut.A_FAIRE)
+
+    def compte(fn):
+        try:
+            with transaction.atomic():
+                with CaptureQueriesContext(connection) as cq:
+                    res = fn()
+            return [len(cq.captured_queries), res]
+        except Exception as e:
+            return ['exc', repr(e)[:200]]
+
+    lectures = {
+        'H3_kpi_premier_contact': lambda: kpi_premier_contact(c, jours=30).get('nb_leads'),
+        'H6_get_visites': lambda: api.get(reverse('visites-visite-list'), HTTP_HOST='localhost').status_code,
+        'H7_get_relance_etapes_all': lambda: api.get(reverse('relance-etape-list'), {'scope': 'all'},
+                                                     HTTP_HOST='localhost').status_code,
+    }
+    obs = {}
+    ajouter(3)
+    for k, fn in lectures.items():
+        compte(fn)  # échauffement (caches de profil / contenttypes)
+        obs[k] = {'N3': compte(fn)}
+    ajouter(6)
+    for k, fn in lectures.items():
+        obs[k]['N9'] = compte(fn)
+        a, b = obs[k]['N3'][0], obs[k]['N9'][0]
+        obs[k]['delta_par_N'] = (round((b - a) / 6, 2) if isinstance(a, int) and isinstance(b, int) else None)
+    # H-3 : le profil société est-il relu à chaque lead ?
+    with CaptureQueriesContext(connection) as cq:
+        kpi_premier_contact(c, jours=30)
+    obs['H3_requetes_companyprofile_N9'] = sum(1 for q in cq.captured_queries if 'parametres_companyprofile' in q['sql'])
+    repro = {k: (obs[k]['delta_par_N'] or 0) >= 0.9 for k in lectures}
+    obs['repro_par_constat'] = repro
+    return {'repro': any(repro.values()), 'observe': obs}

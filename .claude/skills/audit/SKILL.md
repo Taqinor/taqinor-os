@@ -77,6 +77,8 @@ porte « n/a — raison » (jamais nu). (d) Les 14 clauses v3 sont toutes prése
 `<date>-<mot>-verifie.md` prend le `mot` du `declencheur` tel quel, ACCENTS COMPRIS (`sécurité`, `générateur`) sinon
 `audit_registre` ne le matche pas ; une 2ᵉ contre-visite le même jour REMPLACE le fichier canonique (git garde la 1ʳᵉ).
 
+**Mesuré le 03/11 (PA1, 4 cycles de gardes rouges évitables).** Rédacteurs : chemin COMPLET dans chaque ancre (`check_ancres_taches` refuse `views.py::X` et un symbole neuf ou une variable de module en `::`) ; `(@decision: D-x=cle)` seulement sur une décision RÉPONDUE (une décision `ouverte` se porte par `[GATED: D-x]` dans le titre, `check_decisions`) ; une sonde par C-id (`C-<G>-NNN.py` = le C-id, lint du dossier) ; dans les sondes, clés d'étape via `from apps.crm import stages` (`check_stages`) ; un fichier de plan édité par UN seul agent (écrire les tâches dans un scratch, insérer en une passe).
+
 ## 6. Interdits
 Jamais de constat S1-S2 sans sonde exécutée sur les critères à sonde ; jamais l'auteur comme vérificateur ; jamais plus de
 lanes ni de lentilles sur tous les constats ; jamais un id de lane, « FABLE § », « lot W » ou un chemin de scratchpad dans un

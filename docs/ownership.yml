@@ -744,6 +744,7 @@ owners:
       - .lanes.json
       - .mcp.json
       - .semgrep/**
+      - docs/query-budgets.yml
       - backend/.gitignore
       - backend/README.md
       - backend/caddy/**
