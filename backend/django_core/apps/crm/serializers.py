@@ -1308,13 +1308,20 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         """AMET23 — un PATCH/PUT de la fiche est une saisie humaine : les clés du
         corps (champs réels du lead) rejoignent ``saisies_humaines``."""
         from apps.records.provenance import marquer_saisie_humaine
+
+        from .cadence_plan import reprendre_cadence_si_numero_ajoute
+        from .cadence_temps import numero_joignable
+        numero_avant = numero_joignable(instance)  # ACVI27
         champs = self.champs_a_marquer(validated_data)
         if champs:
             marquer_saisie_humaine(instance, champs)
             validated_data = {
                 **validated_data,
                 'saisies_humaines': instance.saisies_humaines}
-        return super().update(instance, validated_data)
+        lead = super().update(instance, validated_data)
+        reprendre_cadence_si_numero_ajoute(
+            lead, numero_avant, getattr(self.context.get('request'), 'user', None))
+        return lead
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
     # CRX19 — SOURCE UNIQUE (module) partagée avec le masquage du chatter :

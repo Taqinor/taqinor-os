@@ -1479,6 +1479,17 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
         return []
 
 
+def reprendre_cadence_si_numero_ajoute(lead, numero_avant, user=None):
+    """ACVI27 — un PATCH rend joignable un lead qui ne l'était pas : la cadence
+    refusée « sans numéro » repart, ou la garde suivante trace son refus. Rien
+    d'autre à décider ici : ``demarrer_cadence_contact`` et ses gardes tranchent."""
+    from . import cadence_temps
+
+    if numero_avant or not cadence_temps.numero_joignable(lead):
+        return []
+    return demarrer_cadence_contact(lead, user=user, origine='numéro ajouté')
+
+
 def deplacer_echeance_etape(etape, quand, *, report_humain=False):
     """COCKPIT-CONTRÔLE (30/09/2026) — LE geste qui déplace l'échéance d'une
     étape OUVERTE, avec la règle de ses deux traces écrite UNE fois

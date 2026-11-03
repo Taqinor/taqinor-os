@@ -87,6 +87,24 @@ class DemarrageTests(_Base):
 class GardesTests(_Base):
     slug = 'mry6-gardes'
 
+    def test_numero_ajoute_au_patch_relance_la_cadence(self):
+        # ACVI27 — le PATCH du numéro pose les touches, ou trace la garde suivante.
+        api = APIClient()
+        api.force_authenticate(self.acteur)
+        for nom, numero, touches in (('Y', '0612345678', 2), ('Z', '0612345678', 0)):
+            cree = api.post('/api/django/crm/leads/', {'nom': nom}, format='json')
+            self.assertEqual(cree.status_code, 201, cree.data)
+            lead = Lead.objects.get(pk=cree.data['id'])
+            self.assertEqual(self._touches(lead), 0)
+            self.assertTrue(self._refus_trace(lead, 'aucun numéro exploitable'))
+
+            maj = api.patch(f'/api/django/crm/leads/{lead.pk}/',
+                            {'telephone': numero}, format='json')
+
+            self.assertEqual(maj.status_code, 200, maj.data)
+            self.assertEqual(self._touches(lead), touches, nom)
+        self.assertTrue(self._refus_trace(lead, 'doublon possible de #'))
+
     def test_un_lead_sans_numero_est_refuse_et_trace(self):
         """Aucune touche n'est réalisable sans numéro : appel comme WhatsApp.
         Démarrer quand même remplirait la file de Meryem de touches mortes."""
