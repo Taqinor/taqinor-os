@@ -80,6 +80,34 @@ class JalonsStatutTests(TestCase):
             self.assertEqual(JalonProjet.objects.filter(
                 installation=self.chantier, phase=phase).count(), 1)
 
+    def test_retour_a_installe_defait_la_reception(self):
+        """AARG46 — RÉCEPTIONNÉ → INSTALLÉ : jalon RÉCEPTION non atteint, plus
+        de solde « à facturer », jalon portail non atteint ; nouvelle
+        réception : atteint de nouveau, un seul jalon."""
+        from apps.installations.services import chantiers_a_facturer
+        from apps.portail.models import JalonChantierPortail
+
+        def etat():
+            jalons = JalonProjet.objects.filter(
+                installation=self.chantier, phase=JalonProjet.Phase.RECEPTION)
+            portail = JalonChantierPortail.objects.get(
+                company=self.company, chantier_id=self.chantier.pk,
+                cle_phase=JalonProjet.Phase.RECEPTION)
+            a_facturer = any(
+                c['installation_id'] == self.chantier.pk
+                and c['jalon_id'] == jalons.get().pk for c in chantiers_a_facturer(self.company))
+            return jalons.count(), jalons.get().atteint, portail.atteint, a_facturer
+
+        self._passer(Installation.Statut.INSTALLE)
+        self._passer(Installation.Statut.RECEPTIONNE)
+        self.assertEqual(etat(), (1, True, True, True))
+        self._passer(Installation.Statut.INSTALLE)
+        self.assertEqual(etat(), (1, False, False, False))
+        self._passer(Installation.Statut.RECEPTIONNE)
+        self.assertEqual(etat(), (1, True, True, True))
+        self._passer(Installation.Statut.CLOTURE)  # en avant : rien défait
+        self.assertEqual(etat(), (1, True, True, True))
+
     def test_retour_arriere_ne_coche_rien(self):
         self._passer(Installation.Statut.INSTALLE)
         self._passer(Installation.Statut.SIGNE)
