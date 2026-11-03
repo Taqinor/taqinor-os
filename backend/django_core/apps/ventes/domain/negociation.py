@@ -190,7 +190,7 @@ def apercu_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user=None,
 
     from apps.ventes.domain.noyau_totaux import (
         _canonical_totaux, remise_pour_ttc, totaux_multi_proprietes)
-    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS, centaine_remontee
     from apps.ventes.domain.tarification import (
         RemiseNonApprouvee, exiger_approbation_remise)
     from apps.ventes.multivilla import nombre_proprietes
@@ -214,7 +214,8 @@ def apercu_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user=None,
             raise PrixNegocieRefuse('prix_identique')
         solution = remise_pour_ttc(lignes, prix / n,
                                    fallback_taux=devis.taux_tva,
-                                   arrondi_pas=PAS_ARRONDI_DEVIS)
+                                   arrondi_pas=PAS_ARRONDI_DEVIS,
+                                   arrondi_montee=centaine_remontee(devis))
         if not solution['atteint']:
             voisins = [v for v in (solution['voisin_bas'],
                                    solution['voisin_haut']) if v]
@@ -228,7 +229,8 @@ def apercu_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user=None,
             raise PrixNegocieRefuse('saisie_vide')
         nouveau = totaux_multi_proprietes(_canonical_totaux(
             lignes, remise_globale_pct=remise, fallback_taux=devis.taux_tva,
-            arrondi_pas=PAS_ARRONDI_DEVIS), n)['ttc']
+            arrondi_pas=PAS_ARRONDI_DEVIS,
+            arrondi_montee=centaine_remontee(devis)), n)['ttc']
         if nouveau > actuel:
             raise PrixNegocieRefuse('prix_superieur')
         if nouveau == actuel:

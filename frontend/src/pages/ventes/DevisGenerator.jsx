@@ -915,8 +915,8 @@ export default function DevisGenerator({
   // chiffrait l'option AVEC avec les accessoires Huawei que le serveur retire.
   const totals = useMemo(
     // AGNR36 — chaque ligne classée sur désignation + produit lié.
-    () => optionTotalsTTC(lines, discountPct, { scenario, produits }),
-    [lines, discountPct, scenario, produits],
+    () => optionTotalsTTC(lines, discountPct, { scenario, produits, montee: !editId || (editDevis?.regles_calcul ?? 0) >= 11 }),
+    [lines, discountPct, scenario, produits, editId, editDevis?.regles_calcul],
   )
 
   // ── QJRREM (fondateur 07/09/2026) — remise par ligne, écran de création ──
@@ -954,9 +954,9 @@ export default function DevisGenerator({
   // l'écart entre Σ lignes et le total affiché.
   const remiseParPanier = useMemo(
     () => lignesRemiseesParPanier(lines, discountPct, {
-      scenario, option: avecRec && showAvec ? 'avec' : 'sans', produits,
+      scenario, option: avecRec && showAvec ? 'avec' : 'sans', produits, montee: !editId || (editDevis?.regles_calcul ?? 0) >= 11,
     }),
-    [lines, discountPct, scenario, avecRec, showAvec, produits],
+    [lines, discountPct, scenario, avecRec, showAvec, produits, editId, editDevis?.regles_calcul],
   )
   const lignesRemiseesTtc = remiseParPanier.parLigne
   // Condition d'affichage = remise > 0 (jamais « montant ≠ catalogue ») :
@@ -972,9 +972,9 @@ export default function DevisGenerator({
       // ATOT24 — la chaîne du rail : scénario + option effective (celle de
       // `kpiTotal`), jamais l'option « sans » inconditionnelle.
       scenario,
-      option: avecRec && showAvec ? 'avec' : 'sans',
+      option: avecRec && showAvec ? 'avec' : 'sans', montee: !editId || (editDevis?.regles_calcul ?? 0) >= 11,
     }),
-    [lines, multiMode, nombreProprietes, discountPct, scenario, avecRec, showAvec],
+    [lines, multiMode, nombreProprietes, discountPct, scenario, avecRec, showAvec, editId, editDevis?.regles_calcul],
   )
 
   // SPL51 — dérivations d'aperçu et d'étude horaire (déplacées telles quelles dans le hook, même position : l'ordre des hooks est inchangé).

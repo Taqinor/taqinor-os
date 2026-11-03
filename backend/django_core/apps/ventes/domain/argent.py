@@ -67,6 +67,12 @@ from typing import Optional, Tuple
 PAS_ARRONDI_DEVIS = Decimal('100')
 
 
+def centaine_remontee(devis) -> bool:
+    """ADVS3 — ce devis fait-il remonter un TTC à moins d'1 MAD sous une centaine ?"""
+    from apps.ventes.domain.regles_calcul import REGLES_CENTAINE_0311, regles_au_moins
+    return regles_au_moins(devis, REGLES_CENTAINE_0311)
+
+
 class Vue(Enum):
     """Le CONTEXTE qui demande l'argent — voir la docstring du module."""
 
@@ -192,7 +198,7 @@ def _totaux_canoniques(devis, lignes, option, *, unitaire=False):
         fallback_taux=devis.taux_tva,
         # ARRONDI-100 — par villa, AVANT le ×N : une villa coûte un palier
         # rond, N villas coûtent N paliers ronds (le PDF imprime les deux).
-        arrondi_pas=PAS_ARRONDI_DEVIS)
+        arrondi_pas=PAS_ARRONDI_DEVIS, arrondi_montee=centaine_remontee(devis))
     # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas identiques : l'argent du devis
     # est le total ×N imprimé (décision fondateur 30/09/2026). ``unitaire``
     # n'est demandé QUE par le moteur PDF, qui compose le document d'UNE villa

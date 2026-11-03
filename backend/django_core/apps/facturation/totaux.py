@@ -156,12 +156,21 @@ class TotauxDocumentMixin:
                 taux_tva_effectif=li.taux_tva_effectif) for li in lignes]
             return totaux_multi_proprietes(_canonical_totaux(
                 lignes, remise_globale_pct=self.remise_globale,
-                fallback_taux=self.taux_tva, arrondi_pas=pas), unites)
+                fallback_taux=self.taux_tva, arrondi_pas=pas,
+                arrondi_montee=self._centaine_remontee), unites)
         return _canonical_totaux(
             lignes,
             remise_globale_pct=self.remise_globale,
             fallback_taux=self.taux_tva,
-            arrondi_pas=pas)
+            arrondi_pas=pas, arrondi_montee=self._centaine_remontee)
+
+    def _centaine_remontee(self):
+        """ADVS3 — la facture (ou l'avoir de cette facture) suit le niveau de
+        règles de son devis signé : jamais plus que lui. Lu seulement quand un
+        TTC tombe à moins d'1 MAD sous une centaine."""
+        from apps.ventes.domain.regles_calcul import REGLES_CENTAINE_0311, regles_au_moins
+        facture = getattr(self, 'facture', None) or self
+        return regles_au_moins(getattr(facture, 'devis', None), REGLES_CENTAINE_0311)
 
     @property
     def total_ht(self):
