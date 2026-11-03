@@ -143,7 +143,7 @@ def synthese_economies(data: dict) -> dict | None:
         annual_before, annual_after = sum(before), sum(after)
         # ERR-AGNR42 — somme de la série EXACTE, arrondie une seule fois (la
         # série arrondie mois par mois donnait 17 016 pour 17 010,4). Absente
-        # (devis < niveau 5, étude horaire) : somme arrondie historique.
+        # (douze factures < niveau 5, étude horaire < niveau 11) : somme arrondie historique.
         _exact = data.get("factures_mensuelles_exactes")
         if isinstance(_exact, (list, tuple)) and len(_exact) == 12:
             try:

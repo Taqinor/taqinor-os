@@ -84,6 +84,8 @@ REGLES_PANIER_UNIQUE_0211 = 10
 #: Niveau 11 (ADVS3, D-ADVS-4, 03/11/2026, « nouveaux rendus seulement ») : un TTC à
 #: moins d'1 MAD sous une centaine y remonte au lieu de perdre 100 MAD. La migration
 #: 0151 laisse tout devis non brouillon à son niveau : il garde le total reçu.
+#: Porte aussi AGNR42-D6 : facture annuelle de la source « étude horaire » = somme exacte
+#: arrondie une fois (factures hiver/été décimales : 17 010 et non 17 016).
 REGLES_CENTAINE_0311 = 11
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_CENTAINE_0311
