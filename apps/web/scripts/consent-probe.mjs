@@ -17,7 +17,7 @@ const UA_MOBILE =
   'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36';
 const TIERS = /facebook\.(net|com)|googletagmanager|google-analytics|doubleclick/;
 const COOKIES_TRACEURS = /^(_fbp|_fbc|fr|_ga|_ga_.*|_gcl_.*|tq_appareil)$/;
-export const ROUTES = [
+export const ROUTES = process.env.CONSENT_PROBE_RAPIDE ? ['/'] : [
   '/', '/en/', '/ar/', '/résidentiel/', '/professionnel/', '/agricole/', '/nos-solutions/', '/realisations/',
   '/contact/', '/en/contact/', '/ar/contact/', '/garanties/', '/a-propos/', '/blog/', '/loi-82-21/',
   '/prix-panneaux-solaires-maroc/', '/en/prix-panneaux-solaires-maroc/', '/ar/prix-panneaux-solaires-maroc/',
@@ -43,7 +43,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
   const arg = process.argv.find((a) => a.startsWith('--base-url='));
   const base = (arg ? arg.split('=')[1] : process.env.BASE_URL || 'http://127.0.0.1:4321').replace(/\/$/, '');
   const tableau = readFileSync(new URL('../src/components/TableauTraceurs.astro', import.meta.url), 'utf-8');
-  const chrome = await launch({ chromeFlags: ['--headless=new', '--no-sandbox'] });
+  const chrome = await launch({ chromeFlags: ['--headless=new', '--no-sandbox', '--disable-blink-features=AutomationControlled'] });
   let echecs = 0;
   const { c, requetes } = await ouvrir(chrome.port);
   await c.envoyer('Network.clearBrowserCookies');
@@ -69,6 +69,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
   console.log(`${pixel ? 'OK ' : 'KO '} après Accepter : fbevents.js chargé`);
   console.log(`${pageView ? 'OK ' : 'KO '} après Accepter : PageView en réseau (exige Internet)`);
   if (!pixel || !pageView) echecs += 1;
+  console.log(requetes.filter((u) => TIERS.test(u)).map((u) => `   ${u.slice(0, 140)}`).join('\n'));
   for (const n of cookies.map((x) => x.name).filter((x) => COOKIES_TRACEURS.test(x))) {
     const present = tableau.includes(n.replace(/^(_ga_).*/, '$1*'));
     if (!present) echecs += 1;

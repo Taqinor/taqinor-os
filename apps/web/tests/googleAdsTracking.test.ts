@@ -202,11 +202,18 @@ describe('WAUD12 — consentement avant tout cookie', () => {
     localStorage.clear();
   });
 
-  it('pixel, aucun choix : ni fbevents.js, ni PageView ; revoke AVANT init', () => {
+  it('pixel, aucun choix : ni fbevents.js, ni init, ni PageView, file vide', () => {
     lancerPixel();
     vi.runAllTimers();
     expect(scripts('fbevents')).toEqual([]);
-    expect(file()).toEqual(['consent:revoke', 'init:845710231783646']);
+    expect(file()).toEqual([]);
+  });
+
+  it('pixel : jamais de revoke dans la file avant le chargement (fbevents.js s’y arrêterait, 0 /tr)', () => {
+    lancerPixel();
+    choisir('granted');
+    expect(file()).not.toContain('consent:revoke');
+    expect(file().indexOf('consent:grant')).toBeLessThan(file().indexOf('init:845710231783646'));
   });
 
   it('pixel, Accepter sur la page : grant, PageView, Lead en attente avec son eventId, puis fbevents.js', () => {
@@ -214,7 +221,7 @@ describe('WAUD12 — consentement avant tout cookie', () => {
     fen.tqPixelTrack?.('Lead', {}, 'ev-1');
     expect(file()).not.toContain('track:Lead');
     choisir('granted');
-    expect(file()).toEqual(['consent:revoke', 'init:845710231783646', 'consent:grant', 'track:PageView', 'track:Lead']);
+    expect(file()).toEqual(['consent:grant', 'init:845710231783646', 'track:PageView', 'track:Lead']);
     expect(fen.fbq?.queue.at(-1)?.[3]).toEqual({ eventID: 'ev-1' });
     window.dispatchEvent(new Event('load'));
     vi.runAllTimers();

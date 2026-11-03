@@ -10,11 +10,15 @@
  *
  * CONSENTEMENT — WAUD12 (D-WAUD-1 = opt-in strict, CNDP D-939-2025 §6) : RIEN
  * avant « Accepter » (`tq_consent` = 'granted'), ni fbevents.js, ni cookie, ni
- * événement. L'amorce fbq n'est qu'une file locale : `consent revoke` puis `init`.
- * Au grant (au chargement si déjà accepté, ou `tq:consent-change` sur la page) :
- * `consent grant`, PageView, événements en attente (avec leur eventId), puis
- * fbevents.js injecté après l'affichage (load + requestIdleCallback). Un refus
- * vide la file d'attente et révoque. Le visiteur qui accepte a donc toujours son
+ * événement : l'amorce fbq reste une file locale vide, le script n'est même pas
+ * demandé. Au grant (au chargement si déjà accepté, ou `tq:consent-change` sur la
+ * page) : `consent grant`, `init`, PageView, événements en attente (avec leur
+ * eventId), puis fbevents.js injecté après l'affichage (load + requestIdleCallback).
+ * PAS de `consent revoke` dans la file avant le chargement (mesuré le 03/11/2026,
+ * sonde consent-probe : fbevents.js s'arrête sur ce revoke et ne rejoue jamais
+ * init/grant/PageView — 0 /tr, le pixel disparaît pour ceux qui acceptent) ; ne pas
+ * charger le script avant le grant est plus strict et produit le même « 0 cookie ».
+ * Un refus après chargement révoque. Le visiteur qui accepte a donc toujours son
  * pixel, y compris s'il accepte plus tard depuis « Gérer mes cookies ».
  * Effet connu (dit à Reda) : PageView part 1-3 s plus tard ; audiences de
  * reciblage réduites aux « Accepter ».
@@ -82,14 +86,12 @@ const pixelId = ((import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined) ??
         window.fbq('consent', 'grant');
         if (!pageVueEnvoyee) {
           pageVueEnvoyee = true;
+          window.fbq('init', tqPixelId);
           window.fbq('track', 'PageView');
         }
         enAttente.splice(0).forEach(suivre);
         apresAffichage();
       };
-      /* Consentement révoqué AVANT init : aucun cookie jusqu'au grant. */
-      window.fbq('consent', 'revoke');
-      window.fbq('init', tqPixelId);
       if (lireChoix() === 'granted') demarrer();
       window.addEventListener('tq:consent-change', function (e) {
         var choix = e && e.detail && e.detail.value;
