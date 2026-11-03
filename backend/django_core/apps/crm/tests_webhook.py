@@ -8,6 +8,7 @@ from django.urls import reverse
 
 from authentication.models import Company
 from core.test_utils import WideTeardownTimeoutMixin
+from testkit.time import frozen
 
 from .models import Lead, LeadActivity, RelanceEtape, WebsiteLeadPayload
 from .webhooks import _canal_site_web
@@ -54,9 +55,12 @@ class WebsiteLeadWebhookTests(TestCase):
             self.url, data=json.dumps(data),
             content_type='application/json', **headers)
 
+    @frozen('2026-09-21T10:00:00+01:00')
     def test_doublon_perdu_reveille_une_seule_cadence(self):
         # ACVI16 — la garde 5 de la cadence juge APRÈS le réveil du doublon :
-        # une personne, une cadence ouverte ; sans doublon, 2 touches.
+        # une personne, une cadence ouverte. Sans doublon : le prochain geste
+        # (CKP2). Horloge gelée : hors gel, la touche d'ouverture est déjà
+        # échue en journée (2 touches) et à venir la nuit (1 seule).
         from apps.crm import stages
         perdu = Lead.objects.create(
             company=self.company, nom='Ancien perdu', ville='Rabat',
@@ -85,7 +89,7 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertEqual(seul.status_code, 201, seul.content)
         self.assertEqual(
             Lead.objects.get(pk=seul.json()['lead_id'])
-            .relance_etapes.filter(cadence='contact').count(), 2)
+            .relance_etapes.filter(cadence='contact').count(), 1)
 
     def test_payload_valide_cree_un_lead_complet(self):
         res = self.post(payload_site())

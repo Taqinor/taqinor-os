@@ -20,6 +20,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from testkit.time import frozen
 
 from apps.crm import stages, fiche_api_publique
 from apps.crm import leads_intake
@@ -87,11 +88,14 @@ class DemarrageTests(_Base):
 class GardesTests(_Base):
     slug = 'mry6-gardes'
 
+    @frozen('2026-09-21T10:00:00+01:00')
     def test_numero_ajoute_au_patch_relance_la_cadence(self):
-        # ACVI27 — le PATCH du numéro pose les touches, ou trace la garde suivante.
+        # ACVI27 — le PATCH du numéro pose le prochain geste (CKP2), ou trace la
+        # garde suivante. Horloge gelée : hors gel, la touche d'ouverture est
+        # déjà échue en journée (2 touches) et à venir la nuit (1 seule).
         api = APIClient()
         api.force_authenticate(self.acteur)
-        for nom, numero, touches in (('Y', '0612345678', 2), ('Z', '0612345678', 0)):
+        for nom, numero, touches in (('Y', '0612345678', 1), ('Z', '0612345678', 0)):
             cree = api.post('/api/django/crm/leads/', {'nom': nom}, format='json')
             self.assertEqual(cree.status_code, 201, cree.data)
             lead = Lead.objects.get(pk=cree.data['id'])
