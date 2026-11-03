@@ -194,6 +194,8 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         if refus := _refus_pii_whatsapp(request):  # ACVI4 — levé : le contrat reste celui du rendu.
             raise PermissionDenied(refus.data)
         appt = self.get_object()
+        from .cadence_messages import garde_contact_du_lead
+        garde_contact_du_lead(appt.lead)
         message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
             request, appt)
         if wa_url is None:
@@ -413,10 +415,12 @@ class LeadVisitesActionsMixin:
         LECTURE PURE : le serveur REND, il n'ENVOIE pas (décision D5).
         """
         from .serializers import pii_masquee_pour
-        from .cadence_messages import cles_message_visite_du_lead, message_visite_pour_lead
+        from .cadence_messages import (
+            cles_message_visite_du_lead, garde_contact_du_lead, message_visite_pour_lead)
 
         cle = (request.query_params.get('cle') or '').strip()
         lead = self.get_object()
+        garde_contact_du_lead(lead)
         # CAD111 — les liens wa.me sont construits ICI (E.164) ; un rôle sans
         # `client_pii_voir` ne reçoit aucun numéro (liens nuls, `phone` vide).
         # AGR526 — `dossier_fda` / `dossier_8221` seulement pour le lead dont
@@ -461,6 +465,8 @@ class LeadVisitesActionsMixin:
             journaliser_message_visite_ouvert,
         )
         lead = self.get_object()
+        from .cadence_messages import garde_contact_du_lead
+        garde_contact_du_lead(lead)
         # api-fuzz PR #1176 — ``cle``/``langue`` non texte (``[null, null]``
         # levait ``.strip()`` : 500) ou corps non objet : 400 nommé.
         cle = texte_verifie(request, 'cle', 'langue')

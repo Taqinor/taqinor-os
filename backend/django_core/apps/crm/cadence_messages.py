@@ -571,6 +571,15 @@ def garde_rendu_whatsapp(etape, *, cle=None, rendu=None):
         raise ConflitEtat('Numéro de téléphone invalide.')
 
 
+def garde_contact_du_lead(lead):
+    """ACVI89 (D-ACVI-7 = refus) — le 409 nommé d'un rendu WhatsApp hors touche."""
+    from core.conflit_etat import ConflitEtat
+
+    refus = refus_rendu_whatsapp(lead)
+    if refus:
+        raise ConflitEtat(f'Message refusé : {refus}.')
+
+
 def message_pour_etape(etape, *, request=None, user=None, cle=None,
                        langue=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.

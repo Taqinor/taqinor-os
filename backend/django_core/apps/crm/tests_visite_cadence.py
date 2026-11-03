@@ -909,6 +909,33 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
 
 class MessageVisiteTests(VisiteCadenceBase):
 
+    def test_lead_oppose_refuse_sans_lien(self):
+        """ACVI89 (D-ACVI-7) — 409 aux trois routes, aucune activité."""
+        from django.utils import timezone
+        from rest_framework.test import APIClient
+
+        from apps.crm.models import Appointment
+
+        Lead.objects.filter(pk=self.lead.pk).update(
+            ne_plus_contacter=True, telephone='+212612345678')
+        rdv = Appointment.objects.create(
+            company=self.lead.company, lead=self.lead,
+            scheduled_at=timezone.now() + datetime.timedelta(days=2))
+        avant = LeadActivity.objects.filter(lead=self.lead).count()
+        api = APIClient()
+        api.force_authenticate(self.acteur)
+        base = '/api/django/crm/'
+        for reponse in (
+                api.get(f'{base}leads/{self.lead.pk}/message-visite/',
+                        {'cle': 'visite_proposition'}),
+                api.post(f'{base}leads/{self.lead.pk}/message-visite/ouvert/',
+                         {'cle': 'visite_proposition', 'langue': 'fr'}, format='json'),
+                api.post(f'{base}appointments/{rdv.pk}/confirmer-whatsapp/')):
+            self.assertEqual(reponse.status_code, 409, reponse.data)
+            self.assertIn('ne plus contacter', str(reponse.data['detail']))
+        self.assertEqual(
+            LeadActivity.objects.filter(lead=self.lead).count(), avant)
+
     def test_rend_la_date_en_francais_parle(self):
         self.lead.visite_prevue_le = datetime.date(2026, 9, 22)
         self.lead.save(update_fields=['visite_prevue_le'])
