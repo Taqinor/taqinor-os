@@ -7,6 +7,7 @@
  * `hasLocalInstall` preserved (only Casablanca shows a local install). Internal
  * links via localizeNavHref. FR untouched.
  */
+import { PANEL_PERFORMANCE_FLOOR_EN, PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 import CityPageBody from '../../components/CityPageBody.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import Layout from '../../layouts/Layout.astro';
@@ -42,9 +43,9 @@ const t = {
   statBill: 'Of the bill covered',
   statRoiValue: '3–7 years',
   statRoi: 'Return on investment',
-  statWarrantyValue: '25 years',
-  statWarranty: 'Performance warranty',
-  stat8221: 'Simple Law 82-21 declaration',
+  statWarrantyValue: `${PANEL_PERFORMANCE_WARRANTY_YEARS} years`,
+  statWarranty: `Performance warranty (${PANEL_PERFORMANCE_FLOOR_EN})`,
+  stat8221: 'Law 82-21 filing depending on system size',
   projectsKicker: `Our projects · ${c.name}`,
   projectsH2: `Real installations ${intro}`,
   caseStudy: 'See the case study',

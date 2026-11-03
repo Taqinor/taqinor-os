@@ -154,3 +154,21 @@ describe('RWEB2 — garanties /proposition par marque posée', () => {
     expect(garantiesPanneauxAns([{ designation: 'Onduleur Deye' }])).toBeNull();
   });
 });
+
+describe('WAUD69 — provenance de la garantie Huawei', () => {
+  it('le commentaire cite la décision fondateur, pas la fiche PDF', () => {
+    const code = readFileSync(fileURLToPath(new URL('../src/lib/warranty.ts', import.meta.url)), 'utf-8');
+    expect(code).toContain('décision fondateur du 27/10/2026');
+    expect(code).not.toContain('datasheet 120 mois');
+    expect(code).not.toContain('garantie\n *     constructeur 120 mois');
+  });
+});
+
+describe('WAUD11 — pages ville : la garantie vient de warranty.ts', () => {
+  it.each(['installation-solaire-[city]', 'en/installation-solaire-[city]', 'ar/installation-solaire-[city]'])('%s', (p) => {
+    const code = readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8');
+    expect(code).toContain('statWarrantyValue: `${PANEL_PERFORMANCE_WARRANTY_YEARS}');
+    expect(code).not.toMatch(/'25 (ans|years|سنة)'/);
+    expect(code).not.toMatch(/Simple déclaration|Simple Law|تصريح بسيط/);
+  });
+});

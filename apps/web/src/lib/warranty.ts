@@ -26,8 +26,9 @@
  *  ONDULEURS (décision fondateur 27/10/2026 : UNE durée, celle qui vaut au Maroc) :
  *   - Deye hybride SG05LP1/LP3 : 5 ans — terme mondial de la datasheet Deye
  *     v1.7 (« 5 Years (10 Years Optional) »); l'option 10 ans n'est pas achetée.
- *   - Huawei SUN2000 : 10 ans — datasheet SUN2000-5/8/10KTL-M0/M1, garantie
- *     constructeur 120 mois (inchangé).
+ *   - Huawei SUN2000 : 10 ans — source : décision fondateur du 27/10/2026. La fiche PDF
+ *     hébergée ne contient AUCUNE durée de garantie (WAUD69, contrôle pdftotext) : le
+ *     document du distributeur reste attendu (WB5).
  *
  *  BATTERIE (décision fondateur 27/10/2026) : 7 ans, ≥ 70 % de capacité — Dyness
  *   DL5.0C LFP, garantie officielle Dyness Afrique V2-202502 : 7 ans de base ;
@@ -61,7 +62,7 @@ export const PANEL_PERFORMANCE_FLOOR_25Y_PCT = 89.4;
 /** Garantie onduleur Deye (hybride SG05LP1/LP3), en années — terme mondial v1.7. */
 export const DEYE_INVERTER_WARRANTY_YEARS = 5;
 
-/** Garantie onduleur Huawei SUN2000, en années — datasheet 120 mois. */
+/** Garantie onduleur Huawei SUN2000, en années — décision fondateur 27/10/2026, document distributeur attendu (WB5). */
 export const HUAWEI_INVERTER_WARRANTY_YEARS = 10;
 
 /** @deprecated Ambigu (Deye 5 ans ≠ Huawei 10 ans) : utiliser les constantes par marque. = Huawei. */

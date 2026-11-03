@@ -8,6 +8,7 @@
  * The Layout auto-sets lang=ar + dir=rtl; only text changes, classes intact.
  * Internal links via localizeNavHref. FR untouched.
  */
+import { PANEL_PERFORMANCE_FLOOR_EN, PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 import CityPageBody from '../../components/CityPageBody.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import Layout from '../../layouts/Layout.astro';
@@ -50,9 +51,9 @@ const t = {
   statBill: 'من الفاتورة مُغطّاة',
   statRoiValue: '3–7 سنوات',
   statRoi: 'عائد الاستثمار',
-  statWarrantyValue: '25 سنة',
-  statWarranty: 'ضمان الأداء',
-  stat8221: 'تصريح بسيط للقانون 82-21',
+  statWarrantyValue: `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`,
+  statWarranty: `ضمان الأداء (${PANEL_PERFORMANCE_FLOOR_EN})`,
+  stat8221: 'تصريح القانون 82-21 حسب القدرة',
   projectsKicker: `أوراشنا · ${cityNameAr}`,
   projectsH2: `تركيبات حقيقية ${intro}`,
   caseStudy: 'شاهد دراسة الحالة',
