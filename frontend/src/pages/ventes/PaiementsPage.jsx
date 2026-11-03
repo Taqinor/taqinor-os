@@ -360,7 +360,7 @@ export default function PaiementsPage() {
               <div className="grid gap-3">
                 {apercu.deja_importe && (
                   <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-                    Ce fichier a déjà été importé : le serveur refusera un nouvel import.
+                    Ce fichier a déjà été importé : seules les lignes pas encore importées le seront.
                   </div>
                 )}
                 <div className="flex flex-wrap items-center gap-3 text-sm">

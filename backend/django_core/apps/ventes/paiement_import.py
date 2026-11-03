@@ -506,8 +506,8 @@ class JetonReleveInconnu(ValueError):
 
 
 class ReleveDejaImporte(ValueError):
-    """ENF11 — dry-run déjà consommé / contenu déjà importé : l'ÉTAT des
-    imports s'oppose au commit (409)."""
+    """ENF11 — dry-run déjà consommé : l'ÉTAT des imports s'oppose au commit
+    (409)."""
 
 
 def commit(company, user, token, lignes=None):
@@ -517,9 +517,11 @@ def commit(company, user, token, lignes=None):
     exécute ce que l'opérateur a vu et validé. Il exige donc :
       * un ``token`` de dry-run appartenant à la MÊME société (sinon
         ``ValueError`` → 400 côté vue) ;
-      * un jeton NON consommé (usage unique) ;
-      * un contenu de fichier jamais importé pour cette société
-        (``fichier_hash``) — c'est ce qui referme le double-import.
+      * un jeton NON consommé (usage unique).
+
+    AARG33 — le double-import est refermé PAR LIGNE (AFAC5, ``idempotency_key``
+    + ``_marquer_doublons``), plus par fichier : un relevé importé en partie
+    laisse importer ses lignes restantes, les autres sont sautées.
 
     ``lignes`` (optionnel) restreint l'import aux numéros de ligne que
     l'opérateur a cochés ; par défaut, toutes les lignes importables. Une
@@ -553,11 +555,6 @@ def commit(company, user, token, lignes=None):
             raise JetonReleveInconnu('Jeton de dry-run inconnu ou expiré.')
         if session.consomme_at is not None:
             raise ReleveDejaImporte('Ce dry-run a déjà été importé.')
-        if ReleveImportSession.objects.filter(
-                company=company, fichier_hash=session.fichier_hash,
-                consomme_at__isnull=False).exists():
-            raise ReleveDejaImporte(
-                'Ce relevé a déjà été importé (contenu identique).')
         # AFAC6 — les lignes ambiguës RÉSOLUES par l'opérateur sont
         # validées (refus 400 avant toute écriture, jeton non consommé) puis
         # réécrites dans la session (facture choisie, match « manuel »).
