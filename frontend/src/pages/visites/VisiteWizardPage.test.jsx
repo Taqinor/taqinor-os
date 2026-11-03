@@ -654,7 +654,8 @@ describe('VisiteWizardPage — CIQ653 (site commerce)', () => {
     expect(valeurs.besoin_continuite_service).toBe(true)
     // Un booléen jamais répondu reste « pas encore relevé » (null), jamais « Non ».
     expect(valeurs.secours_ups).toBeNull()
-  })
+    // ACVI57 — tous les onglets montés : les requêtes par rôle coûtent plus cher.
+  }, 60000)
 
   it('l’erreur du serveur s’affiche sous le champ fautif', async () => {
     patchVisiteMesures.mockRejectedValue({
