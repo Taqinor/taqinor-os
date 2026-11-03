@@ -1143,18 +1143,6 @@ def stock_valuation_excludes_materiel_consigne(company):
 # date (même formule débarquée que `average_cost_with_source`, bornée dans le
 # temps). INTERNE — jamais client-facing.
 
-def _quantite_produit_a_date(produit, date):
-    """Dernière `quantite_apres` connue du produit à la date donnée (incluse).
-
-    Aucun mouvement <= date -> 0 (le produit n'existait pas encore en stock à
-    cette date, comportement conservateur)."""
-    from .models import MouvementStock
-    mvt = (MouvementStock.objects
-           .filter(produit=produit, date__date__lte=date)
-           .order_by('-date', '-id').first())
-    return mvt.quantite_apres if mvt is not None else 0
-
-
 def _cout_moyen_produit_a_date(produit, date, method=None, quantite=None):
     """Coût de valorisation du produit À `date` (incluse).
 
@@ -1210,7 +1198,7 @@ def valorisation_a_date(company, date):
     from .models import MouvementStock, Produit
     produits = Produit.objects.filter(company=company)
     de_tiers = quantite_de_tiers(company)
-    # Rejeu ENF15 — une requête par produit de `_quantite_produit_a_date`
+    # Rejeu ENF15 — une requête par produit (ancienne lecture au dernier mouvement)
     # (2 447 fiches : 15 s, au-delà du délai de 20 s de l'écran chargé) : même
     # dernier mouvement ≤ date (même tri), en une seule lecture.
     derniers = dict(
