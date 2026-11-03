@@ -44474,6 +44474,13 @@
   "visite_planifiee": {
    "activites": [
     {
+     "body": "",
+     "kind": "modification",
+     "lead": "<crm.Lead#1>",
+     "outcome": "",
+     "user": "spl2-resp"
+    },
+    {
      "body": "Visite technique planifiée le 28/09/2026 — assignée à Hamza. Planifiée SANS devis envoyé — exception à la règle « la visite se propose après le devis ».",
      "kind": "note",
      "lead": "<crm.Lead#1>",

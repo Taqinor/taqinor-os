@@ -354,12 +354,8 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
 
     ``STAGES.py`` n'est pas touché, et AUCUNE étape du plan après-devis n'est
     annulée. Renvoie les étapes posées/déplacées."""
-    champs = []
     if lead.visite_prevue_le != date_prevue:
-        lead.visite_prevue_le = date_prevue
-        champs.append('visite_prevue_le')
-    if champs:
-        lead.save(update_fields=champs)
+        _ecrire_date_visite(lead, user, date_prevue)
 
     relancable = _lead_relancable(lead)
     # Le décalage AVANT la note : c'est lui qui décide de la dernière phrase.
@@ -524,6 +520,20 @@ def _retablir_echeance_traitee(etape, echeance):
     etape.due_initial_at = due_initial_at
 
 
+def _ecrire_date_visite(lead, user, jour):
+    """ACVI69 — la visite ERP est propriétaire de la date : écrite (ou vidée)
+    avec sa ligne ancien → nouveau, et la marque de saisie humaine levée."""
+    ancien = lead.visite_prevue_le
+    lead.visite_prevue_le = jour
+    champs = ['visite_prevue_le']
+    if 'visite_prevue_le' in (lead.saisies_humaines or []):
+        lead.saisies_humaines = [c for c in lead.saisies_humaines
+                                 if c != 'visite_prevue_le']
+        champs.append('saisies_humaines')
+    lead.save(update_fields=champs)
+    activity.log_bulk_change(lead, user, 'visite_prevue_le', ancien, jour)
+
+
 def annuler_rendez_vous_du_lead(lead, user, *, motif='',
                                 vider_date_passee=True):
     """SUIVI E4/E21 (30/09/2026) — le rendez-vous de visite EN ATTENTE du
@@ -549,8 +559,7 @@ def annuler_rendez_vous_du_lead(lead, user, *, motif='',
     jour = getattr(lead, 'visite_prevue_le', None)
     if jour is not None and (vider_date_passee
                              or jour >= aujourd_hui_local()):
-        lead.visite_prevue_le = None
-        lead.save(update_fields=['visite_prevue_le'])
+        _ecrire_date_visite(lead, user, None)
     return annules
 
 

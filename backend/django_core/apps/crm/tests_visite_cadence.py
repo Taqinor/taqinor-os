@@ -218,6 +218,30 @@ class VisitePlanifieeTests(VisiteCadenceBase):
                                'appel'))
         self.assertEqual(debrief.canal, RelanceEtape.Canal.APPEL)
 
+    def test_la_date_manuelle_remplacee_est_tracee(self):
+        # ACVI69 — saisie à la main, remplacée puis vidée : deux lignes.
+        manuelle = VISITE_LE + datetime.timedelta(days=25)
+        self.lead.visite_prevue_le = manuelle
+        self.lead.saisies_humaines = ['visite_prevue_le']
+        self.lead.save(update_fields=['visite_prevue_le', 'saisies_humaines'])
+        with frozen(MAINTENANT):
+            cadence_visite.appliquer_visite_planifiee(
+                self.lead, self.acteur, VISITE_LE)
+            cadence_visite.annuler_rendez_vous_du_lead(
+                self.lead, self.acteur, motif='perdu')
+
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.visite_prevue_le)
+        self.assertNotIn('visite_prevue_le', self.lead.saisies_humaines)
+        lignes = self.lead.activites.filter(
+            kind=LeadActivity.Kind.MODIFICATION,
+            field='visite_prevue_le').order_by('id')
+        self.assertEqual(lignes.count(), 2)
+        self.assertEqual(lignes[0].new_value, lignes[1].old_value)
+        self.assertEqual(lignes[0].user, self.acteur)
+        self.assertEqual(lignes[1].user, self.acteur)
+        self.assertNotEqual(lignes[0].old_value, lignes[0].new_value)
+
     def test_pose_une_note_de_chatter_systeme_qui_nomme_lassigne(self):
         with frozen(MAINTENANT):
             cadence_visite.appliquer_visite_planifiee(
