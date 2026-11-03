@@ -86,6 +86,8 @@ STATUTS_REVUE = ('ambigu', 'client_non_identifie', 'date_invalide', 'mode_invali
 # AFAC5 — ligne déjà importée par un relevé antérieur (même clé
 # d'idempotence) : jamais importable, jamais en revue.
 STATUT_DOUBLON = 'doublon_import'
+#: AARG6 — la porte d'encaissement (AFAC9, J+7 de la loi 31-08) refuse la ligne.
+STATUT_NON_ENCAISSABLE = 'non_encaissable'
 STATUT_DATE_INVALIDE = 'date_invalide'
 # Le seul statut qu'un commit accepte d'écrire.
 STATUT_IMPORTABLE = 'a_importer'
@@ -384,9 +386,14 @@ def dry_run(file_bytes, filename, company, max_preview=None, user=None):
         if mode is None:
             # AANA69 — mode non reconnu : revue humaine, jamais « virement » muet.
             facture, match_type, statut_match, candidats = None, None, 'mode_invalide', []
+        motif = None
         if facture is not None:
+            from .domain.encaissements import motif_non_encaissable
             reste = facture.montant_du
-            if reste <= TOLERANCE_CENTIME:
+            motif = motif_non_encaissable(facture, date)  # AARG6
+            if motif:
+                statut = STATUT_NON_ENCAISSABLE
+            elif reste <= TOLERANCE_CENTIME:
                 statut = 'deja_regle'
             elif montant - reste > TOLERANCE_CENTIME:
                 statut = 'surpaiement'
@@ -403,6 +410,7 @@ def dry_run(file_bytes, filename, company, max_preview=None, user=None):
             'facture_id': facture.id if facture else None,
             'facture_reference': facture.reference if facture else None,
             'match_type': match_type, 'candidats': candidats,
+            **({'motif': motif} if motif else {}),
         })
 
     # AFAC5 — idempotence PAR LIGNE : une ligne dont la clé est déjà posée
@@ -625,6 +633,15 @@ def commit(company, user, token, lignes=None):
             with db_transaction.atomic():
                 locked = Facture.objects.select_for_update().get(
                     pk=facture.pk, company=company, statut__in=OPEN_STATUTS)
+                # AARG6 — LA porte unique, sous le verrou (J+7 compris).
+                from .domain.encaissements import motif_non_encaissable
+                motif = motif_non_encaissable(locked, date_obj)
+                if motif:
+                    skipped += 1
+                    results.append({
+                        'ligne': i + 2, 'statut': STATUT_NON_ENCAISSABLE,
+                        'facture': locked.reference, 'motif': motif})
+                    continue
                 reste = locked.montant_du
                 if reste <= Decimal('0.01'):
                     skipped += 1

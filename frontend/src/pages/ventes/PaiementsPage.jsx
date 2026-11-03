@@ -39,6 +39,8 @@ const STATUTS_RELEVE = {
   doublon_import: { label: 'Déjà importée', tone: 'info' },
   date_invalide: { label: 'Date illisible', tone: 'danger' },
   mode_invalide: { label: 'Mode de paiement non reconnu', tone: 'warning' },
+  // AARG6 — la porte d'encaissement refuse la ligne (J+7 de la loi 31-08…).
+  non_encaissable: { label: 'Non encaissable', tone: 'warning' },
   // Statuts propres au bilan du commit (contrat releve_import_commit.json).
   non_selectionnee: { label: 'Non sélectionnée', tone: 'neutral' },
   created: { label: 'Créée', tone: 'success' },

@@ -305,6 +305,73 @@ class TestReleveImport(_ReleveImportBase):
         self.assertIn(r.status_code, (200, 201))
         self.assertEqual(r.data['skipped'], 1)
 
+    def _acompte_domicile(self, signe_le):
+        from apps.ventes.models import BonCommande, Devis
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-RI-{_nxt()}',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'))
+        BonCommande.objects.create(
+            company=self.company, reference=f'BC-RI-{_nxt()}',
+            devis=devis, client=self.client_obj,
+            statut=BonCommande.Statut.CONFIRME, signe_au_domicile=True,
+            date_signature_domicile=signe_le)
+        facture = self._facture(ttc=Decimal('3000'))
+        Facture.objects.filter(pk=facture.pk).update(
+            devis=devis, type_facture=Facture.TypeFacture.ACOMPTE)
+        return facture
+
+    def test_import_refuse_acompte_domicile_avant_j7(self):
+        """AARG6 — un acompte signé au domicile il y a 3 jours n'est jamais
+        crédité par un relevé : aperçu et commit le nomment, 0 Paiement ; à J+8 : créé."""
+        from datetime import timedelta
+        jour = timezone.localdate()
+        facture = self._acompte_domicile(jour - timedelta(days=3))
+        csv_bytes = _make_csv([{'date': jour.isoformat(),
+                                'reference': facture.reference, 'montant': '3000'}])
+        dry, r = self._commit(csv_bytes)
+        ligne = dry.data['preview'][0]
+        self.assertEqual(ligne['statut'], 'non_encaissable')
+        self.assertIn('Acompte non encaissable avant le', ligne['motif'])
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['created'], 0)
+        self.assertEqual(Paiement.objects.filter(facture=facture).count(), 0)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, 'emise')
+
+        recevable = self._acompte_domicile(jour - timedelta(days=8))
+        _, r2 = self._commit(_make_csv([{
+            'date': jour.isoformat(), 'reference': recevable.reference,
+            'montant': '3000'}]))
+        self.assertEqual(r2.data['created'], 1, r2.data)
+
+    def test_commit_refuse_si_la_porte_se_ferme_apres_l_apercu(self):
+        """AARG6 — sous le verrou : un acompte devenu non encaissable entre l'aperçu
+        et la validation reste refusé."""
+        from datetime import timedelta
+        jour = timezone.localdate()
+        facture = self._facture(ttc=Decimal('3000'))
+        csv_bytes = _make_csv([{'date': jour.isoformat(),
+                                'reference': facture.reference, 'montant': '3000'}])
+        dry = self._dry(csv_bytes)
+        self.assertEqual(dry.data['preview'][0]['statut'], 'a_importer')
+        from apps.ventes.models import BonCommande, Devis
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-RI-{_nxt()}',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'))
+        BonCommande.objects.create(
+            company=self.company, reference=f'BC-RI-{_nxt()}',
+            devis=devis, client=self.client_obj,
+            statut=BonCommande.Statut.CONFIRME, signe_au_domicile=True,
+            date_signature_domicile=jour - timedelta(days=1))
+        Facture.objects.filter(pk=facture.pk).update(
+            devis=devis, type_facture=Facture.TypeFacture.ACOMPTE)
+        r = self.api.post(self.COMMIT_URL, {'token': dry.data['token']}, format='json')
+        self.assertEqual(r.data['created'], 0, r.data)
+        self.assertEqual(r.data['results'][0]['statut'], 'non_encaissable')
+        self.assertEqual(Paiement.objects.filter(facture=facture).count(), 0)
+
     def test_commit_company_scoped(self):
         """Les factures d'une autre société ne sont jamais matchées."""
         other_co, _ = Company.objects.get_or_create(
