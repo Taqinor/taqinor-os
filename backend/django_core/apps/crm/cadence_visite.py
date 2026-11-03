@@ -31,7 +31,7 @@ from .cadence_filet import (
     _poser_etape_visite,
     _suivi_de_proposition_existe,
 )
-from .cadence_plan import _recaler_file, reporter_prochaine_touche
+from .cadence_plan import _recaler_file, arreter_cadence, reporter_prochaine_touche
 from .cadence_reperes import (
     FILET_JOINT_LIBELLE,
     OUTCOME_VISITE_ACCEPTEE,
@@ -417,8 +417,9 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
 
     devis_id = _devis_id_de_la_cadence(lead)
     # Le filet « planifier la visite convenue » a rempli son office : on
-    # l'ANNULE (statut moteur CKP1, jamais « sautée par un humain »). C'est la
-    # SEULE étape que cette fonction annule — le plan, lui, est décalé.
+    # l'ANNULE (statut moteur CKP1, jamais « sautée par un humain »). ACVI37 — la
+    # prise de contact aussi : le rendez-vous la remplace ; le plan est décalé.
+    arreter_cadence(lead, user=user, motif='visite planifiée', cadences=['contact'])
     lead.relance_etapes.filter(
         q_etape(CLE_PLANIFIER),
         statut=RelanceEtape.Statut.A_FAIRE).update(

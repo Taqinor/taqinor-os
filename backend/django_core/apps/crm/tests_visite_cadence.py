@@ -143,6 +143,24 @@ class VisiteCadenceBase(TestCase):
 
 class VisitePlanifieeTests(VisiteCadenceBase):
 
+    def test_la_prise_de_contact_est_arretee(self):
+        """ACVI37 — la visite planifiée remplace la touche de prise de contact."""
+        touche = RelanceEtape.objects.create(
+            company=self.lead.company, lead=self.lead, cadence='contact',
+            ordre=1, canal=RelanceEtape.Canal.APPEL, libelle='Premier appel',
+            due_at=MAINTENANT, due_date=MAINTENANT.date())
+        with frozen(MAINTENANT):
+            cadence_visite.appliquer_visite_planifiee(
+                self.lead, self.acteur, VISITE_LE)
+        touche.refresh_from_db()
+        self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+        self.assertEqual(touche.note, 'visite planifiée')
+        self.assertFalse(self.lead.relance_etapes.filter(
+            cadence='contact', statut=RelanceEtape.Statut.A_FAIRE).exists())
+        self.assertTrue(self.lead.relance_etapes.filter(
+            cle__in=[cadence_visite.CLE_CONFIRMATION, cadence_visite.CLE_DEBRIEF],
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
+
     def test_decale_le_plan_sans_jamais_lannuler(self):
         """AMENDEMENT FONDATEUR — le plan se tait, il ne meurt pas."""
         generique = self._touche_generique_ouverte()
