@@ -39,7 +39,7 @@ import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
 import { buildGallery } from '../../lib/homeGallery';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR, MEASURED_FLEET_READ_NOTE, derniereRealisation } from '../../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR, MEASURED_FLEET_READ_NOTE, dateLocale, derniereRealisation } from '../../lib/realisations';
 import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -558,7 +558,7 @@ import IndexBloc1A99 from '../../components/blocs/IndexBloc1A99.astro';
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">آخر تركيب مُسلَّم</p>
           {latest.kwc && <p class="fig lum mt-3 text-4xl" data-tally>{latest.kwc}</p>}
-          <p class="tech-label mt-1 text-lune-faint">{latestVilleAr} · {latest.date}</p>
+          <p class="tech-label mt-1 text-lune-faint">{latestVilleAr} · {dateLocale(latest.date, 'ar')}</p>
           <p class="mt-4 text-sm leading-relaxed text-lune-soft">
             {[latest.panneaux, latest.onduleur, latest.batterie].filter(Boolean).join(' · ')}
           </p>

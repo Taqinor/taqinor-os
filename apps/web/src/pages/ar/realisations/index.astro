@@ -22,7 +22,7 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import BrandStrip from '../../../components/BrandStrip.astro';
-import { REALISATIONS, standardCaption } from '../../../lib/realisations';
+import { REALISATIONS, dateLocale, standardCaption } from '../../../lib/realisations';
 import { realisationsItemListJsonLd, realisationsPage, villesUniques } from '../../../lib/realisationsView';
 import { localizeNavHref } from '../../../i18n/pages';
 
@@ -110,7 +110,7 @@ import PourquoiTaqinorBloc660A from '../../../components/blocs/PourquoiTaqinorBl
               data-lightbox-trigger
               data-lightbox-src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`}
               data-lightbox-alt={altOf(r)}
-              data-lightbox-label={[r.ville, r.kwc, r.date].filter(Boolean).join(' · ')}
+              data-lightbox-label={[r.ville, r.kwc, dateLocale(r.date, 'ar')].filter(Boolean).join(' · ')}
               aria-label={`تكبير الصورة: ${altOf(r)}`}
             >
               <Picture

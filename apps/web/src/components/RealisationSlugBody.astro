@@ -11,7 +11,7 @@ import Picture from './Picture.astro';
 import PhotoCaption from './PhotoCaption.astro';
 import LiteVideo from './LiteVideo.astro';
 import CtaBand from './CtaBand.astro';
-import { mesureAffichee } from '../lib/realisations';
+import { dateLocale, mesureAffichee } from '../lib/realisations';
 import V2Page from './V2Page.astro';
 
 interface Props {
@@ -43,6 +43,7 @@ const hero = r.photos[0];
 const dir = rtl ? 'ltr' : undefined;
 // WAUD21 — le seul cumul apparié à CETTE réalisation (measuredLabel), avec sa date de relevé.
 const mesure = mesureAffichee(r, fr ? 'fr' : rtl ? 'ar' : 'en');
+const dateAffichee = dateLocale(r.date, fr ? 'fr' : rtl ? 'ar' : 'en');
 const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10';
 ---
 
@@ -70,7 +71,7 @@ const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white
       <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
     </div>
     <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-      <p class="tech-label v2-kicker rule-brass cine-in text-lune">{t.ref} {rtl ? <span dir="ltr">{r.ref} · {r.ville} · {r.date}</span> : <>{r.ref} · {r.ville} · {r.date}</>}</p>
+      <p class="tech-label v2-kicker rule-brass cine-in text-lune">{t.ref} {rtl ? <span dir="ltr">{r.ref} · {r.ville} · {dateAffichee}</span> : <>{r.ref} · {r.ville} · {dateAffichee}</>}</p>
       <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
         {r.kwc
           ? <>{rtl ? <span dir="ltr">{r.kwc}</span> : r.kwc}{' '}{t.h1Kwc}</>

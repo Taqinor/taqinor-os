@@ -438,6 +438,15 @@ export function dateComparable(date: string): number {
   return m < 0 || !Number.isFinite(a) ? -1 : a * 12 + m;
 }
 
+/** WAUD32 — « mois année » de `date` rendu par locale ; le français reste identique à l'octet. */
+export function dateLocale(date: string, locale: 'fr' | 'en' | 'ar'): string {
+  if (locale === 'fr') return date;
+  const c = dateComparable(date);
+  if (c < 0) return date;
+  const jour = new Date(Date.UTC(Math.floor(c / 12), c % 12, 1));
+  return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'ar-MA', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(jour);
+}
+
 /** WAUD15 — la réalisation la plus récemment livrée (max(date)). */
 export function derniereRealisation(): Realisation {
   return [...REALISATIONS].sort((a, b) => dateComparable(b.date) - dateComparable(a.date))[0];
@@ -553,7 +562,7 @@ export const standardCaption = (r: Realisation, locale: 'fr' | 'en' | 'ar' = 'fr
   const dateVerb = r.dateType === 'filmed' ? s.filmed : s.installed;
   const parts = [r.ville];
   if (r.kwc) parts.push(r.kwc);
-  parts.push(`${dateVerb} ${r.date}`);
+  parts.push(`${dateVerb} ${dateLocale(r.date, locale)}`);
   if (r.production) {
     const unitLabel = r.productionEstimated ? s.estimated : s.measured;
     parts.push(`${r.production.replace(/\/an$/, '')} ${unitLabel}`);

@@ -300,3 +300,25 @@ describe('WAUD14 — pas de « mesuré / temps réel » sans relevé, pas de phr
   });
 });
 
+describe('WAUD32 — mois et dates par locale', () => {
+  it('dateLocale : FR identique à l’octet, EN et AR traduits', async () => {
+    const { dateLocale, standardCaption } = await import('../src/lib/realisations');
+    expect(dateLocale('avril 2026', 'fr')).toBe('avril 2026');
+    expect(dateLocale('avril 2026', 'en')).toBe('April 2026');
+    expect(dateLocale('octobre 2025', 'ar')).toMatch(/2025/);
+    expect(dateLocale('octobre 2025', 'ar')).not.toMatch(/octobre/);
+    for (const r of REALISATIONS) {
+      expect(standardCaption(r, 'fr')).toContain(r.date);
+      expect(standardCaption(r, 'en')).not.toContain(r.date);
+      expect(standardCaption(r, 'ar')).not.toContain(r.date);
+    }
+  });
+  it('les pages ar/ n’importent plus DATE_LONGUE_FR', () => {
+    for (const p of ['blog/index', 'blog/prix-installation-solaire-maroc-2026', 'blog/rentabilite-solaire-par-ville-maroc', 'prix-panneaux-solaires-maroc', 'ressources/10-questions-avant-de-signer']) {
+      expect(readSrc(`../src/pages/ar/${p}.astro`), p).not.toContain('DATE_LONGUE_FR');
+    }
+    for (const p of ['en/realisations/index', 'ar/realisations/index', 'en/production-mesuree', 'ar/production-mesuree']) {
+      expect(readSrc(`../src/pages/${p}.astro`), p).toContain('dateLocale');
+    }
+  });
+});

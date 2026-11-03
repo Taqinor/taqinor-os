@@ -45,7 +45,7 @@ import { whatsappLink } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
 import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
-import { realisationByRef } from '../../lib/realisations';
+import { dateLocale, realisationByRef } from '../../lib/realisations';
 import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.astro';
 import ProfessionnelBloc2CD6 from '../../components/blocs/ProfessionnelBloc2CD6.astro';
 import ProfessionnelA9585 from '../../components/blocs/ProfessionnelA9585.astro';
@@ -233,7 +233,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
               <span class="tech-label block text-brass-300">{CITY_AR_MAP[figRef134?.ville ?? ''] ?? figRef134?.ville} · {figRef134?.kwc} · {figRef134?.production}</span>
-              <span class="mt-0.5 block text-xs text-lune">تركيب جارٍ · {figRef134?.panneaux} · {figRef134?.date}</span>
+              <span class="mt-0.5 block text-xs text-lune">تركيب جارٍ · {figRef134?.panneaux} · {figRef134 && dateLocale(figRef134.date, 'ar')}</span>
             </figcaption>
           </figure>
           <figure class="v2-rise cine-card group relative overflow-hidden">

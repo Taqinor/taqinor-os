@@ -12,3 +12,5 @@ export function formatMAD(amount: number): string {
 
 /** Date longue française (`21 juin 2026`) — partagée par les pages blog/guides. */
 export const DATE_LONGUE_FR = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+/** WAUD32 — son pendant arabe, pour les pages ar/. */
+export const DATE_LONGUE_AR = new Intl.DateTimeFormat('ar-MA', { day: 'numeric', month: 'long', year: 'numeric' });
