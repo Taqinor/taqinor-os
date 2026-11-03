@@ -1293,6 +1293,17 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         ``update`` soit persisté (vide si aucun champ n'est marqué)."""
         return {'saisies_humaines'} if self.champs_a_marquer(validated_data) else set()
 
+    def create(self, validated_data):
+        """ACVI25 — un POST de la fiche aussi : les clés du corps sont marquées,
+        pas ce que le serveur pose (``company``, ``owner`` par défaut)."""
+        from apps.records.provenance import marquer_saisie_humaine
+        champs = self.champs_a_marquer(validated_data)
+        if champs:
+            validated_data = {
+                **validated_data,
+                'saisies_humaines': marquer_saisie_humaine(Lead(), champs)}
+        return super().create(validated_data)
+
     def update(self, instance, validated_data):
         """AMET23 — un PATCH/PUT de la fiche est une saisie humaine : les clés du
         corps (champs réels du lead) rejoignent ``saisies_humaines``."""

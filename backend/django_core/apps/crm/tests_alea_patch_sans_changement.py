@@ -89,6 +89,23 @@ class PatchMarqueSaisiesHumainesTests(TestCase):
         self.api.force_authenticate(self.user)
         self.url = f'/api/django/crm/leads/{self.lead.pk}/'
 
+    def test_post_marque_les_champs_saisis(self):
+        # ACVI25 — la date tapée au POST survit au démarrage de la cadence.
+        import datetime
+
+        from django.utils import timezone
+
+        date = timezone.localdate() + datetime.timedelta(days=10)
+        r = self.api.post('/api/django/crm/leads/', {
+            'nom': 'X', 'telephone': '0612345678',
+            'relance_date': date.isoformat()}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        lead = Lead.objects.get(pk=r.data['id'])
+        self.assertEqual(lead.relance_date, date)
+        self.assertLessEqual(
+            {'nom', 'telephone', 'relance_date'}, set(lead.saisies_humaines))
+        self.assertFalse({'owner', 'company'} & set(lead.saisies_humaines))
+
     def test_patch_vide_whatsapp_persiste_le_marqueur(self):
         r = self.api.patch(self.url, {'whatsapp': ''}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
