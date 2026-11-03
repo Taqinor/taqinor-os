@@ -496,7 +496,8 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
         stage=stages.NEW,
     )
     finaliser_lead_importe(lead, user=user, source='ticket SAV',
-                           base_legale=BASE_LEGALE_SOLLICITATION)
+                           base_legale=BASE_LEGALE_SOLLICITATION,
+                           cadence_origine='ticket SAV')
     contexte = (contexte or '').strip()
     if contexte:
         # Note SYSTÈME (user=None) : garde le lead au stade NEW (le récepteur
@@ -583,7 +584,8 @@ def create_lead_from_evenement_marketing(
 
 def finaliser_lead_importe(lead, *, user=None, lead_attrs=None,
                            source='import de fichier',
-                           base_legale=BASE_LEGALE_NON_COLLECTEE):
+                           base_legale=BASE_LEGALE_NON_COLLECTEE,
+                           cadence_origine='import fichier'):
     """AUD518 — applique à un lead IMPORTÉ les effets de création du chemin
     MANUEL, dont il était intégralement privé.
 
@@ -629,4 +631,8 @@ def finaliser_lead_importe(lead, *, user=None, lead_attrs=None,
     activity.log_creation(lead, user)
     recompute_lead_score(lead)
     enregistrer_base_legale_lead(lead, source=source, base_legale=base_legale)
+    # ACVI88 (D-ACVI-4) — parité d'arrivée : la cadence démarre, ou son refus est
+    # tracé. ``''`` : l'appelant la démarre lui-même (API publique).
+    if cadence_origine:
+        demarrer_cadence_contact(lead, origine=cadence_origine)
     return lead

@@ -291,6 +291,8 @@ class PointsExclusTests(_Base):
         lead = self._lead(source=Lead.Source.ODOO_IMPORT_TEST)
         self.assertEqual(
             RelanceEtape.objects.filter(lead=lead).count(), 0)
+        self.assertTrue(lead.activites.filter(
+            body__startswith='Cadence de relance non initialisée').exists())
 
     def test_creation_en_masse_ne_declenche_rien(self):
         """`bulk_create` ne passe par AUCUN service : c'est justement pourquoi
@@ -302,7 +304,23 @@ class PointsExclusTests(_Base):
             for i in range(3)])
         self.assertEqual(RelanceEtape.objects.count(), 0)
 
-    def test_lead_depuis_ticket_sav_nest_pas_une_demande_entrante(self):
+    def test_ticket_sav_et_fichier_demarrent_la_cadence(self):
+        """ACVI88 (D-ACVI-4) — un numéro : la cadence contact démarre."""
+        from apps.crm.models import Client
+        client = Client.objects.create(
+            company=self.company, nom='Client', telephone='0661000002')
+        lead, _created = leads_intake.create_lead_depuis_ticket(
+            company=self.company, user=self.acteur, client=client)
+        self.assertTrue(RelanceEtape.objects.filter(
+            lead=lead, cadence='contact').exists())
+        fichier = Lead.objects.create(
+            company=self.company, nom='Fichier', telephone='0661000022')
+        leads_intake.finaliser_lead_importe(fichier, user=self.acteur)
+        self.assertTrue(RelanceEtape.objects.filter(
+            lead=fichier, cadence='contact').exists())
+
+    def test_lead_depuis_ticket_sans_numero_refus_trace(self):
+        """ACVI88 — sans numéro, 0 touche et le refus se lit au chatter."""
         from apps.crm.models import Client
         client = Client.objects.create(
             company=self.company, nom='Client', email='c@example.com')

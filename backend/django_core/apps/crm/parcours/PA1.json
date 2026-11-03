@@ -348,7 +348,7 @@
       "id": "ticket_sav",
       "source": "apps/crm/leads_intake.py::create_lead_depuis_ticket",
       "description": "Ticket SAV devenu opportunité.",
-      "arrivee": "finaliser_lead_importe, sans cadence"
+      "arrivee": "finaliser_lead_importe, cadence contact"
     },
     {
       "id": "ocr_facture",
@@ -372,7 +372,7 @@
       "id": "import_donnees",
       "source": "apps/dataimport/services.py::_commit_raw",
       "description": "Import de données (fichier).",
-      "arrivee": "finaliser_lead_importe, sans cadence"
+      "arrivee": "finaliser_lead_importe, cadence contact"
     }
   ],
   "provenance": {

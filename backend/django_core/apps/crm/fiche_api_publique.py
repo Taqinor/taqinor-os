@@ -52,7 +52,8 @@ def create_lead_from_public_api(*, company, fields):
     )
     # ACVI12 — responsable, chatter, score, registre : la finalisation commune.
     from .leads_intake import finaliser_lead_importe
-    finaliser_lead_importe(lead, lead_attrs=clean, source='API publique')
+    finaliser_lead_importe(lead, lead_attrs=clean, source='API publique',
+                           cadence_origine='')
     # MRY6 — l'API publique crée de VRAIES demandes (formulaire partenaire,
     # intégration) : elles entrent dans la cadence comme les autres.
     demarrer_cadence_contact(lead, origine='api_publique')
