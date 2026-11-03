@@ -136,6 +136,14 @@ def _nom_fiche_client(client):
     return f'{nom} (#{client.pk})'
 
 
+def stage_apres_fusion(leads):
+    """ACVI33 — l'étape que le survivant porte après la fusion : la plus avancée
+    du groupe, dans l'ordre de STAGES.py (Froid est un parking, sous NEW). Lue
+    par la fusion et par son aperçu."""
+    from .fiche_funnel import _rang_funnel
+    return max((lead.stage for lead in leads), key=_rang_funnel)
+
+
 def merge_leads(survivor, others, user):
     """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
     activités, pièces jointes, historique et chantiers ; complète les champs
@@ -272,6 +280,15 @@ def merge_leads(survivor, others, user):
                           f'{_nom_fiche_client(client)} ({devis_txt}) — à '
                           'fusionner (outil de fusion des clients).'))
         survivor.save()
+        # ACVI33 — l'étape la plus avancée du groupe, par le point de passage
+        # canonique (émission de ``lead_stage_changed``, crochet SIGNED).
+        cible = stage_apres_fusion([survivor, *others])
+        if cible != survivor.stage:
+            from . import activity
+            from .fiche_funnel import appliquer_stage_lead
+            ancienne = survivor.stage
+            appliquer_stage_lead(survivor, cible, user=user)
+            activity.log_bulk_change(survivor, user, 'stage', ancienne, cible)
         if oppose:  # ACVI21 — après l'étape 6 : sous les identifiants complétés.
             tracer_opposition_registre(survivor, source='fusion de fiches')
     if relances_reprises and not survivor.ne_plus_contacter:

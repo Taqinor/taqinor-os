@@ -685,6 +685,25 @@ class TestLeadMerge(TestCase):
         ids = [d['id'] for d in resp.data]
         self.assertIn(self.dup.id, ids)
 
+    def test_le_survivant_prend_l_etape_la_plus_avancee(self):
+        # ACVI33 — annoncée par l'aperçu, appliquée par la fusion, signal émis.
+        from unittest import mock
+        Lead.objects.filter(pk=self.dup.pk).update(stage=stages.SIGNED)
+        apercu = self.api.get('/api/django/crm/leads/doublons/')
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        groupe = next(g for g in apercu.data
+                      if self.survivor.id in [m['id'] for m in g['members']])
+        self.assertEqual(
+            groupe['merge_preview']['stage_apres_fusion'], stages.SIGNED)
+        with mock.patch('apps.crm.fiche_funnel._emit_stage_changed') as emission:
+            resp = self.api.post(
+                f'/api/django/crm/leads/{self.survivor.id}/merge/',
+                {'others': [self.dup.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.survivor.refresh_from_db()
+        self.assertEqual(self.survivor.stage, stages.SIGNED)
+        emission.assert_called()
+
     def test_merge_moves_devis_and_archives_absorbed(self):
         resp = self.api.post(
             f'/api/django/crm/leads/{self.survivor.id}/merge/',
