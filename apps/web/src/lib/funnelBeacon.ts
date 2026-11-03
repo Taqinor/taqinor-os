@@ -41,7 +41,8 @@ export type FunnelStepId = (typeof FUNNEL_STEP_IDS)[number];
 // `callback_requested` (demande de rappel explicite, DISTINCTE d'un opt-in
 // WhatsApp), `signed` (signature électronique de la proposition). `reached`/
 // `abandoned` (WJ59) restent inchangés pour tout call-site existant.
-export const FUNNEL_ACTIONS = ['reached', 'abandoned', 'viewed', 'callback_requested', 'signed'] as const;
+// WAUD7 — `whatsapp_clicked` : clic sur un lien wa.me (additif, même vocabulaire fermé).
+export const FUNNEL_ACTIONS = ['reached', 'abandoned', 'viewed', 'callback_requested', 'signed', 'whatsapp_clicked'] as const;
 export type FunnelAction = (typeof FUNNEL_ACTIONS)[number];
 
 export interface FunnelBeaconEvent {

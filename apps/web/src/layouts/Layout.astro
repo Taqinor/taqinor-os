@@ -103,6 +103,8 @@ const alternates =
 // no-op tant que le token n'est pas posé (aucun script, aucune requête). Sans
 // cookie, sans ID persistant — la vérité de tunnel reste le flux d'événements
 // WJ55/WJ59 ; ceci ne sert qu'au bon sens trafic/CWV sitewide.
+// WAUD5 — UN SEUL beacon : ce jeton reste vide tant que l'auto-injection de Cloudflare
+// (tableau de bord) est active ; le poser en plus compterait chaque visite deux fois.
 const cfAnalyticsToken = (import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN as string | undefined)?.trim();
 
 const canonical = new URL(Astro.url.pathname, Astro.site);
@@ -227,6 +229,11 @@ const jsonLd = {
         data-cf-beacon={JSON.stringify({ token: cfAnalyticsToken })}
       />
     )}
+    <script>
+      // WAUD7 — clics WhatsApp / téléphone (événement Contact + whatsapp_clicked).
+      import { installerMesureContact } from '../lib/telemetryEvents';
+      installerMesureContact(document, window);
+    </script>
     <script is:inline>
       // Capture first-touch fbclid + UTM sur toute page d'atterrissage —
       // persistés en sessionStorage, repris par le formulaire (gate CAPI).
@@ -305,8 +312,8 @@ const jsonLd = {
         </p>
         <p class="mt-3 text-xs">
           © 2026 {NAP.name} ·
-          <a href="/mentions-legales" class="underline underline-offset-2 transition-colors hover:text-white">Mentions légales</a> ·
-          <a href="/politique-de-confidentialite" class="underline underline-offset-2 transition-colors hover:text-white">Confidentialité</a>
+          <a href="/mentions-legales/" class="underline underline-offset-2 transition-colors hover:text-white">Mentions légales</a> ·
+          <a href="/politique-de-confidentialite/" class="underline underline-offset-2 transition-colors hover:text-white">Confidentialité</a>
         </p>
       </footer>
     ) : (

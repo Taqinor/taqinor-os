@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { JSDOM } from 'jsdom';
+import { validateBeaconEvent } from '../src/lib/funnelBeacon';
 import {
   TELEMETRY_EVENT_PROPS,
   TELEMETRY_EVENTS,
@@ -7,6 +11,7 @@ import {
   TELEMETRY_MODES,
   TELEMETRY_STEP_IDS,
   buildTelemetryEvent,
+  installerMesureContact,
   isTelemetryEventName,
   toFunnelWire,
 } from '../src/lib/telemetryEvents';
@@ -62,7 +67,6 @@ describe('toFunnelWire — WJ104 : pont vers le beacon {step, action} existant',
   it('renvoie null pour un événement non câblé (statut d\'adoption inchangé)', () => {
     expect(toFunnelWire('journey_step_viewed')).toBeNull();
     expect(toFunnelWire('estimate_rendered')).toBeNull();
-    expect(toFunnelWire('whatsapp_clicked')).toBeNull();
     expect(toFunnelWire('proposal_scrolled_to_financing')).toBeNull();
   });
 });
@@ -134,5 +138,56 @@ describe('buildTelemetryEvent — CONTRAT DE VIE PRIVÉE : jamais de PII (WJ91)'
       page: '/devis/mon-toit?fbclid=abc&utm_source=fb',
     });
     expect(evt.props.page).toBe('/devis/mon-toit');
+  });
+});
+
+describe('WAUD7 — mesure des clics WhatsApp et téléphone', () => {
+  function monter(html: string, consentement: string | null = null) {
+    const dom = new JSDOM(`<!doctype html><body>${html}</body>`, { url: 'https://taqinor.ma/contact/' });
+    const win = dom.window as unknown as Window & typeof globalThis & { tqPixelTrack: ReturnType<typeof vi.fn> };
+    win.tqPixelTrack = vi.fn();
+    const sendBeacon = vi.fn(() => true);
+    Object.defineProperty(win.navigator, 'sendBeacon', { value: sendBeacon });
+    if (consentement) win.localStorage.setItem('tq_consent', consentement);
+    Object.defineProperty(win, 'crypto', { value: { randomUUID: () => 'aaaa-bbbb-cccc' } });
+    installerMesureContact(win.document, win);
+    const cliquer = (s: string) => {
+      const a = win.document.querySelector(s)!;
+      a.addEventListener('click', (e) => e.preventDefault());
+      a.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+    };
+    return { win, sendBeacon, cliquer };
+  }
+
+  it('wa.me : Contact + whatsapp_clicked (step, action, jeton, chemin), aucune donnée de contact', async () => {
+    const { win, sendBeacon, cliquer } = monter('<footer><a id="a" href="https://wa.me/212600000000?text=x"><b id="b">WA</b></a></footer>');
+    cliquer('#b');
+    expect(win.tqPixelTrack).toHaveBeenCalledWith('Contact', { content_name: '/contact/', placement: 'footer' });
+    expect(sendBeacon).toHaveBeenCalledTimes(1);
+    const corps = JSON.parse(await (sendBeacon.mock.calls[0] as unknown as [string, Blob])[1].text());
+    expect(validateBeaconEvent(corps).ok).toBe(true);
+    expect(corps).toEqual({ step: 'contact', action: 'whatsapp_clicked', sessionToken: 'aaaabbbbcccc', path: '/contact/' });
+  });
+
+  it('tel: : Contact seulement', () => {
+    const { win, sendBeacon, cliquer } = monter('<main><a id="t" href="tel:+212600000000">Appeler</a></main>');
+    cliquer('#t');
+    expect(win.tqPixelTrack).toHaveBeenCalledWith('Contact', { content_name: '/contact/', placement: 'main' });
+    expect(sendBeacon).not.toHaveBeenCalled();
+  });
+
+  it('refus explicite : aucun beacon ; un autre lien : rien du tout', () => {
+    const a = monter('<a id="a" href="https://wa.me/212600000000">WA</a><a id="z" href="/faq/">FAQ</a>', 'denied');
+    a.cliquer('#a');
+    expect(a.sendBeacon).not.toHaveBeenCalled();
+    const b = monter('<a id="z" href="/faq/">FAQ</a>');
+    b.cliquer('#z');
+    expect(b.win.tqPixelTrack).not.toHaveBeenCalled();
+    expect(b.sendBeacon).not.toHaveBeenCalled();
+  });
+
+  it('un seul écouteur délégué, branché par Layout', () => {
+    const layout = readFileSync(fileURLToPath(new URL('../src/layouts/Layout.astro', import.meta.url)), 'utf-8');
+    expect(layout).toContain('installerMesureContact(document, window)');
   });
 });
