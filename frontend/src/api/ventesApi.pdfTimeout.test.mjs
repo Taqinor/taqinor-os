@@ -77,3 +77,8 @@ test('CAD177 : etudeCiPreview porte un timeout dédié ≥ 60 s et garde le sign
   assert.ok(Number(m[1]) >= 60000, `timeout ${m[1]} ms trop court pour un aperçu C&I de ~21 s`)
   assert.match(block, /\.\.\.config/, 'le signal d\'annulation du hook doit rester transmis')
 })
+
+test('ERR-AGNR61-REPLACE-LINES-20S : créer et ré-enregistrer un devis ont le budget du recalcul', () => {
+  assert.match(VENTES_API_SRC, /replace-lines\/`, \{ lignes, \.\.\.extra \}, \{ timeout: 120000 \}\)/)
+  assert.match(VENTES_API_SRC, /devis\/atomic\/', data,\s+\{ timeout: 120000/)
+})

@@ -60,7 +60,7 @@ const ventesApi = {
   // en en-tête `Idempotency-Key` : un 2ᵉ envoi après une coupure rejoue le
   // premier devis côté serveur au lieu d'en créer un second.
   createDevisAtomic: (data, { idempotencyKey } = {}) => api.post('/ventes/devis/atomic/', data,
-    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
+    { timeout: 120000, ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}) }),
   // QX21 — remplacement ATOMIQUE des lignes d'un devis (édition) : les
   // anciennes lignes sont remplacées par les nouvelles en une transaction ; un
   // échec préserve les lignes existantes (jamais un devis à zéro ligne).
@@ -68,7 +68,9 @@ const ventesApi = {
   // l'en-tête et les choix d'écran partent dans la MÊME transaction serveur
   // que les lignes (plus de PATCH d'en-tête séparé en édition).
   replaceLignesDevis: (id, lignes, extra = {}) =>
-    api.post(`/ventes/devis/${id}/replace-lines/`, { lignes, ...extra }),
+    // ERR-AGNR61-REPLACE-LINES-20S — le serveur recalcule les études comme `atomic` : le plafond de 20 s de l'instance
+    // coupait l'écran (« L'enregistrement a échoué ») alors que le serveur finissait d'enregistrer.
+    api.post(`/ventes/devis/${id}/replace-lines/`, { lignes, ...extra }, { timeout: 120000 }),
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
   // QJR62/QJR66 — PATCH **FUSIONNANT** d'`etude_params` : seules les clés
   // ENVOYÉES bougent, les autres restent intouchées bit à bit (une valeur
