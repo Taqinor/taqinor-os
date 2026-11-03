@@ -121,6 +121,22 @@ class CreateLeadFromMetaLeadAdsTests(TestCase):
         self.assertIsNone(lead.utm_content)
         self.assertEqual(lead.utm_source, 'facebook')
 
+    def test_lead_a_la_corbeille_n_est_pas_recree(self):
+        """ACVI11 — un rejeu après soft_delete rend la fiche, sans écriture."""
+        from apps.crm.leads_meta import create_lead_from_meta_lead_ads
+        from apps.crm.models import Lead, RelanceEtape
+
+        donnees = [{'name': 'phone_number', 'values': ['+212661000001']}]
+        lead = create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='9001', field_data=donnees)
+        lead.soft_delete(None)
+        touches = RelanceEtape.objects.filter(lead=lead).count()
+        rendu = create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='9001', field_data=donnees)
+        self.assertEqual(rendu.pk, lead.pk)
+        self.assertEqual(Lead.all_objects.filter(external_id='9001').count(), 1)
+        self.assertEqual(RelanceEtape.objects.filter(lead=lead).count(), touches)
+
     def test_idempotent_on_repeated_leadgen_id(self):
         first = create_lead_from_meta_lead_ads(
             company=self.company, leadgen_id='lg_5553',

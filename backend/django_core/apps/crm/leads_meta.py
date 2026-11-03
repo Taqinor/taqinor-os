@@ -748,9 +748,12 @@ def create_lead_from_meta_lead_ads(
     # (backfill) depuis les réponses du formulaire — champs vides uniquement,
     # jamais un écrasement de saisie humaine. C'est ce chemin qui remplit les
     # leads importés avant que le mapping complet n'existe.
-    existing = Lead.objects.filter(
+    # ACVI11 — corbeille comprise : une fiche supprimée n'est ni recréée ni touchée.
+    existing = Lead.all_objects.filter(
         company=company, external_system=_META_LEAD_ADS_SYSTEM,
         external_id=str(leadgen_id)).first()
+    if existing is not None and existing.is_deleted:
+        return existing
     if existing is not None:
         # ACRM14 — UNE seule passe d'enrichissement : déjà enrichi (note
         # « [Formulaire Meta] » présente) → aucune écriture, la saisie
