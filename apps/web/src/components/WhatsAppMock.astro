@@ -1,6 +1,6 @@
 ---
 /**
- * Maquette HTML/CSS d'un échange WhatsApp réel anonymisé — élément de
+ * Maquette HTML/CSS d'un exemple d'échange WhatsApp (jamais présenté comme réel) — élément de
  * confiance « la suite se passe sur WhatsApp ». Aucune capture d'écran ;
  * tout est construit en HTML/CSS pour rester net et léger.
  * PLACEHOLDER(MERYEM): les messages sont représentatifs — à ajuster si
@@ -18,7 +18,7 @@
  * W67 — i18n : seuls les bulles AFFICHÉES + « WhatsApp direct » + le sous-titre
  * sont traduits (FR/EN/AR). Le lien WhatsApp pré-rempli reste EN FRANÇAIS (il
  * atteint l'équipe FR) — l'argument de `whatsappLink(...)` n'est jamais traduit.
- * Les CHIFFRES (1 800 MAD, 5 à 9 kWc) et les LIEUX (Casablanca) restent
+ * Les CHIFFRES (1 800 MAD) et les LIEUX (Casablanca) restent
  * identiques dans toutes les langues. Rendu FR inchangé (branche `fr` = strings
  * actuels mot pour mot).
  */
@@ -42,7 +42,7 @@ const STR: Record<
     photo: '📷 Photo de la toiture',
     msgs: [
       'Bonjour, je viens de faire le diagnostic sur taqinor.ma — facture ~1 800 MAD, villa à Casablanca.',
-      'Bonjour ! Merci pour votre diagnostic. Avec ce profil, on part sur 5 à 9 kWc. Quelques photos de votre toiture et je peux affiner avant la visite technique.',
+      'Bonjour ! Merci pour votre diagnostic. On vous dit la puissance qui convient après lecture de votre facture. Quelques photos de votre toiture aideront avant la visite technique.',
       'Parfait, belle exposition sud. Je vous propose un passage jeudi pour la visite — l’étude complète est gratuite et sans engagement.',
     ],
     online: 'en ligne',
@@ -54,7 +54,7 @@ const STR: Record<
     photo: '📷 Photo of the roof',
     msgs: [
       'Hello, I just did the diagnostic on taqinor.ma — bill ~1 800 MAD, villa in Casablanca.',
-      'Hello! Thanks for your diagnostic. With this profile, we’re looking at 5 à 9 kWc. A few photos of your roof and I can refine before the technical visit.',
+      'Hello! Thanks for your diagnostic. We’ll tell you the right power once we’ve read your bill. A few photos of your roof will help before the technical visit.',
       'Perfect, lovely south exposure. I can come by on Thursday for the visit — the full study is free and with no commitment.',
     ],
     online: 'online',
@@ -66,7 +66,7 @@ const STR: Record<
     photo: '📷 صورة للسطح',
     msgs: [
       'مرحبًا، أنجزتُ للتوّ التشخيص على taqinor.ma — الفاتورة ~1 800 MAD، فيلا في Casablanca.',
-      'مرحبًا! شكرًا على تشخيصك. مع هذا الملف، نتّجه نحو 5 à 9 kWc. بعض الصور لسطحك وأستطيع الضبط قبل الزيارة التقنية.',
+      'مرحبًا! شكرًا على تشخيصك. سنخبرك بالقدرة المناسبة بعد قراءة فاتورتك. بعض الصور لسطحك ستساعد قبل الزيارة التقنية.',
       'ممتاز، تعرّض جنوبي جميل. أقترح المرور يوم الخميس للزيارة — الدراسة الكاملة مجانية ودون أي التزام.',
     ],
     online: 'متصل الآن',

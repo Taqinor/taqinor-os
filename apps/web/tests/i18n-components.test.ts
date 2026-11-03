@@ -161,7 +161,9 @@ describe('WhatsAppMock — FR verbatim, EN/AR présents, deeplink FR figé', () 
   it('garde les chiffres + lieux identiques et le deeplink WhatsApp EN FRANÇAIS', () => {
     // Chiffres et lieu identiques dans toutes les langues (présents au moins en FR).
     expect(whatsapp).toContain('1 800 MAD');
-    expect(whatsapp).toContain('5 à 9 kWc');
+    // WAUD19 — aucune puissance chiffrée ni « anonymisé » : c'est un exemple.
+    expect(whatsapp).not.toMatch(/kWc'|\d kWc/);
+    expect(whatsapp).not.toContain('anonymis');
     expect(whatsapp).toContain('Casablanca');
     // Le message pré-rempli du lien reste en français (atteint l'équipe FR).
     expect(whatsapp).toContain(
