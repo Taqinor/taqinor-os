@@ -74,6 +74,19 @@
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/* WAUD79 — repli des titres `.display` : ils sont composés à font-stretch 112 %, soit
+   11 % plus larges que le repli à 104 % ci-dessus (mesuré en Chrome sur le H1 de
+   l'accueil : 3178 px contre 2866 px à corps 100 px) — d'où le CLS de 0,085 à
+   l'échange de police, pas l'animation du titre. 104 % × 1,109 = 115 %. */
+@font-face {
+  font-family: 'Archivo Fallback Large';
+  src: local('Arial Bold'), local('Arial');
+  size-adjust: 115%;
+  ascent-override: 83%;
+  descent-override: 20%;
+  line-gap-override: 0%;
+}
+
 /* W215 — Métrique de repli pour Hanken Grotesk : Arial Regular. */
 @font-face {
   font-family: 'Hanken Fallback';
@@ -320,7 +333,7 @@ summary:focus-visible {
 
 /* Titres display — Archivo élargi, autorité d'imprimé technique */
 .display {
-  font-family: var(--font-display);
+  font-family: 'Archivo', 'Archivo Fallback Large', 'Hanken Grotesk', 'Hanken Fallback', sans-serif;
   font-weight: 800;
   font-stretch: 112%;
   letter-spacing: -0.012em;

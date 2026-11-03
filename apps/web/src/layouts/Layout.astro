@@ -190,12 +190,15 @@ const jsonLd = {
     <!-- W215 — Préchargement de la fonte display du titre (LCP <h1> = Archivo).
          Réduit le FOUT sur le headline principal sans bloquer la bande passante
          critique (4G lent). Le subset latin.woff2 couvre le français. -->
-    <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-latin.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-latin.woff2" fetchpriority="low" crossorigin />
+    {/* WAUD79 — Hanken Grotesk porte le texte au-dessus du pli : son échange décale aussi. */}
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/hanken-latin.woff2" fetchpriority="low" crossorigin />
     {preloadHeroPoster && (
       <link
         rel="preload"
         as="image"
         type="image/avif"
+        fetchpriority="high"
         imagesrcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w"
         imagesizes="100vw"
       />
