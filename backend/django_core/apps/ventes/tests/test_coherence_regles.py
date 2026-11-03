@@ -14,7 +14,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.crm import stages
-from apps.crm.models import Client, Lead
+from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.stock.models import Produit
 from apps.ventes.coherence import regles_etude
 from apps.ventes.coherence.moteur import _Ctx
@@ -515,6 +515,81 @@ class TestRegleCrm(_Base):
         self.assertEqual([v.object_id for v in out], [fantome.pk])
         self.assertEqual(out[0].object_type, 'lead')
         self.assertEqual(out[0].company_id, self.company.pk)
+
+    def test_froid_sans_raison(self):
+        """CADV76 — le COLD vivant sans `parc_raison` seul est signalé, sans donnée
+        personnelle. Mutant : inverser le filtre `parc_raison` ⇒ échec."""
+        sans = Lead.objects.create(company=self.company, nom='Sans', stage=stages.COLD)
+        Lead.objects.create(company=self.company, nom='Avec', stage=stages.COLD,
+                            parc_etat='nurture', parc_raison='injoignable')
+        Lead.objects.create(company=self.company, nom='Perdu', stage=stages.COLD,
+                            perdu=True)
+        out = self.run_rule('CRM_FROID_SANS_RAISON', self.company)
+        self.assertEqual([v.object_id for v in out], [sans.pk])
+        self.assertEqual(out[0].reference, f'LEAD-{sans.pk}')
+        self.assertEqual(set(out[0].valeurs), {'stage', 'source'})
+        self.assertEqual(out[0].gravite, 'avertissement')
+
+    def _touche(self, lead, *, cadence='contact', **kw):
+        return RelanceEtape.objects.create(
+            company=lead.company, lead=lead, cadence=cadence, ordre=1,
+            canal=RelanceEtape.Canal.APPEL, libelle='Touche',
+            due_at=timezone.now(), due_date=timezone.localdate(), **kw)
+
+    def _saisies(self, lead, user, kind, total, joints):
+        for rang in range(total):
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=user, kind=kind,
+                outcome='joint' if rang < joints else '')
+
+    def test_regles_donnees_nocturnes_une_violation_par_regle(self):
+        """CADV6 — chaque règle ne signale que son lead fautif. Mutant : compter
+        un opposé comme actif ⇒ violation en trop sur la 1re règle."""
+        co = self.company
+        a = Lead.objects.create(company=co, nom='A', stage=stages.FOLLOW_UP)
+        sain = Lead.objects.create(company=co, nom='Sain', stage=stages.FOLLOW_UP)
+        self._touche(sain)
+        Lead.objects.create(company=co, nom='Oppose', stage=stages.FOLLOW_UP,
+                            ne_plus_contacter=True)
+        b = Lead.objects.create(company=co, nom='B', stage=stages.COLD,
+                                parc_etat='nurture', parc_raison='budget')
+        b2 = Lead.objects.create(company=co, nom='B2', stage=stages.COLD,
+                                 parc_etat='nurture', parc_raison='injoignable',
+                                 tags='Injoignable 6 appels')
+        self._saisies(b2, self.user, LeadActivity.Kind.APPEL, 2, 0)
+        parque_sain = Lead.objects.create(
+            company=co, nom='ParcSain', stage=stages.COLD, parc_etat='nurture',
+            parc_raison='injoignable')
+        self._saisies(parque_sain, self.user, LeadActivity.Kind.APPEL, 6, 0)
+        c = Lead.objects.create(company=co, nom='C', stage=stages.COLD,
+                                parc_etat='nurture', parc_raison='budget')
+        self._saisies(c, self.user, LeadActivity.Kind.APPEL, 1, 0)
+        self._touche(c, cadence='reveil')
+        d = Lead.objects.create(company=co, nom='D', stage=stages.FOLLOW_UP,
+                                perdu=True, motif_perte='Concurrent')
+        self._touche(d)
+        Lead.objects.create(company=co, nom='PerduSain', stage=stages.COLD, perdu=True)
+        asmaa = User.objects.create_user(
+            username=f'asmaa_{_n()}', password='x', role_legacy='responsable',
+            company=co)
+        autre_rep = User.objects.create_user(
+            username=f'rep_{_n()}', password='x', role_legacy='responsable',
+            company=co)
+        self._saisies(sain, asmaa, LeadActivity.Kind.WHATSAPP, 10, 9)
+        self._saisies(sain, autre_rep, LeadActivity.Kind.WHATSAPP, 10, 1)
+        autre = Company.objects.create(nom='Autre Co', slug=f'coh-autre-{_n()}')
+        Lead.objects.create(company=autre, nom='Defaut', stage=stages.FOLLOW_UP)
+
+        def ids(regle):
+            return sorted(v.object_id for v in self.run_rule(regle, co))
+
+        self.assertEqual(ids('CRM_ACTIF_SANS_PROCHAINE_ETAPE'), [a.pk])
+        self.assertEqual(ids('CRM_PARC_SANS_TOUCHE'), sorted([b.pk, b2.pk]))
+        self.assertEqual(ids('CRM_REVEIL_SANS_HISTORIQUE'), [c.pk])
+        self.assertEqual(ids('CRM_FERME_AVEC_TOUCHE_OUVERTE'), [d.pk])
+        sortie = self.run_rule('CRM_SAISIE_JOINT_ANORMALE', co)
+        self.assertEqual([(v.object_type, v.object_id) for v in sortie],
+                         [('utilisateur', asmaa.pk)])
 
 
 # ── Sécurité ────────────────────────────────────────────────────────────────
