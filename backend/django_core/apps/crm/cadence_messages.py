@@ -598,6 +598,7 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     et la proposition."""
     from apps.parametres.models_messages import MessageTemplate
     from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
+    from core.dates import aujourd_hui_local
 
     lead = etape.lead
     # CAD64 — la langue passe par le résolveur COMMUN (préférence du lead,
@@ -702,7 +703,10 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
                 # affichait « valable jusqu'au X ». Règle #4 respectée : on ne
                 # touche pas au moteur de rendu, on lit la MÊME règle.
                 validite = _date_validite_comme_le_pdf(devis)
-                if validite:
+                # ACVI49 — une validité passée ou un devis expiré : phrase omise
+                # (MRY13), jamais « valable jusqu'à » une date écoulée.
+                if (validite and validite >= aujourd_hui_local()
+                        and getattr(devis, 'statut', '') != 'expire'):
                     contexte['date_validite'] = validite.strftime('%d/%m/%Y')
                 contexte['lien'] = url_proposition(devis) or ''
         except Exception:  # noqa: BLE001 — un lien absent n'est jamais inventé (D-ENF22-BLE001)

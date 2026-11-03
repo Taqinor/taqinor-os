@@ -160,11 +160,11 @@ class AucunChiffreInventeTests(_Base):
             company=self.company, cle='j9_validite',
             corps_fr="Valable jusqu'au {date_validite}.")
         devis = self._devis('DEV-MRY13-0002',
-                            date_validite=datetime.date(2026, 10, 15))
+                            date_validite=datetime.date(2099, 10, 15))
         rendu = message_pour_etape(
             self._touche(template_cle='j9_validite', devis=devis),
             user=self.acteur)
-        self.assertIn('15/10/2026', rendu['message'])
+        self.assertIn('15/10/2099', rendu['message'])
         self.assertEqual(rendu['placeholders_manquants'], [])
 
     def test_le_lien_est_lURL_reelle_de_la_proposition(self):
