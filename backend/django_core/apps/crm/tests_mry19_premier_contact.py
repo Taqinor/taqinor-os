@@ -26,6 +26,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from core.test_utils import AssertQueryBudgetMixin
 from authentication.models import Company
+from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity
@@ -140,8 +141,11 @@ class KpiPremierContactTests(TestCase):
         Lead.objects.filter(pk=lead.pk).update(**maj)
         return Lead.objects.get(pk=lead.pk)
 
+    @frozen('2026-09-24T22:00:00+01:00')
     def test_requetes_constantes_avec_le_nombre_de_leads(self):
         # ACVI79 — profil et jours ouvrés lus une fois, pas une fois par lead.
+        # Gelé le soir : la limite « du matin » n'est calculée que pour un lead
+        # de nuit, c'est elle qui coûtait 3 requêtes par lead hors journée.
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
         from django.utils import timezone

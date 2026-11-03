@@ -125,6 +125,21 @@ def _jour_ouvre(d, company):
     return ouvre
 
 
+def prochain_jour_ouvre(d, company):
+    """ACVI79 — ``calendar_utils.prochain_jour_ouvre`` (3 requêtes par appel),
+    mémorisé dans le cache local quand il est actif (une date + une société =
+    une réponse) : un KPI de leads de nuit ne le relit plus lead par lead."""
+    cache = _CACHE.get()
+    cle = ('prochain_ouvre', getattr(company, 'pk', None), d)
+    if cache is not None and cle in cache:
+        return cache[cle]
+    from apps.notifications.calendar_utils import prochain_jour_ouvre as _prochain
+    jour = _prochain(d, company)
+    if cache is not None:
+        cache[cle] = jour
+    return jour
+
+
 def _est_ferie(d, company):
     """CAD41 — `d` est-il un jour FÉRIÉ pour la société ?
 

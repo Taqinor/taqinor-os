@@ -243,8 +243,6 @@ def _limite_rappel_du_matin(creation, company):
     9 h 30 le JOUR MÊME : il n'a pas de nuit à attendre. Les jours ouvrés et
     les fériés viennent de ``notifications.calendar_utils``, source unique.
     """
-    from apps.notifications.calendar_utils import prochain_jour_ouvre
-
     from . import horaires
 
     local = creation.astimezone(horaires.CASABLANCA)
@@ -252,7 +250,7 @@ def _limite_rappel_du_matin(creation, company):
     if fenetre is not None and local.time() < fenetre[0]:
         jour = local.date()
     else:
-        jour = prochain_jour_ouvre(
+        jour = horaires.prochain_jour_ouvre(
             local.date() + datetime.timedelta(days=1), company)
     return datetime.datetime.combine(
         jour, HEURE_RAPPEL_DU_MATIN, tzinfo=horaires.CASABLANCA)
