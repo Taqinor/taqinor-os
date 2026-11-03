@@ -4,9 +4,10 @@
 import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Download, FileWarning, MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal, CreditCard, ShieldCheck, Zap, Eye } from 'lucide-react'
-import { Button, Badge, StatusPill, Input, Checkbox, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent } from '../../../ui'
+import { Button, Badge, StatusPill, Input, Checkbox, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent } from '../../../ui'
 import { formatMAD, toNumber, normalizePhoneE164 } from '../../../lib/format'
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
+import MenuActionsLigne from '../../../ui/MenuActionsLigne'
 import { DOC_STATUT_TRACK, factureTrack } from '../../../features/ventes/documentChain'
 import { useRotatingLabel } from '../../../hooks/useRotatingLabel'
 import { isOverdue, isPartiallyPaid } from './factureHelpers.js'
@@ -385,13 +386,11 @@ export default function FactureRow({ f, ctx }) {
               sur écran étroit (menu compact « Actions »). */}
           {(['emise', 'payee', 'en_retard'].includes(f.statut)
             || (f.statut !== 'payee' && f.statut !== 'annulee')) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <MenuActionsLigne declencheur={
                 <Button size="sm" variant="outline" title="Plus d'actions">
                   <MoreHorizontal /> Actions
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+            }>
                 {/* EZ13 — le marquage sec « Payée » vit ICI désormais, jamais
                     plus à côté d'Encaisser. Il DETRUIT mode/date/référence du
                     règlement : la confirmation l'explique au lieu de demander
@@ -504,8 +503,7 @@ export default function FactureRow({ f, ctx }) {
                     Supprimer le brouillon
                   </DropdownMenuItem>
                 )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            </MenuActionsLigne>
           )}
         </div>
       </td>

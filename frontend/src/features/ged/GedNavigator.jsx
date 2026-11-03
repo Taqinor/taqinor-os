@@ -29,13 +29,14 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, DialogClose, Input, Textarea, FileUpload, toast,
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuItem,
   CarteContenu,
 } from '../../ui'
 import { buildFolderTree, flattenVisible, countFolders } from './tree.js'
 import GedSearch from './GedSearch.jsx'
 import GedDocumentInsights from './GedDocumentInsights.jsx'
 import { DataTable } from '../../ui/datatable'
+import MenuActionsLigne from '../../ui/MenuActionsLigne'
 import ExternalLink from '../../ui/ExternalLink'
 
 // VX152 — colonnes structurelles seules : le rendu réel de l'en-tête et des
@@ -654,14 +655,12 @@ export default function GedNavigator() {
                             {/* GED33/ZGED9/GED17/XGED30/WIR249 — actions secondaires
                                 regroupées (OCR pièce, verrou d'avertissement, cycle de
                                 vie, éditeur Office) : la ligne reste lisible. */}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
+                            <MenuActionsLigne declencheur={
                                 <Button size="sm" variant="ghost"
                                   aria-label={`Plus d'actions pour ${d.nom}`}>
                                   <MoreVertical className="size-4" aria-hidden="true" />
                                 </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
+                            }>
                                 <DropdownMenuItem onSelect={() => setModifierDoc(d)}>
                                   <Pencil /> Modifier…
                                 </DropdownMenuItem>
@@ -681,8 +680,7 @@ export default function GedNavigator() {
                                 <DropdownMenuItem onSelect={() => officeOuvrirAction(d)}>
                                   <AppWindow /> Ouvrir dans l'éditeur (Office)
                                 </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            </MenuActionsLigne>
                           </div>
                         </td>
                       </tr>
