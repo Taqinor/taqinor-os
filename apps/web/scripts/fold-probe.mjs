@@ -14,6 +14,13 @@ import { connecter } from './idle-probe.mjs';
 export const ECRANS = [[360, 740], [390, 844]];
 export const ROUTES = ['/', '/en/', '/ar/'];
 export const BANDEAU_MAX_PX = 72;
+export const PREMIER_CTA_MAX_PX = 2500;
+export const ROUTES_LECTURE = [
+  '/installation-solaire-casablanca/',
+  '/realisations/el-jadida-17-kwc/',
+  '/garanties/',
+  '/prix-panneaux-solaires-maroc/',
+];
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -52,6 +59,23 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
       console.log(`${ok ? 'OK ' : 'KO '} ${largeur}x${hauteur} ${route}  CTA ${Math.round(m.haut)}-${Math.round(m.bas)} / ${m.h}  couvert=${m.couvert}  bandeau=${m.bandeau === null ? 'absent' : Math.round(m.bandeau)} px`);
       c.fermer();
     }
+  }
+  // WAUD35 — premier CTA devis dans le contenu (hors en-tête, barre et pied) ≤ 2 500 px.
+  for (const route of ROUTES_LECTURE) {
+    const c = await connecter(chrome.port);
+    await c.envoyer('Page.enable');
+    await c.envoyer('Runtime.enable');
+    await c.envoyer('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    await c.envoyer('Page.navigate', { url: encodeURI(base + route) });
+    await pause(2500);
+    const { result } = await c.envoyer('Runtime.evaluate', {
+      expression: `(() => { const l = [...document.querySelectorAll('a[href*="/devis/mon-toit"]')].find((a) => !a.closest('header, footer, #sticky-cta, nav')); return l ? Math.round(l.getBoundingClientRect().top + scrollY) : -1; })()`,
+    });
+    const y = result.value;
+    const ok = y >= 0 && y <= PREMIER_CTA_MAX_PX;
+    echec ||= !ok;
+    console.log(`${ok ? 'OK ' : 'KO '} 390x844 ${route}  premier CTA à ${y} px`);
+    c.fermer();
   }
   try { await chrome.kill(); } catch { /* EPERM Windows */ }
   process.exit(echec ? 1 : 0);
