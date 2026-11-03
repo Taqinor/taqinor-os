@@ -100,6 +100,9 @@ class ConsolideePanierTests(TestCase):
         self.assertEqual(facture.statut, Facture.Statut.EMISE)
         brouillon.refresh_from_db()
         self.assertEqual(brouillon.statut, Facture.Statut.ANNULEE)
+        # Rejeu AARG50 : le chatter du brouillon retiré dit pourquoi.
+        self.assertTrue(brouillon.activites.filter(
+            body='Remplacé par la facture consolidée').exists())
         for devis in (a, b):
             actives = [f.pk for f in factures_de_la_vente(devis)
                        if f.statut != Facture.Statut.ANNULEE]
