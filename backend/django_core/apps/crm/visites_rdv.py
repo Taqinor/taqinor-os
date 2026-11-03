@@ -124,7 +124,8 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
 
 def build_appointment_confirmation_whatsapp(request, appointment):
     """VX245(b) — construit le message de CONFIRMATION WhatsApp d'un rendez-
-    vous : date/heure (Africa/Casablanca) + lien de téléchargement `.ics`
+    vous : date/heure (Africa/Casablanca). ACVI45 — le lien `.ics` (route JWT,
+    401 pour le client) n'entre plus dans le message ; il reste servi à l'ERP
     (VX245(a), `apps.crm.views.AppointmentViewSet.ics`). N'ENVOIE RIEN — même
     convention que `build_devis_whatsapp`/`build_facture_whatsapp` : ouvre
     WhatsApp avec le message pré-rempli, le commercial appuie lui-même sur
@@ -148,10 +149,7 @@ def build_appointment_confirmation_whatsapp(request, appointment):
     ics_url = request.build_absolute_uri(
         f'/api/django/crm/appointments/{appointment.pk}/ics/')
     salutation = f'Bonjour {nom},' if nom else 'Bonjour,'
-    message = (
-        f'{salutation} je confirme notre rendez-vous le {date_str}.\n'
-        f'Ajouter à votre agenda : {ics_url}'
-    )
+    message = f'{salutation} je confirme notre rendez-vous le {date_str}.'
     return message, build_wa_url(phone, message), ics_url
 
 
