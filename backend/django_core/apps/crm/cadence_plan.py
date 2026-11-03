@@ -391,6 +391,17 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None,
     # fois, et seulement si le gabarit porte cette touche.
     preuve_disponible = None
 
+    def _preuve_pour_le_frein():
+        """CADV87 — jamais deux fois la preuve : un gabarit qui porte encore sa
+        touche ``j4_preuve`` (v3) garde ses garanties."""
+        nonlocal preuve_disponible
+        if any((getattr(g, 'template_cle', '') or '') == _TEMPLATE_PREUVE_J4
+               for g in gabarits):
+            return False
+        if preuve_disponible is None:
+            preuve_disponible = _realisation_eligible(lead)
+        return preuve_disponible
+
     echeances = []
     for gabarit in gabarits:
         if (getattr(gabarit, 'template_cle', '') or '') == _TEMPLATE_PREUVE_J4:
@@ -407,6 +418,9 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None,
             # La numérotation `ordre` garde son trou : elle vient du gabarit
             # de la société, pas d'un compteur local.
             continue
+        if cadence == 'apres_devis':
+            gabarit = cadence_temps.adapter_template_au_frein(
+                gabarit, lead, preuve_eligible=_preuve_pour_le_frein)
         # CAD32 — « WhatsApp uniquement » est saisi par le client, une fois,
         # explicitement, et la cadence ne le lisait NULLE PART : le prospect
         # qui a coché « ne m'appelez pas » recevait quand même les six appels
