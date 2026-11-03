@@ -260,6 +260,24 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         self.assertEqual(lignes[1].user, self.acteur)
         self.assertNotEqual(lignes[0].old_value, lignes[0].new_value)
 
+    def test_la_date_videe_par_la_compensation_est_tracee(self):
+        # ACVI69 — une visite retirée : la date part avec sa ligne ancien → vide
+        # et sa marque de saisie humaine.
+        self.lead.visite_prevue_le = VISITE_LE
+        self.lead.saisies_humaines = ['visite_prevue_le']
+        self.lead.save(update_fields=['visite_prevue_le', 'saisies_humaines'])
+        with frozen(MAINTENANT):
+            self.assertTrue(cadence_visite.compenser_visite_retiree(
+                self.lead, self.acteur, VISITE_LE))
+
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.visite_prevue_le)
+        self.assertNotIn('visite_prevue_le', self.lead.saisies_humaines)
+        ligne = self.lead.activites.get(
+            kind=LeadActivity.Kind.MODIFICATION, field='visite_prevue_le')
+        self.assertEqual(ligne.user, self.acteur)
+        self.assertNotEqual(ligne.old_value, ligne.new_value)
+
     def test_pose_une_note_de_chatter_systeme_qui_nomme_lassigne(self):
         with frozen(MAINTENANT):
             cadence_visite.appliquer_visite_planifiee(

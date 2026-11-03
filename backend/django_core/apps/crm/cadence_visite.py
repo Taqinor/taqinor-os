@@ -575,10 +575,9 @@ def compenser_visite_retiree(lead, user, jour):
 
     if visite_en_attente(lead) is not None:
         return False
-    lead.refresh_from_db(fields=['visite_prevue_le'])
+    lead.refresh_from_db(fields=['visite_prevue_le', 'saisies_humaines'])
     if lead.visite_prevue_le == jour:
-        lead.visite_prevue_le = None
-        lead.save(update_fields=['visite_prevue_le'])
+        _ecrire_date_visite(lead, user, None)  # ACVI69
     annuler_etapes_moteur_ouvertes(
         lead, CLE_CONFIRMATION, CLE_DEBRIEF, note='visite retirée')
     LeadActivity.objects.create(
