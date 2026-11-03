@@ -308,7 +308,13 @@ def reattribuer_lead(lead, user, nouveau_responsable):
         return None
     lead.owner = nouveau_responsable
     lead.save(update_fields=['owner'])
-    _notifier_touches_heritees(lead, nouveau_responsable)
+    return effets_reattribution(lead, user, ancien)
+
+
+def effets_reattribution(lead, user, ancien):
+    """ACVI31 — ce qui suit l'écriture de l'``owner`` (lot, dispatch, PATCH) :
+    le nouveau responsable est notifié, la passation posée, la file recalée."""
+    _notifier_touches_heritees(lead, lead.owner)
     etape = _poser_touche_passation(lead, user, ancien_responsable=ancien)
     _recaler_file(lead, user)
     return etape

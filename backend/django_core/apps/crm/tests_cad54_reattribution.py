@@ -124,6 +124,20 @@ class TouchePassationTests(_Base):
         self.assertEqual(etape.template_cle, PASSATION_TEMPLATE_CLE)
         self.assertEqual(etape.statut, RelanceEtape.Statut.A_FAIRE)
 
+    def test_un_patch_owner_pose_la_passation(self):
+        """ACVI31 — PATCH ``owner`` et lot ``reassign`` : même état."""
+        from rest_framework.test import APIClient
+
+        lead = self._lead()
+        api = APIClient()
+        api.force_authenticate(self.acteur)
+        reponse = api.patch(f'/api/django/crm/leads/{lead.pk}/',
+                            {'owner': self.nouveau.pk}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(RelanceEtape.objects.filter(
+            lead=lead, libelle=PASSATION_LIBELLE,
+            statut=RelanceEtape.Statut.A_FAIRE).count(), 1)
+
     def test_aucun_prenom_n_est_ecrit_dans_la_touche(self):
         lead = self._lead()
         etape = reattribuer_lead(lead, self.acteur, self.nouveau)
