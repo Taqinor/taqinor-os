@@ -264,13 +264,15 @@ class TestLeadWhatsAppEndpoint(TestCase):
         self.assertIn('DEV-L-2', msg)
         self.assertIn('2', msg)  # {n}
 
-    def test_no_phone_is_400(self):
+    def test_no_phone_is_409(self):
+        # ERR-ENF11-FUZZ-CRM : le numéro vient de la fiche du lead, pas du
+        # corps — refus d'état 409 ; un corps illisible reste un 400 (ci-dessous).
         self.lead.telephone = ''
         self.lead.whatsapp = ''
         self.lead.save(update_fields=['telephone', 'whatsapp'])
         resp = self.api.post(
             self._url(), {'devis_ids': [self.d1.id]}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     # 25/08/2026 — LANE NUMÉROS INTERNATIONAUX : un lead à numéro étranger
     # peut désormais recevoir un devis par WhatsApp (avant : 400 « Aucun
