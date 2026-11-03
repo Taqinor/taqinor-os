@@ -17,6 +17,7 @@
 import { useState, memo } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
 import { Zap, MapPin, Pentagon, FileText, MoreHorizontal, Lock } from 'lucide-react'
+import BadgeParcage from '../../../../features/crm/workspace/BadgeParcage'
 import {
   CANAL_LABELS,
   CONTACTED_STAGE,
@@ -368,6 +369,7 @@ function LeadCard({
           )}
           <span className="kb-card-name">{nomComplet}</span>
           {societeLabel && <span className="kb-card-societe">{societeLabel}</span>}
+          <BadgeParcage lead={lead} />
           {/* LB15 — menu ••• (révélé au survol/focus, permanent au toucher) :
               toutes les actions du lead, atteignables au clavier. Le bouton ✗
               20×20 a quitté la face (blueprint D3). */}

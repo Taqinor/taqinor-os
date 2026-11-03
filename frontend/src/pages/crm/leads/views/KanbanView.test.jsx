@@ -100,6 +100,15 @@ describe('LeadCard — minuteur premier contact, colonne NEW seulement (QX31)', 
   })
 })
 
+describe('LeadCard — état de parcage servi (ACVI74)', () => {
+  it('la carte porte la date de reprise du standby, rien sans parcage', () => {
+    const { container } = monter(lead({ parc_etat: 'standby', parc_raison: 'plus_tard_date', parc_jusqu_au: '2026-12-15' }))
+    expect(container.textContent).toContain("En attente jusqu'au 15/12/2026")
+    cleanup()
+    expect(monter(lead({ parc_etat: null })).container.querySelector('[data-testid="badge-parcage"]')).toBeNull()
+  })
+})
+
 describe('LeadCard — cible tactile et PII (LB17)', () => {
   it('la case de sélection est enveloppée du label .kb-check-hit, sans style inline', () => {
     const { container } = render(<LeadCard lead={lead()} users={[]} onToggleSelect={() => {}} />)

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
-import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { documentContrat, exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 import { initState } from './draftCore'
 import IdentityRail from './IdentityRail'
 import crmApi from '../../../api/crmApi'
@@ -90,6 +90,24 @@ describe('LW14 — IdentityRail identité + actions', () => {
     expect(screen.getByTestId('lw-identity-rail')).toBeInTheDocument()
     expect(screen.getByText('Karim B.')).toBeInTheDocument()
     expect(screen.getByText(/Ferme Atlas · Agadir/)).toBeInTheDocument()
+  })
+
+  it('un lead en standby affiche sa date de reprise', () => {
+    // ACVI74 — les trois formes du contrat lead.json.
+    const contrat = documentContrat('crm', 'lead')
+    const { unmount } = render(
+      <IdentityRail state={makeState(contrat.exemple_standby)} onAction={onAction} users={[]} />,
+    )
+    expect(screen.getByTestId('badge-parcage').textContent).toBe("En attente jusqu'au 15/12/2026")
+    unmount()
+    const nurture = render(
+      <IdentityRail state={makeState(contrat.exemple)} onAction={onAction} users={[]} />,
+    )
+    expect(screen.getByTestId('badge-parcage').textContent).toBe('Nurture')
+    expect(screen.getByTestId('badge-parcage').getAttribute('title')).toBe('Injoignable')
+    nurture.unmount()
+    render(<IdentityRail state={makeState(contrat.exemple_vide)} onAction={onAction} users={[]} />)
+    expect(screen.queryByTestId('badge-parcage')).toBeNull()
   })
 
   it('rend les liens de contact tel:/mailto:', () => {
