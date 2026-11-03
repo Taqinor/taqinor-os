@@ -331,6 +331,25 @@ class CliovrManuallyTouchedFieldsTests(TestCase):
             field_label=field, old_value=old_value, new_value=new_value,
         )
 
+    def test_renvoi_sans_nom_ni_gclid_garde_nom_et_canal(self):
+        """ACVI17 — un défaut du mapping ne remplit qu'un champ vide."""
+        tel = '+212677100009'
+        first = self.post(payload_site(
+            phoneE164=tel, gclid='G1', fullName='Amina Benali',
+            fbclid=None, utm={}))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead = Lead.objects.get(pk=first.json()['lead_id'])
+        self.assertEqual(lead.canal, Lead.Canal.GOOGLE_ADS)
+
+        retry = self.post(payload_site(
+            phoneE164=tel, fullName=None, fbclid=None, utm={}))
+
+        self.assertEqual(retry.status_code, 200, retry.content)
+        self.assertEqual(Lead.objects.filter(pk=lead.pk).count(), 1)
+        lead.refresh_from_db()
+        self.assertEqual(lead.nom, 'Amina Benali')
+        self.assertEqual(lead.canal, Lead.Canal.GOOGLE_ADS)
+
     def test_champ_corrige_a_la_main_resiste_au_re_post_60s(self):
         """(a) — la correction humaine n'est jamais écrasée par le renvoi."""
         first = self.post(payload_site(phoneE164='+212677100001'))

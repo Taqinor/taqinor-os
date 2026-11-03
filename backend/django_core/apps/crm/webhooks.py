@@ -66,6 +66,9 @@ DEDUP_WINDOW_SECONDS = 60
 #: s'appuie dessus (étiquetage + notification atténuée).
 SOUS_SEUIL_TAG = 'Sous le seuil 1 000 MAD'
 
+#: ACVI17 — posés par le mapping faute de donnée : au renvoi, ne remplissent qu'un vide.
+DEFAUTS_CREATION = {'nom': 'Lead site web', 'canal': Lead.Canal.SITE_WEB, 'tags': SOUS_SEUIL_TAG}
+
 #: Ordre fondateur (24/08/2026) — champs GPS protégés contre l'écrasement dans
 #: la boucle de complétion anti-rejeu de ``_map_and_link_lead`` : une fois
 #: posés, plus jamais remplacés par un renvoi ultérieur de la même soumission
@@ -1120,7 +1123,7 @@ def _map_payload_to_fields(data: dict) -> dict:
 
     utm = data.get('utm') or {}
     fields = {
-        'nom': str(data.get('fullName') or '').strip()[:255] or 'Lead site web',
+        'nom': str(data.get('fullName') or '').strip()[:255] or DEFAUTS_CREATION['nom'],
         'telephone': _telephone_canonique(
             str(data.get('phoneE164') or data.get('phone') or '').strip()[:50]),
         'email': _clean_email(data.get('email')),
@@ -1145,7 +1148,7 @@ def _map_payload_to_fields(data: dict) -> dict:
         # Google Ads — seul le gclid est stocké ; gbraid/wbraid (clics iOS)
         # ne servent qu'à classer le canal ci-dessous.
         'gclid': _clic_id(data.get('gclid'), 255),
-        'canal': Lead.Canal.SITE_WEB,
+        'canal': DEFAUTS_CREATION['canal'],
         'source': Lead.Source.SITE_WEB,
     }
     for key in ('utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'):
@@ -1570,7 +1573,7 @@ def _map_payload_to_fields(data: dict) -> dict:
     # capture-lead.ts) et c'est ici que le tri se fait — étiquetage ci-dessous,
     # puis notification atténuée dans `_map_and_link_lead` (cf. docstring §4).
     if _is_sous_seuil(data):
-        fields['tags'] = SOUS_SEUIL_TAG
+        fields['tags'] = DEFAUTS_CREATION['tags']
     return fields
 
 
@@ -2296,7 +2299,7 @@ def _map_and_link_lead(raw, data, company):
                 continue
             if key in _GPS_FIELDS and getattr(existing, key) is not None:
                 continue
-            if key in manually_touched:
+            if key in manually_touched or (DEFAUTS_CREATION.get(key) == value and getattr(existing, key)):
                 continue
             if key in pompage_garde or key in provenances_gardees:
                 continue
