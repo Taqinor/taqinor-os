@@ -296,6 +296,14 @@ def appliquer_bascules_fiche(old, new_lead, user):
         logger.warning(
             'CAD107: reprise non posée sur le lead #%s',
             new_lead.pk, exc_info=True)
+    # ACVI52 — lever l'opposition pose la même reprise que rouvrir un perdu.
+    if old.ne_plus_contacter and not new_lead.ne_plus_contacter:
+        try:
+            reprendre_cadence_apres_reouverture(
+                new_lead, user, origine='opposition levée')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+            logger.warning('ACVI52: reprise non posée sur le lead #%s',
+                           new_lead.pk, exc_info=True)
     if new_lead.owner_id and old.owner_id != new_lead.owner_id:
         from .cadence_reponses import effets_reattribution
         try:
