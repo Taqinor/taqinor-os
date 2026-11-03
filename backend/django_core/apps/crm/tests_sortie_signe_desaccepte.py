@@ -92,7 +92,9 @@ class SortieSigneBase(TestCase):
     def _patch_stage(self, lead, cible, api=None):
         return (api or self.api).patch(
             f'/api/django/crm/leads/{lead.id}/',
-            {'stage': cible, 'confirme_recul': True}, format='json')
+            {'stage': cible, 'confirme_recul': True,
+             **({'parc_raison': 'doublon'} if cible == stages.COLD else {})},
+            format='json')
 
 
 class TestSortieSigneUnitaire(SortieSigneBase):

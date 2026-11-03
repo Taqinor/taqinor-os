@@ -1079,6 +1079,17 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                             or (undo and self._undo_of_last_stage_change(current, target))):
                         raise ConflitEtat(
                             {'stage': ["On ne recule pas une étape."]})
+                # ACVI9 — le Froid passe par ``parquer_lead`` (voir ``update``),
+                # raison exigée ; annuler un mouvement ne parque pas.
+                from . import stages as stage_mod
+                if target == stage_mod.COLD and not (
+                        undo and self._undo_of_last_stage_change(current, target)):
+                    from .fiche_funnel import refus_mise_au_froid
+                    raison = (self.initial_data or {}).get('parc_raison')
+                    refus = refus_mise_au_froid(self.instance, raison)
+                    if refus:
+                        raise ConflitEtat({'parc_raison': [refus]})
+                    self._parc_raison = raison
         # ORDRE FONDATEUR (24/08/2026) — le GPS ne doit JAMAIS être écrasé ni
         # supplanté par l'adresse. Le Lead Workspace (LW9, draftCore.js) ne
         # PATCH déjà que les clés réellement modifiées (dirty keys) — éditer
@@ -1330,6 +1341,11 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                 **validated_data,
                 'saisies_humaines': instance.saisies_humaines}
         lead = super().update(instance, validated_data)
+        if getattr(self, '_parc_raison', None):  # ACVI9
+            from .fiche_funnel import parquer_lead
+            parquer_lead(
+                lead, self._parc_raison, None,
+                getattr(self.context.get('request'), 'user', None), journal=False)
         reprendre_cadence_si_numero_ajoute(
             lead, numero_avant, getattr(self.context.get('request'), 'user', None))
         return lead

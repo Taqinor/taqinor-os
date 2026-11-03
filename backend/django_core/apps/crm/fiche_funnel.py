@@ -676,7 +676,15 @@ def _refus_parcage(lead, raison, exiger_touche):
             f'({trouves} trouvé{"s" if trouves > 1 else ""})')
 
 
-def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True):
+def refus_mise_au_froid(lead, raison):
+    """ACVI9 — le refus d'une mise au Froid unitaire (PATCH, API publique) : la
+    raison est obligatoire, codes Nurture ou Archive (standby : pas de Froid)."""
+    if ETAT_PAR_RAISON.get(raison) not in ('nurture', 'archive'):
+        return 'Raison de mise au Froid obligatoire.'
+    return _refus_parcage(lead, raison, True)
+
+
+def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True, journal=True):
     """CADV21 — LE point d'écriture unique du parcage d'un lead : pose
     ``parc_etat`` (dicté par ``raison``, table ``ETAT_PAR_RAISON``),
     ``parc_raison`` et ``parc_jusqu_au``, range le lead au Froid
@@ -708,7 +716,8 @@ def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True):
     lead.parc_raison = raison
     lead.parc_jusqu_au = jusqu_au
     lead.save(update_fields=['parc_etat', 'parc_raison', 'parc_jusqu_au'])
-    activity.log_bulk_change(lead, user, 'parc_raison', ancienne, raison)
+    if journal:  # ACVI9 — le PATCH journalise déjà ses colonnes (``log_changes``).
+        activity.log_bulk_change(lead, user, 'parc_raison', ancienne, raison)
     if etat != 'standby':
         avancer_stage_lead_vers(lead, user, stages.COLD)
     return lead

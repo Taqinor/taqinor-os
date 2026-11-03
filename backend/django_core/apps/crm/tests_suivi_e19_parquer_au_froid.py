@@ -89,6 +89,25 @@ class ParquerAuFroidTests(TestCase):
         return self.lead.relance_etapes.filter(cadence='reveil',
                                                statut=A_FAIRE)
 
+    def test_patch_froid_sans_raison_409_avec_raison_parque(self):
+        # ACVI9 — raison exigée, puis parcage posé ; une seule ligne de raison.
+        url = f'/api/django/crm/leads/{self.lead.pk}/'
+        res = self.api.patch(url, {'stage': stages.COLD}, format='json')
+        self.assertEqual(res.status_code, 409, res.content)
+        self.assertEqual(res.data['parc_raison'],
+                         ['Raison de mise au Froid obligatoire.'])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+        res = self.api.patch(url, {'stage': stages.COLD, 'parc_raison': 'budget'},
+                             format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.COLD)
+        self.assertEqual(self.lead.parc_etat, 'nurture')
+        self.assertEqual(self.lead.parc_raison, 'budget')
+        self.assertEqual(self.lead.activites.filter(
+            kind=LeadActivity.Kind.MODIFICATION, field='parc_raison').count(), 1)
+
     def test_une_etape_de_filet_ne_bloque_plus_les_reveils(self):
         filet = self._filet_ouvert()
 
