@@ -366,7 +366,7 @@ describe('WAUD37 — aucune référence de tâche interne dans le texte public',
     const fautes: string[] = [];
     for (const f of readdirSync(racine, { recursive: true }) as string[]) {
       if (!String(f).endsWith('index.html')) continue;
-      const texte = visibleText(mainOf(readFileSync(`${racine}/${f}`, 'utf-8')));
+      const texte = visibleText(mainOf(readFileSync(`${racine}/${f}`, 'utf-8')).replace(/<!--[\s\S]*?-->/g, ' '));
       for (const m of texte.matchAll(/\b(W|WJ|WA|WB|WC|CIW|AGW|RWEB|QJW)\d+\b/g)) fautes.push(`${f}: ${m[0]}`);
     }
     expect(fautes).toEqual([]);

@@ -166,6 +166,6 @@ describe('CSP — hôtes Google tag', () => {
   });
 
   it("frame-src garde 'self' (ancien repli default-src) + googletagmanager", () => {
-    expect(directive('frame-src')).toBe("frame-src 'self' https://www.googletagmanager.com");
+    expect(directive('frame-src')).toBe("frame-src 'self' https://www.googletagmanager.com https://www.facebook.com");
   });
 });

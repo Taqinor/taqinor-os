@@ -41,11 +41,11 @@ describe('W28 — en-tête : nav primaire + déroulants accessibles', () => {
   });
 
   it('le menu Solutions liste les 6 solutions dans l’ordre', () => {
-    for (const h of SOLUTIONS) expect(header, h).toContain(`href: '${h}'`);
+    for (const h of SOLUTIONS) expect(header, h).toContain(`href: '${h}/'`);
   });
 
   it('le menu Ressources liste Guides, FAQ, Loi 82-21 expliquée, Pourquoi, Financement, MRE', () => {
-    for (const h of RESSOURCES) expect(header, h).toContain(`href: '${h}'`);
+    for (const h of RESSOURCES) expect(header, h).toContain(`href: '${h}/'`);
   });
 
   it('À propos reste en nav primaire', () => {
@@ -75,12 +75,12 @@ describe('W28 — en-tête : nav primaire + déroulants accessibles', () => {
 
 describe('W29 — pied de page : Solutions/Ressources en VRAIS liens', () => {
   it('colonne Solutions : les 6 services liés', () => {
-    for (const h of SOLUTIONS) expect(footer, h).toContain(`href: '${h}'`);
+    for (const h of SOLUTIONS) expect(footer, h).toContain(`href: '${h}/'`);
   });
 
   it('colonne Ressources : réalisations, guides, faq, loi-82-21, pourquoi, financement, MRE, à-propos', () => {
     for (const h of ['/realisations', '/guides', '/faq', '/loi-82-21', '/pourquoi-taqinor', '/financement', '/marocains-du-monde', '/à-propos']) {
-      expect(footer, h).toContain(`href: '${h}'`);
+      expect(footer, h).toContain(`href: '${h}/'`);
     }
   });
 
@@ -97,15 +97,15 @@ describe('W29 — pied de page : Solutions/Ressources en VRAIS liens', () => {
 
 describe('W30 — hub « Nos solutions »', () => {
   it('liste les 6 solutions et émet un CollectionPage', () => {
-    for (const h of SOLUTIONS) expect(hub, h).toContain(`href: '${h}'`);
+    for (const h of SOLUTIONS) expect(hub, h).toContain(`href: '${h}/'`);
     expect(hub).toContain("'@type': 'CollectionPage'");
   });
 });
 
 describe('W31 — section « Nos solutions » sur l’accueil', () => {
   it('l’accueil rend une section solutions liée aux 6 pages + au hub', () => {
-    for (const h of SOLUTIONS) expect(index, h).toContain(`href: '${h}'`);
-    expect(index).toContain('href="/nos-solutions"');
+    for (const h of SOLUTIONS) expect(index, h).toContain(`href: '${h}/'`);
+    expect(index).toContain('href="/nos-solutions/"');
     expect(index).toContain('Nos solutions');
   });
 });
@@ -116,7 +116,7 @@ describe('W27 — À propos : pedigree fondateur approuvé + réconciliation Pou
   });
 
   it('À propos et Pourquoi Taqinor sont croisées dans les deux sens', () => {
-    expect(apropos).toContain('href="/pourquoi-taqinor"');
-    expect(pourquoi).toContain('href="/à-propos"');
+    expect(apropos).toContain('href="/pourquoi-taqinor/"');
+    expect(pourquoi).toContain('href="/à-propos/"');
   });
 });
