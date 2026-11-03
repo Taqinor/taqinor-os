@@ -578,3 +578,66 @@ describe('WAUD50 (reste) — Article hors guides : dateModified = date affichée
     expect(avecDate).toBeGreaterThan(36);
   });
 });
+
+describe('WAUD70 (reste) — llms.txt trilingue ; toute URL de llms.txt / RSS / JSON-LD répond 200 sans redirection', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  const dist = fileURLToPath(new URL('../dist/client/', import.meta.url));
+  /** « 200 sans redirection » sur le build : forme canonique (barre finale, UTF-8) ET fichier servi. */
+  const sert200 = (u: string): string | null => {
+    const url = new URL(u);
+    if (url.origin !== 'https://taqinor.ma') return null;
+    const sansAncre = `${url.origin}${url.pathname}${url.search}`;
+    if (sansAncre !== canonicalUrl(sansAncre)) return `redirige (forme non canonique) : ${u}`;
+    const chemin = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+    const fichier = url.pathname.endsWith('/') ? `${dist}${chemin}index.html` : `${dist}${chemin}`;
+    return existsSync(fichier) ? null : `introuvable dans le build : ${u}`;
+  };
+  it('llms.txt a des sections FR, EN et AR avec des liens /en/ et /ar/', () => {
+    const t = lire('public/llms.txt');
+    expect(t).toMatch(/^## Pages clés$/m);
+    expect(t).toMatch(/^## English/m);
+    expect(t).toMatch(/^## العربية/m);
+    expect([...t.matchAll(/\(https:\/\/taqinor\.ma\/en\/[^)]*\)/g)].length).toBeGreaterThanOrEqual(15);
+    expect([...t.matchAll(/\(https:\/\/taqinor\.ma\/ar\/[^)]*\)/g)].length).toBeGreaterThanOrEqual(15);
+  });
+  it('100 % des URL de llms.txt répondent 200 sans redirection sur le build', () => {
+    const urls = [...lire('public/llms.txt').matchAll(/\((https:\/\/taqinor\.ma[^)\s]*)\)/g)].map((m) => m[1]);
+    expect(urls.length).toBeGreaterThan(50);
+    expect(urls.map(sert200).filter(Boolean)).toEqual([]);
+  });
+  it('100 % des URL du flux RSS répondent 200 sans redirection sur le build', () => {
+    const rss = readFileSync(`${dist}rss.xml`, 'utf-8');
+    const urls = [...rss.matchAll(/(?:<link>|<guid[^>]*>|href=")(https:\/\/taqinor\.ma[^<"]*)/g)].map((m) => m[1]);
+    expect(urls.length).toBeGreaterThan(2);
+    expect(urls.map(sert200).filter(Boolean)).toEqual([]);
+  });
+  it('100 % des URL taqinor.ma des JSON-LD du build répondent 200 sans redirection', () => {
+    const collecte = (n: unknown, sortie: Set<string>) => {
+      if (typeof n === 'string') {
+        if (/^https:\/\/taqinor\.ma(\/|$)/.test(n)) sortie.add(n);
+      } else if (Array.isArray(n)) n.forEach((x) => collecte(x, sortie));
+      else if (n && typeof n === 'object') Object.values(n).forEach((x) => collecte(x, sortie));
+    };
+    const urls = new Set<string>();
+    const marcher = (dir: string, rel: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          if (e.name !== '_astro') marcher(`${dir}${e.name}/`, `${rel}/${e.name}`);
+        } else if (e.name === 'index.html') {
+          const html = readFileSync(`${dir}${e.name}`, 'utf-8');
+          for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+            try {
+              collecte(JSON.parse(m[1]), urls);
+            } catch {
+              /* JSON-LD invalide : couvert ailleurs */
+            }
+          }
+        }
+      }
+    };
+    marcher(dist, '');
+    expect(urls.size).toBeGreaterThan(50);
+    const [...liste] = urls;
+    expect(liste.map(sert200).filter(Boolean)).toEqual([]);
+  });
+});

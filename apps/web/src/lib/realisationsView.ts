@@ -5,6 +5,7 @@
 import type { Locale } from '../i18n/config';
 import { caseStudyBySlug } from './caseStudies';
 import { NAP } from './nap';
+import { canonicalUrl } from './canonicalUrl';
 import { pageLocale } from './pageCtx';
 import { REALISATIONS } from './realisations';
 
@@ -32,7 +33,7 @@ export function realisationsItemListJsonLd(
     itemListElement: REALISATIONS.map((r, i) => ({
       '@type': 'ListItem',
       position: i + 1,
-      url: new URL(L(`/realisations/${r.slug}`), site).href,
+      url: canonicalUrl(L(`/realisations/${r.slug}`), site),
       name: itemName(r),
     })),
     provider: { '@type': 'LocalBusiness', name: NAP.name, url: NAP.url },
