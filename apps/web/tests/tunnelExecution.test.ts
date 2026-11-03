@@ -463,3 +463,17 @@ it('le harness lit bien le chunk RÉELLEMENT référencé par chaque page', () =
     expect(src).toContain('/api/capture-lead');
   }
 });
+
+describe('WAUD28 — title et meta du tunnel honnêtes (règle C, WG1)', () => {
+  for (const [p, mot] of [['devis/mon-toit', /devis/i], ['en/devis/mon-toit', /quote/i], ['ar/devis/mon-toit', /عرض سعر/]] as const) {
+    it(p, () => {
+      const code = readFileSync(`${process.cwd()}/src/pages/${p}.astro`, "utf-8");
+      const layout = code.slice(code.indexOf('<Layout'), code.indexOf('<Layout') + 1500);
+      const title = layout.match(/title="([^"]*)"/)![1];
+      const description = layout.match(/description="([^"]*)"/)![1];
+      expect(title).toMatch(mot);
+      expect(title).toMatch(/panneaux|panel|الألواح/i);
+      expect(description).not.toMatch(/3D|ثلاثي|secondes|seconds|économies|savings|signature|توقيع|\d/i);
+    });
+  }
+});

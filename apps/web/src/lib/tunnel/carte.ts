@@ -196,7 +196,7 @@ function construireCarte(ctx: ContexteCarte) {
   }
 
   // WAUD78 — 560 Ko de carte (MapLibre + types) ne partent plus à l'étape 0, qui est
-  // FACULTATIVE : la façade attend un geste. Sans façade dans la page : démarrage direct.
+  // FACULTATIVE : la façade attend un geste.
   let carteMontee = false;
   let adresseEnAttente = '';
 
@@ -243,46 +243,61 @@ function construireCarte(ctx: ContexteCarte) {
   }
 
   // Un seul fetch /api/roof-config par visite, et seulement quand l'étape 0 est active.
-  function demarrerCarte() {
+  // WAUD78 — ce fetch léger reste à l'étape 0 (carte indisponible → repli tout de suite) ;
+  // seul le code de carte attend un geste. Sans façade dans la page : démarrage direct.
+  let cleCarte = '';
+  let jetonMapbox = '';
+  let gesteCarte = false;
+  const demarrageAttendu = () => gesteCarte || !$('mt-map-facade') || etat.capturePin != null;
+
+  function ensureMapBooted() {
     if (etat.mapFetchDone) return;
     etat.mapFetchDone = true;
-    const facade = $('mt-map-facade');
-    if (facade) {
-      facade.remove();
-      mapEl?.classList.add('mt-skeleton-shimmer');
-    }
+    if (!demarrageAttendu()) clearMapSkeleton();
     (async () => {
       try {
         const reponse = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
         const cfg = (await reponse.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
-        const cleCarte = cfg.maptilerKey;
-        if (!cfg.available || !cleCarte) {
+        if (!cfg.available || !cfg.maptilerKey) {
           showFallback();
           return;
         }
-        void boot(cleCarte, cfg.mapboxToken || '');
+        cleCarte = cfg.maptilerKey;
+        jetonMapbox = cfg.mapboxToken || '';
+        if (demarrageAttendu()) void boot(cleCarte, jetonMapbox);
       } catch {
         showFallback();
       }
     })();
   }
 
-  /** Crochet appelé à l'étape 0 : carte seulement si un repère est à réafficher. */
-  function ensureMapBooted() {
-    if (etat.mapFetchDone) return;
-    if (!$('mt-map-facade') || etat.capturePin) {
-      demarrerCarte();
-      return;
+  /** Premier geste vers la carte : la façade s'efface, le code de carte part. */
+  function demarrerCarte() {
+    gesteCarte = true;
+    const facade = $('mt-map-facade');
+    if (facade) {
+      facade.remove();
+      mapEl?.classList.add('mt-skeleton-shimmer');
     }
-    clearMapSkeleton();
+    if (cleCarte) void boot(cleCarte, jetonMapbox);
+    else ensureMapBooted();
   }
 
   const brancherBoot = () => {
+  // WAUD43 — grand public : les outils de dessinateur (CSS de la page) restent à l'atelier ERP.
+  $('mt-stage')?.setAttribute('data-contexte', 'public');
   $('mt-map-facade')?.addEventListener('click', demarrerCarte);
   addressEl?.addEventListener('focus', demarrerCarte);
   // Adresse validée avant la fin du chargement : elle est gardée et cherchée au démarrage
   // (sans ce relais, le formulaire encore non câblé rechargerait la page).
+  // WAUD34 — une adresse cherchée sans repère pré-remplit la ville (jamais par-dessus une saisie).
+  const villeDepuisAdresse = () => {
+    const adresse = addressEl?.value.trim();
+    if (cityEl && adresse && !etat.cityTouched && !cityEl.value.trim()) cityEl.value = adresse;
+  };
+  addressEl?.addEventListener('change', villeDepuisAdresse);
   $('rp9-search')?.addEventListener('submit', (e) => {
+    villeDepuisAdresse();
     if (carteMontee) return;
     e.preventDefault();
     adresseEnAttente = addressEl?.value.trim() ?? '';

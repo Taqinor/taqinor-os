@@ -4502,7 +4502,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  présent bleu plein #2a78d6 (remplissage 10 %), absent orange
                  pointillé [6,3] #eb6834, partiel vert pointillé [2,3] #1baf7a.
                  La silhouette du CLIENT (drapeau serveur) est mise en évidence
-                 « CHOISIE pour ce client ». `null` ⇒ section masquée entière. */}
+                 « Votre choix ». `null` ⇒ section masquée entière. */}
           {curveMode === 'residentiel' && (clientOccupancyChoice || occScenarios) && (
             <div id="occ-silhouettes" class="cine-card mt-4 rounded-xl p-5 sm:p-6">
               <p class="tech-label text-lune-faint" data-i18n data-fr="Profils d’occupation du logement" data-en="Home occupancy profiles" data-ar="أنماط شغل المسكن">Profils d’occupation du logement</p>
@@ -4538,7 +4538,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   );
                 })}
               </svg>
-              <p class="mt-1 text-[11px] text-lune-faint" data-i18n data-fr="poids de forme (sans unité)" data-en="shape weight (unitless)" data-ar="وزن الشكل (بدون وحدة)">poids de forme (sans unité)</p>
+              <p class="mt-1 text-[11px] text-lune-faint" data-i18n data-fr="Hauteur de la courbe : part de la consommation selon l'heure" data-en="Curve height: share of consumption by hour" data-ar="ارتفاع المنحنى: حصة الاستهلاك حسب الساعة">Hauteur de la courbe : part de la consommation selon l'heure</p>
               {/* Sans comparatif servi, la légende reste ce qu'elle était :
                      purement descriptive, la silhouette du client marquée. */}
               {!occScenarios && (
@@ -4548,7 +4548,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                       <span aria-hidden="true" style={`display:inline-block;width:10px;height:2px;background:${OCC_STROKES[id]}`}></span>
                       {OCCUPANCY_LABELS[id].fr}
                       {id === clientOccupancyChoice && (
-                        <span class="tech-label text-brass-300" data-i18n data-fr="CHOISIE pour ce client" data-en="CHOSEN for this client" data-ar="مُختار لهذا العميل"> · CHOISIE pour ce client</span>
+                        <span class="tech-label text-brass-300" data-i18n data-fr="Votre choix" data-en="Your choice" data-ar="اختياركم"> · Votre choix</span>
                       )}
                     </span>
                   ))}

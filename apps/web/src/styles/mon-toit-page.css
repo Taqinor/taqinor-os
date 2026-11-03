@@ -138,3 +138,12 @@
   color: var(--color-lune-soft, #c7cdd6);
   max-width: 34ch;
 }
+
+/* WAUD43 — tunnel grand public : les aides de dessinateur créées par l'outil de tracé
+   (angles droits, aimantation, calage du fond, grille, cotes, mention de recherche)
+   sont masquées. L'atelier ERP n'a pas ce contexte : rien n'y change. */
+[data-contexte='public'] .rp9-trace-chips,
+[data-contexte='public'] .rp9-fond-calage,
+[data-contexte='public'] .rp9-geocode-country {
+  display: none !important;
+}

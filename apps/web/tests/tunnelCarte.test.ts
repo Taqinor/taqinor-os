@@ -291,20 +291,30 @@ describe('WAUD78 — façade : aucune requête carte avant un geste', () => {
     return { ctx, chargeurs, bootCaptureOnly };
   }
 
-  it('étape 0 sans repère : ni fetch ni import, squelette arrêté', async () => {
+  it('étape 0 sans repère : config seulement, aucun import de carte, squelette arrêté', async () => {
     const { ctx, chargeurs } = montage();
     ctx.crochets.appeler('ensureMapBooted');
-    await attendre();
-    expect(fetch).not.toHaveBeenCalled();
+    await attendre(); await attendre();
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(chargeurs.captureBoot).not.toHaveBeenCalled();
     expect(document.getElementById('rp9-map')!.classList.contains('mt-skeleton-shimmer')).toBe(false);
+  });
+
+  it('étape 0 : carte indisponible → repli immédiat, sans attendre de geste', async () => {
+    const { ctx } = montage();
+    (fetch as any).mockResolvedValue({ json: async () => ({ available: false }) });
+    ctx.crochets.appeler('ensureMapBooted');
+    await attendre(); await attendre();
+    expect(document.getElementById('mt-fallback')!.hidden).toBe(false);
   });
 
   it('clic sur la façade : la carte démarre et la façade disparaît', async () => {
     const { ctx, bootCaptureOnly } = montage();
     ctx.crochets.appeler('ensureMapBooted');
+    await attendre(); await attendre();
     document.getElementById('mt-map-facade')!.click();
     await attendre(); await attendre();
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(bootCaptureOnly).toHaveBeenCalledTimes(1);
     expect(document.getElementById('mt-map-facade')).toBeNull();
   });
@@ -335,5 +345,42 @@ describe('WAUD78 — façade : aucune requête carte avant un geste', () => {
     expect(e.defaultPrevented).toBe(true);
     await attendre(); await attendre();
     expect(bootCaptureOnly.mock.calls[0][0].initialQuery).toBe('Maârif');
+  });
+});
+
+describe('WAUD34 — adresse cherchée sans repère', () => {
+  it('pré-remplit une ville vide, jamais une ville saisie', () => {
+    const { ctx } = monter('fr');
+    const adresse = document.getElementById('rp9-address') as HTMLInputElement;
+    const ville = document.getElementById('mt-city') as HTMLInputElement;
+    adresse.value = ' Maârif ';
+    adresse.dispatchEvent(new Event('change'));
+    expect(ville.value).toBe('Maârif');
+    ville.value = '';
+    ctx.etat.cityTouched = true;
+    adresse.dispatchEvent(new Event('change'));
+    expect(ville.value).toBe('');
+  });
+});
+
+describe('WAUD43 — étape toit : outils de dessinateur masqués au grand public', () => {
+  const lire = (rel: string) => readFileSync(`${process.cwd()}/${rel}`, 'utf-8');
+
+  it('le tunnel pose le contexte public ; le CSS masque les puces pro', () => {
+    monter('fr');
+    expect(document.getElementById('mt-stage')!.dataset.contexte).toBe('public');
+    const css = lire('src/styles/mon-toit-page.css');
+    for (const c of ['rp9-trace-chips', 'rp9-fond-calage', 'rp9-geocode-country']) {
+      expect(css).toContain(`[data-contexte='public'] .${c}`);
+    }
+  });
+
+  it('« Continuer » arrive avant la carte, sous les profils, dans les 3 langues', () => {
+    for (const p of ['devis/mon-toit', 'en/devis/mon-toit', 'ar/devis/mon-toit']) {
+      const page = lire(`src/pages/${p}.astro`);
+      const suivant = page.indexOf('id="mt-next-0"');
+      expect(suivant).toBeGreaterThan(page.indexOf('id="mt-mode-grid"'));
+      expect(suivant).toBeLessThan(page.indexOf('id="mt-stage"'));
+    }
   });
 });

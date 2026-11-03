@@ -300,3 +300,14 @@ describe('mon-toit.astro — détails kW/créneau (L-WEBT2) gatés sur la case p
     expect(PAGE).toContain("{ checkId: 'mt-equip-chauffe-eau', detailId: 'mt-equip-chauffe-eau-kw' }");
   });
 });
+
+describe('WAUD61 — profils et libellés du tunnel sans jargon ni émoji', () => {
+  for (const p of ['devis/mon-toit', 'en/devis/mon-toit', 'ar/devis/mon-toit']) {
+    it(p, () => {
+      const page = readFileSync(`${process.cwd()}/src/pages/${p}.astro`, 'utf-8');
+      expect(page).not.toMatch(/pour ce client|for this client|poids de forme|shape weight|وزن الشكل/);
+      const modes = page.slice(page.indexOf('const MODES'), page.indexOf('];', page.indexOf('const MODES')));
+      expect(modes).not.toMatch(/\p{Extended_Pictographic}/u);
+    });
+  }
+});
