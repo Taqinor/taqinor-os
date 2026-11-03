@@ -477,3 +477,19 @@ describe('WAUD28 — title et meta du tunnel honnêtes (règle C, WG1)', () => {
     });
   }
 });
+
+describe('WAUD42 — le tunnel arabe est servi en arabe par le serveur', () => {
+  it('arabeCoteServeur : texte seul remplacé, markup imbriqué laissé au JS', async () => {
+    const { arabeCoteServeur } = await import('../src/lib/tunnel/i18n');
+    const entree = '<h2 class="a" data-i18n data-fr="Bonjour" data-ar="مرحبا">Bonjour</h2><p data-i18n data-fr="x" data-ar="ع">a <b>b</b></p>';
+    const sortie = arabeCoteServeur(entree);
+    expect(sortie).toContain('data-ssr-ar data-fr="Bonjour" data-ar="مرحبا">مرحبا</h2>'.replace('data-ssr-ar ', ''));
+    expect(sortie).toContain('>a <b>b</b></p>');
+  });
+  it('HTML construit /ar/devis/mon-toit : les éléments à texte simple sont déjà en arabe', () => {
+    const html = builtPage('/ar/devis/mon-toit');
+    const principal = html.slice(html.indexOf('<section'));
+    const restants = [...principal.matchAll(/data-fr="([^"]*)"[^<>]*data-ar="[^"]*"[^<>]*>([^<]*)</g)].filter((m) => m[2].trim() && m[1].trim() === m[2].trim());
+    expect(restants.map((m) => m[1]).slice(0, 5)).toEqual([]);
+  });
+});

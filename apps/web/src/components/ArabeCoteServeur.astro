@@ -1,0 +1,6 @@
+---
+// WAUD42 — enveloppe de /ar/devis/mon-toit : sert l'arabe côté serveur.
+import { arabeCoteServeur } from '../lib/tunnel/i18n';
+const html = arabeCoteServeur(await Astro.slots.render('default'));
+---
+<Fragment set:html={html} />

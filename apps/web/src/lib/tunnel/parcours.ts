@@ -161,7 +161,8 @@ export function installerParcours(ctx: ContexteTunnel, savedWizard: WizardSnapsh
       if (typeof arText !== 'string') return;
       const frSpan = doc.createElement('span');
       // Le markup FR ORIGINAL est préservé tel quel — capturé UNE SEULE fois.
-      frSpan.innerHTML = el.innerHTML;
+      // WAUD42 — sur /ar/ le serveur sert déjà l'arabe : le français vient alors de data-fr.
+      frSpan.innerHTML = doc.documentElement.lang === 'ar' && el.dataset.fr && el.innerHTML === arText ? el.dataset.fr : el.innerHTML;
       const arSpan = doc.createElement('span');
       arSpan.textContent = arText;
       arSpan.hidden = true;
