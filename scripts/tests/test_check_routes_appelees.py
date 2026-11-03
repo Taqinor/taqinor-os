@@ -94,6 +94,27 @@ class RouteSansAppelantTests(unittest.TestCase):
             self.assertTrue(raison.startswith("A CORRIGER"), cle)
 
 
+class ListeBlancheD_ACRM6Tests(unittest.TestCase):
+    #: ACRM68 - la reponse du fondateur (D-ACRM-6), mot pour mot en routes.
+    PARQUEES = {
+        "crm/salles-vente", "crm/salles-vente/<pk>", "crm/salles-vente/<>/analytics",
+        "crm/salles-vente/<>/items", "crm/salles-vente/<>/items/<>",
+        "crm/apporteurs", "crm/apporteurs/<pk>", "crm/deals-enregistres",
+        "crm/deals-enregistres/<pk>", "crm/deals-enregistres/<>/approuver",
+        "crm/deals-enregistres/<>/rejeter", "crm/deals-enregistres/a-payer",
+    }
+    RETIREES = ("kpi-adherence", "mes-stats", "export-xlsx", "attribution", "segments")
+
+    def test_liste_blanche_egale_decision_acrm2(self):
+        # Test-du-test : ajouter `clients/segments` a la liste fait echouer ce test.
+        motivees = {k for k, raison in cra.A_CORRIGER.items()
+                    if cra.MOTIF_PARQUEE_D_ACRM6 in raison}
+        self.assertEqual(motivees, self.PARQUEES)
+        for cle in cra.A_CORRIGER:
+            for retiree in self.RETIREES:
+                self.assertNotIn(retiree, cle, f"route retiree D-ACRM-6 en liste : {cle}")
+
+
 class DepotReelTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

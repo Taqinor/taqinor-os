@@ -81,7 +81,7 @@ function _retirerAccessoiresHuawei(rows, produits) {
 // conversion TTC saisi → HT persisté, en nanos exacts (1e-8 MAD × 10).
 // ARRONDI-100 — `arrondiPas` (MAD) : le TTC ramené au palier inférieur,
 // exactement comme le noyau (`_absorber_arrondi`) ; absent = TTC exact.
-export function totauxCanoniquesTtc(lines, discountPct = 0, arrondiPas = 0) {
+export function totauxCanoniquesTtc(lines, discountPct = 0, arrondiPas = 0, montee = true) {
   const lignes = (lines || []).map((l) => {
     const qH = BigInt(Math.round((parseFloat(l?.quantite) || 0) * 100))
     const taux = parseFloat(l?.taux_tva ?? TVA_STANDARD_DEFAUT)
@@ -96,7 +96,7 @@ export function totauxCanoniquesTtc(lines, discountPct = 0, arrondiPas = 0) {
       optionnelle: l?.optionnelle,
     }
   })
-  return totauxCanoniques(lignes, discountPct, { arrondiPas }).ttc
+  return totauxCanoniques(lignes, discountPct, { arrondiPas, montee }).ttc
 }
 
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
@@ -129,7 +129,7 @@ export function alternativeDeclareeServable(lines, scenario, produits) {
 
 // `options.scenario` (facultatif) — le scénario DÉCLARÉ par l'écran. Absent :
 // comportement historique inchangé (QF9 réservée aux lignes variantées).
-export function optionTotalsTTC(lines, discountPct, { scenario, produits } = {}) {
+export function optionTotalsTTC(lines, discountPct, { scenario, produits, montee = true } = {}) {
   // QJR567 — MÊME population que le noyau (`ligne_compte_dans_totaux`) : une
   // ligne optionnelle (add-on non activé) et les sections / notes ne
   // comptent JAMAIS — sans ce filtre le rail, le prix/kWc, la marge et
@@ -173,10 +173,10 @@ export function optionTotalsTTC(lines, discountPct, { scenario, produits } = {})
   // « brut » et le « net » restent donc égaux (aucun prix barré fantôme).
   const pct = parseFloat(discountPct) || 0
   const pas = PAS_ARRONDI_DEVIS
-  const totalSansBrut = totauxCanoniquesTtc(linesSans, 0, pas)
-  const totalAvecBrut = totauxCanoniquesTtc(linesAvec, 0, pas)
-  const totalSans = totauxCanoniquesTtc(linesSans, pct, pas)
-  const totalAvec = totauxCanoniquesTtc(linesAvec, pct, pas)
+  const totalSansBrut = totauxCanoniquesTtc(linesSans, 0, pas, montee)
+  const totalAvecBrut = totauxCanoniquesTtc(linesAvec, 0, pas, montee)
+  const totalSans = totauxCanoniquesTtc(linesSans, pct, pas, montee)
+  const totalAvec = totauxCanoniquesTtc(linesAvec, pct, pas, montee)
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
 }
 
@@ -194,7 +194,7 @@ export function optionTotalsTTC(lines, discountPct, { scenario, produits } = {})
 // `parLigne` est ALIGNÉ sur `lines` (montant TTC remisé, ou `null` pour une
 // ligne qui ne compte pas) — une ligne des deux paniers prend la valeur du
 // panier de l'option effective (`option`).
-export function lignesRemiseesParPanier(lines, discountPct, { scenario, option = 'sans', produits } = {}) {
+export function lignesRemiseesParPanier(lines, discountPct, { scenario, option = 'sans', produits, montee = true } = {}) {
   const tous = lines || []
   const comptees = tous.filter(ligneCompteDansTotaux)
   let lignesSans = comptees.filter(l => appartientAuPanierSans(l, produits))
@@ -230,7 +230,7 @@ export function lignesRemiseesParPanier(lines, discountPct, { scenario, option =
         valeurs.set(l, Math.round((parseFloat(l?.quantite) || 0) * (parseFloat(l?.prix_unit_ttc) || 0) * 100) / 100)
       })
     }
-    const total = totauxCanoniquesTtc(rows, pct, PAS_ARRONDI_DEVIS)
+    const total = totauxCanoniquesTtc(rows, pct, PAS_ARRONDI_DEVIS, montee)
     const sommeC = [...valeurs.values()].reduce((acc, v) => acc + centimes(v), 0n)
     return { valeurs, total, sommeLignes: Number(sommeC) / 100, arrondi: Number(centimes(total) - sommeC) / 100 }
   }
@@ -261,11 +261,11 @@ const _foisN = (ttc, n) => (Math.round((Number(ttc) || 0) * 100) * n) / 100
 // général est la chaîne canonique de TOUTES les lignes au palier
 // ARRONDI-100 — exactement `multi_villa_totaux` (selectors.py).
 export function multiPropertyPreviewTTC(lines, {
-  nombreProprietes, discountPct, scenario, option,
+  nombreProprietes, discountPct, scenario, option, montee = true,
 } = {}) {
   const n = parseInt(nombreProprietes, 10)
   if (Number.isFinite(n) && n > 1) {
-    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct, { scenario })
+    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct, { scenario, montee })
     const opt = option === 'avec' || option === 'sans'
       ? option : (scenario === 'Avec batterie' ? 'avec' : 'sans')
     const totalUnitaire = opt === 'avec' ? totalAvec : totalSans
@@ -310,7 +310,7 @@ export function multiPropertyPreviewTTC(lines, {
   if (horsGroupe.length) {
     groupes.push({ index: null, label: 'Hors groupe', totalTtc: totauxCanoniquesTtc(horsGroupe, pct, 0) })
   }
-  const grandTotalTtc = totauxCanoniquesTtc(tous, pct, PAS_ARRONDI_DEVIS)
+  const grandTotalTtc = totauxCanoniquesTtc(tous, pct, PAS_ARRONDI_DEVIS, montee)
   return { mode: 'villas', groupes, grandTotalTtc }
 }
 

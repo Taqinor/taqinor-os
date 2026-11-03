@@ -50,6 +50,11 @@ vi.mock('../../api/ventesApi', async (importOriginal) =>
     whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
     // QJR659 — partager le PDF (feuille native résolue) vaut envoi.
     partagePdfDevis: vi.fn(() => Promise.resolve({ data: { devis_statut: 'envoye' } })),
+    // ADVS14 — le PDF partagé est celui de pdf-partage (lien et QR de signature).
+    pdfAPartagerDevis: vi.fn(() => Promise.resolve({
+      data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+      headers: {},
+    })),
     // VX216(a) — « Réviser (nouvelle version) », mocké pour ne jamais
     // toucher le réseau réel dans le test du toast.warning associé.
     reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
@@ -205,7 +210,7 @@ describe('DevisList — WIR21 : vues sauvegardées côté serveur', () => {
   it('affiche le bouton « Vues » (ViewsManagerPopover) au lieu des chips localStorage', async () => {
     renderList({ loading: false, devis: oneDevis })
     expect(await screen.findByTestId('uxviews-open-btn')).toBeInTheDocument()
-    await waitFor(() => expect(uxviewsApi.listSavedViews).toHaveBeenCalledWith('ventes.devis'))
+    await waitFor(() => expect(uxviewsApi.listSavedViews).toHaveBeenCalledWith('ventes.devis', expect.objectContaining({ page: 1 })))
   })
 
   it('« Enregistrer cette vue » crée une SavedView serveur (ecran ventes.devis)', async () => {
@@ -1340,6 +1345,7 @@ describe('DevisList — QJR659 : partager le PDF vaut envoi', () => {
     await partager('DEV-PART-1')
     await waitFor(() => { expect(navigator.share).toHaveBeenCalled() })
     await waitFor(() => { expect(ventesApi.partagePdfDevis).toHaveBeenCalledWith(81) })
+    expect(ventesApi.pdfAPartagerDevis).toHaveBeenCalledWith(81)
   })
 
   it('AbortError (annulation) : aucun marquage', async () => {
@@ -1359,7 +1365,7 @@ describe('DevisList — QJR659 : partager le PDF vaut envoi', () => {
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     renderList({ role: 'admin', devis: [{ ...base, id: 83, reference: 'DEV-PART-3' }] })
     await partager('DEV-PART-3')
-    await waitFor(() => { expect(ventesApi.telechargerPdfDevis).toHaveBeenCalledWith(83) })
+    await waitFor(() => { expect(ventesApi.pdfAPartagerDevis).toHaveBeenCalledWith(83) })
     await new Promise(r => setTimeout(r, 50))
     expect(ventesApi.partagePdfDevis).not.toHaveBeenCalled()
     clickSpy.mockRestore()

@@ -94,11 +94,8 @@ export default function PlansCommissionPage() {
   }, [charger])
 
   useEffect(() => {
-    coreApi.utilisateurs.list()
-      .then((r) => {
-        const data = r.data
-        setUsers(Array.isArray(data) ? data : (data?.results ?? []))
-      })
+    toutesLesPages((p) => coreApi.utilisateurs.list(p))
+      .then(setUsers)
       .catch(() => setUsers([]))
   }, [])
 

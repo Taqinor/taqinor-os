@@ -14,7 +14,7 @@ const outillageApi = {
   calibrer: (id, data) => api.post(`/outillage/outils/${id}/calibrer/`, data ?? {}),
 
   // ── Kits d'outillage (F2) ──
-  getKits: () => api.get('/outillage/kits/'),
+  getKits: (params) => api.get('/outillage/kits/', { params }),
   saveKit: (id, data) => id
     ? api.patch(`/outillage/kits/${id}/`, data)
     : api.post('/outillage/kits/', data),

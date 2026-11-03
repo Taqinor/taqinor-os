@@ -1362,10 +1362,14 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         lecture seule."""
         from ..selectors import tracabilite_produit
 
-        # CI #1001 fuzz — un paramètre PRÉSENT mais vide/blanc/avec caractère de
-        # contrôle viole le motif publié : 400 nommé, jamais lu comme « absent ».
+        # CI #1001 fuzz — un paramètre blanc ou avec caractère de contrôle viole le
+        # motif publié : 400 nommé. CI #1247 fuzz — vide, il ne désigne aucun numéro :
+        # le même 404 que l'absence, que les deux oracles du fuzz acceptent.
         for nom in ('lot', 'serie'):
             brut = request.query_params.get(nom)
+            if brut == '':
+                return Response({'detail': 'Aucune traçabilité sans numéro de lot ou de série.'},
+                                status=status.HTTP_404_NOT_FOUND)
             if brut is not None and not re.fullmatch(MOTIF_NON_BLANC_SANS_NUL, brut):
                 return Response({nom: ['Numéro vide, blanc ou avec caractère de contrôle.']},
                                 status=status.HTTP_400_BAD_REQUEST)

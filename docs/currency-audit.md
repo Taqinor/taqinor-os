@@ -52,10 +52,10 @@ with no rate column at all — mono-MAD in practice.
 | crm | ForecastSnapshot | `apps/crm/models_clients.py:1638` | montant_total |
 | crm | LeadPompageMixin | `apps/crm/models_lead_pompage.py:37` | carburant_prix_declare_le, carburant_prix_unitaire_mad |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
-| facturation | LigneFacture | `apps/facturation/models.py:822` | prix_unitaire, remise, taux_tva |
-| facturation | Paiement | `apps/facturation/models.py:889` | escompte_montant, montant |
-| facturation | Avoir | `apps/facturation/models.py:1113` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
-| facturation | LigneAvoir | `apps/facturation/models.py:1231` | prix_unitaire, remise, taux_tva |
+| facturation | LigneFacture | `apps/facturation/models.py:823` | prix_unitaire, remise, taux_tva |
+| facturation | Paiement | `apps/facturation/models.py:890` | escompte_montant, montant |
+| facturation | Avoir | `apps/facturation/models.py:1114` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
+| facturation | LigneAvoir | `apps/facturation/models.py:1232` | prix_unitaire, remise, taux_tva |
 | ged | ModeleDocument | `apps/ged/models.py:2393` | corps_html |
 | ged | LotEnvoi | `apps/ged/models.py:3351` | total |
 | installations | RegleApprobationAchat | `apps/installations/models_approbation_achat.py:38` | montant_max, montant_min |
@@ -101,14 +101,14 @@ with no rate column at all — mono-MAD in practice.
 | ventes | PalierRemiseVolume | `apps/ventes/models.py:2169` | remise_pct |
 | ventes | PlanCommission | `apps/ventes/models.py:2229` | montant_par_kwc |
 | ventes | FactureSource | `apps/ventes/models_facturation.py:98` | sous_total_ht |
-| ventes | AffectationPaiement | `apps/ventes/models_facturation.py:397` | montant |
-| ventes | NoteDebit | `apps/ventes/models_facturation.py:431` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
-| ventes | LigneNoteDebit | `apps/ventes/models_facturation.py:501` | prix_unitaire, remise, taux_tva |
-| ventes | RetenueSubie | `apps/ventes/models_facturation.py:533` | montant |
-| ventes | AbandonCreance | `apps/ventes/models_facturation.py:583` | montant |
-| ventes | PromessePaiement | `apps/ventes/models_facturation.py:622` | montant_promis |
-| ventes | PaymentLink | `apps/ventes/models_facturation.py:691` | montant |
-| ventes | RemiseEncaissement | `apps/ventes/models_facturation.py:790` | montant_declare |
+| ventes | AffectationPaiement | `apps/ventes/models_facturation.py:418` | montant |
+| ventes | NoteDebit | `apps/ventes/models_facturation.py:452` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
+| ventes | LigneNoteDebit | `apps/ventes/models_facturation.py:522` | prix_unitaire, remise, taux_tva |
+| ventes | RetenueSubie | `apps/ventes/models_facturation.py:554` | montant |
+| ventes | AbandonCreance | `apps/ventes/models_facturation.py:607` | montant |
+| ventes | PromessePaiement | `apps/ventes/models_facturation.py:646` | montant_promis |
+| ventes | PaymentLink | `apps/ventes/models_facturation.py:715` | montant |
+| ventes | RemiseEncaissement | `apps/ventes/models_facturation.py:814` | montant_declare |
 | ventes | SubventionDossier | `apps/ventes/models_regulatory.py:306` | montant_accorde, montant_demande |
 
 ## Models WITH an explicit devise/currency field

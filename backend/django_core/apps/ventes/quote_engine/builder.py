@@ -485,7 +485,8 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
-        REGLES_ARRONDI_3010, REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0111, calcul_corrige, regles_au_moins)
+        REGLES_ARRONDI_3010, REGLES_CENTAINE_0311, REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0111,
+        calcul_corrige, regles_au_moins)
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
@@ -1248,7 +1249,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             [_LigneArgentPdf(r, tva_pct) for r in rows],
             remise_globale_pct=0,
             fallback_taux=taux_tva if _corrige else devis.taux_tva,
-            arrondi_pas=_PAS)["ttc"])
+            arrondi_pas=_PAS, arrondi_montee=regles_au_moins(devis, REGLES_CENTAINE_0311))["ttc"])
         # ``ttc`` et ``ttc_exact`` sont désormais LA MÊME valeur, au centime :
         # la clé historique est conservée pour ses lecteurs, plus jamais pour
         # dire « et voici la version non arrondie ».

@@ -192,6 +192,8 @@ const ventesApi = {
   // QJR659 — le PDF a été partagé par la feuille native (share résolu) : vaut
   // envoi (garde de remise T17 + mark_devis_sent côté serveur, aucun lien minté).
   partagePdfDevis: (id) => api.post(`/ventes/devis/${id}/pdf-partage/`, {}),
+  // ADVS14 — le PDF à partager : porte le lien et le QR de signature (GET sans effet de statut).
+  pdfAPartagerDevis: (id) => api.get(`/ventes/devis/${id}/pdf-partage/`, { responseType: 'blob' }),
   // QX22 — aperçu LECTURE SEULE du message WhatsApp (aucune mutation de statut) :
   // peuple la modale d'aperçu ; seul le clic-through sur wa.me (whatsappDevis
   // ci-dessus) marque réellement le devis « Envoyé ».

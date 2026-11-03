@@ -666,7 +666,8 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
 
     from .models import AbonnementMonitoring
 
-    motif = (motif or '').strip()
+    # ERR-ENF11 (cron 41296444614) : NUL refusé par PostgreSQL (500), non-texte = pas de motif.
+    motif = motif.replace('\x00', '').strip() if isinstance(motif, str) else ''
     if abonnement.statut == AbonnementMonitoring.Statut.RESILIE:
         raise AbonnementMonitoringError(
             'Abonnement déjà résilié.', etat=True)

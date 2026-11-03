@@ -13,10 +13,11 @@ from decimal import Decimal
 from apps.ventes.utils.references import create_with_reference
 from core.verrous import sous_verrou
 from .listes_prechargees import relation
+from .jalon_reception import defaire_reception
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
-    DemandeTransfert, DocumentProjet,
+    DemandeTransfert, DocumentProjet, JalonProjet,
 )
 
 logger = logging.getLogger(__name__)
@@ -2856,13 +2857,14 @@ def date_definitive_prevue(installation):
         return None
     from dateutil.relativedelta import relativedelta
     from apps.parametres.models import CompanyProfile
-    if installation.company_id is None:
-        return None
-    profil = CompanyProfile.get(installation.company)
-    delai = profil.delai_reception_definitive_mois
+    delai = (CompanyProfile.get(installation.company).delai_reception_definitive_mois
+             if installation.company_id is not None else None)
     if not delai:
         return None
-    return installation.date_reception + relativedelta(months=delai)
+    try:
+        return installation.date_reception + relativedelta(months=delai)
+    except (ValueError, OverflowError):  # ERR-ENF11 : hors calendrier = aucune date prévue (500 sinon)
+        return None
 
 
 def raison_refus_reception_definitive(installation):
@@ -5505,14 +5507,15 @@ def _publier_jalon_statut(inst, canon_old, canon_new, user):
     jalon de phase correspondant (``appro`` / ``pose``) puis le publie au suivi
     client par ``synchroniser_jalon_portail`` (même primitive que la réception).
     Idempotent (contrainte unique installation+phase) ; un retour en arrière
-    n'atteint rien de nouveau ; best-effort, ne bloque jamais la transition."""
+    n'atteint rien de nouveau ; best-effort, ne bloque jamais la transition.
+    AARG46 — le retour avant RÉCEPTIONNÉ défait le jalon RÉCEPTION."""
+    defaire_reception(inst, canon_old, canon_new)  # AARG46
     if canon_new == canon_old or canon_new not in _STATUT_JALON_SUIVI:
         return None
     phase, libelle, champ_date = _STATUT_JALON_SUIVI[canon_new]
     try:
         from django.db import transaction
         from django.utils import timezone
-        from .models import JalonProjet
         with transaction.atomic():
             jalon, _ = JalonProjet.obtenir_ou_creer_phase(
                 inst, phase,
@@ -6431,7 +6434,6 @@ def notifier_reception_solde_a_facturer(installation, user=None):
     devis = getattr(installation, 'devis', None)
     if devis is None:
         return False
-    from .models import JalonProjet
     jalon, _ = JalonProjet.obtenir_ou_creer_phase(
         installation, JalonProjet.Phase.RECEPTION,
         defaults={
@@ -7096,7 +7098,7 @@ def dupliquer_kit(kit, user=None, facteur_echelle=None):
 
     copie = Kit.objects.create(
         company=kit.company,
-        nom=f'{kit.nom} (copie)',
+        nom=f'{kit.nom[:247]} (copie)',  # nom <= 255 (sinon DataError 500)
         reference_interne=None,
         produit_compose=kit.produit_compose,
         active=kit.active,

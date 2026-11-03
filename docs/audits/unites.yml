@@ -712,3 +712,25 @@ unites:
     date: 2026-11-02
     dossier: docs/audits/2026-11-02-parcours-PA3.md
     notes: "Deuxième audit de PARCOURS (L3, 02/11/2026) : 38 constats dont 26 prouvés par sonde (7 S1 : arrondi −100 MAD sur prix tapé, garde kWh absente au calepinage, envoyé re-rendu aux réglages courants, sceau C&I rompu, re-signature qui garde la 1re preuve, option « sans batterie » PDF ≠ serveur/acompte, étude agricole corrigée hors empreinte ; 15 S2) ; parcours heureux rejoué par l'API sans écart ; D-ADVS-1..4 répondues, D-ADVS-5 ouverte ; 1 critique Fable (2 trous sondés). Tâches ADVS1-44."
+
+  - id: PA1
+    rang: 22
+    declencheur: contact-visite
+    titre: "Parcours PA1 « Contact → visite » : 13 portes de création de lead (saisie, formulaire web, RDV, Meta Lead Ads, CTWA, livechat, API publique, événement, ticket SAV, OCR, propriétaire, import Odoo, import fichier) → qualification → cadence de contact v4 → visite planifiée → terminée → revue /visites/revue (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "table backend/django_core/apps/crm/parcours/PA1.json (pilote crm/lead) ; apps/crm (views, webhooks, leads_*, cadence_*, receivers_cadence, fiche_*, tasks, scheduled), apps/visites, apps/contact, apps/dataimport, frontend features/pages crm et visites, parcours_suivi.json"
+    coutures:
+      - "passages de main portes↔lead↔cadence↔visites↔devis ; rôles × portes de lead ; sorties client (WhatsApp, e-mail, SMS de cadence, accusés, opposition STOP) ; écrivains automatiques des champs saisis (score, owner, Meta, fusion, retour de visite)"
+    P: 5
+    I: 4
+    score: 20
+    niveau: L3
+    statut: audité
+    groupe: ACVI
+    plan: docs/plans/PLAN_AUDIT_LEAD.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md]
+    pr: 1248
+    date: 2026-11-03
+    dossier: docs/audits/2026-11-03-parcours-PA1.md
+    notes: "Troisième audit de PARCOURS (L3, 03/11/2026, loop audit : aucune unité à auditer, 0 vérifie dû ; PA1 = plus fort churn, cadence v4 mergée les 01-02/11) : 88 constats dont 6 S1 (import hors portée, visite sur tout lead, fusion qui perd l'opposition, opposition non portée par le téléphone, rendus WhatsApp sans garde d'opposition, pièces du lead hors portée) et 30 S2 ; 5 S1 maintenus et élargis par la seconde lentille ; parcours heureux rejoué par l'API sans écart ; D-ACVI-1..9 ouvertes (boucle sans fondateur) ; 1 critique Fable (3 trous sondés, 2 retenus). Tâches ACVI1-99."

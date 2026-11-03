@@ -309,6 +309,18 @@ test('ARRONDI-100 — mono-taux 10 % inatteignable : palier d’en dessous', () 
   invariants(t)
 })
 
+test('ADVS3 — 3 × 1 000 TTC saisis : 3 000, pas 2 900 (écran = serveur)', () => {
+  const t = arrondi([l(3, '833.33', 20)])
+  assert.equal(totauxCanoniques([l(3, '833.33', 20)], 0).ttc, 2999.99)
+  assert.equal(t.ttc, 3000)
+  assert.equal(t.htNet, 2500)
+  assert.equal(t.arrondi, -0.01)
+  assert.equal(arrondi([l(1, '2464.17', 20)]).ttc, 2900)
+  assert.equal(arrondi([l(1, '2499.17', 20)]).ttc, 2900)
+  assert.equal(totauxCanoniques([l(3, '833.33', 20)], 0,
+    { arrondiPas: PAS_ARRONDI_DEVIS, montee: false }).ttc, 2900)
+})
+
 test('ARRONDI-100 — sous le palier, rond, ou sans palier : inchangé', () => {
   assert.equal(arrondi([l(1, '47.50', 20)]).ttc, 57)
   assert.equal(arrondi([l(10, '1000', 20)]).arrondi, 0)

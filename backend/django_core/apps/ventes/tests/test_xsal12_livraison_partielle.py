@@ -190,6 +190,33 @@ class TestLivraisonPartielle(TestCase):
         self.assertEqual(livraison.note, 'Première tournée')
         self.assertEqual(livraison.lignes.count(), 1)
 
+    def test_reliquat_apres_rattachement_a_la_revision(self):
+        """AARG29 — 6 panneaux livrés sur la V1 ; le BC rattaché à la V2 (14 panneaux,
+        1 onduleur) les compte : 14 / 6 / 8 ; onduleur 1 / 0 / 1."""
+        r = self._livrer([{'ligne_devis': self.ligne_panneau.id, 'quantite': '6'}])
+        self.assertEqual(r.status_code, 200, r.data)
+        v2 = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-9002',
+            client=self.cl, statut=Devis.Statut.ACCEPTE)
+        LigneDevis.objects.create(
+            devis=v2, produit=self.panneau, designation='Panneau 550W',
+            quantite=Decimal('14'), prix_unitaire=Decimal('900'), remise=Decimal('0'))
+        LigneDevis.objects.create(
+            devis=v2, produit=self.onduleur, designation='Onduleur hybride',
+            quantite=Decimal('1'), prix_unitaire=Decimal('7000'), remise=Decimal('0'))
+        BonCommande.objects.filter(pk=self.bc.pk).update(devis=v2)
+        self.bc.refresh_from_db()
+        reliquat = {x['designation']: (x['quantite_commandee'], x['quantite_livree'], x['reliquat'])
+                    for x in self.bc.reliquat_par_ligne}
+        self.assertEqual(reliquat['Panneau 550W'], (Decimal('14'), Decimal('6'), Decimal('8')))
+        self.assertEqual(reliquat['Onduleur hybride'], (Decimal('1'), 0, Decimal('1')))
+        self.assertTrue(self.bc.est_partiellement_livre)
+        servi = self.api.get(f'/api/django/ventes/bons-commande/{self.bc.id}/')
+        self.assertEqual(servi.status_code, 200, servi.data)
+        self.assertEqual(
+            [x['quantite_livree'] for x in servi.data['reliquat_par_ligne']
+             if x['designation'] == 'Panneau 550W'], [Decimal('6')])
+
     def test_cross_tenant_bc_not_accessible(self):
         other_company = make_company(slug='xsal12-other', nom='Autre Co')
         other_user = User.objects.create_user(

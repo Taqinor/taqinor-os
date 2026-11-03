@@ -388,7 +388,7 @@ class RetenueSubieSerializer(serializers.ModelSerializer):
         model = RetenueSubie
         fields = '__all__'
         read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
-                            'paiement']
+                            'paiement', 'annulee']
 
 
 class PaiementVentilerRequestSerializer(serializers.Serializer):

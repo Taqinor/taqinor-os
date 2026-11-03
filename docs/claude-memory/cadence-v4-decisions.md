@@ -22,3 +22,5 @@ Conception « Lead handling v4 » (`docs/crm/cadence-v4-design-2026-11-01.md`, g
 
 **Why:** mesures prod du 01/11 (180 leads depuis le 06/09 : 94 % des premiers contacts de Meryem dans les 7 jours ; touches 5-11 : 1 rappel sur 25 ; appels 27-29 % vs WhatsApp 2-3 % ; 178 réveils exécutés en WhatsApp → 1 conversation ; capacité ≈ 124 touches/semaine pour ≈ 257 demandées) ; cadre légal (loi 09-08 art. 10, fiche CNDP, loi 31-08 art. 23-24/31/51, politique WhatsApp) relu par un vérificateur indépendant.
 **How to apply:** les tâches CADV (vague 1 réparation/garde/mesure ; vague 2 cadences + parcage ; vague 3 intégrations) dans les plans propriétaires ; la vague 1 ne dépend que de D-CADV-9. Rien n'est construit au 01/11 ; aucune écriture prod. Voir aussi `prod-read-access.md` pour les sondes.
+
+**03/11/2026 (audit parcours PA1, C-ACVI-020-L2)** : la commande `fusionner_doublons_vrais --apply` (D-CADV-9) choisit le survivant sans lire `ne_plus_contacter` : un `--apply` sur la prod effacerait des oppositions en masse. Ne pas la lancer avant ACVI21 (`docs/plans/PLAN_AUDIT_LEAD.md`).

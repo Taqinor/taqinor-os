@@ -12,7 +12,8 @@
     "client_non_identifie",
     "doublon_import",
     "date_invalide",
-    "mode_invalide"
+    "mode_invalide",
+    "non_encaissable"
   ],
   "exemple": {
     "token": "q3Zt0b7c1nYw2kVx9mL4pR8sT6uE5aHd",

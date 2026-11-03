@@ -67,3 +67,14 @@ export function repartirCibleVendue(entree: {
 export function neededAutoApresConservation(pan: { neededPanels: number; neededAuto: boolean }, objectif: number): boolean {
   return pan.neededAuto === true && Math.round(pan.neededPanels) === objectif;
 }
+
+/**
+ * ACAL367 — besoin AUTO, facture non ressaisie dans cette session : le besoin ENREGISTRÉ du pan
+ * (document relu), jamais « remplir le toit » : un simple horizon écrivait 57 296 kWh sur un
+ * document enregistré à 25 433. Une facture saisie reprend la main (0 = aucun besoin à tenir).
+ */
+export function besoinAutoRelu(doc: Record<string, unknown> | null | undefined, panId: string, factureMensuelle: number): number {
+  if (factureMensuelle > 0 || !Array.isArray(doc?.zones)) return 0;
+  const n = (doc.zones as Array<{ id?: unknown; neededPanels?: unknown }>).find((z) => z?.id === panId)?.neededPanels;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}

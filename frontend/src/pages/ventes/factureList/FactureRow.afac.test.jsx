@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -35,6 +36,14 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
     expect(screen.getByRole('button', { name: /Payer en ligne/ })).toBeInTheDocument()
   })
 
+  it('AARG10 — aucune entrée « Demander un paiement carte » : une seule pile de paiement en ligne', async () => {
+    rendre(CONTRAT.exemple)
+    await userEvent.setup().click(screen.getByRole('button', { name: /Actions/ }))
+    expect(await screen.findByRole('menuitem', { name: /Note de débit/ })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /Demander un paiement carte/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /Payer en ligne/, hidden: true })).toBeInTheDocument()
+  })
+
   it('ASEC64 — sans `encaisser` : aucun geste d’argent (Encaisser, Payer en ligne, Avoir)', () => {
     rendre(CONTRAT.exemple, { peutEncaisser: false })
     expect(screen.queryByRole('button', { name: /Encaisser/ })).toBeNull()
@@ -64,6 +73,6 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
   it('la règle JS locale a disparu des sites d’encaissement', () => {
     const src = readFileSync(join(ICI, 'FactureRow.jsx'), 'utf8')
     expect(src).not.toMatch(/montant_du \?\? 0\) > 0 && f\.statut !== 'annulee'/)
-    expect(src).toMatch(/f\.encaissable !== false && \(\s*<DropdownMenuItem/)
+    expect(src).toMatch(/peutEncaisser && f\.encaissable !== false/)
   })
 })

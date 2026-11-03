@@ -31,6 +31,15 @@ class ReceptionDefinitiveTests(TestCase):
         self.inst.save(update_fields=['date_reception'])
         self.url = f'{BASE}/chantiers/{self.inst.id}/reception-definitive/'
 
+    def test_delai_hors_calendrier_pas_de_500(self):
+        """ERR-ENF11 (cron 41296444614) : « year 77984948 is out of range »."""
+        profil = CompanyProfile.get(self.company)
+        profil.delai_reception_definitive_mois = 2147483647
+        profil.save(update_fields=['delai_reception_definitive_mois'])
+        r = self.api.post(self.url, {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(r.data['date_definitive_prevue'])
+
     def test_reserve_ouverte_definitive_refusee(self):
         creer_reserve_chantier(self.inst, self.user, description='Coffret AC',
                                origine='reception')

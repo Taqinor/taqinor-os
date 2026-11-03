@@ -20,9 +20,12 @@ function Corps({ facture, factures, busy, erreur, directiveRequise, onConfirm, o
   const [action, setAction] = useState('')
   const [cible, setCible] = useState('')
   const porteArgent = directiveRequise || toNumber(facture.montant_paye) > 0
-  const cibles = factures.filter(x => x.id !== facture.id
-    && String(x.client) === String(facture.client)
-    && ['emise', 'en_retard'].includes(x.statut))
+  // AFAC103 — les seules cibles que `_cible_du_transfert` accepte : même devis,
+  // encaissable, reste dû qui absorbe le payé (clés servies, le serveur reste juge).
+  const cibles = facture.devis == null ? [] : factures.filter(x => x.id !== facture.id
+    && String(x.devis) === String(facture.devis)
+    && x.encaissable === true
+    && toNumber(x.montant_du) >= toNumber(facture.montant_paye))
   const manque = porteArgent && (!action || (action === 'transferer' && !cible))
   const valider = () => {
     if (!porteArgent) { onConfirm(undefined); return }

@@ -2749,6 +2749,13 @@
   },
   "RetenueSubieSerializer": {
    "fields": {
+    "annulee": [
+     "BooleanField",
+     true,
+     false,
+     null,
+     false
+    ],
     "attestation_date": [
      "DateField",
      false,

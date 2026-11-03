@@ -1596,10 +1596,10 @@ def _totals_block_rows(totaux, colspan, ancres=None):
         pct = pct_fr(DISCOUNT_PCT)  # AMOT24
         rows += row(_L("lg_remise_pct").format(pct=pct), "\u2212" + _fmt2(remise), neg=True,
                     fig="remise")
-    if arrondi > 0:
-        rows += row(_L("arrondi"), "\u2212" + _fmt2(arrondi), neg=True,
+    if arrondi:  # ADVS3 \u2014 n\u00e9gatif : des centimes remont\u00e9s \u00e0 la centaine.
+        rows += row(_L("arrondi"), ("\u2212" if arrondi > 0 else "+") + _fmt2(abs(arrondi)), neg=True,
                     fig="arrondi")
-    if DISCOUNT_PCT > 0 or arrondi > 0:
+    if DISCOUNT_PCT > 0 or arrondi:
         rows += row(_L("total_ht"), _fmt2(net_ht), fig="total_ht")
     # TVA \u00e9clat\u00e9e par taux (r\u00e9forme 10/20) \u2014 une ligne par taux pr\u00e9sent ;
     # un seul taux (devis historiques) \u2192 exactement l'ancienne ligne unique.
@@ -1758,7 +1758,7 @@ def _struct_row_legacy(s, colspan):
 
 def _rangs_totaux(t):
     """RPDF21 — nombre de rangées que ``_totals_block_rows`` imprime pour ``t``."""
-    rem, arr = DISCOUNT_PCT > 0, (t.get("arrondi") or 0) > 0
+    rem, arr = DISCOUNT_PCT > 0, bool(t.get("arrondi"))
     return 3 + rem + arr + (rem or arr) + max(0, len(t.get("tva_par_taux") or []) - 1)
 
 

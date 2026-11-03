@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 
-from core.champs_stricts import QUANTITE_MAX
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, QUANTITE_MAX
 
 #: Un schéma de chaîne décimale « fait de chiffres » : au moins un chiffre de
 #: chaque côté du séparateur quand il y en a un (la regex de drf-spectacular en
@@ -44,7 +44,7 @@ PRODUIT_OU_DESIGNATION = {
         {'type': 'object', 'required': ['produit'],
          'properties': {'produit': {'type': 'integer'}}},
         {'type': 'object', 'required': ['designation'],
-         'properties': {'designation': {'type': 'string', 'pattern': r'\S'}}},
+         'properties': {'designation': {'type': 'string', 'pattern': MOTIF_NON_BLANC_SANS_NUL}}},
     ],
 }
 

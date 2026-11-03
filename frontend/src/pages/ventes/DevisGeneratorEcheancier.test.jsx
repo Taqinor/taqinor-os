@@ -30,7 +30,7 @@ import stockApi from '../../api/stockApi'
 import parametresApi from '../../api/parametresApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
-import { bancEdition, devisResidentielRouvert } from './devisGenerator.testHelpers.jsx'
+import { bancEdition, devisResidentielRouvert, ligneProduit, ONDULEUR, PANNEAU } from './devisGenerator.testHelpers.jsx'
 
 
 const devisRouvert = (variante, echeancier) => devisResidentielRouvert(variante, { echeancier })
@@ -201,6 +201,30 @@ describe('QJR624 — l\'échéancier s\'édite dans l\'Édition complète', () =
     await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
     const [, , { entete }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
     expect(entete.echeancier).toEqual(serveur)
+  })
+
+  it('C&I Les deux en Auto : acompte validé sur l\'option réseau', async () => {
+    // ADVS36 — 8 panneaux 10 560 + réseau 10 800 = 21 360 → 21 300 (SANS) ; hybride 16 800 →
+    // 27 300 (AVEC). Acompte 6 390 = 30 % du SANS + solde 70 % : refusé sur l'AVEC, plus sur le SANS.
+    const echeancier = [
+      { type: 'acompte', libelle: 'Acompte', unite: 'montant', pct_or_montant: 6000 },
+      { type: 'solde', libelle: 'Solde', unite: 'pct', pct_or_montant: 70 },
+    ]
+    const rouvert = enMode(devisRouvert('exemple_envoye', echeancier), 'commercial')
+    rouvert.data.etude_params = { ...rouvert.data.etude_params, scenario: 'Les deux' }
+    rouvert.data.lignes = [
+      ligneProduit({ id: 1, produit: PANNEAU, quantite: '8', prix_unitaire: '1200.00', taux_tva: '10.00', ordre: 0 }),
+      { ...ligneProduit({ id: 2, produit: ONDULEUR, quantite: '1', prix_unitaire: '9000.00', taux_tva: '20.00', ordre: 1 }), variante: 'sans' },
+      { ...ligneProduit({ id: 3, produit: ONDULEUR, designation: 'Onduleur hybride Deye 6kW', quantite: '1', prix_unitaire: '14000.00', taux_tva: '20.00', ordre: 2 }), variante: 'avec' },
+    ]
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    const carte = await screen.findByTestId('carte-echeancier')
+    expect(await screen.findByTestId('gen-barre-total')).toHaveTextContent(/21.300/)
+    fireEvent.change(carte.querySelector('#gen-echeance-0'), { target: { value: '6390' } })
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
   })
 
   it('somme ≠ 100 ⇒ message sous la liste', async () => {

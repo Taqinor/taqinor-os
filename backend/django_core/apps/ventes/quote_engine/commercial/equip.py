@@ -417,11 +417,11 @@ def build(ctx):
         if remise > 0 else "")
     # ARRONDI-100 — la baisse au palier de 100 MAD inférieur, ligne visible.
     arrondi = _num(tot.get("arrondi"))
-    _f_arrondi = fmt_mad(arrondi)
+    _f_arrondi = fmt_mad(abs(arrondi))
     arrondi_row = (
         f'<tr><td>{L("arrondi", "Arrondi commercial")}{ancre("arrondi", _f_arrondi)}</td>'
-        f'<td class="c2-tr">- {_f_arrondi} MAD</td></tr>'
-        if arrondi > 0 else "")
+        f'<td class="c2-tr">{"- " if arrondi > 0 else "+ "}{_f_arrondi} MAD</td></tr>'
+        if arrondi else "")
     _f_ht_brut = fmt_mad(ht_brut)
     _f_ht_net = fmt_mad(ht_net)
     _f_tva = fmt_mad(tva)

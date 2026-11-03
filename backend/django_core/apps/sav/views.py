@@ -2032,22 +2032,25 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 quantite=quantite, created_by=request.user)
             if decrement:
                 produit.refresh_from_db()
-                qte_avant = produit.quantite_stock
-                qte_apres = qte_avant - quantite
-                record_stock_movement(
-                    company=ticket.company, produit=produit,
-                    type_mouvement=mouvement_type_sortie(),
-                    quantite=quantite, quantite_avant=qte_avant,
-                    quantite_apres=qte_apres, reference=ticket.reference,
-                    note=f'Consommation SAV {ticket.reference}',
-                    created_by=request.user)
+                try:
+                    record_stock_movement(
+                        company=ticket.company, produit=produit,
+                        type_mouvement=mouvement_type_sortie(),
+                        quantite=quantite, quantite_avant=produit.quantite_stock,
+                        quantite_apres=produit.quantite_stock - quantite,
+                        reference=ticket.reference,
+                        note=f'Consommation SAV {ticket.reference}',
+                        created_by=request.user)
+                except ValidationError as exc:
+                    # ERR-ENF11 : quantité conforme, le stock du produit se compte en unités entières.
+                    raise ConflitEtat(exc.detail) from exc
                 piece.stock_decremente = True
                 piece.save(update_fields=['stock_decremente'])
             # L310 — journaliser l'ajout (et le décrément éventuel) à l'Historique.
-            suffixe = ' (stock −)' if decrement else ''
             activity.log_note(
                 ticket, request.user,
-                f'Pièce {produit.nom} ×{quantite} consommée{suffixe}')
+                f'Pièce {produit.nom} ×{quantite} consommée'
+                + (' (stock −)' if decrement else ''))
         return Response(
             PieceConsommeeSerializer(piece).data, status=201)
 
@@ -2917,7 +2920,7 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
 
     def perform_destroy(self, instance):
         if instance.protege:
-            raise ValidationError('Ce template est protégé et ne peut être supprimé.')
+            raise ConflitEtat('Ce template est protégé et ne peut être supprimé.')  # ERR-ENF11 : état = 409
         instance.delete()
 
 

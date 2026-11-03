@@ -106,6 +106,24 @@ class CrochetsFuzzTests(unittest.TestCase):
                     self.assertEqual(cas.body['mode'], 'monitor')
                     self.assertEqual(cas.body['applies_to'], 'all')
 
+    def test_sso_obligatoire_jamais_pose_par_le_fuzz(self):
+        for methode, chemin in (
+                ('POST', '/api/django/identity/providers/'),
+                ('PATCH', '/api/django/identity/providers/{id}/'),
+                ('PUT', '/api/django/identity/providers/{id}/')):
+            for mode in ('POSITIVE', 'NEGATIVE'):
+                with self.subTest(methode=methode, mode=mode):
+                    cas = self._appel(_cas(self.hooks, methode, chemin,
+                                           {'enforce_sso': True, 'nom': 'x'},
+                                           mode=mode))
+                    self.assertIs(cas.body['enforce_sso'], False)
+                    self.assertEqual(cas.body['nom'], 'x')
+        # Un cas négatif au mauvais type atteint le serveur tel quel.
+        cas = self._appel(_cas(self.hooks, 'PATCH',
+                               '/api/django/identity/providers/{id}/',
+                               {'enforce_sso': 'oui'}, mode='NEGATIVE'))
+        self.assertEqual(cas.body['enforce_sso'], 'oui')
+
     def test_politique_reseau_autres_modes_intacts(self):
         for valeur in ('off', 'monitor', 42, None):
             with self.subTest(valeur=valeur):
@@ -218,6 +236,17 @@ class IdsCheminTests(unittest.TestCase):
     def _valeurs(self, chemin, nb=200, **kw):
         return [self._appel(chemin, {'id': 10**6 + i}, **kw)
                 .path_parameters['id'] for i in range(nb)]
+
+    def test_id_venu_d_un_lien_stateful_jamais_remplace(self):
+        # api-fuzz-full 41296444614 : POST puis PUT sur la ressource créée
+        # partait sur un id d'inventaire -> « not available after creation ».
+        for rang in range(50):
+            cas = _cas(self.hooks, 'PUT', '/api/django/ventes/devis/{id}/',
+                       params={'id': 900 + rang})
+            cas._override = types.SimpleNamespace(
+                path_parameters={'id': 900 + rang})
+            self.hooks.before_call(None, cas, {})
+            self.assertEqual(cas.path_parameters['id'], 900 + rang)
 
     def test_id_reel_substitue_et_part_invalide_conservee(self):
         vals = self._valeurs('/api/django/ventes/devis/{id}/proposal/')

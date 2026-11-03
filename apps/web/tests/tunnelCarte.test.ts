@@ -378,7 +378,9 @@ describe('WAUD43 — étape toit : outils de dessinateur masqués au grand publi
   it('« Continuer » arrive avant la carte, sous les profils, dans les 3 langues', () => {
     for (const p of ['devis/mon-toit', 'en/devis/mon-toit', 'ar/devis/mon-toit']) {
       const page = lire(`src/pages/${p}.astro`);
-      const suivant = page.indexOf('id="mt-next-0"');
+      // Garde ACAL345 : le bouton vit dans un composant partagé, placé ici sous les profils.
+      expect(lire('src/components/blocs/DevisMonToitContinuer.astro')).toContain('id="mt-next-0"');
+      const suivant = page.indexOf('<DevisMonToitContinuer>');
       expect(suivant).toBeGreaterThan(page.indexOf('id="mt-mode-grid"'));
       expect(suivant).toBeLessThan(page.indexOf('id="mt-stage"'));
     }

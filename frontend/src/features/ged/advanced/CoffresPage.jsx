@@ -46,11 +46,11 @@ export default function CoffresPage() {
         toutesLesPages(gedApi.getCoffres),
         // ALEA33 — idem pour les clients (jamais les 50 premiers seulement).
         toutesLesPages(crmApi.getClients).catch(() => ({ data: [] })),
-        gedApi.getUsers().catch(() => ({ data: [] })),
+        toutesLesPages(gedApi.getUsers).catch(() => ({ data: [] })),
       ])
-      setCoffres(unpage(c.data))
-      setClients(unpage(cl.data))
-      setUsers(unpage(u.data))
+      setCoffres(c.data)
+      setClients(cl.data)
+      setUsers(u.data)
     } catch (err) {
       setError(errMessage(err, 'Impossible de charger les coffres.'))
     } finally {
