@@ -24,6 +24,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from core.test_utils import AssertQueryBudgetMixin
 from authentication.models import Company
 
 from apps.crm import horaires, stages
@@ -285,7 +286,7 @@ class KpiPremierContactTests(TestCase):
         self.assertEqual(kpi_premier_contact(voisine)['nb_leads'], 0)
 
 
-class KpiApiTests(TestCase):
+class KpiApiTests(AssertQueryBudgetMixin, TestCase):
     def setUp(self):
         self.company = _company('mry19-api')
         # VTA4 — les lectures CRM exigent le code fin ``crm_voir``.
@@ -299,6 +300,27 @@ class KpiApiTests(TestCase):
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.normal)}')
+
+    def _mesure_acvi95(self, api, url):
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params`."""
+        with self.assertMaxQueries(40) as ctx:
+            resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse([q['sql'] for q in ctx.captured_queries
+                          if '"etude_params"' in q['sql']])
+        return len(ctx.captured_queries)
+
+    def test_budget_deux_tailles_sans_etude_params(self):
+        def peupler(nombre):
+            for i in range(nombre):
+                Lead.objects.create(company=self.company, nom=f'K{i}',
+                                    stage=stages.CONTACTED)
+
+        peupler(5)
+        self._mesure_acvi95(self.api, KPI_URL)  # échauffement
+        n = self._mesure_acvi95(self.api, KPI_URL)
+        peupler(10)
+        self.assertEqual(self._mesure_acvi95(self.api, KPI_URL), n)
 
     def test_lecture_ouverte_a_tout_porteur_de_crm_voir(self):
         resp = self.api.get(KPI_URL)

@@ -42,6 +42,7 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from core.test_utils import AssertQueryBudgetMixin
 from authentication.models import Company
 from testkit.time import frozen
 
@@ -568,6 +569,29 @@ class _Base(TestCase):
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. La forme — le contrat, à tous les niveaux
 # ═══════════════════════════════════════════════════════════════════════════
+
+class BudgetTests(AssertQueryBudgetMixin, _Base):
+
+    def _mesure_acvi95(self, api, url):
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params`."""
+        with self.assertMaxQueries(40) as ctx:
+            resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse([q['sql'] for q in ctx.captured_queries
+                          if '"etude_params"' in q['sql']])
+        return len(ctx.captured_queries)
+
+    def test_budget_deux_tailles_sans_etude_params(self):
+        def peupler(nombre):
+            for _ in range(nombre):
+                self._etape(self._lead(), _jour(0))
+
+        peupler(5)
+        self._mesure_acvi95(self.api, URL)  # échauffement
+        n = self._mesure_acvi95(self.api, URL)
+        peupler(10)
+        self.assertEqual(self._mesure_acvi95(self.api, URL), n)
+
 
 class FormeTests(_Base):
 

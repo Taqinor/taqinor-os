@@ -37,6 +37,7 @@ from apps.visites.models import VisiteMedia, VisiteTerrain
 from apps.roles.models import Role
 from apps.ventes.models import Devis, LigneDevis
 from apps.stock.models import Produit
+from core.test_utils import AssertQueryBudgetMixin
 from authentication.models import Company
 
 User = get_user_model()
@@ -689,7 +690,31 @@ class CablageRetourLeadTests(VisiteTerrainBase):
 
 
 # ENFP (D1) — ``?lead=`` est déclaré ET honoré sur la liste des visites.
-class ListeFiltreLeadTests(VisiteTerrainBase):
+class ListeFiltreLeadTests(AssertQueryBudgetMixin, VisiteTerrainBase):
+    def _mesure_acvi95(self, api, url):
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params`."""
+        with self.assertMaxQueries(40) as ctx:
+            resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse([q['sql'] for q in ctx.captured_queries
+                          if '"etude_params"' in q['sql']])
+        return len(ctx.captured_queries)
+
+    def test_budget_deux_tailles_sans_etude_params(self):
+        url = '/api/django/visites/visites/'
+
+        def peupler(nombre):
+            for i in range(nombre):
+                lead = Lead.objects.create(company=self.company, nom=f'V{i}')
+                VisiteTerrain.objects.create(company=self.company, lead=lead,
+                                             commercial=self.commercial)
+
+        peupler(5)
+        self._mesure_acvi95(self.api, url)  # échauffement
+        n = self._mesure_acvi95(self.api, url)
+        peupler(10)
+        self.assertEqual(self._mesure_acvi95(self.api, url), n)
+
     def test_filtre_lead(self):
         visite_id = self.creer_visite()
         autre = Lead.objects.create(company=self.company, nom='Autre dossier')

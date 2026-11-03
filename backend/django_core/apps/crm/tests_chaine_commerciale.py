@@ -27,6 +27,7 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from core.test_utils import AssertQueryBudgetMixin
 from authentication.models import Company
 from testkit.time import frozen
 
@@ -382,7 +383,7 @@ class PiiMasqueeTests(_Base):
         self.assertEqual(ligne['nom'], 'Masque')
 
 
-class CoutTests(_Base):
+class CoutTests(AssertQueryBudgetMixin, _Base):
     """Jamais une requête PAR LEAD : une par compteur, une pour les
     prochaines étapes, une par lot de devis (seul l'assigné des ``limite``
     visites servies est lu dossier par dossier)."""
@@ -401,6 +402,23 @@ class CoutTests(_Base):
             self._issue(joint, 'joint')
             self._etape(joint, jour=AUJOURDHUI,
                         libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
+
+    def _mesure_acvi95(self, api, url):
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params`."""
+        with self.assertMaxQueries(40) as ctx:
+            resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse([q['sql'] for q in ctx.captured_queries
+                          if '"etude_params"' in q['sql']])
+        return len(ctx.captured_queries)
+
+    def test_budget_deux_tailles_sans_etude_params(self):
+        api = self._api()
+        self._dossiers(5, 0)
+        self._mesure_acvi95(api, URL)  # échauffement
+        n = self._mesure_acvi95(api, URL)
+        self._dossiers(10, 5)
+        self.assertEqual(self._mesure_acvi95(api, URL), n)
 
     def test_le_cout_ne_grimpe_pas_avec_les_dossiers(self):
         self._dossiers(1, 0)
