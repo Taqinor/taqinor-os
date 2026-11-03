@@ -159,8 +159,10 @@ describe('WAUD2 — une seule promesse de délai', () => {
       expect(readFileSync(root(`../src/components/${f}.astro`), 'utf-8')).toContain("t('cta.reassurance')");
     }
     for (const p of ['contact', 'en/contact', 'ar/contact']) {
-      expect(readFileSync(root(`../src/pages/${p}.astro`), 'utf-8')).toContain('t("cta.delai")');
+      expect(readFileSync(root(`../src/pages/${p}.astro`), 'utf-8')).toContain('<ContactEntete>');
     }
+    // Garde ACAL345 : l'en-tête des trois /contact vit dans un composant partagé.
+    expect(readFileSync(root('../src/components/blocs/ContactEntete.astro'), 'utf-8')).toContain('t("cta.delai")');
   });
 });
 
