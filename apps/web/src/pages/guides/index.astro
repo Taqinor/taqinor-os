@@ -13,7 +13,7 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
-import { getGuideVerifiedDate } from '../../lib/guideMeta';
+import { GUIDE_VERIFIED_DATES, getGuideVerifiedDate } from '../../lib/guideMeta';
 import { DATE_LONGUE_FR as dateFmt } from '../../lib/format';
 
 // W303 — date de vérification (badge de fraîcheur sur les cartes) + estimation de
@@ -179,8 +179,7 @@ const jsonLd = {
                       WB12 — la date vient de guideMeta.ts, par slug (dernier segment du href). */}
                   {g.verified && (
                     <p class="guide-freshness mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
-                      <span>Vérifié le {dateFmt.format(getGuideVerifiedDate(g.href.replace(/^\/(guides\/)?/, '')))}</span>
-                      <span aria-hidden="true">·</span>
+                      {GUIDE_VERIFIED_DATES[g.href.replace(/^\/(guides\/)?/, '').replace(/\/$/, '')] && (<Fragment><span>Vérifié le {dateFmt.format(getGuideVerifiedDate(g.href.replace(/^\/(guides\/)?/, '').replace(/\/$/, '')))}</span><span aria-hidden="true">·</span></Fragment>)}
                       <span>{estimateReadingTime(g.summary)} min</span>
                     </p>
                   )}

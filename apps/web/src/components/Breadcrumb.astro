@@ -16,6 +16,7 @@
  * `<Breadcrumb items={...} />` n'a besoin d'être modifié.
  */
 import { LOCALES } from '../i18n/config';
+import { canonicalUrl } from '../lib/canonicalUrl';
 import { getLocaleFromPath, useTranslations } from '../i18n/utils';
 
 interface Crumb {
@@ -38,7 +39,7 @@ const items = rawItems.map((item, i) =>
   i === 0 && isHomeHref(item.href) ? { ...item, label: t('breadcrumb.home') } : item,
 );
 
-const abs = (href?: string) => (href ? new URL(href, Astro.site).href : undefined);
+const abs = (href?: string) => (href ? canonicalUrl(href, Astro.site) : undefined);
 
 const jsonLd = {
   '@context': 'https://schema.org',

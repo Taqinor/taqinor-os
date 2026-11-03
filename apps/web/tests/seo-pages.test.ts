@@ -12,6 +12,7 @@ import { builtPage, mainOf, visibleText } from './builtHtmlHelper';
 import { dateArticle, datesDuDepot, lastmodPour } from '../scripts/sitemap-dates.mjs';
 import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
 import { NAP } from '../src/lib/nap';
+import { canonicalUrl } from '../src/lib/canonicalUrl';
 import { GUIDE_VERIFIED_DATES, guideDateModified } from '../src/lib/guideMeta';
 
 const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -491,5 +492,28 @@ describe('WAUD50 — JSON-LD Article : dateModified = date « Vérifié le » af
       expect(s, f).not.toMatch(/JSON\.stringify\(breadcrumbLd\)/);
       expect(s, f).toContain('<Breadcrumb');
     }
+  });
+});
+
+describe('WAUD70 — URL canoniques uniques (barre finale, encodage) dans RSS, llms.txt, JSON-LD', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  it('canonicalUrl : barre finale, encodage UTF-8, fichiers à extension intacts', () => {
+    expect(canonicalUrl('/faq')).toBe('https://taqinor.ma/faq/');
+    expect(canonicalUrl('/résidentiel')).toBe('https://taqinor.ma/r%C3%A9sidentiel/');
+    expect(canonicalUrl('/')).toBe('https://taqinor.ma/');
+    expect(canonicalUrl('/rss.xml')).toBe('https://taqinor.ma/rss.xml');
+    expect(canonicalUrl('https://taqinor.ma/blog/x')).toBe('https://taqinor.ma/blog/x/');
+  });
+  it('rss.xml.ts, Breadcrumb et le billet de blog passent par canonicalUrl', () => {
+    expect(lire('src/pages/rss.xml.ts')).toContain('canonicalUrl(');
+    expect(lire('src/pages/rss.xml.ts')).not.toContain('${SITE}/blog/${post.id}');
+    expect(lire('src/components/Breadcrumb.astro')).toContain('canonicalUrl(');
+    expect(lire('src/pages/blog/[...slug].astro')).toContain('canonicalUrl(');
+  });
+  it('llms.txt : toutes les URL sont sous leur forme canonique ; _headers déclare le charset', () => {
+    const urls = [...lire('public/llms.txt').matchAll(/\((https:\/\/taqinor\.ma[^)\s]*)\)/g)].map((m) => m[1]);
+    expect(urls.length).toBeGreaterThan(15);
+    for (const u of urls) expect(u).toBe(canonicalUrl(u));
+    expect(lire('public/_headers')).toMatch(/\/llms\.txt\s+Content-Type: text\/plain; charset=utf-8/);
   });
 });

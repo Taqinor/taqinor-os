@@ -20,6 +20,7 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
+import { canonicalUrl } from '../../lib/canonicalUrl';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
@@ -63,7 +64,7 @@ const { post, prev, next, related } = Astro.props;
 const { data, body } = post;
 const { Content } = await render(post);
 
-const url = new URL(`/blog/${post.id}`, Astro.site).href;
+const url = canonicalUrl(`/blog/${post.id}`, Astro.site);
 
 // W299 — lien cluster optionnel (voir CLUSTER_LINK_BY_THEME plus haut) ; absent
 // si l'article n'a pas de theme, jamais de lien inventé.
