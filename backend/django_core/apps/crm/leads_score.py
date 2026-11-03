@@ -66,6 +66,7 @@ def recalculer_scores_obsoletes(*, taille_lot=500) -> dict:
     from datetime import timedelta
 
     from .scoring import compute_score
+    from .signaux import annotations_signaux
 
     seuil = timezone.now() - timedelta(days=DELAI_SCORE_OBSOLETE_JOURS)
     examines = 0
@@ -76,6 +77,8 @@ def recalculer_scores_obsoletes(*, taille_lot=500) -> dict:
     queryset = (
         Lead.objects
         .filter(date_modification__lt=seuil, is_archived=False, perdu=False)
+        # ACVI81 — signaux en annotations de lot (CAD133), société jointe.
+        .annotate(**annotations_signaux()).select_related('company')
         .order_by('pk').iterator(chunk_size=taille_lot))
     for lead in queryset:
         examines += 1

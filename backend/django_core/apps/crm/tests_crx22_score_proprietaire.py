@@ -205,6 +205,28 @@ class RecalculQuotidienTests(TestCase):
         lead.refresh_from_db()
         return lead
 
+    def test_requetes_constantes_avec_le_nombre_de_leads(self):
+        # ACVI81 — scores déjà justes : aucune écriture, coût constant.
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def creer(nombre):
+            for _ in range(nombre):
+                lead = self._lead_dormant()
+                Lead.objects.filter(pk=lead.pk).update(
+                    score=compute_score(lead))
+
+        def passage():
+            with CaptureQueriesContext(connection) as ctx:
+                resume = recalculer_scores_obsoletes()
+            self.assertEqual(resume['mis_a_jour'], 0)
+            return len(ctx)
+
+        creer(4)
+        a_quatre = passage()
+        creer(8)
+        self.assertEqual(passage(), a_quatre)
+
     def test_le_score_dormant_est_rafraichi(self):
         lead = self._lead_dormant()
         attendu = compute_score(lead)
