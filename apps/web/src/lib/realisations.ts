@@ -447,6 +447,11 @@ export function dateLocale(date: string, locale: 'fr' | 'en' | 'ar'): string {
   return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'ar-MA', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(jour);
 }
 
+/** WAUD17 — la réalisation documentée la plus ancienne (min(date)). */
+export function plusAncienneRealisation(): Realisation {
+  return [...REALISATIONS].sort((a, b) => dateComparable(a.date) - dateComparable(b.date))[0];
+}
+
 /** WAUD15 — la réalisation la plus récemment livrée (max(date)). */
 export function derniereRealisation(): Realisation {
   return [...REALISATIONS].sort((a, b) => dateComparable(b.date) - dateComparable(a.date))[0];

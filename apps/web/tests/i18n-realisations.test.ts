@@ -322,3 +322,19 @@ describe('WAUD32 — mois et dates par locale', () => {
     }
   });
 });
+
+describe('WAUD17 — /à-propos : le chantier documenté le plus ancien', () => {
+  it('min(date) = Nouaceur, octobre 2025', async () => {
+    const { plusAncienneRealisation } = await import('../src/lib/realisations');
+    expect(plusAncienneRealisation().slug).toBe('nouaceur-4-kwc');
+    expect(plusAncienneRealisation().date).toBe('octobre 2025');
+  });
+  it('les 3 pages utilisent min(date) et un mois par locale', () => {
+    for (const [p, loc] of [['à-propos', null], ['en/à-propos', 'en'], ['ar/à-propos', 'ar']] as const) {
+      const s = readSrc(`../src/pages/${p}.astro`);
+      expect(s).toContain('plusAncienneRealisation()');
+      expect(s).not.toContain('REALISATIONS[REALISATIONS.length - 1]');
+      if (loc) expect(s).toContain(`dateLocale(earliestRealisation.date, '${loc}')`);
+    }
+  });
+});

@@ -18,7 +18,7 @@ import StickyCta from '../components/StickyCta.astro';
 import FounderPortrait from '../components/FounderPortrait.astro';
 import InstallCounter from '../components/InstallCounter.astro';
 import CertLogoRow from '../components/CertLogoRow.astro';
-import { REALISATIONS } from '../lib/realisations';
+import { REALISATIONS, plusAncienneRealisation } from '../lib/realisations';
 import { NAP } from '../lib/nap';
 
 /**
@@ -40,7 +40,7 @@ import { NAP } from '../lib/nap';
 // ancien (avril 2026 → octobre 2025) : le dernier élément est le plus ancien
 // documenté. Sert d'ancrage factuel — aucune date de création d'entreprise
 // n'est publiée nulle part sur le site, donc on ne l'invente pas ici.
-const earliestRealisation = REALISATIONS[REALISATIONS.length - 1];
+const earliestRealisation = plusAncienneRealisation();
 
 // La méthode « l'étude d'abord, le chantier ensuite » — déroulé déjà décrit sur
 // l'accueil et la page Pourquoi : diagnostic → échange technique → étude → pose
