@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, Mic, Send, TriangleAlert } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
+import { refusConflit } from '../../../lib/apiError'
 import { toast } from '../../../ui/confirm'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -79,7 +80,7 @@ export default function ToucheMessageDialog({
     }
     requete
       .then((r) => { if (active) setRendu(r.data) })
-      .catch(() => { if (active) setErreur(true) })
+      .catch((err) => { if (active) setErreur(refusConflit(err, 'Message indisponible pour le moment.')) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [open, etape, langueChoisie])
@@ -201,7 +202,7 @@ export default function ToucheMessageDialog({
         {loading ? (
           <Spinner />
         ) : erreur ? (
-          <p className="text-sm text-muted-foreground">Message indisponible pour le moment.</p>
+          <p className="text-sm text-muted-foreground">{erreur}</p>
         ) : (
           <div className="flex flex-col gap-3">
             {/* CAD63 — changer la langue AU MOMENT UTILE : deux boutons qui

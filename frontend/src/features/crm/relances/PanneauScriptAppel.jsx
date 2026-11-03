@@ -45,6 +45,7 @@ import {
   VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE, CONSIGNE_OUVERT_24H, CONSIGNE_CONTRAT_INCONNU,
   CONSIGNE_HMT_INCONNUE,
 } from './appelGuidance'
+import { refusConflit } from '../../../lib/apiError'
 import BasculeReplie from './BasculeReplie'
 
 const PANNEAU_INDISPONIBLE = 'Questions indisponibles pour le moment — le '
@@ -432,7 +433,7 @@ export default function PanneauScriptAppel({
     queueMicrotask(() => { if (active) setScript((s) => ({ ...s, chargement: true, erreur: false })) })
     crmApi.getRelanceEtapeMessage(etapeId)
       .then((r) => { if (active) setScript({ chargement: false, rendu: r?.data ?? null, erreur: false }) })
-      .catch(() => { if (active) setScript({ chargement: false, rendu: null, erreur: true }) })
+      .catch((err) => { if (active) setScript({ chargement: false, rendu: null, erreur: refusConflit(err, 'Script indisponible pour le moment.') }) })
     return () => { active = false }
   }, [actif, scriptLigne, etapeId])
 
@@ -655,7 +656,7 @@ export default function PanneauScriptAppel({
       {scriptLigne && (
         <div className="flex flex-col gap-1.5" data-testid="texte-touche">
           {script.chargement && <p>Chargement du script…</p>}
-          {script.erreur && <p>Script indisponible pour le moment.</p>}
+          {script.erreur && <p>{script.erreur === true ? 'Script indisponible pour le moment.' : script.erreur}</p>}
           {rendu && (
             <p
               className={`whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-sm text-foreground${rtl ? ' text-right' : ''}`}

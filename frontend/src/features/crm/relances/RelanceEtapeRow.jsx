@@ -19,6 +19,7 @@ import { suiteAnnoncee, suiteDuSaut } from './suite'
 import {
   typeEtape, reponsesDeLEtape, estTache, estTacheSansAppel as estTacheSansAppel_,
 } from './parcours'
+import { refusConflit } from '../../../lib/apiError'
 import BasculeReplie from './BasculeReplie'
 
 /* ============================================================================
@@ -345,7 +346,7 @@ function TexteDeTouche({ etape, titre, ouvert, onBasculer, destinataire }) {
     queueMicrotask(() => { if (active) setEtat((e) => ({ ...e, chargement: true, erreur: false })) })
     crmApi.getRelanceEtapeMessage(etape.id)
       .then((r) => { if (active) setEtat({ chargement: false, rendu: r?.data ?? null, erreur: false }) })
-      .catch(() => { if (active) setEtat({ chargement: false, rendu: null, erreur: true }) })
+      .catch((err) => { if (active) setEtat({ chargement: false, rendu: null, erreur: refusConflit(err, 'Texte indisponible pour le moment.') }) })
     return () => { active = false }
   }, [ouvert, etape.id])
 
@@ -383,7 +384,9 @@ function TexteDeTouche({ etape, titre, ouvert, onBasculer, destinataire }) {
           )}
           {etat.chargement && <p className="text-xs text-muted-foreground">Chargement du texte…</p>}
           {etat.erreur && (
-            <p className="text-xs text-muted-foreground">Texte indisponible pour le moment.</p>
+            <p className="text-xs text-muted-foreground">
+              {etat.erreur === true ? 'Texte indisponible pour le moment.' : etat.erreur}
+            </p>
           )}
           {/* CIQ507 — l'OBJET de l'e-mail, construit par le serveur (CIQ506). */}
           {rendu?.objet && (

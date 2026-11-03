@@ -85,6 +85,12 @@ function fieldErrorsFrom(data) {
   return found ? out : undefined
 }
 
+/** ACVI44 — le texte serveur d'un 409 nommé (refus d'état), sinon le repli de l'écran. */
+export function refusConflit(error, repli) {
+  const detail = error?.response?.status === 409 ? error.response.data?.detail : null
+  return typeof detail === 'string' && detail ? detail : repli
+}
+
 /** Compat message-seul — utilisé par le contrat toast global (`lib/toast.js`). */
 export function apiErrorMessage(error, fallback) {
   return getApiError(error, fallback).message

@@ -202,6 +202,23 @@ describe('CAD79 — le « vocal » ne part plus en texte écrit', () => {
   })
 })
 
+describe('ACVI44 — le refus serveur du rendu est montré', () => {
+  it('409 nommé : le texte du serveur, aucun bouton WhatsApp', async () => {
+    crmApi.getRelanceEtapeMessage.mockRejectedValue({
+      response: { status: 409, data: { detail: 'Message refusé : ne plus contacter.' } },
+    })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    expect(await screen.findByText('Message refusé : ne plus contacter.')).toBeInTheDocument()
+    expect(screen.queryByText('Message indisponible pour le moment.')).not.toBeInTheDocument()
+  })
+
+  it('autre panne : le repli de l’écran', async () => {
+    crmApi.getRelanceEtapeMessage.mockRejectedValue({ response: { status: 500, data: {} } })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    expect(await screen.findByText('Message indisponible pour le moment.')).toBeInTheDocument()
+  })
+})
+
 describe('CAD64 — le repli de langue est VISIBLE', () => {
   const REPLI = exempleContrat('crm', 'relance_etape_message', 'exemple_repli_langue')
 
