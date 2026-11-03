@@ -516,17 +516,23 @@ def prix_client_composition(cout_catalogue, devis=None, *, facteur=None):
     (:func:`facteur_remise_du_devis`, ou ``facteur`` déjà lu), ramené au
     palier ``PAS_ARRONDI_DEVIS`` inférieur comme le total de tout devis
     (ARRONDI-100). ``None`` si le coût est illisible ou nul. Une fonction,
-    trois lecteurs : un pack de plus ne fait plus « sauter » la remise."""
+    trois lecteurs : un pack de plus ne fait plus « sauter » la remise.
+    ADVS3 (D-ADVS-4) — ce prix annonce le total du devis : à moins d'1 MAD sous
+    une centaine il y remonte, comme le noyau (``devis`` au niveau < 11 : palier d'hier)."""
     cout = _num(cout_catalogue)
     if cout <= 0:
         return None
     if facteur is None:
         facteur = facteur_remise_du_devis(devis) if devis is not None else 1.0
     prix = cout * float(facteur or 1.0)
-    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS, centaine_remontee
+    from apps.ventes.domain.noyau_totaux import _ARRONDI_TOLERANCE_MONTEE
     pas = float(PAS_ARRONDI_DEVIS)
     if prix >= pas:
-        prix = math.floor(prix / pas) * pas
+        inferieur = math.floor(prix / pas) * pas
+        monte = (inferieur + pas - prix < float(_ARRONDI_TOLERANCE_MONTEE)
+                 and centaine_remontee(devis))
+        prix = inferieur + pas if monte else inferieur
     from decimal import Decimal, ROUND_HALF_UP
     return float(Decimal(str(prix)).quantize(Decimal('0.01'),
                                              rounding=ROUND_HALF_UP))
@@ -989,7 +995,7 @@ def _echelle_paliers_batterie(devis):
         # pilules d'un devis remisé était faux (bases mélangées).
         # AMOT59 — LE prix de vente partagé (remise du devis + palier).
         if _corrige:
-            cout = prix_client_composition(vue.get('cout_ttc'),
+            cout = prix_client_composition(vue.get('cout_ttc'), devis,
                                            facteur=facteur_remise) or 0.0
         else:
             # Règles d'origine (avant AMOT59) : coût × remise, sans palier.

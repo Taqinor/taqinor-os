@@ -378,6 +378,40 @@ class AncrageParLeBlocHoraireTests(TestCase):
         self.assertFalse(d['masquer_synthese'])
         self.assertEqual(len(d['eco_mensuelles']), 12)
 
+    def _devis_factures_decimales(self, ref):
+        """AGNR42-D6 — factures tapées 1 234,567 / 1 600,5 : le bloc horaire porte
+        les montants décimaux (1 600,5 un epsilon au-dessus : ``round`` monte)."""
+        avant = [1234.567] * 6 + [1600.5001] * 6
+        return self._devis(ref, {**DEUX_OPTIONS, 'etude_horaire': bloc_horaire(
+            self.KWC, factures_avant=avant)})
+
+    def test_factures_decimales_annuel_exact_arrondi_une_fois(self):
+        """AGNR42-D6 — page publique et PDF 4 pages lisent cette synthèse : 17 010
+        (somme exacte 17 010,4), jamais 17 016 (arrondi mois par mois). Les barres
+        restent au dirham. ROUGE AVANT : source « étude horaire » sans série exacte."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential import renderer
+        data = build_quote_data(self._devis_factures_decimales('DEV-AGNR42-D6'))
+        self.assertEqual(data['factures_source'], 'etude_horaire')
+        self.assertEqual(data['factures_mensuelles'], [1235] * 6 + [1601] * 6)
+        synth = renderer.synthese_economies(data)
+        self.assertEqual(synth['annual_before'], 17010)
+        self.assertEqual(synth['eco_mensuelles_total'],
+                         synth['annual_before'] - synth['annual_after'])
+
+    def test_factures_decimales_devis_envoye_garde_son_total(self):
+        """AGNR42-D6 + « nouveaux rendus seulement » — niveau ≤ 10 (devis déjà
+        envoyé, migration 0151) : aucune clé exacte, le total reçu ne bouge pas."""
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential import renderer
+        devis = self._devis_factures_decimales('DEV-AGNR42-D6-E')
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=10)
+        devis.refresh_from_db()
+        data = build_quote_data(devis)
+        self.assertNotIn('factures_mensuelles_exactes', data)
+        self.assertEqual(renderer.synthese_economies(data)['annual_before'], 17016)
+
     def test_les_douze_factures_du_lead_restent_prioritaires(self):
         """Quand le client a VRAIMENT donné douze factures, ce sont elles —
         jamais la reconstitution du barème."""

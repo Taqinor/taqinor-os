@@ -58,26 +58,31 @@ def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
 
 
 def cle_factures_exactes(etude, factures_source, devis=None):
-    """ERR-AGNR42 — ``{"factures_mensuelles_exactes": série}`` au niveau de règles 5 avec
-    une série exacte, sinon ``{}`` : la clé est ABSENTE ailleurs (rendu d'origine intact)."""
+    """ERR-AGNR42 — ``{"factures_mensuelles_exactes": série}`` au niveau de règles requis
+    avec une série exacte, sinon ``{}`` : la clé est ABSENTE ailleurs (rendu d'origine intact)."""
     serie = factures_mensuelles_exactes(etude, factures_source, devis)
     return {} if serie is None else {"factures_mensuelles_exactes": serie}
 
 
 def factures_mensuelles_exactes(etude, factures_source, devis=None):
-    """ERR-AGNR42 — les 12 factures du lead NON arrondies (ou None).
+    """ERR-AGNR42 — les 12 factures du client NON arrondies (ou None).
 
     ``factures_mensuelles`` reste arrondie au dirham (affichage des barres) ;
     la somme annuelle se fait sur cette série exacte puis s'arrondit UNE fois
-    (``residential.renderer.synthese_economies``). Servie
-    qu'au niveau de règles >= 5 (``REGLES_RETOURS_3010B``, testé ici).
+    (``residential.renderer.synthese_economies``). Douze factures du lead :
+    niveau >= 5 (``REGLES_RETOURS_3010B``). AGNR42-D6 — source « étude horaire »
+    (factures hiver/été décimales, 17 016 pour 17 010,4) : niveau >= 11 seulement
+    (``REGLES_CENTAINE_0311``) : un devis envoyé garde le total qu'il a reçu.
     """
     from apps.ventes.domain.regles_calcul import (
-        REGLES_RETOURS_3010B, regles_au_moins)
-    if factures_source != "lead_12_mois" or not regles_au_moins(
-            devis, REGLES_RETOURS_3010B):
+        REGLES_CENTAINE_0311, REGLES_RETOURS_3010B, regles_au_moins)
+    etude = etude or {}
+    if factures_source == "lead_12_mois" and regles_au_moins(devis, REGLES_RETOURS_3010B):
+        brut = etude.get("factures_mensuelles_reelles")
+    elif factures_source == "etude_horaire" and regles_au_moins(devis, REGLES_CENTAINE_0311):
+        brut = [m.get("facture_avant_mad") for m in (etude.get("etude_horaire") or {}).get("mois") or []]
+    else:
         return None
-    brut = (etude or {}).get("factures_mensuelles_reelles")
     try:
         serie = [float(v) for v in brut]
     except (TypeError, ValueError):

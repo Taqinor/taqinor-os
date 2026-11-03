@@ -839,7 +839,8 @@ def _bloc_argent(data, etude_ci, segment, option_avec=None, baseline=None):
         return None, MOTIF_ARGENT_MT
     if baseline is None or data.get("regles_ecarts_0111_historique"):
         return None, MOTIF_ARGENT_BT
-    premier = (_dict(economie).get("motifs_omission") or [None])[0]
+    # Le PDF lit ``data_rendu`` (« d&#x27;électricité ») ; la page lit le texte brut.
+    premier = html.unescape((_dict(economie).get("motifs_omission") or [""])[0] or "")
     return None, {MOTIF_TARIF_OMIS: MOTIF_ARGENT_CONTRAT,
                   MOTIF_SANS_HORAIRE: MOTIF_ARGENT_HORAIRES}.get(
                       premier, MOTIF_ARGENT_SANS_DEMANDE)

@@ -3248,12 +3248,11 @@ def blocage_annulation_acceptation(devis_id, company):
     """Décision fondateur (08/10/2026) — le chantier né de l'acceptation du
     devis ``devis_id`` empêche-t-il d'annuler cette acceptation ?
 
-    Rend la raison en français, ou ``None`` quand chaque chantier non annulé
-    du devis est encore dans son état INITIAL auto-créé : étape « Signé »,
-    aucune pose planifiée, aucune intervention (non annulée), aucun stock
-    déjà SORTI (réservation consommée). Une réservation non consommée posée
-    à la création n'est pas un blocage : elle est libérée par l'annulation.
+    Raison en français, ou ``None`` si chaque chantier non annulé est INITIAL :
+    « Signé », ni pose, ni intervention, ni stock SORTI, ni BCF ENVOYÉ
+    (D-ADVS-5). Une réservation non consommée est libérée par l'annulation.
     Lecture seule, bornée à ``company`` (jamais de fuite cross-tenant)."""
+    from apps.achats.selectors import bcf_du_chantier
     from .models import Installation
     qs = Installation.objects.filter(devis_id=devis_id, annule=False)
     if company is not None:
@@ -3273,6 +3272,10 @@ def blocage_annulation_acceptation(devis_id, company):
         if inst.reservations.filter(consomme=True).exists():
             return (f'du stock a déjà été sorti pour le chantier '
                     f'{inst.reference}.')
+        for bon in bcf_du_chantier(inst):
+            if bon['statut'] == 'envoye':
+                return (f"le bon de commande fournisseur {bon['reference']} "
+                        "est envoyé : annulez-le d'abord.")
     return None
 
 

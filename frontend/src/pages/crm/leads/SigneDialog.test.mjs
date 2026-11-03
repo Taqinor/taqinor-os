@@ -22,6 +22,20 @@ test('L420 : aperçu PDF inline réutilise PdfCanvas + previewPdf (jamais dupliq
   assert.match(SRC, /<PdfCanvas/)
 })
 
+test('ADVS3 (D-ADVS-4) : le repli écran remonte à la centaine un TTC à moins d\'1 MAD sous elle', () => {
+  const lignes = [
+    { designation: 'Panneau', quantite: '3', prix_unitaire: '833.33', remise: '0' },
+    { designation: 'Batterie', quantite: '1', prix_unitaire: '833.33', remise: '0' },
+  ]
+  const det = (regles_calcul) => optionsDetail({ taux_tva: '20', regles_calcul, lignes })
+  // 3 × 999,996 = 2 999,988 sans batterie ; 4 × = 3 999,984 avec.
+  assert.equal(det(11).sans_batterie.ttc, 3000)
+  assert.equal(det(11).avec_batterie.ttc, 4000)
+  // Envoyé au niveau < 11 : le total qu'il a reçu.
+  assert.equal(det(10).sans_batterie.ttc, 2900)
+  assert.equal(det(10).avec_batterie.ttc, 3900)
+})
+
 test('L423 : détail par option (kWc / total TTC) affiché à côté des radios', () => {
   assert.match(SRC, /optionsDetail/)
   assert.match(SRC, /det\.kwc/)

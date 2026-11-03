@@ -966,7 +966,8 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             prix_client_composition)
         if getattr(contexte, 'corrige', True):
             prix = _positif(prix_client_composition(
-                vue.get('cout_ttc'), facteur=contexte.facteur_remise))
+                vue.get('cout_ttc'), getattr(contexte, 'devis', None),
+                facteur=contexte.facteur_remise))
         else:
             # Règles d'origine (devis envoyé avant AMOT59) : le prix d'hier.
             prix = _palier_devis(
