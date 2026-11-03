@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import {
   trierCategories, progressionPhotos, manquantsMesures, manquantsPhotos,
   whatsappUrl, mapsUrl, labelQualification, ligneQualification, QUALIFICATION_DEFAULTS,
-  MESURES_SCHEMA,
+  MESURES_SCHEMA, schemaMesures, formDepuisValeurs, payloadDepuisForm,
 } from './visiteHelpers.js'
 
 const CHECKLIST = [
@@ -154,4 +154,19 @@ test('MESURES_SCHEMA.toiture — etat_couverture est une liste des codes serveur
   const champ = MESURES_SCHEMA.toiture.find((c) => c.key === 'etat_couverture')
   assert.equal(champ.type, 'select')
   assert.deepEqual(champ.options.map((o) => o.value), ['bon', 'moyen', 'mauvais'])
+})
+
+test('valeurVersPayload — un booléen requis jamais répondu part null', () => {
+  // ACVI56 — `Boolean(undefined) === false` sortait le champ des manquants et le
+  // calepinage lisait « non » : jamais répondu reste null, à l'aller-retour aussi.
+  const schema = schemaMesures('local_onduleur', 'toiture')
+  const vierge = payloadDepuisForm(schema, formDepuisValeurs(schema, {}))
+  assert.equal(vierge.local_abrite, null)
+  assert.equal(vierge.local_ventile, null)
+  const repondu = formDepuisValeurs(schema, { local_abrite: true, local_ventile: false })
+  assert.equal(repondu.local_abrite, 'oui')
+  assert.equal(repondu.local_ventile, 'non')
+  const payload = payloadDepuisForm(schema, repondu)
+  assert.equal(payload.local_abrite, true)
+  assert.equal(payload.local_ventile, false)
 })

@@ -39,6 +39,7 @@ from .cadence_reperes import (
     VISITE_ORDRE_CONFIRMATION,
     VISITE_ORDRE_DEBRIEF,
     _CLES_DEBRIEF,
+    annuler_etapes_moteur_ouvertes,
     q_visite,
 )
 from .cadence_touche import marquer_etape_relance
@@ -563,6 +564,30 @@ def annuler_rendez_vous_du_lead(lead, user, *, motif='',
     return annules
 
 
+def compenser_visite_retiree(lead, user, jour):
+    """ACVI60 — une visite retirée (date vidée, suppression) ne laisse rien
+    derrière elle sur le lead : ``visite_prevue_le`` vidé s'il portait ce
+    ``jour``, confirmation et débrief annulés (statut moteur), UNE note
+    système. Un autre rendez-vous en attente garde tout : c'est lui que ces
+    touches préparent. Rend ``True`` si le lead a été compensé."""
+    from apps.visites.services import visite_en_attente
+
+    if visite_en_attente(lead) is not None:
+        return False
+    lead.refresh_from_db(fields=['visite_prevue_le'])
+    if lead.visite_prevue_le == jour:
+        lead.visite_prevue_le = None
+        lead.save(update_fields=['visite_prevue_le'])
+    annuler_etapes_moteur_ouvertes(
+        lead, CLE_CONFIRMATION, CLE_DEBRIEF, note='visite retirée')
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f'Visite technique du {jour:%d/%m/%Y} retirée.')
+    _recaler_file(lead, user)
+    return True
+
+
 #: SUIVI E21 — les causes écrites (visite, message au technicien, chatter)
 #: quand un arrêt de tout le suivi annule aussi le rendez-vous.
 CAUSE_RDV_REFUS = 'le client a refusé'
@@ -749,7 +774,7 @@ def _requalifier_debrief(etape, cle, config=None):
 
 
 def appliquer_retour_visite(lead, user, retour, auteur='',
-                            qualification=None):
+                            qualification=None, reprise=False):
     """Le technicien est reparti : son retour redescend, et on rappelle.
 
     1. UNE note de chatter portant, dans cet ordre, la QUALIFICATION du client
@@ -782,9 +807,18 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
     seule, jamais une seconde — dit la suite et sa date. Renvoie alors
     l'étape devis.
 
+    ACVI61 — ``reprise`` (terminer après un renvoi) : le retour a déjà produit
+    sa suite ; UNE note système, aucune touche ni notification.
+
     ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
     corps = _composer_note_retour_visite(retour, auteur=auteur,
                                          qualification=qualification)
+    if reprise:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'Visite technique terminée de nouveau après renvoi.\n{corps}')
+        return None
     # Relevé du 25/09/2026 — la visite a EU LIEU : une « Confirmer la visite
     # (veille) » encore ouverte (retour saisi avant que la confirmation soit
     # cochée) n'a plus d'objet. Annulée par le moteur (CKP1, jamais « sautée

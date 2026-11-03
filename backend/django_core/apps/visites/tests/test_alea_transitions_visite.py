@@ -104,6 +104,8 @@ class TransitionsVisiteTests(VisiteTerrainBase):
             VisiteTerrain.objects.get(pk=visite_id))
         self.assertTrue(attendus)
         self.assertEqual(resp.data['manquants'], attendus)
+        # ACVI93 — le message est servi aussi en ``detail`` (lib/apiError.js).
+        self.assertEqual(resp.data['detail'], resp.data['message'])
         self.assertEqual(self._etat(visite_id), avant)
         self._assert_feu_vert_absent(visite_id, effectuee_avant)
 

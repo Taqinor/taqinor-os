@@ -234,6 +234,58 @@ class AnnulerRendezVousServiceTests(_Base):
         self.assertEqual(
             VisiteTerrain.objects.filter(lead=self.lead).count(), 4)
 
+    def test_une_visite_annulee_n_est_plus_terminable(self):
+        # ACVI66 — l'annulation laissait un brouillon terminable (200 →
+        # ``visite_effectuee``, touche devis ouverte).
+        visite = self._planifier()
+        visites_services.annuler_rendez_vous(self.lead, self.acteur)
+        visite.refresh_from_db()
+        self.assertEqual(visite.statut, VisiteTerrain.Statut.ANNULEE)
+        self.assertIsNone(visite.date_prevue)
+        notes = visite.notes
+
+        resp = self.api.post(
+            f'/api/django/visites/visites/{visite.pk}/terminer/', {},
+            format='json')
+
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('statut', resp.data['erreurs'])
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.visite_effectuee)
+        visite.refresh_from_db()
+        self.assertEqual(visite.statut, VisiteTerrain.Statut.ANNULEE)
+        self.assertEqual(visite.notes, notes)
+
+    def test_suppression_et_date_videe_compensent_le_lead(self):
+        # ACVI60 — deux portes (PATCH date vidée, DELETE), un même effet.
+        def touches_ouvertes():
+            return self.lead.relance_etapes.filter(
+                q_etape(CLE_CONFIRMATION) | q_etape(CLE_DEBRIEF),
+                statut=A_FAIRE)
+
+        visite = self._planifier()
+        self.assertEqual(touches_ouvertes().count(), 2)
+        url = f'/api/django/visites/visites/{visite.pk}/'
+        resp = self.api.patch(url, {'date_prevue': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], 'annulee')
+        visite.refresh_from_db()
+        self.assertEqual(visite.statut, VisiteTerrain.Statut.ANNULEE)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.visite_prevue_le)
+        self.assertFalse(touches_ouvertes().exists())
+
+        visite = self._planifier()
+        self.assertEqual(touches_ouvertes().count(), 2)
+        self.lead.refresh_from_db()
+        self.assertIsNotNone(self.lead.visite_prevue_le)
+        resp = self.api.delete(f'/api/django/visites/visites/{visite.pk}/')
+        self.assertEqual(resp.status_code, 204, resp.content)
+        self.assertFalse(VisiteTerrain.objects.filter(pk=visite.pk).exists())
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.visite_prevue_le)
+        self.assertFalse(touches_ouvertes().exists())
+
     def test_un_motif_remplace_la_formule_du_client(self):
         visite = self._planifier()
         visites_services.annuler_rendez_vous(

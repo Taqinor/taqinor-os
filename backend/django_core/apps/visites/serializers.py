@@ -24,7 +24,7 @@ class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, se
         model = VisiteTerrain
         fields = [
             'id', 'lead', 'commercial', 'statut', 'date_prevue',
-            'date_realisee', 'notes',
+            'date_realisee', 'notes', 'retour_terrain',
         ]
         read_only_fields = [
             'id', 'statut', 'date_realisee',
@@ -80,9 +80,12 @@ class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, se
             return value
         request = self.context.get('request')
         company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                "Ce commercial n'appartient pas à votre société.")
+        if company is not None:
+            from . import services
+
+            message = services.erreur_commercial(value, company.id)
+            if message:
+                raise serializers.ValidationError(message)
         return value
 
 

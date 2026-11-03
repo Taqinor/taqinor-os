@@ -50,6 +50,7 @@ class VisiteTerrain(TenantModel):
         TERMINEE = 'terminee', 'Terminée'
         VALIDEE = 'validee', 'Validée (feu vert)'
         A_REFAIRE = 'a_refaire', 'À refaire'
+        ANNULEE = 'annulee', 'Annulée'
 
     class Assemblage(models.TextChoices):
         AUCUN = 'aucun', 'Aucun'
@@ -98,6 +99,10 @@ class VisiteTerrain(TenantModel):
         null=True, blank=True, verbose_name='Date de réalisation')
     notes = models.TextField(
         blank=True, default='', verbose_name='Notes de visite')
+    #: ACVI55 — le texte libre du TERRAIN (wizard), seul lu par ``retour_visite`` ;
+    #: ``notes`` reste la planification et le journal des lignes système.
+    retour_terrain = models.TextField(
+        blank=True, default='', verbose_name='Retour terrain')
     #: Mesures saisies, par catégorie de la checklist :
     #: ``{'toiture': {'longueur_m': 12.5, …}, 'tableau': {…}}``.
     mesures = models.JSONField(
@@ -179,14 +184,17 @@ class VisiteTerrain(TenantModel):
 
     @property
     def modifiable(self):
-        """Une visite VALIDÉE est gelée (feu vert donné) — VT3."""
-        return self.statut != self.Statut.VALIDEE
+        """Une visite VALIDÉE (feu vert, VT3) ou ANNULÉE (ACVI66) est gelée."""
+        return self.statut not in (self.Statut.VALIDEE, self.Statut.ANNULEE)
 
     @property
     def raison_lecture_seule(self):
         """Phrase FR expliquant le gel, ou chaîne vide si modifiable."""
         if self.modifiable:
             return ''
+        if self.statut == self.Statut.ANNULEE:
+            return ('Visite annulée : elle est en lecture seule. Planifier une '
+                    'nouvelle visite si le client revient.')
         return ("Visite validée par le bureau d'études : elle est en lecture "
                 'seule. Demander un renvoi pour la rouvrir.')
 

@@ -490,9 +490,12 @@ def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
         auteur = ''
         if user is not None:
             auteur = (user.get_full_name() or user.username or '')
+        reprise = bool(kwargs.get('reprise'))
         etape = appliquer_retour_visite(lead, user, retour, auteur=auteur,
-                                        qualification=qualification)
-        _notifier_responsable_retour_visite(lead, user, etape)
+                                        qualification=qualification,
+                                        reprise=reprise)
+        if not reprise:
+            _notifier_responsable_retour_visite(lead, user, etape)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'VISITE-CADENCE : retour terrain non traité pour le lead #%s',

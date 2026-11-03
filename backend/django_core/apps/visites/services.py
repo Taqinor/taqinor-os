@@ -212,8 +212,11 @@ def emettre_visite_planifiee(visite, user):
     return visite
 
 
-def emettre_visite_terminee(visite, user):
+def emettre_visite_terminee(visite, user, reprise=False):
     """Publie ``visite_terminee`` avec le RETOUR TERRAIN pré-composé.
+
+    ``reprise`` (ACVI61) : « terminer » qui suit un renvoi (``a_refaire``) — le
+    lead a déjà reçu son retour, le CRM n'écrit qu'une note.
 
     Le récap de ``visite_validee`` ne porte que des MESURES : les remarques
     libres du technicien (« le tableau est saturé », « accès par le garage »)
@@ -237,7 +240,7 @@ def emettre_visite_terminee(visite, user):
         visite_terminee.send(
             sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
             user=user, retour=selectors.retour_visite(visite),
-            qualification=visite.qualification)
+            qualification=visite.qualification, reprise=reprise)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre visite terminee : échec ignoré, comportement dégradé", exc_info=True)
         return None
@@ -355,7 +358,8 @@ def annuler_rendez_vous(lead, user, motif=''):
     C'est la porte que le CRM appelle (frontière M3 : il n'importe jamais
     ``apps.visites.models``). Sont visées les visites du lead au statut
     BROUILLON, jamais commencées (ni départ ni arrivée pointés), à date prévue
-    non passée. Pour chacune : ``date_prevue`` vidée, UNE ligne ajoutée aux
+    non passée. Pour chacune : statut ANNULÉE (ACVI66, gelé : plus terminable),
+    ``date_prevue`` vidée, UNE ligne ajoutée aux
     notes (« Rendez-vous du JJ/MM/AAAA annulé à la demande du client. » — ou,
     avec un ``motif``, « Rendez-vous du JJ/MM/AAAA annulé — <motif>. »), et
     l'assigné prévenu par la primitive de notification EXISTANTE (clé
@@ -373,25 +377,64 @@ def annuler_rendez_vous(lead, user, motif=''):
         statut=VisiteTerrain.Statut.BROUILLON,
         en_route_le__isnull=True, arrivee_le__isnull=True,
         date_prevue__gte=aujourd_hui_local()))
-    precision = (motif or '').strip().rstrip('.')
     for visite in visites:
-        jour = f'{visite.date_prevue:%d/%m/%Y}'
-        raison = (f'— {precision}.' if precision
-                  else 'à la demande du client.')
-        ligne = f'Rendez-vous du {jour} annulé {raison}'
-        existantes = (visite.notes or '').strip()
-        visite.notes = f'{existantes}\n{ligne}' if existantes else ligne
-        visite.date_prevue = None
-        visite.save(update_fields=['date_prevue', 'notes'])
-        if visite.commercial_id is not None and (
-                user is None
-                or visite.commercial_id != getattr(user, 'id', None)):
-            _notifier_commercial_visite(
-                visite, 'visite_terrain_assignee',
-                'Visite technique annulée',
-                f'Le rendez-vous du {jour} chez « {visite.lead} » est '
-                f'annulé {raison}')
+        _poser_annulation(visite, user, visite.date_prevue, motif)
     return len(visites)
+
+
+def _poser_annulation(visite, user, date_prevue, motif=''):
+    """L'annulation d'UNE visite : statut, date vidée, ligne de notes,
+    assigné prévenu — partagée par ``annuler_rendez_vous`` et ``annuler_visite``.
+    """
+    from .models import VisiteTerrain
+
+    jour = f'{date_prevue:%d/%m/%Y}'
+    precision = (motif or '').strip().rstrip('.')
+    raison = (f'— {precision}.' if precision
+              else 'à la demande du client.')
+    ligne = f'Rendez-vous du {jour} annulé {raison}'
+    existantes = (visite.notes or '').strip()
+    visite.notes = f'{existantes}\n{ligne}' if existantes else ligne
+    visite.date_prevue = None
+    visite.statut = VisiteTerrain.Statut.ANNULEE
+    visite.save(update_fields=['date_prevue', 'notes', 'statut'])
+    if visite.commercial_id is not None and (
+            user is None
+            or visite.commercial_id != getattr(user, 'id', None)):
+        _notifier_commercial_visite(
+            visite, 'visite_terrain_assignee',
+            'Visite technique annulée',
+            f'Le rendez-vous du {jour} chez « {visite.lead} » est '
+            f'annulé {raison}')
+
+
+def annuler_visite(visite, user, *, jour=None, motif=''):
+    """ACVI60 — LA porte d'annulation d'UNE visite (``PATCH date_prevue: null``,
+    ``DELETE``) : la visite passe ANNULÉE et le LEAD est compensé (date sur la
+    fiche, touches de visite). ``jour`` : la date d'avant quand le PATCH l'a
+    déjà vidée. Compensation best-effort, comme tout retour vers le CRM : le
+    geste sur la visite est acté."""
+    jour = jour or visite.date_prevue
+    _poser_annulation(visite, user, jour, motif)
+    try:
+        from apps.crm.cadence_visite import compenser_visite_retiree
+
+        compenser_visite_retiree(visite.lead, user, jour)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+        logger.warning('ACVI60 : lead non compensé (visite #%s)', visite.pk,
+                       exc_info=True)
+    return visite
+
+
+def erreur_commercial(commercial, company_id):
+    """ACVI71 — LA garde du commercial d'une visite, lue par la création
+    (``planifier_visite``) et l'édition (sérialiseur) : message FR s'il n'est
+    pas de la société ou si son compte est désactivé, ``None`` sinon."""
+    if (getattr(commercial, 'company_id', None) != company_id
+            or not getattr(commercial, 'is_active', False)):
+        return ('Ce commercial n’appartient pas à votre société (ou son '
+                'compte est désactivé).')
+    return None
 
 
 MESSAGE_DATE_PASSEE = (
@@ -491,11 +534,9 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
         if message:
             erreurs['date_prevue'] = [message]
     if commercial is not None:
-        if (getattr(commercial, 'company_id', None) != lead.company_id
-                or not getattr(commercial, 'is_active', False)):
-            erreurs['commercial'] = [
-                'Ce commercial n’appartient pas à votre société (ou son '
-                'compte est désactivé).']
+        message = erreur_commercial(commercial, lead.company_id)
+        if message:
+            erreurs['commercial'] = [message]
     if erreurs:
         return None, erreurs
 
@@ -715,12 +756,11 @@ def refus_transition(visite, action):
 
         manquants = selectors.visite_terrain_manquants(visite)
         if manquants:
-            return {
-                'manquants': manquants,
-                'message': (
-                    'La visite ne peut pas être validée : '
-                    f'{len(manquants)} élément(s) manquent encore.'),
-            }
+            message = ('La visite ne peut pas être validée : '
+                       f'{len(manquants)} élément(s) manquent encore.')
+            # ACVI93 — ``detail`` : ce que lit ``lib/apiError.js``.
+            return {'manquants': manquants, 'message': message,
+                    'detail': message}
     return None
 
 
@@ -937,6 +977,22 @@ def valeur_non_releves(connus, brute):
     return etats, erreurs
 
 
+def _decimal_fini(brute):
+    """ACVI59 — ``Decimal`` fini et représentable en ``float``, sinon ``None`` :
+    ``NaN``, ``Infinity``, ``1e400`` sont refusés, jamais une exception (500)
+    ni un ``inf`` que le JSON stocké ne saurait pas écrire."""
+    import math
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        nombre = Decimal(str(brute))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if not nombre.is_finite() or not math.isfinite(float(nombre)):
+        return None
+    return nombre
+
+
 def valeur_mesure(declaration, brute):
     """Convertit/valide UNE valeur de mesure. Renvoie ``(valeur, message)``.
 
@@ -944,8 +1000,6 @@ def valeur_mesure(declaration, brute):
     ``None`` quand la valeur est acceptée. Aucun SEUIL technique n'est jugé
     ici : on vérifie la NATURE d'une mesure, jamais si elle est « suffisante ».
     """
-    from decimal import Decimal, InvalidOperation
-
     from . import visite_checklist as checklist
 
     if brute is None or brute == '':
@@ -957,10 +1011,7 @@ def valeur_mesure(declaration, brute):
         return _valeur_objet(declaration['forme'], brute,
                              f"« {declaration['libelle']} »")
     if nature == checklist.ENTIER:
-        try:
-            nombre = Decimal(str(brute))
-        except (InvalidOperation, ValueError, TypeError):
-            nombre = None
+        nombre = _decimal_fini(brute)
         if nombre is None or nombre != nombre.to_integral_value():
             return None, (f"« {declaration['libelle']} » attend un entier "
                           f'(reçu : {brute!r}).')
@@ -984,9 +1035,8 @@ def valeur_mesure(declaration, brute):
                           'jointe (identifiant) ou une référence.')
         return brute, None
     if nature == checklist.NOMBRE:
-        try:
-            nombre = Decimal(str(brute))
-        except (InvalidOperation, ValueError, TypeError):
+        nombre = _decimal_fini(brute)
+        if nombre is None:
             return None, (f"« {declaration['libelle']} » attend un nombre "
                           f'(reçu : {brute!r}).')
         if nombre < 0:

@@ -138,6 +138,20 @@ describe('VisiteWizardPage — VT10', () => {
     expect(bloc).toHaveTextContent('Largeur du mur libre (cm)')
   })
 
+  it('la saisie non enregistrée survit au changement d’onglet', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    const form = await screen.findByTestId('visite-mesures-toiture')
+    const champ = form.querySelector('#visite-mesure-toiture-longueur_m')
+    await user.clear(champ)
+    await user.type(champ, '9.5')
+    await user.click(screen.getByRole('tab', { name: 'Tableau électrique' }))
+    expect(form).not.toBeVisible()
+    await user.click(screen.getByRole('tab', { name: 'Toiture' }))
+    expect(screen.getByTestId('visite-mesures-toiture').querySelector('#visite-mesure-toiture-longueur_m').value).toBe('9.5')
+    expect(patchVisiteMesures).not.toHaveBeenCalled()
+  })
+
   it('la tuile « à refaire » montre le motif serveur', async () => {
     withProviders()
     expect(await screen.findByText('Photo floue — reprendre l’antenne côté est.')).toBeInTheDocument()
@@ -640,7 +654,8 @@ describe('VisiteWizardPage — CIQ653 (site commerce)', () => {
     expect(valeurs.besoin_continuite_service).toBe(true)
     // Un booléen jamais répondu reste « pas encore relevé » (null), jamais « Non ».
     expect(valeurs.secours_ups).toBeNull()
-  })
+    // ACVI57 — tous les onglets montés : les requêtes par rôle coûtent plus cher.
+  }, 60000)
 
   it('l’erreur du serveur s’affiche sous le champ fautif', async () => {
     patchVisiteMesures.mockRejectedValue({

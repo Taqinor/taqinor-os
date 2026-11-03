@@ -97,7 +97,7 @@ CATALOG = {
         'Le technicien a terminé la visite sur place : son retour terrain '
         '(texte libre + commentaires de photos) et sa QUALIFICATION du client '
         '(vocabulaire fermé) redescendent sur le lead.',
-        ['visite', 'lead_id', 'user', 'retour', 'qualification']),
+        ['visite', 'lead_id', 'user', 'retour', 'qualification', 'reprise']),
     'devis_refused': _e(
         'Un devis passe à « refusé ».',
         ['devis', 'user', 'motif_refus', 'marquer_lead_perdu']),

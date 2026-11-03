@@ -798,7 +798,9 @@ export default function LeadsPage() {
       // avancé…) : le texte serveur nomme la cause, on l'affiche tel quel
       // (l'optimiste est déjà annulé ci-dessus). `unwrap()` rejette avec le
       // corps de la réponse (rejectWithValue de updateLead).
-      const detail = typeof err?.detail === 'string' ? err.detail : null
+      // ACVI93 — le corps peut nommer le champ (`stage`) sans `detail`.
+      const detail = [err?.detail, err?.stage?.[0], err?.error]
+        .find((m) => typeof m === 'string' && m)
       setStageError(detail
         ?? "Le changement d'étape n'a pas pu être enregistré — vérifiez votre connexion et réessayez.")
     } finally {
