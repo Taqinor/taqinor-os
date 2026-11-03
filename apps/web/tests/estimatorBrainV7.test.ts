@@ -7,7 +7,7 @@
 // de signe d'azimut PVGIS (S=0 / E=−90 / O=+90 / N=180), génération = posé × kWc ×
 // rendement PVGIS avec posé = min(besoin, ce qui tient) et le plafond jamais dépassé,
 // et le repli gracieux PVGIS.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   betterLive,
   solveLive,
