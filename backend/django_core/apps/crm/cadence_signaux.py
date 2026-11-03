@@ -406,7 +406,9 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
         # 4. La touche du plan glisse DERRIÈRE la touche signal, avec toute sa
         #    suite et son ancre (mécanique existante, jamais une seconde).
         deplacee = None
-        if plan is not None and glisse_a is not None:
+        # ACVI42 — un rappel convenu avec le client ne glisse jamais.
+        if (plan is not None and glisse_a is not None
+                and not plan.rappel_convenu_le):
             # Les gestes du RENDEZ-VOUS de visite (confirmer la veille,
             # débriefer le lendemain) partagent la cadence du plan mais sont
             # ancrés sur la DATE DE VISITE : le glissement de la suite du plan
