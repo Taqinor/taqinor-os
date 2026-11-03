@@ -349,6 +349,28 @@ def exiger_facture_encaissable(facture, date_paiement=None):
         raise FactureNonEncaissable(motif)
 
 
+def _avoir_d_escompte(facture, escompte, user):
+    """AARG57 (D-AARG-5 = par_avoir) — l'escompte accordé réduit HT et TVA au
+    prorata de la facture (porte unique d'avoir, ATOT43) : journal, TVA et relevé
+    suivent l'encaissé réel. L'avoir repasse le statut de paiement (ATOT8)."""
+    from apps.facturation.totaux import ventilation_document_fige
+    from core.money import quantize_mad
+
+    from .facturation_ops import creer_avoir_facture
+
+    paniers = facture.tva_par_taux
+    vent = ventilation_document_fige(paniers, escompte)
+    if vent is None:  # mono-taux : un panier, prorata de la TVA
+        tva = quantize_mad(escompte * Decimal(str(facture.total_tva)) / Decimal(str(facture.total_ttc)))
+        taux = paniers[0]['taux'] if paniers else facture.taux_tva
+        vent = [{'taux': str(taux), 'base_ht': str(escompte - tva), 'montant': str(tva)}]
+    tva = sum((Decimal(v['montant']) for v in vent), Decimal('0'))
+    return creer_avoir_facture(
+        facture=facture, user=user, motif='Escompte pour règlement anticipé',
+        montant_ventile={'ht': escompte - tva, 'tva': tva, 'ttc': escompte,
+                         'ventilation': vent})
+
+
 def encaisser_sur_facture(*, facture, donnees, user):
     """LE chemin de l'encaissement MANUEL d'une facture (montant + date + mode).
 
@@ -397,7 +419,9 @@ def encaisser_sur_facture(*, facture, donnees, user):
         # montant réglé correspond au NET après escompte (reste − escompte,
         # tolérance 1 centime), l'escompte se calcule automatiquement et
         # SOLDE la facture avec le règlement — jamais hors fenêtre (plein
-        # tarif reste dû, comportement actuel inchangé).
+        # tarif reste dû, comportement actuel inchangé). AARG57 (D-AARG-5) :
+        # par AVOIR, ci-dessous : ``Paiement.escompte_montant`` n'est plus
+        # écrit (lecture historique gardée).
         date_paiement = donnees.get('date_paiement')
         escompte_montant = Decimal('0')
         if locked.escompte_applicable(date_paiement):
@@ -411,9 +435,9 @@ def encaisser_sur_facture(*, facture, donnees, user):
                 f'Le paiement dépasse le reste à payer ({reste:.2f} MAD).')
         # AARG34 — chatter (acteur côté serveur, jamais lu du corps de la
         # requête) et événement dans la primitive.
-        paiement = enregistrer_paiement(
-            facture=locked, user=user, escompte_montant=escompte_montant,
-            **donnees)
+        paiement = enregistrer_paiement(facture=locked, user=user, **donnees)
+        if escompte_montant:
+            _avoir_d_escompte(locked, escompte_montant, user)
         # Statut auto : intégralement réglée → « Payée ».
         # AUD102 (P2) — la bascule (garde centime-près, U10
         # reset_relance_escalation, YDOCF4 `facture_paid` + YEVNT6
@@ -422,7 +446,8 @@ def encaisser_sur_facture(*, facture, donnees, user):
         soldee = marquer_facture_soldee(
             locked, montant=montant, user=user,
             source='encaissement_facture')
-        if not soldee and locked.statut != Facture.Statut.ANNULEE:
+        if not soldee and locked.statut not in (
+                Facture.Statut.ANNULEE, Facture.Statut.PAYEE):
             # ZFAC11 — arrondi de caisse : un règlement EN ESPÈCES égal au
             # reste à payer arrondi au pas société (défaut 0 = désactivé,
             # comportement inchangé) solde la facture, l'écart d'arrondi
