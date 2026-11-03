@@ -86,6 +86,20 @@ class AucunBarreauNAjouteTests(SimpleTestCase):
         self.assertEqual(len(CADENCE_REVEIL_DEFAUT), 2)
 
 
+class PassationEtRappelApresReponseTests(SimpleTestCase):
+    """ACVI51 — deux clés qui rendaient un texte vide."""
+
+    def test_les_deux_cles_ont_un_texte(self):
+        from apps.parametres.models_messages import MESSAGE_TEMPLATE_DEFAULTS
+        for cle in ('passation', 'appel_apres_reponse'):
+            texte = MESSAGE_TEMPLATE_DEFAULTS.get(cle)
+            self.assertTrue(texte, cle)
+            self.assertIn('{conseiller}', texte)
+            self.assertIn('{marque}', texte)
+            self.assertNotIn('{ancien_conseiller}', texte)
+            self.assertFalse(any(c.isdigit() or c == '[' for c in texte), cle)
+
+
 class ReglesDeContenuTests(SimpleTestCase):
     """Zéro chiffre, aucun crochet, aucun nom codé en dur — même patron que
     `tests_cad98_scripts_appels_suivi.py`."""
