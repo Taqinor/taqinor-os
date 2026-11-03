@@ -43,6 +43,9 @@
  */
 
 import {
+
+/** WAUD20 — plage réelle des deux datasheets liées (SG05LP3 3-12 kW, SG05LP1 3,6-8 kW). */
+export const DEYE_PLAGE_KW = '3 – 12 kW';
   PANEL_PRODUCT_WARRANTY_YEARS,
   DEYE_INVERTER_WARRANTY_YEARS,
   HUAWEI_INVERTER_WARRANTY_YEARS,
@@ -247,7 +250,7 @@ export const FICHES: Fiche[] = [
     resume:
       "Le chef d'orchestre de l'installation : il arbitre en temps réel entre panneaux, batterie et réseau.",
     faits: [
-      'Monophasé et triphasé, 3 – 12 kW',
+      `Monophasé et triphasé, ${DEYE_PLAGE_KW}`,
       'Gestion batterie CAN BMS intégrée',
       'Conforme CEI 61727 et VDE-AR-N-4105',
     ],

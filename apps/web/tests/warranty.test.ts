@@ -172,3 +172,24 @@ describe('WAUD11 — pages ville : la garantie vient de warranty.ts', () => {
     expect(code).not.toMatch(/Simple déclaration|Simple Law|تصريح بسيط/);
   });
 });
+
+describe('WAUD20 — /équipement : durées JA omises, une seule plage Deye', () => {
+  const pages = ['équipement', 'en/équipement', 'ar/équipement'].map((p) =>
+    readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8'));
+  it('aucune durée sur JA Solar (modèle inconnu)', () => {
+    for (const s of pages) {
+      const ja = s.split('\n').find((l) => l.includes("ref: 'PV-2'")) ?? '';
+      expect(ja).toContain('DeepBlue');
+      expect(ja).not.toMatch(/12|25/);
+    }
+    for (const s of pages) expect(s).not.toMatch(/25 ans|25-year|25 سنة/);
+  });
+  it('plage Deye unique, lue depuis fiches.ts', async () => {
+    const { DEYE_PLAGE_KW } = await import('../src/lib/fiches');
+    expect(DEYE_PLAGE_KW).toBe('3 – 12 kW');
+    for (const s of pages) {
+      expect(s).not.toMatch(/5 à 30|5 to 30|من 5 إلى 30|5 – 30/);
+      expect(s).toContain('DEYE_PLAGE_KW');
+    }
+  });
+});
