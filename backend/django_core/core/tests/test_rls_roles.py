@@ -85,8 +85,7 @@ class ProvisioningScriptTests(TestCase):
         droit, `pile_locale.ps1` en échec). Test-du-test : remettre le GRANT multi-tables."""
         sql = self._sql()
         self.assertIn("to_regclass('public.' || quote_ident(t))", sql)
-        self.assertNotIn('GRANT SELECT ON
-    stock_produit', sql.replace('
+        self.assertNotIn('stock_produit,', sql)
 ', '
 '))
         self.assertIn("'ia_ocr_document'", sql)
