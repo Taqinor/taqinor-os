@@ -54,6 +54,7 @@ from apps.crm.cadence_placement import (
     PLACEMENT_CRENEAUX,
     PLACEMENT_NOTE_PASSEE,
     PLACEMENT_REVEILS_PAR_JOUR,
+    PLACEMENT_SANS_REVEIL,
     placer_anciens_leads,
 )
 from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
@@ -858,9 +859,17 @@ class CommandeTests(_PlacementBase):
         self.assertEqual(len(lots), 3, texte)
         self.assertTrue(lots[-1].endswith('restants 0.'), lots)
         self.assertIn('5 lead(s) placé(s).', texte)
+        # CADV25 (D-CADV-2) — un dormant jamais joint ni chiffré est placé SANS
+        # touche : au Froid, et le chatter le dit. Aucun autre lead sans touche,
+        # aucun placé en silence, et plus rien à placer au passage suivant.
+        sans_touche = Lead.objects.filter(company=self.company,
+                                          relance_etapes__isnull=True)
+        self.assertEqual(sans_touche.exclude(stage=stages.COLD).count(), 0)
         self.assertEqual(
-            Lead.objects.filter(company=self.company,
-                                relance_etapes__isnull=True).count(), 0)
+            sans_touche.exclude(
+                activites__body__startswith='Placé au Froid, sans réveil',
+            ).count(), 0)
+        self.assertEqual(self._placer(apply=False)['a_placer'], 0)
 
     def test_une_limite_hors_bornes_est_refusee(self):
         with self.assertRaises(CommandError):
@@ -967,9 +976,20 @@ class ApercuPurTests(_PlacementBase):
         self.assertEqual(rapport['restants'], rapport['a_placer'])
 
     def test_lapercu_date_chacune_de_ses_lignes(self):
-        for ligne in self._placer(apply=False)['apercu']:
+        """Toute touche annoncée est datée, réveil étalé compris. CADV25
+        (D-CADV-2) : le dormant jamais joint ni chiffré n'a AUCUNE touche à
+        venir — l'aperçu le dit, sans date, plutôt que d'en inventer une."""
+        joint = self._joint(self._lead('Joint', stage=stages.NEW, jours=70))
+        lignes = {ligne['lead']: ligne
+                  for ligne in self._placer(apply=False)['apercu']}
+        self.assertEqual(lignes[self.dormant.pk]['prochaine_touche'],
+                         PLACEMENT_SANS_REVEIL)
+        self.assertIsNone(lignes[self.dormant.pk]['prochaine_le'])
+        self.assertIn(joint.pk, lignes)
+        for lead, ligne in lignes.items():
             self.assertTrue(ligne['prochaine_touche'], ligne)
-            self.assertTrue(ligne['prochaine_le'], ligne)
+            if lead != self.dormant.pk:
+                self.assertTrue(ligne['prochaine_le'], ligne)
 
 
 class ApercuPositionneTests(_PlacementBase):
