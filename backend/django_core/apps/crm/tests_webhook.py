@@ -769,6 +769,24 @@ class QW9ReplayFreshnessTests(TestCase):
         res = self.post(payload_site(), timestamp='not-a-date')
         self.assertEqual(res.status_code, 201, res.content)
 
+    def test_date_impossible_traitee_absente(self):
+        # ACVI15 — bien formée mais impossible : ni 500, ni 202 suivi d'un rejeu
+        # toujours en échec ; le brut et le lead existent.
+        res = self.post(
+            payload_site(), timestamp='2026-02-30T00:00:00')
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(WebsiteLeadPayload.objects.count(), 1)
+        self.assertEqual(Lead.objects.count(), 1)
+
+        res = self.post(payload_site(
+            phoneE164='+212661850499',
+            consentTimestamp='2026-02-30T00:00:00'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.consent_timestamp)
+        brut = WebsiteLeadPayload.objects.get(lead=lead)
+        self.assertTrue(brut.processed)
+
     def test_slightly_stale_within_tolerance_passes(self):
         from django.utils import timezone
         near = (timezone.now() - timezone.timedelta(minutes=5)).isoformat()
