@@ -1,6 +1,6 @@
 ---
 title: "Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le secours"
-description: "Gamme Dyness LFP, ≥6 000 cycles, 7 ans de garantie — et le vrai différenciateur secours entre Deye SG (≈4–10 ms) et Huawei SUN2000 (< 3 s)."
+description: "Gamme Dyness LFP, ≥6 000 cycles, 7 ans de garantie — et le vrai différenciateur secours entre Deye SG (type UPS) et Huawei SUN2000 (< 3 s)."
 pubDate: 2026-04-27
 tags: ["batterie", "LFP", "Dyness", "Deye", "Huawei"]
 author: "Reda Kasri"
@@ -36,14 +36,13 @@ Le critère souvent négligé dans le choix d'un onduleur hybride, c'est la **qu
 
 ### Deye SG-series (SG05LP1 monophasé / SG05LP3 triphasé)
 
-- Bascule **≈ 4–10 ms** — quasi-instantanée, **de type UPS**
+- Bascule quasi-instantanée, **de type UPS**
 - **Aucun boîtier supplémentaire** : le secours est intégré à l'onduleur
 - Compatible **batterie LFP 48 V basse tension** (dont la gamme Dyness)
 - **6 fenêtres TOU** configurables (charge/décharge par plage horaire)
 
-Une coupure de ≈ 4–10 ms est imperceptible pour la quasi-totalité des équipements domestiques (ordinateurs, NAS, appareils médicaux courants). C'est ce que l'on désigne par le terme UPS (*Uninterruptible Power Supply*).
+Une coupure aussi brève est imperceptible pour la quasi-totalité des équipements domestiques (ordinateurs, NAS, appareils médicaux courants). C'est ce que l'on désigne par le terme UPS (*Uninterruptible Power Supply*).
 
-> Le délai de ≈ 4 ms est corroboré par des retours d'utilisateurs et forums spécialisés ; le PDF fabricant n'étant pas directement accessible, nous le citons avec "≈".
 
 ### Huawei SUN2000 + Backup Box (L1 monophasé / M1 triphasé)
 
@@ -54,7 +53,7 @@ Une coupure de ≈ 4–10 ms est imperceptible pour la quasi-totalité des équi
 
 | Critère | Deye SG-series | Huawei SUN2000 + Backup Box |
 |---|---|---|
-| Délai de bascule | **≈ 4–10 ms (UPS)** | **< 3 s** (coupure brève) |
+| Délai de bascule | **Type UPS** | **< 3 s** (coupure brève) |
 | Boîtier secours séparé | Non, intégré | Oui (Backup Box B0/B1) |
 | Triphasé sans secours | Non (le SG05LP3 assure le secours) | **SUN2000 M0 : aucun secours** |
 | Tension batterie | 48 V basse tension | Haute tension (LUNA2000) |

@@ -193,3 +193,21 @@ describe('WAUD20 — /équipement : durées JA omises, une seule plage Deye', ()
     }
   });
 });
+
+describe('WAUD56 — bascule Deye sans source, supervision universelle : retirés', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+  const FICHIERS = ['batteries-stockage', 'équipement', 'guides/electricite-pendant-les-coupures', 'guides/on-grid-off-grid-ou-hybride']
+    .flatMap((p) => [`pages/${p}.astro`, `pages/en/${p}.astro`, `pages/ar/${p}.astro`])
+    .filter((p) => p !== 'pages/guides/on-grid-off-grid-ou-hybride.astro')
+    .concat('content/blog/batterie-lfp-dyness-deye-huawei.md');
+  it.each(FICHIERS)('%s', (f) => {
+    const s = lire(f).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(s).not.toMatch(/\b4\s?(–|-)?\s?(10)?\s?ms\b/);
+    expect(s).not.toMatch(/quelques millisecondes|within milliseconds|في أجزاء من الألف/);
+    expect(s).not.toMatch(/Chaque toiture porte|every roof carries|كل سطح يحمل/);
+  });
+  it('≥ 87,4 % relié à la ligne de la fiche (1 % puis 0,4 %/an sur 29 ans)', () => {
+    const w = lire('lib/warranty.ts');
+    expect(w).toContain('1st year power degradation no more than 1%');
+  });
+});

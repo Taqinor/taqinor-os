@@ -13,6 +13,9 @@
  *
  *  PANNEAUX (les deux modules N-type TOPCon réellement liés dans `fiches.ts`) :
  *   - Garantie PRODUIT : 12 ans.
+ *   - WAUD56 : ≥ 87,4 % = 100 - 1 - 29 × 0,4, fiche hébergée canadian-solar-710-topbihiku7-2608.pdf,
+ *     ligne « 1st year power degradation no more than 1% Subsequent annual power degradation
+ *     no more than 0.4% » (contrôle pdftotext du 03/11/2026).
  *   - Garantie de PERFORMANCE : LINÉAIRE sur 30 ans, ≥ 87,4 % de la puissance
  *     initiale à 30 ans (année 1 ≤ 1 %, puis ≤ 0,4 %/an → ≥ 89,4 % à 25 ans).
  *   Sources :
