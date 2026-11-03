@@ -973,9 +973,8 @@ export default function DevisGenerator({
   const multiPreview = useMemo(
     () => multiPropertyPreviewTTC(lines, {
       nombreProprietes: multiMode === 'multiplier' ? nombreProprietes : null,
-      discountPct,
       // ATOT24 — la chaîne du rail : scénario + option effective (celle de `kpiTotal`).
-      scenario, option: optionArgent, montee: centaineMontee,
+      discountPct, scenario, option: optionArgent, montee: centaineMontee,
     }),
     [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, centaineMontee],
   )
