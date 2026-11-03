@@ -253,6 +253,31 @@ def _noter_pompe_existante_trouvee(lead, user, mesures):
     return activity.log_note(lead, user, NOTE_POMPE_EXISTANTE)
 
 
+def _feu_vert_anterieur(lead):
+    """ACVI62 — un feu vert a-t-il déjà précédé celui-ci ? Sa note est posée
+    AVANT le retour des mesures (``_retour_lead_on_visite_validee``) : le feu
+    vert en cours compte pour une."""
+    return LeadActivity.objects.filter(
+        lead=lead, kind=LeadActivity.Kind.NOTE,
+        body=_VISITE_CHATTER['validee']).count() > 1
+
+
+def _ecrire_mesure(lead, colonne, valeur, brute, user, anterieur):
+    """ACVI62 — au 1er feu vert la mesure remplace la déclaration et sa marque
+    est levée ; une colonne re-marquée depuis un feu vert est une correction
+    humaine : gardée, et le chatter le dit. Rend ``True`` si la mesure est
+    posée."""
+    from apps.records.provenance import ecrire_si_libre
+
+    if not anterieur:
+        lead.saisies_humaines = [
+            c for c in (lead.saisies_humaines or []) if c != colonne]
+    if ecrire_si_libre(lead, colonne, valeur, journal=False):
+        return True
+    _noter_mesure_non_recopiee(lead, user, colonne, brute)
+    return False
+
+
 def appliquer_mesures_point_eau(lead, mesures, user):
     """AGR413 — recopie sur le lead les mesures d'un relevé du point d'eau
     VALIDÉ (``visites.selectors.mesures_point_eau_pour_lead``).
@@ -265,6 +290,7 @@ def appliquer_mesures_point_eau(lead, mesures, user):
     if lead is None or not isinstance(mesures, dict) or not mesures:
         return []
     avant = Lead.objects.get(pk=lead.pk)
+    anterieur = _feu_vert_anterieur(lead)
     ecrites = []
     for categorie, code, colonne, provenance in RETOUR_LEAD_POINT_EAU:
         bloc = mesures.get(categorie)
@@ -278,7 +304,9 @@ def appliquer_mesures_point_eau(lead, mesures, user):
             _noter_mesure_non_recopiee(lead, user, colonne, brute)
             continue
         if getattr(lead, colonne) != valeur:
-            setattr(lead, colonne, valeur)
+            if not _ecrire_mesure(
+                    lead, colonne, valeur, brute, user, anterieur):
+                continue
             ecrites.append(colonne)
         if provenance:
             source, origine = provenance
@@ -286,7 +314,8 @@ def appliquer_mesures_point_eau(lead, mesures, user):
                 setattr(lead, source, origine)
                 ecrites.append(source)
     if ecrites:
-        lead.save(update_fields=ecrites + ['date_modification'])
+        lead.save(update_fields=ecrites + [
+            'saisies_humaines', 'date_modification'])
         activity.log_changes(avant, lead, user)
     _noter_pompe_existante_trouvee(lead, user, mesures)
     return ecrites
@@ -350,6 +379,7 @@ def appliquer_releve_ci(lead, releve, user):
         'detail': f"visite {releve.get('visite_id')}",
         'date': releve.get('validee_le'),
     }
+    anterieur = _feu_vert_anterieur(lead)
     ecrites, rendu = [], {}
     for cle, colonne, source in RETOUR_LEAD_CI + RETOUR_LEAD_CI_SUPPLEMENT:
         bloc = releve.get(cle)
@@ -362,14 +392,17 @@ def appliquer_releve_ci(lead, releve, user):
         if valeur is None or not _valeur_valide(colonne, valeur):
             continue
         if getattr(lead, colonne) != valeur:
-            setattr(lead, colonne, valeur)
+            if not _ecrire_mesure(
+                    lead, colonne, valeur, brute, user, anterieur):
+                continue
             ecrites.append(colonne)
             rendu[colonne] = {'valeur': valeur, 'provenance': provenance}
         if source and getattr(lead, source) != ORIGINE_MESURE_VISITE:
             setattr(lead, source, ORIGINE_MESURE_VISITE)
             ecrites.append(source)
     if ecrites:
-        lead.save(update_fields=ecrites + ['date_modification'])
+        lead.save(update_fields=ecrites + [
+            'saisies_humaines', 'date_modification'])
         activity.log_changes(avant, lead, user)
     if releve.get('besoin_continuite_service') is True:
         _noter_besoin_secours(lead, user)
