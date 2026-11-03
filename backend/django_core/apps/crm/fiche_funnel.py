@@ -504,11 +504,11 @@ def _bulk_stage_allowed(current, target):
 
 
 def _resolve_owner(company, owner_id):
-    """Responsable cible (société courante uniquement) ou None si vidé."""
+    """Responsable cible (société courante, compte actif) ou None si vidé."""
     if owner_id in (None, '', 'null'):
         return None
     from authentication.models import CustomUser
-    return CustomUser.objects.filter(id=owner_id, company=company).first()
+    return CustomUser.objects.filter(id=owner_id, company=company, is_active=True).first()
 
 
 def _corps_whatsapp_en_masse(lead, tpl, corps_direct=''):

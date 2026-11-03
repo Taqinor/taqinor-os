@@ -281,6 +281,37 @@ class AttributionParResponsableTests(TestCase):
         with mock.patch('django.utils.timezone.now', return_value=instant):
             return self._nouveau(**champs)
 
+    def test_responsable_par_defaut_inactif_ignore(self):
+        # ACVI14 — ni attribution par défaut, ni saisie d'`owner`, ni lot.
+        from rest_framework.test import APIClient
+
+        company = Company.objects.create(nom='ACVI14', slug='acvi14-inactif')
+        role = Role.objects.create(
+            company=company, nom='Commercial',
+            permissions=['crm_creer', 'crm_voir', 'crm_modifier', 'crm_reassign'])
+        inactif = make_commercial(company, 'acvi14_u', role)
+        actif = make_commercial(company, 'acvi14_k', role)
+        get_user_model().objects.filter(pk=inactif.pk).update(is_active=False)
+        CompanyProfile.objects.create(
+            company=company, responsable_defaut_leads=inactif)
+
+        self.assertEqual(default_responsable_for(company), actif)
+
+        lead = Lead.objects.create(company=company, nom='P', owner=actif)
+        api = APIClient()
+        api.force_authenticate(actif)
+        resp = api.patch(f'/api/django/crm/leads/{lead.pk}/',
+                         {'owner': inactif.pk}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.data['owner'], ['Utilisateur inactif.'])
+
+        resp = api.post('/api/django/crm/leads/bulk/', {
+            'action': 'reassign', 'ids': [lead.pk], 'owner': inactif.pk},
+            format='json')
+        self.assertNotEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, actif)
+
     def test_off_comportement_inchange_aucune_attente(self):
         # En journée (jeudi 29/10/2026, 10 h) : rotation directe.
         from apps.crm.models_clients import AttributionEnAttente

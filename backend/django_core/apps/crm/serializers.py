@@ -930,6 +930,9 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         request = self.context.get('request')
         if value and request and value.company_id != request.user.company_id:
             raise serializers.ValidationError('Utilisateur inconnu.')
+        # ACVI14 — un compte désactivé ne reçoit plus de lead (déjà responsable : accepté).
+        if value and not value.is_active and getattr(self.instance, 'owner_id', None) != value.pk:
+            raise serializers.ValidationError('Utilisateur inactif.')
         return value
 
     def validate_canal(self, value):
