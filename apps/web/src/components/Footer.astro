@@ -32,7 +32,7 @@
 import Logo from './Logo.astro';
 import { DEYE_CLOUD_URL, NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { pageContextWhatsappText, whatsappLink } from '../lib/whatsapp';
-import { CITIES } from '../lib/realisations';
+import { CITIES, villeLocale } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localizeNavHref, quoteJourneyHref } from '../i18n/pages';
 
@@ -270,7 +270,7 @@ const SOCIAL_LINKS: SocialLink[] = [];
       <h2 class="tech-label mb-3 text-brass-300">{t('footer.byCity')}</h2>
       <ul class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-lune-soft">
         {CITIES.map((c) => (
-          <li><a href={`/installation-solaire-${c.slug}/`} class={linkClass}>{t('footer.byCityItem')} {c.intro}</a></li>
+          <li><a href={L(`/installation-solaire-${c.slug}`)} class={linkClass}>{locale === 'fr' ? `${t('footer.byCityItem')} ${c.intro}` : locale === 'en' ? `${t('footer.byCityItem')} in ${villeLocale(c.slug, locale)}` : `${t('footer.byCityItem')} في ${villeLocale(c.slug, locale)}`}</a></li>
         ))}
       </ul>
     </div>

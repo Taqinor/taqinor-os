@@ -188,3 +188,18 @@ describe('Testimonials — FR verbatim, EN/AR présents, garde « rien d’inven
     expect(testimonials).toContain('hasRating()');
   });
 });
+
+describe('WAUD24 — liens ville du pied de page localisés', () => {
+  it('href via L(), libellé par locale, villes en arabe', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/components/Footer.astro', import.meta.url)), 'utf-8');
+    expect(src).toContain('href={L(`/installation-solaire-${c.slug}`)}');
+    expect(src).toContain("villeLocale(c.slug, locale)");
+    expect(src).not.toContain('{c.intro}');
+  });
+  it('villeLocale : arabe sur /ar, nom latin sinon', async () => {
+    const { villeLocale } = await import('../src/lib/realisations');
+    expect(villeLocale('casablanca', 'ar')).toBe('الدار البيضاء');
+    expect(villeLocale('tanger', 'en')).toBe('Tangier');
+    expect(villeLocale('rabat', 'fr')).toBe('Rabat');
+  });
+});

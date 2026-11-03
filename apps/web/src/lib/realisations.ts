@@ -632,5 +632,19 @@ export const CITIES: City[] = [
   },
 ];
 
+/** WAUD24 — nom de ville par locale, pour un libellé jamais mixte. */
+const VILLES_LOCALES: Record<string, { en?: string; ar: string }> = {
+  casablanca: { ar: 'الدار البيضاء' },
+  rabat: { ar: 'الرباط' },
+  marrakech: { ar: 'مراكش' },
+  tanger: { en: 'Tangier', ar: 'طنجة' },
+  agadir: { ar: 'أكادير' },
+};
+export function villeLocale(slug: string, locale: 'fr' | 'en' | 'ar'): string {
+  const nom = CITIES.find((c) => c.slug === slug)?.name ?? slug;
+  if (locale === 'fr') return nom;
+  return VILLES_LOCALES[slug]?.[locale] ?? nom;
+}
+
 export const cityBySlug = (slug: string): City | undefined =>
   CITIES.find((c) => c.slug === slug);
