@@ -31,6 +31,7 @@
  */
 import ContactCarteWa from '../components/blocs/ContactCarteWa.astro';
 import ContactEntete from '../components/blocs/ContactEntete.astro';
+import LigneInfoConsentement from '../components/LigneInfoConsentement.astro';
 import Layout from '../layouts/Layout.astro';
 import { NAP } from '../lib/nap';
 import { useTranslations } from '../i18n/utils';
@@ -121,6 +122,7 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
               <input id="rappel-consent" name="consent" type="checkbox" required class="mt-0.5" />
               <span>J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire.</span>
             </label>
+            <LigneInfoConsentement sombre={false} />
             <button type="submit" id="rappel-submit"
               class="inline-flex w-full items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:w-auto">
               Demander à être rappelé(e)

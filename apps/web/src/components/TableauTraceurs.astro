@@ -1,0 +1,94 @@
+---
+/**
+ * WAUD66 — tableau des traceurs de la politique de confidentialité : EXACTEMENT
+ * ce que le site pose (garde : scripts/consent-probe.mjs, tests/visiteAppareilCookie).
+ * Durées Meta et Google : celles publiées par ces éditeurs ; autres durées : celles
+ * du code (`APPAREIL_COOKIE_MAX_AGE_S`, `CONSENTEMENT_DUREE_JOURS`).
+ */
+import { getLocaleFromPath } from '../i18n/utils';
+import type { Locale } from '../i18n/config';
+import { CONSENTEMENT_DUREE_JOURS } from '../lib/consentement';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const j = CONSENTEMENT_DUREE_JOURS;
+
+interface Colonnes { nom: string; finalite: string; duree: string; destinataire: string; transfert: string }
+
+const TEXTE: Record<Locale, { titre: string; intro: string; entetes: Colonnes; lignes: Colonnes[] }> = {
+  fr: {
+    titre: 'Cookies et traceurs',
+    intro: 'Rien de publicitaire ni de mesure n’est posé avant votre « Accepter ». Vous pouvez changer d’avis à tout moment avec le lien « Gérer mes cookies » en pied de page ; votre choix est redemandé au bout de 6 mois.',
+    entetes: { nom: 'Nom', finalite: 'Finalité', duree: 'Durée', destinataire: 'Destinataire', transfert: 'Transfert hors Maroc' },
+    lignes: [
+      { nom: 'tq_consent, tq_consent_at', finalite: 'Retenir votre choix (posé même en cas de refus)', duree: `${j} jours`, destinataire: 'Taqinor (votre appareil)', transfert: 'Aucun' },
+      { nom: '_fbp, _fbc, fr', finalite: 'Mesure et ciblage des publicités Meta (après « Accepter »)', duree: '90 jours', destinataire: 'Meta Platforms', transfert: 'Oui (Irlande, États-Unis)' },
+      { nom: '_ga, _ga_*', finalite: 'Mesure d’audience Google Analytics (après « Accepter »)', duree: '2 ans', destinataire: 'Google', transfert: 'Oui (États-Unis)' },
+      { nom: '_gcl_au', finalite: 'Mesure des publicités Google (après « Accepter »)', duree: '90 jours', destinataire: 'Google', transfert: 'Oui (États-Unis)' },
+      { nom: 'tq_appareil', finalite: 'Identifiant d’appareil pour relier vos visites et votre proposition (après « Accepter »)', duree: '2 ans', destinataire: 'Taqinor (CRM)', transfert: 'Oui (serveur en Allemagne)' },
+      { nom: 'tq_fbclid, tq_gclid, tq_gbraid, tq_wbraid, tq_utm_*', finalite: 'Publicité d’origine de votre visite (après « Accepter »)', duree: 'Fin de l’onglet', destinataire: 'Taqinor (CRM, avec votre demande)', transfert: 'Oui (serveur en Allemagne)' },
+      { nom: 'mt-wizard-v1, mt-funnel-token-v1', finalite: 'Garder vos réponses sur votre appareil pendant le diagnostic et compter les étapes (jeton sans lien avec votre identité)', duree: 'Fin de l’onglet', destinataire: 'Taqinor', transfert: 'Oui (hébergeur Cloudflare)' },
+      { nom: 'Cloudflare Web Analytics', finalite: 'Statistiques de visites, sans cookie', duree: 'Aucun cookie', destinataire: 'Cloudflare', transfert: 'Oui (États-Unis)' },
+    ],
+  },
+  en: {
+    titre: 'Cookies and trackers',
+    intro: 'Nothing for advertising or measurement is set before you click “Accept”. You can change your mind at any time with the “Manage my cookies” link in the footer; your choice is asked again after 6 months.',
+    entetes: { nom: 'Name', finalite: 'Purpose', duree: 'Duration', destinataire: 'Recipient', transfert: 'Transfer outside Morocco' },
+    lignes: [
+      { nom: 'tq_consent, tq_consent_at', finalite: 'Remember your choice (set even if you decline)', duree: `${j} days`, destinataire: 'Taqinor (your device)', transfert: 'None' },
+      { nom: '_fbp, _fbc, fr', finalite: 'Measuring and targeting Meta ads (after “Accept”)', duree: '90 days', destinataire: 'Meta Platforms', transfert: 'Yes (Ireland, United States)' },
+      { nom: '_ga, _ga_*', finalite: 'Google Analytics audience measurement (after “Accept”)', duree: '2 years', destinataire: 'Google', transfert: 'Yes (United States)' },
+      { nom: '_gcl_au', finalite: 'Measuring Google ads (after “Accept”)', duree: '90 days', destinataire: 'Google', transfert: 'Yes (United States)' },
+      { nom: 'tq_appareil', finalite: 'Device identifier linking your visits and your proposal (after “Accept”)', duree: '2 years', destinataire: 'Taqinor (CRM)', transfert: 'Yes (server in Germany)' },
+      { nom: 'tq_fbclid, tq_gclid, tq_gbraid, tq_wbraid, tq_utm_*', finalite: 'The ad your visit came from (after “Accept”)', duree: 'Until the tab closes', destinataire: 'Taqinor (CRM, with your request)', transfert: 'Yes (server in Germany)' },
+      { nom: 'mt-wizard-v1, mt-funnel-token-v1', finalite: 'Keep your answers on your device during the assessment and count the steps (a token with no link to your identity)', duree: 'Until the tab closes', destinataire: 'Taqinor', transfert: 'Yes (Cloudflare hosting)' },
+      { nom: 'Cloudflare Web Analytics', finalite: 'Visit statistics, without cookies', duree: 'No cookie', destinataire: 'Cloudflare', transfert: 'Yes (United States)' },
+    ],
+  },
+  ar: {
+    titre: 'ملفات التعريف والمتتبعات',
+    intro: 'لا يُوضع أي متتبع للإعلانات أو القياس قبل نقركم على «قبول». يمكنكم تغيير رأيكم في أي وقت عبر رابط «إدارة ملفات التعريف» أسفل الصفحة، ويُطلب اختياركم من جديد بعد 6 أشهر.',
+    entetes: { nom: 'الاسم', finalite: 'الغرض', duree: 'المدة', destinataire: 'الجهة المستلمة', transfert: 'النقل خارج المغرب' },
+    lignes: [
+      { nom: 'tq_consent, tq_consent_at', finalite: 'حفظ اختياركم (حتى في حالة الرفض)', duree: `${j} يومًا`, destinataire: 'Taqinor (جهازكم)', transfert: 'لا يوجد' },
+      { nom: '_fbp, _fbc, fr', finalite: 'قياس إعلانات Meta واستهدافها (بعد «قبول»)', duree: '90 يومًا', destinataire: 'Meta Platforms', transfert: 'نعم (إيرلندا، الولايات المتحدة)' },
+      { nom: '_ga, _ga_*', finalite: 'قياس الزيارات عبر Google Analytics (بعد «قبول»)', duree: 'سنتان', destinataire: 'Google', transfert: 'نعم (الولايات المتحدة)' },
+      { nom: '_gcl_au', finalite: 'قياس إعلانات Google (بعد «قبول»)', duree: '90 يومًا', destinataire: 'Google', transfert: 'نعم (الولايات المتحدة)' },
+      { nom: 'tq_appareil', finalite: 'معرّف الجهاز لربط زياراتكم بعرضكم (بعد «قبول»)', duree: 'سنتان', destinataire: 'Taqinor (CRM)', transfert: 'نعم (خادم في ألمانيا)' },
+      { nom: 'tq_fbclid, tq_gclid, tq_gbraid, tq_wbraid, tq_utm_*', finalite: 'الإعلان الذي جاءت منه زيارتكم (بعد «قبول»)', duree: 'إلى إغلاق النافذة', destinataire: 'Taqinor (CRM، مع طلبكم)', transfert: 'نعم (خادم في ألمانيا)' },
+      { nom: 'mt-wizard-v1, mt-funnel-token-v1', finalite: 'حفظ إجاباتكم على جهازكم أثناء التشخيص وعدّ الخطوات (رمز لا يرتبط بهويتكم)', duree: 'إلى إغلاق النافذة', destinataire: 'Taqinor', transfert: 'نعم (استضافة Cloudflare)' },
+      { nom: 'Cloudflare Web Analytics', finalite: 'إحصاءات الزيارات، دون ملفات تعريف', duree: 'لا ملف تعريف', destinataire: 'Cloudflare', transfert: 'نعم (الولايات المتحدة)' },
+    ],
+  },
+};
+const s = TEXTE[locale] ?? TEXTE.fr;
+---
+
+<div id="traceurs" class="border-b border-azur-900/15 py-7">
+  <h2 class="display text-xl">{s.titre}</h2>
+  <p class="mt-3 text-sm leading-relaxed text-encre-soft">{s.intro}</p>
+  <div class="mt-4 overflow-x-auto">
+    <table class="w-full min-w-[40rem] text-start text-xs text-encre-soft" data-traceurs>
+      <thead>
+        <tr class="border-b border-azur-900/25 text-encre">
+          <th scope="col" class="py-2 pe-3 text-start font-semibold">{s.entetes.nom}</th>
+          <th scope="col" class="py-2 pe-3 text-start font-semibold">{s.entetes.finalite}</th>
+          <th scope="col" class="py-2 pe-3 text-start font-semibold">{s.entetes.duree}</th>
+          <th scope="col" class="py-2 pe-3 text-start font-semibold">{s.entetes.destinataire}</th>
+          <th scope="col" class="py-2 text-start font-semibold">{s.entetes.transfert}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {s.lignes.map((l) => (
+          <tr class="border-b border-azur-900/10">
+            <td class="py-2 pe-3 font-mono" dir="ltr">{l.nom}</td>
+            <td class="py-2 pe-3">{l.finalite}</td>
+            <td class="py-2 pe-3">{l.duree}</td>
+            <td class="py-2 pe-3">{l.destinataire}</td>
+            <td class="py-2">{l.transfert}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>

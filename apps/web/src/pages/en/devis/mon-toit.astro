@@ -25,6 +25,7 @@
  * private tunnel); real landing-page SEO (meta description, OG, hreflang).
  */
 import DevisMonToitContinuer from '../../../components/blocs/DevisMonToitContinuer.astro';
+import LigneInfoConsentement from '../../../components/LigneInfoConsentement.astro';
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
 // RWEB17-M13 — table anglaise des tranches, UNE source pour le serveur et le script.
@@ -1399,6 +1400,7 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
             </span>
           </label>
           <span id="mt-consent-err" hidden role="alert" class="block text-xs text-alert-300"></span>
+          <LigneInfoConsentement />
 
           <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
 

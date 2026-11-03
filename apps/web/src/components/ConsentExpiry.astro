@@ -1,0 +1,21 @@
+---
+/**
+ * WAUD66 (D-WAUD-1, CNDP D-939-2025 §6) — le choix du bandeau vaut 180 jours.
+ * S'exécute en tête de <head>, AVANT tout lecteur de `tq_consent` (capture
+ * first-touch, pixel, tag Google). Échu ou sans date (choix donné sous l'ancien
+ * texte) : effacé, le bandeau se réaffiche.
+ */
+import { CONSENTEMENT_DUREE_MS } from '../lib/consentement';
+---
+
+<script is:inline define:vars={{ tqConsentDureeMs: CONSENTEMENT_DUREE_MS }}>
+  (function () {
+    try {
+      if (!localStorage.getItem('tq_consent')) return;
+      var date = Number(localStorage.getItem('tq_consent_at'));
+      if (date && Date.now() - date <= tqConsentDureeMs) return;
+      localStorage.removeItem('tq_consent');
+      localStorage.removeItem('tq_consent_at');
+    } catch (e) {}
+  })();
+</script>

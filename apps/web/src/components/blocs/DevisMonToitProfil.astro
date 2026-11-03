@@ -1,6 +1,7 @@
 ---
 // Bloc partagé (garde ACAL345).
 import DevisMonToitProfilResume from './DevisMonToitProfilResume.astro';
+import LigneInfoConsentement from '../LigneInfoConsentement.astro';
 ---
 <details class="mt-1 cine-card border border-white/10 text-white">
             <DevisMonToitProfilResume />
@@ -18,5 +19,6 @@ import DevisMonToitProfilResume from './DevisMonToitProfilResume.astro';
             </span>
           </label>
           <span id="mt-consent-err" hidden role="alert" class="block text-xs text-alert-300"></span>
+          <LigneInfoConsentement />
 
           <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>

@@ -17,6 +17,9 @@
 // de cookie store injectable (seul `storage` l'est), donc on espionne la
 // vraie écriture plutôt que d'en injecter une fausse.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { CONSENTEMENT_DUREE_MS } from '../src/lib/consentement';
 import {
   appareilId,
   demarrerBalise,
@@ -421,5 +424,84 @@ describe("demarrerBalise — consentement gate le cookie ET le localStorage (M2)
 
     expect(setItemSpy).toHaveBeenCalled();
     expect(cookieWrites.some((w) => w.startsWith('tq_appareil='))).toBe(true);
+  });
+});
+
+// ── WAUD66 — textes du consentement, choix daté 180 jours, tableau des traceurs ──
+
+describe('WAUD66 — consentement', () => {
+  const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+  const banniere = lire('../src/components/ConsentBanner.astro');
+
+  /** Exécute le VRAI script d'échéance de ConsentExpiry.astro. */
+  const purger = () => {
+    const corps = lire('../src/components/ConsentExpiry.astro').match(/<script[^>]*>([\s\S]*)<\/script>/)?.[1] ?? '';
+    new Function('tqConsentDureeMs', corps)(CONSENTEMENT_DUREE_MS);
+  };
+
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  it('bandeau : plus aucun « anonyme », un lien politique, un nom accessible qui n’est pas « Accepter »', () => {
+    expect(banniere.slice(banniere.indexOf('const STR'))).not.toMatch(/anonym|مجهولة/i);
+    expect(banniere).toContain('href={politiqueHref}');
+    expect(banniere).toContain('aria-label={s.label}');
+    expect(banniere).not.toContain('aria-label={s.accept}');
+  });
+
+  it('choix valable 180 jours : gardé à J+179, effacé à J+181', () => {
+    expect(CONSENTEMENT_DUREE_MS).toBe(180 * 24 * 3600 * 1000);
+    localStorage.setItem('tq_consent', 'granted');
+    localStorage.setItem('tq_consent_at', String(Date.now() - 179 * 24 * 3600 * 1000));
+    purger();
+    expect(localStorage.getItem('tq_consent')).toBe('granted');
+    localStorage.setItem('tq_consent_at', String(Date.now() - 181 * 24 * 3600 * 1000));
+    purger();
+    expect(localStorage.getItem('tq_consent')).toBeNull();
+    expect(localStorage.getItem('tq_consent_at')).toBeNull();
+  });
+
+  it('un choix sans date (ancien texte) est redemandé ; absence de choix : rien à faire', () => {
+    localStorage.setItem('tq_consent', 'granted');
+    purger();
+    expect(localStorage.getItem('tq_consent')).toBeNull();
+    purger();
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('le choix est daté, et l’échéance tourne AVANT le premier lecteur du Layout', () => {
+    expect(banniere).toContain("localStorage.setItem('tq_consent_at', String(Date.now()))");
+    const layout = lire('../src/layouts/Layout.astro');
+    expect(layout.indexOf('<ConsentExpiry />')).toBeGreaterThan(0);
+    expect(layout.indexOf('<ConsentExpiry />')).toBeLessThan(layout.indexOf("localStorage.getItem('tq_consent') === 'granted'"));
+    expect(layout.indexOf('<ConsentExpiry />')).toBeLessThan(layout.indexOf('<MetaPixel />'));
+  });
+
+  it('« Gérer mes cookies » : au pied de page, trilingue, rouvre le bandeau', () => {
+    expect(lire('../src/components/Footer.astro')).toContain('data-consent-manage');
+    expect(banniere).toContain("closest('[data-consent-manage]')");
+    const ui = lire('../src/i18n/ui.ts');
+    for (const t of ['Gérer mes cookies', 'Manage my cookies', 'إدارة ملفات التعريف']) expect(ui).toContain(t);
+  });
+
+  it('politique FR/EN/AR : le tableau des traceurs, et la date n’est plus juillet', () => {
+    for (const p of ['', 'en/', 'ar/']) {
+      const page = lire(`../src/pages/${p}politique-de-confidentialite.astro`);
+      expect(page).toContain('<TableauTraceurs />');
+      expect(page).not.toMatch(/juillet 2026|July 2026|يوليوز 2026/);
+    }
+    const tableau = lire('../src/components/TableauTraceurs.astro');
+    for (const t of ['tq_consent', '_fbp', '_fbc', '_ga', '_gcl_au', 'tq_appareil', 'mt-wizard-v1', 'Cloudflare Web Analytics']) {
+      expect(tableau).toContain(t);
+    }
+  });
+
+  it('formulaires : ligne d’information et lien, sans aucun champ ajouté au corps', () => {
+    for (const f of ['../src/components/blocs/DevisMonToitProfil.astro', '../src/pages/en/devis/mon-toit.astro', '../src/pages/contact.astro']) {
+      expect(lire(f)).toContain('<LigneInfoConsentement');
+    }
+    const ligne = lire('../src/components/LigneInfoConsentement.astro');
+    expect(ligne).toContain('/politique-de-confidentialite');
+    expect(ligne).not.toMatch(/<input|name=/);
   });
 });
