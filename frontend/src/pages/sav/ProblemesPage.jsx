@@ -14,6 +14,7 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import savApi from '../../api/savApi'
 import fetchAllPages from '../../utils/fetchAllPages'
+import { Combobox } from '../../ui'
 import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 
 const STATUT_LABELS = {
@@ -32,6 +33,16 @@ function messageErreur(erreur, repli) {
     return Array.isArray(valeur) ? `${champ} : ${valeur[0]}` : `${champ} : ${valeur}`
   }
   return repli
+}
+
+// ASAV125 — recherche SERVEUR du ticket à lier (search_fields : reference) ;
+// libellé = référence, valeur = id (jamais un n° saisi lu comme clé primaire).
+const lignesDe = (r) => (Array.isArray(r?.data) ? r.data : (r?.data?.results ?? []))
+const chercherTickets = async (q) => {
+  const r = await savApi.getTickets({ search: q || undefined, ouvert: 'tous' })
+  return lignesDe(r).map((t) => ({
+    value: String(t.id), label: t.reference ?? `Ticket ${t.id}`,
+  }))
 }
 
 const liste = (reponse) => {
@@ -104,7 +115,7 @@ export default function ProblemesPage() {
   }
 
   const lierTicket = async () => {
-    const numero = Number(ticketALier)
+    const numero = Number(ticketALier) // = l'id du ticket choisi dans la recherche
     if (!numero) return
     setOccupe(true)
     setErreur('')
@@ -360,8 +371,11 @@ export default function ProblemesPage() {
             )}
             {peutGerer && (
             <div className="flex items-center gap-2">
-              <input type="number" placeholder="N° du ticket à lier" aria-label="N° du ticket à lier"
-                     value={ticketALier} onChange={(e) => setTicketALier(e.target.value)} />
+              <Combobox className="w-64" aria-label="Ticket à lier"
+                        value={ticketALier || null} onSearch={chercherTickets}
+                        placeholder="Ticket à lier (référence)"
+                        searchPlaceholder="Rechercher un ticket…"
+                        onChange={(v) => setTicketALier(v ?? '')} />
               <button type="button" disabled={occupe || !ticketALier} onClick={lierTicket}>
                 Lier un ticket
               </button>

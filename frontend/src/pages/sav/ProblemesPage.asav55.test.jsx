@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -21,10 +22,14 @@ vi.mock('../../api/savApi', () => ({
   default: {
     getProblemes: vi.fn(() => Promise.resolve({ data: { results: serveur.problemes.map((p) => ({
       ...p, nb_tickets: (serveur.liens[p.id] ?? []).length })) } })),
+    getTickets: vi.fn((params) => Promise.resolve({ data: { results: [
+      { id: 41, reference: 'SAV-202611-0042' }, { id: 42, reference: 'SAV-202611-0043' },
+    ].filter((t) => !params?.search || t.reference.includes(params.search)) } })),
     getRegroupementsSuggeres: vi.fn(() => Promise.resolve({ data: { results: [] } })),
     getProblemeTickets: vi.fn((id) => Promise.resolve({ data: { results: [...(serveur.liens[id] ?? [])] } })),
     lierTicketProbleme: vi.fn((id, ticket) => {
-      serveur.liens[id] = [...(serveur.liens[id] ?? []), { id: ticket, reference: `SAV-00${ticket}`, client: 'X' }]
+      // ASAV125 — pk et numéro de référence DISTINCTS (pk 41 = SAV-202611-0042).
+      serveur.liens[id] = [...(serveur.liens[id] ?? []), { id: ticket, reference: `SAV-202611-00${ticket + 1}`, client: 'X' }]
       return Promise.resolve({ data: {} })
     }),
     delierTicketProbleme: vi.fn((id, ticket) => {
@@ -57,10 +62,16 @@ describe('ProblemesPage — ASAV55 gestes d\'un problème', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: 'Gérer' }))[0])
     expect(await screen.findByText('SAV-0011 — Bennani')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('N° du ticket à lier'), { target: { value: '12' } })
+    // ASAV125 — le ticket est choisi par sa RÉFÉRENCE (recherche serveur) ;
+    // c'est son id qui part, pas un numéro saisi lu comme clé primaire.
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('combobox', { name: 'Ticket à lier' }))
+    await user.click(await screen.findByRole('option', { name: /SAV-202611-0042/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Lier un ticket' }))
-    expect(await screen.findByText('SAV-0012 — X')).toBeInTheDocument()
+    expect(await screen.findByText('SAV-202611-0042 — X')).toBeInTheDocument()
+    expect(screen.queryByText(/-0043/)).toBeNull()
     expect(serveur.liens[5]).toHaveLength(2)
+    expect(serveur.liens[5][1].id).toBe(41)
 
     fireEvent.click(screen.getByRole('button', { name: 'Délier SAV-0011' }))
     await waitFor(() => expect(serveur.liens[5]).toHaveLength(1))
