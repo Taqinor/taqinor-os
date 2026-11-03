@@ -294,6 +294,27 @@ class CorpsFuzzTests(TestCase):
         self.modele = ModeleBonCommandeFournisseur.objects.create(
             company=self.a, nom='Modèle F')
 
+    def test_motif_non_blanc_refuse_ce_que_strip_retire(self):
+        """ERR-ENF11 (cron 41296444614) : ``tiers_nom`` = \\x85 jugé conforme."""
+        import re
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL as MOTIF
+        for blanc in ('', ' ', '\x85', '\x1c', '\x1f', '\xa0', ' '):
+            self.assertEqual(blanc.strip(), '')
+            self.assertIsNone(re.search(MOTIF, blanc), repr(blanc))
+        self.assertIsNotNone(re.search(MOTIF, ' a '))
+
+    def test_dupliquer_kit_nom_long_et_echelle_debordante(self):
+        """ERR-ENF11 (cron 41296444614) : deux DataError (500)."""
+        from apps.stock.models import KitProduit
+        kit = KitProduit.objects.create(company=self.a, nom='K' * 255)
+        r = self.api.post(f'{BASE}/kits/{kit.id}/dupliquer/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertLessEqual(len(r.data['nom']), 255)
+        kit.composants.create(produit=self.pa, quantite=Decimal('99999999'))
+        r = self.api.post(f'{BASE}/kits/{kit.id}/dupliquer/',
+                          {'facteur_echelle': 1000}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
     def test_fuzz_corps_non_objet_400(self):
         cas = [('post', '/api/django/achats/paiements-fournisseur/')] + [
             ('post', f'{BASE}/{fin}') for fin in (

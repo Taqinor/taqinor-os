@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4906, operations: 7698, components: 3612}
+counts: {paths: 4906, operations: 7696, components: 3612}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1228,7 +1228,6 @@ operations:
 - get /api/django/entites/entites/groupe/ -> django_entites_entites_groupe_retrieve
 - post /api/django/entites/entites/importer/ -> django_entites_entites_importer_create
 - get /api/django/entites/entites/mes-entites/ -> django_entites_entites_mes_entites_list
-- delete /api/django/entites/entites/{id}/ -> django_entites_entites_destroy
 - get /api/django/entites/entites/{id}/ -> django_entites_entites_retrieve
 - patch /api/django/entites/entites/{id}/ -> django_entites_entites_partial_update
 - put /api/django/entites/entites/{id}/ -> django_entites_entites_update
@@ -5117,7 +5116,6 @@ operations:
 - get /api/v1/entites/entites/groupe/ -> v1_entites_entites_groupe_retrieve
 - post /api/v1/entites/entites/importer/ -> v1_entites_entites_importer_create
 - get /api/v1/entites/entites/mes-entites/ -> v1_entites_entites_mes_entites_list
-- delete /api/v1/entites/entites/{id}/ -> v1_entites_entites_destroy
 - get /api/v1/entites/entites/{id}/ -> v1_entites_entites_retrieve
 - patch /api/v1/entites/entites/{id}/ -> v1_entites_entites_partial_update
 - put /api/v1/entites/entites/{id}/ -> v1_entites_entites_update

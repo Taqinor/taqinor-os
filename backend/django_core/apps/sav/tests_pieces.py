@@ -57,6 +57,14 @@ class TestSavPieces(TestCase):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, Decimal('7'))
 
+    def test_decrement_fractionnaire_409_rien_d_ecrit(self):
+        """ERR-ENF11 (cron 41296444614) : quantité conforme, unité entière du stock."""
+        r = self._add(quantite='0.71', decrement=True)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertFalse(PieceConsommee.objects.filter(ticket=self.ticket).exists())
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, Decimal('10'))
+
     def test_quantite_non_positive_ou_mal_formee_400(self):
         # api-fuzz-full : "0" était « conforme » au schéma puis refusé ; le
         # motif publié l'exclut désormais, et le serveur refuse pareil.

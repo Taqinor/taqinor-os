@@ -5,6 +5,8 @@ ne porte aucun prix / marque / TVA propre ; l'action ``exploser`` le décompose
 en lignes composant avec prix/TVA/marque LUS sur chaque ``Produit`` au vol.
 Multi-tenant : querysets filtrés par société + ``company`` forcée côté serveur
 (TenantMixin)."""
+from decimal import Decimal
+
 from drf_spectacular.utils import extend_schema, extend_schema_serializer, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import filters, status
@@ -16,6 +18,7 @@ from rest_framework.exceptions import ValidationError
 from ..openapi_helpers import BOOL, DATE, NUM, OBJET, P, DecimalSoupleStock, corps
 from ..utils.params import ID_MAX, corps_objet, decimal_ou_400, id_corps, types_corps_ou_400, valeur_unique_ou_400
 from ..serializers import RevisionKitSerializer
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
@@ -30,6 +33,16 @@ from ..serializers import KitComposantSerializer, KitProduitSerializer
 extend_schema_serializer(component_name='KitProduitComposant')(KitComposantSerializer)
 
 FACTEUR_MIN, FACTEUR_MAX = 0.0001, 1000
+
+
+def refuser_echelle_debordante(kit, facteur):
+    """ERR-ENF11 (cron 41296444614) — quantité × facteur au-delà de la colonne
+    ``KitComposant.quantite`` (12 chiffres dont 2 décimales) : l'état du kit
+    s'oppose à ce facteur pourtant conforme, 409 plutôt qu'un débordement (500)."""
+    if facteur is None:
+        return
+    if any((c.quantite or 0) * Decimal(str(facteur)) >= Decimal(10) ** 10 for c in kit.composants.all()):
+        raise ConflitEtat("Ce facteur d'échelle dépasse la quantité maximale d'un composant du kit.")
 #: CI #997 fuzz (4) — ratio de remplacement : décimal STRICTEMENT positif (chaîne
 #: ou nombre JSON, 4 décimales) ; le champ sert au schéma ET au contrôle.
 RATIO_REMPLACEMENT = DecimalSoupleStock(
@@ -227,6 +240,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         if facteur is not None and (0 < facteur < FACTEUR_MIN or facteur > FACTEUR_MAX):
             return Response({'detail': "Facteur d'échelle hors bornes (0,0001 à 1000)."},
                             status=status.HTTP_400_BAD_REQUEST)
+        refuser_echelle_debordante(kit, facteur)
         try:
             copie = dupliquer_kit(
                 kit, user=request.user, facteur_echelle=facteur)

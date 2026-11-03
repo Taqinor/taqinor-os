@@ -28,7 +28,7 @@ READ_ACTIONS = ['list', 'retrieve']
 
 
 @oa.listing(p0=oa.qs('classe_abc'), p1=oa.qs('statut'), p2=oa.qi('emplacement'))
-class SessionComptageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
+class SessionComptageViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG324 — sessions de comptage tournant. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `statut`, `classe_abc`, `emplacement`."""
     queryset = SessionComptage.objects.select_related(

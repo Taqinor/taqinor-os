@@ -84,6 +84,26 @@ def on_meta_lead_captured(sender, **kwargs):
             leadgen_id, exc_info=True)
 
 
+def on_meta_lead_captured_accuse(sender, **kwargs):
+    """CADV41 — l'accusé WhatsApp hors heures (D-CADV-5), après le COMMIT de la
+    capture et sans appel réseau sous verrou. Aucune clé posée (D-ADEP-3) : rien
+    n'est planifié. Best-effort, comme les abonnés voisins."""
+    company, lead = kwargs.get('company'), kwargs.get('lead')
+    if company is None or lead is None:
+        return
+    try:
+        from . import capi_crm, whatsapp_ack
+        if whatsapp_ack.configuration() is None:
+            return
+        created_time = kwargs.get('created_time')
+        capi_crm.on_commit_best_effort(
+            lambda: whatsapp_ack.envoyer_accuse_si_du(company, lead, created_time))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+        logger.warning(
+            'adsengine.on_meta_lead_captured_accuse: planification échouée '
+            '(lead %s)', getattr(lead, 'pk', '?'), exc_info=True)
+
+
 def on_appointment_effectue(sender, **kwargs):
     """PUB30 — Sur ``appointment_effectue`` (émis par ``crm``, jamais importé
     ici), pousse l'événement CAPI dédié « visite technique effectuée » via
@@ -151,6 +171,9 @@ def connect():
         appointment_effectue, lead_erased, meta_lead_captured)
     meta_lead_captured.connect(
         on_meta_lead_captured, dispatch_uid='adsengine_meta_lead_captured')
+    meta_lead_captured.connect(
+        on_meta_lead_captured_accuse,
+        dispatch_uid='adsengine_meta_lead_captured_accuse')
     appointment_effectue.connect(
         on_appointment_effectue, dispatch_uid='adsengine_appointment_effectue')
     lead_erased.connect(

@@ -99,6 +99,13 @@ class ComptageCycliqueSnapshotSaisieTests(TestCase):
         self.assertEqual(mvt.quantite_avant, 80)
         self.assertEqual(mvt.quantite_apres, 77)
 
+    def test_ajouter_ligne_corps_non_objet_400(self):
+        """ERR-ENF11 (cron 41296444614) : corps 1.5 = AttributeError (500)."""
+        r = self.api.post(
+            f'{BASE}/sessions-comptage/{self.session.id}/ajouter-ligne/',
+            1.5, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_theorique_non_modifiable_par_le_client(self):
         r = self.api.post(
             f'{BASE}/sessions-comptage/{self.session.id}/ajouter-ligne/',

@@ -143,6 +143,18 @@ class EntiteApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(any(a['field_label'] == 'Nom' for a in resp.data))
 
+    def test_delete_absent_desactiver_seul_retrait(self):
+        """ERR-ENF11 (cron 41296444614) : DELETE 204 puis GET 200 = use after free."""
+        e = creer_entite(self.company, nom='C', code='C')
+        r = self.client_api.delete(f'/api/django/entites/entites/{e.id}/')
+        self.assertEqual(r.status_code, 405, r.content)
+        e.refresh_from_db()
+        self.assertTrue(e.actif)
+        r = self.client_api.post(f'/api/django/entites/entites/{e.id}/desactiver/')
+        self.assertEqual(r.status_code, 200, r.content)
+        e.refresh_from_db()
+        self.assertFalse(e.actif)
+
     def test_enf11_actif_non_booleen_refuse(self):
         """ENF11 — `actif: 0` n'est plus converti en booléen (400)."""
         base = '/api/django/entites/entites/'

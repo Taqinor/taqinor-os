@@ -225,6 +225,7 @@ _CIBLES_PROTEGEES = (
 _POLITIQUE_RESEAU = re.compile(r'^/api/django/identity/network-policies/')
 _MODE_BLOQUANT = 'enforce'
 _MODE_SUR = 'monitor'
+_FOURNISSEURS_SSO = re.compile(r'^/api/django/identity/providers/')
 
 
 def _proteger_soi(case):
@@ -249,6 +250,22 @@ def _neutraliser_politique_reseau(case):
     corps = case.body
     if isinstance(corps, dict) and corps.get('mode') == _MODE_BLOQUANT:
         corps['mode'] = _MODE_SUR
+
+
+def _neutraliser_sso_obligatoire(case):
+    """``enforce_sso: true`` → ``false`` sur une écriture d'un fournisseur
+    d'identité : api-fuzz-full 41296444614, tranche 14 (seule à porter
+    ``identity/providers``) — ``POST /token/`` répond 403 ``sso_required`` au
+    bon mot de passe de ``fuzz_admin``, « Token fetch failed » sur 217
+    opérations. Même nature que la politique réseau : le comportement serveur
+    est correct, c'est le harnais qui ne doit pas se verrouiller dehors."""
+    if case.operation.method.upper() not in _METHODES_ECRITURE:
+        return
+    if not _FOURNISSEURS_SSO.match(case.operation.path):
+        return
+    corps = case.body
+    if isinstance(corps, dict) and corps.get('enforce_sso') is True:
+        corps['enforce_sso'] = False
 
 
 # ENF11 (records) — {« app.modele »: ids} : la cible ``{model, id}`` d'une
@@ -445,6 +462,14 @@ def _ids_chemin_reels(case):
     gabarit = case.operation.path
     m = _PREMIER_ID.match(gabarit)
     if not m or m.group(2) not in (case.path_parameters or {}):
+        return
+    # api-fuzz-full 41296444614 (ENF11) — un id venu d'un LIEN stateful
+    # (``Case._override``) désigne LA ressource que l'étape précédente vient de
+    # créer : le remplacer par un id d'inventaire envoyait la suite sur une
+    # autre ligne, parfois déjà supprimée (« Resource is not available after
+    # creation » : POST partenaires/ puis PUT partenaires/1/ -> 404).
+    if m.group(2) in (getattr(getattr(case, '_override', None),
+                              'path_parameters', None) or {}):
         return
     ops = f'{case.operation.method.upper()} {gabarit}'
     ids = IDS_CHEMIN.get(m.group(1))
@@ -1018,6 +1043,7 @@ def before_call(context, case, kwargs):
     _ids_chemin_reels(case)
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
+    _neutraliser_sso_obligatoire(case)
     _ids_fk_connus(case)
     _parts_nuls_absents(case)
     _fichiers_valides(case)
