@@ -15,6 +15,24 @@ Ce module n'importe JAMAIS ``builder`` (cycle).
 """
 from __future__ import annotations
 
+#: Le barème résidentiel n'est PAS purement progressif : au-delà de 150 kWh/mois
+#: il est SÉLECTIF (toute la consommation du mois au tarif de sa tranche), et
+#: c'est exactement ce qui rend l'économie réelle plus grande — en repassant
+#: sous une marche, le client re-tarife TOUT son résiduel. La phrase doit dire
+#: ce que le moteur fait (pricing.ONEE_TRANCHES), pas l'inverse.
+LIGNE_METHODE_FACTURES = (
+    "Facture recalculée au barème réel du distributeur "
+    "(progressif ≤ 150 kWh/mois, puis sélectif : toute la conso du "
+    "mois au tarif de SA tranche) : facture actuelle moins facture "
+    "résiduelle après autoconsommation — jamais un prix moyen "
+    "inventé.")
+
+LIGNE_METHODE_ESTIMATION = (
+    "Estimation : production annuelle × part autoconsommée × tarif "
+    "kWh (loi 82-21 : seul l'autoconsommé est valorisé — détail "
+    "dans nos hypothèses). Fournissez une facture réelle pour un "
+    "calcul par tranche exact.")
+
 
 def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
     """Ligne « Tarif électricité » du bloc « Nos hypothèses ».
@@ -91,18 +109,7 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
             "facture_avec_solaire": _sm_avec,
             "economie": roi["facture_sans"] - _sm_avec,
             "approximatif": bool(roi.get("factures_approximatif")),
-            # Le barème résidentiel n'est PAS purement progressif : au-delà de
-            # 150 kWh/mois il est SÉLECTIF (toute la consommation du mois au
-            # tarif de sa tranche), et c'est exactement ce qui rend l'économie
-            # réelle plus grande — en repassant sous une marche, le client
-            # re-tarife TOUT son résiduel. La phrase doit dire ce que le moteur
-            # fait (pricing.ONEE_TRANCHES), pas l'inverse.
-            "ligne_methode": (
-                "Facture recalculée au barème réel du distributeur "
-                "(progressif ≤ 150 kWh/mois, puis sélectif : toute la conso du "
-                "mois au tarif de SA tranche) : facture actuelle moins facture "
-                "résiduelle après autoconsommation — jamais un prix moyen "
-                "inventé."),
+            "ligne_methode": LIGNE_METHODE_FACTURES,
             # QRES40 — MAD partout (le document n'emploie jamais « DH » :
             # une seule unité monétaire, aucune hésitation possible).
             "exemple": (
@@ -176,11 +183,7 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
             "facture_avec_solaire": None,
             "economie": _sm_eco_ref,
             "approximatif": True,
-            "ligne_methode": (
-                "Estimation : production annuelle × part autoconsommée × tarif "
-                "kWh (loi 82-21 : seul l'autoconsommé est valorisé — détail "
-                "dans nos hypothèses). Fournissez une facture réelle pour un "
-                "calcul par tranche exact."),
+            "ligne_methode": LIGNE_METHODE_ESTIMATION,
             "exemple": None,
         }
 

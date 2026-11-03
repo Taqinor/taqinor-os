@@ -25,6 +25,8 @@ Variants:
 from __future__ import annotations
 import logging
 
+from ..etude_restitution import LIGNE_METHODE_ESTIMATION, LIGNE_METHODE_FACTURES
+
 logger = logging.getLogger(__name__)
 
 
@@ -154,11 +156,7 @@ def build(variant: str = "deux") -> dict:
                      "20% autres équipements et prestations"),
         "savings_method": {
             "model": "estimation", "approximatif": True,
-            "ligne_methode": (
-                "Estimation : production annuelle × part autoconsommée × tarif "
-                "kWh (loi 82-21 : seul l'autoconsommé est valorisé — détail "
-                "dans nos hypothèses). Fournissez une facture réelle pour un "
-                "calcul par tranche exact."),
+            "ligne_methode": LIGNE_METHODE_ESTIMATION,
             "exemple": None,
         },
         "hypotheses": {
@@ -298,12 +296,7 @@ def build(variant: str = "deux") -> dict:
             "facture_actuelle": 21400,
             "facture_avec_solaire": 21400 - eco_a_ann,
             "economie": eco_a_ann,
-            "ligne_methode": (
-                "Facture recalculée au barème réel du distributeur "
-                "(progressif ≤ 150 kWh/mois, puis sélectif : toute la conso du "
-                "mois au tarif de SA tranche) : facture actuelle moins facture "
-                "résiduelle après autoconsommation — jamais un prix moyen "
-                "inventé."),
+            "ligne_methode": LIGNE_METHODE_FACTURES,
             "exemple": (f"Facture actuelle ≈ 21 400 MAD/an → avec solaire "
                         f"≈ {21400 - eco_a_ann:,} MAD/an → économie ≈ "
                         f"{eco_a_ann:,} MAD/an").replace(",", " "),
