@@ -106,8 +106,10 @@ describe('QJW15 (c) — le champ honeypot existe vraiment', () => {
   });
 
   it('/api/simulate importe et appelle la garde (elle n’était appelée que côté preview)', () => {
+    // ENF19 : la garde vit dans le socle partagé que simulate.ts appelle.
     const sim = read('../src/pages/api/simulate.ts');
-    expect(sim).toContain('isHoneypotTripped');
+    expect(sim).toContain('ouvrirRequeteLead');
+    expect(read('../src/pages/api/_leadEndpoint.ts')).toContain('isHoneypotTripped');
   });
 });
 
