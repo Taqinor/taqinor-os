@@ -544,8 +544,8 @@ def commit(company, user, token, lignes=None):
     """
     from django.db import IntegrityError, transaction as db_transaction
     from django.utils import timezone as dj_timezone
+    from .domain.encaissements import enregistrer_paiement
     from .models import Facture, Paiement, ReleveImportSession
-    from . import activity
 
     token = (token or '').strip()
     if not token:
@@ -658,19 +658,11 @@ def commit(company, user, token, lignes=None):
                         'montant': str(montant),
                         'reste': str(reste)})
                     continue
-                paiement = Paiement.objects.create(
-                    company=company, facture=locked,
-                    montant=montant, date_paiement=date_obj,
-                    mode=mode, reference=ref or None,
+                paiement = enregistrer_paiement(
+                    facture=locked, montant=montant, user=user,
+                    date_paiement=date_obj, mode=mode, reference=ref or None,
                     note=f'Import relevé bancaire (ligne {i + 2})',
-                    idempotency_key=cle,
-                    created_by=user)
-                activity.log_facture_paiement(locked, user, paiement)
-                # YLEDG1 — événement documentaire générique (pose du seam
-                # pour compta.ecriture_pour_paiement).
-                from core.events import paiement_enregistre
-                paiement_enregistre.send(
-                    sender=Paiement, instance=paiement, company=company)
+                    idempotency_key=cle)
                 locked.refresh_from_db()
                 # AUD102 (P8) — l'import de relevé soldait en silence : la
                 # bascule passe par LE service unique (donc `facture_payee`,

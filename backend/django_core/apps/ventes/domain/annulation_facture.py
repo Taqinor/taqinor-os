@@ -457,13 +457,11 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
             # net retombe à 0 → l'acompte n'est plus « coincé » ; la ligne
             # négative porte l'obligation de remboursement.
             from django.utils import timezone as _tz
-            Paiement.objects.create(
-                facture=locked, company=locked.company,
-                montant=-net_acompte, date_paiement=_tz.now().date(),
-                mode=Paiement.Mode.AUTRE,
-                note='Remboursement acompte (annulation facture)',
-                created_by=user,
-            )
+            from .encaissements import enregistrer_paiement
+            enregistrer_paiement(
+                porte=False, facture=locked, montant=-net_acompte, user=user,
+                date_paiement=_tz.now().date(), mode=Paiement.Mode.AUTRE,
+                note='Remboursement acompte (annulation facture)')
             locked.avoir_annulation = _contre_passer(locked, user, motif)
             activity.log_facture_acompte_rembourse(
                 locked, user, net_acompte)
