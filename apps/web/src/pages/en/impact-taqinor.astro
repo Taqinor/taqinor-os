@@ -24,7 +24,6 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { localizeNavHref } from '../../i18n/pages';
 import { REALISATIONS } from '../../lib/realisations';
-import { CO2_KG_PER_KWH } from '../../lib/proposition';
 
 const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
@@ -41,7 +40,7 @@ const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 // in real time (MEASURED_FLEET, realisations.ts) — cumulative "since
 // commissioning", NEVER annualized. CO2 avoided and the tree equivalent
 // derive from it.
-const { productionTotal, productionTotalLabel, co2TonnesLabel, battersInstalls, batteryKwhTotal, villesUniques } = impactFigures('en-US');
+const { productionTotal, productionTotalLabel, batteryKwhTotal, villesMesurees } = impactFigures('en-US');
 
 
 // « CHECKED FACTS » RULE (founder, 2026-08-26) — the "trees" equivalence is
@@ -55,14 +54,14 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebPage',
   name: 'Taqinor Impact',
-  description: `Taqinor's cumulative, measured, honest impact: ${productionTotalLabel} kWh measured cumulatively across the fleet monitored in real time, ${co2TonnesLabel} tonnes of CO2 avoided to date.`,
+  description: `Taqinor's cumulative, measured, honest impact: ${productionTotalLabel} kWh measured cumulatively across the fleet monitored in real time.`,
   isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
 ---
 
 <Layout
   title="Taqinor Impact: our real, cumulative, verifiable numbers | Taqinor"
-  description={`${productionTotalLabel} kWh measured cumulatively (fleet monitored in real time), ${co2TonnesLabel} t of CO2 avoided to date: the honest tally of our installations — nothing estimated, nothing rounded up.`}
+  description={`${productionTotalLabel} kWh measured cumulatively (fleet monitored in real time): the tally of our installations, read on a date shown.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -79,7 +78,7 @@ const jsonLd = {
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Taqinor Impact</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Not a projection, not a target: {productionTotalLabel} kWh
-          measured cumulatively, {co2TonnesLabel} t of CO2 avoided to date — what the fleet monitored
+          measured cumulatively — what the fleet monitored
           in real time has actually produced since commissioning. This page grows project by project;
           it only states what we can prove.
         </p>
@@ -94,25 +93,16 @@ const jsonLd = {
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <KeyFigure value={productionTotalLabel} unit="kWh cumulative" label="Measured production">
             Cumulative tally from the fleet monitored in real time since
-            commissioning, in {villesUniques.join(', ')}.
-          </KeyFigure>
-          <KeyFigure value={co2TonnesLabel} unit="t CO2" label="CO2 avoided (cumulative)">
-            Calculated at {CO2_KG_PER_KWH} kg CO2/kWh, the Moroccan grid emission factor
-            used in our quoted studies — source to be specified.
+            commissioning, notably in {villesMesurees.join(', ')}.
           </KeyFigure>
           <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="Cumulative storage">
-            Battery capacity installed across {battersInstalls.length} of the projects.
+            Cumulative battery capacity of the published projects.
           </KeyFigure>
         </div>
         <Callout type="info" title="How this figure is calculated">
           <p>
-            CO2 avoided = cumulative measured production × {CO2_KG_PER_KWH} kg/kWh (the average
-            emission factor of the Moroccan electricity grid, a heavily carbon-based mix — the same
-            constant shown on every Taqinor quoted study). <strong>Source to be specified</strong>:
-            we will publish the dated reference for this factor as soon as we have settled on it.
-            No figure here is rounded up, extrapolated, or estimated beyond the production actually
-            measured, and we do not convert this CO2 into any equivalent (trees, journeys) that we
-            could not source.
+            The total adds up the production readings of the monitored fleet, at their reading date.
+            No figure is extrapolated beyond the production actually read.
           </p>
         </Callout>
       </div>

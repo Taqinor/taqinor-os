@@ -341,6 +341,8 @@ export interface MeasuredPlant {
   kwc: number | null;
   /** Cumul mesuré depuis la mise en service, en MWh. */
   lifetimeMWh: number;
+  /** Ville du site quand elle est connue (WAUD16) ; absente sinon, jamais devinée. */
+  ville?: string;
   /** Application de supervision — INTERNE, jamais affichée (WC10). */
   source: 'deye' | 'huawei';
   /**
@@ -354,10 +356,10 @@ export interface MeasuredPlant {
   readAt?: string;
 }
 export const MEASURED_FLEET: MeasuredPlant[] = [
-  { label: 'Aïn Diab (Casablanca)', kwc: 10, lifetimeMWh: 2.62, source: 'deye', readAt: '2026-07-04' },
-  { label: 'Casablanca (Rassam)', kwc: 5.68, lifetimeMWh: 1.41, source: 'deye', readAt: '2026-07-04' },
-  { label: 'El Jadida (Benaissa)', kwc: 5, lifetimeMWh: 1.4, source: 'deye', readAt: '2026-07-04' },
-  { label: 'Bd Fès (Casablanca)', kwc: 11.36, lifetimeMWh: 1.13, source: 'deye', readAt: '2026-07-04' },
+  { label: 'Aïn Diab (Casablanca)', ville: 'Casablanca', kwc: 10, lifetimeMWh: 2.62, source: 'deye', readAt: '2026-07-04' },
+  { label: 'Casablanca (Rassam)', ville: 'Casablanca', kwc: 5.68, lifetimeMWh: 1.41, source: 'deye', readAt: '2026-07-04' },
+  { label: 'El Jadida (Benaissa)', ville: 'El Jadida', kwc: 5, lifetimeMWh: 1.4, source: 'deye', readAt: '2026-07-04' },
+  { label: 'Bd Fès (Casablanca)', ville: 'Casablanca', kwc: 11.36, lifetimeMWh: 1.13, source: 'deye', readAt: '2026-07-04' },
   { label: 'Omar Taouss', kwc: null, lifetimeMWh: 3.41, source: 'huawei', readAt: '2026-07-05' },
   { label: 'Villa Haj Elofir', kwc: null, lifetimeMWh: 34.22, source: 'huawei', readAt: '2026-07-05' },
 ];

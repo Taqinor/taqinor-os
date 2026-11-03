@@ -6,7 +6,13 @@
  */
 import { FACTS_GENERATED_AT } from './facts';
 import { CO2_KG_PER_KWH } from './proposition';
-import { MEASURED_FLEET_LIFETIME_MWH, REALISATIONS, MEASURED_FLEET_READ_AT } from './realisations';
+import { MEASURED_FLEET, MEASURED_FLEET_LIFETIME_MWH, REALISATIONS, MEASURED_FLEET_READ_AT } from './realisations';
+
+/** WAUD16 — capacité d'une ligne batterie : « 2 × DYNESS 5 kWh » vaut 10, « 10 kWh Dyness (2 × DL5.0C) » vaut 10. */
+export function batterieKwh(batterie: string | null): number {
+  const m = /^(?:(\d+)\s*×[^\d]*)?([\d.,]+)\s*kWh/.exec((batterie ?? '').trim());
+  return m ? Number(m[1] ?? 1) * parseFloat(m[2].replace(',', '.')) : 0;
+}
 
 export function impactFigures(numberLocale: string) {
   const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
@@ -20,10 +26,7 @@ export function impactFigures(numberLocale: string) {
   });
 
   const battersInstalls = REALISATIONS.filter((r) => r.batterie !== null);
-  const batteryKwhTotal = battersInstalls.reduce((sum, r) => {
-    const m = /([\d.,]+)\s*kWh/.exec(r.batterie ?? '');
-    return sum + (m ? parseFloat(m[1].replace(',', '.')) : 0);
-  }, 0);
+  const batteryKwhTotal = battersInstalls.reduce((sum, r) => sum + batterieKwh(r.batterie), 0);
 
   const generatedDateLabel = new Intl.DateTimeFormat(numberLocale, {
     day: 'numeric',
@@ -32,6 +35,7 @@ export function impactFigures(numberLocale: string) {
   }).format(new Date(MEASURED_FLEET_READ_AT ?? FACTS_GENERATED_AT));
 
   const villesUniques = [...new Set(REALISATIONS.map((r) => r.ville))];
+  const villesMesurees = [...new Set(MEASURED_FLEET.flatMap((p) => (p.ville ? [p.ville] : [])))];
 
   return {
     productionTotal,
@@ -42,6 +46,7 @@ export function impactFigures(numberLocale: string) {
     battersInstalls,
     batteryKwhTotal,
     villesUniques,
+    villesMesurees,
     generatedDateLabel,
   };
 }

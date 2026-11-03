@@ -32,7 +32,6 @@ import RelatedLinks from '../components/RelatedLinks.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import { REALISATIONS } from '../lib/realisations';
-import { CO2_KG_PER_KWH } from '../lib/proposition';
 
 // ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
 // RULE B (2026-07-04) : le nombre brut d'installations n'est plus mis en
@@ -46,7 +45,7 @@ import { CO2_KG_PER_KWH } from '../lib/proposition';
 // de production réel est le CUMUL mesuré de la flotte suivie en temps réel
 // (MEASURED_FLEET, realisations.ts) — cumul « depuis la mise en service »,
 // JAMAIS annualisé. Le CO₂ évité en découle — et RIEN d'autre (voir plus bas).
-const { productionTotal, productionTotalLabel, co2TonnesLabel, battersInstalls, batteryKwhTotal, villesUniques } = impactFigures('fr-FR');
+const { productionTotal, productionTotalLabel, batteryKwhTotal, villesMesurees } = impactFigures('fr-FR');
 
 
 // RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) — l'équivalent « arbres »
@@ -60,14 +59,14 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebPage',
   name: 'Impact Taqinor',
-  description: `Impact cumulé, mesuré et honnête des installations Taqinor : ${productionTotalLabel} kWh mesurés au cumul sur la flotte suivie en temps réel, ${co2TonnesLabel} tonnes de CO₂ évitées à ce jour.`,
+  description: `Impact cumulé, mesuré et honnête des installations Taqinor : ${productionTotalLabel} kWh mesurés au cumul sur la flotte suivie en temps réel.`,
   isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
 ---
 
 <Layout
   title="Impact Taqinor : nos chiffres réels, cumulés et vérifiables | Taqinor"
-  description={`${productionTotalLabel} kWh mesurés au cumul (flotte suivie en temps réel), ${co2TonnesLabel} t de CO₂ évitées à ce jour : le bilan honnête de nos installations — rien d'estimé, rien d'arrondi vers le haut.`}
+  description={`${productionTotalLabel} kWh mesurés au cumul (flotte suivie en temps réel) : le bilan de nos installations, relevé à une date affichée.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -83,8 +82,7 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Redevabilité</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Impact Taqinor</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Pas une projection, pas un objectif : {productionTotalLabel} kWh mesurés au cumul,
-          {co2TonnesLabel} t de CO₂ évitées à ce jour — ce que la flotte suivie en temps réel a
+          Pas une projection, pas un objectif : {productionTotalLabel} kWh mesurés au cumul — ce que la flotte suivie en temps réel a
           réellement produit depuis sa mise en service. Cette page grandit chantier après
           chantier ; elle ne dit que ce que nous pouvons prouver.
         </p>
@@ -99,25 +97,16 @@ const jsonLd = {
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <KeyFigure value={productionTotalLabel} unit="kWh cumulés" label="Production mesurée">
             Cumul relevé sur la flotte suivie en temps réel depuis la mise en
-            service, à {villesUniques.join(', ')}.
-          </KeyFigure>
-          <KeyFigure value={co2TonnesLabel} unit="t CO₂" label="CO₂ évité (cumul)">
-            Calculé à {CO2_KG_PER_KWH} kg CO₂/kWh, le facteur d'émission du réseau marocain
-            utilisé dans nos études — source à préciser.
+            service, notamment à {villesMesurees.join(', ')}.
           </KeyFigure>
           <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="Stockage cumulé">
-            Capacité batterie installée sur {battersInstalls.length} des chantiers.
+            Capacité batterie cumulée des réalisations publiées.
           </KeyFigure>
         </div>
         <Callout type="info" title="Comment ce chiffre est calculé">
           <p>
-            Le CO₂ évité = production mesurée cumulée × {CO2_KG_PER_KWH} kg/kWh (facteur d'émission
-            moyen du réseau électrique marocain, mix fortement carboné — la même constante que celle
-            affichée dans chaque étude chiffrée Taqinor). <strong>Source à préciser</strong> : nous
-            publierons la référence datée de ce facteur dès que nous l'aurons arrêtée. Aucun chiffre
-            n'est arrondi vers le haut, extrapolé ou estimé au-delà de la production réellement
-            mesurée, et nous ne convertissons ce CO₂ en aucun équivalent (arbres, trajets) que nous
-            ne saurions sourcer.
+            Le cumul additionne les relevés de production de la flotte suivie, à leur date de relevé.
+            Aucun chiffre n'est extrapolé au-delà de la production réellement relevée.
           </p>
         </Callout>
       </div>

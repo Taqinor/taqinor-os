@@ -246,3 +246,24 @@ describe('WAUD40 — pas de « ligne par ligne » sans chiffre par ligne', () =>
     expect(read(`../src/pages/${p}.astro`)).not.toMatch(/ligne par ligne|line by line|سطراً بسطر/);
   });
 });
+
+describe('WAUD16 — /impact-taqinor : stockage exact, villes mesurées, CO2 omis', () => {
+  it('stockage = somme exacte de realisations.ts (2 × 5 kWh = 10) ; villes = villes mesurées', async () => {
+    const { impactFigures, batterieKwh } = await import('../src/lib/impactFigures');
+    expect(batterieKwh('2 × DYNESS 5 kWh (DL5.0C)')).toBe(10);
+    expect(batterieKwh('10 kWh Dyness (2 × DL5.0C)')).toBe(10);
+    expect(batterieKwh('15 kWh Dyness')).toBe(15);
+    const f = impactFigures('fr-FR');
+    expect(f.batteryKwhTotal).toBe(40);
+    expect(f.villesMesurees).toEqual(['Casablanca', 'El Jadida']);
+  });
+  it.each(['impact-taqinor', 'en/impact-taqinor', 'ar/impact-taqinor'])('%s : ni CO2, ni source à préciser, ni rien d’estimé', (p) => {
+    const src = read(`../src/pages/${p}.astro`);
+    const rendu = src.slice(src.indexOf('<Layout'));
+    expect(rendu).not.toMatch(/CO₂|CO2/);
+    expect(rendu).not.toMatch(/source à préciser|source to be specified|المصدر يبقى للتحديد/i);
+    expect(rendu).not.toMatch(/rien d'estimé|nothing estimated|لا شيء مُقدَّر/);
+    expect(rendu).not.toMatch(/des chantiers\.|of the projects\.|من أصل المشاريع/);
+    expect(src).not.toContain('villesUniques');
+  });
+});
