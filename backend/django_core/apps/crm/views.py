@@ -845,17 +845,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             permission_classes=[IsResponsableOrAdmin])
     def restaurer(self, request, pk=None):
         """Restaure un lead archivé (le ramène dans les vues par défaut)."""
-        from django.db import transaction
+        from .fiche_ecritures import restaurer_lead
         lead = self.get_object()
         if lead.is_archived:
-            lead.is_archived = False
-            lead.archived_by = None
-            lead.archived_at = None
-            # ALEA30 — écriture et chatter dans la MÊME transaction.
-            with transaction.atomic():
-                lead.save(update_fields=['is_archived', 'archived_by',
-                                         'archived_at'])
-                activity.log_restore(lead, request.user)
+            restaurer_lead(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
     @extend_schema(request=sd.corps('CrmResumeAssocieRequest', accord_client=serializers.ChoiceField(choices=[True]),

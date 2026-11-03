@@ -572,15 +572,11 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                 if not lead.is_archived:
                     unchanged += 1
                     continue
-                lead.is_archived = False
-                lead.archived_by = None
-                lead.archived_at = None
-                lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
-                activity.log_bulk_note(
+                # QJ-INVARIANT, ACVI36 — la restauration partagée pose le filet.
+                from .fiche_ecritures import restaurer_lead
+                restaurer_lead(
                     lead, user,
-                    f"Lead restauré en masse par {getattr(user, 'username', '?')}")
-                # QJ-INVARIANT — même filet qu'au dé-perdu ci-dessus.
-                assurer_prochaine_etape_apres_succes(lead, user)
+                    note=f"Lead restauré en masse par {getattr(user, 'username', '?')}")
                 updated += 1
 
             elif op == 'plan_activity':

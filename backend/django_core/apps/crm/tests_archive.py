@@ -60,6 +60,17 @@ class ArchiveTestBase(TestCase):
 
 
 class TestArchiveRestore(ArchiveTestBase):
+    def test_restaurer_pose_une_prochaine_etape(self):
+        """ACVI36 — la restauration unitaire laisse une touche à faire."""
+        api = auth(self.resp)
+        Lead.objects.filter(pk=self.lead.pk).update(stage='CONTACTED')
+        api.post(f'/api/django/crm/leads/{self.lead.id}/archiver/')
+        r = api.post(f'/api/django/crm/leads/{self.lead.id}/restaurer/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data['is_archived'])
+        self.assertTrue(RelanceEtape.objects.filter(
+            lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE).exists())
+
     def test_archive_hides_from_default_list_and_filters_bring_it_back(self):
         api = auth(self.resp)
         # Visible par défaut

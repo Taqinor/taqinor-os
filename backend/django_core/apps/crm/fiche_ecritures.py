@@ -311,3 +311,25 @@ def appliquer_bascules_fiche(old, new_lead, user):
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('ACVI31: passation non posée sur le lead #%s',
                            new_lead.pk, exc_info=True)
+
+
+def restaurer_lead(lead, user, *, note=None):
+    """ACVI36 — LA restauration d'un lead archivé (fiche et lot) : écriture et
+    chatter dans la même transaction (ALEA30), puis la prochaine étape.
+    ``note`` : le texte du lot, sinon la ligne de restauration de la fiche."""
+    from django.db import transaction
+
+    from . import activity
+    from .cadence_filet import assurer_prochaine_etape_apres_succes
+
+    lead.is_archived = False
+    lead.archived_by = None
+    lead.archived_at = None
+    with transaction.atomic():
+        lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
+        if note:
+            activity.log_bulk_note(lead, user, note)
+        else:
+            activity.log_restore(lead, user)
+    assurer_prochaine_etape_apres_succes(lead, user)
+    return lead
