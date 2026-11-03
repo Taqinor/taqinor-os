@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
+import { formatDate } from '../../../../lib/format'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import crmApi from '../../../../api/crmApi'
 import ventesApi from '../../../../api/ventesApi'
@@ -489,6 +490,12 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
               leadId={state.leadId}
               onChanged={() => setFriseReload((n) => n + 1)}
             />
+            {/* ERR-CADV-STANDBY-FICHE (CADV77) — le parcage daté se lit sur la fiche : lecture seule. */}
+            {state.server?.parc_etat === 'standby' && state.server?.parc_jusqu_au && (
+              <p className="mt-1.5 text-xs font-medium text-warning" data-testid="parc-standby">
+                Standby jusqu’au {formatDate(state.server.parc_jusqu_au)}
+              </p>
+            )}
             <div className="mt-1.5">
               <CadenceFrise
                 leadId={state.leadId} reloadToken={friseReload + relanceVersion}
