@@ -1,7 +1,7 @@
 ---
 title: "Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le secours"
 description: "Gamme Dyness LFP, ≥6 000 cycles, 7 ans de garantie — et le vrai différenciateur secours entre Deye SG (type UPS) et Huawei SUN2000 (< 3 s)."
-pubDate: 2026-04-27
+pubDate: 2026-06-21
 tags: ["batterie", "LFP", "Dyness", "Deye", "Huawei"]
 author: "Reda Kasri"
 ogSlug: "equipement"
