@@ -911,6 +911,7 @@ export default function DevisGenerator({
   // ADVS36 — l'option de l'ARGENT = `option_effective` du serveur (PDF, acompte) : mono
   // déclarée, sinon C&I = offre réseau, résidentiel = avec batterie ; `avecRec` n'est qu'un badge.
   const optionArgent = !showAvec ? 'sans' : (!showSans || !marcheCi ? 'avec' : 'sans')
+  const centaineMontee = !editId || (editDevis?.regles_calcul ?? 0) >= 11 // ADVS3 : envoyé < 11 = total reçu
 
   // ── Totaux + simulation, recalculés en direct ──
   // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — le SCÉNARIO déclaré entre dans
@@ -919,8 +920,8 @@ export default function DevisGenerator({
   // chiffrait l'option AVEC avec les accessoires Huawei que le serveur retire.
   const totals = useMemo(
     // AGNR36 — chaque ligne classée sur désignation + produit lié.
-    () => optionTotalsTTC(lines, discountPct, { scenario, produits, montee: !editId || (editDevis?.regles_calcul ?? 0) >= 11 }),
-    [lines, discountPct, scenario, produits, editId, editDevis?.regles_calcul],
+    () => optionTotalsTTC(lines, discountPct, { scenario, produits, montee: centaineMontee }),
+    [lines, discountPct, scenario, produits, centaineMontee],
   )
 
   // ── QJRREM (fondateur 07/09/2026) — remise par ligne, écran de création ──
@@ -958,9 +959,9 @@ export default function DevisGenerator({
   // l'écart entre Σ lignes et le total affiché.
   const remiseParPanier = useMemo(
     () => lignesRemiseesParPanier(lines, discountPct, {
-      scenario, option: optionArgent, produits, montee: !editId || (editDevis?.regles_calcul ?? 0) >= 11,
+      scenario, option: optionArgent, produits, montee: centaineMontee,
     }),
-    [lines, discountPct, scenario, optionArgent, produits, editId, editDevis?.regles_calcul],
+    [lines, discountPct, scenario, optionArgent, produits, centaineMontee],
   )
   const lignesRemiseesTtc = remiseParPanier.parLigne
   // Condition d'affichage = remise > 0 (jamais « montant ≠ catalogue ») :
@@ -974,9 +975,9 @@ export default function DevisGenerator({
       nombreProprietes: multiMode === 'multiplier' ? nombreProprietes : null,
       discountPct,
       // ATOT24 — la chaîne du rail : scénario + option effective (celle de `kpiTotal`).
-      scenario, option: optionArgent, montee: !editId || (editDevis?.regles_calcul ?? 0) >= 11,
+      scenario, option: optionArgent, montee: centaineMontee,
     }),
-    [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, editId, editDevis?.regles_calcul],
+    [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, centaineMontee],
   )
 
   // SPL51 — dérivations d'aperçu et d'étude horaire (déplacées telles quelles dans le hook, même position : l'ordre des hooks est inchangé).

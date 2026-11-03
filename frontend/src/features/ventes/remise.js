@@ -122,7 +122,7 @@ export function montantHtLigne(ligne) {
 // d'essai, même arrondi moitié-vers-le-haut de la TVA, en centimes entiers.
 export const PAS_ARRONDI_DEVIS = 100
 const ARRONDI_CENTIMES_CEDES = 5n
-// ADVS3 (D-ADVS-4) — miroir de `_ARRONDI_TOLERANCE_MONTEE` : à moins d'1 MAD sous
+// ADVS3 (D-ADVS-4) — le seuil `_ARRONDI_TOLERANCE_MONTEE` du noyau : à moins d'1 MAD sous
 // une centaine, le TTC y remonte (`montee` faux : devis au niveau de règles < 11).
 const ARRONDI_TOLERANCE_MONTEE = 100n
 
