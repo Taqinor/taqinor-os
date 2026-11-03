@@ -1,7 +1,23 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import LeadCard from './LeadCard'
-import { PIPELINE_STAGES, NEW_STAGE } from '../../../../features/crm/stages'
+import KanbanView from './KanbanView'
+import { PIPELINE_STAGES, NEW_STAGE, COLD_STAGE } from '../../../../features/crm/stages'
+import { refusEtape } from '../../../../features/crm/raisonsFroid'
+
+// ERR-ACVI9-KANBAN-FROID — le vrai DndContext, dont on capte `onDragEnd` : un
+// glisser au pointeur n'est pas jouable dans jsdom.
+const dnd = vi.hoisted(() => ({ onDragEnd: null }))
+vi.mock('@dnd-kit/core', async (original) => {
+  const reel = await original()
+  return {
+    ...reel,
+    DndContext: (props) => {
+      dnd.onDragEnd = props.onDragEnd
+      return <reel.DndContext {...props} />
+    },
+  }
+})
 
 describe('KanbanView · StageMover — SUPPRIMÉ (ordre fondateur 2026-08-02)', () => {
   // « Ne la cache pas, supprime-la complètement. » Le sélecteur d'étape par
@@ -97,6 +113,57 @@ describe('LeadCard — minuteur premier contact, colonne NEW seulement (QX31)', 
   it("aucun minuteur hors de l'étape NEW", () => {
     const { container } = monter(lead({ stage: QUOTE_SENT, date_creation: ilYa(12) }))
     expect(container.querySelector('.kb-sla')).toBeNull()
+  })
+})
+
+describe('Kanban — glisser vers Froid (ERR-ACVI9-KANBAN-FROID)', () => {
+  const deposer = (l, cible) => dnd.onDragEnd({
+    active: { data: { current: { lead: l } } }, over: { id: cible },
+  })
+  const monterBoard = (l, onChangeStage) => render(
+    <KanbanView leads={[l]} users={[]} onChangeStage={onChangeStage} />,
+  )
+
+  it('demande la raison avant le PATCH, puis la transporte', async () => {
+    const onChangeStage = vi.fn()
+    const l = lead()
+    monterBoard(l, onChangeStage)
+    deposer(l, COLD_STAGE)
+    const bouton = await screen.findByRole('button', { name: 'Mettre au Froid' })
+    expect(bouton).toBeDisabled()
+    expect(onChangeStage).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Raison de mise au Froid'), { target: { value: 'budget' } })
+    fireEvent.click(bouton)
+    await waitFor(() => expect(onChangeStage).toHaveBeenCalledWith(
+      l, COLD_STAGE, expect.objectContaining({ parcRaison: 'budget' })))
+  })
+
+  it("annuler la question n'écrit rien", async () => {
+    const onChangeStage = vi.fn()
+    const l = lead()
+    monterBoard(l, onChangeStage)
+    deposer(l, COLD_STAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByLabelText('Raison de mise au Froid')).toBeNull())
+    expect(onChangeStage).not.toHaveBeenCalled()
+  })
+
+  it('une autre étape ne pose aucune question', async () => {
+    const onChangeStage = vi.fn()
+    const l = lead()
+    monterBoard(l, onChangeStage)
+    const cible = PIPELINE_STAGES[PIPELINE_STAGES.indexOf(QUOTE_SENT) + 1]
+    await deposer(l, cible)
+    expect(onChangeStage).toHaveBeenCalledWith(l, cible, { confirmeRecul: false, parcRaison: undefined })
+    expect(screen.queryByLabelText('Raison de mise au Froid')).toBeNull()
+  })
+
+  it('le refus 409 est lu, quelle que soit sa forme', () => {
+    expect(refusEtape({ parc_raison: ['Raison de mise au Froid obligatoire.'] }))
+      .toBe('Raison de mise au Froid obligatoire.')
+    expect(refusEtape({ detail: 'Refus.' })).toBe('Refus.')
+    expect(refusEtape({ stage: ['On ne recule pas une étape.'] })).toBe('On ne recule pas une étape.')
+    expect(refusEtape({})).toBe('')
   })
 })
 

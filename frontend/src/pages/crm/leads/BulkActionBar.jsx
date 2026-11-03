@@ -9,6 +9,7 @@ import { Download, X, MoreHorizontal } from 'lucide-react'
 import {
   PIPELINE_STAGES, STAGE_LABELS, CANAL_LABELS, PRIORITE_LABELS, COLD_STAGE,
 } from '../../../features/crm/stages'
+import { RAISONS_FROID } from '../../../features/crm/raisonsFroid'
 import {
   Button, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -18,24 +19,6 @@ import { BulkDestructiveConfirm } from '../../../ui/BulkDestructiveConfirm'
 
 // Radix Select interdit la valeur chaîne vide → sentinelle pour « aucun ».
 const NO_OWNER = '__none'
-
-// CADV74 — les raisons d'un Froid en lot : codes Nurture et Archive du contrat
-// `crm/contract_samples/lead.json` (« plus_tard_date » exige une date : hors lot).
-const RAISONS_FROID = [
-  ['injoignable', 'Injoignable'],
-  ['pas_maintenant_sans_date', 'Pas maintenant (sans date)'],
-  ['budget', 'Budget'],
-  ['trop_cher', 'Trop cher'],
-  ['concurrent', 'Concurrent'],
-  ['achete_ailleurs', 'Acheté ailleurs'],
-  ['non_proprietaire', 'Non propriétaire'],
-  ['pas_de_toit', 'Pas de toit'],
-  ['technique', 'Raison technique'],
-  ['faux_numero', 'Faux numéro'],
-  ['doublon', 'Doublon'],
-  ['test', 'Fiche de test'],
-  ['archive_odoo', 'Contact Odoo froid archivé'],
-]
 
 export default function BulkActionBar({
   count, users = [], canDelete, hasArchivedSelected = false,

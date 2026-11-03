@@ -30,9 +30,11 @@ import {
   groupLeadsByStage,
   // Ordre fondateur 2026-09-01 — tri global partagé kanban/liste.
   LEAD_SORTERS,
+  COLD_STAGE,
 } from '../../../../features/crm/stages'
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question qu'au board avant un recul.
 import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
+import { useRaisonFroid } from '../../../../features/crm/useRaisonFroid'
 import { formatDate } from '../../../../lib/format'
 // CRX36 — telHref/waHref étaient recopiés À L'IDENTIQUE ici alors que
 // `lib/contactLinks` (VX108) les porte déjà pour tout écran affichant un
@@ -239,6 +241,7 @@ const ListRow = memo(function ListRow({
   // Ordre fondateur 2026-08-01 — question partagée avec le board avant tout
   // recul d'étape (cellule Stade plus bas).
   const confirmerRecul = useConfirmerRecul()
+  const { demanderRaisonFroid, dialogueRaisonFroid } = useRaisonFroid()
   const enRetard = lead.relance_date && lead.relance_date < today
   // LB21 — ligne ouvrable au clavier (recon-05 a11y #5 : onClick sur <tr>,
   // aucun tabIndex/role/onKeyDown). Enter/Espace ouvrent la fiche SEULEMENT
@@ -363,10 +366,14 @@ const ListRow = memo(function ListRow({
             // Décision fondateur 08/10/2026 — Signé → Froid dés-accepte aussi.
             if (!enArriere && isSortieSigne(lead.stage, v)
                 && !(await confirmerRecul(lead, v))) return
-            await onInlineSave(lead, 'stage', v, { confirmeRecul: enArriere })
+            // ACVI9 — le Froid exige une raison : demandée avant le PATCH.
+            const parcRaison = v === COLD_STAGE ? await demanderRaisonFroid(lead) : undefined
+            if (v === COLD_STAGE && !parcRaison) return
+            await onInlineSave(lead, 'stage', v, { confirmeRecul: enArriere, parcRaison })
               .catch((e) => { if (!isSigneIntercept(e)) throw e })
           }}
         />
+        {dialogueRaisonFroid}
       </td>
       {!hiddenCols.score && (
       <td className="m-hide" data-label="Score">

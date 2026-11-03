@@ -36,6 +36,15 @@ describe('LW42 — changeStage messages d’erreur fidèles', () => {
     expect(toast.error).toHaveBeenCalledWith('Lead perdu — motif requis avant tout changement.')
   })
 
+  it('ACVI9 — 409 sur `parc_raison` → toast au TEXTE SERVEUR', async () => {
+    crmApi.updateLead.mockRejectedValueOnce({
+      response: { status: 409, data: { parc_raison: ['Raison de mise au Froid obligatoire.'] } },
+    })
+    const { result } = renderHook(() => useLeadDraft({ lead: LEAD_A, mode: 'edit' }))
+    await act(async () => { await result.current.changeStage('COLD') })
+    expect(toast.error).toHaveBeenCalledWith('Raison de mise au Froid obligatoire.')
+  })
+
   it('erreur réseau (pas de réponse) → toast GÉNÉRIQUE, jamais un clic muet', async () => {
     crmApi.updateLead.mockRejectedValueOnce(new Error('Network Error'))
     const { result } = renderHook(() => useLeadDraft(LEAD_A, { mode: 'edit', currentUserId: 42 }))

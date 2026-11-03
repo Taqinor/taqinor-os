@@ -7,6 +7,7 @@ import {
   reducer, initState, getField, isDirty, dirtyKeys, isSuggested, signatureCharge,
   toPayload, currentFields,
 } from './draftCore'
+import { refusEtape } from '../raisonsFroid'
 import { getPrefetched } from './leadPrefetch'
 import fieldLabels from './fieldLabels'
 import { ecrireStockage, retirerStockage } from '../../../lib/stockageBestEffort.js'
@@ -271,13 +272,14 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   // entrées (menu d'étape LW16 et raccourcis « 1-4 » LW23), exactement comme
   // le 400 est géré ici et non au point d'appel. Le marqueur est write-only
   // côté serveur : il n'est jamais persisté sur le lead.
-  const changeStage = useCallback(async (newStage, { confirmeRecul = false } = {}) => {
+  const changeStage = useCallback(async (newStage, { confirmeRecul = false, parcRaison } = {}) => {
     const st = stateRef.current
     if (st.mode !== 'edit' || getField(st, 'stage') === newStage) return
     await flush({})
     try {
       const corps = { stage: newStage }
       if (confirmeRecul) corps.confirme_recul = true
+      if (parcRaison) corps.parc_raison = parcRaison
       const res = (await crmApi.updateLead(st.leadId, corps)).data
       dispatch({ type: 'SET_SERVER', res })
       if (res) setOpenedAt(res.id, res.date_modification)
@@ -288,7 +290,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       // « Retour d'étape non autorisé » qui mentait sur la vraie raison.
       // Toute autre panne (réseau/serveur/400 sans detail) reste visible —
       // plus de clic muet en offline — via un toast générique distinct.
-      const detail = err?.response?.data?.detail
+      const detail = refusEtape(err?.response?.data)
       toast.error(detail || "Échec du changement d'étape — réessayez.")
     }
   }, [flush])

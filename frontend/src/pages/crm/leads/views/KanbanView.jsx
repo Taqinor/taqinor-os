@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, LayoutGrid, X } from 'lucide-react'
 import { DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import {
-  formatMAD, groupLeadsByStage, isSortieSigne, isStageMoveAllowed,
+  COLD_STAGE, formatMAD, groupLeadsByStage, isSortieSigne, isStageMoveAllowed,
   isStageMoveBackward, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
 import {
@@ -20,6 +20,7 @@ import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMoti
 // (elle nomme le lead et les deux étapes) est mutualisée avec la fenêtre lead :
 // une seule phrase pour tous les gestes qui font reculer un lead.
 import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
+import { useRaisonFroid } from '../../../../features/crm/useRaisonFroid'
 // EZ14 — undo universel : appliquer tout de suite, inverser à l'annulation.
 // Un board se démonte au moindre changement de vue : aucun commit différé ici.
 import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
@@ -257,6 +258,7 @@ export default function KanbanView({
   // étape » DISPARAÎT : il annonçait un refus qui n'existe plus. Un recul se
   // demande maintenant (useConfirmerRecul), il ne se signale plus après coup.
   const confirmerRecul = useConfirmerRecul()
+  const { demanderRaisonFroid, dialogueRaisonFroid } = useRaisonFroid()
   /* PHYSIQUE TACTILE (B1/B2) — deux défauts du TouchSensor, corrigés ensemble.
      B2 : `{ delay: 150, tolerance: 8 }` armait un drag pendant un scroll LENT
      (150 ms de contact, 8 px de tolérance : un pouce qui démarre doucement
@@ -402,7 +404,13 @@ export default function KanbanView({
     // recul) dés-accepte AUSSI le devis côté serveur : même question.
     if (!enArriere && isSortieSigne(lead.stage, over.id)
         && !(await confirmerRecul(lead, over.id))) return
-    onChangeStage(lead, over.id, { confirmeRecul: enArriere })
+    // ACVI9 — le Froid exige une raison côté serveur : on la demande avant le PATCH.
+    let parcRaison
+    if (over.id === COLD_STAGE) {
+      parcRaison = await demanderRaisonFroid(lead)
+      if (!parcRaison) return
+    }
+    onChangeStage(lead, over.id, { confirmeRecul: enArriere, parcRaison })
     // LB12 — la carte déposée se RE-PARENTE dans sa nouvelle colonne (React
     // démonte/remonte l'instance — un `key={lead.id}` qui change de tableau
     // parent n'est jamais un simple déplacement DOM) : sans ça, le focus
@@ -548,6 +556,7 @@ export default function KanbanView({
           </div>
         ) : null}
       </DragOverlay>
+      {dialogueRaisonFroid}
     </DndContext>
   )
 }

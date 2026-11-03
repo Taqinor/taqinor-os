@@ -24,7 +24,8 @@ import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS, dialogueParDessus } fr
 import { pushRecentEntity } from '../../../providers/commandActions'
 import { normalizePhoneE164 } from '../../../lib/format'
 import { buildWaUrl } from '../../../lib/contactLinks'
-import { isStageMoveBackward } from '../stages'
+import { COLD_STAGE, isStageMoveBackward } from '../stages'
+import { useRaisonFroid } from '../useRaisonFroid'
 import { isSortieSigne } from '../stages'
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question que sur le board (elle nomme le
 // lead et les deux étapes) : une seule formulation pour tous les gestes qui
@@ -352,6 +353,7 @@ export default function LeadWorkspace({
      qu'après un oui — avec le marqueur que le serveur exige. Annulée, on ne
      touche à rien : aucun PATCH, l'étape affichée ne bouge pas. */
   const confirmerRecul = useConfirmerRecul()
+  const { demanderRaisonFroid, dialogueRaisonFroid } = useRaisonFroid()
   const changeStageConfirme = useCallback(async (cible) => {
     // Décision fondateur 08/10/2026 — quitter « Signé » dés-accepte le devis
     // côté serveur : la question est posée même vers Froid (pas un recul) ;
@@ -359,13 +361,18 @@ export default function LeadWorkspace({
     const fiche = { nom: leadNom, stage: stageCourant, devis: devisLead }
     if (!isStageMoveBackward(stageCourant, cible) && isSortieSigne(stageCourant, cible)) {
       if (!(await confirmerRecul(fiche, cible))) return undefined
-      return changeStage(cible)
+      if (cible !== COLD_STAGE) return changeStage(cible)
+    }
+    // ACVI9 — le Froid exige une raison : demandée avant le PATCH, annulée rien ne part.
+    if (cible === COLD_STAGE) {
+      const parcRaison = await demanderRaisonFroid(fiche)
+      return parcRaison ? changeStage(cible, { parcRaison }) : undefined
     }
     if (!isStageMoveBackward(stageCourant, cible)) return changeStage(cible)
     const ok = await confirmerRecul(fiche, cible)
     if (!ok) return undefined
     return changeStage(cible, { confirmeRecul: true })
-  }, [changeStage, confirmerRecul, stageCourant, leadNom, devisLead])
+  }, [changeStage, confirmerRecul, demanderRaisonFroid, stageCourant, leadNom, devisLead])
 
   /* PV22 — « Concevoir la toiture (3D) » NE MÈNE PLUS À UN ÉCRAN VIDE.
      La conception 3D travaille désormais SUR un devis (PV20/PV21) : le geste
@@ -994,6 +1001,7 @@ export default function LeadWorkspace({
           onClose={() => { setDevisPanel(null); setPanelDevisId(null); setDevisKwc(null); setPanelPdf(null); draft.refreshServer() }}
         />
       )}
+      {dialogueRaisonFroid}
       {signeOpen && (
         <SigneDialog
           lead={state.server}

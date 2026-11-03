@@ -38,7 +38,7 @@ test('LB12 : `data-lead-id` posé sur le MÊME nœud que `{...listeners} {...att
 
 test('LB12 : un déplacement RÉUSSI programme requestAnimationFrame → querySelector(data-lead-id) → focus()', () => {
   const block = dragEndBody()
-  const idx = block.indexOf('onChangeStage(lead, over.id, { confirmeRecul: enArriere })')
+  const idx = block.indexOf('onChangeStage(lead, over.id, { confirmeRecul: enArriere, parcRaison })')
   assert.ok(idx > 0, 'appel onChangeStage introuvable')
   const after = block.slice(idx, idx + 950)
   assert.match(after, /requestAnimationFrame\(\(\) => \{/)

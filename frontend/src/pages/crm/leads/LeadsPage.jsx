@@ -13,6 +13,7 @@ import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture } from '../../../utils/downloadBlob'
 import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE, devisAccepteReference } from '../../../features/crm/stages'
+import { refusEtape } from '../../../features/crm/raisonsFroid'
 import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
@@ -700,13 +701,14 @@ export default function LeadsPage() {
     const data = { [field]: value }
     if (opts.confirmeRecul) data.confirme_recul = true
     if (opts.undo) data.undo = true
+    if (opts.parcRaison) data.parc_raison = opts.parcRaison
     return dispatch(updateLead({ id: lead.id, data })).unwrap()
       .catch((err) => {
         // Décision fondateur 08/10/2026 — un refus serveur de changement
         // d'étape (409 « Impossible de sortir ce lead de Signé : … ») est
         // montré tel quel ; InlineEdit revient seul à la valeur réelle.
-        if (field === 'stage' && typeof err?.detail === 'string') {
-          toastError(err.detail)
+        if (field === 'stage' && refusEtape(err)) {
+          toastError(refusEtape(err))
         }
         throw err
       })
@@ -738,7 +740,7 @@ export default function LeadsPage() {
   // kanban peut désormais aller EN ARRIÈRE, à condition que KanbanView ait
   // obtenu un oui explicite avant d'appeler (la garde n'a pas disparu, elle
   // est devenue une question). Sans le marqueur, le serveur 400 toujours.
-  const changeStage = useCallback(async (lead, newStage, { confirmeRecul = false } = {}) => {
+  const changeStage = useCallback(async (lead, newStage, { confirmeRecul = false, parcRaison } = {}) => {
     if (!lead || lead.stage === newStage) return
     // A2 — déplacer un lead dans « Signé » exige de choisir le devis accepté
     // et l'option : on ouvre le dialogue au lieu de déplacer l'étape.
@@ -752,7 +754,14 @@ export default function LeadsPage() {
     try {
       const data = { stage: newStage }
       if (confirmeRecul) data.confirme_recul = true
+      if (parcRaison) data.parc_raison = parcRaison
       await dispatch(updateLead({ id: lead.id, data })).unwrap()
+      // ACVI9 — le parcage écrit état, raison et chatter : un « Annuler » ne
+      // re-PATCHerait que l'étape et laisserait un lead parqué hors du Froid.
+      if (parcRaison) {
+        toastSuccess('Lead rangé au Froid.')
+        return
+      }
       // Décision fondateur 08/10/2026 — sortir de « Signé » a DÉS-ACCEPTÉ le
       // devis côté serveur : un « Annuler » qui re-PATCHerait l'étape Signé
       // laisserait un lead signé sans devis accepté. Pas d'undo ici : on
@@ -799,10 +808,8 @@ export default function LeadsPage() {
       // (l'optimiste est déjà annulé ci-dessus). `unwrap()` rejette avec le
       // corps de la réponse (rejectWithValue de updateLead).
       // ACVI93 — le corps peut nommer le champ (`stage`) sans `detail`.
-      const detail = [err?.detail, err?.stage?.[0], err?.error]
-        .find((m) => typeof m === 'string' && m)
-      setStageError(detail
-        ?? "Le changement d'étape n'a pas pu être enregistré — vérifiez votre connexion et réessayez.")
+      setStageError(refusEtape(err)
+        || "Le changement d'étape n'a pas pu être enregistré — vérifiez votre connexion et réessayez.")
     } finally {
       setBusyLeadId(null)
     }
