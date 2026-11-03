@@ -7,7 +7,7 @@
 // de bundle est vérifié par le job CI web-build-test (Lighthouse), ce test
 // verrouille le CONTRAT source qui le garantit (aucun import statique lourd).
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 import { lirePageProposition } from './astroBlocsHelper';
@@ -89,5 +89,51 @@ describe('WJ18 — viewerOnly.ts : le budget bas de gamme reste appliqué (parta
   it('rendu à la demande (aucune boucle RAF permanente) — coût CPU/batterie mobile minimal', () => {
     expect(VIEWER_ONLY).toContain('Rendu À LA DEMANDE');
     expect(VIEWER_ONLY).not.toMatch(/setInterval/);
+  });
+});
+
+describe('WAUD8 — aucune animation infinie qui force une peinture à chaque image', () => {
+  // Liste d'exceptions EXPLICITE : vide. Une entrée ici doit être justifiée.
+  const EXCEPTIONS: string[] = [];
+  const SRC = fileURLToPath(new URL('../src/', import.meta.url));
+  const fichiers = (readdirSync(SRC, { recursive: true }) as string[])
+    .filter((f) => /\.(css|astro)$/.test(f))
+    .map((f) => ({ f, code: readFileSync(SRC + f, 'utf-8') }));
+
+  /** Corps d'un @keyframes (accolades équilibrées). */
+  function corpsKeyframes(code: string, nom: string): string | null {
+    const debut = code.search(new RegExp(`@keyframes\\s+${nom}\\b`));
+    if (debut < 0) return null;
+    let i = code.indexOf('{', debut);
+    const ouverture = i;
+    let n = 0;
+    for (; i < code.length; i += 1) {
+      if (code[i] === '{') n += 1;
+      if (code[i] === '}' && --n === 0) return code.slice(ouverture, i + 1);
+    }
+    return null;
+  }
+
+  it('filter, box-shadow et background-position jamais animés en boucle', () => {
+    const toutes = fichiers.map((x) => x.code).join('\n');
+    const noms = new Set<string>();
+    for (const m of toutes.matchAll(/animation\s*:\s*([^;}]*\binfinite\b[^;}]*)/g)) {
+      for (const mot of m[1].split(/\s+/)) {
+        if (/^[a-zA-Z][\w-]*$/.test(mot) && corpsKeyframes(toutes, mot)) noms.add(mot);
+      }
+    }
+    expect(noms.size).toBeGreaterThan(0);
+    const fautives = [...noms].filter((nom) => {
+      if (EXCEPTIONS.includes(nom)) return false;
+      return /(^|[\s{;])(-webkit-)?(filter|box-shadow|background-position)\s*:/.test(corpsKeyframes(toutes, nom) ?? '');
+    });
+    expect(fautives).toEqual([]);
+  });
+
+  it('logo et squelette du tunnel : halos composités, reduced-motion respecté', () => {
+    const logo = readFileSync(root('../src/components/Logo.astro'), 'utf-8');
+    expect(logo).toMatch(/prefers-reduced-motion: no-preference\)\s*\{\s*\.sun-wrap::after/);
+    const css = readFileSync(root('../src/styles/mon-toit-page.css'), 'utf-8');
+    expect(css).toMatch(/prefers-reduced-motion: no-preference\)\s*\{\s*\.mt-skeleton-shimmer::after/);
   });
 });

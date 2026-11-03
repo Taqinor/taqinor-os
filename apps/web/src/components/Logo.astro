@@ -50,12 +50,13 @@ const rays = Array.from({ length: 8 }, (_, i) => {
   aria-label="TAQINOR"
 >
   <span aria-hidden="true">TAQIN</span>
+  <span class="sun-wrap mx-px shrink-0" aria-hidden="true">
   <svg
     width={sun}
     height={sun}
     viewBox="0 0 100 100"
     aria-hidden="true"
-    class="sun-glow mx-px inline-block shrink-0"
+    class="sun-glow inline-block"
     style="vertical-align:middle;"
   >
     <g stroke={gold} stroke-width="6" stroke-linecap="round">
@@ -67,6 +68,7 @@ const rays = Array.from({ length: 8 }, (_, i) => {
       fill={ink}
     />
   </svg>
+  </span>
   <span aria-hidden="true">R</span>
 </span>
 
@@ -76,19 +78,37 @@ const rays = Array.from({ length: 8 }, (_, i) => {
     filter: drop-shadow(0 0 4px rgb(254 200 17 / 0.45)) drop-shadow(0 0 10px rgb(232 181 74 / 0.25));
   }
 
+  /* WAUD8 — la pulsation vit sur un halo en pseudo-élément, animé en OPACITÉ
+     seulement (composité, aucune peinture) : un `filter` animé occupait le
+     processeur des téléphones à 100 % sur toutes les pages. */
+  .sun-wrap {
+    position: relative;
+    display: inline-flex;
+    vertical-align: middle;
+  }
+  .sun-wrap::after {
+    content: '';
+    position: absolute;
+    inset: -30%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgb(254 200 17 / 0.3) 0%, rgb(232 181 74 / 0.12) 45%, transparent 68%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
   /* Gentle pulse only when motion is welcome */
   @media (prefers-reduced-motion: no-preference) {
-    .sun-glow {
+    .sun-wrap::after {
       animation: sun-pulse 3.5s ease-in-out infinite;
     }
   }
 
   @keyframes sun-pulse {
     0%, 100% {
-      filter: drop-shadow(0 0 4px rgb(254 200 17 / 0.45)) drop-shadow(0 0 10px rgb(232 181 74 / 0.25));
+      opacity: 0;
     }
     50% {
-      filter: drop-shadow(0 0 6px rgb(254 200 17 / 0.65)) drop-shadow(0 0 18px rgb(232 181 74 / 0.35));
+      opacity: 1;
     }
   }
 </style>
