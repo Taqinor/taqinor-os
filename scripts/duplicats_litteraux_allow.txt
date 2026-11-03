@@ -59,7 +59,6 @@
 38cce2d38668|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
 39b0f4a9e88e|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 3cdbe043a639|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
-3e5daa935e04|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts,apps/web/src/lib/estimatorBrainV7.ts
 411fd8005192|apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 426048654bc5|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 43c90a7841f5|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/ar/marocains-du-monde.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro,apps/web/src/pages/marocains-du-monde.astro
@@ -133,7 +132,6 @@
 95e441361bc0|apps/web/src/pages/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/guides/electricite-pendant-les-coupures.astro,apps/web/src/pages/guides/entretien-et-duree-de-vie-des-panneaux.astro,apps/web/src/pages/guides/faut-il-des-batteries.astro,apps/web/src/pages/guides/mon-toit-peut-il-supporter-des-panneaux.astro,apps/web/src/pages/guides/monocristallin-ou-polycristallin.astro,apps/web/src/pages/guides/on-grid-off-grid-ou-hybride.astro,apps/web/src/pages/guides/onduleur-hybride-ou-reseau.astro,apps/web/src/pages/guides/orientation-inclinaison-ombrage.astro,apps/web/src/pages/guides/quelle-taille-de-batterie.astro
 972229add9bb|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 997a2834e1dc|apps/web/src/pages/ar/blog/index.astro,apps/web/src/pages/en/blog/index.astro
-99a48bd571d1|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts,apps/web/src/lib/estimatorBrainV7.ts
 9aaf354c1a97|apps/web/src/pages/ar/loi-82-21.astro,apps/web/src/pages/ar/regularization-article-33.astro
 a09bc042357f|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/ar/marocains-du-monde.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro,apps/web/src/pages/marocains-du-monde.astro
 a0d81455b089|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro
@@ -149,7 +147,6 @@ a768423b2e51|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/b
 af5c29500513|apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/équipement.astro
 af8da5d3b297|apps/web/src/pages/ar/guides/index.astro,apps/web/src/pages/en/guides/index.astro
 afa00e8d3551|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro
-b3c30bd8c4d1|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts,apps/web/src/lib/estimatorBrainV7.ts
 b3c5df680532|apps/web/src/pages/ar/pourquoi-taqinor.astro,apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/pourquoi-taqinor.astro
 b48899fe6a79|apps/web/src/pages/guides/loi-82-21-expliquee.astro,apps/web/src/pages/loi-82-21.astro,apps/web/src/pages/regularization-article-33.astro
 b555e22d2262|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro
