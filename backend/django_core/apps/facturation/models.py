@@ -622,8 +622,8 @@ class Facture(TotauxDocumentMixin, models.Model):
         celle d'une facture annulée non plus."""
         from decimal import Decimal
         return sum((r.montant for r in self.retenues_subies.all() if not (
-            r.annulee or (r.paiement_id
-                          and r.paiement.statut in Paiement.STATUTS_NON_COMPTES))),
+            r.annulee
+            or (r.paiement_id and r.paiement.statut in Paiement.STATUTS_NON_COMPTES))),
             Decimal('0'))
 
     @property

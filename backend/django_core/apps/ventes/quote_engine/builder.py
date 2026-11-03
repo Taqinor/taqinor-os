@@ -485,7 +485,8 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
-        REGLES_ARRONDI_3010, REGLES_CENTAINE_0311, REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0111, calcul_corrige, regles_au_moins)
+        REGLES_ARRONDI_3010, REGLES_CENTAINE_0311, REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0111,
+        calcul_corrige, regles_au_moins)
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
