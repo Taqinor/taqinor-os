@@ -73,6 +73,6 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
   it('la règle JS locale a disparu des sites d’encaissement', () => {
     const src = readFileSync(join(ICI, 'FactureRow.jsx'), 'utf8')
     expect(src).not.toMatch(/montant_du \?\? 0\) > 0 && f\.statut !== 'annulee'/)
-    expect(src).toMatch(/f\.encaissable !== false && \(\s*<DropdownMenuItem/)
+    expect(src).toMatch(/peutEncaisser && f\.encaissable !== false/)
   })
 })

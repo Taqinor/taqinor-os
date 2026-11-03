@@ -705,33 +705,26 @@ class SwitchCompanyView(APIView):
 
 
 # ── Inscription d'un utilisateur dans une entreprise existante ─
-@extend_schema(responses={201: RegisterSerializer, 400: REPONSE_400_COMPTE})
+@extend_schema(request=RegisterSerializer, responses={201: RegisterSerializer, 400: REPONSE_400_COMPTE})
 class RegisterView(APIView):  # ENF15 : création pure, ni queryset ni liste — pas une vue « générique »
     """Admin cree un utilisateur dans sa propre entreprise."""
     permission_classes = [IsAdminRole]
     throttle_classes = [RegisterRateThrottle]
 
-    def get_serializer_context(self):
+    def post(self, request):
         from apps.roles.models import Role
-        ctx = {'request': self.request, 'format': self.format_kwarg,
-               'view': self}
-        ctx['company'] = self.request.user.company
-        role_id = getattr(self.request.data, 'get', lambda k: None)('role')
-        if role_id and self.request.user.company:
+        ctx = {'request': request, 'format': self.format_kwarg, 'view': self,
+               'company': request.user.company}
+        role_id = getattr(request.data, 'get', lambda k: None)('role')
+        if role_id and request.user.company:
             try:
                 ctx['role'] = Role.objects.get(
                     pk=role_id,
-                    company=self.request.user.company,
+                    company=request.user.company,
                 )
             except (Role.DoesNotExist, ValueError, TypeError):  # 400 via sérialiseur
                 ctx['role'] = None
-        return ctx
-
-    @extend_schema(request=RegisterSerializer,
-                   responses={201: RegisterSerializer})
-    def post(self, request):
-        serializer = RegisterSerializer(
-            data=request.data, context=self.get_serializer_context())
+        serializer = RegisterSerializer(data=request.data, context=ctx)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)

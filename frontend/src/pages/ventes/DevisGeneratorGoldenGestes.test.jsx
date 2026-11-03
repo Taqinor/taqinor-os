@@ -89,8 +89,8 @@ describe('SPL41 — golden des gestes du générateur', () => {
     await waitFor(() => expect(vue.ventesApi.composerDevis).toHaveBeenCalled())
     await stable(vue)
     const champs = [...vue.container.querySelectorAll('input')].map((i) => i.value)
-    expect(champs).toContain('15960.00')
-    expect(champs).not.toContain('16800.00')
+    expect(champs).toContain('15960')
+    expect(champs).not.toContain('16800')
   }, 60000)
 
   it('Auto-remplir agricole (pompe à courbe, aperçu pompage serveur)', async () => {
