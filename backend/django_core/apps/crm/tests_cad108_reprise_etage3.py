@@ -24,7 +24,7 @@ from authentication.models import Company
 from apps.crm import stages
 from apps.crm.management.commands.demarrer_cadences_existantes import (
     demarrer_cadences_existantes)
-from apps.crm.models import Lead, RelanceEtape
+from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
 
@@ -51,6 +51,10 @@ class _Base(TestCase):
         # Un dossier VRAIMENT dormant : aucune activité humaine récente.
         Lead.objects.filter(pk=lead.pk).update(
             date_creation=timezone.now() - datetime.timedelta(days=120))
+        # CADV25 — un client joint autrefois : le miroir reste seul à être écarté.
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
         return Lead.objects.get(pk=lead.pk)
 
     def _reveils(self, lead):

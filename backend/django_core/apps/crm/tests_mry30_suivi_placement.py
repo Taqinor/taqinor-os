@@ -391,6 +391,13 @@ class _PlacementBase(_Base):
     def _codes(self, rapport):
         return {bloc['code']: bloc['nombre'] for bloc in rapport['par_etape']}
 
+    def _joint(self, lead):
+        """CADV25 — un client joint autrefois (sans acteur : aucune ancre ne bouge)."""
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
+        return lead
+
     def _reveils(self, lead):
         return list(lead.relance_etapes.filter(cadence='reveil')
                     .order_by('ordre'))
@@ -540,8 +547,36 @@ class DecisionDormantTests(_PlacementBase):
         self.assertIn('Jamais chiffré', lead.tags or '')
         self.assertFalse(lead.perdu)          # Froid = parking, pas perte.
 
+    def test_le_dormant_jamais_joint_ni_chiffre_n_a_pas_de_reveil(self):
+        """CADV25 — plus de ``PlacementImpossible`` : le lead est placé au Froid,
+        sans réveil ni créneau du quota, et l'aperçu l'annonce tel quel."""
+        lead = self._lead('Muet', stage=stages.NEW, jours=60)
+        joint = self._joint(self._lead('Joint', stage=stages.NEW, jours=70))
+        apercu = {ligne['lead']: ligne for ligne in self._placer(apply=False)['apercu']}
+        self.assertEqual(apercu[lead.pk]['prochaine_touche'], 'Froid, sans réveil')
+        self.assertIsNone(apercu[lead.pk]['prochaine_le'])
+        rapport = self._placer()
+        self.assertEqual((rapport['applique'], rapport['erreurs']), (2, 0))
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertIn('Jamais chiffré', lead.tags or '')
+        self.assertEqual(self._reveils(lead), [])
+        # Le seul à prendre un créneau : le premier, le sien.
+        quand = self._reveils(joint)[0].due_at.astimezone(horaires.CASABLANCA)
+        self.assertEqual((quand.hour, quand.minute), (10, 0))
+        self.assertTrue(lead.activites.filter(body__startswith='Placé au Froid, sans réveil').exists())
+
+    def test_le_pilote_prend_un_creneau_et_une_seule_touche(self):
+        """CADV86 — l'aperçu annonce le réveil que l'application pose."""
+        lead = self._lead('Pilote', stage=stages.NEW, jours=60)
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=2300)
+        ligne = self._placer(apply=False)['apercu'][0]
+        self.assertEqual(ligne['prochaine_touche'], 'Réveil J30')
+        self._placer()
+        self.assertEqual(len(self._reveils(lead)), 1)
+
     def test_le_dormant_jamais_chiffre_garde_les_gabarits_sans_devis(self):
-        lead = self._lead('Dormant', stage=stages.NEW, jours=60)
+        lead = self._joint(self._lead('Dormant', stage=stages.NEW, jours=60))
         self._placer()
         self.assertEqual([e.template_cle for e in self._reveils(lead)],
                          ['reveil_a2', 'reveil_a3'])
@@ -557,7 +592,7 @@ class DecisionDormantTests(_PlacementBase):
                          ['reveil_a1', 'reveil_a3'])
 
     def test_deux_reveils_sont_poses(self):
-        lead = self._lead('Dormant', stage=stages.NEW, jours=60)
+        lead = self._joint(self._lead('Dormant', stage=stages.NEW, jours=60))
         self._placer()
         self.assertEqual(len(self._reveils(lead)), 2)
 
@@ -677,8 +712,8 @@ class EtalementTests(_PlacementBase):
     def test_les_reveils_partent_a_huit_par_jour_ouvre(self):
         """Lancer 200 réveils le même matin ferait partir 200 messages en
         rafale depuis le même numéro — le meilleur moyen d'être signalé."""
-        leads = [self._lead(f'Dormant {rang}', stage=stages.NEW,
-                            jours=60 + rang)
+        leads = [self._joint(self._lead(f'Dormant {rang}', stage=stages.NEW,
+                                        jours=60 + rang))
                  for rang in range(PLACEMENT_REVEILS_PAR_JOUR + 2)]
         self._placer()
 
@@ -697,7 +732,7 @@ class EtalementTests(_PlacementBase):
 
     def test_reveils_jusqu_au_nomme_le_dernier_creneau(self):
         for rang in range(PLACEMENT_REVEILS_PAR_JOUR + 1):
-            self._lead(f'Dormant {rang}', stage=stages.NEW, jours=60 + rang)
+            self._joint(self._lead(f'Dormant {rang}', stage=stages.NEW, jours=60 + rang))
         rapport = self._placer()
         self.assertEqual(rapport['reveils_jusqu_au'], JEUDI.isoformat())
 
@@ -705,7 +740,7 @@ class EtalementTests(_PlacementBase):
         """À 15 h, les créneaux 10 h-12 h 20 du jour sont derrière nous : la
         première touche part le prochain jour ouvré — jamais « en retard »
         à la seconde où elle naît."""
-        lead = self._lead('Dormant tardif', stage=stages.NEW, jours=60)
+        lead = self._joint(self._lead('Dormant tardif', stage=stages.NEW, jours=60))
         with frozen(MERCREDI.replace(hour=15, minute=0)):
             self._placer()
         quand = self._reveils(lead)[0].due_at.astimezone(horaires.CASABLANCA)
@@ -979,7 +1014,7 @@ class LotsTests(_PlacementBase):
         # Ancres décroissantes : `dormants[0]` (60 j) prend le premier
         # créneau, `dormants[4]` (64 j) le dernier.
         self.dormants = [
-            self._lead(f'Dormant {rang}', stage=stages.NEW, jours=60 + rang)
+            self._joint(self._lead(f'Dormant {rang}', stage=stages.NEW, jours=60 + rang))
             for rang in range(5)]
 
     def _creneau(self, rang):

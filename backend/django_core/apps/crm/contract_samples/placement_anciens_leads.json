@@ -37,7 +37,7 @@
       },
       {
         "code": "dormant_jamais_chiffre",
-        "libelle": "Dormant — Froid, tag « Jamais chiffré », réveil étalé",
+        "libelle": "Dormant — Froid, tag « Jamais chiffré », réveil étalé si déjà joint ou facture ≥ 2 000",
         "cadence": "reveil",
         "nombre": 58
       }

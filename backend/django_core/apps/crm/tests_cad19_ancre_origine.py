@@ -36,7 +36,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires
-from apps.crm.models import Lead
+from apps.crm.models import Lead, LeadActivity
 from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_realisations import Realisation
@@ -251,6 +251,13 @@ class LexceptionDuReveilTests(_Base):
     """MRY30 rétrodate le départ d'un réveil pour tomber SUR son créneau."""
 
     slug = 'cad19-reveil'
+
+    def setUp(self):
+        super().setUp()
+        # CADV25 — un réveil suppose un client déjà joint une fois.
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.lead.company, lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
 
     def test_le_reveil_garde_son_depart_pour_ancre(self):
         """Départ rétrodaté un SAMEDI (le créneau visé est 30 jours plus

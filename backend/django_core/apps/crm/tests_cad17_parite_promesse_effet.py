@@ -313,7 +313,14 @@ def _touche_suivante_a_la_date(c):
 
 def _derniere_froid_reveils(c):
     c.vrai(c.lead.stage == stages.COLD, 'le dossier n’est pas au Froid')
-    c.vrai(c.ouvertes(cadence='reveil').exists(), 'aucun réveil programmé')
+    # CADV25 — la promesse dit « s'il a déjà été joint ou chiffré » : le scénario
+    # de prise de contact n'est ni l'un ni l'autre ; le suivi d'un devis et la
+    # deuxième affaire ont un historique par construction.
+    if c.etape.cadence == 'contact':
+        c.vrai(not c.ouvertes(cadence='reveil').exists(),
+               'un réveil est programmé pour un lead jamais joint ni chiffré')
+    else:
+        c.vrai(c.ouvertes(cadence='reveil').exists(), 'aucun réveil programmé')
 
 
 def _etape_appel_avant_froid(c):
@@ -1100,7 +1107,8 @@ class PariteFroidRefuseTests(PariteBase):
         self.assertEqual(self._rejouer(appel, 'non_joint', 'base').status_code, 200)
         lead.refresh_from_db()
         self.assertEqual(lead.stage, stages.COLD)
-        self.assertTrue(lead.relance_etapes.filter(
+        # CADV25 — ce lead n'a jamais été joint : au Froid, sans réveil.
+        self.assertFalse(lead.relance_etapes.filter(
             cadence='reveil', statut=A_FAIRE).exists())
 
 
