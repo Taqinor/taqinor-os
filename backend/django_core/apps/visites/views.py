@@ -704,6 +704,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
                     'La visite ne peut pas être terminée : '
                     f'{len(manquants)} élément(s) manquent encore.'),
             }, status=status.HTTP_409_CONFLICT)
+        # ACVI61 — après un renvoi le lead a déjà eu son retour : le bureau
+        # d'études est re-prévenu, le lead reçoit UNE note et rien d'autre.
+        reprise = visite.statut == VisiteTerrain.Statut.A_REFAIRE
         visite.statut = VisiteTerrain.Statut.TERMINEE
         visite.date_realisee = timezone.now()
         visite.save(update_fields=['statut', 'date_realisee'])
@@ -711,8 +714,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         # geste) ; l'ÉVÉNEMENT, lui, emporte le RETOUR TERRAIN (texte libre +
         # commentaires de photos), que le CRM inscrit dans l'historique du
         # lead et qui déclenche le rappel « sous 24-48 h » au responsable.
-        services.journaliser_visite(visite, request.user, 'terminee')
-        services.emettre_visite_terminee(visite, request.user)
+        if not reprise:
+            services.journaliser_visite(visite, request.user, 'terminee')
+        services.emettre_visite_terminee(visite, request.user, reprise=reprise)
         # …et le bureau d'études apprend qu'une visite attend son feu vert :
         # avant, personne n'était prévenu et le dossier pouvait dormir.
         services.notifier_valideurs_visite(visite, acteur=request.user)

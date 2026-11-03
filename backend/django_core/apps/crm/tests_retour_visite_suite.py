@@ -16,9 +16,11 @@ Horloge FIXE : mercredi 23/09/2026, 10 h à Casablanca.
 """
 import datetime
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
 
 from authentication.models import Company
 from testkit.time import frozen
@@ -92,6 +94,44 @@ class _Base(TestCase):
 
 class NotificationSuiteReelleTests(_Base):
     slug = 'rvs-notif'
+
+    def test_reterminer_apres_renvoi_ne_double_rien(self):
+        # ACVI61 — le 1er retour a posé sa touche (close ici) et notifié ;
+        # re-terminer après renvoi re-prévient le bureau d'études, c'est tout.
+        bureau = User.objects.create_user(
+            username=f'{self.slug}-bureau', password='x',
+            company=self.company, role_legacy='responsable')
+        self._emettre_retour()
+        etape = self.lead.relance_etapes.get(
+            libelle=cadence_reperes.FILET_JOINT_LIBELLE, statut=A_FAIRE)
+        RelanceEtape.objects.filter(pk=etape.pk).update(
+            statut=RelanceEtape.Statut.FAIT)
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+        visite.statut = VisiteTerrain.Statut.A_REFAIRE
+        visite.save(update_fields=['statut'])
+        etapes_avant = self.lead.relance_etapes.count()
+        api = APIClient()
+        api.force_authenticate(self.terrain)
+
+        with mock.patch('apps.visites.selectors.visite_terrain_manquants',
+                        return_value=[]):
+            resp = api.post(
+                f'/api/django/visites/visites/{visite.pk}/terminer/', {},
+                format='json')
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(self.lead.relance_etapes.count(), etapes_avant)
+        self.assertFalse(self.lead.relance_etapes.filter(
+            libelle=cadence_reperes.FILET_JOINT_LIBELLE,
+            statut=A_FAIRE).exists())
+        self.assertEqual(Notification.objects.filter(
+            recipient=self.owner,
+            event_type=EventType.VISITE_RETOUR_TERRAIN).count(), 1)
+        self.assertEqual(Notification.objects.filter(
+            recipient=bureau,
+            event_type=EventType.VISITE_TERRAIN_A_VALIDER).count(), 1)
+        self.assertEqual(self.lead.activites.filter(
+            body__startswith='Visite technique terminée de nouveau').count(), 1)
 
     def test_sans_devis_la_notification_dit_preparer_le_devis(self):
         self._emettre_retour()

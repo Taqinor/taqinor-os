@@ -204,8 +204,11 @@ def emettre_visite_planifiee(visite, user):
     return visite
 
 
-def emettre_visite_terminee(visite, user):
+def emettre_visite_terminee(visite, user, reprise=False):
     """Publie ``visite_terminee`` avec le RETOUR TERRAIN pré-composé.
+
+    ``reprise`` (ACVI61) : « terminer » qui suit un renvoi (``a_refaire``) — le
+    lead a déjà reçu son retour, le CRM n'écrit qu'une note.
 
     Le récap de ``visite_validee`` ne porte que des MESURES : les remarques
     libres du technicien (« le tableau est saturé », « accès par le garage »)
@@ -229,7 +232,7 @@ def emettre_visite_terminee(visite, user):
         visite_terminee.send(
             sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
             user=user, retour=selectors.retour_visite(visite),
-            qualification=visite.qualification)
+            qualification=visite.qualification, reprise=reprise)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre visite terminee : échec ignoré, comportement dégradé", exc_info=True)
         return None

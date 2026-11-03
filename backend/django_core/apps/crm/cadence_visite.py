@@ -765,7 +765,7 @@ def _requalifier_debrief(etape, cle, config=None):
 
 
 def appliquer_retour_visite(lead, user, retour, auteur='',
-                            qualification=None):
+                            qualification=None, reprise=False):
     """Le technicien est reparti : son retour redescend, et on rappelle.
 
     1. UNE note de chatter portant, dans cet ordre, la QUALIFICATION du client
@@ -798,9 +798,18 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
     seule, jamais une seconde — dit la suite et sa date. Renvoie alors
     l'étape devis.
 
+    ACVI61 — ``reprise`` (terminer après un renvoi) : le retour a déjà produit
+    sa suite ; UNE note système, aucune touche ni notification.
+
     ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
     corps = _composer_note_retour_visite(retour, auteur=auteur,
                                          qualification=qualification)
+    if reprise:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'Visite technique terminée de nouveau après renvoi.\n{corps}')
+        return None
     # Relevé du 25/09/2026 — la visite a EU LIEU : une « Confirmer la visite
     # (veille) » encore ouverte (retour saisi avant que la confirmation soit
     # cochée) n'a plus d'objet. Annulée par le moteur (CKP1, jamais « sautée
