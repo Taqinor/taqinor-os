@@ -236,6 +236,67 @@ class ReviserDevisService(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self._assert_v1_reactivee(v1, bc)
 
+    # ── ADEV16 — le retrait d'une version garde toujours une version active ──
+
+    def _admin(self):
+        return _api(User.objects.create_user(
+            username='adev16_admin', password='x', role_legacy='admin',
+            company=self.company))
+
+    def _chaine_v1_acceptee_v2_envoyee_v3(self):
+        v1, v2, _bc = self._v1_acceptee_et_v2()
+        Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ENVOYE)
+        v2.refresh_from_db()
+        r = self._post(v2)
+        self.assertEqual(r.status_code, 201, r.content)
+        return v1, v2, Devis.objects.get(pk=r.data['id'])
+
+    def _assert_v2_tete_v1_vendue(self, v1, v2):
+        v1.refresh_from_db()
+        v2.refresh_from_db()
+        self.assertTrue(v2.is_active)
+        self.assertIsNone(v2.superseded_by_id)
+        self.assertEqual(v2.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(v1.superseded_by_id, v2.pk)
+        self.assertEqual(self._post(v2).status_code, 201)
+
+    def test_adev16_suppression_v3_rend_la_tete_a_la_v2_envoyee(self):
+        v1, v2, v3 = self._chaine_v1_acceptee_v2_envoyee_v3()
+        r = self._admin().delete(f'/api/django/ventes/devis/{v3.id}/')
+        self.assertEqual(r.status_code, 204, r.content)
+        self._assert_v2_tete_v1_vendue(v1, v2)
+
+    def test_adev16_archivage_v3_rend_la_tete_a_la_v2_envoyee(self):
+        v1, v2, v3 = self._chaine_v1_acceptee_v2_envoyee_v3()
+        r = self.api.patch(f'/api/django/ventes/devis/{v3.id}/',
+                           {'is_active': False}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self._assert_v2_tete_v1_vendue(v1, v2)
+
+    def test_adev16_v1_envoyee_retrouvee_apres_suppression_de_sa_v2(self):
+        v1 = self._devis(Devis.Statut.ENVOYE)
+        r = self._post(v1)
+        self.assertEqual(r.status_code, 201, r.content)
+        r = self._admin().delete(f"/api/django/ventes/devis/{r.data['id']}/")
+        self.assertEqual(r.status_code, 204, r.content)
+        v1.refresh_from_db()
+        self.assertTrue(v1.is_active)
+        self.assertEqual(v1.statut, Devis.Statut.ENVOYE)
+        self.assertTrue(DevisActivity.objects.filter(
+            devis=v1, body__contains='révision abandonnée').exists())
+
+    def test_adev16_archivage_et_reactivation_dans_la_meme_transaction(self):
+        _v1, v2, _bc = self._v1_acceptee_et_v2()
+        api = _api(self.user)
+        api.raise_request_exception = False
+        with patch('apps.ventes.domain.revision.abandonner_revision',
+                   side_effect=RuntimeError('panne')):
+            r = api.patch(f'/api/django/ventes/devis/{v2.id}/',
+                          {'is_active': False}, format='json')
+        self.assertEqual(r.status_code, 500, r.content)
+        v2.refresh_from_db()
+        self.assertTrue(v2.is_active)
+
     # ── VNT56 — les jumeaux refus et expiration d'une V2 non acceptée ──────
 
     def _v2_envoyee(self):

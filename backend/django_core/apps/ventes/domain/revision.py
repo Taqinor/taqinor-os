@@ -230,7 +230,7 @@ def reviser_devis(devis, *, user=None):
     return nd
 
 
-def abandonner_revision(v2, user=None):
+def abandonner_revision(v2, user=None, *, retrait=False):
     """VNT55 (D-ADEV-1 = (a), couvre ADEV16) — la révision ``v2`` d'une vente
     ACCEPTÉE est abandonnée (brouillon supprimé, version archivée, refusée ou
     expirée) : la V1 acceptée qu'elle remplaçait REDEVIENT la vente en vigueur
@@ -239,27 +239,38 @@ def abandonner_revision(v2, user=None):
 
     À appeler AVANT la suppression de ``v2`` (le lien ``superseded_by`` est
     remis à NULL par la cascade). Une V2 ACCEPTÉE n'abandonne rien (elle est
-    la vente) ; un prédécesseur non accepté reste tel quel. Le statut n'est
-    jamais écrit (règle #4) : seuls ``is_active`` et ``superseded_by``.
-    Rend la liste des versions réactivées."""
+    la vente). Le statut n'est jamais écrit (règle #4) : seuls ``is_active``
+    et ``superseded_by``. Rend la liste des versions réactivées.
+
+    ADEV16 — ``retrait=True`` (suppression, archivage : ``v2`` quitte la
+    chaîne) réactive le prédécesseur QUEL QUE SOIT son statut : toute chaîne
+    garde une version active. Sinon V1 acceptée → V2 envoyée → V3 brouillon
+    supprimée laissait V1 et V2 inactives, sans révision possible. Refus et
+    expiration (``retrait=False``) : ``v2`` reste la version active ; seul un
+    prédécesseur accepté en reprend la place."""
     from django.db import transaction
     from apps.ventes import activity
     from apps.ventes.models import Devis
 
     if getattr(v2, 'pk', None) is None or v2.statut == Devis.Statut.ACCEPTE:
         return []
+    predecesseurs = Devis.objects.filter(
+        company_id=v2.company_id, superseded_by_id=v2.pk)
+    if not retrait:
+        predecesseurs = predecesseurs.filter(statut=Devis.Statut.ACCEPTE)
     reactivees = []
     with transaction.atomic():
-        for v1 in (Devis.objects.select_for_update(of=('self',))
-                   .filter(company_id=v2.company_id, superseded_by_id=v2.pk,
-                           statut=Devis.Statut.ACCEPTE).order_by('pk')):
+        for v1 in (predecesseurs.select_for_update(of=('self',))
+                   .order_by('pk')):
             v1.is_active = True
             v1.superseded_by = None
             v1.save(update_fields=['is_active', 'superseded_by'])
+            role = ('la vente' if v1.statut == Devis.Statut.ACCEPTE
+                    else 'la version')
             activity.log_devis_note(
                 v1, user,
                 f'Révision {v2.reference} abandonnée : {v1.reference} '
-                'redevient la vente en vigueur (révision abandonnée).')
+                f'redevient {role} en vigueur (révision abandonnée).')
             reactivees.append(v1)
     return reactivees
 
