@@ -46,6 +46,17 @@ class GardeContactTests(unittest.TestCase):
         genres = sorted(g for _, _, _, g in garde.analyser_source(src, "f.py"))
         self.assertEqual(genres, ["email", "wa.me"])
 
+    def test_build_wa_url_detecte(self):
+        # ACVI90 — un lien vers un lead construit sans garde ; pas la validation.
+        src = "def f(lead):\n    return build_wa_url(lead.telephone, 'Bonjour')\n"
+        r = garde.analyser_source(src, "f.py")
+        self.assertEqual([(fn, g, li) for _, li, fn, g in r], [("f", "wa.me", 2)])
+        src = "def f(brut):\n    return build_wa_url(brut, '')\n"
+        self.assertEqual(garde.analyser_source(src, "f.py"), [])
+        src = ("def f(lead):\n    if refus_rendu_whatsapp(lead):\n        return None\n"
+               "    return build_wa_url(lead.telephone, 'Bonjour')\n")
+        self.assertEqual(garde.analyser_source(src, "f.py"), [])
+
     def test_docstring_wame_ignoree(self):
         src = 'def a():\n    """lien wa.me/xxx"""\n    return 1\n'
         self.assertEqual(garde.analyser_source(src, "f.py"), [])
