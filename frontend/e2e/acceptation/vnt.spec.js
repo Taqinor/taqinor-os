@@ -26,7 +26,7 @@ const etape = groupe('VNT', [
   ...plage(10, 23), ...plage(25, 31), ...plage(33, 42), 'VNT44', 'VNT45', 'VNT46',
   'VNT58', 'VNT59', 'VNT60', 'VNT61', 'VNT62', 'VNT64', 'VNT72', 'VNT73', 'VNT74', 'VNT75', 'VNT78',
   'VNT53', 'VNT54', 'VNT55', 'VNT67', 'VNT77', 'VNT49', 'VNT66', 'VNT68', 'VNT70', 'VNT80', 'VNT84', 'VNT85', 'VNT86', 'VNT88', 'VNT89', 'VNT91', 'VNT92', 'VNT93',
-  'VNT97', 'VNT98', 'VNT100', 'VNT102', 'VNT103', 'VNT104', 'VNT105', 'VNT106',
+  'VNT83', 'VNT97', 'VNT98', 'VNT100', 'VNT102', 'VNT103', 'VNT104', 'VNT105', 'VNT106',
 ])
 
 const API = '/api/django'
@@ -478,7 +478,7 @@ async function devisDetail(request, id) {
 /** Facture(s) de la vente servies par le serveur (`vente.factures`, vente_etat.json). */
 const venteDe = async (request, id) => (await devisDetail(request, id)).vente
 
-etape('P2.1', ['VNT62', 'VNT68', 'VNT70', 'VNT74', 'VNT75'], async ({ page, suivi, testInfo }) => {
+etape('P2.1', ['VNT83', 'VNT62', 'VNT68', 'VNT70', 'VNT74', 'VNT75'], async ({ page, suivi, testInfo }) => {
   // Accepter ⇒ brouillon d'acompte automatique (30 % de 54 500 = 16 350) visible dans le panneau ;
   // « Facturer l'acompte » 15 000 « déjà payé » ⇒ LE MÊME brouillon est émis et payé.
   await avecReplique(page, testInfo, async (r) => {
@@ -533,7 +533,7 @@ function compterMails() {
   return { emailLog: Number(m[1]), consoleMessages: messages }
 }
 
-etape('P2.2', ['VNT49', 'VNT58', 'VNT59', 'VNT60', 'VNT64', 'VNT73', 'VNT78'], async ({ page, suivi, testInfo }) => {
+etape('P2.2', ['VNT83', 'VNT49', 'VNT58', 'VNT59', 'VNT60', 'VNT64', 'VNT73', 'VNT78'], async ({ page, suivi, testInfo }) => {
   // « Prix négocié » 49 000 depuis le panneau : aperçu serveur (remise 10,00 %), application ⇒ V2 acceptée,
   // V1 remplacée, acompte payé repris, reste à facturer 34 000 ; le lien d'avenant s'affiche.
   await avecReplique(page, testInfo, async (r) => {
@@ -614,7 +614,7 @@ async function echeancierSolde(request, devisId) {
 const ligneVente = (panneau, f) => panneau.getByTestId(`facture-vente-${f.id}`)
 const ongletDevis = (page) => page.getByTestId('lw-context-rail').getByRole('tab', { name: /devis/i })
 
-etape('P2.3', ['VNT67', 'VNT75', 'VNT77'], async ({ page, suivi, testInfo }) => {
+etape('P2.3', ['VNT83', 'VNT67', 'VNT75', 'VNT77'], async ({ page, suivi, testInfo }) => {
   // Brouillon d'acompte automatique : Modifier le montant (→ 15 000) puis Supprimer, depuis le panneau.
   await avecReplique(page, testInfo, async (r) => {
     const brouillon = (await venteDe(page.request, r.devisId)).factures[0]
@@ -659,7 +659,7 @@ etape('P2.3', ['VNT67', 'VNT75', 'VNT77'], async ({ page, suivi, testInfo }) => 
   })
 })
 
-etape('P2.4', ['VNT75', 'VNT77'], async ({ page, suivi, testInfo }) => {
+etape('P2.4', ['VNT83', 'VNT75', 'VNT77'], async ({ page, suivi, testInfo }) => {
   // Acompte payé 15 000 → « Facturer … » (Totalité) en brouillon 34 000 → Supprimer ce brouillon →
   // Annuler l'acompte émis : directive puis avoir de contre-passation.
   await avecReplique(page, testInfo, async (r0) => {
@@ -732,7 +732,7 @@ etape('P2.4', ['VNT75', 'VNT77'], async ({ page, suivi, testInfo }) => {
   }, { remise: '0' })
 })
 
-etape('P2.8', ['VNT66', 'VNT75'], async ({ page, testInfo }) => {
+etape('P2.8', ['VNT83', 'VNT66', 'VNT75'], async ({ page, testInfo }) => {
   // Échéancier PAR DÉFAUT 30/60/10 après « Prix négocié » 49 000 (D-VNT83-SOLDE) : « Facturer la tranche suivante »
   // ⇒ 29 400 (émise) ; puis la suivante 4 600 (brouillon) ; Σ des tranches du plan = 49 000.
   await avecReplique(page, testInfo, async (r0) => {
@@ -761,7 +761,7 @@ etape('P2.8', ['VNT66', 'VNT75'], async ({ page, testInfo }) => {
   }, { remise: '0' })
 })
 
-etape('P2.5', ['VNT54'], async ({ page, testInfo, suivi }) => {
+etape('P2.5', ['VNT83', 'VNT54'], async ({ page, testInfo, suivi }) => {
   // Une 2e vente sur le MÊME lead : accepter un 2e devis ⇒ 409 vente_active_existante nommant la vente en vigueur.
   await avecReplique(page, testInfo, async (r) => {
     const produit = await lireJson(await page.request.post(`${API}/stock/produits/`, { timeout: 120_000,
@@ -780,7 +780,7 @@ etape('P2.5', ['VNT54'], async ({ page, testInfo, suivi }) => {
   })
 })
 
-etape('P2.6', ['VNT60', 'VNT61'], async ({ page, testInfo }) => {
+etape('P2.6', ['VNT83', 'VNT60', 'VNT61'], async ({ page, testInfo }) => {
   // Avenant : « Faire signer l'avenant » = lien public + UNE tâche (idempotent) ; le client signe par le lien :
   // confirmation, statut inchangé (accepté). La PAGE publique (apps/web, bandeau) est jouée à part par P2.9 ;
   // ici l'API publique qu'elle appelle.
@@ -821,7 +821,7 @@ etape('P2.6', ['VNT60', 'VNT61'], async ({ page, testInfo }) => {
 // VNT72 : la PAGE PUBLIQUE de l'avenant (apps/web, Astro) n'est pas servie par la pile ERP — elle est servie à part
 // (`E2E_WEB_BASE`, ex. `astro dev --port 4321` avec PUBLIC_API_BASE=http://127.0.0.1:8010 : le frontmatter SSR de
 // `pages/proposition/[...token].astro` lit l'API publique de CETTE pile). Sans `E2E_WEB_BASE` l'étape ÉCHOUE, nommée.
-etape('P2.9', ['VNT72'], async ({ page, testInfo }) => {
+etape('P2.9', ['VNT83', 'VNT72'], async ({ page, testInfo }) => {
   const web = process.env.E2E_WEB_BASE
   expect(web, 'E2E_WEB_BASE absent : apps/web non servie (NON JOUABLE sans elle)').toBeTruthy()
   await avecReplique(page, testInfo, async (r) => {
@@ -853,7 +853,7 @@ etape('P2.9', ['VNT72'], async ({ page, testInfo }) => {
   }, { remise: '0' })
 })
 
-etape('P2.7', ['VNT53', 'VNT55'], async ({ page, testInfo }) => {
+etape('P2.7', ['VNT83', 'VNT53', 'VNT55'], async ({ page, testInfo }) => {
   // Parcours classique Réviser → Envoyer la V2 d'un accepté : 0 étape de cadence commerciale, UNE tâche
   // « Faire signer l'avenant » (ADEV57). Puis abandonner la révision rend la V1 active (VNT55) — sur une 2e réplique.
   await avecReplique(page, testInfo, async (r) => {
@@ -880,7 +880,7 @@ etape('P2.7', ['VNT53', 'VNT55'], async ({ page, testInfo }) => {
   })
 })
 
-etape('P2.10', ['VNT54', 'VNT58', 'VNT80'], async ({ page, suivi, testInfo }) => {
+etape('P2.10', ['VNT83', 'VNT54', 'VNT58', 'VNT80'], async ({ page, suivi, testInfo }) => {
   // 409 vers la tête : (a) le geste Prix négocié rejoué sur la V1 remplacée ⇒ 409 `version_remplacee` nommant la V2 ;
   // (b) un 2e devis accepté depuis la LISTE sur le même lead ⇒ 409 `vente_active_existante`, erreur SOUS la ligne
   // avec « Ouvrir <réf> » qui ouvre la vente en vigueur (`?devis=<id>`).
@@ -964,7 +964,7 @@ async function signerAvenantParLaPage(page, r, v2Id, jeton) {
   expect([v2.statut, v2.is_active], 'statut inchangé (règle #4)').toEqual(['accepte', true])
 }
 
-etape('P2.11', ['VNT60', 'VNT61', 'VNT72', 'VNT73'], async ({ page, testInfo }) => {
+etape('P2.11', ['VNT83', 'VNT60', 'VNT61', 'VNT72', 'VNT73'], async ({ page, testInfo }) => {
   // BUREAU : « Prix négocié » 49 000 puis « Faire signer l'avenant » dans le dialogue (lien affiché) ; le client
   // ouvre le lien et signe l'avenant sur la page publique (formulaire), confirmation, statut inchangé.
   await avecReplique(page, testInfo, async (r) => {
@@ -989,7 +989,7 @@ etape('P2.11', ['VNT60', 'VNT61', 'VNT72', 'VNT73'], async ({ page, testInfo }) 
   }, { remise: '0' })
 })
 
-etape('P2.12', ['VNT60', 'VNT61', 'VNT72'], async ({ page, testInfo }) => {
+etape('P2.12', ['VNT83', 'VNT60', 'VNT61', 'VNT72'], async ({ page, testInfo }) => {
   // TÉLÉPHONE (375 × 812) : même avenant, le client signe sur son téléphone par le lien.
   await avecReplique(page, testInfo, async (r) => {
     const neg = await prixNegocieParApi(page.request, r.devisId, '49000')
