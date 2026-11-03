@@ -14,6 +14,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
+from core.champs_stricts import ChaineStricte
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
 from core.viewsets import CompanyScopedModelViewSet
@@ -256,8 +257,9 @@ class LeadVisitesActionsMixin:
     @extend_schema(request=sd.corps('CrmPlanifierVisiteRequest', commercial=serializers.IntegerField(required=False),
                                     date_prevue=serializers.DateField(),
                                     etape=serializers.RegexField(r'^[0-9]+$', required=False),
-                                    note_etape=serializers.CharField(required=False),
-                                    notes=serializers.CharField(required=False),
+                                    # ERR-ENF11-FUZZ-CRM — publiés sans caractère nul (refusé 400).
+                                    note_etape=ChaineStricte(required=False, allow_blank=True),
+                                    notes=ChaineStricte(required=False, allow_blank=True),
                                     replanifier=serializers.BooleanField(required=False)),
                    responses={201: inline_serializer('CrmLeadVisitePlanifiee', {
                        'visite': serializers.DictField(),

@@ -668,6 +668,28 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
       .toHaveTextContent('attend depuis 2 jours ouvrés')
   })
 
+  describe('« Standby échus » (CADV88, ligne fixée par exemple_alerte)', () => {
+    it('la liste se rend depuis le contrat : lien du lead, retard en jours ouvrés servi, responsable', async () => {
+      const LIGNE = ALERTE.exceptions.standby_echus.lignes[0]
+      crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
+      monter()
+      await attendreVerdict()
+      expect(screen.getByTestId('controle-total-standby_echus')).toHaveTextContent('1')
+      const ligne = within(bloc('standby_echus')).getByTestId('controle-exception-ligne')
+      expect(within(ligne).getByRole('link', { name: LIGNE.lead_nom }))
+        .toHaveAttribute('href', `/crm/leads?lead=${LIGNE.lead}`)
+      expect(ligne).toHaveTextContent(`échu depuis ${LIGNE.depuis_jours_ouvres} jours ouvrés`)
+      expect(ligne).toHaveTextContent(`Responsable : ${LIGNE.owner_nom}`)
+    })
+
+    it('total 0 (exemple_vide) : aucune liste', async () => {
+      crmApi.getControleSuivi.mockResolvedValue({ data: VIDE })
+      monter()
+      await attendreVerdict()
+      expect(screen.queryByTestId('controle-exception-standby_echus')).not.toBeInTheDocument()
+    })
+  })
+
   describe('« Dossiers sans prochaine étape » (ligne fixée par exemple_alerte)', () => {
     const LIGNE = ALERTE.exceptions.sans_prochaine_etape.lignes[0]
 

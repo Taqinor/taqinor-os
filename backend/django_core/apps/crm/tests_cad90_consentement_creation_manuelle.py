@@ -20,18 +20,20 @@ Ce fichier verrouille :
   * le registre n'est jamais bloquant : une création de lead aboutit même si
     l'écriture au registre échoue.
 """
+import datetime
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from core.models import ConsentRecord
 
-from apps.crm import leads_consentement
-from apps.crm.models import Lead
+from apps.crm import horaires, leads_consentement, stages
+from apps.crm.fiche_bulk import _preparations_whatsapp_du_jour, apply_bulk_action
+from apps.crm.models import Lead, LeadActivity
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -163,3 +165,69 @@ class BasesLegalesTests(_Base):
         self.assertEqual(self._entrees('0600000015'), [])
         self.assertEqual(ConsentRecord.objects.filter(
             company=autre, subject_identifier='0600000015').count(), 1)
+
+    def test_la_preparation_de_reactivation_trace_la_base_legale_et_ferme_le_palier_2(self):
+        """CADV109. Mutant : ignorer l'interrupteur ⇒ les 3 liens sortent
+        interrupteur faux et échoue."""
+        trois = Lead.objects.bulk_create([
+            Lead(company=self.company, nom=f'K6 {rang}', stage=stages.COLD,
+                 source=Lead.Source.META_LEAD_ADS, telephone=f'21260000002{rang}')
+            for rang in range(3)])
+        oppose = Lead.objects.bulk_create([Lead(
+            company=self.company, nom='Opposé', stage=stages.COLD, ne_plus_contacter=True,
+            source=Lead.Source.META_LEAD_ADS, telephone='212600000029')])[0]
+        ids = [lead.pk for lead in trois]
+        Lead.objects.filter(pk__in=ids + [oppose.pk]).update(
+            date_creation=datetime.datetime(2026, 6, 15, 10, 0, tzinfo=horaires.CASABLANCA))
+        marqueur = 'Réactivation K6 palier 2 — message préparé'
+
+        def preparer(interrupteur):
+            with override_settings(REACTIVATION_K6_PALIER2=interrupteur):
+                return apply_bulk_action(
+                    company=self.company, user=self.acteur, lead_ids=ids + [oppose.pk],
+                    op='prepare_whatsapp',
+                    params={'seau': 'k6_p2', 'template_cle': 'reactivation_k6_p2'})
+
+        def lignes():
+            return LeadActivity.objects.filter(company=self.company, body=marqueur).count()
+
+        ferme = preparer(False)
+        self.assertEqual(ferme['queue'], [])
+        self.assertEqual({s['id']: s['reason'] for s in ferme['skipped']},
+                         {**dict.fromkeys(ids, 'palier2_ferme'), oppose.pk: 'ne plus contacter'})
+        self.assertEqual(lignes(), 0)
+        self.assertFalse(ConsentRecord.objects.filter(company=self.company).exists())
+
+        ouvert = preparer(True)
+        self.assertEqual([q['lead_id'] for q in ouvert['queue']], ids)
+        for ligne in ouvert['queue']:
+            self.assertIn('wa.me', ligne['wa_url'])
+            self.assertIn('STOP', ligne['wa_url'])
+        self.assertEqual([s['id'] for s in ouvert['skipped']], [oppose.pk])
+        for lead in trois:
+            self.assertEqual(LeadActivity.objects.filter(lead=lead, body=marqueur).count(), 1)
+            entree, = self._entrees(lead.telephone)
+            self.assertFalse(entree.granted)
+            self.assertIn('K6 palier 2', entree.source)
+            self.assertIn(leads_consentement.BASE_LEGALE_SOLLICITATION, entree.source)
+        self.assertEqual(_preparations_whatsapp_du_jour(self.company, self.acteur), 3)
+
+        # Rejouer le même jour rend les liens sans rien ajouter ; refermer n'écrit rien.
+        self.assertEqual(len(preparer(True)['queue']), 3)
+        self.assertEqual(preparer(False)['queue'], [])
+        self.assertEqual(lignes(), 3)
+        self.assertEqual(ConsentRecord.objects.filter(company=self.company).count(), 3)
+
+    def test_la_preparation_de_reactivation_refuse_un_seau_inconnu_et_un_lead_hors_seau(self):
+        """CADV109 — seau inconnu : 400 (ValueError) ; un lead qui n'est pas dans le
+        seau demandé sort avec son motif."""
+        lead = Lead.objects.bulk_create([Lead(
+            company=self.company, nom='Vivant', telephone='212600000030')])[0]
+        with self.assertRaisesMessage(ValueError, 'Seau de réactivation inconnu.'):
+            apply_bulk_action(company=self.company, user=self.acteur, lead_ids=[lead.pk],
+                              op='prepare_whatsapp', params={'seau': 'k9'})
+        resultat = apply_bulk_action(
+            company=self.company, user=self.acteur, lead_ids=[lead.pk],
+            op='prepare_whatsapp', params={'seau': 'k5', 'body': 'Bonjour.'})
+        self.assertEqual(resultat['queue'], [])
+        self.assertEqual(resultat['skipped'][0]['reason'], 'hors seau')

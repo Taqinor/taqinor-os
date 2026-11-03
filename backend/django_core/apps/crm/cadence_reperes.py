@@ -298,6 +298,10 @@ _LIBELLES_FILET_HORS_GABARIT = frozenset({
     LIBELLE_CONFIRMER_SIGNATURE,  # CADV36
     LIBELLE_RELANCE_ACOMPTE,  # CADV36
 })
+#: CADV29 (D-CADV-10) — « Pièces reçues ? » : hors gabarit, mais retrouvée par sa
+#: CLÉ stable. Une étape de filet : sa suite est décidée par le filet, jamais par
+#: le barreau suivant du gabarit `generique`.
+CLE_PIECES_RECUES = 'pieces_recues'
 #: Les libellés PAR DÉFAUT des étapes de filet (les étapes posées avant la
 #: clé en portent un) — un lecteur ne s'en sert plus pour RECONNAÎTRE une
 #: étape (``est_etape_de_filet``/``_q_filet``), seulement pour les nommer.
@@ -357,10 +361,11 @@ def q_visite():
 
 def _q_filet():
     """``est_etape_de_filet`` en requête : les étapes du gabarit « Après
-    l'appel » (par clé, ou libellé par défaut) et les deux hors gabarit."""
+    l'appel » (par clé, ou libellé par défaut) et les hors gabarit."""
     from django.db.models import Q
 
     return (q_etape(*CLES_APRES_CONTACT)
+            | Q(cle=CLE_PIECES_RECUES)
             | Q(cle='', libelle__in=tuple(_LIBELLES_FILET_HORS_GABARIT)))
 
 
