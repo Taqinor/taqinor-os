@@ -195,8 +195,8 @@ def _nom_affiche_conseiller(lead, user):
         conseiller = user
     if conseiller is None:
         return ''
-    return (getattr(conseiller, 'first_name', '')
-            or getattr(conseiller, 'username', '') or '')
+    # ACVI54 — jamais le login : sans prénom, la phrase est omise (MRY13).
+    return getattr(conseiller, 'first_name', '') or ''
 
 
 def _nom_affiche_marque(lead):

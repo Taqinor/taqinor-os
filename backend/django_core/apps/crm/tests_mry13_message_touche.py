@@ -444,6 +444,21 @@ class ConseillerTests(_Base):
     prénom de l'utilisateur connecté)."""
     slug = 'mry13-conseiller'
 
+    def test_sans_prenom_la_phrase_est_omise(self):
+        """ACVI54 — le login ne sort jamais dans un message client."""
+        self.acteur.first_name = ''
+        self.acteur.username = 'demo_admin_mry13'
+        self.acteur.save(update_fields=['first_name', 'username'])
+        MessageTemplate.objects.create(
+            company=self.company, cle='identite',
+            corps_fr='Bonjour. Je suis {conseiller}.')
+        touche = self._touche()
+        touche.lead.owner = self.acteur
+        rendu = message_pour_etape(touche, user=self.acteur)
+        self.assertNotIn('demo_admin_mry13', rendu['message'])
+        self.assertNotIn('Je suis', rendu['message'])
+        self.assertIn('conseiller', ' '.join(rendu['placeholders_manquants']))
+
     def test_le_conseiller_est_le_responsable_du_lead(self):
         """Dans le fixture de base, `lead.owner` est déjà `self.acteur`
         (« Meryem ») : ce test documente que {conseiller} vient bien du
