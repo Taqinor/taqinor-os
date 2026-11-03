@@ -454,3 +454,14 @@ describe('WAUD71 WAUD51 — JSON-LD', () => {
     for (const p of ['pages/index.astro', 'pages/en/index.astro', 'pages/ar/index.astro']) expect(lire(p)).not.toContain("'@type': 'Person'");
   });
 });
+
+describe('WAUD53 — « 10 questions » : titre et liens', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  it('titre « choisir un installateur », liens depuis menu, pied de page, 3 pages et llms.txt', () => {
+    expect(lire('src/pages/ressources/10-questions-avant-de-signer.astro')).toContain('title="Choisir un installateur de panneaux solaires au Maroc : 10 questions avant de signer');
+    expect(lire('src/pages/ar/ressources/10-questions-avant-de-signer.astro')).toMatch(/title="[^"]*الألواح الشمسية[^"]*10 أسئلة/);
+    for (const f of ['src/components/Header.astro', 'src/components/Footer.astro', 'src/pages/résidentiel.astro', 'src/pages/faq.astro', 'src/pages/garanties.astro', 'public/llms.txt']) {
+      expect(lire(f), f).toContain('/ressources/10-questions-avant-de-signer');
+    }
+  });
+});

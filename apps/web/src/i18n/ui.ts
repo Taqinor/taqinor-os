@@ -31,6 +31,7 @@ export const ui = {
     'nav.openMenu': 'Ouvrir le menu',
     'nav.primary': 'Navigation principale',
     'nav.homeLogo': 'TAQINOR — accueil',
+    'nav.tenQuestions': '10 questions avant de signer',
     'nav.mobile': 'Navigation mobile',
     // WJ100 — 'Blog' et 'Fiches techniques' étaient codés en dur (non
     // traduits) dans Header.astro/Footer.astro ; 'Espace client' était dupliqué
@@ -168,6 +169,7 @@ export const ui = {
     'nav.openMenu': 'Open menu',
     'nav.primary': 'Main navigation',
     'nav.homeLogo': 'TAQINOR — home',
+    'nav.tenQuestions': '10 questions before signing',
     'nav.mobile': 'Mobile navigation',
     'nav.blog': 'Blog',
     'nav.produits': 'Technical data sheets',
@@ -288,6 +290,7 @@ export const ui = {
     'nav.openMenu': 'فتح القائمة',
     'nav.primary': 'التنقل الرئيسي',
     'nav.homeLogo': 'TAQINOR — الرئيسية',
+    'nav.tenQuestions': '10 أسئلة قبل التوقيع',
     'nav.mobile': 'تنقل الجوال',
     'nav.blog': 'المدونة',
     'nav.produits': 'أوراق البيانات التقنية',
