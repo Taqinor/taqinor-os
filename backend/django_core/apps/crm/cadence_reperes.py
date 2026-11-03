@@ -316,7 +316,9 @@ LIBELLE_RELANCE_ACOMPTE = 'Acompte : relancer le client'
 LIBELLE_FAIRE_SIGNER_AVENANT = 'Faire signer l’avenant'
 LIBELLE_SIGNAL_PROPOSITION = 'Proposition rouverte — appeler'
 LIBELLE_SIGNAL_QUESTIONNAIRE = 'Questionnaire complété — appeler'
-LIBELLE_RAPPEL_DEMANDE = 'Rappeler le client (il l’a demandé)'
+#: Libellé de la touche « rappel demandé ». Sert aussi de clé d'idempotence :
+#: deux clics du même client ne laissent jamais deux lignes dans la file.
+RAPPEL_DEMANDE_LIBELLE = 'Rappeler le client (il l’a demandé)'
 _LIBELLES_FILET_HORS_GABARIT = frozenset({
     PASSATION_LIBELLE,  # CAD54
     QUESTION_PRIX_LIBELLE,  # CAD7
@@ -325,7 +327,7 @@ _LIBELLES_FILET_HORS_GABARIT = frozenset({
     LIBELLE_FAIRE_SIGNER_AVENANT,  # ACVI35
     LIBELLE_SIGNAL_PROPOSITION,  # ACVI35
     LIBELLE_SIGNAL_QUESTIONNAIRE,  # ACVI35
-    LIBELLE_RAPPEL_DEMANDE,  # ACVI35
+    RAPPEL_DEMANDE_LIBELLE,  # ACVI35
 })
 #: CADV29 (D-CADV-10) — « Pièces reçues ? » : hors gabarit, mais retrouvée par sa
 #: CLÉ stable. Une étape de filet : sa suite est décidée par le filet, jamais par
@@ -337,8 +339,9 @@ CLE_PIECES_RECUES = 'pieces_recues'
 CLE_RAPPEL_FDA = 'rappel_fda'
 #: ACVI35 — LA liste des clés stables des étapes moteur hors gabarit : lue par
 #: ``est_etape_de_filet`` et ``_q_filet`` (donc ``q_etape_moteur``).
-CLE_ETAPE_VALIDITE = 'validite_a_renouveler'
-CLES_ETAPES_MOTEUR = (CLE_PIECES_RECUES, CLE_RAPPEL_FDA, CLE_ETAPE_VALIDITE)
+#: ACRM45 (jumeau) — la clé stable de l'étape « validité à renouveler ».
+CLE_VALIDITE_A_RENOUVELER = 'validite_a_renouveler'
+CLES_ETAPES_MOTEUR = (CLE_PIECES_RECUES, CLE_RAPPEL_FDA, CLE_VALIDITE_A_RENOUVELER)
 #: Les libellés PAR DÉFAUT des étapes de filet (les étapes posées avant la
 #: clé en portent un) — un lecteur ne s'en sert plus pour RECONNAÎTRE une
 #: étape (``est_etape_de_filet``/``_q_filet``), seulement pour les nommer.

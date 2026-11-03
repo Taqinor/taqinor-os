@@ -153,9 +153,9 @@
 - frontend/src/api/crmApi.js :: villeStatut -> /api/django/crm/leads/ville-statut
     candidats:inconnu, gps_hors_zone:inconnu, position:inconnu, proches:inconnu, statut:inconnu, ville_canonique:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtape -> /api/django/crm/relance-etapes/<>/whatsapp
-    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
+    crochets:inconnu, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtapeLangue -> /api/django/crm/relance-etapes/<>/whatsapp
-    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
+    crochets:inconnu, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/customFieldsApi.js :: reorder -> /api/django/custom-fields/definitions/reorder
     count:nombre, ok:booleen
 - frontend/src/api/demoApi.js :: resetDemo -> /api/django/companies/<>/reset-demo

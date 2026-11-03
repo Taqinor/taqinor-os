@@ -64,7 +64,7 @@ from .fiche_funnel import (
 )
 from .cadence_messages import ETIQUETTES_RAISON_ATTENTE, PREFIXE_LIEN_LOCATAIRE, RAISONS_ATTENTE
 from .cadence_reperes import (
-    CLE_ETAPE_VALIDITE,
+    CLE_VALIDITE_A_RENOUVELER,
     FILET_JOINT_DELAI_JOURS,
     PASSATION_LIBELLE,
     PREFIXE_NOTE_VEILLE,
@@ -912,9 +912,6 @@ def _prolonger_validite_attente_accord(lead, user=None):
 #: CIQ512 — le libellé COURT de l'étape datée (≤ 150 car.) ; le texte complet
 #: va dans la note.
 LIBELLE_VALIDITE_A_RENOUVELER = 'Validité à renouveler — {reference}'
-
-#: ACRM45 (jumeau) — la clé stable de l'étape « validité à renouveler ».
-CLE_VALIDITE_A_RENOUVELER = CLE_ETAPE_VALIDITE
 
 
 def _texte_validite_a_renouveler(reference, validite, decision):

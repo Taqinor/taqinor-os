@@ -19,7 +19,7 @@ from .cadence_plan import (
 )
 from .cadence_messages import refus_rendu_whatsapp
 from .cadence_reperes import (
-    LIBELLE_RAPPEL_DEMANDE, LIBELLE_SIGNAL_PROPOSITION, LIBELLE_SIGNAL_QUESTIONNAIRE,
+    LIBELLE_SIGNAL_PROPOSITION, LIBELLE_SIGNAL_QUESTIONNAIRE, RAPPEL_DEMANDE_LIBELLE,
     q_etape_moteur, q_visite)
 from .leads_consentement import _ecrire_registre_contact
 from .leads_notifications import _build_lead_wa_reply_url
@@ -736,11 +736,6 @@ def notify_lead_callback_requested(lead) -> None:
 # comprise) : le lead garde sa position dans le protocole, on ne fabrique pas un
 # second plan concurrent. Quand il n'a plus aucune touche ouverte (cadence
 # terminée ou arrêtée), on pose UNE touche — une seule, jamais un plan.
-
-
-#: Libellé de la touche « rappel demandé ». Sert aussi de clé d'idempotence :
-#: deux clics du même client ne laissent jamais deux lignes dans la file.
-RAPPEL_DEMANDE_LIBELLE = LIBELLE_RAPPEL_DEMANDE
 
 #: Cadence des touches hors protocole déjà utilisée par le dépôt.
 RAPPEL_DEMANDE_CADENCE = 'generique'
