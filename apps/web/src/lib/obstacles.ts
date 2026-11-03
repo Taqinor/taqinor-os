@@ -13,7 +13,7 @@
  * Aucune dépendance, aucun DOM, aucune carte → testé (tests/obstacles.test.ts).
  * La colle carte/tracé/édition vit dans src/scripts/roof-tool-pro11.ts.
  */
-import type { LngLat } from './roof';
+import { ringBBox, type LngLat } from './roof';
 
 const DEG2RAD = Math.PI / 180;
 import { WGS84_RADIUS } from './geo';
@@ -111,16 +111,7 @@ export function obstacleRing(o: Obstacle): LngLat[] {
  */
 export function ringDimsM(ring: LngLat[]): { lengthM: number; widthM: number } {
   if (!Array.isArray(ring) || ring.length < 3) return { lengthM: 0, widthM: 0 };
-  let minLng = Infinity;
-  let maxLng = -Infinity;
-  let minLat = Infinity;
-  let maxLat = -Infinity;
-  for (const [lng, lat] of ring) {
-    if (lng < minLng) minLng = lng;
-    if (lng > maxLng) maxLng = lng;
-    if (lat < minLat) minLat = lat;
-    if (lat > maxLat) maxLat = lat;
-  }
+  const [minLng, minLat, maxLng, maxLat] = ringBBox(ring);
   const midLat = (minLat + maxLat) / 2;
   const widthM = (maxLng - minLng) * DEG2M * Math.cos(midLat * DEG2RAD);
   const lengthM = (maxLat - minLat) * DEG2M;

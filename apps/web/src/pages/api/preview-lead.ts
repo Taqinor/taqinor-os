@@ -16,111 +16,26 @@
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import * as cf from 'cloudflare:workers';
-import {
-  adsConsentFromBody,
-  buildLeadRecord,
-  crossSiteRejection,
-  fireCapi,
-  forwardLead,
-  isHoneypotTripped,
-  isSameOriginRequest,
-  redactLeadForLog,
-  runSimulation,
-  validateLead,
-  type LeadEnv,
-} from '../../lib/lead';
 import { cleanEnrichment, hasEnrichment } from '../../lib/enrichment';
-import { leadWhatsappText, whatsappLink } from '../../lib/whatsapp';
-import { WHATSAPP_LEADS } from '../../lib/nap';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json', ...headers },
-  });
-}
+import { enArrierePlan, json, ouvrirRequeteLead, preparerLead, transfererLead, whatsappUrlDuLead } from './_leadEndpoint';
 
 export const POST: APIRoute = async ({ request }) => {
-  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
-  // traitement (même garde-fou que les autres proxies same-origin).
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
+  const ouverture = await ouvrirRequeteLead(request, 'preview-lead');
+  if ('response' in ouverture) return ouverture.response;
+  const body = ouverture.body;
 
-  // ERR112 — même garde-fou anti-spam que /api/simulate (miroir strict),
-  // bucket distinct par endpoint. Best-effort, sans dépendance ni secret.
-  const rl = rateLimit(`preview-lead:${clientIpFromRequest(request)}`);
-  if (!rl.allowed) {
-    return json({ ok: false, errors: { rate: 'Trop de tentatives, réessayez dans un instant.' } }, 429, {
-      'retry-after': String(rl.retryAfterSec),
-    });
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ ok: false, errors: { body: 'JSON invalide' } }, 400);
-  }
-
-  // WB32 — même garde-fou anti-spam que /api/capture-lead (miroir strict) :
-  // rejeté en silence côté serveur avec une réponse de succès factice.
-  if (isHoneypotTripped(body)) return json({ ok: true, qualified: false });
-
-  const validation = validateLead(body);
-  if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);
-  const lead = validation.lead;
-
-  // QJW14 — même gate que /api/simulate (miroir strict) : le beacon Meta seul
-  // respecte le refus explicite, jamais la capture du lead.
-  const adsConsent = adsConsentFromBody(body);
-
-  const env = (cf.env ?? {}) as LeadEnv;
-  const band = await runSimulation(lead, env, fetch);
-  const page = request.headers.get('referer');
-  const baseRecord = buildLeadRecord(lead, band, new Date(), page);
+  const prep = await preparerLead(request, body);
+  if ('response' in prep) return prep.response;
+  const { lead, adsConsent, env, band, baseRecord } = prep;
 
   // Champs facultatifs : ajoutés UNIQUEMENT s'ils sont remplis. Sans eux,
   // `record` est identique octet pour octet à celui de /api/simulate.
   const enrichment = cleanEnrichment(body);
   const record = hasEnrichment(enrichment) ? { ...baseRecord, enrichment } : baseRecord;
 
-  const background = (async () => {
-    const fw = await forwardLead(record, env, fetch);
-    if (!fw.delivered && baseRecord.qualified) {
-      // ERR32 : aucune PII dans les logs (nom/téléphone/ville/consentement).
-      // Diagnostic rédacté seulement (id haché, indicateurs, raison) — l'objet
-      // `record` enrichi n'est jamais sérialisé tel quel.
-      console.log(
-        `[lead] non transmis au CRM (${fw.reason}) — lead qualifié:`,
-        JSON.stringify(redactLeadForLog(record)),
-      );
-    }
-    // CAPI inchangé : l'événement publicitaire ne porte jamais les champs
-    // facultatifs (signal propre, identique à la production).
-    const capi = await fireCapi(baseRecord, env, fetch, { adsConsent });
-    if (!capi.sent && baseRecord.qualified && capi.reason !== 'consent-denied') {
-      console.log('[capi] non envoyé (service absent ou injoignable)');
-    }
-  })();
-  const waitUntil = (cf as { waitUntil?: (p: Promise<unknown>) => void }).waitUntil;
-  if (typeof waitUntil === 'function') waitUntil(background);
-  else await background;
+  await enArrierePlan(transfererLead(record, baseRecord, env, adsConsent));
 
-  const waNumber = env.WHATSAPP_NUMBER?.trim() || WHATSAPP_LEADS;
-  const whatsappUrl = whatsappLink(
-    waNumber,
-    leadWhatsappText({
-      fullName: lead.fullName,
-      // WJ97 (lib/lead.ts) — `city` est désormais optionnel dans ValidatedLead
-      // (chemin rappel rapide /contact) ; ce flux (preview-lead) ne l'utilise
-      // jamais sans ville (validateLead l'exige toujours ici), `?? ''` ne fait
-      // que satisfaire le type élargi, jamais un comportement différent.
-      city: lead.city ?? '',
-      kwcLabel: band.kwcLabel,
-      paybackLabel: band.paybackLabel,
-    }),
-  );
+  const whatsappUrl = whatsappUrlDuLead(env, lead, band);
 
   return json({
     ok: true,

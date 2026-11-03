@@ -38,7 +38,7 @@ export interface EvalProductionSourced extends EvalProduction {
 
 // — Logique PARTAGÉE de l'évaluation toit plat (V3 / V4) et du départage (V3/V4/V6/V7) —
 import type { LngLat } from './roof';
-import { PANEL2_WATT, packConfig, type ConfigFamily } from './estimatorBrainV2';
+import { PANEL2_WATT, packConfig, specificYield, type ConfigFamily } from './estimatorBrainV2';
 import type { AxisAzimuth, FlatConfig } from './estimatorBrainV3';
 
 const EVAL_EPS = 1e-6;
@@ -131,4 +131,20 @@ export function productionFields(
     perPanelYield: prod.perPanelYield,
     yieldSource: prod.source,
   };
+}
+
+/** Rendement résolu pour un (tilt, aspect) : PVGIS si dispo et valide, sinon table. */
+export function resolveYield(
+  yieldFn: YieldFn | undefined,
+  latitudeDeg: number,
+  tiltDeg: number,
+  aspect: number,
+  /** W48 (V7) : borne le repli « estimé » (identité par défaut). */
+  borne: (v: number) => number = (v) => v,
+): { value: number; source: YieldSource } {
+  if (yieldFn) {
+    const v = yieldFn(tiltDeg, aspect);
+    if (v != null && Number.isFinite(v) && v > 0) return { value: v, source: 'pvgis' };
+  }
+  return { value: borne(specificYield(latitudeDeg, tiltDeg, aspect)), source: 'estimate' };
 }

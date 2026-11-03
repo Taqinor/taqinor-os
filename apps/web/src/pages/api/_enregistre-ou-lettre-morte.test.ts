@@ -97,7 +97,9 @@ function enumerer(): { transmetteurs: string[]; relais: string[] } {
     const source = readFileSync(`${ICI}${fichier}`, 'utf-8');
     const nom = fichier.slice(0, -'.ts'.length);
     const imports = source.match(/import[\s\S]*?from\s+['"][^'"]+['"]/g) ?? [];
-    if (imports.some((i) => /\bforwardLead\b/.test(i) && /lib\/lead['"]/.test(i))) transmetteurs.push(nom);
+    // ENF19 : le transfert CRM + CAPI partagé vit dans _leadEndpoint (transfererLead → forwardLead).
+    const viaSocle = (i: string) => /\btransfererLead\b/.test(i) && /\.\/_leadEndpoint['"]/.test(i);
+    if (imports.some((i) => (/\bforwardLead\b/.test(i) && /lib\/lead['"]/.test(i)) || viaSocle(i))) transmetteurs.push(nom);
     if (imports.some((i) => /from\s+['"]\.\/_proxy['"]/.test(i))) relais.push(nom);
   }
   return { transmetteurs: transmetteurs.sort(), relais: relais.sort() };

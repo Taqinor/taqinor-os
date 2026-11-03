@@ -333,12 +333,13 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
     telephone = (telephone or '').strip()[:20]
     email = (email or '').strip()[:254]
 
-    lead = None
+    lead = froid = None
     if telephone or email:
-        dupes = find_duplicates_by_contact(
-            company, phone=telephone or None, email=email or None)
-        if dupes:
-            lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+        # ACVI13 (D-ACVI-5) — seul un doublon vivant absorbe la demande.
+        from .cadence_reponses import doublon_a_reprendre, enregistrer_recontact
+        lead, froid = doublon_a_reprendre(find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None), telephone)
+        lead = lead or froid
 
     if lead is None:
         extra = {}
@@ -373,6 +374,8 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
             changed = True
         if changed:
             lead.save()
+        if froid is not None:
+            enregistrer_recontact(froid, None, canal='livechat')
 
     if transcript_text:
         LeadActivity.objects.create(
@@ -536,12 +539,13 @@ def create_lead_from_evenement_marketing(
     telephone = (telephone or '').strip()[:20]
     email = (email or '').strip()[:254]
 
-    lead = None
+    lead = froid = None
     if telephone or email:
-        dupes = find_duplicates_by_contact(
-            company, phone=telephone or None, email=email or None)
-        if dupes:
-            lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+        # ACVI13 (D-ACVI-5) — seul un doublon vivant absorbe la demande.
+        from .cadence_reponses import doublon_a_reprendre, enregistrer_recontact
+        lead, froid = doublon_a_reprendre(find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None), telephone)
+        lead = lead or froid
 
     if lead is None:
         extra = {}
@@ -572,6 +576,8 @@ def create_lead_from_evenement_marketing(
             changed = True
         if changed:
             lead.save()
+        if froid is not None:
+            enregistrer_recontact(froid, None, canal='evenement')
 
     if evenement_nom:
         activity.log_note(

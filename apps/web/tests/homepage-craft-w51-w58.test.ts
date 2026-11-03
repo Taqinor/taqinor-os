@@ -220,7 +220,9 @@ describe('FROZEN — le comportement du formulaire est inchangé (classes seules
     // W189 — les classes bg-azur-600/bg-azur-100 ont été remplacées par
     // bg-brass-400/bg-white/15 (barre plus haute, remplissage laiton).
     // Le script bascule toujours les classes via toggle (même mécanique).
-    expect(form).toContain("seg.classList.toggle('bg-brass-400', on)");
+    // ENF19 : la bascule vit dans lib/diagnosticFormShared (afficherEtape), appelée avec ces classes.
+    expect(form).toContain("afficherEtape(form!, step, 'bg-brass-400', 'bg-white/15')");
+    expect(readFileSync(new URL('../src/lib/diagnosticFormShared.ts', import.meta.url), 'utf-8')).toContain('seg.classList.toggle(segOn, on)');
     expect(form).toMatch(/data-seg="1" class="[^"]*bg-brass-400/);
   });
 });

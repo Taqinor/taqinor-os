@@ -86,6 +86,7 @@ const regimes = [
 ];
 import Loi8221ExpliqueeDiv68F7 from '../../components/blocs/Loi8221ExpliqueeDiv68F7.astro';
 import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuGelPCFC9.astro';
+import Loi8221OuEnEstLaLoi from '../../components/blocs/Loi8221OuEnEstLaLoi.astro';
 ---
 
 <Layout
@@ -123,29 +124,7 @@ import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuG
         {/* CIW412 — sources : décision ANRE 04/26 art. 6-7 (le tarif d'excédent vise la TENSION
             MT/HT/THT, quel que soit le régime) ; décret 2.25.100 art. 12 (accord de raccordement
             de 11 kW à moins de 5 MW) ; D-CIQ-4. En basse tension la revente n'est pas ouverte. */}
-        <div class="mt-4 grid gap-5 sm:grid-cols-2">
-          <div>
-            <p class="tech-label text-lune">En vigueur</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Le décret d'application <strong class="text-white">2-25-100</strong> (Bulletin Officiel du
-              9 mars 2026, en vigueur depuis le <strong class="text-white">9 juin 2026</strong>) et la
-              décision <strong class="text-white">04/26</strong> de l'ANRE. Tarif d'excédent ANRE
-              (décision 04/26) : <strong class="text-white">0,18 DH/kWh hors pointe, 0,21 DH/kWh en
-              pointe, hors taxes</strong>, pour les installations raccordées en
-              <strong class="text-white"> moyenne, haute ou très haute tension (MT/HT/THT)</strong>,
-              quel que soit leur régime.
-            </p>
-          </div>
-          <div>
-            <p class="tech-label text-lune">Pas encore publié</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
-              un commerce de 11 kW ou plus sous accord de raccordement — la revente du surplus n'est
-              pas ouverte à ce jour. Ne prenez pas le tarif MT/HT ci-dessus pour celui de votre villa
-              ou de votre commerce.
-            </p>
-          </div>
-        </div>
+        <Loi8221OuEnEstLaLoi />
         <p class="mt-5 text-xs leading-relaxed text-lune-faint">
           Une installation déjà posée ? L'Article 33 prévoit « dans un délai de dix-huit (18) mois à
           compter de la date d'entrée en vigueur de la présente loi » ; le point de départ de ce

@@ -1,0 +1,14 @@
+---
+// ENF19 : section « contrats d'entretien » partagée (maintenance-monitoring fr/en/ar).
+import MaintenanceTiers from './MaintenanceTiers.astro';
+const { kicker, titre, lead, tiers, wa, cta, nomDir } = Astro.props;
+---
+<div class="v2-seam" aria-hidden="true"></div>
+<section class="bg-blanc-azur px-4 py-16 text-encre sm:py-20">
+  <div class="mx-auto max-w-6xl">
+    <p class="tech-label v2-kicker rule-brass eyebrow-light">{kicker}</p>
+    <h2 class="display v2-section-title mt-5">{titre}</h2>
+    <p class="v2-lead mt-5 max-w-2xl text-encre-soft">{lead}</p>
+    <MaintenanceTiers tiers={tiers} wa={wa} cta={cta} nomDir={nomDir} />
+  </div>
+</section>

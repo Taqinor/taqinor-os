@@ -17,55 +17,17 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
-  adsConsentFromBody,
-  buildLeadRecord,
-  crossSiteRejection,
   fireCapi,
   forwardLead,
-  isHoneypotTripped,
-  isSameOriginRequest,
   redactLeadForLog,
-  runSimulation,
   trackForwardLeadOutcome,
-  validateLead,
-  type LeadEnv,
 } from '../../lib/lead';
-import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json', ...headers },
-  });
-}
+import { enArrierePlan, json, ouvrirRequeteLead, preparerLead } from './_leadEndpoint';
 
 export const POST: APIRoute = async ({ request }) => {
-  // W317 — Origin/Sec-Fetch-Site : « proxy same-origin » n'était jusqu'ici que
-  // de la documentation, jamais vérifiée (le rate-limit par IP est best-effort
-  // par isolate, pas un blocage). Un POST cross-site forgé est refusé (403)
-  // avant même le rate-limit.
-  if (!isSameOriginRequest(request)) return crossSiteRejection();
-
-  // Même garde-fou anti-spam que /api/preview-lead (bucket distinct par endpoint).
-  const rl = rateLimit(`capture-lead:${clientIpFromRequest(request)}`);
-  if (!rl.allowed) {
-    return json({ ok: false, errors: { rate: 'Trop de tentatives, réessayez dans un instant.' } }, 429, {
-      'retry-after': String(rl.retryAfterSec),
-    });
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ ok: false, errors: { body: 'JSON invalide' } }, 400);
-  }
-
-  // W317 — honeypot : un champ caché que seul un bot remplit. Rejeté en
-  // silence côté serveur avec une réponse de succès factice (jamais un signal
-  // que révélerait au bot QUEL champ l'a trahi) — le contrat webhook existant
-  // reste inchangé, ce lead n'est simplement jamais transmis.
-  if (isHoneypotTripped(body)) return json({ ok: true, qualified: false });
+  const ouverture = await ouvrirRequeteLead(request, 'capture-lead');
+  if ('response' in ouverture) return ouverture.response;
+  const body = ouverture.body;
 
   // QJW22 — CETTE LIGNE EST LA LISTE BLANCHE. Ce n'est PAS le corps construit
   // par le registre du tunnel qui part au webhook, mais `validation.lead` :
@@ -78,19 +40,9 @@ export const POST: APIRoute = async ({ request }) => {
   // parité portent sur le corps POST-liste-blanche — celui qui part vraiment.
   // Seule exception voulue : le honeypot `website_url`, jugé côté serveur et
   // qui ne doit JAMAIS atteindre le CRM.
-  const validation = validateLead(body);
-  if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);
-  const lead = validation.lead;
-
-  // QJW14 — même gate que /api/simulate et /api/preview-lead : un « Refuser »
-  // explicite bloque le beacon Meta. La capture, elle, part au CRM même
-  // NON QUALIFIÉE (includeUnqualified plus bas) — jamais gatée par ce signal.
-  const adsConsent = adsConsentFromBody(body);
-
-  const env = (cf.env ?? {}) as LeadEnv;
-  const band = await runSimulation(lead, env, fetch);
-  const page = request.headers.get('referer');
-  const baseRecord = buildLeadRecord(lead, band, new Date(), page);
+  const prep = await preparerLead(request, body);
+  if ('response' in prep) return prep.response;
+  const { lead, adsConsent, env, band, baseRecord } = prep;
 
   // WJ30 — les champs supplémentaires (repère, contour, consommation, profil
   // énergétique W1/W3, adresse/GPS, e-mail, mode, langue…) sont désormais validés
@@ -144,9 +96,7 @@ export const POST: APIRoute = async ({ request }) => {
       console.log('[capi] non envoyé (service absent ou injoignable)');
     }
   })();
-  const waitUntil = (cf as { waitUntil?: (p: Promise<unknown>) => void }).waitUntil;
-  if (typeof waitUntil === 'function') waitUntil(background);
-  else await background;
+  await enArrierePlan(background);
 
   // Jamais bloquer l'UX sur le webhook (même tolérance que le flux existant).
   return json({ ok: true, qualified: baseRecord.qualified });

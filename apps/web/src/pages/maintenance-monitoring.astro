@@ -163,6 +163,8 @@ const jsonLd = {
 import MaintenanceMonitoringOlF23D from '../components/blocs/MaintenanceMonitoringOlF23D.astro';
 import MaintenanceMonitoringDiv7416 from '../components/blocs/MaintenanceMonitoringDiv7416.astro';
 import '../styles/maintenance-monitoring.css';
+import MaintenancePhoneVues from '../components/blocs/MaintenancePhoneVues.astro';
+import MaintenanceContrats from '../components/blocs/MaintenanceContrats.astro';
 ---
 
 <Layout
@@ -272,21 +274,7 @@ import '../styles/maintenance-monitoring.css';
           que je vois ma production sur mon téléphone, est-ce que je suis prévenu s’il y a un
           problème, et où en sont mes économies. Voici les trois réponses.
         </p>
-        <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
-          {phoneVues.map((v, i) => (
-            <div class="v2-rise flex flex-col items-center p-4" style={`--v2-i:${i}`}>
-              <div class="phone-frame">
-                <div class="phone-notch" aria-hidden="true"></div>
-                <div class="phone-screen">
-                  <p class="phone-app-label">{v.appLabel}</p>
-                  <p class={`phone-headline ${v.accent}`}>{v.headline}</p>
-                  <p class="phone-sub">{v.sub}</p>
-                </div>
-              </div>
-              <p class="mt-5 text-center text-sm leading-relaxed text-lune-soft">{v.caption}</p>
-            </div>
-          ))}
-        </div>
+        <MaintenancePhoneVues vues={phoneVues} />
         <p class="v2-rise mx-auto mt-10 max-w-xl text-center text-sm leading-relaxed text-lune-faint">
           Ces vues illustrent le principe de l’application de suivi de production — pas une capture d’écran
           officielle. Ce que la vôtre affichera dépend de votre installation réelle.
@@ -295,38 +283,7 @@ import '../styles/maintenance-monitoring.css';
     </section>
 
     {/* ── W255/WN4 — SAV : CONTRATS D'ENTRETIEN NOMMÉS (prix sur devis) ── */}
-    <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 py-16 text-encre sm:py-20">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass eyebrow-light">SAV proactif, en formule</p>
-        <h2 class="display v2-section-title mt-5">Nos contrats d’entretien</h2>
-        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
-          Le socle Essentiel est déjà inclus avec chaque installation ; Confort et Premium
-          ajoutent l’entretien programmé et une intervention prioritaire. Le tarif de chaque
-          formule dépend de votre installation — écrivez-nous sur WhatsApp pour un devis
-          personnalisé.
-        </p>
-        <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
-          {entretienTiers.map((t, i) => (
-            <div class="v2-rise flex flex-col border-t-2 border-azur-900 bg-blanc p-7" style={`--v2-i:${i}`}>
-              <h3 class="display text-xl text-azur-700">{t.name}</h3>
-              <p class="mt-3 flex-1 text-sm leading-relaxed text-encre-soft">{t.body}</p>
-              <ul class="mt-4 space-y-2 text-sm text-encre-soft">
-                {t.inclusions.map((inc) => (
-                  <li class="flex items-start gap-2">
-                    <span class="mt-1 text-azur-600" aria-hidden="true">✓</span>
-                    <span>{inc}</span>
-                  </li>
-                ))}
-              </ul>
-              <a href={waTier(t.name)} rel="noopener" class="mt-6 inline-block border-2 border-azur-600 px-5 py-2.5 text-center text-sm font-bold text-azur-600 transition-colors hover:bg-azur-600 hover:text-white">
-                Demander un devis — {t.name}
-              </a>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
+    <MaintenanceContrats kicker="SAV proactif, en formule" titre="Nos contrats d’entretien" lead="Le socle Essentiel est déjà inclus avec chaque installation ; Confort et Premium ajoutent l’entretien programmé et une intervention prioritaire. Le tarif de chaque formule dépend de votre installation — écrivez-nous sur WhatsApp pour un devis personnalisé." tiers={entretienTiers} wa={waTier} cta="Demander un devis —" />
 
     {/* ── PRODUCTION MESURÉE (acte clair, « salle blanche ») ── */}
     <div class="v2-seam" aria-hidden="true"></div>

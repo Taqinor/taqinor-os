@@ -26,7 +26,6 @@ import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import StickyCta from '../components/StickyCta.astro';
-import ZelligeDivider from '../components/ZelligeDivider.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 import { WHATSAPP_LEADS, NAP } from '../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
@@ -73,6 +72,8 @@ const howToLd = {
 };
 import RegularizationArticle33Ol7511 from '../components/blocs/RegularizationArticle33Ol7511.astro';
 import RegularizationArticle33DivC937 from '../components/blocs/RegularizationArticle33DivC937.astro';
+import Loi8221OuEnEstLaLoi from '..//components/blocs/Loi8221OuEnEstLaLoi.astro';
+import RegularisationDossier from '../components/blocs/RegularisationDossier.astro';
 ---
 
 <Layout
@@ -110,27 +111,17 @@ import RegularizationArticle33DivC937 from '../components/blocs/RegularizationAr
         <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 5 octobre 2026</p>
         {/* CIW413 — mêmes phrases tarifaires que CIW412 (décision ANRE 04/26 art. 6-7 ; décret
             2.25.100 art. 12 ; D-CIQ-4) : le tarif vise la TENSION, la basse tension n'est pas ouverte. */}
-        <div class="mt-4 grid gap-5 sm:grid-cols-2">
-          <div>
-            <p class="tech-label text-lune">En vigueur</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Le décret d'application <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en
+        <Loi8221OuEnEstLaLoi>
+          <Fragment slot="vigueur">Le décret d'application <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en
               vigueur depuis le 9 juin 2026) et la décision ANRE <strong class="text-white">04/26</strong>.
               Tarif d'excédent ANRE (décision 04/26) : <strong class="text-white">0,18 DH/kWh hors pointe,
               0,21 DH/kWh en pointe, hors taxes</strong>, pour les installations raccordées en
               <strong class="text-white"> moyenne, haute ou très haute tension (MT/HT/THT)</strong>,
-              quel que soit leur régime.
-            </p>
-          </div>
-          <div>
-            <p class="tech-label text-lune">Pas encore publié</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
+              quel que soit leur régime.</Fragment>
+          <Fragment slot="bt">En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
               un commerce de 11 kW ou plus sous accord de raccordement — la revente du surplus n'est
-              pas ouverte à ce jour. L'Article 33 se dépose sans attendre, indépendamment de ce tarif.
-            </p>
-          </div>
-        </div>
+              pas ouverte à ce jour. L'Article 33 se dépose sans attendre, indépendamment de ce tarif.</Fragment>
+        </Loi8221OuEnEstLaLoi>
       </div>
     </section>
 
@@ -175,65 +166,8 @@ import RegularizationArticle33DivC937 from '../components/blocs/RegularizationAr
     </section>
 
     <!-- ACTE FINAL — le dossier se confie en pleine lumière -->
-    <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
-      <div class="mx-auto max-w-3xl">
-        <ZelligeDivider />
-        <div class="v2-rise mt-6 border-2 border-azur-600 bg-blanc p-8 sm:p-10">
-          <p class="tech-label text-azur-600">Prise en charge complète</p>
-          <h2 class="display v2-section-title mt-2">Confiez-nous le dossier</h2>
-          <p class="mt-4 max-w-md text-sm leading-relaxed text-encre-soft">
-            Deux questions, et votre message WhatsApp part déjà complet — nous identifions
-            le régime applicable et constituons le dossier.
-          </p>
-          <div class="mt-6 grid gap-4 sm:grid-cols-2">
-            <div>
-              <label for="rg33-kwc" class="mb-1 block text-sm font-semibold">Puissance approximative (kWc)</label>
-              <input id="rg33-kwc" type="number" min="0" step="0.1" inputmode="decimal" placeholder="ex. 5"
-                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
-              <label class="mt-2 flex items-center gap-2 text-xs text-encre-soft">
-                <input id="rg33-unknown" type="checkbox" class="accent-azur-600" />
-                Je ne connais pas la puissance
-              </label>
-            </div>
-            <div>
-              <label for="rg33-ville" class="mb-1 block text-sm font-semibold">Ville de l'installation</label>
-              <input id="rg33-ville" type="text" autocomplete="address-level2" placeholder="ex. Casablanca"
-                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
-            </div>
-          </div>
-          <a id="rg33-go" href={waFallback} rel="noopener"
-            class="glow mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
-          >Démarrer sur WhatsApp</a>
-        </div>
-      </div>
-    </section>
+    <RegularisationDossier kicker="Prise en charge complète" titre="Confiez-nous le dossier" intro="Deux questions, et votre message WhatsApp part déjà complet — nous identifions le régime applicable et constituons le dossier." kwcLabel="Puissance approximative (kWc)" kwcPlaceholder="ex. 5" inconnu="Je ne connais pas la puissance" villeLabel="Ville de l'installation" villePlaceholder="ex. Casablanca" cta="Démarrer sur WhatsApp" waFallback={waFallback} />
 
     <StickyCta />
   </div>
 </Layout>
-
-<script>
-  import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
-  import { WHATSAPP_LEADS } from '../lib/nap';
-
-  // Le lien se met à jour en direct : le client n'édite JAMAIS le message.
-  const kwcEl = document.getElementById('rg33-kwc') as HTMLInputElement;
-  const unknownEl = document.getElementById('rg33-unknown') as HTMLInputElement;
-  const villeEl = document.getElementById('rg33-ville') as HTMLInputElement;
-  const goEl = document.getElementById('rg33-go') as HTMLAnchorElement;
-
-  function refresh() {
-    kwcEl.disabled = unknownEl.checked;
-    if (unknownEl.checked) kwcEl.value = '';
-    goEl.href = whatsappLink(
-      WHATSAPP_LEADS,
-      regularizationWhatsappText({
-        kwc: unknownEl.checked ? '' : kwcEl.value,
-        ville: villeEl.value,
-      }),
-    );
-  }
-  for (const el of [kwcEl, unknownEl, villeEl]) el.addEventListener('input', refresh);
-  refresh();
-</script>

@@ -80,7 +80,7 @@ describe('preview — le diagnostic enrichi se branche sur la route privée', ()
     expect(ep).toContain('hasEnrichment');
     expect(ep).toContain('cleanEnrichment');
     // CAPI reçoit le record de base (signal publicitaire inchangé)
-    expect(ep).toContain('fireCapi(baseRecord');
+    expect(ep).toContain('transfererLead(record, baseRecord');
   });
 });
 

@@ -33,7 +33,7 @@
  * vrai panneau Canadian Solar 720 W de roofPro2.ts, et la table PVGIS committée
  * (yieldTable.ts). JAMAIS un devis. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
  */
-import { distToBoundary, geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
+import { distToBoundary, geodesicAreaM2, geodesicPerimeterM, pointInPolygon, ringBBox, type LngLat } from './roof';
 import { makeClearanceAt, makeHitsObstruction, makeCellInside, makeCellTests, latticeDims } from './estimatorBrainGeom';
 import { PANEL2_WATT, PERIMETER_SETBACK_M, cotesDePavage, resolveSetbacks, extremityTotalM, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import { projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
@@ -908,16 +908,7 @@ export function roofDominantAzimuthDeg(ring: LngLat[]): number {
  */
 export function obstructionOverlapM2(ring: LngLat[], obstructions: LngLat[][], roofAreaM2: number): number {
   if (!obstructions.length || !Array.isArray(ring) || ring.length < 3 || roofAreaM2 <= 0) return 0;
-  let minLng = Infinity;
-  let maxLng = -Infinity;
-  let minLat = Infinity;
-  let maxLat = -Infinity;
-  for (const [lng, lat] of ring) {
-    if (lng < minLng) minLng = lng;
-    if (lng > maxLng) maxLng = lng;
-    if (lat < minLat) minLat = lat;
-    if (lat > maxLat) maxLat = lat;
-  }
+  const [minLng, minLat, maxLng, maxLat] = ringBBox(ring);
   const n = OVERLAP_SAMPLES;
   let inRoof = 0;
   let blocked = 0;

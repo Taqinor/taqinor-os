@@ -16,12 +16,15 @@ Couvre :
 """
 import datetime
 import json
+from urllib.parse import unquote
 
-from django.test import TestCase
+from django.contrib.auth import get_user_model
+from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 
 from authentication.models import Company
 
+from apps.crm.fiche_bulk import apply_bulk_action
 from apps.crm.models import Appointment, BookingLink, Lead, MessageTemplate
 from apps.crm.visites_rdv import (
     BookingLinkUnavailable,
@@ -59,6 +62,7 @@ class ResoudreLienRdvTests(TestCase):
         self.assertEqual(texte, 'Bonjour, voici votre devis.')
         self.assertEqual(BookingLink.objects.count(), 0)
 
+    @override_settings(PUBLIC_BASE_URL='https://api.taqinor.ma')
     def test_avec_placeholder_cree_un_lien_fonctionnel(self):
         texte = resoudre_lien_rdv('Réservez ici : {lien_rdv}', self.lead)
         self.assertNotIn('{lien_rdv}', texte)
@@ -69,6 +73,7 @@ class ResoudreLienRdvTests(TestCase):
         self.assertEqual(link.company, self.company)
 
 
+@override_settings(PUBLIC_BASE_URL='https://api.taqinor.ma')
 class PublicBookingUrlReuseTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
@@ -93,6 +98,38 @@ class PublicBookingUrlReuseTests(TestCase):
         BookingLink.objects.filter(pk=first.pk).update(used_at=timezone.now())
         public_booking_url(self.lead)
         self.assertEqual(BookingLink.objects.count(), 2)
+
+    def _file_en_masse(self, corps='Bonjour. Réservez : {lien_rdv}'):
+        Lead.objects.filter(pk=self.lead.pk).update(telephone='+212661000046')
+        tpl = MessageTemplate.objects.create(
+            company=self.company, nom='RDV', corps=corps)
+        acteur = get_user_model().objects.create_user(
+            username='acvi46', password='x', role_legacy='responsable',
+            company=self.company)
+        recap = apply_bulk_action(
+            company=self.company, user=acteur, lead_ids=[self.lead.pk],
+            op='prepare_whatsapp', params={'template_id': tpl.pk})
+        return unquote(recap['queue'][0]['wa_url'])
+
+    @override_settings(PUBLIC_SITE_URL='https://taqinor.ma')
+    def test_sans_requete_la_base_est_l_erp(self):
+        """ACVI46 (D-ACVI-9). Mutant : rebasculer sur PUBLIC_SITE_URL ⇒ échec."""
+        texte = self._file_en_masse()
+        self.assertIn('https://api.taqinor.ma/rdv/', texte)
+        self.assertNotIn('taqinor.ma/rdv/', texte.replace('api.taqinor.ma', ''))
+
+    @override_settings(PUBLIC_BASE_URL='', PUBLIC_SITE_URL='https://taqinor.ma')
+    def test_sans_base_ni_requete_la_phrase_est_omise(self):
+        texte = self._file_en_masse()
+        self.assertIn('Bonjour.', texte)
+        self.assertNotIn('Réservez', texte)
+        self.assertNotIn('/rdv/', texte)
+
+    @override_settings(PUBLIC_BASE_URL='')
+    def test_sans_reglage_la_requete_sert_de_base(self):
+        requete = RequestFactory().get('/')
+        self.assertTrue(public_booking_url(self.lead, request=requete).startswith(
+            'http://testserver/rdv/'))
 
 
 class ResolveBookingLinkTests(TestCase):

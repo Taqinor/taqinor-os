@@ -46,7 +46,7 @@ import { type LngLat } from './roof';
 import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
 import { PANEL2_WATT, type ConfigFamily, type PackResult, type PanelGrid, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import { type YieldFn, type YieldSource } from './estimatorBrainV4';
-import { departageAspect, departageBase, productionFields, type EvalProductionSourced } from './estimatorBrainCommun';
+import { departageAspect, departageBase, productionFields, resolveYield, type EvalProductionSourced } from './estimatorBrainCommun';
 
 export { PANEL2_WATT };
 export type { YieldFn, YieldSource };
@@ -325,19 +325,6 @@ function ewOrientationLabel(axis: AzimuthAxis): string {
   return axis === 'aligned' ? 'Est-Ouest aligné toit' : 'Est-Ouest';
 }
 
-/** Rendement résolu pour un (tilt, aspect) : PVGIS si dispo/valide, sinon table. */
-function resolveYieldV6(
-  yieldFn: YieldFn | undefined,
-  latitudeDeg: number,
-  tiltDeg: number,
-  aspect: number,
-): { value: number; source: YieldSource } {
-  if (yieldFn) {
-    const v = yieldFn(tiltDeg, aspect);
-    if (v != null && Number.isFinite(v) && v > 0) return { value: v, source: 'pvgis' };
-  }
-  return { value: specificYield(latitudeDeg, tiltDeg, aspect), source: 'estimate' };
-}
 
 /** Production annuelle (kWh) d'une config via la source PVGIS (repli table). */
 function matrixProduction(
@@ -350,8 +337,8 @@ function matrixProduction(
 ): { kwh: number; perPanelYield: number; source: YieldSource; aspect: number } {
   const aspect = aspectForAzimuth(family, azimuthDeg);
   if (family === 'eastwest') {
-    const e = resolveYieldV6(yieldFn, latitudeDeg, tiltDeg, aspect - 90);
-    const w = resolveYieldV6(yieldFn, latitudeDeg, tiltDeg, aspect + 90);
+    const e = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect - 90);
+    const w = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect + 90);
     return {
       kwh: (kwc / 2) * e.value + (kwc / 2) * w.value,
       perPanelYield: (e.value + w.value) / 2,
@@ -359,7 +346,7 @@ function matrixProduction(
       aspect,
     };
   }
-  const s = resolveYieldV6(yieldFn, latitudeDeg, tiltDeg, aspect);
+  const s = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect);
   return { kwh: kwc * s.value, perPanelYield: s.value, source: s.source, aspect };
 }
 
