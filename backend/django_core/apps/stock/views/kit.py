@@ -43,6 +43,8 @@ def refuser_echelle_debordante(kit, facteur):
         return
     if any((c.quantite or 0) * Decimal(str(facteur)) >= Decimal(10) ** 10 for c in kit.composants.all()):
         raise ConflitEtat("Ce facteur d'échelle dépasse la quantité maximale d'un composant du kit.")
+
+
 #: CI #997 fuzz (4) — ratio de remplacement : décimal STRICTEMENT positif (chaîne
 #: ou nombre JSON, 4 décimales) ; le champ sert au schéma ET au contrôle.
 RATIO_REMPLACEMENT = DecimalSoupleStock(
