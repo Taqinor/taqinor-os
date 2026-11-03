@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 
-import { REALISATIONS } from '../src/lib/realisations';
+import { MEASURED_FLEET, MEASURED_FLEET_READ_AT, MEASURED_FLEET_READ_NOTE, REALISATIONS } from '../src/lib/realisations';
 import { TESTIMONIALS, GOOGLE_RATING, hasTestimonials, hasRating } from '../src/lib/testimonials';
 import { lireAstroAvecBlocs, lireAstroAvecModulesTunnel, lirePageProposition } from './astroBlocsHelper';
 
@@ -213,5 +213,30 @@ describe('WJ35 — câblage : les deux pages du parcours montent les composants 
 
   it('[token].astro importe v3-photo-motion.css (ne monte pas <V2Enhance/> qui l’importerait sinon)', () => {
     expect(PROPOSITION).toContain("import '../../styles/v3-photo-motion.css'");
+  });
+});
+
+describe('WAUD9 — cumul de flotte daté du vrai relevé', () => {
+  const lire = (rel: string) => read(`../src/${rel}`);
+  it('la date est max(readAt), jamais la date de génération des faits', () => {
+    const dates = MEASURED_FLEET.map((p) => p.readAt).filter(Boolean).sort();
+    expect(MEASURED_FLEET_READ_AT).toBe(dates[dates.length - 1]);
+    expect(MEASURED_FLEET_READ_NOTE.fr).toBe('relevé le 05/07/2026');
+  });
+  it('héros et compteur portent la mention ; aucun « temps réel » accolé au cumul', () => {
+    for (const p of ['pages/index.astro', 'pages/en/index.astro', 'pages/ar/index.astro']) {
+      const heroSub = lire(p).match(/const heroSub =[\s\S]*?;/)![0];
+      expect(heroSub).toContain('MEASURED_FLEET_READ_NOTE');
+      expect(heroSub).not.toMatch(/temps réel|real time|الوقت الحقيقي/);
+    }
+    expect(lire('components/InstallCounter.astro')).toContain('MEASURED_FLEET_READ_NOTE');
+    expect(lire('components/InstallCounter.astro')).not.toContain('temps réel');
+  });
+  it('/production-mesuree et son Dataset lisent la date de relevé', () => {
+    for (const p of ['pages/production-mesuree.astro', 'pages/en/production-mesuree.astro', 'pages/ar/production-mesuree.astro']) {
+      const code = lire(p);
+      expect(code).toContain('temporalCoverage: MEASURED_FLEET_READ_AT');
+      expect(code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '')).not.toMatch(/temps réel|real time|real-time|الوقت الحقيقي/);
+    }
   });
 });

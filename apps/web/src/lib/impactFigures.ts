@@ -6,7 +6,7 @@
  */
 import { FACTS_GENERATED_AT } from './facts';
 import { CO2_KG_PER_KWH } from './proposition';
-import { MEASURED_FLEET_LIFETIME_MWH, REALISATIONS } from './realisations';
+import { MEASURED_FLEET_LIFETIME_MWH, REALISATIONS, MEASURED_FLEET_READ_AT } from './realisations';
 
 export function impactFigures(numberLocale: string) {
   const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
@@ -29,7 +29,7 @@ export function impactFigures(numberLocale: string) {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(new Date(FACTS_GENERATED_AT));
+  }).format(new Date(MEASURED_FLEET_READ_AT ?? FACTS_GENERATED_AT));
 
   const villesUniques = [...new Set(REALISATIONS.map((r) => r.ville))];
 

@@ -38,7 +38,7 @@ import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
 import { buildGallery } from '../../lib/homeGallery';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR } from '../../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR, MEASURED_FLEET_READ_NOTE } from '../../lib/realisations';
 import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -76,7 +76,7 @@ const featuredVilleAr = CITY_AR[featured.ville] ?? featured.ville;
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH_FR; // « 6,56 »
 const heroTitleSuffix = ` MWh أُنتِجت ومُقيسة فعلاً على تركيباتنا.`;
 const heroSub =
-  `رقم تراكمي حقيقي، مُتابَع في الوقت الحقيقي — لا توقّعاً تجارياً. تبدأ دراستكم بتشخيص من 60 ثانية.`;
+  `رقم تراكمي حقيقي، ${MEASURED_FLEET_READ_NOTE.ar} — لا توقّعاً تجارياً. تبدأ دراستكم بتشخيص من 60 ثانية.`;
 
 // PLACEHOLDER(MERYEM): FAQ مؤقتة.
 const faq = [

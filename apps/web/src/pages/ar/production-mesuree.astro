@@ -22,7 +22,7 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { localizeNavHref } from '../../i18n/pages';
 import { REALISATIONS } from '../../lib/realisations';
-import { FACTS_GENERATED_AT } from '../../lib/facts';
+import { MEASURED_FLEET_READ_AT } from '../../lib/realisations';
 
 const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
@@ -44,15 +44,15 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Dataset',
   name: 'الإنتاج الشمسي المتابَع — أسطول Taqinor',
-  description: `حصيلة الإنتاج المقاسة تراكمياً على الأسطول المتابَع في الوقت الحقيقي، حتى ${generatedDateLabel}: ${productionTotalLabel} kWh تراكمية.`,
-  temporalCoverage: FACTS_GENERATED_AT,
+  description: `حصيلة الإنتاج المقاسة تراكمياً على الأسطول المتابَع، حتى ${generatedDateLabel}: ${productionTotalLabel} kWh تراكمية.`,
+  temporalCoverage: MEASURED_FLEET_READ_AT ?? undefined,
   creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
 ---
 
 <Layout
   title="الإنتاج الشمسي المتابَع — الحصيلة التراكمية الحقيقية لأسطولنا | Taqinor"
-  description={`${productionTotalLabel} kWh مجمَّعة تراكمياً على الأسطول المتابَع في الوقت الحقيقي، حتى ${generatedDateLabel} — لا شيء مُقرَّب نحو الأعلى أو مُضخَّم.`}
+  description={`${productionTotalLabel} kWh مجمَّعة تراكمياً على الأسطول المتابَع، حتى ${generatedDateLabel} — لا شيء مُقرَّب نحو الأعلى أو مُضخَّم.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -69,7 +69,7 @@ const jsonLd = {
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">الإنتاج المتابَع</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           ليست كتيّباً دعائياً: عدّاد يستمر في الدوران. ما أنتجه فعلاً الأسطول المتابَع
-          في الوقت الحقيقي منذ التشغيل، تراكمياً — حتى تاريخ{' '}
+          منذ التشغيل، تراكمياً — حتى تاريخ{' '}
           <strong class="text-white">{generatedDateLabel}</strong>.
         </p>
       </div>
@@ -82,14 +82,14 @@ const jsonLd = {
         <h2 class="display v2-section-title mt-5 text-white"><span dir="ltr">{productionTotalLabel} kWh</span>، عدّاد واحد</h2>
         <div class="mt-10 grid gap-6" data-stagger>
           <KeyFigure value={productionTotalLabel} unit="kWh تراكمية" label="الإنتاج المتابَع">
-            حصيلة تراكمية من الأسطول المتابَع في الوقت الحقيقي منذ التشغيل — أبداً سنوية.
+            حصيلة تراكمية من الأسطول المتابَع منذ التشغيل — أبداً سنوية.
           </KeyFigure>
         </div>
         <Callout type="info" title="كيف يُحدَّث هذا الرقم">
           <p>
             تُعاد حساب هذه الحصيلة كلما نُشر تصدير متابعة جديد (تقريباً: مع كل محطة جديدة
             تُضاف إلى الأسطول المتابَع). التاريخ أعلاه هو آخر لقطة — أبداً متوسط متحرك، أبداً توقّع.
-            الحصيلة التراكمية المقاسة تُرصَد باستمرار عبر متابعتنا للإنتاج في الوقت الحقيقي، وتُعاد
+            الحصيلة التراكمية المقاسة تُقرأ من متابعتنا للإنتاج، وتُعاد
             حسابها مع كل مشروع جديد موثَّق.
           </p>
         </Callout>

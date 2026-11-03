@@ -33,7 +33,7 @@ import ZelligeSignature from '../components/ZelligeSignature.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
 import { buildGallery } from '../lib/homeGallery';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR } from '../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR, MEASURED_FLEET_READ_NOTE } from '../lib/realisations';
 import { YIELD_TABLE } from '../lib/yieldTable';
 import { PRODUCTION_NET_FACTOR } from '../lib/systemLoss';
 
@@ -77,7 +77,7 @@ const casablancaSouthOptimalYield = Math.round(
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH_FR; // « 6,56 »
 const heroTitleSuffix = ' MWh déjà produits et mesurés sur nos installations.';
 const heroSub =
-  'Un cumul réel, relevé en continu, en temps réel — pas une projection commerciale. Votre étude commence par un diagnostic de 60 secondes.';
+  `Un cumul réel, ${MEASURED_FLEET_READ_NOTE.fr} — pas une projection commerciale. Votre étude commence par un diagnostic de 60 secondes.`;
 
 // W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
 // consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,

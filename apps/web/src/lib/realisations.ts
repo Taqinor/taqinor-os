@@ -391,6 +391,13 @@ export const MEASURED_FLEET_READ_AT: string | null = (() => {
 /** Même date au format FR (« 05/07/2026 ») — chaîne vide si non documentée. */
 export const MEASURED_FLEET_READ_AT_FR = formatDateFr(MEASURED_FLEET_READ_AT);
 
+/** WAUD9 — mention de relevé qui accompagne TOUT affichage du cumul (date réelle, jamais « temps réel »). */
+export const MEASURED_FLEET_READ_NOTE = {
+  fr: `relevé le ${MEASURED_FLEET_READ_AT_FR}`,
+  en: `read on ${MEASURED_FLEET_READ_AT_FR}`,
+  ar: `قراءة بتاريخ ${MEASURED_FLEET_READ_AT_FR}`,
+};
+
 /**
  * (fondateur 2026-08-17) centrale MESURÉE correspondant à une réalisation, ou
  * `null`. Aucun appariement heuristique (ville/puissance) : seule une

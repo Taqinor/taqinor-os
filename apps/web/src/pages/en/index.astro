@@ -36,7 +36,7 @@ import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
 import { buildGallery } from '../../lib/homeGallery';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH, MEASURED_FLEET_READ_NOTE } from '../../lib/realisations';
 import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -75,7 +75,7 @@ const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH.toFixed(2); // "6.56"
 const heroTitleSuffix = ` MWh already produced and measured across our installations.`;
 const heroSub =
-  `A real cumulative figure, tracked in real time — not a sales projection. Your study starts with a 60-second diagnostic.`;
+  `A real cumulative figure, ${MEASURED_FLEET_READ_NOTE.en} — not a sales projection. Your study starts with a 60-second diagnostic.`;
 
 // PLACEHOLDER(MERYEM): provisional FAQ.
 const faq = [
