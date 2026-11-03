@@ -3415,9 +3415,9 @@ decisions:
         texte: "Tâche Windows du portable via nightly-qa.ps1 (SSH possible, ne tourne que si allumé et session ouverte)"
       - cle: chaque_pc
         texte: "Une tâche Windows sur le portable ET le desktop ; la première machine qui pose la claim tri-problemes:<date> (plan_claims.py) fait le tri, l'autre sort ; cloud possible plus tard"
-    reponse: ouverte
+    reponse: cloud
     date: "2026-11-03"
-    source: "session 2026-11-03 revue L3 journal (AskUserQuestion) : Reda demande d'abord si le coût en tokens est identique (oui : usage de l'abonnement dans les deux cas) et penche pour « portable ou desktop, celui qui est allumé et a assez de jetons »"
+    source: "session 2026-11-03 revue L3 journal (AskUserQuestion puis message) : « si le coût est identique on le fait sur cloud » — coût identique confirmé (usage de l'abonnement dans les deux cas)"
     taches: [BPQ8]
 
   - id: D-JPB-2

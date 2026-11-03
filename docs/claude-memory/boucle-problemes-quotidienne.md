@@ -25,9 +25,8 @@ abandonné : vérifier `updated_at`) ; 575 chunks 404 = un scanner (1 IP) et non
 
 **Décisions (Reda, 03/11) :** D-JPB-2 TRANCHÉ = Sentry backend seul (jamais de DSN front sans nouvelle
 décision) ; D-JPB-3/4 ACCEPTÉS = Reda pose `RETENTION_AUTO_APPLY=1` + `GUNICORN_MAX_REQUESTS=300`/jitter 60
-(à vérifier en lecture seule ensuite) ; D-JPB-1 EN ATTENTE : coût tokens identique cloud/local (usage de
-l'abonnement), Reda penche pour « portable OU desktop, celui qui est allumé » → claim
-`tri-problemes:<date>` via `plan_claims.py`, la première machine gagne ; D-JPB-6 balise publique (défaut
+(à vérifier en lecture seule ensuite) ; D-JPB-1 TRANCHÉ = routine cloud (« si le coût est identique on le fait sur cloud » ;
+coût identique = usage de l'abonnement dans les deux cas) ; D-JPB-6 balise publique (défaut
 non) ; D-JPB-7 sonde externe gratuite (défaut oui).
 
 **Why:** Reda a demandé (02/11) que tout problème vécu soit consigné ET que ce journal serve à
