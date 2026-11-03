@@ -181,17 +181,25 @@ def _reactivation_demandee(company, params, leads):
     }
 
 
-def _lien_reactivation(lead, user, cle):
-    """CADV109 — le lien wa.me du gabarit ``cle`` : la machinerie des touches
-    (``message_pour_etape``), sur une touche NON enregistrée, jamais un second rendu."""
+def _lien_reactivation(lead, user, cle, plateforme=''):
+    """CADV109 — ``(wa_url, blancs)`` du gabarit ``cle`` : la machinerie des touches
+    (``message_pour_etape``), sur une touche NON enregistrée, jamais un second rendu.
+    ERR-CADV-REACTIVATION-BLANC — ``plateforme`` (tapée à la main) complète le blanc
+    « [plateforme] » ; tout blanc restant est rendu en ``blancs`` (CAD69) : le lien
+    n'est alors pas utilisable et l'appelant sort le lead avec le blanc nommé."""
+    from apps.ventes.utils.whatsapp import build_wa_url
     from core.dates import aujourd_hui_local
 
-    from .cadence_messages import message_pour_etape
+    from .cadence_messages import _crochets_a_completer, message_pour_etape
     from .models import RelanceEtape
 
     touche = RelanceEtape(company=lead.company, lead=lead, due_date=aujourd_hui_local(),
                           canal=RelanceEtape.Canal.WHATSAPP)
-    return message_pour_etape(touche, user=user, cle=cle)['wa_url']
+    rendu = message_pour_etape(touche, user=user, cle=cle)
+    if not plateforme:
+        return rendu['wa_url'], _crochets_a_completer(rendu['message'])
+    corps = rendu['message'].replace('[plateforme]', plateforme)
+    return build_wa_url(rendu['phone'], corps), _crochets_a_completer(corps)
 
 
 def _tracer_reactivation(lead, user, seau):
@@ -254,7 +262,11 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
                        f'({PREPARER_WHATSAPP_PLAFOND_PAR_JOUR})')
             continue
         if reactivation and reactivation['cle']:
-            wa_url = _lien_reactivation(lead, user, reactivation['cle'])
+            wa_url, trous = _lien_reactivation(
+                lead, user, reactivation['cle'], _texte(params.get('plateforme')))
+            if trous:
+                skip(lead, 'à compléter : ' + ', '.join(trous))
+                continue
         else:
             corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
             # CAD69 — LA règle du message d'une touche (``message_pour_etape`` →
