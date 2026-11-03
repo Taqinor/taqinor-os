@@ -21,6 +21,7 @@ fait que rétrécir (une table listée qui gagne ses portes fait échouer la gar
 """
 from __future__ import annotations
 
+import ast
 import contextlib
 import importlib.util
 import re
@@ -45,6 +46,9 @@ TYPES_AUTO = {"evenement", "beat", "signal", "tache"}
 SANS_PORTES_GELEES = {"PA5", "PA7"}
 _CLASSE_VUE = re.compile(r"(?:View|ViewSet|APIView|Mixin)$")
 _FICHIER_VUE = re.compile(r"/apps/\w+/(?:.+/)?(?:views?|viewsets?)(?:/|\.py$)")
+#: ACVI92 — appels qui créent l'objet d'entrée d'une table : chaque site est une porte déclarée.
+BALAYAGE_PORTES = {"PA1": ("lead", ("Lead", "Lead.objects.create"))}
+_FICHIER_TEST = re.compile(r"(?:^|/)(?:tests?(?:_[^/]*)?|[^/]*_test|conftest)\.py$|/(?:tests|migrations)/")
 _RESOLUTION_CORE = re.compile(r"^\S+ : (?:declencheur\.source|fonction_entree|checkpoint\.persistance) — ")
 
 
@@ -171,6 +175,27 @@ def _problemes_dialecte(e: dict, err):
             _une_reference(r.get("source"), "règle aval.source", err)
 
 
+def _portes_non_declarees(table: dict, racine: Path) -> list:
+    """Échecs des créations du code qu'aucune porte de la table ne déclare (AST, hors tests) :
+    une 14e porte ajoutée sans la table casse la garde, un compte figé ne la voyait pas."""
+    quoi, appels = BALAYAGE_PORTES.get(identifiant(table), ("", ()))
+    declarees = set(references(table.get("portes") or []))
+    base, echecs = racine / at.DJANGO_REL, []
+    for chemin in sorted((base / "apps").rglob("*.py")) if appels else []:
+        rel = chemin.relative_to(base).as_posix()
+        texte = chemin.read_text(encoding="utf-8", errors="replace")
+        if _FICHIER_TEST.search(rel) or appels[0] not in texte:
+            continue
+        arbre = ast.parse(texte)
+        defs = at.definitions(arbre)
+        for appel in ast.walk(arbre):
+            if isinstance(appel, ast.Call) and ast.unparse(appel.func) in appels:
+                site = f"{rel}::{at.englobant(defs, appel.lineno)}"
+                if not any(site == d or site.startswith(d + ".") for d in declarees):
+                    echecs.append(f"{identifiant(table)} : création de {quoi} non déclarée : {site}")
+    return echecs
+
+
 def verifier_table(rel: str, table: dict, racine=ROOT) -> tuple:
     """(échecs, ids d'étapes manquantes) d'une table."""
     pa, racine = identifiant(table), Path(racine)
@@ -198,6 +223,7 @@ def verifier_table(rel: str, table: dict, racine=ROOT) -> tuple:
         for ref in sorted(set(references(table))):
             if motif := resoudre(ref, racine):
                 echecs.append(f"{pa} : {ref} — {motif}")
+        echecs += _portes_non_declarees(table, racine)
     return echecs, [str(e.get("id")) for e in parcours.etapes(table) if isinstance(e, dict) and est_manquante(e)]
 
 

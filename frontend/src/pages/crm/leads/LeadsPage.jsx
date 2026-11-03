@@ -153,6 +153,12 @@ export default function LeadsPage() {
       .then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
   }, [])
 
+  // ACVI73 — le minuteur « À contacter » du kanban lit le réglage servi.
+  const [slaBreach, setSlaBreach] = useState(null)
+  useEffect(() => {
+    crmApi.getSlaBreach().then(r => setSlaBreach(r.data)).catch(() => {})
+  }, [])
+
   // WIR229/FG33 — modèles CRM pour le panneau « WhatsApp en masse » (choix
   // du modèle avant `prepare_whatsapp`, jamais un envoi automatique).
   const [messageTemplates, setMessageTemplates] = useState([])
@@ -1145,6 +1151,7 @@ export default function LeadsPage() {
         {view === 'kanban' && (
           <KanbanView
             {...viewProps}
+            sla={slaBreach}
             totalLeads={leads.length}
             onClearFilters={() => setFilters(EMPTY_FILTERS)}
             /* MB6 — en mobile le bouton flottant plus bas EST l'action de

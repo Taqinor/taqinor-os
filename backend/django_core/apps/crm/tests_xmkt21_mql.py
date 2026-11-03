@@ -72,6 +72,21 @@ class MqlThresholdCrossingTests(TestCase):
         self.commercial = _make_commercial(
             self.company, 'com1', role=self.role)
 
+    def test_owner_retire_par_un_humain_reste_vide(self):
+        # ACVI29 — owner retiré à la main, ou dossier clos : aucune rotation.
+        retire = _make_lead(self.company, score=85)
+        Lead.objects.filter(pk=retire.pk).update(saisies_humaines=['owner'])
+        perdu = _make_lead(self.company, score=85)
+        Lead.objects.filter(pk=perdu.pk).update(perdu=True)
+        for lead in (retire, perdu):
+            lead.refresh_from_db()
+            self.assertFalse(maybe_assign_mql(lead))
+            lead.refresh_from_db()
+            self.assertIsNone(lead.owner_id)
+            self.assertIsNone(lead.mql_assigned_at)
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.commercial).exists())
+
     def test_below_threshold_is_noop(self):
         lead = _make_lead(self.company, score=40)
         assigned = maybe_assign_mql(lead)

@@ -180,6 +180,14 @@ def _commercial_nom(visite):
     return (commercial.get_full_name() or commercial.username or '')
 
 
+def rattacher_visites_au_lead(absorbe, survivant):
+    """ACVI22 — fusion de leads : les visites suivent le dossier (le gel ALEA11 du
+    sérialiseur ne cède qu'ici). Renvoie le nombre de visites rattachées."""
+    from .models import VisiteTerrain
+
+    return VisiteTerrain.objects.filter(lead=absorbe).update(lead=survivant)
+
+
 def emettre_visite_planifiee(visite, user):
     """Publie ``visite_planifiee`` — la date prévue vient d'être posée/changée.
 
@@ -655,6 +663,9 @@ TRANSITIONS = {
     # terminée. (Une visite VALIDÉE est déjà gelée par VT3.)
     'qualification': frozenset({'brouillon', 'en_cours', 'a_refaire'}),
     'notes': frozenset({'brouillon', 'en_cours', 'a_refaire'}),
+    # ACVI58 — le bureau d'études ne valide pas un écran périmé.
+    'mesures': frozenset({'brouillon', 'en_cours', 'a_refaire'}),
+    'photos': frozenset({'brouillon', 'en_cours', 'a_refaire'}),
 }
 
 _MESSAGE_TERMINEE = ("Visite terminée : demandez un renvoi au bureau "
@@ -667,6 +678,8 @@ MESSAGES_TRANSITION = {
                  'au commercial.'),
     'qualification': _MESSAGE_TERMINEE,
     'notes': _MESSAGE_TERMINEE,
+    'mesures': _MESSAGE_TERMINEE,
+    'photos': _MESSAGE_TERMINEE,
 }
 
 
@@ -1123,7 +1136,8 @@ def appliquer_mesures_hors_ligne(company, user, visite_id, categorie, valeurs):
        donc l'id d'un autre locataire est indiscernable d'un id inconnu ;
     2. la portée dure « mes visites » (VTA6) : sans ``visites_valider``, on ne
        peut écrire que sur SA visite ;
-    3. le gel VT3 : une visite validée reste en lecture seule.
+    3. le gel VT3 : une visite validée reste en lecture seule ; ACVI58 : une
+       visite terminée aussi (corriger passe par un renvoi).
 
     ``motif`` est un message FR prêt à afficher, ``None`` en cas de succès.
     """
@@ -1141,6 +1155,8 @@ def appliquer_mesures_hors_ligne(company, user, visite_id, categorie, valeurs):
                       'vous ne pouvez pas saisir ses mesures.')
     if not visite.modifiable:
         return None, visite.raison_lecture_seule
+    if refus_transition(visite, 'mesures') is not None:
+        return None, _MESSAGE_TERMINEE
 
     visite, erreurs = enregistrer_mesures(visite, categorie, valeurs)
     if erreurs:

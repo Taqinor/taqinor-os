@@ -88,9 +88,20 @@ class Vx245ConfirmationWhatsAppTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(resp.data['wa_url'].startswith('https://wa.me/'))
         self.assertIn('Bennani', resp.data['message'])
-        self.assertIn(resp.data['ics_url'], resp.data['message'])
         self.assertIn(f'/crm/appointments/{self.appt.id}/ics/', resp.data['ics_url'])
         # N'envoie RIEN : aucune notification/message n'est créée par cet appel.
+
+    def test_le_message_client_ne_porte_aucun_lien_authentifie(self):
+        # ACVI45 — le client n'ouvre pas une route JWT ; le bouton ERP garde `ics_url`.
+        from urllib.parse import unquote
+
+        resp = _api(self.user).post(
+            f'/api/django/crm/appointments/{self.appt.id}/confirmer-whatsapp/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for texte in (resp.data['message'], unquote(resp.data['wa_url'])):
+            self.assertNotIn('/ics/', texte)
+            self.assertNotIn('/api/', texte)
+        self.assertTrue(resp.data['ics_url'])
 
     def test_no_phone_returns_409(self):
         # ERR-ENF11-FUZZ-CRM — le numéro vient de la fiche : refus d'état.

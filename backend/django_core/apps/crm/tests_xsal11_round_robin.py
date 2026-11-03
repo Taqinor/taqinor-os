@@ -281,6 +281,37 @@ class AttributionParResponsableTests(TestCase):
         with mock.patch('django.utils.timezone.now', return_value=instant):
             return self._nouveau(**champs)
 
+    def test_responsable_par_defaut_inactif_ignore(self):
+        # ACVI14 — ni attribution par défaut, ni saisie d'`owner`, ni lot.
+        from rest_framework.test import APIClient
+
+        company = Company.objects.create(nom='ACVI14', slug='acvi14-inactif')
+        role = Role.objects.create(
+            company=company, nom='Commercial',
+            permissions=['crm_creer', 'crm_voir', 'crm_modifier', 'crm_reassign'])
+        inactif = make_commercial(company, 'acvi14_u', role)
+        actif = make_commercial(company, 'acvi14_k', role)
+        get_user_model().objects.filter(pk=inactif.pk).update(is_active=False)
+        CompanyProfile.objects.create(
+            company=company, responsable_defaut_leads=inactif)
+
+        self.assertEqual(default_responsable_for(company), actif)
+
+        lead = Lead.objects.create(company=company, nom='P', owner=actif)
+        api = APIClient()
+        api.force_authenticate(actif)
+        resp = api.patch(f'/api/django/crm/leads/{lead.pk}/',
+                         {'owner': inactif.pk}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.data['owner'], ['Utilisateur inactif.'])
+
+        resp = api.post('/api/django/crm/leads/bulk/', {
+            'action': 'reassign', 'ids': [lead.pk], 'owner': inactif.pk},
+            format='json')
+        self.assertNotEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, actif)
+
     def test_off_comportement_inchange_aucune_attente(self):
         # En journée (jeudi 29/10/2026, 10 h) : rotation directe.
         from apps.crm.models_clients import AttributionEnAttente
@@ -370,6 +401,40 @@ class AttributionParResponsableTests(TestCase):
             dispatch.attribuer(self.b, lead.pk, self.b.pk)
         lead.refresh_from_db()
         self.assertEqual(lead.owner, self.a)
+
+    def test_escalade_de_la_file_requetes_constantes(self):
+        # ACVI83 — même coût à 4 et à 12 attentes dont les paliers sont posés.
+        from unittest import mock
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.crm import dispatch
+        from apps.crm.models import LeadActivity
+        self.equipe.confirmation_responsable = False
+        self.equipe.file_a_prendre = True
+        self.equipe.save(update_fields=['confirmation_responsable',
+                                        'file_a_prendre'])
+
+        def creer(nombre):
+            for _ in range(nombre):
+                lead = self._nouveau_a(self._a(26, 10, 2),
+                                       type_installation='residentiel')
+                for _m, _p, marqueur in dispatch.PALIERS_FILE:
+                    LeadActivity.objects.create(
+                        company=self.company, lead=lead,
+                        kind=LeadActivity.Kind.NOTE, body=f'{marqueur} — posé')
+
+        def passage():
+            with mock.patch('apps.notifications.services.notify_many',
+                            return_value=[]) as envoi:
+                with CaptureQueriesContext(connection) as ctx:
+                    n = dispatch.escalader_file(self._a(29, 12, 0))
+            self.assertEqual((n, envoi.call_count), (0, 0))
+            return len(ctx)
+
+        creer(4)
+        a_quatre = passage()
+        creer(8)
+        self.assertEqual(passage(), a_quatre)
 
     def test_les_paliers_de_la_file_notifient_une_fois_et_attribuent_a_t30(self):
         # CADV115 : lead résidentiel arrivé à 10:02 jamais pris — T+5 prévient

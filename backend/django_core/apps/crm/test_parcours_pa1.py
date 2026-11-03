@@ -81,6 +81,13 @@ class ParcoursPA1Tests(unittest.TestCase):
                             f'{porte["id"]} : porte introuvable '
                             f'{porte["source"]}')
 
+    def test_chaque_porte_declare_son_arrivee(self):
+        # ACVI12 — la règle d'arrivée de chaque porte, écarts compris.
+        arrivees = {p['id']: p['arrivee'] for p in TABLE['portes']}
+        self.assertEqual(arrivees['demande_rdv'], 'sans cadence, YBW51')
+        self.assertEqual(arrivees['import_odoo'], 'miroir')
+        self.assertTrue(all(valeur.strip() for valeur in arrivees.values()))
+
     def test_les_ecrivains_automatiques_des_champs_resolvent(self):
         ecrivains = TABLE['provenance']['ecrivains_auto']
         champs = {e['champ'] for e in ecrivains}

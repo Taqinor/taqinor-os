@@ -64,6 +64,7 @@ from .fiche_funnel import (
 )
 from .cadence_messages import ETIQUETTES_RAISON_ATTENTE, PREFIXE_LIEN_LOCATAIRE, RAISONS_ATTENTE
 from .cadence_reperes import (
+    CLE_VALIDITE_A_RENOUVELER,
     FILET_JOINT_DELAI_JOURS,
     PASSATION_LIBELLE,
     PREFIXE_NOTE_VEILLE,
@@ -76,7 +77,9 @@ from .cadence_reperes import (
     annuler_etapes_moteur_ouvertes,
     prefixe_activite_touche,
 )
-from .leads_consentement import _ecrire_registre_contact
+from .leads_consentement import (
+    BASE_LEGALE_NON_COLLECTEE, CONSENT_SOURCE_PROPRIETAIRE,
+    _ecrire_registre_contact, enregistrer_base_legale_lead)
 from .leads_doublons import find_duplicates_by_contact, normalize_phone
 
 logger = logging.getLogger(__name__)
@@ -911,9 +914,6 @@ def _prolonger_validite_attente_accord(lead, user=None):
 #: CIQ512 — le libellé COURT de l'étape datée (≤ 150 car.) ; le texte complet
 #: va dans la note.
 LIBELLE_VALIDITE_A_RENOUVELER = 'Validité à renouveler — {reference}'
-
-#: ACRM45 (jumeau) — la clé stable de l'étape « validité à renouveler ».
-CLE_VALIDITE_A_RENOUVELER = 'validite_a_renouveler'
 
 
 def _texte_validite_a_renouveler(reference, validite, decision):
@@ -1872,6 +1872,9 @@ def creer_lead_proprietaire(locataire, user, donnees, *, queryset=None):
                 setattr(proprietaire, champ, getattr(locataire, champ, None))
             proprietaire.save()
             activity.log_creation(proprietaire, user)
+            enregistrer_base_legale_lead(  # ACVI18
+                proprietaire, source=CONSENT_SOURCE_PROPRIETAIRE,
+                base_legale=BASE_LEGALE_NON_COLLECTEE)
         else:
             proprietaire = existant
         nom_locataire = ' '.join(

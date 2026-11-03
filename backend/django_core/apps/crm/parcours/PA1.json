@@ -167,67 +167,80 @@
     {
       "id": "saisie_manuelle",
       "source": "apps/crm/views.py::LeadViewSet.perform_create",
-      "description": "Saisie à la main dans /crm/leads."
+      "description": "Saisie à la main dans /crm/leads.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "formulaire_web",
       "source": "apps/crm/webhooks.py::_map_and_link_lead",
-      "description": "Formulaire du site (webhook), anti-doublon."
+      "description": "Formulaire du site (webhook), anti-doublon.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "demande_rdv",
       "source": "apps/crm/webhooks.py::_rdv_creer_lead",
-      "description": "Demande de rendez-vous publique."
+      "description": "Demande de rendez-vous publique.",
+      "arrivee": "sans cadence, YBW51"
     },
     {
       "id": "meta_lead_ads",
       "source": "apps/crm/leads_meta.py::create_lead_from_meta_lead_ads",
-      "description": "Formulaire Meta Lead Ads."
+      "description": "Formulaire Meta Lead Ads.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "whatsapp_ctwa",
       "source": "apps/crm/leads_meta.py::create_minimal_lead_from_ctwa",
-      "description": "Clic vers WhatsApp (annonce)."
+      "description": "Clic vers WhatsApp (annonce).",
+      "arrivee": "chemin propre"
     },
     {
       "id": "livechat",
       "source": "apps/crm/leads_intake.py::create_lead_from_livechat",
-      "description": "Chat du site."
+      "description": "Chat du site.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "api_publique",
       "source": "apps/crm/fiche_api_publique.py::create_lead_from_public_api",
-      "description": "API publique."
+      "description": "API publique.",
+      "arrivee": "finaliser_lead_importe"
     },
     {
       "id": "evenement_marketing",
       "source": "apps/crm/leads_intake.py::create_lead_from_evenement_marketing",
-      "description": "Événement marketing."
+      "description": "Événement marketing.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "ticket_sav",
       "source": "apps/crm/leads_intake.py::create_lead_depuis_ticket",
-      "description": "Ticket SAV devenu opportunité."
+      "description": "Ticket SAV devenu opportunité.",
+      "arrivee": "finaliser_lead_importe, sans cadence"
     },
     {
       "id": "ocr_facture",
       "source": "apps/crm/leads_intake.py::create_draft_lead_from_ocr",
-      "description": "Brouillon issu d'un scan de facture."
+      "description": "Brouillon issu d'un scan de facture.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "proprietaire",
       "source": "apps/crm/cadence_reponses.py::creer_lead_proprietaire",
-      "description": "Propriétaire d'un lead locataire."
+      "description": "Propriétaire d'un lead locataire.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "import_odoo",
       "source": "apps/crm/management/commands/import_odoo_leads.py::Command.handle",
-      "description": "Import des leads Odoo (miroir)."
+      "description": "Import des leads Odoo (miroir).",
+      "arrivee": "miroir"
     },
     {
       "id": "import_donnees",
       "source": "apps/dataimport/services.py::_commit_raw",
-      "description": "Import de données (fichier)."
+      "description": "Import de données (fichier).",
+      "arrivee": "finaliser_lead_importe, sans cadence"
     }
   ],
   "provenance": {

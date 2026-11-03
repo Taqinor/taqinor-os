@@ -32,7 +32,7 @@ import { toastError } from '../../lib/toast'
 import { render, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import RelancesSuiviPage from './RelancesSuiviPage'
-import { fusionnerLignes } from '../../features/crm/relances/fusionSuivi'
+import { estEnRetard, fusionnerLignes } from '../../features/crm/relances/fusionSuivi'
 import RelancesEquipePanel from './RelancesEquipePanel'
 
 beforeEach(() => {
@@ -157,7 +157,7 @@ describe('RelancesSuiviPage — CAD112 (deux onglets homonymes « Aujourd\'hui +
     const j35 = decalerJours(casaISO(new Date()), -35)
     crmApi.getRelanceEtapesSuivi.mockResolvedValue({
       data: {
-        results: [{ ...ETAPES[0], id: 777, due_date: j35, statut: 'a_faire' }],
+        results: [{ ...ETAPES[0], id: 777, due_date: j35, statut: 'a_faire', overdue: true }],
         resume: { a_faire: 1, en_retard: 1, fait: 0, sautee: 0, annulee: 0 },
       },
     })
@@ -314,14 +314,32 @@ describe('RelancesSuiviPage — filtre par statut et vue d\'équipe (29/10/2026)
   })
 
   it('?statut=en_retard dans l\'URL s\'applique au chargement : seule la touche ouverte déjà échue reste', async () => {
-    // L'exemple committé est daté d'un autre jour : sa touche « à faire » est
-    // donc échue (en retard) ; sa touche « fait » ne l'est pas.
+    // ACVI72 — le retard est celui que le serveur sert : la touche « à faire »
+    // porte `overdue`, la touche « fait » jamais.
+    crmApi.getRelanceEtapesSuivi.mockResolvedValue({
+      data: {
+        ...DONNEES,
+        results: ETAPES.map((e) => ({ ...e, overdue: e.statut === 'a_faire' })),
+      },
+    })
     monterAvecUrl('/crm/relances?statut=en_retard')
     activerOnglet('7 derniers jours')
     await waitFor(() => expect(lignesVisibles()).toHaveLength(1))
     expect(screen.queryByText(/^Fait · /)).not.toBeInTheDocument()
     expect(caseStatut('En retard')).toHaveAttribute('aria-checked', 'true')
     expect(caseStatut('Faites')).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('en retard suit overdue servi, pas le calendrier', async () => {
+    // ACVI72 — échue vendredi, lue samedi non ouvré : le serveur dit `false`.
+    expect(estEnRetard({ statut: 'a_faire', due_date: '2026-10-30', overdue: false }, '2026-10-31')).toBe(false)
+    expect(estEnRetard({ statut: 'a_faire', due_date: '2026-10-30', overdue: true }, '2026-10-31')).toBe(true)
+    expect(estEnRetard({ statut: 'fait', due_date: '2026-10-30', overdue: true }, '2026-10-31')).toBe(false)
+    monterAvecUrl('/crm/relances?statut=en_retard')
+    activerOnglet('7 derniers jours')
+    await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(2))
+    // Le contrat sert `overdue: false` sur une touche à faire d'une date passée.
+    await waitFor(() => expect(lignesVisibles()).toHaveLength(0))
   })
 
   it('la vue d\'équipe est absente au rôle normal, présente aux responsables et lue sur le contrat controle_suivi', async () => {
@@ -538,7 +556,9 @@ describe('RelancesSuiviPage — SUIVI-RELOAD (geste ciblé, liste jamais vidée)
 describe('fusionnerLignes (SUIVI-RELOAD)', () => {
   const BORNES = { date_debut: '2026-09-01', date_fin: '2026-09-30' }
   const TODAY = '2026-09-15'
-  const ligne = (p) => ({ due_at: null, ordre: 1, statut: 'a_faire', ...p })
+  const ligne = (p) => ({
+    due_at: null, ordre: 1, statut: 'a_faire', overdue: p.due_date < TODAY, ...p,
+  })
   const donnees = (results, resume) => ({ count: results.length, results, resume })
 
   it('une touche faite quitte « à faire » (et « en retard ») et entre dans « faites »', () => {

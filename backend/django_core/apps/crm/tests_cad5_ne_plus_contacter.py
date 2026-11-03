@@ -183,6 +183,35 @@ class ToutesCadencesTests(_Base):
 class RefusNommeTests(_Base):
     slug = 'cad5-refus'
 
+    def test_whatsapp_d_une_touche_annulee_est_refuse(self):
+        # ACVI44 — une touche annulée par le STOP ne se rend plus ; l'accusé, si.
+        from apps.crm.cadence_reponses import repondre_ne_plus_contacter
+        from apps.crm.cadence_signaux import notifier_signal_lecture
+        from apps.notifications.models import Notification
+
+        t1, t2 = self._touche(ordre=1), self._touche(ordre=2)
+        repondre_ne_plus_contacter(t1, self.acteur)
+        t2.refresh_from_db()
+        self.assertEqual(t2.statut, RelanceEtape.Statut.ANNULEE)
+        avant = LeadActivity.objects.filter(lead=self.lead).count()
+
+        url = f'/api/django/crm/relance-etapes/{t2.pk}'
+        resp = self.api.post(f'{url}/whatsapp/', {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('ne plus contacter', str(resp.data))
+        self.assertEqual(self.api.get(f'{url}/message/').status_code, 409)
+        self.assertEqual(
+            self.api.get(f'{url}/message/?cle=stop_contact').status_code, 200)
+        self.assertEqual(
+            LeadActivity.objects.filter(lead=self.lead).count(), avant)
+        t2.refresh_from_db()
+        self.assertEqual(t2.statut, RelanceEtape.Statut.ANNULEE)
+
+        self.lead.refresh_from_db()
+        Notification.objects.all().delete()
+        notifier_signal_lecture('DEV-1', self.lead)
+        self.assertFalse(Notification.objects.filter(body__contains='wa.me').exists())
+
     def test_une_reponse_inconnue_nomme_le_champ(self):
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{self._touche().pk}/fait/',

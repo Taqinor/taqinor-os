@@ -946,6 +946,19 @@ def nombre_visites_planifiees(company, lead_ids, *, depuis):
         date_prevue__isnull=False).count()
 
 
+def lead_ids_visite_a_venir(company_id, today):
+    """ACVI65 — les leads qui ont une visite À VENIR : brouillon ou en cours,
+    datée d'aujourd'hui ou plus tard (une sous-requête d'identifiants). Lecture
+    cross-app pour ``apps.crm`` (frontière M3)."""
+    from .models import VisiteTerrain
+
+    return VisiteTerrain.objects.filter(
+        company_id=company_id, date_prevue__gte=today,
+        statut__in=(VisiteTerrain.Statut.BROUILLON,
+                    VisiteTerrain.Statut.EN_COURS),
+    ).values('lead_id')
+
+
 def visites_pour_lead(lead):
     """Les visites techniques d'un lead, de la PLUS RÉCENTE à la plus ancienne.
 

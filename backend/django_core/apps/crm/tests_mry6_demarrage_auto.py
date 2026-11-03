@@ -87,6 +87,24 @@ class DemarrageTests(_Base):
 class GardesTests(_Base):
     slug = 'mry6-gardes'
 
+    def test_numero_ajoute_au_patch_relance_la_cadence(self):
+        # ACVI27 — le PATCH du numéro pose les touches, ou trace la garde suivante.
+        api = APIClient()
+        api.force_authenticate(self.acteur)
+        for nom, numero, touches in (('Y', '0612345678', 2), ('Z', '0612345678', 0)):
+            cree = api.post('/api/django/crm/leads/', {'nom': nom}, format='json')
+            self.assertEqual(cree.status_code, 201, cree.data)
+            lead = Lead.objects.get(pk=cree.data['id'])
+            self.assertEqual(self._touches(lead), 0)
+            self.assertTrue(self._refus_trace(lead, 'aucun numéro exploitable'))
+
+            maj = api.patch(f'/api/django/crm/leads/{lead.pk}/',
+                            {'telephone': numero}, format='json')
+
+            self.assertEqual(maj.status_code, 200, maj.data)
+            self.assertEqual(self._touches(lead), touches, nom)
+        self.assertTrue(self._refus_trace(lead, 'doublon possible de #'))
+
     def test_un_lead_sans_numero_est_refuse_et_trace(self):
         """Aucune touche n'est réalisable sans numéro : appel comme WhatsApp.
         Démarrer quand même remplirait la file de Meryem de touches mortes."""
@@ -230,6 +248,31 @@ class PointsDappelTests(_Base):
             company=self.company,
             fields={'nom': 'Partenaire', 'telephone': '+212661445566'})
         self.assertGreater(self._touches(lead), 0)
+
+    def test_api_publique_et_ticket_ont_owner_score_et_registre(self):
+        # ACVI12 — une même finalisation d'arrivée sur les trois portes.
+        from apps.crm.models import Client
+        from core.models import ConsentRecord
+
+        api = fiche_api_publique.create_lead_from_public_api(
+            company=self.company,
+            fields={'nom': 'Partenaire', 'telephone': '0661000002'})
+        client = Client.objects.create(
+            company=self.company, nom='Client', email='acvi12@example.com')
+        ticket, _ = leads_intake.create_lead_depuis_ticket(
+            company=self.company, user=self.acteur, client=client)
+        fichier = Lead.objects.create(
+            company=self.company, nom='Fichier', telephone='0661000003')
+        leads_intake.finaliser_lead_importe(fichier)
+
+        for lead, source in ((api, 'API publique'), (ticket, 'ticket SAV'),
+                             (fichier, 'import de fichier')):
+            lead.refresh_from_db()
+            self.assertEqual(lead.owner, self.acteur, source)
+            self.assertGreater(lead.score, 0, source)
+            self.assertEqual(ConsentRecord.objects.filter(
+                company=self.company, granted=False,
+                source__startswith=source).count(), 1, source)
 
     def test_evenement_marketing(self):
         lead = leads_intake.create_lead_from_evenement_marketing(

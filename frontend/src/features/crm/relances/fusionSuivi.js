@@ -17,11 +17,11 @@
    la période n'est relue qu'au changement d'onglet/responsable (ou sur
    « Réessayer »). */
 
-/** « En retard » = à faire ET échue strictement avant aujourd'hui — la
- *  définition du contrat `relance_etapes_suivi` (`resume.en_retard`), écrite
- *  UNE fois pour les cases à cocher de l'écran comme pour les compteurs. */
-export function estEnRetard(etape, today) {
-  return etape.statut === 'a_faire' && etape.due_date < today
+/** « En retard » = à faire ET `overdue` servi (jours ouvrés, absences :
+ *  `controle_suivi.etape_en_retard`, ALEA32) — ACVI72 : aucune seconde
+ *  définition à l'écran, pour les cases à cocher comme pour les compteurs. */
+export function estEnRetard(etape) {
+  return etape.statut === 'a_faire' && etape.overdue === true
 }
 
 /** Le tri de LECTURE du serveur (`cadence_selectors.relance_etapes_periode` :

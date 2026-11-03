@@ -300,6 +300,19 @@ class BilanHebdoTests(TestCase):
         self.assertIn('Leads joints sous 5 jours ouvrés : —', texte)
         self.assertNotIn('Leads joints sous 5 jours ouvrés : 0%', texte)
 
+    def test_deux_passages_une_seule_notification(self):
+        # ACVI84 — une par société et semaine ISO ; la semaine suivante repart.
+        from unittest import mock
+        self.assertEqual(bilan_hebdo_relances(), 1)
+        self.assertEqual(bilan_hebdo_relances(), 0)
+        bilans = Notification.objects.filter(
+            recipient=self.directeur, event_type=EventType.CRM_BILAN_HEBDO)
+        self.assertEqual(bilans.count(), 1)
+        plus_tard = timezone.now() + datetime.timedelta(days=7)
+        with mock.patch('django.utils.timezone.now', return_value=plus_tard):
+            self.assertEqual(bilan_hebdo_relances(), 1)
+        self.assertEqual(bilans.count(), 2)
+
     def test_dry_run_nenvoie_rien(self):
         self.assertEqual(bilan_hebdo_relances(dry_run=True), 1)
         self.assertFalse(Notification.objects.exists())

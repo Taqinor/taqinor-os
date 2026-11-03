@@ -17,6 +17,7 @@
 import { useState, memo } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
 import { Zap, MapPin, Pentagon, FileText, MoreHorizontal, Lock } from 'lucide-react'
+import BadgeParcage from '../../../../features/crm/workspace/BadgeParcage'
 import {
   CANAL_LABELS,
   CONTACTED_STAGE,
@@ -180,7 +181,7 @@ const SIGNAL_TONES = {
 
 /** signalFor — état condensé de la ligne d'action (même précédence que le
     rendu ci-dessous). Retourne null quand il n'y a RIEN à signaler. */
-function signalFor({ perdu, relanceEnRetard, rappelDemande, dernierDevisExpire, nextActivityState, slaMinutes, factureManquante, action }) {
+function signalFor({ perdu, relanceEnRetard, rappelDemande, dernierDevisExpire, nextActivityState, slaMinutes, slaEnRetard, factureManquante, action }) {
   if (perdu) return { tone: SIGNAL_TONES.perdu, glyph: '✗', label: 'Perdu' }
   if (relanceEnRetard) return { tone: SIGNAL_TONES.danger, glyph: '⚠', label: 'Relance en retard' }
   if (rappelDemande) return { tone: SIGNAL_TONES.info, glyph: '☎', label: 'Rappel demandé' }
@@ -193,7 +194,7 @@ function signalFor({ perdu, relanceEnRetard, rappelDemande, dernierDevisExpire, 
   }
   if (slaMinutes != null) {
     return {
-      tone: slaMinutes >= 30 ? SIGNAL_TONES.danger : SIGNAL_TONES.warning,
+      tone: slaEnRetard ? SIGNAL_TONES.danger : SIGNAL_TONES.warning,
       glyph: '⏱',
       label: 'À contacter — premier contact en attente',
     }
@@ -206,6 +207,9 @@ function signalFor({ perdu, relanceEnRetard, rappelDemande, dernierDevisExpire, 
 function LeadCard({
   lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
   selected = false, onToggleSelect, onPlanifierRelance,
+  // ACVI73 — valeurs servies par `sla-breach` (primitives : memo intact) :
+  // 0 = suivi désactivé ; en retard = le lead est dans ses `results`.
+  slaHours = 0, slaEnRetard = false,
   // LB5 — callback stable de LeadsPage (dispatch updateLead, store seul
   // source de vérité — jamais de refetch ni de crmApi direct depuis la carte).
   onMarkPerdu,
@@ -254,7 +258,10 @@ function LeadCard({
   const wa = waHref(lead.whatsapp)
   // QX31 — minuteur premier contact : uniquement en colonne NEW (dès que le
   // lead est contacté, son étape change et le minuteur disparaît de lui-même).
-  const minutesNouveau = lead.stage === NEW_STAGE ? minutesDepuis(lead.date_creation) : null
+  // ACVI73 — et seulement sans premier contact, réglage `lead_sla_hours` actif.
+  const minutesNouveau = lead.stage === NEW_STAGE && !lead.first_contacted_at && slaHours > 0
+    ? minutesDepuis(lead.date_creation)
+    : null
   // ⚡ indisponible : on explique pourquoi (devis_auto.message).
   const factureManquante =
     lead.devis_auto && !lead.devis_auto.pret ? lead.devis_auto.message : null
@@ -297,6 +304,7 @@ function LeadCard({
     dernierDevisExpire,
     nextActivityState: lead.next_activity?.state ?? null,
     slaMinutes: minutesNouveau,
+    slaEnRetard,
     factureManquante,
     action,
   })
@@ -361,6 +369,7 @@ function LeadCard({
           )}
           <span className="kb-card-name">{nomComplet}</span>
           {societeLabel && <span className="kb-card-societe">{societeLabel}</span>}
+          <BadgeParcage lead={lead} />
           {/* LB15 — menu ••• (révélé au survol/focus, permanent au toucher) :
               toutes les actions du lead, atteignables au clavier. Le bouton ✗
               20×20 a quitté la face (blueprint D3). */}
@@ -667,9 +676,9 @@ function LeadCard({
           </div>
         ) : minutesNouveau != null ? (
           // QX31 — sur une carte NEW non contactée, la ligne d'action EST le
-          // badge SLA premier-contact (amber < 30 min, rouge ≥ 30 min).
+          // badge SLA premier-contact (rouge = hors délai servi, ACVI73).
           <div
-            className={`kb-card-actionline kb-sla ${minutesNouveau >= 30 ? 'kb-actionline-danger' : 'kb-actionline-warning'}`}
+            className={`kb-card-actionline kb-sla ${slaEnRetard ? 'kb-actionline-danger' : 'kb-actionline-warning'}`}
             title="Temps écoulé depuis la création du lead — non encore contacté"
           >
             ⏱ À contacter — {formatDepuis(minutesNouveau)}, non contacté

@@ -5,7 +5,8 @@ point d'entree » (C-ACRM-010, critere C7).
 Dans ``apps/crm`` et ``apps/automation`` (hors migrations/tests), TOUTE fonction
 qui :
   * cree une touche : ``RelanceEtape.objects.create(...)`` / ``bulk_create(...)``,
-  * fabrique un lien ``wa.me`` (litteral de chaine contenant ``wa.me/``),
+  * fabrique un lien ``wa.me`` (litteral de chaine contenant ``wa.me/``, ou
+    ``build_wa_url(numero, message)`` a message non vide -- ACVI90),
   * envoie un e-mail : ``send_mail(...)`` / ``EmailMessage(...)``,
 doit consulter la garde de contact (``peut_contacter``, ``_lead_relancable``,
 ``motif_de_refus``) dans son corps, OU figurer dans ``LISTE_BLANCHE`` avec une
@@ -28,12 +29,25 @@ APPS_VISEES = ("crm", "automation")
 
 #: Noms dont la simple presence dans le corps de la fonction vaut « garde ».
 GARDES_RECONNUES = {"peut_contacter", "_lead_relancable", "motif_de_refus",
-                    "_motif_de_refus"}
+                    "_motif_de_refus", "refus_rendu_whatsapp", "garde_rendu_whatsapp"}
+
+_A_CORRIGER_RENDU = "A CORRIGER (ACVI89/ACVI98, C-ACVI-061) : rendu WhatsApp vers le lead sans lire l'opposition"
+_LOT_FILTRE = "lot : _file_whatsapp_en_masse sort les leads ne_plus_contacter avant tout lien (C-ACVI-061)"
 
 #: ``fichier::fonction::genre`` -> raison. Site non garde TOLERE, motive.
 #: Les raisons « A CORRIGER » sont de la dette reelle a traiter dans la session
 #: qui possede le fichier (jamais corrigee depuis cette garde).
 LISTE_BLANCHE: dict[str, str] = {
+    "backend/django_core/apps/crm/cadence_messages.py::message_visite_pour_lead::wa.me": _A_CORRIGER_RENDU,
+    "backend/django_core/apps/crm/cadence_messages.py::message_pour_etape::wa.me": _A_CORRIGER_RENDU,
+    "backend/django_core/apps/crm/devis_views.py::LeadDevisActionsMixin.whatsapp_devis_apercu::wa.me":
+        _A_CORRIGER_RENDU,
+    "backend/django_core/apps/crm/devis_views.py::LeadDevisActionsMixin.whatsapp_devis::wa.me": _A_CORRIGER_RENDU,
+    "backend/django_core/apps/crm/views.py::LeadViewSet.resume_associe::wa.me": _A_CORRIGER_RENDU,
+    "backend/django_core/apps/crm/views_assistant.py::lead_brouillon_suivi::wa.me": _A_CORRIGER_RENDU,
+    "backend/django_core/apps/crm/visites_rdv.py::build_appointment_confirmation_whatsapp::wa.me": _A_CORRIGER_RENDU,
+    "backend/django_core/apps/automation/actions.py::preparer_whatsapp::wa.me": _A_CORRIGER_RENDU,
+    "backend/django_core/apps/crm/fiche_bulk.py::_lien_reactivation::wa.me": _LOT_FILTRE,
     "backend/django_core/apps/crm/receivers_clients.py::_proposer_lien_parrainage_on_devis_accepted::wa.me":
         "lien de parrainage propose au COMMERCIAL du devis (destinataire interne, pas le prospect) ; aucun envoi au "
         "lead",
@@ -92,6 +106,14 @@ def _nom_appel(func: ast.AST) -> str:
         func.id if isinstance(func, ast.Name) else "")
 
 
+def _a_un_message(appel: ast.Call) -> bool:
+    """``build_wa_url(n, '')`` valide un numero ; avec un message, c'est un lien
+    pret a envoyer."""
+    message = appel.args[1] if len(appel.args) > 1 else None
+    return message is not None and not (
+        isinstance(message, ast.Constant) and not message.value)
+
+
 class _Visiteur(ast.NodeVisitor):
     def __init__(self):
         self.pile: list[str] = []
@@ -128,6 +150,8 @@ class _Visiteur(ast.NodeVisitor):
                 self._etat()["sites"].append((GENRE_TOUCHE, node.lineno))
         elif nom in ("send_mail", "EmailMessage", "EmailMultiAlternatives"):
             self._etat()["sites"].append((GENRE_MAIL, node.lineno))
+        elif nom == "build_wa_url" and _a_un_message(node):
+            self._etat()["sites"].append((GENRE_WAME, node.lineno))
         self.generic_visit(node)
 
     def visit_Import(self, node):

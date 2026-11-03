@@ -52,6 +52,48 @@ class BulkWhatsappGardesTests(TestCase):
         self.api.credentials(HTTP_AUTHORIZATION=(
             f'Bearer {AccessToken.for_user(self.user)}'))
 
+    def test_sans_pii_aucun_numero_servi(self):
+        # ACVI4 — un rôle sans `client_pii_voir` : ni `phone` ni numéro dans
+        # `wa_url`, partout où la liste masque déjà le téléphone.
+        from apps.crm.models import Appointment
+        from apps.crm.models_cadence import RelanceEtape
+        from apps.roles.models import Role
+
+        role = Role.objects.create(
+            company=self.company, nom='Sans PII',
+            permissions=['crm_voir', 'crm_modifier'])
+        sans_pii = User.objects.create_user(
+            username='acvi4-sans-pii', password='x', company=self.company,
+            role=role)
+        Lead.objects.filter(pk=self.c.pk).update(owner=sans_pii)
+        touche = RelanceEtape.objects.create(
+            company=self.company, lead=self.c, cadence='contact', ordre=1,
+            canal=RelanceEtape.Canal.WHATSAPP, template_cle='identite',
+            due_date=timezone.localdate(), due_at=timezone.now())
+        api = APIClient()
+        api.force_authenticate(sans_pii)
+
+        rendu = api.get(f'/api/django/crm/relance-etapes/{touche.pk}/message/')
+        self.assertEqual(rendu.status_code, 200, rendu.data)
+        self.assertEqual(rendu.data['phone'], '')
+        self.assertIsNone(rendu.data['wa_url'])
+        self.assertTrue(rendu.data['message'])
+
+        lot = api.post(URL, {
+            'action': 'prepare_whatsapp', 'ids': [self.c.pk],
+            'body': 'Bonjour.'}, format='json')
+        self.assertEqual(lot.status_code, 200, lot.data)
+        self.assertEqual(
+            [(e['phone'], e['wa_url']) for e in lot.data['queue']], [('', None)])
+
+        rdv = Appointment.objects.create(
+            company=self.company, lead=self.c,
+            scheduled_at=timezone.now() + datetime.timedelta(days=2))
+        refus = api.post(
+            f'/api/django/crm/appointments/{rdv.pk}/confirmer-whatsapp/')
+        self.assertEqual(refus.status_code, 403, refus.data)
+        self.assertEqual(refus.data.get('code'), 'droit_manquant')
+
     def test_plafond_journalier_et_trace_par_lead(self):
         """CADV10 — 24 traces ce jour : A passe (25e), B et C sortent avec le
         motif ; le lendemain le plafond se libère. Mutant : plafond 1000."""

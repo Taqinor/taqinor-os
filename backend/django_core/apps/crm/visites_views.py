@@ -11,7 +11,7 @@ import logging
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from core.champs_stricts import ChaineStricte
@@ -187,9 +187,12 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         (date/heure + lien `.ics`). N'ENVOIE RIEN : le commercial ouvre
         WhatsApp lui-même après avoir vérifié l'aperçu (même convention que
         `LeadViewSet.whatsapp_devis`)."""
-        appt = self.get_object()
+        from .devis_views import _refus_pii_whatsapp
         from .visites_rdv import build_appointment_confirmation_whatsapp
 
+        if refus := _refus_pii_whatsapp(request):  # ACVI4 — levé : le contrat reste celui du rendu.
+            raise PermissionDenied(refus.data)
+        appt = self.get_object()
         message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
             request, appt)
         if wa_url is None:

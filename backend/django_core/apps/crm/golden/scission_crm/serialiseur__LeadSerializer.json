@@ -849,7 +849,7 @@
   {
    "classe": "ChoiceField",
    "nom": "source",
-   "read_only": false,
+   "read_only": true,
    "required": false
   },
   {
@@ -909,7 +909,7 @@
   {
    "classe": "BooleenStrict",
    "nom": "whatsapp_opt_in",
-   "read_only": false,
+   "read_only": true,
    "required": false
   },
   {
@@ -921,13 +921,13 @@
   {
    "classe": "DateTimeField",
    "nom": "contact_preference_set_at",
-   "read_only": false,
+   "read_only": true,
    "required": false
   },
   {
    "classe": "DateTimeField",
    "nom": "consent_timestamp",
-   "read_only": false,
+   "read_only": true,
    "required": false
   },
   {
@@ -1119,19 +1119,19 @@
   {
    "classe": "DateTimeField",
    "nom": "date_creation_origine",
-   "read_only": false,
+   "read_only": true,
    "required": false
   },
   {
    "classe": "IntegerField",
    "nom": "score_ajustement",
-   "read_only": false,
+   "read_only": true,
    "required": false
   },
   {
    "classe": "DateTimeField",
    "nom": "mql_assigned_at",
-   "read_only": false,
+   "read_only": true,
    "required": false
   },
   {

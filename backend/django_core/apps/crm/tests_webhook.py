@@ -9,7 +9,7 @@ from django.urls import reverse
 from authentication.models import Company
 from core.test_utils import WideTeardownTimeoutMixin
 
-from .models import Lead, LeadActivity, WebsiteLeadPayload
+from .models import Lead, LeadActivity, RelanceEtape, WebsiteLeadPayload
 from .webhooks import _canal_site_web
 
 SECRET = 'test-secret-webhook-123'
@@ -53,6 +53,39 @@ class WebsiteLeadWebhookTests(TestCase):
         return self.client.post(
             self.url, data=json.dumps(data),
             content_type='application/json', **headers)
+
+    def test_doublon_perdu_reveille_une_seule_cadence(self):
+        # ACVI16 — la garde 5 de la cadence juge APRÈS le réveil du doublon :
+        # une personne, une cadence ouverte ; sans doublon, 2 touches.
+        from apps.crm import stages
+        perdu = Lead.objects.create(
+            company=self.company, nom='Ancien perdu', ville='Rabat',
+            telephone='+212662100002', perdu=True, stage=stages.COLD)
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=perdu, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
+
+        res = self.post(payload_site(phoneE164='+212662100002'))
+
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        perdu.refresh_from_db()
+        self.assertFalse(perdu.perdu)
+        self.assertEqual(
+            nouveau.relance_etapes.filter(cadence='contact').count(), 0)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=nouveau,
+            body__contains=f'doublon possible de #{perdu.pk}').exists())
+        ouvertes = {
+            etape.lead_id for etape in RelanceEtape.objects.filter(
+                company=self.company, statut='a_faire')}
+        self.assertEqual(ouvertes, {perdu.pk})
+
+        seul = self.post(payload_site(phoneE164='+212662100003'))
+        self.assertEqual(seul.status_code, 201, seul.content)
+        self.assertEqual(
+            Lead.objects.get(pk=seul.json()['lead_id'])
+            .relance_etapes.filter(cadence='contact').count(), 2)
 
     def test_payload_valide_cree_un_lead_complet(self):
         res = self.post(payload_site())
@@ -297,6 +330,25 @@ class CliovrManuallyTouchedFieldsTests(TestCase):
             kind=LeadActivity.Kind.MODIFICATION, field=field,
             field_label=field, old_value=old_value, new_value=new_value,
         )
+
+    def test_renvoi_sans_nom_ni_gclid_garde_nom_et_canal(self):
+        """ACVI17 — un défaut du mapping ne remplit qu'un champ vide."""
+        tel = '+212677100009'
+        first = self.post(payload_site(
+            phoneE164=tel, gclid='G1', fullName='Amina Benali',
+            fbclid=None, utm={}))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead = Lead.objects.get(pk=first.json()['lead_id'])
+        self.assertEqual(lead.canal, Lead.Canal.GOOGLE_ADS)
+
+        retry = self.post(payload_site(
+            phoneE164=tel, fullName=None, fbclid=None, utm={}))
+
+        self.assertEqual(retry.status_code, 200, retry.content)
+        self.assertEqual(Lead.objects.filter(pk=lead.pk).count(), 1)
+        lead.refresh_from_db()
+        self.assertEqual(lead.nom, 'Amina Benali')
+        self.assertEqual(lead.canal, Lead.Canal.GOOGLE_ADS)
 
     def test_champ_corrige_a_la_main_resiste_au_re_post_60s(self):
         """(a) — la correction humaine n'est jamais écrasée par le renvoi."""
@@ -768,6 +820,24 @@ class QW9ReplayFreshnessTests(TestCase):
     def test_unparsable_timestamp_never_blocks(self):
         res = self.post(payload_site(), timestamp='not-a-date')
         self.assertEqual(res.status_code, 201, res.content)
+
+    def test_date_impossible_traitee_absente(self):
+        # ACVI15 — bien formée mais impossible : ni 500, ni 202 suivi d'un rejeu
+        # toujours en échec ; le brut et le lead existent.
+        res = self.post(
+            payload_site(), timestamp='2026-02-30T00:00:00')
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(WebsiteLeadPayload.objects.count(), 1)
+        self.assertEqual(Lead.objects.count(), 1)
+
+        res = self.post(payload_site(
+            phoneE164='+212661850499',
+            consentTimestamp='2026-02-30T00:00:00'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.consent_timestamp)
+        brut = WebsiteLeadPayload.objects.get(lead=lead)
+        self.assertTrue(brut.processed)
 
     def test_slightly_stale_within_tolerance_passes(self):
         from django.utils import timezone

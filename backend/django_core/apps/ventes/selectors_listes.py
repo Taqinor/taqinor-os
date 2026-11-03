@@ -40,6 +40,28 @@ def prefetch_devis_liste_leads(prefixe='devis'):
     ``apps/crm/tests_perf_n1_leads.py`` rougit alors, il ne se tait pas.
     """
     from django.db.models import Prefetch
+
+    return (
+        Prefetch(prefixe, queryset=_devis_sans_etude()),
+        f'{prefixe}__lignes__produit',
+        f'{prefixe}__superseded_by',
+    )
+
+
+def prefetch_devis_resume(prefixe='devis'):
+    """ACVI94 — le préchargement RÉSUMÉ des devis d'une liste de leads (cockpit,
+    objectifs, attribution) : statut, dates et montants sans le JSON d'étude.
+
+    Les chemins de ``ANNOTATION_PAR_CLE`` restent annotés : ``total_ttc`` lit
+    ``scenario`` et ``nombre_proprietes`` par ``cle_etude`` ; sans eux, chaque
+    lecture de montant rechargerait la colonne déferrée, devis par devis."""
+    from django.db.models import Prefetch
+
+    return (Prefetch(prefixe, queryset=_devis_sans_etude()),)
+
+
+def _devis_sans_etude():
+    """Les devis ``defer('etude_params')`` avec ses seuls chemins lus ANNOTÉS."""
     from django.db.models.fields.json import KeyTransform
 
     from .models import Devis
@@ -60,12 +82,7 @@ def prefetch_devis_liste_leads(prefixe='devis'):
             expression = KeyTransform(cle, expression)
         return expression
 
-    devis_qs = (Devis.objects
-                .defer('etude_params')
-                .annotate(**{annote: _extrait(chemin)
-                             for chemin, annote in ANNOTATION_PAR_CLE.items()}))
-    return (
-        Prefetch(prefixe, queryset=devis_qs),
-        f'{prefixe}__lignes__produit',
-        f'{prefixe}__superseded_by',
-    )
+    return (Devis.objects
+            .defer('etude_params')
+            .annotate(**{annote: _extrait(chemin)
+                         for chemin, annote in ANNOTATION_PAR_CLE.items()}))

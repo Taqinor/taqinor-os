@@ -930,6 +930,18 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         request = self.context.get('request')
         if value and request and value.company_id != request.user.company_id:
             raise serializers.ValidationError('Utilisateur inconnu.')
+        # ACVI7 — créer un lead déjà affecté à un collègue exige ``crm_reassign``
+        # (même refus que le PATCH, ASEC50) ; ``owner`` = soi reste permis (VX93).
+        if (value and request and self.instance is None
+                and value.pk != request.user.pk):
+            from rest_framework.exceptions import PermissionDenied
+            from core.permissions import _user_has_or_legacy
+            from apps.roles.permissions import DroitDeLaGrille
+            if not _user_has_or_legacy(request.user, 'crm_reassign'):
+                raise PermissionDenied(DroitDeLaGrille('crm_reassign').message)
+        # ACVI14 — un compte désactivé ne reçoit plus de lead (déjà responsable : accepté).
+        if value and not value.is_active and getattr(self.instance, 'owner_id', None) != value.pk:
+            raise serializers.ValidationError('Utilisateur inactif.')
         return value
 
     def validate_canal(self, value):
@@ -1067,6 +1079,17 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                             or (undo and self._undo_of_last_stage_change(current, target))):
                         raise ConflitEtat(
                             {'stage': ["On ne recule pas une étape."]})
+                # ACVI9 — le Froid passe par ``parquer_lead`` (voir ``update``),
+                # raison exigée ; annuler un mouvement ne parque pas.
+                from . import stages as stage_mod
+                if target == stage_mod.COLD and not (
+                        undo and self._undo_of_last_stage_change(current, target)):
+                    from .fiche_funnel import refus_mise_au_froid
+                    raison = (self.initial_data or {}).get('parc_raison')
+                    refus = refus_mise_au_froid(self.instance, raison)
+                    if refus:
+                        raise ConflitEtat({'parc_raison': [refus]})
+                    self._parc_raison = raison
         # ORDRE FONDATEUR (24/08/2026) — le GPS ne doit JAMAIS être écrasé ni
         # supplanté par l'adresse. Le Lead Workspace (LW9, draftCore.js) ne
         # PATCH déjà que les clés réellement modifiées (dirty keys) — éditer
@@ -1270,6 +1293,10 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'saisies_humaines',
             # CADV21 — parcage : écrit par le seul ``parquer_lead``.
             'parc_etat', 'parc_raison', 'parc_jusqu_au',
+            # ACVI30 — colonnes posées par le serveur : un PATCH ne les écrit pas.
+            'score_ajustement', 'mql_assigned_at', 'source', 'whatsapp_opt_in',
+            'consent_timestamp', 'date_creation_origine',
+            'contact_preference_set_at',
         ]
 
     def champs_a_marquer(self, validated_data):
@@ -1290,17 +1317,42 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         ``update`` soit persisté (vide si aucun champ n'est marqué)."""
         return {'saisies_humaines'} if self.champs_a_marquer(validated_data) else set()
 
+    def create(self, validated_data):
+        """ACVI25 — un POST de la fiche aussi : les clés du corps sont marquées,
+        pas ce que le serveur pose (``company``, ``owner`` par défaut)."""
+        from types import SimpleNamespace
+
+        from apps.records.provenance import marquer_saisie_humaine
+        champs = self.champs_a_marquer(validated_data)
+        if champs:
+            validated_data = {
+                **validated_data,
+                'saisies_humaines': marquer_saisie_humaine(SimpleNamespace(), champs)}
+        return super().create(validated_data)
+
     def update(self, instance, validated_data):
         """AMET23 — un PATCH/PUT de la fiche est une saisie humaine : les clés du
         corps (champs réels du lead) rejoignent ``saisies_humaines``."""
         from apps.records.provenance import marquer_saisie_humaine
+
+        from .cadence_plan import reprendre_cadence_si_numero_ajoute
+        from .cadence_temps import numero_joignable
+        numero_avant = numero_joignable(instance)  # ACVI27
         champs = self.champs_a_marquer(validated_data)
         if champs:
             marquer_saisie_humaine(instance, champs)
             validated_data = {
                 **validated_data,
                 'saisies_humaines': instance.saisies_humaines}
-        return super().update(instance, validated_data)
+        lead = super().update(instance, validated_data)
+        if getattr(self, '_parc_raison', None):  # ACVI9
+            from .fiche_funnel import parquer_lead
+            parquer_lead(
+                lead, self._parc_raison, None,
+                getattr(self.context.get('request'), 'user', None), journal=False)
+        reprendre_cadence_si_numero_ajoute(
+            lead, numero_avant, getattr(self.context.get('request'), 'user', None))
+        return lead
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
     # CRX19 — SOURCE UNIQUE (module) partagée avec le masquage du chatter :

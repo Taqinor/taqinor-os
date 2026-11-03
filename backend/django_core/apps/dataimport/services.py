@@ -381,7 +381,7 @@ def proposer_mapping_ia(target, en_tetes_non_mappes):
 
 
 def dry_run(file_bytes, filename, target, company=None, mapping_name=None,
-            mode='creer', ecraser=False, external_system=None):
+            mode='creer', ecraser=False, external_system=None, user=None):
     """Aperçu : mapping colonne→champ + 10 premières lignes mappées + non-mappés.
 
     XPLT2 — si ``mapping_name`` désigne un ``ImportMapping`` sauvegardé (pour
@@ -432,7 +432,7 @@ def dry_run(file_bytes, filename, target, company=None, mapping_name=None,
     if company is not None and mapped:
         result.update(_analyser_conflits(
             target, rows, mapped, company, mode, external_system,
-            ecraser=ecraser))
+            ecraser=ecraser, user=user))
     return result
 
 
@@ -616,12 +616,17 @@ def _apply_updates(instance, fields, skip_keys=(), ecraser=False,
       la trace qui rend l'import réversible ;
     * ``refuses`` — écrasements bloqués par le garde-fou (mode remplissage seul).
     """
+    from apps.records.provenance import ecrire_si_libre
+
     ecrasements, remplissages = _diff_fields(
         instance, fields, skip_keys, valeurs_vides)
     changed, modifications, refuses = [], [], []
 
     for item in remplissages:
-        setattr(instance, item['champ'], fields[item['champ']])
+        # ACVI91 — un champ vidé par un humain reste vide (refus journalisé).
+        if not ecrire_si_libre(instance, item['champ'], fields[item['champ']]):
+            refuses.append(dict(item, ancienne=''))
+            continue
         changed.append(item['champ'])
         modifications.append({'champ': item['champ'], 'ancienne': '',
                               'nouvelle': item['nouvelle'], 'ecrasement': False})
@@ -635,7 +640,10 @@ def _apply_updates(instance, fields, skip_keys=(), ecraser=False,
         modifications.append(dict(item, ecrasement=True))
 
     if changed:
-        instance.save(update_fields=changed)
+        # ACVI26 — `save()` recalcule `*_normalise` mais n'écrit que les colonnes listées.
+        derivees = [c.name for c in instance._meta.concrete_fields
+                    if c.name.endswith('_normalise')]
+        instance.save(update_fields=changed + derivees)
     return changed, modifications, refuses
 
 
@@ -787,7 +795,7 @@ def _check_mode(target, mode):
 # ment. Les deux passent donc par ces mêmes fonctions (aucune duplication de la
 # logique de rapprochement).
 
-def _lead_par_contact(company, f):
+def _lead_par_contact(company, f, queryset=None):
     """AANA13 (D-AANA-3) — LE rapprochement contact des leads, partagé par le
     mode ``creer`` (doublon → ligne ignorée) et ``maj``/``upsert`` : e-mail OU
     téléphone NORMALISÉ (``crm.services.find_duplicates_by_contact``).
@@ -796,7 +804,8 @@ def _lead_par_contact(company, f):
     passait à côté d'un lead ``a@x.ma,0612345678``."""
     from apps.crm.services import find_duplicates_by_contact
     dupes = find_duplicates_by_contact(
-        company, phone=f.get('telephone'), email=f.get('email'))
+        company, phone=f.get('telephone'), email=f.get('email'),
+        queryset=queryset)
     return dupes[0] if dupes else None
 
 
@@ -823,13 +832,18 @@ def _client_par_contact(company, f):
     return None, None
 
 
-def _match_lead(company, f, ext_id, external_system):
+def _match_lead(company, f, ext_id, external_system, user=None):
     """Lead rapproché en mode maj/upsert : identifiant externe d'abord, sinon
-    contact normalisé (email/téléphone)."""
+    contact normalisé (email/téléphone). ACVI1 — ``user`` borne le rapprochement
+    à sa portée : un lead qu'il ne voit pas est absent (patron ACRM7)."""
     from apps.crm.models import Lead
+    from apps.crm.selectors import leads_en_portee
+    portee = leads_en_portee(user) if user is not None else None
     existing = _find_by_external_id(company, external_system, ext_id, Lead)
+    if existing and portee is not None and not portee.filter(pk=existing.pk).exists():
+        existing = None
     if existing is None:
-        existing = _lead_par_contact(company, f)
+        existing = _lead_par_contact(company, f, queryset=portee)
     return existing
 
 
@@ -929,7 +943,7 @@ def _raison_doublon_client(cle):
 
 
 def _analyser_conflits(target, rows, mapped, company, mode, external_system,
-                       ecraser=False):
+                       ecraser=False, user=None):
     """Rejoue le rapprochement du commit SANS RIEN ÉCRIRE (cœur de l'aperçu).
 
     Pour chaque ligne : quelle fiche existante elle vise, ce qu'elle
@@ -963,7 +977,8 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
 
         if target == 'leads':
             if mode in ('maj', 'upsert'):
-                existing = _match_lead(company, f, ext_id, external_system)
+                existing = _match_lead(
+                    company, f, ext_id, external_system, user=user)
                 if existing is None and mode == 'maj':
                     action = 'ignoree'
                     raison = 'aucune correspondance (maj seule)'
@@ -1097,7 +1112,8 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
 
                 existing = None
                 if mode in ('maj', 'upsert'):
-                    existing = _match_lead(company, f, ext_id, external_system)
+                    existing = _match_lead(
+                        company, f, ext_id, external_system, user=user)
 
                 if existing is not None:
                     _, modifications, refuses = _apply_updates(

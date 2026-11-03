@@ -228,6 +228,28 @@ class BarreauDeProtocoleInchangeTests(_Base):
 
     slug = 'cad3-protocole'
 
+    def test_l_avenant_clos_ne_fait_naitre_aucun_barreau(self):
+        # ACVI35 — une étape posée par le moteur n'a pas de barreau suivant.
+        from types import SimpleNamespace
+
+        from apps.crm.cadence_plan import est_etape_de_filet
+        from apps.crm.cadence_signaux import RAPPEL_DEMANDE_LIBELLE, TOUCHES_SIGNAL
+        from apps.crm.cadence_touche import marquer_etape_relance
+        from apps.crm.receivers_cadence import poser_tache_avenant
+
+        Lead.objects.filter(pk=self.lead.pk).update(stage=stages.SIGNED)
+        self.lead.refresh_from_db()
+        etape = poser_tache_avenant(
+            self.lead, SimpleNamespace(reference='D-ACVI35'), self.acteur)
+
+        marquer_etape_relance(etape, self.acteur, 'fait')
+
+        self.assertEqual(self.lead.relance_etapes.filter(
+            cadence='generique', statut=RelanceEtape.Statut.A_FAIRE).count(), 0)
+        for libelle in (*TOUCHES_SIGNAL.values(), RAPPEL_DEMANDE_LIBELLE):
+            self.assertTrue(est_etape_de_filet(
+                RelanceEtape(libelle=libelle, cadence='generique')), libelle)
+
     def test_un_barreau_de_protocole_est_toujours_consomme(self):
         gabarits = CadenceRelanceEtape.cadence_pour(self.company, 'contact')
         echeances = calculer_echeances_cadence(

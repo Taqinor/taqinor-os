@@ -316,7 +316,7 @@ class LeadIntakeActionsMixin:
             # des touches ouvertes allaient quitter leur plan. Le compte vient
             # de la MÊME définition que la fusion (`relances_ouvertes_de`),
             # jamais d'un second filtre qui dériverait.
-            from .leads_fusion import relances_ouvertes_de
+            from .leads_fusion import relances_ouvertes_de, stage_apres_fusion
             relances_reprises = sum(
                 relances_ouvertes_de(d).count() for d in others)
             champs_combles = []
@@ -338,6 +338,8 @@ class LeadIntakeActionsMixin:
                     'champs_combles': champs_combles,
                     # CAD106 — combien de touches OUVERTES quittent leur plan.
                     'relances': relances_reprises,
+                    # ACVI33 — l'étape du survivant, avant de confirmer.
+                    'stage_apres_fusion': stage_apres_fusion(group),
                 },
                 # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``.
                 'members': [

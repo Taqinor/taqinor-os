@@ -24,8 +24,7 @@ from .cadence_messages import (
     lead_financement_pro_declare,
 )
 from .cadence_reperes import (
-    CLE_PIECES_RECUES,
-    CLE_RAPPEL_FDA,
+    CLES_ETAPES_MOTEUR,
     FIN_NOTE_REPORT,
     MOTIF_PARQUE_AU_FROID,
     OUTCOME_VISITE_ACCEPTEE,
@@ -1479,6 +1478,17 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
         return []
 
 
+def reprendre_cadence_si_numero_ajoute(lead, numero_avant, user=None):
+    """ACVI27 — un PATCH rend joignable un lead qui ne l'était pas : la cadence
+    refusée « sans numéro » repart, ou la garde suivante trace son refus. Rien
+    d'autre à décider ici : ``demarrer_cadence_contact`` et ses gardes tranchent."""
+    from . import cadence_temps
+
+    if numero_avant or not cadence_temps.numero_joignable(lead):
+        return []
+    return demarrer_cadence_contact(lead, user=user, origine='numéro ajouté')
+
+
 def deplacer_echeance_etape(etape, quand, *, report_humain=False):
     """COCKPIT-CONTRÔLE (30/09/2026) — LE geste qui déplace l'échéance d'une
     étape OUVERTE, avec la règle de ses deux traces écrite UNE fois
@@ -1957,8 +1967,7 @@ def est_etape_de_filet(etape):
         return False
     # PARAM-CADENCE — par la CLÉ (gabarit « Après l'appel »), ou le libellé
     # des deux étapes hors gabarit (passation, question de prix).
-    if est_etape(etape, *CLES_APRES_CONTACT, CLE_PIECES_RECUES,
-                 CLE_RAPPEL_FDA):
+    if est_etape(etape, *CLES_APRES_CONTACT, *CLES_ETAPES_MOTEUR):
         return True
     return (not (getattr(etape, 'cle', '') or '')
             and (etape.libelle or '').strip() in _LIBELLES_FILET_HORS_GABARIT)

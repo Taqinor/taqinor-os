@@ -139,6 +139,30 @@ class KpiPremierContactTests(TestCase):
         Lead.objects.filter(pk=lead.pk).update(**maj)
         return Lead.objects.get(pk=lead.pk)
 
+    def test_requetes_constantes_avec_le_nombre_de_leads(self):
+        # ACVI79 — profil et jours ouvrés lus une fois, pas une fois par lead.
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from django.utils import timezone
+
+        def creer(nombre):
+            arrivee = timezone.now() - datetime.timedelta(days=5)
+            for _ in range(nombre):
+                self._lead(arrivee, arrivee + datetime.timedelta(days=2))
+
+        def cout():
+            with CaptureQueriesContext(connection) as ctx:
+                kpi = kpi_premier_contact(self.company)
+            return len(ctx), kpi['nb_leads']
+
+        creer(3)
+        a_trois, nb = cout()
+        self.assertEqual(nb, 3)
+        creer(6)
+        a_neuf, nb = cout()
+        self.assertEqual(nb, 9)
+        self.assertEqual(a_neuf, a_trois)
+
     def test_null_partout_sur_zero_lead(self):
         kpi = kpi_premier_contact(self.company)
         self.assertEqual(kpi['nb_leads'], 0)

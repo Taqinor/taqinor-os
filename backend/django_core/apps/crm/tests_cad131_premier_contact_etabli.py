@@ -83,6 +83,21 @@ class PremierContactEtabliTests(TestCase):
             due_at=MAINTENANT, due_date=MAINTENANT.date(),
             statut=RelanceEtape.Statut.A_FAIRE)
 
+    def test_note_de_geste_interne_ne_pose_pas_le_premier_contact(self):
+        # ACVI23 — lot, fusion, archivage, visite créée : rien n'est sorti.
+        from apps.crm import activity
+
+        activity.log_bulk_note(self.lead, self.acteur, 'WhatsApp préparé en lot')
+        activity.log_archive(self.lead, self.acteur)
+        activity.log_note(self.lead, self.acteur, 'Fusion : lead absorbé.')
+        activity.log_note(self.lead, self.acteur, 'Visite technique créée.')
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.first_contacted_at)
+
+        activity.log_note(self.lead, self.acteur, 'Appelé, pas de réponse')
+        self.lead.refresh_from_db()
+        self.assertIsNotNone(self.lead.first_contacted_at)
+
     def test_sauter_la_touche_1_ne_pose_pas_le_premier_contact(self):
         cadence_touche.marquer_etape_relance(
             self._touche(), self.acteur, RelanceEtape.Statut.SAUTEE,

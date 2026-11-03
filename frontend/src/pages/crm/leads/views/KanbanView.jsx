@@ -59,6 +59,8 @@ const DraggableCard = memo(function DraggableCard({
   // (jamais le `Set` entier) : révèle la case de TOUTES les cartes pendant
   // qu'on constitue une sélection (blueprint D3). Primitive → memo intact.
   selectionActive,
+  // ACVI73 — primitives issues de `sla-breach` → memo intact.
+  slaHours, slaEnRetard,
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -85,6 +87,7 @@ const DraggableCard = memo(function DraggableCard({
                   users={users} onReassign={onReassign}
                   selected={selected} onToggleSelect={onToggleSelect}
                   selectionActive={selectionActive}
+                  slaHours={slaHours} slaEnRetard={slaEnRetard}
                   onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
       </div>
     </div>
@@ -222,6 +225,8 @@ export default function KanbanView({
   onToggleSelect,
   onPlanifierRelance,
   onMarkPerdu,
+  // ACVI73 — réponse de `sla-breach` ({ sla_hours, results }), portée par LeadsPage.
+  sla,
   // LB9 — coach d'état vide à DEUX paliers, même idiome que ChartsView
   // (totalLeads/onClearFilters déjà câblés là-bas sur `leads.length`/
   // `setFilters(EMPTY_FILTERS)`) : `totalLeads` (non filtré) distingue
@@ -309,6 +314,8 @@ export default function KanbanView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- boardRef est un ref stable (D-ENF22)
   }, [pointerCoarse])
   const columns = useMemo(() => groupLeadsByStage(leads, tri), [leads, tri])
+  const slaHours = sla?.sla_hours ?? 0
+  const slaIds = useMemo(() => new Set((sla?.results ?? []).map((l) => l.id)), [sla])
   const [activeLead, setActiveLead] = useState(null)
 
   // LB10 — repli de colonne PERSISTÉ (localStorage, features/kanban/
@@ -504,6 +511,8 @@ export default function KanbanView({
                     <DraggableCard
                       key={lead.id}
                       lead={lead}
+                      slaHours={slaHours}
+                      slaEnRetard={slaIds.has(lead.id)}
                       busy={lead.id === busyLeadId}
                       onOpen={onOpenLead}
                       onAutoQuote={onAutoQuote}
@@ -535,7 +544,7 @@ export default function KanbanView({
       >
         {activeLead ? (
           <div className={prefersReducedMotion ? 'kb-drag-overlay kb-drag-overlay--flat' : 'kb-drag-overlay'}>
-            <LeadCard lead={activeLead} />
+            <LeadCard lead={activeLead} slaHours={slaHours} slaEnRetard={slaIds.has(activeLead.id)} />
           </div>
         ) : null}
       </DragOverlay>

@@ -82,9 +82,23 @@ class GardesEtapePublicApiTests(TestCase):
     def test_mise_au_parking_froid_acceptee(self):
         lead = self._lead(stage=stages.QUOTE_SENT)
         update_lead_from_public_api(
-            company=self.company, lead_id=lead.pk, fields={'stage': stages.COLD})
+            company=self.company, lead_id=lead.pk,
+            fields={'stage': stages.COLD, 'parc_raison': 'doublon'})
         lead.refresh_from_db()
         self.assertEqual(lead.stage, stages.COLD)
+        self.assertEqual(lead.parc_raison, 'doublon')
+
+    def test_froid_sans_raison_refuse_en_nommant_le_champ(self):
+        # ACVI9 — parité avec le PATCH de l'écran.
+        from rest_framework.exceptions import ValidationError
+        lead = self._lead(stage=stages.QUOTE_SENT)
+        with self.assertRaises(ValidationError) as ctx:
+            update_lead_from_public_api(
+                company=self.company, lead_id=lead.pk,
+                fields={'stage': stages.COLD})
+        self.assertIn('parc_raison', ctx.exception.detail)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.QUOTE_SENT)
 
     def test_meme_etape_ne_declenche_aucune_garde(self):
         lead = self._lead(stage=stages.SIGNED, perdu=True)

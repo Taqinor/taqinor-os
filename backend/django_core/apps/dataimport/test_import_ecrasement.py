@@ -167,6 +167,22 @@ class TestRemplissageSeulParDefaut(EcrasementBase):
         self.assertEqual(refuses['ville']['ancienne'], 'Rabat')
         self.assertEqual(refuses['ville']['nouvelle'], 'Casablanca')
 
+    def test_un_champ_vide_par_un_humain_n_est_pas_rempli(self):
+        # ACVI91 — `saisies_humaines` tient face au remplissage de l'import.
+        from apps.records.models import Activity
+        from apps.records.provenance import MESSAGE_REFUS
+
+        lead = self._lead_reel(email='', saisies_humaines=['email'])
+        resp = self._commit(
+            'Telephone,Email\n0600000000,x@exemple.ma\n', mode='maj')
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertFalse(lead.email)
+        self.assertIn('email', {r['champ'] for r in resp.data['refuses']})
+        self.assertTrue(Activity.objects.filter(
+            company=self.company, field='email', body=MESSAGE_REFUS).exists())
+
     def test_les_refus_sont_journalises_ligne_par_ligne(self):
         self._lead_reel()
         resp = self._commit(
@@ -279,6 +295,72 @@ class TestIsolationTenantEcrasement(EcrasementBase):
         etranger.refresh_from_db()
         self.assertEqual(etranger.nom, 'Autre')
         self.assertEqual(etranger.ville, 'Tanger')
+
+    def test_cible_lead_hors_droit_ou_hors_portee(self):
+        """ACVI1 — droit `crm_modifier` et portée de l'appelant : ni lecture
+        (aperçu) ni réécriture (commit) du lead d'un collègue."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ADMIN_RH_PERMISSIONS, COMMERCIAL_PERMISSIONS,
+            TECHNICIEN_PERMISSIONS)
+
+        def compte(nom, permissions):
+            role = Role.objects.create(
+                company=self.company, nom=f'{nom} ACVI1',
+                permissions=list(permissions))
+            return get_user_model().objects.create_user(
+                username=f'acvi1-{nom}', password='x', company=self.company,
+                role=role)
+
+        def api(utilisateur):
+            client = APIClient()
+            client.force_authenticate(utilisateur)
+            return client
+
+        c1 = compte('c1', COMMERCIAL_PERMISSIONS)
+        c2 = compte('c2', COMMERCIAL_PERMISSIONS)
+        lead = Lead.objects.create(
+            company=self.company, nom='Alaoui', owner=c1,
+            telephone='0600000001', email='a@x.ma')
+        csv_text = 'telephone,email\n0600000001,b@y.ma\n'
+        options = {'target': 'leads', 'mode': 'maj', 'ecraser': 'true'}
+
+        for nom, permissions in (('rh', ADMIN_RH_PERMISSIONS),
+                                 ('tech', TECHNICIEN_PERMISSIONS)):
+            client = api(compte(nom, permissions))
+            for url in (DRY_RUN_URL, COMMIT_URL):
+                resp = client.post(
+                    url, {'file': self._csv(csv_text), **options},
+                    format='multipart')
+                self.assertEqual(resp.status_code, 403, resp.data)
+                self.assertEqual(resp.data.get('code'), 'droit_manquant')
+
+        client = api(c2)
+        apercu = client.post(
+            DRY_RUN_URL, {'file': self._csv(csv_text), **options},
+            format='multipart')
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertFalse(
+            [c for c in apercu.data['conflits'] if c.get('cible_id')])
+        self.assertNotIn('a@x.ma', str(apercu.data))
+        commit = client.post(
+            COMMIT_URL, {'file': self._csv(csv_text), **options},
+            format='multipart')
+        self.assertEqual(commit.status_code, 200, commit.data)
+        self.assertEqual(commit.data['updated'], 0)
+        lead.refresh_from_db()
+        self.assertEqual(lead.email, 'a@x.ma')
+
+        # Le propriétaire, lui, garde son geste.
+        propre = api(c1).post(
+            COMMIT_URL, {'file': self._csv(csv_text), **options},
+            format='multipart')
+        self.assertEqual(propre.status_code, 200, propre.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.email, 'b@y.ma')
 
     def test_apercu_reserve_aux_roles_autorises(self):
         """L'aperçu expose des valeurs internes (dont ``prix_achat`` pour le

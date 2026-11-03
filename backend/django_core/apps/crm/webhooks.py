@@ -43,7 +43,6 @@ from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_http_methods
 
@@ -51,6 +50,7 @@ from authentication.models import Company
 from core.idempotency import dedupe_event
 
 from . import stages
+from .leads_meta import date_webhook_ou_none
 from .models import Lead, LeadActivity, WebsiteLeadPayload
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,9 @@ DEDUP_WINDOW_SECONDS = 60
 #: (``qualified: false``) — une constante depuis que le tri du récepteur
 #: s'appuie dessus (étiquetage + notification atténuée).
 SOUS_SEUIL_TAG = 'Sous le seuil 1 000 MAD'
+
+#: ACVI17 — posés par le mapping faute de donnée : au renvoi, ne remplissent qu'un vide.
+DEFAUTS_CREATION = {'nom': 'Lead site web', 'canal': Lead.Canal.SITE_WEB, 'tags': SOUS_SEUIL_TAG}
 
 #: Ordre fondateur (24/08/2026) — champs GPS protégés contre l'écrasement dans
 #: la boucle de complétion anti-rejeu de ``_map_and_link_lead`` : une fois
@@ -109,7 +112,7 @@ def _freshness_ok(request) -> bool:
     raw = request.headers.get('X-Webhook-Timestamp', '')
     if not raw:
         return True
-    ts = parse_datetime(raw)
+    ts = date_webhook_ou_none(raw)
     if ts is None:
         return True
     if timezone.is_naive(ts):
@@ -1116,11 +1119,11 @@ def _map_payload_to_fields(data: dict) -> dict:
     ) or None
     consent_ts = None
     if data.get('consentTimestamp'):
-        consent_ts = parse_datetime(str(data['consentTimestamp']))
+        consent_ts = date_webhook_ou_none(str(data['consentTimestamp']))
 
     utm = data.get('utm') or {}
     fields = {
-        'nom': str(data.get('fullName') or '').strip()[:255] or 'Lead site web',
+        'nom': str(data.get('fullName') or '').strip()[:255] or DEFAUTS_CREATION['nom'],
         'telephone': _telephone_canonique(
             str(data.get('phoneE164') or data.get('phone') or '').strip()[:50]),
         'email': _clean_email(data.get('email')),
@@ -1145,7 +1148,7 @@ def _map_payload_to_fields(data: dict) -> dict:
         # Google Ads — seul le gclid est stocké ; gbraid/wbraid (clics iOS)
         # ne servent qu'à classer le canal ci-dessous.
         'gclid': _clic_id(data.get('gclid'), 255),
-        'canal': Lead.Canal.SITE_WEB,
+        'canal': DEFAUTS_CREATION['canal'],
         'source': Lead.Source.SITE_WEB,
     }
     for key in ('utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'):
@@ -1570,7 +1573,7 @@ def _map_payload_to_fields(data: dict) -> dict:
     # capture-lead.ts) et c'est ici que le tri se fait — étiquetage ci-dessous,
     # puis notification atténuée dans `_map_and_link_lead` (cf. docstring §4).
     if _is_sous_seuil(data):
-        fields['tags'] = SOUS_SEUIL_TAG
+        fields['tags'] = DEFAUTS_CREATION['tags']
     return fields
 
 
@@ -2296,7 +2299,7 @@ def _map_and_link_lead(raw, data, company):
                 continue
             if key in _GPS_FIELDS and getattr(existing, key) is not None:
                 continue
-            if key in manually_touched:
+            if key in manually_touched or (DEFAUTS_CREATION.get(key) == value and getattr(existing, key)):
                 continue
             if key in pompage_garde or key in provenances_gardees:
                 continue
@@ -2392,11 +2395,6 @@ def _map_and_link_lead(raw, data, company):
             logger.warning(
                 'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
                 lead.pk, _exc)
-        # MRY6 — un lead du site est LA demande réelle par excellence : il
-        # entre dans la cadence de contact. Best-effort intégral (le service
-        # capte tout) : jamais un webhook en échec pour une cadence.
-        from .services import demarrer_cadence_contact
-        demarrer_cadence_contact(lead, origine='site web')
         # QX14 — même correctif côté création (voir commentaire ci-dessus,
         # branche mise à jour) : persiste le score dès la première visite.
         try:
@@ -2476,6 +2474,11 @@ def _map_and_link_lead(raw, data, company):
                 logger.warning(
                     'website_lead_webhook: réactivation du doublon #%s '
                     'échouée : %s', doublon.pk, _exc)
+        # MRY6 — un lead du site est LA demande réelle par excellence : il
+        # entre dans la cadence de contact. Best-effort intégral (le service
+        # capte tout) : jamais un webhook en échec pour une cadence.
+        from .services import demarrer_cadence_contact
+        demarrer_cadence_contact(lead, origine='site web')
 
     # ── T-TRACE (25/08/2026) — traçage anti-fraude de la demande ───────────
     # Placé APRÈS `notify_new_lead` À DESSEIN : la notification d'arrivée doit
@@ -3324,10 +3327,7 @@ def _rdv_valider_corps(data):
         erreurs['consentement'] = 'obligatoire'
 
     brut_le = data.get('consentement_le')
-    try:
-        le = parse_datetime(brut_le) if isinstance(brut_le, str) else None
-    except ValueError:
-        le = None
+    le = date_webhook_ou_none(brut_le)
     if le is None:
         erreurs['consentement_le'] = ('obligatoire' if brut_le in (None, '')
                                       else 'format')

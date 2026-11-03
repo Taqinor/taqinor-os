@@ -128,6 +128,25 @@ FIN_NOTE_REPORT = ' reportée.'
 PREFIXE_NOTE_VEILLE = 'Mise en veille '
 
 
+#: ACVI23 — les notes qu'écrit un geste INTERNE (``activity.log_archive``,
+#: ``log_restore``, ``leads_fusion.merge_leads``) : rien n'est sorti vers le client.
+PREFIXES_NOTE_GESTE_INTERNE = (
+    'Lead archivé par ', 'Lead restauré par ', 'Fusion : ', 'Deux fiches client pour ce lead')
+
+
+def est_note_de_geste_interne(activite):
+    """ACVI23 — note d'un lot (``log_bulk_note``), d'un archivage, d'une fusion ou
+    de la création d'une visite : elle ne pose pas ``first_contacted_at`` (patron
+    ``est_note_de_touche_sautee``). Une note de la commerciale reste un contact."""
+    from .visites_retour_lead import _VISITE_CHATTER
+
+    if activite is None or getattr(activite, 'kind', None) != LeadActivity.Kind.NOTE:
+        return False
+    corps = getattr(activite, 'body', '') or ''
+    return bool(getattr(activite, 'bulk', False)) or corps.startswith(
+        (*PREFIXES_NOTE_GESTE_INTERNE, _VISITE_CHATTER['creation']))
+
+
 def est_note_de_report(activite):
     """COCKPIT-CONTRÔLE B4 — cette ligne de chatter est-elle la note d'un
     REPORT de touche ou d'une MISE EN VEILLE ?
@@ -292,11 +311,23 @@ QUESTION_PRIX_LIBELLE = (
 #: CADV36 (D-CADV-3) — les deux touches du commercial après l'acceptation.
 LIBELLE_CONFIRMER_SIGNATURE = 'Confirmer la signature et la suite'
 LIBELLE_RELANCE_ACOMPTE = 'Acompte : relancer le client'
+#: ACVI35 — étapes `generique` posées par le moteur à côté du gabarit : leur
+#: clôture ne fait jamais naître « Relance WhatsApp », même sur un lead SIGNÉ.
+LIBELLE_FAIRE_SIGNER_AVENANT = 'Faire signer l’avenant'
+LIBELLE_SIGNAL_PROPOSITION = 'Proposition rouverte — appeler'
+LIBELLE_SIGNAL_QUESTIONNAIRE = 'Questionnaire complété — appeler'
+#: Libellé de la touche « rappel demandé ». Sert aussi de clé d'idempotence :
+#: deux clics du même client ne laissent jamais deux lignes dans la file.
+RAPPEL_DEMANDE_LIBELLE = 'Rappeler le client (il l’a demandé)'
 _LIBELLES_FILET_HORS_GABARIT = frozenset({
     PASSATION_LIBELLE,  # CAD54
     QUESTION_PRIX_LIBELLE,  # CAD7
     LIBELLE_CONFIRMER_SIGNATURE,  # CADV36
     LIBELLE_RELANCE_ACOMPTE,  # CADV36
+    LIBELLE_FAIRE_SIGNER_AVENANT,  # ACVI35
+    LIBELLE_SIGNAL_PROPOSITION,  # ACVI35
+    LIBELLE_SIGNAL_QUESTIONNAIRE,  # ACVI35
+    RAPPEL_DEMANDE_LIBELLE,  # ACVI35
 })
 #: CADV29 (D-CADV-10) — « Pièces reçues ? » : hors gabarit, mais retrouvée par sa
 #: CLÉ stable. Une étape de filet : sa suite est décidée par le filet, jamais par
@@ -306,6 +337,11 @@ CLE_PIECES_RECUES = 'pieces_recues'
 #: (cadence `generique`), retrouvée par sa CLÉ ; sa clôture ne fait pas naître
 #: le barreau suivant du gabarit `generique`.
 CLE_RAPPEL_FDA = 'rappel_fda'
+#: ACVI35 — LA liste des clés stables des étapes moteur hors gabarit : lue par
+#: ``est_etape_de_filet`` et ``_q_filet`` (donc ``q_etape_moteur``).
+#: ACRM45 (jumeau) — la clé stable de l'étape « validité à renouveler ».
+CLE_VALIDITE_A_RENOUVELER = 'validite_a_renouveler'
+CLES_ETAPES_MOTEUR = (CLE_PIECES_RECUES, CLE_RAPPEL_FDA, CLE_VALIDITE_A_RENOUVELER)
 #: Les libellés PAR DÉFAUT des étapes de filet (les étapes posées avant la
 #: clé en portent un) — un lecteur ne s'en sert plus pour RECONNAÎTRE une
 #: étape (``est_etape_de_filet``/``_q_filet``), seulement pour les nommer.
@@ -369,7 +405,7 @@ def _q_filet():
     from django.db.models import Q
 
     return (q_etape(*CLES_APRES_CONTACT)
-            | Q(cle__in=(CLE_PIECES_RECUES, CLE_RAPPEL_FDA))
+            | Q(cle__in=CLES_ETAPES_MOTEUR)
             | Q(cle='', libelle__in=tuple(_LIBELLES_FILET_HORS_GABARIT)))
 
 
