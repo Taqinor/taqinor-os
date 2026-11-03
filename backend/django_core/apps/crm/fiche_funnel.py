@@ -823,12 +823,18 @@ def retirer_tag_lead(lead, user, tag):
 
 def ajuster_score_lead(lead, user, delta):
     """XMKT19 — ajuste le score du lead de ``delta`` (peut être négatif),
-    borné à [0, 100]."""
-    ancien = lead.score or 0
-    nouveau = max(0, min(100, ancien + int(delta)))
-    lead.score = nouveau
-    lead.save(update_fields=['score'])
-    activity.log_bulk_change(lead, user, 'score', ancien, nouveau)
+    borné à [0, 100]. ACVI70 — écrit le delta PERSISTANT (CRX22) : c'est le
+    calcul qui l'applique, il survit à tout recalcul."""
+    from .leads_score import recompute_lead_score
+    from .scoring import compute_score
+
+    score = compute_score(lead)
+    ancien = lead.score_ajustement or 0
+    nouveau = ancien + max(-score, min(100 - score, int(delta)))
+    lead.score_ajustement = nouveau
+    lead.save(update_fields=['score_ajustement'])
+    activity.log_bulk_change(lead, user, 'score_ajustement', ancien, nouveau)
+    recompute_lead_score(lead)
     return lead
 
 

@@ -54,6 +54,22 @@ class AjustementPersistantTests(TestCase):
         self.lead.score_ajustement = 0
         self.assertEqual(compute_score(self.lead), avant)
 
+    def test_ajuster_score_lead_survit_au_recalcul(self):
+        # ACVI70 — le delta va dans la colonne persistante, pas dans ``score``.
+        from apps.crm.fiche_funnel import ajuster_score_lead
+        from apps.crm.leads_score import recompute_lead_score
+        base = compute_score(self.lead)
+        ajuster_score_lead(self.lead, None, 10)
+        recompute_lead_score(self.lead)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.score, base + 10)
+        self.assertEqual(self.lead.score_ajustement, 10)
+        ligne = self.lead.activites.get(field='score_ajustement')
+        self.assertEqual((ligne.old_value, ligne.new_value), ('0', '10'))
+        ajuster_score_lead(self.lead, None, 500)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.score, 100)
+
     def test_ajustement_positif_ajoute_au_score(self):
         base = compute_score(self.lead)
         self.lead.score_ajustement = 7
