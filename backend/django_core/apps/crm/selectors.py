@@ -168,4 +168,29 @@ __all__ = [
     'signed_leads_for_campaigns', 'site_du_client', 'site_location_for_devis', 'site_profile_for_client',
     'soumissions_partenaire_portail', 'specialites_partenaire_cles', 'stats_equipe',
     'telephones_cibles_activites', 'trier_file_du_jour', 'ville_effective', 'visite_point_eau_du_lead',
+    'arrivee_lead_meta', 'hors_heures_ouvrees', 'lead_porte_note',
 ]
+
+
+def arrivee_lead_meta(lead, created_time=None):
+    """CADV41 — l'heure réelle d'une demande Meta : ``created_time`` de l'événement
+    (forme webhook ou pull), sinon la date d'arrivée posée sur la fiche (MRY0)."""
+    from .leads_meta import _parse_meta_created_time
+
+    return _parse_meta_created_time(created_time) or lead.date_creation
+
+
+def hors_heures_ouvrees(company, instant=None):
+    """CADV41 — ``dispatch.hors_heures`` pour un appelant d'une autre app."""
+    from .dispatch import hors_heures
+
+    return hors_heures(company, instant)
+
+
+def lead_porte_note(lead, corps):
+    """CADV41 — le chatter du lead porte-t-il déjà cette note exacte ?"""
+    from .models import LeadActivity
+
+    return LeadActivity.objects.filter(
+        company_id=lead.company_id, lead=lead, kind=LeadActivity.Kind.NOTE,
+        body=corps).exists()
