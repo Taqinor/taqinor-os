@@ -28,13 +28,6 @@ const leadSendTo = parseLeadSendTo(import.meta.env.PUBLIC_GOOGLE_ADS_LEAD_SEND_T
 {tagIds.length > 0 && (
   <script is:inline define:vars={{ tqGoogleTagIds: tagIds, tqGoogleLeadSendTo: leadSendTo }}>
     (function () {
-      var lireChoix = function () {
-        try {
-          return localStorage.getItem('tq_consent');
-        } catch (e) {
-          return null;
-        }
-      };
       var signaux = function (valeur) {
         return { ad_storage: valeur, analytics_storage: valeur, ad_user_data: valeur, ad_personalization: valeur };
       };
@@ -44,23 +37,6 @@ const leadSendTo = parseLeadSendTo(import.meta.env.PUBLIC_GOOGLE_ADS_LEAD_SEND_T
       };
       /* Refus par défaut, avant tout config. */
       window.gtag('consent', 'default', signaux('denied'));
-      var charge = false;
-      var charger = function () {
-        if (charge) return;
-        charge = true;
-        var s = document.createElement('script');
-        s.async = true;
-        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(tqGoogleTagIds[0]);
-        document.head.appendChild(s);
-      };
-      var apresAffichage = function () {
-        var libre = function () {
-          if (window.requestIdleCallback) window.requestIdleCallback(charger, { timeout: 3000 });
-          else setTimeout(charger, 1500);
-        };
-        if (document.readyState === 'complete') libre();
-        else window.addEventListener('load', libre, { once: true });
-      };
       var envoyerLead = function (eventId) {
         var extra = eventId ? { transaction_id: String(eventId) } : {};
         if (tqGoogleLeadSendTo) {
@@ -81,22 +57,18 @@ const leadSendTo = parseLeadSendTo(import.meta.env.PUBLIC_GOOGLE_ADS_LEAD_SEND_T
           for (var i = 0; i < tqGoogleTagIds.length; i++) window.gtag('config', tqGoogleTagIds[i]);
         }
         enAttente.splice(0).forEach(envoyerLead);
-        apresAffichage();
+        window.tqChargerApresAffichage('https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(tqGoogleTagIds[0]));
       };
-      if (lireChoix() === 'granted') demarrer();
-      window.addEventListener('tq:consent-change', function (e) {
-        var choix = e && e.detail && e.detail.value;
-        if (choix === 'granted') demarrer();
-        if (choix === 'denied') {
-          accorde = false;
-          enAttente = [];
-          try { window.gtag('consent', 'update', signaux('denied')); } catch (err) {}
-        }
+      if (window.tqChoix() === 'granted') demarrer();
+      window.tqSurChoix(demarrer, function () {
+        accorde = false;
+        enAttente = [];
+        try { window.gtag('consent', 'update', signaux('denied')); } catch (err) {}
       });
       /* Pont pour les pages (tunnel /devis/mon-toit) : gardé jusqu'au choix, no-op si refusé. */
       window.tqGoogleTrack = function (eventId) {
         try {
-          if (lireChoix() === 'denied') return;
+          if (window.tqChoix() === 'denied') return;
           if (accorde) envoyerLead(eventId);
           else enAttente.push(eventId);
         } catch (err) {}

@@ -37,13 +37,6 @@ const pixelId = ((import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined) ??
 {pixelId && (
   <script is:inline define:vars={{ tqPixelId: pixelId }}>
     (function () {
-      var lireChoix = function () {
-        try {
-          return localStorage.getItem('tq_consent');
-        } catch (e) {
-          return null;
-        }
-      };
       /* Amorce fbq officielle Meta (file locale) ; le chargement de fbevents.js est séparé. */
       !(function (f, n) {
         if (f.fbq) return;
@@ -56,24 +49,6 @@ const pixelId = ((import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined) ??
         n.version = '2.0';
         n.queue = [];
       })(window);
-      var charge = false;
-      var charger = function () {
-        if (charge) return;
-        charge = true;
-        var t = document.createElement('script');
-        t.async = true;
-        t.src = 'https://connect.facebook.net/en_US/fbevents.js';
-        document.head.appendChild(t);
-      };
-      /* Après l'affichage : événement load, puis temps libre du navigateur. */
-      var apresAffichage = function () {
-        var libre = function () {
-          if (window.requestIdleCallback) window.requestIdleCallback(charger, { timeout: 3000 });
-          else setTimeout(charger, 1500);
-        };
-        if (document.readyState === 'complete') libre();
-        else window.addEventListener('load', libre, { once: true });
-      };
       var accorde = false;
       var pageVueEnvoyee = false;
       var enAttente = [];
@@ -90,22 +65,18 @@ const pixelId = ((import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined) ??
           window.fbq('track', 'PageView');
         }
         enAttente.splice(0).forEach(suivre);
-        apresAffichage();
+        window.tqChargerApresAffichage('https://connect.facebook.net/en_US/fbevents.js');
       };
-      if (lireChoix() === 'granted') demarrer();
-      window.addEventListener('tq:consent-change', function (e) {
-        var choix = e && e.detail && e.detail.value;
-        if (choix === 'granted') demarrer();
-        if (choix === 'denied') {
-          accorde = false;
-          enAttente = [];
-          try { window.fbq('consent', 'revoke'); } catch (err) {}
-        }
+      if (window.tqChoix() === 'granted') demarrer();
+      window.tqSurChoix(demarrer, function () {
+        accorde = false;
+        enAttente = [];
+        try { window.fbq('consent', 'revoke'); } catch (err) {}
       });
       /* Pont pour les pages (tunnel /devis/mon-toit) : gardé jusqu'au choix, no-op si refusé. */
       window.tqPixelTrack = function (event, params, eventId) {
         try {
-          if (lireChoix() === 'denied') return;
+          if (window.tqChoix() === 'denied') return;
           if (accorde) suivre([event, params, eventId]);
           else enAttente.push([event, params, eventId]);
         } catch (err) {}

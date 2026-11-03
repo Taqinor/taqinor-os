@@ -168,6 +168,7 @@ describe('WAUD12 — consentement avant tout cookie', () => {
   const corpsScript = (rel: string) => read(rel).match(/<script is:inline[^>]*>([\s\S]*)<\/script>/)?.[1] ?? '';
   type Fen = Window & { fbq?: { queue: unknown[][] }; dataLayer?: unknown[][]; tqPixelTrack?: (...a: unknown[]) => void; tqGoogleTrack?: (id?: string) => void };
   const fen = window as unknown as Fen;
+  const lancerCommuns = () => new Function('tqConsentDureeMs', corpsScript('../src/components/ConsentExpiry.astro'))(15552000000);
   const lancerPixel = () => new Function('tqPixelId', corpsScript('../src/components/MetaPixel.astro'))('845710231783646');
   const lancerGoogle = () =>
     new Function('tqGoogleTagIds', 'tqGoogleLeadSendTo', corpsScript('../src/components/GoogleTag.astro'))(['AW-1'], 'AW-1/x');
@@ -194,6 +195,7 @@ describe('WAUD12 — consentement avant tout cookie', () => {
     delete fen.fbq;
     delete (fen as unknown as { _fbq?: unknown })._fbq;
     delete fen.dataLayer;
+    lancerCommuns();
   });
   afterEach(() => {
     for (const [t, f] of ecouteurs.splice(0)) window.removeEventListener(t, f);
