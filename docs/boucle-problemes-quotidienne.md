@@ -102,10 +102,9 @@ Une `ERR-PROD` cochée n'est « résolue » que si sa signature n'apparaît plus
 - Sondes externes (Cloudflare Health Check / ping gratuit sur `/health/ready`) : seule mesure qui vit hors du serveur ; **D-JPB-7** (défaut : oui si gratuit).
 
 ## 6. Décisions à prendre (Reda)
-- **D-JPB-1** Où tourne le tri quotidien : routine cloud (recommandé) ou tâche du portable.
-- **D-JPB-2** Sentry backend seul (recommandé : SDK déjà là, 1 variable, 500 + Celery + request_id + release) ou journal serveur maison (`ProblemeServeur`). Compte externe gratuit : 1 utilisateur, 5 000 erreurs/mois, 30 j (tarifs du 03/11/2026, à relire avant de trancher).
-- **D-JPB-3** `RETENTION_AUTO_APPLY=1` en prod (11 purges réelles) — geste Reda.
-- **D-JPB-4** `GUNICORN_MAX_REQUESTS=300` / jitter 60 — geste Reda.
+- **D-JPB-1** Où tourne le tri quotidien — **EN ATTENTE (Reda, 03/11)** : « dis-moi d'abord si c'est le même coût en tokens ; on pourra aussi utiliser le portable ET le desktop, celui des deux qui est allumé et a assez de jetons ». Réponse : même coût (routine cloud et `claude -p` local tirent tous deux sur l'usage de l'abonnement, même modèle, même prompt ; la seule différence est l'accès : le cloud lit l'ERP par l'API à jeton (BPQ4), le local peut aussi faire du SSH). Option hybride proposée : une tâche Windows sur CHAQUE PC à 07:00, la première qui pose la claim `refs/plan-claims/tri-problemes:<date>` (`scripts/plan_claims.py`, mécanisme existant) fait le tri, l'autre sort ; le cloud reste possible plus tard sans rien changer au skill.
+- **D-JPB-2** — **TRANCHÉ (Reda, 03/11/2026) : Sentry backend seul** (SDK déjà installé, pas de DSN front donc aucune donnée navigateur ; compte gratuit : 1 utilisateur, 5 000 erreurs/mois, 30 j au 03/11). BPQ9 se construit dans sa branche Sentry ; `ProblemeServeur` n'est pas construit.
+- **D-JPB-3 / D-JPB-4** — **ACCEPTÉS (Reda, 03/11/2026)** : Reda pose `RETENTION_AUTO_APPLY=1`, `GUNICORN_MAX_REQUESTS=300`, `GUNICORN_MAX_REQUESTS_JITTER=60` dans `/opt/taqinor-os/.env` puis `docker compose up -d` (recréation). Vérification lecture seule ensuite : `core.run_retention: apply=True` dans le log celery à 03:00 et `--max-requests 300` dans `docker inspect` de django_core.
 - **D-JPB-5** replace-lines : délai dédié 120 s d'abord, puis tâche de performance (les deux).
 - **D-JPB-6** Balise publique hors session (défaut : non). **D-JPB-7** Sonde externe gratuite (défaut : oui).
 

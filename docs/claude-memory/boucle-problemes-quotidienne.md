@@ -23,9 +23,11 @@ polling la même seconde depuis un téléphone = connectivité (vérifier qu'ell
 un `us="-"` à 20 s ne prouve pas que Django a échoué (replace-lines a fini après que le navigateur a
 abandonné : vérifier `updated_at`) ; 575 chunks 404 = un scanner (1 IP) et non des bundles périmés.
 
-**Décisions ouvertes (Reda) :** D-JPB-1 routine cloud (recommandé) vs portable ; D-JPB-2 Sentry
-backend seul (recommandé, SDK déjà installé) vs `ProblemeServeur` maison ; D-JPB-3/4 `.env` prod
-(`RETENTION_AUTO_APPLY=1`, `GUNICORN_MAX_REQUESTS=300`/jitter 60) ; D-JPB-6 balise publique (défaut
+**Décisions (Reda, 03/11) :** D-JPB-2 TRANCHÉ = Sentry backend seul (jamais de DSN front sans nouvelle
+décision) ; D-JPB-3/4 ACCEPTÉS = Reda pose `RETENTION_AUTO_APPLY=1` + `GUNICORN_MAX_REQUESTS=300`/jitter 60
+(à vérifier en lecture seule ensuite) ; D-JPB-1 EN ATTENTE : coût tokens identique cloud/local (usage de
+l'abonnement), Reda penche pour « portable OU desktop, celui qui est allumé » → claim
+`tri-problemes:<date>` via `plan_claims.py`, la première machine gagne ; D-JPB-6 balise publique (défaut
 non) ; D-JPB-7 sonde externe gratuite (défaut oui).
 
 **Why:** Reda a demandé (02/11) que tout problème vécu soit consigné ET que ce journal serve à
