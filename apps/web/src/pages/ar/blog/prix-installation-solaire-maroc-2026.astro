@@ -28,19 +28,14 @@ const { locale, L } = pageLocale(Astro.url.pathname);
 const pubDate = new Date('2026-06-21');
 
 const bodyText = `
-كم تكلّف حقاً؟ هوامش جاهزة حسب القدرة: 3 kWc من 28000 إلى 42000 درهم، 5 kWc من 45000 إلى 65000 درهم،
-10 kWc من 85000 إلى 120000 درهم. الكلفة المتوسطة الجاهزة حوالي 10000 إلى 14000 درهم لكل kWc. احذروا
-من أثمنة 4700 درهم/kWc — إنها عتاد فقط، لا جاهزة. تكاليف السقف: قرميد أو صفيح +6000 إلى 12000 درهم،
-ميلان قوي فوق 30 درجة +4000 إلى 8000 درهم. البطارية: LFP من 5 إلى 15 kWh تضيف 22000 إلى 60000 درهم
-وتُطيل الاسترجاع بـ1 إلى 3 سنوات. الضريبة 20% على الجاهز، الألواح وحدها معفاة دون خصم. الاسترجاع 5 إلى
-7 سنوات في السكني.
+ما يُكوّن الثمن في 2026: الألواح والعاكس واليد العاملة والملحقات. الضريبة على القيمة المضافة والرسوم الجمركية. العائد على الاستثمار 5 إلى 7 سنوات في السكني.
 `;
 const { readingMinutes, url, schemaImageUrl } = articleMeta(bodyText, Astro.url.pathname, Astro.site, '/og/accueil.png');
 const blogPosting = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
-  headline: 'كم تكلّف تركيبة شمسية بالمغرب سنة 2026؟',
-  description: 'هوامش استرشادية 2026 حسب القدرة، تكاليف السقف والبطارية والضريبة — لمعرفة ما تتوقّعونه قبل عرض أسعاركم.',
+  headline: 'أسعار الطاقة الشمسية بالمغرب في 2026: مكوّنات الفاتورة',
+  description: "الألواح والعاكس والتركيب والضريبة والجمارك: مكوّنات سعر التركيب الشمسي في 2026، بأرقام إرشادية.",
   image: schemaImageUrl,
   datePublished: pubDate.toISOString(),
   keywords: 'كلفة, ثمن, تركيبة, 2026',
@@ -50,16 +45,11 @@ const blogPosting = {
 };
 
 
-const fourchettes = [
-  { kwc: '3 kWc', prix: '<span dir="ltr">28 000 – 42 000</span> درهم' },
-  { kwc: '5 kWc', prix: '<span dir="ltr">45 000 – 65 000</span> درهم' },
-  { kwc: '10 kWc', prix: '<span dir="ltr">85 000 – 120 000</span> درهم' },
-];
 ---
 
 <Layout
-  title="كم تكلّف تركيبة شمسية بالمغرب سنة 2026؟ | مدوّنة Taqinor"
-  description="هوامش استرشادية 2026 حسب القدرة، تكاليف السقف والبطارية والضريبة — لمعرفة ما تتوقّعونه قبل عرض أسعاركم."
+  title="أسعار الطاقة الشمسية بالمغرب في 2026: مكوّنات الفاتورة | Taqinor"
+  description="الألواح والعاكس والتركيب والضريبة والجمارك: مكوّنات سعر التركيب الشمسي في 2026، بأرقام إرشادية."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
@@ -67,13 +57,13 @@ const fourchettes = [
     <V2Enhance />
     <Article33Ribbon />
 
-    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'المدوّنة', href: L('/blog') }, { label: 'كم تكلّف تركيبة شمسية سنة 2026؟' }]} />
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'المدوّنة', href: L('/blog') }, { label: 'أسعار الطاقة الشمسية بالمغرب في 2026: مكوّنات الفاتورة' }]} />
 
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-brass-300">
         المدوّنة · {dateFmt.format(pubDate)} · بقلم Reda Kasri
       </p>
-      <h1 class="display v2-page-title mt-5 text-white">كم تكلّف تركيبة شمسية بالمغرب سنة 2026؟</h1>
+      <h1 class="display v2-page-title mt-5 text-white">أسعار الطاقة الشمسية بالمغرب في 2026: مكوّنات الفاتورة</h1>
 
       <p class="article-meta mt-3 flex items-center gap-2 text-xs text-lune-faint">
         {readingMinutes} دقائق قراءة
@@ -89,50 +79,7 @@ const fourchettes = [
           بمصادرها، وخصوصاً بحدودها.
         </p>
         <p class="text-xs text-lune-faint">
-          <em>(للنسخة الدائمة من هذه الهوامش، مُراجَعة كل سنة بمعزل عن أخبار 2026، انظروا
-          صفحتنا <a href={L('/prix-panneaux-solaires-maroc')}>أثمنة الألواح الشمسية بالمغرب</a>.)</em>
-        </p>
-
-        <h2>الهوامش الجاهزة حسب القدرة (استرشادي 2026)</h2>
-        <p>
-          تشمل هذه الأثمنة توريد العتاد <strong>و</strong>التركيب الكامل (العاكس، الأسلاك، البنية،
-          التشغيل). مُستخرَجة من منشورات مُركِّبين مغاربة وأدلة أثمنة على الإنترنت — <strong>هوامش
-          استرشادية 2026</strong>، لا تعريفات رسمية.
-        </p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>القدرة المُركَّبة</th>
-                <th>الهامش الاسترشادي 2026 (درهم شامل الضريبة)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fourchettes.map((f) => (
-                <tr>
-                  <td>{f.kwc}</td>
-                  <td set:html={f.prix} />
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p>
-          <strong>الكلفة المتوسطة جاهزة: حوالي <span dir="ltr">10 000 – 14 000</span> درهم/kWc</strong> (عتاد + يد عاملة،
-          هامش استرشادي 2026 — مصادر: solaropeak.com، ecovolt.ma، electrosolarplus.ma، lechantier.ma).
-        </p>
-        <p>
-          التشتّت حقيقي: يعكس نوع السقف، المسافة إلى اللوحات الكهربائية، ماركة العاكس، وهوامش ربح
-          متفاوتة حسب المُركِّب. عرض أسعار ميداني يبقى ضرورياً.
-        </p>
-
-        <h2>احذروا من أثمنة «4 700 درهم/kWc»: ليست جاهزة</h2>
-        <p>
-          كثيراً ما يتردّد ثمن حوالي <strong><span dir="ltr" style="unicode-bidi:isolate">4 700 درهم/kWc</span></strong> أو أقل. هذا الرقم يقابل
-          <strong> كلفة عتاد التركيبة وحده</strong> (ألواح + عاكس، دون التركيب، دون الأسلاك، دون
-          البنية، دون الربط) — <strong>منخفض بشكل غير معقول لتركيبة جاهزة ومنجَزة</strong>. لا تقارنوا
-          هذا الرقم بالهوامش أعلاه: إنهما واقعان مختلفان (هامش استرشادي 2026 — مصادر: solaropeak.com،
-          ecovolt.ma).
+          <em>(الهوامش حسب القدرة وتكاليف السقف وحالة البطارية توجد في صفحتنا <a href={L('/prix-panneaux-solaires-maroc')}>أثمنة الألواح الشمسية بالمغرب</a>.)</em>
         </p>
 
         <h2>ما يُكوّن الثمن: العتاد والتركيب</h2>
@@ -151,38 +98,6 @@ const fourchettes = [
         <p>
           بنية التثبيت، أسلاك التيار المستمر/المتردّد، لوحة الحماية، الإجراءات الإدارية (تصريح القانون
           <span dir="ltr" style="unicode-bidi:isolate">82-21</span> للتركيبات دون <span dir="ltr" style="unicode-bidi:isolate">11 kWc</span>) — تُمثّل هذه البنود حصّة معتبرة من الكلفة الإجمالية الجاهزة.
-        </p>
-
-        <h2>تكاليف إضافية حسب تهيئة السقف</h2>
-        <p>لا تتشابه كل الأسقف. بعض التهيئات تضيف تكاليف معتبرة:</p>
-        <ul>
-          <li><strong>سقف من القرميد أو الصفيح</strong> (تركيب أكثر تقنية): <strong><span dir="ltr">+6 000 – 12 000</span> درهم</strong> (هامش استرشادي 2026 — المصدر: electrosolarplus.ma، lechantier.ma)</li>
-          <li><strong>ميلان قوي (أكثر من <span dir="ltr">30°</span>)</strong>: <strong><span dir="ltr">+4 000 – 8 000</span> درهم</strong> لأجهزة السلامة وتعقيد التركيب (هامش استرشادي 2026)</li>
-        </ul>
-        <p>
-          السطح الخرساني سهل الولوج يبقى التهيئة الأقل كلفة. إن كان سقفكم منحدراً أو من مواد هشّة،
-          توقّعوا هذه التكلفة الإضافية.
-        </p>
-
-        <h2>حالة البطارية: مفيدة، لكن ليست محايدة على الكلفة</h2>
-        <p>
-          تبقى التركيبة <strong>دون بطارية</strong> (مربوطة بالشبكة) الحل الأكثر شيوعاً والأكثر ربحاً
-          لحوالي <span dir="ltr" style="unicode-bidi:isolate">80%</span> من البيوت الحضرية. مع القانون <span dir="ltr" style="unicode-bidi:isolate">82-21</span> الساري الآن (المرسوم <span dir="ltr" style="unicode-bidi:isolate">2-25-100</span>، يونيو 2026)،
-          يُنظَّم الإنتاج الذاتي للتوتر المنخفض — لكن <strong>لا توجد بعد أي تعريفة إعادة شراء سكنية
-          (توتر منخفض) منشورة</strong>: نشرت ANRE تعريفة إعادة شراء الفائض (<span dir="ltr">0,18–0,21</span> درهم/kWh) فقط
-          للتوتر المتوسط/العالي/العالي جداً، وليس للبيوت أقل من <span dir="ltr">11 kW</span>. وما دامت هذه التعريفة غير
-          موجودة رسمياً، لا نحتسب أي عائد من التصدير — قيمة الطاقة الشمسية إذن أساساً في
-          <strong> الاستهلاك الذاتي المباشر</strong>، بالتعريفة التي تدفعونها أصلاً (<span dir="ltr">0,916272 – 1,622856</span>
-          درهم/kWh حسب شطركم لدى ONEE/الوكالة).
-        </p>
-        <p>إن رغبتم في تخزين الطاقة للمساء أو الاحتماء من الانقطاعات، تضيف بطارية LFP كلفة معتبرة:</p>
-        <ul>
-          <li><strong>بطارية LFP بسعة <span dir="ltr">5 – 15 kWh</span>: <span dir="ltr">+22 000 – 60 000</span> درهم</strong> حسب السعة والماركة (هامش استرشادي 2026 — مصادر: ecovolt.ma، electrosolarplus.ma)</li>
-          <li>يُطيل الاسترجاع بـ<strong><span dir="ltr" style="unicode-bidi:isolate">1</span> إلى <span dir="ltr" style="unicode-bidi:isolate">3 سنوات</span></strong> مع البطارية</li>
-        </ul>
-        <p>
-          لاستخدام سكني معتاد دون قيود انقطاعات متكرّرة، تلعب الشبكة دور «بطارية افتراضية» مجاناً — ما
-          يُفسّر لماذا تبقى غالبية التركيبات المغربية سنة 2026 دون تخزين.
         </p>
 
         <h2>الضريبة على القيمة المضافة والرسوم الجمركية: فارقة مهمّة</h2>
@@ -214,23 +129,6 @@ const fourchettes = [
           <a href={L('/blog/rentabilite-solaire-par-ville-maroc')}>الربحية الشمسية حسب المدينة بالمغرب</a>.
         </p>
 
-        <h2>كم لوحاً تحتاجون؟</h2>
-        <p>
-          قبل مقارنة الأثمنة، يجب معرفة القدرة المناسبة لأسرتكم. أسرة تستهلك بين <span dir="ltr" style="unicode-bidi:isolate">4 000</span> و<span dir="ltr" style="unicode-bidi:isolate">6 000 kWh/سنة</span>
-          تحتاج عموماً <strong><span dir="ltr" style="unicode-bidi:isolate">3</span> إلى <span dir="ltr" style="unicode-bidi:isolate">5 kWc</span></strong>؛ بين <span dir="ltr" style="unicode-bidi:isolate">6 000</span> و<span dir="ltr" style="unicode-bidi:isolate">10 000 kWh/سنة</span>، بالأحرى
-          <strong> <span dir="ltr" style="unicode-bidi:isolate">5</span> إلى <span dir="ltr" style="unicode-bidi:isolate">8 kWc</span></strong>. يشغل كل kWc حوالي <span dir="ltr" style="unicode-bidi:isolate">5</span> إلى <span dir="ltr" style="unicode-bidi:isolate">6 م²</span> من السقف.
-        </p>
-        <p>
-          دليلنا المخصّص يشرح المنهجية الكاملة:
-          <a href={L('/guides/combien-de-panneaux-pour-ma-maison')}>كم لوحاً لبيتي؟</a>
-        </p>
-
-        <h2>كلمة أخيرة قبل توقيع أي شيء</h2>
-        <p>
-          استعملوا هذه الهوامش للتخطيط المالي ولرصد عرض منخفض أو مرتفع بشكل غير طبيعي. لكن لا تطلبوا
-          منها ما لا يمكنها تقديمه: ثمناً نهائياً. تهيئة سقفكم، استهلاككم، شطركم لدى ONEE، والمسافة بين
-          الألواح واللوحة الكهربائية تُحرِّك المجموع النهائي، أحياناً بآلاف الدراهم.
-        </p>
         <p>
           الرقم الوحيد الصالح لبيتكم يخرج من قراءة فاتورتكم وزيارة. هذا بالضبط ما يفعله تشخيصنا، مجاناً
           ودون التزام.

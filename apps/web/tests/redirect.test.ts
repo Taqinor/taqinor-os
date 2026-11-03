@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 // Redirection canonique workers.dev → taqinor.ma (301, chemin + query préservés).
 import { describe, expect, it } from 'vitest';
 
@@ -253,5 +255,28 @@ describe('WAUD23 — http → https en tête du Worker', () => {
   it('jamais localhost ni un autre hôte', () => {
     expect(httpsTarget('http://localhost:4321/')).toBeNull();
     expect(httpsTarget('http://127.0.0.1:8788/')).toBeNull();
+  });
+});
+
+describe('WAUD76 — le billet prix ne cannibalise plus le pilier /prix (D-WAUD-9)', () => {
+  const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+  const texte = (src: string) =>
+    src
+      .replace(/^---[\s\S]*?^---/m, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/[*_`|#]/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\s+/g, ' ');
+  const phrases = (t: string) => t.split(/(?<=[.!?؟:])\s/).map((x) => x.trim()).filter((x) => x.length > 80);
+
+  it.each([
+    ['fr', '../src/content/blog/prix-installation-solaire-maroc-2026.md', '../src/pages/prix-panneaux-solaires-maroc.astro'],
+    ['en', '../src/pages/en/blog/prix-installation-solaire-maroc-2026.astro', '../src/pages/en/prix-panneaux-solaires-maroc.astro'],
+    ['ar', '../src/pages/ar/blog/prix-installation-solaire-maroc-2026.astro', '../src/pages/ar/prix-panneaux-solaires-maroc.astro'],
+  ])('%s : aucune phrase de plus de 80 caractères en commun, et un lien vers le pilier', (_l, billet, pilier) => {
+    const tb = texte(lire(billet));
+    const tp = texte(lire(pilier));
+    expect(phrases(tb).filter((x) => tp.includes(x))).toEqual([]);
+    expect(lire(billet)).toContain('prix-panneaux-solaires-maroc');
   });
 });
