@@ -9,7 +9,6 @@ import { rafraichirDevis } from '../../../features/ventes/store/ventesSlice.js'
 import ventesApi from '../../../api/ventesApi.js'
 import {
   Button, Badge, StatusPill, Checkbox, Textarea,
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel,
   // APX17 — les signaux secondaires du statut passent dans un Popover.
   Popover, PopoverTrigger, PopoverContent,
@@ -39,6 +38,7 @@ import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis.js'
 import { STATUT_DISPLAY } from './devisListConstants.js'
 import HistoriqueActivitesListe from '../HistoriqueActivitesListe'
 import { TableauLignes } from '../../../ui/TableauDefilant'
+import MenuActionsLigne from '../../../ui/MenuActionsLigne'
 
 // VX132 — chargement long CONSCIENT : la génération du devis PDF premium est
 // la latence connue la plus longue de l'app (schémas, produits, chiffrage) ;
@@ -570,13 +570,11 @@ export default function DevisRow({ d, ctx }) {
 
           {/* VX20 — menu « Plus » unique : regroupe TOUTES les actions
               secondaires (précédemment jusqu'à 10 boutons par ligne). */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <MenuActionsLigne declencheur={
               <Button size="sm" variant="ghost" aria-label={`Plus d'actions — ${d.reference}`}>
                 <MoreHorizontal className="size-4" aria-hidden="true" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+          }>
               <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
               <DropdownMenuItem
                 disabled={!peutEditerDevis(d)}
@@ -818,8 +816,7 @@ export default function DevisRow({ d, ctx }) {
                   Supprimer
                 </DropdownMenuItem>
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          </MenuActionsLigne>
         </div>
       </td>
     </tr>

@@ -38,6 +38,7 @@ import { useConfirmDialog } from '../../ui/confirm'
 import { todayLocalIso } from '../../lib/dateLocale.js'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import EnteteVentes from '../../features/ventes/EnteteVentes'
+import { creerSoumission } from '../../lib/soumission'
 
 const STATUT_DISPLAY = {
   en_attente: 'En attente',
@@ -437,30 +438,23 @@ function BCForm({ bc = null, onClose, onSaved }) {
     return Object.keys(e).length === 0
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!validate()) return
-    setSaving(true)
-    try {
-      const payload = {
-        client:               parseInt(fields.client),
-        date_livraison_prevue: fields.date_livraison_prevue || null,
-        note:                 fields.note || null,
-      }
-      if (isEdit) {
-        await dispatch(updateBonCommande({ id: bc.id, data: payload })).unwrap()
-      } else {
-        await dispatch(createBonCommande(payload)).unwrap()
-      }
-      onSaved()
-    } catch (err) {
-      // APX15(d) — le repli jetait du JSON BRUT à l'écran (un objet champ → liste
-      // de messages) : message français, jamais de jargon.
-      setErrors(prev => ({ ...prev, submit: frenchError(err, 'Enregistrement impossible. Réessayez.') }))
-    } finally {
-      setSaving(false)
+  const handleSubmit = creerSoumission(validate, setSaving, async () => {
+    const payload = {
+      client:               parseInt(fields.client),
+      date_livraison_prevue: fields.date_livraison_prevue || null,
+      note:                 fields.note || null,
     }
-  }
+    if (isEdit) {
+      await dispatch(updateBonCommande({ id: bc.id, data: payload })).unwrap()
+    } else {
+      await dispatch(createBonCommande(payload)).unwrap()
+    }
+    onSaved()
+  }, (err) => {
+    // APX15(d) — le repli jetait du JSON BRUT à l'écran (un objet champ → liste
+    // de messages) : message français, jamais de jargon.
+    setErrors(prev => ({ ...prev, submit: frenchError(err, 'Enregistrement impossible. Réessayez.') }))
+  })
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>

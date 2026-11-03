@@ -15,6 +15,7 @@ Le moteur ne fait que RENDRE — il ne change aucun statut (règle #4).
 """
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 
 from . import montants
@@ -119,6 +120,15 @@ def render_pdf(out_path, html: str, base_dir) -> str:
     base = str(Path(base_dir).resolve())
     HTML(string=html, base_url=f"file://{base}/").write_pdf(str(out_path))
     return str(out_path)
+
+
+def render_pdf_marche(out_path, data, build_html_fn, package: str,
+                      base_dir) -> str:
+    """``render_pdf`` d'un marché : sans ``data``, l'échantillon du marché
+    (``<package>.sample_data``, importé seulement dans ce cas)."""
+    if data is None:
+        data = import_module(".sample_data", package).build()
+    return render_pdf(out_path, build_html_fn(data), base_dir)
 
 
 #: CIQ333 — la palette des pages premium C&I : teinte → repli littéral

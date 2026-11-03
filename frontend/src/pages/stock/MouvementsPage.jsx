@@ -24,6 +24,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+import { creerSoumission } from '../../lib/soumission'
 import { AlerteErreurStock } from './BandeauxListeStock'
 import OptionsTypeMouvement from './OptionsTypeMouvement'
 
@@ -532,28 +533,21 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
     return Object.keys(e).length === 0
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!validate()) return
-    setSaving(true)
-    try {
-      await dispatch(createMouvement({
-        produit:        parseInt(fields.produit),
-        type_mouvement: fields.type_mouvement,
-        quantite:       quantiteSaisie,
-        reference:      fields.reference.trim() || null,
-        note:           fields.note.trim()      || null,
-      })).unwrap()
-      onSaved()
-    } catch (err) {
-      setErrors(prev => ({
-        ...prev,
-        submit: frenchError(err, 'Enregistrement du mouvement impossible.'),
-      }))
-    } finally {
-      setSaving(false)
-    }
-  }
+  const handleSubmit = creerSoumission(validate, setSaving, async () => {
+    await dispatch(createMouvement({
+      produit:        parseInt(fields.produit),
+      type_mouvement: fields.type_mouvement,
+      quantite:       quantiteSaisie,
+      reference:      fields.reference.trim() || null,
+      note:           fields.note.trim()      || null,
+    })).unwrap()
+    onSaved()
+  }, (err) => {
+    setErrors(prev => ({
+      ...prev,
+      submit: frenchError(err, 'Enregistrement du mouvement impossible.'),
+    }))
+  })
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
