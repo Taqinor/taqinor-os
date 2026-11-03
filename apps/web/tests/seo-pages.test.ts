@@ -4,7 +4,7 @@
 // l'intégrité des faits (aucun chiffre inventé).
 import { cityContentBySlug } from '../src/lib/cityContent';
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { lireAstroAvecBlocs } from './astroBlocsHelper';
 import { builtPage, mainOf, visibleText } from './builtHtmlHelper';
@@ -515,5 +515,66 @@ describe('WAUD70 — URL canoniques uniques (barre finale, encodage) dans RSS, l
     expect(urls.length).toBeGreaterThan(15);
     for (const u of urls) expect(u).toBe(canonicalUrl(u));
     expect(lire('public/_headers')).toMatch(/\/llms\.txt\s+Content-Type: text\/plain; charset=utf-8/);
+  });
+});
+
+describe('WAUD50 (reste) — Article hors guides : dateModified = date affichée, jamais inventée', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  const AVEC_DATE = [
+    'src/pages/prix-panneaux-solaires-maroc.astro',
+    'src/pages/en/prix-panneaux-solaires-maroc.astro',
+    'src/pages/ar/prix-panneaux-solaires-maroc.astro',
+    'src/pages/ressources/10-questions-avant-de-signer.astro',
+    'src/pages/ar/ressources/10-questions-avant-de-signer.astro',
+  ];
+  it('pages à date « revues le » affichée : dateModified vient de verifiedDate', () => {
+    for (const f of AVEC_DATE) {
+      const s = lire(f);
+      expect(s, f).toContain('dateModified: verifiedDate.toISOString().slice(0, 10)');
+      expect(s, f).toMatch(/dateFmt\.format\(verifiedDate\)|verifiedDate=\{verifiedDate\}/);
+    }
+  });
+  it('régularisation Article 33 : dateModified = la date « vérifié le » affichée', () => {
+    const s = lire('src/pages/regularization-article-33.astro');
+    expect(s).toContain("dateModified: '2026-10-05'");
+    expect(s).toContain('vérifié le 5 octobre 2026');
+  });
+  it('crawl du build : tout Article/BlogPosting autonome émet dateModified (sauf pages sans date affichée) ; jamais deux BreadcrumbList', () => {
+    const SANS_DATE_AFFICHEE = /^\/(en\/|ar\/)?(methodologie-estimation|realisations\/|blog\/)/;
+    const routes: string[] = [];
+    const dist = fileURLToPath(new URL('../dist/client/', import.meta.url));
+    const marcher = (dir: string, rel: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) marcher(`${dir}${e.name}/`, `${rel}/${e.name}`);
+        else if (e.name === 'index.html') routes.push(rel || '/');
+      }
+    };
+    marcher(dist, '');
+    let articles = 0;
+    let avecDate = 0;
+    for (const r of routes) {
+      const html = builtPage(r);
+      const blocs = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+      const noeuds = blocs.flatMap((b) => {
+        try {
+          const j = JSON.parse(b);
+          return Array.isArray(j) ? j : (j['@graph'] ?? [j]);
+        } catch {
+          return [];
+        }
+      });
+      expect(noeuds.filter((n) => n['@type'] === 'BreadcrumbList').length, `${r} : BreadcrumbList en double`).toBeLessThanOrEqual(1);
+      for (const a of noeuds.filter((n) => n['@type'] === 'Article' || n['@type'] === 'BlogPosting')) {
+        articles++;
+        if (a.dateModified) {
+          avecDate++;
+          expect(a.dateModified, r).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        } else {
+          expect(SANS_DATE_AFFICHEE.test(r), `${r} : Article sans dateModified`).toBe(true);
+        }
+      }
+    }
+    expect(articles).toBeGreaterThan(30);
+    expect(avecDate).toBeGreaterThan(36);
   });
 });

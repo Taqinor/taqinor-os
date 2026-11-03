@@ -77,19 +77,6 @@ const jsonLd = {
     'Recharger une voiture électrique sur son propre surplus solaire au Maroc : appoint quotidien dimensionné sur vos kilomètres, choix de borne 7/11/22 kW (monophasé ou triphasé), recharge au surplus ou via batterie maison, le tout ancré sur l’autoconsommation de la loi 82-21.',
 };
 
-const breadcrumbJsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'BreadcrumbList',
-  itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Accueil', item: 'https://taqinor.ma/' },
-    {
-      '@type': 'ListItem',
-      position: 2,
-      name: 'Recharge voiture électrique au solaire',
-      item: 'https://taqinor.ma/recharge-voiture-electrique-solaire',
-    },
-  ],
-};
 import RechargeVoitureElectriqueSolaireDivCEBE from '../components/blocs/RechargeVoitureElectriqueSolaireDivCEBE.astro';
 ---
 
@@ -100,7 +87,6 @@ import RechargeVoitureElectriqueSolaireDivCEBE from '../components/blocs/Recharg
 >
   <div class="v2">
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-    <script type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
 
     <V2Enhance />
     <Article33Ribbon />

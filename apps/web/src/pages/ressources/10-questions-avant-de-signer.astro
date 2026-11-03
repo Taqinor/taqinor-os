@@ -102,6 +102,7 @@ const jsonLd = {
   description:
     'La checklist à poser à tout installateur solaire au Maroc avant de signer : dimensionnement, matériel, garanties, loi 82-21, paiement, SAV, monitoring et zone de service réelle.',
   image: schemaImageUrl,
+  dateModified: verifiedDate.toISOString().slice(0, 10),
   about: { '@type': 'Thing', name: 'Devis solaire' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
