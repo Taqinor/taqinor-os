@@ -63,8 +63,8 @@ export const MESURES_SCHEMA = {
     { key: 'hauteur_mur_cm', label: 'Hauteur du mur libre', unite: 'cm', type: 'number' },
     { key: 'profondeur_degagement_cm', label: 'Profondeur de dégagement', unite: 'cm', type: 'number' },
     { key: 'distance_tableau_m', label: 'Distance au tableau électrique', unite: 'm', type: 'number' },
-    { key: 'local_abrite', label: 'Local abrité', unite: '', type: 'bool' },
-    { key: 'local_ventile', label: 'Local ventilé', unite: '', type: 'bool' },
+    { key: 'local_abrite', label: 'Local abrité', unite: '', type: 'tribool' },
+    { key: 'local_ventile', label: 'Local ventilé', unite: '', type: 'tribool' },
   ],
   cheminement: [
     { key: 'longueur_estimee_m', label: 'Longueur estimée du cheminement', unite: 'm', type: 'number' },
