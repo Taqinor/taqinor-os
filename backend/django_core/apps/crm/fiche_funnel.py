@@ -5,8 +5,13 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 """
 import logging
 
+import re
+
 from . import activity, stages
-from .cadence_messages import SEGMENTS_PRO, _omettre_phrases_incompletes, langue_relance_du_lead
+from .cadence_messages import (
+    SEGMENTS_PRO, _nom_affiche_conseiller, _nom_affiche_marque,
+    _omettre_phrases_incompletes, langue_relance_du_lead,
+)
 from .cadence_reperes import _CLOTURE_RAISONS
 from .leads_premier_contact import marquer_premier_contact
 from .models import Lead, LeadActivity
@@ -540,7 +545,15 @@ def _corps_whatsapp_en_masse(lead, tpl, corps_direct=''):
         'prenom': (lead.prenom or lead.nom or '').strip(),
         'ville': (lead.ville or '').strip(),
         'lien': '',
+        # ACVI53 — les valeurs des touches ; tout autre placeholder (ancien
+        # gabarit) reste sans valeur : sa phrase est omise, jamais un `{…}`.
+        'nom': (lead.nom or '').strip(),
+        'conseiller': _nom_affiche_conseiller(lead, None),
+        'marque': _nom_affiche_marque(lead),
+        'societe': _nom_affiche_marque(lead),
     }
+    for cle in re.findall(r'\{(\w+)\}', corps):
+        contexte.setdefault(cle, '')
     if '{lien_rdv}' in corps:
         contexte['lien_rdv'] = (
             resoudre_lien_rdv('{lien_rdv}', lead) or '')

@@ -30,6 +30,26 @@ URL = '/api/django/crm/leads/bulk/'
 
 class BulkWhatsappGardesTests(TestCase):
 
+    def test_le_conseiller_est_rendu_dans_la_file(self):
+        """ACVI53 — `{conseiller}` rendu, aucun `{` ne part au client ; un
+        placeholder inconnu est refusé à l'enregistrement."""
+        from apps.crm.fiche_funnel import _corps_whatsapp_en_masse
+
+        self.user.first_name = 'Sara'
+        self.user.save(update_fields=['first_name'])
+        tpl = MessageTemplate.objects.create(
+            company=self.company, nom='Conseiller', langue='fr',
+            corps='Bonjour {prenom}, ici {conseiller}. Dossier {reference}.')
+        texte = _corps_whatsapp_en_masse(self.c, tpl)
+        self.assertIn('ici Sara', texte)
+        self.assertNotIn('{', texte)
+        refus = self.api.post('/api/django/crm/message-templates/', {
+            'nom': 'Faux', 'langue': 'fr', 'corps': 'Bonjour {inconnu}'},
+            format='json')
+        self.assertEqual(refus.status_code, 400, refus.data)
+        self.assertIn('corps', refus.data)
+        self.assertFalse(MessageTemplate.objects.filter(nom='Faux').exists())
+
     def setUp(self):
         self.company = Company.objects.create(
             nom='ACRM15 Solaire', slug='acrm15-bulk')
