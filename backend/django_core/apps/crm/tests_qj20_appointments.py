@@ -20,6 +20,8 @@ from apps.crm.visites_rdv import (
     dispatch_appointment_reminder,
     send_due_appointment_reminders,
 )
+from apps.crm import horaires
+from apps.crm.cadence_visite import CLE_CONFIRMATION, CLE_DEBRIEF
 from authentication.models import Company
 
 
@@ -76,6 +78,36 @@ class TestBookAppointment(TestCase):
                 lead=self.lead, kind=LeadActivity.Kind.NOTE,
             ).exists()
         )
+
+    def test_reservation_publique_cree_la_visite_technique(self):
+        """ACVI63 (D-ACVI-8) — la réservation est LA visite : créée, datée sur
+        la fiche, touches du rendez-vous posées ; la 2e la déplace."""
+        from apps.crm.models import BookingLink, RelanceEtape
+        from apps.crm.visites_rdv import reserver_creneau_public
+        from apps.visites.models import VisiteTerrain
+
+        def reserver(jours):
+            lien = BookingLink.objects.create(company=self.co, lead=self.lead)
+            quand = timezone.now() + timedelta(days=jours)
+            reserver_creneau_public(lien.token, scheduled_at=quand)
+            return timezone.localtime(quand, horaires.CASABLANCA).date()
+
+        jour = reserver(3)
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+        self.assertEqual(visite.statut, VisiteTerrain.Statut.BROUILLON)
+        self.assertEqual(visite.date_prevue, jour)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.visite_prevue_le, jour)
+        touches = RelanceEtape.objects.filter(
+            lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertTrue(touches.filter(cle=CLE_CONFIRMATION).exists())
+        self.assertTrue(touches.filter(cle=CLE_DEBRIEF).exists())
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, body__startswith='Visite planifiée le').exists())
+
+        nouveau_jour = reserver(5)
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+        self.assertEqual(visite.date_prevue, nouveau_jour)
 
     def test_requires_scheduled_at(self):
         with self.assertRaises(ValueError):

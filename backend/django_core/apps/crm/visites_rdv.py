@@ -8,7 +8,6 @@ import logging as _logging
 
 from core.dates import aujourd_hui_local
 
-from . import activity
 from .leads_socle import lead_notification_recipients
 from .models import LeadActivity
 import logging
@@ -101,18 +100,17 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
         created_by=user,
     )
 
-    # Chatter entry on the lead.
-    try:
-        import zoneinfo
-        local = scheduled_at.astimezone(zoneinfo.ZoneInfo(RAMADAN_TZ))
-        date_str = local.strftime('%d/%m/%Y à %H:%M')
-    except Exception:
-        logger.warning('%s : échec ignoré (dégradé)', 'book_appointment', exc_info=True)
-        date_str = str(scheduled_at)
-    activity.log_note(
-        lead, user,
-        f'Visite planifiée le {date_str} (RDV #{appointment.pk}).',
-    )
+    # ACVI63 (D-ACVI-8) — ce rendez-vous EST la visite technique : la porte
+    # unique crée ou déplace la visite, date la fiche, recale la cadence et pose
+    # la note. L'``Appointment`` garde l'heure et le rappel.
+    from apps.visites.services import planifier_visite
+    from . import horaires
+    _, erreurs = planifier_visite(
+        lead, user, scheduled_at.astimezone(horaires.CASABLANCA).date(),
+        notes=notes or '', replanifier=True,
+        assigne_par_defaut=user or lead.owner)
+    if erreurs:
+        logger.warning('ACVI63 : RDV #%s sans visite : %s', appointment.pk, erreurs)
 
     _appt_logger.info(
         'QJ20: RDV #%d créé pour lead %s le %s (company %s)',
