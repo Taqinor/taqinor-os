@@ -32,6 +32,9 @@ interface Props {
   preloadHeroPoster?: boolean;
   /** Pages de travail privées : jamais indexées */
   noindex?: boolean;
+  /** Pixel Meta et tag Google. Par défaut absents des pages noindex (pages privées) ; `mesure`
+   *  les garde sur une page publique seulement retirée de l'index (/liens, /status, /confiance). */
+  mesure?: boolean;
   /** Locales réellement disponibles pour CETTE page (hreflang + sélecteur).
    *  Absent / [fr] → page FR seule : rendu strictement inchangé. */
   locales?: Locale[];
@@ -75,6 +78,7 @@ const {
   ogTitle: ogTitleProp,
   preloadHeroPoster = false,
   noindex = false,
+  mesure = !noindex,
   locales,
   footerMinimal = false,
   skipVisitBeacon = false,
@@ -286,11 +290,11 @@ const jsonLd = {
     <!-- WB33 — Pixel Meta navigateur (fbq) : PageView sitewide + pont
          window.tqPixelTrack pour l'événement Lead dédupliqué (eventId WJ92)
          du tunnel. Gated comme le CAPI (QJW14) : « Refuser » explicite le
-         bloque/révoque. Jamais sur les pages privées (noindex). -->
-    {!noindex && <MetaPixel />}
+         bloque/révoque. Jamais sur les pages privées (noindex sans `mesure`). -->
+    {mesure && <MetaPixel />}
     <!-- Google tag (Google Ads + GA4) : rien sans PUBLIC_GOOGLE_TAG_ID ; mêmes
          règles de consentement et même exclusion noindex que le pixel Meta. -->
-    {!noindex && <GoogleTag />}
+    {mesure && <GoogleTag />}
   </head>
   <body class="bg-nuit font-sans text-lune antialiased">
     <!-- W216 — Lien d'évitement accessible : premier élément focusable du corps.

@@ -334,6 +334,19 @@ describe('WAUD58 — pages utilitaires hors index', () => {
     expect(confiance).toContain('/garanties/');
     expect(confiance).not.toContain('momentanément indisponibles');
   });
+  it('noindex ne coupe pas la mesure : /liens, /status et /confiance gardent pixel et tag', () => {
+    const layout = lire('src/layouts/Layout.astro');
+    expect(layout).toMatch(/mesure = !noindex/);
+    expect(layout).toContain('{mesure && <MetaPixel />}');
+    expect(layout).toContain('{mesure && <GoogleTag />}');
+    for (const page of ['src/pages/liens.astro', 'src/pages/status/index.astro', 'src/pages/confiance.astro']) {
+      expect(lire(page)).toMatch(/^\s+mesure\r?$/m);
+    }
+    // Pages privées : noindex sans `mesure`, donc jamais de pixel.
+    for (const page of ['src/pages/equipe.astro', 'src/pages/suivi/[token].astro']) {
+      expect(lire(page)).not.toMatch(/^\s+mesure\r?$/m);
+    }
+  });
   it('/liens a un H1 et sort du sitemap', () => {
     expect(lire('src/pages/liens.astro')).toContain('<h1');
     expect(lire('astro.config.mjs')).toContain('\\/liens\\/?$');
