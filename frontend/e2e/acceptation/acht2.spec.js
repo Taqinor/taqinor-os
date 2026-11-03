@@ -211,7 +211,7 @@ etape('PA5.4', ['ACHT128'], async ({ page, context, suivi }) => {
         await expect.poll(async () => (await fileLocale(page))[0]?.attempts ?? 0, { timeout: 60_000 }).toBeGreaterThanOrEqual(i)
         const op = (await fileLocale(page))[0]
         tentatives.push({ attempts: op.attempts, serverError: op.serverError ?? null })
-        if (i < 3) { await context.setOffline(true); await page.waitForTimeout(500) }
+        if (i < 3) { await context.setOffline(true); await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false) }
       }
       expect(tentatives[0].serverError, '1er échec : pas encore marquée').toBeNull()
       expect(tentatives[1].serverError, '2e échec : pas encore marquée').toBeNull()
@@ -247,7 +247,7 @@ etape('PA5.5', ['ACHT124'], async ({ page, context, suivi }) => {
     const champ = carte.locator('input[type="number"]')
     await expect(champ).toHaveValue(/^10(\.0+)?$/, { timeout: 30_000 })
     // Un autre poste corrige la même ligne EN LIGNE (12) après le chargement du terminal.
-    await page.waitForTimeout(1100)
+    await expect.poll(() => Date.now(), { timeout: 10_000 }).toBeGreaterThan(Date.parse(T0.date_modification) + 1000) // horodatage distinct de la version lue
     await lireJson(await page.request.post(`${INST}/interventions/${id}/modifier-ligne-consommation/`, {
       data: { ligne: T0.id, quantite_utilisee: '12' } }), 'correction en ligne')
     await context.setOffline(true)
