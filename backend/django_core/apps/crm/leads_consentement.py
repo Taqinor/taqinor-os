@@ -218,6 +218,9 @@ def tracer_levee_opposition_registre(lead, user, *, occurred_at=None):
     registre une ligne ``granted=True`` par finalité de contact et par
     identifiant, dont la source NOMME l'utilisateur (« opposition levée par
     <utilisateur> »). Best-effort, comme l'opposition."""
+    # ACVI43 (D-ACVI-6) — la personne redevient contactable sur une nouvelle fiche.
+    from .leads_doublons import retirer_empreintes_opposition
+    retirer_empreintes_opposition(lead.company, lead)
     try:
         qui = getattr(user, 'username', '') or 'utilisateur inconnu'
         return _ecrire_registre_contact(

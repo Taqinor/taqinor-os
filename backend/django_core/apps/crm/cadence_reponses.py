@@ -604,6 +604,9 @@ def tracer_opposition_registre(lead, *, source, occurred_at=None):
     arrêtées) ne tombe jamais parce que le registre n'a pas pu être écrit.
     Renvoie la première entrée créée, ou ``None`` (lead sans e-mail ni
     téléphone, ou écriture impossible)."""
+    # ACVI43 (D-ACVI-6) — l'opposition suit la personne dès le STOP.
+    from .leads_doublons import poser_empreintes_opposition
+    poser_empreintes_opposition(lead.company, lead)
     try:
         return _ecrire_registre_contact(
             lead, granted=False,

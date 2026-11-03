@@ -143,6 +143,27 @@ TELEPHONE_LOCAL = '0661 62 62 62'
 
 class EmpreinteOppositionTests(TestCase):
 
+    def test_un_stop_vivant_suit_la_personne(self):
+        """ACVI43 (D-ACVI-6) — B née opposée au numéro de A ; après la levée
+        sur A, C naît contactable."""
+        from apps.crm.cadence_reponses import (
+            CONSENT_SOURCE_OPPOSITION_TOUCHE, tracer_opposition_registre)
+        from apps.crm.leads_consentement import tracer_levee_opposition_registre
+
+        numero = '+212612349061'
+        a = Lead.objects.create(company=self.company, nom='A', telephone=numero,
+                                owner=self.user)
+        Lead.objects.filter(pk=a.pk).update(ne_plus_contacter=True)
+        a.refresh_from_db()
+        tracer_opposition_registre(a, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
+        b = Lead.objects.create(company=self.company, nom='B', telephone=numero)
+        self.assertTrue(b.ne_plus_contacter)
+        Lead.objects.filter(pk=a.pk).update(ne_plus_contacter=False)
+        a.refresh_from_db()
+        tracer_levee_opposition_registre(a, self.user)
+        c = Lead.objects.create(company=self.company, nom='C', telephone=numero)
+        self.assertFalse(c.ne_plus_contacter)
+
     def setUp(self):
         self.company = Company.objects.create(
             nom='ACRM62 Solaire', slug='acrm62-opposition')

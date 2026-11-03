@@ -409,6 +409,39 @@ def empreintes_contact(email=None, telephone=None, whatsapp=None):
         for nature, valeur in valeurs if valeur}
 
 
+def poser_empreintes_opposition(company, le):
+    """ACRM62, ACVI43 — un lead « ne plus contacter » laisse l'empreinte hachée
+    de son e-mail et de son téléphone (WhatsApp compris) à la liste d'opposition
+    de la société ; un lead NON opposé ne laisse rien."""
+    if not getattr(le, 'ne_plus_contacter', False):
+        return
+    from .models import EmpreinteOpposition
+
+    # La contrainte (company, nature, empreinte) absorbe un second passage :
+    # jamais de doublon, jamais d'erreur.
+    EmpreinteOpposition.objects.bulk_create(
+        [EmpreinteOpposition(company=company, nature=nature,
+                             empreinte=empreinte)
+         for nature, empreinte in empreintes_contact(
+             le.email, le.telephone, le.whatsapp)],
+        ignore_conflicts=True)
+
+
+def retirer_empreintes_opposition(company, le):
+    """ACVI43 — l'opposition levée sur la fiche libère la personne."""
+    from django.db.models import Q
+
+    from .models import EmpreinteOpposition
+
+    empreintes = empreintes_contact(le.email, le.telephone, le.whatsapp)
+    if not empreintes:
+        return
+    cible = Q(pk__in=[])
+    for nature, empreinte in empreintes:
+        cible |= Q(nature=nature, empreinte=empreinte)
+    EmpreinteOpposition.objects.filter(cible, company=company).delete()
+
+
 def porte_une_opposition(company_id, email=None, telephone=None,
                          whatsapp=None):
     """ACRM62 — ce contact porte-t-il une empreinte d'opposition de la
