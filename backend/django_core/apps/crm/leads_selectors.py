@@ -312,23 +312,25 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
     nb_leads = 0
     nb_nuit = 0
     nb_nuit_rappeles = 0
-    for lead in leads:
-        nb_leads += 1
-        # CAD119 — `date_origine` = la date du système d'origine si on la
-        # connaît, sinon celle de l'insertion ici.
-        naissance = lead.date_origine
-        de_nuit = not horaires.est_dans_fenetre(naissance, company)
-        if de_nuit:
-            nb_nuit += 1
-        if lead.first_contacted_at is None:
-            continue
-        minutes.append(horaires.minutes_ouvrees_entre(
-            naissance, lead.first_contacted_at, company))
-        minutes_calendaires.append(horaires.minutes_calendaires_entre(
-            naissance, lead.first_contacted_at))
-        if de_nuit and lead.first_contacted_at <= _limite_rappel_du_matin(
-                naissance, company):
-            nb_nuit_rappeles += 1
+    # ACVI79 — profil et jours ouvrés lus une fois, pas une fois par lead.
+    with horaires.cache_local():
+        for lead in leads:
+            nb_leads += 1
+            # CAD119 — `date_origine` = la date du système d'origine si on la
+            # connaît, sinon celle de l'insertion ici.
+            naissance = lead.date_origine
+            de_nuit = not horaires.est_dans_fenetre(naissance, company)
+            if de_nuit:
+                nb_nuit += 1
+            if lead.first_contacted_at is None:
+                continue
+            minutes.append(horaires.minutes_ouvrees_entre(
+                naissance, lead.first_contacted_at, company))
+            minutes_calendaires.append(horaires.minutes_calendaires_entre(
+                naissance, lead.first_contacted_at))
+            if de_nuit and lead.first_contacted_at <= _limite_rappel_du_matin(
+                    naissance, company):
+                nb_nuit_rappeles += 1
 
     if not nb_leads:
         return {

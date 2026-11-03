@@ -232,12 +232,13 @@ def _premier_contact(company, membre_ids, debut, fin, responsable_id=None):
              .only('id', 'owner', 'date_creation', 'date_creation_origine',
                    'first_contacted_at'))
     out = {}
-    for lead in leads:
-        mesures, sous = out.get(lead.owner_id, (0, 0))
-        if lead.first_contacted_at is not None and horaires.minutes_ouvrees_entre(
-                lead.date_origine, lead.first_contacted_at, company) <= objectif:
-            sous += 1
-        out[lead.owner_id] = (mesures + 1, sous)
+    with horaires.cache_local():  # ACVI79
+        for lead in leads:
+            mesures, sous = out.get(lead.owner_id, (0, 0))
+            if lead.first_contacted_at is not None and horaires.minutes_ouvrees_entre(
+                    lead.date_origine, lead.first_contacted_at, company) <= objectif:
+                sous += 1
+            out[lead.owner_id] = (mesures + 1, sous)
     return out
 
 
