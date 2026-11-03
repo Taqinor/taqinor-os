@@ -511,6 +511,15 @@ const LISTES = [
     aideResponsable: 'Pour les remettre dans une cadence : carte « Anciens leads à placer », plus bas.',
   },
   {
+    // CADV88 (D-CADV-4) — une veille (Standby) dont la date est dépassée : le retard
+    // est servi en JOURS OUVRÉS (`depuis_jours_ouvres`), jamais recalculé ici.
+    cle: 'standby_echus',
+    titre: () => 'Standby échus',
+    tone: 'warning',
+    detail: (l) => (l.depuis_jours_ouvres == null ? ''
+      : `échu depuis ${joursOuvres(l.depuis_jours_ouvres)}`),
+  },
+  {
     cle: 'premier_contact_hors_delai',
     titre: (seuils) => {
       const heures = seuil(seuils, 'premier_contact_heures')

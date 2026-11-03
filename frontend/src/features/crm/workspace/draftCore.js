@@ -88,6 +88,8 @@ export const TRACKED_KEYS = [
   // libre du Suivi commercial, qu'aucune cadence ne lit (contrat
   // `lead_contact_secondaire`).
   'contact_secondaire_nom', 'contact_secondaire_telephone',
+  // CADV26 — les deux réponses orales du J10 (frein, déclencheur).
+  'frein_principal', 'declencheur',
   // CAD150/CAD159 — les champs CAPTÉS PAR LE SITE deviennent éditables
   // (décision fondateur du 21/09/2026) : voir CHAMPS_SITE plus bas.
   'distributeur', 'bill_kwh', 'ownership', 'financing_intent',
@@ -225,7 +227,9 @@ export const SECTION_FIELDS = {
     'type_installation', 'montant_estime', 'date_cloture_prevue',
     'objectif_projet', 'devis_concurrents',
     // CAD144 — le second interlocuteur (saisie libre, aucune automatisation).
-    'contact_secondaire_nom', 'contact_secondaire_telephone'],
+    'contact_secondaire_nom', 'contact_secondaire_telephone',
+    // CADV26 — vide = « pas encore posée ».
+    'frein_principal', 'declencheur'],
   energie: ['facture_hiver', 'facture_ete', 'ete_differente',
     'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221',
     // CAD150 — captés par le site, désormais éditables (CHAMPS_SITE).
@@ -456,6 +460,7 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     note: '', custom_data: {},
     // CAD144 — contact secondaire : vide à la création (⇒ null serveur).
     contact_secondaire_nom: '', contact_secondaire_telephone: '',
+    frein_principal: '', declencheur: '',
     // CAD150 — champs captés par le site : vides à la création manuelle.
     distributeur: '', bill_kwh: '', ownership: '', financing_intent: '',
     project_timeline: '', facility_type: '', roof_age: '',

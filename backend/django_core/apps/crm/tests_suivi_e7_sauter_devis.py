@@ -115,7 +115,7 @@ class _Base(TestCase):
 
 class SauterEtapeDevisTests(_Base):
     """COCKPIT-CONTRÔLE B4 (30/09/2026) — réaligné : l'action ``sauter/``
-    REFUSE désormais une TÂCHE (400, rien n'est écrit — voir
+    REFUSE désormais une TÂCHE (409, rien n'est écrit — voir
     ``tests_cockpit_gardes``). La règle du MOTEUR que SUIVI E7 garde — une
     étape devis close SAUTÉE ne vaut jamais « devis parti » — reste vraie et
     reste testée, au niveau du service (``marquer_etape_relance``), la seule
@@ -155,7 +155,7 @@ class SauterEtapeDevisTests(_Base):
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{etape.pk}/sauter/',
             {'note': ''}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(resp.data['erreurs']['etape'],
                          MESSAGE_TACHE_NON_SAUTABLE)
         etape.refresh_from_db()
