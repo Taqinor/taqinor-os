@@ -706,16 +706,15 @@ class SwitchCompanyView(APIView):
 
 # ── Inscription d'un utilisateur dans une entreprise existante ─
 @extend_schema(responses={201: RegisterSerializer, 400: REPONSE_400_COMPTE})
-class RegisterView(generics.CreateAPIView):
+class RegisterView(APIView):  # ENF15 : création pure, ni queryset ni liste — pas une vue « générique »
     """Admin cree un utilisateur dans sa propre entreprise."""
-    queryset = CustomUser.objects.all()
     permission_classes = [IsAdminRole]
-    serializer_class = RegisterSerializer
     throttle_classes = [RegisterRateThrottle]
 
     def get_serializer_context(self):
         from apps.roles.models import Role
-        ctx = super().get_serializer_context()
+        ctx = {'request': self.request, 'format': self.format_kwarg,
+               'view': self}
         ctx['company'] = self.request.user.company
         role_id = getattr(self.request.data, 'get', lambda k: None)('role')
         if role_id and self.request.user.company:
@@ -727,6 +726,15 @@ class RegisterView(generics.CreateAPIView):
             except (Role.DoesNotExist, ValueError, TypeError):  # 400 via sérialiseur
                 ctx['role'] = None
         return ctx
+
+    @extend_schema(request=RegisterSerializer,
+                   responses={201: RegisterSerializer})
+    def post(self, request):
+        serializer = RegisterSerializer(
+            data=request.data, context=self.get_serializer_context())
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 def _create_system_roles(company):
@@ -757,7 +765,7 @@ def _create_system_roles(company):
 
 
 # ── Creation d'une nouvelle entreprise (onboarding SaaS) ───────
-class RegisterCompanyView(generics.GenericAPIView):
+class RegisterCompanyView(APIView):  # ENF15 : endpoint d'action, aucun queryset
     """
     POST /api/django/auth/register-company/
     Cree une nouvelle entreprise + un administrateur.
@@ -765,8 +773,9 @@ class RegisterCompanyView(generics.GenericAPIView):
     """
     permission_classes = [permissions.AllowAny]
     throttle_classes = [RegisterRateThrottle]
-    serializer_class = RegisterSerializer  # requis par DRF GenericAPIView
 
+    @extend_schema(request=RegisterSerializer,
+                   responses={201: RegisterSerializer})
     def post(self, request):
         # ASEC13 / D-ASEC-2 — inscription libre PARQUÉE par défaut : éteinte,
         # l'endpoint répond 404 et ne crée rien (même drapeau que la demande
@@ -887,14 +896,15 @@ class RegisterCompanyView(generics.GenericAPIView):
 
 
 # ── Profil courant ─────────────────────────────────────────────
-class MeView(generics.RetrieveAPIView):
+class MeView(APIView):  # ENF15 : toujours LA ligne de l'appelant, aucun queryset
     permission_classes = [permissions.IsAuthenticated]
+
     # ALEA31 — MeSerializer = UserSerializer + la route d'accueil mobile
     # suggérée par le serveur (seule table, `default_mobile_home_route`).
-    serializer_class = MeSerializer
-
-    def get_object(self):
-        return self.request.user
+    @extend_schema(responses=MeSerializer)
+    def get(self, request):
+        return Response(MeSerializer(
+            request.user, context={'request': request, 'view': self}).data)
 
 
 class MobileHomeRouteView(APIView):
