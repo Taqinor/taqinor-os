@@ -21,3 +21,15 @@ class CeleryHardeningTests(SimpleTestCase):
 
     def test_worker_prefetch_multiplier_is_one(self):
         self.assertEqual(settings.CELERY_WORKER_PREFETCH_MULTIPLIER, 1)
+
+
+class TransportRedisInstalleTests(SimpleTestCase):
+    """ERR-CELERY-KOMBU-REDIS — le transport kombu installé accepte le redis-py épinglé : sinon
+    `VersionMismatch` au démarrage (worker et beat en boucle, chaque `.delay()` bloque gunicorn).
+    Test-du-test : kombu 5.7 (redis-py >= 6.1 exigé) avec redis==5.2.1 fait lever ce test."""
+
+    def test_kombu_accepte_le_redis_installe(self):
+        from types import SimpleNamespace
+        from kombu.transport.redis import Channel
+
+        Channel._get_client(SimpleNamespace(global_keyprefix=None))
