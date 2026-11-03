@@ -257,3 +257,17 @@ describe('formulaire de lead — flux de données IDENTIQUE dans toutes les lang
     expect(form).toContain('roofLabel(r.id)');
   });
 });
+
+describe('WAUD88 — le sélecteur de langue garde ?mode= et rien d’autre', () => {
+  it('liste blanche : mode seulement', async () => {
+    const { hrefAvecMode } = await import('../src/i18n/utils');
+    expect(hrefAvecMode('/ar/devis/mon-toit/', '?mode=agricole')).toBe('/ar/devis/mon-toit/?mode=agricole');
+    expect(hrefAvecMode('/ar/devis/mon-toit/', '?utm_source=x')).toBe('/ar/devis/mon-toit/');
+    expect(hrefAvecMode('/ar/devis/mon-toit/', '?mode=agricole&fbclid=a&utm_source=x')).toBe('/ar/devis/mon-toit/?mode=agricole');
+    expect(hrefAvecMode('/ar/devis/mon-toit/', '')).toBe('/ar/devis/mon-toit/');
+  });
+  it('le composant appelle ce filtre côté navigateur', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/components/LanguageSwitcher.astro', import.meta.url)), 'utf-8');
+    expect(src).toContain('hrefAvecMode');
+  });
+});

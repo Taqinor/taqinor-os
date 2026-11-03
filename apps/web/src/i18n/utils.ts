@@ -80,3 +80,9 @@ export function useTranslations(locale: Locale) {
     return dict[key] ?? frDict[key] ?? key;
   };
 }
+
+/** WAUD88 — `href` du sélecteur avec la seule clé `mode` (jamais utm/fbclid : contournerait la capture consentie). */
+export function hrefAvecMode(href: string, recherche: string): string {
+  const mode = new URLSearchParams(recherche).get('mode');
+  return mode ? `${href}?mode=${encodeURIComponent(mode)}` : href;
+}
