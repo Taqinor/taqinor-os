@@ -1296,12 +1296,14 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     def create(self, validated_data):
         """ACVI25 — un POST de la fiche aussi : les clés du corps sont marquées,
         pas ce que le serveur pose (``company``, ``owner`` par défaut)."""
+        from types import SimpleNamespace
+
         from apps.records.provenance import marquer_saisie_humaine
         champs = self.champs_a_marquer(validated_data)
         if champs:
             validated_data = {
                 **validated_data,
-                'saisies_humaines': marquer_saisie_humaine(Lead(), champs)}
+                'saisies_humaines': marquer_saisie_humaine(SimpleNamespace(), champs)}
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
