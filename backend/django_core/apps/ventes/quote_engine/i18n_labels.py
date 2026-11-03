@@ -838,9 +838,9 @@ LIBELLES = {
     # relu ensuite par un natif (tâche manuelle).
     'ci_ref_devis': {'fr': 'Réf. devis', 'en': 'Quote ref.',
                      'ar': 'مرجع العرض'},
-    'ci_valable_jusqu': {'fr': 'Validit&#233;&#160;: jusqu&#8217;au {date} &#183; prix r&#233;visable au-del&#224;',
-                         'en': 'Valid until {date} &#183; price may be revised after',
-                         'ar': 'صالح إلى غاية {date} &#183; السعر قابل للمراجعة بعد ذلك'},
+    'ci_valable_jusqu': {'fr': 'Valable jusqu&#8217;au {date}',
+                         'en': 'Valid until {date}',
+                         'ar': 'صالح إلى غاية {date}'},
     'ci_kicker_commercial': {
         'fr': 'Proposition — Autoconsommation solaire commerciale',
         'en': 'Proposal — Commercial solar self-consumption',
@@ -1423,9 +1423,9 @@ LIBELLES = {
     # Préfixe ``res_``. Le français est le littéral EXACT du gabarit (le
     # gabarit le garde : ``cover.libelle_fixe`` le rend tel quel en fr) ; les
     # ``{…}`` reçoivent des valeurs DÉJÀ formatées (date, nombre, marque).
-    'res_valable_jusqu': {'fr': 'Validit&#233;&#160;: jusqu&#8217;au {date} &#183; prix r&#233;visable au-del&#224;',
-                          'en': 'Valid until {date} &#183; price may be revised after',
-                          'ar': 'صالح إلى غاية {date} &#183; السعر قابل للمراجعة بعد ذلك'},
+    'res_valable_jusqu': {'fr': "Valable jusqu'au {date}",
+                          'en': 'Valid until {date}',
+                          'ar': 'صالح إلى غاية {date}'},
     'res_ref_devis': {'fr': 'Réf. devis', 'en': 'Quote ref.',
                       'ar': 'مرجع العرض'},
     'res_kicker': {'fr': 'Proposition commerciale — Installation solaire',

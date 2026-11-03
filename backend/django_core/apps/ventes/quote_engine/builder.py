@@ -2152,6 +2152,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         ("regles_avant_2710", _corrige and not _regles_2710(devis)),
         ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)),  # AGNR52
         ("regles_ecarts_0111_historique", not regles_au_moins(devis, REGLES_ECARTS_0111)),  # AMOT116/AMOT115
+        ("regles_validite_historique", not regles_au_moins(devis, REGLES_CENTAINE_0311)),  # ERR-CADV83-COUVERTURES
         ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),

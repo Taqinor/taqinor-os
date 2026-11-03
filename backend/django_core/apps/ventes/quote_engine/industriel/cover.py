@@ -178,7 +178,7 @@ def build(ctx):
     _vu = (d.get("valid_until") or "").strip()
     validity_pill = (
         '<div class="i1-pill">'
-        + L("ci_valable_jusqu", "Validit&#233;&#160;: jusqu&#8217;au {date} &#183; prix r&#233;visable au-del&#224;", date=_vu)
+        + ci_couverture.pastille_validite(d, _vu)
         + '</div>' if _vu else "")
 
     kwc = premium_base.kwc_str(d.get("ind_kwc"))

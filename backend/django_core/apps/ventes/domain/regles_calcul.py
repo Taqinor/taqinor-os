@@ -86,6 +86,8 @@ REGLES_PANIER_UNIQUE_0211 = 10
 #: 0151 laisse tout devis non brouillon à son niveau : il garde le total reçu.
 #: Porte aussi AGNR42-D6 : facture annuelle de la source « étude horaire » = somme exacte
 #: arrondie une fois (factures hiver/été décimales : 17 010 et non 17 016).
+#: Porte aussi ERR-CADV83-COUVERTURES : la réserve « prix révisable au-delà » sur les
+#: couvertures (dessous : ``regles_validite_historique``, la pastille reçue).
 REGLES_CENTAINE_0311 = 11
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_CENTAINE_0311

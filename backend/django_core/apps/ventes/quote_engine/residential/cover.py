@@ -39,6 +39,17 @@ def libelle_fixe(d, cle, fr, **valeurs):
     return valeur.format(**valeurs) if valeurs else valeur
 
 
+def pastille_validite(d, date):
+    """ERR-CADV83-COUVERTURES — la réserve « prix révisable au-delà » ; un devis
+    sous le niveau 11 garde la pastille qu'il a reçue."""
+    if d.get("regles_validite_historique"):
+        return libelle_fixe(d, "res_valable_jusqu", f"Valable jusqu'au {date}", date=date)
+    return libelle_fixe(
+        d, "op_validite_jusqu",
+        f"Validit&#233;&#160;: jusqu&#8217;au {date} &#183; prix r&#233;visable au-del&#224;",
+        date=date)
+
+
 def libelle_cat(d, cle, **valeurs):
     """ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — libellé fixe lu au catalogue
     ``i18n_labels`` dans TOUTES les langues : sa valeur française EST le
@@ -217,9 +228,7 @@ def build(ctx):
     # engage plus que « 30 jours ») ; repli sur la durée si date illisible.
     _valid_until = (d.get("valid_until") or "").strip() or (
         theme.valid_until(date, validity_days) if validity_days else "")
-    validity_pill = (libelle_fixe(d, "res_valable_jusqu",
-                                  f"Validit&#233;&#160;: jusqu&#8217;au {_valid_until} &#183; prix r&#233;visable au-del&#224;",
-                                  date=_valid_until) if _valid_until else "")
+    validity_pill = pastille_validite(d, _valid_until) if _valid_until else ""
     sans_bullets = d.get("sans_bullets", []) or []
     avec_bullets = d.get("avec_bullets", []) or []
     # QX5 — n'imprime JAMAIS d'option fantôme : deux cartes seulement quand le
