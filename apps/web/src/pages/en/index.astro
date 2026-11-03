@@ -93,14 +93,14 @@ const faq = [
 // choice (which photo carries the figure) stays here; only the FIGURE itself
 // is derived. Unit suffix translated /an → /yr after deriving the number.
 const galleryRaw = [
-  { name: 'reflet-468', alt: 'The sun reflects off the row of panels during the install, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'Taqinor team in front of the long row of panels at the end of the job, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Job complete · Taqinor team', slug: 'el-jadida-17-kwc' },
+  { name: 'reflet-468', alt: 'The sun reflects off the row of panels during the install, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'Taqinor team in front of the long row of panels at the end of the job, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: false, type: 'Job complete · Taqinor team', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'Row of solar panels in front of the Casablanca skyline and a minaret, golden light', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Real-time production monitoring', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'Array of eight panels on a flat villa roof, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: 'The team tilts a panel during the install, Casablanca', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Install in progress · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: 'Jet-wash cleaning of the panel array, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Array maintenance · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: false, type: 'Real-time production monitoring', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'Array of eight panels on a flat villa roof, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: 'The team tilts a panel during the install, Casablanca', widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: true, type: 'Install in progress · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: 'Jet-wash cleaning of the panel array, Nouaceur', widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'Array maintenance · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
   // (2026-09) Bouskoura — power not yet published for this project: `type`
   // stays qualitative (brands confirmed on camera), never a guessed panel count.
   { name: 'bouskoura-toit', alt: 'A villa roof terrace fully covered in solar panels, Bouskoura', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'Deye inverter · DYNESS storage', slug: 'bouskoura-villa-2026' },
@@ -324,7 +324,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
             <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
               <a href={L(`/realisations/${g.slug}`)} class="absolute inset-0 z-0" aria-label={`View the installation: ${g.ariaLabel}`}></a>
               {/* Uniform "golden hour" grade — .v3-grade on the content photo */}
-              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, calc(100vw - 2rem)"
                 class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
               {/* Enlarge (lightbox) button — kept separate from the card link
                   (no button nested in an <a>, invalid HTML); z-index above

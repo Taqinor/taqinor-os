@@ -126,14 +126,14 @@ const faq = [
 // ce choix éditorial (quelle photo porte le chiffre) reste ici, seul le
 // CHIFFRE lui-même est dérivé.
 const galleryRaw = [
-  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
+  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: false, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Suivi de production en temps réel', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Entretien du champ · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: false, type: 'Suivi de production en temps réel', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: true, type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'Entretien du champ · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
   // (2026-09) Bouskoura — puissance non publiée pour ce chantier : `type` reste
   // qualitatif (marques confirmées à l'image), jamais un compte de panneaux deviné.
   { name: 'bouskoura-toit', alt: 'Toiture-terrasse d’une villa entièrement couverte de panneaux solaires, Bouskoura', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'Onduleur Deye · stockage DYNESS', slug: 'bouskoura-villa-2026' },
@@ -388,7 +388,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
                   héros de /realisations/[slug] SEULEMENT quand ce héros utilise
                   la MÊME photo (photos[0].name) — sinon repli silencieux sur une
                   transition de page normale, sans morph. */}
-              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, calc(100vw - 2rem)"
                 class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
                 style={`view-transition-name: vt-photo-${g.name}`} />
               {/* Bouton d'agrandissement (lightbox) — élément séparé du lien de

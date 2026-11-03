@@ -93,14 +93,14 @@ const faq = [
 // إنتاج (مثلاً صورة «نهاية الورش» ليست بطاقة الإنتاج لمرجعها) — هذا الخيار
 // التحريري (أي صورة تحمل الرقم) يبقى هنا؛ فقط الرقم نفسه مُشتقّ.
 const galleryRaw = [
-  { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
+  { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: false, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'متابعة الإنتاج في الوقت الحقيقي', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: 'تنظيف حقل الألواح بنفث الماء، النواصر', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'صيانة الحقل · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: false, type: 'متابعة الإنتاج في الوقت الحقيقي', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: true, type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: 'تنظيف حقل الألواح بنفث الماء، النواصر', widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'صيانة الحقل · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
   // (2026-09) بوسكورة — القدرة غير منشورة بعد لهذا الورش: `type` يبقى وصفياً
   // (العلامات مؤكدة على الصورة)، أبداً عدد ألواح مُخمَّن.
   { name: 'bouskoura-toit', alt: 'سطح فيلا مغطى بالكامل بألواح شمسية، بوسكورة', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'عاكس Deye · تخزين DYNESS', slug: 'bouskoura-villa-2026' },
@@ -319,7 +319,7 @@ import IndexBloc1A99 from '../../components/blocs/IndexBloc1A99.astro';
             <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
               <a href={L(`/realisations/${g.slug}`)} class="absolute inset-0 z-0" aria-label={`شاهدوا الإنجاز: ${g.ariaLabel}`}></a>
               {/* grade «الساعة الذهبية» موحّد — .v3-grade على صورة المحتوى */}
-              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, calc(100vw - 2rem)"
                 class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
               {/* زرّ التكبير (lightbox) — عنصر مستقلّ عن رابط البطاقة (لا زرّ
                   داخل <a>، HTML غير صالح)؛ z-index أعلى من الرابط الممتدّ. */}
