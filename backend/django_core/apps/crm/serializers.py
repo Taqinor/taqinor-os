@@ -797,12 +797,21 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             # CIQ428/CIQ405 — détail seulement (même porte que `entrees_ci`) :
             # la liste garde son budget de requêtes, le cache 5 min ne la fait
             # pas varier (tests « garde ses requêtes »).
-            'catalogue_ci': (catalogue_ci(obj)
-                             if self.context.get('include_chatter_recent') else None),
+            'catalogue_ci': self._catalogue_ci(obj),
             # AGQ39 (D-AGQ-10) — {valeur, par_defaut} pour un agricole (mode
             # vide ⇒ « neuve » étiqueté « par défaut »), null ailleurs.
             'mode_pompe': mode_pompe_du_lead(obj),
         }
+
+    def _catalogue_ci(self, obj):
+        """ALEA63 — ``catalogue_ci`` servi sur TOUTES les représentations
+        (liste, détail, réponse du PATCH), calculé une fois par (société, type)
+        et par requête : ``pret`` reste inchangé, les écrans lisent ce bloc."""
+        memo = self.context.setdefault('_catalogue_ci_memo', {})
+        cle = (obj.company_id, obj.type_installation or '')
+        if cle not in memo:
+            memo[cle] = catalogue_ci(obj)
+        return memo[cle]
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_next_activity(self, obj):

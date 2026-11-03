@@ -452,6 +452,24 @@ class TestCatalogueCiAlea50(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         return resp.data['devis_auto']['catalogue_ci']
 
+    def test_liste_et_patch_servent_le_catalogue(self):
+        """ALEA63 — liste et réponse du PATCH servent ``catalogue_ci`` (pas
+        seulement le détail), pour que kanban, liste et autosave bloquent."""
+        lead = Lead.objects.create(company=self.company, nom='Usine',
+                                   type_installation='commercial')
+        liste = self.api.get('/api/django/crm/leads/')
+        self.assertEqual(liste.status_code, 200, liste.data)
+        rows = (liste.data['results'] if isinstance(liste.data, dict)
+                else liste.data)
+        ligne = next(r for r in rows if r['id'] == lead.id)
+        self.assertFalse(ligne['devis_auto']['catalogue_ci']['pret'])
+        self.assertEqual(
+            len(ligne['devis_auto']['catalogue_ci']['manquants']), 8 + 4)
+        maj = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
+                             {'prenom': 'Karim'}, format='json')
+        self.assertEqual(maj.status_code, 200, maj.data)
+        self.assertFalse(maj.data['devis_auto']['catalogue_ci']['pret'])
+
     def test_catalogue_vide_nomme_les_postes_sans_prix(self):
         bloc = self._bloc()
         self.assertFalse(bloc['pret'])

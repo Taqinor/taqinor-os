@@ -129,3 +129,18 @@ describe('LeadCard — cible tactile et PII (LB17)', () => {
     expect(container.querySelector('.kb-quick-lock')).toBeNull()
   })
 })
+
+describe('LeadCard — Devis auto (ALEA63)', () => {
+  it('désactivé quand catalogue_ci.pret est faux, motif nommé', () => {
+    const { container } = monter(lead({ devis_auto: {
+      pret: true, catalogue_ci: { pret: false, manquants: ['a', 'b', 'c'] } } }))
+    const bouton = container.querySelector('button.kb-flash')
+    expect(bouton).toBeDisabled()
+    expect(bouton.getAttribute('title')).toContain('3 postes sans prix')
+  })
+
+  it('actif quand le catalogue est prêt ou non servi', () => {
+    const { container } = monter(lead({ devis_auto: { pret: true, catalogue_ci: { pret: true, manquants: [] } } }))
+    expect(container.querySelector('button.kb-flash')).not.toBeDisabled()
+  })
+})

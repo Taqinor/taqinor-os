@@ -50,6 +50,7 @@ import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/Call
 import PerduPopover from '../PerduPopover'
 import { isSigneIntercept } from '../signeIntercept'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
+import { catalogueCiBloque, raisonCatalogueCi } from '../../../../features/crm/workspace/devisTabLogique'
 import {
   Button, Checkbox, HelpTip, IconButton, StatusPill, Segmented,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -525,9 +526,11 @@ const ListRow = memo(function ListRow({
             },
             {
               id: 'devis', label: '⚡ Devis auto',
-              disabled: !lead.devis_auto?.pret,
+              // ALEA63 — prêt ET catalogue C&I prêt ; motif nommé sinon.
+              disabled: !lead.devis_auto?.pret || catalogueCiBloque(lead.devis_auto),
               title: lead.devis_auto?.pret
-                ? 'Devis auto'
+                ? (catalogueCiBloque(lead.devis_auto)
+                  ? raisonCatalogueCi(lead.devis_auto) : 'Devis auto')
                 : (lead.devis_auto?.message ?? 'Devis auto indisponible'),
               onClick: () => onAutoQuote(lead),
             },

@@ -218,6 +218,9 @@ class ServiAuDetailSeulement(TestCase):
             self.assertEqual(resp.status_code, 200)
             return resp, len(ctx.captured_queries)
 
+        # ALEA63 — GET de chauffe : le catalogue C&I (cache 5 min) est servi
+        # aussi sur la liste ; la mesure compare deux lectures à cache chaud.
+        self.api.get('/api/django/crm/leads/')
         resp, avant = _compte()
         lignes = resp.data.get('results', resp.data)
         for ligne in lignes:
