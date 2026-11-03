@@ -1,0 +1,34 @@
+{
+  "sha": "f25f3d5add5d67a02d07b1f5bff2443e518e9239",
+  "date": "2026-11-03",
+  "groupe": "AFAC",
+  "verdict": "PASS",
+  "couvre": [
+    "AFAC105"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "AFAC67",
+      "taches": [
+        "AFAC105"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-AFAC-AFAC67.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
