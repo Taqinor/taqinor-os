@@ -22,7 +22,7 @@ from apps.crm.cadence_reponses import creer_lead_proprietaire
 from apps.crm.dsr_provider import erase_crm
 from apps.crm.leads_doublons import normalize_email, normalize_phone
 from apps.crm.models import (
-    EmpreinteOpposition, Lead, RelanceEtape, VisiteExterne,
+    EmpreinteOpposition, Lead, LeadActivity, RelanceEtape, VisiteExterne,
 )
 
 User = get_user_model()
@@ -181,6 +181,186 @@ class EmpreinteOppositionTests(TestCase):
 
     def _effacer(self):
         dsr_provider.erase_crm(self.company, EMAIL)
+
+    def _fusionner(self, survivant, *absorbes):
+        from apps.crm.leads_fusion import merge_leads
+        return merge_leads(survivant, list(absorbes), self.user)
+
+    def _opposition_au_registre(self, identifiant):
+        from core.models import ConsentRecord
+        return ConsentRecord.objects.filter(
+            company=self.company, subject_identifier=identifiant,
+            granted=False, source__startswith='fusion de fiches').exists()
+
+    def test_fusion_contact_comble_sur_un_survivant_oppose(self):
+        """D-ACVI-6 — l'absorbé n'est pas opposé, le survivant l'est : le
+        téléphone et l'e-mail venus de l'absorbé portent l'opposition."""
+        numero = '+212612349073'
+        courriel = 'comble.acvi6@example.com'
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', whatsapp='+212612349074',
+            ne_plus_contacter=True, owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', telephone=numero, email=courriel,
+            owner=self.user)
+
+        self._fusionner(survivant, absorbe)
+
+        survivant.refresh_from_db()
+        self.assertEqual(survivant.telephone, numero)
+        self.assertEqual(survivant.email, courriel)
+        for contact in ({'telephone': numero}, {'email': courriel}):
+            with self.subTest(contact=contact):
+                recree = Lead.objects.create(
+                    company=self.company, nom='Recrée', **contact)
+                self.assertTrue(recree.ne_plus_contacter)
+        self.assertTrue(self._opposition_au_registre(numero))
+        self.assertTrue(self._opposition_au_registre(courriel))
+
+    def test_fusion_sans_contact_comble_n_ecrit_rien_au_registre(self):
+        """Survivant opposé, aucun contact comblé : rien de neuf à tracer."""
+        from core.models import ConsentRecord
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', telephone='+212612349075',
+            ne_plus_contacter=True, owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', ville='Rabat', owner=self.user)
+        avant = ConsentRecord.objects.count()
+
+        self._fusionner(survivant, absorbe)
+
+        self.assertEqual(ConsentRecord.objects.count(), avant)
+
+    def test_fusion_sans_opposition_ne_laisse_aucune_empreinte(self):
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', email='libre.acvi6@example.com',
+            owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', telephone='+212612349076',
+            owner=self.user)
+
+        self._fusionner(survivant, absorbe)
+
+        self.assertFalse(EmpreinteOpposition.objects.exists())
+
+    def test_fusion_absorbe_oppose_garde_son_propre_numero(self):
+        """D-ACVI-6 — l'absorbé opposé a son numéro, le survivant le sien (qui
+        n'est donc pas comblé) : les deux numéros portent l'opposition."""
+        du_survivant = '+212612349077'
+        de_l_absorbe = '+212612349078'
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', telephone=du_survivant,
+            owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', telephone=de_l_absorbe,
+            owner=self.user)
+        Lead.objects.filter(pk=absorbe.pk).update(ne_plus_contacter=True)
+        absorbe.refresh_from_db()
+
+        self._fusionner(survivant, absorbe)
+
+        survivant.refresh_from_db()
+        self.assertEqual(survivant.telephone, du_survivant)
+        self.assertTrue(survivant.ne_plus_contacter)
+        for numero in (du_survivant, de_l_absorbe):
+            with self.subTest(numero=numero):
+                recree = Lead.objects.create(
+                    company=self.company, nom='Recrée', telephone=numero)
+                self.assertTrue(recree.ne_plus_contacter)
+                self.assertTrue(self._opposition_au_registre(numero))
+
+    def test_fusion_absorbe_oppose_meme_numero_une_seule_trace(self):
+        """Le même numéro des deux côtés : pas de ligne de registre en double."""
+        from core.models import ConsentRecord
+        numero = '+212612349079'
+        survivant = Lead.objects.create(
+            company=self.company, nom='S', telephone=numero, owner=self.user)
+        absorbe = Lead.objects.create(
+            company=self.company, nom='A', telephone=numero, owner=self.user)
+        Lead.objects.filter(pk=absorbe.pk).update(ne_plus_contacter=True)
+        absorbe.refresh_from_db()
+
+        self._fusionner(survivant, absorbe)
+
+        from apps.crm.leads_consentement import FINALITES_CONTACT
+        self.assertEqual(ConsentRecord.objects.filter(
+            company=self.company, subject_identifier=numero, granted=False,
+            source__startswith='fusion de fiches').count(),
+            len(FINALITES_CONTACT))
+
+    def _rattraper(self):
+        from importlib import import_module
+        from types import SimpleNamespace
+
+        from django.apps import apps as registre
+        from django.db import connection
+        migration = import_module(
+            'apps.crm.migrations.0154_acvi6_empreintes_opposition_existantes')
+        migration.poser_empreintes_existantes(
+            registre, SimpleNamespace(connection=connection))
+
+    def test_rattrapage_des_personnes_deja_opposees(self):
+        """D-ACVI-6 — une opposition antérieure à ACVI43 n'a aucune empreinte :
+        sans rattrapage, une nouvelle fiche à ce numéro naît contactable."""
+        numero_archive = '+212612349071'
+        archive = Lead.objects.create(
+            company=self.company, nom='Archive', telephone=numero_archive,
+            ne_plus_contacter=True, is_archived=True, owner=self.user)
+        ailleurs = Lead.objects.create(
+            company=self.autre, nom='Ailleurs', telephone='+212612349072',
+            ne_plus_contacter=True)
+        self.assertFalse(EmpreinteOpposition.objects.exists())
+        modifie_le = Lead.objects.filter(pk=self.oppose.pk).values_list(
+            'date_modification', flat=True).get()
+        chatter = LeadActivity.objects.count()
+
+        self._rattraper()
+
+        # Aucun champ de lead, aucun chatter.
+        self.assertEqual(Lead.objects.filter(pk=self.oppose.pk).values_list(
+            'date_modification', flat=True).get(), modifie_le)
+        self.assertEqual(LeadActivity.objects.count(), chatter)
+        archive.refresh_from_db()
+        self.assertTrue(archive.is_archived)
+        self.assertEqual(EmpreinteOpposition.objects.filter(
+            company=self.company, nature='telephone').count(), 2)
+        self.assertEqual(EmpreinteOpposition.objects.filter(
+            company=self.company, nature='email').count(), 1)
+        self.assertEqual(EmpreinteOpposition.objects.filter(
+            company=self.autre).count(), 1)
+        # Le lecteur retrouve ce que la migration a écrit, à chaque porte.
+        for contact in ({'telephone': TELEPHONE_LOCAL},
+                        {'email': '  SARA.opposee@example.COM'},
+                        {'whatsapp': TELEPHONE},
+                        {'telephone': numero_archive}):
+            with self.subTest(contact=contact):
+                recree = Lead.objects.create(
+                    company=self.company, nom='Recrée', **contact)
+                self.assertTrue(recree.ne_plus_contacter)
+        # Le cloisonnement tient : le numéro de l'autre société reste libre ici.
+        libre = Lead.objects.create(
+            company=self.company, nom='Libre', telephone=ailleurs.telephone)
+        self.assertFalse(libre.ne_plus_contacter)
+        # Un non-opposé ne laisse rien.
+        non_oppose = Lead.objects.create(
+            company=self.company, nom='Non', telephone=self.locataire.telephone)
+        self.assertFalse(non_oppose.ne_plus_contacter)
+
+    def test_rattrapage_idempotent(self):
+        self._rattraper()
+        avant = sorted(EmpreinteOpposition.objects.values_list(
+            'pk', 'nature', 'empreinte'))
+        self.assertEqual(len(avant), 2)
+        self._rattraper()
+        self.assertEqual(sorted(EmpreinteOpposition.objects.values_list(
+            'pk', 'nature', 'empreinte')), avant)
+
+    def test_rattrapage_garde_une_empreinte_deja_posee(self):
+        """Une empreinte d'effacement (ACRM62) survit au rattrapage."""
+        self._effacer()
+        self.assertEqual(EmpreinteOpposition.objects.count(), 2)
+        self._rattraper()
+        self.assertEqual(EmpreinteOpposition.objects.count(), 2)
 
     def test_lead_recree_nait_oppose(self):
         self._effacer()

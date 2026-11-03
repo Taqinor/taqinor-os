@@ -157,6 +157,7 @@ def merge_leads(survivor, others, user):
     from .cadence_plan import arreter_cadence
     from .cadence_reponses import (
         MOTIF_NE_PLUS_CONTACTER, _marquer_lead_ne_plus_contacter, tracer_opposition_registre)
+    from .leads_doublons import empreintes_contact
 
     others = [o for o in others if o.pk != survivor.pk
               and o.company_id == survivor.company_id]
@@ -301,8 +302,25 @@ def merge_leads(survivor, others, user):
             ancienne = survivor.stage
             appliquer_stage_lead(survivor, cible, user=user)
             activity.log_bulk_change(survivor, user, 'stage', ancienne, cible)
-        if oppose:  # ACVI21 — après l'étape 6 : sous les identifiants complétés.
+        # ACVI21 — après l'étape 6 : sous les identifiants complétés.
+        # D-ACVI-6 — un contact comblé sur un survivant déjà opposé porte aussi
+        # l'opposition ; sans contact neuf, rien de neuf à inscrire au registre.
+        contact_comble = champs_ecrits & {'email', 'telephone', 'whatsapp'}
+        if oppose or (survivor.ne_plus_contacter and contact_comble):
             tracer_opposition_registre(survivor, source='fusion de fiches')
+        # D-ACVI-6 — l'absorbé opposé garde l'opposition sous SES identifiants
+        # (ceux que le survivant ne reprend pas) ; un contact déjà tracé n'est
+        # pas réinscrit.
+        if oppose:
+            deja = empreintes_contact(
+                survivor.email, survivor.telephone, survivor.whatsapp)
+            for absorbed in others:
+                propres = empreintes_contact(
+                    absorbed.email, absorbed.telephone, absorbed.whatsapp)
+                if absorbed.ne_plus_contacter and propres - deja:
+                    tracer_opposition_registre(
+                        absorbed, source='fusion de fiches')
+                    deja |= propres
     if relances_reprises and not survivor.ne_plus_contacter:
         # CAD106 — la fusion DIT ce qu'elle a fait des relances : sans cette
         # ligne, des touches disparaissaient du plan sans un mot.
