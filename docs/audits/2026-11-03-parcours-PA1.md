@@ -173,5 +173,5 @@ Porte : 1 réfuté partiel / 137 bruts (88 après fusion et critique) · seconde
 - Incident prod : aucun.
 
 ## 9. Coût et routage
-Coût : H1 S5 O14 F1 · jetons sous-agents ≈ 8,9 M · tâches 99 (M0 3 M1 0 M2 54 M3 30 GATED 11).
+Coût : H1 S5 O14 F1 · jetons sous-agents ≈ 7,1 M · tâches 99 (M0 3 M1 0 M2 54 M3 30 GATED 11).
 Routage : LEAD 76 · TRANSVERSE 6 (@atomique crm/devis + lead) · ACQUISITION 5 · ANALYSE 4 · DEPLOY 3 · SECURITE 2 · DEVIS 2 · PARAMETRES 1 (`docs/plans/PLAN_AUDIT_<X>.md`) · acceptation ACVI87 · PR #1248.
