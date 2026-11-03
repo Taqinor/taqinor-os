@@ -576,7 +576,10 @@ def relances_du_jour(company, user, scope='today', today=None):
         company=company, is_archived=False, relance_date__isnull=False)
     qs = portee_leads(qs, user)  # ACRM28 — + périmètre d'entités
     if scope == 'overdue':
-        qs = qs.filter(relance_date__lt=today)
+        # ALEA65 — « en retard » = la règle unique (jours ouvrés), comme
+        # ``relance_etapes_dues`` ; ``today``/``week`` restent calendaires.
+        from .controle_suivi import seuil_retard
+        qs = qs.filter(relance_date__lt=seuil_retard(company, today))
     elif scope == 'week':
         # CRX28 — la borne BASSE manquait : sans ``__gte=today``, « cette
         # semaine » ramenait TOUT le passé (un retard de six mois s'affichait

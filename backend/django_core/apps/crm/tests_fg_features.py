@@ -222,7 +222,7 @@ class TestFG31RelanceQueue(TestCase):
 
     def test_relances_overdue(self):
         import datetime
-        yesterday = aujourd_hui_local() - datetime.timedelta(days=1)
+        yesterday = aujourd_hui_local() - datetime.timedelta(days=7)
         Lead.objects.create(company=self.company, nom='Overdue Lead',
                             relance_date=yesterday)
         resp = self.api.get('/api/django/crm/leads/relances/?scope=overdue')
