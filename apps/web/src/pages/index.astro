@@ -76,9 +76,9 @@ const casablancaSouthOptimalYield = Math.round(
 // Cumul « depuis la mise en service », jamais une projection. Rendu statique
 // (plus de count-up) → LCP peint immédiatement, aucun flash.
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH_FR; // « 6,56 »
-const heroTitleSuffix = ' MWh déjà produits et mesurés sur nos installations.';
+// WAUD84 (maquette FR, D-WAUD-7) — le titre parle du visiteur ; le cumul mesuré, daté, passe dessous.
 const heroSub =
-  `Un cumul réel, ${MEASURED_FLEET_READ_NOTE.fr} — pas une projection commerciale. Votre étude commence par un diagnostic de 60 secondes.`;
+  `${heroFigure} MWh déjà produits et mesurés sur nos installations, ${MEASURED_FLEET_READ_NOTE.fr}. Votre étude commence par un diagnostic de 60 secondes.`;
 
 // W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
 // consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,
@@ -292,7 +292,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
             + text-shadow défensif : le chiffre blanc reste lisible même
             au-dessus d'une image de vidéo très lumineuse (plein soleil). */}
         <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch] [text-shadow:0_2px_28px_rgb(7_11_29/0.72)]">
-          <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
+          Votre toit paie votre électricité.
         </h1>
         <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-6 flex flex-wrap sm:mt-10 items-center gap-3">
@@ -624,7 +624,6 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
         même widget (variant="compact"), juste avant l'acte final du
         diagnostic complet — un dernier rattrapage pour qui a fait défiler
         toute la page sans encore chiffrer sa facture. ── */}
-    <InstantEstimator variant="compact" />
 
     {/* ── ACTE FINAL — W249 : un seul entonnoir. L'ancien second formulaire
         (DiagnosticForm, qui dupliquait les deux InstantEstimator déjà sur
