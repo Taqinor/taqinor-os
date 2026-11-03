@@ -172,6 +172,17 @@ class TestDocLiteralTemplates(TestCase):
                           .replace('’', "'"))
                 self.assertIn(attendu, doc)
 
+    def test_les_couvertures_portent_la_meme_reserve_de_validite(self):
+        """ERR-CADV83-COUVERTURES — le rejeu en direct : le 3 pages résidentiel et les
+        couvertures C&I lisent ``res_`` / ``ci_valable_jusqu``, jamais ``op_validite_jusqu``.
+        Test-du-test : remettre « Valable jusqu'au {date} » dans ces libellés."""
+        from apps.ventes.quote_engine.i18n_labels import libelle
+        for cle in ('res_valable_jusqu', 'ci_valable_jusqu'):
+            for langue in ('fr', 'en', 'ar'):
+                with self.subTest(cle=cle, langue=langue):
+                    self.assertEqual(libelle(cle, langue),
+                                     libelle('op_validite_jusqu', langue))
+
     def test_editing_templates_changes_rendered_html(self):
         from apps.parametres.models_documents import DocumentTemplates
         tpl = DocumentTemplates.get(company=self.company)

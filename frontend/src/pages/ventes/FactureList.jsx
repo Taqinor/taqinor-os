@@ -525,7 +525,9 @@ export default function FactureList() {
     </EnteteVentes>
   )
 
-  if (loading) {
+  // ERR-AFAC105-SQUELETTE — pendant que la facture se crée, rafraîchir la liste ne démonte jamais le formulaire ouvert :
+  // sinon le « Total TTC … identique au devis signé » disparaît aussitôt affiché.
+  if (loading && !showForm) {
     return (
       <PageListeChargement pageHeader={pageHeader} showSpinner={showSpinner}
         showSkeleton={showSkeleton} libelle="Chargement des factures…">

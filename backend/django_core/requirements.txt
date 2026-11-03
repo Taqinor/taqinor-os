@@ -26,6 +26,10 @@ pgvector==0.3.6
 redis==5.2.1
 django-redis==5.4.0
 celery==5.4.0
+# ERR-CELERY-KOMBU-REDIS — kombu ÉPINGLÉ : celery 5.4 l'accepte jusqu'à < 6, or kombu 5.7 exige
+# redis-py >= 6.1 (VersionMismatch au démarrage : worker et beat redémarrent en boucle, chaque .delay()
+# bloque le worker gunicorn). 5.5.4 est le dernier à accepter redis 5.2.1 (extra redis <= 5.2.1).
+kombu==5.5.4
 
 # PDF generation
 weasyprint==70.0

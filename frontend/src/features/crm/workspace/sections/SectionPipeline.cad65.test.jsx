@@ -59,3 +59,15 @@ describe('CAD65 — le champ Civilité du Suivi commercial', () => {
       { label: 'Civilité', section: 'pipeline', inputId: 'lf-civilite' })
   })
 })
+
+describe('ERR-CADV-STANDBY-FICHE (CADV77) — le parcage daté se lit sur la fiche', () => {
+  it('un lead en Standby montre la date du contrat', () => {
+    renderSection({ parc_etat: 'standby', parc_raison: 'plus_tard_date', parc_jusqu_au: '2026-12-15' })
+    expect(screen.getByTestId('parc-standby')).toHaveTextContent('Standby jusqu’au 15/12/2026')
+  })
+
+  it('hors Standby, rien', () => {
+    renderSection({ parc_etat: 'nurture', parc_raison: 'injoignable', parc_jusqu_au: null })
+    expect(screen.queryByTestId('parc-standby')).not.toBeInTheDocument()
+  })
+})
