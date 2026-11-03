@@ -655,7 +655,7 @@ def _placer_un(entree, *, user, maintenant):
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE,
-            body=f'Placé au Froid, sans réveil : jamais joint ni chiffré ({PLACEMENT_MARQUEUR}).')
+            body=f'Placé au Froid, sans réveil ({PLACEMENT_MARQUEUR}).')
         return True
     reference = (a_faire or touches or [None])[0]
     # Le libellé est relu sur la touche RÉELLEMENT créée : la décision ne date

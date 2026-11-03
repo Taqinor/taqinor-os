@@ -16,6 +16,7 @@ from . import stages
 from .cadence_config import CLES_APRES_CONTACT, est_etape
 from .cadence_messages import (
     MOTIF_VALIDITE_SUBVENTION,
+    SEGMENTS_PRO,
     _validite_selon_financement,
     lead_dossier_subvention_en_instruction,
     lead_en_attente_d_accord,
@@ -177,6 +178,9 @@ _REVEIL_CLES_SEEDEES = frozenset({'reveil_a1', 'reveil_a2'})
 #: CADV86 (D-CADV-2, décision du 01/11/2026) — facture déclarée à partir de laquelle
 #: un lead jamais joint ni chiffré garde le seul appel J30 : le pilote d'appels.
 REVEIL_PILOTE_FACTURE_MIN_MAD = 2000
+#: CADV103 (D-CADV-10) — la raison du refus : l'appel trimestriel (CADV102) est le
+#: réveil du pro.
+REFUS_REVEIL_PRO = 'réveil non posé : lead pro (appel trimestriel)'
 
 
 def _adapter_gabarits_reveil(lead, etapes, *, rang_initial=0):
@@ -253,7 +257,12 @@ def nombre_reveils_permis(lead, *, historique=None):
     CADV86 — le pilote : une facture déclarée (hiver ou été) d'au moins
     ``REVEIL_PILOTE_FACTURE_MIN_MAD`` garde le premier barreau, l'appel J30 (les
     125 messages J30 ont donné 0 conversation, l'appel n'a jamais été essayé).
-    Aucun quota : le volume est le résultat, pas une règle."""
+    Aucun quota : le volume est le résultat, pas une règle.
+
+    CADV103 (D-CADV-10) — le lead commercial ou industriel : aucun, quel que soit
+    son historique (27 réveils faits, 0 conversation)."""
+    if getattr(lead, 'type_installation', None) in SEGMENTS_PRO:
+        return 0
     if historique is None:
         historique = _a_un_historique_client(lead)
     if historique:
@@ -324,8 +333,8 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None,
     if gabarits is None:
         gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     if cadence == 'reveil':
-        gabarits = list(gabarits)[:nombre_reveils_permis(
-            lead, historique=reveil_justifie or None)]
+        gabarits = list(gabarits)[
+            :None if reveil_justifie else nombre_reveils_permis(lead)]
     if not gabarits:
         return []
 
@@ -634,7 +643,8 @@ def choix_devis_relance(devis_liste):
 @_sous_verrou_du_lead(_lead_premier_argument)
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                              devis=None, exiger_confirmation=False,
-                             motif_remplacement='', reveil_justifie=False):
+                             motif_remplacement='', reveil_justifie=False,
+                             date_du_client=False):
     """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
     société (``parametres.CadenceRelanceEtape.cadence_pour``).
 
@@ -708,6 +718,11 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     établit l'historique : date donnée par le client, suivi d'un devis) et le
     chemin humain ``exiger_confirmation`` : une décision, pas un réveil d'office.
 
+    CADV103 — ``reveil`` sur un lead pro : refusé, liste vide et une seule note ;
+    le chemin humain reçoit le refus nommé (``CadenceActiveConflit``). Seule une
+    date donnée par le client (``date_du_client``, veille au-delà d'un mois) pose
+    son réveil daté, pro compris (CIQ508) : ce n'est pas un réveil d'office.
+
     Retourne la liste des ``RelanceEtape`` MATÉRIALISÉES de CETTE cadence
     (créées ou déjà existantes)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
@@ -720,6 +735,13 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         return _refus_cadence(lead, user, 'lead perdu')
     if getattr(lead, 'is_archived', False):
         return _refus_cadence(lead, user, 'lead archivé')
+    if (cadence == 'reveil' and not date_du_client
+            and getattr(lead, 'type_installation', None) in SEGMENTS_PRO):
+        if exiger_confirmation:
+            raise CadenceActiveConflit(f'{REFUS_REVEIL_PRO.capitalize()}.')
+        if lead.activites.filter(body__contains=REFUS_REVEIL_PRO).exists():
+            return []
+        return _refus_cadence(lead, user, REFUS_REVEIL_PRO)
 
     deja = lead.relance_etapes.filter(cadence=cadence)
     if cadence == 'apres_devis' and devis is not None:
@@ -783,7 +805,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     ancre = _normaliser_depart(depart)
     echeances = calculer_echeances_cadence(
         lead, cadence, ancre, gabarits=gabarits,
-        reveil_justifie=reveil_justifie or exiger_confirmation)
+        reveil_justifie=reveil_justifie or exiger_confirmation or date_du_client)
     # CKP2 (fondateur 2026-09-10, décision (3) « CADENCE RÉACTIVE ») — on ne
     # programme QUE le prochain geste. Les trois appels J0 créés d'avance
     # tombaient tous les trois dans la file même quand le premier avait suffi.
