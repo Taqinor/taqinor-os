@@ -2,7 +2,7 @@
 // Pile locale : conteneur django `E2E_DJANGO_EXEC`, base jetable erp_live2. Les parcours « API seulement »
 // (ADOC186, 187, 189) rejouent la sonde commitée du constat (`scripts/sonde.py`, transaction annulée, mail en
 // mémoire, HTTP sortant bloqué) ; ADOC185 et ADOC188 sont joués avec des données persistantes.
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, request as pwRequest, test } from '@playwright/test'
@@ -30,8 +30,10 @@ function py(code) {
 
 function rejouerSonde(constat, conteneur) {
   const groupeSonde = constat.split('-')[1]
-  const sortie = execFileSync('python', ['scripts/sonde.py', `${groupeSonde}/${constat}`, '--conteneur', conteneur],
+  // `sonde.py` sort en 1 quand le verdict est ÉCART (le constat n'est plus reproduit) : la sortie est lue quel que soit le code.
+  const r = spawnSync('python', ['scripts/sonde.py', `${groupeSonde}/${constat}`, '--conteneur', conteneur],
     { cwd: RACINE, encoding: 'utf8', timeout: 600_000 })
+  const sortie = `${r.stdout || ''}${r.stderr || ''}`
   const dossier = join(RACINE, 'docs/qa-explorer/captures', aujourdHui())
   mkdirSync(dossier, { recursive: true })
   writeFileSync(join(dossier, `ACCEPTATION-ADOC-sonde-${constat}.txt`), sortie, 'utf8')
@@ -62,7 +64,7 @@ print('@@JSON@@' + json.dumps({'ok': True, 'username': u.username}))
     suivi.attendre(/\/api\/django\//, 401)
     await ctx.clearCookies()
     await p.evaluate(() => window.dispatchEvent(new Event('taqinor:session-expired')))
-    const modale = p.getByRole('dialog', { name: 'Reconnexion' })
+    const modale = p.getByRole('dialog').filter({ hasText: 'Session expirée' })
     await expect(modale).toBeVisible({ timeout: 30_000 })
     await modale.getByLabel('Nom d’utilisateur').fill('demo_portail')
     await modale.getByLabel('Mot de passe').fill(MOT_DE_PASSE)
@@ -177,7 +179,7 @@ print('@@JSON@@' + json.dumps({'folder': f.pk}))
   }), `dépôt ${nom}`)
   const checklist = async () => {
     const l = await lireJson(await page.request.get(`${GED}/demandes-document/checklist/?folder=${r.folder}`), 'checklist')
-    return Object.fromEntries((Array.isArray(l) ? l : l.results ?? []).map((x) => [x.libelle, x.statut]))
+    return Object.fromEntries((Array.isArray(l) ? l : l.results ?? []).map((x) => [x.exigence?.libelle, x.statut]))
   }
   expect(await checklist()).toEqual({ CIN: 'manquant', 'Attestation CNSS': 'manquant' })
   await deposer('facture.pdf')

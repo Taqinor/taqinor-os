@@ -3,7 +3,7 @@
 // exigent le constructeur 3D, qui ne démarre pas sans clé carte (PUBLIC_MAPTILER_KEY absente de la pile locale).
 // ACAL375 est joué par l'API réelle ; ACAL374 et ACAL376 rejouent la sonde commitée du constat (`scripts/sonde.py`,
 // transaction annulée) : la resynchronisation du devis et le rapport sont des services serveur.
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -27,8 +27,10 @@ function py(code) {
   return JSON.parse(m[1])
 }
 function rejouerSonde(constat) {
-  const sortie = execFileSync('python', ['scripts/sonde.py', `ACAL/${constat}`, '--conteneur', CONTENEUR],
+  // `sonde.py` sort en 1 quand le verdict est ÉCART (le constat n'est plus reproduit) : la sortie est lue quel que soit le code.
+  const r = spawnSync('python', ['scripts/sonde.py', `ACAL/${constat}`, '--conteneur', CONTENEUR],
     { cwd: RACINE, encoding: 'utf8', timeout: 600_000 })
+  const sortie = `${r.stdout || ''}${r.stderr || ''}`
   const dossier = join(RACINE, 'docs/qa-explorer/captures', aujourdHui())
   mkdirSync(dossier, { recursive: true })
   writeFileSync(join(dossier, `ACCEPTATION-ACAL-sonde-${constat}.txt`), sortie, 'utf8')
