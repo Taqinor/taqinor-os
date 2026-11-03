@@ -110,6 +110,16 @@ const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astr
     { passive: true },
   );
 
+  // WAUD3 — sur mobile, la barre (z-40) se pose AU-DESSUS du bandeau de consentement
+  // (z-60, fixe en bas) au lieu de passer dessous ; le bandeau parti, elle redescend.
+  const bandeau = document.querySelector<HTMLElement>('[data-consent-banner]:not([data-consent-inline])');
+  if (bar && bandeau && 'ResizeObserver' in window) {
+    new ResizeObserver(() => {
+      const mobile = matchMedia('(max-width: 639px)').matches;
+      bar.style.bottom = mobile && bandeau.offsetHeight > 0 ? `${bandeau.offsetHeight}px` : '';
+    }).observe(bandeau);
+  }
+
   if (form && 'IntersectionObserver' in window) {
     new IntersectionObserver(
       (entries) => {

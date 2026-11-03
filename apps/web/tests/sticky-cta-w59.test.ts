@@ -80,3 +80,27 @@ describe('W59 — repli au défilement (anti-recouvrement), posé par-dessus', (
     expect(transformIdx).toBeGreaterThan(hiddenIdx);
   });
 });
+
+describe('WAUD3 — le bandeau de consentement ne recouvre ni le héros ni la barre', () => {
+  const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+
+  it('la barre collante se pose au-dessus du bandeau sur mobile', () => {
+    expect(cta).toContain("'[data-consent-banner]:not([data-consent-inline])'");
+    expect(cta).toContain('bar.style.bottom =');
+  });
+
+  it('héros FR/EN/AR : marge haute réduite sur mobile, CTA remonté (sonde scripts/fold-probe.mjs)', () => {
+    for (const p of ['', 'en/', 'ar/']) {
+      const page = lire(`../src/pages/${p}index.astro`);
+      expect(page).toContain('pb-24 pt-20 sm:pb-32 sm:pt-32');
+      expect(page).toContain('cine-in-3 mt-6 flex flex-wrap sm:mt-10');
+    }
+    expect(lire('../scripts/fold-probe.mjs')).toContain('[[360, 740], [390, 844]]');
+  });
+
+  it('bandeau compact : texte court à côté des boutons, jamais empilé', () => {
+    const bandeau = lire('../src/components/ConsentBanner.astro');
+    expect(bandeau).toContain('mx-auto flex max-w-6xl items-center justify-between gap-2');
+    expect(bandeau).not.toContain('flex-col items-center gap-3');
+  });
+});

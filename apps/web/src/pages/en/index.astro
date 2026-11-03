@@ -232,14 +232,14 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
           figure) stays ABOVE the video/poster (the `-z-10` layer) even after
           the video fades in → the figure no longer "disappears" when the
           video starts. */}
-      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-20 sm:pb-32 sm:pt-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">The study first, the worksite second</p>
         {/* WB1/WC7 (2026-07-04/05) — STATIC hero title: no count-up nor
             `.cine-in` on the LCP element → it paints immediately, no "appears
             then disappears" flash. Defensive text-shadow: the white figure
             stays legible even over a very bright video frame (full sun). */}
         <ArIndexH1ED0F heroFigure={heroFigure} heroSub={heroSub} heroTitleSuffix={heroTitleSuffix} />
-        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+        <div class="cine-in cine-in-3 mt-6 flex flex-wrap sm:mt-10 items-center gap-3">
           {/* The single brass CTA (brass discipline) — gold is allowed here */}
           <a id="hero-cta-magnetic" href={L('/devis/mon-toit')} class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Get my free study →
