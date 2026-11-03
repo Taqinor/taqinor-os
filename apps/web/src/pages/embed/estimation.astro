@@ -1,5 +1,8 @@
 ---
 /**
+ * WAUD36 (D-WAUD-6) — teaser verrouillé : aucun kWc/kWh/MAD affiché, estimateFromBill
+ * ne sert plus qu'à reconnaître un montant valide.
+ *
  * W358 — /embed/estimation : widget partenaire (fournisseurs agricoles,
  * agences immobilières…) affichable dans une iframe tierce. Réutilise le
  * MÊME cerveau que /devis/mon-toit (estimateFromBill, lib/billEstimate.ts —
@@ -38,8 +41,8 @@
  */
 import '../../styles/global.css';
 
-const title = 'Estimation solaire instantanée | Taqinor';
-const description = "Entrez votre facture d'électricité mensuelle pour une estimation solaire instantanée (kWc, production, économies) — widget partenaire Taqinor.";
+const title = 'Étude solaire gratuite | Taqinor';
+const description = "Entrez votre facture d'électricité mensuelle pour lancer votre étude solaire gratuite — widget partenaire Taqinor.";
 ---
 
 <!doctype html>
@@ -56,9 +59,9 @@ const description = "Entrez votre facture d'électricité mensuelle pour une est
   <body class="embed-body bg-nuit font-sans text-lune antialiased">
     <main id="embed-main" class="embed-widget">
       <p class="tech-label rule-brass text-brass-300">Taqinor</p>
-      <h1 class="display mt-2 text-xl font-bold text-white sm:text-2xl">Estimation solaire instantanée</h1>
+      <h1 class="display mt-2 text-xl font-bold text-white sm:text-2xl">Votre étude solaire gratuite</h1>
       <p class="mt-2 text-sm text-lune-soft">
-        Votre facture d'électricité mensuelle (MAD) suffit pour une première fourchette.
+        Votre facture d'électricité mensuelle (MAD) suffit pour commencer.
       </p>
 
       <form id="embed-form" novalidate class="mt-6">
@@ -80,28 +83,12 @@ const description = "Entrez votre facture d'électricité mensuelle pour une est
           type="submit"
           class="mt-4 w-full rounded-md bg-brass-400 px-4 py-2.5 text-sm font-bold text-nuit transition-colors hover:bg-brass-300"
         >
-          Voir mon estimation
+          Lancer mon étude
         </button>
       </form>
 
       <div id="embed-result" class="mt-6" hidden>
-        <dl class="grid grid-cols-2 gap-3 text-sm">
-          <div class="rounded-md border border-white/10 bg-white/5 p-3">
-            <dt class="tech-label text-brass-300">Puissance</dt>
-            <dd id="embed-kwc" class="mt-1 text-lg font-bold text-white">—</dd>
-          </div>
-          <div class="rounded-md border border-white/10 bg-white/5 p-3">
-            <dt class="tech-label text-brass-300">Production/an</dt>
-            <dd id="embed-prod" class="mt-1 text-lg font-bold text-white">—</dd>
-          </div>
-          <div class="col-span-2 rounded-md border border-white/10 bg-white/5 p-3">
-            <dt class="tech-label text-brass-300">Économies estimées</dt>
-            <dd id="embed-savings" class="mt-1 text-lg font-bold text-white">—</dd>
-          </div>
-        </dl>
-        <p class="mt-3 text-xs text-lune-soft">
-          Estimation indicative (facture seule, sud optimal). Le chiffre réel vient après la visite technique.
-        </p>
+        <p class="text-sm font-semibold text-white">Votre étude gratuite peut démarrer. Vos chiffres viennent avec elle, jamais une moyenne.</p>
         <a
           id="embed-cta"
           href="/devis/mon-toit/"
@@ -114,12 +101,12 @@ const description = "Entrez votre facture d'électricité mensuelle pour une est
       </div>
 
       <p id="embed-unavailable" class="mt-6 text-sm text-lune-soft" hidden>
-        Estimation indisponible — vérifiez le montant saisi.
+        Montant non reconnu — vérifiez le montant saisi.
       </p>
     </main>
 
     <script>
-      import { estimateFromBill, formatMadRange } from '../../lib/billEstimate';
+      import { estimateFromBill } from '../../lib/billEstimate';
 
       const $ = (id: string) => document.getElementById(id);
       const form = $('embed-form') as HTMLFormElement | null;
@@ -127,9 +114,6 @@ const description = "Entrez votre facture d'électricité mensuelle pour une est
       const billErr = $('embed-bill-err');
       const result = $('embed-result');
       const unavailable = $('embed-unavailable');
-      const kwcEl = $('embed-kwc');
-      const prodEl = $('embed-prod');
-      const savingsEl = $('embed-savings');
       const cta = $('embed-cta') as HTMLAnchorElement | null;
 
       function setError(msg: string | null) {
@@ -182,9 +166,6 @@ const description = "Entrez votre facture d'électricité mensuelle pour une est
         }
 
         if (unavailable) unavailable.hidden = true;
-        if (kwcEl) kwcEl.textContent = `${est.kwc} kWc`;
-        if (prodEl) prodEl.textContent = `${est.productionKwhYr.toLocaleString('fr-FR')} kWh`;
-        if (savingsEl) savingsEl.textContent = `${formatMadRange(est.savingsLow, est.savingsHigh)}/an`;
         if (cta) cta.href = buildDeepLink(bill);
         if (result) result.hidden = false;
       });

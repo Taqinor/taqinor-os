@@ -679,7 +679,7 @@ import DevisMonToitBlocC596 from '../../../components/blocs/DevisMonToitBlocC596
           </button>
           <button type="button" id="mt-estimate"
             class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span data-i18n data-fr="Voir mon estimation" data-ar="عرض تقديري">Voir mon estimation</span>
+            <span data-i18n data-fr="Voir mon étude gratuite" data-ar="عرض دراستي المجانية">Voir mon étude gratuite</span>
             <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
               <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
@@ -696,7 +696,7 @@ import DevisMonToitBlocC596 from '../../../components/blocs/DevisMonToitBlocC596
            l'ancienne étape 3 disparaît avec elle — l'écran 1 a UN seul titre de
            repère (#mt-h2-1), exactement comme l'écran 0. -->
       <div id="mt-reveal" class="mt-step-panel" hidden>
-        <p class="tech-label mt-6 text-brass-300" data-i18n data-fr="Votre estimation instantanée" data-ar="تقديرك الفوري">Votre estimation instantanée</p>
+        <p class="tech-label mt-6 text-brass-300" data-i18n data-fr="Votre étude gratuite" data-ar="دراستك المجانية">Votre étude gratuite</p>
         <!-- WJ48 — anticipation animation brandée courte avant les vrais chiffres. -->
         <MonToitP1516 />
 
@@ -1220,14 +1220,14 @@ import DevisMonToitBlocC596 from '../../../components/blocs/DevisMonToitBlocC596
       <!-- WJ35 — signature zellige de clôture -->
       <ZelligeSignature
         line="كل رقم في هذه الصفحة مقيس، لا موعود."
-        sub="تقديركم أولاً. الدراسة بعد ذلك."
+        sub="دراستكم المجانية أولاً. الورش بعد ذلك."
       />
     </div>
   </section>
 
   <!-- ============ WJ7 — RÉCUPÉRATION D'ABANDON (exit-intent / sortie mobile) ============ -->
   <DevisMonToitExitModal inputClass={inputClass} closeLabel="إغلاق" phoneDir="ltr">
-    <p slot="title" id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre estimation sur WhatsApp" data-ar="استلم تقديرك على واتساب">Recevez votre estimation sur WhatsApp</p>
+    <p slot="title" id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre étude gratuite sur WhatsApp" data-ar="استلم دراستك المجانية على واتساب">Recevez votre estimation sur WhatsApp</p>
     <DevisMonToitPB974 />
     <span slot="send" data-i18n data-fr="Envoyer" data-ar="إرسال">Envoyer</span>
   </DevisMonToitExitModal>

@@ -224,3 +224,38 @@ describe('FROZEN — le comportement du formulaire est inchangé (classes seules
     expect(form).toMatch(/data-seg="1" class="[^"]*bg-brass-400/);
   });
 });
+
+describe('WAUD36 — règle C étendue : teaser verrouillé, promesse « étude gratuite »', () => {
+  const FIGURES = /kWc|kWh|formatMadRange|productionKwhYr|savingsMonthly|savingsLow/;
+  const balisage = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('estimateur d’accueil et widget partenaire : aucun chiffre rendu', () => {
+    expect(balisage(read('../src/components/InstantEstimator.astro'))).not.toMatch(FIGURES);
+    expect(balisage(read('../src/pages/embed/estimation.astro'))).not.toMatch(FIGURES);
+  });
+
+  it('libellés FR/EN/AR : plus de clés de résultat chiffré, « étude gratuite » partout', () => {
+    for (const loc of ['fr', 'en', 'ar'] as const) {
+      const d = ui[loc] as Record<string, string>;
+      for (const k of ['estimator.result.kwc', 'estimator.result.production', 'estimator.result.savings', 'estimator.note']) {
+        expect(d[k], `${loc} ${k}`).toBeUndefined();
+      }
+      expect(d['estimator.lock'], loc).toBeTruthy();
+      expect(d['estimator.body']).not.toMatch(/kWc|MAD\/|fourchette|range|مجال/i);
+    }
+    expect(uiFr['estimator.eyebrow']).toBe('Étude gratuite');
+  });
+
+  it('tunnel FR/EN/AR : plus de promesse « estimation » sur les libellés d’étape et le bouton', () => {
+    const fr = read('../src/pages/devis/mon-toit.astro');
+    expect(fr).toContain('>Voir mon étude gratuite<');
+    expect(fr).not.toContain('>Voir mon estimation<');
+    expect(read('../src/pages/en/devis/mon-toit.astro')).not.toContain('See my estimate');
+    const parcours = read('../src/lib/tunnel/parcours.ts');
+    expect(parcours).not.toMatch(/'Votre estimation'|'Your estimate'|'تقديرك'/);
+  });
+
+  it('estimateShown part toujours au CRM (registre du corps inchangé)', () => {
+    expect(read('../src/lib/tunnel/champs.ts')).toContain("webhookKey: 'estimateShown'");
+  });
+});

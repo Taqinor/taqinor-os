@@ -39,10 +39,10 @@ export interface TablesParcours {
 export const TABLES_PARCOURS: Record<LocaleTunnel, TablesParcours> = {
   fr: {
     stepLabelsByMode: {
-      residentiel: ['Votre toit', 'Votre estimation'],
-      industriel: ['Votre site', 'Votre estimation'],
-      commercial: ['Votre établissement', 'Votre estimation'],
-      agricole: ['Votre terrain', 'Votre estimation'],
+      residentiel: ['Votre toit', 'Votre étude gratuite'],
+      industriel: ['Votre site', 'Votre étude gratuite'],
+      commercial: ['Votre établissement', 'Votre étude gratuite'],
+      agricole: ['Votre terrain', 'Votre étude gratuite'],
     },
     modeLabel: {
       residentiel: 'Résidentiel', industriel: 'Industriel', commercial: 'Commercial', agricole: 'Agricole',
@@ -55,10 +55,10 @@ export const TABLES_PARCOURS: Record<LocaleTunnel, TablesParcours> = {
   },
   en: {
     stepLabelsByMode: {
-      residentiel: ['Your roof', 'Your estimate'],
-      industriel: ['Your site', 'Your estimate'],
-      commercial: ['Your premises', 'Your estimate'],
-      agricole: ['Your land', 'Your estimate'],
+      residentiel: ['Your roof', 'Your free study'],
+      industriel: ['Your site', 'Your free study'],
+      commercial: ['Your premises', 'Your free study'],
+      agricole: ['Your land', 'Your free study'],
     },
     modeLabel: {
       residentiel: 'Residential', industriel: 'Industrial', commercial: 'Commercial', agricole: 'Agricultural',
@@ -71,10 +71,10 @@ export const TABLES_PARCOURS: Record<LocaleTunnel, TablesParcours> = {
   },
   ar: {
     stepLabelsByMode: {
-      residentiel: ['سطحك', 'تقديرك'],
-      industriel: ['موقعك', 'تقديرك'],
-      commercial: ['مؤسستك', 'تقديرك'],
-      agricole: ['أرضك', 'تقديرك'],
+      residentiel: ['سطحك', 'دراستك المجانية'],
+      industriel: ['موقعك', 'دراستك المجانية'],
+      commercial: ['مؤسستك', 'دراستك المجانية'],
+      agricole: ['أرضك', 'دراستك المجانية'],
     },
     modeLabel: {
       residentiel: 'سكني', industriel: 'صناعي', commercial: 'تجاري', agricole: 'فلاحي',

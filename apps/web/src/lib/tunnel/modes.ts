@@ -1,7 +1,7 @@
 // Étapes, profils et villes du tunnel FR/AR (garde ACAL345).
 export const STEPS = [
   { fr: 'Votre toit', ar: 'سطحك' },
-  { fr: 'Votre estimation', ar: 'تقديرك' },
+  { fr: 'Votre étude gratuite', ar: 'دراستك المجانية' },
 ];
 export const MODES = [
   { id: 'residentiel', fr: 'Résidentiel', ar: 'سكني', desc_fr: 'Villa, appartement', desc_ar: 'فيلا، شقة' },
