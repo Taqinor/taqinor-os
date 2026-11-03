@@ -111,8 +111,7 @@ print('@@JSON@@' + json.dumps({'demande': d.pk, 'doc': doc.pk, 'a1': a1.username
 `)
   const etat = () => py(`
 import json
-from apps.ged.models import ChaineApprobationGed, Document
-from apps.reporting.models import DemandeApprobation
+from apps.ged.models import ChaineApprobationGed, DemandeApprobation, Document
 d = DemandeApprobation.objects.get(pk=${r.demande})
 c = ChaineApprobationGed.objects.get(demande=d)
 print('@@JSON@@' + json.dumps({'statut': d.statut, 'approbateur': d.approbateur_id, 'etape': c.etape_courante,
