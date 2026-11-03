@@ -1293,6 +1293,10 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'saisies_humaines',
             # CADV21 — parcage : écrit par le seul ``parquer_lead``.
             'parc_etat', 'parc_raison', 'parc_jusqu_au',
+            # ACVI30 — colonnes posées par le serveur : un PATCH ne les écrit pas.
+            'score_ajustement', 'mql_assigned_at', 'source', 'whatsapp_opt_in',
+            'consent_timestamp', 'date_creation_origine',
+            'contact_preference_set_at',
         ]
 
     def champs_a_marquer(self, validated_data):

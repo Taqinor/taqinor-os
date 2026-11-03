@@ -843,6 +843,20 @@ class TestLeadSoftDeleteVerrouille(TestCase):
     `is_archived`, déjà verrouillé (« jamais par un PATCH direct »).
     """
 
+    def test_les_colonnes_serveur_sont_en_lecture_seule(self):
+        # ACVI30 — 200, et la base ne bouge pas.
+        Lead.objects.filter(pk=self.lead.pk).update(source='os_native')
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.pk}/',
+            {'score_ajustement': 100, 'source': 'odoo_import_test',
+             'whatsapp_opt_in': True}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            (self.lead.score_ajustement, self.lead.source,
+             self.lead.whatsapp_opt_in),
+            (None, 'os_native', None))
+
     def setUp(self):
         self.company = make_company(slug='crx15-co', nom='CRX15 Co')
         self.user = User.objects.create_user(
