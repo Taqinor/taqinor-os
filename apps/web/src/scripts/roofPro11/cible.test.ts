@@ -1,7 +1,7 @@
 // ACAL99 — la cible VENDUE à la réouverture : jamais au-dessus de la conception enregistrée,
 // jamais le total du site au seul pan actif. PURE (aucun DOM, aucune carte).
 import { describe, expect, it } from 'vitest';
-import { repartirCibleVendue, neededAutoApresConservation, type PanCible } from './cible';
+import { besoinAutoRelu, repartirCibleVendue, neededAutoApresConservation, type PanCible } from './cible';
 import { hydrateFromDevis } from './prefill';
 
 const pan = (id: string, neededPanels: number, neededAuto: boolean, count?: number): PanCible => ({
@@ -46,5 +46,18 @@ describe('ERR-ACAL351 — neededAuto intact sans geste', () => {
   it('objectif différent ou pan déjà figé : figé', () => {
     expect(neededAutoApresConservation({ neededPanels: 8, neededAuto: true }, 6)).toBe(false);
     expect(neededAutoApresConservation({ neededPanels: 8, neededAuto: false }, 8)).toBe(false);
+  });
+});
+
+describe('ACAL367 — besoinAutoRelu', () => {
+  const doc = { zones: [{ id: 'z1', neededPanels: 23 }, { id: 'z2', neededPanels: 0 }] };
+  it('sans facture saisie : le besoin enregistré du pan', () => {
+    expect(besoinAutoRelu(doc, 'z1', 0)).toBe(23);
+  });
+  it('facture saisie, aucun document, pan inconnu ou besoin nul : aucun besoin à tenir', () => {
+    expect(besoinAutoRelu(doc, 'z1', 3000)).toBe(0);
+    expect(besoinAutoRelu(null, 'z1', 0)).toBe(0);
+    expect(besoinAutoRelu(doc, 'absent', 0)).toBe(0);
+    expect(besoinAutoRelu(doc, 'z2', 0)).toBe(0);
   });
 });
