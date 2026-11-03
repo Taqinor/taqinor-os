@@ -191,6 +191,7 @@ def escalader_premier_contact(dry_run=False, now=None):
     5 minutes."""
     import datetime
 
+    from django.db.models import Exists, OuterRef
     from django.utils import timezone
 
     # SCA19 — jamais `Company.objects.all()` : un tenant suspendu ne
@@ -223,7 +224,14 @@ def escalader_premier_contact(dry_run=False, now=None):
             first_contacted_at__isnull=True, perdu=False, is_archived=False,
         ).exclude(
             source=Lead.Source.ODOO_IMPORT_TEST,
-        ).exclude(stage__in=[SIGNED, COLD]).select_related('owner')
+        ).exclude(stage__in=[SIGNED, COLD]).annotate(
+            # ACVI80 — une seule escalade par lead, écartée EN SQL (patron
+            # APRF10) : le beat tourne 288 fois par jour.
+            deja_escalade=Exists(LeadActivity.objects.filter(
+                lead=OuterRef('pk'), kind=LeadActivity.Kind.NOTE,
+                body__startswith=MARQUEUR)),
+        ).filter(deja_escalade=False).select_related('owner').only(
+            'id', 'company', 'nom', 'date_creation', 'owner')
         escalades = []
         delai = datetime.timedelta(minutes=palier)
         with horaires.cache_local():
@@ -241,10 +249,6 @@ def escalader_premier_contact(dry_run=False, now=None):
                     # Comprend le cas « lead de nuit » : hors fenêtre, le
                     # délai ne court pas — aucune escalade avant l'ouverture
                     # PLUS l'objectif.
-                    continue
-                if LeadActivity.objects.filter(
-                        lead=lead, kind=LeadActivity.Kind.NOTE,
-                        body__startswith=MARQUEUR).exists():
                     continue
                 nb += 1
                 if dry_run:
