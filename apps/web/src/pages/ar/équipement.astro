@@ -1,4 +1,5 @@
 ---
+import { garantieLocale } from '../../lib/warranty';
 import { DEYE_PLAGE_KW } from '../../lib/fiches';
 import { TABLEAU_GARANTIES_AR } from '../../lib/warranty';
 import { pageLocale } from '../../lib/pageCtx';
@@ -27,7 +28,7 @@ const comparaisonPanneaux = [
   { critere: 'الخلية', a: 'خلية N-type TOPCon، تقنية ثنائية الوجه', b: 'خلية أحادية البلورة N-type عالية المردود' },
   { critere: 'القدرة', a: 'مجال القدرة 705 – 720 Wc', b: 'مجال القدرة ≈ 700 – 720 Wc' },
   { critere: 'المعايير', a: 'مطابق لـ IEC 61215 و IEC 61730', b: 'مطابق لـ IEC 61215 و IEC 61730' },
-  { critere: 'الضمان', a: panneauCanadian.garantie, b: panneauJinko.garantie },
+  { critere: 'الضمان', a: garantieLocale(panneauCanadian.garantie, 'ar'), b: garantieLocale(panneauJinko.garantie, 'ar') },
 ];
 
 const comparaisonOnduleurs = [
@@ -35,7 +36,7 @@ const comparaisonOnduleurs = [
   { critere: 'الطراز', a: onduleurHuawei.modele, b: onduleurDeye.modele },
   { critere: 'نقطة القوة', a: 'تحسين لكل سلسلة (عدة MPPT)', b: 'تدبير البطارية CAN BMS مدمج' },
   { critere: 'المجال / المطابقة', a: 'من السكني إلى أسطح القطاع الثالث', b: `أحادي وثلاثي الطور، ${DEYE_PLAGE_KW}` },
-  { critere: 'الضمان', a: onduleurHuawei.garantie, b: onduleurDeye.garantie },
+  { critere: 'الضمان', a: garantieLocale(onduleurHuawei.garantie, 'ar'), b: garantieLocale(onduleurDeye.garantie, 'ar') },
 ];
 
 const categories = [

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { RETOUR_PAR_SEGMENT } from '../src/lib/billRange';
 import { describe, expect, it } from 'vitest';
-import { BILL_RANGES, isBillRangeId, localEstimateBand, qualifiesForCrm } from '../src/lib/billRange';
+import { BILL_RANGES, isBillRangeId, libelleBandeLocale, localEstimateBand, qualifiesForCrm } from '../src/lib/billRange';
 import { formatMAD } from '../src/lib/format';
 
 describe('seuil CRM — les factures sous 1 000 MAD ne sont jamais qualifiées', () => {
@@ -69,5 +69,20 @@ describe('WAUD39 — retour : constante unique, affichée seulement avec une sou
   it('pages ville : stat et nuance suivent la constante', () => {
     expect(lire('components/CityPageBody.astro')).toContain('RETOUR_PAR_SEGMENT.residentiel &&');
     for (const p of ['', 'en/', 'ar/']) expect(lire(`pages/${p}installation-solaire-[city].astro`)).toContain('RETOUR_PAR_SEGMENT');
+  });
+});
+
+describe('WAUD31 — bandes dans la langue de la page, à l’affichage seulement', () => {
+  it('EN et AR, jamais de « à » ni de « ans » ; FR inchangé', () => {
+    expect(libelleBandeLocale('3 à 5 kWc', 'en')).toBe('3 to 5 kWc');
+    expect(libelleBandeLocale('4 à 6 ans', 'en')).toBe('4 to 6 years');
+    expect(libelleBandeLocale('4 à 6 ans', 'ar')).toBe('4 إلى 6 سنوات');
+    expect(libelleBandeLocale('30 kWc et plus (étude dédiée)', 'en')).toBe('30 kWc and above (dedicated study)');
+    expect(libelleBandeLocale('4 à 6 ans', 'fr')).toBe('4 à 6 ans');
+  });
+
+  it('le corps du lead garde le libellé français de la bande', () => {
+    expect(localEstimateBand('1500-3000').paybackLabel).toBe('4 à 6 ans');
+    expect(localEstimateBand('1500-3000').kwcLabel).toBe('5 à 9 kWc');
   });
 });

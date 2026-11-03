@@ -144,3 +144,16 @@ export const RETOUR_PAR_SEGMENT: { residentiel: RetourSource | null; professionn
   residentiel: null,
   professionnel: null,
 };
+
+/**
+ * WAUD31 — libellé de bande (« 3 à 5 kWc », « 4 à 6 ans ») dans la langue de la page, à
+ * l'AFFICHAGE seulement : `kwcLabel`/`paybackLabel` restent en français dans le corps du lead.
+ */
+export function libelleBandeLocale(libelle: string, locale: 'fr' | 'en' | 'ar'): string {
+  if (locale === 'fr') return libelle;
+  const en = locale === 'en';
+  return libelle
+    .replace(/\bet plus \(étude dédiée\)/, en ? 'and above (dedicated study)' : 'فأكثر (دراسة مخصصة)')
+    .replace(/(\d) à (\d)/, en ? '$1 to $2' : '$1 إلى $2')
+    .replace(/\bans\b/, en ? 'years' : 'سنوات');
+}

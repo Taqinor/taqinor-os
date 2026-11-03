@@ -25,6 +25,7 @@
  * `role="listitem"` — poser ce rôle SUR l'ancre écrase son rôle natif `link`,
  * et le badge sort alors de la liste des liens des lecteurs d'écran.
  */
+import { getLocaleFromPath } from '../i18n/utils';
 import {
   PANEL_PERFORMANCE_WARRANTY_YEARS,
   DEYE_INVERTER_WARRANTY_YEARS,
@@ -37,6 +38,7 @@ type CertKey = 'iec' | 'loi8221' | 'panneaux' | 'onduleur';
 interface CertItem {
   key: CertKey;
   label: string;
+  labelEn: string;
   labelAr: string;
   detail: string;
   detailEn: string;
@@ -49,10 +51,10 @@ interface CertItem {
 // (fondateur 2026-08-17) les DURÉES viennent de `lib/warranty.ts`, source
 // unique des garanties publiées — plus aucun « 30 » / « 10 » codé en dur ici.
 const CERTS: CertItem[] = [
-  { key: 'iec', label: 'IEC 61215 / 61730', labelAr: 'IEC 61215 / 61730', detail: 'Modules certifiés', detailEn: 'Certified modules', detailAr: 'ألواح معتمدة' },
-  { key: 'loi8221', label: 'Loi 82-21', labelAr: 'القانون 82-21', detail: 'Autoconsommation BT', detailEn: 'Low-voltage self-consumption', detailAr: 'الاستهلاك الذاتي' },
-  { key: 'panneaux', label: `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`, labelAr: `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`, detail: 'Garantie performance panneaux', detailEn: 'Panel performance warranty', detailAr: 'ضمان أداء الألواح' },
-  { key: 'onduleur', label: `${DEYE_INVERTER_WARRANTY_YEARS} / ${HUAWEI_INVERTER_WARRANTY_YEARS} ans`, labelAr: `${DEYE_INVERTER_WARRANTY_YEARS} / ${HUAWEI_INVERTER_WARRANTY_YEARS} سنوات`, detail: 'Garantie onduleur (Deye / Huawei)', detailEn: 'Inverter warranty (Deye / Huawei)', detailAr: 'ضمان العاكس (Deye / Huawei)' },
+  { key: 'iec', label: 'IEC 61215 / 61730', labelEn: 'IEC 61215 / 61730', labelAr: 'IEC 61215 / 61730', detail: 'Modules certifiés', detailEn: 'Certified modules', detailAr: 'ألواح معتمدة' },
+  { key: 'loi8221', label: 'Loi 82-21', labelEn: 'Law 82-21', labelAr: 'القانون 82-21', detail: 'Autoconsommation BT', detailEn: 'Low-voltage self-consumption', detailAr: 'الاستهلاك الذاتي' },
+  { key: 'panneaux', label: `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`, labelEn: `${PANEL_PERFORMANCE_WARRANTY_YEARS} years`, labelAr: `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`, detail: 'Garantie performance panneaux', detailEn: 'Panel performance warranty', detailAr: 'ضمان أداء الألواح' },
+  { key: 'onduleur', label: `${DEYE_INVERTER_WARRANTY_YEARS} / ${HUAWEI_INVERTER_WARRANTY_YEARS} ans`, labelEn: `${DEYE_INVERTER_WARRANTY_YEARS} / ${HUAWEI_INVERTER_WARRANTY_YEARS} years`, labelAr: `${DEYE_INVERTER_WARRANTY_YEARS} / ${HUAWEI_INVERTER_WARRANTY_YEARS} سنوات`, detail: 'Garantie onduleur (Deye / Huawei)', detailEn: 'Inverter warranty (Deye / Huawei)', detailAr: 'ضمان العاكس (Deye / Huawei)' },
 ];
 
 interface Props {
@@ -72,6 +74,11 @@ interface Props {
 }
 
 const { keys, hrefs: hrefsProp = {} } = Astro.props as Props;
+// WAUD31 — le serveur rend déjà la langue de la page (/en/, /ar/) : data-fr/en/ar restent pour
+// /proposition, qui bascule côté client depuis une URL française.
+const langue = getLocaleFromPath(Astro.url.pathname);
+const libelleDe = (c: CertItem) => (langue === 'en' ? c.labelEn : langue === 'ar' ? c.labelAr : c.label);
+const detailDe = (c: CertItem) => (langue === 'en' ? c.detailEn : langue === 'ar' ? c.detailAr : c.detail);
 // WAUD49 — sans `keys`, les quatre badges sont rendus : chacun pointe vers sa preuve. La fiche
 // Canadian Solar hébergée porte bien les certificats IEC 61215 / 61730 (contrôle pdftotext, 03/11/2026).
 const prefixe = Astro.url.pathname.startsWith('/en') ? '/en' : Astro.url.pathname.startsWith('/ar') ? '/ar' : '';
@@ -115,14 +122,14 @@ const items = (keys && keys.length ? keys : CERTS.map((c) => c.key))
          porte aussi `--i` : [data-choreo] n'anime que les enfants DIRECTS. */
       <div class="cert-row__cell" role="listitem" style={`--i:${i}`}>
         <a class="cert-row__item cert-row__item--link" href={hrefs[c.key]}>
-          <p class="cert-row__label">{c.label}</p>
-          <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{c.detail}</p>
+          <p class="cert-row__label">{libelleDe(c)}</p>
+          <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{detailDe(c)}</p>
         </a>
       </div>
     ) : (
       <div class="cert-row__item" role="listitem" style={`--i:${i}`}>
-        <p class="cert-row__label">{c.label}</p>
-        <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{c.detail}</p>
+        <p class="cert-row__label">{libelleDe(c)}</p>
+        <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{detailDe(c)}</p>
       </div>
     )
   ))}
