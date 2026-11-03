@@ -219,6 +219,21 @@ class RefusMotiveTests(_Base):
 
     slug = 'rlc1-refus'
 
+    def test_lead_archive_refuse(self):
+        """ACVI40 — un lead archivé garde sa touche faite."""
+        etape = self.etapes[0]
+        marquer_etape_relance(
+            etape, self.acteur, RelanceEtape.Statut.FAIT, outcome='non_joint')
+        Lead.objects.filter(pk=etape.lead_id).update(is_archived=True)
+        etape = RelanceEtape.objects.select_related('lead').get(pk=etape.pk)
+
+        with self.assertRaises(AnnulationToucheRefusee) as capture:
+            annuler_touche_relance(etape, self.acteur)
+        self.assertEqual(capture.exception.champ, 'lead')
+        self.assertIn('archivé', capture.exception.message)
+        etape.refresh_from_db()
+        self.assertEqual(etape.statut, RelanceEtape.Statut.FAIT)
+
     def test_une_touche_jamais_traitee_na_rien_a_annuler(self):
         etape = self.etapes[0]
         with self.assertRaises(AnnulationToucheRefusee) as capture:
