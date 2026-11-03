@@ -10,11 +10,8 @@
 # ENF15 (30/10/2026) : crm Client.code_parrainage SORTI — unicité bornée à la
 # société (contrainte crm_client_code_parrainage_societe, migration crm 0147).
 #
-# NTDMO11 — onboarding.OnboardingChecklistItem : catalogue « Premiers pas »
-# (company FK nullable ; company=None = item partagé, seedé via migration).
-# La clé est un identifiant de CODE (lue par services.marquer_item_complete,
-# receivers d'événements) ; aucune API ne crée d'item, aucun item société.
-backend/django_core/apps/onboarding/models.py::OnboardingChecklistItem.key
+# ENF15 (03/11/2026) : onboarding OnboardingChecklistItem.key SORTI — unicité (company, key)
+# + contrainte partielle pour le catalogue (company NULL), migration onboarding 0009.
 #
 # core.IdempotencyKey.cle : repli DB du décorateur idempotent_task — la clé
 # encode elle-même sa portée (id société + nom de tâche + fenêtre), par

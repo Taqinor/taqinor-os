@@ -31,7 +31,7 @@ class OnboardingChecklistItem(TenantModel):
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='onboarding_items')
     key = models.SlugField(
-        max_length=80, unique=True,
+        max_length=80,
         help_text='Clé stable (jamais renommée) — identifiant d\'auto-complétion.')
     libelle = models.CharField(max_length=200)
     # Ordre d'affichage dans le widget.
@@ -57,6 +57,18 @@ class OnboardingChecklistItem(TenantModel):
         ordering = ['ordre', 'key']
         verbose_name = 'Item de checklist onboarding'
         verbose_name_plural = 'Items de checklist onboarding'
+        constraints = [
+            # ENF15 — unicité BORNÉE à la société (jamais globale par
+            # `unique=True`) ; les items de catalogue (company NULL) restent
+            # uniques entre eux par la contrainte partielle (NULL ≠ NULL en
+            # SQL : sans elle, la clé d'un item partagé pourrait être dupliquée).
+            models.UniqueConstraint(
+                fields=['company', 'key'],
+                name='onboarding_item_cle_societe_unique'),
+            models.UniqueConstraint(
+                fields=['key'], condition=models.Q(company__isnull=True),
+                name='onboarding_item_cle_catalogue_unique'),
+        ]
 
     def __str__(self):
         return f'{self.key} — {self.libelle}'
