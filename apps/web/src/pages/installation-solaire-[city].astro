@@ -84,7 +84,7 @@ const t = {
 const bodyProps = { c, rtl: false, L, cardAlt: (r: { photos: { alt: string }[] }) => r.photos[0].alt, t, breadcrumbItems: [{ label: 'Accueil', href: '/' }, { label: `Installation solaire ${c.intro}` }], heroPhoto, showYieldNote: !!(avgYieldPerKwc && southOptimalYield && avgYieldPerKwc < southOptimalYield), city };
 ---
 
-<Layout title={title} description={description} ogSlug="accueil">
+<Layout title={title} description={description} ogSlug={`ville-${c.slug}-fr`}>
   <script type="application/ld+json" set:html={JSON.stringify(serviceJsonLd)} />
   <CityPageBody {...bodyProps}>
     <Fragment slot="yieldNote">

@@ -91,6 +91,8 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/methodologie-estimation',
   // W254 — pilier « recharge VE au solaire » : routes EN/AR livrées ci-dessous.
   '/recharge-voiture-electrique-solaire',
+  // WAUD73 — page « Subvention et aides » (FR/EN/AR, coquille partagée InfoPageBody).
+  '/subvention-panneaux-solaires-maroc',
 ];
 
 /**
@@ -101,6 +103,9 @@ const STATIC_TRANSLATED: readonly string[] = [
  */
 const PARTIAL_TRANSLATED: Record<string, readonly Locale[]> = {
   '/ressources/10-questions-avant-de-signer': ['fr', 'ar'],
+  // WAUD74 (FR seule) et WAUD75 (FR + AR) : pages d'information sans miroir EN.
+  '/kit-solaire-maroc': ['fr'],
+  '/devis-panneaux-solaires-maroc': ['fr', 'ar'],
 };
 
 /**

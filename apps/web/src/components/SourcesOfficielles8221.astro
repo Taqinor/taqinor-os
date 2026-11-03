@@ -1,0 +1,19 @@
+---
+/** WAUD47 — textes officiels de la loi 82-21 + « à qui déposer » (FR/EN/AR, une seule copie). */
+import { DEPOT_8221, SOURCES_OFFICIELLES_8221 } from '../lib/sources8221';
+import { pageLocale } from '../lib/pageCtx';
+
+const { locale } = pageLocale(Astro.url.pathname);
+const d = DEPOT_8221[locale];
+---
+
+<section class="mx-auto max-w-4xl px-4 pb-10" data-sources-officielles>
+  <h2 class="display v2-section-title text-white">{d.h2}</h2>
+  <p class="mt-4 text-lune-soft">{d.p}</p>
+  <p class="mt-4 text-sm text-lune-faint">{d.lead}</p>
+  <ul class="mt-2 space-y-1">
+    {SOURCES_OFFICIELLES_8221.map((s) => (
+      <li><a href={s.url} rel="noopener" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">{s.label[locale]}</a></li>
+    ))}
+  </ul>
+</section>

@@ -56,6 +56,7 @@ const jsonLd = {
   headline: 'أثمنة الألواح الشمسية بالمغرب: هوامش استرشادية حسب القدرة',
   description: 'كم تكلّف تركيبة شمسية جاهزة بالمغرب، حسب القدرة (kWc)، مع تكاليف السقف والبطارية والضريبة على القيمة المضافة — هوامش استرشادية، تُراجَع كل سنة.',
   image: schemaImageUrl,
+  dateModified: verifiedDate.toISOString().slice(0, 10),
   about: { '@type': 'Thing', name: 'ثمن التركيبة الشمسية بالمغرب' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },

@@ -8,6 +8,7 @@
  * Voir apps/web/DESIGN_RATIONALE.md.
  */
 import Layout from '../layouts/Layout.astro';
+import ReponseCourte from '../components/ReponseCourte.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
@@ -16,6 +17,7 @@ import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
+import SourcesOfficielles8221 from '../components/SourcesOfficielles8221.astro';
 import { REGIMES } from '../lib/regime';
 import Loi8221DivBD31 from '../components/blocs/Loi8221DivBD31.astro';
 import Loi8221MxAutoCF28 from '../components/blocs/Loi8221MxAutoCF28.astro';
@@ -42,6 +44,7 @@ import Loi8221MxAutoCF28 from '../components/blocs/Loi8221MxAutoCF28.astro';
           posée, toute installation d'autoproduction relève de l'un des trois régimes ci-dessous ;
           c'est sa puissance et son raccordement qui décident lequel.
         </p>
+        <ReponseCourte id="loi8221" />
       </div>
     </section>
 
@@ -113,6 +116,8 @@ import Loi8221MxAutoCF28 from '../components/blocs/Loi8221MxAutoCF28.astro';
         </a>
       </div>
     </section>
+
+    <SourcesOfficielles8221 />
 
     <CtaBand title="Un doute sur votre régime ? Nous vérifions gratuitement." buttonLabel="Faire vérifier mon dossier" seam={false} />
 

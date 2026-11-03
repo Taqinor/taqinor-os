@@ -7,6 +7,7 @@
  * détail) ; JSON-LD Product. Cible directe des liens du devis premium.
  */
 import Layout from '../../layouts/Layout.astro';
+import { canonicalUrl } from '../../lib/canonicalUrl';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
@@ -42,7 +43,7 @@ const jsonLd = {
   category: fiche.categorie,
   brand: { '@type': 'Brand', name: fiche.marque },
   model: fiche.modele,
-  url: new URL(`/produits/${fiche.slug}`, Astro.site).href,
+  url: canonicalUrl(`/produits/${fiche.slug}`, Astro.site),
   description: fiche.resume,
 };
 ---

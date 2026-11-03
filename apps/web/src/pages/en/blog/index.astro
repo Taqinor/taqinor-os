@@ -8,6 +8,7 @@
  * dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
+import { canonicalUrl } from '../../../lib/canonicalUrl';
 import { pageLocale } from '../../../lib/pageCtx';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
@@ -35,16 +36,18 @@ const posts = [
   },
 ];
 
+const postUrl = (slug: string) => canonicalUrl(L(`/blog/${slug}`), Astro.site);
+
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'CollectionPage',
   name: 'Blog Taqinor — news & field reports',
-  url: new URL(L('/blog'), Astro.site).href,
+  url: canonicalUrl(L('/blog'), Astro.site),
   hasPart: posts.map((p) => ({
     '@type': 'BlogPosting',
     headline: p.title,
     datePublished: p.pubDate.toISOString(),
-    url: new URL(L(`/blog/${p.slug}`), Astro.site).href,
+    url: postUrl(p.slug),
   })),
 };
 ---

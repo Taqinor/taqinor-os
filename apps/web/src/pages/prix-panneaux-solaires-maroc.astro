@@ -59,6 +59,7 @@ const jsonLd = {
   headline: 'Prix des panneaux solaires au Maroc : fourchettes indicatives par puissance',
   description: 'Combien coûte une installation solaire clé-en-main au Maroc, par puissance (kWc), avec les surcoûts de toiture, batterie et TVA — fourchettes indicatives, revues chaque année.',
   image: schemaImageUrl,
+  dateModified: verifiedDate.toISOString().slice(0, 10),
   about: { '@type': 'Thing', name: 'Prix installation solaire Maroc' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },

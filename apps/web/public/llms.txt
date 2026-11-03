@@ -27,7 +27,53 @@
 - [Blog](https://taqinor.ma/blog/): articles de fond sur le solaire au Maroc.
 - [FAQ](https://taqinor.ma/faq/): questions fréquentes.
 - [Contact](https://taqinor.ma/contact/): prise de contact.
+- [Subvention et aides](https://taqinor.ma/subvention-panneaux-solaires-maroc/): ce qui existe (agricole FDA, tarif ANRE MT/HT), aucune aide pour un particulier.
+- [Kit solaire ou sur mesure](https://taqinor.ma/kit-solaire-maroc/): ce qu'un kit n'inclut pas.
+- [Lire et comparer deux devis](https://taqinor.ma/devis-panneaux-solaires-maroc/): tableau d'inclusions ligne à ligne.
 - [Sitemap](https://taqinor.ma/sitemap.xml): index complet des pages publiques.
+
+## English (key pages, /en/)
+
+- [Home](https://taqinor.ma/en/): Taqinor and its services.
+- [Our solutions](https://taqinor.ma/en/nos-solutions/): overview of the solar offer.
+- [Residential](https://taqinor.ma/en/r%C3%A9sidentiel/): solar installations for homeowners.
+- [Business](https://taqinor.ma/en/professionnel/): commercial and industrial solar.
+- [Solar pumping](https://taqinor.ma/en/pompage-solaire/): solar-powered agricultural pumping.
+- [Batteries & storage](https://taqinor.ma/en/batteries-stockage/): energy storage solutions.
+- [Equipment](https://taqinor.ma/en/%C3%A9quipement/): panels, inverters and batteries offered.
+- [Maintenance & monitoring](https://taqinor.ma/en/maintenance-monitoring/): follow-up after installation.
+- [Financing](https://taqinor.ma/en/financement/): financing options for projects.
+- [Warranties](https://taqinor.ma/en/garanties/): manufacturer and installer warranties.
+- [Law 82-21](https://taqinor.ma/en/loi-82-21/): the self-generation framework in Morocco.
+- [Article 33 regularisation](https://taqinor.ma/en/regularization-article-33/): bringing existing installations into compliance.
+- [Solar panel prices in Morocco](https://taqinor.ma/en/prix-panneaux-solaires-maroc/): indicative brackets and what drives them.
+- [Guides](https://taqinor.ma/en/guides/): practical solar guides.
+- [Blog](https://taqinor.ma/en/blog/): in-depth articles on solar in Morocco.
+- [FAQ](https://taqinor.ma/en/faq/): frequently asked questions.
+- [Subsidies and aid](https://taqinor.ma/en/subvention-panneaux-solaires-maroc/): what exists and what does not.
+- [Contact](https://taqinor.ma/en/contact/): get in touch.
+
+## العربية (الصفحات الرئيسية، /ar/)
+
+- [الرئيسية](https://taqinor.ma/ar/): تقديم Taqinor وخدماتها.
+- [حلولنا](https://taqinor.ma/ar/nos-solutions/): نظرة عامة على العرض الشمسي.
+- [السكني](https://taqinor.ma/ar/r%C3%A9sidentiel/): تركيب الطاقة الشمسية للأفراد.
+- [المهنيون](https://taqinor.ma/ar/professionnel/): الطاقة الشمسية للقطاعين الصناعي والتجاري.
+- [الضخ الشمسي](https://taqinor.ma/ar/pompage-solaire/): الضخ الفلاحي بالطاقة الشمسية.
+- [البطاريات والتخزين](https://taqinor.ma/ar/batteries-stockage/): حلول تخزين الطاقة.
+- [التجهيزات](https://taqinor.ma/ar/%C3%A9quipement/): الألواح والعاكسات والبطاريات المقترحة.
+- [الصيانة والمراقبة](https://taqinor.ma/ar/maintenance-monitoring/): المتابعة بعد التركيب.
+- [التمويل](https://taqinor.ma/ar/financement/): خيارات تمويل المشاريع.
+- [الضمانات](https://taqinor.ma/ar/garanties/): ضمانات الصانع والمُركِّب.
+- [القانون 82-21](https://taqinor.ma/ar/loi-82-21/): إطار الإنتاج الذاتي للكهرباء بالمغرب.
+- [تسوية المادة 33](https://taqinor.ma/ar/regularization-article-33/): مطابقة التركيبات القائمة.
+- [أسعار الألواح الشمسية بالمغرب](https://taqinor.ma/ar/prix-panneaux-solaires-maroc/): هوامش استرشادية وما يحدّدها.
+- [الأدلّة](https://taqinor.ma/ar/guides/): أدلّة عملية حول الطاقة الشمسية.
+- [المدوّنة](https://taqinor.ma/ar/blog/): مقالات معمّقة حول الطاقة الشمسية بالمغرب.
+- [الأسئلة الشائعة](https://taqinor.ma/ar/faq/): الأسئلة المتكرّرة.
+- [الدعم والمساعدات](https://taqinor.ma/ar/subvention-panneaux-solaires-maroc/): ما هو موجود وما ليس موجوداً.
+- [مقارنة عرضين](https://taqinor.ma/ar/devis-panneaux-solaires-maroc/): جدول المشمولات سطراً بسطر.
+- [اتصل بنا](https://taqinor.ma/ar/contact/): تواصل معنا.
 
 ## Notes pour les agents IA
 

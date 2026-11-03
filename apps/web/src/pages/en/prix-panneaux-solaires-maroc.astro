@@ -55,6 +55,7 @@ const jsonLd = {
   headline: 'Solar panel prices in Morocco: indicative brackets by power',
   description: 'How much does a turnkey solar installation cost in Morocco, by power (kWc), with roof, battery and VAT surcharges — indicative brackets, reviewed every year.',
   image: schemaImageUrl,
+  dateModified: verifiedDate.toISOString().slice(0, 10),
   about: { '@type': 'Thing', name: 'Solar installation price Morocco' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },

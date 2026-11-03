@@ -83,19 +83,6 @@ const jsonLd = {
     'شحن سيارة كهربائية على فائضكم الشمسي الخاص بالمغرب: تكملة يومية مُحدَّدة المقاس حسب كيلومتراتكم، اختيار محطة 7/11/22 kW (أحادي أو ثلاثي الطور)، شحن على الفائض أو عبر بطارية منزلية، كل ذلك مؤسَّس على الاستهلاك الذاتي وفق القانون 82-21.',
 };
 
-const breadcrumbJsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'BreadcrumbList',
-  itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'الرئيسية', item: 'https://taqinor.ma/ar' },
-    {
-      '@type': 'ListItem',
-      position: 2,
-      name: 'شحن السيارة الكهربائية بالطاقة الشمسية',
-      item: 'https://taqinor.ma/ar/recharge-voiture-electrique-solaire',
-    },
-  ],
-};
 ---
 
 <Layout
@@ -105,7 +92,6 @@ const breadcrumbJsonLd = {
 >
   <div class="v2">
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-    <script type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
 
     <V2Enhance />
     <Article33Ribbon />

@@ -15,6 +15,7 @@
  */
 import { getCollection } from 'astro:content';
 import Layout from '../../layouts/Layout.astro';
+import { canonicalUrl } from '../../lib/canonicalUrl';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -46,12 +47,12 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'CollectionPage',
   name: 'Blog Taqinor — actualités & retours de terrain',
-  url: new URL('/blog', Astro.site).href,
+  url: canonicalUrl('/blog', Astro.site),
   hasPart: posts.map((p) => ({
     '@type': 'BlogPosting',
     headline: p.data.title,
     datePublished: p.data.pubDate.toISOString(),
-    url: new URL(`/blog/${p.id}`, Astro.site).href,
+    url: canonicalUrl(`/blog/${p.id}`, Astro.site),
   })),
 };
 ---
