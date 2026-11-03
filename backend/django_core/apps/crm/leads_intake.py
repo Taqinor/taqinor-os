@@ -13,6 +13,8 @@ from .clients_identite import _email_identite
 from .fiche_funnel import _STAGE_CONTACTED, _rang_funnel, appliquer_stage_lead
 from .leads_attribution import default_responsable_for
 from .leads_consentement import (
+    CONSENT_SOURCE_EVENEMENT,
+    CONSENT_SOURCE_LIVECHAT,
     BASE_LEGALE_NON_COLLECTEE,
     BASE_LEGALE_SOLLICITATION,
     CONSENT_SOURCE_DOCUMENT,
@@ -349,6 +351,9 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
             **extra,
         )
         activity.log_creation(lead, None)
+        enregistrer_base_legale_lead(  # ACVI18
+            lead, source=CONSENT_SOURCE_LIVECHAT,
+            base_legale=BASE_LEGALE_SOLLICITATION)
         try:
             notify_new_lead(lead)
         except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
@@ -554,6 +559,9 @@ def create_lead_from_evenement_marketing(
             **extra,
         )
         activity.log_creation(lead, None)
+        enregistrer_base_legale_lead(  # ACVI18
+            lead, source=CONSENT_SOURCE_EVENEMENT,
+            base_legale=BASE_LEGALE_NON_COLLECTEE)
         # MRY6 — un inscrit d'événement marketing est une demande réelle.
         demarrer_cadence_contact(lead, origine='evenement_marketing')
     else:

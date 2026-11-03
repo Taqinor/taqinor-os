@@ -77,7 +77,9 @@ from .cadence_reperes import (
     annuler_etapes_moteur_ouvertes,
     prefixe_activite_touche,
 )
-from .leads_consentement import _ecrire_registre_contact
+from .leads_consentement import (
+    BASE_LEGALE_NON_COLLECTEE, CONSENT_SOURCE_PROPRIETAIRE,
+    _ecrire_registre_contact, enregistrer_base_legale_lead)
 from .leads_doublons import find_duplicates_by_contact, normalize_phone
 
 logger = logging.getLogger(__name__)
@@ -1870,6 +1872,9 @@ def creer_lead_proprietaire(locataire, user, donnees, *, queryset=None):
                 setattr(proprietaire, champ, getattr(locataire, champ, None))
             proprietaire.save()
             activity.log_creation(proprietaire, user)
+            enregistrer_base_legale_lead(  # ACVI18
+                proprietaire, source=CONSENT_SOURCE_PROPRIETAIRE,
+                base_legale=BASE_LEGALE_NON_COLLECTEE)
         else:
             proprietaire = existant
         nom_locataire = ' '.join(

@@ -121,6 +121,33 @@ class SaisieManuelleTests(_Base):
 class BasesLegalesTests(_Base):
     slug = 'cad90-bases'
 
+    def test_proprietaire_livechat_evenement_tracent_leur_base(self):
+        # ACVI18 — chaque création écrit une entrée, granted false.
+        from apps.crm.cadence_reponses import creer_lead_proprietaire
+        from apps.crm.leads_intake import (
+            create_lead_from_evenement_marketing, create_lead_from_livechat)
+        locataire = Lead.objects.create(
+            company=self.company, nom='Locataire', telephone='0600000020')
+        proprietaire, cree = creer_lead_proprietaire(
+            locataire, None, {'nom': 'P', 'telephone': '0661000003'})
+        self.assertTrue(cree)
+        livechat = create_lead_from_livechat(
+            company=self.company, nom='Chat', telephone='0661000004')
+        evenement = create_lead_from_evenement_marketing(
+            company=self.company, nom='Salon', telephone='0661000005')
+        for lead, source, base in (
+                (proprietaire, leads_consentement.CONSENT_SOURCE_PROPRIETAIRE,
+                 leads_consentement.BASE_LEGALE_NON_COLLECTEE),
+                (livechat, leads_consentement.CONSENT_SOURCE_LIVECHAT,
+                 leads_consentement.BASE_LEGALE_SOLLICITATION),
+                (evenement, leads_consentement.CONSENT_SOURCE_EVENEMENT,
+                 leads_consentement.BASE_LEGALE_NON_COLLECTEE)):
+            with self.subTest(source=source):
+                entree = self._entrees(lead.telephone)[0]
+                self.assertFalse(entree.granted)
+                self.assertIn(source, entree.source)
+                self.assertIn(base[:30], entree.source)
+
     def test_donnees_non_collectees_citent_art5_3_et_le_decret(self):
         lead = Lead.objects.create(
             company=self.company, nom='Import', telephone='0600000013')
