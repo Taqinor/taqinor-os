@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import uuid
 
+from core import monitoring
+
 
 def _is_valid_incoming_id(raw: str) -> bool:
     if not raw:
@@ -36,7 +38,14 @@ class RequestIdMiddleware:
         incoming = request.META.get('HTTP_X_REQUEST_ID', '').strip()
         request_id = incoming if _is_valid_incoming_id(incoming) else uuid.uuid4().hex
         request.request_id = request_id
-        response = self.get_response(request)
+        # BPQ9 — le même identifiant tague l'évènement Sentry d'une 500 levée
+        # dans la vue ; retiré en sortie (même sur exception) pour qu'un worker
+        # ne le prête jamais à la requête suivante.
+        monitoring.bind_request_id(request_id)
+        try:
+            response = self.get_response(request)
+        finally:
+            monitoring.bind_request_id(None)
         response['X-Request-Id'] = request_id
         return response
 
