@@ -29,7 +29,7 @@ APPS = ROOT / "backend" / "django_core" / "apps"
 SOURCE_UNIQUE = "backend/django_core/apps/crm/controle_suivi.py"
 
 CHAMPS = {"due_date", "due_at"}
-KEYWORDS = {"due_date__lt", "due_at__lt"}
+KEYWORDS = {"due_date__lt", "due_at__lt", "relance_date__lt"}
 CHAMPS_COMPARES = CHAMPS | {"relance_date"}
 MARQUEUR = "RelanceEtape"
 
@@ -66,8 +66,22 @@ def _est_test(path: Path) -> bool:
             or n.startswith(("test_", "tests_")) or n == "tests.py")
 
 
-def _champ(node) -> bool:
+def _alias_cles(fonction) -> set:
+    """ALEA66 — noms affectés dans la fonction depuis un indice de dict d'un
+    champ comparé (``due = touche and touche['due_date']``)."""
+    noms = set()
+    for n in ast.walk(fonction):
+        if isinstance(n, ast.Assign) and any(
+                isinstance(x, ast.Subscript) and _champ(x)
+                for x in ast.walk(n.value)):
+            noms.update(t.id for t in n.targets if isinstance(t, ast.Name))
+    return noms
+
+
+def _champ(node, alias=frozenset()) -> bool:
     """``x.due_date`` / ``x.relance_date`` ou ``x['due_date']`` (clé constante, ALEA60)."""
+    if isinstance(node, ast.Name):
+        return node.id in alias
     if isinstance(node, ast.Attribute):
         return node.attr in CHAMPS_COMPARES
     return (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
@@ -84,10 +98,12 @@ def analyser_source(source: str):
     tree = ast.parse(source)
     out = []
 
-    def visite(node, pile):
+    def visite(node, pile, alias=frozenset()):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
                              ast.ClassDef)):
             pile = pile + [node.name]
+            if not isinstance(node, ast.ClassDef):
+                alias = frozenset(_alias_cles(node))
         if isinstance(
     node, ast.keyword) and node.arg in KEYWORDS and not (
         ast.unparse(
@@ -97,12 +113,12 @@ def analyser_source(source: str):
         elif isinstance(node, ast.Compare):
             termes = [node.left] + list(node.comparators)
             for i, op in enumerate(node.ops):
-                if (isinstance(op, ast.Lt) and (_champ(termes[i]) or _champ(termes[i + 1]))
+                if (isinstance(op, ast.Lt) and (_champ(termes[i], alias) or _champ(termes[i + 1], alias))
                         and not (_via_seuil(termes[i]) or _via_seuil(termes[i + 1]))):
                     out.append((node.lineno, ".".join(pile), "due_* <"))
                     break
         for enfant in ast.iter_child_nodes(node):
-            visite(enfant, pile)
+            visite(enfant, pile, alias)
 
     visite(tree, [])
     return out
