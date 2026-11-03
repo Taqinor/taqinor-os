@@ -949,7 +949,7 @@ def _motif_arret_lot(company, maintenant, debut, fin):
         etapes = list(
             RelanceEtape.objects
             .filter(company=company, cadence='contact', lead__is_archived=False,
-                    due_date__gte=debut.date(), due_date__lt=fin.date())
+                    due_date__range=(debut.date(), fin.date() - datetime.timedelta(days=1)))
             .exclude(statut=RelanceEtape.Statut.ANNULEE).select_related('lead'))
         ponctualite = _a_temps_pct(
             etapes, today, cadence_absence.couverture(company, debut.date(), today),
