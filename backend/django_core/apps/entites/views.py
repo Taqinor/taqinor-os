@@ -81,6 +81,10 @@ class EntiteViewSet(CompanyScopedModelViewSet):
     serializer_class = EntiteSerializer
     permission_classes = [IsAdministrateur]
     parser_classes = [JSONParser]
+    # NTADM1/11 — jamais de suppression : ``desactiver/`` est le seul retrait. Un DELETE
+    # 2xx suivi d'un GET 200 était un « use after free » (api-fuzz-full 41296444614) ;
+    # aucun écran ne l'appelait (``entitesApi.js``).
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     queryset = Entite.objects.all()
 
     def get_queryset(self):
@@ -146,10 +150,6 @@ class EntiteViewSet(CompanyScopedModelViewSet):
                 ancien_parent.nom if ancien_parent else '',
                 instance.parent.nom if instance.parent else '',
                 user=self.request.user, field_label='Entité parente')
-
-    def perform_destroy(self, instance):
-        # NTADM1/11 — jamais de suppression dure : DELETE == désactivation.
-        services.desactiver_entite(instance, user=self.request.user)
 
     @extend_schema(request=None, responses=EntiteSerializer)
     @action(detail=True, methods=['post'])

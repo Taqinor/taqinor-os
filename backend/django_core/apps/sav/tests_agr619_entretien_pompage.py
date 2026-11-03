@@ -36,6 +36,16 @@ class EntretienPompageTests(TestCase):
         return MaintenanceChecklistTemplate.objects.filter(
             company=self.co, items__cle=marqueur)
 
+    def test_supprimer_un_modele_protege_409(self):
+        """ERR-ENF11 (cron 41296444614) : DELETE conforme, état opposé = 409."""
+        self.api.get(URL)
+        modele = self._modeles().get()
+        modele.protege = True
+        modele.save(update_fields=['protege'])
+        r = self.api.delete(f'{URL}{modele.pk}/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertTrue(self._modeles().exists())
+
     def test_cree_une_seule_fois_a_l_affichage(self):
         r = self.api.get(URL)
         self.assertEqual(r.status_code, 200)

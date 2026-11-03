@@ -19,6 +19,7 @@ from rest_framework import serializers
 from rest_framework.fields import SkipField, empty
 
 from core.champs_stricts import QUANTITE_MAX, DecimalSouple
+from .schema_contraintes import MOTIF_NON_BLANC
 from .utils.params import MOTIF_QUANTITE_COMPTEE
 from core.serializers import ChampsTexteBooleenStricts
 
@@ -297,7 +298,7 @@ class _EmplacementTiersNomme(OpenApiSerializerExtension):
             return {**schema, 'anyOf': [
                 {'properties': {'type_proprietaire': {'anyOf': [{'enum': [interne]}]}}},
                 {'properties': {'type_proprietaire': {'anyOf': [{'enum': tiers}]},
-                                'tiers_nom': {'type': 'string', 'pattern': r'\S'}},
+                                'tiers_nom': {'type': 'string', 'pattern': MOTIF_NON_BLANC}},
                  'required': ['type_proprietaire']},
             ]}
         # Enums ENVELOPPÉS (``anyOf`` de propriété) : le post-traitement des
@@ -306,7 +307,7 @@ class _EmplacementTiersNomme(OpenApiSerializerExtension):
         return {**schema, 'anyOf': [
             {'properties': {'type_proprietaire': {'anyOf': [{'enum': [interne]}]}}},
             {'properties': {'type_proprietaire': {'anyOf': [{'enum': tiers}]},
-                            'tiers_nom': {'type': 'string', 'pattern': r'\S'}},
+                            'tiers_nom': {'type': 'string', 'pattern': MOTIF_NON_BLANC}},
              'required': ['type_proprietaire', 'tiers_nom']},
         ]}
 
