@@ -1,0 +1,26 @@
+---
+// Bloc partagé (garde ACAL345).
+---
+<div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-clim" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Climatisation" data-ar="تكييف الهواء">Climatisation</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Nombre de pièces/unités climatisées"
+                      data-ar="عدد الغرف/الوحدات المكيّفة">
+                      Nombre de pièces/unités climatisées
+                    </label>
+                    <input id="mt-equip-clim-pieces" type="number" min="0" step="1" inputmode="numeric"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — puissance réelle (facultative) : remplace
+                         l'estimation par nombre de pièces si connue. -->
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance totale réelle (kW, facultatif)"
+                      data-ar="القدرة الإجمالية الفعلية (كيلوواط، اختياري)">
+                      Puissance totale réelle (kW, facultatif)
+                    </label>
+<slot />
+</div>
+</div>

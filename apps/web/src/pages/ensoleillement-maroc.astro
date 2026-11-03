@@ -20,6 +20,7 @@
  * `src/i18n/pages.ts` — l'orchestrateur fera ce câblage dans une passe
  * séparée.
  */
+import PourAllerPlusLoin from '../components/blocs/PourAllerPlusLoin.astro';
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
@@ -155,17 +156,12 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
-        <RelatedLinks links={[
+    <PourAllerPlusLoin links={[
           { href: '/guides/orientation-inclinaison-ombrage/', label: 'Guide orientation, inclinaison, ombrage' },
           { href: '/guides/combien-de-panneaux-pour-ma-maison/', label: 'Combien de panneaux pour ma maison' },
           { href: '/production-mesuree/', label: 'Production mesurée (nos chantiers réels)' },
           { href: '/realisations/', label: 'Nos réalisations' },
         ]} />
-      </div>
-    </section>
 
     <CtaBand title="Votre toit a sa propre orientation. Lancez le diagnostic gratuit pour le savoir." href="/devis/mon-toit/" />
 

@@ -24,6 +24,7 @@
  * W245 — noindex removed (this is the site's primary conversion CTA, not a
  * private tunnel); real landing-page SEO (meta description, OG, hreflang).
  */
+import DevisMonToitContinuer from '../../../components/blocs/DevisMonToitContinuer.astro';
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
 // RWEB17-M13 — table anglaise des tranches, UNE source pour le serveur et le script.
@@ -232,13 +233,10 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
         </fieldset>
 
         <!-- WAUD43 — la carte est facultative : « Continuer » reste sous les profils. -->
-        <div class="mt-5 flex justify-end">
-          <button type="button" id="mt-next-0"
-            class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+        <DevisMonToitContinuer>
             <span>Continue</span>
             <DevisMonToitBloc988F />
-          </button>
-        </div>
+        </DevisMonToitContinuer>
 
         <!-- WJ68/QX — the company fields (name / facility type / site count)
              moved to the PROFESSIONAL sub-panel of step 2 ("Your context"

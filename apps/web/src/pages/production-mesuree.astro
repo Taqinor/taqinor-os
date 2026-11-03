@@ -24,6 +24,9 @@
  * depuis d'autres pages ni enregistrée dans `src/i18n/pages.ts` — l'orchestrateur
  * fera ce câblage dans une passe séparée.
  */
+import PourAllerPlusLoin from '../components/blocs/PourAllerPlusLoin.astro';
+import LienRealisationsBilan from '../components/blocs/LienRealisationsBilan.astro';
+import LigneMateriel from '../components/blocs/LigneMateriel.astro';
 import Layout from '../layouts/Layout.astro';
 import { impactFigures } from '../lib/impactFigures';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -122,31 +125,19 @@ const jsonLd = {
         </p>
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {REALISATIONS.map((r, i) => (
-            <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
-              <span class="text-sm font-semibold">{[r.ville, r.kwc, `réf. ${r.ref}`, r.date].filter(Boolean).join(' · ')}</span>
-              <span class="whitespace-normal text-right text-sm text-azur-600">
-                {[r.onduleur, r.batterie].filter(Boolean).join(' · ') || r.panneaux}
-              </span>
-            </div>
+            <LigneMateriel r={r} i={i} titre={[r.ville, r.kwc, `réf. ${r.ref}`, r.date].filter(Boolean).join(' · ')} />
           ))}
         </div>
-        <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          <a href="/realisations/" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir nos dernières réalisations en détail →</a>
-        </p>
+        <LienRealisationsBilan />
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
-        <RelatedLinks links={[
+    <PourAllerPlusLoin links={[
           { href: '/realisations/', label: 'Nos réalisations' },
           { href: '/impact-taqinor/', label: 'Impact Taqinor (CO2 évité)' },
           { href: '/ensoleillement-maroc/', label: 'Productible solaire par ville' },
           { href: '/maintenance-monitoring/', label: 'Maintenance & monitoring' },
         ]} />
-      </div>
-    </section>
 
     <CtaBand title="Un projet qui pourrait s'ajouter à ce compteur ? Lancez le diagnostic gratuit." href="/devis/mon-toit/" />
 

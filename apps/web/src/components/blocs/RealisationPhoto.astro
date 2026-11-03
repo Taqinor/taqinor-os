@@ -1,0 +1,19 @@
+---
+// Bloc partagé (garde ACAL345).
+import Picture from '../Picture.astro';
+import PhotoCaption from '../PhotoCaption.astro';
+const { r, alt, caption } = Astro.props as Record<string, any>;
+---
+<Picture
+  name={r.photos[0].name}
+  alt={alt}
+  widths={r.photos[0].widths}
+  ratio={3 / 2}
+  sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+  style={(r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : undefined}
+  class="photo-card-img aspect-[3/2] w-full object-cover"
+/>
+<PhotoCaption
+  caption={caption}
+  detail={r.panneaux}
+/>

@@ -1,0 +1,18 @@
+---
+// Carte de réalisation avec son bouton lightbox, partagée FR/EN/AR (garde ACAL345).
+const { i, src, alt, label, aria } = Astro.props as Record<string, any>;
+---
+<div class="v2-rise relative" style={`--v2-i:${i}`}>
+  <button
+    type="button"
+    class="photo-card-btn cine-card group relative block w-full overflow-hidden text-left"
+    data-lightbox-trigger
+    data-lightbox-src={src}
+    data-lightbox-alt={alt}
+    data-lightbox-label={label}
+    aria-label={aria}
+  >
+    <slot name="image" />
+  </button>
+  <slot />
+</div>

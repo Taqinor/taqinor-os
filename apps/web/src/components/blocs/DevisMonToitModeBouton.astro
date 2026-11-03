@@ -1,0 +1,9 @@
+---
+// Carte de profil FR/AR (garde ACAL345).
+const { m, cls } = Astro.props as Record<string, any>;
+---
+<button type="button" class={cls}
+                data-mode={m.id} aria-pressed="false" aria-describedby="mt-mode-err">
+                <span class="text-sm font-semibold text-white" data-i18n data-fr={m.fr} data-ar={m.ar}>{m.fr}</span>
+                <span class="text-xs text-lune-faint" data-i18n data-fr={m.desc_fr} data-ar={m.desc_ar}>{m.desc_fr}</span>
+              </button>

@@ -19,6 +19,7 @@
  * الصفحة تُبلّغ الآن بالرمز الحقيقي (عبر المستشار أو فضاء العميل)، لا
  * برمز يختاره المستخدم بنفسه.
  */
+import PourAllerPlusLoin from '../../components/blocs/PourAllerPlusLoin.astro';
 import Layout from '../../layouts/Layout.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -194,16 +195,11 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">لمزيد من المعلومات</p>
-        <RelatedLinks links={[
+    <PourAllerPlusLoin kicker="لمزيد من المعلومات" links={[
           { href: L('/devis/mon-toit'), label: 'ابدأ تشخيصاً' },
           { href: L('/realisations'), label: 'إنجازاتنا' },
           { href: L('/à-propos'), label: 'من نحن' },
         ]} />
-      </div>
-    </section>
 
     <StickyCta />
   </div>

@@ -29,6 +29,7 @@
  * Cadrage opt-in numérique : le parrainage se fait par lien partagé
  * (WhatsApp, SMS, réseaux) — jamais de démarchage physique porte-à-porte.
  */
+import PourAllerPlusLoin from '../components/blocs/PourAllerPlusLoin.astro';
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
@@ -196,16 +197,11 @@ import ParrainageDivD63B from '../components/blocs/ParrainageDivD63B.astro';
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
-        <RelatedLinks links={[
+    <PourAllerPlusLoin links={[
           { href: '/devis/mon-toit/', label: 'Lancer un diagnostic' },
           { href: '/realisations/', label: 'Nos réalisations' },
           { href: '/à-propos/', label: 'À propos de Taqinor' },
         ]} />
-      </div>
-    </section>
 
     <StickyCta />
   </div>

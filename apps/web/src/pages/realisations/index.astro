@@ -17,6 +17,8 @@
  *        vérifié, à faire ressortir pour les requêtes du type « installation
  *        panneaux solaires casablanca avis »).
  */
+import RealisationGrille from '../../components/blocs/RealisationGrille.astro';
+import RealisationCarte from '../../components/blocs/RealisationCarte.astro';
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
@@ -125,20 +127,10 @@ import PourquoiTaqinorBlocA65D from '../../components/blocs/PourquoiTaqinorBlocA
     </section>
 
     <!-- W178 : galerie avec lightbox — data-lightbox-gallery désigne le groupe -->
-    <section class="px-4 pb-24 sm:pb-32">
-      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger data-lightbox-gallery>
+    <RealisationGrille>
         {REALISATIONS.map((r, i) => (
-          <div class="v2-rise relative" style={`--v2-i:${i}`}>
-            <!-- Bouton lightbox sur l'image -->
-            <button
-              type="button"
-              class="photo-card-btn cine-card group relative block w-full overflow-hidden text-left"
-              data-lightbox-trigger
-              data-lightbox-src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`}
-              data-lightbox-alt={r.photos[0].alt}
-              data-lightbox-label={[r.ville, r.kwc, r.date].filter(Boolean).join(' · ')}
-              aria-label={`Agrandir la photo : ${r.photos[0].alt}`}
-            >
+          <RealisationCarte i={i} src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`} alt={r.photos[0].alt} label={[r.ville, r.kwc, r.date].filter(Boolean).join(' · ')} aria={`Agrandir la photo : ${r.photos[0].alt}`}>
+              <Fragment slot="image">
               {/* W180 — ratio=3/2 aligné sur l'aspect-[3/2] CSS : les photos
                   proviennent de ratio variés (16/9, 4/3, 1:1) mais sont toutes
                   recadrées en 3/2 par le CSS. Le ratio déclaré doit correspondre
@@ -164,7 +156,7 @@ import PourquoiTaqinorBlocA65D from '../../components/blocs/PourquoiTaqinorBlocA
                 caption={standardCaption(r)}
                 detail={r.panneaux}
               />
-            </button>
+              </Fragment>
             <!-- W204 — lien étude de cas avec nudge flèche (group + motion-safe) -->
             <a
               href={`/realisations/${r.slug}/`}
@@ -172,10 +164,9 @@ import PourquoiTaqinorBlocA65D from '../../components/blocs/PourquoiTaqinorBlocA
             >
               Voir l'étude de cas <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
             </a>
-          </div>
+          </RealisationCarte>
         ))}
-      </div>
-    </section>
+    </RealisationGrille>
 
     {/* W281 — film de chantier réel, sous la galerie du hub de preuve dédié */}
     <VideoChantier />

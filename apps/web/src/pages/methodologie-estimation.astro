@@ -27,6 +27,7 @@
  * éditables de cette tâche). Elle est liée depuis mon-toit.astro (FR/EN/AR) et
  * la proposition, comme demandé.
  */
+import PourAllerPlusLoin from '../components/blocs/PourAllerPlusLoin.astro';
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
@@ -174,17 +175,12 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
-        <RelatedLinks links={[
+    <PourAllerPlusLoin links={[
           { href: '/devis/mon-toit/', label: "Lancer l'estimation instantanée" },
           { href: '/ensoleillement-maroc/', label: 'Productible solaire par ville (PVGIS)' },
           { href: '/production-mesuree/', label: 'Production mesurée (nos chantiers réels)' },
           { href: '/loi-82-21/', label: 'Loi 82-21 : les 3 régimes' },
         ]} />
-      </div>
-    </section>
 
     <CtaBand title="Voyez votre propre fourchette, calculée selon cette même méthode." href="/devis/mon-toit/" />
 

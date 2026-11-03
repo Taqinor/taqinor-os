@@ -11,6 +11,7 @@
  * in this task's editable file list). The route itself renders correctly and
  * is a real, indexable page, linked from mon-toit.astro and the proposal.
  */
+import PourAllerPlusLoin from '../../components/blocs/PourAllerPlusLoin.astro';
 import Layout from '../../layouts/Layout.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -159,17 +160,12 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="section-tight px-4 pb-20 sm:pb-24">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
-        <RelatedLinks links={[
+    <PourAllerPlusLoin kicker="To go further" links={[
           { href: devisHref, label: 'Start the instant estimate' },
           { href: L('/ensoleillement-maroc'), label: 'Solar yield by city (PVGIS)' },
           { href: L('/production-mesuree'), label: 'Measured production (our real projects)' },
           { href: L('/loi-82-21'), label: 'Law 82-21: the 3 regimes' },
         ]} />
-      </div>
-    </section>
 
     <CtaBand title="See your own range, calculated using this same method." href={devisHref} />
 
