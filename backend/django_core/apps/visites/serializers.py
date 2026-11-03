@@ -96,7 +96,10 @@ class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, se
             from . import services
 
             message = services.erreur_commercial(value, company.id)
-            if message:
+            # ACVI71 — à la création, un compte désactivé est rapporté par
+            # ``planifier_visite`` AVEC la garde de la date (les deux à la fois).
+            if message and (self.instance is not None
+                            or value.company_id != company.id):
                 raise serializers.ValidationError(message)
         return value
 
