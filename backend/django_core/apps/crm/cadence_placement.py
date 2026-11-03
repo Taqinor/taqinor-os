@@ -876,6 +876,8 @@ def _placer_anciens_leads_sans_cache(company, user, *, apply=False,
     rapport = _rapport_placement(
         decisions, ignores, total, apply=apply, applique=0, erreurs=0,
         restants=len(decisions))
+    from .fiche_funnel import appels_du_gabarit_contact
+    rapport['appels_contact'] = appels_du_gabarit_contact(company.pk)
     if not apply:
         return rapport
     applique, erreurs = _executer_placements(
