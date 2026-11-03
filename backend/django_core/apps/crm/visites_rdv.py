@@ -135,8 +135,10 @@ def build_appointment_confirmation_whatsapp(request, appointment):
 
     from apps.ventes.utils.whatsapp import build_wa_url
 
+    from .cadence_temps import numero_joignable
+
     lead = appointment.lead
-    phone = lead.whatsapp or lead.telephone
+    phone = numero_joignable(lead)  # ACVI50
     nom = f'{lead.prenom or ""} {lead.nom or ""}'.strip() or (lead.nom or '')
     try:
         local_dt = appointment.scheduled_at.astimezone(

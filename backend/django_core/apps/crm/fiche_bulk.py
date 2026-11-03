@@ -220,7 +220,7 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
     plafond et trace CADV10. Sortie de ``apply_bulk_action`` (C20)."""
     from apps.ventes.utils.whatsapp import build_wa_url
 
-    from .cadence_messages import _crochets_a_completer, refus_rendu_whatsapp
+    from .cadence_messages import _crochets_a_completer, numero_joignable, refus_rendu_whatsapp
     from .serializers import pii_masquee_pour
     template_id = params.get('template_id')
     body_tpl = params.get('body') or ''
@@ -250,7 +250,7 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
         if reactivation and lead.id not in reactivation['membres']:
             skip(lead, 'hors seau')
             continue
-        phone = lead.whatsapp or lead.telephone
+        phone = numero_joignable(lead)  # ACVI50
         if not phone:
             continue
         nouvelle = not (reactivation and lead.id in reactivation['deja'])

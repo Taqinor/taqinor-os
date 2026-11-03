@@ -300,8 +300,7 @@ def lead_brouillon_suivi(request, lead_id):
                  f'{_OBJECTIFS_BROUILLON[objectif][1]}')
     if canal == 'whatsapp':
         texte = _tronquer(texte, LONGUEUR_WHATSAPP)
-    telephone = '' if pii_masquee_pour(request.user) else (
-        lead.whatsapp or lead.telephone or '')
+    telephone = '' if pii_masquee_pour(request.user) else cm.numero_joignable(lead)  # ACVI50
     lien = (build_wa_url(telephone, texte)
             if canal == 'whatsapp' and telephone else None)
     return Response({

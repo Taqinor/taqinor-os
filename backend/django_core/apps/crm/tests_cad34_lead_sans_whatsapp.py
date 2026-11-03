@@ -148,6 +148,21 @@ class LeRepliSurLeTelephoneTests(_Base):
 
     slug = 'cad34-repli'
 
+    def test_le_rendu_prend_le_numero_de_la_garde(self):
+        # ACVI50 — la garde laisse partir la cadence : le rendu prend LE MÊME numéro.
+        from django.utils import timezone
+
+        from apps.crm.cadence_messages import message_pour_etape
+        from apps.crm.models import RelanceEtape
+
+        lead = self._lead(telephone='0612345678', whatsapp='12')
+        touche = RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=1,
+            canal=RelanceEtape.Canal.WHATSAPP, template_cle='identite',
+            due_at=timezone.now(), due_date=timezone.localdate())
+        rendu = message_pour_etape(touche)
+        self.assertTrue(rendu['wa_url'].startswith('https://wa.me/212612345678'))
+
     def test_un_champ_whatsapp_bancal_se_replie_sur_le_telephone(self):
         lead = self._lead(telephone=MOBILE, whatsapp='n/a')
         self.assertTrue(cadence_temps.numero_joignable(lead))
