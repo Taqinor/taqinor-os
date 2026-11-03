@@ -163,3 +163,25 @@ describe('FactureDetail — chaîne du solde (ASTK105)', () => {
     expect(valeur('Solde dû')).toMatch(/7\s?400,00/)
   })
 })
+
+describe('FacturesFournisseur — acomptes ouverts réservés à prix_achat_voir (ASTK255, rejeu)', () => {
+  it('un compte à rôle fin SANS prix_achat_voir ne demande pas les acomptes ouverts (403 évité)', async () => {
+    stockApi.acomptesFournisseurOuverts.mockClear()
+    const store = configureStore({
+      reducer: { auth: authReducer },
+      preloadedState: {
+        auth: { user: { id: 2 }, role: 'normal', role_nom: 'Commercial', permissions: ['achats_payer'], isAuthenticated: true, loading: false },
+      },
+    })
+    renderPage(store)
+    await screen.findByRole('grid', { name: 'Factures fournisseur' })
+    expect(stockApi.acomptesFournisseurOuverts).not.toHaveBeenCalled()
+  })
+
+  it('un compte avec prix_achat_voir (ou légacy sans codes) les demande toujours', async () => {
+    stockApi.acomptesFournisseurOuverts.mockClear()
+    renderPage()
+    await screen.findByRole('grid', { name: 'Factures fournisseur' })
+    await waitFor(() => expect(stockApi.acomptesFournisseurOuverts).toHaveBeenCalled())
+  })
+})
