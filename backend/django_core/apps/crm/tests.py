@@ -704,6 +704,18 @@ class TestLeadMerge(TestCase):
         self.assertEqual(self.survivor.stage, stages.SIGNED)
         emission.assert_called()
 
+    def test_un_patch_concurrent_survit_a_la_fusion(self):
+        # ACVI34 — instance chargée, puis PATCH concurrent d'un champ non fusionné.
+        from apps.crm.leads_fusion import merge_leads
+        Lead.objects.filter(pk=self.survivor.pk).update(ville='Fès')
+        self.survivor.refresh_from_db()
+        Lead.objects.filter(pk=self.survivor.pk).update(ville='Meknès')
+        merge_leads(self.survivor, [self.dup], self.user)
+        relu = Lead.objects.get(pk=self.survivor.pk)
+        self.assertEqual(relu.ville, 'Meknès')
+        self.assertEqual(relu.email, 'b@example.ma')
+        self.assertEqual(relu.email_normalise, self.dup.email_normalise)
+
     def test_merge_moves_devis_and_archives_absorbed(self):
         resp = self.api.post(
             f'/api/django/crm/leads/{self.survivor.id}/merge/',

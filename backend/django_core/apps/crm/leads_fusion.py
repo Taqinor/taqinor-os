@@ -175,6 +175,10 @@ def merge_leads(survivor, others, user):
         list(Lead.objects.select_for_update()
              .filter(pk__in=[survivor.pk] + [o.pk for o in others])
              .order_by('pk').values_list('pk', flat=True))
+        # ACVI34 — l'instance a été lue AVANT le verrou : relue, et l'écriture
+        # finale bornée aux champs comblés (patron CRX25).
+        survivor.refresh_from_db()
+        champs_ecrits = {'date_modification'}
         for absorbed in others:
             if (survivor.client_id and absorbed.client_id
                     and survivor.client_id != absorbed.client_id):
@@ -229,6 +233,7 @@ def merge_leads(survivor, others, user):
             # 5) Client : adopter celui de l'absorbé si le survivant n'en a pas.
             if not survivor.client_id and absorbed.client_id:
                 survivor.client = absorbed.client
+                champs_ecrits.add('client')
             # 6) Compléter les champs VIDES du survivant — ACRM13 : vide au
             # sens de ``_est_vide`` (un 0 saisi du survivant SURVIT).
             for field in _MERGE_FILL_FIELDS:
@@ -237,7 +242,8 @@ def merge_leads(survivor, others, user):
                     val = getattr(absorbed, field, None)
                     if not _est_vide(absorbed, field, val):
                         # AMET21 — une clé SAISIE du survivant n'est jamais remplacée.
-                        ecrire_si_libre(survivor, field, val, user=user)
+                        if ecrire_si_libre(survivor, field, val, user=user):
+                            champs_ecrits.add(field)
             # 7) Fusionner les tags (union).
             tags = set()
             for src in (survivor, absorbed):
@@ -247,6 +253,7 @@ def merge_leads(survivor, others, user):
                         tags.add(t)
             if tags:
                 survivor.tags = ', '.join(sorted(tags))[:500]
+                champs_ecrits.add('tags')
             # 8) Archiver l'absorbé (jamais supprimé).
             absorbed.is_archived = True
             absorbed.archived_by = user
@@ -279,7 +286,12 @@ def merge_leads(survivor, others, user):
                           f'{_nom_fiche_client(gardee)} (gardée) et '
                           f'{_nom_fiche_client(client)} ({devis_txt}) — à '
                           'fusionner (outil de fusion des clients).'))
-        survivor.save()
+        for source, derivee in (('telephone', 'phone_normalise'),
+                                ('email', 'email_normalise'),
+                                ('whatsapp', 'whatsapp_normalise')):
+            if source in champs_ecrits:
+                champs_ecrits.add(derivee)
+        survivor.save(update_fields=champs_ecrits)
         # ACVI33 — l'étape la plus avancée du groupe, par le point de passage
         # canonique (émission de ``lead_stage_changed``, crochet SIGNED).
         cible = stage_apres_fusion([survivor, *others])
