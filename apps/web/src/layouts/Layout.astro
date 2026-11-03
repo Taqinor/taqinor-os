@@ -4,6 +4,7 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ConsentBanner from '../components/ConsentBanner.astro';
 import ConsentExpiry from '../components/ConsentExpiry.astro';
+import Bidi from '../components/Bidi.astro';
 import MetaPixel from '../components/MetaPixel.astro';
 import GoogleTag from '../components/GoogleTag.astro';
 import { NAP, SAME_AS, LEGAL_IDENTITY } from '../lib/nap';
@@ -214,6 +215,8 @@ const jsonLd = {
          Réduit le FOUT sur le headline principal sans bloquer la bande passante
          critique (4G lent). Le subset latin.woff2 couvre le français. -->
     <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-latin.woff2" fetchpriority="low" crossorigin />
+    {/* WAUD44 — police arabe libre (OFL), auto-hébergée, préchargée sur /ar/ seulement. */}
+    {lang === 'ar' && <link rel="preload" as="font" type="font/woff2" href="/fonts/noto-sans-arabic-400.woff2" fetchpriority="low" crossorigin />}
     {/* WAUD79 — Hanken Grotesk porte le texte au-dessus du pli : son échange décale aussi. */}
     <link rel="preload" as="font" type="font/woff2" href="/fonts/hanken-latin.woff2" fetchpriority="low" crossorigin />
     {preloadHeroPoster && (
@@ -318,9 +321,10 @@ const jsonLd = {
     <!-- W216 — Lien d'évitement accessible : premier élément focusable du corps.
          Masqué visuellement jusqu'au focus clavier, puis affiché en brass. -->
     <a href="#main" class="skip-link">Aller au contenu</a>
-    <Header />
+    {lang === 'ar' ? <Bidi><Header /></Bidi> : <Header />}
     <main id="main">
-      <slot />
+      {/* WAUD44 — pages arabes : « 82-21 » et les montants ne se retournent plus (lib/bidi). */}
+      {lang === 'ar' ? <Bidi><slot /></Bidi> : <slot />}
     </main>
     {/* PV81 — pied de page réduit (documents privés tokenisés) : qui a
            envoyé, comment joindre, et les deux liens légaux obligatoires.
@@ -339,7 +343,7 @@ const jsonLd = {
         </p>
       </footer>
     ) : (
-      <Footer />
+      lang === 'ar' ? <Bidi><Footer /></Bidi> : <Footer />
     )}
     <!-- WB31 — Bandeau minimal de consentement analytics/tracking : fournit
          le signal `tq_consent` (localStorage) lu par la capture fbclid/UTM

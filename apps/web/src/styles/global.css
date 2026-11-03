@@ -87,6 +87,27 @@
   line-gap-override: 0%;
 }
 
+/* WAUD44 — Noto Sans Arabic (SIL OFL 1.1, public/fonts/noto-sans-arabic-OFL.txt), auto-hébergée :
+   aucune requête à un service externe. Ne se charge que sur un glyphe arabe (unicode-range). */
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/noto-sans-arabic-400.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF,
+    U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/noto-sans-arabic-700.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF,
+    U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+
 /* W215 — Métrique de repli pour Hanken Grotesk : Arial Regular. */
 @font-face {
   font-family: 'Hanken Fallback';
@@ -968,6 +989,11 @@ summary:focus-visible {
      uppercase/wide-tracking is semantically wrong for Arabic script. */
 
 /* — Tech-label: disable uppercase and wide tracking for Arabic ------------- */
+:root[lang='ar'] {
+  --font-sans: 'Hanken Grotesk', 'Noto Sans Arabic', 'Hanken Fallback', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Archivo', 'Noto Sans Arabic', 'Archivo Fallback', 'Hanken Grotesk', sans-serif;
+}
+
 [dir="rtl"] .tech-label {
   text-transform: none;
   letter-spacing: 0;
