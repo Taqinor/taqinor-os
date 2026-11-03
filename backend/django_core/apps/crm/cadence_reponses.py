@@ -59,6 +59,7 @@ from .cadence_plan import (
 )
 from .fiche_funnel import (
     CYCLES_STANDBY_MAX, ParcRefuse, avancer_stage_lead_vers, cycles_standby, parquer_lead,
+    reprendre_lead,
     poser_tag_lead, retirer_tag_lead,
 )
 from .cadence_messages import ETIQUETTES_RAISON_ATTENTE, PREFIXE_LIEN_LOCATAIRE, RAISONS_ATTENTE
@@ -784,8 +785,9 @@ def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
     premier = min(gabarits, key=lambda g: g.ordre)
     depart = quand - datetime.timedelta(days=premier.delai_jours or 0)
     try:
+        # CADV25 × CADV103 — la date vient du client : ce réveil-là est justifié.
         etapes = initialiser_plan_relance(
-            lead, user, cadence='reveil', depart=depart)
+            lead, user, cadence='reveil', depart=depart, date_du_client=True)
     except CadenceActiveConflit:
         etapes = []
     ouvertes = [e for e in etapes if e.statut == RelanceEtape.Statut.A_FAIRE]
@@ -1604,12 +1606,7 @@ def enregistrer_recontact(lead, user, *, canal, note=''):
     annulées d'abord, sinon le filet ne poserait rien. L'appelant vérifie
     ``refus_recontact`` avant. Renvoie l'étape posée."""
     arreter_cadence(lead, user=user, motif='le client a recontacté')
-    ancienne = lead.parc_raison
-    lead.parc_etat = lead.parc_raison = lead.parc_jusqu_au = None
-    lead.save(update_fields=['parc_etat', 'parc_raison', 'parc_jusqu_au'])
-    if ancienne:
-        activity.log_bulk_change(lead, user, 'parc_raison', ancienne, None)
-    avancer_stage_lead_vers(lead, user, stages.CONTACTED)
+    reprendre_lead(lead, user, stages.CONTACTED)
     corps = f'Le client a recontacté ({CANAUX_RECONTACT[canal]}).'
     if (note or '').strip():
         corps += f' Note : {note.strip()}'

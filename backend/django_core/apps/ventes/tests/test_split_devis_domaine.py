@@ -330,7 +330,11 @@ def _dump_devis(devis):
         'total_ht': str(getattr(devis, 'total_ht', '')),
         'total_ttc': str(getattr(devis, 'total_ttc', '')),
         'date_validite': getattr(devis, 'date_validite', None),
-        'clauses': devis.clauses_appliquees,
+        # ADVS2 — l'instantané ``reglages_figes`` est indexé par pk produit
+        # (séquence de la base) : hors digest, comme les autres ids.
+        'clauses': devis.clauses_appliquees and [
+            c for c in devis.clauses_appliquees
+            if not (isinstance(c, dict) and c.get('type') == 'reglages_figes')],
         'lignes': [
             {'designation': li.designation, 'quantite': str(li.quantite),
              'prix_unitaire': str(li.prix_unitaire),

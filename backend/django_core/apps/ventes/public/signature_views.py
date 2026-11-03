@@ -490,6 +490,16 @@ def proposal_accept(request, token):
                 'accepte_par_nom': devis.accepte_par_nom,
                 'avenant_signe': {'signe_le': signature.signed_at.isoformat()},
             }))
+    # ADVS31 (patron ADOC127) — statut lu AVANT ``accept_devis``, qui rend un
+    # devis déjà accepté inchangé : accepté hors du lien (aucune preuve
+    # d'e-signature), le client lit un refus nommé au lieu d'un « Merci ! » qui
+    # jette sa signature. Déjà signé au lien : double envoi, 200 idempotent.
+    from ..models import Devis, DevisSignature
+    if devis.statut == Devis.Statut.ACCEPTE and not DevisSignature.objects.filter(
+            devis=devis, consent_esign=True).exists():
+        return _noindex(Response(
+            {'detail': 'Ce devis est déjà accepté.', 'code': 'statut'},
+            status=status.HTTP_409_CONFLICT))
     try:
         # ── QJR135 / ES4 — L'ÉCRAN DE CONFIRMATION LIT CE QUI VIENT D'ÊTRE
         #    ÉCRIT. ``accept_devis`` REBIND son nom local sur la relecture

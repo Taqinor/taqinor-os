@@ -46,6 +46,24 @@ class TestRenouvelerDevis(TestCase):
         self.assertEqual(ligne.prix_unitaire, Decimal('1200.00'))
         self.assertEqual(ligne.quantite, Decimal('2'))
 
+    def test_prestation_sans_prix_catalogue_garde_le_prix_source(self):
+        # ADVS35 — « Études et ingénierie » posée par le moteur à 5 000 HT,
+        # catalogue à 0 : gardée à 5 000 ; le panneau reste re-tarifé.
+        self.produit.prix_vente = Decimal('1300.00')
+        self.produit.save(update_fields=['prix_vente'])
+        prestation = ProduitFactory(
+            company=self.company, nom='Études et ingénierie',
+            prix_vente=Decimal('0'))
+        LigneDevis.objects.create(
+            devis=self.devis, produit=prestation, designation=prestation.nom,
+            quantite=Decimal('1'), prix_unitaire=Decimal('5000.00'))
+        nouveau = renouveler_devis(self.devis, user=self.user)
+        relu = Devis.objects.get(pk=nouveau.pk)
+        self.assertEqual(relu.lignes.get(produit=prestation).prix_unitaire,
+                         Decimal('5000.00'))
+        self.assertEqual(relu.lignes.get(produit=self.produit).prix_unitaire,
+                         Decimal('1300.00'))
+
     def test_trace_devis_origine_et_numero(self):
         n1 = renouveler_devis(self.devis, user=self.user)
         self.assertEqual(n1.devis_origine_id, self.devis.id)

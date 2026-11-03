@@ -115,6 +115,22 @@ class BulkWhatsappGardesTests(TestCase):
             self.assertRegex(texte, r'Réservez votre visite : \S+')
         self.assertFalse(texte.rstrip().endswith(':'))
 
+    def test_blanc_a_completer_refuse_et_nomme(self):
+        """CAD69 — même règle que l'aperçu d'une touche : un ``[plateforme]``
+        non complété n'est JAMAIS mis en file ; le lead sort avec le blanc
+        nommé. Mutant : retirer la garde ⇒ le lien part avec le crochet."""
+        resp = self.api.post(URL, {
+            'action': 'prepare_whatsapp', 'ids': [self.c.pk],
+            'body': 'Bonjour. Retrouvez-nous sur [plateforme] ou [jour].'},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['queue'], [])
+        [saute] = resp.data['skipped']
+        self.assertEqual(saute['id'], self.c.pk)
+        self.assertEqual(saute['reason'], 'à compléter : [plateforme], [jour]')
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.c, body__startswith='WhatsApp préparé en lot').exists())
+
     def test_jumeau_darija_rendu_pour_lead_darija(self):
         # ACRM70 — « RDV » FR et « RDV » darija coexistent (unicité société +
         # nom + langue) ; le lead darija reçoit le texte darija, le lead FR

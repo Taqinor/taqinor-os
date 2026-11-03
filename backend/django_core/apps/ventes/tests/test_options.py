@@ -5,7 +5,11 @@ doit facturer et gélifier la nomenclature SUR LES SEULES lignes sans batterie ;
 « Avec batterie » sur les seules lignes avec batterie ; un devis à option unique
 reste strictement inchangé.
 """
+import ast
+import json
 from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -16,7 +20,8 @@ from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.utils.options import (
-    filter_lines_for_option, option_lines, option_totaux,
+    filter_lines_for_option, option_lines, option_totaux, panier_de_ligne,
+    panier_du_moteur,
 )
 from apps.ventes.utils.echeancier import next_tranche
 from apps.installations.services import _freeze_bom
@@ -61,6 +66,100 @@ class TestPureFilter(SimpleTestCase):
 
     def test_empty_option_keeps_all(self):
         self.assertEqual(len(filter_lines_for_option(self.lignes, '')), 5)
+
+    def test_classement_suit_le_contrat_classement_options(self):
+        """ADVS5 — rouge si le noyau ignore le rôle (Dyness dans « sans »)."""
+        cas = json.loads(
+            (Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'classement_options.json').read_text(encoding='utf-8')
+        )['exemple']['cas']
+        self.assertTrue(cas)
+        for c in cas:
+            attendu = (c['sans'], c['avec'])
+            ligne = SimpleNamespace(
+                designation=c['designation'], produit=None,
+                role_devis=c['role_devis'], variante=c['variante'])
+            with self.subTest(designation=c['designation'],
+                              role=c['role_devis'], variante=c['variante']):
+                self.assertEqual(panier_de_ligne(
+                    c['variante'], c['role_devis'], c['designation']), attendu)
+                self.assertEqual(
+                    (bool(filter_lines_for_option([ligne], 'sans_batterie')),
+                     bool(filter_lines_for_option([ligne], 'avec_batterie'))),
+                    attendu)
+
+    @staticmethod
+    def _lignes_a_roles():
+        return [
+            SimpleNamespace(designation=nom, produit=None, role_devis=role,
+                            variante='')
+            for nom, role in (
+                ('Panneau Jinko 550W', 'panneau'),
+                ('Onduleur réseau 5kW', 'onduleur_reseau'),
+                ('Onduleur hybride 5kW', 'onduleur_hybride'),
+                ('Dyness BX51100', 'batterie'),
+                ('Câble batterie DC 25 mm²', 'cable_dc'))]
+
+    def test_niveau_9_garde_le_noyau_d_hier(self):
+        """ADVS5/ADVS6 — nouveaux rendus seulement : au niveau 9 le noyau ne lit
+        pas le rôle (Dyness, sans mot-clé, reste dans « sans » : l'acompte reçu)."""
+        envoye = SimpleNamespace(regles_calcul=9)
+        lignes = self._lignes_a_roles()
+        self.assertEqual(
+            self._names(filter_lines_for_option(lignes, 'sans_batterie', devis=envoye)),
+            ['Panneau Jinko 550W', 'Onduleur réseau 5kW', 'Dyness BX51100'])
+        self.assertEqual(
+            self._names(filter_lines_for_option(lignes, 'avec_batterie', devis=envoye)),
+            ['Panneau Jinko 550W', 'Onduleur hybride 5kW', 'Dyness BX51100',
+             'Câble batterie DC 25 mm²'])
+
+    def test_niveau_10_prend_la_regle_unique(self):
+        neuf = SimpleNamespace(regles_calcul=10)
+        self.assertEqual(
+            self._names(filter_lines_for_option(
+                self._lignes_a_roles(), 'sans_batterie', devis=neuf)),
+            ['Panneau Jinko 550W', 'Onduleur réseau 5kW'])
+
+    def test_moteur_niveau_9_role_seul_niveau_10_regle_unique(self):
+        """Le PDF reçu au niveau 9 gardait le câble dans les deux options."""
+        cable = 'Câble batterie DC 25 mm²'
+        envoye = SimpleNamespace(regles_calcul=9)
+        self.assertEqual(panier_du_moteur('cable_dc', cable, envoye), (True, True))
+        self.assertEqual(panier_du_moteur('batterie', 'Dyness BX51100', envoye),
+                         (False, True))
+        self.assertEqual(panier_du_moteur(None, cable, envoye), (False, True))
+        self.assertEqual(
+            panier_du_moteur('cable_dc', cable, SimpleNamespace(regles_calcul=10)),
+            (False, True))
+
+    def test_tout_appelant_passe_le_niveau_du_devis(self):
+        """Un appel de production sans ``devis=`` classerait un envoyé sur la
+        règle courante : son total d'option changerait au re-rendu."""
+        vus = 0
+        for chemin in Path(__file__).resolve().parents[2].rglob('*.py'):
+            if ('tests' in chemin.parts or 'migrations' in chemin.parts
+                    or chemin.name.startswith('test')):
+                continue
+            source = chemin.read_text(encoding='utf-8')
+            if 'filter_lines_for_option' not in source:
+                continue
+            for noeud in ast.walk(ast.parse(source)):
+                if (isinstance(noeud, ast.Call) and getattr(noeud.func, 'id', '')
+                        in ('filter_lines_for_option', '_filtrer_opt')):
+                    vus += 1
+                    self.assertIn('devis', [k.arg for k in noeud.keywords],
+                                  f'{chemin}:{noeud.lineno}')
+        self.assertGreaterEqual(vus, 8)
+
+    def test_batterie_et_son_cable_dans_avec_seulement(self):
+        lignes = self._lignes_a_roles()
+        self.assertEqual(
+            self._names(filter_lines_for_option(lignes, 'sans_batterie')),
+            ['Panneau Jinko 550W', 'Onduleur réseau 5kW'])
+        self.assertEqual(
+            self._names(filter_lines_for_option(lignes, 'avec_batterie')),
+            ['Panneau Jinko 550W', 'Onduleur hybride 5kW', 'Dyness BX51100',
+             'Câble batterie DC 25 mm²'])
 
 
 class TestOptionDownstream(TestCase):
@@ -256,3 +355,82 @@ class TestEtudeHoraireSansStockage(SimpleTestCase):
         from apps.ventes.quote_engine.builder import _etude_horaire_sans_stockage
         self.assertIsNone(_etude_horaire_sans_stockage(None))
         self.assertEqual(_etude_horaire_sans_stockage('x'), 'x')
+
+
+class TestMarqueFigeeDuNoyau(TestCase):
+    """ADVS7 × noyau monnaie — l'accessoire Huawei suit la marque FIGÉE à l'envoi,
+    comme le moteur PDF : corriger la marque au catalogue ne change pas le total
+    d'un envoyé. Sans instantané : la marque du jour, comme hier."""
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='opt-marque', defaults={'nom': 'Opt Marque'})
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='Marque')
+        self.onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau 5kW', sku='MQ-OND',
+            marque='Huawei', prix_vente=Decimal('9000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        self.compteur = Produit.objects.create(
+            company=self.company, nom='Smart Meter DTSU666', sku='MQ-SM',
+            prix_vente=Decimal('1500'), prix_achat=Decimal('1'),
+            quantite_stock=10)
+
+    def _devis(self, reference, *, statut='envoye', regles=10, fige=True):
+        clauses = [{'type': 'reglages_figes', 'produits': {
+            str(self.onduleur.pk): {
+                'marque': 'Huawei', 'description': '', 'garantie': '',
+                'garantie_mois': None, 'garantie_production_mois': None}}}]
+        devis = Devis.objects.create(
+            company=self.company, reference=reference, client=self.client_obj,
+            statut=statut, taux_tva=Decimal('20'), regles_calcul=regles,
+            clauses_appliquees=clauses if fige else [])
+        for produit in (self.onduleur, self.compteur):
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=produit.nom,
+                quantite=Decimal('1'), prix_unitaire=produit.prix_vente,
+                remise=Decimal('0'))
+        return devis
+
+    def _garde_le_compteur(self, devis):
+        """Lu sur une instance NEUVE : aucun cache de la ligne ou du produit."""
+        from apps.ventes.utils.options import lignes_avec_produit
+        frais = Devis.objects.get(pk=devis.pk)
+        return 'Smart Meter DTSU666' in [
+            li.designation for li in filter_lines_for_option(
+                lignes_avec_produit(frais), 'sans_batterie', devis=frais)]
+
+    def _corriger_la_marque(self):
+        Produit.objects.filter(pk=self.onduleur.pk).update(marque='Deye')
+
+    def test_envoye_fige_garde_son_panier(self):
+        devis = self._devis(f'DEV-{MONTH}-8101')
+        self.assertTrue(self._garde_le_compteur(devis))
+        self._corriger_la_marque()
+        self.assertTrue(self._garde_le_compteur(devis))
+
+    def test_noyau_et_moteur_lisent_la_meme_marque(self):
+        from apps.ventes.quote_engine.lignes_classement import (
+            _item_marque, _line_to_item, fiches_figees)
+        from apps.ventes.utils.options import _blob_marque, lignes_avec_produit
+        devis = self._devis(f'DEV-{MONTH}-8102')
+        self._corriger_la_marque()
+        frais = Devis.objects.get(pk=devis.pk)
+        for ligne in lignes_avec_produit(frais):
+            item = _line_to_item(ligne, Decimal('20'), fiches_figees(frais))
+            self.assertEqual(_blob_marque(ligne), _item_marque(item))
+        onduleur = next(li for li in lignes_avec_produit(frais)
+                        if li.produit_id == self.onduleur.pk)
+        self.assertIn('Huawei', _blob_marque(onduleur))
+
+    def test_envoye_sans_instantane_niveau_9_suit_le_catalogue(self):
+        """Tous les devis ≤ 9 d'avant ce gel : à l'octet, le comportement d'hier."""
+        devis = self._devis(f'DEV-{MONTH}-8103', regles=9, fige=False)
+        self.assertTrue(self._garde_le_compteur(devis))
+        self._corriger_la_marque()
+        self.assertFalse(self._garde_le_compteur(devis))
+
+    def test_brouillon_ignore_l_entree_heritee(self):
+        devis = self._devis(f'DEV-{MONTH}-8104', statut='brouillon')
+        self._corriger_la_marque()
+        self.assertFalse(self._garde_le_compteur(devis))

@@ -53,12 +53,16 @@ APPEL = RelanceEtape.Canal.APPEL
 WHATSAPP = RelanceEtape.Canal.WHATSAPP
 JOINT_TELEPHONE = cadence_reponses.REPONSE_JOINT_TELEPHONE
 ORDRES_SUIVI = frozenset(e['ordre'] for e in CADENCES_DEFAUT['apres_devis'])
-#: Le dernier barreau du gabarit livré (« Mise en pause », un message).
-DERNIER = max(ORDRES_SUIVI)
-#: Le dernier APPEL du gabarit livré (« Appel de suivi », J+11) : il devient
-#: la dernière touche quand la société désactive les deux messages suivants.
-DERNIER_APPEL = max(e['ordre'] for e in CADENCES_DEFAUT['apres_devis']
-                    if e['canal'] == APPEL)
+#: CADV24 — le dernier barreau du gabarit livré est un APPEL (« Dernier appel »,
+#: J+90).
+DERNIER = DERNIER_APPEL = max(ORDRES_SUIVI)
+#: Le dernier MESSAGE du gabarit livré (« Dernier message », J+60) : il devient
+#: la dernière touche quand la société désactive l'appel J+90.
+DERNIER_MESSAGE = max(e['ordre'] for e in CADENCES_DEFAUT['apres_devis']
+                      if e['canal'] == WHATSAPP)
+#: Un appel qui n'est PAS la dernière touche du gabarit livré (J+28).
+APPEL_DU_MILIEU = max(e['ordre'] for e in CADENCES_DEFAUT['apres_devis']
+                      if e['canal'] == APPEL and e['ordre'] < DERNIER_APPEL)
 #: La variante que la table porte sur les trois réponses « client joint ».
 VARIANTE = {'contexte': 'derniere_touche',
             'suite': {'type': 'etape', 'cle': CLE_DECIDER_SUITE,
@@ -68,6 +72,8 @@ REPONSES_JOINTES = (('suivi_appel', 'joint'), ('suivi_message', 'a_repondu'),
                     ('suivi_message', 'joint_telephone'))
 
 _seq = itertools.count(1)
+#: Le gabarit d'une société qui a coupé l'appel J+90 (CADV24).
+_SANS_L_APPEL_J90 = frozenset(o for o in ORDRES_SUIVI if o <= DERNIER_MESSAGE)
 
 
 def _gabarit(ordre):
@@ -97,7 +103,8 @@ class PromessesTests(SimpleTestCase):
     def test_dernier_message_joint_et_joint_au_telephone(self):
         for devis in (True, False):
             with self.subTest(devis_dans_l_erp=devis):
-                promesses = _promesses(_touche(DERNIER, devis=devis))
+                promesses = _promesses(_touche(DERNIER_MESSAGE, devis=devis),
+                                       ordres=_SANS_L_APPEL_J90)
                 self.assertEqual(promesses['joint'], [st.ETAPE_DECIDER_SUITE])
                 self.assertEqual(promesses[JOINT_TELEPHONE],
                                  [st.ETAPE_DECIDER_SUITE])
@@ -108,14 +115,15 @@ class PromessesTests(SimpleTestCase):
         self.assertEqual(promesses['joint'], [st.ETAPE_DECIDER_SUITE])
 
     def test_une_touche_qui_n_est_pas_la_derniere_annonce_la_suivante(self):
-        appel = _promesses(_touche(DERNIER_APPEL))
+        appel = _promesses(_touche(APPEL_DU_MILIEU))
         self.assertEqual(appel['joint'], [st.TOUCHE_SUIVANTE])
         message = _promesses(_touche(min(ORDRES_SUIVI)))
         self.assertEqual(message['joint'], [st.TOUCHE_SUIVANTE])
         self.assertEqual(message[JOINT_TELEPHONE], [st.TOUCHE_SUIVANTE])
 
     def test_jamais_l_etape_devis_ni_l_appel_sur_la_derniere(self):
-        promesses = _promesses(_touche(DERNIER))
+        promesses = _promesses(_touche(DERNIER_MESSAGE),
+                               ordres=_SANS_L_APPEL_J90)
         for cle in ('joint', JOINT_TELEPHONE):
             with self.subTest(reponse=cle):
                 self.assertFalse(
@@ -275,7 +283,8 @@ class DerniereToucheApiTests(TestCase):
         self._assert_decider_la_suite(resp, appel)
 
     def test_dernier_message_le_client_a_repondu(self):
-        message = self._barreau(DERNIER, devis=self._devis())
+        self._desactiver_apres(DERNIER_MESSAGE)
+        message = self._barreau(DERNIER_MESSAGE, devis=self._devis())
         self.assertEqual(message.canal, WHATSAPP)
 
         resp = self._fait(message, outcome='joint')
@@ -283,7 +292,8 @@ class DerniereToucheApiTests(TestCase):
         self._assert_decider_la_suite(resp, message)
 
     def test_dernier_message_client_joint_au_telephone(self):
-        message = self._barreau(DERNIER, devis=self._devis())
+        self._desactiver_apres(DERNIER_MESSAGE)
+        message = self._barreau(DERNIER_MESSAGE, devis=self._devis())
 
         resp = self._fait(message, reponse=JOINT_TELEPHONE)
 
@@ -296,7 +306,8 @@ class DerniereToucheApiTests(TestCase):
 
     def test_dernier_message_sans_devis_dans_l_erp(self):
         # Devis parti hors ERP (TREADMILL-1538) : même décision.
-        message = self._barreau(DERNIER)
+        self._desactiver_apres(DERNIER_MESSAGE)
+        message = self._barreau(DERNIER_MESSAGE)
 
         resp = self._fait(message, outcome='joint')
 
@@ -305,14 +316,14 @@ class DerniereToucheApiTests(TestCase):
     # ── une touche qui n'est pas la dernière : inchangé ──
 
     def test_une_touche_qui_n_est_pas_la_derniere_fait_naitre_la_suivante(self):
-        appel = self._barreau(DERNIER_APPEL, devis=self._devis())
+        appel = self._barreau(APPEL_DU_MILIEU, devis=self._devis())
         self.assertFalse(cadence_reponses.est_derniere_touche_du_suivi(appel))
 
         resp = self._fait(appel, outcome='joint')
 
         [suivante] = list(self._ouvertes())
         self.assertEqual(suivante.cadence, 'apres_devis')
-        self.assertGreater(suivante.ordre, DERNIER_APPEL)
+        self.assertGreater(suivante.ordre, APPEL_DU_MILIEU)
         self.assertFalse(self.lead.relance_etapes.filter(
             q_etape(CLE_DECIDER_SUITE, CLE_DEVIS,
                     CLE_APPEL_APRES_REPONSE)).exists())

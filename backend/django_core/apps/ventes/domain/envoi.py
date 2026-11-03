@@ -10,6 +10,8 @@ octet-identiques, prouvé par ``tests/golden/split_dm_envoi.json``.
 """
 import logging
 
+from apps.ventes.domain.reglages_figes_lecture import TYPE_REGLAGES_FIGES
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -82,8 +84,9 @@ TYPE_BAREMES_GELES = 'baremes_forfaits_geles'
 #: ``{'type': 'doc_texts_geles', 'textes': {<DEVIS_TEXT_KEYS>}, 'version': int}``.
 TYPE_DOC_TEXTS_GELES = 'doc_texts_geles'
 
-TYPES_GELS_INTERNES = frozenset(
-    {TYPE_CGV_GELEES, TYPE_BAREMES_GELES, TYPE_DOC_TEXTS_GELES})
+TYPES_GELS_INTERNES = frozenset({
+    TYPE_CGV_GELEES, TYPE_BAREMES_GELES, TYPE_DOC_TEXTS_GELES,
+    TYPE_REGLAGES_FIGES})
 
 
 def est_gel_interne(entree):
@@ -142,6 +145,46 @@ def baremes_forfaits_geles(devis):
             produits = c.get('produits')
             return produits if isinstance(produits, dict) else {}
     return {}
+
+
+def figer_reglages_rendu(devis):
+    """ADVS2 (D-ADVS-1) — FIGE au passage vers envoyé (un seul appelant :
+    :func:`geler_document_engage`) les réglages que le rendu relit (tarif,
+    tranches, redevance : mêmes lectures que le moteur) et la fiche des produits
+    des lignes. Une entrée héritée d'une V1 est REMPLACÉE : une révision prend
+    les réglages de SON envoi. Ne touche jamais au statut (règle #4)."""
+    from apps.parametres.models_tariff import TariffSettings
+    from apps.parametres.selectors import residential_tranches_for, tariff_for
+    from apps.ventes.models import LigneDevis
+
+    company = devis.company
+    redevance = TariffSettings.get(company=company).redevance_compteur_mad_mois
+    produits = {}
+    lignes = (LigneDevis.objects.filter(devis_id=devis.pk, type_ligne='produit')
+              .select_related('produit'))
+    for ligne in lignes:
+        produit = ligne.produit
+        if produit is None:
+            continue
+        produits[str(produit.pk)] = {
+            'marque': produit.marque or '',
+            'description': produit.description or '',
+            'garantie': produit.garantie or '',
+            'garantie_mois': produit.garantie_mois,
+            'garantie_production_mois': produit.garantie_production_mois,
+        }
+    devis.clauses_appliquees = [
+        c for c in (devis.clauses_appliquees or [])
+        if not (isinstance(c, dict) and c.get('type') == TYPE_REGLAGES_FIGES)
+    ] + [{
+        'type': TYPE_REGLAGES_FIGES,
+        'tarif': tariff_for(company),
+        'tranches': residential_tranches_for(company),
+        'redevance_compteur_mad_mois': (
+            None if redevance is None else float(redevance)),
+        'produits': produits,
+    }]
+    devis.save(update_fields=['clauses_appliquees'])
 
 
 def doc_texts_a_geler(company):
@@ -272,6 +315,7 @@ def mark_devis_sent(*, devis, user=None):
     Returns the (possibly unchanged) Devis. Tenant scoping is the caller's
     responsibility — the devis is always passed already company-resolved.
     """
+    from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from core.events import devis_sent
@@ -297,7 +341,14 @@ def mark_devis_sent(*, devis, user=None):
     # VNT57 — LA règle de gel du document engagé (T17, ``date_envoi``, marge,
     # CGV, barème), partagée avec l'acceptation d'un brouillon.
     ancien = devis.statut
-    geler_document_engage(devis, user, statut=Devis.Statut.ENVOYE)
+    # ADVS22 (C-ADVS-026) — statut relu SOUS VERROU : un devis accepté depuis la
+    # lecture de l'appelant est rendu tel quel, sans gel ni ``devis_sent``.
+    with transaction.atomic():
+        if (Devis.objects.select_for_update().get(pk=devis.pk).statut
+                != Devis.Statut.BROUILLON):
+            devis.refresh_from_db(fields=['statut'])
+            return devis
+        geler_document_engage(devis, user, statut=Devis.Statut.ENVOYE)
     activity.log_devis_sent(devis, user)
     devis_sent.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
@@ -315,7 +366,8 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
        ``AcceptError`` 400 ``approbation_requise``) et rien n'est écrit ;
     2. ``date_envoi`` horodatée (avec ``statut`` quand l'appelant le passe,
        dans la même écriture) ;
-    3. marge interne figée, clauses / CGV gelées, barème des forfaits figé.
+    3. marge interne figée, clauses / CGV gelées, barème des forfaits figé,
+       réglages de rendu et fiches produit figés (ADVS2).
 
     Le statut n'est écrit QUE s'il est passé par l'appelant (règle #4 : la
     bascule reste celle de ``mark_devis_sent`` / ``accept_devis``)."""
@@ -341,6 +393,8 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
     figer_clauses_devis(devis)
     # ADEV30 — fige le barème des forfaits au panneau (D-ASTK-1).
     figer_baremes_forfaits(devis)
+    # ADVS2 — fige les réglages de rendu et les fiches produit (D-ADVS-1).
+    figer_reglages_rendu(devis)
 
 
 def poser_validite_devis(devis, date_validite):

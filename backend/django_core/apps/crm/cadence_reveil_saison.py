@@ -77,20 +77,9 @@ def _perdu_non_terminal(lead):
     return motif in {m.casefold() for m in MOTIFS_PERTE_NON_TERMINAUX}
 
 
-def _motif_de_refus(lead, *, maintenant=None):
-    """Pourquoi ce lead ne reçoit PAS le réveil saisonnier — ou ``None``.
-
-    Renvoyer le MOTIF plutôt qu'un booléen : l'écran qui proposera un jour ce
-    geste doit pouvoir dire au commercial POURQUOI le bouton ne fait rien,
-    exactement comme une erreur nomme son champ (règle fondateur 08/09).
-    """
-    from . import stages
-    from .models import RelanceEtape
-
-    local = _maintenant_local(maintenant)
-    if not _dans_la_fenetre_saison(local.date()):
-        return ('Hors saison : le réveil saisonnier ne se pose qu’entre juin '
-                'et septembre.')
+def motif_exclu_du_contact(lead):
+    """CADV32 — ce qui écarte un dormant de TOUT réveil, en toute saison (une seule
+    éligibilité, lue aussi par ``seaux_reactivation``) ; ``None`` sinon."""
     # AGR512 — la saison de `reveil_b` est celle où la facture ONEE choque le
     # FOYER : son texte parle des factures d'électricité, sans objet pour un
     # exploitant au butane ou au gasoil. Aucune « saison agricole » n'est
@@ -112,6 +101,26 @@ def _motif_de_refus(lead, *, maintenant=None):
     if getattr(lead, 'ne_plus_contacter', False):
         return ('Opposition (ne plus contacter) : aucun réveil n’est posé '
                 'pour cette personne.')
+    return None
+
+
+def _motif_de_refus(lead, *, maintenant=None):
+    """Pourquoi ce lead ne reçoit PAS le réveil saisonnier — ou ``None``.
+
+    Renvoyer le MOTIF plutôt qu'un booléen : l'écran qui proposera un jour ce
+    geste doit pouvoir dire au commercial POURQUOI le bouton ne fait rien,
+    exactement comme une erreur nomme son champ (règle fondateur 08/09).
+    """
+    from . import stages
+    from .models import RelanceEtape
+
+    local = _maintenant_local(maintenant)
+    if not _dans_la_fenetre_saison(local.date()):
+        return ('Hors saison : le réveil saisonnier ne se pose qu’entre juin '
+                'et septembre.')
+    exclu = motif_exclu_du_contact(lead)
+    if exclu:
+        return exclu
     if lead.stage != stages.COLD:
         return ('Le lead n’est pas au Froid : le réveil saisonnier ne '
                 's’adresse qu’aux dormants.')

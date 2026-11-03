@@ -886,6 +886,7 @@ def _creer_brouillon(intention):
     Le client est résolu depuis le lead par ``crm.services`` — la frontière
     cross-app sanctionnée, jamais un import de ``crm.models``.
     """
+    from apps.ventes.domain.creation import devise_par_defaut
     from apps.ventes.models import Devis
     from apps.ventes.utils.company_settings import create_numbered
 
@@ -903,6 +904,7 @@ def _creer_brouillon(intention):
             client=client, lead=intention.lead,
             statut=Devis.Statut.BROUILLON,
             taux_tva=intention.taux_tva,
+            devise=devise_par_defaut(intention.company),  # ADVS28
             remise_globale=intention.remise_globale,
             created_by=intention.user,
             mode_installation=intention.mode_installation,

@@ -37,7 +37,8 @@ Hypothèses assumées (et documentées plutôt que cachées) :
   et le suivi de proposition (MRY9), et la cadence générique est historique.
 
 LECTURE PURE : aucune écriture, et UNE requête par (société, cadence) au plus
-(cache du sérialiseur) — jamais une par touche.
+(cache du sérialiseur) — jamais une par touche. Une DERNIÈRE touche lit en plus
+le compte du parcage (D-CADV22-PROMESSE), en lot : ``LecteurParcage``.
 
 PARAM-CADENCE (décision fondateur du 25/09/2026) — la chaîne après l'appel et
 autour de la visite est réglable dans Paramètres. La NATURE d'une touche et
@@ -147,6 +148,18 @@ ETAPE_RAPPEL_CONVENU_A_LA_DATE = 'etape_rappel_convenu_a_la_date'
 # SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse : l'étape est
 # reposée pour demain.
 ETAPE_PLANIFIER_DEMAIN = 'etape_planifier_demain'
+# D-CADV22-PROMESSE (Reda, 02/11/2026) — la dernière touche ne peut pas parquer
+# (trop peu d'appels tracés, ou aucune touche) : un autre appel, jamais le devis
+# (``cadence_plan._poser_touche_avant_froid``). ``conditions_de_parcage`` dit
+# le compte, servi à côté des codes (clé ``conditions_suite``).
+ETAPE_APPEL_AVANT_FROID = 'etape_appel_avant_froid'
+# CADV102 (D-CADV-10) — un lead commercial ou industriel au bout de sa cadence :
+# Standby daté et « Appel trimestriel », ni Froid ni réveils.
+ETAPE_APPEL_TRIMESTRIEL = 'etape_appel_trimestriel'
+# CADV29 (D-CADV-10) — un lead commercial ou industriel sans pièce reçue :
+# « Pièces reçues ? » d'abord (``cadence_filet.pieces_ci_dues``), jamais le devis.
+ETAPE_PIECES_RECUES = 'etape_pieces_recues'
+ETAPE_PIECES_RECUES_SAUF_SUIVI = 'etape_pieces_recues_sauf_suivi'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -164,7 +177,8 @@ CODES = frozenset({
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
     LEAD_PERDU, VISITE_ABANDONNEE, ETAPE_RAPPEL_CONVENU_A_LA_DATE,
-    ETAPE_PLANIFIER_DEMAIN,
+    ETAPE_PLANIFIER_DEMAIN, ETAPE_APPEL_AVANT_FROID, ETAPE_APPEL_TRIMESTRIEL,
+    ETAPE_PIECES_RECUES, ETAPE_PIECES_RECUES_SAUF_SUIVI,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -542,10 +556,11 @@ def _filet_apres_reponse_sauf_suivi(etape, est_actif, canal=None):
 
 
 def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
-                   canal=None):
+                   canal=None, lecteur=None):
     """Un barreau du protocole (ou une touche hors gabarit, traitée comme une
     dernière touche). ``canal`` : le canal RÉEL (SUIVI E16), qui décide de
-    la suite d'un client joint à la place du canal prévu."""
+    la suite d'un client joint à la place du canal prévu. ``lecteur`` : les cycles
+    du pro (CADV102) lus en lot (``LecteurParcage``)."""
     from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
     from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
@@ -639,6 +654,12 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
         # SUIVI E26 (décision fondateur du 30/09/2026) — la deuxième affaire
         # aussi : c'est la prise de contact d'un client acquis, elle finit
         # comme elle (``services._CLOTURE_PLAFOND``).
+        # CADV102 — le pro part en Standby trimestriel tant qu'il a des cycles.
+        from .fiche_funnel import RAISON_STANDBY_TRIMESTRIEL, raison_fin_de_cadence
+
+        if (raison_fin_de_cadence(getattr(etape, 'lead', None), cadence, lecteur)
+                == RAISON_STANDBY_TRIMESTRIEL):
+            return [ETAPE_APPEL_TRIMESTRIEL]
         return [DERNIERE_FROID_REVEILS]
     if cadence == 'reveil':
         # La cadence réveil ne se clôture jamais elle-même, et le filet ne
@@ -740,7 +761,7 @@ def _codes_a_cote_du_plan(issue, *, visite, cle=''):
     return [SUITE_SI_PLUS_RIEN_OUVERT]
 
 
-def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
+def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif, lecteur=None):
     """CAD47 — ce que fait « Sauter » : le moteur clôt la touche SAUTÉE sans
     issue (``marquer_etape_relance``), et la suite est celle d'une touche
     close sans réponse — barreau suivant, clôture au Froid après la dernière,
@@ -757,7 +778,7 @@ def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
     if nature in (NATURE_VISITE, NATURE_PASSATION):
         return _codes_a_cote_du_plan('', visite=nature == NATURE_VISITE)
     return _codes_barreau(etape, '', derniere=derniere, au_froid=au_froid,
-                          est_actif=est_actif)
+                          est_actif=est_actif, lecteur=lecteur)
 
 
 def _codes_reponse_client(cle, *, nature, derniere):
@@ -804,7 +825,168 @@ def _codes_reponse_client(cle, *, nature, derniere):
     return []
 
 
-def promesses_touche(etape, *, ordres=None, est_actif=None):
+class LecteurParcage:
+    """D-CADV22-PROMESSE — ce que la promesse lit pour compter, EN LOT : UNE
+    requête pour les touches de la page (``touches``), à la première DERNIÈRE
+    touche rencontrée (patron ``_visite_du_lead``), jamais une par touche. Les
+    cycles de Standby d'un pro (CADV102) se lisent de même."""
+
+    def __init__(self, touches=None, message_ouvert=None):
+        self.touches = touches
+        self._message_ouvert = message_ouvert
+        self._comptes = {}
+        self._exiges = {}
+        self._cycles = {}
+        self._pieces = {}
+
+    def pieces(self, lead):
+        """``etat_pieces_ci`` (CADV29), en lot ; un lead non enregistré (contrôles
+        purs) n'a encore rien reçu."""
+        from .cadence_filet import etat_pieces_ci
+
+        if lead.pk is None:
+            return False, 0
+        if lead.pk not in self._pieces:
+            self._pieces.update(etat_pieces_ci(
+                {t.lead_id for t in (self.touches or ())} | {lead.pk}))
+        return self._pieces[lead.pk]
+
+    def cycles(self, lead):
+        """``cycles_standby(lead)``, en lot."""
+        from .fiche_funnel import cycles_standby_en_lot
+
+        if lead.pk not in self._cycles:
+            self._cycles.update(cycles_standby_en_lot(
+                {t.lead_id for t in (self.touches or ())} | {lead.pk}))
+        return self._cycles[lead.pk]
+
+    def comptes(self, lead_id):
+        """``{kind: tentatives signées d'un humain}`` du lead."""
+        from django.db.models import Count
+
+        from .models import LeadActivity
+
+        if lead_id not in self._comptes:
+            ids = {t.lead_id for t in (self.touches or ())} | {lead_id}
+            self._comptes.update({i: {} for i in ids})
+            for lid, kind, nombre in (
+                    LeadActivity.objects
+                    .filter(lead_id__in=ids, user__isnull=False)
+                    .order_by().values_list('lead_id', 'kind')
+                    .annotate(nombre=Count('pk'))):
+                self._comptes[lid][kind] = nombre
+        return self._comptes[lead_id]
+
+    def exiges(self, lead):
+        from .fiche_funnel import appels_exiges_injoignable
+
+        if lead.company_id not in self._exiges:
+            self._exiges[lead.company_id] = appels_exiges_injoignable(lead)
+        return self._exiges[lead.company_id]
+
+    def message_ouvert(self, etape):
+        from .cadence_reperes import prefixe_activite_message_ouvert
+        from .models import LeadActivity
+
+        if self._message_ouvert is not None:
+            return self._message_ouvert(etape) is not None
+        return etape.lead.activites.filter(
+            kind=LeadActivity.Kind.WHATSAPP,
+            body__startswith=prefixe_activite_message_ouvert(etape)).exists()
+
+
+def _ce_que_la_cloture_trace(cle, etape, lecteur):
+    """Ce que la clôture de ``etape`` par la réponse ``cle`` ajoute au compte du
+    parcage : ``(appel_en_plus, touche_en_plus)``. « Sauter » n'ajoute rien, un
+    message déjà ouvert depuis l'ERP a déjà sa ligne (CADV9) : mêmes règles que
+    la ligne de chatter de ``marquer_etape_relance``."""
+    from .models import Lead, RelanceEtape
+
+    if cle == CLE_SAUTER:
+        return False, False
+    if etape.canal == RelanceEtape.Canal.APPEL:
+        return True, True
+    if (etape.canal != RelanceEtape.Canal.WHATSAPP
+            or etape.lead.contact_preference
+            != Lead.ContactPreference.WHATSAPP_ONLY):
+        return False, True
+    return not lecteur.message_ouvert(etape), True
+
+
+def conditions_de_parcage(etape, *, ordres=None, lecteur=None):
+    """D-CADV22-PROMESSE (Reda, 02/11/2026) — ``{cle: phrase}`` pour chaque
+    réponse de la DERNIÈRE touche qui n'atteindrait pas la mise au Froid :
+    « 3 appels sur 5 tracés », « Aucune touche tracée ». Vide sinon.
+
+    La règle est celle du parcage (``fiche_funnel.manque_au_parcage``), lue APRÈS
+    la clôture que la réponse ferait ; aucune écriture, aucune requête hors d'une
+    dernière touche, une lecture en lot sur une liste (``LecteurParcage``).
+    Un lead non enregistré (contrôles purs) n'a rien à compter."""
+    from . import stages
+    from .cadence_reperes import _CLOTURE_PLAFOND
+    from .fiche_funnel import _rang_funnel, manque_au_parcage, raison_fin_de_cadence
+    from .models import RelanceEtape
+
+    lead = getattr(etape, 'lead', None)
+    plafond = _CLOTURE_PLAFOND.get(etape.cadence)
+    if (plafond is None or lead is None or lead.pk is None
+            or etape.statut != RelanceEtape.Statut.A_FAIRE
+            or nature_touche(etape) != NATURE_BARREAU):
+        return {}
+    if ordres is None:
+        ordres = ordres_de_la_cadence(etape.company_id, etape.cadence)
+    # Même garde que ``cloturer_cadence`` : un lead plus avancé ne parque pas.
+    if (not est_derniere_touche(etape, ordres) or (
+            lead.stage != stages.COLD
+            and _rang_funnel(lead.stage) > _rang_funnel(plafond))):
+        return {}
+    lecteur = lecteur or LecteurParcage()
+    raison = raison_fin_de_cadence(lead, etape.cadence, lecteur)
+    exiges = lecteur.exiges(lead) if raison == 'injoignable' else None
+    conditions = {}
+    for cle in cles_de_reponse(etape):
+        # Seules ces réponses mènent à la mise au Froid (``_codes_barreau``).
+        if cle not in ('non_joint', CLE_SANS_ISSUE, CLE_SAUTER):
+            continue
+        appel, touche = _ce_que_la_cloture_trace(cle, etape, lecteur)
+        manque = manque_au_parcage(
+            lead, raison, appel_en_plus=appel, touche_en_plus=touche,
+            comptes=lecteur.comptes(lead.pk), exiges=exiges)
+        if manque is None:
+            continue
+        trouves, requis = manque
+        conditions[cle] = (
+            f'{trouves} appel{"s" if trouves > 1 else ""} sur {requis} '
+            f'tracé{"s" if trouves > 1 else ""}' if requis
+            else 'Aucune touche tracée')
+    return conditions
+
+
+#: CADV29 — ce que devient la promesse du devis quand « Pièces reçues ? » passe avant.
+_PIECES_A_LA_PLACE_DU_DEVIS = {
+    ETAPE_DEVIS_DEMAIN: ETAPE_PIECES_RECUES,
+    ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: ETAPE_PIECES_RECUES_SAUF_SUIVI,
+}
+
+
+def _pieces_avant_devis(etape, codes, lecteur):
+    """CADV29 — la promesse dit ce que le moteur fera (``pieces_ci_dues``). La
+    lecture n'a lieu que pour un lead pro à qui le devis serait promis."""
+    from .cadence_config import cle_de
+    from .cadence_filet import pieces_ci_dues
+    from .cadence_messages import SEGMENTS_PRO
+
+    lead = getattr(etape, 'lead', None)
+    if (getattr(lead, 'type_installation', None) not in SEGMENTS_PRO
+            or not _PIECES_A_LA_PLACE_DU_DEVIS.keys() & set(codes)):
+        return codes
+    if not pieces_ci_dues(lead, cle_de(etape), *lecteur.pieces(lead)):
+        return codes
+    return [_PIECES_A_LA_PLACE_DU_DEVIS.get(code, code) for code in codes]
+
+
+def promesses_touche(etape, *, ordres=None, est_actif=None, conditions=None,
+                     lecteur=None):
     """``{cle_de_reponse: [codes d'effet]}`` pour chaque réponse que le
     panneau « Fait » propose sur ``etape`` — les clés de ``cles_de_reponse``
     (la table du parcours, SUIVI-PARCOURS), ``sauter`` compris quand l'étape
@@ -815,7 +997,10 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
     cache par (société, cadence). ``est_actif`` : le lecteur des paliers
     gardés par la société (``lecteur_paliers_actifs``, PARAM-CADENCE) — mis
     en cache par société de la même façon. Une touche déjà traitée n'a plus
-    de suite à annoncer : ``{}``."""
+    de suite à annoncer : ``{}``. ``conditions`` : ``conditions_de_parcage`` déjà
+    lue (le sérialiseur sert les deux) — une réponse qui y figure n'annonce pas
+    le Froid mais l'appel de plus (D-CADV22-PROMESSE). ``lecteur`` : le
+    ``LecteurParcage`` de la liste ; sans lui, un lecteur pour cette touche."""
     from . import stages
     from .cadence_config import cle_de
     from .models import RelanceEtape
@@ -832,6 +1017,9 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
     lead = getattr(etape, 'lead', None)
     au_froid = (etape.cadence == 'reveil'
                 and getattr(lead, 'stage', None) == stages.COLD)
+    lecteur = lecteur or LecteurParcage()
+    if conditions is None:
+        conditions = conditions_de_parcage(etape, ordres=ordres, lecteur=lecteur)
 
     promesses = {}
     for cle in cles_de_reponse(etape):
@@ -839,14 +1027,15 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
             # CAD47 — le panneau « Sauter » dit lui aussi ce qu'il déclenche.
             codes = _codes_sauter(
                 etape, nature=nature, derniere=derniere, au_froid=au_froid,
-                est_actif=est_actif)
+                est_actif=est_actif, lecteur=lecteur)
         elif cle == REPONSE_JOINT_TELEPHONE:
             # SUIVI E16 — « Client joint au téléphone » : l'issue « joint »
             # d'un APPEL abouti sur ce barreau (canal réel), jamais celle
             # d'un message répondu.
             codes = _codes_barreau(
                 etape, 'joint', derniere=derniere, au_froid=au_froid,
-                est_actif=est_actif, canal=RelanceEtape.Canal.APPEL)
+                est_actif=est_actif, canal=RelanceEtape.Canal.APPEL,
+                lecteur=lecteur)
         elif cle in REPONSES_TOUCHE:
             codes = _codes_reponse_client(
                 cle, nature=nature, derniere=derniere)
@@ -863,8 +1052,11 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
             else:
                 codes = _codes_barreau(
                     etape, issue, derniere=derniere, au_froid=au_froid,
-                    est_actif=est_actif)
-        promesses[cle] = codes
+                    est_actif=est_actif, lecteur=lecteur)
+        if cle in conditions and (DERNIERE_FROID_REVEILS in codes
+                                  or ETAPE_APPEL_TRIMESTRIEL in codes):
+            codes = [ETAPE_APPEL_AVANT_FROID]
+        promesses[cle] = _pieces_avant_devis(etape, codes, lecteur)
     return promesses
 
 

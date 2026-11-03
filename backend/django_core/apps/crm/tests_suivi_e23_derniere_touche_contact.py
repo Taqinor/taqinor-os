@@ -49,10 +49,10 @@ FAIT = RelanceEtape.Statut.FAIT
 APPEL = RelanceEtape.Canal.APPEL
 WHATSAPP = RelanceEtape.Canal.WHATSAPP
 ORDRES_CONTACT = frozenset(e['ordre'] for e in CADENCES_DEFAUT['contact'])
-#: Le dernier barreau du gabarit livré (« Clôture », un message).
+#: Le dernier barreau du gabarit livré (« Je classe ? », un message, v4 CADV23).
 DERNIER = max(ORDRES_CONTACT)
-#: Le dernier APPEL du gabarit livré (« Appel 6 (dernier) ») : il devient la
-#: dernière touche quand la société désactive le message de clôture.
+#: Le dernier APPEL du gabarit livré (« Appel 5 (dernier) ») : il devient la
+#: dernière touche quand la société désactive le message J+7.
 DERNIER_APPEL = max(e['ordre'] for e in CADENCES_DEFAUT['contact']
                     if e['canal'] == APPEL)
 #: La variante que la table porte sur « À rappeler le… ».

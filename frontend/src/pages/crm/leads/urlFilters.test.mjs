@@ -73,7 +73,7 @@ test('writeFiltersToParams : n’écrit QUE les clés non-défaut (EMPTY_FILTERS
   assert.equal(params.get('q'), 'alaoui')
   assert.equal(params.has('view'), false)
   assert.equal(params.has('canal'), false)
-  assert.equal(params.has('perdus'), false) // 'avec' == défaut, jamais écrit
+  assert.equal(params.has('perdus'), false) // 'sans' == défaut (CADV62), jamais écrit
 })
 
 test('writeFiltersToParams : écrit `view` seulement quand elle diffère de DEFAULT_VIEW', () => {

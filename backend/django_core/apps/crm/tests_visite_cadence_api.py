@@ -169,6 +169,21 @@ class PlanifierVisiteApiTests(VisiteApiBase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.visite_prevue_le, DEMAIN)
 
+    def test_commercial_desactive_est_un_refus_d_etat_409(self):
+        """ERR-ENF11-FUZZ-CRM — le compte désactivé est une donnée stockée,
+        pas un défaut du corps : 409, même corps ``{commercial: [...]}``."""
+        parti = make_user(self.company, 'vcadapi-parti', CRM_ECRITURE)
+        parti.is_active = False
+        parti.save(update_fields=['is_active'])
+        with frozen(MAINTENANT):
+            reponse = self.api.post(
+                self._url(self.URL),
+                {'date_prevue': DEMAIN.isoformat(), 'commercial': parti.id},
+                format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertIn('commercial', reponse.json())
+        self.assertFalse(VisiteTerrain.objects.filter(lead=self.lead).exists())
+
     def test_sans_commercial_la_visite_reste_non_assignee(self):
         with frozen(MAINTENANT):
             reponse = self.api.post(

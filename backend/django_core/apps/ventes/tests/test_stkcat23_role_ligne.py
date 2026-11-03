@@ -151,6 +151,17 @@ class RepartitionDesOptionsTest(SimpleTestCase):
         self.assertEqual(_paniers([_paire('Structures acier')]),
                          (['Structures acier'], ['Structures acier']))
 
+    def test_niveau_9_garde_la_ligne_dans_les_deux_paniers(self):
+        # ADVS5/ADVS6 — un envoyé du niveau 9 garde la répartition du PDF reçu.
+        from types import SimpleNamespace
+        sans, avec, _ = _repartir_options(
+            [_paire('Batterie Dyness 10 kWh', role='accessoires')],
+            SimpleNamespace(regles_calcul=9))
+        self.assertEqual([it['designation'] for _, it in sans],
+                         ['Batterie Dyness 10 kWh'])
+        self.assertEqual([it['designation'] for _, it in avec],
+                         ['Batterie Dyness 10 kWh'])
+
     def test_le_role_exclut_du_panier_sans_ce_que_les_mots_ne_voient_pas(self):
         # Désignation muette, rôle batterie : la ligne ne peut pas servir
         # l'option « sans batterie ».
@@ -163,9 +174,9 @@ class RepartitionDesOptionsTest(SimpleTestCase):
         with self.assertLogs('apps.ventes.quote_engine.builder',
                              level='WARNING') as journal:
             sans, avec = _paniers(paires)
-        # La ligne reste dans les DEUX paniers (son RÔLE décide) : aucune
-        # ligne, aucun dirham ne s'évapore entre le devis et son PDF.
-        self.assertEqual(sans, ['Batterie Dyness 10 kWh'])
+        # D-ADVS-3 (ADVS6) — un accessoire qui sert la batterie n'est que dans
+        # « avec » : la ligne reste au document, jamais perdue.
+        self.assertEqual(sans, [])
         self.assertEqual(avec, ['Batterie Dyness 10 kWh'])
         message = '\n'.join(journal.output)
         self.assertIn('accessoires', message)

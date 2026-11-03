@@ -207,6 +207,20 @@ def _gamme_comparatif(lignes_ici, lignes_soeur):
     return lignes
 
 
+def _lien_valide_public(devis):
+    """ADVS16 — le ``ShareLink`` déjà valide d'un devis que la page publique peut
+    montrer : ``None`` pour un brouillon, un lien expiré ou révoqué (ADOC131).
+    Lecture pure : aucun lien n'est jamais créé ici."""
+    from ..models import Devis
+
+    if devis.statut == Devis.Statut.BROUILLON:
+        return None
+    return (ShareLink.objects
+            .filter(devis=devis, expires_at__gt=timezone.now(), revoque_le__isnull=True)
+            .order_by('-expires_at')
+            .first())
+
+
 def _gammes_public(devis, est_standard=False):
     """Bloc « choix de gamme » de la charge utile publique, ou ``None``.
 
@@ -214,8 +228,9 @@ def _gammes_public(devis, est_standard=False):
     le comparatif obéit au MÊME niveau que le reste de la page.
 
     ``None`` (clé absente) dans TOUS les cas où le client ne doit rien voir de
-    l'autre gamme : devis sans gamme, gamme sans sœur vivante, ou mode d'envoi
-    « seule ». L'écart est donné en MAD ABSOLUS et signé côté client.
+    l'autre gamme : devis sans gamme, gamme sans sœur vivante, sœur non envoyée
+    ou sans lien valide (ADVS16), ou mode d'envoi « seule ». L'écart est donné
+    en MAD ABSOLUS et signé côté client.
 
     LES DEUX CÔTÉS DU COMPARATIF SORTENT DE LA MÊME FONCTION (fondateur
     2026-08-18 ; note recalée 25/08 — depuis la règle « choix forcé = avec »,
@@ -241,12 +256,13 @@ def _gammes_public(devis, est_standard=False):
         soeur = gamme_soeur(devis)
         if soeur is None:
             return None
-        from ..models import ShareLink
+        lien_soeur = _lien_valide_public(soeur)
+        if lien_soeur is None:
+            return None
         from ..quote_engine.builder import display_totals
         from ..utils.client_links import chemin_proposition
 
         info_soeur = gamme_info(soeur)
-        lien_soeur = ShareLink.for_devis(soeur)
         total_soeur = display_totals(soeur).get('total')
         total_soeur = (float(quantize_mad(total_soeur))
                        if total_soeur is not None else None)
@@ -310,12 +326,6 @@ def _remplace_par_public(devis):
         courant = suivant
     if courant.pk == devis.pk:
         return None
-    url = None
-    if courant.statut != Devis.Statut.BROUILLON:
-        lien = (ShareLink.objects
-                .filter(devis=courant, expires_at__gt=timezone.now())
-                .order_by('-expires_at')
-                .first())
-        if lien is not None:
-            url = chemin_proposition(courant, lien.token)
+    lien = _lien_valide_public(courant)
+    url = chemin_proposition(courant, lien.token) if lien is not None else None
     return {'reference': courant.reference, 'url': url}

@@ -12,7 +12,7 @@ lundi : elle les voyait NAÎTRE une à une, déjà en retard, et son adhérence
 était fausse.
 
 Ce que ce fichier verrouille :
-  * les 11 touches de la prise de contact, DÉROULÉES pour les 7 jours
+  * les 8 touches de la prise de contact (gabarit v4, CADV23), DÉROULÉES pour les 7 jours
     d'arrivée de la semaine : aucune ne sort de la fenêtre de son canal,
     aucune ne précède l'origine, et les trois touches J0 restent sur le même
     jour ;
@@ -33,13 +33,13 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
+from testkit.factories import barreau_dominical_societe
 from testkit.time import frozen
 
 from apps.crm import horaires
-from apps.crm.models import Lead
+from apps.crm.models import Lead, LeadActivity
 from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
-from apps.parametres.models_realisations import Realisation
 
 User = get_user_model()
 
@@ -97,16 +97,16 @@ class _Base(TestCase):
         ).astimezone(horaires.CASABLANCA)
 
 
-class LesOnzeTouchesSurLesSeptJoursTests(_Base):
+class LesHuitTouchesSurLesSeptJoursTests(_Base):
     """Le déroulé complet que le « Done = » demande."""
 
     slug = 'cad19-sept-jours'
 
-    def test_les_onze_touches_existent_quel_que_soit_le_jour_darrivee(self):
+    def test_les_huit_touches_existent_quel_que_soit_le_jour_darrivee(self):
         for jour in JOURS_DARRIVEE:
             plan = self._plan(_a(jour))
-            self.assertEqual(len(plan), 11, jour)
-            self.assertEqual(sorted(plan), list(range(1, 12)), jour)
+            self.assertEqual(len(plan), 8, jour)
+            self.assertEqual(sorted(plan), list(range(1, 9)), jour)
 
     def test_aucune_touche_ne_precede_lorigine(self):
         for jour in JOURS_DARRIVEE:
@@ -135,6 +135,7 @@ class LesOnzeTouchesSurLesSeptJoursTests(_Base):
             self.assertEqual(jours_j0, {self._origine(depart).date()}, jour)
 
     def test_une_touche_dominicale_tombe_toujours_un_dimanche(self):
+        barreau_dominical_societe(self.company)
         for jour in JOURS_DARRIVEE:
             for ordre, (gabarit, quand) in self._plan(_a(jour)).items():
                 if getattr(gabarit, 'dimanche_ok', False):
@@ -153,10 +154,10 @@ class UnLeadDuSamediSetaleTests(_Base):
         self.assertEqual(plan[1][1].date(), datetime.date(2026, 9, 14))
         self.assertEqual(plan[2][1].date(), datetime.date(2026, 9, 14))
         self.assertEqual(plan[3][1].date(), datetime.date(2026, 9, 14))
-        # J+1 : les deux touches du lendemain.
+        # J+1 : l'appel 3.
         self.assertEqual(plan[4][1].date(), datetime.date(2026, 9, 15))
-        self.assertEqual(plan[5][1].date(), datetime.date(2026, 9, 15))
-        # J+2.
+        # J+2 : l'appel 4 et le WhatsApp de valeur (gabarit v4, CADV23).
+        self.assertEqual(plan[5][1].date(), datetime.date(2026, 9, 16))
         self.assertEqual(plan[6][1].date(), datetime.date(2026, 9, 16))
 
     def test_un_lead_du_dimanche_setale_pareil(self):
@@ -167,10 +168,10 @@ class UnLeadDuSamediSetaleTests(_Base):
 
     def test_lheure_imposee_du_gabarit_est_respectee_le_bon_jour(self):
         """La touche J+1 porte une heure cible (10:30) et la J+2 une autre
-        (18:00) : l'étalement ne les perd pas en route."""
+        (16:00, CADV23) : l'étalement ne les perd pas en route."""
         plan = self._plan(_a(SAMEDI))
         self.assertEqual((plan[4][1].hour, plan[4][1].minute), (10, 30))
-        self.assertEqual((plan[6][1].hour, plan[6][1].minute), (18, 0))
+        self.assertEqual((plan[5][1].hour, plan[5][1].minute), (16, 0))
 
     def test_un_lead_arrive_en_semaine_garde_ses_dates(self):
         """Garde négative : quand le départ est DÉJÀ joignable, l'origine lui
@@ -187,29 +188,20 @@ class LeSuiviApresDevisSetaleAussiTests(_Base):
 
     slug = 'cad19-apres-devis'
 
-    def setUp(self):
-        super().setUp()
-        # AGR514 (D-AGR-10) — la touche 4 « preuve » n'est posée que s'il
-        # existe une réalisation éligible ; l'étalement J+1/J+2/J+4 en a
-        # besoin pour exister.
-        Realisation.objects.create(
-            company=self.company, titre='Chantier témoin', ville='Bouskoura',
-            url_page='https://taqinor.ma/realisations/cad19/')
-
-    def test_un_devis_envoye_le_samedi_etale_J1_J2_J4(self):
+    def test_un_devis_envoye_le_samedi_etale_J1_J2_J7(self):
         plan = self._plan(_a(SAMEDI), cadence='apres_devis')
-        # J+1, J+2, J+4 depuis l'origine (lundi 14) : mardi, mercredi,
-        # vendredi — trois jours distincts, plus deux touches sur le lundi.
+        # J+1, J+2, J+7 (gabarit v4, CADV24) depuis l'origine (lundi 14) : mardi,
+        # mercredi, lundi suivant — trois jours distincts, aucune sur le lundi 14.
         self.assertEqual(plan[1][1].date(), datetime.date(2026, 9, 15))
         self.assertEqual(plan[2][1].date(), datetime.date(2026, 9, 16))
-        self.assertEqual(plan[4][1].date(), datetime.date(2026, 9, 18))
+        self.assertEqual(plan[6][1].date(), datetime.date(2026, 9, 21))
 
     def test_un_devis_envoye_le_vendredi_soir_ne_les_empile_plus(self):
         """Vendredi 21:30 : après la fermeture. Sans l'ancre unique, J+1
         (samedi) et J+2 (dimanche) retombaient tous deux sur le lundi."""
         vendredi_soir = _a(datetime.date(2026, 9, 11), heure=21, minute=30)
         plan = self._plan(vendredi_soir, cadence='apres_devis')
-        jours = [plan[ordre][1].date() for ordre in (1, 2, 4)]
+        jours = [plan[ordre][1].date() for ordre in (1, 2, 6)]
         self.assertEqual(len(set(jours)), 3, jours)
         self.assertEqual(jours[0], datetime.date(2026, 9, 15))
         self.assertEqual(jours[1], datetime.date(2026, 9, 16))
@@ -238,7 +230,9 @@ class LeGardeFouDesTroisPremieresTouchesTests(_Base):
     def test_la_touche_dominicale_reste_un_dimanche_a_16h30(self):
         """L'autre garde-fou de MRY4 : la touche dominicale d'un lead du
         mercredi tombe bien un DIMANCHE, à 16:30. Sa DATE exacte relève de
-        CAD23 (le dimanche le plus proche de J+5) — pinnée là-bas, pas ici."""
+        CAD23 (le dimanche le plus proche de J+5) — pinnée là-bas, pas ici.
+        CADV23 : le barreau dominical est celui d'une société qui l'a réglé."""
+        barreau_dominical_societe(self.company)
         plan = self._plan(_a(datetime.date(2026, 9, 2), heure=10))
         dominicales = [quand for _g, quand in plan.values()
                        if quand.weekday() == 6]
@@ -251,6 +245,13 @@ class LexceptionDuReveilTests(_Base):
     """MRY30 rétrodate le départ d'un réveil pour tomber SUR son créneau."""
 
     slug = 'cad19-reveil'
+
+    def setUp(self):
+        super().setUp()
+        # CADV25 — un réveil suppose un client déjà joint une fois.
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.lead.company, lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
 
     def test_le_reveil_garde_son_depart_pour_ancre(self):
         """Départ rétrodaté un SAMEDI (le créneau visé est 30 jours plus

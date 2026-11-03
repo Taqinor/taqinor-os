@@ -151,7 +151,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     // ALEA33 — TOUTES les pages (jamais les 50 premiers clients seulement).
     fetchAllPages((page) => crmApi.getClients({ page, page_size: 200 }).then((r) => r.data))
       .then((res) => setClients(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
-    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
+    fetchAllPages((page, { page_size: pageSize } = {}) => stockApi.getProduits({ page, page_size: pageSize }).then((r) => r.data))
       .then(setProduits).catch(() => {})
     fetchAllPages((page) => ventesApi.getBonsCommande({ page, page_size: 200 }).then((r) => r.data))
       .then((res) => setBonsCommande(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
@@ -524,7 +524,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                   {factureCreee ? (
                     <p role="status" className="m-0">
                       Facture <strong>{factureCreee.reference}</strong> créée — Total TTC{' '}
-                      <strong>{formatMAD(factureCreee.montant_ttc)}</strong>, identique au devis signé.
+                      <strong>{formatMAD(factureCreee.total_ttc)}</strong>, identique au devis signé.
                     </p>
                   ) : (
                     <>

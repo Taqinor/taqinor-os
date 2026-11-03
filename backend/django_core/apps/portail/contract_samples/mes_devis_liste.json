@@ -32,7 +32,8 @@
           "Offre valable jusqu'au 28/10/2026",
           "Acompte à la commande : 50%",
           "50% à la réception du matériel"
-        ]
+        ],
+        "empreinte_contenu": "6f1c0a3be29d47158c7e02d9b4a86f31d5e7c94a0b12f683ae47d90c35b1e8f2"
       },
       {
         "id": 400,
@@ -49,7 +50,8 @@
         "options": null,
         "exige_identite_entreprise": false,
         "conditions_titre": "Conditions générales du devis",
-        "conditions": null
+        "conditions": null,
+        "empreinte_contenu": null
       },
       {
         "id": 401,
@@ -66,7 +68,8 @@
         "options": null,
         "exige_identite_entreprise": false,
         "conditions_titre": "Conditions générales du devis",
-        "conditions": null
+        "conditions": null,
+        "empreinte_contenu": null
       }
     ]
   },
@@ -175,7 +178,8 @@
       "consent_esign": "bool, requis (consentement explicite, QX9)",
       "option": "'sans_batterie'|'avec_batterie', REQUIS quand `deux_options` est vrai, facultatif sinon (ADOC110)",
       "entreprise": "{raison_sociale, signataire_qualite, ice} — REQUIS (les trois, non vides) quand `exige_identite_entreprise` est vrai (CIQ321, même règle et même lecteur que la page publique : `lire_entreprise_acceptation`, ICE validé par `validate_ice_ma`) ; IGNORÉ sinon. Forme : `exemple_portail.corps.entreprise` de `apps/ventes/contract_samples/acceptation_entreprise.json`.",
-      "accepte_conditions": "bool, REQUIS (APDF35, C-APDF-005) : case explicite « J'accepte ce devis et les conditions générales » ; absent/faux → 400 `400_conditions`, aucun statut changé. Vérifié après le consentement et après la branche « déjà accepté » (ADOC127), avant l'identité entreprise."
+      "accepte_conditions": "bool, REQUIS (APDF35, C-APDF-005) : case explicite « J'accepte ce devis et les conditions générales » ; absent/faux → 400 `400_conditions`, aucun statut changé. Vérifié après le consentement et après la branche « déjà accepté » (ADOC127), avant l'identité entreprise.",
+      "empreinte_contenu": "str, REQUIS quand la ligne lue porte `empreinte_contenu` (ADVS20) : absent ou différent de l'empreinte courante → 409 `409_empreinte_perimee`, rien d'écrit. Vérifié juste avant `accept_devis`, re-comparé sous son verrou."
     },
     "exemple_corps_deux_options": {
       "nom": "Karim Alaoui",
@@ -205,10 +209,15 @@
       "400_conditions": {
         "detail": "Acceptez les conditions générales pour signer.",
         "champ": "accepte_conditions"
+      },
+      "409_empreinte_perimee": {
+        "detail": "La proposition a changé depuis votre lecture : rechargez la page avant de signer.",
+        "code": "empreinte_perimee"
       }
     },
     "source": "MesDevisPortailViewSet.accepter (portail/views_client.py) → accept_devis (ventes/domain/cycle_vie.py:1388-1391) ; le corps lit déjà `option` aujourd'hui, le message 400 vient d'AcceptError (le préfixe « Ce devis comporte deux options — précisez » est stable).",
     "deja_accepte": "ADOC127 — un devis déjà au statut « accepte » SANS preuve d'acceptation portail (accepté AILLEURS, ex. par le commercial en interne) répond 409 {detail:'Ce devis est déjà accepté.'} sans créer ni signer d'AcceptationDevisPortail ni écrire d'audit ; un devis déjà accepté AU PORTAIL puis re-posté répond 200 (corps de « 200 »), preuve et horodatage d'origine inchangés."
   },
-  "acceptable": "ERR-PORTAIL-ACCEPTER-DEVIS-REFUSE — booléen ADDITIF sur chaque élément : vrai si `accept_devis` accepterait ce devis (statut brouillon/envoyé ET non expiré, ventes/domain/cycle_vie.py + utils/expiry.is_expired). SOURCE UNIQUE : l'écran n'affiche « Accepter » que si `acceptable` est vrai — jamais une liste de statuts recopiée côté front."
+  "acceptable": "ERR-PORTAIL-ACCEPTER-DEVIS-REFUSE — booléen ADDITIF sur chaque élément : vrai si `accept_devis` accepterait ce devis (statut brouillon/envoyé ET non expiré, ventes/domain/cycle_vie.py + utils/expiry.is_expired). SOURCE UNIQUE : l'écran n'affiche « Accepter » que si `acceptable` est vrai — jamais une liste de statuts recopiée côté front.",
+  "empreinte_contenu": "ADVS20 (C-ADVS-025) — chaîne | null sur chaque élément : l'empreinte du contenu signable au moment de la lecture (`modifiabilite.empreinte_contenu_signable`, la même que le lien public, `proposal_accept.json`), null hors signable (accepté, expiré, remplacé). L'écran la renvoie telle quelle à l'acceptation ; `exemple_deux_options` et `exemple_conditions` restent des illustrations sans cette clé."
 }

@@ -3,7 +3,7 @@
   "effets": {
     "touche_suivante": "La cadence continue : sa touche suivante est programmée à son délai prévu.",
     "touche_suivante_a_la_date": "La touche suivante de la cadence est programmée à la date choisie.",
-    "derniere_froid_reveils": "C’était la dernière touche : le dossier part au Froid et ses réveils sont programmés.",
+    "derniere_froid_reveils": "C’était la dernière touche : le dossier part au Froid ; ses réveils ne sont programmés que pour un particulier déjà joint ou chiffré (facture déclarée d’au moins 2 000 MAD : un seul appel de réveil).",
     "dernier_reveil": "C’était le dernier réveil : plus aucune relance n’est programmée, le dossier reste au Froid.",
     "reste_au_froid": "Le dossier reste au Froid.",
     "sort_du_froid": "Le dossier sort du Froid.",
@@ -34,6 +34,10 @@
     "lead_perdu": "Le lead passe « Perdu » avec le motif choisi : toutes ses relances s’arrêtent et aucune autre étape n’est posée. Il reste rouvrable depuis sa fiche.",
     "visite_abandonnee": "La visite est abandonnée : le rendez-vous prévu est annulé (le technicien est prévenu) et les étapes de la visite sont retirées.",
     "etape_rappel_convenu_a_la_date": "Cette touche est close : l’étape « Rappeler le client — rappel convenu » (un appel) est posée à la date et à l’heure convenues.",
+    "etape_appel_trimestriel": "Client professionnel : pas de Froid, le dossier se met en attente et un « Appel trimestriel » est posé dans trois mois.",
+    "etape_pieces_recues": "Client professionnel sans pièce reçue : prochaine étape, « Pièces reçues ? » (WhatsApp, dans quelques jours) ; le devis vient avec la pièce ou après la seconde relance.",
+    "etape_pieces_recues_sauf_suivi": "Si le suivi d’un devis envoyé n’est pas allé au bout, c’est lui qui reprend ; sinon, client professionnel sans pièce reçue : prochaine étape, « Pièces reçues ? » (WhatsApp, dans quelques jours) ; le devis vient avec la pièce ou après la seconde relance.",
+    "etape_appel_avant_froid": "Le dossier ne part pas encore au Froid, il manque des appels tracés : la prochaine étape, au prochain créneau, est un autre appel.",
     "etape_planifier_demain": "L’appel est noté sans réponse et l’étape « Planifier la visite technique convenue » est reposée pour demain : le client a accepté la visite, on réessaie."
   },
   "_doc_journal": "CAD15 — les effets d'une ISSUE journalisée depuis la fiche (journal d'appel) : aucune touche n'est close, seuls les récepteurs MRY9 réagissent. Table ÉGALE à apps/crm/suite_touche.py::promesses_journal() (garde CAD17), rejouée par l'API réelle.",

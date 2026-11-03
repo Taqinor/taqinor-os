@@ -78,11 +78,11 @@ class ResumeAssocieTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.data, CONTRAT['exemple_400_accord'])
 
-    def test_b_telephone_vide_400(self):
+    def test_b_telephone_vide_409(self):
         self._envoyer()
         Lead.objects.filter(pk=self.lead.pk).update(contact_secondaire_telephone='')
         resp = self._post()
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertEqual(resp.data, CONTRAT['exemple_400_telephone'])
 
     def test_c_devis_brouillon_409(self):

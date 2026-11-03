@@ -225,6 +225,14 @@ def assembler_photos_toit_task(visite_id):
     return nouvelle(visite_id)
 
 
+@shared_task(name='crm.traiter_chaine_acceptation')
+def traiter_chaine_acceptation_task():
+    """CADV112 — chaque matin : la direction prévenue à J+14 d'un devis accepté sans
+    acompte, les touches de la chaîne annulées dès l'acompte reçu."""
+    from apps.crm.cadence_filet import traiter_chaine_acceptation
+    return traiter_chaine_acceptation()
+
+
 @shared_task(name='crm.attribuer_leads_echus')
 def attribuer_leads_echus_task():
     """Fondateur 27/10/2026 — chaque minute : un lead dont le responsable

@@ -40,7 +40,9 @@ from apps.roles.permissions_registre import (
     ROLE_PORTAIL_FOURNISSEUR,
     ROLE_PORTAIL_PARTENAIRE,
 )
-from apps.ventes.models import Devis
+from apps.portail.tests import corps_acceptation
+from apps.ventes.domain.modifiabilite import EMPREINTE_PERIMEE
+from apps.ventes.models import Devis, LigneDevis
 from authentication.models import Company, CustomUser
 
 _seq = itertools.count(1)
@@ -276,8 +278,9 @@ class AccepterDevisPortailTests(TestCase):
     def test_acceptation_bascule_le_devis_par_le_chemin_unique(self):
         self.api.force_authenticate(user=self.user_a)
         res = self.api.post(
-            self.url, {'nom': 'Sami Client', 'consent_esign': True,
-                       'accepte_conditions': True},
+            self.url, corps_acceptation(self.devis, nom='Sami Client',
+                                        consent_esign=True,
+                                        accepte_conditions=True),
             format='json')
 
         self.assertEqual(res.status_code, 200, res.data)
@@ -288,8 +291,9 @@ class AccepterDevisPortailTests(TestCase):
     def test_trace_portail_posee(self):
         from apps.portail.models import AcceptationDevisPortail
         self.api.force_authenticate(user=self.user_a)
-        self.api.post(self.url, {'nom': 'Sami', 'consent_esign': True,
-                                 'accepte_conditions': True},
+        self.api.post(self.url, corps_acceptation(self.devis, nom='Sami',
+                                                  consent_esign=True,
+                                                  accepte_conditions=True),
                       format='json')
         acc = AcceptationDevisPortail.objects.get(
             company=self.company, devis=self.devis)
@@ -322,14 +326,57 @@ class AccepterDevisPortailTests(TestCase):
 
     def test_idempotent(self):
         self.api.force_authenticate(user=self.user_a)
-        payload = {'nom': 'Sami', 'consent_esign': True,
-                   'accepte_conditions': True}
+        payload = corps_acceptation(self.devis, nom='Sami', consent_esign=True,
+                                    accepte_conditions=True)
         premier = self.api.post(self.url, payload, format='json')
         second = self.api.post(self.url, payload, format='json')
         self.assertEqual(premier.status_code, 200)
         self.assertEqual(second.status_code, 200)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)
+
+    # -- ADVS20 : une correction entre la lecture et l'acceptation : 409 --
+
+    def _corps_lu(self, **extra):
+        return {'nom': 'Sami', 'consent_esign': True,
+                'accepte_conditions': True, **extra}
+
+    def _empreinte_lue(self):
+        self.api.force_authenticate(user=self.user_a)
+        res = self.api.get('/api/django/portail/mes-devis/')
+        return res.json()['results'][0]['empreinte_contenu']
+
+    def _assert_409_rien_ecrit(self, res):
+        from apps.portail.models import AcceptationDevisPortail
+        self.assertEqual(res.status_code, 409, res.content)
+        self.assertEqual(res.json()['code'], 'empreinte_perimee')
+        self.assertEqual(res.json()['detail'], EMPREINTE_PERIMEE)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
+        self.assertFalse(AcceptationDevisPortail.objects.filter(
+            devis=self.devis).exists())
+
+    def test_correction_apres_lecture_409_empreinte_perimee(self):
+        ligne = LigneDevis.objects.create(
+            devis=self.devis, designation='Accessoires', quantite=Decimal('1'),
+            prix_unitaire=Decimal('1000.00'))
+        lue = self._empreinte_lue()
+        self.assertTrue(lue)
+        LigneDevis.objects.filter(pk=ligne.pk).update(
+            prix_unitaire=Decimal('1500.00'))
+        self._assert_409_rien_ecrit(self.api.post(
+            self.url, self._corps_lu(empreinte_contenu=lue), format='json'))
+        relue = self._empreinte_lue()
+        self.assertNotEqual(relue, lue)
+        res = self.api.post(
+            self.url, self._corps_lu(empreinte_contenu=relue), format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertIsNone(self._empreinte_lue())
+
+    def test_sans_empreinte_409(self):
+        self.api.force_authenticate(user=self.user_a)
+        self._assert_409_rien_ecrit(
+            self.api.post(self.url, self._corps_lu(), format='json'))
 
 
 @override_settings(CACHES={'default': {
@@ -420,8 +467,10 @@ class ConditionsPortailTests(TestCase):
     def test_accept_avec_200(self):
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
             res = self.api.post(
-                self.url, {'nom': 'Sami', 'consent_esign': True,
-                           'accepte_conditions': True}, format='json')
+                self.url, corps_acceptation(self.devis, nom='Sami',
+                                            consent_esign=True,
+                                            accepte_conditions=True),
+                format='json')
         self.assertEqual(res.status_code, 200, res.content)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)

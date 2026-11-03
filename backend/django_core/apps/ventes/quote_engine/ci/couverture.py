@@ -216,7 +216,11 @@ def ligne_non_chiffre(d, cle, prefixe):
 
     AMOT80 — investissement non chiffré ⇒ SON motif ; argent servi sans
     motif client ⇒ aucune demande de factures (la consommation est là).
-    AMOT116 — consommation connue sans bloc d'économie : idem."""
+    AMOT116 — consommation connue sans bloc d'économie : idem.
+    ADVS18 — économies CALCULÉES mais décochées au lien : rien à dire, jamais
+    « non chiffrés » (chiffres vérifiés seulement)."""
+    if d.get("economies_masquees_lien"):
+        return ""
     phrase = motif_investissement(d, cle)
     servi = d.get(f"{cle}_motif_argent")
     if phrase is None and (servi == MOTIF_ARGENT_SANS_DEMANDE or not servi and (

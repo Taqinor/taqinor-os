@@ -19,11 +19,15 @@ factures existantes ; on ne réimplémente aucun calcul d'argent à la main.
 """
 from __future__ import annotations
 
+from core.product_roles import role_va_dans_avec, role_va_dans_sans
+
 # Prédicats de classification — partagés avec le moteur de devis. Purs (chaînes).
 from apps.ventes.quote_engine.lignes_classement import (
     _is_battery, _is_hybrid_inverter, _is_inverter, _is_offgrid_inverter,
-    _is_reseau_inverter, _is_smart_meter, _is_wifi_dongle,
+    _is_reseau_inverter, _is_smart_meter, _is_wifi_dongle, fiches_figees,
 )
+# AOOM1 — clés d'``etude_params`` annotables (module feuille, sans import).
+from apps.ventes.utils.annotations_devis import cle_etude
 import logging
 
 logger = logging.getLogger(__name__)
@@ -119,10 +123,18 @@ def _variante(ligne) -> str:
 
 
 def _blob_marque(ligne) -> str:
-    """Adaptateur ``LigneDevis`` de :func:`texte_marque`."""
+    """Adaptateur ``LigneDevis`` de :func:`texte_marque`.
+
+    ADVS7 — la marque FIGÉE à l'envoi quand l'instantané porte ce produit, comme
+    ``_line_to_item`` côté moteur : sans quoi une marque corrigée au catalogue
+    ferait diverger le total imprimé d'un envoyé de celui du noyau. Sans
+    instantané (brouillon, envoyé d'avant ce gel, tous les devis ≤ 9) : la marque
+    du jour, à l'octet."""
     produit = getattr(ligne, 'produit', None)
-    return texte_marque(getattr(ligne, 'designation', ''),
-                        getattr(produit, 'marque', ''),
+    fiche = fiches_figees(getattr(ligne, 'devis', None)).get(
+        str(getattr(produit, 'pk', '')))
+    marque = fiche.get('marque') if fiche else getattr(produit, 'marque', '')
+    return texte_marque(getattr(ligne, 'designation', ''), marque,
                         getattr(produit, 'nom', ''))
 
 
@@ -212,37 +224,70 @@ def blob_va_dans_avec(blob) -> bool:
     return not _is_reseau_inverter(blob)
 
 
-def _garder_dans_sans(li) -> bool:
-    """True si ``li`` appartient au panier « sans batterie ».
+def panier_de_ligne(variante, role, blob) -> tuple:
+    """ADVS5 (D-ADVS-3) — ``(sans, avec)`` : LA règle de classement d'une ligne,
+    contrat ``contract_samples/classement_options.json``.
 
-    F14 — la variante déclarée est EXCLUSIVE et TRANCHE SEULE : une ligne
-    ``variante='sans'`` reste dans son panier déclaré MÊME quand son
-    ``_blob`` la classerait batterie/hybride par mots-clés (ceinture-bretelles
-    du moteur PDF, ``builder._repartir_options`` — la contradiction est
-    remontée là-bas en avertissement interne, jamais en retrait de ligne).
-    Miroir exact : seule une ligne SANS variante ('') retombe sur les mots-clés.
+    F14 — la variante déclarée est EXCLUSIVE et tranche seule (une contradiction
+    est remontée par le moteur PDF en avertissement interne, jamais en retrait
+    de ligne). Puis le rôle stocké ; tout accessoire de batterie (rôle des deux
+    paniers, mot « batterie » au texte) n'est que dans « avec ». Une ligne sans
+    rôle garde les mots-clés d'hier.
     """
-    v = _variante(li)
-    if v == VARIANTE_AVEC:
-        return False
-    if v == VARIANTE_SANS:
-        return True
-    return blob_va_dans_sans(_blob(li))
+    if variante == VARIANTE_SANS:
+        return True, False
+    if variante == VARIANTE_AVEC:
+        return False, True
+    role_sans, role_avec = role_va_dans_sans(role), role_va_dans_avec(role)
+    if role_sans is None:
+        return blob_va_dans_sans(blob), blob_va_dans_avec(blob)
+    if role_sans and role_avec and _is_battery(blob):
+        return False, True
+    return role_sans, role_avec
 
 
-def _garder_dans_avec(li) -> bool:
-    """True si ``li`` appartient au panier « avec batterie » — miroir de
-    ``_garder_dans_sans`` (F14)."""
-    v = _variante(li)
-    if v == VARIANTE_SANS:
-        return False
-    if v == VARIANTE_AVEC:
-        return True
-    return blob_va_dans_avec(_blob(li))
+def panier_unique(devis) -> bool:
+    """Niveau 10 (ADVS5/ADVS6, « nouveaux rendus seulement ») — ce devis suit-il
+    :func:`panier_de_ligne` ? Un devis marqué ≤ 9 garde ce que le client a reçu ;
+    ``None`` et une doublure sans le champ suivent les règles courantes."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_PANIER_UNIQUE_0211, regles_au_moins)
+    return regles_au_moins(devis, REGLES_PANIER_UNIQUE_0211)
 
 
-def filter_lines_for_option(lignes, option):
+def panier_du_moteur(role, blob, devis=None) -> tuple:
+    """``(sans, avec)`` d'une ligne pour ``builder._repartir_options``, variante
+    à part. Niveau ≤ 9 : la répartition d'hier du PDF, le rôle stocké seul (un
+    câble batterie ``cable_dc`` reste dans les deux), mots-clés en repli."""
+    if panier_unique(devis):
+        return panier_de_ligne('', role, blob)
+    role_sans, role_avec = role_va_dans_sans(role), role_va_dans_avec(role)
+    return (blob_va_dans_sans(blob) if role_sans is None else role_sans,
+            blob_va_dans_avec(blob) if role_avec is None else role_avec)
+
+
+def _panier_de(li, unique=True) -> tuple:
+    # Niveau ≤ 9 : le noyau d'hier ne lisait jamais le rôle (variante, mots-clés).
+    role = getattr(li, 'role_devis', None) if unique else None
+    return panier_de_ligne(_variante(li), role, _blob(li))
+
+
+def _garder_dans_sans(li, unique=True) -> bool:
+    """True si ``li`` appartient au panier « sans batterie »."""
+    return _panier_de(li, unique)[0]
+
+
+def _garder_dans_avec(li, unique=True) -> bool:
+    """True si ``li`` appartient au panier « avec batterie »."""
+    return _panier_de(li, unique)[1]
+
+
+def filter_lines_for_option(lignes, option, devis=None):
     """Filtre PUR d'une liste de lignes selon l'option (testable sans Django).
+
+    ADVS5/ADVS6 — ``devis`` porte le niveau de règles (:func:`panier_unique`) :
+    TOUT appelant de production le passe (garde dans ``tests/test_options.py``),
+    sans quoi un devis envoyé changerait de total à son re-rendu.
 
     Miroir exact du split de ``build_quote_data`` : « sans » = ni batterie ni
     onduleur hybride ; « avec » = pas d'onduleur réseau. Toute autre valeur
@@ -285,12 +330,13 @@ def filter_lines_for_option(lignes, option):
     plus QF9 que dans le cas DEUX-OPTIONS, comme ici. Une ligne accessoire d'un
     devis mono-option ou d'une liste libre est donc IMPRIMÉE **et** FACTURÉE.
     """
+    unique = panier_unique(devis)
     if option == SANS_BATTERIE:
         return retirer_accessoires_huawei(
-            [li for li in lignes if _garder_dans_sans(li)])
+            [li for li in lignes if _garder_dans_sans(li, unique)])
     if option == AVEC_BATTERIE:
         return retirer_accessoires_huawei(
-            [li for li in lignes if _garder_dans_avec(li)])
+            [li for li in lignes if _garder_dans_avec(li, unique)])
     return list(lignes)
 
 
@@ -403,7 +449,7 @@ def option_lines(devis, option=None):
               if li.compte_dans_totaux]
     if not option or not has_two_options(devis):
         return lignes
-    return filter_lines_for_option(lignes, option)
+    return filter_lines_for_option(lignes, option, devis=devis)
 
 
 def _totaux_canoniques(devis, lignes) -> dict:
@@ -476,7 +522,7 @@ def option_totaux(devis, option=None, lignes=None) -> dict:
     else:
         lignes = list(lignes)
     if option and has_two_options(devis):
-        lignes = filter_lines_for_option(lignes, option)
+        lignes = filter_lines_for_option(lignes, option, devis=devis)
     return _totaux_canoniques(devis, lignes)
 
 
@@ -590,8 +636,14 @@ def scenario_declare(devis):
     à celui qui a écrit ``etude_params`` en dernier. Aucun override posé ⇒ la
     valeur stockée, à l'octet. Ne lève jamais (un registre illisible ne décide
     rien).
+
+    AOOM1 — la valeur STOCKÉE passe par ``annotations_devis.cle_etude`` :
+    ``etude_params ->> 'scenario'`` quand la liste a déferré le champ, le JSON
+    sinon. Le texte rendu est le MÊME que ``.get('scenario')`` pour les
+    libellés de ``SCENARIOS_ALTERNATIVE``/``SCENARIOS_MONO``, les seuls que
+    l'aval compare, et une clé absente rend ``None`` comme ``.get``.
     """
-    stocke = (getattr(devis, 'etude_params', None) or {}).get('scenario')
+    stocke = cle_etude(devis, 'scenario')
     try:
         from apps.ventes.domain.lecture_overrides import effectif
         impose, source = effectif(devis, 'scenario', stocke)
@@ -698,9 +750,9 @@ def totaux_affichage_repli(devis) -> dict:
         return {'total': float(devis.total_ttc), 'nb_options': 1}
     lignes = lignes_avec_produit(devis)
     sans = _totaux_canoniques(
-        devis, filter_lines_for_option(lignes, SANS_BATTERIE))
+        devis, filter_lines_for_option(lignes, SANS_BATTERIE, devis=devis))
     avec = _totaux_canoniques(
-        devis, filter_lines_for_option(lignes, AVEC_BATTERIE))
+        devis, filter_lines_for_option(lignes, AVEC_BATTERIE, devis=devis))
     # QJR401 / DR1 — le repli suit lui aussi l'option SIGNÉE : sans cela, le
     # jour où le moteur lève, la liste réafficherait le prix de l'option NON
     # signée sur un devis déjà accepté.

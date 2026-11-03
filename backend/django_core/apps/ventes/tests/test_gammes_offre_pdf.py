@@ -28,7 +28,7 @@ class TestPdfParGamme(GammeBase):
     def test_le_lien_de_la_carte_pointe_le_jeton_de_la_soeur(self):
         """Chaque carte de gamme ouvre le document ET le PDF de SA gamme —
         jamais un PDF fusionné des deux gammes."""
-        source, soeur = self._paire('DEV-GAM-051')
+        source, soeur = self._paire_servie('DEV-GAM-051')
         bloc = _gammes_public(source)
         t_soeur = ShareLink.objects.filter(devis=soeur).first().token
         self.assertIn(t_soeur, bloc['soeur']['proposition_path'])
@@ -38,7 +38,10 @@ class TestPdfParGamme(GammeBase):
         # ADEV11 : un brouillon n'est jamais servi au jeton client -> envoyé.
         Devis.objects.filter(pk__in=[source.pk, soeur.pk]).update(
             statut=Devis.Statut.ENVOYE)
+        source.refresh_from_db()
         soeur.refresh_from_db()
+        # ADVS16 : la gamme d'en face n'est servie que si elle porte déjà son lien.
+        ShareLink.for_devis(source)
         lien = ShareLink.for_devis(soeur)
         resp = APIClient().get(url_proposal(lien.token))
         self.assertEqual(resp.status_code, 200)

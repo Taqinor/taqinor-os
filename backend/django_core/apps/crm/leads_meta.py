@@ -6,11 +6,12 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 import logging
 import re as _re
 
+from django.db import transaction
 from django.utils import timezone
 
 from apps.records.provenance import ecrire_si_libre
 
-from . import activity
+from . import activity, stages
 from .cadence_plan import demarrer_cadence_contact
 from .leads_attribution import default_responsable_for
 from .leads_consentement import (
@@ -21,7 +22,7 @@ from .leads_consentement import (
     enregistrer_base_legale_lead,
     enregistrer_consentement_lead,
 )
-from .leads_doublons import find_duplicates_by_contact
+from .leads_doublons import find_duplicates_by_contact, normalize_phone
 from .leads_notifications import notify_new_lead
 from .leads_score import recompute_lead_score
 from .models import Lead, LeadActivity
@@ -591,6 +592,45 @@ def _parse_meta_created_time(brut):
     return moment
 
 
+def _note_demande_meta(leadgen_id):
+    """CADV101 — la ligne de chatter d'une reprise : elle est aussi le marqueur
+    d'idempotence du ``leadgen_id`` (la colonne ``external_id`` du lead rouvert
+    garde sa première demande)."""
+    return f'Nouvelle demande Meta (leadgen {leadgen_id}).'
+
+
+def _froid_a_reprendre(dupes, telephone):
+    """CADV101 (D-CADV-12) — le lead parqué au Froid, de même téléphone, que cette
+    demande rouvre ; ``None`` sinon. Vivant, signé, archivé, perdu ou opposé :
+    D-CRX1 (un nouveau lead) ; une opposition ne se lève jamais par ce chemin."""
+    numero = normalize_phone(telephone)
+    froids = [
+        d for d in dupes
+        if numero and numero in (d.phone_normalise, d.whatsapp_normalise)
+        and d.stage == stages.COLD
+        and not (d.is_archived or d.perdu or d.ne_plus_contacter)]
+    return max(froids, key=lambda d: d.date_creation, default=None)
+
+
+def _reprendre_froid_meta(lead, leadgen_id, extras, ville, form_id):
+    """CADV101 — rouvre (``enregistrer_recontact``), enrichit sans écraser, et
+    trace la demande : le tout ou rien, sur le lead existant."""
+    from .cadence_reponses import enregistrer_recontact
+
+    with transaction.atomic():
+        enregistrer_recontact(lead, None, canal='formulaire_meta')
+        _enrichir_meta_trace(lead, extras)
+        if ville and not lead.ville:
+            lead.ville = ville
+            lead.save(update_fields=['ville'])
+        _ensure_meta_form_note(lead, extras, form_id=form_id)
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=_note_demande_meta(leadgen_id))
+    recompute_lead_score(lead)
+    return lead
+
+
 def create_lead_from_meta_lead_ads(
         *, company, leadgen_id, field_data,
         ad_id='', adgroup_id='', form_id='', access_token='',
@@ -625,6 +665,9 @@ def create_lead_from_meta_lead_ads(
     (l'absorption, elle, ressuscitait silencieusement la fiche au rebut).
     L'attribution (canal/utm/meta_ids) et ``external_system``/``external_id``
     se posent donc TOUJOURS sur le lead nouvellement créé.
+
+    CADV101 (D-CADV-12, 02/11/2026) — seule exception : le lead parqué au FROID de
+    même téléphone est ROUVERT au lieu d'un doublon (``_froid_a_reprendre``).
 
     Attribution (ADSENG1) : ``canal=META_ADS``, ``utm_source='facebook'``.
     Meta ne pousse JAMAIS campaign_name/adset_name dans le webhook leadgen ; il
@@ -689,6 +732,12 @@ def create_lead_from_meta_lead_ads(
             existing.save(update_fields=['ville'])
         _ensure_meta_form_note(existing, extras, form_id=str(form_id or ''))
         return existing
+    # CADV101 — ce leadgen a déjà rouvert un Froid : rejouer ne rouvre rien.
+    deja_repris = LeadActivity.objects.filter(
+        company=company, kind=LeadActivity.Kind.NOTE,
+        body=_note_demande_meta(leadgen_id)).select_related('lead').first()
+    if deja_repris is not None:
+        return deja_repris.lead
 
     nom = (fields.get('nom') or '').strip() or 'Lead Meta Ads'
     telephone = fields.get('telephone') or ''
@@ -707,6 +756,10 @@ def create_lead_from_meta_lead_ads(
     if telephone or email:
         dupes = find_duplicates_by_contact(
             company, phone=telephone or None, email=email or None)
+    froid = _froid_a_reprendre(dupes, telephone)
+    if froid is not None:
+        return _reprendre_froid_meta(
+            froid, leadgen_id, extras, fields.get('ville'), str(form_id or ''))
 
     # ADSENG1 — identifiants Meta natifs (clés de jointure stables) + noms
     # résolus via les miroirs adsengine (jamais un import des modèles adsengine).

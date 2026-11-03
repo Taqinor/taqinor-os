@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
+from testkit.factories import barreau_preuve_j4_societe
 
 from apps.crm.models import Client, Lead
 from apps.crm.cadence_plan import calculer_echeances_cadence
@@ -23,6 +24,8 @@ class PreuveCITests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='ciq515', slug='ciq515-co')
         CompanyProfile.objects.get_or_create(company=self.company)
+        # CADV24 — la J4 sort du gabarit v4 : une société qui l'a gardée.
+        barreau_preuve_j4_societe(self.company)
         self.acteur = User.objects.create_user(
             username='ciq515-u', password='x', role_legacy='responsable',
             company=self.company)

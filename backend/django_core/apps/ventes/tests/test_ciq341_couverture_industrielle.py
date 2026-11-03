@@ -102,6 +102,24 @@ class Ciq341Baseline(SimpleTestCase):
         self.assertNotIn("— 12 mois", p1)
 
 
+class Advs18EconomiesDecochees(SimpleTestCase):
+    """ADVS18 — économies calculées, décochées au lien : ni tuile, ni phrase
+    « non chiffrés » / « pas encore calculées », sur aucune page."""
+
+    def test_decochees_aucune_phrase_ni_tuile(self):
+        texte = _texte(_html(dict(_data(), masquer_economies=True,
+                                  economies_masquees_lien=True)))
+        self.assertNotIn("non chiffrés à ce stade", texte)
+        self.assertNotIn("Rentabilité non chiffrée", texte)
+        self.assertNotIn("Aucune rentabilité n'est publiée", texte)
+        self.assertNotIn("pas encore été calculées", texte)
+        self.assertNotIn("Retour estimé", texte)
+
+    def test_vrai_masque_garde_son_motif(self):
+        p1 = _texte(_page1(dict(_data(economie=None), masquer_economies=True)))
+        self.assertIn("non chiffrés à ce stade.", p1)
+
+
 class Ciq341SiteMT(SimpleTestCase):
 
     def test_puissance_souscrite_et_aucune_repartition_horaire(self):

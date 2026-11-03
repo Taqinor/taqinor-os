@@ -77,6 +77,10 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # n'écrit plus de promesse par cadence, qui mentait dès que le libellé ou
     # le rang de la touche changeait la suite réelle (CAD1/CAD3/CAD16/CAD97).
     suites = serializers.SerializerMethodField()
+    # D-CADV22-PROMESSE — ``{cle: phrase}`` : le compte qui empêche la mise au
+    # Froid (« 3 appels sur 5 tracés ») pour les réponses qui annoncent
+    # ``etape_appel_avant_froid`` ; ``{}`` partout ailleurs.
+    conditions_suite = serializers.SerializerMethodField()
     # CAD82 — la PRÉFÉRENCE de contact du client atteint enfin la touche :
     # deux boutons (Appeler / WhatsApp) étaient proposés à égalité sans dire
     # que ce client a demandé à n'être joint que par écrit. Chaîne VIDE —
@@ -116,7 +120,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'template_cle', 'statut', 'note', 'overdue', 'devis',
             'devis_reference', 'traite_le', 'traite_par_nom',
             'statut_libelle', 'message_ouvert_le', 'canal_adapte',
-            'lead_est_junk', 'suites',
+            'lead_est_junk', 'suites', 'conditions_suite',
             # CAD82 — additifs.
             'lead_contact_preference', 'lead_pii_masquee',
             # PARAM-CADENCE — additifs : la clé du barreau paramétré (l'écran
@@ -309,8 +313,34 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         paliers = self.context.setdefault('_param_cad_paliers', {})
         if obj.company_id not in paliers:
             paliers[obj.company_id] = lecteur_paliers_actifs(obj.company_id)
+        conditions = self.get_conditions_suite(obj)
         return promesses_touche(obj, ordres=cache[cle],
-                                est_actif=paliers[obj.company_id])
+                                est_actif=paliers[obj.company_id],
+                                conditions=conditions,
+                                lecteur=self.context.get('_cadv22_lecteur'))
+
+    @extend_schema_field(serializers.DictField(child=serializers.CharField()))
+    def get_conditions_suite(self, obj):
+        """D-CADV22-PROMESSE — voir ``suite_touche.conditions_de_parcage``. Aucune
+        requête hors d'une dernière touche À FAIRE ; lue une fois par touche
+        (``get_suites`` la relit)."""
+        if obj.statut != RelanceEtape.Statut.A_FAIRE:
+            return {}
+        from .suite_touche import LecteurParcage, conditions_de_parcage
+        lues = self.context.setdefault('_cadv22_conditions', {})
+        if obj.pk not in lues:
+            if '_cadv22_lecteur' not in self.context:
+                instances = getattr(self.parent, 'instance', None)
+                self.context['_cadv22_lecteur'] = LecteurParcage(
+                    [t for t in instances
+                     if t.statut == RelanceEtape.Statut.A_FAIRE]
+                    if instances is not None else None,
+                    message_ouvert=self.get_message_ouvert_le)
+            ordres = self.context.setdefault('_cad17_ordres', {}).get(
+                (obj.company_id, obj.cadence))
+            lues[obj.pk] = conditions_de_parcage(
+                obj, ordres=ordres, lecteur=self.context['_cadv22_lecteur'])
+        return lues[obj.pk]
 
     @extend_schema_field(serializers.DateField(allow_null=True))
     def get_visite_prevue_le(self, obj):

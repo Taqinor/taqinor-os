@@ -119,6 +119,7 @@ def demarrer_cadences_existantes(company, *, apply_changes=False,
         _garde_cadence_contact,
         demarrer_cadence_contact,
         initialiser_plan_relance,
+        nombre_reveils_permis,
     )
 
     maintenant = now or timezone.now()
@@ -205,6 +206,11 @@ def demarrer_cadences_existantes(company, *, apply_changes=False,
                 continue
         if lead.relance_etapes.filter(cadence='reveil').exists():
             continue
+        # CADV25 — un devis dans le pipeline (Odoo compris) vaut chiffré ; sinon
+        # jamais joint ni chiffré : pas de réveil, le rapport ne l'annonce pas.
+        chiffre = lead.stage in (stages.QUOTE_SENT, stages.FOLLOW_UP)
+        if nombre_reveils_permis(lead, historique=chiffre or None) == 0:
+            continue
         _noter(rapport['reveil'], lead.pk)
         if not apply_changes:
             rang += 1
@@ -213,7 +219,7 @@ def demarrer_cadences_existantes(company, *, apply_changes=False,
         # ferait partir 400 messages en rafale depuis le même numéro.
         depart = maintenant + datetime.timedelta(days=rang // par_jour)
         initialiser_plan_relance(
-            lead, None, cadence='reveil', depart=depart)
+            lead, None, cadence='reveil', depart=depart, reveil_justifie=chiffre)
         rang += 1
     return rapport
 

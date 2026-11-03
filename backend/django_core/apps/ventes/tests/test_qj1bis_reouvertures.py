@@ -47,7 +47,7 @@ class ReouvertureTests(TestCase):
             company=self.company, nom='Lead QJ1bis', owner=self.owner)
         self.devis = Devis.objects.create(
             company=self.company, reference='DEV-QJ1BIS-0001',
-            client=self.client_obj, lead=self.lead,
+            client=self.client_obj, lead=self.lead, statut='envoye',
             taux_tva=Decimal('20'))
         self.link = ShareLink.objects.create(
             company=self.company, devis=self.devis)
@@ -136,7 +136,7 @@ class ReouvertureTests(TestCase):
         """CPRS9 — un devis sans lead prévient son auteur à l'ouverture."""
         devis = Devis.objects.create(
             company=self.company, reference='DEV-QJ1BIS-0002',
-            client=self.client_obj, created_by=self.owner,
+            client=self.client_obj, created_by=self.owner, statut='envoye',
             taux_tva=Decimal('20'))
         lien = ShareLink.objects.create(company=self.company, devis=devis)
         avant = Notification.objects.filter(recipient=self.owner).count()

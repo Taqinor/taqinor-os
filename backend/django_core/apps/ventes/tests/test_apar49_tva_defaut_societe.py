@@ -128,3 +128,23 @@ class TvaDefautSocieteTests(qjr80._Base):
                 devis = Devis.objects.get(pk=resp.json()['id'],
                                           company=self.company)
                 self.assertEqual(devis.taux_tva, attendu, (route, taux))
+
+    def test_portes_sans_devise_ni_tva_prennent_la_societe(self):
+        """ADVS28 — société EUR / 14 % : l'OCR, le devis SAV et from-layout
+        naissent en EUR et 14 ; une valeur fournie reste celle de l'appelant.
+        Le C&I et l'agricole : ``test_ciq120`` / ``test_agr124``."""
+        from apps.ventes.domain import creation
+        CompanyProfile.objects.filter(company=self.company).update(
+            devise_defaut='EUR')
+        ocr = creation.create_draft_devis_from_ocr(
+            company=self.company, user=self.user, lead=self.lead, fields={})
+        sav = creation.create_devis_pour_ticket(
+            company=self.company, user=self.user,
+            client_id=ocr.client_id, lignes=[])
+        calepinage = creation_calepinage.build_devis_from_layout(
+            layout=self._layout(), user=self.user, company=self.company,
+            lead=self.lead)
+        for devis in (ocr, sav, calepinage):
+            devis.refresh_from_db()
+            self.assertEqual(devis.devise, 'EUR', devis.reference)
+            self.assertEqual(devis.taux_tva, Decimal('14'), devis.reference)

@@ -95,6 +95,7 @@ def build_devis_whatsapp(request, lead, devis_list, langue='fr'):
     """
     from apps.ventes.models import ShareLink
     from apps.parametres.models import MessageTemplate
+    from apps.ventes.utils.client_links import url_proposition
 
     company = lead.company
     nom = _nom_complet(lead.prenom, lead.nom)
@@ -103,7 +104,8 @@ def build_devis_whatsapp(request, lead, devis_list, langue='fr'):
         link = ShareLink.for_devis(d)
         links.append({
             'devis_id': d.id, 'reference': d.reference,
-            'token': link.token, 'url': public_document_url(request, link.token),
+            # ADVS42 — la page (code d'accès, sections, signer), jamais le PDF brut.
+            'token': link.token, 'url': url_proposition(d, link.token),
         })
 
     if len(devis_list) == 1:
@@ -151,11 +153,12 @@ def build_single_devis_whatsapp(request, devis, langue='fr'):
     """QG8 — Message WhatsApp pour UN devis (miroir de la voie lead CRM).
 
     Réutilise le modèle « devis_unique » de la société, crée/réutilise un lien
-    public tokenisé (30 j) vers le PDF CLIENT du devis (jamais de prix d'achat
-    ni de marge). Renvoie (message, link_info). Le nom du destinataire vient du
-    client, sinon du lead."""
+    public tokenisé (30 j) vers la page ``/proposition`` du devis (ADVS42 :
+    jamais le PDF brut, ni prix d'achat ni marge). Renvoie (message, link_info).
+    Le nom du destinataire vient du client, sinon du lead."""
     from apps.ventes.models import ShareLink
     from apps.parametres.models import MessageTemplate
+    from apps.ventes.utils.client_links import url_proposition
 
     company = devis.company
     client = getattr(devis, 'client', None)
@@ -167,7 +170,7 @@ def build_single_devis_whatsapp(request, devis, langue='fr'):
     else:
         nom = ''
     link = ShareLink.for_devis(devis)
-    url = public_document_url(request, link.token)
+    url = url_proposition(devis, link.token)
     tpl = MessageTemplate.get_corps(company, 'devis_unique', langue)
     # APAR84 — ``{lien_rdv}`` résolu comme la voie lead ; vide sans lead.
     lien_rdv = _lien_rdv_for(lead, request) if lead is not None and '{lien_rdv}' in tpl else ''

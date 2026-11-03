@@ -11,6 +11,7 @@ Run :
 """
 import copy
 
+from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, tag
 
 from apps.calepinage.models import Calepinage
@@ -20,11 +21,16 @@ from apps.calepinage.services.layout import (
     empreinte_document, enregistrer_layout,
 )
 from apps.calepinage.services.parametres import enregistrer_parametres
+from apps.crm.models import Lead
+from apps.roles.models import Role
+from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
 from apps.ventes.models import Devis
 
 from .acal_livrables_helpers import LAYOUT_PLANCHE_SIMULABLE
 from .test_api_liste import BaseApiCalepinage, url_detail
 from .test_cal173_empreinte import MOMENT
+
+User = get_user_model()
 
 #: Chaque pièce d'exécution → sa porte HTTP réelle.
 ROUTES = {
@@ -68,6 +74,31 @@ class PorteeApprobationTest(BaseApiCalepinage):
 
     def _generer(self):
         return self.api.post(f'{self.base}generer-devis/', {}, format='json')
+
+    def test_from_layout_lead_d_un_collegue_404(self):
+        # ADVS44 — A ne reçoit ni le brouillon de B ni son jeton.
+        role = Role.objects.create(
+            company=self.company, nom='Commercial ADVS44',
+            permissions=list(COMMERCIAL_PERMISSIONS))
+        a, b = (User.objects.create_user(
+            username=nom, password='x', company=self.company, role=role)
+            for nom in ('advs44_a', 'advs44_b'))
+        lead_b = Lead.objects.create(
+            company=self.company, nom='Collegue', prenom='LeadB', owner=b,
+            email='advs44@example.com', telephone='+212600004044')
+        corps = {'layout': copy.deepcopy(TOIT), 'lead': lead_b.pk}
+        url = '/api/django/ventes/devis/from-layout/'
+        api_a, api_b = self._client(a), self._client(b)
+        cree = api_b.post(url, corps, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        refus = api_a.post(url, corps, format='json')
+        self.assertEqual(refus.status_code, 404, refus.data)
+        self.assertEqual(refus.data, {'detail': 'Lead inconnu.'})
+        self.assertEqual(Devis.objects.filter(lead_id=lead_b.pk).count(), 1)
+        rejoue = api_b.post(url, corps, format='json')
+        self.assertEqual(rejoue.status_code, 200, rejoue.data)
+        self.assertEqual(rejoue.data['id'], cree.data['id'])
+        self.assertTrue(rejoue.data['deduplicated'])
 
     def test_generer_refuse_sans_approbation_a_jour(self):
         self._exiger()

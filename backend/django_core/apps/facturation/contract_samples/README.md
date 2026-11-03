@@ -18,3 +18,4 @@ TEXTE décimal (« 15000.00 »), jamais en nombre flottant.
 | `paiement_reaffecter.json` | `POST /api/django/ventes/paiements/<pk>/reaffecter/` — réaffectation vers une facture du même client | AFAC4 (producteur AFAC17, écran AFAC18) |
 | `bon_commande_facturable.json` | `GET /api/django/ventes/bons-commande/` — clé `facturable` `{ok, motif}` (porte de `creer-facture`) | ATOT49 |
 | `facture_situation_vente.json` | `GET /api/django/ventes/factures/<pk>/` — blocs additifs `objet_vente`, `garanties`, `situation_vente`, `prochaines_echeances` (facture qui fait confiance) | VNT8 (producteurs VNT35/VNT38, M1) |
+| `bon_commande_creer_facture.json` | `POST /api/django/ventes/bons-commande/<id>/creer-facture/` — `total_ttc` servi, `montant_ttc` nul sur une facture de lignes | AFAC105 |

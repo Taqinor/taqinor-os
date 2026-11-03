@@ -29,7 +29,8 @@ Ce que ce module verrouille, et rien d'autre :
     n'existe nulle part » (apps/crm/services.py, docstring de
     `suspendre_plan_jusqu_apres_visite`) ;
   * une seule touche ouverte à la fois (CKP2), et aucune touche ajoutée,
-    retirée ni réordonnée : le protocole après-devis garde ses 10 barreaux.
+    retirée ni réordonnée : le protocole après-devis garde ses barreaux (9 dans
+    le gabarit v4, CADV24).
 
 Le temps est gelé : l'ancre de cadence et les échéances J+N sont exactement
 ce qu'une horloge vivante rend instable.
@@ -48,7 +49,6 @@ from apps.crm.models import Client, Lead, RelanceEtape
 from apps.crm.cadence_touche import marquer_etape_relance
 from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
-from apps.parametres.models_realisations import Realisation
 from apps.parametres.models_relance import CadenceRelanceEtape
 from apps.ventes.models import Devis
 
@@ -58,14 +58,14 @@ User = get_user_model()
 #: d'appel : aucune échéance calculée ici n'est repoussée par le recalage.
 MERCREDI = datetime.datetime(2026, 9, 23, 10, 0, tzinfo=horaires.CASABLANCA)
 
-#: Le devis est parti 7 jours plus tôt : l'ancre du plan après-devis. Les
-#: barreaux 1 à 5 (J+1, J+2, J+3, J+4, J+6) sont donc DERRIÈRE nous et le
-#: barreau 6 (J+7) est le prochain geste du protocole.
-DEPART = MERCREDI - datetime.timedelta(days=7)
+#: Le devis est parti 12 jours plus tôt : l'ancre du plan après-devis. Les
+#: barreaux 1 à 7 (J+1, J+2, J+3, J+7, J+10) sont donc DERRIÈRE nous et le
+#: barreau 8 (J+14) est le prochain geste du protocole (gabarit v4, CADV24).
+DEPART = MERCREDI - datetime.timedelta(days=12)
 
 
 class _Base(TestCase):
-    """Un lead, un devis ENVOYÉ, un plan après-devis consommé jusqu'au 5."""
+    """Un lead, un devis ENVOYÉ, un plan après-devis consommé jusqu'au 7."""
 
     slug = 'cad1'
 
@@ -89,12 +89,6 @@ class _Base(TestCase):
             client=self.client_vente, lead=self.lead,
             statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20.00'),
             date_envoi=DEPART)
-        # AGR514 (D-AGR-10) — la touche 4 « preuve » n'est posée que s'il
-        # existe une réalisation éligible : ce module verrouille le plan
-        # COMPLET, il lui en donne donc une.
-        Realisation.objects.create(
-            company=self.company, titre='Chantier témoin', ville='Casablanca',
-            url_page=f'https://taqinor.ma/realisations/{self.slug}/')
         self.gabarits = CadenceRelanceEtape.cadence_pour(
             self.company, 'apres_devis')
         self.echeances = calculer_echeances_cadence(
@@ -129,18 +123,18 @@ class _Base(TestCase):
 
 
 class InteresseApresDevisTests(_Base):
-    """La touche 5 du suivi, clôturée « Intéressé »."""
+    """La touche 7 du suivi (un message, J+10), clôturée « Intéressé »."""
 
     slug = 'cad1-interesse'
 
     def setUp(self):
         super().setUp()
-        self.etapes = self._poser_plan(jusqu_a=5)
-        self.touche5 = self.etapes[5]
+        self.etapes = self._poser_plan(jusqu_a=7)
+        self.touche7 = self.etapes[7]
 
     def test_j1_pdf_n_est_jamais_recree(self):
         marquer_etape_relance(
-            self.touche5, self.acteur, RelanceEtape.Statut.FAIT,
+            self.touche7, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='interesse')
         # LE cas « deux fois j1_pdf » du Done : il reste à zéro.
         self.assertEqual(
@@ -148,39 +142,39 @@ class InteresseApresDevisTests(_Base):
 
     def test_la_suite_est_le_barreau_suivant_du_protocole(self):
         marquer_etape_relance(
-            self.touche5, self.acteur, RelanceEtape.Statut.FAIT,
+            self.touche7, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='interesse')
         ouvertes = self._ouvertes()
-        # CKP2 — une seule touche ouverte, et c'est le barreau 6.
+        # CKP2 — une seule touche ouverte, et c'est le barreau 8.
         self.assertEqual(len(ouvertes), 1, [e.libelle for e in ouvertes])
-        self.assertEqual(ouvertes[0].ordre, 6)
+        self.assertEqual(ouvertes[0].ordre, 8)
         self.assertEqual(ouvertes[0].cadence, 'apres_devis')
         self.assertEqual(ouvertes[0].devis_id, self.devis.pk)
 
     def test_l_ancre_du_plan_ne_bouge_pas(self):
         marquer_etape_relance(
-            self.touche5, self.acteur, RelanceEtape.Statut.FAIT,
+            self.touche7, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='interesse')
         ouverte = self._ouvertes()[0]
         # « Décaler, jamais redémarrer » : la touche née de l'issue garde
-        # l'ancre du plan, donc son J+7 reste un J+7 depuis l'ENVOI du devis.
+        # l'ancre du plan, donc son J+14 reste un J+14 depuis l'ENVOI du devis.
         self.assertEqual(ouverte.cadence_depart, DEPART)
 
     def test_le_nombre_de_touches_du_plan_ne_grossit_pas(self):
         avant = self.lead.relance_etapes.filter(cadence='apres_devis').count()
         marquer_etape_relance(
-            self.touche5, self.acteur, RelanceEtape.Statut.FAIT,
+            self.touche7, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='interesse')
         apres = self.lead.relance_etapes.filter(cadence='apres_devis').count()
-        # Exactement UNE touche de plus : le barreau 6. Le redémarrage en
-        # créait dix.
+        # Exactement UNE touche de plus : le barreau 8. Le redémarrage en
+        # créait tout le plan.
         self.assertEqual(apres, avant + 1)
 
     def test_aucun_barreau_deja_consomme_n_est_repose(self):
         """Aucun barreau DÉJÀ POSÉ n'existe en double après l'issue.
 
         Les ordres parcourus sont ceux que la partition de CE lead contient
-        vraiment, pas `range(1, 6)` : le barreau 3 (« Dimanche famille »,
+        vraiment, pas un `range` : le barreau 3 (« Dimanche famille »,
         `dimanche_ok`) est RÉSERVÉ aux dossiers étiquetés « Décision à
         plusieurs » (MRY4, `services._TEMPLATE_DIMANCHE_FAMILLE`) et ce lead
         ne porte pas l'étiquette — il n'a donc jamais été matérialisé, et en
@@ -189,9 +183,9 @@ class InteresseApresDevisTests(_Base):
         pour que ce test reste un vrai contrôle de non-duplication.
         """
         ordres_poses = sorted(self.etapes)
-        self.assertEqual(ordres_poses, [1, 2, 4, 5])
+        self.assertEqual(ordres_poses, [1, 2, 6, 7])  # v4 : trou 4-5 (CADV24)
         marquer_etape_relance(
-            self.touche5, self.acteur, RelanceEtape.Statut.FAIT,
+            self.touche7, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='interesse')
         for ordre in ordres_poses:
             self.assertEqual(
@@ -207,26 +201,26 @@ class JointApresDevisTests(_Base):
     slug = 'cad1-joint'
 
     def test_joint_ne_redemarre_pas_le_plan(self):
-        touche5 = self._poser_plan(jusqu_a=5)[5]
+        touche7 = self._poser_plan(jusqu_a=7)[7]
         marquer_etape_relance(
-            touche5, self.acteur, RelanceEtape.Statut.FAIT, outcome='joint')
+            touche7, self.acteur, RelanceEtape.Statut.FAIT, outcome='joint')
         self.assertEqual(
             self.lead.relance_etapes.filter(template_cle='j1_pdf').count(), 1)
         ouvertes = self._ouvertes()
         self.assertEqual(len(ouvertes), 1, [e.libelle for e in ouvertes])
-        self.assertEqual(ouvertes[0].ordre, 6)
+        self.assertEqual(ouvertes[0].ordre, 8)
 
 
 class FinDeProtocoleTests(_Base):
-    """Le barreau 10 clôturé « Intéressé » : plus de barreau à faire naître,
+    """Le barreau 11 (J+90, CADV24) clôturé « Intéressé » : plus de barreau à faire naître,
     donc le filet reprend la main — mais il ne rejoue JAMAIS le plan."""
 
     slug = 'cad1-fin'
 
     def test_le_dernier_barreau_ne_relance_pas_le_plan(self):
-        touche10 = self._poser_plan(jusqu_a=10)[10]
+        touche11 = self._poser_plan(jusqu_a=11)[11]
         marquer_etape_relance(
-            touche10, self.acteur, RelanceEtape.Statut.FAIT,
+            touche11, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='interesse')
         self.assertEqual(
             self.lead.relance_etapes.filter(template_cle='j1_pdf').count(), 1)
@@ -244,15 +238,15 @@ class RefusInchangeTests(_Base):
     slug = 'cad1-refus'
 
     def test_refus_ne_fait_naitre_aucun_barreau(self):
-        touche5 = self._poser_plan(jusqu_a=5)[5]
+        touche7 = self._poser_plan(jusqu_a=7)[7]
         marquer_etape_relance(
-            touche5, self.acteur, RelanceEtape.Statut.FAIT, outcome='refuse')
+            touche7, self.acteur, RelanceEtape.Statut.FAIT, outcome='refuse')
         ouvertes = self._ouvertes()
         self.assertEqual(len(ouvertes), 1, [e.libelle for e in ouvertes])
         self.assertEqual(ouvertes[0].cadence, 'generique')
         self.assertEqual(
             self.lead.relance_etapes.filter(
-                cadence='apres_devis', ordre=6).count(), 0)
+                cadence='apres_devis', ordre=8).count(), 0)
 
 
 class PremierContactInchangeTests(_Base):

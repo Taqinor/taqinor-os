@@ -586,10 +586,13 @@ def relances_du_jour(company, user, scope='today', today=None):
     # APRF18 — préchargement de ce que la sérialisation lit par lead
     # (responsable, client, devis et leurs lignes) : la file « Relances »
     # et « Ma file » ne paient plus une requête par carte. ERR-PERF-CRM-N1 —
-    # la MÊME liste que ``LeadViewSet.queryset`` (lignes AVEC produit).
-    from .lead_devis_payload import PREFETCH_DEVIS_LISTE_LEADS
-    return (qs.select_related('owner', 'client')
-            .prefetch_related(*PREFETCH_DEVIS_LISTE_LEADS)
+    # la MÊME liste que ``LeadViewSet.queryset`` (lignes AVEC produit, et
+    # AOOM1 : sans l'``etude_params`` complet). AOOM2 — ``updated_by``/
+    # ``archived_by`` en jointure (sources de ``updated_by_nom``/
+    # ``archived_by_nom`` : sinon une requête utilisateur par carte).
+    from .lead_devis_payload import prefetch_devis_liste_leads
+    return (qs.select_related('owner', 'client', 'updated_by', 'archived_by')
+            .prefetch_related(*prefetch_devis_liste_leads())
             .order_by('relance_date', 'nom'))
 
 
@@ -769,10 +772,23 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
     today = today or aujourd_hui_local()
     # ALEA32 — « en retard » = au moins un jour COMPTÉ depuis l'échéance.
     seuil = seuil_retard(company, today)
+    # AOOM3 — ``devis`` en jointure pour la SEULE ``reference`` que sert
+    # ``RelanceEtapeSerializer.get_devis_reference``, mais SANS son
+    # ``etude_params`` : mesuré en production le 02/11/2026, cette fenêtre de
+    # 62 jours chargeait 128,5 Mio de JSON d'études (631 de ses 1 837 touches
+    # portent un devis, et le même devis lourd — jusqu'à 1,45 Mio — est relu
+    # à chaque touche), décodés en centaines de Mio d'objets Python à chaque
+    # ouverture de l'écran « Suivi des relances ». C'est la rafale sur cette
+    # route qui a précédé le premier worker tué par le noyau (08:32 UTC).
+    # ``defer`` et non ``only`` : tout autre champ du devis reste lisible (au
+    # prix d'une requête, que le budget de
+    # ``tests_aprf21_relance_etapes_requetes.py`` ferait rougir).
     qs = RelanceEtape.objects.filter(
         company=company, lead__is_archived=False,
         due_date__gte=date_debut, due_date__lte=date_fin,
-    ).select_related('lead', 'lead__owner', 'devis', 'traite_par')
+    ).select_related(
+        'lead', 'lead__owner', 'devis', 'traite_par'
+    ).defer('devis__etude_params')
 
     # ACRM28 — portée propriétaire ET périmètre d'entités.
     visibles = leads_visibles(user, company)
@@ -898,8 +914,12 @@ def journal_relance(company, user, lead_id):
     if lead is None:
         return None
 
+    # AOOM3 — même jointure sans ``etude_params`` que la fenêtre de suivi
+    # ci-dessus : le journal d'un lead à 11 devis chargeait jusqu'à ~16 Mio de
+    # JSON d'études pour n'en servir que les références.
     etapes = list(lead.relance_etapes
                   .select_related('traite_par', 'devis')
+                  .defer('devis__etude_params')
                   .order_by('created_at', 'pk'))
     pertinentes = Q(kind=LeadActivity.Kind.MODIFICATION, field='stage')
     pertinentes |= Q(body__startswith='Touche « ')
@@ -1199,6 +1219,61 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
         })
     out.sort(key=lambda d: (d['date_expiration'], d['reference']))
     return out
+
+
+#: CADV32 (D-CADV-8, conception v4 §5.1) — l'ère du moteur des leads Meta, et le
+#: palier 1 de K6 : facture d'au moins 2 000 MAD ou projet à moins de 3 mois.
+REACTIVATION_ERE_MOTEUR = datetime.date(2026, 9, 6)
+REACTIVATION_K6_FACTURE_MIN = 2000
+
+
+def seaux_reactivation(company, maintenant=None):
+    """CADV32 — chaque dormant (Froid) de la société dans UN seul seau, dans l'ordre
+    de précédence du §5.1 : K3 (joint et chiffré), K5 (Meta jamais joint, ère du
+    moteur), K6 palier 1, K6 palier 2 (Meta jamais joint, avant). Opposés, archivés
+    et perdus écartés d'abord (``motif_exclu_du_contact``). D-CADV-11 — le palier 2
+    reste vide tant que ``REACTIVATION_K6_PALIER2`` est faux. Lecture pure, une
+    requête par nature de donnée, jamais une par lead ; forme :
+    ``contract_samples/reactivation_seaux.json`` (``seaux``)."""
+    from django.conf import settings
+    from django.utils import timezone
+
+    from apps.ventes.selectors import devis_envoyes_par_lead
+
+    from . import horaires, stages
+    from .cadence_reveil_saison import motif_exclu_du_contact
+    from .mesure_cadence import ISSUES_JOINT
+    from .models import Lead, LeadActivity
+
+    leads = list(Lead.objects.filter(
+        company=company, stage=stages.COLD,
+        date_creation__lte=maintenant or timezone.now()).order_by('pk'))
+    ids = [lead.pk for lead in leads]
+    joints = set(LeadActivity.objects.filter(
+        company=company, lead_id__in=ids, outcome__in=ISSUES_JOINT,
+    ).values_list('lead_id', flat=True))
+    chiffres = {ligne['lead_id'] for ligne in devis_envoyes_par_lead(company, ids)}
+    seaux = {'K3': [], 'K5': [], 'K6_p1': [], 'K6_p2': []}
+    palier_2 = bool(getattr(settings, 'REACTIVATION_K6_PALIER2', False))
+    for lead in leads:
+        if motif_exclu_du_contact(lead):
+            continue
+        if lead.pk in joints:
+            if lead.pk in chiffres:
+                seaux['K3'].append(lead.pk)
+            continue
+        if Lead.Source.META_LEAD_ADS not in (lead.source,) and lead.canal != Lead.Canal.META_ADS:
+            continue
+        cree_le = lead.date_creation.astimezone(horaires.CASABLANCA).date()
+        if cree_le >= REACTIVATION_ERE_MOTEUR:
+            seaux['K5'].append(lead.pk)
+        elif ((lead.facture_hiver or 0) >= REACTIVATION_K6_FACTURE_MIN
+              or lead.project_timeline in (Lead.ProjectTimeline.IMMEDIAT,
+                                           Lead.ProjectTimeline.MOINS_3_MOIS)):
+            seaux['K6_p1'].append(lead.pk)
+        elif palier_2:
+            seaux['K6_p2'].append(lead.pk)
+    return seaux
 
 
 def leads_rappel_demande(company, user):

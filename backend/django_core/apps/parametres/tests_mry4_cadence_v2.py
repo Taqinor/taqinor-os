@@ -4,8 +4,9 @@ Ce que ce fichier verrouille :
   * la migration 0081 étiquette `generique` TOUTES les lignes existantes — un
     défaut `contact` les aurait fait se percuter avec le protocole de rappel
     sur la nouvelle clé d'unicité `(company, cadence, ordre)` ;
-  * les trois cadences nommées seedent 11 / 10 / 2 barreaux, avec les délais
-    EXACTS du Protocole de rappel v3 (6 appels maximum, jamais 7) ;
+  * les trois cadences nommées seedent 8 / 9 / 2 barreaux, avec les délais
+    EXACTS du protocole v4 (CADV23/CADV24 : 5 appels et 3 WhatsApp sur 7 jours
+    pour le contact ; J1…J90 après devis) ;
   * `seed_defaults` garde sa signature ET son effet historique (5 barreaux
     neutres) — il ne devient pas silencieusement autre chose ;
   * l'idempotence ne réécrit jamais un barreau personnalisé ;
@@ -44,21 +45,22 @@ def _auth(user):
 
 
 class ProtocoleV3Tests(TestCase):
-    """Les délais viennent du Protocole de rappel v3 — pas d'une estimation."""
+    """Les délais viennent du protocole validé (v4, D-CADV-1) — pas d'une
+    estimation. (Nom de classe gardé : les deux gabarits ont une histoire.)"""
 
-    def test_six_appels_maximum_sur_la_cadence_contact(self):
+    def test_cinq_appels_maximum_sur_la_cadence_contact(self):
         appels = [e for e in CADENCE_CONTACT_DEFAUT
                   if e['canal'] == CanalRelance.APPEL]
-        self.assertEqual(len(appels), 6)
+        self.assertEqual(len(appels), 5)
 
-    def test_cinq_whatsapp_sur_la_cadence_contact(self):
+    def test_trois_whatsapp_sur_la_cadence_contact(self):
         messages = [e for e in CADENCE_CONTACT_DEFAUT
                     if e['canal'] == CanalRelance.WHATSAPP]
-        self.assertEqual(len(messages), 5)
+        self.assertEqual(len(messages), 3)
 
-    def test_la_cadence_contact_tient_en_quatorze_jours(self):
+    def test_la_cadence_contact_tient_en_sept_jours(self):
         self.assertEqual(
-            max(e['delai_jours'] for e in CADENCE_CONTACT_DEFAUT), 14)
+            max(e['delai_jours'] for e in CADENCE_CONTACT_DEFAUT), 7)
 
     def test_la_deuxieme_touche_tombe_trois_minutes_apres(self):
         """« Rappelé dans les cinq minutes » : un délai en JOURS ne pouvait
@@ -68,10 +70,10 @@ class ProtocoleV3Tests(TestCase):
         self.assertEqual(touche['delai_minutes'], 3)
         self.assertEqual(touche['canal'], CanalRelance.APPEL)
 
-    def test_une_seule_touche_est_autorisee_le_dimanche(self):
-        dimanche = [e for e in CADENCE_CONTACT_DEFAUT if e['dimanche_ok']]
-        self.assertEqual(len(dimanche), 1)
-        self.assertEqual(dimanche[0]['template_cle'], 'appel_dimanche')
+    def test_aucune_touche_contact_nest_autorisee_le_dimanche(self):
+        """CADV23 : le barreau dimanche (0 joint en 7) sort du défaut."""
+        self.assertEqual(
+            [e for e in CADENCE_CONTACT_DEFAUT if e['dimanche_ok']], [])
 
     def test_apres_devis_porte_la_touche_dimanche_famille(self):
         cles = {e['template_cle'] for e in CADENCE_APRES_DEVIS_DEFAUT}
@@ -177,6 +179,77 @@ class SeedCadenceTests(TestCase):
         self.assertIsNone(sans_heure.heure_cible)
 
 
+def _v3_contact(company):
+    """Les 11 barreaux `contact` tels que la production les porte (v3)."""
+    v3 = [
+        (1, 'whatsapp', 0, 0, None, "Message d'identité", 'identite', False),
+        (2, 'appel', 0, 3, None, "Appel d'ouverture", 'appel_ouverture', False),
+        (3, 'appel', 0, 150, None, 'Appel 2 (répondeur)', 'repondeur', False),
+        (4, 'appel', 1, 0, datetime.time(10, 30), 'Appel 3', 'appel_relance',
+         False),
+        (5, 'whatsapp', 1, 0, datetime.time(9, 30), 'WhatsApp de valeur',
+         'valeur_j1', False),
+        (6, 'appel', 2, 0, datetime.time(18, 0), 'Appel 4 (répondeur)',
+         'repondeur', False),
+        (7, 'whatsapp', 3, 0, datetime.time(9, 30), 'Vocal', 'vocal_j3',
+         False),
+        (8, 'appel', 5, 0, datetime.time(10, 30), 'Appel 5 (dimanche)',
+         'appel_dimanche', True),
+        (9, 'whatsapp', 7, 0, datetime.time(9, 30), '« Je classe ? »',
+         'je_classe_j7', False),
+        (10, 'appel', 10, 0, datetime.time(15, 0), 'Appel 6 (dernier)',
+         'appel_dernier', False),
+        (11, 'whatsapp', 14, 0, datetime.time(9, 30), 'Clôture',
+         'cloture_j14', False),
+    ]
+    for (ordre, canal, jours, minutes, heure, libelle, cle, dim) in v3:
+        CadenceRelanceEtape.objects.create(
+            company=company, cadence=Cadence.CONTACT, ordre=ordre,
+            canal=canal, delai_jours=jours, delai_minutes=minutes,
+            heure_cible=heure, libelle=libelle, template_cle=cle,
+            dimanche_ok=dim, actif=True)
+
+
+def _etat(company):
+    return list(CadenceRelanceEtape.objects.filter(
+        company=company, cadence=Cadence.CONTACT).order_by('ordre').values_list(
+        'ordre', 'canal', 'delai_jours', 'heure_cible', 'template_cle',
+        'dimanche_ok', 'actif'))
+
+
+def _v3_apres_devis(company):
+    """Les 10 barreaux `apres_devis` tels que la production les porte (v3)."""
+    msg, appel = datetime.time(9, 30), datetime.time(18, 0)
+    v3 = [
+        (1, 'whatsapp', 1, msg, "Le PDF s'ouvre bien ?", 'j1_pdf', False),
+        (2, 'appel', 2, appel, 'Appel de suivi', 'appel_suivi_j2', False),
+        (3, 'whatsapp', 3, datetime.time(16, 0), 'Dimanche famille',
+         'dimanche_famille', True),
+        (4, 'whatsapp', 4, msg, 'Preuve — chantier comparable', 'j4_preuve',
+         False),
+        (5, 'whatsapp', 6, msg, 'Garanties fabricants', 'j6_garanties', False),
+        (6, 'appel', 7, appel, 'Appel de suivi', 'appel_suivi_j7', False),
+        (7, 'whatsapp', 9, msg, 'Validité de la proposition', 'j9_validite',
+         False),
+        (8, 'appel', 11, appel, 'Appel de suivi', 'appel_suivi_j11', False),
+        (9, 'whatsapp', 13, msg, 'Dernier message', 'j13_dernier', False),
+        (10, 'whatsapp', 14, msg, 'Mise en pause', 'j14_pause', False),
+    ]
+    for (ordre, canal, jours, heure, libelle, cle, dim) in v3:
+        CadenceRelanceEtape.objects.create(
+            company=company, cadence=Cadence.APRES_DEVIS, ordre=ordre,
+            canal=canal, delai_jours=jours, delai_minutes=0,
+            heure_cible=heure, libelle=libelle, template_cle=cle,
+            dimanche_ok=dim, actif=True)
+
+
+def _etat_apres_devis(company):
+    return list(CadenceRelanceEtape.objects.filter(
+        company=company, cadence=Cadence.APRES_DEVIS).order_by('ordre')
+        .values_list('ordre', 'canal', 'delai_jours', 'heure_cible',
+                     'template_cle', 'dimanche_ok', 'actif'))
+
+
 class MigrationEtiquetteGeneriqueTests(TestCase):
     """L'opération de données de la migration 0081, exécutée telle quelle.
 
@@ -212,6 +285,194 @@ class MigrationEtiquetteGeneriqueTests(TestCase):
         module.etiqueter_generique(self._RegistreSimule, None)
         etape.refresh_from_db()
         self.assertEqual(etape.cadence, Cadence.GENERIQUE)
+
+    def _module_v4(self):
+        from importlib import import_module
+        return import_module('apps.parametres.migrations.0133_gabarit_contact_v4')
+
+    def test_la_migration_v4_reecrit_le_gabarit_contact(self):
+        company = _company('cadv23-prod')
+        _v3_contact(company)
+        avant = _etat(company)[:4]
+        module = self._module_v4()
+        module.vers_v4(self._RegistreSimule, None)
+        etat = _etat(company)
+        self.assertEqual(etat[:4], avant)  # ordres 1-4 inchangés
+        t = datetime.time
+        self.assertEqual(etat[4][:6], (5, 'appel', 2, t(16, 0), 'repondeur',
+                                       False))
+        self.assertEqual(etat[5][:6], (6, 'whatsapp', 2, t(17, 45),
+                                       'valeur_j1', False))
+        self.assertEqual(etat[6][:6], (7, 'appel', 4, t(11, 0),
+                                       'appel_dernier', False))
+        self.assertEqual(etat[7][:6], (8, 'whatsapp', 7, t(12, 0),
+                                       'je_classe_j7', False))
+        self.assertEqual([e[6] for e in etat[8:]], [False, False, False])
+        actifs = CadenceRelanceEtape.cadence_pour(company, Cadence.CONTACT)
+        self.assertEqual(len(actifs), 8)
+        self.assertEqual(
+            sorted(a.canal for a in actifs), ['appel'] * 5 + ['whatsapp'] * 3)
+        # Idempotence : relire les 11 lignes après la 2e application.
+        module.vers_v4(self._RegistreSimule, None)
+        self.assertEqual(_etat(company), etat)
+
+    def test_un_barreau_modifie_par_la_societe_reste_intact(self):
+        company = _company('cadv23-perso')
+        _v3_contact(company)
+        CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.CONTACT, ordre=7).update(
+            delai_jours=9)
+        CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.CONTACT, ordre=11).update(
+            libelle='Notre clôture')
+        self._module_v4().vers_v4(self._RegistreSimule, None)
+        o7 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.CONTACT, ordre=7)
+        self.assertEqual((o7.canal, o7.delai_jours, o7.template_cle),
+                         ('whatsapp', 9, 'vocal_j3'))
+        o11 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.CONTACT, ordre=11)
+        self.assertTrue(o11.actif)
+
+    def test_heure_nulle_dun_ancien_seed_est_tolere(self):
+        company = _company('cadv23-null')
+        _v3_contact(company)
+        CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.CONTACT, ordre=6).update(
+            heure_cible=None)
+        self._module_v4().vers_v4(self._RegistreSimule, None)
+        o6 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.CONTACT, ordre=6)
+        self.assertEqual(o6.canal, 'whatsapp')
+
+    def test_marche_arriere_ne_rend_que_les_barreaux_restes_a_v4(self):
+        company = _company('cadv23-retour')
+        _v3_contact(company)
+        v3 = _etat(company)
+        module = self._module_v4()
+        module.vers_v4(self._RegistreSimule, None)
+        CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.CONTACT, ordre=8).update(
+            delai_jours=6)
+        module.vers_v3(self._RegistreSimule, None)
+        etat = _etat(company)
+        o8 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.CONTACT, ordre=8)
+        self.assertEqual((o8.canal, o8.delai_jours), ('whatsapp', 6))
+        for ligne in etat:
+            if ligne[0] != 8:
+                self.assertIn(ligne, v3)
+
+    def _module_apres_devis(self):
+        from importlib import import_module
+        return import_module(
+            'apps.parametres.migrations.0134_gabarit_apres_devis_v4')
+
+    def test_la_migration_v4_reecrit_le_gabarit_apres_devis(self):
+        company = _company('cadv24-prod')
+        _v3_apres_devis(company)
+        avant = _etat_apres_devis(company)
+        module = self._module_apres_devis()
+        module.vers_v4(self._RegistreSimule, None)
+        etat = _etat_apres_devis(company)
+        t = datetime.time
+        self.assertEqual(etat[:3], avant[:3])  # ordres 1-3 inchangés
+        self.assertEqual(etat[5], avant[5])  # appel J7 inchangé
+        self.assertEqual([e[6] for e in etat[3:5]], [False, False])
+        self.assertEqual(etat[6][:5], (7, 'whatsapp', 10, t(9, 30),
+                                       'j6_garanties'))
+        self.assertEqual(etat[7][:3], (8, 'appel', 14))
+        self.assertEqual(etat[8][:3], (9, 'appel', 28))
+        self.assertEqual(etat[9][:3], (10, 'whatsapp', 60))
+        self.assertEqual(etat[10][:3], (11, 'appel', 90))
+        self.assertEqual(len(etat), 11)
+        actifs = CadenceRelanceEtape.cadence_pour(
+            company, Cadence.APRES_DEVIS)
+        self.assertEqual([a.delai_jours for a in actifs],
+                         [1, 2, 3, 7, 10, 14, 28, 60, 90])
+        # Idempotence : relire les 11 lignes après la 2e application.
+        module.vers_v4(self._RegistreSimule, None)
+        self.assertEqual(_etat_apres_devis(company), etat)
+
+    def test_apres_devis_barreau_modifie_par_la_societe_reste_intact(self):
+        company = _company('cadv24-perso')
+        _v3_apres_devis(company)
+        CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.APRES_DEVIS, ordre=4).update(
+            delai_jours=5)
+        self._module_apres_devis().vers_v4(self._RegistreSimule, None)
+        o4 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.APRES_DEVIS, ordre=4)
+        self.assertTrue(o4.actif)
+        self.assertEqual(o4.delai_jours, 5)
+
+    def test_apres_devis_sans_cadence_aucune_ligne_creee(self):
+        company = _company('cadv24-vide')
+        self._module_apres_devis().vers_v4(self._RegistreSimule, None)
+        self.assertEqual(CadenceRelanceEtape.objects.filter(
+            company=company).count(), 0)
+
+    def test_apres_devis_marche_arriere(self):
+        company = _company('cadv24-retour')
+        _v3_apres_devis(company)
+        v3 = _etat_apres_devis(company)
+        module = self._module_apres_devis()
+        module.vers_v4(self._RegistreSimule, None)
+        module.vers_v3(self._RegistreSimule, None)
+        etat = _etat_apres_devis(company)
+        self.assertEqual(etat[:10], v3)
+        self.assertEqual(etat[10][0], 11)
+        self.assertFalse(etat[10][6])
+
+    def _module_reveil(self):
+        from importlib import import_module
+        return import_module(
+            'apps.parametres.migrations.0135_reveil_j30_en_appel')
+
+    def _reveil_seed_0609(self, company, canal_j30='whatsapp'):
+        CadenceRelanceEtape.objects.create(
+            company=company, cadence=Cadence.REVEIL, ordre=1, canal=canal_j30,
+            delai_jours=30, libelle='Réveil J30', template_cle='reveil_a1',
+            actif=True)
+        CadenceRelanceEtape.objects.create(
+            company=company, cadence=Cadence.REVEIL, ordre=2,
+            canal='whatsapp', delai_jours=60, libelle='Réveil J60',
+            template_cle='reveil_a2', actif=True)
+
+    def test_la_migration_remet_le_reveil_j30_en_appel(self):
+        company = _company('cadv85-prod')
+        perso = _company('cadv85-perso')
+        self._reveil_seed_0609(company)
+        self._reveil_seed_0609(perso)
+        CadenceRelanceEtape.objects.filter(
+            company=perso, cadence=Cadence.REVEIL, ordre=1).update(
+            libelle='Notre réveil')
+        module = self._module_reveil()
+        module.en_appel(self._RegistreSimule, None)
+        o1 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.REVEIL, ordre=1)
+        self.assertEqual((o1.canal, o1.delai_jours, o1.template_cle),
+                         ('appel', 30, 'reveil_a1'))
+        o2 = CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.REVEIL, ordre=2)
+        self.assertEqual((o2.canal, o2.delai_jours), ('whatsapp', 60))
+        # La ligne personnalisée n'est jamais écrasée.
+        self.assertEqual(CadenceRelanceEtape.objects.get(
+            company=perso, cadence=Cadence.REVEIL, ordre=1).canal, 'whatsapp')
+        # Idempotence.
+        module.en_appel(self._RegistreSimule, None)
+        o1.refresh_from_db()
+        self.assertEqual(o1.canal, 'appel')
+
+    def test_reveil_marche_arriere(self):
+        company = _company('cadv85-retour')
+        self._reveil_seed_0609(company)
+        module = self._module_reveil()
+        module.en_appel(self._RegistreSimule, None)
+        module.en_whatsapp(self._RegistreSimule, None)
+        self.assertEqual(CadenceRelanceEtape.objects.get(
+            company=company, cadence=Cadence.REVEIL, ordre=1).canal,
+            'whatsapp')
 
 
 class CadenceApiTests(TestCase):

@@ -959,10 +959,11 @@ class DeploiementSansEffetTests(VisiteCadenceBase):
         self.assertEqual(self._instantane(), avant)
 
     def test_le_gabarit_apres_devis_reste_intact(self):
-        """Gel mis à jour le 23/09/2026 pour CAD98 (décision assumée et
-        testée chez elle, `apps/parametres/tests_cad98_scripts_appels_suivi.py`) :
-        les trois « Appel de suivi » (ordres 2, 6, 8) ont reçu leur script.
-        Ordres et jours inchangés — seules ces trois clés ont bougé."""
+        """Gel mis à jour le 02/11/2026 pour CADV24 (gabarit après devis v4,
+        décision D-CADV tranchée le 01/11, testée chez elle dans
+        `apps/parametres/tests_mry4_cadence_v2.py`) : neuf barreaux sur 90
+        jours, le trou d'ordre 4-5 gardé (barreaux désactivés, jamais
+        supprimés), J14 / J28 / J90 réutilisent `appel_suivi_j11`."""
         from apps.parametres.models_relance import CADENCE_APRES_DEVIS_DEFAUT
 
         self.assertEqual(
@@ -970,10 +971,9 @@ class DeploiementSansEffetTests(VisiteCadenceBase):
              for g in CADENCE_APRES_DEVIS_DEFAUT],
             [(1, 1, 'j1_pdf'), (2, 2, 'appel_suivi_j2'),
              (3, 3, 'dimanche_famille'),
-             (4, 4, 'j4_preuve'), (5, 6, 'j6_garanties'),
-             (6, 7, 'appel_suivi_j7'),
-             (7, 9, 'j9_validite'), (8, 11, 'appel_suivi_j11'),
-             (9, 13, 'j13_dernier'), (10, 14, 'j14_pause')])
+             (6, 7, 'appel_suivi_j7'), (7, 10, 'j6_garanties'),
+             (8, 14, 'appel_suivi_j11'), (9, 28, 'appel_suivi_j11'),
+             (10, 60, 'j13_dernier'), (11, 90, 'appel_suivi_j11')])
 
     def test_les_textes_historiques_sont_byte_identiques(self):
         """Les deux clés de visite sont ADDITIVES : rien d'existant ne change.

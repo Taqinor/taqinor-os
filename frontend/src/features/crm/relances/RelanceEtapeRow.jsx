@@ -1268,7 +1268,7 @@ export default function RelanceEtapeRow({
               >
                 Marquer le devis{etape.devis_reference ? ` ${etape.devis_reference}` : ''} accepté
               </a>
-              {' '}: le dossier passe en Signé et toutes les relances s’arrêtent.
+              {' '}: le dossier passe en Signé, toutes les relances s’arrêtent et deux appels vous restent (confirmer la signature à J+2, rappeler l’acompte à J+7).
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">{questionsTouche.aide}</p>

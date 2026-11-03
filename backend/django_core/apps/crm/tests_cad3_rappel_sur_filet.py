@@ -141,6 +141,68 @@ class RappelSurFiletTests(_Base):
         self.assertEqual(etape.statut, RelanceEtape.Statut.A_FAIRE)
         self.assertEqual(self.lead.relance_etapes.count(), 1)
 
+    # CADV29 (D-CADV-10) — lead PRO « joint » sans pièce : « Pièces reçues ? »
+    # à J+3 puis J+7 (WhatsApp, générique), le devis ensuite ; le résidentiel
+    # garde l'étape devis comme avant.
+    def _ouvertes(self):
+        return list(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE))
+
+    def _clore_fait(self, etape):
+        from apps.crm.cadence_touche import marquer_etape_relance
+
+        marquer_etape_relance(etape, self.acteur, RelanceEtape.Statut.FAIT)
+
+    def test_lead_pro_joint_sans_piece_recoit_pieces_recues_j3_puis_j7(self):
+        from apps.crm.cadence_config import CLE_DEVIS
+        from apps.crm.cadence_filet import (
+            CLE_PIECES_RECUES, assurer_prochaine_etape_apres_succes)
+
+        self.lead.type_installation = Lead.TypeInstallation.INDUSTRIEL
+        self.lead.save(update_fields=['type_installation'])
+        premiere = assurer_prochaine_etape_apres_succes(
+            self.lead, self.acteur, canal_touche='appel')
+        self.assertEqual(premiere.cle, CLE_PIECES_RECUES)
+        self.assertEqual(premiere.canal, RelanceEtape.Canal.WHATSAPP)
+        self.assertEqual(premiere.cadence, 'generique')
+        self.assertEqual(premiere.due_date, LUNDI.date() + datetime.timedelta(days=3))
+        self._clore_fait(premiere)
+        ouvertes = self._ouvertes()
+        self.assertEqual([e.cle for e in ouvertes], [CLE_PIECES_RECUES])
+        self.assertEqual(ouvertes[0].due_date, LUNDI.date() + datetime.timedelta(days=7))
+        self._clore_fait(ouvertes[0])
+        ouvertes = self._ouvertes()
+        self.assertEqual([e.cle for e in ouvertes], [CLE_DEVIS])
+
+    def test_rappel_fda_clos_ne_fait_pas_naitre_le_barreau_generique(self):
+        """ERR-CRM-RAPPEL-FDA — le rappel du délai FDA (clé `rappel_fda`,
+        cadence `generique`) est une étape de filet : sa clôture ne pose pas
+        le barreau suivant du gabarit `generique` (clé vide)."""
+        from apps.crm.cadence_filet import (
+            CLE_RAPPEL_FDA, poser_rappel_subvention)
+        from apps.crm.cadence_plan import est_etape_de_filet
+
+        self.lead.dossier_subvention = Lead.DossierSubvention.ACCORDE
+        self.lead.dossier_subvention_le = LUNDI.date()
+        self.lead.save(update_fields=[
+            'dossier_subvention', 'dossier_subvention_le'])
+        rappel = poser_rappel_subvention(self.lead, self.acteur)
+        self.assertEqual(rappel.cle, CLE_RAPPEL_FDA)
+        self.assertTrue(est_etape_de_filet(rappel))
+        self._clore_fait(rappel)
+        self.assertEqual(
+            [e.cle for e in self._ouvertes() if e.cle == ''], [])
+
+    def test_residentiel_joint_recoit_l_etape_devis(self):
+        from apps.crm.cadence_config import CLE_DEVIS
+        from apps.crm.cadence_filet import assurer_prochaine_etape_apres_succes
+
+        self.lead.type_installation = Lead.TypeInstallation.RESIDENTIEL
+        self.lead.save(update_fields=['type_installation'])
+        etape = assurer_prochaine_etape_apres_succes(
+            self.lead, self.acteur, canal_touche='appel')
+        self.assertEqual(etape.cle, CLE_DEVIS)
+
 
 class RappelSansDateTests(_Base):
     """Le seul cas où une nouvelle étape doit malgré tout être posée."""

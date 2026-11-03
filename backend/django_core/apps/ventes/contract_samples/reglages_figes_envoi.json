@@ -1,0 +1,52 @@
+{
+  "endpoint": "GET /ventes/reglages-figes-envoi",
+  "pourquoi": "ADVS2 (C-ADVS-011+060, D-ADVS-1 = figer_a_l_envoi, PACT10) — l'instantané figé au premier envoi d'un devis, lu par apps.ventes.domain.envoi.reglages_figes(devis). `endpoint` n'est PAS une route Django : l'instantané vit dans une entrée `{\"type\": \"reglages_figes\", ...}` de `Devis.clauses_appliquees` (gel interne, jamais imprimé) ; aucune vue ne le sert, donc scripts/check_api_shapes.py ne compare rien ici. Lecteurs : tests/test_adev30_envoye_ne_suit_pas_catalogue.py (forme), ADVS1 (quote_engine/etude_chiffrage.py : `tarif`, `tranches`, `redevance_compteur_mad_mois`), ADVS7 (quote_engine/lignes_classement.py : `produits`). Brouillon ou envoyé d'avant ce gel : `exemple_vide`, le rendu lit alors les réglages du jour.",
+  "notes": {
+    "tarif": "Le dict de apps.parametres.selectors.tariff_for(company). `productible_kwh_kwc` null = société sans productible : le moteur lit le productible PVGIS de la ville figée.",
+    "tranches": "Le dict de apps.parametres.selectors.residential_tranches_for(company) (`pairs` en listes, plafond null pour la dernière tranche) ; null = barème non édité par la société, le moteur garde sa grille nationale.",
+    "redevance_compteur_mad_mois": "TariffSettings.redevance_compteur_mad_mois en nombre, null = non réglé (défauts sourcés du barème).",
+    "produits": "Une entrée par produit lié à une ligne `produit` du devis, clé = id du produit en texte. Jamais de prix d'achat ni de marge."
+  },
+  "exemple": {
+    "tarif": {
+      "onee_tarif_kwh": 1.75,
+      "productible_kwh_kwc": null,
+      "rendement_global": 0.8,
+      "tva_standard": 20.0,
+      "tva_panneaux": 10.0
+    },
+    "tranches": {
+      "pairs": [
+        [
+          100,
+          0.9
+        ],
+        [
+          150,
+          1.05
+        ],
+        [
+          200,
+          1.1
+        ],
+        [
+          null,
+          1.6
+        ]
+      ],
+      "selective_threshold": 150,
+      "boundary_tolerance": 10
+    },
+    "redevance_compteur_mad_mois": 95.0,
+    "produits": {
+      "412": {
+        "marque": "Canadian Solar",
+        "description": "Module bifacial 710 Wc",
+        "garantie": "25 ans",
+        "garantie_mois": 300,
+        "garantie_production_mois": 360
+      }
+    }
+  },
+  "exemple_vide": {}
+}

@@ -207,7 +207,7 @@ class DimancheFamilleTests(_Base):
         # qu'elle porte sont ceux-là.
         ordres = [g.ordre for g, _e in self._partition()]
         self.assertNotIn(3, ordres)
-        self.assertEqual(ordres, [1, 2, 4, 5, 6, 7, 8, 9, 10])
+        self.assertEqual(ordres, [1, 2, 6, 7, 8, 9, 10, 11])  # v4, CADV24
         materialises = set(
             self._touches('apres_devis').values_list('ordre', flat=True))
         self.assertTrue(materialises.issubset(set(ordres)))

@@ -12,12 +12,17 @@ Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.ventes.tests.test_devis_matrice_permissions"
 """
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.request import Request
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient, APIRequestFactory
 
+from apps.crm.models import Client
+from apps.roles import permissions_registre as registre
 from apps.roles.models import Role
+from apps.ventes.models import Devis
 from apps.ventes.views.devis import DevisViewSet
 from authentication.models import Company
 
@@ -28,13 +33,15 @@ RESP = 'IsResponsableOrAdmin'
 ADMIN = 'IsAdminRole'
 VALIDER = 'HasPermissionOrLegacy_ventes_valider'
 PORTAIL = 'IsInternalWriterOrPortalClientOwner'
+#: ADVS23 — lecture bornée aux rôles du module Ventes (D-ASEC11-LECTURE-FACTURES).
+LECTURE = 'LectureVentes'
 #: VNT60 — garde à deux classes (tuple : comparé tel quel, hors VERITE).
 PALIER_VENTE = ('IsAdminOrResponsableTier', 'IsResponsableOrAdmin')
 
 #: La garde effective de CHAQUE action, capturée sur le code d'avant QJR649.
 FIGEE = {
     # Actions standard du ModelViewSet (non décorées).
-    'list': ANY, 'retrieve': ANY,
+    'list': LECTURE, 'retrieve': LECTURE,
     'create': RESP, 'update': RESP, 'partial_update': RESP,
     # ASEC50 / D-ASEC-4 — le palier admin ET le code ``ventes_supprimer``.
     'destroy': ('IsAdminRole', 'DroitDeLaGrille_ventes_supprimer'),
@@ -44,7 +51,7 @@ FIGEE = {
     'action_future_non_declaree': ADMIN,
     # @actions déclarées.
     'accepter': VALIDER, 'refuser': VALIDER,
-    'action_requise': ANY, 'etat_pdf': ANY, 'historique': ANY,
+    'action_requise': ANY, 'etat_pdf': ANY, 'historique': LECTURE,
     # CALX288 (views/economie.py, rattachée au viewset pivot) : lecture.
     'economie': ANY,
     # AGR206 (views/economie_pompage.py, même patron) : lecture du bloc
@@ -53,9 +60,9 @@ FIGEE = {
     # CIQ210 (views/economie_ci.py, même patron) : lecture du bloc
     # économie C&I, garde déclarée IsAnyRole.
     'economie_ci': ANY,
-    'prefill_site': ANY, 'superior_contact_status': ANY,
+    'prefill_site': LECTURE, 'superior_contact_status': ANY,
     'approuver_remise': ADMIN,
-    'proposal': PORTAIL,
+    'proposal': (PORTAIL, 'LectureVentesHorsPortail'),
     'ajouter_boq_electrique': RESP, 'atomic': RESP,
     'auto': RESP, 'composition': RESP, 'conception_electrique': RESP,
     'contacter_superieur': RESP, 'convertir_en_bc': RESP,
@@ -174,3 +181,53 @@ class MatricePermissionsDevis(TestCase):
                     autorise = all(p.has_permission(requete, vue)
                                    for p in _gardes(action))
                     self.assertEqual(autorise, VERITE[garde][role])
+
+    def _compte(self, nom, permissions):
+        role = Role.objects.create(company=self.company, nom=nom,
+                                   permissions=list(permissions))
+        return User.objects.create_user(
+            username='advs23_%s' % nom.replace(' ', '_'), password='x',
+            role=role, company=self.company)
+
+    def _cinq_lectures(self, user, devis, client):
+        api = APIClient()
+        api.force_authenticate(user)
+        base = '/api/django/ventes/devis/'
+        return {
+            'liste': api.get(base).status_code,
+            'fiche': api.get('%s%s/' % (base, devis.pk)).status_code,
+            'historique': api.get('%s%s/historique/' % (base, devis.pk)).status_code,
+            'proposal': api.get('%s%s/proposal/' % (base, devis.pk)).status_code,
+            'prefill': api.get('%sprefill-site/?client=%s' % (base, client.pk)).status_code,
+        }
+
+    def test_lecture_devis_refusee_hors_module_ventes(self):
+        # ADVS23 — Admin RH, Commercial terrain et les deux techniciens : 403 ×5.
+        client = Client.objects.create(company=self.company, nom='ADVS23')
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ADVS23-1', client=client,
+            statut=Devis.Statut.ENVOYE, created_by=commercial)
+        for nom, codes in (('Admin RH', registre.ADMIN_RH_PERMISSIONS),
+                           ('Commercial terrain', registre.COMMERCIAL_TERRAIN_PERMISSIONS),
+                           ('Technicien', registre.TECHNICIEN_PERMISSIONS),
+                           ('Technicien responsable', registre.TECHNICIEN_RESP_PERMISSIONS)):
+            with self.subTest(role=nom):
+                codes_lus = self._cinq_lectures(self._compte(nom, codes), devis, client)
+                self.assertEqual(set(codes_lus.values()), {403}, codes_lus)
+        # Un rôle du module Ventes et un compte sans rôle fin : inchangés.
+        with patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                   return_value='cle'), \
+                patch('apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF-'):
+            codes_lus = self._cinq_lectures(commercial, devis, client)
+        self.assertEqual(set(codes_lus.values()), {200}, codes_lus)
+        viewer = self._compte('Viewer', registre.VIEWER_PERMISSIONS)
+        Devis.objects.filter(pk=devis.pk).update(created_by=viewer)
+        codes_lus = self._cinq_lectures(viewer, devis, client)
+        self.assertEqual(codes_lus.pop('proposal'), 403)  # palier inchangé (lecture seule)
+        self.assertEqual(set(codes_lus.values()), {200}, codes_lus)
+        api = APIClient()
+        api.force_authenticate(User.objects.create_user(
+            username='advs23_sans_role', password='x', role_legacy='normal',
+            company=self.company))
+        self.assertEqual(api.get('/api/django/ventes/devis/').status_code, 200)

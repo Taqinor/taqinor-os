@@ -28,7 +28,7 @@ export function buildLeadFacets(filters, canalOptions = []) {
   // 'aujourdhui'/'retard' sont portés par les chips comptées ; seule
   // « Cette semaine » (panneau) mérite une facette.
   if (filters.relance === 'semaine') facets.push({ key: 'relance', dim: 'Relance', label: RELANCE_LABELS.semaine })
-  if (filters.perdus !== EMPTY_FILTERS.perdus) facets.push({ key: 'perdus', dim: 'Perdus', label: filters.perdus === 'sans' ? 'Sans' : 'Seuls' })
+  if (filters.perdus !== EMPTY_FILTERS.perdus) facets.push({ key: 'perdus', dim: 'Perdus', label: filters.perdus === 'avec' ? 'Avec' : filters.perdus === 'sans' ? 'Sans' : 'Seuls' })
   if ((filters.archived ?? 'actifs') !== EMPTY_FILTERS.archived) facets.push({ key: 'archived', dim: 'Archivés', label: filters.archived === 'tous' ? 'Inclus' : 'Seuls' })
   return facets
 }

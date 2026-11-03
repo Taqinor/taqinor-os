@@ -161,9 +161,15 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     # YOPSB13 — owner/client en jointure (owner_nom, client_nom : sinon 1
     # requête PAR LIGNE). ERR-PERF-CRM-N1 — les devis et TOUT ce que lit
     # ``lignes_devis_du_lead`` (lignes AVEC produit, successeur) : une seule
-    # définition, ``PREFETCH_DEVIS_LISTE_LEADS`` (chemins en chaînes).
-    queryset = Lead.objects.select_related('owner', 'client').prefetch_related(
-        *lead_devis_payload.PREFETCH_DEVIS_LISTE_LEADS).all()
+    # définition, ``lead_devis_payload.prefetch_devis_liste_leads()``.
+    # AOOM2 — ``updated_by``/``archived_by`` EN JOINTURE : les champs
+    # ``updated_by_nom``/``archived_by_nom`` du sérialiseur ont pour source
+    # ``updated_by.username`` / ``archived_by.username``, donc une requête
+    # ``authentication_customuser`` PAR LEAD sans elles (mesuré le 02/11/2026 :
+    # 155 des 177 requêtes d'une page de 200 leads).
+    queryset = Lead.objects.select_related(
+        'owner', 'client', 'updated_by', 'archived_by').prefetch_related(
+        *lead_devis_payload.prefetch_devis_liste_leads()).all()
     serializer_class = LeadSerializer
     # VTA4 (12/09/2026) — la frontière « pas d'accès CRM » est SERVEUR : la
     # liste/lecture des leads exige désormais le code fin `crm_voir`. Sans
@@ -967,7 +973,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 {'contact_secondaire_telephone': [
                     'Aucun numéro valide pour le contact secondaire : '
                     'renseignez-le sur la fiche.']},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)  # donnée de la fiche : refus d'état
         brut = str(request.data.get('devis_id') or '').strip()
         devis = (devis_for_lead(lead, [int(brut)]) if brut.isdigit() else [])
         if not devis or devis[0].statut == 'brouillon':

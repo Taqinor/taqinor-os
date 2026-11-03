@@ -28,6 +28,7 @@ from apps.roles.permissions import (
     DroitDeLaGrille, is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
+from ..gardes_lecture import LectureVentes  # ADVS23
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 # AUD403 — brique UNIQUE du dépôt pour qu'un ``get_permissions()`` par action
 # ne jette pas en silence la garde qu'une ``@action`` déclare elle-même.
@@ -268,9 +269,12 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
-        if self.action in ('list', 'retrieve', 'variante_config'):
-            # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE
-            # (PUT) est re-vérifiée DANS l'action.
+        if self.action in ('list', 'retrieve'):
+            # ADVS23 — bornée aux rôles du module Ventes, comme les factures.
+            return [LectureVentes()]
+        if self.action == 'variante_config':
+            # La LECTURE est ouverte à tous ; l'ÉCRITURE (PUT) est re-vérifiée
+            # DANS l'action.
             return [IsAnyRole()]
         if self.action in ('create', 'update', 'partial_update'):
             return [IsResponsableOrAdmin()]
@@ -305,13 +309,13 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         return super().destroy(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
-        """VNT55 (D-ADEV-1) — supprimer le brouillon de révision V2 d'une
-        vente acceptée réactive la V1, dans la même transaction (le lien
-        ``superseded_by`` est lu AVANT la suppression)."""
+        """VNT55 (D-ADEV-1) — supprimer le brouillon de révision V2 réactive
+        sa V1 (ADEV16 : quel qu'en soit le statut), dans la même transaction
+        (le lien ``superseded_by`` est lu AVANT la suppression)."""
         from django.db import transaction
         from ..domain.revision import abandonner_revision
         with transaction.atomic():
-            abandonner_revision(instance, self.request.user)
+            abandonner_revision(instance, self.request.user, retrait=True)
             super().perform_destroy(instance)
 
     def perform_create(self, serializer):
@@ -453,9 +457,11 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         # (404 sinon), résolue côté serveur ; plus jamais d'un texte libre.
         ville = ''
         if corps.get('lead') is not None:
-            from apps.crm.selectors import get_company_lead
+            from apps.crm.selectors import leads_visibles
             from ..domain.transport import ville_du_lead
-            lead_obj = get_company_lead(company, int(corps['lead']))
+            # ADVS24 — borné à la portée du rôle, pas à la seule société.
+            lead_obj = leads_visibles(request.user, company).filter(
+                pk=int(corps['lead'])).first()
             if lead_obj is None:
                 return Response({'detail': 'Lead inconnu.'},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -502,7 +508,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
 
         Corps : ``{lead}`` (ou ``{client}``, dont on remonte au lead le plus
         récent) + ``taux_tva?`` / ``remise_globale?``. La société est TOUJOURS
-        celle du user ; le lead est borné à cette société (404 sinon). 409 si les
+        celle du user ; le lead est borné à sa portée (404 sinon). 409 si les
         données de dimensionnement manquent (le refus nomme le champ du lead
         ``field``), si un poste fixe C&I n'a pas de prix (« Prix à renseigner »,
         ALEA50) ou si rien ne se compose — l'agent demande alors la donnée /
@@ -520,7 +526,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         from ..services import build_devis_auto, AutoDevisError
         from ..models import ShareLink
         from apps.crm.selectors import (
-            get_company_lead, get_company_client, get_latest_lead_for_client,
+            get_company_client, get_latest_lead_for_client, leads_visibles,
         )
 
         company = request.user.company
@@ -536,8 +542,10 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         lead_obj = None
         lead_id = corps.get('lead')
         client_id = corps.get('client')
+        # ADVS24 — portée du rôle : le lead d'un collègue = lead inconnu.
+        visibles = leads_visibles(request.user, company)
         if lead_id:
-            lead_obj = get_company_lead(company, lead_id)
+            lead_obj = visibles.filter(pk=lead_id).first()
             if lead_obj is None:
                 return Response({'detail': 'Lead inconnu.'},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -553,6 +561,9 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                      "souhaitée) pour générer l'auto-devis."},
                     # CI #997 fuzz — l'ÉTAT de la fiche s'oppose : 409.
                     status=status.HTTP_409_CONFLICT)
+            if not visibles.filter(pk=lead_obj.pk).exists():
+                return Response({'detail': 'Lead inconnu.'},
+                                status=status.HTTP_404_NOT_FOUND)
         else:
             return Response(
                 {'detail': 'Un lead (ou un client) est requis.'},
@@ -780,7 +791,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         parameters=[OpenApiParameter('client', OpenApiTypes.INT, required=True)],
         responses=D.PrefillSiteResponse)
     @action(detail=False, methods=['get'], url_path='prefill-site',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureVentes])
     def prefill_site(self, request):
         """WIR99 — pré-remplissage du générateur pour un devis SANS LEAD.
 

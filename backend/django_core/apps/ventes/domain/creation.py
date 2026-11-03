@@ -115,7 +115,7 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields, origine=None):
     service cross-app, pas un second chemin de création.
     """
     from apps.ventes.models import Devis
-    from apps.ventes.utils.company_settings import create_numbered
+    from apps.ventes.utils.company_settings import create_numbered, tva_standard
     from apps.crm.services import resolve_client_for_lead
 
     if lead is None:
@@ -150,6 +150,9 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields, origine=None):
             created_by=user,
             note=note,
             mode_installation=mode,
+            # ADVS28 — D-APAR-1 : la société décide, jamais le défaut du modèle.
+            taux_tva=tva_standard(company),
+            devise=devise_par_defaut(company),
         )
 
     devis = create_numbered(Devis, company, 'devis', _create)
@@ -228,7 +231,7 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
     pas de lead d'origine).
     """
     from ..models import Devis
-    from apps.ventes.utils.company_settings import create_numbered
+    from apps.ventes.utils.company_settings import create_numbered, tva_standard
     from apps.crm.selectors import client_base_qs  # ADEV56
 
     client = client_base_qs(company).get(pk=client_id)
@@ -237,7 +240,8 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
         return Devis.objects.create(
             company=company, reference=ref, client=client,
             statut=Devis.Statut.BROUILLON, created_by=user,
-            note=note or '',
+            note=note or '', taux_tva=tva_standard(company),
+            devise=devise_par_defaut(company),
         )
     devis = create_numbered(Devis, company, 'devis', _create)
 
@@ -279,7 +283,7 @@ def create_devis_upsell_from_intervention(*, intervention, user):
     devis existant, le renvoie tel quel plutôt que d'en créer un second.
     Renvoie le ``Devis`` créé (ou réutilisé)."""
     from ..models import Devis
-    from apps.ventes.utils.company_settings import create_numbered
+    from apps.ventes.utils.company_settings import create_numbered, tva_standard
 
     if intervention.devis_upsell_id:
         existant = Devis.objects.filter(
@@ -309,6 +313,8 @@ def create_devis_upsell_from_intervention(*, intervention, user):
             statut=Devis.Statut.BROUILLON,
             created_by=user,
             note=note,
+            taux_tva=tva_standard(company),
+            devise=devise_par_defaut(company),
         )
 
     devis = create_numbered(Devis, company, 'devis', _create)

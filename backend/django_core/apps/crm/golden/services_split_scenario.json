@@ -3425,7 +3425,7 @@
   "cadence_B": {
    "activites": [
     {
-     "body": "Plan de relance initialisé — cadence « contact » (11 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
+     "body": "Plan de relance initialisé — cadence « contact » (8 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
      "kind": "note",
      "lead": "<crm.Lead#3>",
      "outcome": "",
@@ -4194,7 +4194,7 @@
   "cadence_C": {
    "activites": [
     {
-     "body": "Plan de relance initialisé — cadence « contact » (11 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
+     "body": "Plan de relance initialisé — cadence « contact » (8 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
      "kind": "note",
      "lead": "<crm.Lead#4>",
      "outcome": "",
@@ -5236,7 +5236,7 @@
   "cadence_ne_plus_contacter": {
    "activites": [
     {
-     "body": "Plan de relance initialisé — cadence « contact » (11 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
+     "body": "Plan de relance initialisé — cadence « contact » (8 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
      "kind": "note",
      "lead": "<crm.Lead#7>",
      "outcome": "",
@@ -7073,7 +7073,7 @@
   "cadence_plus_tard": {
    "activites": [
     {
-     "body": "Plan de relance initialisé — cadence « contact » (11 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
+     "body": "Plan de relance initialisé — cadence « contact » (8 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
      "kind": "note",
      "lead": "<crm.Lead#5>",
      "outcome": "",
@@ -8388,7 +8388,7 @@
   "cadence_question_prix": {
    "activites": [
     {
-     "body": "Plan de relance initialisé — cadence « contact » (11 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
+     "body": "Plan de relance initialisé — cadence « contact » (8 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
      "kind": "note",
      "lead": "<crm.Lead#6>",
      "outcome": "",
@@ -15748,14 +15748,14 @@
     "crochets": [],
     "langue": "darija",
     "mailto_url": null,
-    "message": "السلام عليكم Karima Benjelloun، أنا Meryem من Mon Entreprise. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+    "message": "السلام عليكم Karima Benjelloun، أنا Meryem من Mon Entreprise. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم. جاوبو STOP وما نلحوش عليكم.",
     "objet": "",
     "phone": "+212661002001",
     "placeholders_manquants": [],
     "preuve_manquante": false,
     "repli_langue": false,
     "vocal": false,
-    "wa_url": "https://wa.me/212661002001?text=%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85%20%D8%B9%D9%84%D9%8A%D9%83%D9%85%20Karima%20Benjelloun%D8%8C%20%D8%A3%D9%86%D8%A7%20Meryem%20%D9%85%D9%86%20Mon%20Entreprise.%20%D9%88%D8%B5%D9%84%D9%86%D8%A7%20%D8%A7%D9%84%D8%B7%D9%84%D8%A8%20%D8%AF%D9%8A%D8%A7%D9%84%D9%83%D9%85%20%D8%B9%D9%84%D9%89%20%D8%A7%D9%84%D8%B7%D8%A7%D9%82%D8%A9%20%D8%A7%D9%84%D8%B4%D9%85%D8%B3%D9%8A%D8%A9%D8%8C%20%D8%B4%D9%83%D8%B1%D8%A7.%20%D8%BA%D8%A7%D8%AF%D9%8A%20%D9%86%D8%B9%D9%8A%D8%B7%20%D9%84%D9%8A%D9%83%D9%85%20%D9%85%D9%86%20%D8%AF%D8%A7%D8%A8%D8%A7%20%D8%B4%D9%8A%20%D8%AF%D9%82%D8%A7%D9%8A%D9%82%20%D8%A8%D8%A7%D8%B4%20%D9%86%D8%B9%D8%B7%D9%8A%D9%83%D9%85%20%D8%AA%D9%82%D8%AF%D9%8A%D8%B1%20%D8%A3%D9%88%D9%84%D9%8A.%20%D8%A5%D9%84%D8%A7%20%D9%85%D8%A7%D8%B4%D9%8A%20%D8%A7%D9%84%D9%88%D9%82%D8%AA%20%D8%A7%D9%84%D9%85%D9%86%D8%A7%D8%B3%D8%A8%D8%8C%20%D9%82%D9%88%D9%84%D9%88%D8%A7%20%D9%84%D9%8A%D8%A7%20%D8%B4%D9%85%D9%86%20%D9%88%D9%82%D8%AA%20%D9%8A%D9%86%D8%A7%D8%B3%D8%A8%D9%83%D9%85."
+    "wa_url": "https://wa.me/212661002001?text=%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85%20%D8%B9%D9%84%D9%8A%D9%83%D9%85%20Karima%20Benjelloun%D8%8C%20%D8%A3%D9%86%D8%A7%20Meryem%20%D9%85%D9%86%20Mon%20Entreprise.%20%D9%88%D8%B5%D9%84%D9%86%D8%A7%20%D8%A7%D9%84%D8%B7%D9%84%D8%A8%20%D8%AF%D9%8A%D8%A7%D9%84%D9%83%D9%85%20%D8%B9%D9%84%D9%89%20%D8%A7%D9%84%D8%B7%D8%A7%D9%82%D8%A9%20%D8%A7%D9%84%D8%B4%D9%85%D8%B3%D9%8A%D8%A9%D8%8C%20%D8%B4%D9%83%D8%B1%D8%A7.%20%D8%BA%D8%A7%D8%AF%D9%8A%20%D9%86%D8%B9%D9%8A%D8%B7%20%D9%84%D9%8A%D9%83%D9%85%20%D9%85%D9%86%20%D8%AF%D8%A7%D8%A8%D8%A7%20%D8%B4%D9%8A%20%D8%AF%D9%82%D8%A7%D9%8A%D9%82%20%D8%A8%D8%A7%D8%B4%20%D9%86%D8%B9%D8%B7%D9%8A%D9%83%D9%85%20%D8%AA%D9%82%D8%AF%D9%8A%D8%B1%20%D8%A3%D9%88%D9%84%D9%8A.%20%D8%A5%D9%84%D8%A7%20%D9%85%D8%A7%D8%B4%D9%8A%20%D8%A7%D9%84%D9%88%D9%82%D8%AA%20%D8%A7%D9%84%D9%85%D9%86%D8%A7%D8%B3%D8%A8%D8%8C%20%D9%82%D9%88%D9%84%D9%88%D8%A7%20%D9%84%D9%8A%D8%A7%20%D8%B4%D9%85%D9%86%20%D9%88%D9%82%D8%AA%20%D9%8A%D9%86%D8%A7%D8%B3%D8%A8%D9%83%D9%85.%20%D8%AC%D8%A7%D9%88%D8%A8%D9%88%20STOP%20%D9%88%D9%85%D8%A7%20%D9%86%D9%84%D8%AD%D9%88%D8%B4%20%D8%B9%D9%84%D9%8A%D9%83%D9%85."
    }
   },
   "message_A_0_fr": {
@@ -16270,14 +16270,14 @@
     "crochets": [],
     "langue": "fr",
     "mailto_url": null,
-    "message": "Bonjour Karima Benjelloun, je suis Meryem de Mon Entreprise. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+    "message": "Bonjour Karima Benjelloun, je suis Meryem de Mon Entreprise. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste plus.",
     "objet": "",
     "phone": "+212661002001",
     "placeholders_manquants": [],
     "preuve_manquante": false,
     "repli_langue": false,
     "vocal": false,
-    "wa_url": "https://wa.me/212661002001?text=Bonjour%20Karima%20Benjelloun%2C%20je%20suis%20Meryem%20de%20Mon%20Entreprise.%20Vous%20venez%20de%20nous%20laisser%20une%20demande%20pour%20le%20solaire%2C%20merci.%20Je%20vous%20appelle%20dans%20quelques%20minutes%20pour%20une%20premi%C3%A8re%20estimation%3B%20si%20ce%20n%27est%20pas%20le%20bon%20moment%2C%20dites-moi%20l%27heure%20qui%20vous%20arrange."
+    "wa_url": "https://wa.me/212661002001?text=Bonjour%20Karima%20Benjelloun%2C%20je%20suis%20Meryem%20de%20Mon%20Entreprise.%20Vous%20venez%20de%20nous%20laisser%20une%20demande%20pour%20le%20solaire%2C%20merci.%20Je%20vous%20appelle%20dans%20quelques%20minutes%20pour%20une%20premi%C3%A8re%20estimation%3B%20si%20ce%20n%27est%20pas%20le%20bon%20moment%2C%20dites-moi%20l%27heure%20qui%20vous%20arrange.%20R%C3%A9pondez%20STOP%20et%20je%20n%27insiste%20plus."
    }
   },
   "mesures_point_eau": {
@@ -18287,7 +18287,7 @@
      "user": null
     },
     {
-     "body": "Plan de relance initialisé — cadence « contact » (11 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
+     "body": "Plan de relance initialisé — cadence « contact » (8 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
      "kind": "note",
      "lead": "<crm.Lead#2>",
      "outcome": "",
@@ -18840,7 +18840,7 @@
      "user": null
     },
     {
-     "body": "Plan de relance initialisé — cadence « contact » (11 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
+     "body": "Plan de relance initialisé — cadence « contact » (8 touche(s) prévue(s), première le 21/09/2026 à 10:00).",
      "kind": "note",
      "lead": "<crm.Lead#1>",
      "outcome": "",

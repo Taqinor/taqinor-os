@@ -55,9 +55,15 @@ def devis_du_client_portail(company, client_id, *, limit=200,
     if company is None or not client_id:
         return []
     # QJR520 — une version remplacée n'est plus listée à côté de sa
-    # remplaçante (is_active=True).
+    # remplaçante (is_active=True). ADVS37 (D-ADEV-1=a) — sauf la vente signée
+    # en vigueur : une V1 acceptée reste listée tant que sa V2 n'est pas signée.
+    from django.db.models import Q
+    from .selectors import devis_signes_en_vigueur
+    en_vigueur = devis_signes_en_vigueur(company).filter(
+        client_id=client_id).values('pk')
     qs = (Devis.objects
-          .filter(company=company, client_id=client_id, is_active=True)
+          .filter(Q(is_active=True) | Q(pk__in=en_vigueur),
+                  company=company, client_id=client_id)
           .exclude(statut=Devis.Statut.BROUILLON)
           .order_by('-date_creation')[:limit])
     return [{
@@ -91,7 +97,32 @@ def devis_du_client_portail(company, client_id, *, limit=200,
         # générales que le client accepte, lues par LA fonction de la page
         # publique /proposition.
         **(_conditions_portail(d) if avec_conditions else {}),
+        # ADVS20 (contrat ``mes_devis_liste.json``) — l'empreinte du contenu
+        # lu, renvoyée à l'acceptation ; None hors signable.
+        **({'empreinte_contenu': _empreinte_portail(d)} if avec_conditions else {}),
     } for d in qs]
+
+
+def _empreinte_portail(devis):
+    """ADVS20 — LA règle du lien public : l'empreinte du contenu signable,
+    ``None`` quand rien n'est signable (accepté, expiré, remplacé…)."""
+    from .public.signature_views import empreinte_contenu, signable_au_jeton
+
+    return empreinte_contenu(devis) if signable_au_jeton(devis) else None
+
+
+def garde_empreinte_portail(request, devis):
+    """ADVS20 — LA garde du lien public pour l'acceptation au portail :
+    ``(refus, empreinte_attendue)``. ``refus`` est la réponse 409 à rendre telle
+    quelle, ``None`` sinon ; l'empreinte reçue n'est attendue que si le devis est
+    signable."""
+    from .public.signature_views import (
+        _empreinte_recue, _refus_empreinte, signable_au_jeton,
+    )
+    refus = _refus_empreinte(request, devis)
+    if refus is not None:
+        return refus, None
+    return None, (_empreinte_recue(request) if signable_au_jeton(devis) else None)
 
 
 def _acceptable_portail(devis):

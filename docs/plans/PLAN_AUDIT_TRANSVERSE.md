@@ -911,3 +911,5 @@ Seconde contre-visite de clôture du groupe ALEA (dossier `docs/audits/2026-11-0
 - 2026-11-01 — ACAL371 : garde clés du document : (a) exemple:: jamais une dette (refusé même en base), marqueur x-hors-exemple (repere), modePoseDeclare=sol dans exemple, 2 lignes exemple:: retirées de la base, sortie liste les clés non rattachées ; 4 tests ajoutés.
 - 2026-11-02 — ALEA56 — code livré (6b4bdb4e9), NON cochée : un forfait réglé sans article actif au rôle rend `pret` faux, même refus que le moteur (`_du_role`). Preuve due : sonde C-ALEA-VER2-001 + bouton de la fiche lead.
 - 2026-11-03 — ALEA56 — cochée : `docs/audits/acceptation/ALEA/2026-11-03-369cf21d8.md` étapes S-001 (sonde : repro faux) et P1.6 (société sans article de prestation : bouton désactivé, 8 prestations nommées ; avec les articles, le blocage tombe).
+- 2026-11-02 — ADEV46 déjà construite (VNT22) ; NON cochée : rejeu P6.4 dû.
+- 2026-11-03 — APRF25 — code livré (cd7072053), NON cochée : preuve en direct due. APRF39, 40, 41, 24 déjà sur main depuis le 28/10 (3d695d093, 70495a565, 2fbd41073, 80462ebaf) : preuve due.

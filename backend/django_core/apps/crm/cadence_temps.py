@@ -313,6 +313,29 @@ def adapter_canal_au_lead(gabarit, lead, *, dimanche_compris=True):
     return GabaritAdapte(gabarit, CANAL_WHATSAPP)
 
 
+#: CADV87 (D-CADV-3) — le frein qui appelle la preuve plutôt que les garanties ;
+#: seuls des textes déjà validés (MRY12), aucune clé de message nouvelle.
+TEMPLATE_GARANTIES = 'j6_garanties'
+TEMPLATE_PREUVE = 'j4_preuve'
+FREINS_VERS_PREUVE = frozenset({'confiance', 'compare'})
+
+
+def adapter_template_au_frein(gabarit, lead, *, preuve_eligible):
+    """CADV87 — le WhatsApp J10 après devis suit ``Lead.frein_principal`` : un
+    client qui doute ou compare lit un chantier comparable (``j4_preuve``) s'il
+    en existe un à montrer, les autres gardent les garanties.
+
+    Le gabarit de la société n'est jamais muté (patron CAD32). Une clé
+    personnalisée n'est jamais remplacée : seule ``j6_garanties`` se lit ici.
+    ``preuve_eligible`` : appelable, lu en dernier (une requête, si le frein la
+    demande)."""
+    if (getattr(gabarit, 'template_cle', '') != TEMPLATE_GARANTIES
+            or getattr(lead, 'frein_principal', None) not in FREINS_VERS_PREUVE
+            or not preuve_eligible()):
+        return gabarit
+    return GabaritAdapte(gabarit, gabarit.canal, template_cle=TEMPLATE_PREUVE)
+
+
 # ── CAD-B ── CAD34 ──────────────────────────────────────────────────────────
 
 #: Valeur de `crm.RelanceEtape.Canal.APPEL`.

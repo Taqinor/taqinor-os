@@ -11,7 +11,7 @@ qui part chez WeasyPrint, sans BD et sans WeasyPrint : ``SimpleTestCase``.
 
 import re
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.tests import _moteur_fixtures as F
 
@@ -691,3 +691,92 @@ class M1GhiSourceUniqueTests(SimpleTestCase):
         from apps.ventes.quote_engine import constants
         attendu = [round(g / sum(constants.GHI), 6) for g in constants.GHI]
         self.assertEqual(constants.MOROCCO_SOLAR_MONTHLY_WEIGHTS, attendu)
+
+
+@tag('pdf')
+class M10SectionsMasqueesTests(TestCase):
+    """ADVS18 — lien public « Synthèse d'économies » décochée : le PDF n'imprime
+    ni avant/après, ni économie annuelle, ni −N % (patron de la sonde C-ADVS-023).
+    Rendu RÉEL, comparé à un témoin sans l'option."""
+
+    def setUp(self):
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+
+        from apps.crm.models import Client
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis, LigneDevis
+        from authentication.models import Company
+        company = Company.objects.create(nom='ADVS18', slug='advs18')
+        user = get_user_model().objects.create_user(
+            username='advs18', password='x', company=company)
+        client = Client.objects.create(company=company, nom='Client sections')
+        self.devis = Devis.objects.create(
+            company=company, reference='DEV-ADVS18-01', client=client,
+            taux_tva=Decimal('20'), statut='envoye', created_by=user,
+            etude_params={'scenario': 'Les deux (Sans + Avec)',
+                          'factures_mensuelles_reelles': [1800] * 12,
+                          'distributeur': 'onee', 'ville': 'casablanca'})
+        for ordre, (nom, qte, prix) in enumerate((
+                ('Panneau Canadien Solar 710W', '14', '1166.67'),
+                ('Onduleur réseau Huawei 10kW Monophasé', '1', '15000.00'),
+                ('Onduleur hybride Deye 10kW Monophasé', '1', '23333.33'),
+                ('Batterie Dyness 10 kWh', '1', '25000.00'))):
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku='ADVS18-%d' % ordre,
+                prix_vente=Decimal(prix), quantite_stock=50)
+            LigneDevis.objects.create(
+                devis=self.devis, produit=produit, designation=nom,
+                quantite=Decimal(qte), prix_unitaire=Decimal(prix),
+                remise=Decimal('0'), ordre=ordre)
+
+    def _texte(self, options):
+        import fitz
+
+        from apps.ventes.tests.test_pdf_apdf_identite import rendre_pdf
+        doc = fitz.open(stream=rendre_pdf(self.devis, options), filetype='pdf')
+        return '\n'.join(page.get_text() for page in doc)
+
+    @staticmethod
+    def _montant_present(montant, texte):
+        return str(int(round(montant))) in re.sub(r'[\s.,]', '', texte)
+
+    def test_economies_decochees_aucun_montant_au_pdf(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential.renderer import (
+            synthese_economies)
+        temoin = {'pdf_mode': 'full'}
+        masque = dict(temoin, sections_masquees=['economies'])
+        synth = synthese_economies(build_quote_data(self.devis, temoin))
+        self.assertIsNotNone(synth)
+        montants = (synth['annual_before'], synth['annual_after'],
+                    synth['eco_mensuelles_total'])
+        pct = re.compile(r'[-−–]\s*%d\s*%%' % synth['pct_cut'])
+        texte_temoin = self._texte(temoin)
+        for montant in montants:
+            self.assertTrue(self._montant_present(montant, texte_temoin), montant)
+        self.assertRegex(texte_temoin, pct)
+
+        rendu_masque = build_quote_data(self.devis, masque)
+        self.assertIs(rendu_masque['masquer_economies'], True)
+        self.assertIs(rendu_masque['economies_masquees_lien'], True)
+        texte = self._texte(masque)
+        for montant in montants:
+            self.assertFalse(self._montant_present(montant, texte), montant)
+        self.assertNotRegex(texte, pct)
+
+    def test_cle_inconnue_ignoree_et_sans_option_rendu_inchange(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.options_pdf import clean_pdf_options
+        self.assertNotIn('sections_masquees', clean_pdf_options(
+            {'sections_masquees': ['sld', 'inconnue']}))
+        self.assertNotIn('sections_masquees', clean_pdf_options(
+            {'sections_masquees': []}))
+        self.assertNotIn('sections_masquees', clean_pdf_options(
+            {'sections_masquees': 'economies'}))
+        rendu = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        self.assertIs(rendu['masquer_economies'], False)
+        # Drapeau de GABARIT posé sur un lien décoché seul : un rendu sans option
+        # reste octet-identique (goldens du moteur, décision du 08/10/2026).
+        self.assertNotIn('economies_masquees_lien', rendu)

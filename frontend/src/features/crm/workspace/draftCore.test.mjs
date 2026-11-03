@@ -200,6 +200,14 @@ test('CAD174 — les huit champs CAD149 sont dans TRACKED_KEYS et dans une SECTI
   }
 })
 
+test('CADV26 — frein_principal et declencheur sont suivis, dans la section pipeline, et vides ⇒ null', () => {
+  for (const champ of ['frein_principal', 'declencheur']) {
+    assert.ok(TRACKED_KEYS.includes(champ))
+    assert.ok(SECTION_FIELDS.pipeline.includes(champ))
+  }
+  assert.deepEqual(toPayload({ frein_principal: 'prix', declencheur: '' }), { frein_principal: 'prix', declencheur: null })
+})
+
 // QJR657 — le « Type de toiture (site) » fabriqué du tunnel n'est plus un champ
 // de la fiche : `type_toiture` est la seule source.
 test('QJR657 — roof_type absent de TRACKED_KEYS, des sections et de CHAMPS_SITE', () => {

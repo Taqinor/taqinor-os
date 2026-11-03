@@ -16,6 +16,7 @@ from . import stages
 from .cadence_config import CLES_APRES_CONTACT, est_etape
 from .cadence_messages import (
     MOTIF_VALIDITE_SUBVENTION,
+    SEGMENTS_PRO,
     _validite_selon_financement,
     lead_dossier_subvention_en_instruction,
     lead_en_attente_d_accord,
@@ -23,12 +24,13 @@ from .cadence_messages import (
     lead_financement_pro_declare,
 )
 from .cadence_reperes import (
+    CLE_PIECES_RECUES,
+    CLE_RAPPEL_FDA,
     FIN_NOTE_REPORT,
     MOTIF_PARQUE_AU_FROID,
     OUTCOME_VISITE_ACCEPTEE,
     PREFIXE_NOTE_REPORT,
     _CLOTURE_PLAFOND,
-    _CLOTURE_RAISONS,
     _CLOTURE_TAGS,
     _LIBELLES_FILET_HORS_GABARIT,
     _canal_effectif,
@@ -37,7 +39,14 @@ from .cadence_reperes import (
     q_visite,
     tag_injoignable,
 )
-from .fiche_funnel import ParcRefuse, _rang_funnel, parquer_lead, poser_tag_lead
+from .fiche_funnel import (
+    RAISON_STANDBY_TRIMESTRIEL,
+    ParcRefuse,
+    _rang_funnel,
+    parquer_lead,
+    poser_tag_lead,
+    raison_fin_de_cadence,
+)
 from .leads_doublons import find_duplicates_by_contact
 from .models import Lead, LeadActivity, RelanceEtape
 from .tasks import REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE
@@ -168,6 +177,12 @@ _REVEIL_GABARITS = {
     False: ('reveil_a2', 'reveil_a3'),   # jamais chiffré
 }
 _REVEIL_CLES_SEEDEES = frozenset({'reveil_a1', 'reveil_a2'})
+#: CADV86 (D-CADV-2, décision du 01/11/2026) — facture déclarée à partir de laquelle
+#: un lead jamais joint ni chiffré garde le seul appel J30 : le pilote d'appels.
+REVEIL_PILOTE_FACTURE_MIN_MAD = 2000
+#: CADV103 (D-CADV-10) — la raison du refus : l'appel trimestriel (CADV102) est le
+#: réveil du pro.
+REFUS_REVEIL_PRO = 'réveil non posé : lead pro (appel trimestriel)'
 
 
 def _adapter_gabarits_reveil(lead, etapes, *, rang_initial=0):
@@ -220,6 +235,44 @@ def _realisation_eligible(lead):
 _TAG_DECISION_A_PLUSIEURS = 'décision à plusieurs'
 
 
+def _a_un_historique_client(lead):
+    """CADV25 — joint au moins une fois (``ISSUES_CLIENT_JOINT``) ou chiffré
+    (``ventes.lead_a_un_devis``). Lue en lot par ``leads_reveil_sans_historique``
+    (CADV3) et le placement : même définition, jamais une seconde notion."""
+    from apps.ventes.selectors import lead_a_un_devis
+
+    if not getattr(lead, 'pk', None):
+        return False
+    return (lead.activites.filter(outcome__in=ISSUES_CLIENT_JOINT).exists()
+            or bool(lead_a_un_devis(lead)))
+
+
+def nombre_reveils_permis(lead, *, historique=None):
+    """CADV25 (D-CADV-2, 01/11/2026) — LE « réveil permis » : combien de barreaux
+    du gabarit ``reveil`` ce lead peut porter (``None`` = tous, ``0`` = aucun).
+
+    157 messages de réveil à des leads jamais joints ni chiffrés ont donné 0
+    conversation : ceux-là ne vivent plus que sur la liste saisonnière
+    (``poser_reveils_saisonniers``). ``historique`` : la réponse déjà connue de
+    l'appelant (lue en lot par le placement, ou établie par son geste).
+
+    CADV86 — le pilote : une facture déclarée (hiver ou été) d'au moins
+    ``REVEIL_PILOTE_FACTURE_MIN_MAD`` garde le premier barreau, l'appel J30 (les
+    125 messages J30 ont donné 0 conversation, l'appel n'a jamais été essayé).
+    Aucun quota : le volume est le résultat, pas une règle.
+
+    CADV103 (D-CADV-10) — le lead commercial ou industriel : aucun, quel que soit
+    son historique (27 réveils faits, 0 conversation)."""
+    if getattr(lead, 'type_installation', None) in SEGMENTS_PRO:
+        return 0
+    if historique is None:
+        historique = _a_un_historique_client(lead)
+    if historique:
+        return None
+    facture = max(lead.facture_hiver or 0, lead.facture_ete or 0)
+    return 1 if facture >= REVEIL_PILOTE_FACTURE_MIN_MAD else 0
+
+
 def _normaliser_depart(depart):
     """L'ANCRE de cadence, toujours un datetime AWARE (CKP2).
 
@@ -243,7 +296,8 @@ def _normaliser_depart(depart):
     return depart
 
 
-def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
+def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None,
+                               reveil_justifie=False):
     """Les ÉCHÉANCES d'une cadence, SANS RIEN ÉCRIRE :
     ``[(gabarit, échéance aware), …]`` dans l'ordre du gabarit.
 
@@ -264,6 +318,9 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     usage — comportement pré-existant, assumé) et pour les horaires de la
     société. ``gabarits`` permet de réutiliser un gabarit déjà chargé et
     d'éviter cette lecture : un placement en lit trois, pas trois cents.
+
+    CADV25 — ``reveil`` : seuls les barreaux que ``nombre_reveils_permis`` laisse
+    au lead ; ``reveil_justifie`` : l'appelant sait que le client a un historique.
     """
     from datetime import timedelta
 
@@ -277,6 +334,9 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
 
     if gabarits is None:
         gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    if cadence == 'reveil':
+        gabarits = list(gabarits)[
+            :None if reveil_justifie else nombre_reveils_permis(lead)]
     if not gabarits:
         return []
 
@@ -333,6 +393,17 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     # fois, et seulement si le gabarit porte cette touche.
     preuve_disponible = None
 
+    def _preuve_pour_le_frein():
+        """CADV87 — jamais deux fois la preuve : un gabarit qui porte encore sa
+        touche ``j4_preuve`` (v3) garde ses garanties."""
+        nonlocal preuve_disponible
+        if any((getattr(g, 'template_cle', '') or '') == _TEMPLATE_PREUVE_J4
+               for g in gabarits):
+            return False
+        if preuve_disponible is None:
+            preuve_disponible = _realisation_eligible(lead)
+        return preuve_disponible
+
     echeances = []
     for gabarit in gabarits:
         if (getattr(gabarit, 'template_cle', '') or '') == _TEMPLATE_PREUVE_J4:
@@ -349,6 +420,9 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             # La numérotation `ordre` garde son trou : elle vient du gabarit
             # de la société, pas d'un compteur local.
             continue
+        if cadence == 'apres_devis':
+            gabarit = cadence_temps.adapter_template_au_frein(
+                gabarit, lead, preuve_eligible=_preuve_pour_le_frein)
         # CAD32 — « WhatsApp uniquement » est saisi par le client, une fois,
         # explicitement, et la cadence ne le lisait NULLE PART : le prospect
         # qui a coché « ne m'appelez pas » recevait quand même les six appels
@@ -400,6 +474,15 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             echeance = horaires.dimanche_le_plus_proche(
                 ancre + timedelta(days=gabarit.delai_jours), heure_dimanche,
                 plancher=ancre)
+        elif (samedi_ok and gabarit.delai_jours == 0 and not delai_minutes
+              and heure_cible is None and horaires.est_un_message(_canal(gabarit))
+              and (balayage := horaires.prochain_balayage_weekend(
+                  depart, lead.company, canal=_canal(gabarit))) is not None):
+            # CADV30 (D-CADV-6) — le message d'identité du lead du week-end part
+            # au balayage (samedi 10 h, dimanche 17 h), déjà dans sa fenêtre : le
+            # recalage du bas ne connaît pas le dimanche d'un barreau ordinaire.
+            echeances.append((gabarit, balayage))
+            continue
         elif gabarit.delai_jours == 0 and heure_cible is None:
             # Les touches DU JOUR MÊME s'enchaînent depuis l'origine ouvrable,
             # pas depuis l'heure brute d'arrivée du lead : les écarts du
@@ -576,7 +659,8 @@ def choix_devis_relance(devis_liste):
 @_sous_verrou_du_lead(_lead_premier_argument)
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                              devis=None, exiger_confirmation=False,
-                             motif_remplacement=''):
+                             motif_remplacement='', reveil_justifie=False,
+                             date_du_client=False):
     """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
     société (``parametres.CadenceRelanceEtape.cadence_pour``).
 
@@ -645,6 +729,16 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     par ``arreter_cadence`` comme un arrêt normal, sous ce motif. Sans
     ``exiger_confirmation`` (le moteur), le remplacement reste silencieux.
 
+    CADV25 — ``reveil`` sur un lead jamais joint ni chiffré : liste vide, sans
+    exception (``nombre_reveils_permis``). Sauf ``reveil_justifie`` (l'appelant
+    établit l'historique : date donnée par le client, suivi d'un devis) et le
+    chemin humain ``exiger_confirmation`` : une décision, pas un réveil d'office.
+
+    CADV103 — ``reveil`` sur un lead pro : refusé, liste vide et une seule note ;
+    le chemin humain reçoit le refus nommé (``CadenceActiveConflit``). Seule une
+    date donnée par le client (``date_du_client``, veille au-delà d'un mois) pose
+    son réveil daté, pro compris (CIQ508) : ce n'est pas un réveil d'office.
+
     Retourne la liste des ``RelanceEtape`` MATÉRIALISÉES de CETTE cadence
     (créées ou déjà existantes)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
@@ -657,6 +751,13 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         return _refus_cadence(lead, user, 'lead perdu')
     if getattr(lead, 'is_archived', False):
         return _refus_cadence(lead, user, 'lead archivé')
+    if (cadence == 'reveil' and not date_du_client
+            and getattr(lead, 'type_installation', None) in SEGMENTS_PRO):
+        if exiger_confirmation:
+            raise CadenceActiveConflit(f'{REFUS_REVEIL_PRO.capitalize()}.')
+        if lead.activites.filter(body__contains=REFUS_REVEIL_PRO).exists():
+            return []
+        return _refus_cadence(lead, user, REFUS_REVEIL_PRO)
 
     deja = lead.relance_etapes.filter(cadence=cadence)
     if cadence == 'apres_devis' and devis is not None:
@@ -719,7 +820,8 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
 
     ancre = _normaliser_depart(depart)
     echeances = calculer_echeances_cadence(
-        lead, cadence, ancre, gabarits=gabarits)
+        lead, cadence, ancre, gabarits=gabarits,
+        reveil_justifie=reveil_justifie or exiger_confirmation or date_du_client)
     # CKP2 (fondateur 2026-09-10, décision (3) « CADENCE RÉACTIVE ») — on ne
     # programme QUE le prochain geste. Les trois appels J0 créés d'avance
     # tombaient tous les trois dans la file même quand le premier avait suffi.
@@ -1056,6 +1158,68 @@ def _materialiser_touche_suivante(etape_close, user=None):
     return None, RaisonSuite.FIN_GABARIT
 
 
+#: D-CADV22-PROMESSE (Reda, 02/11/2026) — la touche posée quand la dernière
+#: touche d'une cadence ne peut pas parquer le lead.
+LIBELLE_TOUCHE_AVANT_FROID = 'Appeler le client — appel à tracer avant le Froid'
+#: CADV102 (D-CADV-10) — le lead pro au bout de sa cadence : un trimestre (13
+#: semaines) de Standby, puis cet appel.
+LIBELLE_APPEL_TRIMESTRIEL = 'Appel trimestriel'
+STANDBY_PRO_JOURS = 91
+
+
+def _canal_touche_de_plus(lead):
+    """Un appel, un WhatsApp sur un lead « WhatsApp uniquement » (CAD32)."""
+    return (RelanceEtape.Canal.WHATSAPP
+            if lead.contact_preference == Lead.ContactPreference.WHATSAPP_ONLY
+            else RelanceEtape.Canal.APPEL)
+
+
+def _creneau_dans(lead, jours):
+    from . import horaires
+
+    return horaires.prochain_creneau_appel(
+        timezone.now() + datetime.timedelta(days=jours), lead.company,
+        canal=_canal_touche_de_plus(lead))
+
+
+def _poser_touche_avant_froid(lead, user, cadence, *, libelle=LIBELLE_TOUCHE_AVANT_FROID,
+                              quand=None):
+    """D-CADV22-PROMESSE — un AUTRE appel (``_canal_touche_de_plus``), jamais
+    « Préparer et envoyer le devis ». CADV102 — ou l'« Appel trimestriel » d'un pro.
+
+    La touche reste dans SA cadence, juste après le dernier barreau : hors
+    gabarit, sa clôture sans réponse donne ``FIN_GABARIT`` et rejoue donc la fin
+    de cadence. Ce n'est pas une boucle : chaque appel tracé rapproche le seuil
+    (et une touche SAUTÉE ne compte pas, elle reposera la même touche) ; chaque
+    trimestre consomme un cycle (``CYCLES_STANDBY_PRO_MAX``)."""
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import horaires
+
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
+    canal = _canal_touche_de_plus(lead)
+    quand = quand or _creneau_dans(lead, 1)
+    # Le suivi d'un devis garde son devis, comme ``materialiser_touche_suivante``.
+    close = (lead.relance_etapes.filter(cadence=cadence, traite_le__isnull=False)
+             .order_by('-traite_le').first())
+    etape = RelanceEtape(
+        company=lead.company, lead=lead, cadence=cadence,
+        ordre=max((g.ordre for g in gabarits), default=0) + 1,
+        canal=canal, libelle=libelle,
+        due_at=quand, due_initial_at=quand,
+        due_date=quand.astimezone(horaires.CASABLANCA).date(),
+        devis_id=close.devis_id if close else None,
+        cadence_depart=close.cadence_depart if close else timezone.now())
+    try:
+        with transaction.atomic():
+            etape.save()
+    except IntegrityError:
+        # Double clic (contrainte : un barreau ouvert une seule fois).
+        return None
+    _recaler_file(lead, user)
+    return etape
+
+
 def cloturer_cadence(lead, user, cadence):
     """MRY11 — Fin de cadence : dormance COLD, étiquette, réveils J30/J60.
 
@@ -1063,7 +1227,9 @@ def cloturer_cadence(lead, user, cadence):
     rester au milieu du pipeline à encombrer la vue de Meryem : il part au
     PARKING (COLD) avec une étiquette qui dit POURQUOI, et deux réveils
     J30/J60 qui le rendront un jour. C'est ce qui distingue « mis de côté »
-    de « oublié ».
+    de « oublié ». CADV25 — la prise de contact d'un lead jamais joint ni chiffré
+    finit sans réveil (liste saisonnière) ; le suivi d'un devis et la deuxième
+    affaire ont un historique par construction.
 
     Trois garanties :
       * COLD est un parking, PAS une perte — aucun motif de perte n'est posé
@@ -1074,6 +1240,8 @@ def cloturer_cadence(lead, user, cadence):
         réveillé sans réponse rentrerait dans une boucle de réveils infinie.
 
     Best-effort : ne lève jamais."""
+    from . import horaires
+
     if cadence == 'reveil':
         return
     try:
@@ -1093,15 +1261,25 @@ def cloturer_cadence(lead, user, cadence):
             # Le lead a PROGRESSÉ pendant la cadence (devis envoyé, signé) :
             # la touche restée ouverte ne doit pas le faire retomber.
             return
+        raison = raison_fin_de_cadence(lead, cadence)
+        # CADV102 (D-CADV-10) — le pro : Standby daté, pas de Froid ni de réveil.
+        trimestre = (_creneau_dans(lead, STANDBY_PRO_JOURS)
+                     if raison == RAISON_STANDBY_TRIMESTRIEL else None)
         try:
-            parquer_lead(lead, _CLOTURE_RAISONS[cadence], None, user)
+            parquer_lead(lead, raison, (
+                trimestre.astimezone(horaires.CASABLANCA).date() if trimestre else None), user)
         except ParcRefuse as refus:
             # CADV22 — le lead reste à son étape, le refus se lit au chatter ;
-            # le filet QJ-INVARIANT de ``marquer_etape_relance`` pose sa suite.
+            # D-CADV22-PROMESSE — la suite est un autre appel, jamais le devis.
             LeadActivity.objects.create(
                 company=lead.company, lead=lead, user=None,
                 kind=LeadActivity.Kind.NOTE,
                 body=f'Mise au Froid refusée : {refus}.')
+            _poser_touche_avant_froid(lead, user, cadence)
+            return
+        if trimestre is not None:
+            _poser_touche_avant_froid(lead, user, cadence,
+                                      libelle=LIBELLE_APPEL_TRIMESTRIEL, quand=trimestre)
             return
         tag = (tag_injoignable(lead.company) if cadence == 'contact'
                else _CLOTURE_TAGS.get(cadence))
@@ -1118,7 +1296,8 @@ def cloturer_cadence(lead, user, cadence):
         arreter_cadence(lead, user=user, motif=MOTIF_PARQUE_AU_FROID,
                         cadences=['generique'])
         initialiser_plan_relance(
-            lead, user, cadence='reveil', depart=timezone.now())
+            lead, user, cadence='reveil', depart=timezone.now(),
+            reveil_justifie=cadence in ('apres_devis', 'deuxieme_affaire'))
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'MRY11: clôture de cadence échouée (lead #%s, cadence %s)',
@@ -1483,7 +1662,7 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     return cible
 
 
-def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
+def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None, garder=None):
     """MRY9 — LA fonction d'arrêt d'une (ou de toutes les) cadence(s).
 
     UNE seule implémentation pour SIX déclencheurs (devis accepté, passage
@@ -1509,6 +1688,8 @@ def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
     CAD5 — ``exclure`` (une touche) la laisse ouverte : la réponse « Ne plus
     me contacter » arrête TOUT le reste sous son vrai motif, puis clôt
     elle-même la touche sur laquelle le client l'a dit (qui porte l'issue).
+    CADV36 — ``garder`` (un ``Q``) laisse ouvertes les touches qu'il désigne : un
+    second devis accepté déplace les touches d'après-acceptation, sans les annuler.
 
     Renvoie le nombre de touches arrêtées."""
     ouvertes = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
@@ -1516,6 +1697,8 @@ def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
         ouvertes = ouvertes.filter(cadence__in=list(cadences))
     if exclure is not None:
         ouvertes = ouvertes.exclude(pk=exclure.pk)
+    if garder is not None:
+        ouvertes = ouvertes.exclude(garder)
     pks = list(ouvertes.values_list('pk', flat=True))
     if not pks:
         return 0
@@ -1543,7 +1726,7 @@ def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
 
 
 def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
-                               cadences=None):
+                               cadences=None, garder=None):
     """Variante par ID, best-effort — pour les receivers qui ne tiennent qu'un
     ``devis.lead_id``. Ne lève JAMAIS : un arrêt de cadence en échec ne doit
     pas faire retomber l'acceptation d'un devis déjà actée."""
@@ -1561,7 +1744,7 @@ def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
             if lead is None:
                 return 0
             return arreter_cadence(lead, user=user, motif=motif,
-                                   cadences=cadences)
+                                   cadences=cadences, garder=garder)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'arreter_cadence: échec sur le lead #%s', lead_id, exc_info=True)
@@ -1774,7 +1957,8 @@ def est_etape_de_filet(etape):
         return False
     # PARAM-CADENCE — par la CLÉ (gabarit « Après l'appel »), ou le libellé
     # des deux étapes hors gabarit (passation, question de prix).
-    if est_etape(etape, *CLES_APRES_CONTACT):
+    if est_etape(etape, *CLES_APRES_CONTACT, CLE_PIECES_RECUES,
+                 CLE_RAPPEL_FDA):
         return True
     return (not (getattr(etape, 'cle', '') or '')
             and (etape.libelle or '').strip() in _LIBELLES_FILET_HORS_GABARIT)

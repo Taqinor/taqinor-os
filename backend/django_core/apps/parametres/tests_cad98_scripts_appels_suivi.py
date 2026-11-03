@@ -42,9 +42,9 @@ _AVANT = {
         'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi'},
     6: {'delai_jours': 7, 'delai_minutes': 0, 'heure_cible': CRENEAU_APPEL,
         'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi'},
-    8: {'delai_jours': 11, 'delai_minutes': 0, 'heure_cible': CRENEAU_APPEL,
-        'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi'},
 }
+#: CADV24 — l'ordre 8 (J11) devient l'appel de décision J14 : seuls les
+#: ordres 2 (J2) et 6 (J7) gardent jour/heure/libellé d'avant CAD98.
 
 _TOKEN_RE = re.compile(r'\{[^{}]*\}')
 
@@ -87,9 +87,11 @@ class LesTroisBarreauxPortentUneCleTests(SimpleTestCase):
 class AucunBarreauNeBougeTests(SimpleTestCase):
     """Règle du groupe CAD : ni le nombre, ni l'ordre, ni le jour J+N."""
 
-    def test_toujours_dix_barreaux(self):
-        self.assertEqual(len(CADENCE_APRES_DEVIS_DEFAUT), 10)
-        self.assertEqual(sorted(_par_ordre()), list(range(1, 11)))
+    def test_neuf_barreaux_avec_le_trou_dordre_4_5(self):
+        """CADV24 : J4 et J6 sortent du défaut, le trou d'`ordre` est gardé."""
+        self.assertEqual(len(CADENCE_APRES_DEVIS_DEFAUT), 9)
+        self.assertEqual(sorted(_par_ordre()),
+                         [1, 2, 3, 6, 7, 8, 9, 10, 11])
 
     def test_jour_heure_canal_libelle_inchanges(self):
         par_ordre = _par_ordre()

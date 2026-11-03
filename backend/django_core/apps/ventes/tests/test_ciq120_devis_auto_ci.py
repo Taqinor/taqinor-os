@@ -14,6 +14,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, SimpleTestCase
+from rest_framework.test import APIClient
 
 from apps.calepinage.models import ProfilTypeConsommation
 from apps.crm.models import Lead
@@ -161,6 +162,34 @@ class DevisAutoCITests(_Base):
                     'bilan', 'alertes', 'hypotheses', 'version', 'empreinte'):
             self.assertIn(cle, etude)
         self.assertIn('production_figee', devis.etude_params)
+
+    def test_remise_globale_posee(self):
+        # ADVS10 — la remise demandée naît sur le devis ; le noyau remise les totaux.
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        api = APIClient()
+        api.force_authenticate(self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            rep = api.post('/api/django/ventes/devis/auto/',
+                           {'lead': lead.id, 'remise_globale': '10'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content[:300])
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertEqual(devis.remise_globale, Decimal('10.00'))
+        avec_remise = devis.total_ttc
+        Devis.objects.filter(pk=devis.pk).update(remise_globale=Decimal('0'))
+        self.assertGreater(Devis.objects.get(pk=devis.pk).total_ttc, avec_remise)
+
+    def test_sans_remise_devis_a_zero(self):
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertEqual(devis.remise_globale, Decimal('0'))
+
+    def test_devise_et_tva_de_la_societe(self):
+        # ADVS28 — EUR / 14 % du profil ; rien de codé à MAD / 20.
+        CompanyProfile.objects.filter(company=self.co).update(
+            devise_defaut='EUR', tva_standard=Decimal('14'))
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        devis.refresh_from_db()
+        self.assertEqual(devis.devise, 'EUR')
+        self.assertEqual(devis.taux_tva, Decimal('14'))
 
     def _toit_plat(self):
         Produit.objects.create(company=self.co, nom='Structure toit plat lestée C&I',

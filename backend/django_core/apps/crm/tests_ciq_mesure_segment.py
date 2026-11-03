@@ -156,6 +156,55 @@ class ComptesParSegmentTests(_Base):
         self.assertEqual(
             seg['commercial']['attente_accord_par_raison']['direction'], 0)
 
+    def test_le_releve_de_reactivation_compte_les_sept_chiffres_par_seau(self):
+        """CADV108. Mutant : compter les STOP comme des réponses ⇒ ``reponses``
+        vaut 2 et échoue."""
+        joint, signe, stop = (
+            self._lead(nom, 'residentiel') for nom in ('Joint', 'Signé', 'Stop'))
+        marque = dict(kind=LeadActivity.Kind.NOTE,
+                      body=mesure_cadence.trace_reactivation('k6_p1'))
+        autre = Company.objects.create(nom='CADV108 Autre', slug='cadv108-autre')
+        voisin = Lead.objects.create(company=autre, nom='Voisin')
+        sans_marque = self._lead('Sans marque', 'residentiel')
+        LeadActivity.objects.bulk_create([
+            LeadActivity(company=self.company, lead=lead, **marque)
+            for lead in (joint, signe, stop)]
+            + [LeadActivity(company=autre, lead=voisin, **marque)]
+            + [LeadActivity(company=self.company, lead=lead,
+                            kind=LeadActivity.Kind.APPEL, outcome='joint')
+               for lead in (joint, sans_marque)]
+            + [LeadActivity(
+                company=self.company, lead=signe, kind=LeadActivity.Kind.MODIFICATION,
+                field='stage', new_value=stages.STAGE_LABELS[stages.SIGNED]),
+               # La réponse « Ne plus me contacter » : la case + l'issue « refus » (CAD5).
+               LeadActivity(
+                   company=self.company, lead=stop, kind=LeadActivity.Kind.MODIFICATION,
+                   field='ne_plus_contacter', new_value='Oui'),
+               LeadActivity(company=self.company, lead=stop,
+                            kind=LeadActivity.Kind.APPEL, outcome='refuse')])
+
+        semaine = MAINTENANT.date()
+        attendu = {'k6_p1': {'contacts': 3, 'reponses': 1, 'conversations': 1, 'devis': 0,
+                             'signatures': 1, 'stop': 1, 'blocs': 0}}
+        contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'reactivation_seaux.json').read_text(encoding='utf-8'))
+        self.assertEqual(attendu, contrat['exemple']['releve'])
+        self.assertEqual(mesure_cadence.releve_reactivation(self.company, semaine), attendu)
+        self.assertEqual(mesure_cadence.releve_reactivation(self.company, semaine), attendu)
+        # La semaine d'avant ne connaît pas ces messages ; un événement arrivé la
+        # semaine d'après compte dans CETTE semaine-là, sans nouveau contact.
+        self.assertEqual(mesure_cadence.releve_reactivation(
+            self.company, semaine - datetime.timedelta(days=7)), {})
+        self._devis(joint, 'residentiel', envoye_il_y_a=0)
+        Devis.objects.filter(lead=joint).update(
+            date_envoi=MAINTENANT + datetime.timedelta(days=7))
+        self.assertEqual(
+            mesure_cadence.releve_reactivation(
+                self.company, semaine + datetime.timedelta(days=7)),
+            {'k6_p1': {'contacts': 0, 'reponses': 0, 'conversations': 0, 'devis': 1,
+                       'signatures': 0, 'stop': 0, 'blocs': 0}})
+
 
 class ToucheConvertieTests(_Base):
     slug = 'ciq518-conv'

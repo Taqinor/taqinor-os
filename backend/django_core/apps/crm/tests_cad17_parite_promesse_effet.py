@@ -49,10 +49,13 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, stages
+from apps.crm import activity, horaires, stages
 from apps.crm import suite_touche as st
+from apps.crm.cadence_config import CLE_DEVIS, q_etape
 from apps.crm.models import Client, Lead, LeadActivity, MotifPerte, RelanceEtape
+from apps.crm.cadence_filet import assurer_prochaine_etape_apres_succes
 from apps.crm.cadence_reperes import (
+    CLE_PIECES_RECUES,
     _LIBELLES_FILET,
     _LIBELLES_VISITE,
     FILET_APPEL_LIBELLE,
@@ -132,23 +135,24 @@ class Scenario:
 
 
 SCENARIOS = (
-    # Prise de contact (11 barreaux) : message, appel, dernière touche.
+    # Prise de contact (8 barreaux, CADV23) : message, appel, dernière touche.
     Scenario('contact_message', 'contact', 1, WHATSAPP),
     Scenario('contact_appel', 'contact', 2, APPEL),
-    Scenario('contact_derniere_message', 'contact', 11, WHATSAPP),
-    Scenario('contact_derniere_appel', 'contact', 11, APPEL),
-    # Suivi de proposition (10 barreaux), avec et sans devis dans l'ERP.
+    Scenario('contact_derniere_message', 'contact', 8, WHATSAPP),
+    Scenario('contact_derniere_appel', 'contact', 8, APPEL),
+    # Suivi de proposition (9 barreaux jusqu'à l'ordre 11, CADV24), avec et sans
+    # devis dans l'ERP.
     Scenario('apres_devis_message', 'apres_devis', 1, WHATSAPP,
              devis=True, stage=stages.QUOTE_SENT),
     Scenario('apres_devis_appel', 'apres_devis', 2, APPEL,
              devis=True, stage=stages.QUOTE_SENT),
-    Scenario('apres_devis_derniere_message', 'apres_devis', 10, WHATSAPP,
+    Scenario('apres_devis_derniere_message', 'apres_devis', 11, WHATSAPP,
              devis=True, stage=stages.QUOTE_SENT),
-    Scenario('apres_devis_derniere_appel', 'apres_devis', 10, APPEL,
+    Scenario('apres_devis_derniere_appel', 'apres_devis', 11, APPEL,
              devis=True, stage=stages.QUOTE_SENT),
     Scenario('apres_devis_sans_devis', 'apres_devis', 2, APPEL,
              stage=stages.QUOTE_SENT),
-    Scenario('apres_devis_sans_devis_derniere', 'apres_devis', 10, WHATSAPP,
+    Scenario('apres_devis_sans_devis_derniere', 'apres_devis', 11, WHATSAPP,
              stage=stages.QUOTE_SENT),
     # Les gestes de visite (cadence après-devis, hors protocole).
     Scenario('visite_confirmation', 'apres_devis', VISITE_ORDRE_CONFIRMATION,
@@ -203,6 +207,7 @@ BRANCHES_SUIVI = ('base', 'devis_ouvert', 'devis_epuise')
 VARIANTES = {
     st.ETAPE_APPELER_SAUF_SUIVI: BRANCHES_SUIVI,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: BRANCHES_SUIVI,
+    st.ETAPE_PIECES_RECUES_SAUF_SUIVI: BRANCHES_SUIVI,
     # SUIVI E17 — `etape_devis_a_la_date_sauf_suivi` retiré : le dernier
     # réveil pose l'appel « rappel convenu » à la date choisie.
     # 24/09/2026 — `visite_froid_si_seule` retiré (une étape de visite ne
@@ -309,7 +314,38 @@ def _touche_suivante_a_la_date(c):
 
 def _derniere_froid_reveils(c):
     c.vrai(c.lead.stage == stages.COLD, 'le dossier n’est pas au Froid')
-    c.vrai(c.ouvertes(cadence='reveil').exists(), 'aucun réveil programmé')
+    # CADV25 — la promesse dit « s'il a déjà été joint ou chiffré » : le scénario
+    # de prise de contact n'est ni l'un ni l'autre ; le suivi d'un devis et la
+    # deuxième affaire ont un historique par construction.
+    if c.etape.cadence == 'contact':
+        c.vrai(not c.ouvertes(cadence='reveil').exists(),
+               'un réveil est programmé pour un lead jamais joint ni chiffré')
+    else:
+        c.vrai(c.ouvertes(cadence='reveil').exists(), 'aucun réveil programmé')
+
+
+def _etape_appel_avant_froid(c):
+    # D-CADV22-PROMESSE — la promesse et l'effet : pas de Froid, pas de réveil,
+    # pas d'étape devis, un autre appel de la MÊME cadence, et le refus au chatter.
+    c.vrai(c.lead.stage != stages.COLD, 'le dossier est parti au Froid')
+    c.vrai(not c.ouvertes(cadence='reveil').exists(), 'un réveil est programmé')
+    c.vrai(not c.ouvertes(q_etape(CLE_DEVIS)).exists(), 'l’étape devis est posée')
+    c.vrai(c.barreaux(c.ouvertes(cadence=c.etape.cadence, canal=APPEL,
+                                 ordre__gt=c.etape.ordre)).exists(),
+           'aucun autre appel n’est posé')
+    c.vrai(c.lead.activites.filter(
+        body__startswith='Mise au Froid refusée').exists(),
+        'le refus ne se lit pas au chatter')
+
+
+def _etape_appel_trimestriel(c):
+    # CADV102 — ni Froid, ni réveil : le Standby daté et son appel.
+    c.vrai(c.lead.stage != stages.COLD, 'le dossier est parti au Froid')
+    c.vrai(c.lead.parc_etat == 'standby', 'le dossier n’est pas en Standby')
+    c.vrai(not c.ouvertes(cadence='reveil').exists(), 'un réveil est programmé')
+    c.vrai(c.barreaux(c.ouvertes(cadence=c.etape.cadence, libelle='Appel trimestriel',
+                                 due_date=c.lead.parc_jusqu_au)).exists(),
+           'aucun appel trimestriel à la date de reprise')
 
 
 def _dernier_reveil(c):
@@ -374,6 +410,23 @@ def _etape_devis_demain_sauf_suivi(c):
                'une étape « préparer le devis » est posée malgré le suivi')
     else:
         _etape_devis_demain(c)
+
+
+def _etape_pieces_recues(c):
+    # CADV29 — la prochaine touche du pro sans pièce, et aucune étape devis.
+    c.vrai(c.ouvertes(cle=CLE_PIECES_RECUES).exists(),
+           'aucune étape « Pièces reçues ? »')
+    c.vrai(not c.ouvertes(libelle=FILET_JOINT_LIBELLE).exists(),
+           'une étape « préparer le devis » est posée avant les pièces')
+
+
+def _etape_pieces_recues_sauf_suivi(c):
+    if c.variante == 'devis_ouvert':
+        _suivi_repris(c)
+        c.vrai(not c.ouvertes(cle=CLE_PIECES_RECUES).exists(),
+               'une étape « Pièces reçues ? » est posée malgré le suivi')
+    else:
+        _etape_pieces_recues(c)
 
 
 def _etape_devis_a_la_date(c):
@@ -560,6 +613,8 @@ VERIFICATEURS = {
     st.TOUCHE_SUIVANTE: _touche_suivante,
     st.TOUCHE_SUIVANTE_A_LA_DATE: _touche_suivante_a_la_date,
     st.DERNIERE_FROID_REVEILS: _derniere_froid_reveils,
+    st.ETAPE_APPEL_AVANT_FROID: _etape_appel_avant_froid,
+    st.ETAPE_APPEL_TRIMESTRIEL: _etape_appel_trimestriel,
     st.DERNIER_REVEIL: _dernier_reveil,
     st.RESTE_AU_FROID: _reste_au_froid,
     st.SORT_DU_FROID: _sort_du_froid,
@@ -570,6 +625,8 @@ VERIFICATEURS = {
     st.ETAPE_DEVIS_DEMAIN: _etape_devis_demain,
     st.ETAPE_APPELER_SAUF_SUIVI: _etape_appeler_sauf_suivi,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: _etape_devis_demain_sauf_suivi,
+    st.ETAPE_PIECES_RECUES: _etape_pieces_recues,
+    st.ETAPE_PIECES_RECUES_SAUF_SUIVI: _etape_pieces_recues_sauf_suivi,
     st.ETAPE_DEVIS_A_LA_DATE: _etape_devis_a_la_date,
     st.ETAPE_DECIDER_SUITE: _etape_decider_suite,
     st.ETAPE_DEPLACEE_A_LA_DATE: _etape_deplacee_a_la_date,
@@ -616,6 +673,22 @@ class VocabulaireTests(SimpleTestCase):
                 produits.update(codes)
         for codes in st.promesses_journal().values():
             produits.update(codes)
+        # D-CADV22-PROMESSE — dépend d'un COMPTE en base : la grille pure lui passe
+        # sa condition, ``PariteFroidRefuseTests`` le rejoue par l'API.
+        derniere = next(s for s in SCENARIOS if s.nom == 'contact_derniere_appel')
+        for codes in st.promesses_touche(
+                _etape_non_enregistree(derniere),
+                ordres=_ordres_defaut(derniere.cadence),
+                conditions={'non_joint': '1 appel sur 5 tracé'}).values():
+            produits.update(codes)
+        # CADV102, CADV29 — le segment du lead : ce même barreau et une étape de
+        # filet, client industriel.
+        for scenario in (derniere, next(s for s in SCENARIOS if s.nom == 'filet_appeler')):
+            pro = _etape_non_enregistree(scenario)
+            pro.lead.type_installation = 'industriel'
+            for codes in st.promesses_touche(
+                    pro, ordres=_ordres_defaut(scenario.cadence)).values():
+                produits.update(codes)
         self.assertEqual(produits, set(st.CODES))
 
     def test_le_journal_de_l_ecran_est_le_calcul_du_moteur(self):
@@ -716,6 +789,9 @@ _compteur = itertools.count(1)
 
 class PariteBase(TestCase):
     slug = 'cad17'
+    #: Appels tracés avant la dernière touche ; ``None`` : ceux qui parquent.
+    appels_traces = None
+    type_installation = None
 
     def setUp(self):
         gel = frozen(GEL)
@@ -744,7 +820,7 @@ class PariteBase(TestCase):
         return Lead.objects.create(
             company=self.company, nom=f'CAD17 {scenario.nom} {n}',
             stage=scenario.stage, owner=self.acteur,
-            telephone=f'+21266{n:07d}')
+            telephone=f'+21266{n:07d}', type_installation=self.type_installation)
 
     def _devis(self, lead):
         n = next(_compteur)
@@ -781,7 +857,8 @@ class PariteBase(TestCase):
     def _fabriquer(self, scenario, variante):
         """Le lead et la touche du scénario, dans la branche ``variante``."""
         lead = self._lead(scenario)
-        appels = _APPELS_TRACES_AVANT_LA_FIN.get(scenario.cadence)
+        appels = (self.appels_traces if self.appels_traces is not None
+                  else _APPELS_TRACES_AVANT_LA_FIN.get(scenario.cadence))
         if appels and scenario.ordre == max(_ordres_defaut(scenario.cadence)):
             LeadActivity.objects.bulk_create([
                 LeadActivity(company=lead.company, lead=lead, user=lead.owner,
@@ -793,12 +870,12 @@ class PariteBase(TestCase):
             devis = self._devis(lead)
         if scenario.famille == A_COTE:
             self._suivi_consomme(
-                lead, devis, 10 if variante == 'seule_epuise' else 2)
+                lead, devis, 11 if variante == 'seule_epuise' else 2)
             if variante == 'avec_autre':
                 # Le plan suspendu pendant la visite : une touche ouverte.
                 gabarit = next(e for e in CADENCES_DEFAUT['apres_devis']
-                               if e['ordre'] == 4)
-                self._touche(lead, cadence='apres_devis', ordre=4,
+                               if e['ordre'] == 7)
+                self._touche(lead, cadence='apres_devis', ordre=7,
                              canal=gabarit['canal'],
                              libelle=gabarit['libelle'], devis=devis,
                              due=GEL + datetime.timedelta(days=2),
@@ -806,7 +883,7 @@ class PariteBase(TestCase):
         elif variante == 'devis_ouvert':
             self._suivi_consomme(lead, devis, 2)
         elif variante == 'devis_epuise':
-            self._suivi_consomme(lead, devis, 10)
+            self._suivi_consomme(lead, devis, 11)
 
         barreau = st.nature_touche(RelanceEtape(
             cadence=scenario.cadence,
@@ -960,6 +1037,121 @@ class PariteDeuxiemeAffaireTests(PariteBase):
 
     def test_deuxieme_affaire(self):
         self._garder('deuxieme_message', 'deuxieme_appel')
+
+
+class PariteFroidRefuseTests(PariteBase):
+    """D-CADV22-PROMESSE — la dernière touche qui ne PEUT PAS parquer : la grille
+    rejouée SANS les appels que ``_fabriquer`` sème pour atteindre le Froid. La
+    promesse lue par l'API et l'effet en base disent la même chose."""
+    slug = 'cad17-froid-refuse'
+
+    def _codes(self, nom, appels):
+        self.appels_traces = appels
+        scenario = next(s for s in SCENARIOS if s.nom == nom)
+        lead, etape = self._fabriquer(scenario, 'base')
+        ligne = next(
+            r for r in self.api.get(
+                f'/api/django/crm/relance-etapes/?lead={lead.pk}').data['results']
+            if r['id'] == etape.pk)
+        return ligne['suites'], ligne['conditions_suite']
+
+    def test_contact_trois_appels_sur_cinq(self):
+        suites, conditions = self._codes('contact_derniere_appel', 2)
+        self.assertEqual(suites['non_joint'], [st.ETAPE_APPEL_AVANT_FROID])
+        # La touche close compte : deux tracés + celui-ci. « Sauter » n'en trace aucun.
+        self.assertEqual(conditions['non_joint'], '3 appels sur 5 tracés')
+        self.assertEqual(conditions[st.CLE_SAUTER], '2 appels sur 5 tracés')
+        self.assertNotIn('joint', conditions)
+        self.assertNotIn(st.ETAPE_DEVIS_DEMAIN, suites['non_joint'])
+        self.appels_traces = 2
+        self._garder('contact_derniere_appel', 'contact_derniere_message')
+
+    def test_le_cinquieme_appel_parque_comme_promis(self):
+        suites, conditions = self._codes('contact_derniere_appel', 4)
+        self.assertEqual(suites['non_joint'], [st.DERNIERE_FROID_REVEILS])
+        self.assertNotIn('non_joint', conditions)
+        # « Sauter » n'en trace pas : il en reste un.
+        self.assertEqual(suites[st.CLE_SAUTER], [st.ETAPE_APPEL_AVANT_FROID])
+        self.appels_traces = 4
+        self._garder('contact_derniere_appel')
+
+    def test_deuxieme_affaire_aucune_touche(self):
+        suites, conditions = self._codes('deuxieme_appel', 0)
+        self.assertEqual(suites[st.CLE_SAUTER], [st.ETAPE_APPEL_AVANT_FROID])
+        self.assertEqual(conditions, {st.CLE_SAUTER: 'Aucune touche tracée'})
+        # L'appel fait est une touche : celle-là parque.
+        self.assertEqual(suites['non_joint'], [st.DERNIERE_FROID_REVEILS])
+        self.appels_traces = 0
+        self._garder('deuxieme_appel')
+
+    def test_suivi_sans_aucune_touche_tracee(self):
+        suites, _conditions = self._codes('apres_devis_derniere_message', 0)
+        self.assertEqual(suites[st.CLE_SAUTER], [st.ETAPE_APPEL_AVANT_FROID])
+        self.appels_traces = 0
+        self._garder('apres_devis_derniere_message')
+
+    def test_l_appel_de_plus_rejoue_la_mise_au_froid(self):
+        # Le chemin refusé se termine : 4 appels tracés, la dernière touche sautée,
+        # l'appel de plus répondu « sans réponse » fait le cinquième et parque.
+        self.appels_traces = 4
+        scenario = next(s for s in SCENARIOS if s.nom == 'contact_derniere_appel')
+        lead, etape = self._fabriquer(scenario, 'base')
+        self.assertEqual(self._rejouer(etape, st.CLE_SAUTER, 'base').status_code, 200)
+        lead.refresh_from_db()
+        self.assertNotEqual(lead.stage, stages.COLD)
+        appel = lead.relance_etapes.get(statut=A_FAIRE)
+        self.assertEqual((appel.cadence, appel.canal), ('contact', APPEL))
+        self.assertEqual(appel.type_etape if hasattr(appel, 'type_etape')
+                         else st.type_etape(appel), st.TYPE_CONTACT_APPEL)
+        self.assertEqual(st.promesses_touche(appel)['non_joint'],
+                         [st.DERNIERE_FROID_REVEILS])
+        self.assertEqual(self._rejouer(appel, 'non_joint', 'base').status_code, 200)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        # CADV25 — ce lead n'a jamais été joint : au Froid, sans réveil.
+        self.assertFalse(lead.relance_etapes.filter(
+            cadence='reveil', statut=A_FAIRE).exists())
+
+
+class PariteStandbyProTests(PariteBase):
+    """CADV102 — la dernière touche d'un client commercial : Standby trimestriel
+    annoncé et constaté ; résidentiel inchangé (les autres classes)."""
+    slug = 'cad17-standby-pro'
+    type_installation = 'commercial'
+
+    def test_prise_de_contact_et_suivi(self):
+        self._garder('contact_derniere_appel', 'apres_devis_derniere_appel')
+
+    def test_etape_de_filet_du_pro_sans_piece(self):
+        # CADV29 — chaque branche (suivi repris, épuisé, aucun devis) est rejouée.
+        self._garder('filet_appeler')
+
+    def test_la_promesse_suit_les_passages_de_pieces_recues(self):
+        # CADV29 — J+3 annonce J+7, J+7 annonce le devis ; une pièce reçue aussi.
+        scenario = next(s for s in SCENARIOS if s.nom == 'contact_derniere_appel')
+        lead = self._lead(scenario)
+        premiere = assurer_prochaine_etape_apres_succes(
+            lead, self.acteur, canal_touche='appel')
+        self.assertEqual(st.promesses_touche(premiere)[st.CLE_SANS_ISSUE],
+                         [st.ETAPE_PIECES_RECUES_SAUF_SUIVI])
+        self.assertEqual(self._rejouer(premiere, st.CLE_SANS_ISSUE, 'base').status_code, 200)
+        seconde = lead.relance_etapes.get(statut=A_FAIRE)
+        self.assertEqual(seconde.cle, CLE_PIECES_RECUES)
+        self.assertEqual(st.promesses_touche(seconde)[st.CLE_SANS_ISSUE],
+                         [st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI])
+        lead_piece, etape = self._fabriquer(scenario, 'base')
+        LeadActivity.objects.create(company=self.company, lead=lead_piece, user=self.acteur,
+                                    kind=LeadActivity.Kind.NOTE,
+                                    body='Pièce reçue du client : facture.')
+        self.assertIn(st.ETAPE_DEVIS_DEMAIN, st.promesses_touche(etape)['joint'])
+
+    def test_une_fois_les_cycles_epuises_la_promesse_redevient_le_froid(self):
+        scenario = next(s for s in SCENARIOS if s.nom == 'apres_devis_derniere_appel')
+        lead, etape = self._fabriquer(scenario, 'base')
+        for _cycle in range(3):
+            activity.log_bulk_change(lead, self.acteur, 'parc_raison', None, 'plus_tard_date')
+        promesses = st.promesses_touche(etape)
+        self.assertEqual(promesses['non_joint'], [st.DERNIERE_FROID_REVEILS])
 
 
 class PariteJournalTests(PariteBase):

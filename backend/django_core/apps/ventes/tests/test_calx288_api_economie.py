@@ -139,19 +139,40 @@ class ContratTest(_Base):
         self.assert_forme_du_contrat(reponse.data, 'exemple_vide')
 
     def test_sans_reglage_societe_rien_n_est_invente(self):
+        """AMOT54 : sans réglage société, horizon / dégradation / indexation
+        sont les hypothèses du DOCUMENT, étiquetées ; le taux d'actualisation,
+        lui, n'est jamais inventé."""
         with mock.patch(CONSTRUCTEUR, return_value=DONNEES_REFERENCE):
             bloc = self.api.get(self.url()).data
-        self.assertIsNone(bloc['horizon_ans'])
-        self.assertEqual(bloc['flux'], [])
+        self.assertEqual(bloc['horizon_ans'], 25)
+        self.assertEqual(len(bloc['flux']), 26)
         self.assertIsNone(bloc['van_mad'])
         omises = {o['cle'] for o in bloc['omissions']}
-        self.assertIn('horizon_ans', omises)
+        self.assertNotIn('horizon_ans', omises)
         self.assertIn('taux_actualisation_pct', omises)
         retenues = {h['cle']: h for h in bloc['hypotheses']}
+        for cle in ('horizon_ans', 'degradation_pct', 'indexation_pct'):
+            self.assertIn('quote_engine.pricing', retenues[cle]['source'], cle)
+        self.assertEqual(retenues['degradation_pct']['valeur'], 0.5)
         self.assertEqual(retenues['investissement_mad']['valeur'], 100000.0)
         self.assertIn('DEV-CALX288-0001',
                       retenues['investissement_mad']['source'])
         self.assertEqual(retenues['option_devis']['valeur'], 'sans')
+
+    def test_amot54_retour_coherent_avec_le_cashflow_du_pdf(self):
+        """Le retour du panneau est l'année entière où le cumul du PDF croise
+        zéro (même flux : 25 ans, 0,5 %/an, provision onduleur année 12)."""
+        import math
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        donnees = dict(DONNEES_REFERENCE, cashflow_assumptions={
+            'inverter_replace_year': 12, 'inverter_replace_cost': 9000})
+        with mock.patch(CONSTRUCTEUR, return_value=donnees):
+            bloc = economie_pour_devis(self.devis.pk, self.company)
+        pdf = payback_publiable(100000, 12000, cout_onduleur_ttc=9000)
+        self.assertEqual(bloc['retour_ans'], math.ceil(pdf['payback_years']))
+        self.assertIn('onduleur', ' '.join(
+            h['source'] for h in bloc['hypotheses']
+            if h['cle'].startswith('remplacements')))
 
     def test_le_cas_de_reference_rejoue_l_exemple_committe(self):
         exemple = document()['exemple']

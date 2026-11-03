@@ -61,11 +61,11 @@ class PorteeLignesTests(TestCase):
         # ``LigneDevisSerializer.validate``) : sans lui, le PATCH de la ligne
         # propre répond 400 « Une ligne produit doit référencer un produit. »
         # avant même la portée testée ici.
-        produit = Produit.objects.create(
+        cls.produit = Produit.objects.create(
             company=cls.company, nom='Câble solaire 6 mm²',
             sku='ADEV21-CAB', prix_vente=Decimal('100'))
         cls.ligne_propre = LigneDevis.objects.create(
-            devis=cls.devis_propre, produit=produit, designation='Câblage',
+            devis=cls.devis_propre, produit=cls.produit, designation='Câblage',
             quantite=1, prix_unitaire=Decimal('100'))
 
     def setUp(self):
@@ -141,3 +141,85 @@ class PorteeLignesTests(TestCase):
         self.assertEqual(entrees['volume_m3_jour']['valeur'], 90)
         self.assertEqual(entrees['volume_m3_jour']['provenance']['origine'],
                          'lead')
+
+    # -- ADVS24 : le lead du corps des portes de création, borné à la portée --
+
+    def _corps_atomic(self, lead):
+        return {'lead': lead.pk, 'taux_tva': '20.00', 'lignes': [{
+            'produit': self.produit.pk, 'designation': 'Câblage',
+            'quantite': '1', 'prix_unitaire': '100.00', 'taux_tva': '20'}]}
+
+    def _portes_de_creation(self, lead):
+        corps_composition = {'lead': lead.pk, 'nb_panneaux': 8,
+                             'panel_watt': 550}
+        return {
+            'atomic': self.api.post('/api/django/ventes/devis/atomic/',
+                                    self._corps_atomic(lead), format='json'),
+            'auto': self.api.post('/api/django/ventes/devis/auto/',
+                                  {'lead': lead.pk}, format='json'),
+            'composition': self.api.post(
+                '/api/django/ventes/devis/composition/', corps_composition,
+                format='json'),
+        }
+
+    def test_lead_d_un_collegue_refuse_aux_trois_portes(self):
+        lead = self._lead(self.auteur)
+        reponses = self._portes_de_creation(lead)
+        # atomic : le 404 d'un id d'une autre société (IdInconnu404Mixin), même
+        # corps au pk près : le refus ne dit pas que le lead existe.
+        self.assertEqual(reponses['atomic'].status_code, 404,
+                         reponses['atomic'].content[:300])
+        self.assertIn(str(lead.pk), str(reponses['atomic'].json()['lead']))
+        for porte in ('auto', 'composition'):
+            with self.subTest(porte=porte):
+                self.assertEqual(reponses[porte].status_code, 404,
+                                 reponses[porte].content[:300])
+                self.assertEqual(reponses[porte].json()['detail'],
+                                 'Lead inconnu.')
+        # CLAUSE PERSISTANCE — relu en base : aucun devis créé sur ce lead.
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_auto_par_client_refuse_si_son_lead_est_hors_portee(self):
+        client = Client.objects.create(
+            company=self.company, nom='Client du collegue',
+            email='adv24-collegue@example.com')
+        lead = self._lead(self.auteur)
+        lead.client = client
+        lead.save(update_fields=['client'])
+        resp = self.api.post('/api/django/ventes/devis/auto/',
+                             {'client': client.pk}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content[:300])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_lead_d_une_autre_societe_refuse_comme_avant(self):
+        autre = Company.objects.create(nom='ADEV21 B', slug='adev21-co-b')
+        lead = Lead.objects.create(
+            company=autre, nom='Etranger', prenom='Lead',
+            telephone='+212600000022')
+        reponses = self._portes_de_creation(lead)
+        self.assertEqual(reponses['atomic'].status_code, 404)
+        self.assertIn(str(lead.pk), str(reponses['atomic'].json()['lead']))
+        self.assertEqual(reponses['auto'].status_code, 404)
+        self.assertEqual(reponses['composition'].status_code, 404)
+
+    def test_lead_propre_et_lead_de_l_equipe_atteignent_la_porte(self):
+        # Le propriétaire et un responsable de sous-arbre passent la portée.
+        role_sous_arbre = Role.objects.create(
+            company=self.company, nom='Responsable equipe',
+            permissions=RESPONSABLE_PERMISSIONS + ['records_scope_sous_arbre'],
+            est_systeme=False)
+        responsable = User.objects.create_user(
+            username='adev21_resp', password='x', role=role_sous_arbre,
+            role_legacy='responsable', company=self.company)
+        membre = User.objects.create_user(
+            username='adev21_membre', password='x', role_legacy='responsable',
+            company=self.company, supervisor=responsable)
+        for acteur, proprietaire in ((self.commercial, self.commercial),
+                                     (responsable, membre)):
+            with self.subTest(acteur=acteur.username):
+                self.api.force_authenticate(acteur)
+                lead = self._lead(proprietaire)
+                resp = self.api.post('/api/django/ventes/devis/atomic/',
+                                     self._corps_atomic(lead), format='json')
+                self.assertEqual(resp.status_code, 201, resp.content[:300])
+                self.assertTrue(Devis.objects.filter(lead=lead).exists())

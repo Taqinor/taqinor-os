@@ -31,6 +31,7 @@ from decimal import Decimal
 from django.test import RequestFactory, SimpleTestCase, TestCase
 
 from apps.crm.models import Client
+from apps.portail.tests import corps_acceptation
 from apps.portail import views_client
 from apps.portail.models import AcceptationDevisPortail
 from apps.roles.models import Role
@@ -125,8 +126,8 @@ class PreuveDeSignatureAcceptationPortailTests(TestCase):
     # ROUGE avant correctif : `signature_ip` valait l'IP du pair TCP du test
     # client (le "proxy"), pas le dernier saut de la chaîne `X-Forwarded-For`.
     def test_signature_ip_suit_la_primitive_pas_le_pair_tcp_du_proxy(self):
-        charge = {'nom': 'Client Alpha', 'consent_esign': True,
-                  'accepte_conditions': True}
+        charge = corps_acceptation(self.devis, nom='Client Alpha',
+                                   consent_esign=True, accepte_conditions=True)
         resp = self.api.post(
             self.url, charge, format='json',
             HTTP_X_FORWARDED_FOR='%s, 203.0.113.9' % _FORGEE)

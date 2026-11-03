@@ -185,7 +185,7 @@ def _totaux_canoniques(devis, lignes, option, *, unitaire=False):
     )
 
     if option and has_two_options(devis):
-        lignes = filter_lines_for_option(lignes, option)
+        lignes = filter_lines_for_option(lignes, option, devis=devis)
     noyau = _canonical_totaux(
         lignes,
         remise_globale_pct=getattr(devis, 'remise_globale', 0) or 0,

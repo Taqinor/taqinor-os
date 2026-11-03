@@ -27,7 +27,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages, cadence_plan
 from apps.crm import cadence_reperes
-from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE
+from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE, CLE_DEVIS, q_etape
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
@@ -64,6 +64,10 @@ class ParquerAuFroidTests(TestCase):
             stage=stages.CONTACTED, owner=self.acteur,
             telephone=f'+21266219{n:04d}')
         self._appels(self.lead)
+        # CADV25 — ces réveils-là sont ceux d'un client déjà joint une fois.
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
 
     def _appels(self, lead, nombre=5):
         """CADV22 — les appels signés sans lesquels « injoignable » est refusé."""
@@ -200,6 +204,133 @@ class ParquerAuFroidTests(TestCase):
         parquer_lead(lead, 'injoignable', None, self.acteur)
         self.assertEqual(lead.parc_raison, 'injoignable')
 
+    def test_un_gabarit_court_parque_apres_ses_propres_appels(self):
+        """D-CADV22-GABARIT-COURT — min(5, appels du gabarit). Mutant : min → 5 fixe,
+        ou comptage de tous les canaux ⇒ échec."""
+        from apps.crm.fiche_funnel import ParcRefuse, appels_exiges_injoignable, parquer_lead
+        gabarit = CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence='contact', actif=True)
+        # CADV23 — le gabarit livré compte cinq appels pile : une société à six
+        # (un barreau de plus) dépasse le plafond, comme le gabarit d'avant.
+        CadenceRelanceEtape.objects.create(
+            company=self.company, cadence='contact', ordre=9, canal='appel',
+            delai_jours=10, libelle='Appel 6', template_cle='appel_dernier')
+        appels = list(gabarit.filter(canal='appel').order_by('ordre'))
+        self.assertGreater(len(appels), 5, 'cette société dépasse le plafond')
+        self.assertEqual(appels_exiges_injoignable(self.lead), 5)
+        gabarit.filter(pk__in=[e.pk for e in appels[3:]]).update(actif=False)
+        self.assertEqual(appels_exiges_injoignable(self.lead), 3)
+
+        lead = self._lead_neuf()
+        self._appels(lead, 2)
+        avant = self._instantane(lead)
+        with self.assertRaisesMessage(
+                ParcRefuse, 'injoignable exige 3 appels tracés (2 trouvés)'):
+            parquer_lead(lead, 'injoignable', None, self.acteur)
+        self.assertEqual(self._instantane(lead), avant)
+        self._appels(lead, 1)
+        parquer_lead(lead, 'injoignable', None, self.acteur)
+        self.assertEqual(lead.parc_raison, 'injoignable')
+
+    def test_un_gabarit_sans_appel_reste_soumis_a_la_regle_des_zero_touches(self):
+        from apps.crm.fiche_funnel import ParcRefuse, parquer_lead
+        CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence='contact', canal='appel').update(actif=False)
+        with self.assertRaisesMessage(ParcRefuse, 'aucun parcage à 0 touche'):
+            parquer_lead(self._lead_neuf(), 'injoignable', None, self.acteur)
+
+    def test_le_compte_des_appels_ne_seede_rien(self):
+        # L'écran le lit : une lecture n'écrit jamais (société sans gabarit).
+        from apps.crm.fiche_funnel import APPELS_MIN_INJOIGNABLE, appels_exiges_injoignable
+        vierge = Company.objects.create(nom='E19 vierge', slug='suivi-e19-vierge')
+        lead = Lead(company=vierge, nom='Sans gabarit')
+        self.assertEqual(appels_exiges_injoignable(lead), APPELS_MIN_INJOIGNABLE)
+        self.assertFalse(CadenceRelanceEtape.objects.filter(company=vierge).exists())
+
+    def _lead_pro_devis_envoye(self):
+        lead = self._lead_neuf(type_installation='industriel')
+        self._appels(lead, 1)
+        return lead
+
+    def test_un_lead_pro_en_fin_de_cadence_part_en_standby_trimestriel(self):
+        """CADV102 (D-CADV-10). Mutant : retirer le test de segment ⇒ un résidentiel
+        passe en Standby et ``test_sans_filet_les_reveils_sont_poses_comme_avant``
+        échoue."""
+        lead = self._lead_pro_devis_envoye()
+        with frozen(datetime.datetime(2026, 11, 30, 10, 0, tzinfo=horaires.CASABLANCA)):
+            cadence_plan.cloturer_cadence(lead, self.acteur, 'apres_devis')
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.CONTACTED)
+        self.assertEqual((lead.parc_etat, lead.parc_raison, lead.parc_jusqu_au),
+                         ('standby', 'plus_tard_date', datetime.date(2027, 3, 1)))
+        [appel] = lead.relance_etapes.filter(statut=A_FAIRE)
+        self.assertEqual((appel.libelle, appel.due_date, appel.cadence),
+                         ('Appel trimestriel', datetime.date(2027, 3, 1), 'apres_devis'))
+        self.assertFalse(lead.relance_etapes.filter(cadence='reveil').exists())
+
+    def test_aucun_reveil_individuel_sur_un_lead_pro(self):
+        """CADV103 (D-CADV-10) — une liste vide, une seule note ; le résidentiel
+        identique reçoit ses réveils. Mutant : retirer le refus ⇒ échec."""
+        pro = self._lead_neuf(type_installation='commercial')
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=pro, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
+        for _rejeu in range(2):
+            self.assertEqual(cadence_plan.initialiser_plan_relance(
+                pro, self.acteur, cadence='reveil'), [])
+        self.assertFalse(pro.relance_etapes.filter(cadence='reveil').exists())
+        self.assertEqual(pro.activites.filter(
+            body__contains='réveil non posé : lead pro (appel trimestriel)').count(), 1)
+        self.assertEqual(len(cadence_plan.initialiser_plan_relance(
+            self.lead, self.acteur, cadence='reveil')), 2)
+
+    def test_ni_la_reprise_ni_le_placement_ne_posent_de_reveil_au_pro(self):
+        from apps.crm import cadence_placement, cadence_touche
+        repris = self._lead_neuf(type_installation='industriel')
+        etapes = cadence_touche.reprendre_cadence_apres_reouverture(repris, self.acteur)
+        self.assertNotIn('reveil', {e.cadence for e in etapes})
+        ancien = self._lead_neuf(type_installation='commercial')
+        Lead.objects.filter(pk=ancien.pk).update(
+            date_creation=GEL - datetime.timedelta(days=60))
+        cadence_placement.placer_anciens_leads(self.company, self.acteur, apply=True)
+        ancien.refresh_from_db()
+        self.assertEqual(ancien.stage, stages.COLD)
+        self.assertFalse(ancien.relance_etapes.filter(cadence='reveil').exists())
+
+    def test_le_reveil_manuel_d_un_pro_est_refuse_en_le_nommant(self):
+        pro = self._lead_neuf(type_installation='commercial')
+        resp = self.api.post(
+            f'/api/django/crm/leads/{pro.pk}/relance/initialiser/',
+            {'cadence': 'reveil'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('lead pro (appel trimestriel)', resp.data['erreurs']['cadence'][0])
+
+    def test_l_appel_trimestriel_sans_reponse_consomme_un_cycle_le_quatrieme_part_au_froid(self):
+        from apps.crm.cadence_touche import marquer_etape_relance
+        lead = self._lead_pro_devis_envoye()
+        cadence_plan.cloturer_cadence(lead, self.acteur, 'apres_devis')
+        for cycle in (1, 2, 3):
+            lead.refresh_from_db()
+            self.assertEqual((lead.parc_etat, lead.stage),
+                             ('standby', stages.CONTACTED), f'cycle {cycle}')
+            ouverte = lead.relance_etapes.get(statut=A_FAIRE)
+            # Le trimestre suivant : une AUTRE date, donc un cycle de plus.
+            with frozen(GEL + datetime.timedelta(days=100 * cycle)):
+                marquer_etape_relance(ouverte, self.acteur, RelanceEtape.Statut.FAIT,
+                                      outcome='non_joint')
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertEqual((lead.parc_etat, lead.parc_raison),
+                         ('nurture', 'pas_maintenant_sans_date'))
+
+    def test_un_pro_sans_aucune_touche_ne_se_parque_pas(self):
+        lead = self._lead_neuf(type_installation='commercial')
+        cadence_plan.cloturer_cadence(lead, self.acteur, 'contact')
+        lead.refresh_from_db()
+        self.assertIsNone(lead.parc_etat)
+        self.assertEqual(lead.relance_etapes.get(statut=A_FAIRE).libelle,
+                         cadence_plan.LIBELLE_TOUCHE_AVANT_FROID)
+
     def test_les_appels_systeme_ne_comptent_pas(self):
         from apps.crm.fiche_funnel import nb_contacts_humains
         lead = self._lead_neuf()
@@ -252,6 +383,19 @@ class ParquerAuFroidTests(TestCase):
         self.assertFalse(lead.relance_etapes.filter(cadence='reveil').exists())
         self.assertTrue(lead.activites.filter(
             body__startswith='Mise au Froid refusée : injoignable exige').exists())
+        # D-CADV22-PROMESSE — la suite est un autre appel de la même cadence,
+        # jamais l'étape devis, et le filet n'a plus rien à poser.
+        [appel] = lead.relance_etapes.filter(statut=A_FAIRE)
+        self.assertEqual((appel.cadence, appel.canal), ('contact', 'appel'))
+        self.assertEqual(appel.libelle, cadence_plan.LIBELLE_TOUCHE_AVANT_FROID)
+        self.assertGreater(appel.ordre, max(e['ordre'] for e in CADENCES_DEFAUT['contact']))
+        self.assertFalse(lead.relance_etapes.filter(q_etape(CLE_DEVIS)).exists())
+
+    def test_whatsapp_uniquement_la_touche_de_plus_reste_un_whatsapp(self):
+        lead = self._lead_neuf(
+            contact_preference=Lead.ContactPreference.WHATSAPP_ONLY)
+        cadence_plan.cloturer_cadence(lead, self.acteur, 'contact')
+        self.assertEqual(lead.relance_etapes.get(statut=A_FAIRE).canal, 'whatsapp')
 
     def test_parquer_en_standby_garde_l_etape_et_la_date(self):
         from apps.crm.fiche_funnel import parquer_lead

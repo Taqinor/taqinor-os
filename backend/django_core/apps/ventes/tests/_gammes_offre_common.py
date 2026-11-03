@@ -23,7 +23,7 @@ from rest_framework.test import APIClient
 
 from apps.crm.models import Client
 from apps.stock.models import Produit
-from apps.ventes.models import Devis, LigneDevis
+from apps.ventes.models import Devis, LigneDevis, ShareLink
 from apps.ventes.services import creer_variante_gamme
 
 User = get_user_model()
@@ -106,4 +106,13 @@ class GammeBase(TestCase):
         soeur = creer_variante_gamme(
             source, nom, user=self.user, recommandee=recommandee)
         source.refresh_from_db()
+        return source, soeur
+
+    def _paire_servie(self, ref='DEV-GAM-001', nom='Premium', recommandee=False):
+        """ADVS16 — une paire dont la sœur est servie au client : envoyée, et
+        portant déjà son lien (la lecture publique n'en crée jamais)."""
+        source, soeur = self._paire(ref, nom=nom, recommandee=recommandee)
+        Devis.objects.filter(pk=soeur.pk).update(statut=Devis.Statut.ENVOYE)
+        soeur.refresh_from_db()
+        ShareLink.for_devis(soeur)
         return source, soeur

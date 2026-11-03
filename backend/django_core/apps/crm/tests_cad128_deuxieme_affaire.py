@@ -67,8 +67,9 @@ class LaCadenceCourteTests(SimpleTestCase):
         self.assertIn('deuxieme_affaire', MESSAGE_TEMPLATE_DEFAULTS)
 
     def test_le_protocole_contact_n_est_PAS_modifie(self):
-        """Le nombre, l'ordre et les J+N des touches ne changent pas."""
-        self.assertEqual(len(CADENCE_CONTACT_DEFAUT), 11)
+        """La seconde affaire ne touche PAS le protocole de contact : il garde
+        ses huit touches du gabarit v4 (CADV23) et son premier message."""
+        self.assertEqual(len(CADENCE_CONTACT_DEFAUT), 8)
         self.assertEqual(CADENCE_CONTACT_DEFAUT[0]['template_cle'],
                          'identite')
 

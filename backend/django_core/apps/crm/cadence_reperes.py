@@ -289,10 +289,23 @@ QUESTION_PRIX_LIBELLE = (
 #: PARAM-CADENCE — les deux étapes HORS gabarit (passation, question de prix)
 #: n'ont pas de clé : elles restent reconnues par leur libellé, qui n'est pas
 #: réglable.
+#: CADV36 (D-CADV-3) — les deux touches du commercial après l'acceptation.
+LIBELLE_CONFIRMER_SIGNATURE = 'Confirmer la signature et la suite'
+LIBELLE_RELANCE_ACOMPTE = 'Acompte : relancer le client'
 _LIBELLES_FILET_HORS_GABARIT = frozenset({
     PASSATION_LIBELLE,  # CAD54
     QUESTION_PRIX_LIBELLE,  # CAD7
+    LIBELLE_CONFIRMER_SIGNATURE,  # CADV36
+    LIBELLE_RELANCE_ACOMPTE,  # CADV36
 })
+#: CADV29 (D-CADV-10) — « Pièces reçues ? » : hors gabarit, mais retrouvée par sa
+#: CLÉ stable. Une étape de filet : sa suite est décidée par le filet, jamais par
+#: le barreau suivant du gabarit `generique`.
+CLE_PIECES_RECUES = 'pieces_recues'
+#: ACRM45 — le rappel du délai FDA : étape posée à la main par le filet
+#: (cadence `generique`), retrouvée par sa CLÉ ; sa clôture ne fait pas naître
+#: le barreau suivant du gabarit `generique`.
+CLE_RAPPEL_FDA = 'rappel_fda'
 #: Les libellés PAR DÉFAUT des étapes de filet (les étapes posées avant la
 #: clé en portent un) — un lecteur ne s'en sert plus pour RECONNAÎTRE une
 #: étape (``est_etape_de_filet``/``_q_filet``), seulement pour les nommer.
@@ -352,10 +365,11 @@ def q_visite():
 
 def _q_filet():
     """``est_etape_de_filet`` en requête : les étapes du gabarit « Après
-    l'appel » (par clé, ou libellé par défaut) et les deux hors gabarit."""
+    l'appel » (par clé, ou libellé par défaut) et les hors gabarit."""
     from django.db.models import Q
 
     return (q_etape(*CLES_APRES_CONTACT)
+            | Q(cle__in=(CLE_PIECES_RECUES, CLE_RAPPEL_FDA))
             | Q(cle='', libelle__in=tuple(_LIBELLES_FILET_HORS_GABARIT)))
 
 

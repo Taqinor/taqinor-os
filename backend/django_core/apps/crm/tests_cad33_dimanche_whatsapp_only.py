@@ -23,6 +23,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
+from testkit.factories import barreau_dominical_societe
 from testkit.time import frozen
 
 from apps.crm import horaires
@@ -50,6 +51,9 @@ class _Base(TestCase):
         self.company = Company.objects.create(
             nom='CAD33 Solaire', slug=f'{self.slug}-a')
         CompanyProfile.objects.get_or_create(company=self.company)
+        # CADV23 — le défaut v4 n'a plus de rendez-vous dominical : une société
+        # qui l'a gardé (la préférence du client prime toujours dessus).
+        barreau_dominical_societe(self.company)
         self.acteur = User.objects.create_user(
             username=f'{self.slug}-resp', password='x',
             role_legacy='responsable', company=self.company)

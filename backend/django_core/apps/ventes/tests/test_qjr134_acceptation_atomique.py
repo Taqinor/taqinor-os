@@ -44,6 +44,17 @@ RESEAU = 'Onduleur réseau Huawei 10kW Monophasé'
 PANNEAU = 'Panneau Canadian Solar 710W'
 
 
+def _api_commercial(company):
+    """Le client HTTP d'un responsable de ``company`` (ADVS19, ADVS31)."""
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    api = APIClient()
+    api.force_authenticate(get_user_model().objects.create_user(
+        username=f'commercial-{company.slug}', password='x', company=company,
+        role_legacy='responsable'))
+    return api
+
+
 class _BaseAcceptation(TestCase):
     """Un groupe de VARIANTES : la racine et sa sœur, toutes deux envoyées."""
 
@@ -252,6 +263,36 @@ class LesRefusPortentUnCodeDuContrat(_BaseAcceptation):
         self.assertEqual(seul.statut, Devis.Statut.REFUSE)
         self.assertFalse(DevisSignature.objects.filter(devis=seul).exists())
 
+    def test_accepte_en_interne_puis_signe_au_lien_409_statut(self):
+        """ADVS31 (C-ADVS-029) — accepté par le commercial, le client qui signe
+        au lien lit un refus nommé ; aucune preuve neuve, aucun nom remplacé.
+        Le double envoi de qui a signé au lien reste 200 idempotent."""
+        from rest_framework.test import APIClient
+        from apps.ventes.models import ShareLink
+        from apps.ventes.public.signature_views import empreinte_contenu
+        devis = self._devis('DEV-QJR134-INT')
+        link = ShareLink.for_devis(devis)
+        url = f'/api/django/public/proposal/{link.token}/accept/'
+        corps = {'nom': 'Client', 'consent_esign': True,
+                 'empreinte_contenu': empreinte_contenu(devis)}
+        resp = _api_commercial(self.company).post(
+            f'/api/django/ventes/devis/{devis.pk}/accepter/', {'nom': 'Commercial'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resp = APIClient().post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(dict(resp.data), {'detail': 'Ce devis est déjà accepté.', 'code': 'statut'})
+        devis.refresh_from_db()
+        self.assertEqual(devis.accepte_par_nom, 'Commercial')
+        self.assertEqual(DevisSignature.objects.get(devis=devis).signataire_nom, 'Commercial')
+
+        au_lien = self._devis('DEV-QJR134-LIE')
+        lien = ShareLink.for_devis(au_lien)
+        url = f'/api/django/public/proposal/{lien.token}/accept/'
+        corps['empreinte_contenu'] = empreinte_contenu(au_lien)
+        self.assertEqual(APIClient().post(url, corps, format='json').status_code, 200)
+        self.assertEqual(APIClient().post(url, corps, format='json').status_code, 200)
+        self.assertEqual(DevisSignature.objects.filter(devis=au_lien).count(), 1)
+
     def test_service_statut_et_introuvable_portent_leur_code(self):
         seul = self._devis('DEV-QJR134-REF2')
         Devis.objects.filter(pk=seul.pk).update(statut=Devis.Statut.REFUSE)
@@ -350,6 +391,29 @@ class LEmailNePromentQueLaPreuveQuiExiste(_BaseAcceptation):
         self.assertNotIn('exemplaire signé', corps)
         # Le reste de l'email — l'accusé de réception — part comme avant.
         self.assertIn('Nous avons bien reçu votre acceptation', corps)
+
+    def test_acceptation_interne_sans_esign_ni_43_20(self):
+        """ADVS19 (C-ADVS-024) — « Marquer accepté » par le commercial : preuve
+        sans consentement d'e-signature, mail client sans « signature
+        électronique » ni « 43-20 », en français comme en anglais."""
+        from apps.ventes.domain.confirmation_acceptation import corps_confirmation
+        with pdf_signe_en_ligne(self):
+            resp = _api_commercial(self.company).post(
+                f'/api/django/ventes/devis/{self.racine.pk}/accepter/',
+                {'nom': 'Commercial'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], Devis.Statut.ACCEPTE)
+        sig = DevisSignature.objects.get(devis=self.racine)
+        self.assertFalse(sig.consent_esign)
+        self.assertFalse(sig.consentement_explicite)
+        corps = EmailLog.objects.filter(
+            devis=self.racine, to_email=self.client_obj.email).latest('id').corps
+        self.assertIn('Nous avons bien reçu votre acceptation', corps)
+        anglais = corps_confirmation(self.racine, sig, langue='en')
+        self.assertNotIn('electronic signature', anglais)
+        self.assertNotIn('43-20', anglais)
+        for mention in ('signature électronique', '43-20'):
+            self.assertNotIn(mention, corps)
 
 
 class LaConfirmationVaAuxDeuxParties(_BaseAcceptation):
