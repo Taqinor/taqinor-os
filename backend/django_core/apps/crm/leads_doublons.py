@@ -428,18 +428,36 @@ def poser_empreintes_opposition(company, le):
 
 
 def retirer_empreintes_opposition(company, le):
-    """ACVI43 — l'opposition levée sur la fiche libère la personne."""
+    """ACVI43 — l'opposition levée sur la fiche libère la personne.
+
+    ERR-ACVI6-OPPOSITION (D-ACVI-6 : l'opposition suit la personne) — un
+    contact que portent encore d'autres leads opposés de la société garde son
+    empreinte : lever la fiche A ne libère pas le numéro de B."""
     from django.db.models import Q
 
-    from .models import EmpreinteOpposition
+    from .models import EmpreinteOpposition, Lead
 
-    empreintes = empreintes_contact(le.email, le.telephone, le.whatsapp)
-    if not empreintes:
-        return
+    garder = Q(pk__in=[])
+    autres = Lead.objects.filter(
+        company=company, ne_plus_contacter=True).exclude(pk=le.pk)
+    email = normalize_email(le.email)
+    if email and autres.filter(email_normalise=email).exists():
+        garder |= Q(nature='email',
+                    empreinte__in=[e for n, e in empreintes_contact(
+                        email=le.email) if n == 'email'])
+    for valeur in (le.telephone, le.whatsapp):
+        num = (normalize_phone(valeur) or '')[:20]
+        if num and autres.filter(
+                Q(phone_normalise=num) | Q(whatsapp_normalise=num)).exists():
+            garder |= Q(nature='telephone',
+                        empreinte__in=[e for n, e in empreintes_contact(
+                            telephone=valeur) if n == 'telephone'])
     cible = Q(pk__in=[])
-    for nature, empreinte in empreintes:
+    for nature, empreinte in empreintes_contact(
+            le.email, le.telephone, le.whatsapp):
         cible |= Q(nature=nature, empreinte=empreinte)
-    EmpreinteOpposition.objects.filter(cible, company=company).delete()
+    EmpreinteOpposition.objects.filter(
+        cible, company=company).exclude(garder).delete()
 
 
 def porte_une_opposition(company_id, email=None, telephone=None,

@@ -164,6 +164,36 @@ class EmpreinteOppositionTests(TestCase):
         c = Lead.objects.create(company=self.company, nom='C', telephone=numero)
         self.assertFalse(c.ne_plus_contacter)
 
+    def test_levee_garde_l_empreinte_si_un_autre_lead_reste_oppose(self):
+        """ERR-ACVI6-OPPOSITION — l'opposition suit la personne : lever A ne
+        libère pas un numéro que B (opposé) porte encore."""
+        from apps.crm.leads_consentement import tracer_levee_opposition_registre
+
+        numero = '+212612349081'
+        a = Lead.objects.create(company=self.company, nom='A', telephone=numero,
+                                ne_plus_contacter=True, owner=self.user)
+        Lead.objects.create(company=self.company, nom='B', telephone=numero,
+                            ne_plus_contacter=True, owner=self.user)
+        Lead.objects.filter(pk=a.pk).update(ne_plus_contacter=False)
+        a.refresh_from_db()
+        tracer_levee_opposition_registre(a, self.user)
+        c = Lead.objects.create(company=self.company, nom='C', telephone=numero)
+        self.assertTrue(c.ne_plus_contacter)
+
+    def test_contact_ajoute_a_un_lead_deja_oppose_porte_l_opposition(self):
+        """ERR-ACVI6-OPPOSITION — un téléphone/e-mail posé APRÈS l'opposition
+        laisse son empreinte."""
+        a = Lead.objects.create(company=self.company, nom='A', owner=self.user,
+                                ne_plus_contacter=True)
+        a.telephone = '+212612349082'
+        a.email = 'tard.acvi6@example.com'
+        a.save()
+        for contact in ({'telephone': '+212612349082'},
+                        {'email': 'tard.acvi6@example.com'}):
+            with self.subTest(contact=contact):
+                n = Lead.objects.create(company=self.company, nom='N', **contact)
+                self.assertTrue(n.ne_plus_contacter)
+
     def setUp(self):
         self.company = Company.objects.create(
             nom='ACRM62 Solaire', slug='acrm62-opposition')
