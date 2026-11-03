@@ -26,6 +26,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
+from testkit.factories import barreau_dominical_societe
 from testkit.time import frozen
 
 from apps.crm import horaires
@@ -116,7 +117,8 @@ class ZeroAppelHorsDimancheTests(_Base):
     def test_la_touche_dominicale_reste_UNIQUE(self):
         """L'unicité du rendez-vous dominical ne bouge pas — son CANAL, lui,
         suit désormais la préférence du client (CAD33, dont c'est le
-        fichier)."""
+        fichier). CADV23 : le barreau est celui d'une société qui l'a réglé."""
+        barreau_dominical_societe(self.company)
         dominicales = [g for g, _e in self._plan(self.whatsapp_only)
                        if getattr(g, 'dimanche_ok', False)]
         self.assertEqual(len(dominicales), 1)

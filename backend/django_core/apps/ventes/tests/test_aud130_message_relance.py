@@ -95,6 +95,19 @@ class TestAud130MessageRelance(TestCase):
         self.assertNotIn('{', corps)
         self.assertIn('FAC-AUD130-0007', corps)
 
+    def test_niveau_au_texte_vide_dit_quand_meme_ce_qui_est_du(self):
+        # AARG24 (rejeu AARG50) : un niveau au message vide, ou une relance
+        # sans note, ne part plus sans le montant dû ni l'échéance.
+        from apps.ventes.email_service import composer_relance_email
+        Facture.objects.filter(pk=self.facture.pk).update(
+            date_echeance=date(2026, 10, 1))
+        self.facture.refresh_from_db()
+        _sujet, corps = composer_relance_email(self.facture, message='')
+        self.assertIn(self.facture.reference, corps)
+        self.assertIn(str(self.facture.montant_du).replace('.', ','), corps)
+        self.assertIn('01/10/2026', corps)
+        self.assertEqual(corps.count('Bonjour'), 1)
+
     def test_niveaux_par_defaut_citent_montant_et_echeance(self):
         """AARG24 (C-AARG-019) — le mail du beat, société aux 3 niveaux semés :
         référence, dû et échéance cités, ni « ci-dessus » ni double salut ;

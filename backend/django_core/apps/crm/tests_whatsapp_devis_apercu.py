@@ -111,6 +111,21 @@ class TestWhatsAppDevisApercu(TestCase):
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, 'brouillon')
 
+    def test_numero_inexploitable_est_un_refus_d_etat_409(self):
+        """ERR-ENF11-FUZZ-CRM — le numéro vient de la fiche du lead : 409
+        ``{detail}`` sur l'aperçu ET le commit, rien d'écrit."""
+        self.lead.telephone = ''
+        self.lead.whatsapp = ''
+        self.lead.save(update_fields=['telephone', 'whatsapp'])
+        for chemin in ('whatsapp-devis-apercu', 'whatsapp-devis'):
+            r = self.api.post(
+                f'/api/django/crm/leads/{self.lead.id}/{chemin}/',
+                {'devis_ids': [self.devis.id]}, format='json')
+            self.assertEqual(r.status_code, 409, (chemin, r.content))
+            self.assertEqual(r.json()['detail'], 'Numéro de téléphone invalide.')
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'brouillon')
+
     def test_apercu_selection_vide_400(self):
         r = self.api.post(
             f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis-apercu/',

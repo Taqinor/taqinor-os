@@ -785,8 +785,9 @@ def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
     premier = min(gabarits, key=lambda g: g.ordre)
     depart = quand - datetime.timedelta(days=premier.delai_jours or 0)
     try:
+        # CADV25 × CADV103 — la date vient du client : ce réveil-là est justifié.
         etapes = initialiser_plan_relance(
-            lead, user, cadence='reveil', depart=depart)
+            lead, user, cadence='reveil', depart=depart, date_du_client=True)
     except CadenceActiveConflit:
         etapes = []
     ouvertes = [e for e in etapes if e.statut == RelanceEtape.Statut.A_FAIRE]
@@ -1348,8 +1349,8 @@ def _est_dernier_barreau(etape, cadence):
     (``suite_touche.nature_touche`` — jamais une étape de visite ou de
     filet, qui porte la cadence sans être du protocole) et
     ``suite_touche.est_derniere_touche`` sur les barreaux ACTIFS de la
-    société (le plus grand rang, ou une touche dont le rang n'est plus un
-    barreau actif). Lecture pure (une requête, aucune écriture) ; une touche
+    société (aucun barreau actif d'ordre supérieur). Lecture pure (une requête,
+    aucune écriture) ; une touche
     absente (``None``) n'est la dernière de rien."""
     if etape is None or etape.cadence != cadence:
         return False

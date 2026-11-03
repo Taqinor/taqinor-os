@@ -556,7 +556,7 @@ def retirer_brouillons_de_la_vente(devis, *, user, motif=''):
     seul, un brouillon à référence LÉGALE reçoit son avoir. Une facture
     consolidée (devis hors chaîne) n'est jamais retirée ici. Renvoie la liste
     des factures annulées (triée par id)."""
-    from ..models import Paiement
+    from ..models import FactureActivity, Paiement
     from ..vente_facturation import (
         STATUT_BROUILLON, chaine_vente, factures_de_la_vente)
     ids = {d.pk for d in chaine_vente(devis)}
@@ -567,5 +567,12 @@ def retirer_brouillons_de_la_vente(devis, *, user, motif=''):
         if any(p.statut not in Paiement.STATUTS_NON_COMPTES
                for p in f.paiements.all()):
             continue
-        retires.append(annuler_facture(f, user=user, motif=motif))
+        retire = annuler_facture(f, user=user, motif=motif)
+        # Rejeu AARG50 (AARG16) — un ``BROUILLON-<id>`` n'a pas d'avoir qui
+        # porte le motif : son chatter le dit.
+        if motif and getattr(retire, 'avoir_annulation', None) is None:
+            FactureActivity.objects.create(
+                company=retire.company, facture=retire, user=user,
+                kind=FactureActivity.Kind.NOTE, body=motif)
+        retires.append(retire)
     return retires

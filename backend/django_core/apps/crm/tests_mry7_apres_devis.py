@@ -29,6 +29,7 @@ from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import devis_a_cadence_active
 from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
 from apps.parametres.models import CompanyProfile
+from apps.parametres.models_relance import CADENCE_APRES_DEVIS_DEFAUT
 from apps.ventes.models import Devis
 
 User = get_user_model()
@@ -143,8 +144,9 @@ class DimancheFamilleTests(_Base):
 
     def setUp(self):
         super().setUp()
-        # AGR514 — J4 « preuve » n'est posée qu'avec une réalisation
-        # éligible : les comptes 9/10 ci-dessous la supposent présente.
+        # AGR514 — une touche « preuve » n'est posée qu'avec une réalisation
+        # éligible : les comptes ci-dessous (lus sur le gabarit, D-CADV-3) la
+        # supposent présente.
         from apps.parametres.models_realisations import Realisation
         Realisation.objects.create(
             company=self.company, titre='Villa', ville='Casablanca',
@@ -166,7 +168,7 @@ class DimancheFamilleTests(_Base):
         self._envoyer(self._devis('DEV-MRY7-0300'))
         self.assertEqual(self._dimanche_famille().count(), 0)
         partition = self._partition()
-        self.assertEqual(len(partition), 9)
+        self.assertEqual(len(partition), len(CADENCE_APRES_DEVIS_DEFAUT) - 1)
         self.assertNotIn('dimanche_famille',
                          [g.template_cle for g, _e in partition])
 
@@ -176,7 +178,7 @@ class DimancheFamilleTests(_Base):
         self._envoyer(self._devis('DEV-MRY7-0301'))
         self.assertEqual(self._dimanche_famille().count(), 1)
         partition = self._partition()
-        self.assertEqual(len(partition), 10)
+        self.assertEqual(len(partition), len(CADENCE_APRES_DEVIS_DEFAUT))
         self.assertIn('dimanche_famille',
                       [g.template_cle for g, _e in partition])
 
@@ -207,7 +209,7 @@ class DimancheFamilleTests(_Base):
         # qu'elle porte sont ceux-là.
         ordres = [g.ordre for g, _e in self._partition()]
         self.assertNotIn(3, ordres)
-        self.assertEqual(ordres, [1, 2, 4, 5, 6, 7, 8, 9, 10])
+        self.assertEqual(ordres, [1, 2, 6, 7, 8, 9, 10, 11])  # v4, CADV24
         materialises = set(
             self._touches('apres_devis').values_list('ordre', flat=True))
         self.assertTrue(materialises.issubset(set(ordres)))

@@ -1,0 +1,6 @@
+== C-ATOT-VER-006 (sha b72cda218)
+attendu : note de débit émise : aucune ligne ni TVA dans le grand livre reconstitué de la période
+observé : note_debit=201 {'id': 29, 'lignes': [{'id': 11, 'produit': 4163, 'designation': 'Pénalité', 'quantite': '1.00', 'prix_unitaire': '100.00', 'remise': '0.00', 'taux_tva': '20.00 lignes_gl avant=3 apres=6 totaux=(Decimal('1320.00'), Decimal('1320.00'))
+{"repro": false, "note_debit": 201, "lignes_avant": 3, "lignes_apres": 6}
+verdict : ÉCART
+base inchangée : oui (avant 105662, après 105662) ; mails 0 ; tâches Celery bloquées 0

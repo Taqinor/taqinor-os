@@ -12,8 +12,9 @@ import { TableauLignes } from '../../ui/TableauDefilant'
 /* ============================================================================
    MRY33 — Cockpit (rôles responsable/admin) : « Anciens leads à placer dans
    les cadences ». Décision fondateur 06/09/2026 — tous les anciens leads non
-   Froid sont traités : le moteur décide seul à quelle étape des six appels
-   chacun se trouve. « Aperçu » n'écrit RIEN (`POST leads/placement-cadences/
+   Froid sont traités : le moteur décide seul à quelle étape de sa cadence
+   chacun se trouve (le nombre d'appels est lu sur le rapport, `appels_contact`,
+   celui du gabarit de la société — jamais recopié ici). « Aperçu » n'écrit RIEN (`POST leads/placement-cadences/
    {apply:false}`, MRY30) ; « Appliquer » (confirmation explicite, N/M dérivés
    de l'aperçu — jamais recomptés à la main) place réellement les leads.
 
@@ -221,7 +222,10 @@ export default function PlacementAnciensLeadsCard() {
         </CardTitle>
         <CardDescription>
           Tous les anciens leads non Froid sont traités : le moteur décide seul à
-          quelle étape des six appels chacun se trouve.
+          quelle étape de sa cadence chacun se trouve.
+          {donnees?.appels_contact > 0 && (
+            ` La prise de contact de votre société compte ${donnees.appels_contact} appel(s).`
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -54,7 +54,7 @@ test('VX55 : fetchLeads/fetchClients transmettent le signal du thunk à chaque p
     CRM_SLICE_SRC.indexOf("export const fetchClients"),
     CRM_SLICE_SRC.indexOf("export const createClient"))
   assert.match(fetchClientsBody, /\{ rejectWithValue, signal \}/)
-  assert.match(fetchClientsBody, /crmApi\.getClients\(\{ page \}, \{ signal \}\)/)
+  assert.match(fetchClientsBody, /crmApi\.getClients\(\{ page, page_size: pageSize \}, \{ signal \}\)/)
 
   const fetchLeadsBody = CRM_SLICE_SRC.slice(
     CRM_SLICE_SRC.indexOf("export const fetchLeads"),
@@ -73,7 +73,7 @@ test('VX55 : fetchDevis transmet le signal du thunk à chaque page', () => {
     VENTES_SLICE_SRC.indexOf("export const createDevis"))
   // VX163 — fetchDevis enrobé par createCancellableThunk : (_, { signal }).
   assert.match(fetchDevisBody, /createCancellableThunk\('ventes\/fetchDevis', \(_, \{ signal \}\)/)
-  assert.match(fetchDevisBody, /ventesApi\.getDevis\(\{ page \}, \{ signal \}\)/)
+  assert.match(fetchDevisBody, /ventesApi\.getDevis\(\{ page, page_size: pageSize \}, \{ signal \}\)/)
 })
 
 test('VX55 : LeadsPage annule le thunk fetchLeads au cleanup d\'effet (démontage/changement de filtre)', () => {

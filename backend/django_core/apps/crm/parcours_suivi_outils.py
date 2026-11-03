@@ -769,6 +769,7 @@ class ParcoursBase(TestCase):
             return lead, self.unique(lead, 'generique')
         if type_id == 'reveil_appel':
             lead, _message = self.amener('contact_message')
+            self.client_deja_joint(lead)
             self.touches_de_contact_sans_reponse(lead)
             etape = self.premiere(lead, 'reveil_appel')
             self.avancer_a(etape.due_at)
@@ -786,9 +787,16 @@ class ParcoursBase(TestCase):
                    sans_date=options.get('sans_date', False))
         return lead, self.unique(lead, type_id)
 
+    def client_deja_joint(self, lead):
+        """CADV25 — un réveil suppose un client joint une fois (ligne sans acteur ni signal)."""
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
+
     def touches_de_contact_sans_reponse(self, lead):
-        """Toutes les touches de la prise de contact (onze avec le gabarit livré) closes
-        « Pas de réponse », chacune à son échéance : le dossier part au Froid, réveils posés."""
+        """Toutes les touches de la prise de contact (huit avec le gabarit livré) closes
+        « Pas de réponse », chacune à son échéance : le dossier part au Froid (réveils posés
+        s'il a déjà été joint, CADV25)."""
         nombre = CadenceRelanceEtape.objects.filter(
             company=self.company, cadence='contact', actif=True).count()
         for _rang in range(nombre):

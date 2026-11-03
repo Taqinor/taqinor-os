@@ -1,0 +1,102 @@
+{
+  "sha": "369cf21d8804e8395677f3795327ca8180ee0a1e",
+  "date": "2026-11-03",
+  "groupe": "ALEA",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEA56",
+    "ALEA57",
+    "ALEA58"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.6",
+      "taches": [
+        "ALEA56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-ALEA-P1.6.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.5b",
+      "taches": [
+        "ALEA57"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-ALEA-P3.5b.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S-001",
+      "taches": [
+        "ALEA56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ALEA/traces/2026-11-03/C-ALEA-VER2-001.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ALEA-VER2-001 rejouée : repro faux (catalogue_pret faux, 8 prestations orphelines nommées)."
+    },
+    {
+      "id": "S-101",
+      "taches": [
+        "ALEA58"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ALEA/traces/2026-11-03/C-ALEA-VER2-101.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ALEA-VER2-101 rejouée : repro faux (DELETE 204, attachment du lead supprimé)."
+    }
+  ]
+}

@@ -1,10 +1,12 @@
 """AGR514 (D-AGR-10) — J4 « preuve » omise sans réalisation éligible.
 
-Le gabarit après-devis garde ses 10 barreaux (jamais un axe segment, CAD124) ;
-c'est la DONNÉE qui décide : `parametres.selectors.realisation_pour_lead`
-(filtré par segment, AGR513) renvoie `None` → la touche `j4_preuve` est
-écartée, le trou de `ordre` est gardé. Le lead porte « Décision à plusieurs »
-pour que la touche dominicale (MRY4) soit comptée : 10 barreaux au complet.
+Le gabarit après-devis reste unique (jamais un axe segment, CAD124) ; c'est la
+DONNÉE qui décide : `parametres.selectors.realisation_pour_lead` (filtré par
+segment, AGR513) renvoie `None` → la touche `j4_preuve` est écartée, le trou de
+`ordre` est gardé. Le lead porte « Décision à plusieurs » pour que la touche
+dominicale (MRY4) soit comptée. CADV24 : la J4 sort du gabarit v4 (9 barreaux) ;
+la société de ces tests l'a gardée (10 barreaux au complet), le filtre lui
+reste dû.
 """
 import datetime
 from decimal import Decimal
@@ -13,11 +15,13 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
+from testkit.factories import barreau_preuve_j4_societe
 
 from apps.crm.models import Client, Lead
 from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_realisations import Realisation
+from apps.parametres.models_relance import CadenceRelanceEtape
 from apps.ventes.domain.envoi import mark_devis_sent
 from apps.ventes.models import Devis
 
@@ -31,6 +35,7 @@ class _Base(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom=self.slug, slug=self.slug)
         CompanyProfile.objects.get_or_create(company=self.company)
+        barreau_preuve_j4_societe(self.company)
         self.acteur = User.objects.create_user(
             username=f'{self.slug}-u', password='x',
             role_legacy='responsable', company=self.company)
@@ -93,7 +98,7 @@ class LeadAgricoleTests(_Base):
                 datetime.timezone.utc))
         ordres = [g.ordre for g, _e in partition]
         self.assertNotIn(4, ordres)
-        self.assertIn(5, ordres)
+        self.assertIn(6, ordres)  # le barreau suivant (ordre 5 retiré, CADV24)
 
     def test_avec_realisation_agricole_dix_touches_dont_j4(self):
         self._realisation('agricole')
@@ -116,6 +121,65 @@ class LeadResidentielTests(_Base):
         cles = self._cles_planifiees()
         self.assertEqual(len(cles), 10)
         self.assertIn('j4_preuve', cles)
+
+    def _gabarit_v4(self):
+        """CADV87 — la forme v4 (CADV24) : J4 et J6 retirés, ordre 7 = WhatsApp J10."""
+        CadenceRelanceEtape.cadence_pour(self.company, 'apres_devis')
+        rangs = CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence='apres_devis')
+        rangs.filter(ordre__in=[4, 5]).update(actif=False)
+        rangs.filter(ordre=7).update(delai_jours=10, template_cle='j6_garanties')
+
+    def _cle_j10(self, frein):
+        Lead.objects.filter(pk=self.lead.pk).update(frein_principal=frein)
+        self.lead.refresh_from_db()
+        partition = calculer_echeances_cadence(
+            self.lead, 'apres_devis', datetime.datetime.now(datetime.timezone.utc))
+        return {g.ordre: g.template_cle for g, _e in partition}[7]
+
+    def test_le_j10_suit_le_frein_principal(self):
+        """CADV87 (D-CADV-3) — deux leads du même gabarit, deux textes ; le gabarit
+        n'est pas muté. Mutant : ignorer le frein ⇒ échec."""
+        self._gabarit_v4()
+        self._realisation('residentiel')
+        self.assertEqual(self._cle_j10('confiance'), 'j4_preuve')
+        self.assertEqual(self._cle_j10('compare'), 'j4_preuve')
+        self.assertEqual(self._cle_j10('technique'), 'j6_garanties')
+        self.assertEqual(self._cle_j10(None), 'j6_garanties')
+        self.assertEqual(CadenceRelanceEtape.objects.get(
+            company=self.company, cadence='apres_devis', ordre=7).template_cle,
+            'j6_garanties')
+
+    def test_sans_realisation_eligible_le_j10_garde_les_garanties(self):
+        self._gabarit_v4()
+        self.assertEqual(self._cle_j10('confiance'), 'j6_garanties')
+
+    def test_une_cle_personnalisee_n_est_jamais_remplacee(self):
+        self._gabarit_v4()
+        self._realisation('residentiel')
+        CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence='apres_devis', ordre=7,
+        ).update(template_cle='j9_validite')
+        self.assertEqual(self._cle_j10('confiance'), 'j9_validite')
+
+    def test_un_gabarit_qui_porte_sa_preuve_ne_la_dit_pas_deux_fois(self):
+        """Le gabarit v3 (J4 preuve, J6 garanties) : le texte de J6 ne change pas."""
+        self._realisation('residentiel')
+        Lead.objects.filter(pk=self.lead.pk).update(frein_principal='confiance')
+        self.lead.refresh_from_db()
+        self.assertEqual(self._cles_planifiees().count('j4_preuve'), 1)
+        self.assertIn('j6_garanties', self._cles_planifiees())
+
+    def test_seule_la_cle_de_texte_change(self):
+        self._gabarit_v4()
+        self._realisation('residentiel')
+        Lead.objects.filter(pk=self.lead.pk).update(frein_principal='confiance')
+        self.lead.refresh_from_db()
+        partition = dict(
+            (g.ordre, g) for g, _e in calculer_echeances_cadence(
+                self.lead, 'apres_devis', datetime.datetime.now(datetime.timezone.utc)))
+        self.assertEqual(partition[7].canal, 'whatsapp')
+        self.assertEqual(partition[7].delai_jours, 10)
 
 
 # ── AGR531 — le sérialiseur de touche sert `lead_segment` ──────────────────

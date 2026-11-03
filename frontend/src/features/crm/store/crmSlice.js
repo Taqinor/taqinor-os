@@ -45,7 +45,7 @@ function avecLesCreesLocaux(state, liste) {
 // AUTRE écran après navigation.
 export const fetchClients = createAsyncThunk('crm/fetchClients', async (_, { rejectWithValue, signal }) => {
   try {
-    const results = await fetchAllPages((page) => crmApi.getClients({ page }, { signal }).then((r) => r.data), { concurrency: 20 })
+    const results = await fetchAllPages((page, { page_size: pageSize } = {}) => crmApi.getClients({ page, page_size: pageSize }, { signal }).then((r) => r.data), { concurrency: 20 })
     return { results }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)

@@ -501,9 +501,14 @@ export default function FacturesFournisseur() {
       .then((r) => setFournisseurs(r.data ?? [])).catch(() => {})
     fetchAllPages((page) => stockApi.getBonsCommandeFournisseur({ page }).then((r) => r.data), { concurrency: 3 })
       .then((rows) => setBons(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
+  }, [])
+  // Les acomptes ouverts SONT des montants d'achat : le serveur les refuse (403) sans
+  // `prix_achat_voir` — un Commercial ne les demande donc pas (rejeu ASTK255, oracle 2).
+  useEffect(() => {
+    if (!voitPrix) return
     stockApi.acomptesFournisseurOuverts()
       .then((r) => setAcomptesOuverts(r.data ?? [])).catch(() => {})
-  }, [])
+  }, [voitPrix])
 
   const openFacture = async (f) => {
     try {

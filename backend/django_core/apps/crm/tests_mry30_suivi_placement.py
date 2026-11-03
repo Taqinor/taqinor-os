@@ -54,6 +54,7 @@ from apps.crm.cadence_placement import (
     PLACEMENT_CRENEAUX,
     PLACEMENT_NOTE_PASSEE,
     PLACEMENT_REVEILS_PAR_JOUR,
+    PLACEMENT_SANS_REVEIL,
     placer_anciens_leads,
 )
 from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
@@ -391,6 +392,13 @@ class _PlacementBase(_Base):
     def _codes(self, rapport):
         return {bloc['code']: bloc['nombre'] for bloc in rapport['par_etape']}
 
+    def _joint(self, lead):
+        """CADV25 — un client joint autrefois (sans acteur : aucune ancre ne bouge)."""
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
+        return lead
+
     def _reveils(self, lead):
         return list(lead.relance_etapes.filter(cadence='reveil')
                     .order_by('ordre'))
@@ -405,14 +413,14 @@ class DecisionContactTests(_PlacementBase):
         self.assertEqual(self._codes(rapport), {'contact_complete': 1})
         touches = lead.relance_etapes.filter(cadence='contact')
         # CKP2 — cadence RÉACTIVE : le lead est placé sur la cadence COMPLÈTE
-        # (11 touches annoncées, c'est ce que l'aperçu MRY30 promet), mais
+        # (8 touches annoncées, c'est ce que l'aperçu MRY30 promet), mais
         # seule la prochaine à faire est matérialisée ; la suite naît des
         # issues saisies.
         from apps.crm.cadence_plan import calculer_echeances_cadence
         depart = touches.first().cadence_depart
         self.assertIsNotNone(depart)
         self.assertEqual(
-            len(calculer_echeances_cadence(lead, 'contact', depart)), 11)
+            len(calculer_echeances_cadence(lead, 'contact', depart)), 8)
         self.assertEqual(touches.count(), 1)
         self.assertEqual(
             set(touches.values_list('statut', flat=True)),
@@ -440,7 +448,8 @@ class DecisionContactTests(_PlacementBase):
         """CKP1 — les touches déjà échues d'une cadence rétrodatée sont
         ANNULÉES par le moteur : les compter comme des sauts de Meryem
         inventerait des manquements sur un plan qu'elle n'a jamais vu."""
-        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        # CADV23 — le protocole tient en 7 jours : à J+5, il reste le J+7 à faire.
+        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=5)
         rapport = self._placer()
         self.assertEqual(self._codes(rapport), {'contact_positionne': 1})
         touches = lead.relance_etapes.filter(cadence='contact')
@@ -459,7 +468,8 @@ class DecisionContactTests(_PlacementBase):
         """`initialiser_plan_relance` pointe la PREMIÈRE touche — celle qu'on
         vient de sauter. Sans recalage, « Ma file » montrerait un rappel qui
         n'existe plus."""
-        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        # CADV23 — le protocole tient en 7 jours : à J+5, il reste le J+7 à faire.
+        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=5)
         self._placer()
         lead.refresh_from_db()
         prochaine = (lead.relance_etapes
@@ -468,7 +478,8 @@ class DecisionContactTests(_PlacementBase):
         self.assertEqual(lead.relance_date, prochaine.due_date)
 
     def test_le_positionnement_ne_touche_jamais_a_letape(self):
-        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        # CADV23 — le protocole tient en 7 jours : à J+5, il reste le J+7 à faire.
+        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=5)
         self._placer()
         lead.refresh_from_db()
         self.assertEqual(lead.stage, stages.CONTACTED)
@@ -499,10 +510,10 @@ class DecisionApresDevisTests(_PlacementBase):
             lead.relance_etapes.filter(cadence='apres_devis').count(), 0)
 
     def test_un_devis_trop_ancien_bascule_en_dormance(self):
-        """Toutes les touches (J1…J14) sont passées : cette cadence ne
+        """Toutes les touches (J1…J90, CADV24) sont passées : cette cadence ne
         relancerait personne. Elle est DÉFAITE et le lead part en dormance."""
-        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=40)
-        self._devis(lead, jours=30)
+        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=110)
+        self._devis(lead, jours=100)
         rapport = self._placer()
         self.assertEqual(self._codes(rapport), {'dormant_devis': 1})
         lead.refresh_from_db()
@@ -512,8 +523,8 @@ class DecisionApresDevisTests(_PlacementBase):
         self.assertIn('Devis sans suite', lead.tags or '')
 
     def test_la_bascule_ne_laisse_pas_de_rappel_fantome(self):
-        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=40)
-        self._devis(lead, jours=30)
+        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=110)
+        self._devis(lead, jours=100)
         self._placer()
         lead.refresh_from_db()
         reveil = self._reveils(lead)[0]
@@ -540,8 +551,36 @@ class DecisionDormantTests(_PlacementBase):
         self.assertIn('Jamais chiffré', lead.tags or '')
         self.assertFalse(lead.perdu)          # Froid = parking, pas perte.
 
+    def test_le_dormant_jamais_joint_ni_chiffre_n_a_pas_de_reveil(self):
+        """CADV25 — plus de ``PlacementImpossible`` : le lead est placé au Froid,
+        sans réveil ni créneau du quota, et l'aperçu l'annonce tel quel."""
+        lead = self._lead('Muet', stage=stages.NEW, jours=60)
+        joint = self._joint(self._lead('Joint', stage=stages.NEW, jours=70))
+        apercu = {ligne['lead']: ligne for ligne in self._placer(apply=False)['apercu']}
+        self.assertEqual(apercu[lead.pk]['prochaine_touche'], 'Froid, sans réveil')
+        self.assertIsNone(apercu[lead.pk]['prochaine_le'])
+        rapport = self._placer()
+        self.assertEqual((rapport['applique'], rapport['erreurs']), (2, 0))
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertIn('Jamais chiffré', lead.tags or '')
+        self.assertEqual(self._reveils(lead), [])
+        # Le seul à prendre un créneau : le premier, le sien.
+        quand = self._reveils(joint)[0].due_at.astimezone(horaires.CASABLANCA)
+        self.assertEqual((quand.hour, quand.minute), (10, 0))
+        self.assertTrue(lead.activites.filter(body__startswith='Placé au Froid, sans réveil').exists())
+
+    def test_le_pilote_prend_un_creneau_et_une_seule_touche(self):
+        """CADV86 — l'aperçu annonce le réveil que l'application pose."""
+        lead = self._lead('Pilote', stage=stages.NEW, jours=60)
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=2300)
+        ligne = self._placer(apply=False)['apercu'][0]
+        self.assertEqual(ligne['prochaine_touche'], 'Réveil J30')
+        self._placer()
+        self.assertEqual(len(self._reveils(lead)), 1)
+
     def test_le_dormant_jamais_chiffre_garde_les_gabarits_sans_devis(self):
-        lead = self._lead('Dormant', stage=stages.NEW, jours=60)
+        lead = self._joint(self._lead('Dormant', stage=stages.NEW, jours=60))
         self._placer()
         self.assertEqual([e.template_cle for e in self._reveils(lead)],
                          ['reveil_a2', 'reveil_a3'])
@@ -557,7 +596,7 @@ class DecisionDormantTests(_PlacementBase):
                          ['reveil_a1', 'reveil_a3'])
 
     def test_deux_reveils_sont_poses(self):
-        lead = self._lead('Dormant', stage=stages.NEW, jours=60)
+        lead = self._joint(self._lead('Dormant', stage=stages.NEW, jours=60))
         self._placer()
         self.assertEqual(len(self._reveils(lead)), 2)
 
@@ -647,7 +686,22 @@ class ApercuTests(_PlacementBase):
         self.assertEqual(
             set(self._placer(apply=False)),
             {'apply', 'total_candidats', 'a_placer', 'ignores', 'par_etape',
-             'apercu', 'reveils_jusqu_au', 'applique', 'erreurs', 'restants'})
+             'apercu', 'reveils_jusqu_au', 'appels_contact', 'applique',
+             'erreurs', 'restants'})
+
+    def test_le_nombre_d_appels_est_celui_du_gabarit_de_la_societe(self):
+        # ERR-CADV-SIX-APPELS — jamais un chiffre recopié à l'écran.
+        from apps.parametres.models_relance import (
+            CadenceRelanceEtape, CanalRelance)
+        appels = CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence='contact', actif=True,
+            canal=CanalRelance.APPEL)
+        CadenceRelanceEtape.cadence_pour(self.company, 'contact')
+        self.assertEqual(
+            self._placer(apply=False)['appels_contact'], appels.count())
+        appels.filter(pk=appels.first().pk).update(actif=False)
+        avant = appels.count()
+        self.assertEqual(self._placer(apply=False)['appels_contact'], avant)
 
     def test_sans_dormant_reveils_jusqu_au_est_nul(self):
         self.dormant.delete()
@@ -677,8 +731,8 @@ class EtalementTests(_PlacementBase):
     def test_les_reveils_partent_a_huit_par_jour_ouvre(self):
         """Lancer 200 réveils le même matin ferait partir 200 messages en
         rafale depuis le même numéro — le meilleur moyen d'être signalé."""
-        leads = [self._lead(f'Dormant {rang}', stage=stages.NEW,
-                            jours=60 + rang)
+        leads = [self._joint(self._lead(f'Dormant {rang}', stage=stages.NEW,
+                                        jours=60 + rang))
                  for rang in range(PLACEMENT_REVEILS_PAR_JOUR + 2)]
         self._placer()
 
@@ -697,7 +751,7 @@ class EtalementTests(_PlacementBase):
 
     def test_reveils_jusqu_au_nomme_le_dernier_creneau(self):
         for rang in range(PLACEMENT_REVEILS_PAR_JOUR + 1):
-            self._lead(f'Dormant {rang}', stage=stages.NEW, jours=60 + rang)
+            self._joint(self._lead(f'Dormant {rang}', stage=stages.NEW, jours=60 + rang))
         rapport = self._placer()
         self.assertEqual(rapport['reveils_jusqu_au'], JEUDI.isoformat())
 
@@ -705,7 +759,7 @@ class EtalementTests(_PlacementBase):
         """À 15 h, les créneaux 10 h-12 h 20 du jour sont derrière nous : la
         première touche part le prochain jour ouvré — jamais « en retard »
         à la seconde où elle naît."""
-        lead = self._lead('Dormant tardif', stage=stages.NEW, jours=60)
+        lead = self._joint(self._lead('Dormant tardif', stage=stages.NEW, jours=60))
         with frozen(MERCREDI.replace(hour=15, minute=0)):
             self._placer()
         quand = self._reveils(lead)[0].due_at.astimezone(horaires.CASABLANCA)
@@ -820,9 +874,17 @@ class CommandeTests(_PlacementBase):
         self.assertEqual(len(lots), 3, texte)
         self.assertTrue(lots[-1].endswith('restants 0.'), lots)
         self.assertIn('5 lead(s) placé(s).', texte)
+        # CADV25 (D-CADV-2) — un dormant jamais joint ni chiffré est placé SANS
+        # touche : au Froid, et le chatter le dit. Aucun autre lead sans touche,
+        # aucun placé en silence, et plus rien à placer au passage suivant.
+        sans_touche = Lead.objects.filter(company=self.company,
+                                          relance_etapes__isnull=True)
+        self.assertEqual(sans_touche.exclude(stage=stages.COLD).count(), 0)
         self.assertEqual(
-            Lead.objects.filter(company=self.company,
-                                relance_etapes__isnull=True).count(), 0)
+            sans_touche.exclude(
+                activites__body__startswith='Placé au Froid, sans réveil',
+            ).count(), 0)
+        self.assertEqual(self._placer(apply=False)['a_placer'], 0)
 
     def test_une_limite_hors_bornes_est_refusee(self):
         with self.assertRaises(CommandError):
@@ -900,7 +962,7 @@ class ApercuPurTests(_PlacementBase):
     def setUp(self):
         super().setUp()
         self.neuf = self._lead('Neuf', stage=stages.NEW, jours=2)
-        self.suivi = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        self.suivi = self._lead('Suivi', stage=stages.CONTACTED, jours=5)  # CADV23
         self.dormant = self._lead('Dormant', stage=stages.NEW, jours=60)
 
     def test_lapercu_ne_cree_ni_touche_ni_ligne_de_chatter(self):
@@ -929,19 +991,31 @@ class ApercuPurTests(_PlacementBase):
         self.assertEqual(rapport['restants'], rapport['a_placer'])
 
     def test_lapercu_date_chacune_de_ses_lignes(self):
-        for ligne in self._placer(apply=False)['apercu']:
+        """Toute touche annoncée est datée, réveil étalé compris. CADV25
+        (D-CADV-2) : le dormant jamais joint ni chiffré n'a AUCUNE touche à
+        venir — l'aperçu le dit, sans date, plutôt que d'en inventer une."""
+        joint = self._joint(self._lead('Joint', stage=stages.NEW, jours=70))
+        lignes = {ligne['lead']: ligne
+                  for ligne in self._placer(apply=False)['apercu']}
+        self.assertEqual(lignes[self.dormant.pk]['prochaine_touche'],
+                         PLACEMENT_SANS_REVEIL)
+        self.assertIsNone(lignes[self.dormant.pk]['prochaine_le'])
+        self.assertIn(joint.pk, lignes)
+        for lead, ligne in lignes.items():
             self.assertTrue(ligne['prochaine_touche'], ligne)
-            self.assertTrue(ligne['prochaine_le'], ligne)
+            if lead != self.dormant.pk:
+                self.assertTrue(ligne['prochaine_le'], ligne)
 
 
 class ApercuPositionneTests(_PlacementBase):
     slug = 'mry30-apercu-positionne'
 
     def test_la_ligne_positionnee_date_la_premiere_touche_non_passee(self):
-        """La cadence part d'il y a dix jours : ses premières touches sont
+        """La cadence part d'il y a cinq jours : ses premières touches sont
         derrière nous. L'aperçu doit annoncer la première touche À VENIR — et
         exactement celle que l'application créera ensuite."""
-        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=10)
+        # CADV23 — le protocole tient en 7 jours : à J+5, il reste le J+7 à faire.
+        lead = self._lead('Suivi', stage=stages.CONTACTED, jours=5)
         ligne = self._placer(apply=False)['apercu'][0]
         self.assertEqual(ligne['code'], 'contact_positionne')
 
@@ -960,8 +1034,8 @@ class ApercuPositionneTests(_PlacementBase):
         """La bascule appartient à la DÉCISION : annoncée « après devis » puis
         écrite « dormant », la carte montrerait deux chiffres différents pour
         le même clic."""
-        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=40)
-        self._devis(lead, jours=30)
+        lead = self._lead('Vieux devis', stage=stages.QUOTE_SENT, jours=110)
+        self._devis(lead, jours=100)
         apercu = self._placer(apply=False)
         self.assertEqual(self._codes(apercu), {'dormant_devis': 1})
         self.assertEqual(apercu['apercu'][0]['cadence'], 'reveil')
@@ -979,7 +1053,7 @@ class LotsTests(_PlacementBase):
         # Ancres décroissantes : `dormants[0]` (60 j) prend le premier
         # créneau, `dormants[4]` (64 j) le dernier.
         self.dormants = [
-            self._lead(f'Dormant {rang}', stage=stages.NEW, jours=60 + rang)
+            self._joint(self._lead(f'Dormant {rang}', stage=stages.NEW, jours=60 + rang))
             for rang in range(5)]
 
     def _creneau(self, rang):

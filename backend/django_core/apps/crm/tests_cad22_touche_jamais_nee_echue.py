@@ -29,6 +29,7 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
+from testkit.factories import barreau_dominical_societe
 from testkit.time import frozen
 
 from apps.crm import cadence_temps, horaires
@@ -173,6 +174,9 @@ class ToucheJamaisNeeEchueTests(TestCase):
         self.lead = Lead.objects.create(
             company=self.company, nom='Aziz', prenom='Benali',
             ville='Bouskoura', owner=self.acteur)
+        # CADV23 — le défaut v4 n'a plus de touche dominicale : une société qui
+        # l'a gardée, suivie du J+7 (le décor de CAD22/CAD23).
+        barreau_dominical_societe(self.company)
         self.echeances = calculer_echeances_cadence(
             self.lead, 'contact', MERCREDI)
 

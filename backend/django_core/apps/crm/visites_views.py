@@ -193,10 +193,9 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
             request, appt)
         if wa_url is None:
-            return Response(
-                {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            # ERR-ENF11-FUZZ-CRM — numéro lu sur la fiche du lead : refus
+            # d'ÉTAT, 409 (même corps ``{detail}``).
+            raise ConflitEtat('Numéro de téléphone invalide.')
         return Response({
             'message': message, 'wa_url': wa_url, 'ics_url': ics_url,
         })
@@ -375,6 +374,10 @@ class LeadVisitesActionsMixin:
             lead, request.user, date_prevue, commercial=commercial,
             notes=(request.data.get('notes') or ''), replanifier=replanifier)
         if erreurs:
+            # ERR-ENF11-FUZZ-CRM — un commercial désactivé (société déjà
+            # vérifiée plus haut) est un refus d'ÉTAT : 409, même corps.
+            if set(erreurs) == {'commercial'}:
+                raise ConflitEtat(erreurs)
             return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
         if etape is not None:
             clore_etape_apres_planification(

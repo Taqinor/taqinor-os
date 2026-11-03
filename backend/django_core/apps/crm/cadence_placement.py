@@ -10,11 +10,13 @@ from django.utils import timezone
 
 from . import stages
 from .cadence_plan import (
+    ISSUES_CLIENT_JOINT,
     CadenceActiveConflit,
     _q_plan_ouvert,
     _recaler_file,
     calculer_echeances_cadence,
     initialiser_plan_relance,
+    nombre_reveils_permis,
     sync_relance_activity,
 )
 from .cadence_reperes import _CLOTURE_TAGS
@@ -118,7 +120,7 @@ PLACEMENT_DECISIONS = (
     ('dormant_devis',
      'Dormant — Froid, tag « Devis sans suite », réveil étalé', 'reveil'),
     ('dormant_jamais_chiffre',
-     'Dormant — Froid, tag « Jamais chiffré », réveil étalé', 'reveil'),
+     'Dormant — Froid, tag « Jamais chiffré », réveil étalé si déjà joint ou facture ≥ 2 000', 'reveil'),
 )
 
 _PLACEMENT_CADENCES = {code: cadence for code, _, cadence in PLACEMENT_DECISIONS}
@@ -136,6 +138,9 @@ _PLACEMENT_TAGS = {
     'dormant_devis': _CLOTURE_TAGS['apres_devis'],
     'dormant_jamais_chiffre': _PLACEMENT_TAG_JAMAIS_CHIFFRE,
 }
+
+#: CADV25 — ce que l'aperçu annonce pour un dormant sans réveil permis.
+PLACEMENT_SANS_REVEIL = 'Froid, sans réveil'
 
 #: Note portée par une touche déjà échue au moment du placement. La REJOUER
 #: enverrait aujourd'hui le message du J+1 d'il y a dix jours.
@@ -263,6 +268,12 @@ def _decider_placements(company, maintenant, gabarits=None,
         _q_plan_ouvert(), company=company, lead_id__in=ids)
         .values_list('lead_id', flat=True))
     acceptes, envoyes = _placement_devis_du_lot(company, ids)
+    # CADV25 — joints ou chiffrés, lus en lot : 270 dormants ne font pas 540 requêtes.
+    from apps.ventes.selectors import leads_ayant_recu_un_devis
+    avec_historique = set(leads_ayant_recu_un_devis(company, ids)) | set(
+        LeadActivity.objects.filter(
+            lead_id__in=ids, outcome__in=ISSUES_CLIENT_JOINT,
+        ).values_list('lead_id', flat=True))
 
     humaines = _placement_derniers_par_lead(
         LeadActivity.objects.filter(lead_id__in=ids, user__isnull=False)
@@ -333,6 +344,7 @@ def _decider_placements(company, maintenant, gabarits=None,
             'creneau': None,
             'prochaine_touche': '',
             'prochaine_le': None,
+            'historique': lead.pk in avec_historique,
         }
         if entree['positionne']:
             _trancher_cadence_positionnee(entree, maintenant, gabarits)
@@ -583,9 +595,18 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
     return True
 
 
+def _dormant_a_des_reveils(entree):
+    """CADV25 — ce dormant porte-t-il un réveil ? ``dormant_devis`` a reçu une
+    proposition (dans Odoo, même sans devis ERP) : il a un historique."""
+    return nombre_reveils_permis(
+        entree['lead'],
+        historique=entree['historique'] or entree['code'] == 'dormant_devis',
+    ) != 0
+
+
 def _placer_dormant(entree, *, user):
     """Dormance explicite : Froid + étiquette qui dit POURQUOI + cadence de
-    réveil posée sur le créneau étalé.
+    réveil posée sur le créneau étalé — CADV25 : si le lead y a droit.
 
     Froid est un PARKING, pas une perte (même garantie que ``cloturer_cadence``
     MRY11) : aucun motif de perte n'est posé, ``Lead.perdu`` n'est jamais
@@ -597,10 +618,11 @@ def _placer_dormant(entree, *, user):
         poser_tag_lead(lead, user, tag)
     try:
         etapes = initialiser_plan_relance(
-            lead, user, cadence='reveil', depart=entree['depart'])
+            lead, user, cadence='reveil', depart=entree['depart'],
+            reveil_justifie=entree['code'] == 'dormant_devis')
     except CadenceActiveConflit as exc:
         raise PlacementImpossible(str(exc))
-    if not etapes:
+    if not etapes and _dormant_a_des_reveils(entree):
         raise PlacementImpossible('aucune touche de réveil créée')
     if entree['code'] == 'dormant_devis':
         for etape, cle in zip(sorted(etapes, key=lambda e: e.ordre),
@@ -628,6 +650,13 @@ def _placer_un(entree, *, user, maintenant):
     touches = _placement_touches_creees(
         lead, entree['cadence'], devis=entree['devis'])
     a_faire = [e for e in touches if e.statut == RelanceEtape.Statut.A_FAIRE]
+    if entree['cadence'] == 'reveil' and not a_faire:
+        # CADV25 — ni touche à nommer ni cadence : la note le dit (système, cf. FG28).
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'Placé au Froid, sans réveil ({PLACEMENT_MARQUEUR}).')
+        return True
     reference = (a_faire or touches or [None])[0]
     # Le libellé est relu sur la touche RÉELLEMENT créée : la décision ne date
     # que les vingt lignes de l'aperçu, et cette note doit nommer la bonne
@@ -660,12 +689,14 @@ def _placement_ordre(decisions, company, maintenant, *, gabarit=None):
     c'est lui qui donne son créneau à chaque dormant, donc `reveils_jusqu_au`
     et la date affichée par l'aperçu. Borner le lot APRÈS cet ordre garantit
     que le lot 1 prend bien les premiers créneaux et le lot 2 les suivants."""
-    dormants = _etaler_reveils(
-        [e for e in decisions if e['cadence'] == 'reveil'], company,
-        maintenant, gabarit=gabarit)
+    dormants = [e for e in decisions if e['cadence'] == 'reveil']
+    # CADV25 — un dormant sans réveil permis ne prend aucun créneau du quota.
+    avec_reveil = [e for e in dormants if _dormant_a_des_reveils(e)]
+    etales = _etaler_reveils(avec_reveil, company, maintenant, gabarit=gabarit)
+    sans_reveil = [e for e in dormants if not _dormant_a_des_reveils(e)]
     vivants = sorted([e for e in decisions if e['cadence'] != 'reveil'],
                      key=lambda e: (e['jours'], e['lead'].pk))
-    return vivants + dormants
+    return vivants + etales + sans_reveil
 
 
 def _dater_apercu(decisions, maintenant, *, gabarits, gabarit_reveil):
@@ -684,6 +715,9 @@ def _dater_apercu(decisions, maintenant, *, gabarits, gabarit_reveil):
         if entree['prochaine_le'] is not None:
             continue
         if entree['cadence'] == 'reveil':
+            if not _dormant_a_des_reveils(entree):
+                entree['prochaine_touche'] = PLACEMENT_SANS_REVEIL
+                continue
             entree['prochaine_touche'] = (
                 getattr(gabarit_reveil, 'libelle', '') or '')
             entree['prochaine_le'] = entree['creneau']
@@ -842,6 +876,8 @@ def _placer_anciens_leads_sans_cache(company, user, *, apply=False,
     rapport = _rapport_placement(
         decisions, ignores, total, apply=apply, applique=0, erreurs=0,
         restants=len(decisions))
+    from .fiche_funnel import appels_du_gabarit_contact
+    rapport['appels_contact'] = appels_du_gabarit_contact(company.pk)
     if not apply:
         return rapport
     applique, erreurs = _executer_placements(

@@ -13,6 +13,7 @@ from . import activity
 from . import schema_docs as sd
 from .devis_auto import champs_manquants, message_manquants
 from authentication.permissions import IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 
 
 def _refus_pii_whatsapp(request):
@@ -87,10 +88,9 @@ class LeadDevisActionsMixin:
             ), None
         phone = lead.whatsapp or lead.telephone
         if not normalize_phone_e164(phone):
-            return Response(
-                {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            ), None
+            # ERR-ENF11-FUZZ-CRM — le numéro vient de la FICHE du lead, pas du
+            # corps : refus d'ÉTAT, 409 (même corps ``{detail}``).
+            raise ConflitEtat('Numéro de téléphone invalide.')
         # QJR539 — garde de remise T17 (ventes.services) AVANT tout effet,
         # lien compris : un seul devis refusé refuse toute la sélection. Un
         # aperçu (``enregistrer=False``) n'écrit pas l'approbation implicite.

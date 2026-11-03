@@ -56,7 +56,12 @@ class _Base(TestCase):
                   'telephone': MOBILE, 'stage': stages.CONTACTED,
                   'perdu': True, 'motif_perte': 'Prix'}
         champs.update(kw)
-        return Lead.objects.create(**champs)
+        lead = Lead.objects.create(**champs)
+        # CADV25 — un perdu « Prix » a été joint : sa reprise reste le réveil.
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+            outcome='joint', body='Joint autrefois.')])
+        return lead
 
     def _api(self):
         api = APIClient()
@@ -270,6 +275,16 @@ class LesNoOpDeliberesTests(_Base):
                     self._recontact(lead, {'canal': canal}).status_code, 400)
         lead.refresh_from_db()
         self.assertEqual(lead.stage, stages.COLD)
+
+    def test_un_perdu_jamais_joint_ni_chiffre_repart_sur_le_filet(self):
+        """CADV25 — pas de réveil pour lui ; QJ-INVARIANT : une étape, jamais rien."""
+        lead = self._lead_perdu(perdu=False)
+        lead.activites.all().delete()
+        etapes = cadence_touche.reprendre_cadence_apres_reouverture(
+            lead, self.acteur)
+        self.assertTrue(etapes)
+        self.assertNotIn('reveil', {e.cadence for e in etapes})
+        self.assertFalse(lead.relance_etapes.filter(cadence='reveil').exists())
 
     def test_la_cadence_posee_est_bien_le_REVEIL_jamais_une_neuve(self):
         """Garde-fou CADX : aucune cadence n'est inventée pour l'occasion."""
