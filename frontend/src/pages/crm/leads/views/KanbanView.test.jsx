@@ -67,7 +67,9 @@ describe("LeadCard — icônes lucide Zap, pas d'emoji ⚡ (VX45)", () => {
 
 describe('LeadCard — minuteur premier contact, colonne NEW seulement (QX31)', () => {
   const ilYa = (minutes) => new Date(Date.now() - minutes * 60000 - 5000).toISOString()
-  const slaDe = (over) => monter(lead({ stage: NEW_STAGE, ...over })).container.querySelector('.kb-sla')
+  const slaDe = (over, props = { slaHours: 24 }) => render(
+    <LeadCard lead={lead({ stage: NEW_STAGE, ...over })} users={[]} {...props} />,
+  ).container.querySelector('.kb-sla')
 
   it('libellé FR compact : min, h, j', () => {
     expect(slaDe({ date_creation: ilYa(12) }).textContent).toContain('À contacter — il y a 12 min, non contacté')
@@ -77,10 +79,19 @@ describe('LeadCard — minuteur premier contact, colonne NEW seulement (QX31)', 
     expect(slaDe({ date_creation: ilYa(60 * 24 * 2) }).textContent).toContain('il y a 2 j')
   })
 
-  it('ambre sous 30 min, rouge à partir de 30 min', () => {
-    expect(slaDe({ date_creation: ilYa(12) }).className).toContain('kb-actionline-warning')
+  it('ACVI73 — ambre dans le délai servi, rouge quand sla-breach le retient', () => {
+    expect(slaDe({ date_creation: ilYa(180) }).className).toContain('kb-actionline-warning')
     cleanup()
-    expect(slaDe({ date_creation: ilYa(45) }).className).toContain('kb-actionline-danger')
+    expect(slaDe({ date_creation: ilYa(180) }, { slaHours: 24, slaEnRetard: true }).className)
+      .toContain('kb-actionline-danger')
+  })
+
+  it('sla désactivé, aucun badge', () => {
+    expect(slaDe({ date_creation: ilYa(120) }, { slaHours: 0 })).toBeNull()
+  })
+
+  it('premier contact posé, aucun badge', () => {
+    expect(slaDe({ date_creation: ilYa(120), first_contacted_at: ilYa(60) })).toBeNull()
   })
 
   it("aucun minuteur hors de l'étape NEW", () => {
