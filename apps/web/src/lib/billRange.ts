@@ -128,3 +128,19 @@ export const LOCAL_PAYBACK_BY_KWC: PaybackHint[] = [
   { maxKwc: 15, paybackLabel: '4 à 6 ans' },
   { maxKwc: Infinity, paybackLabel: '3 à 5 ans' },
 ];
+
+/**
+ * WAUD39 — fourchette de retour AFFICHÉE sur le site, une par segment. Une valeur n'entre ici
+ * qu'avec sa source et sa date ; sans elle (`null`), aucune page n'affiche de fourchette.
+ * Au 03/11/2026 : aucune source datée dans le dépôt, attend D-WAUD-5 (WAUD39-b).
+ * Les bandes `paybackLabel` ci-dessus (valeur transmise au lead) ne dépendent pas de cette constante.
+ */
+export interface RetourSource {
+  label: { fr: string; en: string; ar: string };
+  source: string;
+  date: string;
+}
+export const RETOUR_PAR_SEGMENT: { residentiel: RetourSource | null; professionnel: RetourSource | null } = {
+  residentiel: null,
+  professionnel: null,
+};

@@ -6,6 +6,7 @@
  * page garde ses libellés, son JSON-LD et le texte du paragraphe d'écart de
  * rendement (slot `yieldNote`) ; ici : structure, classes et logique d'affichage.
  */
+import { RETOUR_PAR_SEGMENT } from '../lib/billRange';
 import Picture from './Picture.astro';
 import CtaBand from './CtaBand.astro';
 import V2Page from './V2Page.astro';
@@ -36,7 +37,7 @@ const noteClass = rtl
 const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10';
 const stats = [
   { v: '50–100 %', k: t.statBill },
-  { v: t.statRoiValue, k: t.statRoi },
+  ...(t.statRoiValue ? [{ v: t.statRoiValue, k: t.statRoi }] : []),
   { v: t.statWarrantyValue, k: t.statWarranty },
   { v: '< 11 kW', k: t.stat8221 },
 ];
@@ -75,7 +76,7 @@ const stats = [
         ))}
       </dl>
     </div>
-    <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
+    {RETOUR_PAR_SEGMENT.residentiel && <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>}
     {delegataireNote && (
       <p class={noteClass}>
         {delegataireNote}

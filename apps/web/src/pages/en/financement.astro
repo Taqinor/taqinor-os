@@ -13,6 +13,7 @@
  * explicitly absent: no bank is named for residential, per the "zero
  * invented partnership" rule.
  */
+import { RETOUR_PAR_SEGMENT } from '../../lib/billRange';
 import Layout from '../../layouts/Layout.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -26,7 +27,7 @@ import { localizeNavHref } from '../../i18n/pages';
 const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
 const chiffres = [
-  { v: '3–7 years', label: 'Typical return on investment' },
+  ...(RETOUR_PAR_SEGMENT.residentiel ? [{ v: RETOUR_PAR_SEGMENT.residentiel.label.en, label: 'Typical return on investment' }] : []),
   { v: '30 years', label: 'Panel performance warranty' },
   { v: '50–100 %', label: 'Of the bill covered — depending on batteries and day/night usage' },
   { v: '0 MAD', label: 'The study and the assessment' },
@@ -97,8 +98,8 @@ import FinancementPs6F3AC from '../../components/blocs/FinancementPs6F3AC.astro'
 ---
 
 <Layout
-  title="Solar returns & financing in Morocco: 3–7 year ROI | Taqinor"
-  description="What a solar installation really earns in Morocco: roughly paid off in 3 to 7 years through the electricity you stop buying (ONEE utility tariff), then 30 years of guaranteed performance and 50 to 100 % of the bill covered. How to finance it plainly — Taqinor installs and warrants, but is not a lender."
+  title="Solar returns & financing in Morocco | Taqinor"
+  description="What a solar installation really earns in Morocco: the electricity you stop buying (ONEE utility tariff), then 30 years of guaranteed performance and 50 to 100 % of the bill covered. How to finance it plainly — Taqinor installs and warrants, but is not a lender."
   ogSlug="financement"
 >
   <div class="v2">
@@ -114,9 +115,9 @@ import FinancementPs6F3AC from '../../components/blocs/FinancementPs6F3AC.astro'
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">The investment that pays itself back, then pays for you</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           An installation is on the order of 80 000 MAD for a villa — a real investment, not a gadget.
-          Well sized, it <strong class="text-white">pays itself back in roughly 3 to 7 years</strong>
+          Well sized, it <strong class="text-white">pays itself back</strong>
           thanks to the electricity you stop buying from the grid, valued at the ONEE utility tariff.
-          Beyond that point, over twenty years remain of the 30 guaranteed where your power is
+          Beyond that point, the warranty years remain where your power is
           <strong class="text-white">nearly free</strong>.
         </p>
       </div>
@@ -134,11 +135,7 @@ import FinancementPs6F3AC from '../../components/blocs/FinancementPs6F3AC.astro'
         </p>
         <FinancementPs6F3AC chiffres={chiffres} />
         <p class="mt-8 max-w-2xl text-sm leading-relaxed text-lune-soft">
-          The heavier the bill, the faster the return. For a typical villa, count on the order of
-          <a href={L('/résidentiel')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">4 to 6 years in residential</a>;
-          on a warehouse, the scale effect tightens the return to
-          <a href={L('/professionnel')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">3 to 5 years for a business site</a>.
-          Below 1 000 MAD of monthly bill, however, the return most often goes beyond 7 years — and we
+          The heavier the bill, the faster the return. Below 1 000 MAD of monthly bill, the return gets longer — and we
           will tell you frankly rather than sell you the useless.
         </p>
       </div>
@@ -174,10 +171,7 @@ import FinancementPs6F3AC from '../../components/blocs/FinancementPs6F3AC.astro'
             <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">4 · Saving</span><br />Erased every year at the ONEE utility tariff</span>
             <span class="fig lum text-xl sm:text-2xl">12 000 – 16 000 MAD/year</span>
           </li>
-          <li class="v2-rise flex items-baseline justify-between gap-4 py-5" style="--v2-i:4">
-            <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">5 · Payback</span><br />Then 19 to 21 years of near-free power</span>
-            <span class="fig text-xl text-brass-300 sm:text-2xl">4 to 6 years</span>
-          </li>
+          
         </ol>
         <p class="mt-6 max-w-2xl text-xs leading-relaxed text-lune-soft">
           Yours will start from your own bill, not this one — <a href={devisHref} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">start your free assessment</a>.
@@ -266,10 +260,12 @@ import FinancementPs6F3AC from '../../components/blocs/FinancementPs6F3AC.astro'
             <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr">30 years</dd>
             <dt class="tech-label mt-2 text-lune-faint">Guaranteed performance (≥ 87.4 %)</dt>
           </div>
+          {RETOUR_PAR_SEGMENT.residentiel && (
           <div class="v2-rise" style="--v2-i:2">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr">3–7 years</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr">{RETOUR_PAR_SEGMENT.residentiel.label.en}</dd>
             <dt class="tech-label mt-2 text-lune-faint">Typical return on investment</dt>
           </div>
+          )}
           <div class="v2-rise" style="--v2-i:3">
             <dd class="font-display text-xl font-bold text-white">ONEE tariff</dd>
             <dt class="tech-label mt-2 text-lune-faint">Basis for the avoided-electricity calculation</dt>

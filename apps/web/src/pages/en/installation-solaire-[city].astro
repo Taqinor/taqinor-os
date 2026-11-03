@@ -7,6 +7,7 @@
  * `hasLocalInstall` preserved (only Casablanca shows a local install). Internal
  * links via localizeNavHref. FR untouched.
  */
+import { RETOUR_PAR_SEGMENT } from '../../lib/billRange';
 import { PANEL_PERFORMANCE_FLOOR_EN, PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 import CityPageBody from '../../components/CityPageBody.astro';
 import { pageLocale } from '../../lib/pageCtx';
@@ -41,7 +42,7 @@ const t = {
   sunshineLabel: `Indicative annual sunshine · ${c.name}`,
   publicData: 'Public weather data, for guidance only.',
   statBill: 'Of the bill covered',
-  statRoiValue: '3–7 years',
+  statRoiValue: RETOUR_PAR_SEGMENT.residentiel?.label.en ?? '',
   statRoi: 'Return on investment',
   statWarrantyValue: `${PANEL_PERFORMANCE_WARRANTY_YEARS} years`,
   statWarranty: `Performance warranty (${PANEL_PERFORMANCE_FLOOR_EN})`,

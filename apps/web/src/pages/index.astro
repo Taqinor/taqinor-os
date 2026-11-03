@@ -16,6 +16,7 @@
  * cette même page) est retiré ; DiagnosticForm.astro + /api/simulate restent
  * intacts dans le code comme repli documenté (montés ailleurs).
  */
+import { RETOUR_PAR_SEGMENT } from '../lib/billRange';
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
@@ -214,7 +215,7 @@ const trust = [
 // aérer le dark→light→dark. Chiffres STRICTEMENT repris de /financement (déjà
 // publiés) — aucun nouveau nombre.
 const investment = [
-  { v: '3–7 ans', label: 'Retour sur investissement typique' },
+  ...(RETOUR_PAR_SEGMENT.residentiel ? [{ v: RETOUR_PAR_SEGMENT.residentiel.label.fr, label: 'Retour sur investissement typique' }] : []),
   { v: '30 ans', label: 'Garantie de performance des panneaux' },
   { v: '50–100 %', label: 'De la facture couverte — selon batteries et usage jour/nuit' },
   { v: '0 MAD', label: 'L’étude et le diagnostic' },

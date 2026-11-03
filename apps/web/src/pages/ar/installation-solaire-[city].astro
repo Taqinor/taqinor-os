@@ -8,6 +8,7 @@
  * The Layout auto-sets lang=ar + dir=rtl; only text changes, classes intact.
  * Internal links via localizeNavHref. FR untouched.
  */
+import { RETOUR_PAR_SEGMENT } from '../../lib/billRange';
 import { PANEL_PERFORMANCE_FLOOR_EN, PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 import CityPageBody from '../../components/CityPageBody.astro';
 import { pageLocale } from '../../lib/pageCtx';
@@ -49,7 +50,7 @@ const t = {
   sunshineLabel: `إشعاع سنوي إرشادي · ${cityNameAr}`,
   publicData: 'معطى مناخي عمومي، على سبيل الإرشاد.',
   statBill: 'من الفاتورة مُغطّاة',
-  statRoiValue: '3–7 سنوات',
+  statRoiValue: RETOUR_PAR_SEGMENT.residentiel?.label.ar ?? '',
   statRoi: 'عائد الاستثمار',
   statWarrantyValue: `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`,
   statWarranty: `ضمان الأداء (${PANEL_PERFORMANCE_FLOOR_EN})`,

@@ -18,6 +18,7 @@
  * removed; DiagnosticForm.astro + /api/simulate stay intact in the codebase
  * as the documented fallback (mounted elsewhere).
  */
+import { RETOUR_PAR_SEGMENT } from '../../lib/billRange';
 import Layout from '../../layouts/Layout.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -171,7 +172,7 @@ const trust = [
 // dark→light→dark narrative breathe. Figures STRICTLY reused from
 // /financement (already published) — no new number.
 const investment = [
-  { v: '3–7 years', label: 'Typical return on investment' },
+  ...(RETOUR_PAR_SEGMENT.residentiel ? [{ v: RETOUR_PAR_SEGMENT.residentiel.label.en, label: 'Typical return on investment' }] : []),
   { v: '30 years', label: 'Panel performance warranty' },
   { v: '50–100 %', label: 'Of the bill covered — depending on batteries and day/night usage' },
   { v: '0 MAD', label: 'The study and the assessment' },

@@ -28,6 +28,7 @@
  * trois archétypes et ne pas dériver. Pour ajouter un archétype, noter ici et
  * documenter dans DESIGN_RATIONALE.md.
  */
+import { RETOUR_PAR_SEGMENT } from '../lib/billRange';
 import { PANEL_PERFORMANCE_FLOOR_FR, PANEL_PERFORMANCE_WARRANTY_YEARS } from '../lib/warranty';
 import CityPageBody from '../components/CityPageBody.astro';
 import Layout from '../layouts/Layout.astro';
@@ -63,7 +64,7 @@ const t = {
   sunshineLabel: `Ensoleillement annuel indicatif · ${c.name}`,
   publicData: 'Donnée météo publique, à titre indicatif.',
   statBill: 'De la facture couverte',
-  statRoiValue: '3–7 ans',
+  statRoiValue: RETOUR_PAR_SEGMENT.residentiel?.label.fr ?? '',
   statRoi: 'Retour sur investissement',
   statWarrantyValue: `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`,
   statWarranty: `Garantie de performance (${PANEL_PERFORMANCE_FLOOR_FR})`,
