@@ -149,6 +149,8 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
     """FG33 — la file de click-through WhatsApp, ordonnée : gardes ACRM15,
     plafond et trace CADV10. Sortie de ``apply_bulk_action`` (C20)."""
     from apps.ventes.utils.whatsapp import build_wa_url
+
+    from .cadence_messages import _crochets_a_completer
     template_id = params.get('template_id')
     body_tpl = params.get('body') or ''
     tpl = None
@@ -181,6 +183,13 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
                        f'({PREPARER_WHATSAPP_PLAFOND_PAR_JOUR})')
             continue
         corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
+        # CAD69 — LA règle du message d'une touche (``message_pour_etape`` →
+        # ``crochets``) : un blanc « [plateforme] » non complété n'est jamais
+        # envoyé ; le lead sort de la file avec le blanc nommé.
+        trous = _crochets_a_completer(corps)
+        if trous:
+            skip(lead, 'à compléter : ' + ', '.join(trous))
+            continue
         wa_url = build_wa_url(phone, corps)
         queue.append({
             'lead_id': lead.id,
