@@ -3335,9 +3335,9 @@ decisions:
         texte: "Portée du rôle, sauf un rôle bureau d'études dédié qui voit toute la société"
       - cle: societe
         texte: "Statu quo : tout valideur voit toute la société"
-    reponse: ouverte
+    reponse: portee_sauf_be
     date: "2026-11-03"
-    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI8]
   - id: D-ACVI-4
     question: "Les portes RDV YanBow, API publique, ticket SAV et import fichier créent des leads sans propriétaire, sans score ou sans cadence (C-ACVI-002) : même règle d'arrivée partout, ou traitement manuel déclaré dans la table ?"
@@ -3357,9 +3357,9 @@ decisions:
         texte: "Nouveau lead, ou réouverture d'un Froid (CADV101), jamais un rattachement muet à un archivé/perdu ; un opposé reste opposé"
       - cle: rattacher_et_rouvrir
         texte: "Rattacher au doublon mais le rouvrir, le notifier et relancer sa cadence"
-    reponse: ouverte
+    reponse: d_crx1_partout
     date: "2026-11-03"
-    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI13]
   - id: D-ACVI-6
     question: "Une opposition vivante (STOP, case « ne plus contacter ») ne vaut que pour la fiche : une nouvelle fiche au même numéro, ou le survivant d'une fusion, redevient contactable (C-ACVI-060, C-ACVI-020) : l'opposition suit-elle la personne ?"
@@ -3401,7 +3401,7 @@ decisions:
         texte: "La page /rdv/<token> du SPA ERP (seule existante) : une base de liens unique côté serveur"
       - cle: site_public
         texte: "Une page rdv à créer sur le site Astro, PUBLIC_SITE_URL devient la base"
-    reponse: ouverte
+    reponse: erp
     date: "2026-11-03"
-    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI46]
