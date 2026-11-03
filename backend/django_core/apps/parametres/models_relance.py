@@ -129,8 +129,8 @@ class Cadence(models.TextChoices):
     VISITE = 'visite', 'Visite technique'
 
 
-# ── Protocole de rappel v3 (04/09/2026) ─────────────────────────────────────
-# 6 APPELS MAXIMUM + 5 WhatsApp sur 14 jours, jamais plus d'un appel ET d'un
+# ── Protocole de rappel (v4, CADV23, D-CADV-1) ──────────────────────────────
+# 5 APPELS MAXIMUM + 3 WhatsApp sur 7 jours, jamais plus d'un appel ET d'un
 # message par jour — **HORS J0** : les trois gestes du jour même (message
 # d'identité, appel d'ouverture, appel 2 à +2 h 30) sont VOULUS ensemble, c'est
 # la promesse « rappelé dans les cinq minutes ». Ces délais viennent du
@@ -143,9 +143,10 @@ class Cadence(models.TextChoices):
 # en sont exemptés. Un délai retouché depuis Paramètres ne peut donc plus
 # empiler trois appels le même jour.
 #
-# ``dimanche_ok`` : la touche 8 (5ᵉ appel) est le SEUL rendez-vous autorisé le
-# dimanche, entre 16 h et 19 h, pour les prospects qu'on ne trouve jamais en
-# semaine. Toutes les autres touches sont recalées sur les jours ouvrés.
+# ``dimanche_ok`` : le protocole v4 (CADV23) n'a plus de touche de contact le
+# dimanche ; une société peut en autoriser une (fenêtre 16 h-19 h, le moteur
+# sait toujours la placer). Toutes les autres touches sont recalées sur les
+# jours ouvrés.
 CADENCE_CONTACT_DEFAUT = [
     {'ordre': 1, 'delai_jours': 0, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': "Message d'identité",
@@ -165,36 +166,28 @@ CADENCE_CONTACT_DEFAUT = [
      'heure_cible': datetime.time(10, 30),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 3',
      'template_cle': 'appel_relance', 'dimanche_ok': False},
-    {'ordre': 5, 'delai_jours': 1, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp de valeur',
-     'template_cle': 'valeur_j1', 'dimanche_ok': False},
-    {'ordre': 6, 'delai_jours': 2, 'delai_minutes': 0,
-     'heure_cible': datetime.time(18, 0),
+    # CADV23 (02/11/2026, D-CADV-1) — protocole v4 : 5 appels + 3 WhatsApp sur
+    # 7 jours. Les barreaux 5-8 remplacent les touches 5-11 du v3 (un rappel
+    # en 25 exécutions) ; plus de dimanche ni de 17 h 30-18 h 30 par défaut.
+    # Aucune clé de message nouvelle : `repondeur` (4e appel), `valeur_j1`
+    # (« je n'ai pas réussi à vous joindre »), `appel_dernier` (5e et dernier
+    # appel), `je_classe_j7` (question de clôture).
+    {'ordre': 5, 'delai_jours': 2, 'delai_minutes': 0,
+     'heure_cible': datetime.time(16, 0),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 4 (répondeur)',
      'template_cle': 'repondeur', 'dimanche_ok': False},
-    {'ordre': 7, 'delai_jours': 3, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Vocal',
-     'template_cle': 'vocal_j3', 'dimanche_ok': False},
-    {'ordre': 8, 'delai_jours': 5, 'delai_minutes': 0,
-     'heure_cible': datetime.time(10, 30),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 5 (dimanche)',
-     'template_cle': 'appel_dimanche', 'dimanche_ok': True},
-    {'ordre': 9, 'delai_jours': 7, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
+    {'ordre': 6, 'delai_jours': 2, 'delai_minutes': 0,
+     'heure_cible': datetime.time(17, 45),
+     'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp de valeur',
+     'template_cle': 'valeur_j1', 'dimanche_ok': False},
+    {'ordre': 7, 'delai_jours': 4, 'delai_minutes': 0,
+     'heure_cible': datetime.time(11, 0),
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel 5 (dernier)',
+     'template_cle': 'appel_dernier', 'dimanche_ok': False},
+    {'ordre': 8, 'delai_jours': 7, 'delai_minutes': 0,
+     'heure_cible': datetime.time(12, 0),
      'canal': CanalRelance.WHATSAPP, 'libelle': '« Je classe ? »',
      'template_cle': 'je_classe_j7', 'dimanche_ok': False},
-    # CAD67 — le DERNIER appel avant clôture (celui qui décide du classement
-    # du lead) n'avait aucune phrase d'ouverture : script court dédié.
-    {'ordre': 10, 'delai_jours': 10, 'delai_minutes': 0,
-     'heure_cible': datetime.time(15, 0),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 6 (dernier)',
-     'template_cle': 'appel_dernier', 'dimanche_ok': False},
-    {'ordre': 11, 'delai_jours': 14, 'delai_minutes': 0,
-     'heure_cible': CRENEAU_MESSAGE,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Clôture',
-     'template_cle': 'cloture_j14', 'dimanche_ok': False},
 ]
 
 # Suivi APRÈS ENVOI DU DEVIS (Guide v2.1 chapitre 7). La touche « dimanche
