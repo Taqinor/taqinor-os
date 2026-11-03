@@ -282,3 +282,15 @@ describe('WAUD49 — badges de preuve cliquables ou retirés', () => {
     expect(read('../src/pages/en/équipement.astro')).not.toContain('Tier-1 brands · official distributors');
   });
 });
+
+describe('WAUD61-b — liste du tunnel : la zone de service, rien d’autre (D-WAUD-8)', () => {
+  it('FR/AR (module partagé) et EN : ni Kénitra, ni Fès, ni Settat', () => {
+    const modes = readFileSync(fileURLToPath(new URL('../src/lib/tunnel/modes.ts', import.meta.url)), 'utf-8');
+    const en = readFileSync(fileURLToPath(new URL('../src/pages/en/devis/mon-toit.astro', import.meta.url)), 'utf-8');
+    for (const src of [modes, en]) {
+      const ligne = src.split('\n').find((l) => l.includes('TOWNS =')) ?? '';
+      expect(ligne).toContain('Casablanca');
+      expect(ligne).not.toMatch(/Kénitra|Fès|Settat/);
+    }
+  });
+});

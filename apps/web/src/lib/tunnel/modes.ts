@@ -9,4 +9,4 @@ export const MODES = [
   { id: 'commercial', fr: 'Commercial', ar: 'تجاري', desc_fr: 'Hôtel, commerce, services', desc_ar: 'فندق، تجارة، خدمات' },
   { id: 'agricole', fr: 'Agricole', ar: 'فلاحي', desc_fr: 'Pompage, ferme', desc_ar: 'ضخ، مزرعة' },
 ];
-export const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra', 'Fès', 'Settat'];
+export const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir'];
