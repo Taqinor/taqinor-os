@@ -1287,12 +1287,13 @@ def _prenom_du_locataire_prescripteur(lead):
 def _mois_dossier_francais(lead):
     """« mars 2026 » — le mois où ce prospect nous avait consultés.
 
-    Dérivé de la date de création de SA fiche : une date réelle et traçable,
-    jamais une estimation. Fiche sans date ⇒ chaîne vide ⇒ phrase omise.
+    Dérivé de la date d'origine de SA fiche (ACVI47 : celle du système d'origine
+    si on la connaît) : une date réelle et traçable, jamais une estimation.
+    Fiche sans date ⇒ chaîne vide ⇒ phrase omise.
     """
     from . import horaires
 
-    quand = getattr(lead, 'date_creation', None)
+    quand = getattr(lead, 'date_origine', None)
     if not quand:
         return ''
     locale = quand.astimezone(horaires.CASABLANCA)
@@ -1323,7 +1324,7 @@ def _cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
     except ImportError:
         return cle_gabarit
 
-    ouverture = getattr(lead, 'date_creation', None)
+    ouverture = getattr(lead, 'date_origine', None)  # ACVI47
     if ouverture is not None and reference is not None:
         from . import horaires
         locale = ouverture.astimezone(horaires.CASABLANCA).date()
