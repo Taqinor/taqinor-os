@@ -3,10 +3,10 @@
 // Vérifie l'indexabilité, l'inclusion sitemap, les données structurées et
 // l'intégrité des faits (aucun chiffre inventé).
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { lireAstroAvecBlocs } from './astroBlocsHelper';
-import { builtPage } from './builtHtmlHelper';
+import { builtPage, mainOf, visibleText } from './builtHtmlHelper';
 // @ts-expect-error — module JS pur sans déclaration de types
 import { dateArticle, datesDuDepot, lastmodPour } from '../scripts/sitemap-dates.mjs';
 import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
@@ -357,5 +357,18 @@ describe('WAUD85 — lastmod : vraies dates seulement', () => {
   });
   it('astro.config.mjs ne lit plus git', () => {
     expect(readFileSync(fileURLToPath(new URL('../astro.config.mjs', import.meta.url)), 'utf-8')).not.toContain('git log');
+  });
+});
+
+describe('WAUD37 — aucune référence de tâche interne dans le texte public', () => {
+  it('scan de <main> sur tout le build', () => {
+    const racine = `${process.cwd()}/dist/client`;
+    const fautes: string[] = [];
+    for (const f of readdirSync(racine, { recursive: true }) as string[]) {
+      if (!String(f).endsWith('index.html')) continue;
+      const texte = visibleText(mainOf(readFileSync(`${racine}/${f}`, 'utf-8')));
+      for (const m of texte.matchAll(/\b(W|WJ|WA|WB|WC|CIW|AGW|RWEB|QJW)\d+\b/g)) fautes.push(`${f}: ${m[0]}`);
+    }
+    expect(fautes).toEqual([]);
   });
 });
