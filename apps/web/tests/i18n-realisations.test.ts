@@ -338,3 +338,10 @@ describe('WAUD17 — /à-propos : le chantier documenté le plus ancien', () => 
     }
   });
 });
+
+describe('WAUD14 (reste) — /ar/realisations ne promet pas un suivi sur chaque installation', () => {
+  it('aucune promesse « كل تركيبة … الوقت الحقيقي » (suivi universel non vérifié)', () => {
+    const src = readSrc('../src/pages/ar/realisations/index.astro');
+    expect(src).not.toMatch(/كل تركيبة تستفيد/);
+  });
+});
