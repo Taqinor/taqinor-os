@@ -12,6 +12,8 @@ worked correctly in isolation; what was missing was the wiring (now in
 ci.yml's stage-names job) and a hard failure on a missing PyYAML (used to
 silently exit 0 — see test_missing_pyyaml_now_fails_loud below).
 """
+import contextlib
+import io
 import sys
 import tempfile
 import textwrap
@@ -98,6 +100,33 @@ class TestRougeDabordEnforcedWithoutTest(_Harness):
         self.assertEqual(cqb.main(), 0)
         f.unlink()
         self.assertEqual(cqb.main(), 1)
+
+    def test_colonne_absente_non_verifiee_echoue(self):
+        """ACVI86 — le test de budget doit aussi nommer la colonne interdite."""
+        self._write_manifest("""\
+            version: 1
+            endpoints:
+              - path: /api/django/crm/relance-etapes/
+                budget: 12
+                enforced: true
+                colonnes_absentes: [etude_params]
+        """)
+        f = self._write_test_file("test_relances_budget.py", """\
+            class T:
+                def test_budget(self):
+                    with self.assertNumQueries(12):
+                        self.client.get('/api/django/crm/relance-etapes/')
+        """)
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur):
+            self.assertEqual(cqb.main(), 1)
+        self.assertIn(
+            "colonne etude_params non vérifiée par le test de budget de "
+            "/api/django/crm/relance-etapes/", erreur.getvalue())
+
+        f.write_text(f.read_text(encoding="utf-8") + "# etude_params\n",
+                     encoding="utf-8")
+        self.assertEqual(cqb.main(), 0)
 
     def test_not_enforced_endpoint_without_test_is_ok(self):
         self._write_manifest("""\

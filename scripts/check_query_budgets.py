@@ -106,6 +106,15 @@ def _has_budget_test(url: str, corpus: dict) -> bool:
     return any(url in text for text in corpus.values())
 
 
+def _colonnes_non_verifiees(entry: dict, corpus: dict):
+    """ACVI86 — colonnes de ``colonnes_absentes`` qu'aucun fichier de budget
+    citant l'URL ne nomme : le budget compte les requêtes, pas ce qu'elles
+    ramènent (une colonne JSON de 100 Ko ne change aucun compte)."""
+    textes = [t for t in corpus.values() if entry["path"] in t]
+    return [c for c in entry.get("colonnes_absentes") or []
+            if not any(c in t for t in textes)]
+
+
 def main() -> int:
     if not MANIFEST.exists():
         print("check_query_budgets: docs/query-budgets.yml absent — skip.")
@@ -139,6 +148,7 @@ def main() -> int:
     corpus = _test_corpus()
     missing = []
     sautes = []
+    colonnes = []
     checked = 0
     for entry in endpoints:
         if not isinstance(entry, dict):
@@ -158,6 +168,8 @@ def main() -> int:
         else:
             for fichier, ligne in _budgets_sautes(path, corpus):
                 sautes.append((path, fichier, ligne))
+            colonnes.extend(
+                (path, c) for c in _colonnes_non_verifiees(entry, corpus))
 
     if sautes:
         print("check_query_budgets: budget(s) 'enforced' dont le test est "
@@ -165,6 +177,12 @@ def main() -> int:
         for path, fichier, ligne in sautes:
             print(f"  - budget sauté : {path} — {fichier}:{ligne}",
                   file=sys.stderr)
+        return 1
+
+    if colonnes:
+        for path, colonne in colonnes:
+            print(f"check_query_budgets: colonne {colonne} non vérifiée par le "
+                  f"test de budget de {path}", file=sys.stderr)
         return 1
 
     if missing:
