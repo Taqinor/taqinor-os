@@ -28,7 +28,7 @@ from .cadence_views import _prochaine_touche_publique
 from .params_requete import texte_verifie, verifier_corps_texte
 from . import activity
 from . import schema_docs as sd
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy
+from authentication.permissions import IsResponsableOrAdmin, HasPermissionOrLegacy
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +75,9 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         # VX245(a) — `ics` (téléchargement, lecture seule) rejoint les
         # READ_ACTIONS : tout rôle peut télécharger le `.ics` d'un RDV qu'il
         # peut déjà VOIR (queryset scopé société, jamais un nouveau droit).
+        # ACVI3 (D-ACVI-2 = portée) — lecture sous `crm_voir`.
         if self.action in READ_ACTIONS or self.action == 'ics':
-            return [IsAnyRole()]
+            return [HasPermissionOrLegacy('crm_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

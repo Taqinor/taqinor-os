@@ -45,7 +45,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "IsAnyRole"
+    "classe": "HasPermissionOrLegacy_crm_voir"
    }
   ]
  },
@@ -65,7 +65,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "IsAnyRole"
+    "classe": "HasPermissionOrLegacy_crm_voir"
    }
   ]
  },

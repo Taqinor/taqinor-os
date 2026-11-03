@@ -83,8 +83,9 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     ordering = ['ordre', 'date_contact', 'id']
 
     def get_permissions(self):
+        # ACVI3 (D-ACVI-2 = portée) — lecture sous `crm_voir`.
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [HasPermissionOrLegacy('crm_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

@@ -291,13 +291,13 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         # Chaîne commerciale (25/09/2026) — `chaine_commerciale` est une
         # LECTURE PURE du cockpit : même garde que `journal`, listée ICI
         # nommément pour la même raison.
-        # COCKPIT-CONTRÔLE (30/09/2026) — `controle` est une LECTURE PURE du
-        # cockpit, ouverte à tous les rôles (décision de transparence CKP3) :
-        # listée ICI nommément, même raison.
-        if self.action in ('list', 'message', 'suivi', 'journal',
-                           'cadences_echues', 'chaine_commerciale',
-                           'controle'):
+        # COCKPIT-CONTRÔLE — `controle` reste ouvert à tous (transparence CKP3).
+        if self.action == 'controle':
             return [IsAnyRole()]
+        # ACVI3 (D-ACVI-2 = portée) — les lectures exigent `crm_voir`.
+        if self.action in ('list', 'message', 'suivi', 'journal',
+                           'cadences_echues', 'chaine_commerciale'):
+            return [HasPermissionOrLegacy('crm_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
