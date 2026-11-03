@@ -11,13 +11,13 @@ const PAGES: Array<[string, string]> = [
   ['AR', '/ar/pompage-solaire'],
 ];
 
-/** La carte « aide de l'État » : de `data-fda-regle` à `data-saquii` (incluse). */
+/** La carte « aide de l'État » : de `data-fda-regle` à `data-fda-source` (WAUD48 : Saquii retiré). */
 function carte(html: string): string {
   const main = mainOf(html);
   const a = main.indexOf('data-fda-regle');
-  const b = main.indexOf('data-saquii');
+  const b = main.indexOf('data-fda-source');
   expect(a, 'data-fda-regle').toBeGreaterThan(-1);
-  expect(b, 'data-saquii').toBeGreaterThan(a);
+  expect(b, 'data-fda-source').toBeGreaterThan(a);
   const fin = main.indexOf('</p>', b);
   return visibleText(main.slice(a, fin));
 }
@@ -52,12 +52,10 @@ describe('AGW307 — la carte FDA de /pompage-solaire = la règle, pas une prome
       expect(txt).toMatch(lang === 'FR' ? /relevé le 2 octobre 2026/ : lang === 'EN' ? /read on 2 October 2026/ : /2 أكتوبر 2026/);
     });
 
-    it(`${lang} — le paragraphe Saquii reste présent et ne publie ni pourcentage ni montant`, () => {
+    it(`${lang} — WAUD48 : le paragraphe Saquii non vérifié est retiré, la règle FDA reste`, () => {
       const main = mainOf(html);
-      const a = main.indexOf('data-saquii');
-      const saquii = visibleText(main.slice(a, main.indexOf('</p>', a)));
-      expect(saquii).toContain('Saquii');
-      expect(saquii).not.toMatch(/\d/);
+      expect(main).not.toContain('data-saquii');
+      expect(main).toContain('data-fda-regle');
     });
 
     it(`${lang} — jamais d'éligibilité promise : décision de l'administration, non garantie`, () => {
