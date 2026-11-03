@@ -59,6 +59,8 @@ def reprendre_relances_apres_fusion(absorbed, survivor, user):
                  traite_le=timezone.now())
         absorbed.relance_date = None
         absorbed.save(update_fields=['relance_date'])
+    if survivor.ne_plus_contacter:  # ACVI21 — jamais de filet sur une opposée.
+        return len(ouvertes)
     # QJ-INVARIANT — la survivante ne reste jamais sans prochaine étape.
     # Best-effort : une fusion n'échoue pas sur un filet.
     try:
@@ -144,6 +146,10 @@ def merge_leads(survivor, others, user):
     from django.db import transaction
     from django.utils import timezone
 
+    from .cadence_plan import arreter_cadence
+    from .cadence_reponses import (
+        MOTIF_NE_PLUS_CONTACTER, _marquer_lead_ne_plus_contacter, tracer_opposition_registre)
+
     others = [o for o in others if o.pk != survivor.pk
               and o.company_id == survivor.company_id]
     if not others:
@@ -151,6 +157,7 @@ def merge_leads(survivor, others, user):
 
     ct = ContentType.objects.get_for_model(Lead)
     relances_reprises = 0
+    oppose = False
     # ACRM40 (C-ACRM-035) — les fiches client DISTINCTES rencontrées : le
     # survivant garde la sienne, les devis de l'autre restent sur l'autre.
     deux_clients = []
@@ -194,6 +201,11 @@ def merge_leads(survivor, others, user):
                 logger.warning('%s : échec ignoré (dégradé)', 'merge_leads', exc_info=True)
             # 4) Historique chatter → survivant.
             LeadActivity.objects.filter(lead=absorbed).update(lead=survivor)
+            # ACVI21 — l'opposition d'un absorbé suit la personne, AVANT le filet.
+            if absorbed.ne_plus_contacter:
+                oppose = True
+                _marquer_lead_ne_plus_contacter(survivor, user)
+                arreter_cadence(survivor, user=user, motif=MOTIF_NE_PLUS_CONTACTER)
             # 4 bis) CAD106 — les RELANCES suivent le dossier : les touches
             # ouvertes de l'absorbée sortent de son plan (annulées « fusion »,
             # donc jamais comptées comme des manquements) et le filet garantit
@@ -254,7 +266,9 @@ def merge_leads(survivor, others, user):
                           f'{_nom_fiche_client(client)} ({devis_txt}) — à '
                           'fusionner (outil de fusion des clients).'))
         survivor.save()
-    if relances_reprises:
+        if oppose:  # ACVI21 — après l'étape 6 : sous les identifiants complétés.
+            tracer_opposition_registre(survivor, source='fusion de fiches')
+    if relances_reprises and not survivor.ne_plus_contacter:
         # CAD106 — la fusion DIT ce qu'elle a fait des relances : sans cette
         # ligne, des touches disparaissaient du plan sans un mot.
         LeadActivity.objects.create(

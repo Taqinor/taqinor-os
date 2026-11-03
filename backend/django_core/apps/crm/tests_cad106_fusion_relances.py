@@ -170,6 +170,34 @@ class CeQueLaFusionNeCassePasTests(_Base):
 
     slug = 'cad106-gardes'
 
+    def test_absorbe_oppose_rend_le_survivant_oppose_sans_touche(self):
+        # ACVI21 — l'opposition suit la personne, et aucun filet ne repose de touche.
+        from core.models import ConsentRecord
+
+        Lead.objects.filter(pk=self.absorbe.pk).update(ne_plus_contacter=True)
+        touches = [self._touche(self.survivant, ordre=1),
+                   self._touche(self.survivant, ordre=2)]
+        api = APIClient()
+        api.force_authenticate(self.acteur)
+
+        resp = api.post(f'/api/django/crm/leads/{self.survivant.pk}/merge/',
+                        {'others': [self.absorbe.pk]}, format='json')
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.survivant.refresh_from_db()
+        self.assertTrue(self.survivant.ne_plus_contacter)
+        self.assertEqual(self._ouvertes(self.survivant).count(), 0)
+        for touche in touches:
+            touche.refresh_from_db()
+            self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+            self.assertIn('ne plus contacter', touche.note)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.survivant, kind=LeadActivity.Kind.MODIFICATION,
+            field='ne_plus_contacter').count(), 1)
+        self.assertTrue(ConsentRecord.objects.filter(
+            company=self.company, granted=False,
+            source__startswith='fusion de fiches').exists())
+
     def test_les_touches_DEJA_closes_ne_sont_pas_retouchees(self):
         faite = self._touche(self.absorbe, statut=RelanceEtape.Statut.FAIT)
         merge_leads(self.survivant, [self.absorbe], self.acteur)
