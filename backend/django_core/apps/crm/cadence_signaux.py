@@ -17,7 +17,9 @@ from .cadence_plan import (
     deplacer_echeance_etape,
     reporter_prochaine_touche,
 )
-from .cadence_reperes import q_etape_moteur, q_visite
+from .cadence_reperes import (
+    LIBELLE_RAPPEL_DEMANDE, LIBELLE_SIGNAL_PROPOSITION, LIBELLE_SIGNAL_QUESTIONNAIRE,
+    q_etape_moteur, q_visite)
 from .leads_consentement import _ecrire_registre_contact
 from .leads_notifications import _build_lead_wa_reply_url
 from .leads_socle import lead_notification_recipients
@@ -241,8 +243,8 @@ SIGNAL_PROPOSITION_ROUVERTE = 'proposition_rouverte'
 #: et sa raison — c'est ce que la file affiche. Sert aussi de clé
 #: d'idempotence : une touche signal encore ouverte n'est jamais doublée.
 TOUCHES_SIGNAL = {
-    SIGNAL_PROPOSITION_ROUVERTE: 'Proposition rouverte — appeler',
-    SIGNAL_QUESTIONNAIRE: 'Questionnaire complété — appeler',
+    SIGNAL_PROPOSITION_ROUVERTE: LIBELLE_SIGNAL_PROPOSITION,
+    SIGNAL_QUESTIONNAIRE: LIBELLE_SIGNAL_QUESTIONNAIRE,
 }
 
 #: Les touches signal vivent dans la cadence hors protocole déjà utilisée par
@@ -736,7 +738,7 @@ def notify_lead_callback_requested(lead) -> None:
 
 #: Libellé de la touche « rappel demandé ». Sert aussi de clé d'idempotence :
 #: deux clics du même client ne laissent jamais deux lignes dans la file.
-RAPPEL_DEMANDE_LIBELLE = 'Rappeler le client (il l’a demandé)'
+RAPPEL_DEMANDE_LIBELLE = LIBELLE_RAPPEL_DEMANDE
 
 #: Cadence des touches hors protocole déjà utilisée par le dépôt.
 RAPPEL_DEMANDE_CADENCE = 'generique'

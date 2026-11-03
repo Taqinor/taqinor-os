@@ -311,11 +311,21 @@ QUESTION_PRIX_LIBELLE = (
 #: CADV36 (D-CADV-3) — les deux touches du commercial après l'acceptation.
 LIBELLE_CONFIRMER_SIGNATURE = 'Confirmer la signature et la suite'
 LIBELLE_RELANCE_ACOMPTE = 'Acompte : relancer le client'
+#: ACVI35 — étapes `generique` posées par le moteur à côté du gabarit : leur
+#: clôture ne fait jamais naître « Relance WhatsApp », même sur un lead SIGNÉ.
+LIBELLE_FAIRE_SIGNER_AVENANT = 'Faire signer l’avenant'
+LIBELLE_SIGNAL_PROPOSITION = 'Proposition rouverte — appeler'
+LIBELLE_SIGNAL_QUESTIONNAIRE = 'Questionnaire complété — appeler'
+LIBELLE_RAPPEL_DEMANDE = 'Rappeler le client (il l’a demandé)'
 _LIBELLES_FILET_HORS_GABARIT = frozenset({
     PASSATION_LIBELLE,  # CAD54
     QUESTION_PRIX_LIBELLE,  # CAD7
     LIBELLE_CONFIRMER_SIGNATURE,  # CADV36
     LIBELLE_RELANCE_ACOMPTE,  # CADV36
+    LIBELLE_FAIRE_SIGNER_AVENANT,  # ACVI35
+    LIBELLE_SIGNAL_PROPOSITION,  # ACVI35
+    LIBELLE_SIGNAL_QUESTIONNAIRE,  # ACVI35
+    LIBELLE_RAPPEL_DEMANDE,  # ACVI35
 })
 #: CADV29 (D-CADV-10) — « Pièces reçues ? » : hors gabarit, mais retrouvée par sa
 #: CLÉ stable. Une étape de filet : sa suite est décidée par le filet, jamais par
@@ -325,6 +335,10 @@ CLE_PIECES_RECUES = 'pieces_recues'
 #: (cadence `generique`), retrouvée par sa CLÉ ; sa clôture ne fait pas naître
 #: le barreau suivant du gabarit `generique`.
 CLE_RAPPEL_FDA = 'rappel_fda'
+#: ACVI35 — LA liste des clés stables des étapes moteur hors gabarit : lue par
+#: ``est_etape_de_filet`` et ``_q_filet`` (donc ``q_etape_moteur``).
+CLE_ETAPE_VALIDITE = 'validite_a_renouveler'
+CLES_ETAPES_MOTEUR = (CLE_PIECES_RECUES, CLE_RAPPEL_FDA, CLE_ETAPE_VALIDITE)
 #: Les libellés PAR DÉFAUT des étapes de filet (les étapes posées avant la
 #: clé en portent un) — un lecteur ne s'en sert plus pour RECONNAÎTRE une
 #: étape (``est_etape_de_filet``/``_q_filet``), seulement pour les nommer.
@@ -388,7 +402,7 @@ def _q_filet():
     from django.db.models import Q
 
     return (q_etape(*CLES_APRES_CONTACT)
-            | Q(cle__in=(CLE_PIECES_RECUES, CLE_RAPPEL_FDA))
+            | Q(cle__in=CLES_ETAPES_MOTEUR)
             | Q(cle='', libelle__in=tuple(_LIBELLES_FILET_HORS_GABARIT)))
 
 

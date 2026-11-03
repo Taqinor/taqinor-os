@@ -37,6 +37,7 @@ from .cadence_plan import (
 )
 from .fiche_funnel import avancer_stage_lead_vers
 from .cadence_reperes import (
+    LIBELLE_FAIRE_SIGNER_AVENANT,
     OUTCOME_VISITE_ACCEPTEE,
     annuler_etapes_moteur_ouvertes,
     est_cloture_d_etape_visite,
@@ -48,9 +49,6 @@ from .visites_retour_lead import ecrire_retour_lead_visite, journaliser_visite
 from .cadence_reponses import est_derniere_touche_du_suivi
 
 logger = logging.getLogger(__name__)
-
-
-LIBELLE_FAIRE_SIGNER_AVENANT = 'Faire signer l’avenant'
 
 
 def _a_un_predecesseur_accepte(devis):
