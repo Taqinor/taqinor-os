@@ -3324,9 +3324,9 @@ decisions:
         texte: "crm_voir exigé et portée du rôle appliquée (listes, journal, suivi, rapport d'attribution)"
       - cle: transparence_agregats
         texte: "Les agrégats (KPI, rapport d'attribution) restent visibles à tous ; les listes nominatives passent sous crm_voir + portée"
-    reponse: ouverte
+    reponse: portee
     date: "2026-11-03"
-    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI3, ACVI10]
   - id: D-ACVI-3
     question: "Un porteur de visites_valider à portée sous-arbre (Commercial responsable) lit toutes les visites de la société (C-ACVI-107) : toute la société ou la portée ?"
@@ -3346,9 +3346,9 @@ decisions:
         texte: "Owner, score et cadence (ou refus tracé) sur toutes les portes ; exceptions écrites dans la table : RDV YanBow (YBW51) et miroir Odoo"
       - cle: manuel_declare
         texte: "Ces portes restent manuelles ; la table PA1 le déclare et un filet nocturne signale les leads sans owner"
-    reponse: ouverte
+    reponse: parite_sauf_rdv_odoo
     date: "2026-11-03"
-    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI88]
   - id: D-ACVI-5
     question: "Une nouvelle demande (propriétaire d'un locataire, livechat, site) dont le doublon est archivé, perdu ou opposé est rattachée en silence à la fiche au rebut (C-ACVI-003) : règle D-CRX1 partout ?"
@@ -3368,9 +3368,9 @@ decisions:
         texte: "Dès le STOP, l'opposition est portée par le téléphone et l'e-mail normalisés de la société (empreinte) ; toute fiche créée ou fusionnée en hérite ; levée tracée par la fiche"
       - cle: fiche_seule
         texte: "Statu quo (fiche seule) ; la fusion copie au moins le drapeau"
-    reponse: ouverte
+    reponse: suit_la_personne
     date: "2026-11-03"
-    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI43]
   - id: D-ACVI-7
     question: "WhatsApp de devis, de visite ou de touche vers un lead opposé qui a lui-même demandé le document (C-ACVI-061) : refus ou envoi transactionnel tracé ?"
@@ -3379,9 +3379,9 @@ decisions:
         texte: "Refus 409 nommé sur tout rendu/envoi vers un opposé, perdu ou archivé ; seul l'accusé STOP passe"
       - cle: transactionnel_trace
         texte: "Un document demandé par le client (devis, confirmation de visite) peut partir, tracé « transactionnel » ; les touches de cadence restent refusées"
-    reponse: ouverte
+    reponse: refus_409
     date: "2026-11-03"
-    source: "audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
+    source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI89]
   - id: D-ACVI-8
     question: "La réservation publique et l'agenda créent un crm.Appointment sans VisiteTerrain, sans date sur la fiche ni suspension de cadence (C-ACVI-172) : est-ce la visite technique ?"
