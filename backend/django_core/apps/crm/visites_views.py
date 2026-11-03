@@ -187,9 +187,12 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         (date/heure + lien `.ics`). N'ENVOIE RIEN : le commercial ouvre
         WhatsApp lui-même après avoir vérifié l'aperçu (même convention que
         `LeadViewSet.whatsapp_devis`)."""
-        appt = self.get_object()
+        from .devis_views import _refus_pii_whatsapp
         from .visites_rdv import build_appointment_confirmation_whatsapp
 
+        if refus := _refus_pii_whatsapp(request):  # ACVI4
+            return refus
+        appt = self.get_object()
         message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
             request, appt)
         if wa_url is None:

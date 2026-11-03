@@ -721,7 +721,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         _omettre_phrases_incompletes(objet_gabarit, manquants),
         contexte).strip() if objet_gabarit else ''
 
-    phone = lead.whatsapp or lead.telephone or ''
+    from .serializers import pii_masquee_pour
+    # ACVI4 — sans `client_pii_voir`, aucun numéro ne sort (la liste le masque).
+    phone = '' if pii_masquee_pour(user) else (lead.whatsapp or lead.telephone or '')
     if est_email:
         # Une touche e-mail n'ouvre pas WhatsApp : `wa_url` vaut `null`, et le
         # lien `mailto:` est construit par le serveur. Rien n'est envoyé (D5).

@@ -221,6 +221,7 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
     from apps.ventes.utils.whatsapp import build_wa_url
 
     from .cadence_messages import _crochets_a_completer
+    from .serializers import pii_masquee_pour
     template_id = params.get('template_id')
     body_tpl = params.get('body') or ''
     tpl = None
@@ -277,11 +278,12 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
                 skip(lead, 'à compléter : ' + ', '.join(trous))
                 continue
             wa_url = build_wa_url(phone, corps)
+        masque = pii_masquee_pour(user)  # ACVI4
         queue.append({
             'lead_id': lead.id,
             'nom': str(lead),
-            'phone': phone,
-            'wa_url': wa_url,
+            'phone': '' if masque else phone,
+            'wa_url': None if masque else wa_url,
         })
         if not nouvelle:
             continue
