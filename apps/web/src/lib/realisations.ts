@@ -410,6 +410,22 @@ export function measuredPlantFor(r: Realisation | null | undefined): MeasuredPla
   return MEASURED_FLEET.find((p) => p.label === label) ?? null;
 }
 
+/** WAUD21 — valeur + libellé de la production mesurée d'une réalisation, par locale ; null sans relevé apparié. */
+export function mesureAffichee(
+  r: Realisation | null | undefined,
+  locale: 'fr' | 'en' | 'ar',
+): { valeur: string; libelle: string } | null {
+  const p = measuredPlantFor(r);
+  if (!p?.readAt) return null;
+  const mwh = p.lifetimeMWh.toFixed(2);
+  const fr = mwh.replace('.', ',');
+  const date = new Intl.DateTimeFormat({ fr: 'fr-FR', en: 'en-GB', ar: 'ar-MA' }[locale], { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(p.readAt));
+  return {
+    valeur: `${locale === 'en' ? mwh : fr} MWh`,
+    libelle: { fr: `Production mesurée — relevé le ${date}`, en: `Measured production — read on ${date}`, ar: `الإنتاج المقاس — قراءة بتاريخ ${date}` }[locale],
+  };
+}
+
 export const realisationBySlug = (slug: string): Realisation | undefined =>
   REALISATIONS.find((r) => r.slug === slug);
 

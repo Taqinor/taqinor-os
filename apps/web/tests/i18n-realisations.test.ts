@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cityContentBySlug } from '../src/lib/cityContent';
 import { caseStudyBySlug } from '../src/lib/caseStudies';
-import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations';
+import { REALISATIONS, CITIES, mesureAffichee, realisationByRef } from '../src/lib/realisations';
 
 const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 // ENF19 — le corps des pages ville et études de cas (V2Enhance, class="v2", JSON-LD Service) vit dans
@@ -248,5 +248,17 @@ describe('realisations.ts — non touché (faits intacts)', () => {
 
   it('seule Casablanca a un chantier local (honnêteté hasLocalInstall)', () => {
     expect(CITIES.filter((c) => c.hasLocalInstall).map((c) => c.name)).toEqual(['Casablanca']);
+  });
+});
+
+describe('WAUD21 — production mesurée : seule la réalisation appariée', () => {
+  it('réf. 400 : 1,13 MWh, relevé du 4 juillet 2026, dans les 3 langues', () => {
+    const r = realisationByRef('400');
+    expect(mesureAffichee(r, 'fr')).toEqual({ valeur: '1,13 MWh', libelle: 'Production mesurée — relevé le 4 juillet 2026' });
+    expect(mesureAffichee(r, 'en')).toEqual({ valeur: '1.13 MWh', libelle: 'Measured production — read on 4 July 2026' });
+    expect(mesureAffichee(r, 'ar')?.valeur).toBe('1,13 MWh');
+  });
+  it('aucune autre réalisation sans measuredLabel n’affiche de mesure', () => {
+    for (const r of REALISATIONS.filter((x) => !x.measuredLabel)) expect(mesureAffichee(r, 'fr')).toBeNull();
   });
 });
